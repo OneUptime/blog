@@ -12,6 +12,8 @@ If your organization has invested years in System Center Operations Manager (SCO
 
 This is particularly useful for hybrid environments where you have workloads both on-premises and in Azure. You get the familiarity of SCOM with the operational simplicity of a managed service - no more patching SCOM servers, managing SQL databases, or worrying about high availability for your management group.
 
+As of Microsoft's current documentation, Azure Monitor SCOM Managed Instance is no longer in support and is planned for deprecation on 30 September 2026. Treat new deployments as short-term migration or compatibility projects, and evaluate Azure Monitor or self-managed System Center Operations Manager for long-term use.
+
 ## What Is SCOM Managed Instance?
 
 SCOM Managed Instance (SCOM MI) is a fully managed version of System Center Operations Manager that runs in Azure. Microsoft handles the infrastructure - the management servers, the operational database, the data warehouse, and the reporting components. You bring your management packs and monitoring configurations.
@@ -29,9 +31,10 @@ Before deploying SCOM MI, you need:
 
 - An Azure subscription with a resource group
 - A Virtual Network with connectivity to your on-premises network (via VPN or ExpressRoute)
-- A subnet dedicated to SCOM MI (at least /27)
-- A SQL Managed Instance for the SCOM databases (SCOM MI creates its own, but you can also bring your own)
-- A managed identity or service account for SCOM MI
+- A subnet for SCOM MI with at least 32 IP addresses available
+- A dedicated Azure SQL Managed Instance for the SCOM operational and data warehouse databases, or an existing SQL Managed Instance configured for SCOM MI
+- A user-assigned managed identity with access to the SQL Managed Instance and the Key Vault secrets that store domain credentials
+- Domain controller and DNS connectivity, a gMSA account, and a DNS name mapped to the SCOM MI load balancer static IP
 - Network connectivity between SCOM MI and the machines you want to monitor
 
 The network connectivity piece is critical. SCOM agents on your on-premises servers need to reach the SCOM MI management servers in Azure, and vice versa.
@@ -49,11 +52,10 @@ az network vnet subnet create \
   --resource-group myRG \
   --vnet-name myHubVNet \
   --name scom-mi-subnet \
-  --address-prefix 10.0.10.0/27 \
-  --delegations Microsoft.Scom/managedInstances
+  --address-prefixes 10.0.10.0/27
 ```
 
-The subnet delegation ensures Azure knows this subnet is reserved for SCOM MI.
+Do not use the SQL Managed Instance subnet for SCOM MI. SQL Managed Instance requires its own dedicated delegated subnet.
 
 ## Step 2: Create a Managed Identity
 
@@ -67,15 +69,7 @@ az identity create \
   --location eastus
 ```
 
-Grant this identity the necessary permissions:
-
-```bash
-# Assign the Contributor role for the resource group
-az role assignment create \
-  --assignee $(az identity show --resource-group myRG --name scom-mi-identity --query principalId -o tsv) \
-  --role Contributor \
-  --scope /subscriptions/<sub-id>/resourceGroups/myRG
-```
+Grant this identity the necessary permissions. During onboarding, SCOM MI uses the user-assigned managed identity to access SQL Managed Instance and the Key Vault secrets for the domain account. In the portal flow, this identity must have system administrator privileges on the SQL Managed Instance and Get/List permissions on the relevant Key Vault secrets.
 
 ## Step 3: Deploy SCOM Managed Instance
 
@@ -83,13 +77,15 @@ You can deploy SCOM MI through the Azure Portal or using ARM/Bicep templates.
 
 In the Azure Portal:
 
-1. Search for "SCOM Managed Instance" in the marketplace
+1. Search for "SCOM Managed Instance" in the Azure Portal
 2. Click Create
 3. Fill in the basics - subscription, resource group, region, instance name
 4. Select the Virtual Network and subnet you created
-5. Assign the managed identity
-6. Configure the SQL Managed Instance settings (SCOM MI can create a new SQL MI or use an existing one)
-7. Review and create
+5. Enter the static IP and DNS name for the SCOM MI load balancer
+6. Provide the gMSA details
+7. Assign the managed identity
+8. Select the SQL Managed Instance that you created or configured for SCOM MI
+9. Review and create
 
 The deployment takes around 45-60 minutes because it provisions the management servers and SQL databases.
 
@@ -108,8 +104,23 @@ For an ARM template deployment, here is the key resource definition:
     }
   },
   "properties": {
-    "virtualNetworkSubnetId": "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/virtualNetworks/myHubVNet/subnets/scom-mi-subnet",
-    "managementEndpoints": ["10.0.10.4"],
+    "vNetSubnetId": "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Network/virtualNetworks/myHubVNet/subnets/scom-mi-subnet",
+    "domainController": {
+      "dnsServer": "10.0.0.4",
+      "domainName": "contoso.com",
+      "ouPath": "OU=SCOMMI,DC=contoso,DC=com"
+    },
+    "domainUserCredentials": {
+      "keyVaultUrl": "https://myKeyVault.vault.azure.net/",
+      "userNameSecret": "scom-domain-user",
+      "passwordSecret": "scom-domain-password"
+    },
+    "gmsaDetails": {
+      "dnsName": "scommi.contoso.com",
+      "gmsaAccount": "scommi-gmsa$",
+      "loadBalancerIP": "10.0.10.4",
+      "managementServerGroupName": "SCOMMI-ManagementServers"
+    },
     "databaseInstance": {
       "databaseInstanceId": "/subscriptions/<sub-id>/resourceGroups/myRG/providers/Microsoft.Sql/managedInstances/mySCOMSQL"
     }
@@ -123,7 +134,7 @@ Once SCOM MI is deployed, your on-premises servers need to communicate with the 
 
 1. **Network path**: Ensure your on-premises firewall allows outbound TCP 5723 (SCOM agent communication) to the SCOM MI management server IPs
 2. **DNS resolution**: On-premises servers must resolve the SCOM MI management server hostname
-3. **Certificate trust**: If using certificate-based authentication, deploy the SCOM MI CA certificate to your on-premises machines
+3. **Certificate trust**: If using certificate-based authentication, deploy the required Operations Manager certificates and trust chain to the relevant management servers, gateway servers, and agents
 
 For existing SCOM agents, you can redirect them to the new management group:
 
@@ -137,7 +148,7 @@ $agent.RemoveManagementGroup("OldManagementGroup")
 # Add SCOM MI management group
 $agent.AddManagementGroup(
     "SCOMMI_MG",          # Management group name
-    "scommi.eastus.azure.com",  # Management server hostname
+    "scommi.contoso.com",  # SCOM MI load balancer DNS name
     5723                   # Port
 )
 
@@ -147,7 +158,7 @@ Restart-Service HealthService
 
 ## Step 5: Import Management Packs
 
-Management packs define what SCOM monitors and how. You can import your existing management packs into SCOM MI through the Operations Console.
+Management packs define what SCOM monitors and how. SCOM MI supports agent-based management packs, and you can import your existing compatible management packs through the Operations Console.
 
 Connect to the SCOM MI Operations Console:
 
@@ -172,16 +183,16 @@ Common management packs to import first:
 
 ## Step 6: Configure Azure Monitor Integration
 
-One of the best features of SCOM MI is that it can forward alerts to Azure Monitor. This means you can use Azure Monitor's alert processing rules, action groups, and notification channels alongside your SCOM monitoring.
+One of the best features of SCOM MI is integrated alerting with Azure Monitor. This means you can use Azure Monitor's alert processing rules, action groups, and notification channels alongside your SCOM monitoring.
 
-Enable the integration in the SCOM MI settings:
+Review the integration in the SCOM MI and Azure Monitor settings:
 
 1. In the Azure Portal, go to your SCOM MI resource
-2. Click on "Azure Monitor integration" in the left menu
-3. Enable the integration and select which alert severities to forward
-4. Map SCOM alert severity to Azure Monitor alert severity
+2. Confirm alerting is available for the SCOM MI resource
+3. Create or attach Azure Monitor action groups for notification and automation workflows
+4. Use alert processing rules if you need to suppress, route, or apply actions to matching alerts
 
-Once enabled, SCOM alerts appear in Azure Monitor alongside your native Azure alerts. You can create unified alert processing rules that handle both.
+SCOM alerts appear in Azure Monitor alongside your native Azure alerts. You can create unified alert processing rules that handle both.
 
 ## Step 7: Set Up Gateway Servers for DMZ Monitoring
 
@@ -209,11 +220,11 @@ For Azure VMs, you might wonder why you would use SCOM instead of native Azure M
 
 SCOM MI supports scaling the number of management servers based on your agent count:
 
-- Up to 500 agents: 2 management servers (default)
-- 500 to 2000 agents: 3-4 management servers
-- 2000+ agents: 5+ management servers
+- A new SCOM MI instance starts with one management server
+- A management server can monitor up to 1000 endpoints
+- The Azure Portal recommends the management server count after you enter the total endpoints to monitor
 
-You can scale management servers through the Azure Portal or CLI without downtime.
+You can scale management servers through the Azure Portal after checking SQL Managed Instance health, management server health, domain credentials, NAT gateway association, and VNet connectivity.
 
 ## Cost Structure
 
@@ -228,4 +239,4 @@ For organizations with existing System Center licenses, the primary additional c
 
 ## Wrapping Up
 
-SCOM Managed Instance is the right choice for organizations that need to maintain their existing SCOM investment while moving toward Azure-based operations. It removes the burden of managing SCOM infrastructure while preserving the monitoring logic you have built over years. The Azure Monitor integration ensures you are not creating a monitoring silo - SCOM alerts flow into the same alert management pipeline as your cloud-native monitoring.
+SCOM Managed Instance can help organizations that need to maintain their existing SCOM investment while moving toward Azure-based operations, but its announced deprecation means it should not be treated as a long-term platform for new monitoring investments. It removes the burden of managing SCOM infrastructure while preserving the monitoring logic you have built over years. The Azure Monitor integration ensures you are not creating a monitoring silo - SCOM alerts flow into the same alert management pipeline as your cloud-native monitoring.
