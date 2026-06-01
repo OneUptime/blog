@@ -24,12 +24,12 @@ flowchart TD
 ```
 
 - **NetApp Account**: The top-level resource. It is a logical container for capacity pools. You typically have one per region.
-- **Capacity Pool**: A pool of storage capacity with a specific service level (Standard, Premium, or Ultra). Minimum size is 4 TiB.
+- **Capacity Pool**: A pool of storage capacity with a specific service level (Standard, Premium, or Ultra). Minimum size is 1 TiB when all volumes use Standard network features, or 4 TiB if any volume uses Basic network features.
 - **Volume**: The actual file share that clients mount. It draws capacity from its parent pool.
 
 ## Prerequisites
 
-Register the Azure NetApp Files resource provider and request capacity:
+Register the Azure NetApp Files resource provider:
 
 ```bash
 # Register the NetApp resource provider
@@ -113,7 +113,7 @@ The service levels determine the throughput per TiB of provisioned capacity:
 | Premium | 64 MiB/s | Databases, SAP, general production |
 | Ultra | 128 MiB/s | Latency-sensitive workloads, HPC |
 
-The pool size can be expanded later, but the minimum is 4 TiB and it goes up in 1 TiB increments.
+The pool size can be expanded later. The minimum is 1 TiB when all volumes use Standard network features, or 4 TiB if any volume uses Basic network features, and it goes up in 1 TiB increments.
 
 ## Creating an NFS Volume
 
@@ -191,7 +191,7 @@ sudo mkdir -p /mnt/appdata
 
 # Mount the volume using NFSv4.1
 # Replace the IP with the mount target IP from the previous command
-sudo mount -t nfs -o rw,hard,rsize=65536,wsize=65536,vers=4.1,tcp \
+sudo mount -t nfs -o rw,hard,rsize=65536,wsize=65536,vers=4.1,tcp,sec=sys \
   <MOUNT_IP>:/appdata /mnt/appdata
 
 # Verify the mount
@@ -208,7 +208,7 @@ Add to `/etc/fstab` for persistence:
 
 ```bash
 # Add to fstab for automatic mounting on boot
-echo "<MOUNT_IP>:/appdata /mnt/appdata nfs rw,hard,rsize=65536,wsize=65536,vers=4.1,tcp 0 0" | sudo tee -a /etc/fstab
+echo "<MOUNT_IP>:/appdata /mnt/appdata nfs rw,hard,rsize=65536,wsize=65536,vers=4.1,tcp,sec=sys 0 0" | sudo tee -a /etc/fstab
 ```
 
 ## Configuring Volume Export Policies
@@ -239,10 +239,10 @@ az netappfiles snapshot policy create \
   --account-name mynetappaccount \
   --snapshot-policy-name "daily-weekly-policy" \
   --location eastus2 \
-  --daily-snapshots-to-keep 7 \
+  --daily-snapshots 7 \
   --daily-hour 23 \
   --daily-minute 0 \
-  --weekly-snapshots-to-keep 4 \
+  --weekly-snapshots 4 \
   --weekly-day Monday \
   --weekly-hour 1 \
   --weekly-minute 0 \
