@@ -17,7 +17,7 @@ Let's set it up, understand the findings, and use the policy generation features
 Access Analyzer uses mathematical reasoning (automated formal verification) to analyze resource-based policies and identify access that goes beyond your trust zone. Your trust zone is either your AWS account or your AWS Organization, depending on how you configure it.
 
 It monitors these resource types:
-- S3 buckets and access points
+- S3 buckets and S3 Express directory buckets
 - IAM roles (trust policies)
 - KMS keys
 - Lambda functions and layers
@@ -26,7 +26,10 @@ It monitors these resource types:
 - SNS topics
 - EBS volume snapshots
 - RDS DB snapshots
+- RDS DB cluster snapshots
 - ECR repositories
+- EFS file systems
+- DynamoDB tables and streams
 
 When it finds a resource shared outside the trust zone, it creates a "finding."
 
@@ -152,7 +155,7 @@ aws accessanalyzer validate-policy \
     "Version": "2012-10-17",
     "Statement": [{
       "Effect": "Allow",
-      "Action": "s3:*",
+      "Action": ["s3:*", "iam:PassRole"],
       "Resource": "*"
     }]
   }'
@@ -168,7 +171,7 @@ The response includes findings at different severity levels:
             "issueCode": "PASS_ROLE_WITH_STAR_IN_RESOURCE",
             "learnMoreLink": "https://docs.aws.amazon.com/...",
             "locations": [{"path": [{"value": "Statement"}, {"index": 0}]}],
-            "findingDetails": "Using wildcards (*) in the action and resource can allow iam:PassRole permissions..."
+            "findingDetails": "Using the iam:PassRole action with wildcards (*) in the resource can be overly permissive..."
         },
         {
             "findingType": "SUGGESTION",
@@ -242,7 +245,8 @@ Wait for it to complete, then get the generated policy:
 aws accessanalyzer get-generated-policy --job-id $JOB_ID
 ```
 
-The output includes a policy document that covers only the actions the role actually performed during the specified period. This is your blueprint for least-privilege access.
+The output includes a policy document based on the actions IAM Access Analyzer identified from CloudTrail and service last accessed data during the specified period. This is your blueprint for least-privilege access.
+If the generated policy result has `isComplete: false`, review the generated policy carefully and add any required permissions that IAM Access Analyzer could not infer from the selected CloudTrail data.
 
 ## Terraform Integration
 
@@ -313,7 +317,7 @@ For comprehensive alerting across your AWS environment, check our guide on [moni
 Access Analyzer can also identify unused IAM roles, access keys, and permissions:
 
 ```bash
-# Create an analyzer for unused access (requires Organization)
+# Create an account-level analyzer for unused access
 aws accessanalyzer create-analyzer \
   --analyzer-name unused-access-analyzer \
   --type ACCOUNT_UNUSED_ACCESS \
@@ -326,14 +330,14 @@ aws accessanalyzer create-analyzer \
 
 This finds:
 - IAM roles that haven't been used in 90 days
-- Access keys that haven't been used
-- Permissions that are granted but never exercised
+- IAM user access keys and passwords that haven't been used
+- Permissions granted to roles that are never exercised
 
 This is gold for cleanup. Roles and credentials that haven't been used in months are attack surface you don't need.
 
 ## Multi-Region Setup
 
-Access Analyzer is regional. For complete coverage, enable it in every region you use:
+External access analyzers are regional. For complete resource-sharing coverage, enable an analyzer in every region you use:
 
 ```bash
 # Enable Access Analyzer in all active regions
