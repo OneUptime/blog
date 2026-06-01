@@ -10,17 +10,18 @@ Description: Master pipeline parameterization in Azure Data Factory to build reu
 
 One of the biggest mistakes I see in Azure Data Factory projects is pipeline sprawl - dozens of nearly identical pipelines that differ only in a table name, file path, or connection string. Instead of copying pipelines for each source table, you should parameterize them. A single well-designed parameterized pipeline can replace ten or twenty hardcoded ones.
 
-In this post, I will cover how to use parameters at every level in ADF - pipelines, datasets, linked services, and data flows - and show patterns that keep your data factory clean and maintainable.
+In this post, I will cover how to use parameters at the core levels in ADF - pipelines, datasets, linked services, and global parameters - and show patterns that keep your data factory clean and maintainable.
 
 ## Types of Parameters in ADF
 
-ADF supports parameterization at multiple levels:
+ADF supports parameterization and dynamic values at multiple levels:
 
 1. **Pipeline parameters** - values passed to a pipeline at runtime
 2. **Dataset parameters** - dynamic values in datasets (table names, file paths)
 3. **Linked service parameters** - dynamic connection properties
-4. **Global parameters** - factory-wide values shared across all pipelines
-5. **System variables** - built-in values like pipeline name, run ID, trigger time
+4. **Data flow parameters** - values passed from a pipeline into mapping data flows
+5. **Global parameters** - factory-wide values shared across all pipelines
+6. **System variables** - built-in runtime values like pipeline name, run ID, trigger time
 
 ## Pipeline Parameters
 
@@ -31,7 +32,6 @@ Pipeline parameters are the starting point. You define them on the pipeline and 
 In ADF Studio, open your pipeline and click on the canvas background. In the properties pane at the bottom, click the **Parameters** tab and add your parameters.
 
 ```json
-// Pipeline with parameters defined
 {
   "name": "pl_copy_generic",
   "properties": {
@@ -59,14 +59,12 @@ In ADF Studio, open your pipeline and click on the canvas background. In the pro
 Reference pipeline parameters using the expression syntax `@pipeline().parameters.parameterName`.
 
 ```json
-// Copy activity using pipeline parameters
 {
   "name": "CopyData",
   "type": "Copy",
   "typeProperties": {
     "source": {
       "type": "SqlServerSource",
-      // Use the parameter to dynamically set the query
       "sqlReaderQuery": {
         "value": "SELECT * FROM @{pipeline().parameters.sourceTableName}",
         "type": "Expression"
@@ -88,15 +86,15 @@ Dataset parameters let you create generic datasets that work with any table, fil
 
 ### Parameterized SQL Dataset
 
-Instead of creating one dataset per table, create one parameterized dataset that accepts the table name.
+Instead of creating one dataset per table, create one parameterized dataset that accepts the schema and table name.
 
 ```json
-// One dataset for any SQL table
 {
   "name": "ds_sql_generic",
   "properties": {
     "type": "SqlServerTable",
     "parameters": {
+      "schemaName": { "type": "String" },
       "tableName": { "type": "String" }
     },
     "linkedServiceName": {
@@ -104,8 +102,11 @@ Instead of creating one dataset per table, create one parameterized dataset that
       "type": "LinkedServiceReference"
     },
     "typeProperties": {
-      // Dynamic table name from parameter
-      "tableName": {
+      "schema": {
+        "value": "@dataset().schemaName",
+        "type": "Expression"
+      },
+      "table": {
         "value": "@dataset().tableName",
         "type": "Expression"
       }
@@ -117,7 +118,6 @@ Instead of creating one dataset per table, create one parameterized dataset that
 ### Parameterized File Dataset
 
 ```json
-// One dataset for any Parquet file in the data lake
 {
   "name": "ds_parquet_generic",
   "properties": {
@@ -149,7 +149,6 @@ Instead of creating one dataset per table, create one parameterized dataset that
 When you reference a parameterized dataset in a Copy activity, you pass the values from the pipeline.
 
 ```json
-// Copy activity passing pipeline parameters to datasets
 {
   "name": "CopyData",
   "type": "Copy",
@@ -158,8 +157,8 @@ When you reference a parameterized dataset in a Copy activity, you pass the valu
       "referenceName": "ds_sql_generic",
       "type": "DatasetReference",
       "parameters": {
-        // Pass pipeline parameter to dataset parameter
-        "tableName": "@pipeline().parameters.sourceTableName"
+        "schemaName": "@split(pipeline().parameters.sourceTableName, '.')[0]",
+        "tableName": "@split(pipeline().parameters.sourceTableName, '.')[1]"
       }
     }
   ],
@@ -182,7 +181,6 @@ When you reference a parameterized dataset in a Copy activity, you pass the valu
 You can even parameterize linked services for scenarios where you need to connect to different servers or databases dynamically.
 
 ```json
-// Parameterized linked service - connect to any database on the server
 {
   "name": "ls_sql_dynamic",
   "properties": {
@@ -262,13 +260,11 @@ INSERT INTO dbo.IngestionConfig VALUES ('sales', 'Transactions', 'raw', 'sql/tra
 ### Step 2: Build the Metadata-Driven Pipeline
 
 ```json
-// Metadata-driven pipeline
 {
   "name": "pl_metadata_driven_ingestion",
   "properties": {
     "activities": [
       {
-        // Step 1: Read the metadata table
         "name": "GetTableList",
         "type": "Lookup",
         "typeProperties": {
@@ -279,31 +275,29 @@ INSERT INTO dbo.IngestionConfig VALUES ('sales', 'Transactions', 'raw', 'sql/tra
           "dataset": {
             "referenceName": "ds_sql_generic",
             "type": "DatasetReference",
-            "parameters": { "tableName": "dbo.IngestionConfig" }
+            "parameters": {
+              "schemaName": "dbo",
+              "tableName": "IngestionConfig"
+            }
           },
-          // Return all rows, not just the first
           "firstRowOnly": false
         }
       },
       {
-        // Step 2: Loop through each table
         "name": "ForEachTable",
         "type": "ForEach",
         "dependsOn": [
           { "activity": "GetTableList", "dependencyConditions": ["Succeeded"] }
         ],
         "typeProperties": {
-          // Iterate over the lookup results
           "items": {
             "value": "@activity('GetTableList').output.value",
             "type": "Expression"
           },
-          // Process up to 5 tables in parallel
           "isSequential": false,
           "batchCount": 5,
           "activities": [
             {
-              // Execute the generic copy pipeline for each table
               "name": "ExecuteCopyPipeline",
               "type": "ExecutePipeline",
               "typeProperties": {
@@ -351,7 +345,7 @@ flowchart TD
 
 1. **Start generic, specialize when needed** - build parameterized pipelines first. Only create specialized pipelines when the generic ones cannot handle a specific case.
 2. **Use default values** - set sensible defaults for parameters so pipelines work out of the box during testing.
-3. **Validate parameters** - use If Condition activities at the start of pipelines to validate required parameters and fail fast with a clear message.
+3. **Validate parameters** - use If Condition activities at the start of pipelines to validate required parameters, and use a Fail activity to stop the run with a clear message.
 4. **Document parameters** - add descriptions to parameters explaining what values they expect.
 5. **Limit nesting depth** - deeply nested Execute Pipeline calls can be hard to debug. Keep the nesting to two levels maximum.
 
