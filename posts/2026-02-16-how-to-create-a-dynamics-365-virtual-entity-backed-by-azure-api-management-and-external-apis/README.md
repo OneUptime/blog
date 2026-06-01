@@ -8,7 +8,7 @@ Description: Create Dynamics 365 virtual entities that display external API data
 
 ---
 
-Virtual entities in Dynamics 365 let you display data from external systems directly in the CRM without importing or syncing it. The data stays in the source system, and Dynamics 365 queries it on demand. Users see virtual entity records alongside native Dataverse records, and they can use them in views, forms, charts, and even relationships.
+Virtual entities in Dynamics 365 let you display data from external systems directly in the CRM without importing or syncing it. The data stays in the source system, and Dynamics 365 queries it on demand. Users see virtual entity records alongside native Dataverse records, and they can use them in views, forms, and relationships.
 
 This is powerful for scenarios where you need to show inventory data from a warehouse system, pricing from an ERP, or customer information from a legacy database - all without duplicating the data into Dataverse. Azure API Management (APIM) acts as a gateway between Dynamics 365 and your external APIs, handling authentication, rate limiting, and response transformation.
 
@@ -46,12 +46,12 @@ az apim api import \
   --resource-group rg-d365-virtual-entities \
   --service-name apim-d365-gateway \
   --api-id inventory-api \
-  --path /inventory \
-  --specification-format OpenAPI \
+  --path inventory \
+  --specification-format OpenApiJson \
   --specification-url "https://api.warehouse.yourcompany.com/openapi.json"
 ```
 
-Add a policy that transforms the API responses into the format Dataverse expects:
+Add a policy that transforms the API responses into the format your Dataverse data provider expects. The external record ID must be a stable GUID value because Dataverse virtual tables require a GUID row ID:
 
 ```xml
 <!-- APIM policy that transforms external API responses for Dataverse consumption -->
@@ -59,11 +59,17 @@ Add a policy that transforms the API responses into the format Dataverse expects
     <inbound>
         <base />
         <!-- Validate the Dataverse caller using a subscription key -->
-        <check-header name="Ocp-Apim-Subscription-Key" failed-check-httpcode="401" />
+        <check-header name="Ocp-Apim-Subscription-Key"
+                      failed-check-httpcode="401"
+                      failed-check-error-message="Missing subscription key"
+                      ignore-case="false" />
 
         <!-- Add backend authentication -->
         <authentication-managed-identity resource="https://api.warehouse.yourcompany.com" />
     </inbound>
+    <backend>
+        <base />
+    </backend>
     <outbound>
         <base />
         <!-- Transform the response to match the virtual entity schema -->
@@ -93,18 +99,23 @@ Add a policy that transforms the API responses into the format Dataverse expects
         }
         </set-body>
     </outbound>
+    <on-error>
+        <base />
+    </on-error>
 </policies>
 ```
 
 ## Creating the Virtual Entity in Dataverse
 
-Define the virtual entity table in Dataverse. You can do this through the Power Apps Maker portal or programmatically:
+Define the virtual entity table in Dataverse. You can do this through the Power Apps Maker portal or programmatically. The `dataSourceId` value is the ID of the virtual table data source row shown later in this post:
 
 ```csharp
 // Create the virtual entity definition using the Organization Service
 public class VirtualEntitySetup
 {
-    public void CreateInventoryVirtualEntity(IOrganizationService service)
+    public void CreateInventoryVirtualEntity(
+        IOrganizationService service,
+        Guid dataSourceId)
     {
         // Create the entity metadata
         var entity = new EntityMetadata
@@ -118,26 +129,28 @@ public class VirtualEntitySetup
 
             // Virtual entity specific settings
             DataProviderId = new Guid("your-data-provider-id"),
+            DataSourceId = dataSourceId,
             ExternalName = "inventory_items",
             ExternalCollectionName = "inventory_items"
         };
 
-        // Define the primary key attribute
-        var primaryKey = new StringAttributeMetadata
+        // Define the primary name attribute. Dataverse creates the
+        // cr_inventoryid primary ID column automatically as a GUID.
+        var primaryName = new StringAttributeMetadata
         {
-            SchemaName = "cr_inventoryid",
-            DisplayName = new Label("Inventory ID", 1033),
+            SchemaName = "cr_name",
+            DisplayName = new Label("Inventory Item", 1033),
             RequiredLevel = new AttributeRequiredLevelManagedProperty(
-                AttributeRequiredLevel.SystemRequired),
-            MaxLength = 100,
-            ExternalName = "id"
+                AttributeRequiredLevel.ApplicationRequired),
+            MaxLength = 256,
+            ExternalName = "name"
         };
 
         // Create the entity
         var request = new CreateEntityRequest
         {
             Entity = entity,
-            PrimaryAttribute = primaryKey,
+            PrimaryAttribute = primaryName,
             HasActivities = false
         };
 
@@ -263,10 +276,12 @@ public class InventoryDataProvider : IPlugin
 
         foreach (var item in apiData.Value)
         {
+            var rowId = Guid.Parse(item.Id);
             var entity = new Entity("cr_inventory")
             {
-                Id = Guid.Parse(item.Id),
-                ["cr_inventoryid"] = item.Id,
+                Id = rowId,
+                ["cr_inventoryid"] = rowId,
+                ["cr_name"] = item.ProductName,
                 ["cr_productname"] = item.ProductName,
                 ["cr_sku"] = item.Sku,
                 ["cr_quantity"] = item.Quantity,
@@ -299,10 +314,12 @@ public class InventoryDataProvider : IPlugin
 
         var item = JsonSerializer.Deserialize<InventoryItem>(responseBody);
 
+        var rowId = Guid.Parse(item.Id);
         var entity = new Entity("cr_inventory")
         {
-            Id = Guid.Parse(item.Id),
-            ["cr_inventoryid"] = item.Id,
+            Id = rowId,
+            ["cr_inventoryid"] = rowId,
+            ["cr_name"] = item.ProductName,
             ["cr_productname"] = item.ProductName,
             ["cr_sku"] = item.Sku,
             ["cr_quantity"] = item.Quantity,
@@ -333,10 +350,12 @@ public class InventoryDataProvider : IPlugin
                 switch (condition.AttributeName)
                 {
                     case "cr_warehouse":
-                        queryParams.Add($"warehouse={condition.Values[0]}");
+                        queryParams.Add(
+                            $"warehouse={Uri.EscapeDataString(condition.Values[0].ToString())}");
                         break;
                     case "cr_sku":
-                        queryParams.Add($"sku={condition.Values[0]}");
+                        queryParams.Add(
+                            $"sku={Uri.EscapeDataString(condition.Values[0].ToString())}");
                         break;
                 }
             }
@@ -349,18 +368,24 @@ public class InventoryDataProvider : IPlugin
 
 ## Configuring the Data Source
 
-Register the data source in Dynamics 365 that links the virtual entity to your data provider:
+Register the data source in Dynamics 365, then pass the created row ID as the `DataSourceId` when you create the virtual table:
 
 ```csharp
 // Register the data source for the virtual entity
+var dataProviderId = new Guid("your-data-provider-id");
 var dataSource = new Entity("cr_inventory_datasource")
 {
     ["cr_name"] = "Warehouse Inventory API",
+    ["entitydataproviderid"] = new EntityReference(
+        "entitydataprovider",
+        dataProviderId),
     ["cr_apimendpoint"] = "https://apim-d365-gateway.azure-api.net",
     ["cr_description"] = "External inventory data via Azure API Management"
 };
 
-service.Create(dataSource);
+var dataSourceId = service.Create(dataSource);
+
+new VirtualEntitySetup().CreateInventoryVirtualEntity(service, dataSourceId);
 ```
 
 ## Creating a Relationship to Native Entities
