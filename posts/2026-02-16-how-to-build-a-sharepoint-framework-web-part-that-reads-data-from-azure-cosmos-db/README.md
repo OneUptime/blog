@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: SharePoint Framework, SPFx, Azure Cosmos DB, Web Part, React, Microsoft Graph, Azure Function
+Tags: SharePoint Framework, SPFx, Azure Cosmos DB, Web Part, React, Azure Function
 
 Description: Build a SharePoint Framework web part that displays data from Azure Cosmos DB using an Azure Function as the backend API layer.
 
@@ -46,7 +46,17 @@ az webapp auth update \
   --name func-spfx-api \
   --resource-group rg-spfx \
   --enabled true \
-  --action LoginWithAzureActiveDirectory
+  --action LoginWithAzureActiveDirectory \
+  --aad-client-id <function-app-client-id> \
+  --aad-client-secret <client-secret> \
+  --aad-token-issuer-url https://login.microsoftonline.com/<tenant-id>/v2.0 \
+  --aad-allowed-token-audiences api://<function-app-client-id>
+
+# Allow calls from your SharePoint tenant
+az functionapp cors add \
+  --name func-spfx-api \
+  --resource-group rg-spfx \
+  --allowed-origins https://yourcompany.sharepoint.com
 ```
 
 Here is the Azure Function that queries Cosmos DB:
@@ -68,10 +78,9 @@ public class ProductApi
         HttpRequestData req)
     {
         // Parse query parameters for filtering and paging
-        var queryParams = System.Web.HttpUtility.ParseQueryString(req.Url.Query);
-        var category = queryParams["category"];
-        var pageSize = int.TryParse(queryParams["pageSize"], out var ps) ? ps : 20;
-        var continuation = queryParams["continuation"];
+        var category = req.Query["category"];
+        var pageSize = int.TryParse(req.Query["pageSize"], out var ps) ? ps : 20;
+        var continuation = req.Query["continuation"];
 
         // Build the Cosmos DB query
         var queryText = "SELECT * FROM c";
@@ -90,7 +99,7 @@ public class ProductApi
         };
 
         var products = new List<Product>();
-        string nextContinuation = null;
+        string? nextContinuation = null;
 
         using var iterator = _container.GetItemQueryIterator<Product>(
             queryDef, continuation, options);
@@ -111,11 +120,6 @@ public class ProductApi
             count = products.Count
         });
 
-        // Add CORS headers for SharePoint
-        httpResponse.Headers.Add("Access-Control-Allow-Origin", "https://yourcompany.sharepoint.com");
-        httpResponse.Headers.Add("Access-Control-Allow-Methods", "GET, OPTIONS");
-        httpResponse.Headers.Add("Access-Control-Allow-Headers", "Authorization, Content-Type");
-
         return httpResponse;
     }
 
@@ -125,31 +129,54 @@ public class ProductApi
         HttpRequestData req,
         string id)
     {
-        try
-        {
-            var product = await _container.ReadItemAsync<Product>(
-                id, new PartitionKey(id));
+        var query = new QueryDefinition("SELECT * FROM c WHERE c.id = @id")
+            .WithParameter("@id", id);
 
-            var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
-            await response.WriteAsJsonAsync(product.Resource);
-            return response;
-        }
-        catch (CosmosException ex) when (ex.StatusCode == System.Net.HttpStatusCode.NotFound)
+        using var iterator = _container.GetItemQueryIterator<Product>(
+            query,
+            requestOptions: new QueryRequestOptions { MaxItemCount = 1 });
+
+        if (iterator.HasMoreResults)
         {
-            return req.CreateResponse(System.Net.HttpStatusCode.NotFound);
+            var results = await iterator.ReadNextAsync();
+            var product = results.FirstOrDefault();
+
+            if (product != null)
+            {
+                var response = req.CreateResponse(System.Net.HttpStatusCode.OK);
+                await response.WriteAsJsonAsync(product);
+                return response;
+            }
         }
+
+        return req.CreateResponse(System.Net.HttpStatusCode.NotFound);
     }
 }
 
 public class Product
 {
-    public string Id { get; set; }
-    public string Name { get; set; }
-    public string Description { get; set; }
-    public string Category { get; set; }
+    [System.Text.Json.Serialization.JsonPropertyName("id")]
+    public string Id { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("name")]
+    public string Name { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("description")]
+    public string Description { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("category")]
+    public string Category { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("price")]
     public decimal Price { get; set; }
-    public string ImageUrl { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("imageUrl")]
+    public string ImageUrl { get; set; } = string.Empty;
+
+    [System.Text.Json.Serialization.JsonPropertyName("stockQuantity")]
     public int StockQuantity { get; set; }
+
+    [System.Text.Json.Serialization.JsonPropertyName("lastUpdated")]
     public DateTime LastUpdated { get; set; }
 }
 ```
@@ -186,7 +213,6 @@ import {
     SpinnerSize,
     MessageBar,
     MessageBarType,
-    SearchBox,
     Dropdown,
     IDropdownOption,
     PrimaryButton
@@ -377,8 +403,12 @@ import * as React from 'react';
 import * as ReactDom from 'react-dom';
 import ProductViewer from './components/ProductViewer';
 
+export interface IProductViewerWebPartProps {
+    apiEndpoint: string;
+}
+
 export default class ProductViewerWebPart extends BaseClientSideWebPart<IProductViewerWebPartProps> {
-    private aadHttpClient: AadHttpClient;
+    private aadHttpClient!: AadHttpClient;
 
     protected async onInit(): Promise<void> {
         // Create the AadHttpClient scoped to your Azure Function's app registration
@@ -431,10 +461,10 @@ Build and deploy the SPFx package:
 
 ```bash
 # Build the production bundle
-gulp bundle --ship
+heft build --production
 
 # Package the solution
-gulp package-solution --ship
+heft package-solution --production
 
 # The .sppkg file is in sharepoint/solution/
 # Upload it to the SharePoint App Catalog
