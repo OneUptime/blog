@@ -25,7 +25,7 @@ Install the integration testing library.
 ```bash
 # Install the CDK integration test library
 
-npm install --save-dev @aws-cdk/integ-tests-alpha
+npm install --save-dev @aws-cdk/integ-tests-alpha @aws-cdk/integ-runner
 ```
 
 You'll also need a dedicated AWS account for running integration tests. Never run integration tests in a production account.
@@ -38,7 +38,7 @@ Integration tests are CDK apps that deploy a stack and run assertions against th
 // integ-tests/integ.api-stack.ts
 // Integration test for the API stack
 import * as cdk from 'aws-cdk-lib';
-import { IntegTest, ExpectedResult } from '@aws-cdk/integ-tests-alpha';
+import { IntegTest } from '@aws-cdk/integ-tests-alpha';
 import { ApiStack } from '../lib/api-stack';
 
 const app = new cdk.App();
@@ -70,7 +70,7 @@ The most common integration test pattern is hitting an API endpoint and checking
 
 ```typescript
 // Test that the API Gateway returns a 200 response
-const apiEndpoint = stack.apiEndpoint;  // CfnOutput from the stack
+const apiEndpoint = stack.apiEndpoint;  // string property exposed by the stack
 
 // Make an HTTP call to the deployed API
 const getItems = integ.assertions.httpApiCall(`${apiEndpoint}/items`);
@@ -133,23 +133,21 @@ Invoke Lambda functions directly and check their responses.
 
 ```typescript
 // Invoke a Lambda function and check the response
-const invokeLambda = integ.assertions.awsApiCall('Lambda', 'invoke', {
-  FunctionName: stack.functionName,
-  Payload: JSON.stringify({
+const invokeLambda = integ.assertions.invokeFunction({
+  functionName: stack.functionName,
+  payload: JSON.stringify({
     action: 'healthcheck',
   }),
 });
 
 invokeLambda.expect(ExpectedResult.objectLike({
   StatusCode: 200,
-  // Check the function didn't error
-  FunctionError: ExpectedResult.absent(),
 }));
 ```
 
 ## Testing with Waits
 
-Some resources take time to become ready. Use the `waitForAssertions` option to retry assertions.
+Some resources take time to become ready. Use the `waitForAssertions` method to retry assertions.
 
 ```typescript
 // Wait for an SQS message to appear (testing async processing)
@@ -162,9 +160,7 @@ const receiveMessage = integ.assertions.awsApiCall('SQS', 'receiveMessage', {
 // Retry the assertion every 30 seconds for up to 5 minutes
 receiveMessage.assertAtPath(
   'Messages.0.Body',
-  ExpectedResult.objectLike({
-    status: 'processed',
-  }),
+  ExpectedResult.stringLikeRegexp('"status":"processed"'),
 ).waitForAssertions({
   totalTimeout: cdk.Duration.minutes(5),
   interval: cdk.Duration.seconds(30),
@@ -231,6 +227,7 @@ getItem.expect(ExpectedResult.objectLike({
     name: { S: 'Test Item' },
   },
 }));
+createResponse.next(getItem);
 
 // Step 3: Read the item through the API
 const readResponse = integ.assertions.httpApiCall(
@@ -240,6 +237,7 @@ const readResponse = integ.assertions.httpApiCall(
 readResponse.expect(ExpectedResult.objectLike({
   status: 200,
 }));
+getItem.next(readResponse);
 
 // Step 4: Delete the item
 const deleteResponse = integ.assertions.httpApiCall(
@@ -250,13 +248,14 @@ const deleteResponse = integ.assertions.httpApiCall(
 deleteResponse.expect(ExpectedResult.objectLike({
   status: 200,
 }));
+readResponse.next(deleteResponse);
 ```
 
 ## Running Integration Tests
 
 ```bash
 # Run a specific integration test
-npx integ-runner --directory integ-tests --parallel-regions us-east-1
+npx integ-runner --directory integ-tests --parallel-regions us-east-1 integ.api-stack.ts
 
 # Run with verbose output
 npx integ-runner --directory integ-tests --verbose
