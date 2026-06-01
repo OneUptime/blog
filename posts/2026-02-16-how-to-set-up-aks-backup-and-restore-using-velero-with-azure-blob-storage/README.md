@@ -14,7 +14,7 @@ This guide covers the full setup of Velero on AKS, including storage configurati
 
 ## Architecture Overview
 
-Velero runs as a deployment inside your AKS cluster. When a backup is triggered (manually or on schedule), it does two things. First, it exports all Kubernetes resource definitions (deployments, services, configmaps, etc.) as JSON and stores them in an Azure Blob Storage container. Second, it takes snapshots of any persistent volumes attached to the pods being backed up using the Azure Disk CSI snapshot API.
+Velero runs as a deployment inside your AKS cluster. When a backup is triggered (manually or on schedule), it does two things. First, it exports all Kubernetes resource definitions (deployments, services, configmaps, etc.) as JSON and stores them in an Azure Blob Storage container. Second, it can back up persistent volumes either with file-system backup or by taking Azure Managed Disk snapshots through the Velero Azure plugin.
 
 ```mermaid
 graph LR
@@ -62,7 +62,7 @@ Notice that we use `Standard_GRS` (geo-redundant storage) for the storage accoun
 
 ## Creating the Service Principal
 
-Velero needs permissions to manage snapshots and access blob storage. Create a service principal with the minimum required roles.
+Velero needs permissions to manage snapshots and access blob storage. Create a service principal with built-in roles for the required access.
 
 ```bash
 # Get the subscription ID and tenant ID
@@ -79,7 +79,7 @@ AKS_NODE_RESOURCE_GROUP=$(az aks show \
 AZURE_CLIENT_SECRET=$(az ad sp create-for-rbac \
   --name "velero-sp" \
   --role "Contributor" \
-  --scope "/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AKS_NODE_RESOURCE_GROUP" \
+  --scopes "/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AKS_NODE_RESOURCE_GROUP" \
   --query password -o tsv)
 
 AZURE_CLIENT_ID=$(az ad sp list \
@@ -90,6 +90,12 @@ AZURE_CLIENT_ID=$(az ad sp list \
 az role assignment create \
   --assignee $AZURE_CLIENT_ID \
   --role "Storage Blob Data Contributor" \
+  --scope "/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AZURE_BACKUP_RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/$AZURE_STORAGE_ACCOUNT_NAME"
+
+# Let Velero read the storage account properties when using Azure AD authentication
+az role assignment create \
+  --assignee $AZURE_CLIENT_ID \
+  --role "Reader" \
   --scope "/subscriptions/$AZURE_SUBSCRIPTION_ID/resourceGroups/$AZURE_BACKUP_RESOURCE_GROUP/providers/Microsoft.Storage/storageAccounts/$AZURE_STORAGE_ACCOUNT_NAME"
 
 # Also grant access to the AKS resource group for disk snapshots
@@ -122,15 +128,16 @@ Install the Velero CLI first, then use it to install the server components on th
 brew install velero
 
 # Or download for Linux
-# wget https://github.com/vmware-tanzu/velero/releases/download/v1.13.0/velero-v1.13.0-linux-amd64.tar.gz
+# wget https://github.com/vmware-tanzu/velero/releases/download/v1.18.0/velero-v1.18.0-linux-amd64.tar.gz
 
 # Install Velero on the AKS cluster
 velero install \
   --provider azure \
-  --plugins velero/velero-plugin-for-microsoft-azure:v1.9.0 \
+  --plugins velero/velero-plugin-for-microsoft-azure:v1.14.0 \
   --bucket $BLOB_CONTAINER \
   --secret-file velero-credentials.env \
   --backup-location-config \
+    useAAD=true,\
     resourceGroup=$AZURE_BACKUP_RESOURCE_GROUP,\
     storageAccount=$AZURE_STORAGE_ACCOUNT_NAME,\
     subscriptionId=$AZURE_SUBSCRIPTION_ID \
@@ -266,14 +273,14 @@ By default with our installation, Velero uses file-system backup for persistent 
 
 ```yaml
 # pod-with-volume-annotation.yaml
-# Annotate pods to use volume snapshots instead of file-system backup
+# Annotate pods to exclude this volume from file-system backup so Velero can snapshot it
 apiVersion: v1
 kind: Pod
 metadata:
   name: data-processor
   annotations:
-    # Opt in to volume snapshot backup for this pod
-    backup.velero.io/backup-volumes: data-volume
+    # Opt out of file-system backup for this volume
+    backup.velero.io/backup-volumes-excludes: data-volume
 spec:
   containers:
     - name: processor
@@ -313,16 +320,18 @@ az aks create --resource-group recovery-rg --name recovery-cluster --node-count 
 # 2. Install Velero on the new cluster pointing to the same storage
 velero install \
   --provider azure \
-  --plugins velero/velero-plugin-for-microsoft-azure:v1.9.0 \
+  --plugins velero/velero-plugin-for-microsoft-azure:v1.14.0 \
   --bucket $BLOB_CONTAINER \
   --secret-file velero-credentials.env \
   --backup-location-config \
+    useAAD=true,\
     resourceGroup=$AZURE_BACKUP_RESOURCE_GROUP,\
     storageAccount=$AZURE_STORAGE_ACCOUNT_NAME,\
     subscriptionId=$AZURE_SUBSCRIPTION_ID \
   --snapshot-location-config \
     resourceGroup=$AKS_NODE_RESOURCE_GROUP,\
-    subscriptionId=$AZURE_SUBSCRIPTION_ID
+    subscriptionId=$AZURE_SUBSCRIPTION_ID \
+  --use-node-agent
 
 # 3. Velero automatically discovers existing backups
 velero backup get
