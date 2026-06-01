@@ -54,7 +54,7 @@ The tradeoff is straightforward. Higher max surge values mean faster upgrades bu
 
 When AKS drains a node, it sends a graceful termination signal to all pods on that node. Pods have their `terminationGracePeriodSeconds` to shut down cleanly. But what happens if a pod refuses to terminate? Or if a PodDisruptionBudget prevents the drain from completing?
 
-By default, AKS will wait indefinitely. Yes, indefinitely. If a pod is stuck or a PDB is too restrictive, the upgrade hangs. The node drain timeout puts a cap on how long AKS waits before moving on.
+By default, AKS waits 30 minutes. If a pod is stuck or a PDB is too restrictive, the upgrade stops when the node drain timeout expires. The node drain timeout puts a cap on how long AKS waits before requiring you to fix the blocked drain and resume the upgrade.
 
 ```bash
 # Set a 30-minute drain timeout
@@ -64,15 +64,15 @@ az aks nodepool update \
   --name nodepool1 \
   --drain-timeout 30
 
-# The value is in minutes. Set to 0 for no timeout (default behavior)
+# The value is in minutes. AKS supports values from 5 minutes to 24 hours.
 az aks nodepool update \
   --resource-group myRG \
   --cluster-name myAKS \
   --name nodepool1 \
-  --drain-timeout 0
+  --drain-timeout 45
 ```
 
-When the timeout expires, AKS forcefully removes the remaining pods and proceeds with deleting the node. This means those pods will be killed without a graceful shutdown. For most stateless workloads this is fine - the pod gets rescheduled on a new node. For stateful workloads, you need to think carefully about what happens if a pod is killed mid-operation.
+When the timeout expires, AKS stops the upgrade operation instead of deleting the node. You need to fix the stuck pod or PDB constraint, then resume the upgrade. For most stateless workloads, a shorter timeout is fine because a healthy pod should terminate and get rescheduled on a new node quickly. For stateful workloads, you need to think carefully about how much graceful shutdown time the workload needs.
 
 ## Combining Max Surge and Drain Timeout
 
@@ -92,7 +92,7 @@ az aks nodepool update \
   --drain-timeout 15
 ```
 
-With 33% max surge, a 9-node pool upgrades 3 nodes at a time. The 15-minute drain timeout ensures the upgrade does not hang on stubborn pods. Since the workloads are stateless, forced termination is acceptable.
+With 33% max surge, a 9-node pool upgrades 3 nodes at a time. The 15-minute drain timeout ensures the upgrade does not wait too long on stubborn pods before stopping and requiring intervention.
 
 ### Stateful Workloads (Databases, Queues)
 
@@ -240,15 +240,15 @@ If an upgrade fails mid-way through, AKS leaves the cluster in a mixed state wit
 az aks upgrade \
   --resource-group myRG \
   --name myAKS \
-  --kubernetes-version 1.28.5
+  --kubernetes-version <target-version>
 
 # If you need to roll back, you cannot downgrade the control plane
-# but you can create a new node pool on the old version
+# but you can create a new node pool on a supported older version
 az aks nodepool add \
   --resource-group myRG \
   --cluster-name myAKS \
   --name rollback-pool \
-  --kubernetes-version 1.27.9 \
+  --kubernetes-version <supported-older-version> \
   --node-count 4
 ```
 
