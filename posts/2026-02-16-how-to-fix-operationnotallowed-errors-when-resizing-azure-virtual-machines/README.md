@@ -51,7 +51,7 @@ az vm resize --resource-group myResourceGroup --name myVM --size Standard_D8s_v5
 az vm start --resource-group myResourceGroup --name myVM
 ```
 
-Be aware that deallocating changes the VM's public IP address unless you have a static IP allocated. It also resets the DHCP-assigned private IP, though the IP usually stays the same if it is still available in the subnet.
+Be aware that deallocating changes the VM's public IP address if it uses a dynamic public IP allocation. For Azure Resource Manager VMs, the private IP address on the network interface is retained unless the NIC is deleted, moved to another subnet, or its IP configuration is changed.
 
 ## Cause 2: Availability Set Constraints
 
@@ -62,9 +62,9 @@ To see what sizes are available for VMs in an availability set, run the followin
 ```bash
 # List available VM sizes for VMs in an availability set
 # Only these sizes can be used without deallocating all VMs in the set
-az vm list-sizes \
+az vm availability-set list-sizes \
   --resource-group myResourceGroup \
-  --availability-set myAvailabilitySet \
+  --name myAvailabilitySet \
   -o table
 ```
 
@@ -75,17 +75,18 @@ Option 1: Deallocate ALL VMs in the availability set. This forces Azure to re-ev
 ```bash
 # Deallocate all VMs in the availability set
 # This is required because the cluster assignment is shared
-az vm deallocate --ids $(az vm list \
+vmIds=$(az vm availability-set show \
   --resource-group myResourceGroup \
-  --query "[?availabilitySet.id!=null].id" -o tsv)
+  --name myAvailabilitySet \
+  --query "virtualMachines[].id" -o tsv)
+
+az vm deallocate --ids $vmIds
 
 # Resize the target VM
 az vm resize --resource-group myResourceGroup --name myVM --size Standard_D8s_v5
 
 # Start all VMs back up
-az vm start --ids $(az vm list \
-  --resource-group myResourceGroup \
-  --query "[?powerState!='running'].id" -o tsv)
+az vm start --ids $vmIds
 ```
 
 Option 2: Migrate to an availability zone or Virtual Machine Scale Set with Flexible orchestration, which offers more flexibility for VM sizing.
@@ -98,10 +99,14 @@ Check what sizes are available in your region.
 
 ```bash
 # List all available VM sizes in a specific region
-az vm list-sizes --location eastus2 -o table
+az vm list-skus --location eastus2 --resource-type virtualMachines -o table
 
 # Check if a specific size is available
-az vm list-sizes --location eastus2 --query "[?name=='Standard_D8s_v5']" -o table
+az vm list-skus \
+  --location eastus2 \
+  --resource-type virtualMachines \
+  --size Standard_D8s_v5 \
+  -o table
 ```
 
 If the size is not available in your region, your options are:
