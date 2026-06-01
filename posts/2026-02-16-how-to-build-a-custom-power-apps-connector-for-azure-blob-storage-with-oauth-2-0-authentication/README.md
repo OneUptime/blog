@@ -28,7 +28,7 @@ First, you need an app registration in Azure AD that represents your connector.
 1. Go to the Azure portal and navigate to Azure Active Directory > App registrations.
 2. Click New registration.
 3. Set the name to something like "PowerApps Blob Connector".
-4. For Redirect URI, select Web and enter `https://global.consent.azure-apim.net/redirect`. This is the redirect URL that Power Apps custom connectors use.
+4. You can skip the Redirect URI for now. After you create and save the custom connector, Power Apps shows a connector-specific Redirect URL on the Security tab. Add that exact URL to the app registration as a Web redirect URI.
 5. Click Register.
 
 After registration, note down the Application (client) ID and the Directory (tenant) ID. You will need both later.
@@ -44,6 +44,8 @@ Now configure API permissions:
 1. Go to API permissions > Add a permission.
 2. Select Azure Storage and check `user_impersonation`.
 3. Click Add permissions and then Grant admin consent if you have the rights.
+
+Finally, make sure the signed-in users who will use the connector have Azure RBAC permissions on the storage account or container, such as Storage Blob Data Reader for read-only scenarios or Storage Blob Data Contributor for upload scenarios. The `user_impersonation` API permission lets the connector request a token, but Azure Storage still authorizes data operations with RBAC.
 
 ## Step 2: Create the Custom Connector in Power Apps
 
@@ -62,13 +64,12 @@ On the Security tab, select OAuth 2.0 as the authentication type and fill in the
 - Identity Provider: Azure Active Directory
 - Client ID: the Application ID from your app registration
 - Client Secret: the secret you created
-- Authorization URL: `https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/authorize`
-- Token URL: `https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token`
-- Refresh URL: same as Token URL
-- Scope: `https://storage.azure.com/user_impersonation`
+- Tenant ID: the Directory ID from your app registration
 - Resource URL: `https://storage.azure.com/`
 
-Replace `{tenant-id}` with your actual Azure AD tenant ID.
+Use your actual Azure AD tenant ID rather than `common` so the connector requests tokens from the tenant that contains the storage account.
+
+After you save the connector, copy the Redirect URL shown on the Security tab and add it to the app registration under Authentication > Web > Redirect URIs. For new custom connectors, this URL is usually connector-specific rather than the old global redirect URL.
 
 ## Step 4: Define Connector Actions
 
@@ -88,7 +89,7 @@ Set the following parameters:
 - `prefix` (query parameter, optional)
 - `x-ms-version` header set to `2023-11-03`
 
-The response schema should be XML. Power Apps will parse the blob list from the response.
+The response body is XML. If you want to use the result directly in a gallery, define the response schema carefully in the connector or transform the list response to JSON in Power Automate before returning it to Power Apps.
 
 ### Action 2: Upload Blob
 
@@ -116,16 +117,17 @@ Parameters are the container name and blob name as path parameters, plus the API
 
 ## Step 5: Handle the x-ms-version Header
 
-Azure Blob Storage requires the `x-ms-version` header on every request. Rather than setting it per action, you can use a policy template in the custom connector definition. Here is the policy XML that adds the header to every request:
+Azure Blob Storage requires the `x-ms-version` header on authorized requests. Rather than setting it per action, you can use the Set HTTP header policy template in the custom connector definition. Configure the policy like this:
 
-```xml
-<!-- Policy to inject the API version header on all outbound requests -->
-<set-header name="x-ms-version" exists-action="override">
-    <value>2023-11-03</value>
-</set-header>
+```text
+Template: Set HTTP header
+Header name: x-ms-version
+Header value: 2023-11-03
+Action if header exists: override
+Run policy on: Request
 ```
 
-You can add this in the connector's OpenAPI definition under the `x-ms-connector-metadata` section if you are editing the raw swagger file.
+In the custom connector wizard, add this under Definition > New policy. If you are editing exported connector files, policy template instances are stored in the connector properties rather than as raw Azure API Management policy XML in the OpenAPI paths.
 
 ## Step 6: Test the Connector
 
@@ -148,7 +150,7 @@ Once the connector is working, you can use it in a Canvas App. Here is a typical
 
 ```text
 // Fetch blobs from the custom connector and store in a collection
-// The ListBlobs action returns XML that Power Apps parses automatically
+// The ListBlobs action should return a schema that Power Apps can collect
 ClearCollect(
     colBlobs,
     MyBlobConnector.ListBlobs(
@@ -175,9 +177,9 @@ ForAll(
 
 ## Handling Token Refresh
 
-OAuth 2.0 tokens expire. The custom connector framework handles token refresh automatically as long as your refresh URL is configured correctly. If you are seeing 401 errors after the token expires, double-check that:
+OAuth 2.0 tokens expire. The custom connector framework handles token refresh automatically when the OAuth settings are configured correctly. If you are seeing 401 errors after the token expires, double-check that:
 
-- The Refresh URL matches the Token URL.
+- If you are using Generic OAuth instead of the Azure Active Directory identity provider, the Refresh URL matches the Token URL.
 - The app registration has not had its secret expire.
 - The `offline_access` scope is included if you need long-lived refresh tokens.
 
@@ -185,7 +187,7 @@ OAuth 2.0 tokens expire. The custom connector framework handles token refresh au
 
 **CORS errors in testing**: The custom connector runs server-side in the API Management layer, so CORS is not an issue during actual use. But if you test with tools like Postman, make sure CORS is configured on your storage account.
 
-**XML vs JSON responses**: Azure Blob Storage returns XML by default. Power Apps can parse this, but you may want to convert it to JSON using a Power Automate flow if the parsing is awkward.
+**XML vs JSON responses**: Azure Blob Storage returns XML for List Blobs. For Power Apps, the easiest pattern is often to define a connector response that exposes a predictable schema or convert the response to JSON using a Power Automate flow if XML handling is awkward.
 
 **Shared Access Signatures as a fallback**: If OAuth 2.0 is too complex for your scenario, you can generate SAS tokens in a Power Automate flow and use them directly. But for enterprise scenarios, OAuth 2.0 with Azure AD is the recommended pattern.
 
