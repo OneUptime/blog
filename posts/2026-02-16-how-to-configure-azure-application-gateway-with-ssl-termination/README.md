@@ -129,7 +129,7 @@ This single command creates all the building blocks: frontend IP configuration, 
 
 ## Step 4: Add Backend Servers to the Pool
 
-Now add your backend servers to the backend pool. These can be VMs, VM scale sets, or even FQDN addresses.
+Now add your backend servers to the backend pool. The command below adds backend targets by IP address; you can also use FQDN addresses. VM scale sets can also be associated with an Application Gateway backend pool, but they are attached through the VM scale set or network interface configuration rather than this `--servers` list.
 
 ```bash
 # Add backend servers by IP address
@@ -233,7 +233,7 @@ az network application-gateway ssl-policy set \
   --resource-group rg-appgw-demo \
   --gateway-name appgw-demo \
   --policy-type Predefined \
-  --policy-name AppGwSslPolicy20220101S
+  --name AppGwSslPolicy20220101S
 ```
 
 The `AppGwSslPolicy20220101S` policy enforces TLS 1.2 as the minimum version and uses strong cipher suites.
