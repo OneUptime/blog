@@ -4,22 +4,24 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, PowerShell DSC, Linux, Configuration Management, Automation, Virtual Machine, DevOps
 
-Description: A hands-on guide to using Azure Automation State Configuration with PowerShell DSC to manage and enforce configurations on Linux virtual machines.
+Description: A legacy guide to using Azure Automation State Configuration with PowerShell DSC to manage and enforce configurations on Linux virtual machines.
 
 ---
 
-PowerShell Desired State Configuration (DSC) is not just for Windows. Through the `nx` module and the Open Management Infrastructure (OMI) server, DSC can manage Linux systems too. Azure Automation State Configuration builds on this by providing a cloud-based pull server that your Linux VMs check in with to receive their configurations. When a VM drifts from its desired state, DSC detects the drift and can automatically correct it.
+PowerShell Desired State Configuration (DSC) was not just for Windows. Through the `nx` module and the Open Management Infrastructure (OMI) server, DSC could manage Linux systems too. Azure Automation State Configuration built on this by providing a cloud-based pull server that your Linux VMs checked in with to receive their configurations. When a VM drifted from its desired state, DSC detected the drift and could automatically correct it.
 
-This post walks through setting up Azure Automation State Configuration for Linux VMs, writing DSC configurations that work on Linux, and connecting everything together.
+Important: Azure Automation DSC for Linux and the Desired State Configuration VM extension for Linux were retired on September 30, 2023. The PowerShell DSC for Linux project was archived on September 12, 2024, and OMI was deprecated on March 24, 2025. Azure Automation State Configuration itself is scheduled for retirement on September 30, 2027. Use the approach in this post only for understanding or maintaining legacy environments; for new Linux VM configuration management, use Azure Machine Configuration or another supported configuration management tool.
+
+This post walks through the legacy setup for Azure Automation State Configuration for Linux VMs, writing DSC configurations that worked on Linux, and connecting everything together.
 
 ## How DSC Works on Linux
 
-On Windows, DSC uses the Local Configuration Manager (LCM) that is built into the OS. On Linux, it works through OMI (Open Management Infrastructure), which is the Linux equivalent of WMI. The OMI server runs a DSC agent that can operate in push or pull mode.
+On Windows, DSC uses the Local Configuration Manager (LCM) that is built into the OS. On Linux, DSC for Linux worked through OMI (Open Management Infrastructure), which provided a CIM/WMI-style management layer for Linux. The OMI server ran a DSC agent that could operate in push or pull mode.
 
-In pull mode with Azure Automation, the flow looks like this:
+In pull mode with Azure Automation, the legacy flow looked like this:
 
-1. You write a DSC configuration and compile it into a MOF file
-2. Upload the MOF to Azure Automation State Configuration
+1. You write a DSC configuration and compile it into one or more MOF node configuration files
+2. Upload the configuration for Azure Automation to compile, or import externally compiled MOF files
 3. Register your Linux VMs with the Automation account
 4. VMs periodically pull their configuration and apply it
 5. VMs report compliance status back to Azure
@@ -37,7 +39,7 @@ graph TD
 
 ## Setting Up Azure Automation
 
-First, create an Azure Automation account and enable State Configuration. You can do this with Terraform, Bicep, or the Azure CLI. Here is the Terraform approach since it integrates well with VM provisioning.
+For legacy State Configuration environments, first create an Azure Automation account and enable State Configuration. You can do this with Terraform, Bicep, or the Azure CLI. Here is the Terraform approach since it integrates well with VM provisioning.
 
 ```hcl
 # Terraform configuration for Azure Automation State Configuration
@@ -67,28 +69,28 @@ resource "azurerm_automation_account" "dsc" {
 
 ## Installing the nx Module
 
-The `nx` module provides DSC resources for Linux. Import it into your Automation account.
+The `nx` module provided DSC resources for Linux. In a legacy Automation account that still depends on these configurations, import it into your Automation account.
 
-```bash
+```powershell
 # Import the nx module into Azure Automation
-# The nx module provides Linux-specific DSC resources
-az automation module create \
-  --automation-account-name auto-dsc-linux \
-  --resource-group rg-dsc-linux \
-  --name nx \
-  --content-link-uri "https://www.powershellgallery.com/api/v2/package/nx/1.0"
+# The nx module provides legacy Linux-specific DSC resources
+New-AzAutomationModule `
+    -AutomationAccountName "auto-dsc-linux" `
+    -ResourceGroupName "rg-dsc-linux" `
+    -Name "nx" `
+    -ContentLinkUri "https://www.powershellgallery.com/api/v2/package/nx/1.0"
 
 # Verify the module imported successfully
-az automation module show \
-  --automation-account-name auto-dsc-linux \
-  --resource-group rg-dsc-linux \
-  --name nx \
-  --query "provisioningState"
+Get-AzAutomationModule `
+    -AutomationAccountName "auto-dsc-linux" `
+    -ResourceGroupName "rg-dsc-linux" `
+    -Name "nx" |
+    Select-Object Name, ProvisioningState
 ```
 
 ## Writing DSC Configurations for Linux
 
-DSC configurations for Linux use the `nx` resources instead of the standard Windows resources. Here is a configuration that manages common Linux settings: packages, files, services, and user accounts.
+DSC configurations for Linux used the `nx` resources instead of the standard Windows resources. Here is a configuration that manages common Linux settings: packages, files, services, and user accounts.
 
 ```powershell
 # LinuxWebServer.ps1 - DSC configuration for a Linux web server
@@ -103,7 +105,7 @@ Configuration LinuxWebServer {
         nxPackage NginxPackage {
             Name = "nginx"
             Ensure = "Present"
-            PackageManager = "apt"    # Use "yum" for RHEL/CentOS
+            PackageManager = "Apt"    # Use "Yum" for RHEL/CentOS
         }
 
         # Ensure the nginx service is running and enabled
@@ -123,6 +125,7 @@ Configuration LinuxWebServer {
             Owner = "www-data"
             Group = "www-data"
             Mode = "0755"
+            DependsOn = "[nxPackage]NginxPackage"
         }
 
         # Deploy a custom nginx configuration file
@@ -152,14 +155,14 @@ server {
         nxPackage FailToBan {
             Name = "fail2ban"
             Ensure = "Present"
-            PackageManager = "apt"
+            PackageManager = "Apt"
         }
 
         # Ensure the firewall package is installed
         nxPackage UFW {
             Name = "ufw"
             Ensure = "Present"
-            PackageManager = "apt"
+            PackageManager = "Apt"
         }
 
         # Create a deploy user with specific group membership
@@ -235,7 +238,8 @@ Compile the DSC configuration and upload it to Azure Automation.
 
 ```powershell
 # Compile the configuration locally to verify it
-# Run this in PowerShell 7 with the nx module installed
+# Run this in Windows PowerShell 5.1 with the nx module installed
+. ./LinuxWebServer.ps1
 LinuxWebServer
 
 # Upload the configuration to Azure Automation
@@ -254,30 +258,27 @@ Start-AzAutomationDscCompilationJob `
     -ConfigurationName "LinuxWebServer"
 ```
 
-Alternatively, upload and compile using the Azure CLI.
+Alternatively, use the Azure CLI to create or update the configuration source, then compile it from the Azure portal, Azure PowerShell, or the Azure Automation REST API.
 
 ```bash
-# Upload the DSC configuration
+# Upload the DSC configuration source from a local file
+CONFIG_SOURCE="$(cat ./LinuxWebServer.ps1)"
+
 az automation configuration create \
   --automation-account-name auto-dsc-linux \
   --resource-group rg-dsc-linux \
   --name LinuxWebServer \
-  --source-control-name LinuxWebServer.ps1 \
-  --location eastus2
-
-# Start compilation
-az automation configuration create-or-update \
-  --automation-account-name auto-dsc-linux \
-  --resource-group rg-dsc-linux \
-  --name LinuxWebServer
+  --location eastus2 \
+  --source-type embeddedContent \
+  --source "$CONFIG_SOURCE"
 ```
 
 ## Registering Linux VMs
 
-To register a Linux VM with Azure Automation State Configuration, you install the DSC extension on the VM. This installs OMI and the DSC agent, configures the pull server, and starts the initial configuration pull.
+Before retirement, you registered a Linux VM with Azure Automation State Configuration by installing the DSC extension on the VM. This installed OMI and the DSC agent, configured the pull server, and started the initial configuration pull. This extension is retired for Linux and should not be used for new deployments.
 
 ```hcl
-# Terraform - Register a Linux VM with Azure Automation DSC
+# Terraform - legacy example for a Linux VM that used Azure Automation DSC
 resource "azurerm_virtual_machine_extension" "dsc" {
   name                 = "DSCForLinux"
   virtual_machine_id   = azurerm_linux_virtual_machine.web.id
@@ -313,19 +314,18 @@ For production servers where you want enforcement, `ApplyAndAutoCorrect` is the 
 
 Once VMs are registered, you can check their compliance status.
 
-```bash
+```powershell
 # List all registered nodes and their compliance state
-az automation dsc-node list \
-  --automation-account-name auto-dsc-linux \
-  --resource-group rg-dsc-linux \
-  --output table
+Get-AzAutomationDscNode `
+    -AutomationAccountName "auto-dsc-linux" `
+    -ResourceGroupName "rg-dsc-linux" |
+    Select-Object Name, Status, NodeConfigurationName
 
 # Get detailed compliance report for a specific node
-az automation dsc-node-report list \
-  --automation-account-name auto-dsc-linux \
-  --resource-group rg-dsc-linux \
-  --node-id "<NODE_ID>" \
-  --output table
+Get-AzAutomationDscNodeReport `
+    -AutomationAccountName "auto-dsc-linux" `
+    -ResourceGroupName "rg-dsc-linux" `
+    -NodeId "<NODE_ID>"
 ```
 
 ## A Configuration for Database Servers
@@ -341,7 +341,7 @@ Configuration LinuxDatabaseServer {
         nxPackage PostgreSQL {
             Name = "postgresql"
             Ensure = "Present"
-            PackageManager = "apt"
+            PackageManager = "Apt"
         }
 
         # Ensure PostgreSQL service is running
@@ -378,6 +378,7 @@ kernel.shmall = 4194304
             Owner = "postgres"
             Group = "postgres"
             Mode = "0750"
+            DependsOn = "[nxPackage]PostgreSQL"
         }
     }
 }
@@ -387,14 +388,14 @@ kernel.shmall = 4194304
 
 There are some things to keep in mind when using DSC for Linux:
 
-1. **Module support** - The `nx` module provides basic resources (files, packages, services, users, groups, scripts). It does not have the breadth of Windows DSC resources. For more complex configurations, you will use `nxScript` with custom bash scripts.
+1. **Module support** - The legacy `nx` module provides basic resources (files, packages, services, users, groups, scripts). It does not have the breadth of Windows DSC resources. For more complex configurations, you will use `nxScript` with custom bash scripts.
 
 2. **Package managers** - You need to specify the correct package manager (`apt`, `yum`, or `zypper`) for your Linux distribution. There is no auto-detection.
 
-3. **Azure Automation State Configuration** - Microsoft has signaled that Azure Automation State Configuration will eventually be replaced by Azure Machine Configuration (formerly Azure Policy Guest Configuration). For new projects, consider whether Machine Configuration is a better fit.
+3. **Azure Automation State Configuration** - Azure Automation State Configuration will be retired on September 30, 2027. Azure Automation DSC for Linux and the DSC VM extension for Linux were already retired on September 30, 2023. For new projects, use Azure Machine Configuration or another supported Linux configuration management tool.
 
-4. **OMI dependencies** - The OMI server needs to be compatible with your Linux distribution and kernel version. Check the supported distributions list before committing to DSC for Linux.
+4. **OMI dependencies** - The OMI server needed to be compatible with your Linux distribution and kernel version. OMI has been deprecated since March 24, 2025, so do not start new designs that depend on it.
 
 ## Wrapping Up
 
-PowerShell DSC for Linux through Azure Automation gives you centralized configuration management with drift detection and automatic correction. The `nx` module provides the building blocks for managing packages, services, files, and users, while `nxScript` fills the gaps for anything custom. Combined with Azure Automation as a pull server, you get a managed solution that scales to hundreds of VMs with consistent compliance reporting across your fleet.
+PowerShell DSC for Linux through Azure Automation gave legacy environments centralized configuration management with drift detection and automatic correction. The `nx` module provided the building blocks for managing packages, services, files, and users, while `nxScript` filled the gaps for anything custom. Combined with Azure Automation as a pull server, it provided a managed solution that scaled to hundreds of VMs with consistent compliance reporting across a fleet. For new Linux VM configuration management, use a supported replacement such as Azure Machine Configuration.
