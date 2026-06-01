@@ -24,7 +24,7 @@ For user profile management, app-only is the most common choice since you typica
 
 ## Step 1: Register an Azure AD Application
 
-1. Go to Azure portal > Azure Active Directory > App registrations > New registration.
+1. Go to Azure portal > Microsoft Entra ID > App registrations > New registration.
 2. Name it "Graph User Management Function".
 3. Set Supported account types to "Accounts in this organizational directory only".
 4. No redirect URI needed for app-only auth.
@@ -54,7 +54,7 @@ Note the Application (client) ID, Directory (tenant) ID, and client secret. You 
 Create a new Azure Functions project with the Graph SDK:
 
 ```bash
-func init GraphUserFunctions --dotnet
+func init GraphUserFunctions --worker-runtime dotnet
 cd GraphUserFunctions
 dotnet add package Microsoft.Graph
 dotnet add package Azure.Identity
@@ -102,7 +102,8 @@ public static class GraphClientFactory
             );
 
             // Initialize the Graph client with the credential
-            _client = new GraphServiceClient(credential);
+            var scopes = new[] { "https://graph.microsoft.com/.default" };
+            _client = new GraphServiceClient(credential, scopes);
         }
         return _client;
     }
@@ -202,13 +203,7 @@ public static async Task Run(
             config.QueryParameters.Top = 999;
         });
 
-    // Process the first page
-    foreach (var user in usersPage.Value)
-    {
-        allUsers.Add(MapToProfile(user));
-    }
-
-    // Handle pagination - keep requesting until there are no more pages
+    // Handle pagination - the iterator processes the first page and subsequent pages
     var pageIterator = PageIterator<User, UserCollectionResponse>
         .CreatePageIterator(
             graphClient,
@@ -232,7 +227,7 @@ public static async Task Run(
 
 ```csharp
 // Function that searches for users by name, email, or department
-// Uses Graph API's $search parameter for fuzzy matching
+// Uses Graph API's $search parameter for directory search
 [FunctionName("SearchUsers")]
 public static async Task<IActionResult> Run(
     [HttpTrigger(AuthorizationLevel.Function, "get")] HttpRequest req,
@@ -248,6 +243,7 @@ public static async Task<IActionResult> Run(
             config.Headers.Add("ConsistencyLevel", "eventual");
             config.QueryParameters.Search =
                 $"\"displayName:{searchTerm}\" OR \"mail:{searchTerm}\"";
+            config.QueryParameters.Count = true;
             config.QueryParameters.Select = new[] {
                 "id", "displayName", "mail", "jobTitle", "department"
             };
@@ -330,6 +326,7 @@ public static async Task<IActionResult> Run(
     foreach (var batch in updates.Chunk(20))
     {
         var batchRequest = new BatchRequestContentCollection(graphClient);
+        var requestIds = new List<string>();
 
         foreach (var update in batch)
         {
@@ -340,22 +337,24 @@ public static async Task<IActionResult> Run(
             };
 
             var request = graphClient.Users[update.UserId].ToPatchRequestInformation(userUpdate);
-            await batchRequest.AddBatchRequestStepAsync(request);
+            requestIds.Add(await batchRequest.AddBatchRequestStepAsync(request));
         }
 
         var batchResponse = await graphClient.Batch.PostAsync(batchRequest);
 
         // Check results for each request in the batch
-        foreach (var step in batch)
+        for (int i = 0; i < batch.Length; i++)
         {
-            try
+            var step = batch[i];
+            using var response = await batchResponse.GetResponseByIdAsync(requestIds[i]);
+            if (response.IsSuccessStatusCode)
             {
-                // Process individual response
                 successCount++;
             }
-            catch
+            else
             {
                 failCount++;
+                log.LogWarning($"Failed to update user {step.UserId}: {response.StatusCode}");
             }
         }
     }
@@ -419,7 +418,7 @@ public static async Task<T> ExecuteWithRetry<T>(
         {
             return await operation();
         }
-        catch (ServiceException ex) when (ex.ResponseStatusCode == 429)
+        catch (Microsoft.Graph.Models.ODataErrors.ODataError ex) when (ex.ResponseStatusCode == 429)
         {
             if (attempt == maxRetries) throw;
 
