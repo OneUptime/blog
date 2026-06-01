@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure Site Recovery, Recovery Services Vault, Disaster Recovery, Azure, Business Continuity, Backup, Infrastructure
 
-Description: Learn how to create and configure an Azure Recovery Services vault for Site Recovery, including storage replication, access policies, and network settings.
+Description: Learn how to create and configure an Azure Recovery Services vault for Site Recovery, including vault redundancy, access policies, and network settings.
 
 ---
 
-A Recovery Services vault is the foundation for both Azure Site Recovery and Azure Backup. It is the container that holds your replication data, backup data, and configuration metadata. Getting the vault set up correctly from the start saves you from headaches later, especially around storage redundancy, security settings, and access control.
+A Recovery Services vault is the foundation for both Azure Site Recovery and Azure Backup. It is the container that holds Site Recovery configuration metadata, backup data, and operational settings. Getting the vault set up correctly from the start saves you from headaches later, especially around storage redundancy, security settings, and access control.
 
 This guide walks through creating a Recovery Services vault and configuring it specifically for Azure Site Recovery use cases.
 
@@ -19,7 +19,7 @@ Think of the vault as a management plane for your disaster recovery and backup o
 - Stores replication metadata for Site Recovery
 - Holds backup data for Azure Backup
 - Manages encryption keys
-- Defines storage redundancy (how many copies of your data exist and where)
+- Defines backup storage redundancy (how many copies of your backup data exist and where)
 - Enforces access control through Azure RBAC
 - Provides a single pane for monitoring all protected items
 
@@ -29,14 +29,14 @@ One vault can handle both Site Recovery and Backup, but many organizations creat
 
 Before creating the vault:
 
-- You need an Azure subscription with Contributor or Owner access
+- You need an Azure subscription with Contributor access to create the vault, and Owner or User Access Administrator access to assign RBAC roles
 - Decide on the Azure region for the vault (this matters for Site Recovery)
 - Plan your resource group naming convention
 - Understand your RPO (Recovery Point Objective) and RTO (Recovery Time Objective) requirements
 
 ## Step 1: Choose the Right Region
 
-For Azure Site Recovery, the vault must be in a different region than the VMs you are protecting. This is because Site Recovery replicates VMs to a secondary region - if the primary region goes down, you fail over to the secondary region where the vault lives.
+For Azure-to-Azure Site Recovery, Microsoft recommends deploying the vault in the target region for replication. Site Recovery uses the vault for replication configuration settings; the replicated VM data is written to target-region resources rather than stored in the vault. If the primary region goes down, you fail over to the secondary region where the target resources are created and where management operations remain available.
 
 For example:
 - Primary VMs in East US 2 - vault in Central US
@@ -51,7 +51,7 @@ flowchart LR
     E[Southeast Asia - Primary] -->|Replication| F[East Asia - DR]
 ```
 
-Azure has recommended region pairs that are optimized for low-latency replication and coordinated maintenance. Stick with these pairs when possible.
+Azure has recommended region pairs that are designed for resiliency, data residency, and coordinated platform updates. Stick with these pairs when possible.
 
 ## Step 2: Create the Vault via Azure Portal
 
@@ -62,7 +62,7 @@ Azure has recommended region pairs that are optimized for low-latency replicatio
    - **Subscription**: Select your subscription
    - **Resource group**: Create a new one or use an existing one (e.g., `rg-dr-centralus`)
    - **Vault name**: Use a descriptive name like `rsv-dr-centralus-001`
-   - **Region**: Select the secondary/DR region
+   - **Region**: Select the target/DR region for Azure-to-Azure Site Recovery
 5. Click "Review + Create" and then "Create"
 
 Alternatively, use Azure CLI for a scriptable, repeatable setup:
@@ -73,16 +73,9 @@ Alternatively, use Azure CLI for a scriptable, repeatable setup:
 az group create \
     --name rg-dr-centralus \
     --location centralus
-
 # Create the Recovery Services vault
 # The vault stores replication metadata and serves as the DR management plane
 az backup vault create \
-    --resource-group rg-dr-centralus \
-    --name rsv-dr-centralus-001 \
-    --location centralus
-
-# Alternatively, using the dedicated recovery services command
-az recoveryservices vault create \
     --resource-group rg-dr-centralus \
     --name rsv-dr-centralus-001 \
     --location centralus
@@ -97,7 +90,7 @@ resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2023-06-01' = 
   name: 'rsv-dr-centralus-001'
   location: 'centralus'
   sku: {
-    name: 'RS0'  // Standard SKU for Recovery Services
+    name: 'Standard'  // Standard SKU for Recovery Services
     tier: 'Standard'
   }
   properties: {
@@ -108,18 +101,18 @@ resource recoveryServicesVault 'Microsoft.RecoveryServices/vaults@2023-06-01' = 
 
 ## Step 3: Configure Storage Replication
 
-The vault's storage replication setting determines how your replication and backup data is stored. You have three options:
+The vault's storage replication setting determines how Azure Backup data is stored. Site Recovery does not store replicated VM data in the vault, and the vault redundancy setting is not used for Site Recovery replication. If you use the same vault for Azure Backup, you have three options:
 
-**Geo-redundant storage (GRS)** - Data is replicated to a paired region. This gives you protection against an entire region going down. This is the default and recommended for most production scenarios.
+**Geo-redundant storage (GRS)** - Backup data is replicated to a paired region. This gives backup data protection against an entire region going down. This is the default and recommended for most production backup scenarios.
 
 **Locally redundant storage (LRS)** - Data is replicated within a single data center. Cheaper than GRS but no cross-region protection. Suitable for dev/test environments or when you have other DR mechanisms.
 
 **Zone-redundant storage (ZRS)** - Data is replicated across availability zones within a region. Protects against zone-level failures without the cost of full geo-redundancy.
 
-Configure this setting immediately after creating the vault, because you cannot change it once protected items are added.
+Configure this setting immediately after creating the vault, because backup storage redundancy cannot be changed after backup items are protected in the vault.
 
 ```bash
-# Set storage replication type to GRS (recommended for production DR)
+# Set backup storage replication type to GRS (recommended for production backup data)
 az backup vault backup-properties set \
     --resource-group rg-dr-centralus \
     --name rsv-dr-centralus-001 \
@@ -188,13 +181,13 @@ By default, the vault is accessible over the public internet. For environments w
 3. Create a private endpoint in your virtual network
 4. Link the private endpoint to the vault
 
-This ensures that replication traffic between your VMs and the vault travels over Microsoft's backbone network rather than the public internet.
+This ensures that Site Recovery service traffic uses Private Link from your virtual network to the vault instead of reaching the vault over public endpoints.
 
-For Site Recovery specifically, the VMs being replicated also need connectivity to Site Recovery service endpoints. If you are using private endpoints, you need to configure DNS resolution for the following domains:
+For Site Recovery specifically, the VMs being replicated also need connectivity to Site Recovery service endpoints. If you are using private endpoints and manual DNS configuration, create and link the private DNS zones required by Site Recovery and any storage private endpoints you configure:
 
-- `*.hypervrecoverymanager.windowsazure.com`
-- `*.blob.core.windows.net`
-- `*.queue.core.windows.net`
+- `privatelink.siterecovery.windowsazure.com`
+- `privatelink.blob.core.windows.net`
+- `privatelink.queue.core.windows.net`
 
 ## Step 7: Set Up Monitoring and Alerts
 
@@ -205,7 +198,7 @@ Configure alerts so you know immediately when something goes wrong with replicat
    - Replication health warnings
    - Failover failures
    - Backup job failures
-   - RPO threshold breaches
+   - Site Recovery agent or connectivity issues
 
 You can also route these alerts to Azure Monitor and integrate with your existing incident management tools:
 
@@ -217,14 +210,16 @@ az monitor action-group create \
     --short-name DRAlerts \
     --action email dr-team dr-team@company.com
 
-# Create an alert rule for Site Recovery critical events
-az monitor metrics alert create \
+# Route built-in Azure Site Recovery alerts to the action group
+az monitor alert-processing-rule create \
     --resource-group rg-dr-centralus \
-    --name "site-recovery-rpo-breach" \
+    --name route-site-recovery-alerts \
+    --rule-type AddActionGroups \
     --scopes "/subscriptions/<sub-id>/resourceGroups/rg-dr-centralus/providers/Microsoft.RecoveryServices/vaults/rsv-dr-centralus-001" \
-    --condition "avg RPOInSeconds > 3600" \
-    --action ag-dr-alerts \
-    --description "Alert when RPO exceeds 1 hour"
+    --action-groups "/subscriptions/<sub-id>/resourceGroups/rg-dr-centralus/providers/microsoft.insights/actionGroups/ag-dr-alerts" \
+    --filter-monitor-service Equals "Azure Site Recovery" \
+    --enabled true \
+    --description "Route built-in Azure Site Recovery alerts to the DR action group"
 ```
 
 ## Step 8: Apply Resource Locks
