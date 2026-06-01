@@ -14,10 +14,10 @@ This error is more common than you might expect, especially in subscriptions tha
 
 ## Understanding the Public IP Limit
 
-Every Azure subscription has a default limit on the number of public IP addresses per region. The typical defaults are:
+Every Azure subscription has a default limit on the number of public IP addresses per region. The defaults vary by offer type, such as Free Trial, pay-as-you-go, CSP, or Enterprise Agreement. For example, many offers start at 10 public IP addresses per region, pay-as-you-go commonly starts at 20, and Enterprise Agreement subscriptions can start at 1000.
 
-- **Static public IPs**: 200 per region per subscription (for Standard SKU)
-- **Dynamic public IPs (Basic SKU)**: 200 per region per subscription
+- **Standard public IPs**: quota varies by offer type, region, and subscription
+- **Basic public IPs**: Basic SKU public IPs were retired on September 30, 2025, so new designs should use Standard SKU public IPs
 
 These limits apply per region, so if you hit the limit in East US, you can still create public IPs in West US. But within a single region, you are capped.
 
@@ -30,7 +30,7 @@ First, see how many public IPs you are using versus your limit:
 
 az network list-usages \
   --location eastus \
-  --query "[?contains(name.value, 'PublicIPAddresses')].{Name: name.localizedValue, CurrentValue: currentValue, Limit: limit}" \
+  --query "[?contains(name.localizedValue, 'Public IP') || contains(name.value, 'PublicIpAddresses')].{Name: name.localizedValue, CurrentValue: currentValue, Limit: limit}" \
   --output table
 ```
 
@@ -66,9 +66,10 @@ az network public-ip delete \
 
 # Delete multiple unused public IPs at once using a loop
 # First list them, then delete
-for ip in $(az network public-ip list --query "[?ipConfiguration==null && natGateway==null].{Name: name, RG: resourceGroup}" -o tsv); do
-  name=$(echo $ip | cut -f1)
-  rg=$(echo $ip | cut -f2)
+az network public-ip list \
+  --query "[?ipConfiguration==null && natGateway==null].[name, resourceGroup]" \
+  --output tsv |
+while IFS=$'\t' read -r name rg; do
   echo "Deleting $name in $rg"
   az network public-ip delete --resource-group "$rg" --name "$name"
 done
@@ -153,7 +154,7 @@ Now you can remove public IPs from individual VMs and use Bastion for SSH/RDP. O
 
 ### Use Private Endpoints
 
-If VMs need to access Azure PaaS services (like Storage, SQL Database, Key Vault), use Private Endpoints instead of accessing these services over public IPs. This reduces the need for outbound public IPs and improves security.
+If VMs need to access Azure PaaS services (like Storage, SQL Database, Key Vault), use Private Endpoints instead of accessing these services over public endpoints. This reduces public internet exposure and improves security.
 
 ## Step 4: Request a Quota Increase
 
@@ -163,7 +164,7 @@ If you genuinely need more public IPs than the default limit allows, request a q
 # Check the current limit
 az network list-usages \
   --location eastus \
-  --query "[?contains(name.value, 'PublicIPAddresses')]" \
+  --query "[?contains(name.localizedValue, 'Public IP') || contains(name.value, 'PublicIpAddresses')]" \
   --output json
 
 # Request a quota increase through the Azure portal:
@@ -179,10 +180,10 @@ You can also request increases through the Azure CLI:
 ```bash
 # Submit a support request for quota increase
 az quota create \
-  --resource-name "PublicIPAddresses" \
+  --resource-name "StandardSkuPublicIpAddresses" \
   --scope "/subscriptions/<sub-id>/providers/Microsoft.Network/locations/eastus" \
-  --limit-object value=500 limit-object-type=LimitValue \
-  --resource-type "PublicIPAddresses"
+  --limit-object value=500 \
+  --resource-type "PublicIpAddresses"
 ```
 
 Most public IP quota increases are approved automatically within minutes for reasonable amounts (up to a few hundred). Very large requests might require a business justification.
@@ -222,19 +223,21 @@ Create a policy that prevents VMs from being created with public IPs unless expl
 
 ### Set Up Cost and Resource Alerts
 
-Create an alert that fires when your public IP count approaches the limit:
+Azure Monitor does not expose subscription public IP quota usage as a built-in platform metric. Instead, run a scheduled check that queries the regional usage and sends a notification through your normal alerting system when usage approaches the limit:
 
 ```bash
-# Create a metric alert for public IP usage approaching the limit
-az monitor metrics alert create \
-  --resource-group myResourceGroup \
-  --name "PublicIP-Quota-Warning" \
-  --scopes "/subscriptions/<sub-id>" \
-  --condition "total PublicIPAddressUsage > 180" \
-  --window-size 1h \
-  --evaluation-frequency 1h \
-  --action-group myActionGroup \
-  --description "Public IP usage approaching quota limit"
+# Check public IP usage in a region and fail the job when usage is too high
+usage=$(az network list-usages \
+  --location eastus \
+  --query "[?contains(name.localizedValue, 'Public IP') || contains(name.value, 'PublicIpAddresses')].[currentValue, limit]" \
+  --output tsv)
+
+while IFS=$'\t' read -r current limit; do
+  if [ "$limit" -gt 0 ] && [ "$current" -ge $((limit * 90 / 100)) ]; then
+    echo "Public IP usage is at $current of $limit in eastus"
+    exit 1
+  fi
+done <<< "$usage"
 ```
 
 ## Architecture Decision Flowchart
