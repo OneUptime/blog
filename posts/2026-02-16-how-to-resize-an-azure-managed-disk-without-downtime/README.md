@@ -8,11 +8,11 @@ Description: Learn how to expand Azure Managed Disks without stopping your virtu
 
 ---
 
-Running out of disk space used to mean downtime. You had to stop the VM, resize the disk, start the VM back up, and then extend the partition inside the OS. Azure now supports online disk resizing for most disk types, letting you expand a managed disk while the VM keeps running. In this guide, I will walk through the process of resizing disks without downtime and extending the partition at the OS level.
+Running out of disk space used to mean downtime. You had to stop the VM, resize the disk, start the VM back up, and then extend the partition inside the OS. Azure now supports online disk resizing for most data disk types, letting you expand a managed data disk while the VM keeps running. In this guide, I will walk through the process of resizing data disks without downtime and extending the partition at the OS level.
 
 ## Online Resize Support
 
-Azure supports expanding managed disks without deallocating the VM for the following disk types:
+Azure supports expanding managed data disks without deallocating the VM for the following disk types:
 
 - Premium SSD
 - Standard SSD
@@ -20,7 +20,7 @@ Azure supports expanding managed disks without deallocating the VM for the follo
 - Premium SSD v2
 - Ultra Disk
 
-The key requirement is that the disk must be attached to a running VM. The resize operation only increases the size - you cannot shrink a managed disk.
+The key requirement is that the disk is a supported data disk attached to a running VM. Online expansion is not supported for shared disks. For Standard HDD, Standard SSD, and Premium SSD disks that are 4 TiB or smaller, deallocate the VM and detach the disk before expanding it beyond 4 TiB. The resize operation only increases the size - you cannot shrink a managed disk.
 
 ## Resizing a Data Disk Online
 
@@ -46,24 +46,37 @@ az disk show \
   --query "diskSizeGb"
 ```
 
-The Azure-level resize happens almost instantly. But the operating system inside the VM still sees the old partition size. You need to extend the partition and file system to use the new space.
+The Azure-level resize often completes quickly. For Ultra Disks and Premium SSD v2, allow up to 10 minutes for the new size to be reflected, and rescan the disk in the OS if needed. The operating system inside the VM still sees the old partition size until you extend the partition and file system to use the new space.
 
-## Resizing an OS Disk Online
+## Resizing an OS Disk
 
-OS disk online resize works the same way for data disks.
+OS disk resize uses the same disk size update, but Azure's expand-without-downtime support applies to data disks. For an OS disk, plan to deallocate the VM, resize the disk, start the VM, and then extend the OS volume if the image does not do it automatically.
 
 ```bash
+VM_NAME=my-vm
+RESOURCE_GROUP=my-resource-group
+
 # Get the OS disk name
 OS_DISK=$(az vm show \
-  --name my-vm \
-  --resource-group my-resource-group \
+  --name "$VM_NAME" \
+  --resource-group "$RESOURCE_GROUP" \
   --query "storageProfile.osDisk.name" -o tsv)
+
+# Deallocate the VM before resizing the OS disk
+az vm deallocate \
+  --name "$VM_NAME" \
+  --resource-group "$RESOURCE_GROUP"
 
 # Resize the OS disk
 az disk update \
   --name "$OS_DISK" \
-  --resource-group my-resource-group \
+  --resource-group "$RESOURCE_GROUP" \
   --size-gb 128
+
+# Start the VM again
+az vm start \
+  --name "$VM_NAME" \
+  --resource-group "$RESOURCE_GROUP"
 
 echo "OS disk resized to 128 GiB"
 ```
@@ -159,7 +172,8 @@ resource "azurerm_managed_disk" "data" {
   create_option        = "Empty"
 
   # Change this value and apply to resize
-  # Terraform will resize in-place without recreating the disk
+  # Terraform updates the disk in place, but attached VMs can still be deallocated
+  # if the disk does not meet Azure's no-downtime resize requirements.
   disk_size_gb = 256  # was 128
 }
 ```
@@ -170,7 +184,7 @@ Resizing a Premium SSD not only gives you more space but can also upgrade the pe
 
 ```bash
 # A P10 (128 GiB) disk has 500 IOPS and 100 MB/s
-# Resizing to P20 (256 GiB) bumps it to 2,300 IOPS and 150 MB/s
+# Resizing to P15 (256 GiB) bumps it to 1,100 IOPS and 125 MB/s
 az disk update \
   --name data-disk-01 \
   --resource-group my-resource-group \
@@ -181,7 +195,7 @@ az disk update \
 az disk update \
   --name data-disk-01 \
   --resource-group my-resource-group \
-  --set tier=P30
+  --tier P30
 ```
 
 ## Handling LVM Volumes on Linux
@@ -219,7 +233,7 @@ sequenceDiagram
 
     Admin->>Azure: az disk update --size-gb 256
     Azure->>Azure: Expand disk storage
-    Azure-->>Admin: Disk resized (instant)
+    Azure-->>Admin: Disk resized
     Admin->>VM OS: SSH/RDP into VM
     VM OS->>VM OS: growpart (extend partition)
     VM OS->>VM OS: resize2fs (extend filesystem)
@@ -230,7 +244,9 @@ sequenceDiagram
 
 You cannot shrink a managed disk. If you over-provision, you are stuck with that size (though you can create a smaller disk and copy the data).
 
-Online resize is not supported for disks encrypted with Azure Disk Encryption (the VM-level BitLocker/dm-crypt encryption). You need to deallocate the VM first. However, server-side encryption with customer-managed keys works fine with online resize.
+Azure's online resize support is for data disks. Shared disks and OS disk expansion require downtime or a different workflow.
+
+Disks encrypted with Azure Disk Encryption (the VM-level BitLocker/dm-crypt encryption) need the Azure Disk Encryption resize workflow, especially for LVM-on-crypt layouts. Do not assume the simple `growpart` path applies. However, server-side encryption with customer-managed keys works fine with online resize.
 
 If the VM does not recognize the new disk size, you may need to rescan the SCSI bus on Linux.
 
