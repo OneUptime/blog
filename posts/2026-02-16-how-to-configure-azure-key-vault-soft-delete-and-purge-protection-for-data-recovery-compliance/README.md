@@ -27,7 +27,7 @@ graph TD
     B -->|Purge with purge protection| D[Operation Blocked]
 ```
 
-As of February 2023, Microsoft enforced soft-delete on all new Key Vaults by default, with a minimum retention period of 7 days. However, older vaults created before this enforcement may not have soft-delete enabled, and purge protection is still optional. Both should be enabled for any production vault.
+Key Vaults created after September 1, 2019 have soft-delete enabled by default, with a minimum retention period of 7 days. However, older vaults created before this enforcement may not have soft-delete enabled, and purge protection is still optional. Both should be enabled for any production vault.
 
 ## Step 1: Check Current Settings on Existing Vaults
 
@@ -47,16 +47,15 @@ If you see vaults with `softDelete: null` or `purgeProtection: null`, those need
 
 For existing vaults that do not have these features enabled, update them. Note that enabling purge protection is a one-way operation - once enabled, it cannot be disabled.
 
-This enables soft-delete with a 90-day retention period and purge protection on an existing vault:
+This enables soft-delete and purge protection on an existing vault. If the vault already has a soft-delete retention period configured, that retention period cannot be changed:
 
 ```bash
-# Enable soft-delete with 90-day retention and purge protection
+# Enable soft-delete and purge protection
 # WARNING: Enabling purge protection is irreversible
 az keyvault update \
   --name kv-production-secrets \
   --resource-group rg-production \
   --enable-soft-delete true \
-  --retention-days 90 \
   --enable-purge-protection true
 
 # Verify the settings
@@ -65,7 +64,7 @@ az keyvault show \
   --query "{name:name, softDelete:properties.enableSoftDelete, purgeProtection:properties.enablePurgeProtection, retentionDays:properties.softDeleteRetentionInDays}" -o json
 ```
 
-For new vaults, include these settings at creation time:
+For new vaults, soft-delete is enabled by default. Include the retention period and purge protection at creation time:
 
 ```bash
 # Create a new vault with soft-delete and purge protection from the start
@@ -73,7 +72,6 @@ az keyvault create \
   --name kv-new-production \
   --resource-group rg-production \
   --location eastus \
-  --enable-soft-delete true \
   --retention-days 90 \
   --enable-purge-protection true \
   --enable-rbac-authorization true
@@ -81,13 +79,13 @@ az keyvault create \
 
 ## Step 3: Choose the Right Retention Period
 
-The retention period can be set between 7 and 90 days. The right value depends on your use case:
+The retention period can be set between 7 and 90 days when the vault is created. Once the retention policy interval is set, it cannot be changed for that vault. The right value depends on your use case:
 
 - **7 days** - Minimum. Use for development vaults where quick cleanup is more important than long recovery windows.
 - **30 days** - A reasonable middle ground for most workloads. Gives enough time to notice and recover from accidental deletions.
 - **90 days** - Maximum. Use for production vaults and any vault subject to compliance requirements. This gives the longest possible recovery window.
 
-For compliance scenarios (SOX, HIPAA, PCI-DSS), I recommend 90 days. The storage cost for soft-deleted items is negligible, and the extended recovery window provides a significant safety margin.
+For compliance scenarios (SOX, HIPAA, PCI-DSS), I recommend 90 days. The cost of occasional recovery operations is negligible, and the extended recovery window provides a significant safety margin.
 
 ## Step 4: Recover Deleted Secrets
 
@@ -148,13 +146,13 @@ az keyvault recover \
 az keyvault show --name kv-production-secrets
 ```
 
-Important: when you recover a vault, all its contents (secrets, keys, certificates) come back with it, including any items that were individually soft-deleted before the vault itself was deleted.
+Important: when you recover a vault, Azure restores the vault resource and its recoverable objects, but integrated services such as Azure RBAC role assignments and Event Grid subscriptions are not restored automatically. Recreate those integrations after the vault is recovered.
 
 ## Step 6: Enforce Soft-Delete and Purge Protection with Azure Policy
 
 To make sure all vaults in your organization have these protections, use Azure Policy to enforce them.
 
-This assigns built-in policies that require soft-delete and purge protection:
+This assigns built-in policies that require soft-delete and purge protection. The built-in policy effect defaults to audit, so the examples explicitly set the effect to `Deny`:
 
 ```bash
 # Policy: Key Vault should have soft-delete enabled
@@ -162,14 +160,16 @@ az policy assignment create \
   --name "require-kv-soft-delete" \
   --display-name "Require soft-delete on Key Vaults" \
   --policy "/providers/Microsoft.Authorization/policyDefinitions/1e66c121-a66a-4b1f-9b83-0fd99bf0fc2d" \
+  --params '{"effect":{"value":"Deny"}}' \
   --scope "/subscriptions/$(az account show --query id -o tsv)" \
   --enforcement-mode Default
 
-# Policy: Key Vault should have purge protection enabled
+# Policy: Key Vault should have deletion protection enabled
 az policy assignment create \
   --name "require-kv-purge-protection" \
   --display-name "Require purge protection on Key Vaults" \
   --policy "/providers/Microsoft.Authorization/policyDefinitions/0b60c0b2-2dc2-4e1c-b5c9-abbed971de53" \
+  --params '{"effect":{"value":"Deny"}}' \
   --scope "/subscriptions/$(az account show --query id -o tsv)" \
   --enforcement-mode Default
 ```
@@ -249,9 +249,9 @@ If purge protection is enabled, you cannot purge the vault. You either need to r
 
 ## Cost Implications
 
-Soft-deleted items continue to incur storage costs during the retention period, but the cost is minimal. Key Vault pricing is based on operations (transactions) and the number of keys/secrets stored. A soft-deleted secret counts as a stored secret until it is purged.
+In general, soft-deleted Key Vault objects do not incur normal usage charges because only `purge` and `recover` operations are allowed while the object is deleted. Those purge and recover actions still count as normal Key Vault operations and are billed normally. HSM-protected key charges can also apply for a key version that was used in the last 30 days.
 
-For most organizations, the cost of soft-deleted items is negligible compared to the risk of permanent data loss. I have never seen a case where the soft-delete storage cost was a meaningful concern.
+For most organizations, the cost of occasional recovery operations is negligible compared to the risk of permanent data loss. I have never seen a case where soft-delete-related cost was a meaningful concern.
 
 ## Best Practices Summary
 
@@ -264,4 +264,4 @@ For most organizations, the cost of soft-deleted items is negligible compared to
 
 ## Wrapping Up
 
-Soft-delete and purge protection are foundational data protection features for Azure Key Vault. They protect against accidental deletion, malicious insiders, and compromised accounts that might try to destroy your cryptographic material. Enabling them takes seconds, the cost is negligible, and the protection they provide is significant. If you have any production Key Vaults without these features enabled, that should be your first task after reading this post.
+Soft-delete and purge protection are foundational data protection features for Azure Key Vault. They protect against accidental deletion, malicious insiders, and compromised accounts that might try to destroy your cryptographic material. Enabling them takes seconds, the operational cost is negligible, and the protection they provide is significant. If you have any production Key Vaults without these features enabled, that should be your first task after reading this post.
