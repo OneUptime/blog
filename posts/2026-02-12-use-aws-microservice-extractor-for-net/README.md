@@ -10,13 +10,15 @@ Description: Learn how to use AWS Microservice Extractor for .NET to decompose m
 
 Breaking a .NET monolith into microservices is one of those projects that sounds straightforward but gets complicated quickly. You need to understand the dependency graph, identify service boundaries, untangle shared state, and do all of this without breaking the application. AWS Microservice Extractor for .NET automates much of this analysis and provides tooling to help you extract microservices from your monolithic codebase.
 
+AWS Microservice Extractor for .NET is no longer open to new customers. AWS documentation says customers needed to sign up before November 7, 2025; new modernization projects that do not already have access should evaluate AWS Transform instead.
+
 This guide covers how to use Microservice Extractor to analyze your .NET application and execute a decomposition plan.
 
 ## What Microservice Extractor Does
 
 Microservice Extractor is a desktop application that:
 
-1. Analyzes your .NET application's source code and runtime behavior
+1. Analyzes your .NET application's source code and optional runtime profiling data
 2. Visualizes class and namespace dependencies
 3. Suggests service boundaries based on coupling analysis
 4. Helps you extract selected classes into separate projects
@@ -36,15 +38,17 @@ graph TD
     H --> I
 ```
 
-It supports .NET Framework 4.x and .NET Core/.NET 5+ applications, covering both legacy and modern .NET codebases.
+It supports .NET Framework and .NET Core ASP.NET web service applications. Specifically, visualization supports .NET Framework 4.0 and later, .NET Core 3.1, and .NET 5.0 through .NET 7.0; extraction supports .NET Framework 4.5 and later, .NET Core 3.1, and .NET 5.0 through .NET 7.0. Extraction is supported only for ASP.NET MVC applications.
 
 ## Prerequisites
 
 Before starting:
-- Download AWS Microservice Extractor from the AWS console
+- Confirm that your AWS account already has access to AWS Microservice Extractor for .NET, because the tool is no longer open to new customers
+- Download AWS Microservice Extractor as the `ServiceExtract.exe` installer
 - Have your .NET solution source code accessible locally
 - Ensure the solution builds successfully
-- Optionally, collect runtime traces using Application Insights or X-Ray for more accurate dependency analysis
+- Configure a valid AWS CLI profile
+- Optionally, collect runtime profiling data with the Microservice Extractor runtime profiler for more accurate call count data
 
 ## Step 1: Create a New Project
 
@@ -162,13 +166,13 @@ public class OrderService
 
 ## Step 5: Execute the Extraction
 
-Once you are satisfied with the grouping, Microservice Extractor generates the new project structure:
+Once you are satisfied with the grouping, Microservice Extractor extracts the grouped code into a separate solution:
 
-For each identified service, the tool creates:
-- A new .NET project with the extracted classes
-- Interface definitions for cross-service communication
-- Stub implementations for service clients
-- Updated project references
+Depending on the extraction options and application type, the tool can:
+- Create a new .NET project with the extracted classes
+- Extract the service with remote endpoints or as a library
+- Refactor controller-level method calls from the original application to network calls, where supported
+- Copy relevant MVC views for ASP.NET MVC applications
 
 ```text
 Solution/
@@ -180,9 +184,6 @@ Solution/
       OrderService.cs
     Repositories/
       OrderRepository.cs
-    Clients/
-      IInventoryClient.cs         # Generated interface
-      InventoryClient.cs           # Generated HTTP client stub
   InventoryService/
     InventoryService.csproj
     Controllers/
@@ -212,24 +213,38 @@ Strategies:
 // Order Service - only accesses order tables
 public class OrderDbContext : DbContext
 {
+    private readonly IConfiguration _configuration;
+
+    public OrderDbContext(IConfiguration configuration)
+    {
+        _configuration = configuration;
+    }
+
     public DbSet<Order> Orders { get; set; }
     public DbSet<OrderItem> OrderItems { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder options)
     {
-        options.UseSqlServer(Configuration.GetConnectionString("OrdersDb"));
+        options.UseSqlServer(_configuration.GetConnectionString("OrdersDb"));
     }
 }
 
 // Inventory Service - only accesses inventory tables
 public class InventoryDbContext : DbContext
 {
+    private readonly IConfiguration _configuration;
+
+    public InventoryDbContext(IConfiguration configuration)
+    {
+        _configuration = configuration;
+    }
+
     public DbSet<StockItem> StockItems { get; set; }
     public DbSet<Warehouse> Warehouses { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder options)
     {
-        options.UseSqlServer(Configuration.GetConnectionString("InventoryDb"));
+        options.UseSqlServer(_configuration.GetConnectionString("InventoryDb"));
     }
 }
 ```
@@ -257,7 +272,7 @@ public class InventoryClient : IInventoryClient
         response.EnsureSuccessStatusCode();
 
         var result = await response.Content.ReadFromJsonAsync<AvailabilityResult>();
-        return result.IsAvailable;
+        return result?.IsAvailable ?? false;
     }
 }
 
@@ -309,7 +324,7 @@ public class OrderService
 
 ## Step 8: Deploy to AWS
 
-Deploy each microservice independently using ECS Fargate or Lambda:
+Deploy each extracted service independently. AWS documentation describes manually building a container image, pushing it to Amazon ECR, and deploying it to Amazon ECS:
 
 ```yaml
 # CloudFormation for deploying extracted microservices
@@ -322,6 +337,14 @@ Resources:
       TaskDefinition: !Ref OrderTaskDef
       DesiredCount: 2
       LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnetA
+            - !Ref PrivateSubnetB
       LoadBalancers:
         - ContainerName: order-service
           ContainerPort: 80
@@ -334,6 +357,14 @@ Resources:
       TaskDefinition: !Ref InventoryTaskDef
       DesiredCount: 2
       LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          SecurityGroups:
+            - !Ref ServiceSecurityGroup
+          Subnets:
+            - !Ref PrivateSubnetA
+            - !Ref PrivateSubnetB
       LoadBalancers:
         - ContainerName: inventory-service
           ContainerPort: 80
@@ -353,4 +384,4 @@ Once decomposed, you need distributed tracing to follow requests across services
 
 ## Wrapping Up
 
-AWS Microservice Extractor for .NET takes the guesswork out of monolith decomposition by analyzing your actual code dependencies and helping you identify natural service boundaries. The tool handles the mechanical work of creating new projects and generating client stubs, but the hard decisions about where to draw boundaries and how to handle shared data still require your domain expertise. Start small, extract one service at a time, and validate each extraction before moving to the next.
+AWS Microservice Extractor for .NET takes the guesswork out of monolith decomposition by analyzing your actual code dependencies and helping you identify natural service boundaries. The tool handles part of the mechanical work of creating extracted solutions and, where supported, refactoring calls to remote endpoints, but the hard decisions about where to draw boundaries and how to handle shared data still require your domain expertise. Start small, extract one service at a time, and validate each extraction before moving to the next.
