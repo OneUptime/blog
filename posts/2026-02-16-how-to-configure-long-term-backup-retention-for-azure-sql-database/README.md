@@ -31,7 +31,7 @@ Long-term retention operates on top of the automatic backup system:
 1. Azure SQL Database creates full backups weekly as part of the normal backup cycle.
 2. Based on your LTR policy, selected full backups are copied to a separate Azure Blob Storage account (managed by Azure, not visible to you).
 3. These copies are retained according to your policy - weekly, monthly, yearly, or a combination.
-4. LTR backups are geo-redundant by default, stored in the paired Azure region.
+4. Backup storage is geo-redundant by default, but you can configure a different backup storage redundancy option for the database.
 
 The LTR backups are independent of the short-term retention period. Even if you set short-term retention to 7 days, your LTR backups remain available for the configured duration.
 
@@ -41,7 +41,7 @@ flowchart LR
     B -->|Weekly| C[Keep for W weeks]
     B -->|Monthly| D[Keep for M months]
     B -->|Yearly| E[Keep for Y years]
-    C --> F[Azure Blob Storage - Geo-Redundant]
+    C --> F[Azure Blob Storage - Redundant Backup Storage]
     D --> F
     E --> F
 ```
@@ -85,7 +85,7 @@ Set the desired retention values:
 
 ### Step 4: Save
 
-Click "Apply". The policy takes effect immediately, and the next eligible backup will be retained according to the new policy.
+Click "Apply". The policy applies to future LTR backups. When you enable LTR for the first time, Azure copies the most recent full backup to long-term storage, and it can take up to 7 days before the first LTR backup is visible for restore.
 
 ## Configuring LTR via Azure CLI
 
@@ -149,6 +149,7 @@ To see which LTR backups are available for restore:
 ```bash
 # List available LTR backups for a specific database
 az sql db ltr-backup list \
+    --location eastus \
     --resource-group myResourceGroup \
     --server myserver \
     --database mydb \
@@ -160,6 +161,7 @@ To list all LTR backups across all databases on a server:
 ```bash
 # List all LTR backups on the server
 az sql db ltr-backup list \
+    --location eastus \
     --resource-group myResourceGroup \
     --server myserver \
     --output table
@@ -194,6 +196,7 @@ First, get the backup ID:
 ```bash
 # List LTR backups and note the backup ID
 az sql db ltr-backup list \
+    --location eastus \
     --resource-group myResourceGroup \
     --server myserver \
     --database mydb \
@@ -235,7 +238,7 @@ LTR backup storage is billed based on the amount of data stored. The cost is sig
 
 Key cost factors:
 - **Storage volume**: Each full backup is roughly the size of your database. If your database is 100 GB and you keep 12 monthly backups, that is approximately 1.2 TB of backup storage.
-- **Geo-redundancy**: LTR backups are geo-redundant by default, which adds cost compared to locally redundant storage.
+- **Backup storage redundancy**: Backups use geo-redundant storage by default, but locally redundant, zone-redundant, or geo-zone-redundant backup storage can be configured depending on your requirements and region support.
 - **Retention duration**: Longer retention means more concurrent backups stored, increasing total storage costs.
 
 Rough pricing (varies by region): approximately $0.01-0.05 per GB per month for backup storage. For a 100 GB database with 12 monthly backups, expect roughly $12-60 per month.
@@ -280,7 +283,7 @@ Yearly: none
 
 **Deleted databases and LTR.** If you delete a database, existing LTR backups remain until their retention expires. You can still restore from them even after the source database is deleted.
 
-**Server deletion.** If you delete the SQL server, all LTR backups are also deleted. Be careful with server-level cleanup.
+**Server deletion.** If you delete the SQL server, LTR backups are not deleted and can be restored to a different server in the same subscription. The deleted logical server itself cannot be restored.
 
 **Cross-subscription restore.** LTR backups can only be restored within the same subscription where the backup was created.
 
@@ -298,4 +301,4 @@ This validates that your backups are usable and that your team knows the restore
 
 ## Summary
 
-Long-term backup retention in Azure SQL Database extends your backup coverage from days to years, meeting compliance requirements and providing historical data access. Configure it through the Portal, CLI, or PowerShell by setting weekly, monthly, and yearly retention policies. The backups are geo-redundant and stored at low cost in Azure Blob Storage. Remember that LTR provides full backup restores only, not point-in-time recovery, and test your backups regularly to ensure they are usable when needed.
+Long-term backup retention in Azure SQL Database extends your backup coverage from days to years, meeting compliance requirements and providing historical data access. Configure it through the Portal, CLI, or PowerShell by setting weekly, monthly, and yearly retention policies. The backups are stored in redundant Azure Blob Storage at low cost. Remember that LTR provides full backup restores only, not point-in-time recovery, and test your backups regularly to ensure they are usable when needed.
