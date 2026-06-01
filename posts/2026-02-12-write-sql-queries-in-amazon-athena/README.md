@@ -53,7 +53,7 @@ SELECT
     current_date as today,
     current_timestamp as now,
     date_add('day', -7, current_date) as week_ago,
-    date_diff('hour', TIMESTAMP '2025-01-01', current_timestamp) as hours_since_newyear,
+    date_diff('hour', TIMESTAMP '2025-01-01', localtimestamp) as hours_since_newyear,
     date_trunc('month', current_date) as first_of_month,
     year(current_date) as current_year,
     month(current_date) as current_month,
@@ -120,10 +120,10 @@ FROM analytics.raw_events
 WHERE json_extract_scalar(payload, '$.action') = 'purchase';
 ```
 
-For nested arrays, use `UNNEST`:
+For typed array columns, use `UNNEST`:
 
 ```sql
--- Flatten a JSON array into rows
+-- Flatten an array column into rows
 SELECT
     event_id,
     item.product_id,
