@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Amplify, Swift, IOS, Mobile Development, Apple
 
-Description: Integrate AWS Amplify with your Swift iOS application to add authentication, APIs, storage, and push notifications using native Swift APIs.
+Description: Integrate AWS Amplify with your Swift iOS application to add authentication, APIs, and storage using native Swift APIs.
 
 ---
 
-Building an iOS app with a cloud backend means stitching together authentication, APIs, file storage, and push notifications. AWS Amplify for Swift provides native libraries that handle all of this with Swift-friendly APIs that support async/await, Combine, and SwiftUI. You get the power of AWS services without writing raw API calls or managing tokens manually.
+Building an iOS app with a cloud backend means stitching together authentication, APIs, and file storage. AWS Amplify for Swift provides native libraries that handle all of this with Swift-friendly APIs that support async/await, Combine, and SwiftUI. You get the power of AWS services without writing raw API calls or managing tokens manually.
 
 This guide covers setting up Amplify in a Swift iOS project, implementing authentication, connecting to a GraphQL API, and adding file storage.
 
@@ -72,7 +72,7 @@ amplify add storage
 amplify push
 ```
 
-This generates an `amplifyconfiguration.json` file and GraphQL model files.
+This generates an `amplifyconfiguration.json` file and, when GraphQL code generation is enabled, GraphQL model files.
 
 ## Step 2: Add Amplify via Swift Package Manager
 
@@ -410,6 +410,12 @@ import Amplify
 import Foundation
 
 class StorageService {
+    private static func privatePath(for key: String) -> any StoragePath {
+        StoragePath.fromIdentityID { identityId in
+            "private/\(identityId)/\(key)"
+        }
+    }
+
     // Upload an image to S3
     static func uploadImage(
         data: Data,
@@ -417,9 +423,8 @@ class StorageService {
         onProgress: ((Double) -> Void)? = nil
     ) async throws -> String {
         let task = Amplify.Storage.uploadData(
-            key: key,
-            data: data,
-            options: .init(accessLevel: .private)
+            path: privatePath(for: key),
+            data: data
         )
 
         // Track upload progress
@@ -429,15 +434,15 @@ class StorageService {
         }
 
         let result = try await task.value
-        return result.key
+        print("Upload completed: \(result)")
+        return key
     }
 
     // Get a download URL for a file
     static func getDownloadURL(key: String) async throws -> URL {
         let result = try await Amplify.Storage.getURL(
-            key: key,
+            path: privatePath(for: key),
             options: .init(
-                accessLevel: .private,
                 expires: 3600 // URL valid for 1 hour
             )
         )
@@ -447,8 +452,7 @@ class StorageService {
     // Download file data
     static func downloadFile(key: String) async throws -> Data {
         let task = Amplify.Storage.downloadData(
-            key: key,
-            options: .init(accessLevel: .private)
+            path: privatePath(for: key)
         )
 
         let result = try await task.value
@@ -456,12 +460,9 @@ class StorageService {
     }
 
     // List files in a path
-    static func listFiles(path: String) async throws -> [Amplify.StorageListResult.Item] {
+    static func listFiles(path: String) async throws -> [StorageListResult.Item] {
         let result = try await Amplify.Storage.list(
-            options: .init(
-                accessLevel: .private,
-                path: path
-            )
+            path: privatePath(for: path)
         )
         return result.items
     }
@@ -545,6 +546,8 @@ struct PhotoUploadView: View {
 
 ```swift
 // Sign out the current user
+import AWSCognitoAuthPlugin
+
 func signOut() async {
     let result = await Amplify.Auth.signOut()
 
@@ -575,7 +578,7 @@ func signOut() async {
 
 **Handle auth state with Combine**: Subscribe to Amplify's auth state publisher to reactively update your UI when the user signs in or out.
 
-**Use private access level for user files**: Unless files need to be shared between users, use `.private` access level in Storage. This scopes files to the authenticated user.
+**Use private paths for user files**: Unless files need to be shared between users, store them under a private `StoragePath`. This scopes files to the authenticated user.
 
 **Enable background transfers**: For large file uploads, configure the Storage plugin to use background URLSession so uploads continue if the app goes to the background.
 
