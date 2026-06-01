@@ -67,6 +67,9 @@ param runtime string = 'node'
 @description('Runtime version')
 param runtimeVersion string = '20'
 
+@description('Package URL for Linux Consumption deployments. Required when planSku is Y1.')
+param deploymentPackageUrl string = ''
+
 @description('App Service Plan SKU')
 @allowed([
   'Y1'       // Consumption plan
@@ -74,7 +77,7 @@ param runtimeVersion string = '20'
   'EP2'
   'EP3'
 ])
-param planSku string = 'Y1'
+param planSku string = 'EP1'
 
 // Log Analytics Workspace for Application Insights backend
 resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2022-10-01' = {
@@ -101,7 +104,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
     WorkspaceResourceId: logAnalytics.id
     // Enable features based on environment
     DisableIpMasking: false
-    DisableLocalAuth: environment == 'prod'  // Force AAD auth in production
+    DisableLocalAuth: environment == 'prod'  // Require Microsoft Entra authentication in production
     publicNetworkAccessForIngestion: 'Enabled'
     publicNetworkAccessForQuery: 'Enabled'
     RetentionInDays: environment == 'prod' ? 90 : 30
@@ -115,7 +118,7 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
 
 // Storage account required by Azure Functions
 resource storageAccount 'Microsoft.Storage/storageAccounts@2023-01-01' = {
-  name: 'st${replace(appName, '-', '')}${environment}'
+  name: 'st${replace(toLower(appName), '-', '')}${environment}'
   location: location
   sku: {
     name: 'Standard_LRS'
@@ -137,7 +140,7 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2023-01-01' = {
     name: planSku
   }
   properties: {
-    reserved: runtime != 'dotnet-isolated'  // Linux for non-.NET runtimes
+    reserved: true  // Linux hosting
     maximumElasticWorkerCount: planSku == 'Y1' ? null : 20
   }
 }
@@ -204,21 +207,33 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: appInsights.properties.ConnectionString
         }
-        {
-          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
-          value: appInsights.properties.InstrumentationKey
+        if (environment == 'prod') {
+          name: 'APPLICATIONINSIGHTS_AUTHENTICATION_STRING'
+          value: 'Authorization=AAD'
         }
         // Performance and diagnostic settings
         {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
-          value: '1'
-        }
-        {
-          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
-          value: '~3'
+          value: planSku == 'Y1' ? deploymentPackageUrl : '1'
         }
       ]
     }
+  }
+}
+
+// Required when Application Insights local authentication is disabled
+var monitoringMetricsPublisherRoleDefinitionId = subscriptionResourceId(
+  'Microsoft.Authorization/roleDefinitions',
+  '3913510d-42f4-4e42-8a64-420c390055eb'
+)
+
+resource appInsightsTelemetryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (environment == 'prod') {
+  name: guid(appInsights.id, functionApp.id, 'monitoring-metrics-publisher')
+  scope: appInsights
+  properties: {
+    roleDefinitionId: monitoringMetricsPublisherRoleDefinitionId
+    principalId: functionApp.identity.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -232,20 +247,12 @@ resource functionDiagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-p
       {
         category: 'FunctionAppLogs'
         enabled: true
-        retentionPolicy: {
-          enabled: true
-          days: environment == 'prod' ? 90 : 30
-        }
       }
     ]
     metrics: [
       {
         category: 'AllMetrics'
         enabled: true
-        retentionPolicy: {
-          enabled: true
-          days: 30
-        }
       }
     ]
   }
@@ -352,12 +359,12 @@ resource durationAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   }
 }
 
-// Alert: Function App stopped responding
+// Alert: Availability test failures (requires Application Insights availability tests)
 resource availabilityAlert 'Microsoft.Insights/metricAlerts@2018-03-01' = {
   name: 'alert-func-availability-${environment}'
   location: 'global'
   properties: {
-    description: 'Function App availability dropped below threshold'
+    description: 'Application Insights availability tests dropped below threshold'
     severity: 1
     enabled: true
     scopes: [appInsightsId]
@@ -453,7 +460,7 @@ A few settings worth tuning based on your environment:
 
 Excluding Requests and Exceptions from sampling ensures you capture every invocation and every error, while sampling dependency calls and traces.
 
-**Custom properties.** Add custom dimensions to your telemetry for better filtering:
+**Dependency and performance collection.** You can explicitly enable dependency tracking and Kudu performance counters:
 
 ```json
 {
@@ -470,17 +477,15 @@ Excluding Requests and Exceptions from sampling ensures you capture every invoca
 
 ```bicep
 // Set daily ingestion cap for non-production environments
-resource appInsightsCap 'Microsoft.Insights/components/CurrentBillingFeatures@2015-05-01' = if (environment != 'prod') {
-  name: '${appInsights.name}/CurrentBillingFeatures'
+resource appInsightsCap 'Microsoft.Insights/components/pricingPlans@2017-10-01' = if (environment != 'prod') {
+  parent: appInsights
+  name: 'current'
   properties: {
-    CurrentBillingFeatures: ['Basic']
-    DataVolumeCap: {
-      Cap: 1  // 1 GB per day cap for dev/staging
-      ResetTime: 0
-      StopSendNotificationWhenHitCap: false
-      WarningThreshold: 80
-      StopSendNotificationWhenHitThreshold: false
-    }
+    planType: 'Basic'
+    cap: 1  // 1 GB per day cap for dev/staging
+    stopSendNotificationWhenHitCap: false
+    warningThreshold: 80
+    stopSendNotificationWhenHitThreshold: false
   }
 }
 ```
