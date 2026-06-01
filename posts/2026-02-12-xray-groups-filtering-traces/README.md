@@ -24,7 +24,7 @@ flowchart TD
     B --> |Matches| C[Group: Production Errors]
     B --> |Matches| D[Group: Payment Service]
     B --> |Matches| E[Group: High Latency]
-    B --> |No Match| F[Default Group]
+    A --> F[Default Group]
     C --> G[Service Map]
     C --> H[CloudWatch Metrics]
     C --> I[Alarms]
@@ -40,7 +40,7 @@ A single trace can match multiple groups simultaneously. Groups don't partition 
 2. Click "Groups" in the left nav
 3. Click "Create group"
 4. Enter a name and filter expression
-5. Optionally enable CloudWatch Insights
+5. Optionally enable X-Ray Insights
 
 ### Via the CLI
 
@@ -49,7 +49,7 @@ A single trace can match multiple groups simultaneously. Groups don't partition 
 
 aws xray create-group \
   --group-name "production" \
-  --filter-expression 'annotation.environment = "production"'
+  --filter-expression 'annotation[environment] = "production"'
 ```
 
 ```bash
@@ -129,12 +129,12 @@ http.status = 500
 
 ```bash
 # Filter by custom annotations (requires your app to set these)
-annotation.customerId = "cust-12345"
-annotation.environment = "staging"
-annotation.orderType = "premium"
+annotation[customerId] = "cust-12345"
+annotation[environment] = "staging"
+annotation[orderType] = "premium"
 
 # Numeric annotation comparison
-annotation.orderTotal > 100
+annotation[orderTotal] > 100
 ```
 
 ### Combining Filters
@@ -144,7 +144,7 @@ annotation.orderTotal > 100
 (service("payment-service") AND fault = true) OR responsetime > 10
 
 # Production errors on a specific endpoint
-annotation.environment = "production" AND http.url CONTAINS "/api/checkout" AND fault = true
+annotation[environment] = "production" AND http.url CONTAINS "/api/checkout" AND fault = true
 ```
 
 ## Practical Group Definitions
@@ -157,12 +157,12 @@ Here are groups that work well in most production environments:
 # Production group
 aws xray create-group \
   --group-name "production" \
-  --filter-expression 'annotation.environment = "production"'
+  --filter-expression 'annotation[environment] = "production"'
 
 # Staging group
 aws xray create-group \
   --group-name "staging" \
-  --filter-expression 'annotation.environment = "staging"'
+  --filter-expression 'annotation[environment] = "staging"'
 ```
 
 For these to work, your application needs to set the environment annotation:
@@ -171,8 +171,7 @@ For these to work, your application needs to set the environment annotation:
 // Set environment annotation in your application
 const AWSXRay = require('aws-xray-sdk');
 
-AWSXRay.middleware.setSamplingRules({});
-const ns = AWSXRay.getNamespace();
+app.use(AWSXRay.express.openSegment('my-service'));
 
 // In your request handler
 app.use((req, res, next) => {
@@ -182,6 +181,9 @@ app.use((req, res, next) => {
   segment.addAnnotation('version', process.env.APP_VERSION || 'unknown');
   next();
 });
+
+// Define your routes here, then close the segment after them
+app.use(AWSXRay.express.closeSegment());
 ```
 
 ### By Team
@@ -272,7 +274,7 @@ Update a group's filter:
 # Update the filter expression for an existing group
 aws xray update-group \
   --group-name "production" \
-  --filter-expression 'annotation.environment = "production" AND annotation.version = "v2"'
+  --filter-expression 'annotation[environment] = "production" AND annotation[version] = "v2"'
 ```
 
 Delete a group:
@@ -294,7 +296,7 @@ Resources:
     Type: AWS::XRay::Group
     Properties:
       GroupName: production
-      FilterExpression: 'annotation.environment = "production"'
+      FilterExpression: 'annotation[environment] = "production"'
       InsightsConfiguration:
         InsightsEnabled: true
 
@@ -322,7 +324,7 @@ Resources:
       MetricName: ApproximateTraceCount
       Dimensions:
         - Name: GroupName
-          Value: !Ref ErrorGroup
+          Value: server-errors
       Statistic: Sum
       Period: 300
       EvaluationPeriods: 2
@@ -334,7 +336,7 @@ Resources:
 
 ## Insights with Groups
 
-X-Ray Insights is an anomaly detection feature that works with groups. When you enable Insights on a group, X-Ray monitors the group's traces for anomalies in latency, error rate, and throughput. When it detects an unusual pattern, it creates an insight notification.
+X-Ray Insights is an anomaly detection feature that works with groups. When you enable Insights on a group, X-Ray monitors the group's traces for anomalous fault rates and tracks their impact until they're resolved. When it detects an unusual pattern, it creates an insight notification.
 
 Enable Insights when creating a group:
 
@@ -342,7 +344,7 @@ Enable Insights when creating a group:
 # Create a group with Insights enabled
 aws xray create-group \
   --group-name "production-errors" \
-  --filter-expression 'annotation.environment = "production" AND fault = true' \
+  --filter-expression 'annotation[environment] = "production" AND fault = true' \
   --insights-configuration InsightsEnabled=true,NotificationsEnabled=true
 ```
 
@@ -354,13 +356,13 @@ Insights notifications go to EventBridge, where you can route them to SNS, Lambd
 - The "Default" group always exists and cannot be deleted
 - Filter expressions have a maximum length of 2000 characters
 - Groups don't affect sampling - they only filter what you see
-- Group metrics have a 5-minute resolution
+- Group metrics are published to CloudWatch every minute
 
 ## Best Practices
 
 **Start with a few essential groups.** Production, staging, and errors are a good starting set. Add more as specific needs arise.
 
-**Use annotations, not just service names.** Service-based groups break when services are renamed. Annotation-based groups (like `environment = "production"`) are more resilient to architecture changes.
+**Use annotations, not just service names.** Service-based groups break when services are renamed. Annotation-based groups (like `annotation[environment] = "production"`) are more resilient to architecture changes.
 
 **Set up alarms on error groups.** The CloudWatch metrics from X-Ray groups are an underused feature. A spike in error trace count is often an earlier signal than an increase in CloudWatch error metrics.
 
