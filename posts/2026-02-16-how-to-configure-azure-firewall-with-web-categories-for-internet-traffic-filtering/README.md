@@ -8,7 +8,7 @@ Description: Configure Azure Firewall web categories to filter outbound internet
 
 ---
 
-Controlling what your users and workloads can access on the internet is a core network security requirement. Instead of maintaining massive lists of individual URLs or domains, Azure Firewall lets you filter traffic by web category. You can block entire categories like gambling, malware, or social networking with a single rule, and Azure maintains the categorization database for you.
+Controlling what your users and workloads can access on the internet is a core network security requirement. Instead of maintaining massive lists of individual URLs or domains, Azure Firewall lets you filter traffic by web category. You can block entire categories like gambling, illegal software, or social networking with a single rule, and Azure maintains the categorization database for you.
 
 This guide covers how to configure web category filtering in Azure Firewall, including both Standard and Premium tiers, and how to combine categories with other rule types for a comprehensive filtering strategy.
 
@@ -37,15 +37,14 @@ Azure Firewall supports a large number of web categories. Here are some of the m
 | Category | Description |
 |----------|-------------|
 | Gambling | Online gambling and betting sites |
-| Malware | Known malware distribution sites |
-| Phishing | Known phishing sites |
-| Adult Content | Adult or explicit content |
+| Illegal Software | Sites that illegally distribute software or copyrighted materials |
+| Pornography and Sexually Explicit | Adult or explicit content |
 | Social Networking | Social media platforms |
-| Streaming Media | Video and audio streaming services |
+| Streaming Media and Downloads | Video and audio streaming services |
 | Peer-to-Peer | P2P file sharing sites |
 | Hacking | Hacking tools and resources |
-| Proxy and Anonymizer | Web proxy and anonymization services |
-| Cryptocurrency Mining | Crypto mining pools and software |
+| Proxy Avoidance and Anonymizers | Web proxy and anonymization services |
+| Tasteless | Offensive or distasteful content |
 
 You can get the full list of available categories from the Azure documentation or query them through the API.
 
@@ -78,37 +77,37 @@ az network firewall policy rule-collection-group collection add-filter-collectio
 
 # Add more category blocks to the same collection
 az network firewall policy rule-collection-group collection rule add \
-  --name "BlockRiskyCategories" \
+  --collection-name "BlockRiskyCategories" \
+  --name "DenyIllegalSoftware" \
   --policy-name myFirewallPolicy \
   --resource-group myResourceGroup \
   --rule-collection-group-name WebFilteringRules \
-  --rule-name "DenyMalware" \
   --rule-type ApplicationRule \
   --source-addresses "10.0.0.0/16" \
   --protocols Http=80 Https=443 \
-  --web-categories Malware
+  --web-categories IllegalSoftware
 
 az network firewall policy rule-collection-group collection rule add \
-  --name "BlockRiskyCategories" \
+  --collection-name "BlockRiskyCategories" \
+  --name "DenyHacking" \
   --policy-name myFirewallPolicy \
   --resource-group myResourceGroup \
   --rule-collection-group-name WebFilteringRules \
-  --rule-name "DenyPhishing" \
   --rule-type ApplicationRule \
   --source-addresses "10.0.0.0/16" \
   --protocols Http=80 Https=443 \
-  --web-categories Phishing
+  --web-categories Hacking
 
 az network firewall policy rule-collection-group collection rule add \
-  --name "BlockRiskyCategories" \
+  --collection-name "BlockRiskyCategories" \
+  --name "DenyProxyAvoidance" \
   --policy-name myFirewallPolicy \
   --resource-group myResourceGroup \
   --rule-collection-group-name WebFilteringRules \
-  --rule-name "DenyCryptoMining" \
   --rule-type ApplicationRule \
   --source-addresses "10.0.0.0/16" \
   --protocols Http=80 Https=443 \
-  --web-categories CryptocurrencyMining
+  --web-categories ProxyAvoidanceAndAnonymizers
 ```
 
 ## Step 3: Allow Specific Categories
@@ -128,7 +127,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --rule-type ApplicationRule \
   --source-addresses "10.0.0.0/16" \
   --protocols Http=80 Https=443 \
-  --web-categories "Business" "Finance" "Government" "Health" "InformationTechnology" "SearchEngines"
+  --web-categories "Business" "Finance" "Government" "HealthAndMedicine" "InformationTechnology" "SearchEnginesAndPortals"
 ```
 
 ## Step 4: Apply Different Policies to Different User Groups
@@ -149,7 +148,7 @@ az network firewall policy rule-collection-group collection add-filter-collectio
   --rule-type ApplicationRule \
   --source-addresses "10.0.5.0/24" \
   --protocols Http=80 Https=443 \
-  --web-categories "Hacking" "ProxyAndAnonymizer"
+  --web-categories "Hacking" "ProxyAvoidanceAndAnonymizers"
 ```
 
 Since this rule has a lower priority number (50 vs 100), it is evaluated first. Developers in the 10.0.5.0/24 subnet can access hacking and proxy sites, while everyone else is still blocked by the rules in priority 100.
@@ -177,8 +176,9 @@ Query the logs to see web category activity:
 // KQL query to see blocked web category requests
 AzureDiagnostics
 | where Category == "AzureFirewallApplicationRule"
-| where msg_s contains "WebCategory"
-| parse msg_s with * "WebCategory: " webCategory "." *
+| where msg_s contains "Action: Deny"
+| where msg_s contains "Web Category:"
+| parse msg_s with * "Web Category: " webCategory
 | summarize BlockedCount = count() by webCategory, bin(TimeGenerated, 1h)
 | order by BlockedCount desc
 ```
@@ -215,7 +215,7 @@ The rule configuration is the same, but the categorization engine will check the
 
 ## Best Practices
 
-**Start in log-only mode**: Before blocking categories, run your rules in log mode for a week to understand what your users are accessing. This prevents blocking legitimate business traffic.
+**Start by reviewing logs**: Before blocking categories broadly, enable diagnostic logging and review existing allowed traffic for a week to understand what your users are accessing. This helps prevent blocking legitimate business traffic.
 
 **Review logs regularly**: Traffic patterns change. Categories that were not important last month might become relevant this month. Schedule monthly reviews of your web category logs.
 
