@@ -63,8 +63,8 @@ This is almost always the top recommendation. Multi-factor authentication preven
 ```bash
 # Create a Conditional Access policy requiring MFA for privileged roles
 
-# This requires Azure AD Premium P1 license
-# Navigate to Azure AD > Security > Conditional Access > New Policy
+# This requires a Microsoft Entra ID P1 license
+# Navigate to Microsoft Entra ID > Protection > Conditional Access > New Policy
 # Or use Microsoft Graph API:
 
 # List users with Owner role on the subscription
@@ -76,11 +76,12 @@ az role assignment list \
 ```
 
 In the Azure portal:
-1. Go to **Azure Active Directory** > **Security** > **Conditional Access**.
+1. Go to **Microsoft Entra ID** > **Protection** > **Conditional Access**.
 2. Create a new policy.
-3. Under **Users**, select **Directory roles** and choose **Global Administrator** and other privileged roles.
-4. Under **Grant**, select **Require multi-factor authentication**.
-5. Enable the policy.
+3. Under **Users**, include the users or groups that have privileged Azure RBAC assignments such as **Owner**.
+4. Under **Target resources**, select **Microsoft Azure Management**.
+5. Under **Grant**, select **Require multi-factor authentication**.
+6. Enable the policy.
 
 ### 2. Enable Diagnostic Logging on Resources
 
@@ -102,7 +103,7 @@ Repeat this for all critical resources: Key Vaults, SQL servers, storage account
 Storage accounts with public network access are a common attack surface. Advisor recommends restricting access to specific virtual networks and IP addresses.
 
 ```bash
-# Disable public network access and configure a virtual network rule
+# Restrict public network access to selected networks and configure a virtual network rule
 az storage account update \
   --name mystorageaccount \
   --resource-group rg-data \
@@ -116,15 +117,20 @@ az storage account network-rule add \
   --subnet subnet-app
 ```
 
-### 4. Enable Azure Defender for SQL
+### 4. Enable Microsoft Defender for SQL
 
 If you have SQL databases, enabling Defender for SQL provides vulnerability assessment, threat detection, and advanced threat protection.
 
 ```bash
-# Enable Defender for SQL on a SQL server
+# Enable the Defender for SQL plan for Azure SQL servers in the subscription
+az security pricing create \
+  --name SqlServers \
+  --tier Standard
+
+# Enable Advanced Threat Protection on a SQL server
 az sql server advanced-threat-protection-setting update \
   --resource-group rg-data \
-  --server-name sql-prod \
+  --name sql-prod \
   --state Enabled
 ```
 
@@ -172,15 +178,14 @@ Instead of leaving management ports open permanently, JIT access lets you open p
 2. Click **Just-in-time VM access**.
 3. Select the VMs you want to protect.
 4. Configure the ports (RDP, SSH) and maximum allowed time.
-5. When you need access, request it through the portal or CLI.
+5. When you need access, request it through the portal or REST API.
 
 ```bash
-# Request JIT access to a VM (requires Defender for Servers plan)
-az security jit-policy initiate \
-  --resource-group rg-prod \
-  --location eastus \
-  --name "default" \
-  --virtual-machines '[{"id":"/subscriptions/<sub>/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-01","ports":[{"number":22,"duration":"PT1H","allowedSourceAddressPrefix":"203.0.113.50"}]}]'
+# Request JIT access to a VM (requires Defender for Servers Plan 2)
+az rest \
+  --method post \
+  --uri "https://management.azure.com/subscriptions/<sub>/resourceGroups/rg-prod/providers/Microsoft.Security/locations/eastus/jitNetworkAccessPolicies/default/initiate?api-version=2020-01-01" \
+  --body '{"virtualMachines":[{"id":"/subscriptions/<sub>/resourceGroups/rg-prod/providers/Microsoft.Compute/virtualMachines/vm-01","ports":[{"number":22,"duration":"PT1H","allowedSourceAddressPrefix":"203.0.113.50"}]}],"justification":"Administrative SSH access"}'
 ```
 
 ## Implementing Recommendations at Scale
@@ -192,10 +197,14 @@ For large environments, implementing recommendations one by one is impractical. 
 Assign built-in policies that enforce security configurations automatically.
 
 ```bash
-# Assign a policy to require storage account encryption
+# Assign a policy to audit storage accounts without infrastructure encryption
+policy_id=$(az policy definition list \
+  --query "[?displayName=='Storage accounts should have infrastructure encryption'].name | [0]" \
+  -o tsv)
+
 az policy assignment create \
-  --name "require-storage-encryption" \
-  --policy "7c5a74bf-ae94-4a74-8fcf-644d1e0e6e6f" \
+  --name "audit-storage-infrastructure-encryption" \
+  --policy "$policy_id" \
   --scope "/subscriptions/<sub-id>"
 ```
 
@@ -206,8 +215,8 @@ Some Azure Policy definitions support automated remediation. When a resource vio
 ```bash
 # Create a remediation task for a non-compliant policy
 az policy remediation create \
-  --name "remediate-storage-encryption" \
-  --policy-assignment "require-storage-encryption" \
+  --name "remediate-noncompliant-resources" \
+  --policy-assignment "<policy-assignment-name-or-id>" \
   --resource-group rg-data
 ```
 
@@ -231,7 +240,7 @@ Monitor your Secure Score over time to track improvement.
 
 ```bash
 # Get the current secure score
-az security secure-score list \
+az security secure-scores list \
   --query "[].{Score:score.current, Max:score.max, Percentage:score.percentage}" \
   -o table
 ```
