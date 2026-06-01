@@ -18,7 +18,7 @@ You need:
 - An Azure subscription
 - A GitHub repository with a Node.js application
 - Azure CLI installed locally (for initial setup)
-- Node.js 18 or 20 (LTS versions supported by App Service)
+- Node.js 22 or 24 (current LTS versions supported by App Service)
 
 ## Step 1: Create the Azure App Service
 
@@ -29,22 +29,22 @@ Start by creating the App Service resources:
 
 az group create --name myAppRG --location eastus
 
-# Create an App Service plan (B1 tier for production-like testing)
+# Create an App Service plan (S1 tier supports deployment slots)
 az appservice plan create \
   --resource-group myAppRG \
   --name myAppPlan \
-  --sku B1 \
+  --sku S1 \
   --is-linux
 
-# Create the web app with Node.js 20 runtime
+# Create the web app with Node.js 24 runtime
 az webapp create \
   --resource-group myAppRG \
   --plan myAppPlan \
   --name my-nodejs-app \
-  --runtime "NODE:20-lts"
+  --runtime "node:24LTS"
 ```
 
-The `--is-linux` flag creates a Linux-based App Service plan. For Node.js apps, Linux is generally the better choice - it is cheaper, starts faster, and has better Node.js support.
+The `--is-linux` flag creates a Linux-based App Service plan. For Node.js apps, Linux is generally the better choice - it is cheaper, starts faster, and has better Node.js support. The web app name must be globally unique because it becomes part of the `azurewebsites.net` hostname.
 
 ## Step 2: Configure App Service Settings
 
@@ -63,10 +63,10 @@ az webapp config appsettings set \
   --name my-nodejs-app \
   --settings \
     NODE_ENV=production \
-    PORT=8080
+    NODE_OPTIONS=--enable-source-maps
 ```
 
-App Service runs your app on port 8080 by default (exposed as port 80/443 externally), but your app should read the PORT environment variable:
+App Service sets the `PORT` environment variable in the Node.js container and forwards incoming requests to that port. Your app should read the `PORT` environment variable instead of hard-coding a port:
 
 ```javascript
 // server.js - Express app configured for App Service
@@ -112,9 +112,9 @@ Then in your GitHub repository:
 3. Name it `AZURE_WEBAPP_PUBLISH_PROFILE`
 4. Paste the contents of publish-profile.xml as the value
 
-### Option B: Service Principal (More Secure, Recommended)
+### Option B: Service Principal (Scoped Alternative)
 
-Create a service principal with limited permissions:
+A service principal scoped to the resource group avoids using a publish profile, but this secret-based approach still requires storing a client secret in GitHub. For production, prefer Azure Login with OpenID Connect (OIDC) and a federated credential. If you use a service principal secret, create it with limited permissions:
 
 ```bash
 # Create a service principal with Contributor access to the resource group
@@ -143,7 +143,7 @@ on:
 
 env:
   AZURE_WEBAPP_NAME: my-nodejs-app
-  NODE_VERSION: '20.x'
+  NODE_VERSION: '24.x'
 
 jobs:
   build-and-test:
@@ -206,7 +206,7 @@ jobs:
 
       # Install production dependencies
       - name: Install production dependencies
-        run: npm ci --production
+        run: npm ci --omit=dev
 
       # Log in to Azure
       - name: Azure Login
@@ -243,9 +243,9 @@ Let me walk through the key decisions in this workflow:
 
 **npm ci vs npm install**: `npm ci` is used instead of `npm install`. It is faster, stricter (installs exactly what is in package-lock.json), and appropriate for CI/CD environments.
 
-**Artifact upload/download**: The build artifact is passed between jobs using GitHub's artifact system. This ensures the deploy job uses exactly what was tested.
+**Artifact upload/download**: The build artifact is passed between jobs using GitHub's artifact system. This ensures the deploy job uses the same source and build output that was tested.
 
-**Production dependencies only**: The deploy step installs only production dependencies (`npm ci --production`) to reduce the deployment package size. Dev dependencies (test frameworks, linters) are not needed in production.
+**Production dependencies only**: The deploy step installs only production dependencies (`npm ci --omit=dev`) to reduce the deployment package size. Dev dependencies (test frameworks, linters) are not needed in production.
 
 **Health check**: After deployment, the workflow verifies the application is responding. If the health check fails, the workflow fails, making the deployment failure visible.
 
@@ -281,7 +281,14 @@ For applications that need environment-specific configuration, use App Service a
 
 ## Adding Staging Deployments
 
-For production applications, deploy to a staging slot first, verify, then swap:
+For production applications, deploy to a staging slot first, verify, then swap. Deployment slots require a Standard, Premium, or Isolated App Service plan. Create the slot before using the workflow:
+
+```bash
+az webapp deployment slot create \
+  --resource-group myAppRG \
+  --name my-nodejs-app \
+  --slot staging
+```
 
 ```yaml
   deploy-staging:
@@ -296,7 +303,7 @@ For production applications, deploy to a staging slot first, verify, then swap:
           name: node-app
 
       - name: Install production dependencies
-        run: npm ci --production
+        run: npm ci --omit=dev
 
       - name: Azure Login
         uses: azure/login@v2
