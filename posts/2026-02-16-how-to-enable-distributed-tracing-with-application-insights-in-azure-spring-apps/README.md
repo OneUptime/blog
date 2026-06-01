@@ -31,7 +31,7 @@ In the diagram above, the database query taking 85ms out of the payment service'
 
 ## Prerequisites
 
-- Azure Spring Apps instance (any tier)
+- Azure Spring Apps instance (Basic/Standard or Enterprise; existing plans are in retirement but supported until March 31, 2028)
 - One or more Spring Boot applications deployed
 - An Azure Application Insights resource (or you can let Spring Apps create one)
 - Azure CLI with the spring extension
@@ -68,22 +68,19 @@ Azure Spring Apps has built-in Application Insights integration. You can enable 
 
 ```bash
 # Enable Application Insights for the entire Spring Apps service
-az spring apm update \
-    --name default \
-    --type ApplicationInsights \
-    --service myorg-spring-apps \
+az spring app-insights update \
+    --name myorg-spring-apps \
     --resource-group $RESOURCE_GROUP \
-    --properties \
-        connection-string="$CONNECTION_STRING" \
-        sampling-percentage=100
+    --app-insights-key "$CONNECTION_STRING" \
+    --sampling-rate 100
 ```
 
 The sampling percentage controls how many requests are traced. In production, you probably want to set this to 10 or 25 percent to reduce costs and overhead. For initial setup and debugging, 100 percent lets you see every request.
 
-Alternatively, you can enable it per app:
+Alternatively, if you are attaching or packaging the Application Insights Java agent yourself for a single app, set the connection string on that app:
 
 ```bash
-# Enable Application Insights for a specific app
+# Set the connection string for a specific app
 az spring app update \
     --name order-service \
     --service myorg-spring-apps \
@@ -93,23 +90,23 @@ az spring app update \
 
 ## Step 3: Configure the Spring Boot Application
 
-Azure Spring Apps injects the Application Insights Java agent automatically when you enable it at the service level. However, for fine-grained control over what gets traced, add the Application Insights SDK to your project:
+Azure Spring Apps injects the Application Insights Java agent automatically when you enable it at the service level. However, for fine-grained control over what gets traced, add the OpenTelemetry API and annotations to your project:
 
 ```xml
 <!-- pom.xml - Application Insights dependencies -->
 <dependencies>
-    <!-- Application Insights Spring Boot starter -->
+    <!-- OpenTelemetry annotations for custom spans -->
     <dependency>
-        <groupId>com.microsoft.azure</groupId>
-        <artifactId>applicationinsights-spring-boot-starter</artifactId>
-        <version>2.6.4</version>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-instrumentation-annotations</artifactId>
+        <version>1.32.0</version>
     </dependency>
 
-    <!-- For custom telemetry and tracing -->
+    <!-- OpenTelemetry API for span attributes and manual spans -->
     <dependency>
-        <groupId>com.microsoft.azure</groupId>
-        <artifactId>applicationinsights-core</artifactId>
-        <version>3.4.19</version>
+        <groupId>io.opentelemetry</groupId>
+        <artifactId>opentelemetry-api</artifactId>
+        <version>1.0.0</version>
     </dependency>
 
     <!-- Micrometer integration for metrics -->
@@ -120,26 +117,28 @@ Azure Spring Apps injects the Application Insights Java agent automatically when
 </dependencies>
 ```
 
-Configure Application Insights in application.yml:
+Configure Application Insights Java agent options in applicationinsights.json:
+
+```json
+{
+    "instrumentation": {
+        "logging": {
+            "level": "INFO"
+        }
+    }
+}
+```
+
+Configure the Spring Boot logging pattern to include trace context:
 
 ```yaml
-# application.yml - Application Insights configuration
-azure:
-  application-insights:
-    enabled: true
-    web:
-      enabled: true
-    # Log correlation - adds trace IDs to log entries
-    logger:
-      level: INFO
-
 # Configure the logging pattern to include trace context
 logging:
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [%X{ai-operation-id}] %-5level %logger{36} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] [trace_id=%X{trace_id} span_id=%X{span_id}] %-5level %logger{36} - %msg%n"
 ```
 
-The `%X{ai-operation-id}` in the logging pattern adds the Application Insights operation ID (trace ID) to every log line. This is incredibly useful when you are looking at logs and want to jump to the trace view.
+The `%X{trace_id}` and `%X{span_id}` values in the logging pattern add the active OpenTelemetry trace and span IDs to every log line. This is incredibly useful when you are looking at logs and want to jump to the trace view.
 
 ## Step 4: Add Custom Spans for Business Operations
 
@@ -147,39 +146,30 @@ The automatic instrumentation captures HTTP calls, database queries, and Redis o
 
 ```java
 // OrderProcessingService.java - Custom tracing for business operations
-import com.microsoft.applicationinsights.TelemetryClient;
-import com.microsoft.applicationinsights.telemetry.RequestTelemetry;
+import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.instrumentation.annotations.WithSpan;
+import org.springframework.stereotype.Service;
 
 @Service
 public class OrderProcessingService {
 
-    private final TelemetryClient telemetryClient;
     private final PaymentClient paymentClient;
     private final InventoryClient inventoryClient;
 
-    public OrderProcessingService(TelemetryClient telemetryClient,
-                                   PaymentClient paymentClient,
+    public OrderProcessingService(PaymentClient paymentClient,
                                    InventoryClient inventoryClient) {
-        this.telemetryClient = telemetryClient;
         this.paymentClient = paymentClient;
         this.inventoryClient = inventoryClient;
     }
 
+    @WithSpan("OrderProcessing")
     public OrderResult processOrder(OrderRequest request) {
-        // Track a custom dependency for the validation step
-        long startTime = System.currentTimeMillis();
-
         try {
             // Validate the order
             validateOrder(request);
 
-            // Track the validation as a custom dependency
-            telemetryClient.trackDependency(
-                "OrderValidation",        // dependency type
-                "validateOrder",           // command name
-                System.currentTimeMillis() - startTime, // duration in ms
-                true                       // success
-            );
+            Span.current().setAttribute("order.value", request.getTotalAmount().doubleValue());
+            Span.current().setAttribute("order.item_count", request.getItems().size());
 
             // Process payment (HTTP call - automatically traced)
             PaymentResult payment = paymentClient.processPayment(request.getPaymentDetails());
@@ -187,19 +177,17 @@ public class OrderProcessingService {
             // Update inventory (HTTP call - automatically traced)
             inventoryClient.reserveItems(request.getItems());
 
-            // Track a custom event for business analytics
-            Map<String, String> properties = new HashMap<>();
-            properties.put("orderValue", request.getTotalAmount().toString());
-            properties.put("itemCount", String.valueOf(request.getItems().size()));
-            telemetryClient.trackEvent("OrderProcessed", properties, null);
-
             return new OrderResult(true, payment.getTransactionId());
 
         } catch (Exception e) {
-            // Track the failure
-            telemetryClient.trackException(e);
+            Span.current().recordException(e);
             throw e;
         }
+    }
+
+    @WithSpan("OrderValidation")
+    private void validateOrder(OrderRequest request) {
+        // Validation logic here
     }
 }
 ```
@@ -262,12 +250,18 @@ The real power of distributed tracing shows when you have multiple Spring Boot s
 
 For this to work seamlessly across all your Spring Apps:
 
-1. Enable Application Insights on the Spring Apps service level (not per-app), so all apps use the same instrumentation key
+1. Enable Application Insights on the Spring Apps service level (not per-app), so all apps use the same connection string
 2. Use Spring's RestTemplate or WebClient for inter-service calls (both support automatic trace context propagation)
 3. If you use messaging (like Azure Service Bus or Kafka), make sure the Application Insights agent version supports message correlation
 
 ```java
 // WebClientConfig.java - WebClient with automatic trace propagation
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.reactive.function.client.WebClient;
+
 @Configuration
 public class WebClientConfig {
 
@@ -285,40 +279,35 @@ public class WebClientConfig {
 
 Tracing every request in production generates a lot of data and costs money. Here are practical sampling strategies:
 
-- **Fixed-rate sampling**: Set sampling-percentage to 10-25% for steady-state production. This gives you a representative sample without excessive cost.
-- **Adaptive sampling**: Application Insights can automatically adjust the sampling rate based on volume. Enable this for bursty workloads.
+- **Fixed-rate sampling**: Set `--sampling-rate` on Azure Spring Apps or `sampling.percentage` in the Java agent configuration to 10-25% for steady-state production. This gives you a representative sample without excessive cost.
+- **Rate-limited sampling**: Application Insights can limit telemetry to a target number of requests per second. Enable this for bursty workloads.
 - **Per-operation sampling**: Keep 100% sampling for critical operations (like payments) while sampling less for health checks and static content.
 
-Configure adaptive sampling in applicationinsights.json:
+Configure rate-limited sampling and sampling overrides in applicationinsights.json:
 
 ```json
 {
     "sampling": {
-        "percentage": 25,
-        "requestsPerSecond": 5
-    },
-    "preview": {
-        "sampling": {
-            "overrides": [
-                {
-                    "telemetryType": "request",
-                    "attributes": [
-                        {
-                            "key": "http.url",
-                            "value": ".*actuator/health.*",
-                            "matchType": "regexp"
-                        }
-                    ],
-                    "percentage": 0
-                }
-            ]
-        }
+        "requestsPerSecond": 5,
+        "overrides": [
+            {
+                "telemetryType": "request",
+                "attributes": [
+                    {
+                        "key": "url.path",
+                        "value": "/actuator/health",
+                        "matchType": "strict"
+                    }
+                ],
+                "percentage": 0
+            }
+        ]
     }
 }
 ```
 
-This configuration samples 25% of general traffic but drops all health check requests (which are noisy and uninteresting for tracing purposes).
+This configuration limits general request telemetry to about 5 requests per second but drops health check requests (which are noisy and uninteresting for tracing purposes).
 
 ## Summary
 
-Distributed tracing with Application Insights in Azure Spring Apps gives you visibility into how requests flow through your microservices. The setup is minimal - enable Application Insights at the service level, add the SDK for custom spans, and let the automatic instrumentation handle HTTP calls and database queries. Use the Application Map for a high-level view, Transaction Search for drilling into specific traces, and Kusto queries for advanced analysis. In production, tune your sampling rate to balance visibility with cost.
+Distributed tracing with Application Insights in Azure Spring Apps gives you visibility into how requests flow through your microservices. The setup is minimal - enable Application Insights at the service level, add the OpenTelemetry API for custom spans, and let the automatic instrumentation handle HTTP calls and database queries. Use the Application Map for a high-level view, Transaction Search for drilling into specific traces, and Kusto queries for advanced analysis. In production, tune your sampling rate to balance visibility with cost.
