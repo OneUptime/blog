@@ -55,7 +55,7 @@ az postgres flexible-server replica create \
   --zone 2
 ```
 
-The replica inherits the primary's compute tier, SKU, and storage configuration. You can specify a different availability zone.
+The replica inherits the primary's compute tier, SKU, and storage configuration by default, although some compute, storage, and performance settings can be changed during or after creation within Azure's read replica constraints. You can specify a different availability zone.
 
 For a cross-region replica:
 
@@ -76,7 +76,7 @@ az postgres flexible-server replica create \
 4. Enter a name, choose the region and availability zone.
 5. Click "Create."
 
-Replica creation takes a few minutes. Azure takes a base backup of the primary, restores it on the new server, and starts WAL streaming.
+Replica creation takes a few minutes. Azure creates a new server, fills it with data from the primary, and starts WAL streaming. Same-region replicas use a snapshot approach, while geo-replicas use a base backup transmitted over the network.
 
 ## Monitoring Replication
 
@@ -127,7 +127,7 @@ az monitor metrics alert create \
   --name pg-replica-lag-alert \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.DBforPostgreSQL/flexibleServers/my-pg-replica-1" \
-  --condition "avg Physical Replication Delay In Seconds > 60" \
+  --condition "avg physical_replication_delay_in_seconds > 60" \
   --description "Replica lag exceeded 60 seconds" \
   --action-group myActionGroup
 ```
@@ -175,8 +175,7 @@ def get_write_connection():
 SQLAlchemy supports multiple engine binds:
 
 ```python
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, text
 
 # Primary engine for writes
 primary_engine = create_engine(
@@ -195,13 +194,13 @@ replica_engine = create_engine(
 def read_query(query, params=None):
     """Execute a read query against the replica."""
     with replica_engine.connect() as conn:
-        result = conn.execute(query, params)
+        result = conn.execute(text(query), params or {})
         return result.fetchall()
 
 def write_query(query, params=None):
     """Execute a write query against the primary."""
     with primary_engine.begin() as conn:
-        conn.execute(query, params)
+        conn.execute(text(query), params or {})
 ```
 
 ### Handling Replication Lag in Application Logic
@@ -232,18 +231,18 @@ def get_user(user_id, require_current=False):
 
 ## Scaling Replicas Independently
 
-Each replica is an independent server. You can scale it to a different compute tier than the primary:
+Each replica is an independent server, but it must stay within Azure's read replica sizing constraints. For compute scaling, scale replicas up before scaling the primary up, and scale the primary down before scaling replicas down. The primary's compute and storage must be equal to or smaller than the smallest replica.
 
 ```bash
-# Scale a replica down if it handles lighter workloads
+# Scale a replica up before increasing the primary
 az postgres flexible-server update \
   --resource-group myResourceGroup \
   --name my-pg-replica-1 \
-  --sku-name Standard_D2ds_v4 \
+  --sku-name Standard_D4ds_v4 \
   --tier GeneralPurpose
 ```
 
-This is useful for replicas that handle lighter workloads like periodic reporting queries.
+This is useful when you need a replica to keep up with heavier read or replication workloads.
 
 ## Promoting a Replica
 
@@ -251,9 +250,11 @@ To promote a replica to an independent read-write server:
 
 ```bash
 # Promote the replica to a standalone server
-az postgres flexible-server replica stop-replication \
+az postgres flexible-server replica promote \
   --resource-group myResourceGroup \
-  --name my-pg-replica-1
+  --name my-pg-replica-1 \
+  --promote-mode standalone \
+  --promote-option planned
 ```
 
 After promotion:
@@ -295,10 +296,10 @@ Cross-region replication has higher latency than same-region, so expect more lag
 ## Limitations
 
 - Read replicas do not support high availability (HA). Only the primary can have zone-redundant HA.
-- Maximum of 5 replicas per primary.
-- Cascading replication (replica of a replica) is not supported.
+- Maximum of 5 direct replicas per primary.
+- Cascading read replicas are supported in supported regions for PostgreSQL 14 and later, with up to two levels of replication and up to five replicas per source read replica.
 - Replicas are read-only - no writes, no DDL.
-- If the primary is deleted, replicas are promoted to standalone servers.
+- If you need to delete a primary server that has read replicas, delete the read replicas first.
 - Some server parameter changes on the primary do not automatically propagate to replicas.
 
 ## Performance Considerations
