@@ -22,7 +22,7 @@ There are several reasons to connect Container Apps to a VNet:
 
 ## Step 1: Create a Virtual Network with Subnets
 
-Azure Container Apps requires a dedicated subnet with a minimum of /23 CIDR range (512 addresses). The subnet cannot be shared with other resources.
+Azure Container Apps requires a dedicated subnet. For the default workload profiles environment, the minimum subnet size is /27, but using a larger subnet such as /23 gives you room to scale. The subnet cannot be shared with other resources.
 
 ```bash
 # Create a VNet with a large enough address space
@@ -34,19 +34,26 @@ az network vnet create \
   --address-prefix 10.0.0.0/16
 
 # Create a dedicated subnet for Container Apps
-# Must be at least /23 (512 addresses)
+# Use /23 here to leave room for scale
 az network vnet subnet create \
   --name container-apps-subnet \
   --resource-group my-rg \
   --vnet-name my-vnet \
-  --address-prefix 10.0.0.0/23
+  --address-prefixes 10.0.0.0/23
+
+# Delegate the subnet for the default workload profiles environment
+az network vnet subnet update \
+  --name container-apps-subnet \
+  --resource-group my-rg \
+  --vnet-name my-vnet \
+  --delegations Microsoft.App/environments
 
 # Create another subnet for private endpoints (databases, storage, etc.)
 az network vnet subnet create \
   --name private-endpoints-subnet \
   --resource-group my-rg \
   --vnet-name my-vnet \
-  --address-prefix 10.0.2.0/24
+  --address-prefixes 10.0.2.0/24
 ```
 
 ## Step 2: Get the Subnet Resource ID
@@ -105,7 +112,40 @@ az containerapp create \
   --environment my-secure-env \
   --image myregistry.azurecr.io/internal-api:v1 \
   --target-port 3000 \
-  --ingress internal
+  --ingress external
+```
+
+Because the environment is internal-only, external ingress is scoped to the VNet instead of the public internet. Use `--ingress internal` only when the app should be reachable from other apps in the same Container Apps environment.
+
+To resolve the app FQDN from the VNet, create a private DNS zone for the environment's default domain and point it to the environment's static IP address.
+
+```bash
+ENVIRONMENT_DEFAULT_DOMAIN=$(az containerapp env show \
+  --name my-secure-env \
+  --resource-group my-rg \
+  --query properties.defaultDomain -o tsv)
+
+ENVIRONMENT_STATIC_IP=$(az containerapp env show \
+  --name my-secure-env \
+  --resource-group my-rg \
+  --query properties.staticIp -o tsv)
+
+az network private-dns zone create \
+  --resource-group my-rg \
+  --name $ENVIRONMENT_DEFAULT_DOMAIN
+
+az network private-dns link vnet create \
+  --resource-group my-rg \
+  --zone-name $ENVIRONMENT_DEFAULT_DOMAIN \
+  --name container-apps-dns-link \
+  --virtual-network my-vnet \
+  --registration-enabled false
+
+az network private-dns record-set a add-record \
+  --resource-group my-rg \
+  --zone-name $ENVIRONMENT_DEFAULT_DOMAIN \
+  --record-set-name "*" \
+  --ipv4-address $ENVIRONMENT_STATIC_IP
 ```
 
 This app is now only accessible from within the VNet. The FQDN will resolve to a private IP address.
@@ -122,7 +162,7 @@ az network private-endpoint create \
   --vnet-name my-vnet \
   --subnet private-endpoints-subnet \
   --private-connection-resource-id "/subscriptions/{sub-id}/resourceGroups/my-rg/providers/Microsoft.Sql/servers/my-sql-server" \
-  --group-id sqlServer \
+  --group-ids sqlServer \
   --connection-name sql-pe-connection
 
 # Create a private DNS zone for SQL
@@ -131,7 +171,7 @@ az network private-dns zone create \
   --name privatelink.database.windows.net
 
 # Link the DNS zone to the VNet
-az network private-dns zone virtual-network-link create \
+az network private-dns link vnet create \
   --resource-group my-rg \
   --zone-name privatelink.database.windows.net \
   --name sql-dns-link \
@@ -144,7 +184,7 @@ az network private-endpoint dns-zone-group create \
   --endpoint-name sql-private-endpoint \
   --name sql-dns-group \
   --private-dns-zone privatelink.database.windows.net \
-  --zone-name privatelink.database.windows.net
+  --zone-name sql
 ```
 
 Now your container app can connect to `my-sql-server.database.windows.net` and the DNS will resolve to the private IP of the SQL server.
@@ -243,7 +283,7 @@ az network vnet peering create \
 
 **Container cannot reach private endpoint:** Verify that DNS is resolving correctly. From within the container, the database FQDN should resolve to the private IP, not the public one. Check that the private DNS zone is linked to the VNet.
 
-**Environment creation fails:** Make sure the subnet has at least /23 address space and is not used by other resources. The subnet must be delegated to `Microsoft.App/environments`.
+**Environment creation fails:** Make sure the subnet has enough address space and is not used by other resources. For the default workload profiles environment, the subnet must be delegated to `Microsoft.App/environments`.
 
 **Apps cannot reach the internet:** If you have an NSG on the subnet, make sure outbound rules allow traffic to the internet. Azure Container Apps need outbound access for pulling images and platform management.
 
