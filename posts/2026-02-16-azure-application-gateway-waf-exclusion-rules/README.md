@@ -14,9 +14,9 @@ In this post, I will walk through configuring WAF exclusion rules on Azure Appli
 
 ## Understanding WAF Rules and False Positives
 
-Azure Application Gateway WAF uses the OWASP Core Rule Set (CRS). The current default versions are CRS 3.2 and CRS 3.1. These rule sets contain hundreds of rules organized into groups like SQL injection, cross-site scripting (XSS), local file inclusion, and more.
+Azure Application Gateway WAF managed rules are based on the OWASP Core Rule Set (CRS). The current recommended managed rule set is Default Rule Set (DRS) 2.2, which is based on OWASP CRS 3.3.4. Existing deployments might still use legacy OWASP CRS versions such as CRS 3.2 and CRS 3.1. These rule sets contain hundreds of rules organized into groups like SQL injection, cross-site scripting (XSS), local file inclusion, and more.
 
-Each rule inspects specific parts of the HTTP request - headers, cookies, URL parameters, and the request body. When a rule matches, it either blocks the request (Prevention mode) or logs it (Detection mode).
+Each rule inspects specific parts of the HTTP request - headers, cookies, URL parameters, and the request body. When a managed rule matches, WAF logs the match; in Prevention mode, blocking depends on the rule action and anomaly scoring.
 
 False positives happen when legitimate requests match a rule pattern. Common triggers include:
 
@@ -72,7 +72,7 @@ Once you have identified false positives, create exclusion rules that are as nar
 The most common approach is to exclude a specific request attribute from WAF inspection.
 
 ```bash
-# Exclude a specific request body field from WAF rule 942130 (SQL injection detection)
+# Exclude specific request argument values from WAF inspection
 # This is useful when a form field legitimately contains SQL-like content
 az network application-gateway waf-config set \
   --resource-group rg-appgw \
@@ -81,15 +81,15 @@ az network application-gateway waf-config set \
   --firewall-mode Prevention \
   --rule-set-type OWASP \
   --rule-set-version 3.2 \
-  --exclusion "RequestBodyPostArgNames Equals content" \
-  --exclusion "RequestBodyPostArgNames Equals description"
+  --exclusion "RequestArgNames Equals content" \
+  --exclusion "RequestArgNames Equals description"
 ```
 
 This tells the WAF to skip inspection of the `content` and `description` POST parameters. All other parameters are still fully inspected.
 
-### Method 2: Use WAF Policy with Per-Rule Exclusions
+### Method 2: Use WAF Policy with Global Exclusions
 
-WAF policies give you more granular control. You can create exclusions that apply only to specific rules.
+WAF policies are the current place to configure managed rules, exclusions, and other WAF settings. You can create exclusions that apply globally across the managed rules.
 
 ```bash
 # Create a WAF policy
@@ -104,11 +104,11 @@ az network application-gateway waf-policy managed-rule rule-set add \
   --type OWASP \
   --version 3.2
 
-# Create an exclusion that applies only to rule 942130 (SQL injection)
+# Create a global exclusion for the query_text request argument
 az network application-gateway waf-policy managed-rule exclusion add \
   --resource-group rg-appgw \
   --policy-name waf-policy-main \
-  --match-variable RequestBodyPostArgNames \
+  --match-variable RequestArgNames \
   --selector-match-operator Equals \
   --selector "query_text"
 ```
@@ -122,8 +122,8 @@ For even more precise control, you can target exclusions to specific rule groups
 az network application-gateway waf-policy managed-rule exclusion rule-set add \
   --resource-group rg-appgw \
   --policy-name waf-policy-main \
-  --match-variable RequestBodyPostArgNames \
-  --selector-match-operator Equals \
+  --match-variable RequestArgNames \
+  --match-operator Equals \
   --selector "query_text" \
   --type OWASP \
   --version 3.2 \
@@ -139,13 +139,15 @@ You can create exclusions on different parts of the request. Here are the availa
 
 | Match Variable | Description |
 |---|---|
-| RequestHeaderNames | HTTP request header names |
+| RequestHeaderKeys | HTTP request header keys |
+| RequestHeaderNames | HTTP request header names, supported for backward compatibility |
 | RequestHeaderValues | HTTP request header values |
-| RequestCookieNames | Cookie names |
+| RequestCookieKeys | Cookie keys |
+| RequestCookieNames | Cookie names, supported for backward compatibility |
 | RequestCookieValues | Cookie values |
-| RequestArgNames | Query string parameter names |
-| RequestBodyPostArgNames | POST body parameter names |
-| RequestBodyJsonArgNames | JSON body property names |
+| RequestArgKeys | Request argument keys |
+| RequestArgNames | Request argument names, including URL query string arguments, form field names, and JSON entity names |
+| RequestArgValues | Request argument values |
 
 ## Selector Match Operators
 
@@ -164,7 +166,7 @@ For example, to exclude all JSON properties starting with "meta_":
 az network application-gateway waf-policy managed-rule exclusion add \
   --resource-group rg-appgw \
   --policy-name waf-policy-main \
-  --match-variable RequestBodyJsonArgNames \
+  --match-variable RequestArgNames \
   --selector-match-operator StartsWith \
   --selector "meta_"
 ```
@@ -175,24 +177,22 @@ Sometimes an exclusion is not enough, and you need to disable a rule entirely. T
 
 ```bash
 # Disable specific rules that consistently generate false positives
-az network application-gateway waf-policy managed-rule override add \
+az network application-gateway waf-policy managed-rule rule-set update \
   --resource-group rg-appgw \
   --policy-name waf-policy-main \
   --type OWASP \
   --version 3.2 \
-  --rule-group-id REQUEST-920-PROTOCOL-ENFORCEMENT \
-  --rule-id 920230 \
-  --state Disabled
+  --group-name REQUEST-920-PROTOCOL-ENFORCEMENT \
+  --rule rule-id=920230 state=Disabled
 
 # Disable another problematic rule
-az network application-gateway waf-policy managed-rule override add \
+az network application-gateway waf-policy managed-rule rule-set update \
   --resource-group rg-appgw \
   --policy-name waf-policy-main \
   --type OWASP \
   --version 3.2 \
-  --rule-group-id REQUEST-942-APPLICATION-ATTACK-SQLI \
-  --rule-id 942430 \
-  --state Disabled
+  --group-name REQUEST-942-APPLICATION-ATTACK-SQLI \
+  --rule rule-id=942430 state=Disabled
 ```
 
 ## Applying the WAF Policy to the Application Gateway
