@@ -29,26 +29,23 @@ Some commonly used built-in skills include:
 
 Before we begin, you need the following resources provisioned in Azure:
 
-1. An Azure AI Search service (Basic tier or higher for skillsets)
+1. An Azure AI Search service (Free tier for limited testing, or Basic tier or higher for production workloads)
 2. An Azure AI services multi-service resource (for built-in cognitive skills)
 3. A data source (Azure Blob Storage, Azure SQL Database, Cosmos DB, etc.)
 4. Documents to index (PDFs, Word docs, images, or any supported format)
 
 ## Step 1: Create a Data Source
 
-First, you need to tell Azure AI Search where your raw data lives. Here is an example using the REST API to register an Azure Blob Storage container as a data source.
+First, you need to tell Azure AI Search where your raw data lives. Here is an example using the REST API to register an Azure Blob Storage container as a data source. Send this body with `POST https://<search-service>.search.windows.net/datasources?api-version=2024-07-01`.
 
 ```json
-// POST to https://<search-service>.search.windows.net/datasources?api-version=2024-07-01
 {
   "name": "my-blob-datasource",
   "type": "azureblob",
   "credentials": {
-    // Connection string for your storage account
     "connectionString": "DefaultEndpointsProtocol=https;AccountName=mystorageaccount;AccountKey=<key>;EndpointSuffix=core.windows.net"
   },
   "container": {
-    // The blob container holding your documents
     "name": "documents",
     "query": null
   }
@@ -61,21 +58,18 @@ You can also create the data source through the Azure portal or the .NET SDK. Th
 
 This is where the AI enrichment magic happens. A skillset definition includes the list of skills, their inputs, outputs, and optionally a reference to your Azure AI services resource for billing.
 
-Here is a skillset that performs key phrase extraction, language detection, and entity recognition.
+Here is a skillset that performs key phrase extraction, language detection, and entity recognition. Send this body with `POST https://<search-service>.search.windows.net/skillsets?api-version=2024-07-01`.
 
 ```json
-// POST to https://<search-service>.search.windows.net/skillsets?api-version=2024-07-01
 {
   "name": "my-enrichment-skillset",
   "description": "Skillset for extracting key phrases, language, and entities",
-  // Link to Azure AI services for billing built-in skills
   "cognitiveServices": {
     "@odata.type": "#Microsoft.Azure.Search.CognitiveServicesByKey",
     "key": "<your-ai-services-key>"
   },
   "skills": [
     {
-      // Detect the language of each document
       "@odata.type": "#Microsoft.Skills.Text.LanguageDetectionSkill",
       "name": "language-detection",
       "context": "/document",
@@ -87,7 +81,6 @@ Here is a skillset that performs key phrase extraction, language detection, and 
       ]
     },
     {
-      // Extract key phrases from the document content
       "@odata.type": "#Microsoft.Skills.Text.KeyPhraseExtractionSkill",
       "name": "keyphrases",
       "context": "/document",
@@ -100,7 +93,6 @@ Here is a skillset that performs key phrase extraction, language detection, and 
       ]
     },
     {
-      // Recognize entities like people, organizations, and locations
       "@odata.type": "#Microsoft.Skills.Text.V3.EntityRecognitionSkill",
       "name": "entity-recognition",
       "context": "/document",
@@ -123,17 +115,15 @@ Notice how the language detection skill runs first and its output feeds into the
 
 ## Step 3: Create the Search Index
 
-Your index needs fields to store both the original data and the enriched outputs. Here is an index definition that includes fields for key phrases, language, and entities.
+Your index needs fields to store both the original data and the enriched outputs. Here is an index definition that includes fields for key phrases, language, and entities. Send this body with `POST https://<search-service>.search.windows.net/indexes?api-version=2024-07-01`.
 
 ```json
-// POST to https://<search-service>.search.windows.net/indexes?api-version=2024-07-01
 {
   "name": "my-enriched-index",
   "fields": [
     { "name": "id", "type": "Edm.String", "key": true, "filterable": true },
     { "name": "content", "type": "Edm.String", "searchable": true },
     { "name": "metadata_storage_path", "type": "Edm.String", "filterable": true },
-    // Enriched fields from skillset
     { "name": "languageCode", "type": "Edm.String", "filterable": true, "facetable": true },
     { "name": "keyPhrases", "type": "Collection(Edm.String)", "searchable": true, "filterable": true },
     { "name": "people", "type": "Collection(Edm.String)", "searchable": true, "filterable": true },
@@ -145,21 +135,18 @@ Your index needs fields to store both the original data and the enriched outputs
 
 ## Step 4: Create the Indexer
 
-Now we tie everything together. The indexer connects the data source to the index and references the skillset. It also includes field mappings and output field mappings to route enriched data to the right index fields.
+Now we tie everything together. The indexer connects the data source to the index and references the skillset. It also includes field mappings and output field mappings to route enriched data to the right index fields. Send this body with `POST https://<search-service>.search.windows.net/indexers?api-version=2024-07-01`.
 
 ```json
-// POST to https://<search-service>.search.windows.net/indexers?api-version=2024-07-01
 {
   "name": "my-enriched-indexer",
   "dataSourceName": "my-blob-datasource",
   "targetIndexName": "my-enriched-index",
   "skillsetName": "my-enrichment-skillset",
-  // Map fields from the data source to the index
   "fieldMappings": [
     {
       "sourceFieldName": "metadata_storage_path",
-      "targetFieldName": "metadata_storage_path",
-      "mappingFunction": { "name": "base64Encode" }
+      "targetFieldName": "metadata_storage_path"
     },
     {
       "sourceFieldName": "metadata_storage_path",
@@ -167,7 +154,6 @@ Now we tie everything together. The indexer connects the data source to the inde
       "mappingFunction": { "name": "base64Encode" }
     }
   ],
-  // Map enrichment outputs to index fields
   "outputFieldMappings": [
     { "sourceFieldName": "/document/languageCode", "targetFieldName": "languageCode" },
     { "sourceFieldName": "/document/keyPhrases", "targetFieldName": "keyPhrases" },
@@ -177,7 +163,6 @@ Now we tie everything together. The indexer connects the data source to the inde
   ],
   "parameters": {
     "configuration": {
-      // Enable cracking of PDFs, Office docs, etc.
       "dataToExtract": "contentAndMetadata",
       "imageAction": "generateNormalizedImages"
     }
@@ -198,7 +183,7 @@ GET https://<search-service>.search.windows.net/indexers/my-enriched-indexer/sta
 The response will show you the execution history, including any warnings or errors. Common issues include:
 
 - **Skill timeout** - large documents can exceed the processing time limit
-- **Truncated content** - documents exceeding 64,000 characters get truncated by default
+- **Truncated content** - extracted text is truncated when it exceeds the character limit for your pricing tier, such as 64,000 characters on the Basic tier
 - **Missing AI services key** - built-in skills require a valid Azure AI services resource
 
 ## Adding Custom Skills
