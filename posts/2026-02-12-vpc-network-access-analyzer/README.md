@@ -10,11 +10,11 @@ Description: Learn how to use VPC Network Access Analyzer to verify network acce
 
 Security groups, NACLs, route tables, VPC peering, transit gateways - there are so many layers controlling network access in AWS that it's genuinely hard to answer a simple question: "Can this resource reach that resource?" Even experienced engineers get tripped up by the interaction between all these layers.
 
-VPC Network Access Analyzer answers that question definitively. It analyzes your network configuration and identifies all possible access paths between resources. You define what access should and shouldn't exist, and Network Access Analyzer tells you where reality doesn't match your intent.
+VPC Network Access Analyzer helps answer that question. It analyzes your network configuration and identifies representative access paths between resources that match the scopes you define. You define what access should and shouldn't exist, and Network Access Analyzer tells you where reality doesn't match your intent.
 
 ## What Network Access Analyzer Does
 
-Network Access Analyzer doesn't send traffic or scan ports. It's a static analysis tool that examines your configuration - security groups, NACLs, route tables, VPC peering connections, transit gateway routes, and more - to determine all possible network paths. Think of it as a reasoning engine for your network configuration.
+Network Access Analyzer doesn't send traffic or scan ports. It's a static analysis tool that examines your configuration - security groups, NACLs, route tables, VPC peering connections, transit gateway routes, and more - to determine network paths that match your Network Access Scope. Think of it as a reasoning engine for your network configuration.
 
 Two main use cases:
 
@@ -25,10 +25,10 @@ Two main use cases:
 
 A Network Access Scope defines what you want to analyze. It has match conditions for source and destination, and you can include or exclude specific paths.
 
-Create a scope to find internet access to databases:
+Create a scope to find internet access to database ports in a VPC:
 
 ```bash
-# Create a scope that finds paths from the internet to any RDS instance
+# Create a scope that finds paths from the internet to database ports in your production VPC
 
 aws ec2 create-network-insights-access-scope \
   --match-paths '[
@@ -40,18 +40,16 @@ aws ec2 create-network-insights-access-scope \
       },
       "Destination": {
         "ResourceStatement": {
-          "ResourceTypes": ["AWS::RDS::DBInstance"]
+          "Resources": ["vpc-0abc1234def567890"]
         },
-        "PacketHeader": {
-          "DestinationPorts": [
-            {"From": 3306, "To": 3306},
-            {"From": 5432, "To": 5432}
-          ]
+        "PacketHeaderStatement": {
+          "DestinationPorts": ["3306", "5432"],
+          "Protocols": ["tcp"]
         }
       }
     }
   ]' \
-  --tags Key=Purpose,Value=DatabaseInternetAccess
+  --tag-specifications 'ResourceType=network-insights-access-scope,Tags=[{Key=Purpose,Value=DatabaseInternetAccess}]'
 ```
 
 Create a scope to detect cross-VPC access:
@@ -63,17 +61,17 @@ aws ec2 create-network-insights-access-scope \
     {
       "Source": {
         "ResourceStatement": {
-          "Resources": ["vpc-prod001"]
+          "Resources": ["vpc-0abc1234def567890"]
         }
       },
       "Destination": {
         "ResourceStatement": {
-          "Resources": ["vpc-dev001"]
+          "Resources": ["vpc-0123abc456def7890"]
         }
       }
     }
   ]' \
-  --tags Key=Purpose,Value=ProdDevIsolation
+  --tag-specifications 'ResourceType=network-insights-access-scope,Tags=[{Key=Purpose,Value=ProdDevIsolation}]'
 ```
 
 ## Running an Analysis
@@ -95,7 +93,7 @@ aws ec2 get-network-insights-access-scope-analysis-findings \
   --max-results 50
 ```
 
-The analysis runs asynchronously. For a simple VPC, it completes in minutes. For large, complex networks, it can take longer. The findings show each access path that matches your scope, including every hop along the way.
+The analysis runs asynchronously. For a simple VPC, it completes in minutes. For large, complex networks, it can take longer. The findings show network paths that match your scope, including every hop along the way.
 
 ## Understanding Findings
 
@@ -111,30 +109,35 @@ Each finding describes a complete network path. Here's what a finding looks like
         "Id": "igw-abc123",
         "Arn": "arn:aws:ec2:us-east-1:123456789012:internet-gateway/igw-abc123"
       },
-      "SecurityGroupRuleIds": []
+      "InboundHeader": {
+        "DestinationPortRanges": [{"From": 3306, "To": 3306}],
+        "Protocol": "6",
+        "SourceAddresses": ["0.0.0.0/0"]
+      }
+    },
+    {
+      "Component": {
+        "Id": "sg-abc123",
+        "Arn": "arn:aws:ec2:us-east-1:123456789012:security-group/sg-abc123"
+      },
+      "SecurityGroupRule": {
+        "Cidr": "0.0.0.0/0",
+        "Direction": "ingress",
+        "PortRange": {"From": 3306, "To": 3306},
+        "Protocol": "tcp"
+      }
     },
     {
       "Component": {
         "Id": "eni-def456",
         "Arn": "arn:aws:ec2:us-east-1:123456789012:network-interface/eni-def456"
-      },
-      "InboundHeader": {
-        "DestinationPorts": [{"From": 3306, "To": 3306}],
-        "Protocol": "tcp"
-      },
-      "SecurityGroupRuleIds": ["sgr-abc123"]
-    },
-    {
-      "Component": {
-        "Id": "rds-instance-prod",
-        "Arn": "arn:aws:rds:us-east-1:123456789012:db:production-db"
       }
     }
   ]
 }
 ```
 
-This finding shows a path from an internet gateway to an RDS instance on port 3306. The finding includes which security group rule allowed the traffic. Now you know exactly what to fix.
+This finding shows a path from an internet gateway to a network interface on port 3306. The finding includes which security group rule allowed the traffic. Now you know exactly what to fix.
 
 ## Common Scopes for Security Auditing
 
@@ -153,18 +156,16 @@ aws ec2 create-network-insights-access-scope \
       },
       "Destination": {
         "ResourceStatement": {
-          "ResourceTypes": ["AWS::EC2::Instance"]
+          "Resources": ["vpc-0abc1234def567890"]
         },
-        "PacketHeader": {
-          "DestinationPorts": [
-            {"From": 22, "To": 22},
-            {"From": 3389, "To": 3389}
-          ]
+        "PacketHeaderStatement": {
+          "DestinationPorts": ["22", "3389"],
+          "Protocols": ["tcp"]
         }
       }
     }
   ]' \
-  --tags Key=Audit,Value=InternetSSHRDP
+  --tag-specifications 'ResourceType=network-insights-access-scope,Tags=[{Key=Audit,Value=InternetSSHRDP}]'
 ```
 
 Scope: Internal services reaching the internet:
@@ -175,8 +176,7 @@ aws ec2 create-network-insights-access-scope \
     {
       "Source": {
         "ResourceStatement": {
-          "ResourceTypes": ["AWS::EC2::Instance"],
-          "Resources": ["vpc-internal001"]
+          "Resources": ["vpc-0fedcba9876543210"]
         }
       },
       "Destination": {
@@ -186,7 +186,7 @@ aws ec2 create-network-insights-access-scope \
       }
     }
   ]' \
-  --tags Key=Audit,Value=EgressControl
+  --tag-specifications 'ResourceType=network-insights-access-scope,Tags=[{Key=Audit,Value=EgressControl}]'
 ```
 
 ## Automating Regular Scans
@@ -235,11 +235,23 @@ def handler(event, context):
             time.sleep(10)
 
         # Get findings
-        findings = ec2.get_network_insights_access_scope_analysis_findings(
-            NetworkInsightsAccessScopeAnalysisId=analysis_id
-        )
+        analysis_findings = []
+        next_token = None
+        while True:
+            request = {
+                'NetworkInsightsAccessScopeAnalysisId': analysis_id,
+                'MaxResults': 100
+            }
+            if next_token:
+                request['NextToken'] = next_token
 
-        finding_count = len(findings.get('AnalysisFindings', []))
+            findings = ec2.get_network_insights_access_scope_analysis_findings(**request)
+            analysis_findings.extend(findings.get('AnalysisFindings', []))
+            next_token = findings.get('NextToken')
+            if not next_token:
+                break
+
+        finding_count = len(analysis_findings)
         if finding_count > 0:
             all_findings.append({
                 'scope': scope_id,
@@ -297,14 +309,14 @@ Resources:
                 - AWS::EC2::InternetGateway
           Destination:
             ResourceStatement:
-              ResourceTypes:
-                - AWS::RDS::DBInstance
-            PacketHeader:
+              Resources:
+                - vpc-0abc1234def567890
+            PacketHeaderStatement:
               DestinationPorts:
-                - From: 3306
-                  To: 3306
-                - From: 5432
-                  To: 5432
+                - "3306"
+                - "5432"
+              Protocols:
+                - tcp
       Tags:
         - Key: Purpose
           Value: InternetToDatabase
@@ -319,12 +331,13 @@ Resources:
                 - AWS::EC2::InternetGateway
           Destination:
             ResourceStatement:
-              ResourceTypes:
-                - AWS::EC2::Instance
-            PacketHeader:
+              Resources:
+                - vpc-0abc1234def567890
+            PacketHeaderStatement:
               DestinationPorts:
-                - From: 22
-                  To: 22
+                - "22"
+              Protocols:
+                - tcp
       Tags:
         - Key: Purpose
           Value: InternetToSSH
@@ -332,12 +345,12 @@ Resources:
 
 ## Integration with Security Hub
 
-Network Access Analyzer findings can be sent to AWS Security Hub for centralized security management. This puts network access violations alongside your other security findings.
+Network Access Analyzer findings can be sent to AWS Security Hub for centralized security management by formatting them as AWS Security Finding Format (ASFF) findings and importing them with `BatchImportFindings`. This puts network access violations alongside your other security findings.
 
 ```bash
-# Enable the Network Access Analyzer integration in Security Hub
-aws securityhub enable-import-findings-for-product \
-  --product-arn arn:aws:securityhub:us-east-1::product/aws/network-access-analyzer
+# Import a prepared ASFF findings document into Security Hub
+aws securityhub batch-import-findings \
+  --findings file://network-access-analyzer-findings.json
 ```
 
 ## Practical Tips
