@@ -45,7 +45,7 @@ Create an IPAM:
 aws ec2 create-ipam \
   --description "Organization IPAM" \
   --operating-regions RegionName=us-east-1 RegionName=eu-west-1 RegionName=ap-southeast-1 \
-  --tags Key=ManagedBy,Value=NetworkTeam
+  --tag-specifications 'ResourceType=ipam,Tags=[{Key=ManagedBy,Value=NetworkTeam}]'
 
 # Get the IPAM ID and scope IDs
 aws ec2 describe-ipams \
@@ -66,7 +66,7 @@ aws ec2 create-ipam-pool \
   --ipam-scope-id ipam-scope-private-abc123 \
   --description "All Private Addresses" \
   --address-family ipv4 \
-  --tags Key=Level,Value=Top
+  --tag-specifications 'ResourceType=ipam-pool,Tags=[{Key=Level,Value=Top}]'
 
 # Provision the top-level CIDR
 aws ec2 provision-ipam-pool-cidr \
@@ -77,13 +77,14 @@ aws ec2 provision-ipam-pool-cidr \
 aws ec2 create-ipam-pool \
   --ipam-scope-id ipam-scope-private-abc123 \
   --source-ipam-pool-id ipam-pool-top123 \
+  --locale us-east-1 \
   --description "Production VPCs" \
   --address-family ipv4 \
-  --allocation-min-netmask-length 24 \
-  --allocation-max-netmask-length 16 \
+  --allocation-min-netmask-length 16 \
+  --allocation-max-netmask-length 24 \
   --allocation-default-netmask-length 20 \
   --auto-import \
-  --tags Key=Environment,Value=Production
+  --tag-specifications 'ResourceType=ipam-pool,Tags=[{Key=Environment,Value=Production}]'
 
 # Provision CIDR for the production pool
 aws ec2 provision-ipam-pool-cidr \
@@ -94,12 +95,13 @@ aws ec2 provision-ipam-pool-cidr \
 aws ec2 create-ipam-pool \
   --ipam-scope-id ipam-scope-private-abc123 \
   --source-ipam-pool-id ipam-pool-top123 \
+  --locale us-east-1 \
   --description "Development VPCs" \
   --address-family ipv4 \
-  --allocation-min-netmask-length 24 \
-  --allocation-max-netmask-length 16 \
+  --allocation-min-netmask-length 16 \
+  --allocation-max-netmask-length 24 \
   --allocation-default-netmask-length 24 \
-  --tags Key=Environment,Value=Development
+  --tag-specifications 'ResourceType=ipam-pool,Tags=[{Key=Environment,Value=Development}]'
 
 aws ec2 provision-ipam-pool-cidr \
   --ipam-pool-id ipam-pool-dev789 \
@@ -227,8 +229,8 @@ Set up CloudWatch alarms for pool exhaustion:
 aws cloudwatch put-metric-alarm \
   --alarm-name "ipam-prod-pool-high-usage" \
   --namespace "AWS/IPAM" \
-  --metric-name "PoolUtilization" \
-  --dimensions Name=IpamPoolId,Value=ipam-pool-prod456 \
+  --metric-name "PercentAssigned" \
+  --dimensions Name=PoolID,Value=ipam-pool-prod456 \
   --statistic Average \
   --period 3600 \
   --threshold 80 \
@@ -244,13 +246,13 @@ IPAM tracks all allocations and can identify non-compliant resources - VPCs with
 Find unmanaged CIDRs:
 
 ```bash
-# Get discovered resources that aren't managed by IPAM
-aws ec2 get-ipam-discovered-resource-cidrs \
-  --ipam-resource-discovery-id ipam-res-disc-abc123 \
-  --resource-region us-east-1 \
-  --filters Name=resource-type,Values=vpc
+# Get VPC CIDRs in the scope that IPAM reports as unmanaged
+aws ec2 get-ipam-resource-cidrs \
+  --ipam-scope-id ipam-scope-private-abc123 \
+  --resource-type vpc \
+  --filters Name=management-state,Values=unmanaged
 
-# Compare with IPAM allocations to find unmanaged VPCs
+# Review the returned VPCs and decide whether to import or remediate them
 ```
 
 This is invaluable for compliance. You can periodically scan for VPCs that were created outside of IPAM and bring them under management.
@@ -264,8 +266,9 @@ IPAM also manages IPv6 address space:
 aws ec2 create-ipam-pool \
   --ipam-scope-id ipam-scope-public-abc123 \
   --description "IPv6 Pool" \
+  --locale us-east-1 \
   --address-family ipv6 \
-  --publicly-advertisable \
+  --public-ip-source amazon \
   --aws-service ec2
 
 # Provision Amazon-provided IPv6 CIDR
