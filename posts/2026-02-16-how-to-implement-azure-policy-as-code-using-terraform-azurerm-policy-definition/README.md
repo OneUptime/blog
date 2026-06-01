@@ -74,6 +74,15 @@ resource "azurerm_policy_definition" "require_tags" {
       }
       defaultValue = "Owner"
     }
+    effect = {
+      type = "String"
+      metadata = {
+        displayName = "Effect"
+        description = "Enable audit-only testing before switching to deny"
+      }
+      allowedValues = ["audit", "deny", "disabled"]
+      defaultValue  = "deny"
+    }
   })
 
   # The policy rule - check that all three tags exist
@@ -95,7 +104,7 @@ resource "azurerm_policy_definition" "require_tags" {
       ]
     }
     then = {
-      effect = "deny"  # Block resource creation if tags are missing
+      effect = "[parameters('effect')]"  # Use deny to block resource creation if tags are missing
     }
   })
 }
@@ -289,6 +298,8 @@ Some policies do not just deny but can actively fix non-compliant resources. The
 
 ```hcl
 # Policy that adds a tag if it is missing (modify effect)
+data "azurerm_subscription" "current" {}
+
 resource "azurerm_policy_definition" "inherit_rg_tag" {
   name         = "inherit-environment-tag-from-rg"
   display_name = "Inherit Environment tag from resource group"
@@ -365,7 +376,7 @@ resource "azurerm_subscription_policy_remediation" "inherit_tag" {
 
 ## Testing Policies Before Assignment
 
-Always test policies before assigning them with a deny effect. Use audit mode first:
+Always test policies before assigning them with a deny effect. Use audit mode first by setting the parameterized effect to `audit`:
 
 ```hcl
 # Assign in audit mode first to see what would be affected
@@ -380,6 +391,7 @@ resource "azurerm_subscription_policy_assignment" "test" {
     tagName1 = { value = "Environment" }
     tagName2 = { value = "CostCenter" }
     tagName3 = { value = "Owner" }
+    effect   = { value = "audit" }
   })
 }
 ```
