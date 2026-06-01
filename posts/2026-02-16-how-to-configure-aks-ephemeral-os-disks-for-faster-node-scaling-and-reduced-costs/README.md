@@ -24,39 +24,41 @@ The performance difference is real and measurable. Here is what you get:
 
 ## How Ephemeral OS Disks Work
 
-Ephemeral OS disks can be placed in two locations:
+Ephemeral OS disks can be placed in three locations, depending on the VM size:
 
-**OS cache** - Uses the VM's OS disk cache. This is the default and preferred placement. The cache size depends on the VM size.
+**OS cache** - Uses the VM's OS disk cache. This is available on older VM sizes that have a cache disk. The cache size depends on the VM size.
 
-**Resource disk (temp disk)** - Uses the VM's temporary disk. This is available on VM sizes that have a temp disk and is useful when the cache is too small.
+**Resource disk (temp disk)** - Uses the VM's temporary disk. This is available on VM sizes that have a temp disk, such as diskful v5 SKUs.
+
+**NVMe disk** - Uses local NVMe storage. This is available on supported v6 and newer VM series.
 
 The OS image is written to the chosen location at VM creation time. All subsequent reads and writes happen locally. When the VM is deallocated, the data is gone. But since AKS nodes are managed by node pools and can be recreated at any time, this is expected behavior.
 
 ## Prerequisites
 
-You need an AKS cluster and Azure CLI. The VM size you choose must support ephemeral OS disks, and the OS disk size must fit within the cache or temp disk size of the VM.
+You need an AKS cluster and Azure CLI. The VM size you choose must support ephemeral OS disks, and the OS disk size must fit within the cache, temp disk, or NVMe disk size of the VM.
 
 ## Step 1: Check VM Size Compatibility
 
-Not all VM sizes support ephemeral OS disks. The VM's cache or temp disk must be large enough to hold the OS image (typically 128GB for AKS).
+Not all VM sizes support ephemeral OS disks. The VM's cache, temp disk, or NVMe disk must be large enough to hold the OS image (typically 128GB for AKS).
 
 ```bash
-# Check the cache size for a specific VM size
+# Check local temp storage for a specific VM size
 
 az vm list-sizes \
   --location eastus \
-  --query "[?name=='Standard_D4s_v5'].{name:name, osDiskSizeMb:osDiskSizeInMb, cacheSizeGb:maxDataDiskCount, memoryGb:memoryInMb}" \
+  --query "[?name=='Standard_D4ds_v5'].{name:name, tempStorageMb:resourceDiskSizeInMb, vcpus:numberOfCores, memoryMb:memoryInMb}" \
   --output table
 
 # Common VM sizes that support ephemeral OS disks:
-# Standard_D4s_v5 - 100GB cache
-# Standard_D8s_v5 - 200GB cache
-# Standard_D16s_v5 - 400GB cache
-# Standard_E4s_v5 - 100GB cache
-# Standard_E8s_v5 - 200GB cache
+# Standard_D4ds_v5 - 150GB temp disk
+# Standard_D8ds_v5 - 300GB temp disk
+# Standard_D16ds_v5 - 600GB temp disk
+# Standard_E4bds_v5 - 150GB temp disk
+# Standard_E8bds_v5 - 300GB temp disk
 ```
 
-As a rule of thumb, most Ds_v5, Es_v5, and Fs_v2 series VMs with 4+ vCPUs support ephemeral OS disks with the default 128GB OS disk size.
+As a rule of thumb, choose VM sizes that explicitly support ephemeral OS disks and have enough local storage for the OS disk. The `d` in newer v5 SKU names, such as `Standard_D4ds_v5`, indicates local temp storage is present; plain `Standard_D4s_v5` and `Standard_E4s_v5` do not have local temp storage and do not support ephemeral OS disks.
 
 ## Step 2: Create a New AKS Cluster with Ephemeral OS Disks
 
@@ -68,7 +70,7 @@ az aks create \
   --resource-group myResourceGroup \
   --name aks-ephemeral \
   --node-count 3 \
-  --node-vm-size Standard_D4s_v5 \
+  --node-vm-size Standard_D4ds_v5 \
   --node-osdisk-type Ephemeral \
   --node-osdisk-size 128 \
   --generate-ssh-keys
@@ -87,7 +89,7 @@ az aks nodepool add \
   --cluster-name aks-ephemeral \
   --name fastpool \
   --node-count 3 \
-  --node-vm-size Standard_D8s_v5 \
+  --node-vm-size Standard_D8ds_v5 \
   --node-osdisk-type Ephemeral \
   --node-osdisk-size 128
 
@@ -101,22 +103,21 @@ az aks nodepool show \
 
 ## Step 4: Choose the Placement Location
 
-By default, ephemeral OS disks use the OS cache. If you need a larger disk or the cache is too small, use the resource disk.
+AKS chooses the ephemeral OS disk placement based on the VM SKU. On newer diskful v5 SKUs, ephemeral OS disks use the resource disk because there is no dedicated cache disk. If you need a larger OS disk, choose a VM size with enough temp or NVMe storage.
 
 ```bash
-# Use resource disk placement (temp disk)
+# Use a VM size with enough temp disk for a 128GB ephemeral OS disk
 az aks nodepool add \
   --resource-group myResourceGroup \
   --cluster-name aks-ephemeral \
   --name temppool \
   --node-count 3 \
-  --node-vm-size Standard_D4s_v5 \
+  --node-vm-size Standard_D4ds_v5 \
   --node-osdisk-type Ephemeral \
-  --node-osdisk-size 100 \
-  --kubelet-disk-type Temporary
+  --node-osdisk-size 128
 ```
 
-The `--kubelet-disk-type Temporary` flag tells AKS to use the resource disk for both the OS and kubelet data (container images, emptyDir volumes, etc.).
+The `kubeletDiskType` setting is separate from OS disk placement. It controls where kubelet data such as container images and `emptyDir` volumes are stored; it does not force the ephemeral OS disk placement.
 
 ## Step 5: Verify the Configuration
 
@@ -138,7 +139,7 @@ lsblk
 df -h
 ```
 
-With ephemeral OS disks on cache placement, you will see the root filesystem on a device like `/dev/sda1` backed by the local SSD cache.
+With ephemeral OS disks, the root filesystem is backed by the VM's local cache, temp, or NVMe storage depending on the VM size.
 
 ## Performance Comparison
 
@@ -151,17 +152,16 @@ graph LR
     B -->|Read/Write| C[Managed Disk]
     end
     subgraph Ephemeral OS Disk
-    D[VM] -->|Local| E[SSD Cache]
+    D[VM] -->|Local| E[Cache, Temp, or NVMe Storage]
     end
 ```
 
-Typical benchmarks for 4KB random reads:
+Typical benchmarks vary by VM size and disk tier. For example, a 128GB Premium SSD P10 managed disk has a 500 IOPS baseline, while a `Standard_D4ds_v5` temp disk is rated for 19,000 random-read IOPS:
 
 | Metric | Managed Premium SSD | Ephemeral OS Disk |
 |--------|-------------------|-------------------|
-| Read latency | 1-3ms | 0.1-0.5ms |
-| Write latency | 1-3ms | 0.1-0.5ms |
-| IOPS | 5,000 | 20,000+ |
+| Read/write path | Network-attached managed disk | Local VM storage |
+| IOPS example | 500 baseline for P10 | 19,000 random-read IOPS on Standard_D4ds_v5 temp disk |
 | Node boot time | 3-5 min | 1.5-3 min |
 
 The improvement in container image pull times is particularly noticeable. Images stored on the local SSD load much faster than from a managed disk.
@@ -177,7 +177,7 @@ az aks nodepool add \
   --cluster-name aks-ephemeral \
   --name newpool \
   --node-count 3 \
-  --node-vm-size Standard_D4s_v5 \
+  --node-vm-size Standard_D4ds_v5 \
   --node-osdisk-type Ephemeral
 
 # Cordon the old pool to prevent new pods from scheduling
@@ -199,9 +199,9 @@ az aks nodepool delete \
 
 **Data is not persistent.** Anything written to the OS disk is lost on VM deallocation, reimaging, or during a host maintenance event that moves the VM. Do not store important data on the OS disk. Use persistent volumes for stateful workloads.
 
-**OS disk size is limited by cache size.** If you need a large OS disk (for example, for storing many container images), make sure the VM's cache is large enough. The Standard_D4s_v5 has a 100GB cache, which means your OS disk must be 100GB or smaller.
+**OS disk size is limited by local storage size.** If you need a large OS disk (for example, for storing many container images), make sure the VM's cache, temp disk, or NVMe disk is large enough. The Standard_D4ds_v5 has a 150GB temp disk, which can fit the default 128GB AKS OS disk.
 
-**Not all VM sizes support ephemeral disks.** Burstable B-series VMs and some smaller VM sizes do not have sufficient cache or temp disk. Check the VM specifications before choosing.
+**Not all VM sizes support ephemeral disks.** Some burstable B-series VMs and smaller VM sizes do not have sufficient local storage for the OS disk size you choose. Check the VM specifications before choosing.
 
 **Container images are pulled fresh on new nodes.** Since the local disk is empty when a node is created, all container images must be pulled from the registry. Pre-pulling images or using proximity placement groups with the registry can help mitigate this.
 
