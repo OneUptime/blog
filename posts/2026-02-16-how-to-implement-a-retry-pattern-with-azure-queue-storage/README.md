@@ -38,7 +38,7 @@ queue_client = QueueClient.from_connection_string(connection_string, "my-task-qu
 # Dequeue a message with a 60-second visibility timeout
 # This gives the worker 60 seconds to process before the message reappears
 messages = queue_client.receive_messages(
-    messages_per_page=1,
+    max_messages=1,
     visibility_timeout=60
 )
 
@@ -71,7 +71,7 @@ def calculate_backoff_timeout(dequeue_count, base_timeout=30, max_timeout=3600):
     return min(timeout, max_timeout)
 
 # Receive and process with exponential backoff
-messages = queue_client.receive_messages(messages_per_page=1, visibility_timeout=30)
+messages = queue_client.receive_messages(max_messages=1, visibility_timeout=30)
 
 for message in messages:
     try:
@@ -97,7 +97,7 @@ You do not want messages retrying forever. At some point, a message that keeps f
 ```python
 MAX_RETRIES = 5
 
-messages = queue_client.receive_messages(messages_per_page=1, visibility_timeout=30)
+messages = queue_client.receive_messages(max_messages=1, visibility_timeout=30)
 
 for message in messages:
     if message.dequeue_count > MAX_RETRIES:
@@ -133,8 +133,8 @@ def calculate_backoff_with_jitter(dequeue_count, base_timeout=30, max_timeout=36
     """
     exponential_timeout = base_timeout * (2 ** (dequeue_count - 1))
     capped_timeout = min(exponential_timeout, max_timeout)
-    # Full jitter: random value between base_timeout and capped_timeout
-    return random.randint(base_timeout, capped_timeout)
+    # Full jitter: random value between 0 and capped_timeout
+    return random.randint(0, capped_timeout)
 ```
 
 ## Implementing Retry in .NET
@@ -179,7 +179,8 @@ foreach (var message in messages.Value)
         await queueClient.UpdateMessageAsync(
             message.MessageId,
             message.PopReceipt,
-            visibilityTimeout: capped
+            message.Body,
+            capped
         );
     }
 }
