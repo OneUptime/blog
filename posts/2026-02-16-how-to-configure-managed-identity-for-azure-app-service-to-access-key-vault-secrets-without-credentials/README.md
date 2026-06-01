@@ -14,18 +14,18 @@ In this guide, I will show you how to set up managed identity on App Service, gr
 
 ## How Managed Identity Works
 
-When you enable managed identity on an App Service, Azure creates an identity (a service principal) in your Entra ID tenant that is tied to the lifecycle of the app. The app can request tokens from the Azure Instance Metadata Service (IMDS) endpoint, and Azure handles all the credential management behind the scenes.
+When you enable managed identity on an App Service, Azure creates an identity (a service principal) in your Entra ID tenant that is tied to the lifecycle of the app. The app can request tokens from the App Service managed identity endpoint exposed through environment variables such as `IDENTITY_ENDPOINT` and `IDENTITY_HEADER`, and Azure handles all the credential management behind the scenes.
 
 ```mermaid
 sequenceDiagram
     participant App as App Service Code
-    participant IMDS as Azure Identity Service
+    participant MSI as App Service Managed Identity Endpoint
     participant EntraID as Microsoft Entra ID
     participant KV as Azure Key Vault
-    App->>IMDS: Request token for Key Vault
-    IMDS->>EntraID: Authenticate using managed identity
-    EntraID->>IMDS: Return access token
-    IMDS->>App: Return access token
+    App->>MSI: Request token for Key Vault
+    MSI->>EntraID: Authenticate using managed identity
+    EntraID->>MSI: Return access token
+    MSI->>App: Return access token
     App->>KV: GET secret with Bearer token
     KV->>KV: Validate token and check RBAC
     KV->>App: Return secret value
@@ -259,55 +259,59 @@ getSecret();
 
 ## Step 6: Configure Key Vault Networking for App Service
 
-If your Key Vault has firewall rules enabled, you need to allow access from the App Service:
+If your Key Vault has firewall rules enabled, you need to make sure the vault allows traffic from the network path your App Service actually uses. Do not rely on App Service public outbound IPs for Key Vault references, because the source IP used by the platform to retrieve the secret can be different. Prefer VNet integration with the App Service and a Key Vault private endpoint or virtual network rule.
 
 ```powershell
-# Get the App Service outbound IP addresses
-$app = Get-AzWebApp -ResourceGroupName "myapp-rg" -Name "myapp-webapp"
-$outboundIPs = $app.OutboundIpAddresses -split ","
-
-# Add each IP to the Key Vault firewall
-foreach ($ip in $outboundIPs) {
-    Add-AzKeyVaultNetworkRule `
-        -VaultName "myapp-keyvault" `
-        -IpAddressRange "$ip/32"
-    Write-Host "Added $ip to Key Vault firewall allowlist."
-}
-
-# Alternatively, enable the trusted Microsoft services bypass
+# Enable the trusted Microsoft services bypass only if the service scenario
+# is on the trusted services list for Key Vault. This does not provide a
+# general bypass for arbitrary App Service application code.
 Update-AzKeyVaultNetworkRuleSet `
     -VaultName "myapp-keyvault" `
     -Bypass AzureServices
 
-Write-Host "Trusted Azure services bypass enabled."
+Write-Host "Trusted Microsoft services bypass enabled where supported."
 ```
 
-For a more secure approach, use VNet integration with the App Service and a private endpoint for the Key Vault. This ensures traffic never leaves the Azure backbone network.
+For a more secure approach, use VNet integration with the App Service and a private endpoint for the Key Vault. This keeps traffic on the private Azure network path.
 
 ## Step 7: Use User-Assigned Managed Identity (Alternative)
 
 If you need the same identity across multiple services, use a user-assigned managed identity:
 
-```powershell
+```bash
 # Create a user-assigned managed identity
-$identity = New-AzUserAssignedIdentity `
-    -ResourceGroupName "myapp-rg" `
-    -Name "myapp-shared-identity" `
-    -Location "eastus"
+identityId=$(az identity create \
+    --resource-group myapp-rg \
+    --name myapp-shared-identity \
+    --location eastus \
+    --query id \
+    --output tsv)
 
 # Assign it to the App Service
-Set-AzWebApp `
-    -ResourceGroupName "myapp-rg" `
-    -Name "myapp-webapp" `
-    -UserAssignedIdentityId $identity.Id
+az webapp identity assign \
+    --resource-group myapp-rg \
+    --name myapp-webapp \
+    --identities "$identityId"
+
+# If Key Vault references should use this identity, configure the app to use it
+az webapp update \
+    --resource-group myapp-rg \
+    --name myapp-webapp \
+    --set keyVaultReferenceIdentity="$identityId"
+
+principalId=$(az identity show \
+    --resource-group myapp-rg \
+    --name myapp-shared-identity \
+    --query principalId \
+    --output tsv)
 
 # Grant Key Vault access to the user-assigned identity
-New-AzRoleAssignment `
-    -ObjectId $identity.PrincipalId `
-    -RoleDefinitionName "Key Vault Secrets User" `
-    -Scope "/subscriptions/SUB_ID/resourceGroups/myapp-rg/providers/Microsoft.KeyVault/vaults/myapp-keyvault"
+az role assignment create \
+    --assignee "$principalId" \
+    --role "Key Vault Secrets User" \
+    --scope "/subscriptions/SUB_ID/resourceGroups/myapp-rg/providers/Microsoft.KeyVault/vaults/myapp-keyvault"
 
-Write-Host "User-assigned managed identity configured and Key Vault access granted."
+echo "User-assigned managed identity configured and Key Vault access granted."
 ```
 
 When using a user-assigned identity in code, specify the client ID:
