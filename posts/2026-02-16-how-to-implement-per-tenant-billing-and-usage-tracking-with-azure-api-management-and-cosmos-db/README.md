@@ -41,28 +41,26 @@ First, you need APIM to identify which tenant is making each request. The most c
     <base />
     <!-- Validate the JWT and extract tenant information -->
     <validate-jwt header-name="Authorization"
+                  require-scheme="Bearer"
                   failed-validation-httpcode="401"
-                  require-expiration-date="true"
-                  require-signed-tokens="true">
+                  require-expiration-time="true"
+                  require-signed-tokens="true"
+                  output-token-variable-name="jwt">
         <openid-config url="https://login.microsoftonline.com/{tenant}/.well-known/openid-configuration" />
-        <required-claims>
-            <claim name="tenant_id" match="any" />
-        </required-claims>
     </validate-jwt>
 
     <!-- Extract the tenant ID into a variable for later use -->
     <set-variable name="tenantId"
-                  value="@(context.Request.Headers.GetValueOrDefault("Authorization","")
-                    .AsJwt()?.Claims.GetValueOrDefault("tenant_id","unknown"))" />
+                  value='@(((Jwt)context.Variables["jwt"]).Claims.GetValueOrDefault("tenant_id","unknown"))' />
 
     <!-- Apply per-tenant rate limiting -->
     <rate-limit-by-key calls="1000"
-                       renewal-period="3600"
-                       counter-key="@((string)context.Variables["tenantId"])" />
+                       renewal-period="300"
+                       counter-key='@((string)context.Variables["tenantId"])' />
 </inbound>
 ```
 
-This policy does three things: validates the JWT, extracts the tenant ID, and applies per-tenant rate limiting. The rate limit ensures no single tenant can overwhelm your API.
+This policy does three things: validates the JWT, extracts the tenant ID, and applies per-tenant rate limiting. The rate limit ensures no single tenant can overwhelm your API. If you validate Microsoft Entra ID tokens, use the claim that actually carries your tenant identifier, such as `tid` or an application-specific `tenant_id` claim.
 
 ## Logging Usage Events to Event Hub
 
@@ -86,15 +84,15 @@ After the request is processed, the outbound policy logs the usage event to an A
             new JProperty("url", context.Request.Url.Path),
             new JProperty("responseCode", context.Response.StatusCode),
             new JProperty("responseTime", context.Elapsed.TotalMilliseconds),
-            new JProperty("requestSize", context.Request.Body?.As<string>()?.Length ?? 0),
-            new JProperty("responseSize", context.Response.Body?.As<string>()?.Length ?? 0)
+            new JProperty("requestSize", context.Request.Body?.As&lt;string&gt;(true)?.Length ?? 0),
+            new JProperty("responseSize", context.Response.Body?.As&lt;string&gt;(true)?.Length ?? 0)
         ).ToString();
     }
     </log-to-eventhub>
 </outbound>
 ```
 
-Event Hub is the right choice here because it can handle millions of events per second without breaking a sweat. You do not want your usage logging to slow down your API responses, and Event Hub's fire-and-forget semantics keep latency minimal.
+Event Hub is the right choice here because it is designed for high-throughput event ingestion when you size the namespace and partitions appropriately. You do not want your usage logging to slow down your API responses, and Event Hub keeps the logging path decoupled from downstream billing processing.
 
 ## Processing Usage Events with Azure Functions
 
@@ -167,6 +165,7 @@ Set up the Cosmos DB container with the right partition key and indexing policy:
         "indexingMode": "consistent",
         "automatic": true,
         "includedPaths": [
+            { "path": "/partitionKey/?" },
             { "path": "/tenantId/?" },
             { "path": "/timestamp/?" },
             { "path": "/apiId/?" },
@@ -238,7 +237,12 @@ public class BillingAggregator
 
             var usageBreakdown = new List<ApiUsageSummary>();
             using var usageIterator = _usageContainer
-                .GetItemQueryIterator<ApiUsageSummary>(usageQuery);
+                .GetItemQueryIterator<ApiUsageSummary>(
+                    usageQuery,
+                    requestOptions: new QueryRequestOptions
+                    {
+                        PartitionKey = new PartitionKey($"{tenantId}_{billingPeriod}")
+                    });
 
             while (usageIterator.HasMoreResults)
             {
@@ -303,7 +307,12 @@ public async Task<IActionResult> GetUsage(string tenantId, [FromQuery] string pe
         .WithParameter("@pk", partitionKey);
 
     var results = new List<dynamic>();
-    using var iterator = _usageContainer.GetItemQueryIterator<dynamic>(query);
+    using var iterator = _usageContainer.GetItemQueryIterator<dynamic>(
+        query,
+        requestOptions: new QueryRequestOptions
+        {
+            PartitionKey = new PartitionKey(partitionKey)
+        });
 
     while (iterator.HasMoreResults)
     {
@@ -316,27 +325,27 @@ public async Task<IActionResult> GetUsage(string tenantId, [FromQuery] string pe
         tenantId,
         period,
         usage = results,
-        requestUnits = results.Sum(r => (double)r.calls)
+        totalCalls = results.Sum(r => (double)r.calls)
     });
 }
 ```
 
 ## Handling Quota Enforcement
 
-Beyond billing, you also need to enforce quotas. If a tenant is on a plan that allows 100,000 API calls per month, you need to block requests once they hit the limit. APIM policies can handle this with a combination of rate limiting and quota policies:
+Beyond billing, you also need to enforce quotas. If a tenant is on a plan that allows 100,000 API calls per 30-day period, you need to block requests once they hit the limit. APIM policies can handle this with a combination of rate limiting and quota policies:
 
 ```xml
-<!-- APIM policy that enforces monthly quota per tenant -->
+<!-- APIM policy that enforces a 30-day quota per tenant -->
 <inbound>
     <base />
     <quota-by-key calls="100000"
-                  bandwidth="1073741824"
+                  bandwidth="1048576"
                   renewal-period="2592000"
-                  counter-key="@((string)context.Variables["tenantId"])" />
+                  counter-key='@((string)context.Variables["tenantId"])' />
 </inbound>
 ```
 
-When the quota is exceeded, APIM automatically returns a 429 Too Many Requests response with a `Retry-After` header. You can customize the response body to include a link to the tenant's upgrade page.
+When the quota is exceeded, APIM automatically returns a 403 Forbidden response with a `Retry-After` header. You can customize the response body to include a link to the tenant's upgrade page.
 
 ## Cost Optimization Tips
 
