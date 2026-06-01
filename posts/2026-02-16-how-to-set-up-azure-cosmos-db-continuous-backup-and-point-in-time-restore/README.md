@@ -19,17 +19,17 @@ Cosmos DB offers two backup modes:
 - Takes full backups at configurable intervals (minimum every 1 hour)
 - Keeps backups for a configurable retention period
 - Restore requires contacting Azure support
-- Restores the entire account, not individual containers
+- Restores to a new account; you can restore provisioned-throughput containers, shared-throughput databases, or the entire account
 
 ### Continuous Backup
 
 - Continuously captures changes as they happen
 - Restore to any point in time within the retention window
 - Self-service restore through Portal, CLI, or SDK
-- Can restore individual containers or databases
+- Can restore provisioned-throughput containers, shared-throughput databases, or the full account
 - Two tiers: 7-day retention and 30-day retention
 
-Continuous backup is the clear winner for operational recovery. Periodic backup is mainly useful for compliance scenarios where you need long-term archival.
+Continuous backup is the clear winner for operational recovery. Periodic backup is mainly useful when you need configurable backup intervals, retention, or backup storage redundancy instead of self-service point-in-time restore.
 
 ## Enabling Continuous Backup
 
@@ -70,23 +70,26 @@ This migration is one-way. Once you switch to continuous backup, you cannot go b
 
 ```csharp
 // Check if continuous backup is enabled on your account
-using Microsoft.Azure.Management.CosmosDB;
-using Microsoft.Azure.Management.CosmosDB.Models;
+using Azure.Core;
+using Azure.Identity;
+using Azure.ResourceManager;
+using Azure.ResourceManager.CosmosDB;
+using Azure.ResourceManager.CosmosDB.Models;
 
-CosmosDBManagementClient managementClient = new CosmosDBManagementClient(credentials)
-{
-    SubscriptionId = subscriptionId
-};
+ArmClient armClient = new ArmClient(new DefaultAzureCredential());
 
 // Get the account properties
-DatabaseAccountGetResults account = await managementClient.DatabaseAccounts.GetAsync(
-    resourceGroupName, accountName);
+ResourceIdentifier accountId = new ResourceIdentifier(
+    $"/subscriptions/{subscriptionId}/resourceGroups/{resourceGroupName}/providers/Microsoft.DocumentDB/databaseAccounts/{accountName}");
+
+CosmosDBAccountResource accountResource = armClient.GetCosmosDBAccountResource(accountId);
+CosmosDBAccountData account = (await accountResource.GetAsync()).Value.Data;
 
 // Check backup policy
 if (account.BackupPolicy is ContinuousModeBackupPolicy continuousPolicy)
 {
     Console.WriteLine($"Continuous backup enabled");
-    Console.WriteLine($"Tier: {continuousPolicy.ContinuousModeProperties.Tier}");
+    Console.WriteLine($"Tier: {continuousPolicy.ContinuousModeTier}");
 }
 else
 {
@@ -96,7 +99,7 @@ else
 
 ## Performing a Point-in-Time Restore
 
-When disaster strikes, you restore to a new account. The original account remains untouched.
+When disaster strikes, a full account restore creates a new account. The original account remains untouched. Azure Cosmos DB also supports same-account restore for deleted databases and containers, but the account restore flow below restores into a new account.
 
 ### Using Azure CLI
 
@@ -188,7 +191,15 @@ If you are not sure exactly when the problem occurred, you can narrow it down:
 # Get the earliest and latest restorable timestamps
 az cosmosdb restorable-database-account list \
     --account-name myCosmosAccount \
-    --query "[0].{earliest: oldestRestorableTime, latest: creationTime}"
+    --query "[0].{earliest: oldestRestorableTime, regions: restorableLocations}"
+
+# Get the latest restorable timestamp for a SQL API container
+az cosmosdb sql retrieve-latest-backup-time \
+    --resource-group myResourceGroup \
+    --account-name myCosmosAccount \
+    --database-name mydb \
+    --container-name orders \
+    --location eastus
 
 # List all restorable databases for the account
 az cosmosdb sql restorable-database list \
@@ -206,17 +217,19 @@ az cosmosdb sql restorable-container list \
 
 A restore includes:
 
-- All documents as they existed at the restore timestamp
+- Documents as they existed at the restore timestamp, except documents that had already expired because of TTL
 - Container configurations (indexing policies, TTL settings, partition keys)
 - Database and container throughput settings
-- Stored procedures, triggers, and user-defined functions
 - Unique key policies
 
 A restore does not include:
 
+- A subset of containers under a shared-throughput database (restore the whole shared-throughput database instead)
 - Account-level settings (firewall rules, VNet configuration, RBAC)
+- All regions from the source account
 - Diagnostic settings
 - Alert rules
+- Stored procedures, triggers, and user-defined functions
 - The account's connection string and keys (the restored account gets new ones)
 
 ## Automation: Scheduled Restore Testing
@@ -231,7 +244,7 @@ You should regularly test your restore capability. Here is a script to automate 
 ACCOUNT_NAME="myCosmosAccount"
 RESOURCE_GROUP="myResourceGroup"
 RESTORE_ACCOUNT="restore-test-$(date +%Y%m%d)"
-RESTORE_TIME=$(date -u -v-1H +"%Y-%m-%dT%H:%M:%SZ")  # 1 hour ago
+RESTORE_TIME=$(date -u -d "1 hour ago" +"%Y-%m-%dT%H:%M:%SZ")  # 1 hour ago in Azure Cloud Shell or GNU date
 
 echo "Starting restore test..."
 echo "Restoring $ACCOUNT_NAME to $RESTORE_ACCOUNT at $RESTORE_TIME"
@@ -259,9 +272,10 @@ while true; do
     sleep 60
 done
 
-# Validate: count documents in a key container
+# Validate: query key containers or run application-specific data checks
 RESTORED_KEY=$(az cosmosdb keys list --name "$RESTORE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --query "primaryMasterKey" -o tsv)
-echo "Restore test passed. Cleaning up..."
+echo "Restore completed. Validate the restored data before relying on this test result."
+echo "Cleaning up..."
 
 # Delete the test restore account
 az cosmosdb delete --name "$RESTORE_ACCOUNT" --resource-group "$RESOURCE_GROUP" --yes
@@ -273,10 +287,10 @@ echo "Restore test complete."
 
 Continuous backup has additional costs:
 
-- **Continuous 7-day**: Approximately 20% additional cost on top of your base Cosmos DB charges
-- **Continuous 30-day**: Approximately 25% additional cost
+- **Continuous 7-day**: Backup storage is listed separately on the Azure Cosmos DB pricing page and may be free for the backup storage component, depending on the current pricing page and region
+- **Continuous 30-day**: Backup storage is charged monthly based on the amount of backup data stored across selected regions
 
-The restore operation itself is free - you only pay for the new account's storage and throughput once it is created.
+Point-in-time restore is billed based on the amount of data restored. You also pay for the new account's storage and throughput once it is created.
 
 For most production workloads, the cost of continuous backup is well worth the peace of mind. The alternative is losing data and spending days (or weeks) trying to reconstruct it.
 
