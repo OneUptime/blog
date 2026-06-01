@@ -24,32 +24,44 @@ There are several reasons to route Dataverse events through Power Automate to Az
 
 ## Step 1: Create the Azure Function
 
-Start with the Azure Function that will process the Dataverse record data. Here is an HTTP-triggered function in C# that processes a contact record:
+Start with the Azure Function that will process the Dataverse record data. Here is an HTTP-triggered function in C# using the isolated worker model that processes a contact record:
 
 ```csharp
 // Azure Function that processes Dataverse contact record changes
 // Expects a JSON payload with contact fields from Power Automate
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
+using Microsoft.Azure.Functions.Worker;
+using Microsoft.Azure.Functions.Worker.Http;
 using Microsoft.Extensions.Logging;
-using System.IO;
+using System.Net;
 using System.Text.Json;
 using System.Threading.Tasks;
 
-public static class ProcessContactChange
+public class ProcessContactChange
 {
-    [FunctionName("ProcessContactChange")]
-    public static async Task<IActionResult> Run(
-        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequest req,
-        ILogger log)
+    private readonly ILogger<ProcessContactChange> _logger;
+
+    public ProcessContactChange(ILogger<ProcessContactChange> logger)
+    {
+        _logger = logger;
+    }
+
+    [Function("ProcessContactChange")]
+    public async Task<HttpResponseData> Run(
+        [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
     {
         // Read the request body sent from Power Automate
-        string requestBody = await new StreamReader(req.Body).ReadToEndAsync();
-        var contact = JsonSerializer.Deserialize<ContactPayload>(requestBody);
+        var contact = await JsonSerializer.DeserializeAsync<ContactPayload>(
+            req.Body,
+            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
 
-        log.LogInformation($"Processing contact change for: {contact.FullName}");
+        if (contact is null)
+        {
+            var badRequest = req.CreateResponse(HttpStatusCode.BadRequest);
+            await badRequest.WriteStringAsync("Invalid JSON payload.");
+            return badRequest;
+        }
+
+        _logger.LogInformation("Processing contact change for: {FullName}", contact.FullName);
 
         // Perform your custom logic here
         // Example: enrich the contact data with external API data
@@ -59,26 +71,28 @@ public static class ProcessContactChange
         if (contact.ChangeType == "Create")
         {
             await SendWelcomeEmail(contact.Email, contact.FullName);
-            log.LogInformation($"Welcome email sent to {contact.Email}");
+            _logger.LogInformation("Welcome email sent to {Email}", contact.Email);
         }
 
         // Return a result that Power Automate can use
-        return new OkObjectResult(new
+        var response = req.CreateResponse(HttpStatusCode.OK);
+        await response.WriteAsJsonAsync(new
         {
             Status = "Processed",
             ContactId = contact.Id,
             EnrichedFields = enrichedData
         });
+        return response;
     }
 
-    private static async Task<object> EnrichContactData(ContactPayload contact)
+    private async Task<object> EnrichContactData(ContactPayload contact)
     {
         // Your enrichment logic here
         await Task.Delay(100); // Simulating external API call
         return new { Industry = "Technology", Score = 85 };
     }
 
-    private static async Task SendWelcomeEmail(string email, string name)
+    private async Task SendWelcomeEmail(string email, string name)
     {
         // Your email sending logic here
         await Task.CompletedTask;
@@ -111,24 +125,24 @@ At minimum, use function-level keys. The URL will look like:
 https://yourfunctionapp.azurewebsites.net/api/ProcessContactChange?code=YOUR_FUNCTION_KEY
 ```
 
-### Azure AD Authentication (Recommended)
+### Microsoft Entra ID Authentication (Recommended)
 
-For production, enable Azure AD authentication on the Function App:
+For production, enable Microsoft Entra ID authentication on the Function App:
 
 1. Go to your Function App in the Azure portal.
 2. Navigate to Authentication.
 3. Add an identity provider > Microsoft.
-4. Configure with your Azure AD tenant.
+4. Configure with your Microsoft Entra tenant.
 5. Set unauthenticated requests to "Return 401".
 
-Then in Power Automate, use the HTTP with Azure AD connector instead of the plain HTTP connector.
+Then in Power Automate, use the HTTP with Microsoft Entra ID connector instead of the plain HTTP connector.
 
 ### IP Restrictions
 
-Restrict the Function App to accept requests only from Power Automate IP ranges:
+Restrict the Function App to accept requests only from the Power Automate connector outbound service tags:
 
 1. Go to Networking > Access Restrictions.
-2. Add rules for the Power Automate outbound IP ranges for your region.
+2. Add rules for the appropriate service tags. For connector actions, use the AzureConnectors service tag; for HTTP and HTTP + Swagger actions, allow LogicApps, PowerPlatformPlex, and PowerPlatformInfra.
 
 ## Step 3: Build the Power Automate Flow
 
@@ -155,7 +169,7 @@ This reduces unnecessary function invocations and saves costs.
 
 ### Call the Azure Function
 
-Add an HTTP action (premium) or the Azure Functions connector action:
+Add an HTTP action (premium) or create a custom connector for your function:
 
 **Using the HTTP action:**
 
@@ -170,18 +184,18 @@ Add an HTTP action (premium) or the Azure Functions connector action:
     "FullName": "@{triggerOutputs()?['body/fullname']}",
     "Email": "@{triggerOutputs()?['body/emailaddress1']}",
     "Phone": "@{triggerOutputs()?['body/telephone1']}",
-    "Company": "@{triggerOutputs()?['body/parentcustomerid']}",
-    "ChangeType": "@{triggerOutputs()?['body/@odata.context']}"
+    "Company": "@{triggerOutputs()?['body/_parentcustomerid_value']}",
+    "ChangeType": "@{triggerOutputs()?['body/SdkMessage']}"
 }
 ```
 
-**Using the Azure Functions connector:**
+**Using a custom connector:**
 
-- Select your Azure subscription and Function App.
-- Choose the ProcessContactChange function.
-- Pass the request body as a JSON object.
+- Create a custom connector from an OpenAPI definition for your function endpoint.
+- Configure the connector authentication to match your function security model.
+- Use the custom connector action in the flow and pass the request body as a JSON object.
 
-The Azure Functions connector is simpler but offers less control over headers and retry behavior.
+A custom connector can make the flow easier to reuse, but the HTTP action gives you direct control over headers and retry behavior.
 
 ### Process the Response
 
@@ -237,7 +251,7 @@ The HTTP action has built-in retry policies:
    - Minimum Interval: PT10S
    - Maximum Interval: PT1H
 
-This retries failed calls with increasing delays: 10s, 20s, 40s, 80s.
+This retries failed calls with exponentially increasing delays, subject to the Power Automate retry policy limits.
 
 ### Dead Letter Queue
 
@@ -312,4 +326,4 @@ Log this ID in your Azure Function so you can correlate Power Automate runs with
 
 ## Wrapping Up
 
-Triggering Azure Functions from Dataverse changes through Power Automate is a reliable pattern for extending the Power Platform with custom serverless logic. The setup involves creating an HTTP-triggered Azure Function, building a Power Automate flow with a Dataverse trigger, securing the function with keys or Azure AD, handling errors with retries and dead lettering, and monitoring the pipeline end to end. For high-volume scenarios, consider batching or using Azure Service Bus as an intermediary.
+Triggering Azure Functions from Dataverse changes through Power Automate is a reliable pattern for extending the Power Platform with custom serverless logic. The setup involves creating an HTTP-triggered Azure Function, building a Power Automate flow with a Dataverse trigger, securing the function with keys or Microsoft Entra ID, handling errors with retries and dead lettering, and monitoring the pipeline end to end. For high-volume scenarios, consider batching or using Azure Service Bus as an intermediary.
