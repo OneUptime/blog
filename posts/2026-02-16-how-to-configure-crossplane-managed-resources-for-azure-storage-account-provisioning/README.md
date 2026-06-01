@@ -24,7 +24,7 @@ The tradeoff is complexity. You need a running Kubernetes cluster and the Crossp
 
 ## Setting Up the Azure Provider
 
-Crossplane uses providers to interact with cloud APIs. For Azure, you install the Upbound Azure provider (the official Crossplane provider for Azure).
+Crossplane uses providers to interact with cloud APIs. For Azure, you can install the Upbound Azure provider.
 
 First, install Crossplane itself into your Kubernetes cluster.
 
@@ -52,9 +52,6 @@ metadata:
   name: provider-azure-storage
 spec:
   package: xpkg.upbound.io/upbound/provider-azure-storage:v1.0.0
-  # Automatically create a ProviderConfig named "default"
-  runtimeConfigRef:
-    name: default
 ```
 
 Apply it with kubectl.
@@ -140,11 +137,11 @@ spec:
 
 ## Provisioning the Storage Account
 
-Now for the main event. The storage account managed resource maps closely to the Azure Resource Manager API for storage accounts. Every property you would set in an ARM template or Terraform has a corresponding field in the Crossplane spec.
+Now for the main event. The storage account managed resource maps closely to the Azure Resource Manager API for storage accounts. Many properties you would set in an ARM template or Terraform have corresponding fields in the Crossplane spec.
 
 ```yaml
 # storage-account.yaml - Azure Storage Account managed by Crossplane
-apiVersion: storage.azure.upbound.io/v1beta2
+apiVersion: storage.azure.upbound.io/v1beta1
 kind: Account
 metadata:
   name: stcrossplanedemo2026
@@ -295,16 +292,26 @@ spec:
                 environment:
                   type: string
                   enum: ["dev", "staging", "production"]
-                containers:
-                  type: array
-                  items:
-                    type: string
-                  description: "List of blob container names to create"
+                storageAccountName:
+                  type: string
+                  pattern: "^[a-z0-9]{3,24}$"
+                  description: "Globally unique Azure Storage Account name"
               required:
                 - environment
+                - storageAccountName
 ```
 
-Then create the Composition that maps these simple parameters to actual Azure resources.
+Install the Patch and Transform composition function, then create the Composition that maps these simple parameters to actual Azure resources.
+
+```yaml
+# function-patch-and-transform.yaml - Install the Patch and Transform function
+apiVersion: pkg.crossplane.io/v1
+kind: Function
+metadata:
+  name: function-patch-and-transform
+spec:
+  package: xpkg.crossplane.io/crossplane-contrib/function-patch-and-transform:v0.8.2
+```
 
 ```yaml
 # composition-storage.yaml - Map StorageBucket claims to Azure resources
@@ -316,48 +323,63 @@ spec:
   compositeTypeRef:
     apiVersion: platform.example.com/v1alpha1
     kind: XStorageBucket
-  resources:
-    # Resource Group
-    - name: resource-group
-      base:
-        apiVersion: azure.upbound.io/v1beta1
-        kind: ResourceGroup
-        spec:
-          forProvider:
-            location: "East US 2"
-          providerConfigRef:
-            name: default
-      patches:
-        - fromFieldPath: spec.location
-          toFieldPath: spec.forProvider.location
+  mode: Pipeline
+  pipeline:
+    - step: patch-and-transform
+      functionRef:
+        name: function-patch-and-transform
+      input:
+        apiVersion: pt.fn.crossplane.io/v1beta1
+        kind: Resources
+        resources:
+          # Resource Group
+          - name: resource-group
+            base:
+              apiVersion: azure.upbound.io/v1beta1
+              kind: ResourceGroup
+              spec:
+                forProvider:
+                  location: "East US 2"
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.location
+                toFieldPath: spec.forProvider.location
 
-    # Storage Account
-    - name: storage-account
-      base:
-        apiVersion: storage.azure.upbound.io/v1beta2
-        kind: Account
-        spec:
-          forProvider:
-            accountTier: Standard
-            accountReplicationType: LRS
-            accountKind: StorageV2
-            minTlsVersion: TLS1_2
-            enableHttpsTrafficOnly: true
-          providerConfigRef:
-            name: default
-      patches:
-        - fromFieldPath: spec.location
-          toFieldPath: spec.forProvider.location
-        # Use GRS for production, LRS for everything else
-        - type: FromCompositeFieldPath
-          fromFieldPath: spec.environment
-          toFieldPath: spec.forProvider.accountReplicationType
-          transforms:
-            - type: map
-              map:
-                dev: LRS
-                staging: ZRS
-                production: GRS
+          # Storage Account
+          - name: storage-account
+            base:
+              apiVersion: storage.azure.upbound.io/v1beta1
+              kind: Account
+              spec:
+                forProvider:
+                  accountTier: Standard
+                  accountReplicationType: LRS
+                  accountKind: StorageV2
+                  minTlsVersion: TLS1_2
+                  enableHttpsTrafficOnly: true
+                  resourceGroupNameSelector:
+                    matchControllerRef: true
+                providerConfigRef:
+                  name: default
+            patches:
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.location
+                toFieldPath: spec.forProvider.location
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.storageAccountName
+                toFieldPath: metadata.annotations['crossplane.io/external-name']
+              # Use GRS for production, LRS for everything else
+              - type: FromCompositeFieldPath
+                fromFieldPath: spec.environment
+                toFieldPath: spec.forProvider.accountReplicationType
+                transforms:
+                  - type: map
+                    map:
+                      dev: LRS
+                      staging: ZRS
+                      production: GRS
 ```
 
 Now application teams can request storage with a simple claim.
@@ -372,10 +394,7 @@ metadata:
 spec:
   environment: production
   location: "East US 2"
-  containers:
-    - uploads
-    - exports
-    - backups
+  storageAccountName: myappdata2026
 ```
 
 ## Checking Resource Status
@@ -398,7 +417,7 @@ kubectl get secret storage-account-connection -o yaml
 
 ## Drift Detection in Action
 
-One of Crossplane's standout features is continuous reconciliation. If someone changes the storage account in the Azure portal - say, disabling HTTPS-only traffic - Crossplane will detect the drift within its polling interval (default: 10 minutes for most providers) and revert the change.
+One of Crossplane's standout features is continuous reconciliation. If someone changes the storage account in the Azure portal - say, disabling HTTPS-only traffic - Crossplane will detect the drift during reconciliation and revert the change.
 
 You can verify this by manually modifying a property in the Azure portal and watching Crossplane fix it.
 
