@@ -25,7 +25,7 @@ sequenceDiagram
     Client->>DNS: Resolve myapp.trafficmanager.net
     DNS->>Primary: Health check
     Primary->>DNS: Healthy
-    DNS->>Client: Return Primary IP
+    DNS->>Client: Return Primary endpoint
     Client->>Primary: Direct connection
     Note over DNS,Primary: Later, Primary goes down...
     Client->>DNS: Resolve myapp.trafficmanager.net
@@ -33,7 +33,7 @@ sequenceDiagram
     Primary--xDNS: Unhealthy
     DNS->>Secondary: Health check
     Secondary->>DNS: Healthy
-    DNS->>Client: Return Secondary IP
+    DNS->>Client: Return Secondary endpoint
     Client->>Secondary: Direct connection
 ```
 
@@ -152,7 +152,6 @@ az network traffic-manager profile show \
 az network traffic-manager endpoint list \
   --resource-group rg-tm-demo \
   --profile-name tm-myapp \
-  --type azureEndpoints \
   --output table
 ```
 
@@ -164,7 +163,7 @@ Verify that Traffic Manager returns the primary endpoint.
 # Resolve the Traffic Manager FQDN
 nslookup myapp-tm-demo.trafficmanager.net
 
-# You should see the primary endpoint's IP address
+# You should see the selected primary endpoint in the DNS response
 ```
 
 ## Step 7: Configure a Custom Domain
@@ -193,19 +192,19 @@ The health check settings on the profile determine how quickly Traffic Manager d
 az network traffic-manager profile update \
   --resource-group rg-tm-demo \
   --name tm-myapp \
-  --monitor-protocol HTTPS \
-  --monitor-port 443 \
-  --monitor-path /health \
-  --monitor-interval 10 \
-  --monitor-timeout 5 \
-  --monitor-failures 3
+  --protocol HTTPS \
+  --port 443 \
+  --path /health \
+  --interval 10 \
+  --timeout 5 \
+  --max-failures 3
 ```
 
 With these settings:
 
 - Traffic Manager checks every 10 seconds
 - Each check times out after 5 seconds
-- After 3 consecutive failures (30 seconds), the endpoint is marked unhealthy
+- After the configured tolerated failures are exceeded, the endpoint is marked unhealthy
 - With a DNS TTL of 30 seconds, total failover time is roughly 60 seconds
 
 ## Testing Failover
@@ -223,7 +222,7 @@ az network traffic-manager endpoint update \
 
 # Wait for TTL to expire, then check DNS
 nslookup myapp-tm-demo.trafficmanager.net
-# Should now return the secondary endpoint's IP
+# Should now return the selected secondary endpoint in the DNS response
 
 # Re-enable the primary endpoint
 az network traffic-manager endpoint update \
@@ -250,13 +249,11 @@ gantt
     Failure 2 detected             :milestone, 20, 0
     Health check interval (10s)    :a3, 20, 10s
     Failure 3 detected             :milestone, 30, 0
-    section DNS Update
-    DNS propagation               :a4, 30, 5s
     section Client TTL
-    Client DNS cache (30s TTL)    :a5, 35, 30s
+    Client DNS cache (30s TTL)    :a5, 30, 30s
 ```
 
-Total worst-case failover: ~65 seconds with the settings above.
+Total worst-case failover: ~60 seconds with the settings above.
 
 ## Monitoring Traffic Manager
 
