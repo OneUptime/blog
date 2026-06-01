@@ -59,7 +59,7 @@ Resource Utilization
 
 **Sessions count**: Active sessions. Useful for understanding concurrent usage patterns.
 
-**Workers count**: Active worker threads. Approaching the maximum indicates heavy concurrent query execution.
+**Workers percentage**: Worker thread usage as a percentage of the database limit. Approaching 100% indicates heavy concurrent query execution.
 
 ## Viewing Metrics in the Azure Portal
 
@@ -227,7 +227,7 @@ Dashboards give you a single-pane-of-glass view of your database health.
 5. Arrange the tiles in a logical layout.
 
 A good dashboard layout includes:
-- Row 1: CPU, DTU, and Memory metrics
+- Row 1: CPU, DTU, and SQL instance memory metrics
 - Row 2: Data IO, Log IO, and Storage usage
 - Row 3: Connection counts and failures
 - Row 4: Deadlocks, blocks, and session counts
@@ -239,9 +239,9 @@ Dashboards can be shared with your team:
 2. Choose whether to publish it to the resource group or subscription.
 3. Assign RBAC permissions to control who can view it.
 
-## Azure SQL Analytics Solution
+## Database Watcher
 
-For advanced monitoring, consider the Azure SQL Analytics solution (preview). It provides:
+For advanced monitoring across many Azure SQL resources, consider database watcher (preview). SQL Insights was retired on December 31, 2024, and database watcher is the recommended replacement for Azure SQL Database and Azure SQL Managed Instance scenarios that need low-latency, estate-level monitoring and query-level details. It provides:
 
 - An intelligent monitoring dashboard across all your SQL databases
 - Performance trend analysis
@@ -249,9 +249,10 @@ For advanced monitoring, consider the Azure SQL Analytics solution (preview). It
 - Elastic pool utilization views
 
 To enable it:
-1. Go to the Azure Marketplace.
-2. Search for "Azure SQL Analytics".
-3. Deploy it to your Log Analytics workspace.
+1. Create a watcher resource in your Azure subscription.
+2. Configure a data store, such as Azure Data Explorer or Real-Time Analytics in Microsoft Fabric.
+3. Add the databases, elastic pools, or SQL managed instances you want to monitor as SQL targets.
+4. Grant the watcher access to those targets and start the watcher.
 
 ## Best Practices
 
