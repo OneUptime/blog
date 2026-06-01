@@ -143,7 +143,7 @@ SigninLogs
 
 Set visualization to "Map."
 
-### Honey Comb
+### Honeycomb
 
 Great for showing status of many items at once:
 
@@ -156,7 +156,7 @@ Heartbeat
 | project Computer, Status
 ```
 
-Set visualization to "Graph" with the honey comb layout.
+Set visualization to "Graph" and configure the graph type as a honeycomb or hive cluster layout.
 
 ## Building a Drill-Down Experience
 
@@ -209,10 +209,10 @@ Now the detail section only appears after the user clicks a computer.
 
 Here are some practical Log Analytics queries designed for Workbook visualizations.
 
-### CPU Usage Heatmap
+### CPU Usage Trend
 
 ```kusto
-// CPU usage heatmap across servers
+// CPU usage trend across servers
 Perf
 | where TimeGenerated {TimeRange}
 | where ObjectName == "Processor" and CounterName == "% Processor Time" and InstanceName == "_Total"
@@ -237,7 +237,7 @@ Perf
 ```kusto
 // Disk space usage by server and drive
 Perf
-| where TimeGenerated > ago(1h)
+| where TimeGenerated {TimeRange}
 | where ObjectName == "LogicalDisk" and CounterName == "% Free Space"
 | where InstanceName != "_Total" and InstanceName != "HarddiskVolume1"
 | summarize FreeSpacePct = avg(CounterValue) by Computer, InstanceName
@@ -259,7 +259,7 @@ Click on a server row to see detailed event information below.
 
 ### What to do if a server is unhealthy:
 1. Check if the server is powered on and connected to the network
-2. Verify the Log Analytics agent is running
+2. Verify the Azure Monitor Agent, or the monitoring agent used by your environment, is running
 3. Check the server's system event log for errors
 ```
 
