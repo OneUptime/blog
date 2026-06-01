@@ -36,18 +36,13 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.0"
     }
   }
 }
 
 provider "azurerm" {
-  features {
-    # Purge soft-deleted Synapse workspaces on destroy
-    synapse_workspace {
-      purge_on_destroy = true
-    }
-  }
+  features {}
 }
 
 # Variables for configurable deployment
@@ -74,6 +69,14 @@ variable "sql_admin_login" {
 variable "sql_admin_password" {
   type      = string
   sensitive = true
+}
+
+variable "allowed_ip_range" {
+  description = "Public egress IP range allowed to access the Synapse workspace."
+  type = object({
+    start = string
+    end   = string
+  })
 }
 
 # Local values for consistent naming
@@ -155,18 +158,19 @@ resource "azurerm_synapse_workspace" "main" {
     type = "SystemAssigned"
   }
 
-  # Azure AD authentication settings
-  aad_admin {
-    login     = "AzureAD Admin"
-    object_id = data.azurerm_client_config.current.object_id
-    tenant_id = data.azurerm_client_config.current.tenant_id
-  }
-
   tags = local.tags
 }
 
 # Get the current client configuration for AAD admin setup
 data "azurerm_client_config" "current" {}
+
+# Azure AD authentication settings
+resource "azurerm_synapse_workspace_aad_admin" "main" {
+  synapse_workspace_id = azurerm_synapse_workspace.main.id
+  login                = "AzureAD Admin"
+  object_id            = data.azurerm_client_config.current.object_id
+  tenant_id            = data.azurerm_client_config.current.tenant_id
+}
 ```
 
 The `managed_virtual_network_enabled` flag is worth highlighting. When set to true, Synapse creates a managed virtual network that isolates the workspace's compute resources. Spark pools and integration runtimes run inside this network, which adds a layer of security without you having to manage VNet peering yourself.
@@ -182,7 +186,6 @@ resource "azurerm_synapse_spark_pool" "dev" {
   synapse_workspace_id = azurerm_synapse_workspace.main.id
   node_size_family     = "MemoryOptimized"
   node_size            = "Small"     # 4 vCores, 32 GB memory per node
-  node_count           = 3
 
   # Auto-pause to save costs when idle
   auto_pause {
@@ -196,7 +199,7 @@ resource "azurerm_synapse_spark_pool" "dev" {
   }
 
   # Spark version and configuration
-  spark_version = "3.4"
+  spark_version = "3.5"
 
   # Session-level configuration defaults
   spark_config {
@@ -214,7 +217,7 @@ resource "azurerm_synapse_spark_pool" "dev" {
     content  = <<-EOT
       pandas==2.1.0
       pyarrow==13.0.0
-      delta-spark==3.0.0
+      delta-spark==3.2.0
     EOT
     filename = "requirements.txt"
   }
@@ -232,12 +235,8 @@ resource "azurerm_synapse_spark_pool" "prod" {
   # Fixed size for predictable performance in production
   node_count = 10
 
-  # Auto-pause disabled for production workloads
-  auto_pause {
-    delay_in_minutes = 0   # 0 means auto-pause is disabled
-  }
-
-  spark_version = "3.4"
+  # Auto-pause disabled for production workloads by omitting the auto_pause block
+  spark_version = "3.5"
 
   # Enable cache for faster repeated queries
   cache_size = 50    # 50% of disk space allocated for caching
@@ -267,7 +266,7 @@ resource "azurerm_synapse_role_assignment" "admin" {
   principal_id         = data.azurerm_client_config.current.object_id
 
   depends_on = [
-    azurerm_synapse_workspace.main  # Workspace must be fully provisioned first
+    azurerm_synapse_firewall_rule.dev_access  # Synapse role assignments require firewall access from the deploying client
   ]
 }
 ```
@@ -283,18 +282,6 @@ resource "azurerm_synapse_firewall_rule" "allow_azure" {
   synapse_workspace_id = azurerm_synapse_workspace.main.id
   start_ip_address     = "0.0.0.0"
   end_ip_address       = "0.0.0.0"   # Special range that means "Azure services only"
-}
-
-# Allow a specific IP range for development access
-variable "allowed_ip_range" {
-  type = object({
-    start = string
-    end   = string
-  })
-  default = {
-    start = "10.0.0.0"
-    end   = "10.0.0.255"
-  }
 }
 
 resource "azurerm_synapse_firewall_rule" "dev_access" {
@@ -334,7 +321,7 @@ output "datalake_endpoint" {
 
 ## Running the Deployment
 
-Execute the Terraform deployment with sensitive variables passed via a `terraform.tfvars` file or environment variables.
+Execute the Terraform deployment with sensitive variables and the required `allowed_ip_range` value passed via a `terraform.tfvars` file or environment variables.
 
 ```bash
 # Initialize and plan
