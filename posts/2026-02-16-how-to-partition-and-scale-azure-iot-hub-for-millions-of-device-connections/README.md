@@ -15,23 +15,23 @@ When your IoT deployment grows from hundreds of devices to millions, the way you
 Azure IoT Hub scales along two dimensions:
 
 - **Tier**: Basic (B1, B2, B3) or Standard (S1, S2, S3). Standard tier supports all features including device twins, direct methods, and cloud-to-device messaging. Basic tier only supports device-to-cloud messaging.
-- **Units**: You can have multiple units of the same tier. Each unit adds capacity for messages per day and concurrent device connections.
+- **Units**: You can have multiple units of the same tier. Each unit adds capacity for messages per day and operation throttles such as device-to-cloud sends and new device connections.
 
 Here are the key limits per unit:
 
-| Tier | Messages/day | Device connections | D2C throughput |
-|------|-------------|-------------------|----------------|
-| S1   | 400,000     | 1,000             | 1 MB/min       |
-| S2   | 6,000,000   | 1,000             | 16 MB/min      |
-| S3   | 300,000,000 | 1,000             | 800 MB/min     |
+| Tier | Messages/day | D2C send throttle | New device connection throttle |
+|------|-------------|-------------------|--------------------------------|
+| S1   | 400,000     | Higher of 100/sec per hub or 12/sec/unit | Higher of 100/sec per hub or 12/sec/unit |
+| S2   | 6,000,000   | 120/sec/unit      | 120/sec/unit |
+| S3   | 300,000,000 | 6,000/sec/unit    | 6,000/sec/unit |
 
-These are per-unit limits. If you need 10,000 concurrent connections, you need at least 10 S1 units (or any tier - the connection limit scales linearly with units).
+The daily message quota scales with units. The connection limit to plan around here is the rate at which new device connections are established, not the total number of simultaneously connected devices. A single IoT hub can register up to 1,000,000 device and module identities.
 
 ## Choosing the Right Tier and Unit Count
 
 For a million-device deployment, here is how I think about sizing:
 
-**Connection math**: If all million devices connect simultaneously, you need at least 1,000 units of any tier (since each unit supports 1,000 concurrent connections). In practice, not all devices connect at the same time. If your devices connect once an hour and stay connected for 5 minutes, your concurrent connections peak at about 83,000 (1,000,000 / 12). That requires roughly 83 S1 units.
+**Connection math**: If all million devices reconnect at the same time, you need to plan for the new connection rate, not a fixed concurrent connection-per-unit limit. A single S1 unit allows at least 100 new connections per second, so connecting 1,000,000 devices from a cold start takes at least 10,000 seconds, or about 2.8 hours. If your devices reconnect once an hour and spread reconnects evenly, the average new connection rate is about 278 per second (1,000,000 / 3,600). That requires roughly 24 S1 units, 3 S2 units, or 1 S3 unit for the connection rate alone.
 
 **Message math**: If each device sends one message every 5 minutes, that is 288,000,000 messages per day. S1 handles 400,000 messages per unit per day, so you need 720 S1 units. S2 handles 6 million per unit, so you need 48 S2 units. S3 handles 300 million per unit, so you need 1 S3 unit.
 
@@ -43,7 +43,7 @@ The math usually works out in favor of higher tiers for large deployments. One S
 RESOURCE_GROUP="rg-iot-production"
 IOT_HUB_NAME="iot-production-hub"
 
-# S3 tier with 2 units for redundancy and headroom
+# S3 tier with 2 units for additional quota and throttle headroom
 az iot hub create \
     --name $IOT_HUB_NAME \
     --resource-group $RESOURCE_GROUP \
@@ -61,7 +61,7 @@ IoT Hub uses partitions for its built-in Event Hub-compatible endpoint. The part
 
 Each partition is a unit of parallelism for downstream message processing. If you have 4 partitions, you can have at most 4 concurrent consumer processes reading messages. If you have 32 partitions, you can have up to 32 concurrent consumers.
 
-For a million-device deployment, you want maximum parallelism. The maximum partition count is 32 for paid tiers and 8 for the free tier.
+For a million-device deployment, you want maximum parallelism. The maximum partition count for basic and standard tier hubs is 32.
 
 ```bash
 # You MUST set partition count at creation time
@@ -78,30 +78,25 @@ az iot hub create \
 
 ### How Messages Are Distributed Across Partitions
 
-By default, IoT Hub distributes messages across partitions using a round-robin algorithm. You can control the partition assignment by setting a partition key when sending messages:
+IoT Hub does not allow arbitrary partitioning for device-to-cloud messages. Device-to-cloud messages are partitioned based on the originating `deviceId`, which keeps messages from a single device on the same partition and preserves per-device ordering at the Event Hub-compatible endpoint.
 
 ```python
-# Device-side: Send a message with a specific partition key
-# Messages with the same partition key go to the same partition
-# This preserves ordering for messages from the same device
+# Device-side: Send a JSON telemetry message
+# IoT Hub partitions device-to-cloud messages by the originating deviceId
 from azure.iot.device import Message
 
-msg = Message("{'temperature': 22.5, 'humidity': 45}")
+msg = Message('{"temperature": 22.5, "humidity": 45}')
 msg.content_encoding = "utf-8"
 msg.content_type = "application/json"
-
-# Setting the partition key ensures all messages from this device
-# go to the same partition, maintaining order
-msg.custom_properties["iothub-partition-key"] = device_id
 
 await client.send_message(msg)
 ```
 
-Using the device ID as the partition key ensures that all messages from a single device are processed in order. This matters for time-series data where ordering is important.
+This built-in device ID partitioning is useful for time-series data where ordering from a single device is important.
 
 ## Scaling the Message Processing Backend
 
-With 32 partitions, you need a backend that can process messages from all partitions concurrently. Azure Event Hubs SDKs handle this with the EventProcessorClient:
+With 32 partitions, you need a backend that can process messages from all partitions concurrently. Azure Event Hubs SDKs handle this with the EventHubConsumerClient:
 
 ```python
 # message_processor.py
@@ -137,9 +132,10 @@ async def on_event_batch(partition_context, events):
         partition_id = partition_context.partition_id
         partition_counts[partition_id] = partition_counts.get(partition_id, 0) + 1
 
-    # Checkpoint after processing the batch
-    # This saves our position so we do not reprocess on restart
-    await partition_context.update_checkpoint()
+    # Checkpoint after processing the batch.
+    # This saves our position so we do not reprocess on restart.
+    if events:
+        await partition_context.update_checkpoint(events[-1])
 
     if message_count % 10000 == 0:
         print(f"Processed {message_count} messages. Partition distribution: {partition_counts}")
@@ -229,11 +225,11 @@ IoT Hub message routing can add latency. For maximum throughput:
 
 - Use the built-in Event Hub endpoint for raw message processing
 - Only add custom routes for messages that need different handling (e.g., alerts)
-- Avoid routing queries that require parsing the message body (body-based queries are slower than property-based queries)
+- Prefer application properties for simple routing flags. Body-based queries require a valid JSON body and the correct content type and encoding properties.
 
 ```bash
 # Create a route for alert messages based on a message property
-# This is faster than parsing the message body
+# This avoids parsing the message body in the route condition
 az iot hub message-route create \
     --hub-name $IOT_HUB_NAME \
     --route-name alert-route \
@@ -253,17 +249,18 @@ az monitor metrics alert create \
     --name "IoTHub-Throttling" \
     --resource-group $RESOURCE_GROUP \
     --scopes "/subscriptions/<sub-id>/resourceGroups/$RESOURCE_GROUP/providers/Microsoft.Devices/IotHubs/$IOT_HUB_NAME" \
-    --condition "total d2c.telemetry.egress.dropped > 100" \
+    --condition "total d2c.telemetry.ingress.sendThrottle > 100" \
     --window-size 5m \
     --evaluation-frequency 1m
 ```
 
 Key metrics to watch:
 - **d2c.telemetry.ingress.allProtocol** - Total messages received
-- **d2c.telemetry.egress.dropped** - Messages dropped due to throttling
+- **d2c.telemetry.ingress.sendThrottle** - Throttling errors due to device throughput limits
+- **d2c.telemetry.egress.dropped** - Routed messages dropped because endpoints are dead
 - **connectedDeviceCount** - Current connected devices
 - **dailyMessageQuotaUsed** - How close you are to the daily message limit
 
 ## Summary
 
-Scaling Azure IoT Hub for millions of devices requires careful upfront planning. Set the partition count to 32 (the maximum) when creating the hub because it cannot be changed later. Choose the right tier based on your message volume and connection patterns - higher tiers are usually more cost-effective at scale. On the processing side, use the EventProcessorClient with multiple instances to consume messages in parallel across all partitions. Monitor throttling metrics closely and scale up units before you hit limits. The decisions you make at hub creation time (especially partition count) will determine your scalability ceiling for the life of that hub.
+Scaling Azure IoT Hub for millions of devices requires careful upfront planning. Set the partition count to 32 (the maximum for basic and standard tier hubs) when creating the hub because it cannot be changed later. Choose the right tier based on your message volume and connection patterns - higher tiers are usually more cost-effective at scale. On the processing side, use the EventHubConsumerClient with multiple instances to consume messages in parallel across all partitions. Monitor throttling metrics closely and scale up units before you hit limits. The decisions you make at hub creation time (especially partition count) will determine your scalability ceiling for the life of that hub.
