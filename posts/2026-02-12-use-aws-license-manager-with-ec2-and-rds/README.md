@@ -45,15 +45,17 @@ First, enable License Manager and grant it the necessary permissions:
 ```bash
 # Create the service-linked role for License Manager
 
-aws license-manager create-service-linked-role
+aws iam create-service-linked-role \
+  --aws-service-name license-manager.amazonaws.com
 
 # Update License Manager settings
 aws license-manager update-service-settings \
-  --s3-resource-arn "arn:aws:s3:::my-license-manager-reports" \
+  --organization-configuration EnableIntegration=true \
+  --s3-bucket-arn "arn:aws:s3:::my-license-manager-reports" \
   --enable-cross-accounts-discovery
 ```
 
-The S3 bucket is where License Manager stores usage reports. Cross-account discovery lets you track licenses across your entire AWS Organization.
+The S3 bucket is used for the Systems Manager inventory data that License Manager uses for discovery and reporting. Cross-account discovery lets you track licenses across your entire AWS Organization.
 
 ## Step 2: Create License Configurations
 
@@ -81,7 +83,7 @@ aws license-manager create-license-configuration \
 
 Key points about this configuration:
 
-- **license-counting-type** of `Core` means we track by vCPU/core count
+- **license-counting-type** of `Core` means License Manager counts license usage by core
 - **license-count** of 256 means we have 256 cores worth of licenses
 - **license-count-hard-limit** means License Manager will block new launches that would exceed the limit
 - The **license-rules** require a minimum of 8 cores per instance and restrict to Dedicated Hosts (required for Windows BYOL)
@@ -112,6 +114,7 @@ aws license-manager create-license-configuration \
   --name "Windows-Server-License-Included" \
   --description "Track AWS-provided Windows Server license usage for cost visibility" \
   --license-counting-type "Instance" \
+  --license-count 1000 \
   --no-license-count-hard-limit
 ```
 
@@ -125,9 +128,13 @@ The most effective approach is to associate the license configuration with your 
 
 ```bash
 # Associate a license configuration with a Windows Server AMI
-aws license-manager create-license-configuration-association \
-  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-abc123" \
-  --resource-arn "arn:aws:ec2:us-east-1::image/ami-0123456789abcdef0"
+aws license-manager update-license-specifications-for-resource \
+  --resource-arn "arn:aws:ec2:us-east-1::image/ami-0123456789abcdef0" \
+  --add-license-specifications '[
+    {
+      "LicenseConfigurationArn": "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
+    }
+  ]'
 ```
 
 ### Associate with Running Instances
@@ -140,68 +147,68 @@ aws license-manager update-license-specifications-for-resource \
   --resource-arn "arn:aws:ec2:us-east-1:123456789012:instance/i-0abc123def456789" \
   --add-license-specifications '[
     {
-      "LicenseConfigurationArn": "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-abc123"
+      "LicenseConfigurationArn": "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
     }
   ]'
 ```
 
 ## Step 4: Using License Manager with RDS
 
-For RDS, License Manager primarily helps with BYOL Oracle and SQL Server instances. When you create an RDS instance with the "bring-your-own-license" model, you need to ensure you have the appropriate licenses tracked.
+For RDS, License Manager primarily helps with BYOL Oracle and Db2 instances. Standard Amazon RDS for SQL Server is license-included; SQL Server BYOL scenarios are usually handled on EC2 Dedicated Hosts or with RDS Custom/Developer Edition BYOM workflows. For RDS license tracking, include product information in the license configuration so License Manager can discover matching DB instances.
 
 ```bash
-# Create an RDS SQL Server instance with BYOL
+# Create a license configuration for RDS for Oracle Enterprise Edition BYOL
+aws license-manager create-license-configuration \
+  --name "Oracle-Enterprise-RDS-BYOL" \
+  --description "Track Oracle Enterprise Edition BYOL usage on Amazon RDS" \
+  --license-counting-type "vCPU" \
+  --license-count 128 \
+  --product-information-list '[
+    {
+      "ResourceType": "RDS",
+      "ProductInformationFilterList": [
+        {
+          "ProductInformationFilterName": "Engine Edition",
+          "ProductInformationFilterValue": ["oracle-ee"],
+          "ProductInformationFilterComparator": "EQUALS"
+        }
+      ]
+    }
+  ]'
+
+# Create an RDS Oracle instance with BYOL
 aws rds create-db-instance \
-  --db-instance-identifier "my-sql-server" \
+  --db-instance-identifier "my-oracle-ee" \
   --db-instance-class "db.m5.xlarge" \
-  --engine "sqlserver-ee" \
+  --engine "oracle-ee" \
   --license-model "bring-your-own-license" \
   --master-username "admin" \
   --master-user-password "SecurePassword123!" \
   --allocated-storage 100
 ```
 
-After creating the instance, associate it with your license configuration:
-
-```bash
-# Associate the RDS instance with the SQL Server license configuration
-aws license-manager update-license-specifications-for-resource \
-  --resource-arn "arn:aws:rds:us-east-1:123456789012:db:my-sql-server" \
-  --add-license-specifications '[
-    {
-      "LicenseConfigurationArn": "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-sql-enterprise"
-    }
-  ]'
-```
+After creating the instance, License Manager discovers matching RDS resources from the product information filter and reports usage against the license configuration. Discovery is not immediate, so allow a few minutes before checking usage.
 
 ## Step 5: Enforce License Limits
 
 With hard limits enabled, License Manager integrates with EC2 to prevent launches that would violate your license terms.
 
-To make enforcement work automatically, set up IAM policies that require license specifications at launch time:
+To make enforcement work automatically, associate license configurations with AMIs as shown above, or pass the license specification at launch time:
 
-```json
-// IAM policy that requires license specification for Windows AMIs
-{
-  "Version": "2012-10-17",
-  "Statement": [
+```bash
+# Launch an EC2 instance with an explicit License Manager configuration
+aws ec2 run-instances \
+  --image-id "ami-0123456789abcdef0" \
+  --instance-type "m5.xlarge" \
+  --subnet-id "subnet-0123456789abcdef0" \
+  --license-specifications '[
     {
-      "Sid": "RequireLicenseSpecification",
-      "Effect": "Deny",
-      "Action": "ec2:RunInstances",
-      "Resource": "arn:aws:ec2:*:*:instance/*",
-      "Condition": {
-        "StringNotLike": {
-          "ec2:ImageId": ["ami-linux-*"]
-        },
-        "ForAllValues:StringEquals": {
-          "license-manager:LicenseConfigurationArn": ""
-        }
-      }
+      "LicenseConfigurationArn": "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
     }
-  ]
-}
+  ]'
 ```
+
+If you want to make sure teams cannot bypass this, use approved AMIs, launch templates, CloudFormation templates, or Service Catalog products that include the correct license configuration.
 
 When a user tries to launch an instance that would exceed the license count, they will get an error message explaining that the launch was blocked by License Manager.
 
@@ -215,11 +222,11 @@ aws license-manager list-license-configurations
 
 # Get detailed usage for a specific configuration
 aws license-manager get-license-configuration \
-  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-abc123"
+  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
 
 # List all resources associated with a license configuration
 aws license-manager list-usage-for-license-configuration \
-  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-abc123"
+  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
 ```
 
 For automated reporting, set up a scheduled export:
@@ -228,11 +235,12 @@ For automated reporting, set up a scheduled export:
 # Create an inventory report to S3
 aws license-manager create-license-manager-report-generator \
   --report-generator-name "monthly-license-report" \
+  --client-token "monthly-license-report-2026-02" \
   --type "LicenseConfigurationSummaryReport" \
   --report-context '{
     "licenseConfigurationArns": [
-      "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-abc123",
-      "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-sql-enterprise"
+      "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123",
+      "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-sql-enterprise"
     ]
   }' \
   --report-frequency '{
@@ -248,13 +256,15 @@ For organizations with multiple AWS accounts, License Manager can track licenses
 ```bash
 # Enable cross-account discovery in the management account
 aws license-manager update-service-settings \
+  --organization-configuration EnableIntegration=true \
   --enable-cross-accounts-discovery
 
 # Share a license configuration with member accounts
 aws ram create-resource-share \
   --name "SharedLicenseConfigurations" \
+  --no-allow-external-principals \
   --resource-arns '[
-    "arn:aws:license-manager:us-east-1:123456789012:license-configuration/lic-abc123"
+    "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
   ]' \
   --principals '[
     "arn:aws:organizations::123456789012:ou/o-abc123/ou-def456"
