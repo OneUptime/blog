@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Azure, Availability Zone, Zone Redundancy, High Availability, SLA, Resilience, Cloud Architecture
 
-Description: Configure zone-redundant deployments across Azure services to achieve 99.99% availability SLAs and protect against datacenter failures.
+Description: Configure zone-redundant deployments across Azure services to improve availability SLAs and protect against datacenter failures.
 
 ---
 
-Azure Availability Zones are physically separate locations within an Azure region. Each zone has independent power, cooling, and networking. When you deploy services across multiple zones, you protect your application against the failure of an entire datacenter. Many Azure services offer a zone-redundant option that automatically distributes resources across zones, giving you a 99.99% availability SLA instead of the standard 99.95%.
+Azure Availability Zones are physically separate locations within an Azure region. Each zone has independent power, cooling, and networking. When you deploy services across multiple zones, you protect your application against the failure of an entire datacenter. Many Azure services offer a zone-redundant option that automatically distributes resources across zones, giving you a higher availability SLA, often 99.99% depending on the service and configuration.
 
 In this post, I will show you how to configure zone redundancy for the most commonly used Azure services.
 
 ## What Are Availability Zones
 
-Each Azure region that supports availability zones has at least three independent zones. They are close enough for low-latency communication (under 2ms round-trip) but far enough apart that a localized disaster (fire, flood, power failure) only affects one zone.
+Each Azure region that supports availability zones has at least three independent zones. They are close enough for low-latency communication but far enough apart that a localized disaster (fire, flood, power failure) only affects one zone.
 
 ```mermaid
 graph TD
@@ -41,24 +41,24 @@ graph TD
 There are two deployment models:
 
 - **Zonal** - you pin a resource to a specific zone. If that zone fails, the resource is unavailable.
-- **Zone-redundant** - the service automatically distributes across all zones. If one zone fails, the remaining zones continue serving traffic.
+- **Zone-redundant** - the service automatically distributes across multiple zones. If one zone fails, the remaining zones continue serving traffic.
 
 Always prefer zone-redundant deployments for production workloads.
 
 ## Zone-Redundant App Service
 
-Azure App Service Premium v3 and Isolated v2 plans support zone redundancy. You need at least 3 instances for the service to distribute across all zones:
+Azure App Service Premium v2 through Premium v4 plans support zone redundancy. You need at least 2 instances for zone redundancy, and 3 instances if you want one instance in each zone in a three-zone region:
 
 ```bash
 # Create a zone-redundant App Service plan
 
-# Minimum 3 instances required for zone redundancy
+# Minimum 2 instances required for zone redundancy; 3 shown for a three-zone spread
 az appservice plan create \
   --resource-group prod-rg \
   --name my-app-plan \
   --sku P1V3 \
   --location eastus \
-  --zone-redundant true \
+  --zone-redundant \
   --number-of-workers 3
 
 # Deploy your web app on the zone-redundant plan
@@ -69,11 +69,11 @@ az webapp create \
   --runtime "DOTNET:8.0"
 ```
 
-With zone redundancy enabled, Azure distributes the 3 instances across 3 zones. If Zone 1 goes down, the instances in Zones 2 and 3 continue handling requests.
+With zone redundancy enabled, Azure distributes the 3 instances across multiple zones. If Zone 1 goes down, the instances in the remaining zones continue handling requests.
 
 ## Zone-Redundant Azure SQL Database
 
-Azure SQL Database offers zone-redundant configuration at the Premium, Business Critical, and Hyperscale tiers:
+Azure SQL Database offers zone-redundant configuration for General Purpose, Business Critical, and Hyperscale databases in the vCore purchasing model, and for Premium databases in the DTU purchasing model:
 
 ```bash
 # Create a zone-redundant Azure SQL database
@@ -86,7 +86,7 @@ az sql db create \
   --zone-redundant true \
   --backup-storage-redundancy Zone
 
-# For existing databases, enable zone redundancy
+# For existing General Purpose, Premium, and Business Critical databases, enable zone redundancy
 az sql db update \
   --resource-group prod-rg \
   --server my-sql-server \
@@ -94,7 +94,7 @@ az sql db update \
   --zone-redundant true
 ```
 
-In the Business Critical tier, zone redundancy means the primary replica and its read replicas are spread across zones. Even if a zone fails, the database promotes a replica in another zone and continues operating within seconds.
+In the Business Critical tier, zone redundancy means the primary replica and its secondary replicas are spread across zones. Even if a zone fails, the database promotes a replica in another zone and typically resumes within 30 seconds when the application uses retry logic.
 
 ## Zone-Redundant Azure Kubernetes Service
 
@@ -158,7 +158,7 @@ spec:
 
 ## Zone-Redundant Azure Cache for Redis
 
-Redis Enterprise and Premium tiers support zone redundancy:
+Azure Cache for Redis Standard, Premium, Enterprise, and Enterprise Flash tiers support zone redundancy:
 
 ```bash
 # Create a zone-redundant Redis cache
@@ -176,7 +176,7 @@ This deploys the primary node in one zone and replicas in other zones. If the zo
 
 ## Zone-Redundant Storage
 
-Azure Storage supports zone-redundant storage (ZRS) that replicates your data across three availability zones:
+Azure Storage supports zone-redundant storage (ZRS) that replicates your data synchronously across three or more availability zones:
 
 ```bash
 # Create a storage account with zone-redundant replication
@@ -254,7 +254,7 @@ az network vnet-gateway create \
 
 ## Zone-Redundant Azure Service Bus
 
-Service Bus Premium tier supports zone redundancy:
+Service Bus supports zone redundancy in all tiers in regions that support availability zones:
 
 ```bash
 # Create a zone-redundant Service Bus namespace
@@ -271,26 +271,26 @@ az servicebus namespace create \
 
 Here is a checklist for a fully zone-redundant deployment:
 
-1. App Service Plan - Premium v3 with zone-redundant flag and minimum 3 instances
-2. Azure SQL Database - Business Critical tier with zone-redundant enabled
-3. Azure Cache for Redis - Premium tier deployed across zones 1, 2, 3
+1. App Service Plan - Premium v2 through Premium v4 with zone-redundant flag and minimum 2 instances
+2. Azure SQL Database - supported tier with zone-redundant enabled
+3. Azure Cache for Redis - supported tier deployed across zones 1, 2, 3
 4. Azure Storage - ZRS or GZRS replication
 5. Load Balancer - Standard SKU with zone-redundant frontend IP
 6. VPN/ExpressRoute Gateway - AZ SKU
 7. AKS - Node pools spanning zones 1, 2, 3 with topology spread constraints
-8. Service Bus - Premium tier with zone redundancy
+8. Service Bus - supported tier with zone redundancy
 
 ## Cost Impact
 
 Zone redundancy is not free. Some services charge more for zone-redundant configurations:
 
-- **App Service** - same price, but you need minimum 3 instances
+- **App Service** - same price, but you need minimum 2 instances
 - **Azure SQL** - zone redundancy is included in Business Critical tier pricing
 - **Redis** - same price per node, but you may want more replicas
 - **Storage** - ZRS costs about 20% more than LRS
 - **AKS** - same price per node, but more nodes across zones
 
-The total cost increase is typically 20-40% compared to a single-zone deployment, but you get a 99.99% SLA and protection against datacenter-level failures.
+The total cost increase is typically 20-40% compared to a single-zone deployment, but many services can get a higher SLA and protection against datacenter-level failures.
 
 ## Summary
 
