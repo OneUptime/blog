@@ -22,16 +22,16 @@ Here is a practical overview of the tiers:
 
 - **Free (F1)**: 1 GB memory, shared compute, 60 CPU minutes/day. Development only.
 - **Basic (B1-B3)**: 1.75-7 GB memory, dedicated compute, no autoscale. Good for dev/test.
-- **Standard (S1-S3)**: 1.75-7 GB memory, dedicated compute, autoscale, deployment slots, VNet integration. Production entry point.
+- **Standard (S1-S3)**: 1.75-7 GB memory, dedicated compute, autoscale, deployment slots. Production entry point.
 - **Premium v3 (P1v3-P3v3)**: 8-32 GB memory, faster processors, more instances. Production workloads.
-- **Isolated (I1-I3)**: Dedicated environment (App Service Environment), network isolation. Enterprise/compliance.
+- **Isolated v2 (I1v2-I6v2)**: Dedicated environment (App Service Environment), network isolation. Enterprise/compliance.
 
 ### When to Scale Up
 
 Scale up when:
 - Your application is CPU-bound and a single request uses significant CPU time (heavy computation, image processing)
 - You need more memory per instance (in-memory caching, large data processing)
-- You need features only available at higher tiers (deployment slots require Standard, VNet Integration requires Standard)
+- You need features only available at higher tiers (deployment slots require Standard, VNet Integration requires a dedicated compute tier such as Basic or higher)
 - Your application does not scale horizontally well (stateful applications, applications with in-process session state)
 
 ### How to Scale Up
@@ -57,14 +57,14 @@ az appservice plan update \
   --sku P2v3
 ```
 
-Scaling up causes a brief restart of your application. The actual downtime is usually under 30 seconds, but if you are running a production workload, use deployment slots to minimize the impact. Deploy to a slot on the new tier first, verify it works, and then swap.
+Scaling up can restart your application. If you are running a production workload, use deployment slots to minimize deployment impact and validate application changes before swapping. Slots run in the same App Service plan as production, so changing the plan tier affects all slots.
 
 ### Comparing Instance Sizes
 
 Here is a quick comparison to help you choose:
 
 ```bash
-# List available SKUs for your plan
+# Check whether Premium v3 is available in your region
 az appservice list-locations --sku P1v3 -o table
 ```
 
@@ -215,6 +215,8 @@ const RedisStore = require('connect-redis').default;
 const redis = require('redis');
 
 const redisClient = redis.createClient({ url: process.env.REDIS_URL });
+redisClient.connect().catch(console.error);
+
 app.use(session({
   store: new RedisStore({ client: redisClient }),
   secret: process.env.SESSION_SECRET,
@@ -225,7 +227,7 @@ app.use(session({
 
 ### Health Endpoints
 
-Your app needs a health check endpoint that the load balancer uses to determine if an instance is healthy:
+Your app needs a health check endpoint that App Service can ping to determine if an instance is healthy:
 
 ```bash
 # Configure the App Service health check
@@ -241,16 +243,13 @@ When health checks are enabled and an instance fails the check, App Service stop
 
 When a new instance starts, it needs time to warm up (load caches, establish database connections, compile JIT code). Configure warm-up to prevent traffic from hitting a cold instance:
 
-```json
-{
-  "applicationInitialization": {
-    "remapManagedRequestsTo": "/loading.html",
-    "customInitializationActions": [
-      { "initializationPage": "/health" },
-      { "initializationPage": "/api/warmup" }
-    ]
-  }
-}
+```xml
+<system.webServer>
+  <applicationInitialization remapManagedRequestsTo="/loading.html">
+    <add initializationPage="/health" />
+    <add initializationPage="/api/warmup" />
+  </applicationInitialization>
+</system.webServer>
 ```
 
 ### ARR Affinity
@@ -297,10 +296,10 @@ az monitor autoscale show \
   -o table
 
 # Check current instance count
-az webapp show \
+az appservice plan show \
   --resource-group myAppRG \
-  --name myapp \
-  --query "siteConfig.numberOfWorkers" -o tsv
+  --name myAppPlan \
+  --query "sku.capacity" -o tsv
 
 # View instance-level metrics
 az monitor metrics list \
@@ -314,13 +313,13 @@ az monitor metrics list \
 Set up alerts for scaling events and capacity limits:
 
 ```bash
-# Alert when approaching maximum instance count
+# Alert when CPU stays high
 az monitor metrics alert create \
   --resource-group myAppRG \
-  --name "near-max-capacity" \
+  --name "high-cpu" \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myAppRG/providers/Microsoft.Web/serverfarms/myAppPlan" \
   --condition "avg CpuPercentage > 80" \
-  --description "CPU high at max instance count - consider scaling up"
+  --description "CPU is high - consider scaling out, scaling up, or optimizing the application"
 ```
 
 Feed all of this into OneUptime for a unified view of your application's performance, scaling behavior, and resource utilization. When you can see response times, error rates, and instance counts on the same dashboard, you can make informed decisions about whether to scale up, scale out, or optimize your code.
