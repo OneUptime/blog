@@ -37,7 +37,7 @@ az vm user update \
   --ssh-key-value ~/.ssh/id_rsa.pub
 ```
 
-This replaces the authorized SSH key for the specified user. The command reads the public key file and pushes it to the VM through the VM Access Extension.
+This appends the public key to the specified user's `~/.ssh/authorized_keys` file. The command reads the public key file and pushes it to the VM through the VM Access Extension. It does not remove existing keys.
 
 You can also specify the key directly as a string:
 
@@ -66,13 +66,13 @@ az vm user update \
 Note: Many Azure Linux images disable password authentication by default in the SSH configuration. After resetting the password, you may also need to enable password authentication:
 
 ```bash
-# Reset SSH configuration to defaults (enables password auth if it was disabled)
+# Reset SSH configuration to Azure defaults
 az vm user reset-ssh \
   --resource-group myResourceGroup \
   --name myLinuxVM
 ```
 
-The `reset-ssh` command resets the SSH daemon configuration to its defaults. This can fix issues where SSH was misconfigured, including cases where password authentication was disabled.
+The `reset-ssh` command restarts SSH, opens the SSH port, and replaces `sshd_config` with Azure's default configuration for the distribution. It does not change user accounts, passwords, or SSH keys. If password login still fails, check the `PasswordAuthentication` setting in `/etc/ssh/sshd_config`.
 
 ## Creating a New User on a Linux VM
 
@@ -103,9 +103,9 @@ az vm user update \
 ```
 
 Windows password requirements:
-- At least 12 characters
-- Contains uppercase, lowercase, digits, and special characters
-- Cannot contain the username or parts of the full name
+- Azure CLI: 12 to 123 characters
+- Contains at least three of these four categories: uppercase, lowercase, digits, and special characters
+- Cannot contain the username or parts of the full name when Windows password complexity policy is enabled
 
 After resetting, connect via RDP with the new credentials.
 
@@ -117,7 +117,7 @@ If you prefer the portal:
 2. In the left menu, under "Help," click "Reset password."
 3. Choose the mode:
    - **Reset password**: Changes the password for an existing user.
-   - **Reset SSH public key** (Linux only): Replaces the SSH key.
+   - **Reset SSH public key** (Linux only): Updates the SSH key.
    - **Reset configuration only** (Linux only): Resets SSH configuration.
 4. Enter the username and new credentials.
 5. Click "Update."
@@ -149,9 +149,9 @@ az vm extension set \
   --vm-name myWindowsVM \
   --name VMAccessAgent \
   --publisher Microsoft.Compute \
-  --version 2.4 \
-  --settings '{"UserName":"adminuser"}' \
-  --protected-settings '{"Password":"NewPassword123!@#"}'
+  --version 2.0 \
+  --settings '{"username":"adminuser"}' \
+  --protected-settings '{"password":"NewPassword123!@#"}'
 ```
 
 ## When the VM Access Extension Does Not Work
@@ -203,42 +203,34 @@ The serial console requires boot diagnostics to be enabled and a password-based 
 
 **Use a Recovery VM:**
 
-If nothing else works, you can attach the OS disk to a recovery VM:
+If nothing else works, you can use Azure VM repair to create a recovery VM with a copy of the OS disk attached:
 
 ```bash
-# Step 1: Delete the locked VM (keeps the OS disk)
-az vm delete --resource-group myResourceGroup --name myLinuxVM --yes
-
-# Step 2: Create a recovery VM
-az vm create \
+# Create a repair VM and attach a copy of the original OS disk
+az vm repair create \
   --resource-group myResourceGroup \
-  --name recoveryVM \
-  --image Ubuntu2204 \
-  --admin-username recoveryadmin \
-  --generate-ssh-keys
-
-# Step 3: Attach the original OS disk as a data disk
-az vm disk attach \
-  --resource-group myResourceGroup \
-  --vm-name recoveryVM \
-  --name myLinuxVM_OsDisk \
-  --new false
+  --name myLinuxVM \
+  --repair-username recoveryadmin \
+  --repair-password 'TemporaryRepairPassword123!' \
+  --yes
 ```
 
 Then SSH into the recovery VM, mount the attached disk, and manually edit the files:
 
 ```bash
-# Mount the attached OS disk
+# Mount the attached OS disk partition.
+# Use lsblk first to confirm the device name and partition layout.
 sudo mkdir /recovery
 sudo mount /dev/sdc1 /recovery
 
-# Edit the authorized_keys file to add your new SSH key
+# Append your new SSH key
 sudo mkdir -p /recovery/home/azureuser/.ssh
-sudo cp ~/.ssh/id_rsa.pub /recovery/home/azureuser/.ssh/authorized_keys
-sudo chown -R 1000:1000 /recovery/home/azureuser/.ssh
+cat ~/.ssh/id_rsa.pub | sudo tee -a /recovery/home/azureuser/.ssh/authorized_keys
+sudo chmod 700 /recovery/home/azureuser/.ssh
+sudo chmod 600 /recovery/home/azureuser/.ssh/authorized_keys
+sudo chroot /recovery chown -R azureuser:azureuser /home/azureuser/.ssh
 
-# Or reset the password by editing the shadow file
-# (More advanced - use chroot for proper passwd command)
+# Or reset the password by using chroot
 sudo chroot /recovery
 passwd azureuser
 exit
@@ -247,19 +239,14 @@ exit
 sudo umount /recovery
 ```
 
-After fixing the credentials, detach the disk and recreate the VM with the original OS disk:
+After fixing the credentials, restore the repaired OS disk back to the original VM:
 
 ```bash
-# Detach the disk from the recovery VM
-az vm disk detach --resource-group myResourceGroup --vm-name recoveryVM --name myLinuxVM_OsDisk
-
-# Recreate the original VM with the fixed disk
-az vm create \
+# Restore the repaired disk and clean up the repair VM resources
+az vm repair restore \
   --resource-group myResourceGroup \
   --name myLinuxVM \
-  --attach-os-disk myLinuxVM_OsDisk \
-  --os-type Linux \
-  --size Standard_D2s_v5
+  --yes
 ```
 
 ## Preventing Lockouts
