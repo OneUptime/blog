@@ -8,7 +8,7 @@ Description: Build automated dead-letter queue processing pipelines to monitor, 
 
 ---
 
-Every Azure Service Bus queue and subscription has a dead-letter sub-queue (DLQ). When messages cannot be processed - whether due to exceeding the max delivery count, TTL expiration, or explicit dead-lettering by your code - they land here. If you ignore the dead-letter queue, you are effectively ignoring failures in your system. Messages pile up, data gets lost, and problems go unnoticed.
+Every Azure Service Bus queue and subscription has a dead-letter sub-queue (DLQ). When messages cannot be processed - whether due to exceeding the max delivery count, TTL expiration when dead-lettering on message expiration is enabled, or explicit dead-lettering by your code - they land here. If you ignore the dead-letter queue, you are effectively ignoring failures in your system. Messages pile up, data gets lost, and problems go unnoticed.
 
 In this post, I will show you how to build a complete dead-letter queue processing pipeline that monitors, analyzes, and recovers failed messages.
 
@@ -34,7 +34,7 @@ graph TD
 Each dead-lettered message carries metadata about why it was dead-lettered:
 - `DeadLetterReason` - a short string describing the reason
 - `DeadLetterErrorDescription` - a more detailed description
-- `DeadLetterSource` - the entity (queue or subscription) the message came from
+- `DeadLetterSource` - the entity where the message was dead-lettered, when a dead-lettered message has been auto-forwarded from the DLQ to another entity
 
 ## Reading Dead-Letter Queue Messages
 
@@ -206,7 +206,7 @@ public class AutomatedDeadLetterProcessor
 
         // Track resubmission history
         int resubmitCount = original.ApplicationProperties
-            .TryGetValue("ResubmitCount", out var count) ? (int)(long)count + 1 : 1;
+            .TryGetValue("ResubmitCount", out var count) ? Convert.ToInt32(count) + 1 : 1;
 
         newMessage.ApplicationProperties["ResubmitCount"] = resubmitCount;
         newMessage.ApplicationProperties["ResubmittedAt"] = DateTimeOffset.UtcNow.ToString("O");
