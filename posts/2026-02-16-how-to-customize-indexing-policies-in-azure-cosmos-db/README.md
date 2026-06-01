@@ -12,7 +12,7 @@ By default, Azure Cosmos DB indexes every property in every document. This means
 
 ## How Indexing Works in Cosmos DB
 
-Cosmos DB uses an inverted index structure, similar to what search engines use. When a document is written, the indexer walks through every property path and creates index entries. When you query, the engine uses these indexes to quickly locate matching documents without scanning the entire partition.
+Cosmos DB projects each item into a JSON tree and indexes each property's path and corresponding value. When a document is written, the indexer walks through every property path and creates index entries. When you query, the engine uses these indexes to quickly locate matching documents without scanning the entire partition.
 
 The default indexing policy looks like this:
 
@@ -60,16 +60,13 @@ The most common customization is excluding paths you do not query on:
     ],
     "excludedPaths": [
         {
-            "path": "/description/?",
-            "comment": "Large text field we never filter on"
+            "path": "/description/?"
         },
         {
-            "path": "/metadata/*",
-            "comment": "Nested object with many properties not used in queries"
+            "path": "/metadata/*"
         },
         {
-            "path": "/rawPayload/?",
-            "comment": "Binary or large JSON payload"
+            "path": "/rawPayload/?"
         },
         {
             "path": "/\"_etag\"/?"
@@ -114,7 +111,9 @@ Instead of indexing everything and excluding a few paths, you can flip the appro
 }
 ```
 
-This is much more aggressive - only the four specified properties are indexed. Every other property is excluded. This dramatically reduces write costs but means queries filtering on non-indexed properties will do a full partition scan.
+This is much more aggressive - aside from system properties, only the four specified properties are indexed. Every other property is excluded. This dramatically reduces write costs but means queries filtering on non-indexed properties will do a full partition scan.
+
+With this include-only strategy, remember that `id` and `_ts` are still indexed automatically in consistent mode. The partition key path is not indexed by default when you exclude `/*`, so explicitly include it if you need to query on it.
 
 ## Composite Indexes
 
@@ -159,21 +158,20 @@ Composite indexes are required for queries with ORDER BY on multiple properties,
 }
 ```
 
-The first composite index supports queries like:
+The first composite index supports multi-property sorting queries like:
 
 ```sql
--- This query benefits from the composite index on category (asc), price (desc)
+-- This query requires the composite index on category (asc), price (desc)
 SELECT * FROM c
-WHERE c.category = 'electronics'
-ORDER BY c.price DESC
+ORDER BY c.category ASC, c.price DESC
 ```
 
-Without the composite index, this query would either fail or consume significantly more RUs.
+Without the composite index, this multi-property `ORDER BY` query would fail. A query with a filter on one property and `ORDER BY` on a different single property can still succeed without a composite index, but it may consume significantly more RUs.
 
 Important rules for composite indexes:
 
 - The order of properties in the index definition matters
-- The sort direction (ascending/descending) in the index must match your ORDER BY clause
+- The sort direction (ascending/descending) in the index must match your multi-property ORDER BY clause
 - You need separate composite indexes for different sort order combinations
 
 ## Spatial Indexes
@@ -246,9 +244,12 @@ properties.IndexingPolicy = new IndexingPolicy
     Automatic = true
 };
 
+properties.IndexingPolicy.IncludedPaths.Add(new IncludedPath { Path = "/*" });
+
 // Exclude paths that are not queried
 properties.IndexingPolicy.ExcludedPaths.Add(new ExcludedPath { Path = "/description/?" });
 properties.IndexingPolicy.ExcludedPaths.Add(new ExcludedPath { Path = "/metadata/*" });
+properties.IndexingPolicy.ExcludedPaths.Add(new ExcludedPath { Path = "/\"_etag\"/?" });
 
 // Add a composite index for common query patterns
 properties.IndexingPolicy.CompositeIndexes.Add(new Collection<CompositePath>
