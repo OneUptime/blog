@@ -25,6 +25,7 @@ Azure Blob Storage is a natural fit here because it supports lease-based locking
 Before you start, make sure you have the following:
 
 - An Azure subscription with permissions to create storage accounts
+- A data-plane role such as Storage Blob Data Contributor on the state container, or permission to assign it
 - Terraform 1.0 or later installed
 - Azure CLI installed and authenticated (`az login`)
 
@@ -78,6 +79,8 @@ terraform {
     storage_account_name = "tfstateabc12345"  # Replace with your actual storage account name
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"  # Path within the container
+    use_azuread_auth     = true
+    use_cli              = true  # Use Azure CLI authentication for local development
   }
 }
 ```
@@ -90,7 +93,7 @@ There are several ways to authenticate the backend to Azure. The right choice de
 
 **Using Azure CLI credentials (for local development):**
 
-If you are already logged in with `az login`, Terraform will pick up those credentials automatically. No additional configuration needed.
+If you are already logged in with `az login`, set `use_azuread_auth = true` and `use_cli = true` in the backend block, as shown above. Make sure your signed-in identity has a role such as Storage Blob Data Contributor on the container or storage account.
 
 **Using a Service Principal (for CI/CD):**
 
@@ -98,9 +101,9 @@ For automated pipelines, set these environment variables:
 
 ```bash
 # Export service principal credentials for Terraform backend authentication
+export ARM_USE_AZUREAD=true
 export ARM_CLIENT_ID="your-client-id"
 export ARM_CLIENT_SECRET="your-client-secret"
-export ARM_SUBSCRIPTION_ID="your-subscription-id"
 export ARM_TENANT_ID="your-tenant-id"
 ```
 
@@ -116,8 +119,8 @@ terraform {
     storage_account_name = "tfstateabc12345"
     container_name       = "tfstate"
     key                  = "prod/terraform.tfstate"
+    use_azuread_auth     = true
     use_msi              = true  # Enable managed identity authentication
-    subscription_id      = "your-subscription-id"
     tenant_id            = "your-tenant-id"
   }
 }
@@ -153,7 +156,7 @@ terraform init
 
 If you already have a local state file, Terraform will ask if you want to migrate it to the remote backend. Say yes.
 
-If you are starting fresh, this will simply create an empty state file in the blob container.
+If you are starting fresh, this will configure the backend. The state blob is created the first time Terraform writes state, such as after your first successful `terraform apply`.
 
 ## Step 6: Add Versioning for Safety
 
@@ -189,7 +192,7 @@ az storage account management-policy create \
           },
           "filters": {
             "blobTypes": ["blockBlob"],
-            "prefixMatch": ["tfstate/"]
+            "prefixMatch": ["tfstate/prod/"]
           }
         }
       }
@@ -205,7 +208,8 @@ In real-world projects, you often do not want to hardcode the storage account na
 # backend.tf - Partial configuration, values provided at init time
 terraform {
   backend "azurerm" {
-    key = "prod/terraform.tfstate"
+    key              = "prod/terraform.tfstate"
+    use_azuread_auth = true
   }
 }
 ```
@@ -217,7 +221,8 @@ Then at init time:
 terraform init \
   -backend-config="resource_group_name=rg-terraform-state" \
   -backend-config="storage_account_name=tfstateabc12345" \
-  -backend-config="container_name=tfstate"
+  -backend-config="container_name=tfstate" \
+  -backend-config="use_cli=true"
 ```
 
 This is particularly useful when you use the same Terraform code across multiple environments or subscriptions.
