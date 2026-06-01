@@ -8,13 +8,13 @@ Description: Step-by-step guide to enabling soft delete for Azure Blob Storage, 
 
 ---
 
-Accidentally deleting a blob from Azure Storage is one of those mistakes that can ruin your afternoon. Without soft delete enabled, a deleted blob is gone for good. Soft delete changes this by keeping deleted data around for a configurable retention period, giving you the chance to recover it before it disappears permanently.
+Accidentally deleting a blob from Azure Storage is one of those mistakes that can ruin your afternoon. Without soft delete, versioning, or another recovery feature enabled, a deleted blob is gone for good. Soft delete changes this by keeping deleted data around for a configurable retention period, giving you the chance to recover it before it disappears permanently.
 
 Azure Blob Storage actually has two separate soft delete features: one for blobs and one for containers. In this guide, I will cover both and walk through the recovery process.
 
 ## Understanding Blob Soft Delete
 
-When blob soft delete is enabled, deleted blobs and overwritten blobs are retained in a soft-deleted state for a specified number of days. During this retention window, you can list the soft-deleted blobs and restore (undelete) them.
+When blob soft delete is enabled, deleted blobs are retained in a soft-deleted state for a specified number of days. If blob versioning is not enabled, overwritten blobs are also retained as soft-deleted snapshots. During this retention window, you can list the soft-deleted blobs and restore (undelete) them.
 
 Here is how the lifecycle looks:
 
@@ -22,13 +22,13 @@ Here is how the lifecycle looks:
 stateDiagram-v2
     [*] --> Active: Upload blob
     Active --> SoftDeleted: Delete blob
-    Active --> SoftDeleted: Overwrite blob (previous version)
+    Active --> SoftDeleted: Overwrite blob (snapshot, without versioning)
     SoftDeleted --> Active: Undelete
     SoftDeleted --> PermanentlyDeleted: Retention period expires
     PermanentlyDeleted --> [*]
 ```
 
-When a blob is overwritten and soft delete is enabled, the previous content is saved as a soft-deleted snapshot. This means you can recover from accidental overwrites, not just deletes.
+When a blob is overwritten and soft delete is enabled without blob versioning, the previous content is saved as a soft-deleted snapshot. If blob versioning is enabled, Azure creates a previous version instead of a soft-deleted snapshot. This means you can recover from accidental overwrites, not just deletes.
 
 ## Enabling Blob Soft Delete
 
@@ -218,7 +218,7 @@ Note that you cannot restore a container if a container with the same name alrea
 
 ## Recovering from Overwrites
 
-When blob soft delete is enabled and a blob gets overwritten, the previous content is preserved as a soft-deleted snapshot. To recover the previous content:
+When blob soft delete is enabled without blob versioning and a blob gets overwritten, the previous content is preserved as a soft-deleted snapshot. To recover the previous content:
 
 1. List the blob's snapshots, including deleted ones.
 2. Find the snapshot that represents the previous version.
@@ -255,6 +255,8 @@ for blob in blobs:
         break
 ```
 
+If blob versioning is enabled, restore the previous content by copying the previous version back to the base blob instead.
+
 ## Choosing a Retention Period
 
 The retention period determines how long soft-deleted data is kept. A longer period gives you more time to discover and recover from mistakes, but it also means you pay for the storage of deleted data for longer.
@@ -277,10 +279,10 @@ This can add up quickly if your application has a high churn rate (frequently cr
 
 Both soft delete and versioning protect your data, but they address different scenarios:
 
-- **Soft delete** protects against accidental deletion. It keeps deleted blobs recoverable.
-- **Versioning** protects against accidental overwrites. It keeps every previous version of a blob.
+- **Soft delete** protects against accidental deletion. It keeps deleted blobs recoverable, and without versioning it also keeps overwritten blobs as soft-deleted snapshots.
+- **Versioning** protects against accidental overwrites by keeping previous versions of a blob.
 
-For comprehensive data protection, enable both. They work together - when both are enabled and a blob is deleted, the current version becomes a soft-deleted previous version.
+For comprehensive data protection, enable both. They work together - when both are enabled and a blob is deleted, the current version becomes a previous version. If a previous version is explicitly deleted, soft delete protects that deleted version during the retention period.
 
 ## Best Practices
 
