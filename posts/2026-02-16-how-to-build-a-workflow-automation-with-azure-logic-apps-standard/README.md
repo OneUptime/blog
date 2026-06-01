@@ -30,10 +30,10 @@ az appservice plan create \
   --name plan-workflows \
   --resource-group rg-workflows \
   --location eastus2 \
-  --sku WS1 \
-  --is-linux false
+  --sku WS1
 
-# Create a storage account (required for Logic Apps Standard runtime)
+# Create a storage account (required for Logic Apps Standard runtime).
+# Storage account names must be globally unique, so change this value if needed.
 az storage account create \
   --name stworkflowsruntime \
   --resource-group rg-workflows \
@@ -46,7 +46,7 @@ az logicapp create \
   --resource-group rg-workflows \
   --plan plan-workflows \
   --storage-account stworkflowsruntime \
-  --runtime-version ~4
+  --functions-version 4
 ```
 
 ## Project Structure
@@ -121,7 +121,7 @@ Here is the `workflow.json` for a stateful HTTP-triggered workflow.
             "type": "Http",
             "inputs": {
               "method": "POST",
-              "uri": "@parameters('apiBaseUrl')/orders",
+              "uri": "@{parameters('apiBaseUrl')}/orders",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -133,7 +133,7 @@ Here is the `workflow.json` for a stateful HTTP-triggered workflow.
             "type": "Http",
             "inputs": {
               "method": "POST",
-              "uri": "@parameters('apiBaseUrl')/notifications",
+              "uri": "@{parameters('apiBaseUrl')}/notifications",
               "headers": {
                 "Content-Type": "application/json"
               },
@@ -214,7 +214,7 @@ Standard Logic Apps support two kinds of workflows.
 
 **Stateful workflows** persist the state of every action execution. You can review run history, resubmit failed runs, and debug step by step. They are slower because of the storage overhead but give you full observability.
 
-**Stateless workflows** run entirely in memory. They are faster and cheaper but do not persist run history. Use them for high-throughput, low-latency scenarios where you do not need to inspect individual runs.
+**Stateless workflows** run entirely in memory. They are faster and cheaper but do not persist run history by default. Use them for high-throughput, low-latency scenarios where you do not usually need to inspect individual runs.
 
 Change the `kind` field in `workflow.json` to switch between them:
 
@@ -246,21 +246,21 @@ Use parameters for environment-specific values like API URLs, connection strings
 ```json
 {
   "apiBaseUrl": {
-    "type": "String",
+    "type": "string",
     "value": "https://api.myapp.com/v1"
   },
   "enableNotifications": {
-    "type": "Bool",
+    "type": "bool",
     "value": true
   },
   "maxOrderAmount": {
-    "type": "Int",
+    "type": "int",
     "value": 10000
   }
 }
 ```
 
-Reference parameters in your workflow with `@parameters('apiBaseUrl')`. Override them per environment using application settings in the format `Workflows.{parameterName}`.
+Reference parameters in your workflow with `@parameters('apiBaseUrl')`. Override them per environment by promoting the appropriate `parameters.json` file, or set a parameter value to an app setting expression such as `@appsetting('API_BASE_URL')` and configure that app setting per environment.
 
 ## Local Development with VS Code
 
@@ -310,8 +310,7 @@ Enable Application Insights for your Logic App to get execution traces, dependen
 az logicapp config appsettings set \
   --name logic-order-workflows \
   --resource-group rg-workflows \
-  --settings "APPINSIGHTS_INSTRUMENTATIONKEY=your-key" \
-  "APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=your-key"
+  --settings "APPLICATIONINSIGHTS_CONNECTION_STRING=InstrumentationKey=your-key;IngestionEndpoint=https://eastus2.in.applicationinsights.azure.com/"
 ```
 
 For stateful workflows, you can also view run history in the Azure Portal, step through each action's inputs and outputs, and resubmit failed runs.
