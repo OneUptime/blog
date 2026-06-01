@@ -86,7 +86,7 @@ azcmagent connect \
 Defender for Cloud has two tiers:
 
 - **Free tier (Foundational CSPM)**: Basic security recommendations and Secure Score
-- **Defender for Servers (Plan 1 or Plan 2)**: Advanced threat protection, vulnerability assessment, just-in-time VM access, adaptive application controls
+- **Defender for Servers (Plan 1 or Plan 2)**: Advanced threat protection, vulnerability assessment, endpoint detection and response, file integrity monitoring, and just-in-time machine access for supported environments
 
 For Arc-enabled servers, you need Defender for Servers enabled on the subscription:
 
@@ -109,7 +109,7 @@ You can also enable it through the portal:
 
 ## Step 3: Deploy the Defender for Cloud Extensions
 
-Once Defender for Servers is enabled, deploy the necessary extensions to your Arc-enabled servers.
+Once Defender for Servers is enabled, Defender for Cloud automatically provisions Microsoft Defender for Endpoint on supported machines unless automatic provisioning is disabled. You can also deploy the extension manually when you need to remediate a machine or handle an exception.
 
 **Microsoft Defender for Endpoint (MDE)**: Provides endpoint detection and response (EDR):
 
@@ -135,7 +135,7 @@ az connectedmachine extension create \
   --location "eastus"
 ```
 
-**Log Analytics Agent or Azure Monitor Agent**: Required for security event collection:
+**Azure Monitor Agent**: Not required for most Defender for Servers features, which now rely on Microsoft Defender for Endpoint and agentless scanning. Deploy it when you need Azure Monitor data collection or the Defender for Servers Plan 2 free data ingestion benefit:
 
 ```bash
 # Deploy Azure Monitor Agent to Arc-enabled server
@@ -153,13 +153,34 @@ az connectedmachine extension create \
 Manually deploying extensions to each server does not scale. Use Azure Policy to automatically deploy Defender extensions to all Arc-enabled servers:
 
 ```bash
-# Assign the built-in policy to auto-deploy MDE to Arc servers
+# Assign the built-in policy to auto-deploy MDE to Linux Arc servers
+LINUX_MDE_POLICY_ID=$(az policy definition list \
+  --query "[?displayName=='[Preview]: Deploy Microsoft Defender for Endpoint agent on Linux hybrid machines'].id | [0]" \
+  --output tsv)
+
 az policy assignment create \
-  --name "deploy-mde-arc-servers" \
-  --display-name "Deploy Microsoft Defender for Endpoint to Arc servers" \
-  --policy "4eb909e7-6d64-656d-6465-2eeb37a6f626" \
+  --name "deploy-mde-linux-arc-servers" \
+  --display-name "Deploy Microsoft Defender for Endpoint to Linux Arc servers" \
+  --policy "$LINUX_MDE_POLICY_ID" \
   --scope "/subscriptions/<sub-id>" \
   --mi-system-assigned \
+  --identity-scope "/subscriptions/<sub-id>" \
+  --role "Azure Connected Machine Resource Administrator" \
+  --location "eastus"
+
+# Assign the built-in policy to auto-deploy MDE to Windows Arc servers
+WINDOWS_MDE_POLICY_ID=$(az policy definition list \
+  --query "[?displayName=='[Preview]: Deploy Microsoft Defender for Endpoint agent on Windows Azure Arc machines'].id | [0]" \
+  --output tsv)
+
+az policy assignment create \
+  --name "deploy-mde-windows-arc-servers" \
+  --display-name "Deploy Microsoft Defender for Endpoint to Windows Arc servers" \
+  --policy "$WINDOWS_MDE_POLICY_ID" \
+  --scope "/subscriptions/<sub-id>" \
+  --mi-system-assigned \
+  --identity-scope "/subscriptions/<sub-id>" \
+  --role "Azure Connected Machine Resource Administrator" \
   --location "eastus"
 ```
 
@@ -207,7 +228,6 @@ You can also query vulnerability data programmatically:
 ```bash
 # Get vulnerability assessment results for Arc servers
 az security sub-assessment list \
-  --assessed-resource-type "ServerVulnerabilityAssessment" \
   --query "[?contains(resourceDetails.id, 'Microsoft.HybridCompute')].{Server:resourceDetails.id, CVE:id, Severity:status.severity, Description:displayName}" \
   --output table
 ```
@@ -216,23 +236,7 @@ az security sub-assessment list \
 
 Just-in-Time (JIT) access reduces the attack surface by closing management ports (SSH, RDP) and only opening them temporarily when needed.
 
-For Arc-enabled servers, JIT works through the Azure Arc agent:
-
-```bash
-# Enable JIT access policy for an Arc-enabled server
-az security jit-policy create \
-  --resource-group "arc-servers-rg" \
-  --jit-network-access-policy-name "jit-arc-policy" \
-  --virtual-machines '[{
-    "id": "/subscriptions/<sub-id>/resourceGroups/arc-servers-rg/providers/Microsoft.HybridCompute/machines/my-linux-server",
-    "ports": [
-      {"number": 22, "protocol": "TCP", "allowedSourceAddressPrefix": "*", "maxRequestAccessDuration": "PT3H"},
-      {"number": 3389, "protocol": "TCP", "allowedSourceAddressPrefix": "*", "maxRequestAccessDuration": "PT3H"}
-    ]
-  }]'
-```
-
-When an engineer needs SSH access, they request it through the portal or CLI. The port opens for the specified duration and then automatically closes.
+JIT in Defender for Cloud is supported for Azure Resource Manager VMs and supported AWS EC2 instances. It does not use the Azure Arc agent to open and close local firewall rules on on-premises Arc-enabled servers. For on-premises Arc-enabled servers, use your existing firewall, privileged access, or network access controls to enforce temporary SSH or RDP access.
 
 ## Step 8: Monitor Security Alerts
 
@@ -260,9 +264,9 @@ Configure alert notifications through email, Logic App, or integration with your
 # Configure email notifications for security alerts
 az security contact create \
   --name "default" \
-  --email "security-team@company.com" \
-  --alert-notifications "on" \
-  --alerts-admins "on"
+  --emails "security-team@company.com" \
+  --alert-notifications '{"state":"On","minimalSeverity":"Medium"}' \
+  --notifications-by-role '{"state":"On","roles":["Owner"]}'
 ```
 
 ## Step 9: Compliance Monitoring
