@@ -26,8 +26,8 @@ Common use cases include:
 
 Shared Disks are supported on:
 
-- Premium SSD (all sizes P15 and above)
-- Standard SSD (all sizes E15 and above)
+- Premium SSD (all sizes P1 and above)
+- Standard SSD (all sizes E1 and above)
 - Ultra Disk (all sizes)
 - Premium SSD v2 (all sizes)
 
@@ -66,9 +66,11 @@ graph TD
     A --> C[Ultra Disk]
     A --> D[Standard SSD]
 
-    B --> B1["P15-P20: 2 shares<br/>P30-P50: 5 shares<br/>P60-P80: 10 shares"]
-    C --> C1["All sizes: up to 5 shares<br/>(varies by config)"]
-    D --> D1["E15-E20: 2 shares<br/>E30-E50: 5 shares<br/>E60-E80: 10 shares"]
+    B --> B1["P1-P20: 3 shares<br/>P30-P50: 5 shares<br/>P60-P80: 10 shares"]
+    C --> C1["All sizes: up to 15 shares"]
+    A --> E[Premium SSD v2]
+    E --> E1["All sizes: up to 15 shares"]
+    D --> D1["E1-E20: 3 shares<br/>E30-E50: 5 shares<br/>E60-E80: 10 shares"]
 ```
 
 ## Creating a Shared Disk with PowerShell
@@ -112,7 +114,7 @@ az disk create \
 
 ## Attaching the Shared Disk to Multiple VMs
 
-Both VMs must be in the same availability zone as the shared disk. Attach the disk to each VM.
+For the zonal LRS disk in this example, both VMs must be in the same availability zone as the shared disk. Attach the disk to each VM.
 
 ```bash
 # Attach the shared disk to the first cluster node
@@ -171,8 +173,8 @@ For Linux clusters, the shared disk works with Pacemaker and SCSI persistent res
 ```bash
 # Run on both Linux cluster nodes
 
-# Install clustering packages (RHEL/CentOS example)
-sudo yum install -y pacemaker pcs fence-agents-azure-arm
+# Install clustering packages (RHEL 8/9 example)
+sudo dnf install -y pacemaker pcs fence-agents-azure-arm
 
 # Enable and start the cluster service
 sudo systemctl enable pcsd
@@ -182,10 +184,10 @@ sudo systemctl start pcsd
 echo "StrongPassword123" | sudo passwd --stdin hacluster
 
 # Authenticate the nodes (run on one node)
-sudo pcs cluster auth cluster-node-1 cluster-node-2 -u hacluster -p StrongPassword123
+sudo pcs host auth cluster-node-1 cluster-node-2 -u hacluster -p StrongPassword123
 
 # Create the cluster
-sudo pcs cluster setup --name my-cluster cluster-node-1 cluster-node-2
+sudo pcs cluster setup my-cluster cluster-node-1 cluster-node-2
 
 # Start the cluster
 sudo pcs cluster start --all
@@ -246,7 +248,7 @@ flowchart TD
 
 ## Important Considerations
 
-All VMs sharing a disk must be in the same availability zone. Cross-zone shared disks are not supported.
+Ultra Disk and Premium SSD v2 shared disks cannot be shared across availability zones. Premium SSD and Standard SSD shared disks can be shared across availability zones only when you use zone-redundant storage (ZRS); LRS zonal disks require the VMs to be in the same zone as the disk.
 
 Azure does not manage disk coordination between VMs. You must use cluster software (WSFC, Pacemaker) or your application's own coordination mechanism to prevent data corruption from concurrent writes.
 
@@ -264,8 +266,8 @@ az vm show \
 
 ## Shared Disk Fencing
 
-In a cluster, fencing prevents a failed node from corrupting the shared disk. Azure provides fencing agents for both WSFC and Pacemaker.
+In a cluster, fencing prevents a failed node from corrupting the shared disk. WSFC uses the shared disk's SCSI persistent reservations together with its cluster quorum configuration. For Pacemaker, the `fence_azure_arm` agent can power off failed nodes.
 
-For WSFC, the Azure Witness or Cloud Witness provides quorum voting. For Pacemaker, the fence_azure_arm agent can power off failed nodes.
+For WSFC, a disk witness, file share witness, or Cloud Witness can provide quorum voting.
 
 Shared disks bring traditional clustering models to Azure. They require careful planning around availability zones and cluster configuration, but they enable running clustered workloads that previously were difficult or impossible to host in the cloud.
