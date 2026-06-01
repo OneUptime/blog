@@ -72,7 +72,7 @@ az mysql flexible-server parameter set \
 5. Set "log_queries_not_using_indexes" to ON if desired.
 6. Click "Save."
 
-All of these are dynamic parameters, so they take effect immediately without a restart.
+These parameters do not require a server restart, but `long_query_time` applies globally to newly established connections. Reconnect application sessions, or restart the server, if you need every existing connection to pick up the new threshold immediately.
 
 ## Choosing the Right Threshold
 
@@ -108,7 +108,8 @@ az monitor diagnostic-settings create \
   --name mysql-slow-query-diagnostics \
   --resource "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.DBforMySQL/flexibleServers/my-mysql-server" \
   --workspace "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myLogAnalytics" \
-  --logs '[{"category": "MySqlSlowLogs", "enabled": true, "retentionPolicy": {"enabled": true, "days": 30}}]'
+  --export-to-resource-specific true \
+  --logs '[{"category": "MySqlSlowLogs", "enabled": true}]'
 ```
 
 In the portal:
@@ -119,7 +120,8 @@ In the portal:
 4. Check "MySqlSlowLogs."
 5. Select "Send to Log Analytics workspace."
 6. Choose your workspace.
-7. Click "Save."
+7. If prompted for the destination table mode, choose "Resource specific."
+8. Click "Save."
 
 ## Analyzing Slow Query Logs with KQL
 
@@ -129,26 +131,24 @@ Once the logs are flowing to Log Analytics, you can write queries to find patter
 
 ```text
 // Find the 10 slowest queries in the last 24 hours
-AzureDiagnostics
-| where Category == "MySqlSlowLogs"
+MySqlSlowLogs
 | where TimeGenerated > ago(24h)
-| project TimeGenerated, query_time_d, lock_time_d, rows_examined_d, rows_sent_d, sql_text_s
-| top 10 by query_time_d desc
+| project TimeGenerated, QueryDurationMs, LockDurationMs, RowsExamined, RowsSent, SqlText
+| top 10 by QueryDurationMs desc
 ```
 
 ### Find the Most Frequently Slow Queries
 
 ```text
 // Group slow queries by SQL text to find repeat offenders
-AzureDiagnostics
-| where Category == "MySqlSlowLogs"
+MySqlSlowLogs
 | where TimeGenerated > ago(7d)
 | summarize
     count(),
-    avg(query_time_d),
-    max(query_time_d),
-    sum(query_time_d)
-    by sql_text_s
+    avg(QueryDurationMs),
+    max(QueryDurationMs),
+    sum(QueryDurationMs)
+    by SqlText
 | order by count_ desc
 | take 20
 ```
@@ -157,21 +157,19 @@ AzureDiagnostics
 
 ```text
 // Queries examining more than 100K rows but returning few
-AzureDiagnostics
-| where Category == "MySqlSlowLogs"
+MySqlSlowLogs
 | where TimeGenerated > ago(24h)
-| where rows_examined_d > 100000
-| where rows_sent_d < 100
-| project TimeGenerated, sql_text_s, rows_examined_d, rows_sent_d, query_time_d
-| order by rows_examined_d desc
+| where RowsExamined > 100000
+| where RowsSent < 100
+| project TimeGenerated, SqlText, RowsExamined, RowsSent, QueryDurationMs
+| order by RowsExamined desc
 ```
 
 ### Track Slow Query Trends Over Time
 
 ```text
 // Hourly count of slow queries over the past week
-AzureDiagnostics
-| where Category == "MySqlSlowLogs"
+MySqlSlowLogs
 | where TimeGenerated > ago(7d)
 | summarize SlowQueryCount = count() by bin(TimeGenerated, 1h)
 | render timechart
@@ -230,21 +228,14 @@ WHERE c.region = 'US';
 
 ### Step 4: Verify the Fix
 
-After making changes, monitor the slow query log to confirm the query no longer appears. You can also run the query with profiling:
+After making changes, monitor the slow query log to confirm the query no longer appears. On MySQL 8.0.18 and later, you can also run the query with `EXPLAIN ANALYZE` to see actual execution timing:
 
 ```sql
--- Enable profiling for this session
-SET profiling = 1;
-
--- Run the query
-SELECT o.order_id, c.customer_name
+-- Run the query and show actual execution timing
+EXPLAIN ANALYZE SELECT o.order_id, c.customer_name
 FROM orders o
 JOIN customers c ON o.customer_id = c.id
 WHERE o.order_date > '2026-01-01' AND o.status = 'pending';
-
--- View the profile
-SHOW PROFILES;
-SHOW PROFILE FOR QUERY 1;
 ```
 
 ## Setting Up Alerts for Slow Queries
@@ -257,8 +248,8 @@ az monitor scheduled-query create \
   --name "mysql-slow-query-alert" \
   --resource-group myResourceGroup \
   --scopes "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.OperationalInsights/workspaces/myLogAnalytics" \
-  --condition "count 'AzureDiagnostics | where Category == \"MySqlSlowLogs\"' > 50" \
-  --condition-query "AzureDiagnostics | where Category == 'MySqlSlowLogs'" \
+  --condition "count 'SlowQueries' > 50" \
+  --condition-query SlowQueries="MySqlSlowLogs" \
   --window-size 5m \
   --evaluation-frequency 5m \
   --action-groups "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Insights/actionGroups/myActionGroup"
@@ -276,11 +267,11 @@ In practice, the impact is negligible for most workloads. The insights you gain 
 
 ## Best Practices
 
-1. **Always have slow query logging enabled in production.** The minor overhead is worth the visibility.
+1. **Keep slow query logging enabled in production when visibility outweighs the overhead.** Use sensible thresholds and avoid noisy settings on busy systems.
 2. **Review slow query logs weekly.** Make it part of your team's operational routine.
 3. **Automate alerts.** Do not wait for users to report slowness.
 4. **Lower the threshold gradually.** Start at 2 seconds, then work down as you fix issues.
-5. **Combine with Query Store.** The slow query log catches individual slow executions; Query Store gives you aggregate query statistics.
+5. **Combine with Query Performance Insight.** The slow query log catches individual slow executions; Query Performance Insight workbooks help visualize aggregate query patterns.
 
 ## Summary
 
