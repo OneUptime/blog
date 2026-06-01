@@ -62,8 +62,6 @@ def lambda_handler(event, context):
     """Process a batch of Kinesis records."""
 
     successful = 0
-    failed_records = []
-
     for i, record in enumerate(event['Records']):
         try:
             # Decode the base64-encoded Kinesis data
@@ -81,16 +79,16 @@ def lambda_handler(event, context):
 
         except Exception as e:
             print(f"Error processing record {i}: {str(e)}")
-            # Track which records failed for partial batch response
-            failed_records.append({
-                "itemIdentifier": record['kinesis']['sequenceNumber']
-            })
+            print(f"Processed {successful}/{len(event['Records'])} records successfully")
+            # For Kinesis streams, return the first failed sequence number.
+            # Lambda retries from this checkpoint.
+            return {
+                "batchItemFailures": [
+                    {"itemIdentifier": record['kinesis']['sequenceNumber']}
+                ]
+            }
 
     print(f"Processed {successful}/{len(event['Records'])} records successfully")
-
-    # Return failed items so Lambda retries only those
-    if failed_records:
-        return {"batchItemFailures": failed_records}
 
     return {"batchItemFailures": []}
 
@@ -127,7 +125,7 @@ def handle_purchase_event(data):
     print(f"Purchase: ${data.get('amount')} by user {data.get('user_id')}")
 ```
 
-The key detail here is the `batchItemFailures` response. This is Lambda's partial batch failure reporting feature. Instead of retrying the entire batch when one record fails, Lambda only retries the failed records.
+The key detail here is the `batchItemFailures` response. This is Lambda's partial batch failure reporting feature. Instead of treating the entire batch as failed, Lambda checkpoints at the failed sequence number and retries records from that point.
 
 ## Step 3: Create the Event Source Mapping
 
@@ -208,7 +206,7 @@ Lambda and Kinesis scaling is tied to shards and the parallelization factor.
 | 4      | 2                    | 8                    |
 | 10     | 10                   | 100                  |
 
-If your processing throughput is not keeping up with incoming records, you have two levers: add more shards or increase the parallelization factor. Increasing parallelization is faster and does not require resharding, but it means records within a shard may be processed out of order across different Lambda invocations.
+If your processing throughput is not keeping up with incoming records, you have two levers: add more shards or increase the parallelization factor. Increasing parallelization is faster and does not require resharding. Lambda still preserves order at the partition-key level, but records with different partition keys in the same shard can be processed in parallel.
 
 ## Handling Poison Pill Records
 
@@ -224,7 +222,7 @@ flowchart TD
     D -->|All succeed| G[Continue processing]
 ```
 
-With `ReportBatchItemFailures` enabled, your function can report exactly which records failed. Lambda then only retries from the failed record's position in the shard, not the entire batch.
+With `ReportBatchItemFailures` enabled, your function can report the failed sequence number. Lambda then retries from that failed record's position in the shard, not from the start of the original batch.
 
 ## Monitoring Your Stream Processing
 
