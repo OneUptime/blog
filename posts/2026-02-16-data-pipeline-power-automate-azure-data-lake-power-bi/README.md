@@ -48,7 +48,7 @@ az storage account create \
   --location eastus \
   --sku Standard_LRS \
   --kind StorageV2 \
-  --hns true
+  --enable-hierarchical-namespace true
 
 # Create the data zone containers
 az storage fs create \
@@ -64,7 +64,7 @@ az storage fs create \
   --account-name analyticsdatalake
 ```
 
-The `--hns true` flag enables the hierarchical namespace, which is what makes it "Data Lake Gen2" rather than plain Blob Storage. This enables directory-level operations and POSIX-like permissions.
+The `--enable-hierarchical-namespace true` flag enables the hierarchical namespace, which is what makes it "Data Lake Gen2" rather than plain Blob Storage. This enables directory-level operations and POSIX-like permissions.
 
 ## Organizing the Data Lake
 
@@ -184,91 +184,39 @@ az datafactory create \
   --location eastus
 ```
 
-Define a mapping data flow that reads from the raw zone, applies transformations, and writes to the cleaned zone.
+Define a mapping data flow that reads from the raw zone, applies transformations, and writes to the cleaned zone. In the Data Factory UI, the equivalent data flow script would look like this:
 
-```json
-{
-  "name": "TransformSharePointTasks",
-  "properties": {
-    "type": "MappingDataFlow",
-    "typeProperties": {
-      "sources": [
-        {
-          "name": "RawTasks",
-          "dataset": {
-            "type": "DatasetReference",
-            "referenceName": "RawSharePointTasks"
-          }
-        }
-      ],
-      "transformations": [
-        {
-          "name": "CleanData",
-          "description": "Standardize column names and types",
-          "type": "DerivedColumn",
-          "columns": [
-            {
-              "name": "task_name",
-              "expression": "trim(Title)"
-            },
-            {
-              "name": "assigned_to",
-              "expression": "lower(trim(AssignedTo))"
-            },
-            {
-              "name": "due_date",
-              "expression": "toDate(DueDate, 'yyyy-MM-dd')"
-            },
-            {
-              "name": "status",
-              "expression": "iif(isNull(Status), 'Not Started', Status)"
-            },
-            {
-              "name": "priority",
-              "expression": "iif(isNull(Priority), 'Normal', Priority)"
-            },
-            {
-              "name": "days_until_due",
-              "expression": "datediff(currentDate(), toDate(DueDate))"
-            },
-            {
-              "name": "is_overdue",
-              "expression": "currentDate() > toDate(DueDate) && Status != 'Completed'"
-            }
-          ]
-        },
-        {
-          "name": "RemoveDuplicates",
-          "type": "Aggregate",
-          "description": "Deduplicate by task ID, keeping the latest version",
-          "groupBy": ["Id"],
-          "aggregates": [
-            { "name": "task_name", "expression": "last(task_name)" },
-            { "name": "assigned_to", "expression": "last(assigned_to)" },
-            { "name": "due_date", "expression": "last(due_date)" },
-            { "name": "status", "expression": "last(status)" },
-            { "name": "priority", "expression": "last(priority)" }
-          ]
-        }
-      ],
-      "sinks": [
-        {
-          "name": "CleanedTasks",
-          "dataset": {
-            "type": "DatasetReference",
-            "referenceName": "CleanedSharePointTasks"
-          }
-        }
-      ]
-    }
-  }
-}
+```text
+source(allowSchemaDrift: true,
+    validateSchema: false) ~> RawTasks
+
+RawTasks derive(
+    task_name = trim(Title),
+    assigned_to = lower(trim(AssignedTo)),
+    due_date = toDate(DueDate, 'yyyy-MM-dd'),
+    status = iif(isNull(Status), 'Not Started', Status),
+    priority = iif(isNull(Priority), 'Normal', Priority),
+    days_until_due = toInteger((toTimestamp(DueDate, 'yyyy-MM-dd') - currentTimestamp()) / days(1)),
+    is_overdue = currentDate() > toDate(DueDate, 'yyyy-MM-dd') && Status != 'Completed'
+) ~> CleanData
+
+CleanData aggregate(
+    groupBy(Id),
+    task_name = last(task_name),
+    assigned_to = last(assigned_to),
+    due_date = last(due_date),
+    status = last(status),
+    priority = last(priority)
+) ~> RemoveDuplicates
+
+RemoveDuplicates sink(allowSchemaDrift: true,
+    validateSchema: false) ~> CleanedTasks
 ```
 
 Schedule the transformation pipeline to run after the Power Automate flows complete.
 
 ```bash
-# Create a trigger that runs the pipeline daily at 7 AM
+# Create a trigger that runs the pipeline daily at 7 AM UTC
 az datafactory trigger create \
   --factory-name analytics-data-factory \
   --resource-group rg-data-pipeline \
@@ -280,7 +228,7 @@ az datafactory trigger create \
         "frequency": "Day",
         "interval": 1,
         "startTime": "2026-02-16T07:00:00Z",
-        "timeZone": "Eastern Standard Time"
+        "timeZone": "UTC"
       }
     },
     "pipelines": [
@@ -325,8 +273,8 @@ Create a Power BI dataset that connects to the curated layer in Data Lake.
 In Power BI Desktop, use the Azure Data Lake Storage Gen2 connector.
 
 1. Get Data > Azure > Azure Data Lake Storage Gen2
-2. Enter the storage account URL: `https://analyticsdatalake.dfs.core.windows.net/`
-3. Navigate to the curated container
+2. Enter the curated container URL: `https://analyticsdatalake.dfs.core.windows.net/curated`
+3. Navigate to the folder that contains the reporting files
 4. Select the Parquet files (or connect to Synapse views directly)
 
 Create your report visuals and publish to the Power BI service.
@@ -363,11 +311,21 @@ Set up alerts for pipeline failures so you know when data is not flowing.
 
 ```bash
 # Create an alert for Data Factory pipeline failures
-az monitor activity-log alert create \
+DATA_FACTORY_ID=$(az datafactory show \
+  --name analytics-data-factory \
+  --resource-group rg-data-pipeline \
+  --query id \
+  --output tsv)
+
+az monitor metrics alert create \
   --name "Pipeline Failure Alert" \
   --resource-group rg-data-pipeline \
-  --condition category=Administrative and operationName=Microsoft.DataFactory/factories/pipelines/runs/write and status=Failed \
-  --action-group pipeline-alerts-group
+  --scopes "$DATA_FACTORY_ID" \
+  --condition "total PipelineFailedRuns > 0" \
+  --window-size 5m \
+  --evaluation-frequency 1m \
+  --action pipeline-alerts-group \
+  --description "Alert when an Azure Data Factory pipeline run fails"
 ```
 
 ## Wrapping Up
