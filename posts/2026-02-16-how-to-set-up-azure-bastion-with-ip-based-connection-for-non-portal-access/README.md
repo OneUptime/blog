@@ -31,8 +31,7 @@ The tunnel creates a local port mapping on your machine. You then connect your S
 ## Prerequisites
 
 - Azure Bastion deployed with Standard SKU (IP-based connections require Standard or Premium)
-- Azure CLI version 2.32 or later
-- The `ssh` and `bastion` extensions for Azure CLI
+- Azure CLI version 2.62 or later with the `bastion` extension
 - Target VMs must be reachable from the Bastion subnet (no NSG blocking traffic between them)
 
 ## Step 1: Deploy Azure Bastion with Standard SKU
@@ -82,7 +81,8 @@ If you already have Bastion deployed but with Basic SKU, upgrade it:
 az network bastion update \
   --name myBastion \
   --resource-group myResourceGroup \
-  --sku Standard \
+  --location eastus \
+  --sku name=Standard \
   --enable-ip-connect true \
   --enable-tunneling true
 ```
@@ -94,9 +94,6 @@ Note that downgrading from Standard to Basic is not supported. This is a one-way
 Make sure you have the necessary Azure CLI extensions:
 
 ```bash
-# Install or update the SSH extension
-az extension add --name ssh --upgrade
-
 # Install or update the bastion extension
 az extension add --name bastion --upgrade
 
@@ -182,14 +179,14 @@ az network bastion tunnel \
 
 This is particularly useful in hub-and-spoke topologies where Bastion is deployed in the hub VNet but you need to reach VMs in spoke VNets.
 
-## Step 7: Connect to Non-Azure Resources
+## Step 7: Connect to Non-Azure VMs
 
-IP-based connections are not limited to Azure VMs. You can connect to any device that has a private IP reachable from the Bastion subnet. This includes:
+IP-based connections are not limited to Azure VMs. You can connect to machines that have a private IP reachable from the Bastion subnet over supported SSH or RDP ports. This includes:
 
 - On-premises machines accessible through ExpressRoute or VPN
-- Network appliances (firewalls, routers, switches)
+- Non-Azure VMs in another cloud environment
 - Kubernetes node VMs
-- Any other compute resource with a private IP
+- Other VM or server resources with a reachable private IP
 
 ```bash
 # Connect to an on-premises server through ExpressRoute
@@ -243,10 +240,12 @@ kill $TUNNEL_PID 2>/dev/null
 
 **RBAC permissions**: Users need the following minimum permissions to use Bastion tunneling:
 - Reader role on the Bastion resource
-- Reader role on the virtual network
-- If using IP-based connect, no specific VM permissions are needed (since you are connecting by IP, not by VM resource)
+- For Azure VM targets, Reader role on the target VM
+- For Azure VM targets, Reader role on the NIC with the private IP of the target VM
+- If the Bastion deployment is in a peered VNet, Reader role on the virtual network of the target VM
+- For on-premises or non-Azure targets, make sure the user has the required target credentials and that the target IP is reachable from Bastion
 
-**Audit logging**: All Bastion connections are logged in Azure Activity Log and Bastion diagnostic logs. Enable diagnostic logging to track who connects to which IPs:
+**Audit logging**: Azure Activity Log records control-plane events, while Bastion audit logs can record connection/session details when diagnostic logging is enabled. Enable diagnostic logging to track Bastion connection activity:
 
 ```bash
 # Enable Bastion diagnostic logging
