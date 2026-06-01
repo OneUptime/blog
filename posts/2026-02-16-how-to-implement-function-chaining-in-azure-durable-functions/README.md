@@ -19,7 +19,7 @@ Use function chaining when your workflow has these characteristics:
 - Steps must execute in a specific order
 - Each step depends on the output of the previous step
 - The entire workflow might take longer than a single function timeout allows
-- You need automatic retry on individual steps
+- You need automatic retry policies on individual steps
 - You want the workflow state to survive process restarts
 
 Without Durable Functions, you would typically implement this by chaining queue messages: function A processes its work and puts a message on a queue, function B picks up that message, does its work, and puts another message on a different queue. This works but it is tedious to build, hard to monitor, and painful to debug. Durable Functions gives you the same durability guarantees with much simpler code.
@@ -38,7 +38,7 @@ graph LR
     F --> G[Done]
 ```
 
-Each box is an activity function. The arrows represent the orchestrator passing data from one activity to the next. If any step fails, the orchestrator can retry it without re-executing the steps that already succeeded.
+Each box is an activity function. The arrows represent the orchestrator passing data from one activity to the next. If any step fails, the orchestrator can retry it when a retry policy is configured, without re-executing the steps that already succeeded.
 
 ## Building the Order Processing Pipeline
 
@@ -113,7 +113,7 @@ public static class OrderOrchestrator
 
         // Step 1: Validate the order details
         var validatedOrder = await context.CallActivityAsync<ValidatedOrder>(
-            nameof(ValidateOrder), order);
+            nameof(OrderActivities.ValidateOrder), order);
 
         // If validation fails, we can short-circuit the chain
         if (!validatedOrder.IsValid)
@@ -125,7 +125,7 @@ public static class OrderOrchestrator
 
         // Step 2: Check and reserve inventory
         var inventoryOrder = await context.CallActivityAsync<InventoryCheckedOrder>(
-            nameof(CheckInventory), validatedOrder);
+            nameof(OrderActivities.CheckInventory), validatedOrder);
 
         if (!inventoryOrder.AllItemsInStock)
         {
@@ -141,15 +141,15 @@ public static class OrderOrchestrator
                 firstRetryInterval: TimeSpan.FromSeconds(5))));
 
         var paidOrder = await context.CallActivityAsync<PaidOrder>(
-            nameof(ProcessPayment), inventoryOrder, retryOptions);
+            nameof(OrderActivities.ProcessPayment), inventoryOrder, retryOptions);
 
         // Step 4: Fulfill and ship the order
         var fulfilledOrder = await context.CallActivityAsync<FulfilledOrder>(
-            nameof(FulfillOrder), paidOrder);
+            nameof(OrderActivities.FulfillOrder), paidOrder);
 
         // Step 5: Send confirmation email
         await context.CallActivityAsync(
-            nameof(SendConfirmation), fulfilledOrder);
+            nameof(OrderActivities.SendConfirmation), fulfilledOrder);
 
         logger.LogInformation(
             "Order {OrderId} processed successfully. Tracking: {Tracking}",
@@ -336,16 +336,16 @@ public static async Task<string> ProcessOrderWithCompensation(
     try
     {
         var validatedOrder = await context.CallActivityAsync<ValidatedOrder>(
-            nameof(ValidateOrder), order);
+            nameof(OrderActivities.ValidateOrder), order);
 
         inventoryOrder = await context.CallActivityAsync<InventoryCheckedOrder>(
-            nameof(CheckInventory), validatedOrder);
+            nameof(OrderActivities.CheckInventory), validatedOrder);
 
         var paidOrder = await context.CallActivityAsync<PaidOrder>(
-            nameof(ProcessPayment), inventoryOrder);
+            nameof(OrderActivities.ProcessPayment), inventoryOrder);
 
         var fulfilledOrder = await context.CallActivityAsync<FulfilledOrder>(
-            nameof(FulfillOrder), paidOrder);
+            nameof(OrderActivities.FulfillOrder), paidOrder);
 
         return fulfilledOrder.TrackingNumber;
     }
@@ -369,4 +369,4 @@ public static async Task<string> ProcessOrderWithCompensation(
 
 ## Summary
 
-Function chaining is the bread and butter of Durable Functions orchestrations. You define a sequence of activity calls in an orchestrator, pass data from one to the next, and the framework handles state persistence, replay, and retries. The pattern maps naturally to any business process that has sequential steps. Start with simple chains and add error handling and compensation logic as your workflow matures. The key thing to remember is that the orchestrator must be deterministic - no random values, no direct I/O, no non-deterministic DateTime calls. All side effects belong in activity functions.
+Function chaining is the bread and butter of Durable Functions orchestrations. You define a sequence of activity calls in an orchestrator, pass data from one to the next, and the framework handles state persistence, replay, and configured retry policies. The pattern maps naturally to any business process that has sequential steps. Start with simple chains and add error handling and compensation logic as your workflow matures. The key thing to remember is that the orchestrator must be deterministic - no random values, no direct I/O, no non-deterministic DateTime calls. All side effects belong in activity functions.
