@@ -15,7 +15,7 @@ Azure Custom Vision is a no-code/low-code service that lets you build custom ima
 Custom Vision is ideal when:
 
 - You need to classify images into categories specific to your business (product defects, plant species, document types, etc.)
-- You have a small to medium dataset (50-10,000 images per class)
+- You have a small to medium dataset (tens to thousands of images per class)
 - You want a working model quickly without building a deep learning pipeline
 - You need to deploy models to edge devices (iOS, Android, ONNX, TensorFlow Lite)
 
@@ -55,12 +55,18 @@ training_endpoint = "https://your-resource.cognitiveservices.azure.com/"
 credentials = ApiKeyCredentials(in_headers={"Training-key": training_key})
 trainer = CustomVisionTrainingClient(training_endpoint, credentials)
 
+# Use a compact classification domain if you plan to export the model later.
+classification_domain = next(
+    domain for domain in trainer.get_domains()
+    if domain.type == "Classification" and domain.name == "General (compact)"
+)
+
 # Create a new classification project
 project = trainer.create_project(
     name="product-quality-classifier",
     description="Classify product images as good or defective",
     classification_type="Multiclass",     # One label per image
-    domain_id=None                         # Use general domain (auto-selected)
+    domain_id=classification_domain.id     # Required for later edge export
 )
 print(f"Project created: {project.id}")
 ```
@@ -88,7 +94,7 @@ def upload_images_for_tag(project_id, tag, image_folder):
     image_entries = []
 
     for filename in os.listdir(image_folder):
-        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp')):
+        if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.bmp', '.gif')):
             filepath = os.path.join(image_folder, filename)
             with open(filepath, "rb") as f:
                 image_entries.append(
@@ -123,10 +129,10 @@ print(f"\nTotal: {good_count} good images, {defect_count} defective images")
 
 ### Image Guidelines
 
-- **Minimum**: 50 images per tag, but 200+ gives significantly better results.
+- **Recommended starting point**: Microsoft recommends 50 images per tag, but 200+ gives significantly better results. The service minimum for classification is lower, but small datasets should be treated as prototypes.
 - **Variety**: Include images with different backgrounds, lighting conditions, angles, and scales.
 - **Balance**: Try to have roughly equal numbers of images per class. If that is not possible, have at least half as many images in the smallest class as in the largest.
-- **Resolution**: Images should be at least 256x256 pixels. The service accepts up to 6MB per image.
+- **Resolution**: Images should be at least 256 pixels on the shortest edge. Training images can be up to 6 MB, and prediction images can be up to 4 MB.
 
 ## Step 4: Train the Model
 
@@ -237,14 +243,14 @@ for r in results:
 
 ## Step 6: Export the Model for Edge Deployment
 
-One of Custom Vision's unique features is the ability to export trained models for offline use on edge devices.
+One of Custom Vision's unique features is the ability to export trained models for offline use on edge devices. Export is available only for projects trained with a compact domain, such as the `General (compact)` domain used earlier in this post.
 
 ```python
 # Export the model in different formats
 exports = trainer.export_iteration(
     project.id,
     iteration.id,
-    platform="TensorFlow",    # Options: TensorFlow, CoreML, ONNX, Dockerfile, OpenVINO
+    platform="TensorFlow",    # Options: TensorFlow, CoreML, ONNX, DockerFile, OpenVino
     flavor="TensorFlowLite"   # For mobile deployment
 )
 
