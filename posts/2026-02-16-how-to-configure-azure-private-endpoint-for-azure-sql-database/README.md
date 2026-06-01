@@ -104,7 +104,7 @@ Once the Private Endpoint is working, you should disable public access to your S
 az sql server update \
   --resource-group myResourceGroup \
   --name mysqlserver \
-  --public-network-access Disabled
+  --set publicNetworkAccess="Disabled"
 ```
 
 After running this, any attempt to connect from outside the VNet will be rejected. This includes connections from the Azure Portal query editor, so keep that in mind.
@@ -155,7 +155,7 @@ The VM resolves the SQL Server FQDN through the Private DNS Zone, gets the priva
 
 ## Handling Hybrid Scenarios
 
-If you have on-premises servers connecting to Azure SQL through ExpressRoute or VPN, you need to configure DNS forwarding. Your on-premises DNS server must forward queries for `privatelink.database.windows.net` to Azure DNS (168.63.129.16) through a DNS forwarder VM or Azure DNS Private Resolver in your VNet.
+If you have on-premises servers connecting to Azure SQL through ExpressRoute or VPN, you need to configure DNS forwarding. Your on-premises DNS server must forward queries for `database.windows.net` to a DNS forwarder VM or Azure DNS Private Resolver in your VNet, which can then resolve through Azure DNS (168.63.129.16) and the linked Private DNS Zone.
 
 The forwarding chain looks like this:
 
@@ -169,7 +169,7 @@ Without this DNS setup, on-premises servers will resolve the public IP and fail 
 
 ## Common Issues and Troubleshooting
 
-**Connection times out from VNet VM.** Check the NSG on the subnet hosting the Private Endpoint. Make sure outbound traffic on port 1433 is allowed. Also verify that the subnet does not have a service endpoint for `Microsoft.Sql` - that can conflict with Private Endpoint.
+**Connection times out from VNet VM.** Check the NSG and route table affecting the client VM and Private Endpoint path. Make sure SQL traffic is allowed, including TCP 1433 and any additional ports required by your Azure SQL connection policy. Also verify that the Private Endpoint connection is approved.
 
 **DNS resolves to public IP.** This usually means the Private DNS Zone is not linked to the VNet or the zone group was not created. Run `az network private-dns link vnet list` to check.
 
