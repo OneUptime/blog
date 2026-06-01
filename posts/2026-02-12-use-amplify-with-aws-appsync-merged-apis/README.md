@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Amplify, AppSync, GraphQL, Merged APIs, API Gateway, Backend
+Tags: AWS, Amplify, AppSync, GraphQL, Merged APIs, Backend
 
 Description: Learn how to connect AWS Amplify frontend applications to AppSync Merged APIs for unified GraphQL endpoints across multiple teams
 
 ---
 
-AWS AppSync Merged APIs let you combine multiple GraphQL APIs into a single endpoint. This is a game-changer for large organizations where different teams own different parts of the backend. Instead of your frontend application calling five different GraphQL endpoints, it calls one merged endpoint that routes queries to the correct source API behind the scenes.
+AWS AppSync Merged APIs let you combine multiple GraphQL APIs into a single endpoint. This is a game-changer for large organizations where different teams own different parts of the backend. Instead of your frontend application calling five different GraphQL endpoints, it calls one merged endpoint that uses the imported schema, resolvers, data sources, and functions from the source APIs.
 
 When you pair AppSync Merged APIs with AWS Amplify on the frontend, you get a streamlined development experience with code generation, type safety, and automatic authentication handling. This guide walks through the full setup.
 
@@ -125,6 +125,7 @@ Create the Merged API in the AppSync console or via the CLI:
 aws appsync create-graphql-api \
   --name "MyMergedAPI" \
   --api-type MERGED \
+  --merged-api-execution-role-arn "arn:aws:iam::123456789012:role/AppSyncMergedApiExecutionRole" \
   --authentication-type AMAZON_COGNITO_USER_POOLS \
   --user-pool-config '{
     "userPoolId": "us-east-1_abc123",
@@ -133,7 +134,7 @@ aws appsync create-graphql-api \
   }'
 ```
 
-Note the API ID from the response. You will need it to associate source APIs.
+The merged API execution role must allow AppSync to call the source APIs with the `appsync:SourceGraphQL` permission. Note the API ID from the response. You will need it to associate source APIs.
 
 ## Step 3: Associate Source APIs
 
@@ -141,36 +142,55 @@ Link your source APIs to the Merged API:
 
 ```bash
 # Associate the Users source API
-aws appsync start-schema-merge \
-  --association-id "users-association" \
-  --merged-api-identifier "merged-api-id"
+aws appsync associate-source-graphql-api \
+  --merged-api-identifier "merged-api-id" \
+  --source-api-identifier "users-api-id" \
+  --source-api-association-config '{
+    "mergeType": "AUTO_MERGE"
+  }'
 
 # Associate the Orders source API
+aws appsync associate-source-graphql-api \
+  --merged-api-identifier "merged-api-id" \
+  --source-api-identifier "orders-api-id" \
+  --source-api-association-config '{
+    "mergeType": "AUTO_MERGE"
+  }'
+```
+
+If you use the default `MANUAL_MERGE` mode instead, note the `associationId` from each association response and start the merge yourself:
+
+```bash
 aws appsync start-schema-merge \
-  --association-id "orders-association" \
+  --association-id "users-association-id-from-response" \
   --merged-api-identifier "merged-api-id"
 ```
 
-After association, the Merged API schema automatically includes types and operations from both source APIs. You can query users and orders through a single endpoint.
+After a successful merge, the Merged API schema includes types and operations from both source APIs. You can query users and orders through a single endpoint.
 
 ## Step 4: Configure Amplify to Use the Merged API
 
 In your Amplify project, you need to point the frontend at the Merged API endpoint instead of individual source APIs.
 
-For Amplify Gen 2, update your `amplify/backend.ts`:
+For Amplify Gen 2, configure the Amplify client in your frontend entry point:
 
 ```typescript
-// amplify/backend.ts - Configure the Merged API
-import { defineBackend } from '@aws-amplify/backend';
+// src/main.ts - Configure the Merged API
+import { Amplify } from 'aws-amplify';
+import { parseAmplifyConfig } from 'aws-amplify/utils';
+import outputs from '../amplify_outputs.json';
 
-const backend = defineBackend({});
+const amplifyConfig = parseAmplifyConfig(outputs);
 
-// Add the Merged API as a custom resource
-backend.addOutput({
-  custom: {
-    GraphQLEndpoint: 'https://merged-api-id.appsync-api.us-east-1.amazonaws.com/graphql',
-    GraphQLApiId: 'merged-api-id',
-    GraphQLRegion: 'us-east-1',
+Amplify.configure({
+  ...amplifyConfig,
+  API: {
+    ...amplifyConfig.API,
+    GraphQL: {
+      endpoint: 'https://merged-api-id.appsync-api.us-east-1.amazonaws.com/graphql',
+      region: 'us-east-1',
+      defaultAuthMode: 'userPool',
+    },
   },
 });
 ```
@@ -211,8 +231,8 @@ aws appsync get-introspection-schema \
   schema.graphql
 
 # Use Amplify codegen to generate TypeScript types
-amplify codegen add --apiId merged-api-id
-amplify codegen generate
+npx @aws-amplify/cli codegen add --apiId merged-api-id --region us-east-1
+npx @aws-amplify/cli codegen
 ```
 
 This creates type-safe query and mutation functions you can import directly.
@@ -259,11 +279,11 @@ async function placeOrder(userId: string, total: number) {
 }
 ```
 
-The frontend code does not need to know which source API handles which operation. The Merged API routes everything automatically.
+The frontend code does not need to know which source API originally owned each operation. The Merged API exposes the merged schema and invokes the imported resources behind that endpoint.
 
 ## Step 7: Handle Authentication Across Source APIs
 
-Merged APIs support multiple authentication modes. You can configure different auth modes for different operations:
+Merged APIs support multiple authentication modes. If those modes are configured on the Merged API, you can choose different auth modes for different operations:
 
 ```typescript
 // Use IAM auth for public queries, Cognito for mutations
@@ -279,29 +299,28 @@ const privateResult = await client.graphql({
 });
 ```
 
-Each source API can have its own authorization configuration, and the Merged API respects those settings.
+Each source API can have its own authorization configuration. At merge time, the Merged API must include the primary authorization mode used by each source API as either its primary authorization mode or an additional authorization mode.
 
 ## Step 8: Handle Schema Conflicts
 
 When merging schemas, type name conflicts can occur. If both source APIs define a `Status` enum, AppSync needs to know how to resolve the conflict.
 
-There are three merge strategies:
+Source API associations have two merge modes:
 
-1. **Auto merge**: AppSync automatically resolves conflicts by keeping the most recent definition
-2. **Manual merge**: You manually resolve conflicts in the Merged API schema
-3. **Namespace prefix**: Each source API's types get a prefix to avoid conflicts
+1. **Manual merge**: AppSync uses this by default. You manually start a merge when you want source API changes propagated to the Merged API.
+2. **Auto merge**: AppSync automatically attempts to merge source API changes into the Merged API.
 
 ```bash
-# Configure the association with a merge strategy
+# Configure the association with auto merge
 aws appsync associate-source-graphql-api \
   --merged-api-identifier "merged-api-id" \
   --source-api-identifier "users-api-id" \
   --source-api-association-config '{
     "mergeType": "AUTO_MERGE"
-  }'
+}'
 ```
 
-For most teams, auto merge works fine as long as you coordinate type names across teams. Namespacing is the safest option for large organizations where teams work independently.
+For schema conflicts, AppSync supports directives such as `@canonical`, `@hidden`, and `@renamed` to choose a preferred definition, exclude a type or field from the Merged API, or rename a conflicting type or field. Compatible object type definitions can be merged by taking the union of their fields, but incompatible definitions cause the merge to fail until you resolve them.
 
 ## Monitoring the Merged API
 
@@ -309,8 +328,8 @@ Track the health of your Merged API with CloudWatch metrics:
 
 ```bash
 # Key metrics to monitor
-# - Latency by source API
-# - Error rates per source API
+# - Latency for the Merged API
+# - Error rates for the Merged API
 # - Total request count
 
 aws cloudwatch get-metric-data \
@@ -340,7 +359,7 @@ For a deeper dive into monitoring, see our guide on [monitoring Amplify hosting 
 
 **Authorization errors**: Make sure the Merged API's auth configuration includes all auth modes used by the source APIs. If a source API uses API key auth but the Merged API only allows Cognito, those operations will fail.
 
-**High latency**: The Merged API adds a routing layer. If latency is a concern, make sure your source APIs are in the same region as the Merged API.
+**High latency**: Check resolver, function, and data source performance for the imported source API resources, and use AppSync and CloudWatch metrics to identify slow operations.
 
 ## Wrapping Up
 
