@@ -27,20 +27,16 @@ flowchart TD
 
 ## Step 1: Create the Azure Health Bot Instance
 
-1. In the Azure portal, search for "Azure Health Bot".
+1. In the Azure portal, search for "Healthcare agent service" (the current Azure portal name for Azure Health Bot).
 2. Click Create.
 3. Configure:
    - Name: Your bot name (e.g., "contoso-health-assistant")
    - Subscription and resource group
    - Region: Choose based on data residency requirements
-   - Plan: S1 (Standard) for production, Free for development
+   - Plan: Agent Tier (C1) for production, Free (F0) for development. The legacy S1 tier is deprecated for new instances.
 4. Click Create.
 
-After deployment, go to the Health Bot management portal:
-
-`https://us.healthbot.microsoft.com/account/{bot-name}`
-
-This is where you build conversation scenarios.
+After deployment, open the Healthcare agent service management portal from the Azure resource. This is where you build conversation scenarios.
 
 ## Step 2: Configure FHIR Data Connection
 
@@ -50,20 +46,23 @@ This is where you build conversation scenarios.
 2. Click New data connection.
 3. Configure:
    - Name: `EHR-FHIR`
-   - Type: FHIR
+   - Type: FHIR Endpoint
    - Base URL: Your FHIR server URL (e.g., `https://my-fhir-server.azurehealthcareapis.com`)
-   - Authentication: OAuth 2.0 Client Credentials
-   - Token URL: `https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token`
-   - Client ID: Your app registration client ID
-   - Client Secret: Your app registration client secret
-   - Scope: `https://my-fhir-server.azurehealthcareapis.com/.default`
+   - Authentication provider: An OAuth 2.0 server-to-server authentication provider
+
+In the authentication provider, configure:
+
+- Access Token URL: `https://login.microsoftonline.com/{tenant-id}/oauth2/v2.0/token`
+- Client ID: Your app registration client ID
+- Client Secret: Your app registration client secret
+- Scope: `https://my-fhir-server.azurehealthcareapis.com/.default`
 
 ### SMART on FHIR for Patient Context
 
 For patient-facing scenarios where the bot should access only the current patient's data, implement SMART on FHIR:
 
 1. Register a SMART on FHIR application with your EHR.
-2. Configure the Health Bot to use the SMART launch flow.
+2. Configure an end-user OAuth 2.0 authentication provider in Health Bot with the EHR's SMART authorization and token URLs.
 3. The patient authenticates with the EHR during the bot conversation.
 4. The bot receives a scoped access token that only allows access to that patient's data.
 
@@ -117,10 +116,21 @@ if (appointments.length === 0) {
         var appt = appointments[i].resource;
         var date = new Date(appt.start).toLocaleDateString();
         var time = new Date(appt.start).toLocaleTimeString();
-        var type = appt.serviceType?.[0]?.text || "General";
-        var provider = appt.participant?.find(
-            p => p.actor?.reference?.startsWith("Practitioner")
-        )?.actor?.display || "Your provider";
+        var type = "General";
+        if (appt.serviceType && appt.serviceType.length > 0 && appt.serviceType[0].text) {
+            type = appt.serviceType[0].text;
+        }
+
+        var provider = "Your provider";
+        if (appt.participant) {
+            for (var j = 0; j < appt.participant.length; j++) {
+                var actor = appt.participant[j].actor;
+                if (actor && actor.reference && actor.reference.indexOf("Practitioner") === 0) {
+                    provider = actor.display || provider;
+                    break;
+                }
+            }
+        }
 
         message += (i + 1) + ". " + type + " with " + provider +
                    "\n   Date: " + date + " at " + time + "\n\n";
@@ -135,7 +145,7 @@ scenario.appointmentMessage = message;
 Query the patient's active medications:
 
 ```text
-GET /MedicationRequest?patient={patient-id}&status=active&_include=MedicationRequest:medication
+GET /MedicationRequest?patient={patient-id}&intent=order,plan&status=active&_include=MedicationRequest:medication
 ```
 
 Format the response for the patient:
@@ -154,10 +164,20 @@ if (medications.length === 0) {
         var med = medications[i].resource;
         if (med.resourceType !== "MedicationRequest") continue;
 
-        var name = med.medicationCodeableConcept?.text ||
-                   med.medicationCodeableConcept?.coding?.[0]?.display ||
-                   "Unknown medication";
-        var dosage = med.dosageInstruction?.[0]?.text || "As directed";
+        var name = "Unknown medication";
+        if (med.medicationCodeableConcept) {
+            name = med.medicationCodeableConcept.text || name;
+            if (name === "Unknown medication" &&
+                med.medicationCodeableConcept.coding &&
+                med.medicationCodeableConcept.coding.length > 0) {
+                name = med.medicationCodeableConcept.coding[0].display || name;
+            }
+        }
+
+        var dosage = "As directed";
+        if (med.dosageInstruction && med.dosageInstruction.length > 0) {
+            dosage = med.dosageInstruction[0].text || dosage;
+        }
 
         message += "- " + name + "\n  Dosage: " + dosage + "\n\n";
     }
@@ -185,7 +205,13 @@ var message = "Your recent lab results:\n\n";
 
 for (var i = 0; i < observations.length; i++) {
     var obs = observations[i].resource;
-    var testName = obs.code?.text || obs.code?.coding?.[0]?.display || "Lab Test";
+    var testName = "Lab Test";
+    if (obs.code) {
+        testName = obs.code.text || testName;
+        if (testName === "Lab Test" && obs.code.coding && obs.code.coding.length > 0) {
+            testName = obs.code.coding[0].display || testName;
+        }
+    }
     var value = obs.valueQuantity ?
         obs.valueQuantity.value + " " + (obs.valueQuantity.unit || "") :
         obs.valueString || "No result";
@@ -193,10 +219,14 @@ for (var i = 0; i < observations.length; i++) {
     var status = "";
 
     // Check interpretation for abnormal flags
-    if (obs.interpretation?.[0]?.coding?.[0]?.code === "H") {
-        status = " (HIGH)";
-    } else if (obs.interpretation?.[0]?.coding?.[0]?.code === "L") {
-        status = " (LOW)";
+    if (obs.interpretation && obs.interpretation.length > 0 &&
+        obs.interpretation[0].coding && obs.interpretation[0].coding.length > 0) {
+        var interpretationCode = obs.interpretation[0].coding[0].code;
+        if (interpretationCode === "H") {
+            status = " (HIGH)";
+        } else if (interpretationCode === "L") {
+            status = " (LOW)";
+        }
     }
 
     message += "- " + testName + ": " + value + status +
@@ -230,15 +260,9 @@ Embed the Health Bot within the EHR's patient portal. The patient is already aut
 // Initialize the Health Bot with patient context from the portal
 // The patient ID is passed securely from the authenticated portal session
 var botConfig = {
-    webchatSecret: "YOUR_WEBCHAT_SECRET",
-    directLineToken: "YOUR_DL_TOKEN",
-    userId: portalSession.patientId,
-    customLocale: "en-US",
-    sendActivityOnLoad: true,
-    customActivity: {
-        type: "event",
-        name: "setPatientContext",
-        value: {
+    triggeredScenario: {
+        trigger: "setPatientContext",
+        args: {
             patientId: portalSession.patientFhirId,
             patientName: portalSession.patientName
         }
@@ -255,12 +279,10 @@ If the bot is accessed outside the EHR portal, verify the patient's identity:
 3. Only proceed with data access after successful verification.
 
 ```javascript
-// Verify patient identity using FHIR search
-// Matches on multiple identifiers for security
-var results = await fhirSearch("Patient", {
-    birthdate: scenario.providedDOB,
-    identifier: scenario.providedMRN
-});
+// Verify patient identity after a Patient search data connection step
+// Example data connection path:
+// Patient?birthdate={scenario.providedDOB}&identifier={scenario.providedMRN}
+var results = scenario.fhirResponse || {};
 
 if (results.total === 1) {
     scenario.patientId = results.entry[0].resource.id;
@@ -299,6 +321,8 @@ Embed the bot in a website using the Web Chat widget:
 </script>
 ```
 
+Generate the Direct Line token on your server from the channel secret and pass only the short-lived token to the browser. Do not expose the Direct Line secret or Health Bot webchat secret in client-side code.
+
 ### Microsoft Teams
 
 Deploy the bot to Microsoft Teams for internal clinical staff use:
@@ -324,7 +348,7 @@ Enable audit logging for all bot conversations:
 1. In the Health Bot portal, go to Configuration > Conversation logs.
 2. Enable conversation logging.
 3. Configure log retention based on your compliance requirements.
-4. Export logs to Azure Monitor for centralized analysis.
+4. Use the built-in log export for conversation review, and configure Application Insights custom telemetry if you need centralized monitoring in Azure Monitor.
 
 ### Data Handling
 
