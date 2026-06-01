@@ -10,6 +10,8 @@ Description: Learn how to use and create CodeCatalyst Blueprints to standardize 
 
 Starting a new project from scratch is slow. You need to set up the repository structure, configure CI/CD, write infrastructure code, add linting and testing configs, and a dozen other things before you write a single line of business logic. CodeCatalyst Blueprints eliminate this startup cost by providing project templates that include everything a new project needs right from the start.
 
+Note: AWS closed Amazon CodeCatalyst access to new customers on November 7, 2025. Existing customers can continue using existing spaces, but AWS does not plan to introduce new CodeCatalyst features beyond security, availability, and performance improvements.
+
 This guide covers using built-in blueprints, customizing them, and creating your own custom blueprints for your organization.
 
 ## What Are CodeCatalyst Blueprints?
@@ -18,7 +20,7 @@ A Blueprint is a project template that generates a complete, working project in 
 
 - Source code with a standard directory structure
 - Pre-configured CI/CD workflows
-- Infrastructure as code templates (CDK, CloudFormation, or Terraform)
+- Infrastructure as code templates, depending on the blueprint (for example, AWS CDK or AWS SAM)
 - Dev Environment configuration (devfile)
 - Testing setup and sample tests
 - Documentation templates
@@ -31,16 +33,16 @@ CodeCatalyst comes with several official blueprints:
 
 | Blueprint | Description |
 |-----------|-------------|
-| Single-page Application | React/Angular app with S3/CloudFront hosting |
-| Serverless API | Lambda + API Gateway with SAM or CDK |
-| Modern Web Application | Full-stack app with frontend and backend |
-| DevOps Pipeline | CI/CD pipeline for existing applications |
-| .NET Serverless | .NET Lambda functions with CDK |
-| Data Pipeline | ETL pipeline with Step Functions and Glue |
+| Single-page application | React, Vue, or Angular SPA with AWS Amplify Hosting or S3/CloudFront hosting |
+| Serverless Application Model (SAM) | Serverless API project using AWS SAM |
+| Serverless RESTful microservice | REST API with Lambda and API Gateway |
+| Modern three-tier web application | Python application layer with a Vue frontend |
+| DevOps deployment pipeline | Deployment pipeline based on the AWS Deployment Pipeline Reference Architecture |
+| AWS Glue ETL | ETL reference implementation using AWS CDK, AWS Glue, AWS Lambda, and Amazon Athena |
 
 ## Step 1: Create a Project from a Blueprint
 
-Using the CodeCatalyst console:
+Using the CodeCatalyst console as a Space administrator:
 
 1. Navigate to your space
 2. Click "Create project"
@@ -49,33 +51,19 @@ Using the CodeCatalyst console:
 5. Configure the blueprint parameters
 6. Click "Create project"
 
-The console walks you through each parameter with descriptions and sensible defaults.
-
-You can also create projects from blueprints via the API:
+The console walks you through each parameter with descriptions and sensible defaults. The AWS CLI `codecatalyst create-project` command creates a project in a space, but it does not accept a `--blueprint` option. Blueprint selection and configuration are handled through the CodeCatalyst console.
 
 ```bash
-# Create a project from the Serverless API blueprint
-
+# Create an empty CodeCatalyst project
 aws codecatalyst create-project \
   --space-name "my-company" \
   --display-name "Order API" \
-  --description "Serverless order management API" \
-  --blueprint '{
-    "blueprintName": "serverless-api",
-    "parameters": {
-      "language": "TypeScript",
-      "framework": "Express",
-      "deploymentTarget": "Lambda",
-      "region": "us-east-1",
-      "stagingAccount": "123456789012",
-      "productionAccount": "987654321098"
-    }
-  }'
+  --description "Serverless order management API"
 ```
 
 ## Step 2: Explore What a Blueprint Generates
 
-When you create a project from the Serverless API blueprint with TypeScript, you get a repository with this structure:
+When you create a project from a serverless blueprint with TypeScript, you get a repository with generated source code, workflow definitions, and infrastructure files. The exact files depend on the blueprint and options you choose, but the structure commonly looks like this:
 
 ```text
 order-api/
@@ -110,65 +98,44 @@ order-api/
   README.md
 ```
 
-Everything is wired together. Push to main and the workflow builds, tests, and deploys automatically.
+Everything is wired together. Push to main and the workflow builds, tests, and deploys according to the selected blueprint.
 
 ## Step 3: Customize Blueprint Parameters
 
-Each blueprint has configurable parameters. Here is how the Serverless API blueprint parameters work:
+Each blueprint has configurable parameters. For custom blueprints, the CodeCatalyst wizard is generated from the TypeScript `Options` interface in `src/blueprint.ts`:
 
-```yaml
-# Blueprint parameter definitions (internal structure)
-parameters:
-  language:
-    type: string
-    enum: [TypeScript, Python, Java]
-    default: TypeScript
-    description: Programming language for Lambda functions
+```typescript
+import { Options as ParentOptions } from '@amazon-codecatalyst/blueprints.blueprint';
 
-  framework:
-    type: string
-    enum: [Express, FastAPI, SpringBoot]
-    default: Express
-    description: Web framework (varies by language)
+export interface Options extends ParentOptions {
+  /**
+   * The name of the service
+   */
+  serviceName: string;
 
-  deploymentTarget:
-    type: string
-    enum: [Lambda, ECS]
-    default: Lambda
-    description: Where to deploy the API
+  /**
+   * The programming language
+   */
+  language: 'typescript' | 'python' | 'java';
 
-  databaseType:
-    type: string
-    enum: [DynamoDB, Aurora, None]
-    default: DynamoDB
-    description: Database backend
-
-  region:
-    type: string
-    default: us-east-1
-    description: AWS region for deployment
-
-  includeAuth:
-    type: boolean
-    default: true
-    description: Include Cognito authentication
+  /**
+   * Include Cognito authentication
+   */
+  includeAuth: boolean;
+}
 ```
 
-Different parameter combinations produce different project structures. Choosing Python with FastAPI gives you a completely different codebase than TypeScript with Express, but both follow the same architectural patterns.
+Different parameter combinations can produce different project structures. Choosing a different language can generate a different codebase while still following the same architectural patterns.
 
 ## Step 4: Create a Custom Blueprint
 
 When the built-in blueprints do not match your organization's standards, create your own. Custom blueprints are TypeScript projects that use the CodeCatalyst Blueprint SDK.
 
-Initialize a new blueprint project:
+Create a new custom blueprint from your space's settings in the CodeCatalyst console. CodeCatalyst creates a blueprint project and repository for you. If you need the local blueprint tooling in a Dev Environment, install the CLI:
 
 ```bash
 # Install the blueprint CLI
 npm install -g @amazon-codecatalyst/blueprint-util.cli
-
-# Create a new blueprint project
-npx create-blueprint my-company-api-blueprint
-cd my-company-api-blueprint
 ```
 
 The blueprint project structure looks like this:
@@ -181,11 +148,9 @@ my-company-api-blueprint/
   static-assets/
     source-repo/              # Template files for the generated project
       src/
-        index.ts.hbs          # Handlebars templates
-      package.json.hbs
+        index.ts              # Static or generated source files
+      package.json
       tsconfig.json
-    workflows/
-      pipeline.yaml.hbs       # CI/CD workflow template
   package.json
   projen.ts                   # Blueprint configuration
 ```
@@ -196,14 +161,15 @@ Here is the core blueprint definition:
 // src/blueprint.ts
 import {
   Blueprint,
-  Options,
-  SourceRepository,
-  Workflow,
-  Environment,
+  Options as ParentOptions,
 } from '@amazon-codecatalyst/blueprints.blueprint';
-import { ProjenBlueprint } from '@amazon-codecatalyst/blueprint-util.projen-blueprint';
+import {
+  SourceFile,
+  SourceRepository,
+} from '@amazon-codecatalyst/codecatalyst-source-repositories';
+import { Workflow } from '@amazon-codecatalyst/codecatalyst-workflows';
 
-export interface MyBlueprintOptions extends Options {
+export interface MyBlueprintOptions extends ParentOptions {
   /**
    * The name of the service
    */
@@ -220,16 +186,6 @@ export interface MyBlueprintOptions extends Options {
    * @default true
    */
   includeMonitoring: boolean;
-
-  /**
-   * AWS account ID for staging
-   */
-  stagingAccountId: string;
-
-  /**
-   * AWS account ID for production
-   */
-  productionAccountId: string;
 }
 
 export class MyCompanyApiBlueprint extends Blueprint {
@@ -249,65 +205,36 @@ export class MyCompanyApiBlueprint extends Blueprint {
     }
 
     // Add the CI/CD workflow
-    this.addWorkflow(repo, options);
-
-    // Add environments
-    new Environment(this, {
-      name: 'staging',
-      environmentType: 'NON_PRODUCTION',
-      awsAccountConnection: {
-        id: options.stagingAccountId,
-        name: options.stagingAccountId,
-      },
-    });
-
-    new Environment(this, {
-      name: 'production',
-      environmentType: 'PRODUCTION',
-      awsAccountConnection: {
-        id: options.productionAccountId,
-        name: options.productionAccountId,
-      },
-    });
+    this.addWorkflow(repo);
   }
 
   private addTypeScriptFiles(repo: SourceRepository, options: MyBlueprintOptions) {
-    // Use Handlebars templates from static-assets
-    repo.copyStaticFiles({
-      from: 'static-assets/source-repo',
-      context: {
-        serviceName: options.serviceName,
-        includeMonitoring: options.includeMonitoring,
-      },
-    });
+    new SourceFile(repo, 'README.md', `# ${options.serviceName}`);
+    new SourceFile(repo, 'src/index.ts', 'export const handler = async () => ({ statusCode: 200 });');
   }
 
   private addPythonFiles(repo: SourceRepository, options: MyBlueprintOptions) {
-    // Python-specific file generation
-    repo.copyStaticFiles({
-      from: 'static-assets/python-source',
-      context: {
-        serviceName: options.serviceName,
-      },
-    });
+    new SourceFile(repo, 'README.md', `# ${options.serviceName}`);
+    new SourceFile(repo, 'src/index.py', 'def handler(event, context):\n    return {"statusCode": 200}\n');
   }
 
-  private addWorkflow(repo: SourceRepository, options: MyBlueprintOptions) {
+  private addWorkflow(repo: SourceRepository) {
     new Workflow(this, repo, {
-      name: 'BuildAndDeploy',
-      definition: {
-        SchemaVersion: '1.0',
-        Triggers: [{ Type: 'Push', Branches: ['main'] }],
-        Actions: {
-          Build: {
-            Identifier: 'aws/build@v1',
-            Configuration: {
-              Steps: [
-                { Run: 'npm ci' },
-                { Run: 'npm test' },
-                { Run: 'npm run build' },
-              ],
-            },
+      Name: 'BuildAndDeploy',
+      SchemaVersion: '1.0',
+      Triggers: [{ Type: 'PUSH', Branches: ['main'] }],
+      Actions: {
+        Build: {
+          Identifier: 'aws/build@v1',
+          Inputs: {
+            Sources: ['WorkflowSource'],
+          },
+          Configuration: {
+            Steps: [
+              { Run: 'npm ci' },
+              { Run: 'npm test' },
+              { Run: 'npm run build' },
+            ],
           },
         },
       },
@@ -321,17 +248,17 @@ export class MyCompanyApiBlueprint extends Blueprint {
 Once your blueprint is ready, publish it to your CodeCatalyst space:
 
 ```bash
-# Build the blueprint
-npm run build
+# Install dependencies
+yarn
 
-# Publish to your space
-npx publish-blueprint \
-  --space "my-company" \
-  --blueprint-name "my-company-api" \
-  --version "1.0.0"
+# Preview the blueprint
+yarn blueprint:preview
+
+# Publish a normal version if you opted out of release workflow generation
+yarn blueprint:release
 ```
 
-After publishing, team members can find your blueprint when creating new projects. It appears alongside the built-in blueprints.
+After publishing, add the blueprint to your space's blueprints catalog. Team members can then find your blueprint when creating new projects or adding blueprints to existing projects.
 
 ## Step 6: Update Projects with Blueprint Changes
 
