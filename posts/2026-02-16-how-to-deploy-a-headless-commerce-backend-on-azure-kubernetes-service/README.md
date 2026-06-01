@@ -79,6 +79,9 @@ az aks create \
 
 # Get credentials for kubectl
 az aks get-credentials --resource-group commerce-rg --name commerce-aks
+
+# Create the namespace used by the service manifests
+kubectl create namespace commerce
 ```
 
 The D4s_v3 nodes give you 4 vCPUs and 16 GB RAM each, which is a good balance for web services. The autoscaler will add up to 20 nodes during peak traffic and scale back down when things calm down.
@@ -109,8 +112,7 @@ metadata:
   name: commerce-ingress
   namespace: commerce
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/limit-rps: "100"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
 spec:
   ingressClassName: nginx
@@ -248,7 +250,7 @@ The HorizontalPodAutoscaler adds pods when average CPU utilization exceeds 70%. 
 
 ## Step 4 - Deploy the Cart Service with Redis
 
-Shopping carts are session-based and need fast reads and writes. Redis is the natural choice. Deploy Azure Cache for Redis and connect the cart service to it.
+Shopping carts are session-based and need fast reads and writes. Redis is the natural choice. Azure Cache for Redis has a published retirement timeline, so evaluate Azure Managed Redis for new production builds. If you continue with Azure Cache for Redis, create it and connect the cart service to it.
 
 ```bash
 # Create Azure Cache for Redis
@@ -257,8 +259,8 @@ az redis create \
   --resource-group commerce-rg \
   --location eastus \
   --sku Premium \
-  --vm-size P1 \
-  --enable-non-ssl-port false
+  --vm-size p1 \
+  --minimum-tls-version 1.2
 ```
 
 The cart service deployment is similar to the product service but connects to Redis instead of Cosmos DB.
@@ -311,6 +313,19 @@ spec:
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 5
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: cart-service
+  namespace: commerce
+spec:
+  selector:
+    app: cart-service
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
 ```
 
 ## Step 5 - Deploy the Checkout Service with Event-Driven Processing
@@ -359,6 +374,19 @@ spec:
                 secretKeyRef:
                   name: payment-secrets
                   key: api-key
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: checkout-service
+  namespace: commerce
+spec:
+  selector:
+    app: checkout-service
+  ports:
+    - port: 80
+      targetPort: 8080
+  type: ClusterIP
 ```
 
 The checkout flow works like this: the client submits a checkout request, the service validates the cart and inventory synchronously, processes payment, then publishes an OrderCreated event to Service Bus. The order service picks up the event asynchronously to create the order record, send confirmation emails, and update inventory.
@@ -381,7 +409,7 @@ az keyvault create \
   --location eastus
 ```
 
-Then create a SecretProviderClass that maps Key Vault secrets to Kubernetes secrets.
+Then create a SecretProviderClass that maps Key Vault secrets to Kubernetes secrets. The synced Kubernetes secrets are created after a pod mounts the Secrets Store CSI volume.
 
 ```yaml
 # secret-provider.yaml
@@ -392,6 +420,31 @@ metadata:
   namespace: commerce
 spec:
   provider: azure
+  secretObjects:
+    - secretName: cosmos-secrets
+      type: Opaque
+      data:
+        - objectName: cosmos-endpoint
+          key: endpoint
+        - objectName: cosmos-key
+          key: key
+    - secretName: redis-secrets
+      type: Opaque
+      data:
+        - objectName: redis-host
+          key: host
+        - objectName: redis-password
+          key: password
+    - secretName: servicebus-secrets
+      type: Opaque
+      data:
+        - objectName: servicebus-connection
+          key: connection-string
+    - secretName: payment-secrets
+      type: Opaque
+      data:
+        - objectName: stripe-api-key
+          key: api-key
   parameters:
     usePodIdentity: "false"
     useVMManagedIdentity: "true"
@@ -406,7 +459,16 @@ spec:
           objectName: cosmos-key
           objectType: secret
         - |
-          objectName: redis-connection
+          objectName: redis-host
+          objectType: secret
+        - |
+          objectName: redis-password
+          objectType: secret
+        - |
+          objectName: servicebus-connection
+          objectType: secret
+        - |
+          objectName: stripe-api-key
           objectType: secret
     tenantId: "<tenant-id>"
 ```
