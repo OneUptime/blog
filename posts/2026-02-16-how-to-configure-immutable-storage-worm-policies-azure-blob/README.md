@@ -8,9 +8,9 @@ Description: Learn how to configure Write Once Read Many (WORM) immutable storag
 
 ---
 
-Some data must never be modified or deleted once it is written. Financial records, medical data, legal documents, audit logs - regulations like SEC 17a-4, CFTC 1.31, HIPAA, and GDPR require that certain data remain immutable for specified retention periods. Azure Blob Storage supports this through immutable storage policies, also known as WORM (Write Once, Read Many) policies.
+Some data must never be modified or deleted once it is written. Financial records, medical data, legal documents, audit logs - regulations and frameworks like SEC 17a-4, CFTC 1.31, HIPAA, and GDPR can drive retention and tamper-protection requirements for certain data. Azure Blob Storage supports this through immutable storage policies, also known as WORM (Write Once, Read Many) policies.
 
-When an immutable policy is in effect, blobs cannot be modified or deleted until the retention period expires. Not by users, not by administrators, and not even by Microsoft support. This is the level of assurance regulators expect.
+When a locked time-based policy is in effect, blobs cannot be modified or deleted until the retention period expires. Not by users, not by administrators, and not even by Microsoft support. This is the level of assurance regulators expect.
 
 ## Types of Immutability Policies
 
@@ -20,9 +20,9 @@ Azure offers two types of immutability policies:
 
 A time-based retention policy locks blobs for a specified duration. During the retention interval, blobs can be created and read, but cannot be modified or deleted. After the retention period expires, blobs can be deleted but still cannot be modified.
 
-There are three states for a time-based policy:
+There are two states for a time-based policy:
 
-1. **Unlocked** - The policy is active but can still be modified (extend the retention) or deleted.
+1. **Unlocked** - The policy is active but can still be modified (extend or shorten the retention) or deleted. An unlocked policy does not provide the same delete protection as a locked policy.
 2. **Locked** - The policy is permanently in effect. The retention period can be extended but never shortened. The policy cannot be deleted.
 
 Once a policy is locked, there is no going back. Think carefully before locking.
@@ -47,7 +47,7 @@ graph TD
 
 ### Container-Level Policy
 
-Immutability policies are set at the container level. All blobs in the container are subject to the policy.
+Container-level immutability policies apply to all blobs in the container.
 
 ```bash
 # Create a container for immutable data
@@ -88,17 +88,24 @@ I cannot stress this enough: locking is permanent. Once locked, you cannot remov
 
 Azure also supports version-level immutability policies, which give you more granular control. Instead of applying a policy to an entire container, you can set immutability on individual blob versions.
 
-To enable version-level immutability, you need to configure it on the storage account:
+To enable version-level immutability at the storage account level, you need to configure it when you create the storage account. You also need blob versioning enabled:
 
 ```bash
-# Enable version-level immutability support on the storage account
-az storage account update \
+# Enable version-level immutability support when creating the storage account
+az storage account create \
   --name mystorageaccount \
   --resource-group myresourcegroup \
-  --allow-blob-public-access false \
-  --enable-versioning true \
-  --immutability-policy-period 90 \
-  --immutability-policy-state Unlocked
+  --kind StorageV2 \
+  --sku Standard_LRS \
+  --enable-alw true \
+  --immutability-period 90 \
+  --immutability-state Unlocked
+
+# Enable blob versioning on the account
+az storage account blob-service-properties update \
+  --account-name mystorageaccount \
+  --resource-group myresourcegroup \
+  --enable-versioning true
 ```
 
 Then set immutability on specific blobs:
@@ -163,13 +170,13 @@ Once immutability is in effect, certain operations are blocked:
 - Creating new blobs in the container
 - Reading blobs
 - Listing blobs
-- Creating snapshots (if versioning allows it)
 - Setting blob metadata on new blobs
 
 **Blocked operations:**
 - Deleting blobs before retention expires
 - Overwriting blob content
 - Modifying blob metadata on existing blobs
+- Creating snapshots under an active container-level policy
 
 Attempting a blocked operation results in an HTTP 409 Conflict error:
 
@@ -184,7 +191,7 @@ blob_client = blob_service_client.get_blob_client(
 )
 
 try:
-    # This will fail if the blob is under an immutability policy
+    # This will fail if the blob is under a locked immutability policy or legal hold
     blob_client.delete_blob()
 except HttpResponseError as e:
     # Expected: "This operation is not permitted because the blob is immutable"
@@ -216,9 +223,9 @@ az storage container immutability-policy extend \
 
 Not all storage account types support immutable storage:
 
-- General-purpose v2 and BlobStorage accounts support it
+- General-purpose v2, premium block blob, general-purpose v1 (legacy), and BlobStorage (legacy) accounts support container-level WORM policies
+- Version-level WORM policies are supported for general-purpose v2 and premium block blob accounts, but not hierarchical namespace accounts
 - The account must use LRS, GRS, RA-GRS, ZRS, GZRS, or RA-GZRS redundancy
-- Premium block blob accounts also support it
 
 Immutability policies are preserved during failover if you are using GRS/GZRS replication. This means your compliance posture is maintained even in a disaster recovery scenario.
 
@@ -235,7 +242,7 @@ az monitor activity-log list \
   --query "[?contains(operationName.value, 'immutabilityPolicies')]"
 ```
 
-This audit trail is itself immutable and can be presented to auditors as evidence of compliance.
+This audit trail can be presented to auditors as evidence of compliance. If you need the audit evidence itself to be immutable, export Activity Log and resource log data to an immutable destination.
 
 ## Common Mistakes
 
@@ -243,7 +250,7 @@ This audit trail is itself immutable and can be presented to auditors as evidenc
 
 **Setting retention too short.** If your regulation requires 7-year retention, setting 365 days means you need to extend it annually. Consider setting the full required period from the start.
 
-**Forgetting about storage costs.** Immutable data cannot be deleted or moved to cheaper tiers before the retention period expires. Budget for the full retention period at the current tier's pricing.
+**Forgetting about storage costs.** Immutable data cannot be deleted before the retention period expires. Budget for the full retention period, and plan any access-tier changes deliberately.
 
 **Not using version-level immutability when needed.** Container-level policies apply uniformly. If different blobs need different retention periods, use version-level immutability instead.
 
