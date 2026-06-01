@@ -8,7 +8,7 @@ Description: Learn how to use pod topology spread constraints on AKS to distribu
 
 ---
 
-You deploy a 6-replica deployment on your AKS cluster that spans 3 availability zones. Kubernetes schedules all 6 replicas on nodes in zone 1 because those nodes have the most available resources. Zone 1 has an outage, and your application goes completely down even though zones 2 and 3 are healthy. The default Kubernetes scheduler optimizes for resource utilization, not distribution. It will happily pack all your pods onto a single node or a single zone if that is where the resources are.
+You deploy a 6-replica deployment on your AKS cluster that spans 3 availability zones. Without an explicit hard topology rule, Kubernetes may still place too many replicas in one zone if that is where the scheduler finds the best fit, especially when other zones have less capacity. Zone 1 has an outage, and your application goes completely down even though zones 2 and 3 are healthy. The default Kubernetes scheduler considers many factors, and its built-in spreading behavior is best-effort. For production high availability, you should define the distribution you actually require.
 
 Pod topology spread constraints fix this by telling the scheduler to distribute pods across topology domains - availability zones, nodes, or any custom topology you define. They are the right tool for ensuring your workloads survive zone failures, node failures, and rack failures.
 
@@ -96,7 +96,7 @@ spec:
 
 Let me break down the key fields.
 
-**maxSkew**: The maximum allowed difference in pod count between any two zones. With `maxSkew: 1`, if zone 1 has 2 pods, zones 2 and 3 must each have at least 1 pod before zone 1 can get a third.
+**maxSkew**: The maximum allowed difference between the number of matching pods in the target zone and the global minimum across eligible zones. With `maxSkew: 1`, if zone 1 has 2 pods, zones 2 and 3 must each have 2 pods before zone 1 can get a third.
 
 **topologyKey**: The node label that defines the topology domain. `topology.kubernetes.io/zone` is the standard label for availability zones on AKS. The values are `eastus-1`, `eastus-2`, `eastus-3` (or similar depending on the region).
 
@@ -133,7 +133,7 @@ spec:
           labelSelector:
             matchLabels:
               app: critical-api
-        # Second: spread evenly across nodes within each zone
+        # Second: spread evenly across eligible nodes
         - maxSkew: 1
           topologyKey: kubernetes.io/hostname
           whenUnsatisfiable: ScheduleAnyway
@@ -151,7 +151,7 @@ spec:
               memory: 512Mi
 ```
 
-With 9 replicas across 3 zones, each zone gets 3 pods. The second constraint then tries to spread those 3 pods across different nodes within each zone. The zone spread uses `DoNotSchedule` (hard requirement), while the node spread uses `ScheduleAnyway` (best effort) because you might not have enough nodes for perfect distribution.
+With 9 replicas across 3 zones and enough eligible capacity, each zone gets 3 pods. The second constraint then tries to spread the pods across different nodes while the zone constraint keeps zones balanced. The zone spread uses `DoNotSchedule` (hard requirement), while the node spread uses `ScheduleAnyway` (best effort) because you might not have enough nodes for perfect distribution.
 
 ## Understanding maxSkew in Practice
 
@@ -256,6 +256,12 @@ spec:
           image: postgres:16
           ports:
             - containerPort: 5432
+          env:
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
           volumeMounts:
             - name: data
               mountPath: /var/lib/postgresql/data
@@ -281,21 +287,19 @@ With 3 replicas and 3 zones, each zone gets exactly one database replica. If zon
 After deploying, verify that pods are actually spread correctly.
 
 ```bash
-# Check which zone each pod is in
+# Check which node each pod is on
 kubectl get pods -l app=web-app -o wide
 
-# Get zone information for each pod
+# Get node information for each pod
 kubectl get pods -l app=web-app -o json | jq -r '.items[] | "\(.metadata.name)\t\(.spec.nodeName)"'
 
 # Check zone labels on nodes
 kubectl get nodes -o custom-columns=NAME:.metadata.name,ZONE:.metadata.labels.topology\\.kubernetes\\.io/zone
 
 # Count pods per zone
-kubectl get pods -l app=web-app -o json | jq -r '
-  [.items[].spec.nodeName] |
-  group_by(.) |
-  map({node: .[0], count: length})
-'
+kubectl get pods -l app=web-app -o json | jq -r '.items[].spec.nodeName' | while read -r node; do
+  kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}'
+done | sort | uniq -c
 ```
 
 For a quick visual check.
@@ -303,7 +307,8 @@ For a quick visual check.
 ```bash
 # Show pod distribution across zones
 for zone in $(kubectl get nodes -o jsonpath='{.items[*].metadata.labels.topology\.kubernetes\.io/zone}' | tr ' ' '\n' | sort -u); do
-  count=$(kubectl get pods -l app=web-app -o json | jq --arg zone "$zone" '[.items[] | select(.spec.nodeName as $node | [env.nodes[] | select(.zone == $zone) | .name] | index($node) != null)] | length')
+  nodes=$(kubectl get nodes -l topology.kubernetes.io/zone="$zone" -o jsonpath='{.items[*].metadata.name}')
+  count=$(kubectl get pods -l app=web-app -o json | jq --arg nodes "$nodes" '[.items[] | select(.spec.nodeName as $node | ($nodes | split(" ") | index($node)))] | length')
   echo "Zone $zone: $count pods"
 done
 ```
@@ -341,12 +346,12 @@ During rolling updates, the old and new pods coexist. Use `matchLabelKeys: [pod-
 
 ## Cluster-Level Default Spread Constraints
 
-You can set default topology spread constraints for all pods in the cluster by configuring the scheduler. On AKS, this is done through the scheduler profile.
+You can set default topology spread constraints for all pods in a Kubernetes cluster by configuring the scheduler profile. AKS supports scheduler profile configuration as a preview feature on Kubernetes 1.33 and later, but many production clusters still use per-workload constraints or admission-time mutation instead of relying on preview control-plane configuration.
 
 ```bash
-# Unfortunately, AKS does not expose scheduler configuration directly
-# But you can use a mutating webhook to inject default constraints
-# Or use namespace-level defaults with tools like Kyverno
+# AKS scheduler profile configuration is currently a preview feature
+# For production clusters, you can use a mutating webhook to inject default constraints
+# Or use namespace-level policies with tools like Kyverno
 ```
 
 Using Kyverno to inject default topology spread constraints.
@@ -362,9 +367,10 @@ spec:
   rules:
     - name: add-zone-spread
       match:
-        resources:
-          kinds:
-            - Deployment
+        any:
+          - resources:
+              kinds:
+                - Deployment
       mutate:
         patchStrategicMerge:
           spec:
@@ -375,8 +381,7 @@ spec:
                     topologyKey: topology.kubernetes.io/zone
                     whenUnsatisfiable: ScheduleAnyway
                     labelSelector:
-                      matchLabels:
-                        "{{request.object.spec.selector.matchLabels}}"
+                      matchLabels: "{{request.object.spec.selector.matchLabels}}"
 ```
 
 ## Wrapping Up
