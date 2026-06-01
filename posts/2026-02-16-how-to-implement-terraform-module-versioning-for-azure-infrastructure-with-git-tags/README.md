@@ -183,6 +183,9 @@ on:
     branches:
       - main
 
+permissions:
+  contents: write
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -196,7 +199,13 @@ jobs:
         id: version
         run: |
           # Get the latest tag
-          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG="v0.0.0"
+            COMMIT_RANGE="HEAD"
+          else
+            COMMIT_RANGE="${LATEST_TAG}..HEAD"
+          fi
           echo "Latest tag: $LATEST_TAG"
 
           # Parse version components
@@ -205,7 +214,7 @@ jobs:
           PATCH=$(echo $LATEST_TAG | sed 's/v//' | cut -d. -f3)
 
           # Check commit messages since last tag for version hints
-          COMMITS=$(git log $LATEST_TAG..HEAD --oneline)
+          COMMITS=$(git log "$COMMIT_RANGE" --oneline)
 
           if echo "$COMMITS" | grep -iq "breaking"; then
             MAJOR=$((MAJOR + 1))
@@ -229,7 +238,7 @@ jobs:
 
 ## Using a Private Terraform Registry
 
-For organizations with many modules, a private Terraform Registry provides a better experience than raw Git references. Terraform Cloud, Spacelift, and other platforms offer private registries. With a registry, consumers use cleaner source references:
+For organizations with many modules, a private Terraform Registry provides a better experience than raw Git references. HCP Terraform, Spacelift, and other platforms offer private registries. With a registry, consumers use cleaner source references:
 
 ```hcl
 module "aks" {
