@@ -49,8 +49,8 @@ WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/ ./
 
-# Azure App Service expects the container to listen on port 8080 by default
-# You can change this with the WEBSITES_PORT app setting
+# Azure App Service can automatically detect containers listening on port 80 or 8080
+# For other ports, configure the WEBSITES_PORT app setting
 EXPOSE 8080
 
 # Set environment variable for the port
@@ -89,7 +89,7 @@ az acr create \
     --name myappregistry \
     --sku Basic
 
-# Enable the admin user (needed for App Service to pull images)
+# Enable the admin user if you plan to use username/password credentials
 az acr update \
     --name myappregistry \
     --admin-enabled true
@@ -175,11 +175,12 @@ az role assignment create \
     --scope $ACR_ID \
     --role AcrPull
 
-# Configure the web app to use managed identity for ACR
+# Configure the web app to use its system-assigned managed identity for ACR
 az webapp config set \
     --name my-container-app \
     --resource-group my-resource-group \
-    --generic-configurations '{"acrUseManagedIdentityCreds": true}'
+    --acr-use-identity true \
+    --acr-identity [system]
 ```
 
 ## Configuring the Container
@@ -188,7 +189,7 @@ There are several App Service settings specific to container deployments.
 
 ### Port Configuration
 
-By default, Azure App Service expects your container to listen on port 8080. If your app uses a different port, set the `WEBSITES_PORT` setting:
+Azure App Service can automatically detect a custom container listening on port 80 or 8080. If your app uses a different port, set the `WEBSITES_PORT` setting:
 
 ```bash
 # Tell App Service your container listens on port 3000
