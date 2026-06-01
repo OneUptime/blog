@@ -77,14 +77,14 @@ policy "azure-sku-restrictions" {
 }
 ```
 
-## Policy 1: Enforce Encryption at Rest
+## Policy 1: Enforce Storage Security Controls
 
-This policy ensures that all Azure storage accounts have encryption enabled and all databases use encryption:
+This policy ensures that Azure storage accounts require HTTPS, use TLS 1.2, and do not allow nested items to opt into public access:
 
-```python
+```sentinel
 # policies/azure-encryption.sentinel
 
-# Enforce encryption at rest for all storage accounts and databases
+# Enforce storage security controls
 
 import "tfplan/v2" as tfplan
 
@@ -94,22 +94,10 @@ storage_accounts = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
-# Get all SQL databases being created or updated
-sql_databases = filter tfplan.resource_changes as _, rc {
-    rc.type is "azurerm_mssql_database" and
-    (rc.change.actions contains "create" or rc.change.actions contains "update")
-}
-
-# Get all PostgreSQL servers
-postgresql_servers = filter tfplan.resource_changes as _, rc {
-    rc.type is "azurerm_postgresql_flexible_server" and
-    (rc.change.actions contains "create" or rc.change.actions contains "update")
-}
-
 # Rule: Storage accounts must enforce HTTPS
 storage_https_rule = rule {
     all storage_accounts as _, sa {
-        sa.change.after.enable_https_traffic_only is true
+        sa.change.after.https_traffic_only_enabled is true
     }
 }
 
@@ -138,24 +126,13 @@ main = rule {
 
 ## Policy 2: Network Security Requirements
 
-This policy enforces networking standards like requiring NSGs on subnets and blocking public IPs on VMs:
+This policy enforces networking standards like blocking public SSH and RDP rules and requiring a justification tag on public IPs:
 
-```python
+```sentinel
 # policies/azure-networking.sentinel
 # Enforce network security standards for Azure resources
 
 import "tfplan/v2" as tfplan
-
-# Find all virtual machines being created
-virtual_machines = filter tfplan.resource_changes as _, rc {
-    rc.type is "azurerm_linux_virtual_machine" and
-    rc.change.actions contains "create"
-}
-
-windows_vms = filter tfplan.resource_changes as _, rc {
-    rc.type is "azurerm_windows_virtual_machine" and
-    rc.change.actions contains "create"
-}
 
 # Find all public IPs being created
 public_ips = filter tfplan.resource_changes as _, rc {
@@ -169,17 +146,39 @@ nsgs = filter tfplan.resource_changes as _, rc {
     (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
+# Find standalone network security rules
+nsg_rules = filter tfplan.resource_changes as _, rc {
+    rc.type is "azurerm_network_security_rule" and
+    (rc.change.actions contains "create" or rc.change.actions contains "update")
+}
+
+internet_sources = ["*", "Internet", "0.0.0.0/0", "::/0"]
+
 # Rule: NSGs must not have open SSH (port 22) from the internet
 no_open_ssh = rule {
     all nsgs as _, nsg {
         all (nsg.change.after.security_rule else []) as _, rule {
             not (
-                rule.destination_port_range is "22" and
-                rule.source_address_prefix is "*" and
+                (rule.destination_port_range is "22" or (rule.destination_port_ranges else []) contains "22") and
+                ((rule.source_address_prefix else "") in internet_sources or
+                    any (rule.source_address_prefixes else []) as source {
+                        source in internet_sources
+                    }) and
                 rule.access is "Allow" and
                 rule.direction is "Inbound"
             )
         }
+    } and
+    all nsg_rules as _, rule {
+        not (
+            (rule.change.after.destination_port_range is "22" or (rule.change.after.destination_port_ranges else []) contains "22") and
+            ((rule.change.after.source_address_prefix else "") in internet_sources or
+                any (rule.change.after.source_address_prefixes else []) as source {
+                    source in internet_sources
+                }) and
+            rule.change.after.access is "Allow" and
+            rule.change.after.direction is "Inbound"
+        )
     }
 }
 
@@ -188,12 +187,26 @@ no_open_rdp = rule {
     all nsgs as _, nsg {
         all (nsg.change.after.security_rule else []) as _, rule {
             not (
-                rule.destination_port_range is "3389" and
-                rule.source_address_prefix is "*" and
+                (rule.destination_port_range is "3389" or (rule.destination_port_ranges else []) contains "3389") and
+                ((rule.source_address_prefix else "") in internet_sources or
+                    any (rule.source_address_prefixes else []) as source {
+                        source in internet_sources
+                    }) and
                 rule.access is "Allow" and
                 rule.direction is "Inbound"
             )
         }
+    } and
+    all nsg_rules as _, rule {
+        not (
+            (rule.change.after.destination_port_range is "3389" or (rule.change.after.destination_port_ranges else []) contains "3389") and
+            ((rule.change.after.source_address_prefix else "") in internet_sources or
+                any (rule.change.after.source_address_prefixes else []) as source {
+                    source in internet_sources
+                }) and
+            rule.change.after.access is "Allow" and
+            rule.change.after.direction is "Inbound"
+        )
     }
 }
 
@@ -216,7 +229,7 @@ main = rule {
 
 This policy enforces that all taggable resources have required tags:
 
-```python
+```sentinel
 # policies/azure-tagging.sentinel
 # Enforce mandatory tags on all Azure resources
 
@@ -274,19 +287,18 @@ main = rule {
 
 This policy prevents over-provisioning in non-production environments:
 
-```python
+```sentinel
 # policies/azure-sku-restrictions.sentinel
 # Restrict expensive SKUs in non-production environments
 
 import "tfplan/v2" as tfplan
 import "tfrun"
 
-# Determine the environment from workspace name or tags
+# Determine the environment from the workspace name
 # Convention: workspace names end with -dev, -staging, -prod
 workspace_name = tfrun.workspace.name
 
-is_production = workspace_name matches ".*-prod$" or
-                workspace_name matches ".*-production$"
+is_production = workspace_name matches ".*-prod$" or workspace_name matches ".*-production$"
 
 # Allowed VM sizes for non-production
 nonprod_allowed_vm_sizes = [
@@ -382,7 +394,7 @@ test {
 
 Create mock data that simulates Terraform plan output:
 
-```python
+```sentinel
 # test/azure-encryption/mock-tfplan-pass.sentinel
 # Mock data simulating a compliant storage account
 
@@ -392,7 +404,7 @@ resource_changes = {
         "change": {
             "actions": ["create"],
             "after": {
-                "enable_https_traffic_only": true,
+                "https_traffic_only_enabled": true,
                 "min_tls_version": "TLS1_2",
                 "allow_nested_items_to_be_public": false,
                 "tags": {
@@ -413,7 +425,7 @@ Run the tests:
 sentinel test
 
 # Run tests for a specific policy
-sentinel test -run azure-encryption
+sentinel test -run=azure-encryption
 ```
 
 ## Connecting Policies to Terraform Cloud
@@ -453,7 +465,7 @@ resource "tfe_policy_set" "azure_compliance" {
 
 Not every rule applies to every situation. Sentinel soft-mandatory policies allow authorized users to override failures. For more granular exceptions, use Sentinel parameters:
 
-```python
+```sentinel
 # policies/azure-encryption.sentinel
 # Accept exceptions via parameter
 
