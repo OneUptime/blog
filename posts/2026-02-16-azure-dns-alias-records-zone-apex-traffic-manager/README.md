@@ -64,20 +64,27 @@ az network traffic-manager profile create \
   --path "/health"
 
 # Add endpoints to the profile
+# A/AAAA alias records that point to Traffic Manager require external
+# Traffic Manager endpoints with static IP addresses.
+EASTUS_IP=$(az network public-ip show -g rg-app -n pip-myapp-eastus --query ipAddress -o tsv)
+WESTUS_IP=$(az network public-ip show -g rg-app -n pip-myapp-westus --query ipAddress -o tsv)
+
 az network traffic-manager endpoint create \
   --resource-group rg-dns-tm \
   --profile-name tm-myapp \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name endpoint-eastus \
-  --target-resource-id $(az webapp show -g rg-app -n myapp-eastus --query id -o tsv) \
+  --target $EASTUS_IP \
+  --endpoint-location eastus \
   --endpoint-status Enabled
 
 az network traffic-manager endpoint create \
   --resource-group rg-dns-tm \
   --profile-name tm-myapp \
-  --type azureEndpoints \
+  --type externalEndpoints \
   --name endpoint-westus \
-  --target-resource-id $(az webapp show -g rg-app -n myapp-westus --query id -o tsv) \
+  --target $WESTUS_IP \
+  --endpoint-location westus \
   --endpoint-status Enabled
 ```
 
@@ -90,6 +97,12 @@ If you do not already have an Azure DNS zone for your domain, create one.
 az network dns zone create \
   --resource-group rg-dns-tm \
   --name example.com
+```
+
+Azure DNS alias records require the `Microsoft.Network` resource provider to be registered. If the DNS zone and the alias target are in different subscriptions, register it in both subscriptions.
+
+```bash
+az provider register --namespace Microsoft.Network
 ```
 
 After creating the zone, update your domain registrar to use Azure's name servers.
@@ -177,11 +190,11 @@ Some other DNS providers offer "CNAME flattening" to solve the zone apex problem
 | DNS Standard | Azure-specific extension | Provider-specific |
 | Works at zone apex | Yes | Yes |
 | Resolves within Azure | Yes | Provider-dependent |
-| Health-check aware | Yes | No |
+| Health-check aware | Via Traffic Manager endpoint health | Provider-dependent |
 | Supports Azure resources | Yes | No |
-| Free query charges | Yes (for Azure resources) | Provider-dependent |
+| Extra alias-record charge | No | Provider-dependent |
 
-The key advantage of alias records is the health-check integration. If an Azure resource (like Traffic Manager) becomes unhealthy, the alias record reflects this immediately. With CNAME flattening, the DNS provider does not know about the resource's health.
+The key advantage of alias records is the native Azure resource integration. With Traffic Manager, endpoint health and routing decisions are handled by Traffic Manager, while the alias record lets you use that same profile at the zone apex without publishing a CNAME there.
 
 ## Supported Target Resources
 
@@ -189,8 +202,8 @@ Alias records can point to several types of Azure resources:
 
 - **Traffic Manager profiles**: Most common use case for zone apex routing
 - **Azure CDN endpoints**: Point your domain directly to a CDN endpoint
-- **Public IP addresses**: Point to a specific public IP (useful for load balancers)
-- **Azure Front Door profiles**: Route zone apex traffic through Front Door
+- **Standard SKU public IP addresses**: Point to a specific public IP (useful for load balancers)
+- **Azure Front Door endpoints**: Route zone apex traffic through Front Door
 - **Another DNS record set in the same zone**: Create aliases within the zone
 
 ```bash
@@ -266,11 +279,11 @@ az network dns record-set a show \
 
 If the alias is not resolving correctly:
 
-**Target resource not found**: Verify the Traffic Manager profile exists and the resource ID is correct. If the target is deleted, the alias record will return NXDOMAIN.
+**Target resource not found**: Verify the Traffic Manager profile exists and the resource ID is correct. If the target is deleted, the alias record becomes an empty record set and stops returning the target resource's addresses.
 
 **Slow propagation**: After creating or changing an alias record, allow a few minutes for propagation. DNS resolvers worldwide cache records based on the TTL.
 
-**Health check failures**: If Traffic Manager health checks mark all endpoints as unhealthy, the alias record will still resolve (to the last known good IP), but Traffic Manager will return a degraded state. Check endpoint health status.
+**Health check failures**: If Traffic Manager health checks mark all eligible endpoints as degraded, Traffic Manager makes a best-effort response as if the degraded endpoints were online, and the profile shows a degraded state. Check endpoint health status.
 
 ```bash
 # Check Traffic Manager endpoint health
@@ -283,6 +296,6 @@ az network traffic-manager profile show \
 
 ## Cost Benefits
 
-Alias records that point to Azure resources are free from DNS query charges. Regular DNS queries against Azure DNS zones are billed per million queries, but alias record queries to Azure resources are exempt. This can save meaningful money for high-traffic domains.
+Alias records are a qualification on a valid Azure DNS record set, and Azure does not charge an additional fee just because a record set is an alias. DNS queries to an aliased Traffic Manager record set are shown in Traffic Manager profile billing, so check both Azure DNS and Traffic Manager pricing when estimating cost.
 
 Setting up alias records for zone apex with Traffic Manager takes just a few minutes but solves a real DNS limitation that has frustrated network engineers for years. The integration with Traffic Manager health checks and the transparent resolution makes it the cleanest solution for pointing your root domain to a globally distributed application.
