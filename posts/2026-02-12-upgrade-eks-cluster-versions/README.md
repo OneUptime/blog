@@ -20,7 +20,7 @@ EKS follows an extended support model. Each version goes through these phases:
 - **Extended support** - additional 12 months after standard support ends, with an extra per-cluster fee
 - **End of life** - cluster is auto-upgraded to the next supported version
 
-You can only upgrade one minor version at a time. So going from 1.27 to 1.29 requires two upgrades: 1.27 to 1.28, then 1.28 to 1.29.
+You can only upgrade one minor version at a time. So going from 1.33 to 1.35 requires two upgrades: 1.33 to 1.34, then 1.34 to 1.35.
 
 ```mermaid
 flowchart LR
@@ -45,7 +45,9 @@ aws eks describe-cluster --name my-cluster \
   --query "cluster.{Version:version,PlatformVersion:platformVersion}"
 
 # See what Kubernetes versions EKS currently supports
-aws eks describe-addon-versions --query "addons[0].addonVersions[*].compatibilities[*].clusterVersion" --output text | tr '\t' '\n' | sort -u
+aws eks describe-cluster-versions \
+  --query "clusterVersions[*].{Version:clusterVersion,Status:versionStatus,StandardSupportEnds:endOfStandardSupportDate,ExtendedSupportEnds:endOfExtendedSupportDate}" \
+  --output table
 ```
 
 ## Step 2: Review the Changelog
@@ -79,7 +81,7 @@ aws eks list-addons --cluster-name my-cluster --output table
 # Check compatible versions for a specific add-on
 aws eks describe-addon-versions \
   --addon-name vpc-cni \
-  --kubernetes-version 1.29 \
+  --kubernetes-version 1.35 \
   --query "addons[0].addonVersions[*].{Version:addonVersion,Default:compatibilities[0].defaultVersion}" \
   --output table
 ```
@@ -93,13 +95,13 @@ Common add-ons to check:
 
 ## Step 4: Upgrade the Control Plane
 
-The control plane upgrade is managed by AWS and happens in-place with zero downtime. During the upgrade, you might experience brief API server unavailability (a few seconds), but your running workloads aren't affected.
+Before upgrading the control plane, make sure your managed node groups and Fargate nodes are on the same minor version as the current control plane. The control plane upgrade is managed by AWS and happens in-place with zero downtime for running workloads. During the upgrade, API clients might need to reconnect as API server instances are replaced.
 
 ```bash
 # Upgrade the EKS control plane
 aws eks update-cluster-version \
   --name my-cluster \
-  --kubernetes-version 1.29
+  --kubernetes-version 1.35
 
 # Monitor the upgrade progress
 aws eks describe-update \
@@ -119,7 +121,7 @@ Or with eksctl:
 
 ```bash
 # Upgrade control plane with eksctl
-eksctl upgrade cluster --name my-cluster --version 1.29 --approve
+eksctl upgrade cluster --name my-cluster --version 1.35 --approve
 ```
 
 ## Step 5: Update Add-ons
@@ -127,25 +129,30 @@ eksctl upgrade cluster --name my-cluster --version 1.29 --approve
 After the control plane is upgraded, update your add-ons to versions compatible with the new Kubernetes version:
 
 ```bash
+# Replace these with compatible versions returned in Step 3
+VPC_CNI_VERSION=v1.x.x-eksbuild.x
+COREDNS_VERSION=v1.x.x-eksbuild.x
+KUBE_PROXY_VERSION=v1.35.x-eksbuild.x
+
 # Update vpc-cni add-on
 aws eks update-addon \
   --cluster-name my-cluster \
   --addon-name vpc-cni \
-  --addon-version v1.16.0-eksbuild.1 \
+  --addon-version "$VPC_CNI_VERSION" \
   --resolve-conflicts OVERWRITE
 
 # Update coredns
 aws eks update-addon \
   --cluster-name my-cluster \
   --addon-name coredns \
-  --addon-version v1.11.1-eksbuild.6 \
+  --addon-version "$COREDNS_VERSION" \
   --resolve-conflicts OVERWRITE
 
 # Update kube-proxy
 aws eks update-addon \
   --cluster-name my-cluster \
   --addon-name kube-proxy \
-  --addon-version v1.29.0-eksbuild.3 \
+  --addon-version "$KUBE_PROXY_VERSION" \
   --resolve-conflicts OVERWRITE
 ```
 
@@ -183,8 +190,8 @@ The rolling update process:
 You can control how aggressive the update is:
 
 ```bash
-# Update with custom settings for faster rollout
-aws eks update-nodegroup-version \
+# Configure how many nodes can be unavailable during version updates
+aws eks update-nodegroup-config \
   --cluster-name my-cluster \
   --nodegroup-name general-workload \
   --update-config '{"maxUnavailable": 2}'
@@ -197,7 +204,7 @@ With eksctl:
 eksctl upgrade nodegroup \
   --cluster my-cluster \
   --name general-workload \
-  --kubernetes-version 1.29
+  --kubernetes-version 1.35
 ```
 
 ## Step 7: Update Self-Managed Components
@@ -206,9 +213,11 @@ If you're running the [Cluster Autoscaler](https://oneuptime.com/blog/post/2026-
 
 ```bash
 # Update Cluster Autoscaler image tag to match new K8s version
+CLUSTER_AUTOSCALER_VERSION=v1.35.0
+
 kubectl set image deployment/cluster-autoscaler \
   -n kube-system \
-  cluster-autoscaler=registry.k8s.io/autoscaling/cluster-autoscaler:v1.29.0
+  cluster-autoscaler=registry.k8s.io/autoscaling/cluster-autoscaler:${CLUSTER_AUTOSCALER_VERSION}
 ```
 
 ## Step 8: Verify the Upgrade
@@ -249,7 +258,7 @@ Before starting any upgrade:
 
 ## Automation with eksctl
 
-For repeatable upgrades, eksctl can handle the entire process from a config file:
+For repeatable control plane upgrades, eksctl can use a config file:
 
 ```yaml
 # cluster-config.yaml for upgrade
@@ -258,7 +267,7 @@ kind: ClusterConfig
 metadata:
   name: my-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.35"
 
 managedNodeGroups:
   - name: general-workload
@@ -269,8 +278,14 @@ managedNodeGroups:
 ```
 
 ```bash
-# Upgrade everything using the config
+# Upgrade the control plane using the config
 eksctl upgrade cluster -f cluster-config.yaml --approve
+
+# Then upgrade the managed node group
+eksctl upgrade nodegroup \
+  --cluster my-cluster \
+  --name general-workload \
+  --kubernetes-version 1.35
 ```
 
 EKS upgrades are routine maintenance, not emergencies. By keeping a regular upgrade cadence - ideally upgrading within a month or two of a new version becoming available - each upgrade stays small and manageable. Wait too long and you'll face a stack of breaking changes all at once.
