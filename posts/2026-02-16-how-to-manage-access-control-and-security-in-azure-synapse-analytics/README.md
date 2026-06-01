@@ -8,7 +8,7 @@ Description: A comprehensive guide to managing access control, security, and dat
 
 ---
 
-Azure Synapse Analytics is a multi-engine platform - it includes SQL pools, Spark pools, pipelines, and a data lake. Each of these components has its own access control mechanisms, and getting security right means understanding how they all fit together. This guide covers the security model from the workspace level down to individual table columns.
+Azure Synapse Analytics is a multi-engine platform - it includes SQL pools, Spark pools, pipelines, and integration with a data lake. Each of these components has its own access control mechanisms, and getting security right means understanding how they all fit together. This guide covers the security model from the workspace level down to individual table columns.
 
 ## Security Layers in Azure Synapse
 
@@ -58,7 +58,7 @@ az synapse workspace firewall-rule create \
 
 ### Managed Virtual Network
 
-For stronger isolation, enable managed VNet on the workspace. This ensures all Synapse compute runs inside a Microsoft-managed VNet, and data exfiltration is controlled through managed private endpoints.
+For stronger isolation, enable managed VNet on the workspace. This deploys data integration and Spark resources inside a Microsoft-managed VNet, and data exfiltration is controlled through managed private endpoints. Dedicated SQL pool and serverless SQL pool are multitenant services outside the managed VNet, with private links used for intra-workspace communication.
 
 ```bash
 # Create a workspace with managed VNet (must be set at creation time)
@@ -84,10 +84,8 @@ Create managed private endpoints to allow Synapse to connect to your data source
 # Create a managed private endpoint to connect to Azure SQL Database
 az synapse managed-private-endpoints create \
   --workspace-name my-secure-synapse \
-  --resource-group rg-synapse \
-  --name sql-source-endpoint \
-  --group-id sqlServer \
-  --private-link-resource-id "/subscriptions/<sub-id>/resourceGroups/rg-data/providers/Microsoft.Sql/servers/my-sql-server"
+  --pe-name sql-source-endpoint \
+  --file '{"privateLinkResourceId":"/subscriptions/<sub-id>/resourceGroups/rg-data/providers/Microsoft.Sql/servers/my-sql-server","groupId":"sqlServer"}'
 ```
 
 ## Step 2: Configure Workspace RBAC
@@ -112,16 +110,16 @@ az role assignment create \
 
 Synapse has its own RBAC system that controls access to workspace artifacts (notebooks, pipelines, SQL scripts, etc.). These are separate from Azure RBAC.
 
-Available Synapse roles:
+Common built-in Synapse roles include:
 
 | Role | Permissions |
 |------|------------|
-| Synapse Administrator | Full access to everything |
-| Synapse SQL Administrator | Manage SQL pools, run any SQL query |
-| Synapse Spark Administrator | Manage Spark pools, run notebooks |
+| Synapse Administrator | Full Synapse access to SQL pools, Spark pools, integration runtimes, credentials, and published artifacts |
+| Synapse SQL Administrator | Full Synapse access to serverless SQL pools and published SQL scripts |
+| Synapse Apache Spark Administrator | Manage Spark artifacts and run Spark notebooks and jobs |
 | Synapse Contributor | Create and edit artifacts, but cannot manage access |
 | Synapse Artifact Publisher | Publish artifacts (deploy to production) |
-| Synapse Artifact User | Read and execute published artifacts |
+| Synapse Artifact User | Read published artifacts and outputs, but cannot publish changes or run code without additional permissions |
 | Synapse Credential User | Use credentials in pipelines and linked services |
 
 Assign Synapse RBAC roles in Synapse Studio:
@@ -142,7 +140,7 @@ az synapse role assignment create \
 
 ## Step 4: Configure SQL Pool Security
 
-Within dedicated SQL pools, you have the full SQL Server security model available.
+Within dedicated SQL pools, you have many familiar SQL Server-style security features available.
 
 ### Create Logins and Users
 
@@ -157,31 +155,31 @@ USE myDataWarehouse;
 CREATE USER analyst_user FOR LOGIN analyst_login;
 
 -- Add the user to a database role
-ALTER ROLE db_datareader ADD MEMBER analyst_user;
+EXEC sp_addrolemember 'db_datareader', 'analyst_user';
 ```
 
-### Azure AD Authentication
+### Microsoft Entra ID Authentication
 
-For production, use Azure AD authentication instead of SQL logins.
+For production, use Microsoft Entra ID authentication instead of SQL logins.
 
 ```sql
--- Create a database user from an Azure AD account
--- (requires Azure AD admin to be set on the workspace)
+-- Create a database user from a Microsoft Entra ID account
+-- (requires Microsoft Entra admin to be set on the workspace)
 CREATE USER [analyst@company.com] FROM EXTERNAL PROVIDER;
 
 -- Grant specific permissions
 GRANT SELECT ON SCHEMA::dbo TO [analyst@company.com];
 
--- Create a user from an Azure AD group
+-- Create a user from a Microsoft Entra ID group
 CREATE USER [SynapseAnalysts] FROM EXTERNAL PROVIDER;
 GRANT SELECT ON SCHEMA::dbo TO [SynapseAnalysts];
 ```
 
-Set the Azure AD admin:
+Set the Microsoft Entra admin:
 
 ```bash
-# Set Azure AD admin for the Synapse workspace
-az synapse workspace ad-admin update \
+# Set Microsoft Entra admin for Synapse SQL
+az synapse sql ad-admin update \
   --workspace-name my-synapse-workspace \
   --resource-group rg-synapse \
   --display-name "Synapse Admins" \
@@ -292,14 +290,16 @@ az storage fs access set \
   --acl "user:<user-object-id>:r-x" \
   --path "curated/sales" \
   --file-system synapse-data \
-  --account-name synapsedatalake2026
+  --account-name synapsedatalake2026 \
+  --auth-mode login
 
 # Grant read/write/execute on a folder for data engineers
 az storage fs access set \
   --acl "user:<engineer-object-id>:rwx" \
   --path "curated/sales" \
   --file-system synapse-data \
-  --account-name synapsedatalake2026
+  --account-name synapsedatalake2026 \
+  --auth-mode login
 ```
 
 ## Audit and Monitoring
@@ -308,10 +308,11 @@ Enable auditing to track who accessed what data:
 
 ```bash
 # Enable SQL auditing for the Synapse workspace
-az synapse workspace audit-policy update \
+az synapse sql audit-policy update \
   --workspace-name my-synapse-workspace \
   --resource-group rg-synapse \
   --state Enabled \
+  --blob-storage-target-state Enabled \
   --storage-account synapsedatalake2026 \
   --retention-days 90
 ```
