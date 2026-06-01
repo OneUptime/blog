@@ -18,9 +18,9 @@ Detective automatically ingests and analyzes:
 
 - **AWS CloudTrail logs**: API calls across your account
 - **Amazon VPC Flow Logs**: Network traffic patterns
-- **Amazon GuardDuty findings**: Threat detection alerts
-- **Amazon EKS audit logs**: Kubernetes API activity
-- **AWS Security Hub findings**: Aggregated security alerts
+- **Amazon GuardDuty findings**: Threat detection alerts for accounts enrolled in GuardDuty
+- **Amazon EKS audit logs**: Kubernetes API activity when the optional EKS audit logs source package is enabled
+- **AWS Security Hub findings**: Aggregated security alerts when the optional AWS security findings source package is enabled
 
 ```mermaid
 graph TD
@@ -49,28 +49,24 @@ aws detective create-graph \
 aws detective list-graphs
 ```
 
-Detective automatically starts ingesting data from CloudTrail and VPC Flow Logs. If you're using GuardDuty (and you should be), its findings are also ingested.
+Detective automatically starts ingesting CloudTrail and VPC Flow Log source data through Detective's own data streams. These streams don't require you to create or store CloudTrail logs or VPC Flow Logs separately. If you're using GuardDuty (and you should be), its findings are also ingested.
 
 ### Prerequisites
 
 Before enabling Detective:
 
-- GuardDuty must be enabled (Detective uses its findings)
-- CloudTrail must be enabled (it is by default)
-- VPC Flow Logs should be enabled for your VPCs
+- GuardDuty should be enabled if you want Detective to correlate GuardDuty findings
+- You need IAM permissions to create and manage Detective behavior graphs
+- Enable the optional EKS audit logs and AWS security findings source packages if you want Detective to analyze those sources
 
 ```bash
 # Verify GuardDuty is enabled
 aws guardduty list-detectors
 
-# Enable VPC Flow Logs if not already
-aws ec2 create-flow-logs \
-    --resource-type VPC \
-    --resource-ids vpc-abc123 \
-    --traffic-type ALL \
-    --log-destination-type cloud-watch-logs \
-    --log-group-name "vpc-flow-logs" \
-    --deliver-logs-permission-arn "arn:aws:iam::123456789:role/VPCFlowLogsRole"
+# Enable the optional EKS audit logs and AWS security findings source packages
+aws detective update-datasource-packages \
+    --graph-arn "arn:aws:detective:us-east-1:123456789012:graph:0123456789abcdef0123456789abcdef" \
+    --datasource-packages "EKS_AUDIT" "ASFF_SECURITYHUB_FINDING"
 ```
 
 ## Multi-Account Setup
@@ -80,7 +76,7 @@ For organizations, enable Detective across all accounts using the administrator 
 ```bash
 # From the administrator account, invite member accounts
 aws detective create-members \
-    --graph-arn "arn:aws:detective:us-east-1:123456789:graph:abc123" \
+    --graph-arn "arn:aws:detective:us-east-1:123456789012:graph:0123456789abcdef0123456789abcdef" \
     --accounts '[
         {"AccountId": "111111111111", "EmailAddress": "security@member1.example.com"},
         {"AccountId": "222222222222", "EmailAddress": "security@member2.example.com"}
@@ -92,7 +88,7 @@ Member accounts need to accept the invitation.
 ```bash
 # From the member account
 aws detective accept-invitation \
-    --graph-arn "arn:aws:detective:us-east-1:123456789:graph:abc123"
+    --graph-arn "arn:aws:detective:us-east-1:123456789012:graph:0123456789abcdef0123456789abcdef"
 ```
 
 ## Investigating a GuardDuty Finding
@@ -110,21 +106,28 @@ from datetime import datetime, timedelta
 
 detective = boto3.client('detective', region_name='us-east-1')
 
-GRAPH_ARN = "arn:aws:detective:us-east-1:123456789:graph:abc123"
+GRAPH_ARN = "arn:aws:detective:us-east-1:123456789012:graph:0123456789abcdef0123456789abcdef"
+USER_ARN = "arn:aws:iam::123456789012:user/compromised-user"
 
-def investigate_iam_user(username, hours_back=24):
+def investigate_iam_user(user_arn, hours_back=24):
     """Investigate an IAM user's recent activity."""
-
-    # Get the entity profile for the IAM user
-    # This shows baseline behavior vs recent activity
 
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(hours=hours_back)
 
-    # List indicators for the entity
+    investigation = detective.start_investigation(
+        GraphArn=GRAPH_ARN,
+        EntityArn=user_arn,
+        ScopeStartTime=start_time,
+        ScopeEndTime=end_time
+    )
+
+    investigation_id = investigation['InvestigationId']
+
+    # List indicators after the investigation starts generating results
     response = detective.list_indicators(
         GraphArn=GRAPH_ARN,
-        InvestigationId="inv-abc123",  # From the finding
+        InvestigationId=investigation_id,
         MaxResults=50
     )
 
@@ -134,11 +137,11 @@ def investigate_iam_user(username, hours_back=24):
         print(f"Detail: {detail}")
         print("---")
 
-def get_finding_details(finding_arn):
-    """Get detailed investigation data for a GuardDuty finding."""
+def get_investigation_details(investigation_id):
+    """Get detailed investigation data for an IAM user or role."""
     response = detective.get_investigation(
         GraphArn=GRAPH_ARN,
-        InvestigationId="inv-abc123"
+        InvestigationId=investigation_id
     )
 
     print(f"Status: {response['Status']}")
@@ -146,7 +149,7 @@ def get_finding_details(finding_arn):
     print(f"Entity: {response['EntityArn']}")
     print(f"Created: {response['CreatedTime']}")
 
-investigate_iam_user("compromised-user")
+investigate_iam_user(USER_ARN)
 ```
 
 ## Understanding the Behavior Graph
@@ -186,8 +189,8 @@ When GuardDuty detects `UnauthorizedAccess:IAMUser/MaliciousIPCaller`:
 # Detective provides this through its console visualizations
 # For programmatic access:
 aws detective start-investigation \
-    --graph-arn "arn:aws:detective:us-east-1:123456789:graph:abc123" \
-    --entity-arn "arn:aws:iam::123456789:user/suspicious-user" \
+    --graph-arn "arn:aws:detective:us-east-1:123456789012:graph:0123456789abcdef0123456789abcdef" \
+    --entity-arn "arn:aws:iam::123456789012:user/suspicious-user" \
     --scope-start-time "2026-02-11T00:00:00Z" \
     --scope-end-time "2026-02-12T00:00:00Z"
 ```
@@ -218,27 +221,18 @@ Detective automatically groups related findings that may be part of the same sec
 
 ```python
 # finding_groups.py - Work with finding groups
-def list_finding_groups():
-    """List finding groups that Detective has identified."""
-    response = detective.list_investigations(
+def list_related_finding_groups(investigation_id):
+    """List finding groups related to a Detective investigation."""
+    response = detective.list_indicators(
         GraphArn=GRAPH_ARN,
-        FilterCriteria={
-            'Severity': {
-                'Value': 'CRITICAL'
-            },
-            'Status': {
-                'Value': 'RUNNING'
-            }
-        }
+        InvestigationId=investigation_id,
+        IndicatorType="RELATED_FINDING_GROUP"
     )
 
-    for investigation in response.get('InvestigationDetails', []):
-        print(f"Investigation: {investigation['InvestigationId']}")
-        print(f"  Entity: {investigation['EntityArn']}")
-        print(f"  Severity: {investigation['Severity']}")
-        print(f"  Status: {investigation['Status']}")
-        print(f"  Created: {investigation['CreatedTime']}")
-        print()
+    for indicator in response.get('Indicators', []):
+        detail = indicator.get('IndicatorDetail', {})
+        group = detail.get('RelatedFindingGroupDetail', {})
+        print(f"Finding group: {group.get('Id')}")
 ```
 
 Finding groups help you see the bigger picture. What looks like isolated events - a login from a new IP, an unusual API call, increased data transfer - might be stages of a coordinated attack.
@@ -255,13 +249,13 @@ Key things to look for:
 - **Protocol changes**: Unexpected protocol usage
 
 ```python
-# Analyze network patterns for an instance
-def check_network_anomalies(instance_id):
-    """Check for network anomalies on an EC2 instance."""
+# Analyze tactics, techniques, and procedures from a Detective investigation
+def check_ttp_indicators(investigation_id):
+    """Check TTP indicators for an IAM user or role investigation."""
     response = detective.list_indicators(
         GraphArn=GRAPH_ARN,
-        InvestigationId="inv-abc123",
-        IndicatorType="SUSPICIOUS_NETWORK"
+        InvestigationId=investigation_id,
+        IndicatorType="TTP_OBSERVED"
     )
 
     for indicator in response.get('Indicators', []):
@@ -280,34 +274,48 @@ Combine Detective with Lambda for automated initial triage.
 # auto_triage.py - Automated security investigation triage
 import boto3
 import json
+from datetime import datetime
 
 detective = boto3.client('detective')
 sns = boto3.client('sns')
+
+GRAPH_ARN = "arn:aws:detective:us-east-1:123456789012:graph:0123456789abcdef0123456789abcdef"
 
 def lambda_handler(event, context):
     """Triggered by GuardDuty finding via EventBridge."""
     finding = event['detail']
     severity = finding['severity']
     finding_type = finding['type']
+    account_id = finding['accountId']
+    access_key_details = finding.get('resource', {}).get('accessKeyDetails', {})
+
+    if access_key_details.get('userType') != 'IAMUser' or 'userName' not in access_key_details:
+        return {
+            'message': 'Detective investigations support IAM users and IAM roles. No IAM user was found in this finding.',
+            'finding_type': finding_type,
+            'severity': severity
+        }
+
+    entity_arn = f"arn:aws:iam::{account_id}:user/{access_key_details['userName']}"
 
     # Start an investigation in Detective
     investigation = detective.start_investigation(
         GraphArn=GRAPH_ARN,
-        EntityArn=finding['resource']['instanceDetails']['instanceId'],
-        ScopeStartTime=finding['createdAt'],
-        ScopeEndTime=finding['updatedAt']
+        EntityArn=entity_arn,
+        ScopeStartTime=datetime.fromisoformat(finding['createdAt'].replace('Z', '+00:00')),
+        ScopeEndTime=datetime.fromisoformat(finding['updatedAt'].replace('Z', '+00:00'))
     )
 
     # For critical findings, notify immediately
     if severity >= 7:
         sns.publish(
-            TopicArn='arn:aws:sns:us-east-1:123456789:security-critical',
+            TopicArn='arn:aws:sns:us-east-1:123456789012:security-critical',
             Subject=f'Critical Security Finding: {finding_type}',
             Message=json.dumps({
                 'finding_type': finding_type,
                 'severity': severity,
                 'investigation_id': investigation['InvestigationId'],
-                'console_link': f"https://console.aws.amazon.com/detective/home?region=us-east-1#investigations/{investigation['InvestigationId']}"
+                'entity_arn': entity_arn
             }, indent=2)
         )
 
@@ -335,8 +343,15 @@ aws events put-targets \
     --rule "guardduty-to-detective" \
     --targets '[{
         "Id": "auto-triage",
-        "Arn": "arn:aws:lambda:us-east-1:123456789:function:auto-triage"
+        "Arn": "arn:aws:lambda:us-east-1:123456789012:function:auto-triage"
     }]'
+
+aws lambda add-permission \
+    --function-name auto-triage \
+    --statement-id guardduty-to-detective-eventbridge \
+    --action lambda:InvokeFunction \
+    --principal events.amazonaws.com \
+    --source-arn "arn:aws:events:us-east-1:123456789012:rule/guardduty-to-detective"
 ```
 
 ## Cost Considerations
@@ -348,7 +363,7 @@ Detective pricing is based on the volume of data ingested:
 - GuardDuty findings
 - EKS audit logs
 
-The first 30 days are free. After that, costs scale with data volume. For most accounts, it's a few hundred dollars per month - well worth it compared to the cost of a prolonged security incident.
+Detective provides a 30-day free trial per Region. After that, costs scale with data volume, so use the pricing page or AWS Pricing Calculator to estimate costs for your accounts.
 
 ## Best Practices
 
