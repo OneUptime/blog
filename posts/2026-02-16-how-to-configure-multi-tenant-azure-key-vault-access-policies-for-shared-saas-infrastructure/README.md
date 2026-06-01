@@ -20,11 +20,11 @@ There are three common approaches, and each has tradeoffs:
 
 **Single Key Vault with naming conventions** - All tenants share one Key Vault. Secrets are prefixed with the tenant ID (e.g., `tenant-001-db-connection`). This is the simplest to manage but offers no built-in isolation between tenants at the vault level.
 
-**Key Vault per tenant** - Each tenant gets their own Key Vault instance. This provides the strongest isolation but creates management overhead and can hit Azure subscription limits (the default is around 1,000 Key Vaults per subscription).
+**Key Vault per tenant** - Each tenant gets their own Key Vault instance. This provides the strongest isolation but creates management overhead, especially around deployment, monitoring, and Azure resource organization limits.
 
 **Pooled Key Vaults** - A middle ground where you spread tenants across a pool of Key Vaults. Each Key Vault serves a batch of tenants. This balances isolation with manageability.
 
-For most SaaS applications, I recommend starting with the single Key Vault approach and moving to pooled vaults as you scale. Here is why: Azure Key Vault supports RBAC at the secret level, which means you can grant access to specific secrets rather than the entire vault. This gives you effective per-tenant isolation without the overhead of managing hundreds of vaults.
+For most SaaS applications, I recommend starting with the single Key Vault approach and moving to pooled vaults as you scale. Azure Key Vault supports RBAC at the secret level, which means you can grant access to specific secrets rather than the entire vault, but Microsoft recommends individual secret assignments only for limited scenarios. In a shared vault, you still need application-level tenant enforcement, and you should move to pooled or per-tenant vaults when you need stronger operational or compliance isolation.
 
 ## Setting Up the Shared Key Vault
 
@@ -110,7 +110,7 @@ Even though RBAC controls who can access the vault, your application code needs 
 public class TenantSecretService
 {
     private readonly SecretClient _secretClient;
-    private readonly ITenantContext _tenantContext;
+    protected readonly ITenantContext _tenantContext;
     private readonly ILogger<TenantSecretService> _logger;
 
     public TenantSecretService(
@@ -124,7 +124,7 @@ public class TenantSecretService
     }
 
     // Read a secret that belongs to the current tenant
-    public async Task<string> GetSecretAsync(string secretType, string secretName)
+    public virtual async Task<string> GetSecretAsync(string secretType, string secretName)
     {
         var tenantId = _tenantContext.CurrentTenantId;
         var fullSecretName = $"{tenantId}--{secretType}--{secretName}";
@@ -284,7 +284,8 @@ public async Task RotateSecrets(
     await foreach (var secret in _secretClient.GetPropertiesOfSecretsAsync())
     {
         if (secret.Name.Contains("--encryption--") &&
-            secret.CreatedOn < DateTimeOffset.UtcNow.AddDays(-90))
+            secret.CreatedOn.HasValue &&
+            secret.CreatedOn.Value < DateTimeOffset.UtcNow.AddDays(-90))
         {
             var tenantId = secret.Name.Split("--")[0];
 
@@ -322,9 +323,10 @@ public class CachedTenantSecretService : TenantSecretService
         _cache = cache;
     }
 
-    public new async Task<string> GetSecretAsync(string secretType, string secretName)
+    public override async Task<string> GetSecretAsync(string secretType, string secretName)
     {
-        var cacheKey = $"secret:{secretType}:{secretName}";
+        var tenantId = _tenantContext.CurrentTenantId;
+        var cacheKey = $"secret:{tenantId}:{secretType}:{secretName}";
 
         return await _cache.GetOrCreateAsync(cacheKey, async entry =>
         {
@@ -345,7 +347,7 @@ az monitor diagnostic-settings create \
   --name kv-audit-logs \
   --resource "/subscriptions/{sub-id}/resourceGroups/rg-saas-app/providers/Microsoft.KeyVault/vaults/kv-saas-shared" \
   --workspace "/subscriptions/{sub-id}/resourceGroups/rg-saas-app/providers/Microsoft.OperationalInsights/workspaces/log-saas-app" \
-  --logs '[{"category":"AuditEvent","enabled":true,"retentionPolicy":{"enabled":true,"days":365}}]'
+  --logs '[{"category":"AuditEvent","enabled":true}]'
 ```
 
 This sends all Key Vault access events to Log Analytics, where you can query them to detect unauthorized access attempts or unusual patterns.
