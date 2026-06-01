@@ -36,7 +36,7 @@ graph TD
 
 ## Step 1: Set Up the Key Vault with HSM-Backed Keys
 
-For Confidential VMs, the customer-managed key should be stored in a Key Vault with the Premium SKU (which uses HSM-backed keys) or in an Azure Key Vault Managed HSM.
+For Confidential VMs, the customer-managed key should be stored in a Key Vault with the Premium SKU (which supports HSM-backed keys) or in an Azure Key Vault Managed HSM.
 
 This creates a Key Vault with HSM-backed key support and purge protection:
 
@@ -54,7 +54,8 @@ az keyvault create \
   --resource-group $RG \
   --location $LOCATION \
   --sku Premium \
-  --enable-rbac-authorization true \
+  --enabled-for-disk-encryption true \
+  --enable-rbac-authorization false \
   --enable-purge-protection true \
   --retention-days 90
 
@@ -63,23 +64,40 @@ KV_ID=$(az keyvault show \
   --name kv-confidential-cmk \
   --resource-group $RG \
   --query id -o tsv)
+
+# Confidential OS disk encryption also needs the Confidential VM Orchestrator
+# service principal to be present in the tenant and allowed to release the key.
+CVM_ORCHESTRATOR_APP_ID="bf7b6499-ff71-4aa2-97a4-f372087be7f0"
+az ad sp show --id "$CVM_ORCHESTRATOR_APP_ID" >/dev/null 2>&1 || \
+  az ad sp create --id "$CVM_ORCHESTRATOR_APP_ID"
+
+CVM_ORCHESTRATOR_OBJECT_ID=$(az ad sp show \
+  --id "$CVM_ORCHESTRATOR_APP_ID" \
+  --query id -o tsv)
+
+az keyvault set-policy \
+  --name kv-confidential-cmk \
+  --object-id "$CVM_ORCHESTRATOR_OBJECT_ID" \
+  --key-permissions get release
 ```
 
 ## Step 2: Create the Customer-Managed Encryption Key
 
-Create an RSA key in the Key Vault that will be used for disk encryption. For Confidential VM disk encryption, you need a specific key type.
+Create an RSA key in the Key Vault that will be used for disk encryption. For Confidential VM disk encryption, the key also needs a confidential VM release policy.
 
 This creates an RSA-HSM key for confidential disk encryption:
 
 ```bash
 # Create an RSA-HSM key for disk encryption
-# The key size must be 3072 or 4096 for confidential disk encryption
+# Supported RSA key sizes are 2048, 3072, and 4096 bits
 az keyvault key create \
   --vault-name kv-confidential-cmk \
   --name cvm-disk-encryption-key \
   --kty RSA-HSM \
   --size 4096 \
-  --ops wrapKey unwrapKey
+  --ops wrapKey unwrapKey \
+  --exportable true \
+  --default-cvm-policy
 
 # Get the key URL (versioned) for the disk encryption set
 KEY_URL=$(az keyvault key show \
@@ -92,7 +110,7 @@ echo "Key URL: $KEY_URL"
 
 ## Step 3: Create the Disk Encryption Set
 
-A Disk Encryption Set (DES) links the encryption key in Key Vault to the disks that will use it. For Confidential VMs, you need a specific encryption type.
+A Disk Encryption Set (DES) links the encryption key in Key Vault to the disks that will use it. For the Confidential VM OS disk, you need a specific encryption type.
 
 This creates a Disk Encryption Set configured for confidential disk encryption:
 
@@ -128,19 +146,11 @@ The Disk Encryption Set's managed identity needs permission to use the encryptio
 This grants the necessary Key Vault permissions:
 
 ```bash
-# Grant the DES managed identity the Crypto Service Encryption User role
-# This allows it to wrap and unwrap keys for disk encryption
-az role assignment create \
-  --assignee-object-id "$DES_IDENTITY" \
-  --assignee-principal-type ServicePrincipal \
-  --role "Key Vault Crypto Service Encryption User" \
-  --scope "$KV_ID"
-
-# Alternatively, if using access policies instead of RBAC:
-# az keyvault set-policy \
-#   --name kv-confidential-cmk \
-#   --object-id "$DES_IDENTITY" \
-#   --key-permissions wrapKey unwrapKey get
+# Grant the DES managed identity access to wrap and unwrap keys for disk encryption
+az keyvault set-policy \
+  --name kv-confidential-cmk \
+  --object-id "$DES_IDENTITY" \
+  --key-permissions wrapKey unwrapKey get
 ```
 
 ## Step 5: Deploy the Confidential VM
@@ -160,7 +170,7 @@ az vm create \
   --image "Canonical:0001-com-ubuntu-confidential-vm-jammy:22_04-lts-cvm:latest" \
   --admin-username azureadmin \
   --generate-ssh-keys \
-  --os-disk-encryption-set "$DES_ID" \
+  --os-disk-secure-vm-disk-encryption-set "$DES_ID" \
   --os-disk-security-encryption-type DiskWithVMGuestState \
   --security-type ConfidentialVM \
   --enable-secure-boot true \
@@ -173,7 +183,7 @@ echo "Confidential VM deployed successfully"
 Let me break down the key parameters:
 
 - `--size Standard_DC4as_v5` - A Confidential VM-capable size with AMD SEV-SNP.
-- `--os-disk-encryption-set` - Links the OS disk to our customer-managed key.
+- `--os-disk-secure-vm-disk-encryption-set` - Links the confidential OS disk and VM guest state to our customer-managed key.
 - `--os-disk-security-encryption-type DiskWithVMGuestState` - Encrypts both the disk content and the VM guest state (vTPM state, UEFI variables).
 - `--security-type ConfidentialVM` - Enables the confidential computing features.
 - `--enable-secure-boot true` - Enables UEFI Secure Boot.
@@ -181,11 +191,35 @@ Let me break down the key parameters:
 
 ## Step 6: Add Encrypted Data Disks
 
-If your workload needs additional data disks, add them with the same encryption configuration.
+If your workload needs additional data disks, add them with server-side encryption using the same customer-managed key. Confidential disk encryption is currently for the OS disk and VM guest state; data disks can use customer-managed keys with Azure Disk Storage server-side encryption.
 
 This creates and attaches an encrypted data disk:
 
 ```bash
+# Create a standard Disk Encryption Set for data disks using the same key
+az disk-encryption-set create \
+  --name des-data-cmk \
+  --resource-group $RG \
+  --location $LOCATION \
+  --key-url "$KEY_URL" \
+  --source-vault "$KV_ID" \
+  --encryption-type EncryptionAtRestWithCustomerKey
+
+DATA_DES_ID=$(az disk-encryption-set show \
+  --name des-data-cmk \
+  --resource-group $RG \
+  --query id -o tsv)
+
+DATA_DES_IDENTITY=$(az disk-encryption-set show \
+  --name des-data-cmk \
+  --resource-group $RG \
+  --query "identity.principalId" -o tsv)
+
+az keyvault set-policy \
+  --name kv-confidential-cmk \
+  --object-id "$DATA_DES_IDENTITY" \
+  --key-permissions wrapKey unwrapKey get
+
 # Create an encrypted managed disk
 az disk create \
   --name disk-data-01 \
@@ -193,9 +227,8 @@ az disk create \
   --location $LOCATION \
   --size-gb 256 \
   --sku Premium_LRS \
-  --disk-encryption-set "$DES_ID" \
-  --security-type ConfidentialVM_DiskEncryptedWithCustomerKey \
-  --hyper-v-generation V2
+  --encryption-type EncryptionAtRestWithCustomerKey \
+  --disk-encryption-set "$DATA_DES_ID"
 
 # Attach the data disk to the VM
 az vm disk attach \
@@ -229,6 +262,7 @@ az vm show \
   --resource-group $RG \
   --query "{
     osDiskEncryptionSet: storageProfile.osDisk.managedDisk.diskEncryptionSet.id,
+    secureVmDiskEncryptionSet: storageProfile.osDisk.managedDisk.securityProfile.secureVMDiskEncryptionSet.id,
     securityEncryptionType: storageProfile.osDisk.managedDisk.securityProfile.securityEncryptionType
   }" -o json
 ```
@@ -257,25 +291,34 @@ NEW_KEY_URL=$(az keyvault key create \
   --kty RSA-HSM \
   --size 4096 \
   --ops wrapKey unwrapKey \
+  --exportable true \
+  --default-cvm-policy \
   --query "key.kid" -o tsv)
 
 # Update the Disk Encryption Set to use the new key version
 az disk-encryption-set update \
   --name des-confidential-cmk \
   --resource-group $RG \
-  --key-url "$NEW_KEY_URL"
+  --key-url "$NEW_KEY_URL" \
+  --source-vault "$KV_ID"
 
-echo "Key rotated. Disks will re-encrypt with the new key version."
+az disk-encryption-set update \
+  --name des-data-cmk \
+  --resource-group $RG \
+  --key-url "$NEW_KEY_URL" \
+  --source-vault "$KV_ID"
+
+echo "Key rotated. Disk encryption keys will be rewrapped with the new key version."
 ```
 
-The re-encryption happens in the background and does not require VM downtime. The old key version remains needed until the re-encryption completes, so do not delete it from Key Vault.
+The rewrapping happens in the background and does not require VM downtime. The old key version remains needed until the rewrapping completes, so do not delete it from Key Vault.
 
-You can also enable automatic key rotation on the DES:
+For the data disk DES, you can also enable automatic key rotation. Confidential VM OS disk encryption does not support automatic key rotation, so keep using the manual update flow for `des-confidential-cmk`.
 
 ```bash
-# Enable automatic key rotation
+# Enable automatic key rotation for the data disk DES
 az disk-encryption-set update \
-  --name des-confidential-cmk \
+  --name des-data-cmk \
   --resource-group $RG \
   --enable-auto-key-rotation true
 ```
@@ -286,17 +329,22 @@ Not all VM sizes support confidential computing. Here are the main families:
 
 - **DCasv5 / DCadsv5** - AMD SEV-SNP, general purpose. Good for most workloads.
 - **ECasv5 / ECadsv5** - AMD SEV-SNP, memory-optimized. Good for databases and in-memory analytics.
-- **DCesv5 / DCedsv5** - Intel TDX, general purpose.
-- **ECesv5 / ECedsv5** - Intel TDX, memory-optimized.
+- **DCasv6 / DCadsv6** - AMD SEV-SNP, newer general purpose sizes.
+- **ECasv6 / ECadsv6** - AMD SEV-SNP, newer memory-optimized sizes.
+- **DCesv6 / DCedsv6** - Intel TDX, general purpose.
+- **ECesv6 / ECedsv6** - Intel TDX, memory-optimized.
 
 Check availability in your target region:
 
 ```bash
 # List available Confidential VM sizes in a region
-az vm list-sizes \
+vm_series="DCASv5"
+az vm list-skus \
   --location eastus \
-  --query "[?contains(name,'DC') || contains(name,'EC')].{name:name, cores:numberOfCores, memoryGB:memoryInMB}" \
-  -o table
+  --size dc \
+  --all \
+  --query "[?family=='standard${vm_series}Family'].{name:name, locations:locationInfo[0].location, zones:locationInfo[0].zones}" \
+  --output table
 ```
 
 ## Cost Considerations
@@ -311,4 +359,4 @@ For workloads that genuinely require confidential computing (processing sensitiv
 
 ## Wrapping Up
 
-Azure Confidential VMs with customer-managed keys give you the strongest possible encryption posture in the public cloud. The hardware encrypts the VM's memory, Secure Boot verifies the boot chain, the vTPM provides a hardware root of trust, and your customer-managed key ensures you control the disk encryption. This means your data is protected at rest, in transit, and - critically - in use, even from the cloud provider's infrastructure. The setup involves a few more steps than a standard VM deployment, but for workloads that handle your most sensitive data, it is the right approach.
+Azure Confidential VMs with customer-managed keys give you the strongest possible encryption posture in the public cloud. The hardware encrypts the VM's memory, Secure Boot verifies the boot chain, the vTPM provides a hardware root of trust, and your customer-managed key ensures you control the disk encryption. This means your data is protected at rest and - critically - in use, even from the cloud provider's infrastructure. The setup involves a few more steps than a standard VM deployment, but for workloads that handle your most sensitive data, it is the right approach.
