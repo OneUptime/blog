@@ -30,7 +30,7 @@ The list grows regularly, but here are some of the most commonly used ones:
 - Azure Machine Learning (run completed, model registered)
 - Azure Media Services (job state changed)
 - Azure Maps (geofence entered, exited)
-- Azure Communication Services (SMS received, call started)
+- Azure Communication Services (SMS received, delivery reports, chat events)
 
 ## Creating a System Topic
 
@@ -296,15 +296,15 @@ az eventgrid topic-type list --output table
 
 ## Permissions and Access
 
-To create a system topic, you need read access to the source resource and contributor access to the resource group where the system topic is created. For the event subscription, you need access to the destination endpoint (webhook, function, queue, etc.).
+To create and manage Event Grid resources, use a role such as `EventGrid Contributor`. To create an event subscription on a system topic, you need `Microsoft.EventGrid/EventSubscriptions/Write` permission at the scope of the resource that publishes the event, or owner/contributor access on that source resource. For non-webhook destinations, you also need write access to the destination endpoint (function, queue, event hub, etc.).
 
-When using Managed Identity for the system topic, assign the appropriate role on the source resource. For example, for a Storage Account source, the system topic's identity needs `Storage Blob Data Reader` if it needs to access blob content.
+When using Managed Identity for event delivery, assign the appropriate role on the destination resource. For example, if Event Grid delivers to a Service Bus queue, the identity used for delivery needs a role such as `Azure Service Bus Data Sender` on that queue.
 
 ## Limits and Considerations
 
 Each Azure resource can have only one system topic. You cannot create two system topics for the same Storage Account. However, you can create multiple subscriptions on a single system topic, each with different filters and destinations.
 
-System topics are regional - the system topic must be in the same region as the source resource. Cross-region event routing is not supported for system topics.
+For Azure event sources that are in a specific region, the system topic is created in the same region as the source resource. For global Azure event sources such as Azure subscriptions, resource groups, or Azure Maps, Event Grid creates the system topic in the global location.
 
 ## Summary
 
