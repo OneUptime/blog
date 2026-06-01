@@ -8,13 +8,13 @@ Description: Learn how to schedule recurring cost data exports from Azure Cost M
 
 ---
 
-Cost analysis in the Azure portal is great for interactive exploration, but when you need to feed cost data into external systems - a data warehouse, a BI tool, a chargeback system, or a custom dashboard - you need the raw data in a file. Azure Cost Management's export feature lets you schedule recurring exports that automatically deliver cost data to an Azure Storage account as CSV files on a daily, weekly, or monthly basis.
+Cost analysis in the Azure portal is great for interactive exploration, but when you need to feed cost data into external systems - a data warehouse, a BI tool, a chargeback system, or a custom dashboard - you need the raw data in a file. Azure Cost Management's export feature lets you schedule recurring exports that automatically deliver cost data to an Azure Storage account as CSV or Parquet files.
 
 This post covers how to set up exports, what data formats are available, how to automate downstream processing, and how to keep costs under control.
 
 ## What Gets Exported
 
-Cost Management exports produce CSV files containing detailed cost records. Each record includes:
+Cost Management exports can produce CSV or Parquet files containing detailed cost records. The examples in this post use CSV files. Each record includes:
 
 - **Date** - The usage date.
 - **Resource ID** - The full Azure resource ID.
@@ -33,11 +33,11 @@ The export includes all the dimensions you need for chargeback, trend analysis, 
 
 ## Export Types
 
-Cost Management offers three types of exports:
+Common cost and usage export types include:
 
-1. **Actual cost** - What you were actually billed, including any RI amortization and credits applied.
-2. **Amortized cost** - Spreads one-time purchases (like reserved instances) evenly across the reservation term.
-3. **Usage only** - Raw usage data without pricing (useful if you apply custom pricing in your own systems).
+1. **Actual cost** - Standard usage and purchase charges as they were charged.
+2. **Amortized cost** - Spreads eligible purchases (like reservations and savings plans) across their benefit period.
+3. **Usage only** - Standard usage charges without purchase information. This type is supported for existing usage-only exports and for limited scopes such as management group exports.
 
 For most use cases, amortized cost is the best choice because it gives you a consistent view of spending without the spiky effect of one-time purchases.
 
@@ -51,7 +51,7 @@ For most use cases, amortized cost is the best choice because it gives you a con
    - **Name**: A descriptive name like "daily-actual-costs".
    - **Export type**: Actual cost, Amortized cost, or Usage.
    - **Dataset version**: Use the latest version for the most complete schema.
-   - **Frequency**: Daily, Weekly, or Monthly.
+   - **Frequency**: Daily or Monthly for cost and usage exports.
    - **Start date**: When to begin exporting.
 6. Under **Storage**:
    - **Subscription**: The subscription containing the storage account.
@@ -60,7 +60,7 @@ For most use cases, amortized cost is the best choice because it gives you a con
    - **Directory**: A folder path within the container.
 7. Click **Create**.
 
-The first export runs immediately, and subsequent exports follow the configured schedule.
+The first export is queued after creation, and the export process can take up to 24 hours before data is ready. Subsequent exports follow the configured schedule.
 
 ## Creating an Export with Azure CLI
 
@@ -75,10 +75,9 @@ az costmanagement export create \
   --storage-account-id "/subscriptions/<sub-id>/resourceGroups/rg-finance/providers/Microsoft.Storage/storageAccounts/stcostexports" \
   --storage-container "cost-data" \
   --storage-directory "daily" \
-  --schedule-recurrence "Daily" \
+  --recurrence "Daily" \
   --schedule-status "Active" \
-  --recurrence-period-from "2026-02-16T00:00:00Z" \
-  --recurrence-period-to "2027-02-16T00:00:00Z"
+  --recurrence-period from="2026-02-16T00:00:00Z" to="2027-02-16T00:00:00Z"
 ```
 
 ## Creating an Export with ARM Templates
@@ -127,12 +126,16 @@ cost-data/
   daily/
     daily-actual-costs/
       20260216-20260216/
-        daily-actual-costs_<guid>.csv
+        <run-id>/
+          part0.csv
+          manifest.json
       20260217-20260217/
-        daily-actual-costs_<guid>.csv
+        <run-id>/
+          part0.csv
+          manifest.json
 ```
 
-Each export creates a dated folder containing one or more CSV files. For large datasets, the export may split into multiple files.
+Each export creates a dated folder containing the run output. Current exports include a manifest file and partitioned data files; to process the full dataset, read each partition listed in the manifest.
 
 ## Processing Exported Data
 
@@ -206,7 +209,7 @@ for blob in csv_blobs:
 combined = pd.concat(dataframes, ignore_index=True)
 
 # Analyze: top spending resource groups this month
-top_rgs = combined.groupby("ResourceGroupName")["CostInBillingCurrency"].sum()
+top_rgs = combined.groupby("ResourceGroup")["CostInBillingCurrency"].sum()
 top_rgs = top_rgs.sort_values(ascending=False).head(10)
 print("Top 10 Resource Groups by Cost:")
 print(top_rgs)
@@ -230,10 +233,9 @@ az costmanagement export create \
   --storage-account-id "<storage-id>" \
   --storage-container "cost-data" \
   --storage-directory "dashboard" \
-  --schedule-recurrence "Daily" \
+  --recurrence "Daily" \
   --schedule-status "Active" \
-  --recurrence-period-from "2026-02-16T00:00:00Z" \
-  --recurrence-period-to "2027-02-16T00:00:00Z"
+  --recurrence-period from="2026-02-16T00:00:00Z" to="2027-02-16T00:00:00Z"
 
 # Monthly amortized cost for chargeback
 az costmanagement export create \
@@ -244,10 +246,9 @@ az costmanagement export create \
   --storage-account-id "<storage-id>" \
   --storage-container "cost-data" \
   --storage-directory "chargeback" \
-  --schedule-recurrence "Monthly" \
+  --recurrence "Monthly" \
   --schedule-status "Active" \
-  --recurrence-period-from "2026-02-16T00:00:00Z" \
-  --recurrence-period-to "2027-02-16T00:00:00Z"
+  --recurrence-period from="2026-02-16T00:00:00Z" to="2027-02-16T00:00:00Z"
 ```
 
 ## Managing Export Costs
@@ -304,22 +305,21 @@ You can also set up an alert to notify you if an export fails. Use Azure Monitor
 
 ## Export Across Management Groups
 
-For enterprise environments with multiple subscriptions, you can create exports at the management group level. This produces a single set of CSV files that includes cost data from all subscriptions under that management group.
+For Enterprise Agreement environments with multiple subscriptions, you can create exports at the management group level. This produces a single set of CSV files that includes usage charge data from all subscriptions under that management group. Management group exports do not support Microsoft Customer Agreement scopes, multiple currencies, purchases, reservations, savings plans, or amortized cost reports.
 
 ```bash
 # Create an export at the management group level
 az costmanagement export create \
   --name "enterprise-daily" \
   --scope "/providers/Microsoft.Management/managementGroups/<mg-id>" \
-  --type "ActualCost" \
+  --type "Usage" \
   --timeframe "MonthToDate" \
   --storage-account-id "<storage-id>" \
   --storage-container "cost-data" \
   --storage-directory "enterprise" \
-  --schedule-recurrence "Daily" \
+  --recurrence "Daily" \
   --schedule-status "Active" \
-  --recurrence-period-from "2026-02-16T00:00:00Z" \
-  --recurrence-period-to "2027-02-16T00:00:00Z"
+  --recurrence-period from="2026-02-16T00:00:00Z" to="2027-02-16T00:00:00Z"
 ```
 
 ## Wrapping Up
