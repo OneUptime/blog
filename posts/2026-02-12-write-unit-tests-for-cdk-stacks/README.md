@@ -19,7 +19,7 @@ If you initialized your project with `cdk init`, you already have a test file an
 ```bash
 # Install testing dependencies
 
-npm install --save-dev jest @types/jest ts-jest
+npm install --save-dev jest typescript ts-jest @types/jest
 ```
 
 Your `jest.config.js` should look like this.
@@ -83,7 +83,7 @@ npm test
 npm test -- --watch
 
 # Run a specific test file
-npm test -- --testPathPattern my-stack
+npm test -- --testPathPatterns my-stack
 ```
 
 ## Matching Resource Properties
@@ -152,8 +152,8 @@ describe('Resource counts', () => {
     template.resourceCountIs('AWS::SNS::Topic', 1);
   });
 
-  test('no unexpected public resources', () => {
-    // Ensure no public S3 buckets were created
+  test('no unexpected bucket policies', () => {
+    // Ensure no S3 bucket policies were created
     template.resourceCountIs('AWS::S3::BucketPolicy', 0);
   });
 });
@@ -324,9 +324,9 @@ describe('Environment-specific configuration', () => {
 });
 ```
 
-## Finding Resources by Logical ID
+## Finding Resources by Type
 
-Sometimes you need to inspect a specific resource by its logical ID.
+Sometimes you need to inspect synthesized resources and their logical IDs.
 
 ```typescript
 test('inspect a specific resource', () => {
