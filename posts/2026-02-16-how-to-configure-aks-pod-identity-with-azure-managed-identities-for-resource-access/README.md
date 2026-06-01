@@ -49,9 +49,9 @@ sequenceDiagram
 ## Prerequisites
 
 - AKS cluster running Kubernetes 1.22+
-- Azure CLI 2.40+
+- Azure CLI 2.47+
 - An Azure resource to access (Key Vault, Storage, etc.)
-- Owner role on the resource group (to create role assignments)
+- Owner or User Access Administrator role on the resource group (to create role assignments)
 
 ## Step 1: Enable OIDC Issuer and Workload Identity
 
@@ -89,7 +89,7 @@ az identity create \
   --name my-app-identity \
   --location eastus
 
-# Store the client ID and tenant ID
+# Store the client ID, tenant ID, and principal ID
 export IDENTITY_CLIENT_ID=$(az identity show \
   --resource-group myResourceGroup \
   --name my-app-identity \
@@ -100,6 +100,12 @@ export IDENTITY_TENANT_ID=$(az identity show \
   --resource-group myResourceGroup \
   --name my-app-identity \
   --query tenantId \
+  --output tsv)
+
+export IDENTITY_PRINCIPAL_ID=$(az identity show \
+  --resource-group myResourceGroup \
+  --name my-app-identity \
+  --query principalId \
   --output tsv)
 
 echo "Client ID: $IDENTITY_CLIENT_ID"
@@ -131,19 +137,22 @@ Grant the managed identity access to the Azure resources your application needs.
 # Example: Grant access to a Key Vault
 az role assignment create \
   --role "Key Vault Secrets User" \
-  --assignee "$IDENTITY_CLIENT_ID" \
+  --assignee-object-id "$IDENTITY_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.KeyVault/vaults/myKeyVault"
 
 # Example: Grant access to a Storage Account
 az role assignment create \
   --role "Storage Blob Data Reader" \
-  --assignee "$IDENTITY_CLIENT_ID" \
+  --assignee-object-id "$IDENTITY_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Storage/storageAccounts/mystorageaccount"
 
 # Example: Grant access to Azure SQL
 az role assignment create \
   --role "Contributor" \
-  --assignee "$IDENTITY_CLIENT_ID" \
+  --assignee-object-id "$IDENTITY_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
   --scope "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/mysqlserver"
 ```
 
@@ -165,9 +174,6 @@ metadata:
     # This annotation is required - it tells the workload identity webhook
     # which managed identity to use for token exchange
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    # This label enables the workload identity webhook for this service account
-    azure.workload.identity/use: "true"
 ```
 
 Replace `<IDENTITY_CLIENT_ID>` with the actual client ID from Step 2.
@@ -197,6 +203,8 @@ spec:
     metadata:
       labels:
         app: my-app
+        # This label enables the workload identity webhook for this pod
+        azure.workload.identity/use: "true"
     spec:
       # Use the service account with the workload identity annotation
       serviceAccountName: my-app-sa
@@ -323,11 +331,11 @@ Create separate federated credentials for each, pointing to different service ac
 
 **"AADSTS70021: No matching federated identity record found"**: The most common error. The federated credential subject does not match. Double-check the namespace and service account name. The format must be `system:serviceaccount:<namespace>:<sa-name>`.
 
-**Token file not present in the pod**: The workload identity webhook is not running or the service account does not have the `azure.workload.identity/use: "true"` label. Verify the webhook with `kubectl get pods -n kube-system -l azure-workload-identity.io/system=true`.
+**Token file not present in the pod**: The workload identity webhook is not running or the pod template does not have the `azure.workload.identity/use: "true"` label. Verify the webhook with `kubectl get pods -n kube-system -l azure-workload-identity.io/system=true`.
 
 **"DefaultAzureCredential failed"**: Make sure you are using a recent version of the Azure SDK. Older versions do not support workload identity. The SDK tries multiple credential types in order - workload identity should be attempted automatically.
 
-**Role assignment not taking effect**: Azure RBAC role assignments can take up to 5 minutes to propagate. Wait and retry before investigating further.
+**Role assignment not taking effect**: Azure RBAC role assignments can take up to 10 minutes to propagate. Wait and retry before investigating further.
 
 ## Summary
 
