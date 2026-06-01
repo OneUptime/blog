@@ -34,49 +34,49 @@ If all mapped policies are compliant, the control is marked as passed.
 
 ## Prerequisites
 
-- Microsoft Defender for Cloud with at least the Foundational CSPM plan (some features require the Defender CSPM plan)
-- Security Admin or Compliance Admin role on the subscription
+- Microsoft Defender for Cloud enabled with a supported Defender plan (custom KQL recommendations require the Defender CSPM plan)
+- Owner or Policy Contributor role to add compliance standards; Security Admin role to create custom recommendations
 - Azure Policy Contributor role (for creating custom initiatives)
 
 ## Step 1: Enable Built-In Regulatory Standards
 
 Defender for Cloud includes several built-in standards:
 
-- Azure Security Benchmark (enabled by default)
-- PCI DSS v4.0
+- Microsoft Cloud Security Benchmark (enabled by default)
+- PCI DSS v4.0.1
 - HIPAA/HITRUST
 - SOC 2 Type 2
 - NIST SP 800-53
 - ISO 27001
 - CIS Azure Foundations Benchmark
-- CMMC Level 3
+- CIS Controls
 
-To add a standard, go to Defender for Cloud, then Regulatory Compliance, then Manage Compliance Policies. Select your subscription and click "Add more standards."
+To add a standard, go to Defender for Cloud, then Regulatory Compliance, then Manage Compliance Policies. Select your subscription, open Security policies, and toggle the standard on.
 
 Using Azure CLI:
 
 ```bash
-# List available regulatory compliance standards
+# List regulatory compliance standards already assigned to the subscription
 
 az security regulatory-compliance-standards list \
-  --query "[].{Name:name, State:state}" \
+  --query "[].{Name:name, State:properties.state}" \
   --output table
-
-# Enable a specific standard (e.g., PCI DSS v4)
-az security regulatory-compliance-standard update \
-  --name "PCI-DSS-4" \
-  --state "Passed"
 ```
 
 Alternatively, you can enable standards by assigning the corresponding Azure Policy initiative:
 
 ```bash
-# Assign the PCI DSS v4 initiative to a subscription
+# Find the PCI DSS initiative ID
+pci_initiative_id=$(az policy set-definition list \
+  --query "[?contains(displayName, 'PCI DSS')].id | [0]" \
+  --output tsv)
+
+# Assign the PCI DSS initiative to a subscription
 # This both enables the standard and starts evaluating compliance
 az policy assignment create \
   --name "pci-dss-v4-compliance" \
   --display-name "PCI DSS v4 Compliance Assessment" \
-  --policy-set-definition "/providers/Microsoft.Authorization/policySetDefinitions/c676748e-3af9-4e22-bc28-50feed564afb" \
+  --policy-set-definition "$pci_initiative_id" \
   --scope "/subscriptions/{sub-id}" \
   --enforcement-mode "DoNotEnforce"
 ```
@@ -91,21 +91,13 @@ First, define your controls and map them to Azure Policy definitions. Here is an
 
 ```json
 {
-  // Custom policy initiative for internal security standard
   "properties": {
     "displayName": "Organization Security Standard v1",
     "description": "Internal security requirements for all Azure workloads",
     "policyType": "Custom",
     "metadata": {
       "category": "Regulatory Compliance",
-      // This metadata structure is required for Defender for Cloud
-      // to recognize the initiative as a compliance standard
-      "ASC": {
-        "complianceStandard": {
-          "displayName": "Organization Security Standard v1",
-          "version": "1.0"
-        }
-      }
+      "ASC": "true"
     },
     "policyDefinitionGroups": [
       {
@@ -169,31 +161,33 @@ Create the custom initiative:
 
 ```bash
 # Create the custom policy initiative
+# policy-definitions.json should contain the policyDefinitions array, and
+# policy-groups.json should contain the policyDefinitionGroups array.
 az policy set-definition create \
   --name "org-security-standard-v1" \
   --display-name "Organization Security Standard v1" \
   --description "Internal security requirements for all Azure workloads" \
   --definitions @policy-definitions.json \
   --definition-groups @policy-groups.json \
-  --metadata '{"category": "Regulatory Compliance"}' \
+  --metadata '{"category": "Regulatory Compliance", "ASC": "true"}' \
   --subscription "{sub-id}"
 ```
 
 ## Step 3: Register the Custom Standard with Defender for Cloud
 
-After creating the initiative, assign it to your subscription. Defender for Cloud will automatically pick it up and display it in the Regulatory Compliance dashboard.
+After creating the initiative with the `ASC` metadata field, assign it to your subscription. Defender for Cloud will pick it up and display it in the Regulatory Compliance dashboard.
 
 ```bash
 # Assign the custom initiative to the subscription
 az policy assignment create \
   --name "org-security-standard-v1-assessment" \
   --display-name "Org Security Standard v1 Assessment" \
-  --policy-set-definition "org-security-standard-v1" \
+  --policy-set-definition "/subscriptions/{sub-id}/providers/Microsoft.Authorization/policySetDefinitions/org-security-standard-v1" \
   --scope "/subscriptions/{sub-id}" \
   --enforcement-mode "DoNotEnforce"
 ```
 
-After assignment, go to Defender for Cloud, then Regulatory Compliance. Your custom standard should appear in the list. It may take up to 24 hours for the initial compliance evaluation to complete.
+After assignment, go to Defender for Cloud, then Regulatory Compliance. Your custom standard should appear in the list. Assessments run approximately every 12 hours, so you will see the impact on compliance data after the next relevant assessment run.
 
 ## Step 4: Review Compliance Dashboard
 
@@ -213,8 +207,7 @@ For auditors, you need exportable reports. Defender for Cloud supports PDF and C
 Click "Download report" in the Regulatory Compliance view. Select:
 
 - The standard you want to report on
-- The date range
-- The format (PDF for presentation, CSV for detailed analysis)
+- The report format (PDF for presentation, CSV for detailed analysis)
 
 The PDF report includes an executive summary with the compliance percentage, a breakdown by control domain, and details of each non-compliant finding.
 
@@ -234,13 +227,13 @@ For continuous compliance monitoring, configure Defender for Cloud to export com
 ```bash
 # Configure continuous export of regulatory compliance data
 # This sends compliance state changes to Log Analytics
-az security automation create \
+az security automation create_or_update \
   --name "compliance-export" \
   --resource-group myResourceGroup \
   --location eastus \
   --scopes "[{\"description\":\"Subscription\",\"scopePath\":\"/subscriptions/{sub-id}\"}]" \
-  --sources "[{\"eventSource\":\"RegulatoryComplianceAssessment\",\"ruleSets\":[]}]" \
-  --actions "[{\"actionType\":\"LogAnalytics\",\"logAnalyticsResourceId\":\"/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/myWorkspace\",\"workspaceResourceId\":\"/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/myWorkspace\"}]"
+  --sources "[{\"eventSource\":\"RegulatoryComplianceAssessment\",\"ruleSets\":null}]" \
+  --actions "[{\"actionType\":\"Workspace\",\"workspaceResourceId\":\"/subscriptions/{sub-id}/resourceGroups/{rg}/providers/Microsoft.OperationalInsights/workspaces/myWorkspace\"}]"
 ```
 
 Then query the exported data in Log Analytics:
@@ -265,8 +258,8 @@ Not every non-compliant finding needs remediation. Some are accepted risks with 
 # Create a compliance exemption for an accepted risk
 az policy exemption create \
   --name "legacy-db-encryption-exemption" \
-  --policy-assignment "org-security-standard-v1-assessment" \
-  --policy-definition-reference-id "sqlEncryption" \
+  --policy-assignment "/subscriptions/{sub-id}/providers/Microsoft.Authorization/policyAssignments/org-security-standard-v1-assessment" \
+  --policy-definition-reference-ids "sqlEncryption" \
   --exemption-category "Waiver" \
   --description "Legacy database cannot support CMK. Compensating control: network isolation via private endpoint. Approved by CISO 2026-01-15" \
   --expires-on "2026-12-31" \
@@ -283,7 +276,7 @@ This means fixing a non-compliant resource can satisfy controls across multiple 
 
 ## Best Practices
 
-- Start with the Azure Security Benchmark since it is the most comprehensive baseline and maps to most other standards.
+- Start with the Microsoft Cloud Security Benchmark since it is the default baseline and maps to many other standards.
 - Do not enable standards you do not need. Each standard generates assessments that can create noise.
 - Use the `DoNotEnforce` mode for compliance initiatives. You want to measure compliance, not block deployments through the compliance initiative.
 - Set up exemptions with expiration dates and review them quarterly.
