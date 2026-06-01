@@ -29,8 +29,8 @@ graph TD
 
 Key rules:
 - A resource is evaluated against all policies assigned at every level above it
-- If multiple policies conflict, the most restrictive one wins (deny beats allow)
-- Policies assigned at a higher level cannot be overridden at a lower level
+- If multiple policies conflict, any applicable Deny effect blocks the request
+- Policies assigned at a higher level are not overridden by lower-level assignments, although exclusions and exemptions can be used when appropriate
 - New subscriptions added to a management group automatically inherit all policies
 
 ## Assigning a Built-in Policy at a Management Group
@@ -45,7 +45,7 @@ Azure has hundreds of built-in policies covering security, compliance, cost mana
 4. For Scope, click the selector and choose your management group (e.g., "Workloads")
 5. Under Policy definition, search for "Require a tag on resource groups"
 6. Set the tag name parameter (e.g., "CostCenter")
-7. Set the effect to "Deny" (prevents creation of resource groups without the tag)
+7. Review the built-in policy's Deny effect (it prevents creation of resource groups without the tag)
 8. Click "Review + create"
 
 ### Through the CLI
@@ -107,21 +107,21 @@ An initiative groups multiple related policies into a single assignable unit. Th
 
 ### Assigning a Built-in Initiative
 
-Microsoft provides several built-in initiatives. A commonly used one is "Azure Security Benchmark," which includes over 200 policies covering security best practices.
+Microsoft provides several built-in initiatives. A commonly used one is "Microsoft cloud security benchmark" (formerly Azure Security Benchmark), which includes over 200 policies covering security best practices.
 
 ```bash
-# Assign the Azure Security Benchmark initiative at a management group
+# Assign the Microsoft cloud security benchmark initiative at a management group
 az policy assignment create \
-  --name "azure-security-benchmark" \
-  --display-name "Azure Security Benchmark" \
+  --name "microsoft-cloud-security-benchmark" \
+  --display-name "Microsoft cloud security benchmark" \
   --policy-set-definition "/providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8" \
   --scope "/providers/Microsoft.Management/managementGroups/Workloads" \
   --enforcement-mode Default \
-  --identity-type SystemAssigned \
+  --mi-system-assigned \
   --location eastus
 ```
 
-The `--identity-type SystemAssigned` creates a managed identity for the policy assignment. This is required for policies that use the "DeployIfNotExists" or "Modify" effects, as those need permissions to make changes to resources.
+The `--mi-system-assigned` flag creates a managed identity for the policy assignment. This is required for policies that use the "DeployIfNotExists" or "Modify" effects to remediate non-compliant resources. That identity also needs the required Azure RBAC roles for the resources it will deploy or modify.
 
 ### Creating a Custom Initiative
 
@@ -142,7 +142,8 @@ For your organization's specific governance requirements, create a custom initia
       {
         "policyDefinitionId": "/providers/Microsoft.Authorization/policyDefinitions/1e30110a-5ceb-460c-a204-c1c3969c6d62",
         "parameters": {
-          "tagName": { "value": "Environment" }
+          "tagName": { "value": "Environment" },
+          "tagValue": { "value": "Production" }
         }
       },
       {
@@ -207,9 +208,9 @@ Here is a recommended policy structure that maps to the enterprise-scale managem
 
 ### Sandbox Management Group
 
-- Budget limit per subscription
 - Deny certain resource types (e.g., no ExpressRoute circuits)
-- Auto-shutdown VMs at 7 PM
+- Allowed VM sizes (restrict to low-cost SKUs)
+- Require cost owner tags
 
 ## Enforcement Modes
 
@@ -223,10 +224,10 @@ Policy assignments support two enforcement modes:
 - Reporting on compliance without impacting teams
 
 ```bash
-# Assign a policy in audit mode first
+# Assign a policy in non-enforcing mode first
 az policy assignment create \
-  --name "require-encryption-audit" \
-  --display-name "Require encryption (audit only)" \
+  --name "require-encryption-nonenforce" \
+  --display-name "Require encryption (non-enforcing)" \
   --policy "/providers/Microsoft.Authorization/policyDefinitions/..." \
   --scope "/providers/Microsoft.Management/managementGroups/Workloads" \
   --enforcement-mode DoNotEnforce
@@ -237,7 +238,7 @@ After reviewing the compliance results and giving teams time to remediate, switc
 ```bash
 # Update to enforcement mode
 az policy assignment update \
-  --name "require-encryption-audit" \
+  --name "require-encryption-nonenforce" \
   --scope "/providers/Microsoft.Management/managementGroups/Workloads" \
   --enforcement-mode Default
 ```
