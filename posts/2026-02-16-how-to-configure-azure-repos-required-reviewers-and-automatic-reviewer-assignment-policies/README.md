@@ -10,7 +10,7 @@ Description: Learn how to set up required reviewers and automatic reviewer assig
 
 Code review is one of the most effective practices for maintaining code quality, but it only works if it actually happens. Left to convention and good intentions, reviews get skipped when deadlines are tight. Azure Repos branch policies formalize the review process by requiring specific reviewers on pull requests and automatically assigning the right people based on what files are changing.
 
-In this post, I will cover how to configure required reviewers, set up automatic reviewer assignment based on file paths, use code owner files, and design review policies that balance thoroughness with development velocity.
+In this post, I will cover how to configure required reviewers, set up automatic reviewer assignment based on file paths, use CODEOWNERS-style ownership rules, and design review policies that balance thoroughness with development velocity.
 
 ## Branch Policy Basics
 
@@ -56,7 +56,7 @@ flowchart TD
 
 ## Configuring Required Reviewers
 
-Sometimes you need specific people to review certain changes, regardless of the minimum reviewer count. Required reviewers must approve the PR - it cannot be merged without their sign-off.
+Sometimes you need specific people or groups to review certain changes, regardless of the minimum reviewer count. Required reviewers must approve the PR - for a required group, at least one member of the group must approve unless you configure a higher group approval count.
 
 To add required reviewers:
 
@@ -92,7 +92,7 @@ Message: "DBA team must review all database schema changes"
 
 ```text
 Reviewer: DevOps Team (group)
-Path filter: /infrastructure/*; /terraform/*; *.bicep; azure-pipelines.yml
+Path filter: /infrastructure/*; /terraform/*; *.bicep; /azure-pipelines.yml
 Required: Yes
 Message: "DevOps team must review infrastructure and pipeline changes"
 ```
@@ -117,13 +117,15 @@ Path filters support:
 - Multiple paths separated by semicolons: `/src/api/*; /src/models/*`
 - Negation with `!`: `/src/*; !/src/tests/*` (matches src but not tests)
 
+Paths must start with `/` or a wildcard such as `*`. A root-level file should be written as `/azure-pipelines.yml`, not `azure-pipelines.yml`.
+
 ```text
 # Example: Different teams review different parts of the codebase
 
 Frontend Team    -> /src/frontend/*; /src/components/*; *.css; *.html
 Backend Team     -> /src/api/*; /src/services/*; /src/models/*
 Data Team        -> /src/data/*; /src/pipelines/*; *.sql
-Platform Team    -> /infrastructure/*; /docker/*; Dockerfile; *.yml
+Platform Team    -> /infrastructure/*; /docker/*; /Dockerfile; *.yml
 ```
 
 ## Using CODEOWNERS-Style Configuration
@@ -148,19 +150,19 @@ base_url = f"https://dev.azure.com/{org}/{project}/_apis"
 ownership_rules = [
     {
         "path": "/src/frontend",
-        "reviewers": ["frontend-team-id"],
+        "reviewers": ["frontend-team-guid"],
         "required": True,
         "message": "Frontend team review required"
     },
     {
         "path": "/src/api",
-        "reviewers": ["backend-team-id"],
+        "reviewers": ["backend-team-guid"],
         "required": True,
         "message": "Backend team review required"
     },
     {
         "path": "/infrastructure",
-        "reviewers": ["devops-team-id"],
+        "reviewers": ["devops-team-guid"],
         "required": True,
         "message": "DevOps review required for infra changes"
     }
@@ -172,7 +174,7 @@ for rule in ownership_rules:
         "isEnabled": True,
         "isBlocking": rule["required"],
         "type": {
-            "id": "fd2167ab-b0d6-447e-a6e9-c5ab7f5f8a33"  # Required reviewer policy type ID
+            "id": "fd2167ab-b0be-447a-8ec8-39368250530e"  # Required reviewers policy type ID
         },
         "settings": {
             "requiredReviewerIds": rule["reviewers"],
@@ -201,11 +203,12 @@ for rule in ownership_rules:
 
 When a reviewer approves a PR and then the author pushes new changes, should the approval still count? This is configurable:
 
-- **Reset all votes on new pushes**: Strictest option. Any push resets all approvals, requiring re-review. Good for critical branches.
-- **Reset votes of approvers who approved older iterations**: Only resets votes from reviewers who approved before the latest push. Reviewers who have not voted yet are unaffected.
-- **Do not reset votes**: Most lenient. Once approved, the approval sticks regardless of subsequent changes.
+- **Require at least one approval on every iteration**: Requires an approval vote for the last source branch change. This is the strictest iteration-based option and is available in Azure DevOps Server 2022.1 and later.
+- **Require at least one approval on the last iteration**: Requires at least one approval vote after the latest push.
+- **Reset all approval votes**: Removes approval votes whenever the source branch changes, but keeps votes to reject or wait.
+- **Reset all code reviewer votes**: Removes all reviewer votes whenever the source branch changes, including approve, reject, and wait votes.
 
-For most teams, "Reset votes of approvers who approved older iterations" is the right balance. It ensures reviewers see the final version but does not force re-review when unrelated minor changes are pushed.
+For most teams, "Require at least one approval on the last iteration" is the right balance. It ensures at least one reviewer sees the final version but does not reset every reviewer vote when unrelated minor changes are pushed.
 
 ## Review Completion Workflow
 
@@ -219,7 +222,7 @@ Here is how a well-configured review workflow plays out:
 3. The PR shows which reviewers are required and which are optional
 4. Required reviewers get email notifications
 5. Reviewers provide feedback: Approve, Approve with suggestions, Wait for author, or Reject
-6. If the author pushes new changes, approvals from previous iterations are reset
+6. If the author pushes new changes, Azure Repos enforces the vote or iteration policy you configured
 7. Once all required reviewers have approved and the minimum reviewer count is met, the PR can be completed
 
 ## Handling Large Teams and Review Fatigue
@@ -246,4 +249,4 @@ These metrics help you tune your policies. If turnaround time is too long, you m
 
 ## Wrapping Up
 
-Azure Repos reviewer policies turn code review from a best practice into a guaranteed process. Path-based automatic assignment ensures the right experts see changes to their area of the codebase. Required reviewers enforce sign-off for critical code paths. Vote reset policies ensure approvals reflect the current state of the code. Configure these policies thoughtfully - too strict and you slow down development, too loose and you miss issues. Start with minimum reviewer counts and path-based assignments, then add required reviewers for your most sensitive code paths.
+Azure Repos reviewer policies turn code review from a best practice into a guaranteed process. Path-based automatic assignment ensures the right experts see changes to their area of the codebase. Required reviewers enforce sign-off for critical code paths. Vote and iteration policies help ensure approvals reflect the current state of the code. Configure these policies thoughtfully - too strict and you slow down development, too loose and you miss issues. Start with minimum reviewer counts and path-based assignments, then add required reviewers for your most sensitive code paths.
