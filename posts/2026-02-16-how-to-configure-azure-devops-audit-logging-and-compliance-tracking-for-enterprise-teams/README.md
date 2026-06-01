@@ -10,7 +10,7 @@ Description: A comprehensive guide to setting up audit logging in Azure DevOps f
 
 Enterprise teams running their software development lifecycle through Azure DevOps need visibility into who did what, when, and where. Whether you are meeting SOC 2 requirements, preparing for an ISO 27001 audit, or just want to keep track of sensitive changes in your organization, audit logging is essential.
 
-Azure DevOps provides built-in auditing capabilities that capture a wide range of events across your organization. In this post, I will cover how to configure audit logging, stream audit data to external systems, and build compliance tracking workflows that satisfy auditors.
+Azure DevOps provides built-in auditing capabilities that capture a wide range of events across your organization. Auditing is available for Azure DevOps Services organizations backed by Microsoft Entra ID, and it must be turned on in Organization Settings. In this post, I will cover how to configure audit logging, stream audit data to external systems, and build compliance tracking workflows that satisfy auditors.
 
 ## What Azure DevOps Auditing Captures
 
@@ -38,20 +38,21 @@ For programmatic access, use the Audit API:
 # Replace ORG with your organization name
 PAT="your-personal-access-token"
 ORG="myorganization"
-AUTH=$(echo -n ":${PAT}" | base64)
+AUTH=$(printf ":%s" "${PAT}" | base64 | tr -d '\n')
+START_TIME=$(python3 -c 'from datetime import datetime, timezone, timedelta; print((datetime.now(timezone.utc) - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ"))')
 
 # Get recent audit events with pagination
 curl -s \
   -H "Authorization: Basic ${AUTH}" \
-  "https://auditservice.dev.azure.com/${ORG}/_apis/audit/auditlog?startTime=$(date -u -v-1d +%Y-%m-%dT%H:%M:%SZ)&api-version=7.1" \
-  | jq '.decoratedAuditLogEntries[:5]'
+  "https://auditservice.dev.azure.com/${ORG}/_apis/audit/auditlog?startTime=${START_TIME}&api-version=7.1-preview.1" \
+  | jq '(.value // .).decoratedAuditLogEntries[:5]'
 ```
 
 The API returns paginated results with a continuation token. Here is a Python script that fetches all events for a given time period:
 
 ```python
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Configuration
 org = "myorganization"
@@ -60,7 +61,7 @@ auth = ("", pat)
 base_url = f"https://auditservice.dev.azure.com/{org}/_apis/audit"
 
 # Fetch events from the last 7 days
-end_time = datetime.utcnow()
+end_time = datetime.now(timezone.utc)
 start_time = end_time - timedelta(days=7)
 
 all_events = []
@@ -70,7 +71,7 @@ while True:
     params = {
         "startTime": start_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "endTime": end_time.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "api-version": "7.1"
+        "api-version": "7.1-preview.1"
     }
 
     # Include continuation token for pagination
@@ -83,7 +84,9 @@ while True:
         params=params
     )
 
+    response.raise_for_status()
     data = response.json()
+    data = data.get("value", data)
     events = data.get("decoratedAuditLogEntries", [])
     all_events.extend(events)
 
@@ -110,10 +113,10 @@ To stream audit logs to a Log Analytics workspace:
 1. Go to Organization Settings and then Auditing
 2. Click on the "Streams" tab
 3. Click "New Stream" and select "Azure Monitor Log Analytics"
-4. Select your Azure subscription and Log Analytics workspace
-5. Click "Create"
+4. Enter the workspace ID and primary key for your Log Analytics workspace
+5. Click "Set up"
 
-Once streaming is configured, audit events will appear in the `AzureDevOpsAuditing` table in your Log Analytics workspace within a few minutes.
+Once streaming is configured, audit events will appear in the `AzureDevOpsAuditing` table in your Log Analytics workspace within half an hour or less.
 
 You can then query audit data using Kusto Query Language (KQL):
 
@@ -121,16 +124,16 @@ You can then query audit data using Kusto Query Language (KQL):
 // Find all permission changes in the last 24 hours
 AzureDevOpsAuditing
 | where TimeGenerated > ago(24h)
-| where Area == "Permissions"
-| project TimeGenerated, ActorDisplayName, ActionId, Details, IpAddress
+| where OperationName startswith "Security."
+| project TimeGenerated, ActorDisplayName, OperationName, Details, IpAddress
 | order by TimeGenerated desc
 
 // Find all pipeline modifications by a specific user
 AzureDevOpsAuditing
 | where TimeGenerated > ago(7d)
 | where ActorUPN == "developer@company.com"
-| where Area == "Pipelines"
-| project TimeGenerated, ActionId, Details
+| where OperationName in ("Pipelines.PipelineModified", "Release.ReleasePipelineModified")
+| project TimeGenerated, OperationName, Details
 | order by TimeGenerated desc
 
 // Count audit events by category over the last 30 days
@@ -159,11 +162,11 @@ Auditors want specific reports about access control, change management, and secu
 // Shows all permission and group membership changes
 AzureDevOpsAuditing
 | where TimeGenerated > ago(90d)
-| where Area in ("Permissions", "Group")
+| where OperationName startswith "Security." or OperationName startswith "Group."
 | project
     Timestamp = TimeGenerated,
     Actor = ActorDisplayName,
-    Action = ActionId,
+    Action = OperationName,
     Details,
     SourceIP = IpAddress
 | order by Timestamp desc
@@ -172,12 +175,11 @@ AzureDevOpsAuditing
 // Tracks who modified pipeline configurations
 AzureDevOpsAuditing
 | where TimeGenerated > ago(30d)
-| where Area == "Pipelines"
-| where ActionId has_any ("Pipeline.ModifyPipeline", "Release.UpdateReleaseDefinition")
+| where OperationName in ("Pipelines.PipelineModified", "Release.ReleasePipelineModified")
 | project
     Timestamp = TimeGenerated,
     ModifiedBy = ActorDisplayName,
-    Action = ActionId,
+    Action = OperationName,
     PipelineDetails = Details
 | order by Timestamp desc
 
@@ -185,11 +187,11 @@ AzureDevOpsAuditing
 // Monitors who used or modified service connections
 AzureDevOpsAuditing
 | where TimeGenerated > ago(30d)
-| where Area == "ServiceEndpoint"
+| where OperationName startswith "Library.ServiceConnection"
 | project
     Timestamp = TimeGenerated,
     Actor = ActorDisplayName,
-    Action = ActionId,
+    Action = OperationName,
     Details,
     SourceIP = IpAddress
 | order by Timestamp desc
@@ -205,7 +207,8 @@ az monitor scheduled-query create \
   --name "AzDO-Policy-Bypass-Alert" \
   --resource-group "monitoring-rg" \
   --scopes "/subscriptions/SUB_ID/resourceGroups/monitoring-rg/providers/Microsoft.OperationalInsights/workspaces/my-workspace" \
-  --condition "count 'AzureDevOpsAuditing | where ActionId == \"Git.RefUpdatePoliciesBypassed\"' > 0" \
+  --condition "count 'PolicyBypassQuery' > 0" \
+  --condition-query PolicyBypassQuery="AzureDevOpsAuditing | where OperationName == 'Git.RefUpdatePoliciesBypassed'" \
   --evaluation-frequency "5m" \
   --window-size "5m" \
   --severity 1 \
@@ -250,7 +253,8 @@ az monitor log-analytics workspace table update \
   --resource-group "monitoring-rg" \
   --workspace-name "my-workspace" \
   --name "AzureDevOpsAuditing" \
-  --retention-time 730
+  --retention-time 30 \
+  --total-retention-time 730
 ```
 
 For long-term archival, export data to Azure Blob Storage:
@@ -262,7 +266,8 @@ az monitor log-analytics workspace data-export create \
   --workspace-name "my-workspace" \
   --name "audit-archive" \
   --tables "AzureDevOpsAuditing" \
-  --destination "/subscriptions/SUB_ID/resourceGroups/monitoring-rg/providers/Microsoft.Storage/storageAccounts/auditarchive"
+  --destination "/subscriptions/SUB_ID/resourceGroups/monitoring-rg/providers/Microsoft.Storage/storageAccounts/auditarchive" \
+  --enable true
 ```
 
 ## Managing Audit Permissions
