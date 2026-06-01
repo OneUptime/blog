@@ -12,7 +12,7 @@ Azure Data Lake Storage Gen2 is built on top of Azure Blob Storage, but with one
 
 ## What Is the Hierarchical Namespace?
 
-Standard Azure Blob Storage uses a flat namespace. When you create a blob with the path `data/2026/february/sales.csv`, there are no actual directories. The entire path is just the blob name, and the slashes are just characters in that name. Listing all files in "data/2026/february/" requires scanning all blobs in the container and filtering by prefix.
+Standard Azure Blob Storage uses a flat namespace. When you create a blob with the path `data/2026/february/sales.csv`, there are no actual directories. The entire path is just the blob name, and the slashes are just characters in that name. Directory-like listing is handled by prefix rather than by operating on an independent directory object.
 
 With the hierarchical namespace enabled, directories are real objects in the storage system. Renaming a directory is an atomic operation rather than a blob-by-blob copy and delete. Listing files in a directory is a direct operation rather than a prefix scan. This is Data Lake Storage Gen2.
 
@@ -20,7 +20,7 @@ The performance difference is dramatic for big data workloads. Consider renaming
 
 ## Enabling Hierarchical Namespace on a New Storage Account
 
-You can only enable the hierarchical namespace when creating a storage account. It cannot be enabled on an existing account (with one exception I will cover later).
+The simplest time to enable the hierarchical namespace is when creating a storage account. Existing accounts can also be upgraded through a one-way migration process, which I will cover later.
 
 ### Using Azure CLI
 
@@ -127,9 +127,11 @@ Before running the migration, be aware of these requirements:
 
 - The account must be StorageV2 (General Purpose v2).
 - Blob versioning must be disabled.
-- Blob snapshots should not exist on any blobs.
-- The account cannot have any custom domain configured.
-- SFTP and NFS 3.0 must be disabled during migration.
+- Blob snapshots must not exist on any blobs.
+- Page blobs must be removed from the account.
+- Unsupported features such as custom domains, object replication, and change feed must not be configured.
+- Features that are supported after upgrade but blocked during the upgrade process, such as blob soft delete, container soft delete, encryption scopes, and immutable storage, must be disabled before the upgrade and can be re-enabled afterward if needed.
+- Applications and services should stop write activity during the upgrade.
 
 ## What Changes After Enabling HNS
 
@@ -201,7 +203,7 @@ file_system_client = service_client.get_file_system_client("analytics")
 directory_client = file_system_client.get_directory_client("raw-data/2026/february")
 
 # Rename the directory (atomic operation)
-directory_client.rename_directory("raw-data/2026/feb-processed")
+directory_client.rename_directory("analytics/raw-data/2026/feb-processed")
 print("Directory renamed atomically")
 
 # Delete an entire directory tree - also atomic
@@ -214,9 +216,9 @@ print("Directory deleted")
 
 Enabling HNS makes some Blob Storage features unavailable while unlocking new capabilities.
 
-Features available with HNS: blob tiering, soft delete (for containers), lifecycle management, static website hosting, Azure Functions triggers.
+Features available with HNS: access tiers and lifecycle tiering for standard general-purpose v2 accounts, blob soft delete, container soft delete, lifecycle management, static website hosting, Azure Functions triggers.
 
-Features not available with HNS: blob versioning, blob snapshots (use directory-level snapshots instead), change feed, object replication.
+Features not available with HNS: blob versioning, blob snapshots, change feed, object replication.
 
 Make sure the features you depend on are compatible before enabling HNS.
 
@@ -227,7 +229,7 @@ Data Lake Storage Gen2 works with several redundancy options.
 - **Standard_LRS**: Locally redundant, cheapest option, good for dev/test.
 - **Standard_ZRS**: Zone-redundant, protects against datacenter failures.
 - **Standard_GRS**: Geo-redundant, replicates to a secondary region.
-- **Premium_LRS**: Premium SSD-backed storage for low-latency workloads.
+- **Premium_LRS**: Premium block blob storage for low-latency workloads.
 
 For most analytics workloads, Standard_LRS or Standard_ZRS provides the best balance of cost and reliability. Premium storage is worth considering if your workload is latency-sensitive.
 
