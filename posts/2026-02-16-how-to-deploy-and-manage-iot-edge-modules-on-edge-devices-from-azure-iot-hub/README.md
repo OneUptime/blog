@@ -40,10 +40,10 @@ flowchart TB
 
 ## Prerequisites
 
-- An Azure IoT Hub (S1 tier or higher)
+- An Azure IoT Hub (free or standard tier)
 - A device registered as an IoT Edge device in the hub
 - An edge device (Linux VM, Raspberry Pi, or industrial gateway) with:
-  - Docker engine installed
+  - An OCI-compatible container runtime installed (Moby is officially supported for production IoT Edge deployments)
   - Azure IoT Edge runtime installed
   - Network connectivity to Azure (can be intermittent)
 - An Azure Container Registry (ACR) to store custom module images
@@ -78,9 +78,9 @@ curl -sSL https://packages.microsoft.com/config/ubuntu/22.04/packages-microsoft-
 sudo dpkg -i packages-microsoft-prod.deb
 rm packages-microsoft-prod.deb
 
-# Install the IoT Edge runtime and Moby container engine
+# Install the Moby container engine and IoT Edge runtime
 sudo apt-get update
-sudo apt-get install -y aziot-edge defender-iot-micro-agent-edge
+sudo apt-get install -y moby-engine aziot-edge
 
 # Configure the edge runtime with the device connection string
 # Replace with your actual connection string from Step 1
@@ -94,7 +94,7 @@ sudo iotedge system status
 sudo iotedge list
 ```
 
-After a few minutes, the edge agent and edge hub modules should be running:
+After a few minutes, the edge agent should be running. The edge hub module starts after you apply a deployment manifest that includes `$edgeHub`:
 
 ```bash
 # Check running modules
@@ -103,7 +103,6 @@ sudo iotedge list
 # Expected output:
 # NAME             STATUS           DESCRIPTION      CONFIG
 # edgeAgent        running          Up 2 minutes     mcr.microsoft.com/azureiotedge-agent:1.5
-# edgeHub          running          Up 1 minute      mcr.microsoft.com/azureiotedge-hub:1.5
 ```
 
 ## Step 3: Create a Custom Module
@@ -159,7 +158,7 @@ async def main():
 
     # Handle twin desired property updates
     async def twin_handler(patch):
-        nonlocal TEMPERATURE_THRESHOLD
+        global TEMPERATURE_THRESHOLD
         if "temperatureThreshold" in patch:
             TEMPERATURE_THRESHOLD = patch["temperatureThreshold"]
             print(f"Threshold updated to: {TEMPERATURE_THRESHOLD}")
@@ -347,9 +346,9 @@ az iot edge deployment create \
     --layered
 ```
 
-Layered deployments are additive. They add modules on top of the base deployment without replacing it. Use them for deploying optional modules to subsets of devices.
+Layered deployments combine with a base deployment. They can add or update modules, routes, and desired properties on top of the base deployment. Use them for deploying optional modules to subsets of devices.
 
-Priority determines which deployment wins when a device matches multiple deployments. Higher priority takes precedence.
+For base deployments, priority determines which deployment applies when a device matches multiple base deployments. Higher priority takes precedence. Any layered deployment that targets a device must have a higher priority than the base deployment for that device.
 
 ## Step 7: Monitor Edge Deployments
 
