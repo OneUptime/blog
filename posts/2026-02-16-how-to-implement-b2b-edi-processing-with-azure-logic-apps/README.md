@@ -27,24 +27,21 @@ The integration account holds all your B2B artifacts. You need at least a Standa
 ```bash
 # Create an integration account
 
-az resource create \
+az logic integration-account create \
   --resource-group rg-b2b \
-  --resource-type "Microsoft.Logic/integrationAccounts" \
   --name ia-b2b-production \
   --location eastus2 \
-  --properties '{
-    "sku": { "name": "Standard" }
-  }'
+  --sku Standard
 ```
 
-Link the integration account to your Logic App.
+Link the integration account to your Logic App. For a Consumption logic app, link the integration account in the workflow settings. For a Standard logic app, get the integration account callback URL from the integration account and add it as an app setting.
 
 ```bash
-# Link integration account to Logic App
+# Link integration account to a Standard Logic App
 az logicapp config appsettings set \
   --name logic-edi-processor \
   --resource-group rg-b2b \
-  --settings "WORKFLOWS_INTEGRATION_ACCOUNT_ID=/subscriptions/{sub-id}/resourceGroups/rg-b2b/providers/Microsoft.Logic/integrationAccounts/ia-b2b-production"
+  --settings "WORKFLOW_INTEGRATION_ACCOUNT_CALLBACK_URL={integration-account-callback-url}"
 ```
 
 ## Defining Trading Partners
@@ -104,7 +101,7 @@ az rest --method PUT \
   --body '{
     "properties": {
       "schemaType": "Xml",
-      "content": "... base64 encoded XSD schema ...",
+      "content": "... XSD schema XML content ...",
       "contentType": "application/xml"
     },
     "location": "eastus2"
@@ -249,9 +246,7 @@ The workflow definition for receiving and processing an X12 850 Purchase Order.
           },
           "method": "post",
           "path": "/encode",
-          "body": {
-            "x12AcknowledgementPayload": "@body('Decode_X12_Message')?['functionalAcknowledgement']"
-          }
+          "body": "@body('Decode_X12_Message')?['functionalAcknowledgement']"
         },
         "runAfter": {
           "Process_Purchase_Order": ["Succeeded"]
