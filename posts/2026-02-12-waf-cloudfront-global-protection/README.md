@@ -10,7 +10,7 @@ Description: Learn how to deploy AWS WAF with CloudFront to filter malicious tra
 
 If you're deploying WAF on an Application Load Balancer, malicious traffic has to travel all the way to your AWS region before it gets blocked. That's not ideal. The request still consumes your network bandwidth, and the latency for blocking means more resources are tied up processing bad traffic.
 
-Deploying WAF on CloudFront flips this around. CloudFront has over 450 edge locations worldwide. When you attach a WAF Web ACL to a CloudFront distribution, every request gets inspected at the nearest edge location. Malicious traffic gets blocked at the edge before it ever reaches your origin. This is faster, more efficient, and cheaper than filtering at the origin.
+Deploying WAF on CloudFront flips this around. CloudFront has 750+ points of presence worldwide. When you attach a WAF Web ACL to a CloudFront distribution, every request gets inspected at the nearest edge location. Malicious traffic gets blocked at the edge before it ever reaches your origin. This is faster, more efficient, and cheaper than filtering at the origin.
 
 ## Why CloudFront + WAF Is Better Than ALB + WAF
 
@@ -179,22 +179,23 @@ aws cloudfront create-distribution \
       }]
     },
     "Enabled": true,
-    "WebACLId": "arn:aws:wafv2:us-east-1:111111111111:global/webacl/cloudfront-waf/abc123"
+    "WebACLId": "arn:aws:wafv2:us-east-1:111111111111:global/webacl/cloudfront-waf/a1b2c3d4-5678-90ab-cdef-EXAMPLE11111"
   }'
 ```
 
 If you have an existing distribution, update it.
 
 ```bash
-# Get the current config
-aws cloudfront get-distribution-config --id E1234567890ABC > dist-config.json
+# Get the current config and ETag
+ETAG=$(aws cloudfront get-distribution-config --id E1234567890ABC --query 'ETag' --output text)
+aws cloudfront get-distribution-config --id E1234567890ABC --query 'DistributionConfig' > dist-config.json
 
 # Edit the config to add WebACLId field
 # Then update:
 aws cloudfront update-distribution \
   --id E1234567890ABC \
   --distribution-config file://dist-config.json \
-  --if-match ETAG_FROM_PREVIOUS_COMMAND
+  --if-match "$ETAG"
 ```
 
 ## Step 4: Lock Down the Origin
@@ -219,6 +220,8 @@ aws ec2 authorize-security-group-ingress \
     \"PrefixListIds\": [{\"PrefixListId\": \"$PREFIX_LIST_ID\"}]
   }]"
 ```
+
+If your ALB is dual-stack, also add the IPv6 CloudFront origin-facing managed prefix list.
 
 You can also add a custom header in CloudFront that your ALB checks for.
 
@@ -385,7 +388,7 @@ Enable WAF logging to track blocked requests at the edge. For CloudFront WAF, th
 aws wafv2 put-logging-configuration \
   --region us-east-1 \
   --logging-configuration '{
-    "ResourceArn": "arn:aws:wafv2:us-east-1:111111111111:global/webacl/cloudfront-waf/abc123",
+    "ResourceArn": "arn:aws:wafv2:us-east-1:111111111111:global/webacl/cloudfront-waf/a1b2c3d4-5678-90ab-cdef-EXAMPLE11111",
     "LogDestinationConfigs": [
       "arn:aws:firehose:us-east-1:111111111111:deliverystream/aws-waf-logs-cloudfront"
     ]
@@ -399,7 +402,7 @@ You can also enable CloudFront standard logging and real-time logging for additi
 aws cloudwatch get-metric-statistics \
   --namespace AWS/WAFV2 \
   --metric-name BlockedRequests \
-  --dimensions Name=WebACL,Value=cloudfront-waf Name=Rule,Value=ALL Name=Region,Value=us-east-1 \
+  --dimensions Name=WebACL,Value=CloudFrontWAF Name=Rule,Value=ALL \
   --start-time 2026-02-12T00:00:00Z \
   --end-time 2026-02-12T23:59:59Z \
   --period 3600 \
