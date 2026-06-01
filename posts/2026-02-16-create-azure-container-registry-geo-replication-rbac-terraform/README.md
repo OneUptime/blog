@@ -25,7 +25,7 @@ terraform {
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"
-      version = "~> 3.80"
+      version = "~> 4.74"
     }
   }
 }
@@ -51,18 +51,17 @@ resource "azurerm_container_registry" "main" {
   location            = azurerm_resource_group.acr.location
   sku                 = "Premium"  # Required for geo-replication
 
-  # Disable admin account - use Azure AD authentication
+  # Disable admin account - use Microsoft Entra ID authentication
   admin_enabled = false
 
-  # Enable content trust for image signing
-  trust_policy_enabled = true
+  # Docker Content Trust cannot be enabled on new registries after May 31, 2026.
+  trust_policy_enabled = false
 
-  # Quarantine policy for image scanning
+  # Quarantine policy for validation workflows
   quarantine_policy_enabled = true
 
   # Retention policy for untagged manifests
-  retention_policy_enabled = true
-  retention_policy_days    = 30
+  retention_policy_in_days = 30
 
   # Export policy - controls whether images can be exported
   export_policy_enabled = true
@@ -77,7 +76,7 @@ resource "azurerm_container_registry" "main" {
   network_rule_bypass_option = "AzureServices"
   public_network_access_enabled = true
 
-  # Encryption with customer-managed key (optional)
+  # Managed identity for integrations such as customer-managed keys
   identity {
     type = "SystemAssigned"
   }
@@ -91,16 +90,16 @@ resource "azurerm_container_registry" "main" {
 
 ## Configuring Geo-Replication
 
-Add replicas in each region where you run workloads. Images pushed to any region are automatically replicated to all other regions.
+Add replicas in each region where you run workloads. Images pushed through the registry's global endpoint are routed to an available geo-replica and automatically replicated to all other regions.
 
 ```hcl
 # geo-replication.tf
 # Replicate the registry to multiple Azure regions
+# Add these blocks inside azurerm_container_registry.main
 
 # West US 2 replica
-resource "azurerm_container_registry_geo_replication" "westus2" {
-  container_registry_id = azurerm_container_registry.main.id
-  location              = "westus2"
+georeplications {
+  location = "westus2"
 
   # Enable zone redundancy in the replica region
   zone_redundancy_enabled = true
@@ -111,9 +110,8 @@ resource "azurerm_container_registry_geo_replication" "westus2" {
 }
 
 # West Europe replica
-resource "azurerm_container_registry_geo_replication" "westeurope" {
-  container_registry_id = azurerm_container_registry.main.id
-  location              = "westeurope"
+georeplications {
+  location                = "westeurope"
   zone_redundancy_enabled = true
 
   tags = {
@@ -122,10 +120,9 @@ resource "azurerm_container_registry_geo_replication" "westeurope" {
 }
 
 # Southeast Asia replica
-resource "azurerm_container_registry_geo_replication" "southeastasia" {
-  container_registry_id = azurerm_container_registry.main.id
-  location              = "southeastasia"
-  zone_redundancy_enabled = false  # Not all regions support zone redundancy
+georeplications {
+  location                = "southeastasia"
+  zone_redundancy_enabled = false  # Use false for regions where you do not enable zone redundancy
 
   tags = {
     region = "southeastasia"
@@ -133,7 +130,7 @@ resource "azurerm_container_registry_geo_replication" "southeastasia" {
 }
 ```
 
-When you push an image to any endpoint (say East US), ACR automatically replicates it to West US 2, West Europe, and Southeast Asia. Container hosts in those regions pull from their local replica, reducing latency and cross-region bandwidth costs.
+When you push an image through the registry endpoint, ACR routes the request to a geo-replica and automatically replicates it to West US 2, West Europe, and Southeast Asia. Container hosts in those regions pull from a nearby replica, reducing latency and cross-region bandwidth costs.
 
 ## Using Variables for Dynamic Regions
 
@@ -166,16 +163,18 @@ variable "replication_locations" {
 ```hcl
 # geo-replication-dynamic.tf
 # Create replications dynamically from the variable
+# Add this dynamic block inside azurerm_container_registry.main
 
-resource "azurerm_container_registry_geo_replication" "replicas" {
+dynamic "georeplications" {
   for_each = var.replication_locations
 
-  container_registry_id   = azurerm_container_registry.main.id
-  location                = each.key
-  zone_redundancy_enabled = each.value.zone_redundancy
+  content {
+    location                = georeplications.key
+    zone_redundancy_enabled = georeplications.value.zone_redundancy
 
-  tags = {
-    region = each.key
+    tags = {
+      region = georeplications.key
+    }
   }
 }
 ```
@@ -206,12 +205,12 @@ resource "azurerm_role_assignment" "aks_pull" {
   description          = "AKS cluster ${each.key} - pull images"
 }
 
-# AcrImageSigner: Push trusted images (for signing workflows)
-resource "azurerm_role_assignment" "image_signer" {
+# AcrPush: Push image signatures as OCI referrers (for signing workflows)
+resource "azurerm_role_assignment" "image_signer_push" {
   scope                = azurerm_container_registry.main.id
-  role_definition_name = "AcrImageSigner"
+  role_definition_name = "AcrPush"
   principal_id         = var.signing_service_principal_id
-  description          = "Image signing service - sign and push trusted images"
+  description          = "Image signing service - push signatures as OCI referrers"
 }
 
 # AcrDelete: Delete images (for cleanup automation)
@@ -276,7 +275,7 @@ variable "developers_group_id" {
 
 ## Scope Maps for Repository-Level Access
 
-For even more granular control, ACR supports scope maps that restrict access to specific repositories within the registry.
+For even more granular token-based access, ACR supports scope maps that restrict access to specific repositories within the registry.
 
 ```hcl
 # scope-maps.tf
@@ -301,13 +300,19 @@ resource "azurerm_container_registry_scope_map" "frontend_team" {
   ]
 }
 
-# Generate a token for the scope map
+# Generate a token and password for the scope map
 resource "azurerm_container_registry_token" "frontend_team" {
   name                    = "frontend-team-token"
   container_registry_name = azurerm_container_registry.main.name
   resource_group_name     = azurerm_resource_group.acr.name
   scope_map_id            = azurerm_container_registry_scope_map.frontend_team.id
   enabled                 = true
+}
+
+resource "azurerm_container_registry_token_password" "frontend_team" {
+  container_registry_token_id = azurerm_container_registry_token.frontend_team.id
+
+  password1 {}
 }
 
 # Scope map for the backend team
@@ -335,24 +340,31 @@ Restrict network access to the registry using firewall rules and private endpoin
 # network.tf
 # Network security for the container registry
 
+variable "private_endpoint_subnet_id" {
+  description = "Subnet ID for the ACR private endpoint"
+  type        = string
+}
+
+variable "private_endpoint_virtual_network_id" {
+  description = "Virtual network ID to link to the ACR private DNS zone"
+  type        = string
+}
+
 # Network rules to restrict access by IP
-resource "azurerm_container_registry" "main" {
-  # ... (other settings from above)
+# Add this block inside azurerm_container_registry.main
+network_rule_set {
+  default_action = "Deny"
 
-  network_rule_set {
-    default_action = "Deny"
+  # Allow CI/CD agents
+  ip_rule {
+    action   = "Allow"
+    ip_range = "203.0.113.0/24"
+  }
 
-    # Allow CI/CD agents
-    ip_rule {
-      action   = "Allow"
-      ip_range = "203.0.113.0/24"
-    }
-
-    # Allow office network
-    ip_rule {
-      action   = "Allow"
-      ip_range = "198.51.100.0/24"
-    }
+  # Allow office network
+  ip_rule {
+    action   = "Allow"
+    ip_range = "198.51.100.0/24"
   }
 }
 
@@ -380,6 +392,13 @@ resource "azurerm_private_dns_zone" "acr" {
   name                = "privatelink.azurecr.io"
   resource_group_name = azurerm_resource_group.acr.name
 }
+
+resource "azurerm_private_dns_zone_virtual_network_link" "acr" {
+  name                  = "acr-dns-link"
+  resource_group_name   = azurerm_resource_group.acr.name
+  private_dns_zone_name = azurerm_private_dns_zone.acr.name
+  virtual_network_id    = var.private_endpoint_virtual_network_id
+}
 ```
 
 ## Outputs
@@ -395,10 +414,10 @@ output "registry_id" {
 }
 
 output "replication_locations" {
-  value = [for r in azurerm_container_registry_geo_replication.replicas : r.location]
+  value = keys(var.replication_locations)
 }
 ```
 
 ## Summary
 
-Azure Container Registry with geo-replication and RBAC in Terraform gives you a global, secure container hosting solution. Geo-replication keeps images close to your clusters for fast pulls, while the layered RBAC model gives you control from registry-wide roles down to individual repository access through scope maps. The Premium SKU unlocks these features along with content trust, quarantine policies, and zone redundancy. With everything in Terraform, adding a new region or granting a new team access is a pull request, not a portal operation.
+Azure Container Registry with geo-replication and RBAC in Terraform gives you a global, secure container hosting solution. Geo-replication keeps images close to your clusters for fast pulls, while the layered RBAC model gives you control from registry-wide roles down to individual repository access through scope maps. The Premium SKU unlocks features such as geo-replication, quarantine policies, and retention policies. With everything in Terraform, adding a new region or granting a new team access is a pull request, not a portal operation.
