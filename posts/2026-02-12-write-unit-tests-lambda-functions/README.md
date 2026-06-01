@@ -41,10 +41,11 @@ The handler should be thin - it parses the event, calls a service, and formats t
 
 ## Setting Up Jest
 
-Install Jest and the testing utilities you'll need.
+Install Jest and the dependencies you'll need.
 
 ```bash
-npm install --save-dev jest @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+npm install --save-dev jest aws-sdk-client-mock
 ```
 
 This Jest configuration sets up the test environment:
@@ -137,19 +138,22 @@ This test suite covers the handler's HTTP method routing and error handling:
 
 ```javascript
 // tests/unit/order-handler.test.js
-const { handler } = require('../../src/handlers/order-handler');
-const OrderService = require('../../src/services/order-service');
+const mockOrderService = {
+  getOrder: jest.fn(),
+  listOrders: jest.fn(),
+  createOrder: jest.fn(),
+};
 
-// Mock the entire service module
-jest.mock('../../src/services/order-service');
+jest.mock('../../src/services/order-service', () => {
+  return jest.fn(() => mockOrderService);
+});
+
+const { handler } = require('../../src/handlers/order-handler');
 
 describe('Order Handler', () => {
-  let mockOrderService;
-
   beforeEach(() => {
     // Clear all mocks before each test
     jest.clearAllMocks();
-    mockOrderService = OrderService.prototype;
   });
 
   describe('GET /orders', () => {
@@ -285,8 +289,8 @@ This service class handles order operations:
 ```javascript
 // src/services/order-service.js
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
-const { v4: uuidv4 } = require('uuid');
+const { DynamoDBDocumentClient, GetCommand, PutCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { randomUUID } = require('crypto');
 
 class OrderService {
   constructor() {
@@ -303,11 +307,26 @@ class OrderService {
     return result.Item || null;
   }
 
+  async listOrders(filters = {}) {
+    const params = {
+      TableName: this.tableName,
+    };
+
+    if (filters?.status) {
+      params.FilterExpression = '#status = :status';
+      params.ExpressionAttributeNames = { '#status': 'status' };
+      params.ExpressionAttributeValues = { ':status': filters.status };
+    }
+
+    const result = await this.docClient.send(new ScanCommand(params));
+    return result.Items || [];
+  }
+
   async createOrder(orderData) {
     this.validateOrder(orderData);
 
     const order = {
-      orderId: `ORD-${uuidv4().slice(0, 8)}`,
+      orderId: `ORD-${randomUUID().slice(0, 8)}`,
       ...orderData,
       status: 'pending',
       total: orderData.quantity * orderData.price,
@@ -427,7 +446,7 @@ describe('OrderService', () => {
 });
 ```
 
-Install the AWS SDK mock library:
+If you did not install it earlier, add the AWS SDK mock library:
 
 ```bash
 npm install --save-dev aws-sdk-client-mock
@@ -437,20 +456,50 @@ npm install --save-dev aws-sdk-client-mock
 
 For functions triggered by SQS, you test with SQS event fixtures.
 
+This handler processes each message and returns batch item failures. For Lambda to retry only failed SQS messages, configure the event source mapping with `ReportBatchItemFailures`.
+
+```javascript
+// src/handlers/sqs-handler.js
+const OrderService = require('../services/order-service');
+
+const orderService = new OrderService();
+
+exports.handler = async (event) => {
+  const batchItemFailures = [];
+
+  for (const record of event.Records) {
+    try {
+      const order = JSON.parse(record.body);
+      await orderService.processOrder(order);
+    } catch (error) {
+      console.error('Failed to process message:', record.messageId, error);
+      batchItemFailures.push({ itemIdentifier: record.messageId });
+    }
+  }
+
+  return { batchItemFailures };
+};
+```
+
 This test validates SQS message processing with batch item failures:
 
 ```javascript
 // tests/unit/sqs-handler.test.js
-const { handler } = require('../../src/handlers/sqs-handler');
-const OrderService = require('../../src/services/order-service');
+const mockOrderService = {
+  processOrder: jest.fn(),
+};
 
-jest.mock('../../src/services/order-service');
+jest.mock('../../src/services/order-service', () => {
+  return jest.fn(() => mockOrderService);
+});
+
+const { handler } = require('../../src/handlers/sqs-handler');
 
 describe('SQS Handler', () => {
   beforeEach(() => jest.clearAllMocks());
 
   it('processes all messages successfully', async () => {
-    OrderService.prototype.processOrder = jest.fn().mockResolvedValue(true);
+    mockOrderService.processOrder.mockResolvedValue(true);
 
     const event = {
       Records: [
@@ -462,11 +511,11 @@ describe('SQS Handler', () => {
     const result = await handler(event);
 
     expect(result.batchItemFailures).toHaveLength(0);
-    expect(OrderService.prototype.processOrder).toHaveBeenCalledTimes(2);
+    expect(mockOrderService.processOrder).toHaveBeenCalledTimes(2);
   });
 
   it('reports partial batch failures', async () => {
-    OrderService.prototype.processOrder = jest.fn()
+    mockOrderService.processOrder
       .mockResolvedValueOnce(true)
       .mockRejectedValueOnce(new Error('Processing failed'));
 
