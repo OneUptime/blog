@@ -39,7 +39,7 @@ The key advantage is that NAT Gateway allocates SNAT ports dynamically on demand
 
 Before setting up NAT Gateway with AKS, you need:
 
-- Azure CLI 2.50 or later
+- The latest Azure CLI
 - An Azure subscription with the ability to create public IPs and NAT Gateway resources
 - A virtual network and subnet ready for the AKS cluster (or you can create them during setup)
 
@@ -104,6 +104,16 @@ SUBNET_ID=$(az network vnet subnet show \
   --name myAKSSubnet \
   --query id -o tsv)
 
+# Create a managed identity for AKS network permissions
+az identity create \
+  --resource-group myAKSResourceGroup \
+  --name myAKSIdentity
+
+IDENTITY_ID=$(az identity show \
+  --resource-group myAKSResourceGroup \
+  --name myAKSIdentity \
+  --query id -o tsv)
+
 # Create the AKS cluster with user-assigned NAT Gateway
 az aks create \
   --resource-group myAKSResourceGroup \
@@ -112,6 +122,7 @@ az aks create \
   --network-plugin azure \
   --vnet-subnet-id $SUBNET_ID \
   --outbound-type userAssignedNATGateway \
+  --assign-identity $IDENTITY_ID \
   --generate-ssh-keys
 ```
 
@@ -188,7 +199,7 @@ az network public-ip show \
 
 ## Monitoring SNAT Port Usage
 
-Even with NAT Gateway, you should monitor SNAT port utilization to catch potential issues before they affect your workloads.
+Even with NAT Gateway, you should monitor connection metrics and failed SNAT connection attempts to catch potential issues before they affect your workloads.
 
 ```bash
 # Check NAT Gateway metrics via Azure CLI
@@ -202,13 +213,13 @@ az monitor metrics list \
   --aggregation Total
 ```
 
-You can also set up alerts in Azure Monitor to notify you when SNAT port usage exceeds a certain threshold. A good starting point is alerting at 80% utilization.
+You can also set up alerts in Azure Monitor to notify you when failed SNAT connection attempts occur or when total connection count approaches the NAT Gateway connection limits.
 
 ## Idle Timeout Tuning
 
-The idle timeout determines how long a NAT Gateway holds onto an idle connection before releasing the SNAT port. The default is 4 minutes, but you can set it anywhere from 4 to 120 minutes.
+The idle timeout determines how long a NAT Gateway holds onto an idle TCP connection before releasing the SNAT port. The default is 4 minutes, but you can set it anywhere from 4 to 120 minutes.
 
-For applications with long-lived connections (like WebSocket connections or persistent database pools), increase the idle timeout:
+For applications with long-lived idle TCP connections, enable TCP keepalives on the application side. If you still need a longer timeout, you can increase it:
 
 ```bash
 # Update the NAT Gateway idle timeout to 30 minutes
@@ -218,21 +229,21 @@ az network nat gateway update \
   --idle-timeout 30
 ```
 
-For applications that make many short-lived connections, a lower timeout (like 4-10 minutes) helps reclaim ports faster.
+For applications that make many short-lived connections, keeping the timeout lower helps reclaim ports faster.
 
 ## Comparing Outbound Types
 
-AKS supports three outbound types: Load Balancer, NAT Gateway (managed or user-assigned), and User-Defined Routing (UDR). Here is how they compare:
+Common AKS outbound types include Load Balancer, NAT Gateway (managed or user-assigned), and User-Defined Routing (UDR). Here is how they compare:
 
-**Load Balancer**: The default. Limited SNAT ports allocated per node. Works fine for small clusters with moderate outbound traffic. Free with the load balancer.
+**Load Balancer**: The default. Limited SNAT ports allocated per node. Works fine for small clusters with moderate outbound traffic.
 
 **NAT Gateway**: Dynamic SNAT port allocation with much higher capacity. Costs around $0.045/hour plus data processing charges. Best for clusters with heavy outbound traffic.
 
-**UDR**: Routes traffic through a firewall or NVA. No direct internet access from pods. Best for locked-down enterprise environments.
+**UDR**: Routes traffic through a firewall, NVA, or other egress path you manage. Best for locked-down enterprise environments.
 
 ## Common Pitfalls
 
-One mistake I see often is trying to switch an existing cluster's outbound type from load balancer to NAT Gateway. This is not supported as an in-place change. You need to create a new cluster with the NAT Gateway outbound type and migrate your workloads.
+One mistake I see often is treating an existing cluster's outbound type migration as a routine setting change. AKS supports updating the outbound type, but the operation changes egress paths and can be disruptive, so you should plan and test the migration carefully before moving production workloads.
 
 Another gotcha is forgetting to associate the NAT Gateway with the correct subnet. The NAT Gateway must be on the same subnet that AKS nodes use. If your cluster uses multiple node pools on different subnets, each subnet needs its own NAT Gateway.
 
