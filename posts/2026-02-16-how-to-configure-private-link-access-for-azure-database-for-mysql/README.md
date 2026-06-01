@@ -8,7 +8,7 @@ Description: Learn how to configure Azure Private Link for Azure Database for My
 
 ---
 
-By default, Azure Database for MySQL Flexible Server can be accessed over a public endpoint. While firewall rules restrict which IP addresses can connect, the traffic still routes through the public internet. For many organizations, this is not acceptable. Compliance requirements, security policies, and general best practices all point toward keeping database traffic on private networks.
+By default, Azure Database for MySQL Flexible Server can be accessed over a public endpoint. While firewall rules restrict which IP addresses can connect, the service is still exposed through a publicly reachable endpoint. For many organizations, this is not acceptable. Compliance requirements, security policies, and general best practices all point toward keeping database traffic on private networks.
 
 Azure Private Link solves this problem by bringing the MySQL service into your virtual network through a private endpoint. Your application connects to a private IP address within your VNet, and the traffic never leaves Microsoft's network backbone.
 
@@ -49,7 +49,7 @@ graph LR
     D[Internet] -.->|Blocked if disabled| C
 ```
 
-From your application's perspective, it connects to a private IP address (like 10.0.1.5) instead of a public FQDN. The connection feels like talking to a server on your local network.
+From your application's perspective, it still uses the MySQL server FQDN, but DNS resolves that name to a private IP address (like 10.0.1.5). The connection feels like talking to a server on your local network.
 
 ## Prerequisites
 
@@ -58,6 +58,7 @@ Before setting up Private Link:
 - An Azure Database for MySQL Flexible Server (public access mode).
 - A Virtual Network with at least one subnet for the private endpoint.
 - The subnet must not have the `Microsoft.DBforMySQL/flexibleServers` delegation (that is for VNet Integration, not Private Link).
+- Private endpoint network policies must be disabled on the subnet before creating the private endpoint.
 - Network Contributor role on the VNet.
 
 ## Step 1: Create the Private Endpoint
@@ -74,6 +75,12 @@ MYSQL_ID=$(az mysql flexible-server show \
   --output tsv)
 
 # Create the private endpoint in your VNet
+az network vnet subnet update \
+  --resource-group myResourceGroup \
+  --vnet-name myVNet \
+  --name mySubnet \
+  --disable-private-endpoint-network-policies true
+
 az network private-endpoint create \
   --resource-group myResourceGroup \
   --name my-mysql-private-endpoint \
@@ -112,7 +119,7 @@ az network private-dns zone create \
   --name privatelink.mysql.database.azure.com
 
 # Link the DNS zone to your VNet
-az network private-dns zone vnet-link create \
+az network private-dns link vnet create \
   --resource-group myResourceGroup \
   --zone-name privatelink.mysql.database.azure.com \
   --name myVNetLink \
@@ -178,7 +185,7 @@ Once Private Link is working, you can disable public access to ensure all connec
 az mysql flexible-server update \
   --resource-group myResourceGroup \
   --name my-mysql-server \
-  --public-network-access Disabled
+  --public-access Disabled
 ```
 
 After disabling public access, only connections through private endpoints will work. Make sure all your applications are configured to use the private endpoint before doing this.
@@ -212,7 +219,7 @@ If your application is in a different VNet:
 
 ```bash
 # Link the private DNS zone to the second VNet
-az network private-dns zone vnet-link create \
+az network private-dns link vnet create \
   --resource-group myResourceGroup \
   --zone-name privatelink.mysql.database.azure.com \
   --name mySecondVNetLink \
@@ -226,9 +233,16 @@ Private endpoints can be accessed from VNets in other regions through global VNe
 
 ## Network Security Groups
 
-You can apply Network Security Groups (NSGs) to the subnet containing the private endpoint to control which resources can reach it:
+You can apply Network Security Groups (NSGs) to the subnet containing the private endpoint to control which resources can reach it. To have NSG rules affect private endpoint traffic, enable private endpoint network policies on the subnet after the private endpoint is created:
 
 ```bash
+# Enable network policies so NSG rules apply to private endpoint traffic
+az network vnet subnet update \
+  --resource-group myResourceGroup \
+  --vnet-name myVNet \
+  --name mySubnet \
+  --disable-private-endpoint-network-policies false
+
 # Create an NSG rule allowing MySQL traffic only from the app subnet
 az network nsg rule create \
   --resource-group myResourceGroup \
@@ -248,20 +262,21 @@ Track who is connecting through the private endpoint:
 
 ```bash
 # List all private endpoint connections to your server
-az mysql flexible-server show \
-  --resource-group myResourceGroup \
-  --name my-mysql-server \
-  --query "privateEndpointConnections"
+az network private-endpoint-connection list \
+  --id "$MYSQL_ID"
 ```
 
 You can approve or reject pending private endpoint connections:
 
 ```bash
 # Approve a pending connection
-az mysql flexible-server private-endpoint-connection approve \
-  --resource-group myResourceGroup \
-  --server-name my-mysql-server \
-  --name my-pending-connection \
+CONNECTION_ID=$(az network private-endpoint-connection list \
+  --id "$MYSQL_ID" \
+  --query "[?properties.privateLinkServiceConnectionState.status=='Pending'].id | [0]" \
+  --output tsv)
+
+az network private-endpoint-connection approve \
+  --id "$CONNECTION_ID" \
   --description "Approved for production app"
 ```
 
