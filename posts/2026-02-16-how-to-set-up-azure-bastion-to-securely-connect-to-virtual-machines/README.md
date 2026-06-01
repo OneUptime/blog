@@ -28,7 +28,7 @@ sequenceDiagram
     Portal->>Admin: Interactive session
 ```
 
-The administrator never directly touches the VM. All traffic from the browser goes to the Bastion service over HTTPS, and Bastion handles the SSH/RDP connection internally. This means no public IPs on VMs, no NSG rules for management ports, and no VPN required.
+The administrator never directly touches the VM. All traffic from the browser goes to the Bastion service over HTTPS, and Bastion handles the SSH/RDP connection internally. This means no public IPs on VMs, no internet-facing NSG rules for management ports, and no VPN required.
 
 ## Prerequisites
 
@@ -62,7 +62,7 @@ az network vnet subnet create \
   --address-prefixes 10.0.1.0/26
 ```
 
-The subnet must be named `AzureBastionSubnet`. Any other name will fail. The /26 is the absolute minimum and supports up to 50 concurrent sessions. For larger environments, use /25 or bigger.
+The subnet must be named `AzureBastionSubnet`. Any other name will fail. The /26 is the absolute minimum for new dedicated Bastion deployments. Concurrent session capacity depends on the SKU, instance count, and workload. For larger environments, use /25 or bigger.
 
 ## Step 2: Create a Public IP for Bastion
 
@@ -87,13 +87,16 @@ az network bastion create \
   --public-ip-address pip-bastion \
   --vnet-name vnet-demo \
   --sku Standard \
+  --enable-tunneling true \
+  --file-copy true \
+  --shareable-link true \
   --location eastus
 ```
 
 The deployment takes about 5-10 minutes. The SKU options are:
 
 - **Basic**: Browser-based SSH/RDP, manual connection through the portal
-- **Standard**: Everything in Basic plus native client support, shareable links, file transfer, and connection through the Azure CLI
+- **Standard**: Everything in Basic plus optional native client support, shareable links, file transfer, and connection through the Azure CLI
 
 For most use cases, Standard is worth the extra cost because of the native client support.
 
@@ -129,7 +132,7 @@ A new browser tab opens with the SSH or RDP session. No client software needed, 
 
 ## Step 6: Connect Using the Native Client (Standard SKU)
 
-If you are using the Standard SKU, you can use your local SSH client or RDP client instead of the browser.
+If you are using the Standard SKU with native client support enabled, you can use your local SSH client or RDP client instead of the browser.
 
 ```bash
 # Connect via native SSH client through Bastion
@@ -156,7 +159,7 @@ az network bastion rdp \
 
 ## Step 7: Configure NSG for the Bastion Subnet
 
-The AzureBastionSubnet needs specific NSG rules to function properly. Here is the minimum required configuration.
+If you associate an NSG with the AzureBastionSubnet, it needs specific rules to function properly. Here is the minimum required configuration.
 
 ```bash
 # Create an NSG for the Bastion subnet
@@ -189,6 +192,31 @@ az network nsg rule create \
   --source-address-prefixes GatewayManager \
   --destination-port-ranges 443
 
+# Allow inbound Bastion host communication
+az network nsg rule create \
+  --resource-group rg-bastion-demo \
+  --nsg-name nsg-bastion \
+  --name AllowBastionHostCommunication \
+  --priority 120 \
+  --direction Inbound \
+  --access Allow \
+  --protocol "*" \
+  --source-address-prefixes VirtualNetwork \
+  --destination-address-prefixes VirtualNetwork \
+  --destination-port-ranges 8080 5701
+
+# Allow inbound Azure Load Balancer health probes
+az network nsg rule create \
+  --resource-group rg-bastion-demo \
+  --nsg-name nsg-bastion \
+  --name AllowAzureLoadBalancerInbound \
+  --priority 130 \
+  --direction Inbound \
+  --access Allow \
+  --protocol Tcp \
+  --source-address-prefixes AzureLoadBalancer \
+  --destination-port-ranges 443
+
 # Allow outbound SSH/RDP to VNet
 az network nsg rule create \
   --resource-group rg-bastion-demo \
@@ -197,7 +225,7 @@ az network nsg rule create \
   --priority 100 \
   --direction Outbound \
   --access Allow \
-  --protocol Tcp \
+  --protocol "*" \
   --destination-address-prefixes VirtualNetwork \
   --destination-port-ranges 22 3389
 
@@ -213,6 +241,31 @@ az network nsg rule create \
   --destination-address-prefixes AzureCloud \
   --destination-port-ranges 443
 
+# Allow outbound Bastion host communication
+az network nsg rule create \
+  --resource-group rg-bastion-demo \
+  --nsg-name nsg-bastion \
+  --name AllowBastionCommunication \
+  --priority 120 \
+  --direction Outbound \
+  --access Allow \
+  --protocol "*" \
+  --source-address-prefixes VirtualNetwork \
+  --destination-address-prefixes VirtualNetwork \
+  --destination-port-ranges 8080 5701
+
+# Allow outbound HTTP to Internet
+az network nsg rule create \
+  --resource-group rg-bastion-demo \
+  --nsg-name nsg-bastion \
+  --name AllowHttpOutbound \
+  --priority 130 \
+  --direction Outbound \
+  --access Allow \
+  --protocol "*" \
+  --destination-address-prefixes Internet \
+  --destination-port-ranges 80
+
 # Associate the NSG with the Bastion subnet
 az network vnet subnet update \
   --resource-group rg-bastion-demo \
@@ -223,12 +276,27 @@ az network vnet subnet update \
 
 ## File Transfer with Bastion
 
-With the Standard SKU, you can upload and download files through the browser-based session.
+With the Standard SKU and native client support, you can upload and download files through a native client. File transfer is not supported through PowerShell or the Azure portal browser session.
 
-- **Upload**: Drag and drop files or use the upload button in the Bastion toolbar
-- **Download**: Files are downloaded through the browser
+- **RDP**: Use the native Windows client and copy/paste files between the VM and your local machine
+- **SSH**: Open a Bastion tunnel and use SCP against the local tunnel port
 
-For the native client, you can use SCP as you normally would since the SSH tunnel supports it.
+For SSH file transfer, open a tunnel first:
+
+```bash
+az network bastion tunnel \
+  --resource-group rg-bastion-demo \
+  --name bastion-demo \
+  --target-resource-id $(az vm show --resource-group rg-bastion-demo --name vm-test --query id -o tsv) \
+  --resource-port 22 \
+  --port 50022
+```
+
+Then run SCP from a second terminal:
+
+```bash
+scp -P 50022 ./local-file.txt azureuser@127.0.0.1:/home/azureuser/local-file.txt
+```
 
 ## Cost Considerations
 
