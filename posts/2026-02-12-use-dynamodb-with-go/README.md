@@ -180,6 +180,7 @@ func (r *UserRepository) GetByID(ctx context.Context, userID string) (*models.Us
         Key: map[string]types.AttributeValue{
             "user_id": &types.AttributeValueMemberS{Value: userID},
         },
+        ConsistentRead: aws.Bool(true),
     })
     if err != nil {
         return nil, fmt.Errorf("failed to get item: %w", err)
@@ -310,7 +311,7 @@ func (r *UserRepository) QueryByStatus(ctx context.Context, status string, limit
 
 ## Batch Operations
 
-For bulk operations, use BatchWriteItem to process up to 25 items at a time.
+For bulk operations, use BatchWriteItem to process up to 25 items at a time, and retry any unprocessed items that DynamoDB returns.
 
 ```go
 // BatchCreate writes multiple users in a single batch operation.
@@ -337,13 +338,30 @@ func (r *UserRepository) BatchCreate(ctx context.Context, users []models.User) e
             }
         }
 
-        _, err := r.client.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
-            RequestItems: map[string][]types.WriteRequest{
-                tableName: writeRequests,
-            },
-        })
-        if err != nil {
-            return fmt.Errorf("batch write failed: %w", err)
+        requestItems := map[string][]types.WriteRequest{
+            tableName: writeRequests,
+        }
+        backoff := 100 * time.Millisecond
+        const maxRetries = 5
+
+        for attempt := 0; ; attempt++ {
+            result, err := r.client.BatchWriteItem(ctx, &dynamodb.BatchWriteItemInput{
+                RequestItems: requestItems,
+            })
+            if err != nil {
+                return fmt.Errorf("batch write failed: %w", err)
+            }
+
+            if len(result.UnprocessedItems) == 0 {
+                break
+            }
+            if attempt == maxRetries {
+                return fmt.Errorf("batch write still had unprocessed items after %d retries", maxRetries)
+            }
+
+            time.Sleep(backoff)
+            backoff *= 2
+            requestItems = result.UnprocessedItems
         }
     }
 
