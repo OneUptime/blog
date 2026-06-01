@@ -14,7 +14,7 @@ In this post, I will walk through how to design a management group hierarchy tha
 
 ## Understanding the Management Group Hierarchy
 
-Every Azure AD tenant has a single root management group called the "Tenant Root Group." All subscriptions in the tenant are descendants of this root group, either directly or through intermediate management groups.
+Every Microsoft Entra tenant has a single root management group with the default display name "Tenant root group." The root management group's ID is the same as the Microsoft Entra tenant ID. All subscriptions in the tenant are descendants of this root group, either directly or through intermediate management groups.
 
 ```mermaid
 graph TD
@@ -44,7 +44,7 @@ There is no single correct hierarchy. It depends on your organization. But there
 Microsoft's recommended pattern from the Azure Cloud Adoption Framework organizes management groups by function:
 
 **Platform** - shared infrastructure services
-- Identity (Azure AD, domain controllers)
+- Identity (Microsoft Entra ID, domain controllers)
 - Management (monitoring, logging, automation)
 - Connectivity (hub networking, DNS, firewalls)
 
@@ -99,14 +99,25 @@ Tenant Root
 
 ### Step 1: Enable Management Groups for Your Tenant
 
-The first time you create a management group, Azure sets up the Tenant Root Group. You need the appropriate permissions (Global Administrator must elevate access, or you need Management Group Contributor role at the root level).
+The first time you create a management group, Azure sets up the Tenant root group. You need the appropriate permissions. If hierarchy protection is enabled, a Global Administrator can elevate access and then assign the appropriate Azure role, such as Management Group Contributor, at the root management group scope.
 
 ```bash
 # Elevate access for Global Administrator (one-time setup)
 
-# This grants the Global Admin user access to the root management group
+# This grants the Global Administrator the User Access Administrator role at root scope
 az rest --method post \
   --url "https://management.azure.com/providers/Microsoft.Authorization/elevateAccess?api-version=2016-07-01"
+
+# Get your signed-in user's object ID and the root management group ID
+SIGNED_IN_USER=$(az ad signed-in-user show --query id --output tsv)
+TENANT_ID=$(az account show --query tenantId --output tsv)
+
+# Assign yourself Management Group Contributor at the root management group scope
+az role assignment create \
+  --assignee-object-id "$SIGNED_IN_USER" \
+  --assignee-principal-type User \
+  --role "Management Group Contributor" \
+  --scope "/providers/Microsoft.Management/managementGroups/$TENANT_ID"
 ```
 
 ### Step 2: Create Top-Level Management Groups
@@ -115,26 +126,22 @@ az rest --method post \
 # Create the Platform management group
 az account management-group create \
   --name "Platform" \
-  --display-name "Platform" \
-  --parent "Tenant Root Group"
+  --display-name "Platform"
 
 # Create the Workloads management group
 az account management-group create \
   --name "Workloads" \
-  --display-name "Workloads" \
-  --parent "Tenant Root Group"
+  --display-name "Workloads"
 
 # Create the Sandbox management group
 az account management-group create \
   --name "Sandbox" \
-  --display-name "Sandbox" \
-  --parent "Tenant Root Group"
+  --display-name "Sandbox"
 
 # Create the Decommissioned management group
 az account management-group create \
   --name "Decommissioned" \
-  --display-name "Decommissioned" \
-  --parent "Tenant Root Group"
+  --display-name "Decommissioned"
 ```
 
 ### Step 3: Create Second-Level Groups
@@ -355,7 +362,7 @@ Maintain documentation that explains why each management group exists, what poli
 
 ### Protect the Root Group
 
-Apply minimal policies at the Tenant Root Group level. Policies applied here affect every subscription in your organization, including platform subscriptions. Be very careful and conservative with root-level policies.
+Apply minimal policies at the Tenant root group level. Policies applied here affect every subscription in your organization, including platform subscriptions. Be very careful and conservative with root-level policies.
 
 ### Use the Decommissioned Group
 
@@ -368,8 +375,10 @@ When retiring subscriptions, move them to the Decommissioned group instead of de
 az account management-group list --output table
 
 # Show the hierarchy tree
+TENANT_ID=$(az account show --query tenantId --output tsv)
+
 az account management-group show \
-  --name "Tenant Root Group" \
+  --name "$TENANT_ID" \
   --recurse \
   --expand \
   --query "children" \
