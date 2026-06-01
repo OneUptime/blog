@@ -22,13 +22,12 @@ To copy a database on the same server, connect to the master database and run:
 
 ```sql
 -- Create a copy of mydb on the same server
--- The copy operation runs asynchronously in the background
 CREATE DATABASE mydb_copy AS COPY OF mydb;
 ```
 
 ### Cross-Server Copy
 
-To copy to a different server, the target server must have a login that matches the source server's admin. The simplest approach is if both servers share the same admin credentials.
+To copy to a different server, connect with a login that has the same name and password as the database owner on the source server. The login on the target server must also be a member of the `dbmanager` role or be the server admin. The simplest approach is often to use a login that exists with the required permissions on both servers.
 
 Connect to the master database on the target server and run:
 
@@ -46,10 +45,13 @@ The copy operation runs asynchronously. You can monitor it:
 -- Check copy progress from the target server's master database
 -- Shows percentage complete and state description
 SELECT
-    name,
-    state_desc,
-    percent_complete
-FROM sys.dm_database_copies;
+    d.name,
+    d.state_desc,
+    c.percent_complete,
+    c.replication_state_desc
+FROM sys.dm_database_copies AS c
+JOIN sys.databases AS d
+    ON c.database_id = d.database_id;
 ```
 
 You can also check from the source:
@@ -66,10 +68,10 @@ FROM sys.dm_database_copies;
 
 ### Key Characteristics of Online Copy
 
-- The copy is transactionally consistent as of the moment the copy operation completes (not when it starts).
+- The copy is a transactionally consistent snapshot of the source database at the point in time when the copy request is initiated.
 - The source database remains fully available during the copy.
-- You can copy to a different pricing tier on the target.
-- Both servers must be in the same Azure subscription by default.
+- You can choose a different compute size or backup storage redundancy for the target, subject to Azure SQL Database copy restrictions.
+- The Azure portal, PowerShell, and Azure CLI do not support database copy to a different subscription; T-SQL can be used across subscriptions when the login and permission requirements are met.
 - The source and target can be in different regions.
 - Copy time depends on database size; expect roughly 30-60 minutes for a 50 GB database.
 
@@ -100,7 +102,7 @@ az sql db copy \
     --dest-name mydb-copy
 ```
 
-You can also specify a different service tier for the copy:
+You can also specify a service objective for the copy. The copy destination must use the same edition as the source database, but you can change the edition after the copy completes:
 
 ```bash
 # Copy to a different server with a specific service tier
@@ -204,11 +206,11 @@ If you need to copy a database to a different region for disaster recovery purpo
 
 ```bash
 # Restore the database to a different region using geo-redundant backup
-az sql db restore \
-    --resource-group myResourceGroup \
-    --server myserver-target \
-    --name mydb-georestored \
-    --resource-id "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/myserver-source/recoverableDatabases/mydb"
+az sql db geo-backup restore \
+    --resource-group targetResourceGroup \
+    --dest-server myserver-target \
+    --dest-database mydb-georestored \
+    --geo-backup-id "/subscriptions/{sub-id}/resourceGroups/myResourceGroup/providers/Microsoft.Sql/servers/myserver-source/databases/mydb/geoBackupPolicies/Default"
 ```
 
 Geo-restore has a recovery point objective (RPO) of up to 1 hour, meaning you might lose up to an hour of data. It is not suitable for zero-data-loss copies but works well for disaster recovery scenarios.
@@ -218,7 +220,7 @@ Geo-restore has a recovery point objective (RPO) of up to 1 hour, meaning you mi
 Here is a decision guide:
 
 **Use online database copy when**:
-- Source and target are in the same subscription
+- Source and target are in the same subscription, or you can meet the T-SQL requirements for a cross-subscription copy
 - You need a transactionally consistent copy
 - You want the fastest copy speed
 - Minimal disruption to the source is important
@@ -236,7 +238,7 @@ Here is a decision guide:
 
 ## Cross-Subscription Copy
 
-Copying a database across Azure subscriptions requires the BACPAC method because online database copy does not work across subscriptions. Here is the workflow:
+The Azure portal, PowerShell, and Azure CLI do not support database copy across Azure subscriptions. You can use T-SQL for cross-subscription copies when the login and permission requirements are met, or use the BACPAC method for a portable export/import workflow:
 
 1. Export the source database to a BACPAC in an Azure Storage account.
 2. Grant the target subscription access to the storage account (or copy the BACPAC to a storage account in the target subscription).
