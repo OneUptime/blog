@@ -59,7 +59,7 @@ pr:
 
 variables:
   - name: terraformVersion
-    value: '1.7.0'
+    value: '1.15.5'
   - name: workingDirectory
     value: '$(System.DefaultWorkingDirectory)/terraform'
   - name: backendResourceGroup
@@ -234,7 +234,7 @@ When the pipeline reaches the Apply stage, it will pause and send notifications 
 
 You might wonder why we save the plan to a file instead of just running `terraform plan` and then `terraform apply`. The answer is consistency. Between the time you run plan and the time you run apply, the real-world state could change. Someone could modify a resource in the portal, or another pipeline could make changes.
 
-By saving the plan with `-out=tfplan`, you capture the exact set of changes at plan time. When you apply that saved plan, Terraform will execute exactly those changes - no more, no less. If the state has drifted, Terraform will refuse to apply the stale plan and you will need to re-run the pipeline.
+By saving the plan with `-out=tfplan`, you capture the exact set of changes Terraform calculated at plan time. When you apply that saved plan, Terraform will execute that saved plan instead of generating a new one. If the Terraform state snapshot has changed since the plan was created, Terraform will refuse to apply the stale plan and you will need to re-run the pipeline. Out-of-band changes made directly in the Azure portal may still require a fresh plan or fail during apply, so teams should avoid making production changes outside the Terraform workflow.
 
 ## Handling Multiple Environments
 
