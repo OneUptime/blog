@@ -26,7 +26,7 @@ nest new task-manager
 cd task-manager
 
 # Install additional dependencies
-npm install @nestjs/config class-validator class-transformer
+npm install @nestjs/config class-validator class-transformer uuid
 ```
 
 ## Building the API
@@ -387,18 +387,56 @@ az webapp create \
   --plan nestjs-plan \
   --deployment-container-image-name mynestjsregistry.azurecr.io/task-manager:v1
 
-# Configure the registry credentials
+# Allow the web app to pull from the private registry with managed identity
+principalId=$(az webapp identity assign \
+  --name my-nestjs-app \
+  --resource-group nestjs-demo-rg \
+  --query principalId \
+  --output tsv)
+
+registryId=$(az acr show \
+  --name mynestjsregistry \
+  --resource-group nestjs-demo-rg \
+  --query id \
+  --output tsv)
+
+az role assignment create \
+  --assignee $principalId \
+  --scope $registryId \
+  --role AcrPull
+
+appConfig=$(az webapp config show \
+  --name my-nestjs-app \
+  --resource-group nestjs-demo-rg \
+  --query id \
+  --output tsv)
+
+az resource update \
+  --ids $appConfig \
+  --set properties.acrUseManagedIdentityCreds=True
+
+# Configure the container image
 az webapp config container set \
   --name my-nestjs-app \
   --resource-group nestjs-demo-rg \
   --container-image-name mynestjsregistry.azurecr.io/task-manager:v1 \
   --container-registry-url https://mynestjsregistry.azurecr.io
 
-# Enable continuous deployment from ACR
-az webapp deployment container config \
+# Enable continuous deployment from ACR and create the webhook
+ci_cd_url=$(az webapp deployment container config \
   --name my-nestjs-app \
   --resource-group nestjs-demo-rg \
-  --enable-cd true
+  --enable-cd true \
+  --query CI_CD_URL \
+  --output tsv)
+
+az acr webhook create \
+  --name task-manager-webhook \
+  --registry mynestjsregistry \
+  --resource-group nestjs-demo-rg \
+  --actions push \
+  --uri $ci_cd_url \
+  --scope task-manager:v1
 
 # Set environment variables
 az webapp config appsettings set \
@@ -407,7 +445,7 @@ az webapp config appsettings set \
   --settings NODE_ENV=production WEBSITES_PORT=8080
 ```
 
-The `WEBSITES_PORT` setting tells App Service which port your container listens on. This must match the `EXPOSE` in your Dockerfile.
+The `WEBSITES_PORT` setting tells App Service which port your container listens on. This must match the application port and the `EXPOSE` in your Dockerfile.
 
 ## The Deployment Architecture
 
@@ -447,7 +485,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Login to Azure
-        uses: azure/login@v1
+        uses: azure/login@v2
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
@@ -498,4 +536,4 @@ async function bootstrap() {
 
 ## Wrapping Up
 
-Containerizing a NestJS application with Docker and deploying it to Azure App Service gives you a production-ready setup with minimal effort. The multi-stage Dockerfile keeps your image small, the health check ensures App Service knows when your container is ready, and continuous deployment from ACR means every image push triggers a new deployment. Use deployment slots for zero-downtime releases and auto-scaling rules for handling traffic spikes.
+Containerizing a NestJS application with Docker and deploying it to Azure App Service gives you a production-ready setup with minimal effort. The multi-stage Dockerfile keeps your image small, the health endpoint gives App Service a path you can configure for readiness checks, and continuous deployment from ACR means every image push to the configured tag triggers a new deployment. Use deployment slots for zero-downtime releases and auto-scaling rules for handling traffic spikes.
