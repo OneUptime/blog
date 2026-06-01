@@ -18,14 +18,13 @@ PlayFab collects game events automatically and provides basic analytics out of t
 graph LR
     A[Game Client] --> B[PlayFab SDK]
     B --> C[PlayFab Event Pipeline]
-    C --> D[Event Hub]
-    D --> E[Azure Data Explorer]
-    E --> F[ADX Dashboards]
-    E --> G[Power BI]
-    E --> H[Custom Analytics API]
+    C --> D[Azure Data Explorer]
+    D --> E[ADX Dashboards]
+    D --> F[Power BI]
+    D --> G[Custom Analytics API]
 ```
 
-PlayFab captures events from the game client through its SDK. Those events flow to an Event Hub via PlayFab's data connections. Azure Data Explorer ingests from the Event Hub and stores the events for querying. You can then build dashboards directly in ADX, connect Power BI, or build a custom API layer.
+PlayFab captures events from the game client through its SDK. Those events flow to Azure Data Explorer via PlayFab's data connections. Azure Data Explorer stores the events for querying. You can then build dashboards directly in ADX, connect Power BI, or build a custom API layer.
 
 ## Step 1 - Configure PlayFab Event Collection
 
@@ -131,24 +130,9 @@ Include enough context in each event to answer follow-up questions without needi
 
 ## Step 2 - Set Up the Data Pipeline to Azure Data Explorer
 
-Configure PlayFab to export events to an Event Hub, then set up ADX to ingest from it.
+Configure PlayFab to export events directly to ADX.
 
 ```bash
-# Create an Event Hub namespace and hub for PlayFab events
-
-az eventhubs namespace create \
-  --name game-analytics-ns \
-  --resource-group gaming-rg \
-  --sku Standard \
-  --location eastus
-
-az eventhubs eventhub create \
-  --name playfab-events \
-  --namespace-name game-analytics-ns \
-  --resource-group gaming-rg \
-  --partition-count 8 \
-  --message-retention 3
-
 # Create an Azure Data Explorer cluster
 az kusto cluster create \
   --name gameanalytics \
@@ -161,50 +145,28 @@ az kusto database create \
   --cluster-name gameanalytics \
   --resource-group gaming-rg \
   --database-name GameEvents \
-  --soft-delete-period P365D \
-  --hot-cache-period P31D
+  --read-write-database location=eastus soft-delete-period=P365D hot-cache-period=P31D
 ```
 
-In PlayFab, go to Data Connections under your title settings and create an Event Hub connection pointing to your event hub. PlayFab will start streaming events there.
+In PlayFab, go to Data Connections under your title settings and create an Azure Data Explorer connection. Enter your ADX cluster URI, database name, and table name, then run the onboarding commands that PlayFab shows for granting the PlayFab ingestion service access to your cluster. PlayFab will start streaming events there.
 
-## Step 3 - Create the ADX Table and Ingestion Mapping
+## Step 3 - Create the ADX Table
 
-Define the table structure in ADX to store PlayFab events.
+PlayFab can create the target table for you when the data connection starts. If you create it yourself, use a schema compatible with the columns PlayFab writes.
 
 ```kql
 // Create the table for PlayFab events
 .create table PlayFabEvents (
     Timestamp: datetime,
     EventId: string,
-    EventName: string,
-    PlayerId: string,
+    FullName_Name: string,
+    Entity_Id: string,
     EventNamespace: string,
     EntityType: string,
     TitleId: string,
     EventData: dynamic,
     SourceType: string
 )
-
-// Create the JSON ingestion mapping
-.create table PlayFabEvents ingestion json mapping 'PlayFabMapping' '[
-    {"column": "Timestamp", "path": "$.Timestamp", "datatype": "datetime"},
-    {"column": "EventId", "path": "$.EventId", "datatype": "string"},
-    {"column": "EventName", "path": "$.EventName", "datatype": "string"},
-    {"column": "PlayerId", "path": "$.PlayerId", "datatype": "string"},
-    {"column": "EventNamespace", "path": "$.EventNamespace", "datatype": "string"},
-    {"column": "EntityType", "path": "$.EntityType", "datatype": "string"},
-    {"column": "TitleId", "path": "$.TitleId", "datatype": "string"},
-    {"column": "EventData", "path": "$.EventData", "datatype": "dynamic"},
-    {"column": "SourceType", "path": "$.SourceType", "datatype": "string"}
-]'
-
-// Create the data connection from Event Hub
-.create table PlayFabEvents ingestion eventhub mapping 'PlayFabEventHubConnection'
-    '{"eventHubResourceId": "/subscriptions/<sub>/resourceGroups/gaming-rg/providers/Microsoft.EventHub/namespaces/game-analytics-ns/eventhubs/playfab-events",
-      "consumerGroup": "$Default",
-      "tableName": "PlayFabEvents",
-      "mappingRuleName": "PlayFabMapping",
-      "dataFormat": "json"}'
 ```
 
 ## Step 4 - Write Analytics Queries
@@ -217,32 +179,32 @@ Player retention analysis - how many players return after day 1, day 7, and day 
 // Calculate D1, D7, and D30 retention by cohort
 let cohort_start = ago(90d);
 let first_logins = PlayFabEvents
-    | where EventName == "player_logged_in" and Timestamp > cohort_start
-    | summarize FirstLogin = min(Timestamp) by PlayerId
+    | where FullName_Name == "player_logged_in" and Timestamp > cohort_start
+    | summarize FirstLogin = min(Timestamp) by Entity_Id
     | extend CohortWeek = startofweek(FirstLogin);
 let returning = PlayFabEvents
-    | where EventName == "player_logged_in" and Timestamp > cohort_start
-    | join kind=inner first_logins on PlayerId
+    | where FullName_Name == "player_logged_in" and Timestamp > cohort_start
+    | join kind=inner first_logins on Entity_Id
     | extend DaysSinceFirst = datetime_diff("day", Timestamp, FirstLogin);
 first_logins
-| summarize CohortSize = dcount(PlayerId) by CohortWeek
-| join kind=inner (
+| summarize CohortSize = dcount(Entity_Id) by CohortWeek
+| join kind=leftouter (
     returning
     | where DaysSinceFirst == 1
-    | summarize D1_Retained = dcount(PlayerId) by CohortWeek
+    | summarize D1_Retained = dcount(Entity_Id) by CohortWeek
 ) on CohortWeek
 | join kind=leftouter (
     returning
     | where DaysSinceFirst == 7
-    | summarize D7_Retained = dcount(PlayerId) by CohortWeek
+    | summarize D7_Retained = dcount(Entity_Id) by CohortWeek
 ) on CohortWeek
 | join kind=leftouter (
     returning
     | where DaysSinceFirst == 30
-    | summarize D30_Retained = dcount(PlayerId) by CohortWeek
+    | summarize D30_Retained = dcount(Entity_Id) by CohortWeek
 ) on CohortWeek
 | project CohortWeek, CohortSize,
-    D1_Pct = round(100.0 * D1_Retained / CohortSize, 1),
+    D1_Pct = round(100.0 * coalesce(D1_Retained, 0) / CohortSize, 1),
     D7_Pct = round(100.0 * coalesce(D7_Retained, 0) / CohortSize, 1),
     D30_Pct = round(100.0 * coalesce(D30_Retained, 0) / CohortSize, 1)
 | order by CohortWeek desc
@@ -253,11 +215,11 @@ Level difficulty analysis - identify which levels cause players to quit.
 ```kql
 // Find levels with the highest abandonment rates
 let completions = PlayFabEvents
-    | where EventName == "level_completed"
+    | where FullName_Name == "level_completed"
     | extend LevelId = toint(EventData.level_id)
     | summarize Completions = count() by LevelId;
 let abandonments = PlayFabEvents
-    | where EventName == "level_abandoned"
+    | where FullName_Name == "level_abandoned"
     | extend LevelId = toint(EventData.level_id)
     | summarize Abandonments = count(),
         AvgTimeBeforeQuit = avg(todouble(EventData.time_before_quit_seconds)),
@@ -280,7 +242,7 @@ Revenue analysis by player segment.
 ```kql
 // Revenue breakdown by player tenure and level
 PlayFabEvents
-| where EventName == "item_purchased" and Timestamp > ago(30d)
+| where FullName_Name == "item_purchased" and Timestamp > ago(30d)
 | extend Amount = toint(EventData.amount),
     Currency = tostring(EventData.currency_type),
     PlayerLevel = toint(EventData.player_level)
@@ -288,7 +250,7 @@ PlayFabEvents
 | summarize
     TotalRevenue = sum(Amount),
     TransactionCount = count(),
-    UniqueSpenders = dcount(PlayerId),
+    UniqueSpenders = dcount(Entity_Id),
     AvgTransactionValue = round(avg(Amount), 2)
   by PlayerLevelBucket = case(
     PlayerLevel <= 10, "New (1-10)",
