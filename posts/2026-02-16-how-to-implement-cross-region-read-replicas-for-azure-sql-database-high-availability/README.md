@@ -51,7 +51,7 @@ az sql db replica list-links \
   -o table
 ```
 
-The `replicationState` should be `CATCH_UP` during initial seeding and `SEEDING` or `SYNCHRONIZED` once caught up.
+The `replicationState` should be `SEEDING` during initial seeding and `CATCH_UP` once the secondary has caught up and is continuously replicating.
 
 ## Setting Up Auto-Failover Groups
 
@@ -91,13 +91,13 @@ Server=myfailovergroup.database.windows.net;Database=myDatabase;
 
 One of the biggest benefits of read replicas is offloading read-heavy queries from the primary. Reporting queries, analytics dashboards, and search functionality can all point to the secondary without impacting the primary's write performance.
 
-To connect to the read-only replica, use the `ApplicationIntent=ReadOnly` connection string parameter.
+To connect to the read-only replica in the secondary region, use the read-only listener endpoint and the `ApplicationIntent=ReadOnly` connection string parameter.
 
 ```csharp
 // C# connection string that routes to the read-only secondary
 // This offloads read traffic from the primary database
 string connectionString =
-    "Server=myfailovergroup.database.windows.net;" +
+    "Server=myfailovergroup.secondary.database.windows.net;" +
     "Database=myDatabase;" +
     "Authentication=Active Directory Default;" +
     "ApplicationIntent=ReadOnly;";
@@ -118,19 +118,18 @@ Be aware that the secondary has a small replication lag, typically under 5 secon
 Continuous monitoring of replication health is essential. If replication lag grows too large, your secondary is not a reliable failover target.
 
 ```sql
--- Run this on the secondary to check replication lag
--- Shows the time difference between primary and secondary
+-- Run this on the primary to check replication lag
+-- Shows the replication lag reported by Azure SQL Database
 SELECT
     partner_server,
     partner_database,
     replication_state_desc,
     last_replication,
-    -- Replication lag in seconds
-    DATEDIFF(SECOND, last_replication, GETUTCDATE()) AS lag_seconds
+    replication_lag_sec AS lag_seconds
 FROM sys.dm_geo_replication_link_status;
 ```
 
-Set up Azure Monitor alerts for replication lag exceeding your threshold. For critical databases, alert if lag exceeds 30 seconds.
+Set up Azure Monitor alerts for replication lag exceeding your threshold. The Azure Monitor `replication_lag_seconds` metric is available on the primary database. For critical databases, alert if lag exceeds 30 seconds.
 
 ```bash
 # Create an alert for high replication lag
@@ -198,9 +197,9 @@ bool IsTransient(SqlException ex)
 
 ## Cost Considerations
 
-Geo-replicated secondaries are billed at the same rate as the primary database. If your primary is an S3 database, the secondary costs the same. For cost optimization, you can use a lower service tier for the secondary if it is only used for disaster recovery and not for offloading read traffic.
+Geo-replicated secondaries use the same service tier as the primary database. If your primary is an S3 database, the secondary is also Standard tier. For cost optimization, you can use a lower compute size within the same service tier where supported, or designate the secondary as a standby replica for disaster recovery if it is not used for read workloads.
 
-However, using a lower tier means the secondary may not handle the full production load after failover. This is a tradeoff between cost and recovery performance.
+However, using fewer compute resources means the secondary may not handle the full production load after failover. This is a tradeoff between cost and recovery performance.
 
 ## Multi-Database Applications
 
