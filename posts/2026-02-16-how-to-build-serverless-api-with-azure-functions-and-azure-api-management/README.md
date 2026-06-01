@@ -36,27 +36,36 @@ az functionapp create \
   --resource-group rg-api \
   --storage-account tasksstorage \
   --consumption-plan-location eastus \
+  --os-type Linux \
   --runtime node \
-  --runtime-version 18 \
+  --runtime-version 22 \
   --functions-version 4
+
+npm install @azure/functions @azure/cosmos uuid
 ```
 
 ### The Task Functions
 
-Here are the function implementations. I am using Azure Cosmos DB as the data store, but you could use any database.
+Here are the function implementations. I am using Azure Cosmos DB as the data store, but you could use any database. These examples use the Azure Functions Node.js programming model v4 and assume the Cosmos DB container uses `/id` as its partition key.
 
 ```javascript
 // get-tasks.js - List all tasks
+const { app } = require('@azure/functions');
 const { CosmosClient } = require('@azure/cosmos');
 
 const client = new CosmosClient(process.env.COSMOS_CONNECTION_STRING);
 const container = client.database('tasks-db').container('tasks');
 
-module.exports = async function (context, req) {
+app.http('get-tasks', {
+  methods: ['GET'],
+  route: 'tasks',
+  authLevel: 'function',
+  handler: async (request, context) => {
   try {
     // Support pagination through query parameters
-    const page = parseInt(req.query.page) || 1;
-    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const url = new URL(request.url);
+    const page = Math.max(parseInt(url.searchParams.get('page'), 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(url.searchParams.get('limit'), 10) || 20, 1), 100);
     const offset = (page - 1) * limit;
 
     // Query tasks with pagination
@@ -77,10 +86,9 @@ module.exports = async function (context, req) {
 
     const total = countResult[0];
 
-    context.res = {
+    return {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: {
+      jsonBody: {
         tasks: tasks,
         pagination: {
           page: page,
@@ -91,42 +99,53 @@ module.exports = async function (context, req) {
       }
     };
   } catch (err) {
-    context.log.error('Error listing tasks:', err);
-    context.res = {
+    context.error('Error listing tasks:', err);
+    return {
       status: 500,
-      body: { error: 'Failed to retrieve tasks' }
+      jsonBody: { error: 'Failed to retrieve tasks' }
     };
   }
-};
+  }
+});
 ```
 
 ```javascript
 // create-task.js - Create a new task
+const { app } = require('@azure/functions');
 const { v4: uuidv4 } = require('uuid');
 const { CosmosClient } = require('@azure/cosmos');
 
 const client = new CosmosClient(process.env.COSMOS_CONNECTION_STRING);
 const container = client.database('tasks-db').container('tasks');
 
-module.exports = async function (context, req) {
+app.http('create-task', {
+  methods: ['POST'],
+  route: 'tasks',
+  authLevel: 'function',
+  handler: async (request, context) => {
   // Validate the request body
-  const { title, description, priority, assignee } = req.body || {};
+  let body = {};
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
 
-  if (!title || title.trim().length === 0) {
-    context.res = {
+  const { title, description, priority, assignee } = body;
+
+  if (typeof title !== 'string' || title.trim().length === 0) {
+    return {
       status: 400,
-      body: { error: 'Title is required' }
+      jsonBody: { error: 'Title is required' }
     };
-    return;
   }
 
   const validPriorities = ['low', 'medium', 'high', 'critical'];
   if (priority && !validPriorities.includes(priority)) {
-    context.res = {
+    return {
       status: 400,
-      body: { error: `Priority must be one of: ${validPriorities.join(', ')}` }
+      jsonBody: { error: `Priority must be one of: ${validPriorities.join(', ')}` }
     };
-    return;
   }
 
   try {
@@ -143,81 +162,104 @@ module.exports = async function (context, req) {
 
     const { resource: created } = await container.items.create(task);
 
-    context.res = {
+    return {
       status: 201,
       headers: {
-        'Content-Type': 'application/json',
         'Location': `/tasks/${created.id}`
       },
-      body: created
+      jsonBody: created
     };
   } catch (err) {
-    context.log.error('Error creating task:', err);
-    context.res = {
+    context.error('Error creating task:', err);
+    return {
       status: 500,
-      body: { error: 'Failed to create task' }
+      jsonBody: { error: 'Failed to create task' }
     };
   }
-};
+  }
+});
 ```
 
 ```javascript
 // get-task.js - Get a specific task by ID
-module.exports = async function (context, req) {
-  const taskId = context.bindingData.id;
+const { app } = require('@azure/functions');
+const { CosmosClient } = require('@azure/cosmos');
+
+const client = new CosmosClient(process.env.COSMOS_CONNECTION_STRING);
+const container = client.database('tasks-db').container('tasks');
+
+app.http('get-task', {
+  methods: ['GET'],
+  route: 'tasks/{id}',
+  authLevel: 'function',
+  handler: async (request, context) => {
+  const taskId = request.params.id;
 
   try {
     const { resource: task } = await container.item(taskId, taskId).read();
 
     if (!task) {
-      context.res = {
+      return {
         status: 404,
-        body: { error: 'Task not found' }
+        jsonBody: { error: 'Task not found' }
       };
-      return;
     }
 
-    context.res = {
+    return {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: task
+      jsonBody: task
     };
   } catch (err) {
     if (err.code === 404) {
-      context.res = {
+      return {
         status: 404,
-        body: { error: 'Task not found' }
+        jsonBody: { error: 'Task not found' }
       };
     } else {
-      context.log.error('Error reading task:', err);
-      context.res = {
+      context.error('Error reading task:', err);
+      return {
         status: 500,
-        body: { error: 'Failed to retrieve task' }
+        jsonBody: { error: 'Failed to retrieve task' }
       };
     }
   }
-};
+  }
+});
 ```
 
 ```javascript
 // update-task.js - Update an existing task
-module.exports = async function (context, req) {
-  const taskId = context.bindingData.id;
-  const updates = req.body || {};
+const { app } = require('@azure/functions');
+const { CosmosClient } = require('@azure/cosmos');
+
+const client = new CosmosClient(process.env.COSMOS_CONNECTION_STRING);
+const container = client.database('tasks-db').container('tasks');
+
+app.http('update-task', {
+  methods: ['PUT'],
+  route: 'tasks/{id}',
+  authLevel: 'function',
+  handler: async (request, context) => {
+  const taskId = request.params.id;
+  let updates = {};
+  try {
+    updates = await request.json();
+  } catch {
+    updates = {};
+  }
 
   try {
     // Read the existing task
     const { resource: existing } = await container.item(taskId, taskId).read();
 
     if (!existing) {
-      context.res = { status: 404, body: { error: 'Task not found' } };
-      return;
+      return { status: 404, jsonBody: { error: 'Task not found' } };
     }
 
     // Apply the updates
     const updatedTask = {
       ...existing,
-      ...(updates.title && { title: updates.title.trim() }),
+      ...(typeof updates.title === 'string' && updates.title.trim() && { title: updates.title.trim() }),
       ...(updates.description !== undefined && { description: updates.description }),
       ...(updates.priority && { priority: updates.priority }),
       ...(updates.assignee !== undefined && { assignee: updates.assignee }),
@@ -227,41 +269,56 @@ module.exports = async function (context, req) {
 
     const { resource: saved } = await container.item(taskId, taskId).replace(updatedTask);
 
-    context.res = {
+    return {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
-      body: saved
+      jsonBody: saved
     };
   } catch (err) {
-    context.log.error('Error updating task:', err);
-    context.res = {
+    if (err.code === 404) {
+      return { status: 404, jsonBody: { error: 'Task not found' } };
+    }
+
+    context.error('Error updating task:', err);
+    return {
       status: 500,
-      body: { error: 'Failed to update task' }
+      jsonBody: { error: 'Failed to update task' }
     };
   }
-};
+  }
+});
 ```
 
 ```javascript
 // delete-task.js - Delete a task
-module.exports = async function (context, req) {
-  const taskId = context.bindingData.id;
+const { app } = require('@azure/functions');
+const { CosmosClient } = require('@azure/cosmos');
+
+const client = new CosmosClient(process.env.COSMOS_CONNECTION_STRING);
+const container = client.database('tasks-db').container('tasks');
+
+app.http('delete-task', {
+  methods: ['DELETE'],
+  route: 'tasks/{id}',
+  authLevel: 'function',
+  handler: async (request, context) => {
+  const taskId = request.params.id;
 
   try {
     await container.item(taskId, taskId).delete();
 
-    context.res = {
+    return {
       status: 204 // No content
     };
   } catch (err) {
     if (err.code === 404) {
-      context.res = { status: 404, body: { error: 'Task not found' } };
+      return { status: 404, jsonBody: { error: 'Task not found' } };
     } else {
-      context.log.error('Error deleting task:', err);
-      context.res = { status: 500, body: { error: 'Failed to delete task' } };
+      context.error('Error deleting task:', err);
+      return { status: 500, jsonBody: { error: 'Failed to delete task' } };
     }
   }
-};
+  }
+});
 ```
 
 ## Configuring API Management
@@ -317,7 +374,7 @@ Apply policies that affect all operations in the API.
             </allowed-headers>
         </cors>
         <!-- Rate limiting per subscription key -->
-        <rate-limit calls="1000" renewal-period="3600" />
+        <rate-limit calls="100" renewal-period="60" />
         <!-- JWT validation -->
         <validate-jwt header-name="Authorization" require-scheme="Bearer"
                       failed-validation-httpcode="401"
@@ -418,6 +475,70 @@ paths:
           description: Task details
         '404':
           description: Task not found
+    put:
+      summary: Update a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTask'
+      responses:
+        '200':
+          description: Task updated
+        '404':
+          description: Task not found
+    delete:
+      summary: Delete a task
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Task deleted
+        '404':
+          description: Task not found
+components:
+  schemas:
+    CreateTask:
+      type: object
+      required:
+        - title
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        assignee:
+          type: string
+          nullable: true
+    UpdateTask:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        assignee:
+          type: string
+          nullable: true
+        status:
+          type: string
 ```
 
 Import this spec into APIM for automatic documentation on the developer portal.
@@ -445,4 +566,4 @@ curl "https://tasks-api-gateway.azure-api.net/v1/tasks/task-id-here" \
 
 ## Wrapping Up
 
-Building a serverless API with Azure Functions and API Management gives you a production-quality API without managing any servers. Functions handle the business logic and scale automatically. APIM handles the cross-cutting concerns: authentication, rate limiting, CORS, versioning, and documentation. The Consumption tiers of both services mean you pay per request, making this architecture cost-effective for APIs of any size. Start with the function implementations, layer APIM on top for operational features, and you have a complete API platform that scales from zero to millions of requests.
+Building a serverless API with Azure Functions and API Management gives you a production-quality API without managing any servers. Functions handle the business logic and scale automatically. APIM handles the cross-cutting concerns: authentication, rate limiting, CORS, versioning, and documentation. The Consumption tiers of both services mean you pay per request, making this architecture cost-effective for many APIs. Start with the function implementations, layer APIM on top for operational features, and you have a complete API platform that scales from zero to millions of requests.
