@@ -14,7 +14,7 @@ This guide walks through creating custom registries, managing schemas, generatin
 
 ## What Is the EventBridge Schema Registry?
 
-The Schema Registry is a component of Amazon EventBridge that stores JSON Schema definitions for your events. It comes with two built-in registries:
+The Schema Registry is a component of Amazon EventBridge that stores OpenAPI 3 or JSON Schema Draft 4 definitions for your events. It comes with two built-in registries:
 
 - **aws.events** - Contains schemas for all AWS service events (S3, EC2, etc.)
 - **discovered-schemas** - Populated automatically when you enable schema discovery
@@ -41,7 +41,7 @@ aws schemas create-registry \
   --description "Schemas for order processing events"
 ```
 
-You can create as many registries as you need. A common pattern is one registry per bounded context or domain in your architecture.
+You can create multiple registries within your account's EventBridge Schemas service quotas. A common pattern is one registry per bounded context or domain in your architecture.
 
 ## Step 2: Define and Register a Schema
 
@@ -52,7 +52,7 @@ Now let us add a schema to our new registry. You define schemas using JSON Schem
 aws schemas create-schema \
   --registry-name "order-processing" \
   --schema-name "OrderCreated" \
-  --type "JSONSchemaDraft4" \
+  --type "OpenApi3" \
   --content '{
     "openapi": "3.0.0",
     "info": {
@@ -108,7 +108,7 @@ When your event structure changes, update the schema. EventBridge automatically 
 aws schemas update-schema \
   --registry-name "order-processing" \
   --schema-name "OrderCreated" \
-  --type "JSONSchemaDraft4" \
+  --type "OpenApi3" \
   --content '{
     "openapi": "3.0.0",
     "info": {
@@ -193,8 +193,9 @@ Supported languages include Python36, Java8, TypeScript3, and Go1. The generated
 As your registry grows, you need to find schemas quickly:
 
 ```bash
-# Search for schemas by keyword across all registries
+# Search for schemas by keyword in a registry
 aws schemas search-schemas \
+  --registry-name "order-processing" \
   --keywords "Order"
 
 # List all schemas in a specific registry
@@ -221,7 +222,7 @@ aws schemas describe-schema \
   --output text > order-created-schema.json
 ```
 
-This exported schema can be used with any JSON Schema-compatible validation library in your application code.
+If you store schemas as JSON Schema Draft 4, the exported schema can be used with JSON Schema-compatible validation libraries in your application code. For OpenAPI 3 schemas like the example above, use OpenAPI-aware tooling or extract the component schema first.
 
 ## Architecture: Schema Registry in Your Workflow
 
@@ -298,7 +299,7 @@ Resources:
     Properties:
       RegistryName: !Ref OrderProcessingRegistry
       SchemaName: OrderCreated
-      Type: JSONSchemaDraft4
+      Type: OpenApi3
       Content: |
         {
           "openapi": "3.0.0",
