@@ -8,13 +8,13 @@ Description: Learn how to configure AKS workload identity federation with extern
 
 ---
 
-Workload identity on AKS lets your pods authenticate to Azure services without storing credentials. But what if your pods also need to authenticate to services outside Azure - an AWS S3 bucket, a GCP BigQuery dataset, or another Kubernetes cluster's API server? This is where workload identity federation with external OIDC providers comes in.
+Workload identity on AKS lets your pods authenticate to Azure services without storing credentials. But what if your pods also need to authenticate to services outside Azure - an AWS S3 bucket, a GCP BigQuery dataset, or another identity-aware service that can trust OIDC tokens? This is where workload identity federation with external OIDC providers comes in.
 
 Instead of creating and rotating service account keys, you establish a trust relationship between your AKS cluster's OIDC issuer and the external identity provider. Your pod presents its Kubernetes service account token, the external provider validates it against your cluster's OIDC issuer URL, and access is granted. No secrets are exchanged, stored, or rotated.
 
 ## How Workload Identity Federation Works
 
-The core concept is straightforward. AKS clusters have a built-in OIDC issuer that produces signed JWT tokens for service accounts. When you enable workload identity, the cluster's OIDC issuer URL becomes a public endpoint that external systems can use to validate tokens.
+The core concept is straightforward. AKS clusters can expose an OIDC issuer that produces signed JWT tokens for service accounts. When you enable the OIDC issuer, the cluster's OIDC issuer URL becomes a public endpoint that external systems can use to validate tokens. Microsoft Entra Workload ID uses the same Kubernetes token projection mechanism for Azure authentication, but AWS and GCP federation only need the AKS OIDC issuer plus explicitly projected service account tokens.
 
 ```mermaid
 sequenceDiagram
@@ -38,17 +38,16 @@ The key insight is that no secrets cross boundaries. The external provider trust
 
 ## Prerequisites
 
-Enable OIDC issuer and workload identity on your AKS cluster.
+Enable the OIDC issuer on your AKS cluster. Enable workload identity as well if you also plan to federate the service account with Microsoft Entra ID.
 
 ```bash
 # Enable OIDC issuer on an existing cluster
-
 az aks update \
   --resource-group myRG \
   --name myAKS \
   --enable-oidc-issuer
 
-# Enable workload identity
+# Optional: enable Microsoft Entra Workload ID for Azure federation
 az aks update \
   --resource-group myRG \
   --name myAKS \
@@ -75,9 +74,10 @@ A common scenario is an AKS pod that needs to access AWS services - reading from
 # In AWS, create an OIDC identity provider pointing to your AKS cluster
 aws iam create-open-id-connect-provider \
   --url "$OIDC_ISSUER" \
-  --client-id-list "sts.amazonaws.com" \
-  --thumbprint-list "$(openssl s_client -connect $(echo $OIDC_ISSUER | sed 's|https://||' | sed 's|/.*||'):443 -servername $(echo $OIDC_ISSUER | sed 's|https://||' | sed 's|/.*||') 2>/dev/null | openssl x509 -fingerprint -noout | sed 's/://g' | cut -d= -f2 | tr '[:upper:]' '[:lower:]')"
+  --client-id-list "sts.amazonaws.com"
 ```
+
+If you manually provide `--thumbprint-list`, use the SHA-1 thumbprint for the top intermediate CA certificate that signs the OIDC endpoint certificate. When the thumbprint is omitted, IAM retrieves the top intermediate CA thumbprint for the provider.
 
 ### Step 2: Create an AWS IAM Role with Trust Policy
 
@@ -108,17 +108,12 @@ The condition restricts which Kubernetes service accounts can assume this role. 
 
 ```yaml
 # service-account.yaml
-# Kubernetes service account annotated for AWS federation
+# Kubernetes service account used for AWS federation
 apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: my-app-sa
   namespace: default
-  annotations:
-    # Tell the Azure workload identity webhook to project the token
-    azure.workload.identity/client-id: "<azure-managed-identity-client-id>"
-  labels:
-    azure.workload.identity/use: "true"
 ```
 
 ### Step 4: Deploy the Pod with Token Projection
@@ -177,7 +172,8 @@ gcloud iam workload-identity-pools providers create-oidc aks-provider \
   --workload-identity-pool="aks-pool" \
   --issuer-uri="$OIDC_ISSUER" \
   --allowed-audiences="gcp" \
-  --attribute-mapping="google.subject=assertion.sub,attribute.namespace=assertion['kubernetes.io'].namespace,attribute.service_account_name=assertion['kubernetes.io']['serviceaccount']['name']"
+  --attribute-mapping="google.subject=assertion.sub,attribute.namespace=assertion['kubernetes.io']['namespace'],attribute.service_account_name=assertion['kubernetes.io']['serviceaccount']['name']" \
+  --attribute-condition="assertion['kubernetes.io']['namespace']=='default'"
 
 # Create a service account binding
 gcloud iam service-accounts add-iam-policy-binding \
@@ -186,12 +182,12 @@ gcloud iam service-accounts add-iam-policy-binding \
   --member="principalSet://iam.googleapis.com/projects/PROJECT_NUMBER/locations/global/workloadIdentityPools/aks-pool/attribute.service_account_name/my-app-sa"
 ```
 
-## Federating Between AKS Clusters
+## Federating AKS Workloads with Azure Resources
 
-You can also federate identities between two AKS clusters. This is useful for multi-cluster architectures where services in one cluster need to authenticate to services in another.
+You can also federate an AKS service account with a user-assigned managed identity that is used by another cluster or shared platform component. This is useful for multi-cluster architectures where services in one cluster need to authenticate to the same Azure resources without sharing credentials.
 
 ```bash
-# On Cluster B, create a managed identity that trusts Cluster A's OIDC issuer
+# Create a managed identity that trusts Cluster A's OIDC issuer
 CLUSTER_A_OIDC=$(az aks show --resource-group rgA --name clusterA --query "oidcIssuerProfile.issuerUrl" -o tsv)
 
 # Create a federated credential on the managed identity
@@ -201,10 +197,10 @@ az identity federated-credential create \
   --resource-group myRG \
   --issuer "$CLUSTER_A_OIDC" \
   --subject "system:serviceaccount:default:cross-cluster-sa" \
-  --audience "api://AzureADTokenExchange"
+  --audiences "api://AzureADTokenExchange"
 ```
 
-Now a pod in Cluster A using the `cross-cluster-sa` service account can authenticate as the managed identity and access resources that Cluster B's identity has permissions for.
+Now a pod in Cluster A using the `cross-cluster-sa` service account can authenticate as the managed identity and access Azure resources that identity has permissions for.
 
 ## Token Validation and Security
 
@@ -221,7 +217,7 @@ kubectl exec aws-access-pod -- cat /var/run/secrets/tokens/aws-token | \
   cut -d. -f2 | base64 -d 2>/dev/null | jq .
 ```
 
-The token includes the service account name, namespace, pod name, and the configured audience. The external provider validates all of these before granting access.
+The token includes the service account name, namespace, pod name, and the configured audience. The external provider validates the token signature, issuer, and audience, and can use the subject or mapped Kubernetes claims to restrict which service accounts are allowed.
 
 ## Troubleshooting Federation Issues
 
@@ -231,10 +227,10 @@ If the external provider rejects the token, check the OIDC discovery endpoint.
 
 ```bash
 # Verify the OIDC discovery document is accessible
-curl -s "$OIDC_ISSUER/.well-known/openid-configuration" | jq .
+curl -s "${OIDC_ISSUER}.well-known/openid-configuration" | jq .
 
 # Verify the JWKS (public keys) endpoint
-JWKS_URI=$(curl -s "$OIDC_ISSUER/.well-known/openid-configuration" | jq -r '.jwks_uri')
+JWKS_URI=$(curl -s "${OIDC_ISSUER}.well-known/openid-configuration" | jq -r '.jwks_uri')
 curl -s "$JWKS_URI" | jq .
 ```
 
