@@ -65,7 +65,7 @@ az network vnet-gateway create \
   --no-wait
 ```
 
-The `--asn` parameter sets the Azure-side BGP ASN. The default is 65515, which is fine for most setups. If your on-premises network already uses 65515, choose a different ASN from the private range (64512-65534).
+The `--asn` parameter sets the Azure-side BGP ASN. The default is 65515, which is fine for most setups. If your on-premises network already uses 65515, choose a different ASN from the usable private ranges (64512-65514 or 65521-65534).
 
 Gateway creation takes 30-45 minutes. Check progress with:
 
@@ -123,7 +123,7 @@ Parameters:
 - `--asn` is your on-premises BGP ASN
 - `--bgp-peering-address` is the on-premises router's BGP peer IP (typically a loopback or tunnel interface IP)
 
-Notice that you do not need to specify `--local-address-prefixes` when using BGP. The routes will be learned dynamically. However, you may still include them as a fallback if BGP goes down.
+Notice that you do not need to specify `--local-address-prefixes` when using BGP. The routes will be learned dynamically. If you add other prefixes in the local network gateway address space, Azure treats them as static routes in addition to the routes learned through BGP.
 
 ## Step 4: Create the VPN Connection with BGP
 
