@@ -30,7 +30,7 @@ Before we begin, make sure you have:
 - An Azure subscription with appropriate permissions
 - Azure CLI installed and configured
 - A storage account with Blob Storage (or a general-purpose v2 account)
-- The storage account must NOT have hierarchical namespace enabled (ADLS Gen2 is not supported for immutable policies on the legacy path)
+- For version-level immutability, the storage account must NOT have hierarchical namespace enabled. Container-level WORM policies are supported with ADLS Gen2, but version-level WORM policies are not.
 
 ## Step 1: Create a Storage Account with Versioning
 
@@ -52,9 +52,14 @@ az storage account create \
   --location eastus2 \
   --sku Standard_LRS \
   --kind StorageV2 \
-  --enable-versioning true \
   --allow-blob-public-access false \
-  --enable-version-level-immutability true
+  --enable-alw true
+
+# Enable blob versioning, which is required for version-level immutability
+az storage account blob-service-properties update \
+  --account-name stcompliancedata2026 \
+  --resource-group rg-compliance-storage \
+  --enable-versioning true
 ```
 
 Enabling version-level immutability at account creation time is important because this setting cannot be changed after the account is created.
@@ -66,6 +71,13 @@ Now, create a container and set a default immutability policy on it. Any blobs u
 This command creates a container and sets a default 365-day retention period:
 
 ```bash
+# Create a container with version-level immutability support
+az storage container-rm create \
+  --storage-account stcompliancedata2026 \
+  --resource-group rg-compliance-storage \
+  --name compliance-records \
+  --enable-vlw true
+
 # Create a container with a default immutability policy
 az storage container immutability-policy create \
   --account-name stcompliancedata2026 \
@@ -73,10 +85,9 @@ az storage container immutability-policy create \
   --period 365
 
 # Verify the policy was applied
-az storage container show \
+az storage container immutability-policy show \
   --account-name stcompliancedata2026 \
-  --name compliance-records \
-  --query "properties.immutabilityPolicy"
+  --container-name compliance-records
 ```
 
 The `--period` value is in days. For most financial compliance scenarios, 2555 days (7 years) is common. For healthcare records under HIPAA, the retention period varies by record type.
@@ -111,14 +122,14 @@ This Python snippet demonstrates how to upload a blob with a specific retention 
 
 ```python
 from azure.storage.blob import BlobServiceClient, ImmutabilityPolicy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Initialize the blob service client
 connection_string = "your_connection_string_here"
 blob_service = BlobServiceClient.from_connection_string(connection_string)
 
 # Calculate expiration date (7 years from now)
-expiry = datetime.utcnow() + timedelta(days=2555)
+expiry = datetime.now(timezone.utc) + timedelta(days=2555)
 
 # Create an immutability policy for this specific blob
 immutability = ImmutabilityPolicy(
@@ -163,7 +174,7 @@ Legal holds use tags to identify the reason for the hold. You can apply multiple
 
 Once your policies are in place, you need to monitor them. Azure Policy can help you audit whether all storage accounts in your subscription have the proper retention policies configured.
 
-The following policy definition ensures all blob containers have at least a 365-day retention policy:
+The following policy rule audits container immutability policy resources that are configured for less than a 365-day retention period:
 
 ```json
 {
@@ -171,19 +182,11 @@ The following policy definition ensures all blob containers have at least a 365-
     "allOf": [
       {
         "field": "type",
-        "equals": "Microsoft.Storage/storageAccounts/blobServices/containers"
+        "equals": "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies"
       },
       {
-        "anyOf": [
-          {
-            "field": "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicy.immutabilityPeriodSinceCreationInDays",
-            "less": 365
-          },
-          {
-            "field": "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicy.immutabilityPeriodSinceCreationInDays",
-            "exists": "false"
-          }
-        ]
+        "field": "Microsoft.Storage/storageAccounts/blobServices/containers/immutabilityPolicies/default.immutabilityPeriodSinceCreationInDays",
+        "less": 365
       }
     ]
   },
@@ -198,17 +201,17 @@ The following policy definition ensures all blob containers have at least a 365-
 Different regulations have different requirements. Here is a quick reference:
 
 - **SEC 17a-4**: Requires WORM (Write Once Read Many) storage. Lock the retention policy and set the period to match the required duration (typically 6 years for most records).
-- **GDPR**: Requires the ability to delete data upon request. Use unlocked policies with shorter retention, and pair them with lifecycle management to auto-delete after the period.
-- **HIPAA**: Medical records typically require 6-10 year retention. Use locked time-based policies.
+- **GDPR**: Includes a right to erasure in some cases, but retention obligations and legal bases can override it. Use retention periods that match your legal basis, and pair them with lifecycle management to auto-delete after the period.
+- **HIPAA**: HIPAA itself does not set a general medical-record retention period. HIPAA documentation retention is generally 6 years, while medical-record retention varies by state and record type. Use locked time-based policies only after confirming the applicable requirement.
 - **SOX**: Financial records need 7-year retention. Lock the policy with a 2555-day period.
 
 ## Troubleshooting Common Issues
 
 One thing that trips people up: if you try to delete a blob that is under a retention policy, you will get a 409 Conflict error. This is by design. The error message will include the remaining retention time.
 
-Another common issue is trying to enable immutability on a storage account with hierarchical namespace (Azure Data Lake Storage Gen2). As of early 2026, version-level immutability works with ADLS Gen2, but container-level policies may have limitations. Check the latest documentation if you are using Data Lake.
+Another common issue is trying to enable version-level immutability on a storage account with hierarchical namespace (Azure Data Lake Storage Gen2). Container-level WORM policies are supported in accounts that have hierarchical namespace enabled, but version-level WORM policies are not. Check the latest documentation if you are using Data Lake.
 
-Finally, remember that retention policies apply to blob versions, not the blob name. If you overwrite a blob, the previous version retains its policy. The new version gets either the container default or whatever policy you explicitly set.
+Finally, remember that with version-level immutability, retention policies apply to blob versions, not the blob name. If you overwrite a blob, the previous version retains its policy. The new version gets either the container default or whatever policy you explicitly set.
 
 ## Wrapping Up
 
