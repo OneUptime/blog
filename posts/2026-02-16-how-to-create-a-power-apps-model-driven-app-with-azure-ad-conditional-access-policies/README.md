@@ -1,16 +1,16 @@
-# Create a Power Apps Model-Driven App with Azure AD Conditional Access Policies
+# Create a Power Apps Model-Driven App with Microsoft Entra Conditional Access Policies
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Power Apps, Model-Driven App, Azure AD, Conditional Access, Security, Power Platform, Dataverse
+Tags: Power Apps, Model-Driven App, Microsoft Entra ID, Conditional Access, Security, Power Platform, Dataverse
 
-Description: Build a Power Apps model-driven app secured with Azure AD Conditional Access policies to enforce MFA, device compliance, and location-based restrictions.
+Description: Build a Power Apps model-driven app secured with Microsoft Entra Conditional Access policies to enforce MFA, device compliance, and location-based restrictions.
 
 ---
 
-Model-driven apps in Power Apps run on top of Dataverse and inherit the security framework of the Power Platform. But relying solely on Dataverse security roles is not enough for many enterprise environments. Azure AD Conditional Access policies add another layer by controlling how and from where users can access your app. You can require multi-factor authentication, block access from unmanaged devices, restrict access to specific network locations, and more.
+Model-driven apps in Power Apps run on top of Dataverse and inherit the security framework of the Power Platform. But relying solely on Dataverse security roles is not enough for many enterprise environments. Microsoft Entra Conditional Access policies add another layer by controlling how and from where users can access your app. You can require multi-factor authentication, block access from unmanaged devices, restrict access to specific network locations, and more.
 
-This guide covers building a model-driven app and then layering Azure AD Conditional Access policies on top of it.
+This guide covers building a model-driven app and then layering Microsoft Entra Conditional Access policies on top of it.
 
 ## Part 1: Building the Model-Driven App
 
@@ -26,7 +26,7 @@ Before building the app, set up your tables in Dataverse. For this example, we w
    - End Date (date only)
    - Status (choice: Not Started, In Progress, Completed, On Hold)
    - Priority (choice: Low, Medium, High, Critical)
-   - Owner (lookup to User)
+   - Owner (built-in owner column for User or Team)
 
 3. Create a Tasks table:
    - Name (primary column, text)
@@ -58,7 +58,7 @@ Create a custom security role for the app:
 5. Configure views:
    - Active Projects (filtered by Status not equal to Completed)
    - My Projects (filtered by Owner equals current user)
-   - All Tasks by Project (grouped by Project)
+   - All Tasks by Project (sorted by Project)
 6. Add a dashboard with charts showing project status distribution and tasks by assignee.
 7. Publish the app.
 
@@ -73,22 +73,22 @@ Before adding Conditional Access, make sure the app works:
 
 ## Part 2: Configuring Conditional Access Policies
 
-Conditional Access policies are configured in Azure AD and apply to cloud apps. Power Apps (including model-driven apps) is registered as a cloud app called "Microsoft Power Apps" or "Common Data Service" (for Dataverse access).
+Conditional Access policies are configured in Microsoft Entra ID and apply to target resources, formerly called cloud apps. For Dataverse-backed model-driven apps, the key target resource is Dataverse, which may appear as "Common Data Service" or "Microsoft Dataverse" depending on your tenant and portal experience.
 
 ### Identify the Target Cloud Apps
 
-Model-driven apps access data through Dataverse. The relevant cloud app IDs are:
+Model-driven apps access data through Dataverse. The relevant target resource IDs are:
 
-- **Microsoft Power Apps**: `475226c6-020e-4fb2-8571-c63d2a8efb72`
-- **Common Data Service** (Dataverse): `00000007-0000-0000-c000-000000000000`
+- **Dataverse / Common Data Service**: `00000007-0000-0000-c000-000000000000`
+- **Power Apps service entries**: Microsoft documentation lists Power Apps-related service principals such as `4e291c71-d680-4d0e-9640-0a3358e31177` for Power Apps and `475226c6-020e-4fb2-8a90-7a972cbfc1d4` for Microsoft PowerApps / PowerApps Service, depending on the feature and tenant context.
 
-You can target either or both depending on the scope of your policy.
+For model-driven app runtime access, target Dataverse / Common Data Service. These policies target service access for the selected users or groups; Microsoft Entra Conditional Access authentication contexts for individual Power Apps currently don't support model-driven apps.
 
 ### Policy 1: Require MFA for Power Apps Access
 
-This policy forces users to complete multi-factor authentication before accessing any model-driven app.
+This policy forces users to complete multi-factor authentication before accessing Dataverse-backed model-driven apps covered by the policy.
 
-1. Go to Azure portal > Azure AD > Security > Conditional Access > New policy.
+1. Go to Microsoft Entra admin center > Entra ID > Conditional Access > Policies > New policy.
 2. Name: "Require MFA for Power Apps"
 3. Assignments:
    - Users: Select the groups that use your model-driven app (e.g., "Project Managers" group)
@@ -115,7 +115,7 @@ If your organization uses Intune for device management, you can require device c
 
 For sensitive data, you might want to restrict access to your corporate network:
 
-1. First, define your Named locations under Azure AD > Security > Conditional Access > Named locations.
+1. First, define your Named locations under Microsoft Entra admin center > Entra ID > Conditional Access > Named locations.
 2. Add your corporate IP ranges as a trusted location.
 3. Create a new policy.
 4. Name: "Block Power Apps from Non-Corporate Networks"
@@ -147,9 +147,9 @@ Rather than blocking unmanaged devices entirely, you can apply session restricti
 
 ### Use the What If Tool
 
-Before enforcing policies, test them with Azure AD's What If tool:
+Before enforcing policies, test them with Microsoft Entra's What If tool:
 
-1. Go to Azure AD > Security > Conditional Access > What If.
+1. Go to Microsoft Entra admin center > Entra ID > Conditional Access > Policies > What If.
 2. Select a test user.
 3. Select "Common Data Service" as the cloud app.
 4. Set conditions (device platform, location, etc.).
@@ -162,7 +162,7 @@ This tool helps you verify that your policies target the right users and conditi
 Enable new policies in "Report-only" mode first:
 
 1. When creating the policy, set "Enable policy" to "Report-only".
-2. Users can still access the app, but Azure AD logs what would have happened.
+2. Users can still access the app, but Microsoft Entra ID logs what would have happened.
 3. Check the sign-in logs after a few days to see the impact.
 4. When you are confident, switch the policy to "On".
 
@@ -175,11 +175,11 @@ Have a test user go through each scenario:
 3. Sign in from outside the corporate network - they should see an access blocked message (for Policy 3).
 4. Sign in from an unmanaged device - they should be able to access but get re-prompted after the session timeout.
 
-## Combining App-Level and Azure AD Security
+## Combining App-Level and Microsoft Entra Security
 
 The model-driven app has multiple security layers that work together:
 
-1. **Azure AD Conditional Access**: Controls who can access the platform and under what conditions.
+1. **Microsoft Entra Conditional Access**: Controls who can access the platform and under what conditions.
 2. **Dataverse security roles**: Controls what data users can see and modify.
 3. **Business rules**: Controls field-level validation and visibility.
 4. **Column-level security**: Controls access to specific sensitive columns.
@@ -190,9 +190,9 @@ Think of it as a layered defense. Conditional Access is the outer perimeter, sec
 
 Set up monitoring for your Conditional Access policies:
 
-1. **Azure AD Sign-in Logs**: Review these regularly to spot blocked access attempts or policy failures.
+1. **Microsoft Entra sign-in logs**: Review these regularly to spot blocked access attempts or policy failures.
 2. **Azure Monitor Alerts**: Create alerts for unusual sign-in patterns, like multiple blocked attempts from the same user.
-3. **Power Automate Integration**: Build a flow that checks Azure AD sign-in logs and sends alerts to a Teams channel when access is blocked.
+3. **Power Automate Integration**: Build a flow that checks Microsoft Entra sign-in logs and sends alerts to a Teams channel when access is blocked.
 
 ## Common Pitfalls
 
@@ -206,4 +206,4 @@ Set up monitoring for your Conditional Access policies:
 
 ## Wrapping Up
 
-Model-driven Power Apps combined with Azure AD Conditional Access give you a robust security posture. The model-driven app handles data-level security through Dataverse roles, while Conditional Access handles access-level security based on user identity, device state, and network location. Start with MFA as a baseline, add device compliance if you use Intune, and layer on location restrictions for sensitive apps. Always test in report-only mode before enforcing, and maintain emergency access accounts as a safety net.
+Model-driven Power Apps combined with Microsoft Entra Conditional Access give you a robust security posture. The model-driven app handles data-level security through Dataverse roles, while Conditional Access handles access-level security based on user identity, device state, and network location. Start with MFA as a baseline, add device compliance if you use Intune, and layer on location restrictions for sensitive apps. Always test in report-only mode before enforcing, and maintain emergency access accounts as a safety net.
