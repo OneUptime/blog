@@ -181,17 +181,14 @@ az eventgrid event-subscription create \
   --preferred-batch-size-in-kilobytes 64
 ```
 
-When using batch delivery, your function receives an array of events. Handle this in your HTTP trigger function (Event Grid triggers currently receive one event at a time).
+When using batch delivery, your function can receive an array of events. In .NET isolated worker apps, bind the Event Grid trigger to `EventGridEvent[]` to process the batch.
 
 ```csharp
-// HTTP trigger function that handles batched Event Grid events
+// Event Grid trigger function that handles batched Event Grid events
 [Function("HandleBatchedEvents")]
-public async Task<HttpResponseData> RunBatched(
-    [HttpTrigger(AuthorizationLevel.Function, "post")] HttpRequestData req)
+public async Task RunBatched(
+    [EventGridTrigger] EventGridEvent[] events)
 {
-    var body = await req.ReadAsStringAsync();
-    var events = JsonSerializer.Deserialize<EventGridEvent[]>(body);
-
     _logger.LogInformation("Received batch of {Count} events", events.Length);
 
     // Process each event in the batch
@@ -207,8 +204,6 @@ public async Task<HttpResponseData> RunBatched(
             _logger.LogError(ex, "Failed to process event {EventId}", ev.Id);
         }
     }
-
-    return req.CreateResponse(System.Net.HttpStatusCode.OK);
 }
 ```
 
@@ -216,7 +211,7 @@ public async Task<HttpResponseData> RunBatched(
 
 When your function throws an exception or returns a failure status code, Event Grid retries the delivery based on the subscription's retry policy.
 
-For Event Grid Trigger functions, an unhandled exception causes the function to return a 500 status code, which triggers Event Grid's retry mechanism with exponential backoff.
+For Event Grid Trigger functions, an unhandled exception fails the invocation and Event Grid retries delivery based on the event subscription retry policy. If you need to control the exact HTTP response returned to Event Grid, use an HTTP trigger and configure the subscription as a webhook endpoint.
 
 ```csharp
 [Function("HandleOrderEvent")]
@@ -248,7 +243,8 @@ public async Task Run([EventGridTrigger] EventGridEvent eventGridEvent)
 
 Event Grid Trigger functions scale based on the event rate. The Functions runtime monitors the incoming event rate and scales out instances to keep up. Key factors that affect scaling:
 
-- **Consumption plan**: Scales to hundreds of instances automatically, but has a cold start penalty
+- **Flex Consumption plan**: Scales to up to 1,000 instances with serverless billing and improved cold start behavior
+- **Consumption plan**: Scales automatically on Windows, but is a legacy hosting plan for new serverless apps
 - **Premium plan**: Pre-warmed instances eliminate cold starts, scales based on event rate
 - **Dedicated plan**: Fixed number of instances, no automatic scaling
 
