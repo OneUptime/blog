@@ -113,17 +113,17 @@ az keyvault set-policy \
   --secret-permissions get list
 ```
 
-## Step 3: Create the Application Gateway with Both Listeners
+## Step 3: Create the Application Gateway with the HTTPS Listener
 
 Now we create the gateway with the HTTPS listener and certificate configured.
 
 ```bash
-# Get the Key Vault certificate secret ID
+# Get the Key Vault certificate secret ID without the version
 SECRET_ID=$(az keyvault certificate show \
   --vault-name kv-appgw-certs \
   --name my-ssl-cert \
   --query "sid" \
-  --output tsv)
+  --output tsv | sed 's|/[^/]*$|/|')
 
 # Get the managed identity resource ID
 IDENTITY_RESOURCE_ID=$(az identity show \
@@ -145,6 +145,8 @@ az network application-gateway create \
   --http-settings-port 443 \
   --http-settings-protocol Https \
   --frontend-port 443 \
+  --priority 100 \
+  --ssl-certificate-name my-ssl-cert \
   --key-vault-secret-id $SECRET_ID \
   --identity $IDENTITY_RESOURCE_ID \
   --servers 10.0.2.4 10.0.2.5
@@ -183,7 +185,7 @@ az network application-gateway redirect-config create \
   --gateway-name appgw-main \
   --name redirect-http-to-https \
   --type Permanent \
-  --target-listener listener-https \
+  --target-listener appGatewayHttpListener \
   --include-path true \
   --include-query-string true
 ```
@@ -249,7 +251,7 @@ az network application-gateway http-listener create \
   --resource-group rg-appgw \
   --gateway-name appgw-main \
   --name listener-https-example-com \
-  --frontend-port port-https \
+  --frontend-port appGatewayFrontendPort \
   --frontend-ip appGatewayFrontendIP \
   --host-name "example.com" \
   --ssl-cert my-ssl-cert
@@ -279,7 +281,7 @@ For repeatable deployments, here is the relevant snippet from an ARM template th
         "properties": {
           "redirectType": "Permanent",
           "targetListener": {
-            "id": "[concat(resourceId('Microsoft.Network/applicationGateways', 'appgw-main'), '/httpListeners/listener-https')]"
+            "id": "[concat(resourceId('Microsoft.Network/applicationGateways', 'appgw-main'), '/httpListeners/appGatewayHttpListener')]"
           },
           "includePath": true,
           "includeQueryString": true
