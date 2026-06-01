@@ -14,7 +14,7 @@ In this guide, I will cover setting up both ServiceNow and Jira integrations wit
 
 ## Architecture Overview
 
-The integration uses Logic Apps (playbooks) that are triggered by Sentinel incidents or alerts. Each playbook connects to the target platform through managed API connectors.
+The integration uses Logic Apps (playbooks) that are triggered by Sentinel incidents or alerts. Each playbook connects to the target platform through managed API connectors or HTTP actions.
 
 ```mermaid
 flowchart LR
@@ -39,6 +39,8 @@ flowchart LR
 - ServiceNow instance with REST API access (Admin role needed for initial setup)
 - Jira Cloud or Jira Data Center with API access
 - Logic App Contributor role on the resource group
+- Microsoft Sentinel Contributor permissions for Content Hub and automation rule configuration
+- Microsoft Sentinel Automation Contributor on the resource group that contains playbooks you want automation rules to run
 - Service accounts in ServiceNow and Jira for the integration
 
 ## Part 1: ServiceNow Integration
@@ -63,11 +65,10 @@ In your ServiceNow instance, create a dedicated service account for the Sentinel
 
 ### Step 3: Create the ServiceNow Incident Playbook
 
-Create a Logic App that creates a ServiceNow incident from a Sentinel incident:
+Create a Logic App that creates a ServiceNow incident from a Sentinel incident. If you use the HTTP action against the ServiceNow Table API directly, the workflow definition looks like this:
 
 ```json
 {
-  // Logic App definition for creating ServiceNow incidents from Sentinel
   "definition": {
     "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
     "triggers": {
@@ -88,19 +89,20 @@ Create a Logic App that creates a ServiceNow incident from a Sentinel incident:
     },
     "actions": {
       "Create_ServiceNow_Incident": {
-        "type": "ApiConnection",
+        "type": "Http",
         "inputs": {
-          "host": {
-            "connection": {
-              "name": "@parameters('$connections')['service-now']['connectionId']"
-            }
+          "method": "POST",
+          "uri": "https://yourinstance.service-now.com/api/now/v2/table/incident",
+          "headers": {
+            "Content-Type": "application/json",
+            "Authorization": "Basic @{base64(concat(parameters('ServiceNowUser'), ':', parameters('ServiceNowPassword')))}"
           },
-          "method": "post",
-          "path": "/api/now/v2/table/incident",
+          "queries": {
+            "sysparm_input_display_value": "true"
+          },
           "body": {
-            // Map Sentinel incident fields to ServiceNow fields
             "short_description": "Sentinel: @{triggerBody()?['object']?['properties']?['title']}",
-            "description": "@{triggerBody()?['object']?['properties']?['description']}\n\nSeverity: @{triggerBody()?['object']?['properties']?['severity']}\nIncident URL: @{triggerBody()?['object']?['properties']?['incidentUrl']}",
+            "description": "@{triggerBody()?['object']?['properties']?['description']}\n\nSeverity: @{triggerBody()?['object']?['properties']?['severity']}\nIncident URL: @{triggerBody()?['object']?['properties']?['incidentUrl']}\nSentinel ARM ID: @{triggerBody()?['object']?['id']}",
             "urgency": "@{if(equals(triggerBody()?['object']?['properties']?['severity'], 'High'), '1', if(equals(triggerBody()?['object']?['properties']?['severity'], 'Medium'), '2', '3'))}",
             "impact": "@{if(equals(triggerBody()?['object']?['properties']?['severity'], 'High'), '1', if(equals(triggerBody()?['object']?['properties']?['severity'], 'Medium'), '2', '3'))}",
             "category": "Security",
@@ -157,7 +159,6 @@ When the ServiceNow incident is resolved, you want the Sentinel incident to be u
 
 ```json
 {
-  // Polling-based sync from ServiceNow to Sentinel
   "triggers": {
     "Recurrence": {
       "type": "Recurrence",
@@ -169,16 +170,14 @@ When the ServiceNow incident is resolved, you want the Sentinel incident to be u
   },
   "actions": {
     "Query_resolved_ServiceNow_incidents": {
-      "type": "ApiConnection",
+      "type": "Http",
       "inputs": {
-        "host": {
-          "connection": {
-            "name": "@parameters('$connections')['service-now']['connectionId']"
-          }
+        "method": "GET",
+        "uri": "https://yourinstance.service-now.com/api/now/v2/table/incident",
+        "headers": {
+          "Accept": "application/json",
+          "Authorization": "Basic @{base64(concat(parameters('ServiceNowUser'), ':', parameters('ServiceNowPassword')))}"
         },
-        "method": "get",
-        // Find recently resolved incidents created by Sentinel
-        "path": "/api/now/v2/table/incident",
         "queries": {
           "sysparm_query": "caller_id=sentinel.integration^state=6^sys_updated_on>=javascript:gs.minutesAgoStart(10)",
           "sysparm_limit": "50"
@@ -217,7 +216,6 @@ Since the managed Jira connector has limitations, using the HTTP action with the
 
 ```json
 {
-  // Logic App action to create a Jira issue via REST API
   "Create_Jira_Issue": {
     "type": "Http",
     "inputs": {
@@ -225,8 +223,6 @@ Since the managed Jira connector has limitations, using the HTTP action with the
       "uri": "https://yourcompany.atlassian.net/rest/api/3/issue",
       "headers": {
         "Content-Type": "application/json",
-        // Basic auth with email:api_token base64 encoded
-        // Store credentials in Key Vault and reference them
         "Authorization": "Basic @{base64(concat('sentinel-bot@company.com', ':', parameters('JiraApiToken')))}"
       },
       "body": {
@@ -235,10 +231,8 @@ Since the managed Jira connector has limitations, using the HTTP action with the
             "key": "SEC"
           },
           "issuetype": {
-            // Issue type for security incidents
             "name": "Bug"
           },
-          // Map Sentinel severity to Jira priority
           "priority": {
             "name": "@{if(equals(triggerBody()?['object']?['properties']?['severity'], 'High'), 'High', if(equals(triggerBody()?['object']?['properties']?['severity'], 'Medium'), 'Medium', 'Low'))}"
           },
@@ -281,7 +275,7 @@ Before creating the ticket, enrich it with entity information from the Sentinel 
 
 ```json
 {
-  "Get_Entities": {
+  "Get_IPs": {
     "type": "ApiConnection",
     "inputs": {
       "host": {
@@ -290,18 +284,19 @@ Before creating the ticket, enrich it with entity information from the Sentinel 
         }
       },
       "method": "post",
-      "path": "/entities/@{triggerBody()?['object']?['id']}"
+      "path": "/entities/ip",
+      "body": "@triggerBody()?['object']?['properties']?['relatedEntities']"
     }
   },
-  "For_each_entity": {
+  "For_each_ip": {
     "type": "Foreach",
-    "foreach": "@body('Get_Entities')?['entities']",
+    "foreach": "@body('Get_IPs')?['IPs']",
     "actions": {
       "Append_entity_to_description": {
         "type": "AppendToStringVariable",
         "inputs": {
           "name": "entityDetails",
-          "value": "Entity: @{items('For_each_entity')?['kind']} - @{items('For_each_entity')?['properties']?['friendlyName']}\n"
+          "value": "IP: @{items('For_each_ip')?['Address']}\n"
         }
       }
     }
@@ -309,7 +304,7 @@ Before creating the ticket, enrich it with entity information from the Sentinel 
 }
 ```
 
-Include the entity details in the Jira issue description so the security team has all the context they need.
+Use the matching Microsoft Sentinel entity actions, such as "Entities - Get IPs," "Entities - Get Hosts," and "Entities - Get Accounts," depending on which entity types you want to include. Include the entity details in the Jira issue description so the security team has all the context they need.
 
 ### Step 4: Configure the Automation Rule
 
@@ -329,6 +324,7 @@ az sentinel automation-rule create \
   --name "create-jira-for-security-incidents" \
   --display-name "Create Jira issue for security incidents" \
   --order 1 \
+  --actions '[{"order": 1, "actionType": "RunPlaybook", "actionConfiguration": {"logicAppResourceId": "/subscriptions/<subscription-id>/resourceGroups/myResourceGroup/providers/Microsoft.Logic/workflows/create-jira-issue", "tenantId": "<tenant-id>"}}]' \
   --triggering-logic '{"isEnabled": true, "triggersOn": "Incidents", "triggersWhen": "Created", "conditions": [{"conditionType": "Property", "conditionProperties": {"propertyName": "IncidentSeverity", "operator": "Contains", "propertyValues": ["High", "Medium"]}}]}'
 ```
 
