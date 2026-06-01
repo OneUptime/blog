@@ -22,7 +22,7 @@ Each pattern has different delivery guarantees, latency characteristics, and use
 
 ## Pattern 1: Direct Methods
 
-Direct methods work like remote procedure calls. The back end invokes a method on a specific device, the device executes a handler, and returns a response. If the device is offline, the call fails immediately - there is no queuing.
+Direct methods work like remote procedure calls. The back end invokes a method on a specific device, the device executes a handler, and returns a response. If the device is offline, the call fails after the connection timeout - there is no queuing.
 
 This pattern is ideal for commands that need immediate feedback: "reboot now", "capture a photo", "run diagnostics and return the result."
 
@@ -99,7 +99,7 @@ async function invokeReboot(deviceId) {
     console.log(`Method status: ${result.result.status}`);
     console.log(`Response payload:`, result.result.payload);
   } catch (err) {
-    // If the device is offline, this will throw
+    // If the device stays offline beyond connectTimeoutInSeconds, this will throw
     console.error('Method invocation failed:', err.message);
   }
 }
@@ -107,11 +107,11 @@ async function invokeReboot(deviceId) {
 serviceClient.open().then(() => invokeReboot('device-01'));
 ```
 
-The key thing to understand is the timeout behavior. If the device does not respond within `responseTimeoutInSeconds`, the call fails. There is no retry or queuing. This is by design - if you need guaranteed delivery to offline devices, use one of the other patterns.
+The key thing to understand is the timeout behavior. If the device does not respond within `responseTimeoutInSeconds`, or does not connect within `connectTimeoutInSeconds`, the call fails. There is no retry or queuing. This is by design - if you need durable communication with offline devices, use one of the other patterns.
 
 ## Pattern 2: Device Twin Desired Properties
 
-Device twins are JSON documents stored in IoT Hub that represent the state of each device. They have two sections: **desired properties** (set by the back end) and **reported properties** (set by the device). When the back end updates a desired property, the device gets notified the next time it connects or immediately if it is already online.
+Device twins are JSON documents stored in IoT Hub that represent the state of each device. They include service-side **tags**, **desired properties** (set by the back end), and **reported properties** (set by the device). When the back end updates a desired property, the device gets notified the next time it connects or immediately if it is already online.
 
 This pattern is perfect for configuration changes: setting a reporting interval, enabling a feature flag, updating a threshold value.
 
@@ -201,7 +201,7 @@ The major advantage here is persistence. If the device is offline when you set a
 
 ## Pattern 3: Cloud-to-Device Messages
 
-C2D messages are one-way messages queued in IoT Hub for a specific device. The device receives them when it connects and pulls from the queue. Messages have a configurable time-to-live (default 1 hour, max 48 hours) and support acknowledgment.
+C2D messages are one-way messages queued in IoT Hub for a specific device. The device receives them when it is connected; devices using HTTPS poll for messages. Messages have a configurable time-to-live (default 1 hour, max 48 hours) and support acknowledgment.
 
 This pattern is suitable for notifications, one-time commands, or any message that should be delivered once but does not need an immediate response.
 
@@ -291,7 +291,7 @@ flowchart TD
 
 ## Rate Limits and Quotas
 
-Each IoT Hub tier has different limits for C2D operations. On S1 tier, you can send 100 C2D messages per unit per second and invoke 20 direct methods per unit per second. Device twin updates are limited to 10 per unit per second. If you are building a system that needs to blast commands to thousands of devices simultaneously, plan your tier accordingly and consider using IoT Hub jobs for bulk operations.
+Each IoT Hub tier has different limits for C2D operations. On S1 tier, cloud-to-device sends are limited to 1.67 per unit per second (100 per minute), direct methods are limited to 160 KB per unit per second, and device twin updates are limited to 50 per second per hub. If you are building a system that needs to blast commands to thousands of devices simultaneously, plan your tier accordingly and consider using IoT Hub jobs for bulk operations.
 
 ## Wrapping Up
 
