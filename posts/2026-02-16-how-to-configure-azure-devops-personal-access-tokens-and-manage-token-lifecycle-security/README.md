@@ -40,21 +40,23 @@ For automation, you can create PATs programmatically using the Token Administrat
 ```bash
 # Create a PAT using the Azure DevOps REST API
 
-# Note: You need an existing PAT or OAuth token with Token Administration scope
+# Note: PAT lifecycle management APIs require a Microsoft Entra access token.
+# You can get one with Azure CLI after signing in:
+# az account get-access-token --resource 499b84ac-1321-427f-aa17-267ca6975798 --query accessToken --output tsv
 
 ORG="your-organization"
-AUTH_TOKEN="existing-admin-pat"
+ENTRA_TOKEN="microsoft-entra-access-token"
 
 # Create a new PAT with specific scopes
 # The scope "vso.code" gives read access to source code
 curl -X POST \
   "https://vssps.dev.azure.com/${ORG}/_apis/tokens/pats?api-version=7.1-preview.1" \
-  -H "Authorization: Basic $(echo -n ":${AUTH_TOKEN}" | base64)" \
+  -H "Authorization: Bearer ${ENTRA_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
     "displayName": "CI Pipeline - Read Code",
     "scope": "vso.code",
-    "validTo": "2026-05-16T00:00:00.000Z",
+    "validTo": "2026-12-16T00:00:00.000Z",
     "allOrgs": false
   }'
 ```
@@ -71,35 +73,23 @@ Never set the maximum expiration just to avoid the hassle of rotation. The longe
 
 ## Organizational Policies for PAT Management
 
-Organization administrators can enforce token policies across all users. Navigate to Organization Settings, then Policies, to configure these.
+Organization administrators can enforce token policies across all users. Tenant-level policies are configured from Organization Settings, then Microsoft Entra. Organization-level PAT creation restrictions are configured from Organization Settings, then Policies.
 
 The key policies available are:
 
-Restrict creation of global PATs - This prevents users from creating tokens that work across all organizations in their Azure AD tenant. Enable this to ensure tokens are scoped to a single organization.
+Restrict creation of global PATs - This prevents users from creating tokens that work across all organizations in their Microsoft Entra tenant. Enable this to ensure tokens are scoped to a single organization.
 
 Restrict creation of full-scoped PATs - This forces users to select specific scopes instead of "Full access." Enabling this is one of the most impactful security controls you can set.
 
 Maximum token lifetime - You can set a maximum allowed lifetime, forcing all tokens to expire within your defined window. Setting this to 90 days or less is a solid baseline.
 
-```powershell
-# Check current PAT policies using Azure DevOps CLI
-# This requires the azure-devops extension for Azure CLI
-
-# Install the extension if needed
-az extension add --name azure-devops
-
-# Configure the default organization
-az devops configure --defaults organization=https://dev.azure.com/your-org
-
-# List current token policies
-az devops admin policy list --output table
-```
+The Azure DevOps CLI does not currently expose a dedicated `az devops admin policy` command for these PAT policies, so use the portal for policy configuration and verification.
 
 ## Monitoring and Auditing Token Usage
 
-Azure DevOps provides audit logs that track PAT creation, usage, and revocation. Access these from Organization Settings, then Auditing.
+Azure DevOps provides audit logs that track PAT-related activity such as creation and revocation. Access these from Organization Settings, then Auditing.
 
-You can filter audit events for token-related activities. The key events to monitor are Token Created, Token Revoked, and Token Used for Authentication. Set up alerts for unusual patterns like a token being used from an unexpected IP address or a spike in API calls from a single token.
+You can filter audit events for token-related activities. Set up alerts for unusual patterns like token changes from an unexpected IP address or a spike in API calls from a single token.
 
 For programmatic monitoring, use the Audit Log API.
 
@@ -111,14 +101,14 @@ START_DATE=$(date -u -d "7 days ago" +%Y-%m-%dT%H:%M:%SZ)
 END_DATE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 curl -s \
-  "https://auditservice.dev.azure.com/${ORG}/_apis/audit/auditlog?startTime=${START_DATE}&endTime=${END_DATE}&api-version=7.1" \
+  "https://auditservice.dev.azure.com/${ORG}/_apis/audit/auditlog?startTime=${START_DATE}&endTime=${END_DATE}&api-version=7.1-preview.1" \
   -H "Authorization: Basic $(echo -n ":${PAT}" | base64)" | \
   python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 # Filter for token-related events
-for entry in data.get('decoratedAuditLogEntries', []):
-    if 'Token' in entry.get('actionId', ''):
+for entry in data.get('value', {}).get('decoratedAuditLogEntries', []):
+    if 'token' in entry.get('actionId', '').lower() or 'pat' in entry.get('details', '').lower():
         print(f\"{entry['timestamp']} - {entry['actionId']} - {entry.get('actorDisplayName', 'Unknown')}\")
 "
 ```
@@ -143,17 +133,20 @@ param(
 
 # Connect to Azure
 Connect-AzAccount -Identity  # Uses managed identity in automation
+$tokenResult = Get-AzAccessToken -ResourceUrl "499b84ac-1321-427f-aa17-267ca6975798"
+$tokenPointer = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($tokenResult.Token)
+$entraToken = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($tokenPointer)
+[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($tokenPointer)
 
 # Calculate new expiration (30 days from now)
-$expirationDate = (Get-Date).AddDays(30).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+$expirationDate = (Get-Date).ToUniversalTime().AddDays(30).ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
 
-# Get the current PAT from Key Vault for API authentication
+# Get the current PAT metadata from Key Vault so it can be revoked after replacement
 $currentSecret = Get-AzKeyVaultSecret -VaultName $KeyVaultName -Name $SecretName
-$currentPat = $currentSecret.SecretValue | ConvertFrom-SecureString -AsPlainText
 
 # Create a new PAT via the REST API
 $headers = @{
-    "Authorization" = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$currentPat"))
+    "Authorization" = "Bearer $entraToken"
     "Content-Type"  = "application/json"
 }
 
@@ -172,7 +165,11 @@ $response = Invoke-RestMethod `
 
 # Store the new PAT in Key Vault
 $newPatSecure = ConvertTo-SecureString -String $response.patToken.token -AsPlainText -Force
-Set-AzKeyVaultSecret -VaultName $KeyVaultName -Name $SecretName -SecretValue $newPatSecure
+Set-AzKeyVaultSecret `
+    -VaultName $KeyVaultName `
+    -Name $SecretName `
+    -SecretValue $newPatSecure `
+    -Tag @{ tokenId = $response.patToken.authorizationId }
 
 # Revoke the old token
 $oldTokenId = $currentSecret.Tags["tokenId"]
@@ -180,9 +177,7 @@ if ($oldTokenId) {
     Invoke-RestMethod `
         -Uri "https://vssps.dev.azure.com/$Organization/_apis/tokens/pats?authorizationId=$oldTokenId&api-version=7.1-preview.1" `
         -Method Delete `
-        -Headers @{
-            "Authorization" = "Basic " + [Convert]::ToBase64String([Text.Encoding]::ASCII.GetBytes(":$($response.patToken.token)"))
-        }
+        -Headers $headers
 }
 
 Write-Output "PAT rotated successfully. New expiration: $expirationDate"
@@ -192,7 +187,7 @@ Write-Output "PAT rotated successfully. New expiration: $expirationDate"
 
 While PATs are convenient, consider these alternatives that offer better security for specific scenarios.
 
-Service Principals with Azure AD are better for CI/CD pipelines. They support certificate-based authentication, have centralized management through Azure AD, and can use Managed Identities when running on Azure resources.
+Service Principals with Microsoft Entra ID are better for CI/CD pipelines. They support certificate-based authentication, have centralized management through Microsoft Entra ID, and can use Managed Identities when running on Azure resources.
 
 OAuth apps are better for third-party integrations. They use standard OAuth flows with refresh tokens and support consent-based access.
 
@@ -204,21 +199,31 @@ Workload Identity Federation (OIDC) is the newest and most secure option for pip
 
 If you suspect a token has been leaked, revoke it immediately. Here is how to do it through different channels.
 
-Through the portal, navigate to Personal Access Tokens, find the token, and click Revoke. Through the CLI, use the `az devops security token revoke` command. Through the API, send a DELETE request to the token endpoint.
+Through the portal, navigate to Personal Access Tokens, find the token, and click Revoke. Through the API, send a DELETE request to the token endpoint with the token's authorization ID.
 
-For organization-wide emergencies, administrators can revoke all tokens for a specific user.
+For organization-wide emergencies, administrators can list the PATs for a specific user and revoke the returned authorization IDs.
 
 ```bash
-# Revoke all PATs for a specific user (admin operation)
+# Revoke selected PATs for a specific user (admin operation)
 # Useful when an employee leaves or their account is compromised
 ORG="your-organization"
-ADMIN_PAT="admin-pat"
+ENTRA_TOKEN="microsoft-entra-token-with-vso.tokenadministration"
 USER_DESCRIPTOR="aad.user-descriptor-here"
+AUTHORIZATION_ID="authorization-id-from-tokenadmin-list"
 
-curl -X DELETE \
-  "https://vssps.dev.azure.com/${ORG}/_apis/tokens/pats?api-version=7.1-preview.1&isPublic=false" \
-  -H "Authorization: Basic $(echo -n ":${ADMIN_PAT}" | base64)" \
-  -H "Content-Type: application/json"
+# First list the user's PAT authorization IDs.
+curl -s \
+  "https://vssps.dev.azure.com/${ORG}/_apis/tokenadmin/personalaccesstokens/${USER_DESCRIPTOR}?isPublic=false&api-version=7.1" \
+  -H "Authorization: Bearer ${ENTRA_TOKEN}"
+
+# Then revoke the selected authorization IDs.
+curl -X POST \
+  "https://vssps.dev.azure.com/${ORG}/_apis/tokenadmin/revocations?isPublic=false&api-version=7.1" \
+  -H "Authorization: Bearer ${ENTRA_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "[
+    { \"authorizationId\": \"${AUTHORIZATION_ID}\" }
+  ]"
 ```
 
 Managing PATs well comes down to three principles: scope them tightly, expire them quickly, and monitor them constantly. No token should have more access than its use case requires, no token should live longer than necessary, and every token usage should be logged and reviewable. Follow these principles and PATs become a manageable part of your security posture rather than a ticking time bomb.
