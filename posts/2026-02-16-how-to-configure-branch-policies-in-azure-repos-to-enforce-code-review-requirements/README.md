@@ -49,17 +49,12 @@ Within this policy, you have additional options:
 
 Code review alone does not catch everything. You also want automated builds running against every pull request. Under the **Build validation** section, click **Add build policy**.
 
-The following configuration runs your CI pipeline against every PR targeting the main branch.
+The following configuration defines a CI pipeline that can be selected by the build validation policy. For Azure Repos, PR validation is triggered by the branch policy, not by a YAML `pr` trigger.
 
 ```yaml
 # This YAML is your CI pipeline that runs on PR validation
 
-trigger: none  # Do not trigger on push; only on PR validation
-
-pr:
-  branches:
-    include:
-      - main
+trigger: none  # Do not trigger on push; branch policy queues PR validation builds
 
 pool:
   vmImage: 'ubuntu-latest'
@@ -111,9 +106,9 @@ Automatic reviewers are assigned based on file path patterns. This is incredibly
 
 For example, you might configure:
 
-- Changes to `/src/database/**` automatically add the DBA team as reviewers
-- Changes to `/infrastructure/**` automatically add the DevOps team
-- Changes to `/src/api/auth/**` automatically add the security team
+- Changes to `/src/database/*` automatically add the DBA team as reviewers
+- Changes to `/infrastructure/*` automatically add the DevOps team
+- Changes to `/src/api/auth/*` automatically add the security team
 
 Here is how the path-based reviewer assignment works conceptually.
 
@@ -135,11 +130,11 @@ To set this up, go to **Automatically included reviewers**, click **Add**, then 
 - The reviewer (user or group)
 - The path filter (e.g., `/src/database/*`)
 - Whether this reviewer is required or optional
-- A minimum number of approvals from this group
+- If you add a single required group, a minimum number of approvals from that group
 
-## Branch-Specific Policies with Wildcards
+## Branch-Specific Policies with Prefix Matching
 
-You can apply policies to multiple branches using wildcards. For example, setting policies on `release/*` applies them to all release branches. This is useful when your branching strategy includes:
+You can apply policies to multiple branch folders using prefix matching. For example, setting policies with a prefix match on `release/` applies them to release branches under that folder. This is useful when your branching strategy includes:
 
 - `release/*` branches that need the same protection as main
 - `hotfix/*` branches that need build validation but maybe fewer reviewers
@@ -181,7 +176,7 @@ Sometimes you need to bypass policies - maybe there is a critical hotfix that ca
 
 This ability is controlled by the "Bypass policies when completing pull requests" permission. Grant it sparingly - typically only to team leads or a designated on-call rotation.
 
-Every policy override is logged, so you can audit who bypassed policies and when. I recommend running a periodic review of overrides to make sure they are not being abused.
+Configured policies are still evaluated for pull request changes, even for users who have bypass permissions. I recommend running a periodic review of bypass usage to make sure it is not being abused.
 
 ## Common Mistakes to Avoid
 
