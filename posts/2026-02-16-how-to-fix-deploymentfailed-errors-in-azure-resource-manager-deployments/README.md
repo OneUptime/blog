@@ -29,7 +29,7 @@ az deployment group show \
 az deployment operation group list \
   --resource-group myResourceGroup \
   --name myDeployment \
-  --query "[?properties.statusCode!='OK'].{resource: properties.targetResource.resourceType, name: properties.targetResource.resourceName, status: properties.statusCode, error: properties.statusMessage}" \
+  --query "[?properties.provisioningState=='Failed'].{resource: properties.targetResource.resourceType, name: properties.targetResource.resourceName, status: properties.provisioningState, error: properties.statusMessage}" \
   --output table
 ```
 
@@ -133,9 +133,9 @@ If your template creates a resource type that requires a resource provider that 
 
 ```bash
 # Register the missing resource provider
-az provider register --namespace Microsoft.ContainerService
+az provider register --namespace Microsoft.ContainerService --wait
 
-# Wait for registration to complete
+# Verify registration completed
 az provider show --namespace Microsoft.ContainerService --query "registrationState"
 ```
 
@@ -181,8 +181,8 @@ az deployment group create \
   --parameters @azuredeploy.parameters.json \
   --mode Incremental
 
-# Use Complete mode to remove resources not in the template
-# WARNING: Complete mode deletes resources not defined in the template
+# Complete mode deletes resources not defined in the template.
+# Microsoft recommends deployment stacks for deletions because Complete mode is being deprecated.
 az deployment group create \
   --resource-group myResourceGroup \
   --template-file azuredeploy.json \
@@ -203,7 +203,7 @@ Not all VM sizes, storage SKUs, or service tiers are available in every Azure re
 az vm list-skus \
   --location eastus \
   --resource-type virtualMachines \
-  --query "[?restrictions[0].type!='Location'].{name: name, family: family}" \
+  --query "[?length(restrictions)==\`0\`].{name: name, family: family}" \
   --output table
 ```
 
@@ -219,7 +219,7 @@ ARM deployments have a timeout of 4 hours for resource group deployments. If a r
 
 ## Viewing Deployment History and Correlating Errors
 
-Azure keeps the last 800 deployments per resource group. You can use this history to understand patterns:
+Each resource group is limited to 800 deployments in its deployment history, and Azure automatically deletes old deployments as you near that limit. You can use this history to understand patterns:
 
 ```bash
 # List recent deployments with their status
@@ -261,6 +261,6 @@ flowchart TD
 3. Use CI/CD pipelines that validate templates on every pull request.
 4. Keep templates modular - smaller templates are easier to debug.
 5. Use parameter validation in your templates to catch bad inputs early.
-6. Tag your deployments with meaningful names so you can find them in the history.
+6. Use meaningful deployment names so you can find them in the history.
 
 DeploymentFailed is never the real error. The key is to drill into the deployment operations, find the first resource that failed, and address that specific issue. Most of the time, it is a naming conflict, a quota limit, or a misconfiguration.
