@@ -140,31 +140,13 @@ $storageKey = (az storage account keys list --resource-group myResourceGroup --a
 net use Z: \\avdprofilestorage.file.core.windows.net\fslogix-profiles /user:Azure\avdprofilestorage $storageKey
 
 # Set NTFS permissions on the share root
-# Users need modify permission to create and manage their profile containers
-$acl = Get-Acl Z:\
-
-# Remove inherited permissions and set explicit ones
-$acl.SetAccessRuleProtection($true, $false)
-
-# Creator/Owner gets full control of their own folder
-$creatorOwnerRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-    "CREATOR OWNER", "FullControl", "SubContainers,ObjectInherit", "InheritOnly", "Allow"
-)
-$acl.AddAccessRule($creatorOwnerRule)
-
-# Authenticated users can create folders but not see other users' profiles
-$usersRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-    "Authenticated Users", "Modify", "None", "None", "Allow"
-)
-$acl.AddAccessRule($usersRule)
-
-# Administrators get full control
-$adminRule = New-Object System.Security.AccessControl.FileSystemAccessRule(
-    "BUILTIN\Administrators", "FullControl", "ContainerInherit,ObjectInherit", "None", "Allow"
-)
-$acl.AddAccessRule($adminRule)
-
-Set-Acl Z:\ $acl
+# Replace CONTOSO\AVDUsers and CONTOSO\Domain Admins with your AD groups
+icacls Z: /inheritance:r
+icacls Z: /grant:r "CREATOR OWNER:(OI)(CI)(IO)(M)"
+icacls Z: /grant:r "CONTOSO\Domain Admins:(OI)(CI)(F)"
+icacls Z: /grant:r "CONTOSO\AVDUsers:(M)"
+icacls Z: /remove "Authenticated Users"
+icacls Z: /remove "Builtin\Users"
 
 # Disconnect the drive (cleanup)
 net use Z: /delete
@@ -235,22 +217,22 @@ Get-Volume | Where-Object { $_.FileSystemLabel -like "*Profile*" }
 Get-Content "C:\ProgramData\FSLogix\Logs\Profile*.log" -Tail 50
 
 # Verify the profile container was created on Azure Files
-# Look for a folder named after the user's SID containing a Profile_*.VHDX file
+# Look for a folder named after the user's SID and username containing a Profile_*.VHDX file
 ```
 
 On the Azure Files share, you should see a folder structure like:
 
 ```text
 \\avdprofilestorage.file.core.windows.net\fslogix-profiles\
-  S-1-5-21-xxxx-user1\
+  S-1-5-21-xxxx_user1\
     Profile_user1.VHDX
-  S-1-5-21-xxxx-user2\
+  S-1-5-21-xxxx_user2\
     Profile_user2.VHDX
 ```
 
 ## Step 7: Configure Office Container (Optional)
 
-For Microsoft 365 applications, you can use a separate Office Container that stores Outlook cache, Teams cache, and OneDrive data. This prevents the profile container from growing too large.
+The Profile Container already includes Microsoft 365 application data, so you do not need a separate Office Container for most deployments. Use a separate Office Container only if you intentionally want to split Office data from the main profile container.
 
 ```powershell
 # Enable Office Container (separate from Profile Container)
@@ -273,7 +255,7 @@ New-ItemProperty -Path "HKLM:\SOFTWARE\Policies\FSLogix\ODFC" `
 **Common issues and solutions:**
 
 - **Slow login times**: Check the Azure Files share performance. Upgrade to a larger share size (which increases IOPS) or enable private endpoints to reduce network latency.
-- **Profile container locked**: This happens when a user's session was not properly closed. Use the FSLogix tool `frx.exe` to release the lock, or wait for the lock to expire.
+- **Profile container locked**: This happens when a user's session was not properly closed or the user is already connected elsewhere. Clean up the stale session, enable the FSLogix `CleanupInvalidSessions` setting if this is recurring, or close the open SMB file handle from Azure Files after confirming no active session is using it.
 - **Container growing too large**: Use FSLogix's redirect settings to exclude folders like browser caches and temp files from the profile container.
 
 ```powershell
