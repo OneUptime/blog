@@ -32,7 +32,7 @@ aws lambda create-function-url-config \
 # }
 ```
 
-You also need to add a resource-based policy to allow public access:
+You also need to add resource-based policy statements to allow public access:
 
 ```bash
 # Allow public invocations via the Function URL
@@ -42,6 +42,14 @@ aws lambda add-permission \
   --action lambda:InvokeFunctionUrl \
   --principal "*" \
   --function-url-auth-type NONE
+
+# Allow the function itself to be invoked through the Function URL
+aws lambda add-permission \
+  --function-name my-api-handler \
+  --statement-id FunctionURLInvokeFunctionPublicAccess \
+  --action lambda:InvokeFunction \
+  --principal "*" \
+  --invoked-via-function-url
 ```
 
 Using CloudFormation:
@@ -49,12 +57,26 @@ Using CloudFormation:
 ```yaml
 # Lambda function with a public Function URL
 Resources:
+  MyFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
   MyFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: my-api-handler
       Runtime: nodejs20.x
       Handler: index.handler
+      Role: !GetAtt MyFunctionRole.Arn
       Code:
         ZipFile: |
           exports.handler = async (event) => {
@@ -78,13 +100,21 @@ Resources:
           - POST
 
   # Permission for public access
-  MyFunctionUrlPermission:
+  MyFunctionUrlInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref MyFunction
       Action: lambda:InvokeFunctionUrl
       Principal: "*"
       FunctionUrlAuthType: NONE
+
+  MyFunctionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MyFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
 ```
 
 ## Handling HTTP Requests
@@ -202,12 +232,10 @@ Lambda handles the preflight OPTIONS requests automatically when CORS is configu
 
 ## Response Streaming
 
-Function URLs support response streaming, which is useful for large responses or server-sent events:
+Function URLs support response streaming, which is useful for large responses or server-sent events. To use it, configure the Function URL invoke mode as `RESPONSE_STREAM` instead of the default `BUFFERED` mode.
 
 ```javascript
 // Stream a large response instead of buffering it
-const { pipeline } = require('stream/promises');
-
 exports.handler = awslambda.streamifyResponse(async (event, responseStream, context) => {
   // Set the content type via metadata
   const metadata = {
@@ -233,7 +261,7 @@ Function URLs are great for:
 
 - **Webhooks** - Simple endpoints that receive callbacks from external services
 - **Health checks** - Quick status endpoints for monitoring
-- **Internal microservices** - Services that communicate within your infrastructure
+- **Internal microservices** - Services that communicate within your infrastructure when a public HTTPS endpoint with IAM authentication is acceptable
 - **Prototyping** - Quick HTTP endpoints without the API Gateway overhead
 - **Single-function APIs** - When you only need one or two endpoints
 
@@ -250,7 +278,7 @@ Here's a quick comparison:
 
 | Feature | Function URL | API Gateway |
 |---|---|---|
-| Cost | Free (pay only for Lambda) | ~$1 per million requests |
+| Cost | No extra Function URL charge (pay for Lambda) | HTTP APIs start around $1 per million requests; REST APIs cost more |
 | Custom domains | Not directly supported | Built-in |
 | Rate limiting | No | Yes |
 | Auth | IAM or none | IAM, Cognito, API keys, custom |
@@ -263,7 +291,7 @@ One of the most common uses is receiving webhooks from services like Stripe, Git
 
 ```javascript
 // Webhook handler with signature verification (Stripe example)
-const crypto = require('crypto');
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 exports.handler = async (event) => {
   const signature = event.headers['stripe-signature'];
@@ -271,20 +299,16 @@ exports.handler = async (event) => {
     ? Buffer.from(event.body, 'base64').toString()
     : event.body;
 
-  // Verify the webhook signature
-  const expectedSig = crypto
-    .createHmac('sha256', process.env.STRIPE_WEBHOOK_SECRET)
-    .update(body)
-    .digest('hex');
-
-  if (!crypto.timingSafeEqual(
-    Buffer.from(signature.split(',')[1].split('=')[1]),
-    Buffer.from(expectedSig)
-  )) {
-    return { statusCode: 401, body: 'Invalid signature' };
+  let webhookEvent;
+  try {
+    webhookEvent = stripe.webhooks.constructEvent(
+      body,
+      signature,
+      process.env.STRIPE_WEBHOOK_SECRET
+    );
+  } catch (error) {
+    return { statusCode: 400, body: `Invalid signature: ${error.message}` };
   }
-
-  const webhookEvent = JSON.parse(body);
 
   // Process the webhook
   switch (webhookEvent.type) {
