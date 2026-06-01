@@ -14,39 +14,37 @@ Azure SQL Database includes automatic backups that allow you to restore to any p
 
 ## How Azure SQL Database Backups Work
 
-Azure SQL Database creates three types of backups automatically:
+For most Azure SQL Database service tiers, Azure SQL Database creates three types of backups automatically:
 
 **Full backups**: Created weekly. These are a complete copy of the entire database.
 
-**Differential backups**: Created every 12-24 hours. These contain only the changes since the last full backup.
+**Differential backups**: Created every 12 or 24 hours. These contain only the changes since the last full backup.
 
-**Transaction log backups**: Created every 5-10 minutes. These capture every transaction that occurred since the last log backup.
+**Transaction log backups**: Created approximately every 10 minutes. These capture every transaction that occurred since the last log backup.
 
 Together, these three types allow you to restore to any second within the retention period. Azure uses the most recent full backup, applies the appropriate differential backup, and then replays the transaction log up to the exact moment you specify.
+
+Hyperscale databases use a different backup architecture based on storage snapshots and transaction logs, but still support point-in-time restore within the configured retention period.
 
 ```mermaid
 timeline
     title Backup Types Over Time
     section Week 1
         Full Backup : Sunday
-        Differential : Mon, Wed, Fri
-        Log Backups : Every 5-10 min
+        Differential : Every 12 or 24 hours
+        Log Backups : Approximately every 10 min
     section Week 2
         Full Backup : Sunday
-        Differential : Mon, Wed, Fri
-        Log Backups : Every 5-10 min
+        Differential : Every 12 or 24 hours
+        Log Backups : Approximately every 10 min
 ```
 
 ## Backup Retention Periods
 
-The default retention period depends on your service tier:
+The default short-term retention period for new, restored, and copied databases is 7 days. You can configure the retention period per database within these limits:
 
-- **Basic**: 7 days
-- **Standard**: 35 days
-- **Premium**: 35 days
-- **General Purpose**: 7 days (configurable up to 35 days)
-- **Business Critical**: 7 days (configurable up to 35 days)
-- **Hyperscale**: 7 days (configurable up to 35 days)
+- **Basic**: 1-7 days
+- **All other service tiers**: 1-35 days
 
 You can extend retention beyond 35 days using long-term backup retention (LTR), which stores backups for up to 10 years. That is covered in a separate post.
 
@@ -82,7 +80,7 @@ In the top toolbar, click "Restore". This opens the restore configuration page.
 
 **Database name**: The restored database gets a new name. You cannot overwrite the existing database. I recommend a name like "mydb-restored-20260216" so it is clear what it is.
 
-**Server**: By default, the database restores to the same server. You can choose a different server if needed.
+**Server**: Point-in-time restore creates the restored database on the same server as the original database.
 
 **Compute + storage**: Choose the pricing tier for the restored database. It defaults to the same tier as the original.
 
@@ -118,19 +116,7 @@ az sql db restore \
 
 The `--time` parameter must be in UTC format.
 
-To restore to a different server (must be in the same subscription):
-
-```bash
-# Restore to a different server
-az sql db restore \
-    --resource-group myResourceGroup \
-    --server myserver \
-    --name mydb \
-    --dest-name mydb-restored \
-    --dest-resource-group anotherResourceGroup \
-    --dest-server anotherserver \
-    --time "2026-02-16T10:30:00Z"
-```
+Point-in-time restore for Azure SQL Database restores to the same server. To restore to another server, use long-term retention restore, geo-restore, database copy, or active geo-replication depending on your recovery scenario.
 
 ## Performing a Point-in-Time Restore via PowerShell
 
@@ -147,17 +133,9 @@ Restore-AzSqlDatabase `
 
 ## Performing a Point-in-Time Restore via T-SQL
 
-You can also use T-SQL from the master database:
+Azure SQL Database point-in-time restore cannot be performed with T-SQL. Use the Azure Portal, Azure CLI, PowerShell, or the REST API for the restore operation.
 
-```sql
--- Restore a database to a specific point in time using T-SQL
--- Run this in the master database
-CREATE DATABASE [mydb_restored]
-AS COPY OF [myserver].[mydb]
-AT POINT_IN_TIME = '2026-02-16T10:30:00Z';
-```
-
-Note: The T-SQL syntax for point-in-time restore in Azure SQL Database uses `CREATE DATABASE ... AS COPY OF ... AT POINT_IN_TIME`. The Portal and CLI methods are more commonly used and support additional options.
+T-SQL is still useful after the restore. For example, you can rename databases with `ALTER DATABASE ... MODIFY NAME` when you are ready to swap the restored database into place.
 
 ## Swapping Databases After Restore
 
@@ -182,7 +160,7 @@ az sql db rename \
 # az sql db delete --resource-group myResourceGroup --server myserver --name mydb-damaged --yes
 ```
 
-The rename operation is fast and does not copy data. However, connection strings that specify the database by name will automatically point to the renamed database. Plan for a brief interruption.
+The rename operation is fast and does not copy data. Connection strings that specify the original database name will point to the restored database after it has been renamed to that original name. Plan for a brief interruption while the names are swapped.
 
 ## Restoring a Deleted Database
 
@@ -237,11 +215,11 @@ As a rough guideline:
 
 **Know your retention period.** If your default is 7 days and an incident is discovered after 8 days, you cannot restore. Consider extending retention for critical databases.
 
-**Act quickly after an incident.** The sooner you start the restore, the closer you can get to the moment before the damage. Transaction log backups happen every 5-10 minutes, so you can usually get very close.
+**Act quickly after an incident.** The latest restorable point depends on the latest available transaction log backup. Transaction log backups happen approximately every 10 minutes, so you can usually get very close to the moment before the damage.
 
 **Do not delete the original database.** Always rename it first. If the restore turns out to be wrong, you can switch back.
 
-**Consider geo-restore for regional outages.** Point-in-time restore works within the same region. For regional disasters, use geo-restore from geo-redundant backups (automatically configured for most tiers).
+**Consider geo-restore for regional outages.** Point-in-time restore creates a restored database on the same server. For regional disasters, use geo-restore from geo-redundant or geo-zone-redundant backups.
 
 ## Summary
 
