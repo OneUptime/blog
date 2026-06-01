@@ -28,7 +28,7 @@ Before jumping into the setup, let's understand the pieces:
 
 ## Setting Up the IAM Role
 
-Image Builder needs an IAM role that allows it to launch instances, install software, and create AMIs. Here's a policy that covers the basics.
+Image Builder uses the `AWSServiceRoleForImageBuilder` service-linked role to launch instances, create snapshots, and register AMIs on your behalf. AWS creates this role automatically the first time you create an Image Builder image. The build instance also needs an instance profile so AWSTOE and SSM can run your components. Here's a small policy you can attach to the instance profile role if your build needs to read component files from S3 and write logs back to S3.
 
 ```json
 {
@@ -37,15 +37,6 @@ Image Builder needs an IAM role that allows it to launch instances, install soft
     {
       "Effect": "Allow",
       "Action": [
-        "ec2:RunInstances",
-        "ec2:CreateImage",
-        "ec2:CreateTags",
-        "ec2:DescribeImages",
-        "ec2:DescribeInstances",
-        "ec2:TerminateInstances",
-        "ec2:StopInstances",
-        "ssm:SendCommand",
-        "ssm:GetCommandInvocation",
         "s3:GetObject",
         "s3:PutObject"
       ],
@@ -55,7 +46,7 @@ Image Builder needs an IAM role that allows it to launch instances, install soft
 }
 ```
 
-You'll also need to attach the `EC2InstanceProfileForImageBuilder` and `AmazonSSMManagedInstanceCore` managed policies to the instance profile used during the build.
+You'll also need to attach the `EC2InstanceProfileForImageBuilder` and `AmazonSSMManagedInstanceCore` managed policies to the IAM role associated with the instance profile used during the build.
 
 ## Creating a Component
 
@@ -133,7 +124,7 @@ aws imagebuilder create-image-recipe \
   --parent-image "arn:aws:imagebuilder:us-east-1:aws:image/amazon-linux-2023-x86/x.x.x" \
   --components '[
     {
-      "componentArn": "arn:aws:imagebuilder:us-east-1:123456789:component/install-nginx/1.0.0"
+      "componentArn": "arn:aws:imagebuilder:us-east-1:123456789012:component/install-nginx/1.0.0"
     },
     {
       "componentArn": "arn:aws:imagebuilder:us-east-1:aws:component/update-linux/x.x.x"
@@ -198,7 +189,7 @@ aws imagebuilder create-distribution-configuration \
       "amiDistributionConfiguration": {
         "name": "web-server-{{imagebuilder:buildDate}}",
         "launchPermission": {
-          "userIds": ["987654321"]
+          "userIds": ["987654321098"]
         }
       }
     }
@@ -213,9 +204,9 @@ Now tie everything together into a pipeline that runs on a schedule:
 # Create a pipeline that builds new AMIs weekly on Mondays at 2am UTC
 aws imagebuilder create-image-pipeline \
   --name "web-server-pipeline" \
-  --image-recipe-arn "arn:aws:imagebuilder:us-east-1:123456789:image-recipe/web-server-recipe/1.0.0" \
-  --infrastructure-configuration-arn "arn:aws:imagebuilder:us-east-1:123456789:infrastructure-configuration/web-server-infra" \
-  --distribution-configuration-arn "arn:aws:imagebuilder:us-east-1:123456789:distribution-configuration/web-server-distribution" \
+  --image-recipe-arn "arn:aws:imagebuilder:us-east-1:123456789012:image-recipe/web-server-recipe/1.0.0" \
+  --infrastructure-configuration-arn "arn:aws:imagebuilder:us-east-1:123456789012:infrastructure-configuration/web-server-infra" \
+  --distribution-configuration-arn "arn:aws:imagebuilder:us-east-1:123456789012:distribution-configuration/web-server-distribution" \
   --schedule '{
     "scheduleExpression": "cron(0 2 ? * MON *)",
     "pipelineExecutionStartCondition": "EXPRESSION_MATCH_AND_DEPENDENCY_UPDATES_AVAILABLE"
@@ -227,10 +218,10 @@ The `EXPRESSION_MATCH_AND_DEPENDENCY_UPDATES_AVAILABLE` condition means the pipe
 
 ## Terraform Alternative
 
-If you're managing infrastructure with Terraform, here's the equivalent setup:
+If you're managing infrastructure with Terraform, here's the same core setup:
 
 ```hcl
-# Complete Terraform configuration for an EC2 Image Builder pipeline
+# Core Terraform resources for an EC2 Image Builder pipeline
 resource "aws_imagebuilder_component" "nginx" {
   name     = "install-nginx"
   platform = "Linux"
@@ -324,7 +315,7 @@ phases:
 
 When a pipeline build fails, check the S3 logs first. The build logs are detailed and usually point directly at the failing step. You can also check the Systems Manager (SSM) run command history for the build instance.
 
-For ongoing monitoring, set up CloudWatch Events to trigger on pipeline state changes. You can get notified when builds succeed or fail.
+For ongoing monitoring, set up Amazon EventBridge rules to trigger on pipeline state changes. You can get notified when builds succeed or fail.
 
 For a broader view of your infrastructure health, check out how to [monitor EC2 instances with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view) to make sure the instances launched from your custom AMIs are performing well.
 
