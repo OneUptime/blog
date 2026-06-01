@@ -30,15 +30,15 @@ Each category is evaluated at four severity levels:
 
 By default, Azure OpenAI blocks content rated Medium or higher in all four categories. This means Low severity content is allowed through, while Medium and High severity content is blocked.
 
-When content is blocked, the API returns a 400 error with a specific error code indicating which filter was triggered.
+When a prompt is blocked, the API returns a 400 error with a `content_filter` error code. When generated output is blocked, the request can still return a 200 response, but the choice's `finish_reason` is set to `content_filter` and the returned content might be omitted or incomplete.
 
 ## Creating a Custom Content Filter
 
-Azure OpenAI Studio lets you create custom content filter configurations that you can apply to specific deployments. This is useful when you need to tighten or (in limited cases) loosen the default filters.
+Azure AI Foundry lets you create custom content filter configurations that you can apply to specific deployments. This is useful when you need to tighten or (in limited cases) loosen the default filters.
 
-### Step 1: Open Content Filters in Azure OpenAI Studio
+### Step 1: Open Content Filters in Azure AI Foundry
 
-Navigate to Azure OpenAI Studio (oai.azure.com). Click on "Content filters" in the left sidebar. You will see the default filter configuration and any custom configurations you have created.
+Navigate to Azure AI Foundry (ai.azure.com). Open your project, then select "Guardrails + controls" and the "Content filters" tab. You will see the default filter configuration and any custom configurations you have created.
 
 ### Step 2: Create a New Filter Configuration
 
@@ -48,7 +48,7 @@ You will see a table with the four harm categories and separate columns for inpu
 
 - **Low, Medium, High**: Blocks content at that severity level and above.
 - **High only**: Only blocks the most severe content.
-- **Off**: Disables filtering for that category (requires approval from Microsoft for most accounts).
+- **Annotate only or no filters**: Disables blocking while still returning annotations, or disables filtering for that category. These options require approval from Microsoft for Azure OpenAI resources.
 
 Here is an example configuration for a customer-facing chatbot where you want strict filtering:
 
@@ -73,19 +73,19 @@ Enable prompt shields: Yes
 - Document attack detection: Enabled
 ```
 
-**Protected material detection**: This filter checks if the model's output contains known copyrighted text (like song lyrics, news articles, or book passages). You can block or annotate such content.
+**Protected material detection**: This filter checks if the model's output contains known protected text or source code, such as song lyrics, selected web content, or code that matches public repositories. You can block or annotate such content.
 
-**Groundedness detection**: For RAG scenarios, this filter checks whether the model's response is grounded in the provided context or if it is hallucinating information.
+**Groundedness detection**: For supported streaming RAG scenarios, this filter checks whether the model's response is grounded in the provided context or if it is hallucinating information.
 
 ### Step 4: Apply the Filter to a Deployment
 
-After creating your custom filter configuration, go to "Deployments" in Azure OpenAI Studio. Select the deployment you want to protect. In the deployment settings, change the content filter from "Default" to your custom configuration.
+After creating your custom filter configuration, go to "Models + endpoints" in Azure AI Foundry. Select the deployment you want to protect, then edit the deployment and change the content filter from "Default" to your custom configuration.
 
 You can apply different filter configurations to different deployments. For example, you might use strict filters on your production chatbot deployment and more relaxed filters on an internal research deployment.
 
 ## Handling Filtered Content in Your Application
 
-When the content filter blocks a request, the API returns an error response. Your application needs to handle this gracefully.
+When the content filter blocks a prompt, the API returns an error response. If a generated completion is filtered, the API can return a response with `finish_reason` set to `content_filter`. Your application needs to handle both cases gracefully.
 
 ```python
 import openai
@@ -107,6 +107,13 @@ def safe_completion(messages):
             messages=messages,
             max_tokens=500
         )
+        if response.choices[0].finish_reason == "content_filter":
+            return {
+                "success": False,
+                "content": "The response was filtered by our content safety filters. "
+                           "Please rephrase your question and try again."
+            }
+
         return {
             "success": True,
             "content": response.choices[0].message.content
@@ -148,6 +155,8 @@ response = client.chat.completions.create(
 
 if hasattr(response.choices[0], 'content_filter_results'):
     filters = response.choices[0].content_filter_results
+    if hasattr(filters, "model_dump"):
+        filters = filters.model_dump()
     print(f"Hate: {filters.get('hate', {}).get('severity', 'safe')}")
     print(f"Sexual: {filters.get('sexual', {}).get('severity', 'safe')}")
     print(f"Violence: {filters.get('violence', {}).get('severity', 'safe')}")
@@ -158,7 +167,7 @@ if hasattr(response.choices[0], 'content_filter_results'):
 
 For compliance and auditing purposes, you may want to log content filter annotations even when content is not blocked. This gives you visibility into the types of content flowing through your application.
 
-The Azure OpenAI API includes filter annotations in the response when content passes through but is flagged at a low severity level. You can capture these annotations and send them to your logging infrastructure.
+The Azure OpenAI API includes filter annotations in chat responses, including `prompt_filter_results` for the input and `content_filter_results` for each choice. You can capture these annotations and send them to your logging infrastructure.
 
 Consider building a dashboard that tracks:
 
@@ -179,16 +188,15 @@ Consider building a dashboard that tracks:
 
 ## Monitoring Filter Performance
 
-Azure OpenAI integrates with Azure Monitor. Enable diagnostic settings to send content filter events to a Log Analytics workspace. You can then use KQL queries to analyze filter activity.
+Azure OpenAI integrates with Azure Monitor. Enable diagnostic settings to send resource logs to a Log Analytics workspace. You can then use KQL queries to inspect Azure OpenAI request logs and look for content filter responses.
 
 ```kql
-// Find all blocked requests in the last 24 hours
+// Inspect possible content-filtered requests in the last 24 hours
 AzureDiagnostics
 | where TimeGenerated > ago(24h)
-| where Category == "ContentFilter"
-| where resultType_s == "Blocked"
-| summarize BlockedCount = count() by filterCategory_s
-| order by BlockedCount desc
+| where ResultSignature == "400" or properties_s has "content_filter"
+| project TimeGenerated, Category, OperationName, ResultSignature, properties_s
+| order by TimeGenerated desc
 ```
 
 This data is valuable for tuning your filter configurations. If you see a high volume of false positives in a particular category, you may need to adjust your thresholds. If you see a high volume of legitimate blocks, it might indicate that users are testing the boundaries of your application.
