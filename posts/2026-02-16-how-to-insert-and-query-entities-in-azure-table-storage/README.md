@@ -36,7 +36,7 @@ dotnet add package Azure.Data.Tables
 Here is how to create a table client.
 
 ```python
-from azure.data.tables import TableServiceClient, TableClient
+from azure.data.tables import TableServiceClient, UpdateMode
 import os
 
 # Connect using the storage account connection string
@@ -77,7 +77,7 @@ If an entity with the same PartitionKey and RowKey already exists, create_entity
 ```python
 # Upsert inserts the entity if it does not exist, or replaces it if it does
 # This is useful when you do not want to check for existence first
-table_client.upsert_entity(entity=employee)
+table_client.upsert_entity(entity=employee, mode=UpdateMode.REPLACE)
 ```
 
 ## Inserting in .NET
@@ -180,7 +180,7 @@ update = {
     "Title": "Senior Engineer"
 }
 
-table_client.update_entity(entity=update, mode="merge")
+table_client.update_entity(entity=update, mode=UpdateMode.MERGE)
 
 # Replace update - replaces the entire entity
 # Any properties not included in this dictionary will be removed
@@ -195,7 +195,7 @@ full_entity = {
     "IsActive": True
 }
 
-table_client.update_entity(entity=full_entity, mode="replace")
+table_client.update_entity(entity=full_entity, mode=UpdateMode.REPLACE)
 ```
 
 ## Deleting Entities
@@ -218,7 +218,7 @@ print("Entity deleted")
 var entity = await tableClient.GetEntityAsync<TableEntity>("Engineering", "emp-001");
 Console.WriteLine($"Name: {entity.Value["FirstName"]} {entity.Value["LastName"]}");
 
-// Filter query using LINQ-style expressions
+// Filter query using an OData filter string
 var results = tableClient.QueryAsync<TableEntity>(
     filter: $"PartitionKey eq 'Engineering' and Salary gt 80000",
     select: new[] { "FirstName", "LastName", "Salary" }
@@ -249,7 +249,7 @@ Always include the PartitionKey in your filter when possible. A query without a 
 
 ## Handling Continuation Tokens
 
-Azure Table Storage returns results in pages. If your query matches more than 1,000 entities (or exceeds 4 MB of data), you will get a continuation token to fetch the next page. The Python SDK handles this transparently when you iterate over query results.
+Azure Table Storage returns results in pages. If your query matches more than 1,000 entities, does not complete within five seconds, or crosses a partition boundary, you will get a continuation token to fetch the next page. The Python SDK handles this transparently when you iterate over query results.
 
 ```python
 # The SDK handles pagination automatically when you iterate
