@@ -41,7 +41,7 @@ az account show --query "{user: user.name, type: user.type, subscriptionId: id}"
 az ad sp show --id <object-id-from-error> --query "{displayName: displayName, appId: appId}" --output table
 ```
 
-If you are deploying from Azure DevOps or GitHub Actions, the identity is the service connection's service principal. You can find its object ID in the pipeline logs or in the Azure portal under App registrations.
+If you are deploying from Azure DevOps or GitHub Actions, the identity is usually the service connection's service principal. You can find its object ID in the pipeline logs or in the Azure portal under Enterprise applications.
 
 ## Step 2: Check Current Role Assignments
 
@@ -63,7 +63,8 @@ az role assignment list \
 # Include inherited assignments from higher scopes
 az role assignment list \
   --assignee <object-id-or-email> \
-  --all \
+  --resource-group myResourceGroup \
+  --include-inherited \
   --output table
 ```
 
@@ -82,9 +83,11 @@ The error message tells you exactly which action is being denied. Match this to 
 # Find which built-in roles include a specific action
 # For example, find roles that allow creating virtual machines
 az role definition list \
-  --query "[?contains(permissions[0].actions, 'Microsoft.Compute/virtualMachines/write')].{roleName: roleName, description: description}" \
+  --query "[?contains(permissions[].actions[], 'Microsoft.Compute/virtualMachines/write') || contains(permissions[].actions[], '*')].{roleName: roleName, description: description}" \
   --output table
 ```
+
+For roles that allow broad wildcard actions, check the role's `notActions` as well to make sure the specific action is not excluded.
 
 For ARM template deployments that create multiple resource types, you might need permissions for several different resource providers. A typical web application deployment might need:
 
@@ -106,7 +109,7 @@ Once you know which role is needed, assign it at the appropriate scope:
 az role assignment create \
   --assignee <object-id-or-email> \
   --role "Contributor" \
-  --resource-group myResourceGroup
+  --scope "/subscriptions/<subscription-id>/resourceGroups/myResourceGroup"
 
 # Or assign at the subscription level if deploying to multiple resource groups
 az role assignment create \
@@ -115,7 +118,7 @@ az role assignment create \
   --scope "/subscriptions/<subscription-id>"
 ```
 
-RBAC changes can take up to 5 minutes to propagate. If you assign a role and immediately retry the deployment, it might still fail. Wait a few minutes and try again.
+RBAC changes can take several minutes to propagate. If you assign a role and immediately retry the deployment, it might still fail. Wait a few minutes and try again.
 
 ## Common Scenarios and Fixes
 
@@ -144,10 +147,10 @@ You need either the Owner role or the User Access Administrator role:
 az role assignment create \
   --assignee <service-principal-id> \
   --role "User Access Administrator" \
-  --resource-group myResourceGroup
+  --scope "/subscriptions/<subscription-id>/resourceGroups/myResourceGroup"
 ```
 
-A safer approach is to create a custom role that only allows specific role assignment operations:
+A more targeted approach is to create a custom role that grants role assignment operations only at the scope where the deployment needs them:
 
 ```json
 {
@@ -174,7 +177,7 @@ az role assignment create \
   --assignee-object-id <managed-identity-principal-id> \
   --assignee-principal-type ServicePrincipal \
   --role "Contributor" \
-  --resource-group myResourceGroup
+  --scope "/subscriptions/<subscription-id>/resourceGroups/myResourceGroup"
 ```
 
 ### Scenario 4: Deny Assignments Blocking Access
