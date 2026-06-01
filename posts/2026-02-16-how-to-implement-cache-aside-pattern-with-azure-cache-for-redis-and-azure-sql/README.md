@@ -44,7 +44,7 @@ Cache-aside is not ideal for:
 
 ## Prerequisites
 
-- An Azure Cache for Redis instance (Standard tier or higher)
+- An existing Azure Cache for Redis instance (Standard tier or higher), or an Azure Managed Redis instance for new deployments
 - An Azure SQL Database with some sample data
 - A .NET or Node.js application (we will show both)
 - Connection details for both services
@@ -134,8 +134,14 @@ public class ProductService
     {
         string cacheKey = $"product:{product.ProductId}";
 
-        // Step 1: Update the database first (source of truth)
+        // Step 1: Read the current category so related list caches can be invalidated
         using var connection = new SqlConnection(_sqlConnectionString);
+        var oldCategory = await connection.QuerySingleOrDefaultAsync<string>(
+            "SELECT Category FROM Products WHERE ProductId = @ProductId",
+            new { product.ProductId }
+        );
+
+        // Step 2: Update the database first (source of truth)
         await connection.ExecuteAsync(
             @"UPDATE Products
               SET Name = @Name, Description = @Description,
@@ -145,15 +151,22 @@ public class ProductService
             product
         );
 
-        // Step 2: Invalidate the cache entry
+        // Step 3: Invalidate the cache entries
         // The next read will repopulate the cache with fresh data
         await _cache.KeyDeleteAsync(cacheKey);
+        await _cache.KeyDeleteAsync($"products:category:{product.Category.ToLowerInvariant()}");
+
+        if (!string.IsNullOrWhiteSpace(oldCategory) &&
+            !string.Equals(oldCategory, product.Category, StringComparison.OrdinalIgnoreCase))
+        {
+            await _cache.KeyDeleteAsync($"products:category:{oldCategory.ToLowerInvariant()}");
+        }
     }
 
     // Bulk read with cache-aside for multiple products
     public async Task<List<Product>> GetProductsByCategoryAsync(string category)
     {
-        string cacheKey = $"products:category:{category.ToLower()}";
+        string cacheKey = $"products:category:{category.ToLowerInvariant()}";
 
         // Try cache first
         string cachedValue = await _cache.StringGetAsync(cacheKey);
@@ -207,7 +220,7 @@ const redisClient = createClient({
     url: 'rediss://my-cache.redis.cache.windows.net:6380',
     password: '<redis-access-key>'
 });
-redisClient.connect();
+const redisReady = redisClient.connect();
 
 // SQL connection pool configuration
 const sqlConfig = {
@@ -220,6 +233,8 @@ const sqlConfig = {
 
 // Read with cache-aside pattern
 async function getProduct(productId) {
+    await redisReady;
+
     const cacheKey = `product:${productId}`;
 
     // Step 1: Check the cache
@@ -250,15 +265,33 @@ async function getProduct(productId) {
 
 // Write with cache invalidation
 async function updateProduct(product) {
+    await redisReady;
+
     const cacheKey = `product:${product.ProductId}`;
 
-    // Step 1: Update the database
     const pool = await sql.connect(sqlConfig);
+    const existing = await pool.request()
+        .input('productId', sql.Int, product.ProductId)
+        .query('SELECT Category FROM Products WHERE ProductId = @productId');
+
+    const oldCategory = existing.recordset[0]?.Category;
+
+    // Step 1: Update the database
     await pool.request()
         .input('productId', sql.Int, product.ProductId)
         .input('name', sql.NVarChar(200), product.Name)
+        .input('description', sql.NVarChar(1000), product.Description)
         .input('price', sql.Decimal(10, 2), product.Price)
-        .query('UPDATE Products SET Name = @name, Price = @price WHERE ProductId = @productId');
+        .input('category', sql.NVarChar(100), product.Category)
+        .query(`
+            UPDATE Products
+            SET Name = @name,
+                Description = @description,
+                Price = @price,
+                Category = @category,
+                LastModified = SYSUTCDATETIME()
+            WHERE ProductId = @productId
+        `);
 
     // Step 2: Invalidate cache
     await redisClient.del(cacheKey);
@@ -266,6 +299,10 @@ async function updateProduct(product) {
     // Also invalidate any category-level cache entries
     // This is important for list queries that might include this product
     await redisClient.del(`products:category:${product.Category.toLowerCase()}`);
+
+    if (oldCategory && oldCategory.toLowerCase() !== product.Category.toLowerCase()) {
+        await redisClient.del(`products:category:${oldCategory.toLowerCase()}`);
+    }
 }
 ```
 
@@ -281,6 +318,7 @@ public async Task<Product> GetProductWithLockAsync(int productId)
 {
     string cacheKey = $"product:{productId}";
     string lockKey = $"lock:{cacheKey}";
+    string lockToken = Guid.NewGuid().ToString("N");
 
     // Try cache first
     string cachedValue = await _cache.StringGetAsync(cacheKey);
@@ -288,8 +326,8 @@ public async Task<Product> GetProductWithLockAsync(int productId)
         return JsonSerializer.Deserialize<Product>(cachedValue);
 
     // Try to acquire a lock (only one thread will succeed)
-    bool lockAcquired = await _cache.StringSetAsync(
-        lockKey, "1", TimeSpan.FromSeconds(5), When.NotExists);
+    bool lockAcquired = await _cache.LockTakeAsync(
+        lockKey, lockToken, TimeSpan.FromSeconds(5));
 
     if (lockAcquired)
     {
@@ -311,7 +349,7 @@ public async Task<Product> GetProductWithLockAsync(int productId)
         }
         finally
         {
-            await _cache.KeyDeleteAsync(lockKey);
+            await _cache.LockReleaseAsync(lockKey, lockToken);
         }
     }
     else
@@ -347,7 +385,7 @@ if (product == null)
 Track these metrics to understand how well your cache-aside implementation is working:
 
 - **Cache hit ratio**: Should be 80%+ for read-heavy workloads. If it is lower, your TTL might be too short or your data changes too frequently.
-- **Cache latency (P99)**: Should be under 5ms for Azure Cache for Redis. If it is higher, check your cache tier and network configuration.
+- **Cache latency (P99)**: Track P99 latency against your application's baseline and service tier. If it is higher than expected, check your cache tier, payload sizes, and network configuration.
 - **Database query rate**: Should decrease after implementing cache-aside. If it does not, your cache keys might be too granular.
 
 ## Wrapping Up
