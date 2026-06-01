@@ -89,10 +89,12 @@ Create a reusable NestJS module for Azure Service Bus operations.
 // src/service-bus/service-bus.module.ts
 // Reusable module for Azure Service Bus integration
 import { Module, Global } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { ServiceBusService } from './service-bus.service';
 
 @Global()
 @Module({
+  imports: [ConfigModule.forRoot({ isGlobal: true })],
   providers: [ServiceBusService],
   exports: [ServiceBusService],
 })
@@ -115,6 +117,9 @@ export class ServiceBusService implements OnModuleDestroy {
 
   constructor(private config: ConfigService) {
     const connectionString = this.config.get<string>('SERVICE_BUS_CONNECTION_STRING');
+    if (!connectionString) {
+      throw new Error('SERVICE_BUS_CONNECTION_STRING is not configured');
+    }
     this.client = new ServiceBusClient(connectionString);
     this.logger.log('Service Bus client initialized');
   }
@@ -125,7 +130,7 @@ export class ServiceBusService implements OnModuleDestroy {
       const sender = this.client.createSender(topicOrQueue);
       this.senders.set(topicOrQueue, sender);
     }
-    return this.senders.get(topicOrQueue);
+    return this.senders.get(topicOrQueue)!;
   }
 
   // Send a single message to a topic or queue
@@ -142,14 +147,18 @@ export class ServiceBusService implements OnModuleDestroy {
   // Send a batch of messages for better throughput
   async sendBatch(topicOrQueue: string, messages: any[]) {
     const sender = this.getSender(topicOrQueue);
-    const batch = await sender.createMessageBatch();
+    let batch = await sender.createMessageBatch();
 
     for (const msg of messages) {
       if (!batch.tryAddMessage({ body: msg, contentType: 'application/json' })) {
         // Batch is full, send what we have and start a new one
-        await sender.sendMessages(batch);
-        const newBatch = await sender.createMessageBatch();
-        newBatch.tryAddMessage({ body: msg, contentType: 'application/json' });
+        if (batch.count > 0) {
+          await sender.sendMessages(batch);
+        }
+        batch = await sender.createMessageBatch();
+        if (!batch.tryAddMessage({ body: msg, contentType: 'application/json' })) {
+          throw new Error('Message is too large to fit in a Service Bus batch');
+        }
       }
     }
 
@@ -177,7 +186,8 @@ export class ServiceBusService implements OnModuleDestroy {
           await handler(message.body);
           await receiver.completeMessage(message);
         } catch (err) {
-          this.logger.error(`Failed to process message: ${err.message}`);
+          const messageText = err instanceof Error ? err.message : String(err);
+          this.logger.error(`Failed to process message: ${messageText}`);
           // Abandon the message so it can be retried
           await receiver.abandonMessage(message);
         }
@@ -186,6 +196,8 @@ export class ServiceBusService implements OnModuleDestroy {
         this.logger.error(`Service Bus error: ${args.error.message}`);
         if (errorHandler) errorHandler(args.error);
       },
+    }, {
+      autoCompleteMessages: false,
     });
 
     this.logger.log(`Subscribed to ${key}`);
@@ -205,16 +217,26 @@ export class ServiceBusService implements OnModuleDestroy {
           await handler(message.body);
           await receiver.completeMessage(message);
         } catch (err) {
-          this.logger.error(`Failed to process queue message: ${err.message}`);
+          const messageText = err instanceof Error ? err.message : String(err);
+          this.logger.error(`Failed to process queue message: ${messageText}`);
           await receiver.abandonMessage(message);
         }
       },
       processError: async (args) => {
         this.logger.error(`Queue error: ${args.error.message}`);
       },
+    }, {
+      autoCompleteMessages: false,
     });
 
     this.logger.log(`Subscribed to queue: ${queueName}`);
+  }
+
+  // Create a receiver for a queue's dead letter subqueue
+  createQueueDeadLetterReceiver(queueName: string): ServiceBusReceiver {
+    return this.client.createReceiver(queueName, {
+      subQueueType: 'deadLetter',
+    });
   }
 
   // Cleanup on module destroy
@@ -409,6 +431,21 @@ export class NotificationHandler implements OnModuleInit {
 Azure Service Bus supports SQL-like filter rules on subscriptions so consumers only receive relevant messages.
 
 ```bash
+# Create a subscription for shipping notifications
+az servicebus topic subscription create \
+  --name shipping-notifications \
+  --topic-name order-events \
+  --namespace-name order-events-ns \
+  --resource-group microservices-rg
+
+# Remove the default match-all rule
+az servicebus topic subscription rule delete \
+  --name '$Default' \
+  --subscription-name shipping-notifications \
+  --topic-name order-events \
+  --namespace-name order-events-ns \
+  --resource-group microservices-rg
+
 # Create a subscription rule that only receives 'order.shipped' events
 az servicebus topic subscription rule create \
   --name shipped-only \
@@ -426,9 +463,7 @@ Messages that fail processing too many times are moved to the dead letter queue.
 ```typescript
 // Monitor the dead letter queue for failed messages
 async function processDeadLetters(serviceBus: ServiceBusService) {
-  const dlqReceiver = serviceBus.client.createReceiver('payment-requests', {
-    subQueueType: 'deadLetter',
-  });
+  const dlqReceiver = serviceBus.createQueueDeadLetterReceiver('payment-requests');
 
   const messages = await dlqReceiver.receiveMessages(10, { maxWaitTimeInMs: 5000 });
 
@@ -460,7 +495,8 @@ az containerapp create \
   --image myregistry.azurecr.io/order-service:v1 \
   --target-port 3000 \
   --ingress external \
-  --env-vars SERVICE_BUS_CONNECTION_STRING=secretref:sb-connection
+  --secrets "sb-connection=$SERVICE_BUS_CONNECTION_STRING" \
+  --env-vars "SERVICE_BUS_CONNECTION_STRING=secretref:sb-connection"
 
 # Deploy the Notification Service (no ingress needed - it only consumes messages)
 az containerapp create \
@@ -469,7 +505,8 @@ az containerapp create \
   --environment microservices-env \
   --image myregistry.azurecr.io/notification-service:v1 \
   --min-replicas 1 \
-  --env-vars SERVICE_BUS_CONNECTION_STRING=secretref:sb-connection
+  --secrets "sb-connection=$SERVICE_BUS_CONNECTION_STRING" \
+  --env-vars "SERVICE_BUS_CONNECTION_STRING=secretref:sb-connection"
 ```
 
 ## Summary
