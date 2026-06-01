@@ -35,7 +35,7 @@ Operations are the foundation of collaborative editing. Instead of sending the f
 // Operation types for the collaborative editor
 
 // An operation represents a single edit action
-// type: 'insert' | 'delete' | 'retain'
+// type: 'insert' | 'delete' | 'cursor'
 // position: where in the document the operation applies
 // text: the text to insert (for insert operations)
 // count: number of characters to delete (for delete operations)
@@ -54,7 +54,7 @@ class Operation {
 // Transform operation A against operation B
 // This is the core of OT - it adjusts positions so concurrent ops work correctly
 function transformOperation(opA, opB) {
-  // If both are inserts at the same position, the one with the earlier timestamp wins
+  // If B inserted at or before A's position, shift A's position forward
   if (opA.type === 'insert' && opB.type === 'insert') {
     if (opB.position <= opA.position) {
       // B inserted before A, so shift A's position forward
@@ -110,6 +110,10 @@ const connectionString = process.env.WEBPUBSUB_CONNECTION_STRING;
 const hubName = 'editor';
 const serviceClient = new WebPubSubServiceClient(connectionString, hubName);
 
+function sendText(payload, options = {}) {
+  return [JSON.stringify(payload), { contentType: 'text/plain', ...options }];
+}
+
 // Document state management
 const documents = new Map();
 
@@ -119,6 +123,7 @@ function getOrCreateDocument(docId) {
       id: docId,
       content: '',
       version: 0,
+      baseVersion: 0,      // Version represented by operations[0]
       operations: [],     // Operation history for conflict resolution
       cursors: new Map(),  // userId -> cursor position
     });
@@ -161,7 +166,7 @@ const handler = new WebPubSubEventHandler(hubName, {
           await serviceClient.group(event.docId).addConnection(connectionId);
 
           // Send the current document state to the joining user
-          await serviceClient.sendToConnection(connectionId, JSON.stringify({
+          await serviceClient.sendToConnection(connectionId, ...sendText({
             type: 'document_state',
             content: doc.content,
             version: doc.version,
@@ -169,10 +174,10 @@ const handler = new WebPubSubEventHandler(hubName, {
           }));
 
           // Notify others that a user joined
-          await serviceClient.group(event.docId).sendToAll(JSON.stringify({
+          await serviceClient.group(event.docId).sendToAll(...sendText({
             type: 'user_joined',
             userId,
-          }), { filter: `connectionId ne '${connectionId}'` });
+          }, { excludedConnections: [connectionId] }));
           break;
         }
 
@@ -184,7 +189,11 @@ const handler = new WebPubSubEventHandler(hubName, {
           // Transform the operation against any operations that happened
           // between the client's version and the current server version
           if (op.version < doc.version) {
-            const missedOps = doc.operations.slice(op.version);
+            if (op.version < doc.baseVersion) {
+              throw new Error('Client version is too old; reload the document before retrying');
+            }
+
+            const missedOps = doc.operations.slice(op.version - doc.baseVersion);
             for (const serverOp of missedOps) {
               if (serverOp.userId !== userId) {
                 op = transformOperation(op, serverOp);
@@ -200,17 +209,18 @@ const handler = new WebPubSubEventHandler(hubName, {
           // Keep only the last 1000 operations to bound memory
           if (doc.operations.length > 1000) {
             doc.operations = doc.operations.slice(-500);
+            doc.baseVersion = doc.version - doc.operations.length;
           }
 
           // Broadcast the operation to all other users in the document
-          await serviceClient.group(event.docId).sendToAll(JSON.stringify({
+          await serviceClient.group(event.docId).sendToAll(...sendText({
             type: 'remote_operation',
             operation: op,
             version: doc.version,
-          }), { filter: `connectionId ne '${connectionId}'` });
+          }, { excludedConnections: [connectionId] }));
 
           // Acknowledge the operation to the sender
-          await serviceClient.sendToConnection(connectionId, JSON.stringify({
+          await serviceClient.sendToConnection(connectionId, ...sendText({
             type: 'ack',
             version: doc.version,
           }));
@@ -222,11 +232,11 @@ const handler = new WebPubSubEventHandler(hubName, {
           doc.cursors.set(userId, event.position);
 
           // Broadcast cursor position to others
-          await serviceClient.group(event.docId).sendToAll(JSON.stringify({
+          await serviceClient.group(event.docId).sendToAll(...sendText({
             type: 'cursor_update',
             userId,
             position: event.position,
-          }), { filter: `connectionId ne '${connectionId}'` });
+          }, { excludedConnections: [connectionId] }));
           break;
         }
       }
@@ -244,7 +254,7 @@ const handler = new WebPubSubEventHandler(hubName, {
     for (const [docId, doc] of documents) {
       if (doc.cursors.has(userId)) {
         doc.cursors.delete(userId);
-        await serviceClient.group(docId).sendToAll(JSON.stringify({
+        await serviceClient.group(docId).sendToAll(...sendText({
           type: 'cursor_removed',
           userId,
         }));
@@ -260,7 +270,6 @@ app.get('/api/negotiate', async (req, res) => {
   const userId = req.query.userId || `user-${Date.now()}`;
   const token = await serviceClient.getClientAccessToken({
     userId,
-    roles: ['webpubsub.sendToServerEvent', 'webpubsub.joinLeaveGroup'],
   });
   res.json({ url: token.url, userId });
 });
