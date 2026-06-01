@@ -8,7 +8,7 @@ Description: Set up Azure AD B2C custom policies to build advanced user journeys
 
 ---
 
-Azure AD B2C user flows handle basic sign-up and sign-in scenarios well. But SaaS applications often need more sophisticated authentication workflows. Maybe you want to collect additional profile information after the third login instead of during sign-up. Maybe you need to enforce MFA only for users who access premium features. Maybe you want to validate a business email domain before allowing sign-up.
+Azure AD B2C user flows handle basic sign-up and sign-in scenarios well. Microsoft no longer makes Azure AD B2C available for purchase by new customers as of May 1, 2025, but existing tenants can still use custom policies. SaaS applications on existing tenants often need more sophisticated authentication workflows. Maybe you want to collect additional profile information after the third login instead of during sign-up. Maybe you need to enforce MFA only for users who access premium features. Maybe you want to validate a business email domain before allowing sign-up.
 
 Custom policies in Azure AD B2C give you this level of control. They use XML-based configuration files that define every step of the user journey. The learning curve is steep compared to user flows, but the flexibility is worth it for complex SaaS requirements.
 
@@ -47,8 +47,8 @@ Download the starter pack and customize it for your tenant.
 
 git clone https://github.com/Azure-Samples/active-directory-b2c-custom-policy-starterpack.git
 
-# Use the SocialAndLocalAccounts folder for the most common scenario
-cd active-directory-b2c-custom-policy-starterpack/SocialAndLocalAccounts
+# Use SocialAndLocalAccountsWithMfa for this guide because the conditional MFA step references PhoneFactor-InputOrVerify
+cd active-directory-b2c-custom-policy-starterpack/SocialAndLocalAccountsWithMfa
 ```
 
 The starter pack includes these policy files:
@@ -68,7 +68,7 @@ sed -i 's/ProxyIdentityExperienceFrameworkAppId/<your-proxy-app-id>/g' *.xml
 sed -i 's/IdentityExperienceFrameworkAppId/<your-ief-app-id>/g' *.xml
 ```
 
-Upload the policies to B2C in the correct order: Base first, then Extensions, then the relying party files.
+Create the `B2C_1A_RestApiKey` policy key before using the REST API examples below. Then upload the policies to B2C in the correct order: Base first, then Extensions, then the relying party files.
 
 ## Step 2 - Add Progressive Profiling
 
@@ -108,6 +108,26 @@ First, define the additional claims in your extensions policy.
         <DisplayName>Profile Complete</DisplayName>
         <DataType>boolean</DataType>
     </ClaimType>
+
+    <ClaimType Id="emailDomain">
+        <DisplayName>Email Domain</DisplayName>
+        <DataType>string</DataType>
+    </ClaimType>
+
+    <ClaimType Id="isBusinessEmail">
+        <DisplayName>Is Business Email</DisplayName>
+        <DataType>boolean</DataType>
+    </ClaimType>
+
+    <ClaimType Id="requiresMfa">
+        <DisplayName>Requires MFA</DisplayName>
+        <DataType>boolean</DataType>
+    </ClaimType>
+
+    <ClaimType Id="subscriptionTier">
+        <DisplayName>Subscription Tier</DisplayName>
+        <DataType>string</DataType>
+    </ClaimType>
 </ClaimsSchema>
 ```
 
@@ -118,12 +138,15 @@ Now create a technical profile that calls a REST API to check if the profile nee
 <TechnicalProfile Id="REST-CheckProfileComplete">
     <DisplayName>Check if user profile needs additional info</DisplayName>
     <Protocol Name="Proprietary"
-              Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral" />
+              Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
     <Metadata>
         <Item Key="ServiceUrl">https://your-api.azurewebsites.net/api/check-profile</Item>
-        <Item Key="AuthenticationType">Bearer</Item>
+        <Item Key="AuthenticationType">ApiKeyHeader</Item>
         <Item Key="SendClaimsIn">Body</Item>
     </Metadata>
+    <CryptographicKeys>
+        <Key Id="x-functions-key" StorageReferenceId="B2C_1A_RestApiKey" />
+    </CryptographicKeys>
     <InputClaims>
         <InputClaim ClaimTypeReferenceId="objectId" PartnerClaimType="userId" />
         <InputClaim ClaimTypeReferenceId="signInCount" PartnerClaimType="signInCount" />
@@ -142,7 +165,7 @@ Add a self-asserted technical profile that collects the additional information w
 <TechnicalProfile Id="SelfAsserted-ProgressiveProfile">
     <DisplayName>Complete Your Profile</DisplayName>
     <Protocol Name="Proprietary"
-              Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral" />
+              Handler="Web.TPEngine.Providers.SelfAssertedAttributeProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
     <Metadata>
         <Item Key="ContentDefinitionReferenceId">api.selfasserted.profileupdate</Item>
         <Item Key="language.button_continue">Save and Continue</Item>
@@ -151,11 +174,40 @@ Add a self-asserted technical profile that collects the additional information w
         <InputClaim ClaimTypeReferenceId="companyName" />
         <InputClaim ClaimTypeReferenceId="jobTitle" />
     </InputClaims>
+    <DisplayClaims>
+        <DisplayClaim ClaimTypeReferenceId="companyName" Required="true" />
+        <DisplayClaim ClaimTypeReferenceId="jobTitle" Required="true" />
+        <DisplayClaim ClaimTypeReferenceId="phoneNumber" />
+    </DisplayClaims>
     <OutputClaims>
         <OutputClaim ClaimTypeReferenceId="companyName" Required="true" />
         <OutputClaim ClaimTypeReferenceId="jobTitle" Required="true" />
         <OutputClaim ClaimTypeReferenceId="phoneNumber" />
     </OutputClaims>
+</TechnicalProfile>
+```
+
+If your REST API is the system of record for SaaS profile fields, add a second REST profile that saves the collected values after the self-asserted page completes.
+
+```xml
+<TechnicalProfile Id="REST-SaveProgressiveProfile">
+    <DisplayName>Save progressive profile fields</DisplayName>
+    <Protocol Name="Proprietary"
+              Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
+    <Metadata>
+        <Item Key="ServiceUrl">https://your-api.azurewebsites.net/api/save-profile</Item>
+        <Item Key="AuthenticationType">ApiKeyHeader</Item>
+        <Item Key="SendClaimsIn">Body</Item>
+    </Metadata>
+    <CryptographicKeys>
+        <Key Id="x-functions-key" StorageReferenceId="B2C_1A_RestApiKey" />
+    </CryptographicKeys>
+    <InputClaims>
+        <InputClaim ClaimTypeReferenceId="objectId" PartnerClaimType="userId" />
+        <InputClaim ClaimTypeReferenceId="companyName" />
+        <InputClaim ClaimTypeReferenceId="jobTitle" />
+        <InputClaim ClaimTypeReferenceId="phoneNumber" />
+    </InputClaims>
 </TechnicalProfile>
 ```
 
@@ -201,11 +253,11 @@ Now wire these into the user journey with a conditional step.
             </ClaimsExchanges>
         </OrchestrationStep>
 
-        <!-- Step 5: Write updated profile back to directory -->
+        <!-- Step 5: Write updated profile back to your SaaS profile API -->
         <OrchestrationStep Order="5" Type="ClaimsExchange">
             <ClaimsExchanges>
-                <ClaimsExchange Id="WriteProfile"
-                                TechnicalProfileReferenceId="AAD-UserWriteProfileUsingObjectId" />
+                <ClaimsExchange Id="SaveProfile"
+                                TechnicalProfileReferenceId="REST-SaveProgressiveProfile" />
             </ClaimsExchanges>
         </OrchestrationStep>
 
@@ -237,11 +289,18 @@ For B2B SaaS, you might want to restrict sign-ups to business email addresses an
 <TechnicalProfile Id="REST-ValidateBusinessEmail">
     <DisplayName>Validate Business Email Domain</DisplayName>
     <Protocol Name="Proprietary"
-              Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral" />
+              Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
     <Metadata>
         <Item Key="ServiceUrl">https://your-api.azurewebsites.net/api/validate-domain</Item>
+        <Item Key="AuthenticationType">ApiKeyHeader</Item>
         <Item Key="SendClaimsIn">Body</Item>
     </Metadata>
+    <CryptographicKeys>
+        <Key Id="x-functions-key" StorageReferenceId="B2C_1A_RestApiKey" />
+    </CryptographicKeys>
+    <InputClaimsTransformations>
+        <InputClaimsTransformation ReferenceId="GetEmailDomain" />
+    </InputClaimsTransformations>
     <InputClaims>
         <InputClaim ClaimTypeReferenceId="emailDomain" PartnerClaimType="domain" />
     </InputClaims>
@@ -255,6 +314,12 @@ The REST API behind this checks the domain against a blocklist of consumer email
 
 ```python
 # Azure Function that validates business email domains
+import json
+
+import azure.functions as func
+
+app = func.FunctionApp()
+
 BLOCKED_DOMAINS = {
     "gmail.com", "yahoo.com", "hotmail.com", "outlook.com",
     "aol.com", "icloud.com", "mail.com", "protonmail.com"
@@ -295,11 +360,15 @@ Different SaaS tiers might have different security requirements. Free tier users
 <!-- Check user's subscription tier via REST API -->
 <TechnicalProfile Id="REST-CheckSubscriptionTier">
     <Protocol Name="Proprietary"
-              Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral" />
+              Handler="Web.TPEngine.Providers.RestfulProvider, Web.TPEngine, Version=1.0.0.0, Culture=neutral, PublicKeyToken=null" />
     <Metadata>
         <Item Key="ServiceUrl">https://your-api.azurewebsites.net/api/check-tier</Item>
+        <Item Key="AuthenticationType">ApiKeyHeader</Item>
         <Item Key="SendClaimsIn">Body</Item>
     </Metadata>
+    <CryptographicKeys>
+        <Key Id="x-functions-key" StorageReferenceId="B2C_1A_RestApiKey" />
+    </CryptographicKeys>
     <InputClaims>
         <InputClaim ClaimTypeReferenceId="objectId" PartnerClaimType="userId" />
     </InputClaims>
@@ -334,17 +403,17 @@ Upload policies in dependency order using the Azure CLI or Graph API.
 ```bash
 # Upload policies in order
 az rest --method PUT \
-  --url "https://graph.microsoft.com/beta/trustFramework/policies/B2C_1A_TrustFrameworkBase" \
+  --url 'https://graph.microsoft.com/beta/trustFramework/policies/B2C_1A_TrustFrameworkBase/$value' \
   --headers "Content-Type=application/xml" \
   --body @TrustFrameworkBase.xml
 
 az rest --method PUT \
-  --url "https://graph.microsoft.com/beta/trustFramework/policies/B2C_1A_TrustFrameworkExtensions" \
+  --url 'https://graph.microsoft.com/beta/trustFramework/policies/B2C_1A_TrustFrameworkExtensions/$value' \
   --headers "Content-Type=application/xml" \
   --body @TrustFrameworkExtensions.xml
 
 az rest --method PUT \
-  --url "https://graph.microsoft.com/beta/trustFramework/policies/B2C_1A_signup_signin" \
+  --url 'https://graph.microsoft.com/beta/trustFramework/policies/B2C_1A_signup_signin/$value' \
   --headers "Content-Type=application/xml" \
   --body @SignUpOrSignin.xml
 ```
