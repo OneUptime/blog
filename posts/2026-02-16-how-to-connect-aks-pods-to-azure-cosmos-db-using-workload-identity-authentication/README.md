@@ -109,9 +109,6 @@ metadata:
   annotations:
     # This annotation links the service account to the Azure managed identity
     azure.workload.identity/client-id: "<IDENTITY_CLIENT_ID>"
-  labels:
-    # This label is required for workload identity webhook to inject env vars
-    azure.workload.identity/use: "true"
 ```
 
 Replace `<IDENTITY_CLIENT_ID>` with the actual client ID from Step 2, then apply it.
@@ -159,6 +156,8 @@ spec:
     metadata:
       labels:
         app: cosmos-app
+        # This label is required for the workload identity webhook to inject env vars
+        azure.workload.identity/use: "true"
     spec:
       # Use the service account with workload identity
       serviceAccountName: cosmos-sa
@@ -291,7 +290,7 @@ kubectl exec -it deploy/cosmos-app -- env | grep AZURE
 # AZURE_FEDERATED_TOKEN_FILE=/var/run/secrets/azure/tokens/azure-identity-token
 ```
 
-If the environment variables are missing, check that the service account has the `azure.workload.identity/use: "true"` label and the pod spec references the correct service account.
+If the environment variables are missing, check that the pod template has the `azure.workload.identity/use: "true"` label and the pod spec references the correct service account.
 
 ## Troubleshooting Common Issues
 
