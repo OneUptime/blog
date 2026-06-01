@@ -8,13 +8,13 @@ Description: Diagnose and resolve packet drops in Azure Load Balancer health pro
 
 ---
 
-When Azure Load Balancer health probes fail, the affected backend instance gets pulled out of the rotation. Traffic stops flowing to that instance, and if all backends fail their health probes, the entire service goes down. The tricky part is that the backend might actually be perfectly healthy - the health probe packets are just getting dropped somewhere between the load balancer and the backend.
+When Azure Load Balancer health probes fail, the affected backend instance gets pulled out of the rotation for new inbound flows. Traffic stops flowing to that instance, and if all backends fail their health probes, no new flows are sent to the backend pool. The tricky part is that the backend might actually be perfectly healthy - the health probe packets are just getting dropped somewhere between the load balancer and the backend.
 
 In this post, I will walk through why health probe packets get dropped and how to fix each scenario.
 
 ## How Azure Load Balancer Health Probes Work
 
-Azure Load Balancer sends health probes from the IP address 168.63.129.16 (this is a well-known Azure infrastructure IP). The probes are sent at a configurable interval (default 5 seconds for Standard LB) and the backend must respond within the timeout period. If the backend fails to respond to a configurable number of consecutive probes (the unhealthy threshold), the load balancer marks it as unhealthy.
+Azure Load Balancer sends IPv4 health probes from the IP address 168.63.129.16 (this is a well-known Azure infrastructure IP). The probes are sent at a configurable interval (default 5 seconds in the Azure portal) and the backend must respond before the probe fails. TCP probes fail when the configured interval passes without a response; HTTP and HTTPS probes have a built-in timeout of up to 30 seconds. If the backend fails to respond to the configured number of consecutive probes (the unhealthy threshold), the load balancer marks it as unhealthy.
 
 For TCP probes, the load balancer attempts a TCP handshake on the configured port. If the handshake succeeds, the probe passes. For HTTP/HTTPS probes, the load balancer sends an HTTP GET request and expects a 200 OK response.
 
@@ -139,7 +139,7 @@ Common misconfiguration issues:
 - **Wrong port**: The probe checks a port different from what the backend listens on.
 - **Wrong protocol**: Using HTTP probe but backend only serves HTTPS, or vice versa.
 - **Wrong path**: For HTTP probes, the path returns a redirect (301/302) or an error code instead of 200.
-- **Timeout too short**: If the backend takes more than the probe timeout to respond, the probe fails even though the backend is working.
+- **Interval too short**: If the backend takes longer than the probe interval, or longer than the built-in HTTP/HTTPS timeout, the probe fails even though the backend is working.
 
 **Fix**: Adjust the probe to match your backend:
 
@@ -161,12 +161,12 @@ az network lb probe update \
 Asymmetric routing happens when the health probe packet arrives at the backend through one path, but the response leaves through a different path. This is common when:
 
 - The backend VM has multiple NICs
-- The subnet has User Defined Routes (UDRs) that send return traffic through a firewall or NVA
-- The backend is behind an NVA that does not handle return traffic for the probe
+- The backend responds from a different interface than the one that received the probe
+- The backend is behind an NVA that translates or proxies the probe incorrectly
 
 When return traffic goes through a different path, the TCP handshake fails because the response does not reach the load balancer.
 
-**Fix**: Make sure the route table on the backend subnet does not redirect traffic destined for 168.63.129.16 through an NVA. Health probe responses must go directly back to 168.63.129.16:
+**Fix**: Make sure the backend responds to the probe on the same interface that received it. The Azure platform IP 168.63.129.16 is not subject to user-defined routes, so a UDR on the subnet should not redirect probe responses through an NVA. If the VM has multiple NICs, check the effective routes for each NIC and the OS routing table:
 
 ```bash
 # Check the effective routes on the backend NIC
@@ -176,7 +176,7 @@ az network nic show-effective-route-table \
   --output table
 ```
 
-Look for a route that matches 168.63.129.16/32. If it points to a next hop other than "Internet" or "VirtualNetwork," that could be the problem.
+If the VM has multiple NICs, verify that the response path uses the same NIC that received the probe. You may need source NAT or OS routing changes on the VM for multi-interface appliances.
 
 ## Step 7: Backend Application Is Overloaded
 
@@ -184,7 +184,7 @@ If the backend application is consuming 100% CPU or is out of memory, it might n
 
 **Fix**:
 
-1. Increase the probe timeout to give overloaded backends more time to respond.
+1. Increase the probe interval or unhealthy threshold to reduce false negatives during short spikes.
 2. Use a lightweight health endpoint that does not depend on the main application processing pipeline.
 3. Scale out to add more backend instances.
 
@@ -239,4 +239,4 @@ flowchart TD
 
 ## Summary
 
-Health probe packet drops in Azure Load Balancer almost always come down to one of these: the backend is not listening on the probe port, NSG rules block the probe source (168.63.129.16), host firewalls interfere, the probe configuration does not match the backend, or asymmetric routing prevents the response from reaching the load balancer. Use the diagnostic flowchart above to work through each possibility systematically. And keep your health check endpoints lightweight so they can respond even when the application is under heavy load.
+Health probe packet drops in Azure Load Balancer almost always come down to one of these: the backend is not listening on the probe port, NSG rules block the probe source (168.63.129.16), host firewalls interfere, the probe configuration does not match the backend, or a multi-NIC or appliance path prevents the response from reaching the load balancer correctly. Use the diagnostic flowchart above to work through each possibility systematically. And keep your health check endpoints lightweight so they can respond even when the application is under heavy load.
