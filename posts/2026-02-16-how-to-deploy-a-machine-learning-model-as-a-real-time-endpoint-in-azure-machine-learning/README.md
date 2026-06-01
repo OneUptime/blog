@@ -229,9 +229,8 @@ sample_data = {
 # Call the endpoint
 response = ml_client.online_endpoints.invoke(
     endpoint_name="churn-prediction-v1",
-    request_file=None,
     deployment_name="blue",
-    input=json.dumps(sample_data)
+    input_data=json.dumps(sample_data)
 )
 
 print(f"Response: {response}")
@@ -243,10 +242,14 @@ You can also test with curl from the command line:
 # Get the endpoint URL and key
 ENDPOINT_URL=$(az ml online-endpoint show \
     --name churn-prediction-v1 \
+    --resource-group ml-project-rg \
+    --workspace-name ml-workspace-production \
     --query scoring_uri -o tsv)
 
 ENDPOINT_KEY=$(az ml online-endpoint get-credentials \
     --name churn-prediction-v1 \
+    --resource-group ml-project-rg \
+    --workspace-name ml-workspace-production \
     --query primaryKey -o tsv)
 
 # Send a prediction request
@@ -261,16 +264,18 @@ curl -X POST "$ENDPOINT_URL" \
 For production endpoints, configure autoscaling so the deployment scales up during high traffic and scales down when idle.
 
 ```python
-from azure.ai.ml.entities import OnlineRequestSettings
-
-# Update the deployment with scaling rules
-deployment.instance_count = 1  # Minimum instances
-
-# Azure ML supports scaling rules through Azure Monitor autoscale
-# Configure through the Azure Portal or CLI:
+# Azure ML supports scaling rules through Azure Monitor autoscale.
+# Configure them through the Azure Portal, Azure CLI, or Azure Monitor SDK.
 ```
 
 ```bash
+DEPLOYMENT_RESOURCE_ID=$(az ml online-deployment show \
+    --name blue \
+    --endpoint-name churn-prediction-v1 \
+    --resource-group ml-project-rg \
+    --workspace-name ml-workspace-production \
+    --query id -o tsv)
+
 # Set up autoscaling using Azure CLI
 az monitor autoscale create \
     --resource-group ml-project-rg \
@@ -278,7 +283,7 @@ az monitor autoscale create \
     --min-count 1 \
     --max-count 5 \
     --count 1 \
-    --resource "/subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.MachineLearningServices/workspaces/{ws}/onlineEndpoints/churn-prediction-v1/deployments/blue"
+    --resource "$DEPLOYMENT_RESOURCE_ID"
 
 # Add a scale-out rule based on CPU usage
 az monitor autoscale rule create \
@@ -286,6 +291,13 @@ az monitor autoscale rule create \
     --autoscale-name churn-autoscale \
     --condition "CpuUtilizationPercentage > 70 avg 5m" \
     --scale out 1
+
+# Add a scale-in rule when CPU usage is low
+az monitor autoscale rule create \
+    --resource-group ml-project-rg \
+    --autoscale-name churn-autoscale \
+    --condition "CpuUtilizationPercentage < 25 avg 5m" \
+    --scale in 1
 ```
 
 ## Blue-Green Deployment
@@ -320,21 +332,23 @@ Azure ML automatically collects metrics for your endpoints. View them in Azure M
 - **Request count and latency** (P50, P90, P99)
 - **CPU and memory utilization** per instance
 - **Error rates** (4xx and 5xx responses)
-- **Model data drift** (if you enable data collection)
+- **Model data collection** for monitoring and drift analysis (if you enable data collection and model monitoring)
 
-Enable data collection to log input and output data for drift detection:
+Enable payload logging to capture request and response payloads:
 
 ```python
 from azure.ai.ml.entities import DataCollector, DeploymentCollection
 
 deployment.data_collector = DataCollector(
     collections={
-        "model_inputs": DeploymentCollection(enabled=True),
-        "model_outputs": DeploymentCollection(enabled=True)
+        "request": DeploymentCollection(enabled="true"),
+        "response": DeploymentCollection(enabled="true")
     }
 )
 ml_client.online_deployments.begin_create_or_update(deployment).result()
 ```
+
+For model monitoring with custom tabular inputs and outputs, add `azureml-ai-monitoring` to the environment and use `Collector` objects named `model_inputs` and `model_outputs` in `score.py`.
 
 ## Wrapping Up
 
