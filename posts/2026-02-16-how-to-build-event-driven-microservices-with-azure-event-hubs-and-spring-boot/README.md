@@ -19,8 +19,8 @@ Azure Event Hubs supports the Apache Kafka protocol natively. This means you can
 - No Kafka cluster to manage - Azure handles infrastructure
 - Familiar Kafka APIs and tooling
 - Easy migration path if you are already using Kafka
-- Automatic scaling and built-in redundancy
-- Pay-per-throughput-unit pricing
+- Managed scaling options and built-in redundancy
+- Throughput-unit pricing in the Standard tier used in this example
 
 ## Setting Up Azure Event Hubs
 
@@ -57,6 +57,12 @@ az eventhubs eventhub create \
   --namespace-name my-eventhubs-kafka \
   --resource-group eventhubs-micro-rg \
   --partition-count 2
+
+az eventhubs eventhub create \
+  --name order-events-dlq \
+  --namespace-name my-eventhubs-kafka \
+  --resource-group eventhubs-micro-rg \
+  --partition-count 4
 
 # Get the connection string for Kafka configuration
 az eventhubs namespace authorization-rule keys list \
@@ -174,9 +180,6 @@ spring:
         orderEvents-out-0:
           destination: order-events
           content-type: application/json
-
-  # Function definition for the producer
-  cloud.function.definition: ""
 ```
 
 ```java
@@ -225,6 +228,8 @@ The Payment Service consumes order events, processes payments, and publishes pay
 # payment-service/src/main/resources/application.yml
 spring:
   cloud:
+    function:
+      definition: processOrder
     stream:
       kafka:
         binder:
@@ -244,8 +249,6 @@ spring:
         paymentEvents-out-0:
           destination: payment-events
           content-type: application/json
-
-  cloud.function.definition: processOrder
 ```
 
 ```java
@@ -313,6 +316,34 @@ public class PaymentProcessor {
 ## Notification Service
 
 The Notification Service listens to both order and payment events and sends notifications.
+
+```yaml
+# notification-service/src/main/resources/application.yml
+spring:
+  cloud:
+    function:
+      definition: orderNotification;paymentNotification
+    stream:
+      kafka:
+        binder:
+          brokers: my-eventhubs-kafka.servicebus.windows.net:9093
+          configuration:
+            security.protocol: SASL_SSL
+            sasl.mechanism: PLAIN
+            sasl.jaas.config: >
+              org.apache.kafka.common.security.plain.PlainLoginModule required
+              username="$ConnectionString"
+              password="Endpoint=sb://...";
+      bindings:
+        orderNotification-in-0:
+          destination: order-events
+          group: notification-service
+          content-type: application/json
+        paymentNotification-in-0:
+          destination: payment-events
+          group: notification-service
+          content-type: application/json
+```
 
 ```java
 // notification-service/src/main/java/com/example/notification/NotificationConsumer.java
