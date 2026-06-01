@@ -23,13 +23,15 @@ graph TD
     A[DefaultAzureCredential] --> B[EnvironmentCredential]
     B --> C[WorkloadIdentityCredential]
     C --> D[ManagedIdentityCredential]
-    D --> E[AzureCliCredential]
-    E --> F[AzurePowerShellCredential]
-    F --> G[AzureDeveloperCliCredential]
-    G --> H[InteractiveBrowserCredential]
+    D --> E[SharedTokenCacheCredential]
+    E --> F[VisualStudioCodeCredential]
+    F --> G[AzureCliCredential]
+    G --> H[AzurePowerShellCredential]
+    H --> I[AzureDeveloperCliCredential]
+    I --> J[BrokerCredential]
 ```
 
-It starts with environment variables, moves to managed identity (for Azure-hosted resources), then falls back to Azure CLI (for local development). This ordering is intentional. In production, environment or managed identity credentials pick up automatically. On your machine, it grabs your Azure CLI login.
+It starts with environment variables, checks workload and managed identity credentials for Azure-hosted resources, then falls back to developer tool credentials like Visual Studio Code, Azure CLI, Azure PowerShell, and Azure Developer CLI. Interactive browser authentication is available but excluded by default. This ordering is intentional. In production, environment, workload identity, or managed identity credentials pick up automatically. On your machine, it can grab your developer-tool login.
 
 ## Installing the Package
 
@@ -77,7 +79,7 @@ az account show
 
 Once logged in, any Python script using DefaultAzureCredential will automatically use your CLI session. This is incredibly convenient because you do not need separate credentials for local development.
 
-If you prefer to use Visual Studio Code's Azure extension, that works too. DefaultAzureCredential checks the VS Code credential as part of its chain.
+If you prefer to use Visual Studio Code's Azure Resources extension, that works too when the `azure-identity-broker` package is installed. DefaultAzureCredential checks the VS Code credential as part of its chain.
 
 ## How It Works in Production
 
@@ -142,7 +144,7 @@ This is especially useful in containerized environments where you know managed i
 
 ## Working with Multiple Azure Services
 
-DefaultAzureCredential works with every Azure SDK client. Here is an example that connects to both Blob Storage and Key Vault with the same credential.
+DefaultAzureCredential works with Azure SDK clients that accept Microsoft Entra token credentials. Here is an example that connects to both Blob Storage and Key Vault with the same credential.
 
 ```python
 from azure.identity import DefaultAzureCredential
@@ -176,7 +178,7 @@ for container in containers:
 When DefaultAzureCredential cannot authenticate with any method in the chain, it raises a ClientAuthenticationError. Handling this properly is important for debugging.
 
 ```python
-from azure.identity import DefaultAzureCredential, CredentialUnavailableError
+from azure.identity import DefaultAzureCredential
 from azure.core.exceptions import ClientAuthenticationError
 
 try:
@@ -187,9 +189,6 @@ try:
 except ClientAuthenticationError as e:
     # This means all credential types in the chain failed
     print(f"Authentication failed: {e.message}")
-except CredentialUnavailableError as e:
-    # A specific credential type was not available
-    print(f"Credential not available: {e.message}")
 ```
 
 ## Async Support
@@ -235,8 +234,8 @@ az role assignment create \
 Common roles you will need:
 - **Storage Blob Data Contributor** for Blob Storage read/write
 - **Key Vault Secrets User** for reading secrets
-- **Cosmos DB Account Reader Role** for Cosmos DB queries
-- **Service Bus Data Sender/Receiver** for Service Bus messaging
+- **Cosmos DB Built-in Data Reader** or **Cosmos DB Built-in Data Contributor** for Cosmos DB for NoSQL queries and data operations
+- **Azure Service Bus Data Sender** or **Azure Service Bus Data Receiver** for Service Bus messaging
 
 ## Best Practices
 
