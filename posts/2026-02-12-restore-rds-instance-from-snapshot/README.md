@@ -59,10 +59,9 @@ RDS will use the engine, storage, and most settings from the snapshot. However, 
 
 - Security groups (reverts to the default VPC security group)
 - Parameter group (reverts to the default)
-- Option group (reverts to the default)
-- Backup retention period
+- Option group (reverts to the default in most cases; persistent or permanent options may require a compatible option group)
 - Monitoring settings
-- Multi-AZ setting
+- Multi-AZ setting (restores as Single-AZ by default, except for SQL Server instances with an option group associated with mirroring)
 
 ## Restoring with Full Configuration
 
@@ -78,7 +77,6 @@ aws rds restore-db-instance-from-db-snapshot \
   --db-subnet-group-name my-db-subnet-group \
   --vpc-security-group-ids sg-db-123 \
   --db-parameter-group-name my-postgres-params \
-  --option-group-name my-option-group \
   --multi-az \
   --no-publicly-accessible \
   --storage-type gp3 \
@@ -87,7 +85,7 @@ aws rds restore-db-instance-from-db-snapshot \
   --backup-retention-period 7 \
   --preferred-backup-window "03:00-04:00" \
   --preferred-maintenance-window "sun:05:00-sun:06:00" \
-  --enable-cloudwatch-logs-exports '["postgresql"]' \
+  --enable-cloudwatch-logs-exports postgresql \
   --deletion-protection \
   --copy-tags-to-snapshot \
   --tags Key=Environment,Value=production Key=RestoredFrom,Value=my-db-before-migration-2026-02-12
