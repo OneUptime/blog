@@ -105,7 +105,7 @@ Outputs:
 
 ### Orphaned Stacks
 
-Sometimes a stack was partially deployed, failed, but left exports behind. Or someone created a test stack and forgot to clean it up.
+Sometimes an old stack, or a stack that retained its existing exports after a failed update or rollback, is still present. Or someone created a test stack and forgot to clean it up.
 
 ```bash
 # Find the offending stack
@@ -175,7 +175,7 @@ aws cloudformation update-stack \
 
 ## Using SSM Parameter Store Instead
 
-For complex multi-stack architectures, consider using SSM Parameter Store instead of CloudFormation exports. It avoids the uniqueness constraint and the coupling between stacks:
+For complex multi-stack architectures, consider using SSM Parameter Store instead of CloudFormation exports. It avoids CloudFormation's export-name constraint and the direct import dependency between stacks:
 
 ```yaml
 # Exporting stack writes to SSM
@@ -197,9 +197,9 @@ Resources:
 ```
 
 Benefits of this approach:
-- No uniqueness constraint on parameter names (they're hierarchical)
+- No CloudFormation export-name constraint (parameter names are still unique within a Region, but they're hierarchical)
 - No coupling between stacks during updates
-- Values can be updated without stack updates
+- Parameter values can be updated independently, though CloudFormation stacks that use dynamic references need a stack update to re-resolve the latest value
 - Easier to manage across multiple environments
 
 ## Naming Convention Best Practices
