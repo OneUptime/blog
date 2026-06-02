@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, NLB, TLS, Load Balancing, Security
 
-Description: A complete guide to configuring Network Load Balancer TLS termination with ACM certificates, security policies, and mutual TLS authentication.
+Description: A complete guide to configuring Network Load Balancer TLS termination with ACM certificates, security policies, and TLS passthrough.
 
 ---
 
@@ -23,7 +23,7 @@ NLB with TLS gives you the best of both worlds: high-performance load balancing 
 
 ## Prerequisites
 
-You need an ACM certificate for your domain. NLB TLS listeners only work with ACM certificates - you can't upload custom certificates.
+You need a server certificate for your domain. AWS recommends creating or importing certificates in ACM for use with NLB TLS listeners.
 
 Request an ACM certificate:
 
@@ -216,34 +216,24 @@ Use passthrough when you need end-to-end encryption and your backends manage the
 
 ## Mutual TLS (mTLS)
 
-NLB supports mutual TLS where both the client and server present certificates. This is common for service-to-service communication and B2B APIs.
+NLB does not support load-balancer-managed mutual TLS authentication. If you need mTLS where both the client and server present certificates, use TLS passthrough with a TCP listener and let your targets validate the client certificates.
 
-Configure mutual TLS on the listener:
+Configure passthrough on the listener:
 
 ```bash
-# Upload your trust store certificate to S3
-aws s3 cp ca-bundle.pem s3://my-certs-bucket/ca-bundle.pem
-
-# Create a trust store
-aws elbv2 create-trust-store \
-  --name "client-ca-trust" \
-  --ca-certificates-bundle-s3-bucket my-certs-bucket \
-  --ca-certificates-bundle-s3-key ca-bundle.pem
-
-# Update the TLS listener with mutual authentication
-aws elbv2 modify-listener \
-  --listener-arn $LISTENER_ARN \
-  --mutual-authentication '{
-    "Mode": "verify",
-    "TrustStoreArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:truststore/client-ca-trust/abc123"
-  }'
+# mTLS passthrough - the target handles server and client certificate validation
+aws elbv2 create-listener \
+  --load-balancer-arn $NLB_ARN \
+  --protocol TCP \
+  --port 443 \
+  --default-actions Type=forward,TargetGroupArn=$TARGET_GROUP_ARN
 ```
 
-With mTLS, the NLB validates client certificates against your trust store. Requests with invalid or missing certificates are rejected at the load balancer level, before they reach your application.
+With this setup, requests with invalid or missing client certificates are rejected by your backend TLS stack instead of at the load balancer level. If you need the load balancer itself to validate client certificates against a trust store, use an Application Load Balancer.
 
 ## Preserving Client IP
 
-NLB preserves the client's source IP by default when using instance targets. But with IP targets, you need to enable proxy protocol v2 if your application needs the original client IP.
+NLB preserves the client's source IP by default when using instance targets. For TCP and TLS target groups with IP targets, client IP preservation is disabled by default. Enable client IP preservation when it is supported, or use proxy protocol v2 if your application needs the original client IP while preservation is disabled or unavailable.
 
 Enable proxy protocol v2:
 
