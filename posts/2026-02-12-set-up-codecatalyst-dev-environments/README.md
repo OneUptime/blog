@@ -8,7 +8,7 @@ Description: Learn how to set up and configure CodeCatalyst Dev Environments for
 
 ---
 
-Local development environments are the bane of every engineering team. New developers spend hours or even days getting their machines configured. Tools drift out of sync. "Works on my machine" becomes a running joke that nobody finds funny anymore. CodeCatalyst Dev Environments address this by providing cloud-based, pre-configured development environments that your team can spin up in minutes.
+Local development environments are the bane of every engineering team. New developers spend hours or even days getting their machines configured. Tools drift out of sync. "Works on my machine" becomes a running joke that nobody finds funny anymore. For existing CodeCatalyst customers, Dev Environments address this by providing cloud-based, pre-configured development environments that your team can spin up in minutes.
 
 This guide covers creating Dev Environments, customizing them with devfiles, connecting your preferred IDE, and managing them for your team.
 
@@ -17,16 +17,18 @@ This guide covers creating Dev Environments, customizing them with devfiles, con
 Dev Environments are cloud-based development workspaces that run on AWS infrastructure. Each Dev Environment is a container with your project's source code, dependencies, and tools pre-installed. You can connect to them using:
 
 - **AWS Cloud9** - Browser-based IDE
-- **VS Code** - Through the CodeCatalyst extension
-- **JetBrains IDEs** - IntelliJ, PyCharm, WebStorm, etc., through JetBrains Gateway
+- **VS Code** - Through the AWS Toolkit extension
+- **JetBrains IDEs** - IntelliJ IDEA Ultimate, PyCharm Professional, and GoLand through JetBrains Gateway
 
-The environment persists between sessions (your files are saved), but the compute automatically stops when you are not using it to save costs.
+The environment persists between sessions (your files are saved), but the compute automatically stops after the inactivity timeout you choose, as long as browsers, shells, and IDEs are disconnected.
 
 ## Prerequisites
 
 - A CodeCatalyst space and project
 - A source repository in the project
-- The CodeCatalyst toolkit extension for your IDE (if not using Cloud9)
+- The AWS Toolkit extension for your IDE (if not using Cloud9)
+
+Note: Amazon CodeCatalyst is no longer open to new customers. Existing customers can continue to use the service.
 
 ## Step 1: Create a Dev Environment from the Console
 
@@ -52,6 +54,9 @@ For automation, use the CodeCatalyst CLI:
 aws codecatalyst create-dev-environment \
   --space-name "my-company" \
   --project-name "PaymentService" \
+  --ides '[{
+    "name": "VSCode"
+  }]' \
   --repositories '[{
     "repositoryName": "payment-service",
     "branchName": "main"
@@ -87,58 +92,23 @@ components:
   # Main development container
   - name: dev
     container:
-      image: public.ecr.aws/amazonlinux/amazonlinux:2023
-      memoryLimit: 4Gi
+      image: public.ecr.aws/amazonlinux/amazonlinux:2
+      command: ['sleep', 'infinity']
       mountSources: true
       env:
         - name: NODE_ENV
           value: development
         - name: DATABASE_URL
           value: postgresql://localhost:5432/payments_dev
-      endpoints:
-        - name: app
-          targetPort: 3000
-          exposure: public
-        - name: debug
-          targetPort: 9229
-          exposure: internal
-
-  # PostgreSQL for local development
-  - name: postgres
-    container:
-      image: postgres:16
-      memoryLimit: 1Gi
-      env:
-        - name: POSTGRES_DB
-          value: payments_dev
-        - name: POSTGRES_USER
-          value: developer
-        - name: POSTGRES_PASSWORD
-          value: dev_password
-      endpoints:
-        - name: postgres
-          targetPort: 5432
-          exposure: internal
-      volumeMounts:
-        - name: pgdata
-          path: /var/lib/postgresql/data
-
-  # Redis for caching
-  - name: redis
-    container:
-      image: redis:7-alpine
-      memoryLimit: 512Mi
-      endpoints:
-        - name: redis
-          targetPort: 6379
-          exposure: internal
-
-volumes:
-  - name: pgdata
-    size: 2Gi
 
 commands:
-  # Setup command runs when the environment starts
+  # Install development tools
+  - id: install-tools
+    exec:
+      component: dev
+      commandLine: yum install -y nodejs npm postgresql redis
+
+  # Setup command runs after tools are installed
   - id: install-deps
     exec:
       component: dev
@@ -174,9 +144,14 @@ commands:
       component: dev
       commandLine: npm run db:migrate
       workingDir: ${PROJECT_SOURCE}
+
+events:
+  postStart:
+    - install-tools
+    - install-deps
 ```
 
-When someone creates a Dev Environment from a repo with this devfile, they automatically get Node.js, PostgreSQL, and Redis set up and ready to go.
+When someone creates a Dev Environment from a repo with this devfile, CodeCatalyst starts the container, mounts the source code, and runs the setup commands after startup.
 
 ## Step 4: Connect VS Code
 
@@ -188,10 +163,10 @@ To use VS Code with CodeCatalyst Dev Environments:
 4. Click on your Dev Environment or create a new one
 5. VS Code connects via SSH to the remote environment
 
-Your VS Code settings, extensions, and keybindings transfer to the remote environment. You edit locally, but execution happens in the cloud.
+You use your local VS Code window to edit the remote workspace, but execution happens in the cloud.
 
-```json
-// .vscode/settings.json - Settings that sync to the Dev Environment
+```jsonc
+// .vscode/settings.json
 {
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
@@ -208,56 +183,28 @@ Your VS Code settings, extensions, and keybindings transfer to the remote enviro
 For JetBrains users:
 
 1. Install JetBrains Gateway
-2. Install the CodeCatalyst plugin from the JetBrains Marketplace
+2. Install the AWS Toolkit for JetBrains Gateway
 3. Sign in with your AWS Builder ID
 4. Select your Dev Environment
-5. Choose which JetBrains IDE to use (IntelliJ, PyCharm, etc.)
+5. Choose which supported JetBrains IDE to use (IntelliJ IDEA Ultimate, PyCharm Professional, or GoLand)
 
 Gateway downloads and runs the IDE backend on the Dev Environment while rendering the UI locally. This gives you a native JetBrains experience backed by cloud compute.
 
-## Step 6: Customize with Lifecycle Scripts
+## Step 6: Customize with Devfile Events
 
-Beyond devfiles, you can use lifecycle scripts to run setup commands at different stages:
+Dev Environments support devfile events. Use `postStart` to run commands after the Dev Environment starts:
 
-```bash
-# .codecatalyst/scripts/on-create.sh
-# Runs once when the Dev Environment is first created
+```yaml
+commands:
+  - id: setup
+    exec:
+      component: dev
+      commandLine: "npm install && npm run db:migrate"
+      workingDir: ${PROJECT_SOURCE}
 
-#!/bin/bash
-set -e
-
-echo "Setting up development environment..."
-
-# Install global tools
-npm install -g typescript ts-node nodemon
-
-# Set up local database
-cd /projects/payment-service
-npm run db:create
-npm run db:migrate
-npm run db:seed
-
-echo "Environment setup complete!"
-```
-
-```bash
-# .codecatalyst/scripts/on-resume.sh
-# Runs every time the Dev Environment starts (including after auto-stop)
-
-#!/bin/bash
-set -e
-
-echo "Resuming development environment..."
-
-# Make sure services are running
-sudo service postgresql start
-redis-server --daemonize yes
-
-# Check for dependency updates
-cd /projects/payment-service
-npm install
-
-echo "Ready to develop!"
+events:
+  postStart:
+    - setup
 ```
 
 ## Managing Dev Environments
@@ -274,7 +221,7 @@ aws codecatalyst list-dev-environments \
 aws codecatalyst get-dev-environment \
   --space-name "my-company" \
   --project-name "PaymentService" \
-  --id "devenv-abc123"
+  --id "12345678-1234-1234-1234-123456789abc"
 ```
 
 ### Stop and Start
@@ -284,13 +231,13 @@ aws codecatalyst get-dev-environment \
 aws codecatalyst stop-dev-environment \
   --space-name "my-company" \
   --project-name "PaymentService" \
-  --id "devenv-abc123"
+  --id "12345678-1234-1234-1234-123456789abc"
 
 # Start it back up
 aws codecatalyst start-dev-environment \
   --space-name "my-company" \
   --project-name "PaymentService" \
-  --id "devenv-abc123"
+  --id "12345678-1234-1234-1234-123456789abc"
 ```
 
 ### Delete
@@ -300,7 +247,7 @@ aws codecatalyst start-dev-environment \
 aws codecatalyst delete-dev-environment \
   --space-name "my-company" \
   --project-name "PaymentService" \
-  --id "devenv-abc123"
+  --id "12345678-1234-1234-1234-123456789abc"
 ```
 
 ## Architecture
@@ -310,8 +257,8 @@ graph TD
     A[Developer's Machine] -->|VS Code / JetBrains / Browser| B[CodeCatalyst]
     B --> C[Dev Environment Container]
     C --> D[Source Code]
-    C --> E[Database Container]
-    C --> F[Cache Container]
+    C --> E[Development Tools]
+    C --> F[Post-start Commands]
     C --> G[Persistent Storage EBS]
     C -->|IAM Role| H[AWS Services]
 ```
@@ -327,21 +274,19 @@ Dev Environments charge based on compute time and storage:
 To optimize costs:
 
 ```bash
-# Set a default inactivity timeout for your project
-# This applies to all new Dev Environments in the project
-aws codecatalyst update-project \
+# Update the inactivity timeout for an existing Dev Environment
+aws codecatalyst update-dev-environment \
   --space-name "my-company" \
   --project-name "PaymentService" \
-  --dev-environment-settings '{
-    "inactivityTimeoutMinutes": 15
-  }'
+  --id "12345678-1234-1234-1234-123456789abc" \
+  --inactivity-timeout-minutes 15
 ```
 
 ## Best Practices
 
 1. **Always use a devfile.** Without a devfile, every developer configures their environment differently, which defeats the purpose. Commit the devfile to your repo.
 
-2. **Include supporting services.** If your app needs PostgreSQL and Redis, include them in the devfile. The goal is "clone and code" with zero local setup.
+2. **Include setup commands for supporting tools.** If your app needs PostgreSQL or Redis tooling, install and configure it through devfile commands. The goal is "clone and code" with zero local setup.
 
 3. **Set aggressive auto-stop timers.** 15-30 minutes is reasonable. Nobody wants to pay for idle compute overnight.
 
@@ -353,4 +298,4 @@ aws codecatalyst update-project \
 
 ## Wrapping Up
 
-CodeCatalyst Dev Environments eliminate the "it works on my machine" problem by giving every developer the same cloud-based workspace. With devfiles, you define the entire environment - language runtimes, databases, caches, tools - as code that lives alongside your application. Whether your team prefers VS Code, JetBrains, or a browser-based IDE, the experience is consistent and the setup time drops from hours to minutes. Start by adding a devfile to your most popular repository and let your team experience the difference.
+CodeCatalyst Dev Environments eliminate the "it works on my machine" problem by giving every developer the same cloud-based workspace. With devfiles, you define the environment - language runtimes, setup commands, and tools - as code that lives alongside your application. Whether your team prefers VS Code, JetBrains, or a browser-based IDE, the experience is consistent and the setup time drops from hours to minutes. Start by adding a devfile to your most popular repository and let your team experience the difference.
