@@ -8,7 +8,7 @@ Description: Learn how to request, validate, and manage AWS Certificate Manager 
 
 ---
 
-SSL/TLS certificates are a non-negotiable part of modern web infrastructure. Every public-facing service needs HTTPS, and AWS Certificate Manager (ACM) provides free certificates that auto-renew. The catch is that they need to be validated, and that validation process has a few nuances that trip people up when working with Terraform.
+SSL/TLS certificates are a non-negotiable part of modern web infrastructure. Every public-facing service needs HTTPS, and AWS Certificate Manager (ACM) provides public certificates for integrated AWS services at no additional cost, and those certificates auto-renew. The catch is that they need to be validated, and that validation process has a few nuances that trip people up when working with Terraform.
 
 In this post, we'll cover requesting ACM certificates, automating DNS validation, handling wildcard certificates, and dealing with the regional constraints that affect CloudFront and other services.
 
@@ -103,7 +103,7 @@ resource "aws_acm_certificate" "wildcard" {
 
 This single certificate works for `example.com`, `www.example.com`, `api.example.com`, `app.example.com`, and any other subdomain. Note that `*.example.com` doesn't cover `example.com` itself - you need both.
 
-The DNS validation records for the apex and wildcard are actually the same record, so the `for_each` approach from above handles this correctly without creating duplicate records.
+The DNS validation records for the apex and wildcard are actually the same record, so de-duplicate validation records when creating them with Terraform.
 
 ## Multiple Domains (SAN Certificate)
 
@@ -140,13 +140,12 @@ data "aws_route53_zone" "zones" {
   name     = each.value
 }
 
-# Create validation records in the appropriate zones
-resource "aws_route53_record" "multi_cert_validation" {
-  for_each = {
-    for dvo in aws_acm_certificate.multi_domain.domain_validation_options : dvo.domain_name => {
-      name    = dvo.resource_record_name
-      record  = dvo.resource_record_value
-      type    = dvo.resource_record_type
+locals {
+  multi_cert_validation_records = distinct([
+    for dvo in aws_acm_certificate.multi_domain.domain_validation_options : {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
       zone_id = data.aws_route53_zone.zones[
         # Find the matching zone for this domain
         length(regexall("example\\.com$", dvo.domain_name)) > 0 ? "example.com" :
@@ -154,6 +153,13 @@ resource "aws_route53_record" "multi_cert_validation" {
         "myapp.io"
       ].zone_id
     }
+  ])
+}
+
+# Create validation records in the appropriate zones
+resource "aws_route53_record" "multi_cert_validation" {
+  for_each = {
+    for record in local.multi_cert_validation_records : record.name => record
   }
 
   allow_overwrite = true
@@ -162,6 +168,11 @@ resource "aws_route53_record" "multi_cert_validation" {
   ttl             = 60
   type            = each.value.type
   zone_id         = each.value.zone_id
+}
+
+resource "aws_acm_certificate_validation" "multi_domain" {
+  certificate_arn         = aws_acm_certificate.multi_domain.arn
+  validation_record_fqdns = [for record in aws_route53_record.multi_cert_validation : record.fqdn]
 }
 ```
 
@@ -288,10 +299,10 @@ resource "aws_cloudwatch_metric_alarm" "cert_expiry" {
 
 **Validation taking too long.** DNS validation usually completes within 5-30 minutes. If it's been longer, check that the CNAME records were created correctly. ACM is very particular about the exact record values.
 
-**Certificate in wrong region.** CloudFront needs `us-east-1`. API Gateway needs the certificate in the same region as the API. ALBs need it in the same region as the load balancer. Getting the region wrong is one of the most common mistakes.
+**Certificate in wrong region.** CloudFront needs `us-east-1`. API Gateway regional custom domains need the certificate in the same region as the API, while edge-optimized REST API custom domains need it in `us-east-1`. ALBs need it in the same region as the load balancer. Getting the region wrong is one of the most common mistakes.
 
 **Certificate deletion blocked.** You can't delete a certificate that's in use by another AWS resource. Remove the reference first, then delete the certificate.
 
 ## Wrapping Up
 
-ACM certificates are free and auto-renewing, which makes them a no-brainer for anything on AWS. The main complexity is handling DNS validation and regional requirements. With the Terraform patterns in this post, you can fully automate certificate provisioning across any number of domains and regions. Just remember: always use `create_before_destroy`, always use DNS validation, and always check the region requirements for the service you're attaching the certificate to.
+ACM public certificates for integrated AWS services are available at no additional cost and auto-renewing, which makes them a no-brainer for anything on AWS. The main complexity is handling DNS validation and regional requirements. With the Terraform patterns in this post, you can fully automate certificate provisioning across any number of domains and regions. Just remember: always use `create_before_destroy`, always use DNS validation, and always check the region requirements for the service you're attaching the certificate to.
