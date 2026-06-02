@@ -19,7 +19,7 @@ Redshift Serverless has two key components:
 - **Namespace** - your databases, schemas, tables, and users. Think of it as the data layer. A namespace persists even when no compute is running.
 - **Workgroup** - the compute layer that processes your queries. It scales up and down automatically based on demand.
 
-You can have multiple workgroups sharing the same namespace, which is useful for separating workloads (like ETL vs. dashboards) with different capacity limits.
+Each namespace is associated with one workgroup, and each workgroup is associated with one namespace. To separate workloads like ETL and dashboards, create separate namespace/workgroup pairs and use data sharing when one workload needs read access to another namespace's data.
 
 ## Creating a Namespace and Workgroup
 
@@ -31,8 +31,8 @@ aws redshift-serverless create-namespace \
   --db-name warehouse \
   --admin-username admin \
   --admin-user-password 'SecurePassword123!' \
-  --iam-roles "arn:aws:iam::123456789:role/RedshiftS3Access" \
-  --default-iam-role-arn "arn:aws:iam::123456789:role/RedshiftS3Access"
+  --iam-roles "arn:aws:iam::123456789012:role/RedshiftS3Access" \
+  --default-iam-role-arn "arn:aws:iam::123456789012:role/RedshiftS3Access"
 ```
 
 ```bash
@@ -46,7 +46,7 @@ aws redshift-serverless create-workgroup \
   --publicly-accessible
 ```
 
-The `base-capacity` is measured in RPUs. The minimum is 8, and Serverless can scale up from there automatically. Start with 32 for most workloads and adjust based on what you see.
+The `base-capacity` is measured in RPUs. The minimum is 4 in supported Regions, or 8 in other Regions, and Serverless can scale up from there automatically. Start with 32 for most workloads and adjust based on what you see.
 
 ## Connecting to Redshift Serverless
 
@@ -63,7 +63,7 @@ Connect using any PostgreSQL client.
 
 ```bash
 # Connect with psql
-psql -h analytics-wg.123456789.us-east-1.redshift-serverless.amazonaws.com \
+psql -h analytics-wg.123456789012.us-east-1.redshift-serverless.amazonaws.com \
   -p 5439 -U admin -d warehouse
 ```
 
@@ -74,7 +74,7 @@ Python connection:
 import redshift_connector
 
 conn = redshift_connector.connect(
-    host='analytics-wg.123456789.us-east-1.redshift-serverless.amazonaws.com',
+    host='analytics-wg.123456789012.us-east-1.redshift-serverless.amazonaws.com',
     port=5439,
     database='warehouse',
     user='admin',
@@ -131,9 +131,14 @@ aws redshift-serverless update-workgroup \
 You can also set usage limits to cap costs over time.
 
 ```bash
-# Create a usage limit - cap compute at 1000 RPU-hours per day
+# Get the workgroup ARN, then cap compute at 1000 RPU-hours per day
+WORKGROUP_ARN=$(aws redshift-serverless get-workgroup \
+  --workgroup-name analytics-wg \
+  --query 'workgroup.workgroupArn' \
+  --output text)
+
 aws redshift-serverless create-usage-limit \
-  --resource-arn arn:aws:redshift-serverless:us-east-1:123456789:workgroup/analytics-wg \
+  --resource-arn "$WORKGROUP_ARN" \
   --usage-type serverless-compute \
   --amount 1000 \
   --period daily \
@@ -144,48 +149,73 @@ The `breach-action` can be `log` (just log a warning), `emit-metric` (publish to
 
 ## Scheduling Queries
 
-Redshift Serverless supports scheduled queries, which are useful for ETL jobs and report generation.
-
-```sql
--- Create a scheduled query that refreshes a summary table every hour
-CREATE SCHEDULE hourly_refresh
-  EVERY 1 HOUR
-  AS
-  $$
-    -- Truncate and reload the summary table
-    TRUNCATE TABLE sales_daily_summary;
-
-    INSERT INTO sales_daily_summary
-    SELECT sale_date,
-           region,
-           COUNT(*) AS transaction_count,
-           SUM(revenue) AS total_revenue,
-           AVG(revenue) AS avg_order_value
-    FROM sales
-    WHERE sale_date >= DATEADD(day, -30, CURRENT_DATE)
-    GROUP BY sale_date, region;
-  $$;
-```
-
-## Sharing Data Between Workgroups
-
-You can create multiple workgroups against the same namespace to isolate workloads.
+Redshift Serverless supports scheduled queries through Amazon EventBridge and the Redshift Data API, which are useful for ETL jobs and report generation.
 
 ```bash
-# Create a second workgroup for ETL with higher capacity
+# Create an hourly EventBridge rule
+aws events put-rule \
+  --name hourly-refresh \
+  --schedule-expression "rate(1 hour)"
+
+# Register the Redshift Serverless workgroup as the target.
+# The rule name must match RedshiftDataParameters.StatementName.
+cat > hourly-refresh-target.json <<'JSON'
+{
+  "Rule": "hourly-refresh",
+  "EventBusName": "default",
+  "Targets": [
+    {
+      "Id": "1",
+      "Arn": "arn:aws:redshift-serverless:us-east-1:123456789012:workgroup/aff51189-e570-474d-9feb-ae83286e057c",
+      "RoleArn": "arn:aws:iam::123456789012:role/RedshiftQueryScheduler",
+      "RedshiftDataParameters": {
+        "Database": "warehouse",
+        "Sqls": [
+          "TRUNCATE TABLE sales_daily_summary;",
+          "INSERT INTO sales_daily_summary SELECT sale_date, region, COUNT(*) AS transaction_count, SUM(revenue) AS total_revenue, AVG(revenue) AS avg_order_value FROM sales WHERE sale_date >= DATEADD(day, -30, CURRENT_DATE) GROUP BY sale_date, region;"
+        ],
+        "StatementName": "hourly-refresh",
+        "WithEvent": true
+      }
+    }
+  ]
+}
+JSON
+
+aws events put-targets --cli-input-json file://hourly-refresh-target.json
+```
+
+## Separating Workloads Between Workgroups
+
+You can create separate namespace/workgroup pairs to isolate workloads.
+
+```bash
+# Create a second namespace and workgroup for ETL with higher capacity
+aws redshift-serverless create-namespace \
+  --namespace-name etl-ns \
+  --db-name warehouse \
+  --admin-username admin \
+  --admin-user-password 'SecurePassword123!'
+
 aws redshift-serverless create-workgroup \
   --workgroup-name etl-wg \
-  --namespace-name analytics-ns \
+  --namespace-name etl-ns \
   --base-capacity 128
 
-# Create a third workgroup for dashboards with lower capacity
+# Create a third namespace and workgroup for dashboards with lower capacity
+aws redshift-serverless create-namespace \
+  --namespace-name dashboard-ns \
+  --db-name warehouse \
+  --admin-username admin \
+  --admin-user-password 'SecurePassword123!'
+
 aws redshift-serverless create-workgroup \
   --workgroup-name dashboard-wg \
-  --namespace-name analytics-ns \
+  --namespace-name dashboard-ns \
   --base-capacity 16
 ```
 
-This way, heavy ETL jobs don't slow down dashboard queries. Each workgroup has its own compute budget.
+This way, heavy ETL jobs don't slow down dashboard queries. Each workgroup has its own compute budget. If dashboards need to read ETL output, share the data between namespaces with Redshift data sharing.
 
 ## Snapshots and Recovery
 
@@ -202,22 +232,21 @@ aws redshift-serverless create-snapshot \
 aws redshift-serverless list-snapshots \
   --namespace-name analytics-ns
 
-# Restore from a snapshot to a new namespace
+# Restore from a snapshot to a namespace
 aws redshift-serverless restore-from-snapshot \
   --namespace-name analytics-ns-restored \
   --snapshot-name before-migration-2026-02-12 \
-  --workgroup-name restored-wg \
-  --admin-user-password 'NewPassword123!'
+  --workgroup-name restored-wg
 ```
 
 ## Monitoring and Cost Tracking
 
-Track your Serverless costs with CloudWatch and the built-in system views.
+Track your Serverless costs with CloudWatch and the built-in system views. The `sys_serverless_usage` view is visible only to superusers.
 
 ```sql
 -- Check recent query execution details
 SELECT query_id, query_text, elapsed_time, queue_time,
-       execution_time, compute_units
+       execution_time
 FROM sys_query_history
 WHERE start_time > DATEADD(hour, -1, GETDATE())
 ORDER BY elapsed_time DESC
@@ -225,9 +254,9 @@ LIMIT 20;
 
 -- See compute usage over time
 SELECT DATE_TRUNC('hour', start_time) AS hour,
-       SUM(compute_units) AS total_rpus,
-       COUNT(*) AS query_count
-FROM sys_query_history
+       SUM(compute_seconds) / 3600.0 AS rpu_hours,
+       AVG(compute_capacity) AS avg_rpus
+FROM sys_serverless_usage
 WHERE start_time > DATEADD(day, -7, GETDATE())
 GROUP BY DATE_TRUNC('hour', start_time)
 ORDER BY hour;
@@ -247,20 +276,20 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
   --dimensions Name=Workgroup,Value=analytics-wg \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 ## When Serverless Saves Money (And When It Doesn't)
 
 Serverless wins when your workload is bursty or unpredictable. If you run heavy queries for 4 hours a day and nothing the other 20, you'll pay for 4 hours instead of 24. That's a huge savings over provisioned.
 
-But if your cluster is busy 18+ hours a day, provisioned clusters with reserved instances are cheaper. Do the math for your specific workload.
+But if your cluster is busy 18+ hours a day, provisioned clusters with reserved nodes are cheaper. Do the math for your specific workload.
 
 Here's a rough comparison:
 
 - **Light usage** (< 6 hours/day of queries): Serverless is cheaper
 - **Moderate usage** (6-14 hours/day): Could go either way, test both
-- **Heavy usage** (14+ hours/day): Provisioned with reserved instances wins
+- **Heavy usage** (14+ hours/day): Provisioned with reserved nodes wins
 
 ## Migrating from Provisioned to Serverless
 
@@ -275,12 +304,11 @@ aws redshift create-cluster-snapshot \
 # Restore the snapshot into a Serverless namespace
 aws redshift-serverless restore-from-snapshot \
   --namespace-name migrated-ns \
-  --snapshot-name migrate-to-serverless \
-  --workgroup-name migrated-wg \
-  --admin-user-password 'Password123!'
+  --snapshot-arn arn:aws:redshift:us-east-1:123456789012:snapshot:my-provisioned-cluster/migrate-to-serverless \
+  --workgroup-name migrated-wg
 ```
 
-All your data, tables, users, and schemas come along for the ride.
+Your data, tables, users, and schemas come along for the ride. Interleaved sort keys are converted to compound sort keys during a provisioned-to-serverless restore.
 
 ## Wrapping Up
 
