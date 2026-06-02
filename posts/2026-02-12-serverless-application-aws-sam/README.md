@@ -21,12 +21,14 @@ If you haven't installed SAM yet, here's how.
 Install SAM CLI on your system:
 
 ```bash
-# macOS
+# macOS (Homebrew community formula)
 
 brew install aws-sam-cli
 
-# Linux
-pip install aws-sam-cli
+# Linux (x86_64)
+curl -Lo aws-sam-cli-linux-x86_64.zip https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
+sudo ./sam-installation/install
 
 # Verify installation
 sam --version
@@ -70,7 +72,7 @@ Description: Item management API
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs22.x
     Timeout: 10
     MemorySize: 256
     Environment:
@@ -331,7 +333,7 @@ curl http://localhost:3000/items
 curl http://localhost:3000/items/some-id
 ```
 
-The local API reloads automatically when you change your code, so you get a fast development loop.
+When `sam local start-api` reads your source files directly, code changes are reflected automatically. If you ran `sam build` first, rerun `sam build` for changes to be picked up.
 
 ### Local DynamoDB
 
@@ -339,7 +341,8 @@ For full local testing, run DynamoDB locally with Docker:
 
 ```bash
 # Start local DynamoDB
-docker run -p 8000:8000 amazon/dynamodb-local
+docker network create sam-local
+docker run --network sam-local --name dynamodb-local -p 8000:8000 amazon/dynamodb-local
 
 # Create the table locally
 aws dynamodb create-table \
@@ -356,9 +359,15 @@ Configure your functions to use the local endpoint in development:
 // Detect local environment and configure accordingly
 const config = {};
 if (process.env.AWS_SAM_LOCAL) {
-  config.endpoint = 'http://host.docker.internal:8000';
+  config.endpoint = 'http://dynamodb-local:8000';
 }
 const client = new DynamoDBClient(config);
+```
+
+Then run SAM on the same Docker network:
+
+```bash
+sam local start-api --port 3000 --docker-network sam-local
 ```
 
 ## Building and Deploying
@@ -437,9 +446,9 @@ Resources:
       LayerName: shared-dependencies
       ContentUri: layers/shared/
       CompatibleRuntimes:
-        - nodejs20.x
+        - nodejs22.x
     Metadata:
-      BuildMethod: nodejs20.x
+      BuildMethod: nodejs22.x
 
   CreateItemFunction:
     Type: AWS::Serverless::Function
@@ -451,7 +460,7 @@ Resources:
 
 ## Monitoring Your SAM Application
 
-Once deployed, set up monitoring for your functions. SAM makes it easy to enable X-Ray tracing and CloudWatch logging through the `Globals` section. For production monitoring, consider integrating with a dedicated monitoring platform. Check out our post on [building a serverless CRUD API](https://oneuptime.com/blog/post/2026-02-12-serverless-crud-api-lambda-api-gateway/view) for more on monitoring Lambda-based APIs.
+Once deployed, set up monitoring for your functions. SAM makes it easy to enable X-Ray tracing through the `Globals` section, and Lambda sends function logs to CloudWatch Logs when the execution role has the required permissions. For production monitoring, consider integrating with a dedicated monitoring platform. Check out our post on [building a serverless CRUD API](https://oneuptime.com/blog/post/2026-02-12-serverless-crud-api-lambda-api-gateway/view) for more on monitoring Lambda-based APIs.
 
 ## SAM Accelerate
 
