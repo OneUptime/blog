@@ -71,7 +71,7 @@ aws ec2 create-launch-template \
 echo ECS_CLUSTER=production-cluster >> /etc/ecs/ecs.config
 echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config
 echo ECS_ENABLE_CONTAINER_METADATA=true >> /etc/ecs/ecs.config
-echo ECS_CONTAINER_STOP_TIMEOUT=120s >> /etc/ecs/ecs.config' | base64)'"
+echo ECS_CONTAINER_STOP_TIMEOUT=120s >> /etc/ecs/ecs.config' | base64 | tr -d '\n')'"
   }'
 ```
 
@@ -177,14 +177,14 @@ Now set up both the cluster scaling (capacity providers) and service scaling (ap
 aws ecs create-service \
   --cluster production-cluster \
   --service-name web-api \
-  --task-definition web-api:latest \
+  --task-definition web-api \
   --desired-count 4 \
   --capacity-provider-strategy '[
     {"capacityProvider": "production-cp", "weight": 1, "base": 2}
   ]' \
   --placement-strategy '[
-    {"type": "spread", "field": "attribute:ecs.availability-zone"},
-    {"type": "binpack", "field": "memory"}
+    {"type": "binpack", "field": "memory"},
+    {"type": "spread", "field": "attribute:ecs.availability-zone"}
   ]'
 ```
 
@@ -263,7 +263,7 @@ When multiple services share the cluster, each gets its own service scaling poli
 aws ecs create-service \
   --cluster production-cluster \
   --service-name background-worker \
-  --task-definition worker:latest \
+  --task-definition worker \
   --desired-count 8 \
   --capacity-provider-strategy '[
     {"capacityProvider": "production-cp", "weight": 1}
@@ -277,7 +277,7 @@ aws application-autoscaling register-scalable-target \
   --min-capacity 2 \
   --max-capacity 100
 
-# Custom metric for queue-based scaling
+# Custom metric for queue backlog per running task
 aws application-autoscaling put-scaling-policy \
   --service-namespace ecs \
   --resource-id service/production-cluster/background-worker \
@@ -287,9 +287,10 @@ aws application-autoscaling put-scaling-policy \
   --target-tracking-scaling-policy-configuration '{
     "TargetValue": 100.0,
     "CustomizedMetricSpecification": {
-      "MetricName": "ApproximateNumberOfMessagesVisible",
-      "Namespace": "AWS/SQS",
+      "MetricName": "BacklogPerTask",
+      "Namespace": "ECS/Queue",
       "Dimensions": [
+        {"Name": "ServiceName", "Value": "background-worker"},
         {"Name": "QueueName", "Value": "work-queue"}
       ],
       "Statistic": "Average"
