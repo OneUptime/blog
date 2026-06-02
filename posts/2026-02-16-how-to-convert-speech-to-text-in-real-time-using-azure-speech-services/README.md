@@ -8,7 +8,7 @@ Description: Build real-time speech-to-text transcription using Azure Speech Ser
 
 ---
 
-Real-time speech-to-text transcription is one of those capabilities that sounds simple but involves significant engineering underneath. You need to capture audio, stream it to a recognition service, handle partial results as the user is still speaking, deal with punctuation and capitalization, and manage errors and disconnections. Azure Speech Services handles all of this complexity and exposes it through a clean SDK. In this post, I will show you how to build real-time transcription from a microphone, from audio files, and from audio streams.
+Real-time speech-to-text transcription is one of those capabilities that sounds simple but involves significant engineering underneath. You need to capture audio, stream it to a recognition service, handle partial results as the user is still speaking, deal with punctuation and capitalization, and manage errors and disconnections. Azure Speech Services handles all of this complexity and exposes it through a clean SDK. In this post, I will show you how to build real-time transcription from a microphone and from audio files.
 
 ## Step 1: Create a Speech Services Resource
 
@@ -20,7 +20,7 @@ In the Azure Portal:
 4. Choose the Free F0 tier (5 hours of transcription per month) or Standard S0 for production.
 5. Review and create.
 
-Copy the speech key and region from the resource overview.
+Copy the speech key, endpoint, and region from the resource overview.
 
 ## Step 2: Install the SDK
 
@@ -51,8 +51,8 @@ speech_config = speechsdk.SpeechConfig(
 # Set the recognition language
 speech_config.speech_recognition_language = "en-US"
 
-# Enable automatic punctuation (adds periods, commas, question marks)
-speech_config.enable_dictation()
+# Azure Speech returns display text with capitalization and punctuation by default.
+# Dictation mode is only supported with continuous recognition.
 
 # Use the default microphone as input
 audio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)
@@ -98,13 +98,14 @@ def continuous_recognition():
     """
     Continuously transcribe speech from the microphone.
     Handles both interim (partial) and final results.
-    Press Ctrl+C to stop.
+    Press Enter to stop.
     """
     speech_config = speechsdk.SpeechConfig(
         subscription=speech_key,
         region=speech_region
     )
     speech_config.speech_recognition_language = "en-US"
+    # Dictation mode lets users speak explicit punctuation marks in continuous recognition.
     speech_config.enable_dictation()
 
     audio_config = speechsdk.audio.AudioConfig(use_default_microphone=True)
@@ -164,21 +165,20 @@ continuous_recognition()
 
 ## Step 5: Transcribe an Audio File
 
-For batch processing of recorded audio, you can transcribe from a WAV file:
+For processing a recorded audio file, you can transcribe from a WAV file:
 
 ```python
 def transcribe_audio_file(audio_path):
     """
     Transcribe a WAV audio file to text.
-    Supports WAV files with 16-bit PCM, mono or stereo audio.
+    Supports WAV files in the default SDK input format: 16 kHz or 8 kHz,
+    16-bit, mono PCM.
     """
     speech_config = speechsdk.SpeechConfig(
         subscription=speech_key,
         region=speech_region
     )
     speech_config.speech_recognition_language = "en-US"
-    speech_config.enable_dictation()
-
     # Point to the audio file instead of the microphone
     audio_config = speechsdk.audio.AudioConfig(filename=audio_path)
 
@@ -207,6 +207,7 @@ def transcribe_audio_file(audio_path):
     # Start recognition and wait for completion
     recognizer.start_continuous_recognition()
     done.wait()  # Block until the file is fully processed
+    recognizer.stop_continuous_recognition()
 
     return " ".join(transcript)
 
@@ -226,9 +227,14 @@ def transcribe_with_language_detection(audio_path):
     Transcribe audio with automatic language detection.
     Supports switching between languages mid-conversation.
     """
+    speech_endpoint = f"https://{speech_region}.api.cognitive.microsoft.com"
     speech_config = speechsdk.SpeechConfig(
         subscription=speech_key,
-        region=speech_region
+        endpoint=speech_endpoint
+    )
+    speech_config.set_property(
+        property_id=speechsdk.PropertyId.SpeechServiceConnection_LanguageIdMode,
+        value="Continuous"
     )
 
     # Configure auto-detection with candidate languages
@@ -271,6 +277,7 @@ def transcribe_with_language_detection(audio_path):
 
     recognizer.start_continuous_recognition()
     done.wait()
+    recognizer.stop_continuous_recognition()
 
     return results
 
@@ -285,7 +292,7 @@ For meeting notes and subtitles, you often need timestamps for each segment.
 ```python
 def transcribe_with_timestamps(audio_path):
     """
-    Transcribe audio with word-level timestamps.
+    Transcribe audio with segment and word-level timestamps.
     Useful for generating subtitles or aligning text with audio.
     """
     speech_config = speechsdk.SpeechConfig(
@@ -315,7 +322,7 @@ def transcribe_with_timestamps(audio_path):
                 )
             )
 
-            # Extract timing information
+            # Extract segment timing information
             offset_ticks = result_json.get("Offset", 0)
             duration_ticks = result_json.get("Duration", 0)
 
@@ -323,10 +330,21 @@ def transcribe_with_timestamps(audio_path):
             start_seconds = offset_ticks / 10_000_000
             duration_seconds = duration_ticks / 10_000_000
 
+            words = []
+            for word in result_json.get("NBest", [{}])[0].get("Words", []):
+                word_start = word.get("Offset", 0) / 10_000_000
+                word_duration = word.get("Duration", 0) / 10_000_000
+                words.append({
+                    "word": word.get("Word"),
+                    "start": word_start,
+                    "end": word_start + word_duration
+                })
+
             segments.append({
                 "text": evt.result.text,
                 "start": start_seconds,
-                "end": start_seconds + duration_seconds
+                "end": start_seconds + duration_seconds,
+                "words": words
             })
 
             print(f"[{start_seconds:.2f}s - {start_seconds + duration_seconds:.2f}s]: "
@@ -344,6 +362,7 @@ def transcribe_with_timestamps(audio_path):
 
     recognizer.start_continuous_recognition()
     done.wait()
+    recognizer.stop_continuous_recognition()
 
     return segments
 ```
@@ -365,7 +384,7 @@ phrase_list.addPhrase("OneUptime")
 
 **Handle network interruptions.** Real-time recognition requires a stable network connection. The SDK automatically reconnects after brief interruptions, but for unreliable networks, implement reconnection logic in your application.
 
-**Reduce latency.** The default recognition mode balances accuracy and latency. For lower latency (at the cost of slightly lower accuracy), use the `speech_config.set_property(speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "5000")` setting.
+**Tune silence timeouts.** The default recognition mode balances accuracy and latency. To fail faster when no speech starts, use the `speech_config.set_property(speechsdk.PropertyId.SpeechServiceConnection_InitialSilenceTimeoutMs, "5000")` setting. This controls the initial silence timeout; it does not speed up recognition after speech is already flowing.
 
 ## Wrapping Up
 
