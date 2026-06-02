@@ -8,7 +8,7 @@ Description: Learn how to efficiently process SQS messages in batches with AWS L
 
 ---
 
-Processing SQS messages one at a time with Lambda works, but it's not efficient. When you're handling thousands of messages per second, the overhead of invoking a Lambda function for each individual message adds up fast - both in execution time and cost. Batch processing lets Lambda receive up to 10 messages (or up to 10,000 for FIFO queues with batching windows) per invocation, dramatically improving throughput and reducing costs.
+Processing SQS messages one at a time with Lambda works, but it's not efficient. When you're handling thousands of messages per second, the overhead of invoking a Lambda function for each individual message adds up fast - both in execution time and cost. Batch processing lets Lambda receive up to 10 messages by default, up to 10,000 for standard queues when you configure a batching window, or up to 10 for FIFO queues per invocation, dramatically improving throughput and reducing costs.
 
 Let's walk through setting up batch processing properly, handling errors, and optimizing for performance.
 
@@ -23,10 +23,10 @@ resource "aws_lambda_event_source_mapping" "order_processor" {
   event_source_arn = aws_sqs_queue.orders.arn
   function_name    = aws_lambda_function.order_processor.arn
 
-  # Number of messages to include in each batch (1-10 for Standard, 1-10000 for FIFO)
+  # Number of messages to include in each batch (1-10000 for Standard, 1-10 for FIFO)
   batch_size = 10
 
-  # Wait up to 5 seconds to fill the batch before invoking Lambda
+  # Wait up to 5 seconds to fill the batch before invoking Lambda (Standard queues only)
   maximum_batching_window_in_seconds = 5
 
   enabled = true
@@ -35,7 +35,7 @@ resource "aws_lambda_event_source_mapping" "order_processor" {
 
 **batch_size** determines the maximum number of messages Lambda receives per invocation. Setting it to 10 means Lambda will be invoked with anywhere from 1 to 10 messages.
 
-**maximum_batching_window_in_seconds** tells Lambda to wait up to this many seconds to accumulate messages before invoking your function. Without this, Lambda invokes immediately when any message is available. With it, Lambda tries to fill the batch first, which reduces the number of invocations at the cost of slightly higher latency.
+**maximum_batching_window_in_seconds** tells Lambda to wait up to this many seconds to accumulate messages before invoking your function. This setting is supported for standard queues, not FIFO queues. Without this, Lambda uses a 0-second batching window. With it, Lambda tries to fill the batch first, which reduces the number of invocations at the cost of slightly higher latency.
 
 ## Processing the Batch
 
@@ -218,8 +218,8 @@ Finding the right balance between batch size and batching window depends on your
 | Scenario | Batch Size | Batching Window | Why |
 |---|---|---|---|
 | Low latency required | 1-5 | 0 | Process messages immediately |
-| High throughput | 10 | 5-10 seconds | Maximize messages per invocation |
-| Cost optimization | 10 | 10-20 seconds | Fewer invocations = lower cost |
+| High throughput | 10 or higher for standard queues | 5-10 seconds | Maximize messages per invocation |
+| Cost optimization | 10 or higher for standard queues | 10-20 seconds | Fewer invocations = lower cost |
 | Variable traffic | 10 | 5 seconds | Good balance for most workloads |
 
 ### Visibility Timeout
