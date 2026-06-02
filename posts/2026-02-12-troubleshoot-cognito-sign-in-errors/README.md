@@ -211,7 +211,7 @@ After successful sign-in, you might still get errors when using the tokens. Here
 
 **"Token use mismatch"**: You're sending an ID token where an access token is expected, or vice versa. Check the `token_use` claim.
 
-**"Invalid signature"**: Usually means the JWKS keys have rotated and your cached keys are stale. Clear your JWKS cache and re-fetch.
+**"Invalid signature"**: Usually means you're validating against the wrong user pool, region, issuer, or token type. If the issuer is correct but the token has an unfamiliar `kid`, the JWKS keys might have rotated and your cached keys are stale. Clear your JWKS cache and re-fetch.
 
 Debug token issues with this helper:
 
@@ -255,9 +255,10 @@ function debugToken(token) {
 
 Cognito has built-in rate limits. The defaults are:
 
-- **User Pool operations**: 120 requests per second for most operations
-- **Token endpoint**: 120 requests per second
-- **Hosted UI**: 1000 requests per second
+- **UserAuthentication operations**: 120 requests per second for sign-in operations like `InitiateAuth`, token refresh, and local-user hosted UI sign-in
+- **RespondToAuthChallenge**: up to 3 times the `UserAuthentication` quota for most challenge responses
+- **UserRead operations**: 120 requests per second for operations like `AdminGetUser` and `GetUser`
+- **UserResourceRead operations**: 50 requests per second for operations like `ResendConfirmationCode`
 
 If you're hitting rate limits, here are your options:
 
@@ -289,13 +290,13 @@ For persistent rate limit issues, request a quota increase through AWS Support.
 
 When sign-in fails and you've ruled out obvious causes, run through this checklist:
 
-1. **Auth flow enabled?** - Check that `USER_PASSWORD_AUTH` or `USER_SRP_AUTH` is enabled on your app client.
+1. **Auth flow enabled?** - Check that `ALLOW_USER_PASSWORD_AUTH`, `ALLOW_USER_SRP_AUTH`, or `ALLOW_USER_AUTH` is enabled on your app client for the sign-in flow you're using.
 2. **Client ID correct?** - A wrong client ID gives `ResourceNotFoundException`.
 3. **Region correct?** - The SDK must target the same region as your user pool.
 4. **Client secret included?** - If your app client has a secret, you must compute and include the `SECRET_HASH`.
 5. **User pool status?** - Is the user pool active? Check the console.
 6. **User confirmed?** - Check user status in the console.
-7. **Password policy changed?** - If you tightened password requirements, existing users with weaker passwords might not be able to log in during certain flows.
+7. **Password policy changed?** - If you tightened password requirements, existing users with weaker passwords might fail password reset, password change, or `NEW_PASSWORD_REQUIRED` flows until they choose a compliant password.
 
 Check the app client configuration:
 
