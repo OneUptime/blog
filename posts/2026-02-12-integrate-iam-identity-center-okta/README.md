@@ -8,7 +8,7 @@ Description: Complete walkthrough for integrating AWS IAM Identity Center with O
 
 ---
 
-Okta is one of the most popular identity providers for cloud-first organizations, and its integration with AWS IAM Identity Center is mature and well-supported. Once connected, your team authenticates through Okta to access any AWS account in your organization. No separate AWS credentials, no manual user creation, and offboarding is instant.
+Okta is one of the most popular identity providers for cloud-first organizations, and its integration with AWS IAM Identity Center is mature and well-supported. Once connected, your team authenticates through Okta to access any AWS account in your organization. No separate AWS credentials, no manual user creation in IAM Identity Center, and offboarding is managed centrally through Okta and SCIM provisioning.
 
 This guide covers the full setup: SAML configuration for authentication and SCIM provisioning for automatic user and group sync.
 
@@ -120,19 +120,19 @@ displayName                 -> displayName
 
 ## Step 6: Assign Users and Groups
 
-In Okta, assign users or groups to the application:
+In Okta, assign users or groups to the application. If you also plan to push groups, use separate Okta groups for app assignment and group push; AWS doesn't currently support using the same Okta group for both:
 
 1. Go to the AWS IAM Identity Center application in Okta
 2. Click the "Assignments" tab
 3. Click "Assign" > "Assign to Groups"
-4. Select the groups you want to sync (e.g., "Engineering", "Platform", "Security")
+4. Select the assignment groups you want to grant access to the app (e.g., "AWS-Engineering-Assignment", "AWS-Platform-Assignment", "AWS-Security-Assignment")
 5. Click "Save and Go Back"
 
 Push groups to Identity Center:
 
 1. Click the "Push Groups" tab
 2. Click "Push Groups" > "Find groups by name"
-3. Search for and select each group
+3. Search for and select the separate groups you want to create in IAM Identity Center (e.g., "Engineering", "Platform", "Security")
 4. Click "Save"
 
 This creates matching groups in IAM Identity Center with the same members.
@@ -169,11 +169,13 @@ SSO_INSTANCE_ARN=$(aws sso-admin list-instances \
   --query 'Instances[0].InstanceArn' --output text)
 
 # Create a permission set for engineers
-aws sso-admin create-permission-set \
+PERMISSION_SET_ARN=$(aws sso-admin create-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
   --name "EngineerAccess" \
   --description "Engineer access for dev and staging" \
-  --session-duration "PT8H"
+  --session-duration "PT8H" \
+  --query 'PermissionSet.PermissionSetArn' \
+  --output text)
 
 # Attach PowerUserAccess policy
 aws sso-admin attach-managed-policy-to-permission-set \
@@ -288,7 +290,7 @@ Common issues and fixes:
 
 ### Token Expiration
 
-The SCIM access token from Identity Center expires. When provisioning stops working:
+SCIM access tokens from Identity Center are valid for one year. AWS sends reminders in the IAM Identity Center console and AWS Health Dashboard when a token has 90 days or less before expiration. If provisioning stops working because the token expired:
 
 1. Go to IAM Identity Center > Settings > Automatic provisioning
 2. Click "Regenerate token"
