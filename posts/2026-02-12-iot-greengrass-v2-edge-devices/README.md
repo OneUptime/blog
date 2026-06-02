@@ -24,9 +24,9 @@ graph TD
         GG --> C1[Component: Data Filter]
         GG --> C2[Component: ML Inference]
         GG --> C3[Component: Local DB]
-        GG --> MQTT_B[Local MQTT Broker]
-        MQTT_B --> D1[Local Sensor 1]
-        MQTT_B --> D2[Local Sensor 2]
+        IPC --> PubSub[Local Pub/Sub IPC]
+        C1 --> D1[Local Sensor 1]
+        C1 --> D2[Local Sensor 2]
     end
     subgraph "AWS Cloud"
         IOT[IoT Core]
@@ -40,9 +40,9 @@ graph TD
 
 Key improvements over v1:
 - **Component-based**: Everything is a component, including the core runtime
-- **Open source**: The core SDK is open source
+- **Open source**: The Greengrass nucleus and other Greengrass Core software components are open source
 - **Docker support**: Run Docker containers as components
-- **Smaller footprint**: Runs on devices with as little as 256MB RAM
+- **Smaller footprint**: Requires a minimum of 96MB RAM allocated to the core software on Linux
 - **Fleet deployment**: Deploy to thousands of devices at once
 
 ## Prerequisites
@@ -52,74 +52,20 @@ Your edge device needs:
 - Linux OS (Amazon Linux 2, Ubuntu 18.04+, Raspberry Pi OS, etc.)
 - Java 8 or higher (Amazon Corretto recommended)
 - Python 3.6+ (for some components)
-- At least 256MB RAM and 256MB disk space
-- An AWS IoT thing registered for this device
+- At least 96MB RAM allocated to the Greengrass Core software and 256MB disk space, plus resources for your deployed components
+- AWS credentials that can provision IoT Core and Greengrass resources
 - Network access to AWS endpoints
 
-## Step 1: Provision the Device in IoT Core
+## Step 1: Prepare AWS Credentials for Provisioning
 
-Create a thing, certificate, and policy for the Greengrass core device.
+The Greengrass installer can automatically create the IoT thing, thing group, certificate, token exchange role, role alias, and IoT policy when you run it with `--provision true`. Configure AWS credentials on the device with permissions to create those resources.
 
 ```bash
-# Create the IoT thing for the Greengrass core
+# Configure credentials for the AWS CLI on the device
+aws configure
 
-aws iot create-thing \
-  --thing-name "my-greengrass-core"
-
-# Create a certificate
-aws iot create-keys-and-certificate \
-  --set-as-active \
-  --certificate-pem-outfile gg-cert.pem \
-  --public-key-outfile gg-public.key \
-  --private-key-outfile gg-private.key
-
-CERT_ARN=$(aws iot describe-certificate \
-  --certificate-id "YOUR_CERT_ID" \
-  --query 'certificateDescription.certificateArn' --output text)
-
-# Create a policy for Greengrass
-aws iot create-policy \
-  --policy-name "GreengrassV2Policy" \
-  --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [
-      {
-        "Effect": "Allow",
-        "Action": [
-          "iot:Publish",
-          "iot:Subscribe",
-          "iot:Receive",
-          "iot:Connect"
-        ],
-        "Resource": "*"
-      },
-      {
-        "Effect": "Allow",
-        "Action": [
-          "greengrass:*"
-        ],
-        "Resource": "*"
-      },
-      {
-        "Effect": "Allow",
-        "Action": [
-          "iot:GetThingShadow",
-          "iot:UpdateThingShadow",
-          "iot:DeleteThingShadow"
-        ],
-        "Resource": "*"
-      }
-    ]
-  }'
-
-# Attach certificate and policy
-aws iot attach-policy \
-  --policy-name "GreengrassV2Policy" \
-  --target "$CERT_ARN"
-
-aws iot attach-thing-principal \
-  --thing-name "my-greengrass-core" \
-  --principal "$CERT_ARN"
+# Verify that the credentials are available before running the installer
+aws sts get-caller-identity
 ```
 
 ## Step 2: Install Greengrass v2 on the Device
@@ -139,13 +85,13 @@ sudo apt install -y default-jdk  # Ubuntu/Debian
 # Or: sudo yum install -y java-11-amazon-corretto  # Amazon Linux
 
 # Run the installer
-sudo java -Droot="/greengrass/v2" \
+sudo -E java -Droot="/greengrass/v2" \
   -Dlog.store=FILE \
   -jar ./GreengrassInstaller/lib/Greengrass.jar \
   --aws-region us-east-1 \
   --thing-name my-greengrass-core \
   --thing-group-name MyGreengrassCoreGroup \
-  --thing-policy-name GreengrassV2Policy \
+  --thing-policy-name GreengrassV2IoTThingPolicy \
   --tes-role-name GreengrassV2TokenExchangeRole \
   --tes-role-alias-name GreengrassCoreTokenExchangeRoleAlias \
   --component-default-user ggc_user:ggc_group \
@@ -197,6 +143,14 @@ ComponentConfiguration:
   DefaultConfiguration:
     readIntervalSeconds: 10
     topic: "devices/{iot:thingName}/telemetry"
+    accessControl:
+      aws.greengrass.ipc.mqttproxy:
+        "com.example.SensorReader:mqttproxy:1":
+          policyDescription: Allows publishing telemetry to IoT Core.
+          operations:
+            - "aws.greengrass#PublishToIoTCore"
+          resources:
+            - "devices/{iot:thingName}/telemetry"
 
 Manifests:
   - Platform:
@@ -254,12 +208,14 @@ def main():
             payload = json.dumps(data)
 
             # Publish to IoT Core via Greengrass
-            request = PublishToIoTCoreRequest(
-                topic_name=PUBLISH_TOPIC,
-                qos=QOS.AT_LEAST_ONCE,
-                payload=payload.encode()
-            )
-            ipc_client.new_publish_to_iot_core().activate(request).result(timeout=5)
+            request = PublishToIoTCoreRequest()
+            request.topic_name = PUBLISH_TOPIC
+            request.qos = QOS.AT_LEAST_ONCE
+            request.payload = payload.encode()
+
+            operation = ipc_client.new_publish_to_iot_core()
+            operation.activate(request)
+            operation.get_response().result(timeout=5)
 
             print(f"Published: {payload}")
 
@@ -392,22 +348,55 @@ Manifests:
 
 Components on the same device can communicate through the local pub/sub IPC.
 
+Grant the subscribing component access to the local topic in its component recipe:
+
+```yaml
+ComponentConfiguration:
+  DefaultConfiguration:
+    accessControl:
+      aws.greengrass.ipc.pubsub:
+        "com.example.LocalSubscriber:pubsub:1":
+          policyDescription: Allows subscribing to local sensor data.
+          operations:
+            - "aws.greengrass#SubscribeToTopic"
+          resources:
+            - "local/sensor/data"
+```
+
 ```python
 # Subscribe to local messages from another component
+import time
+import awsiot.greengrasscoreipc
+import awsiot.greengrasscoreipc.client as client
 from awsiot.greengrasscoreipc.model import (
-    SubscribeToTopicRequest
+    SubscribeToTopicRequest,
+    SubscriptionResponseMessage
 )
 
-def on_message(event):
-    """Handle local messages from other components."""
-    message = event.message
-    print(f"Received local message on {message.topic}: {message.payload}")
+class StreamHandler(client.SubscribeToTopicStreamHandler):
+    def on_stream_event(self, event: SubscriptionResponseMessage) -> None:
+        message = event.binary_message.message
+        topic = event.binary_message.context.topic
+        print(f"Received local message on {topic}: {message.decode()}")
+
+    def on_stream_error(self, error: Exception) -> bool:
+        print(f"Received stream error: {error}")
+        return False
+
+    def on_stream_closed(self) -> None:
+        print("Subscribe stream closed")
 
 # Subscribe to a local topic
-request = SubscribeToTopicRequest(topic="local/sensor/data")
+ipc_client = awsiot.greengrasscoreipc.connect()
+request = SubscribeToTopicRequest()
+request.topic = "local/sensor/data"
 handler = StreamHandler()
-handler.on_stream_event = on_message
-ipc_client.new_subscribe_to_topic(handler).activate(request)
+operation = ipc_client.new_subscribe_to_topic(handler)
+operation.activate(request)
+operation.get_response().result(timeout=10)
+
+while True:
+    time.sleep(10)
 ```
 
 ## Managing Greengrass at Scale
