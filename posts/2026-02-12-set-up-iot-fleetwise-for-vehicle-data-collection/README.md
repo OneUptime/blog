@@ -12,6 +12,8 @@ Connected vehicles generate enormous amounts of data. A modern car can produce g
 
 AWS IoT FleetWise solves this by letting you define what data you want, when you want it, and having the vehicle-side agent collect only that. It handles the messy parts of vehicle data collection - CAN bus decoding, signal extraction, conditional collection, and efficient cloud transfer.
 
+AWS IoT FleetWise is no longer open to new customers. Existing AWS IoT FleetWise customers can continue using the service.
+
 ## How FleetWise Works
 
 The architecture has three main components:
@@ -39,7 +41,7 @@ graph TB
 
 The **Edge Agent** runs on the vehicle's gateway hardware. It reads signals from the vehicle bus, applies collection schemes defined by campaigns, buffers data locally, and sends it to the cloud when connected.
 
-The **Signal Catalog** is your master dictionary of vehicle signals. It maps raw CAN bus signals to named, typed attributes with units.
+The **Signal Catalog** is your master dictionary of vehicle signals. It defines named, typed vehicle signals with units, while the decoder manifest maps raw vehicle network data to those logical signals.
 
 **Campaigns** define what data to collect and when, using either time-based or condition-based collection.
 
@@ -153,6 +155,7 @@ aws iotfleetwise create-decoder-manifest \
     {
       "fullyQualifiedName": "Vehicle.Speed",
       "type": "CAN_SIGNAL",
+      "interfaceId": "can0",
       "canSignal": {
         "messageId": 1024,
         "isBigEndian": false,
@@ -166,6 +169,7 @@ aws iotfleetwise create-decoder-manifest \
     {
       "fullyQualifiedName": "Vehicle.Engine.RPM",
       "type": "CAN_SIGNAL",
+      "interfaceId": "can0",
       "canSignal": {
         "messageId": 1025,
         "isBigEndian": false,
@@ -238,7 +242,7 @@ aws iotfleetwise create-campaign \
   --target-arn "arn:aws:iotfleetwise:us-east-1:123456789012:fleet/seattle-fleet" \
   --collection-scheme '{
     "conditionBasedCollectionScheme": {
-      "expression": "$Vehicle.Engine.CoolantTemperature > 105",
+      "expression": "$variable.`Vehicle.Engine.CoolantTemperature` > 105",
       "minimumTriggerIntervalMs": 5000,
       "triggerMode": "ALWAYS",
       "conditionLanguageVersion": 1
