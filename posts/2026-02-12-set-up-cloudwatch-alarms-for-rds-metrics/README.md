@@ -61,7 +61,7 @@ Why 80%? You want headroom. At 100%, new queries queue up and latency spikes. Se
 
 ### 2. Low Free Storage Space
 
-Running out of disk space will crash your database. RDS doesn't auto-expand storage by default (though you can enable it), so this alarm is critical.
+Running out of disk space can put your database into a storage-full state. RDS storage autoscaling only expands storage if you enable it and it stays within the maximum storage threshold, so this alarm is critical.
 
 ```bash
 # Alert when free storage drops below 10 GB
@@ -107,7 +107,7 @@ Every database connection consumes memory. Too many connections can exhaust memo
 
 ```bash
 # Alert when connection count exceeds 80% of max_connections
-# For db.r6g.large with default max_connections around 700
+# Example: if your max_connections setting is 700, alert above 560
 aws cloudwatch put-metric-alarm \
   --alarm-name "rds-mydb-connections-high" \
   --alarm-description "RDS connection count above 560" \
@@ -180,7 +180,7 @@ aws cloudwatch put-metric-alarm \
 
 ### 7. Swap Usage
 
-Any swap usage on an RDS instance is a bad sign. It means the database has run out of RAM and is using disk as memory, which is catastrophically slow.
+Sustained or growing swap usage on an RDS instance is a bad sign. It can mean the database is under memory pressure and is using disk as memory, which is much slower than RAM.
 
 ```bash
 # Alert when swap usage exceeds 100 MB
