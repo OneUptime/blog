@@ -35,7 +35,7 @@ The cached answers won't be refreshed until the TTL expires. This is by design -
 Before blaming propagation, confirm the change actually took effect in Route 53:
 
 ```bash
-# Check the record directly from Route 53 name servers
+# Check the record set in the Route 53 hosted zone
 
 aws route53 list-resource-record-sets \
     --hosted-zone-id Z1234567890 \
@@ -111,7 +111,7 @@ aws route53 change-resource-record-sets \
 
 ### Alias Records and TTL
 
-Route 53 Alias records don't have a configurable TTL. They inherit the TTL from the target resource. For example, Alias records pointing to an ALB use a TTL of 60 seconds.
+Route 53 Alias records that point to AWS resources don't have a configurable TTL. Route 53 uses the default TTL for the target AWS resource. If an Alias record points to another record in the same hosted zone, Route 53 uses the TTL of that target record. For example, Alias records pointing to an ALB use a TTL of 60 seconds.
 
 ```bash
 # Alias records - TTL is determined by the target
@@ -158,7 +158,7 @@ The status will be `PENDING` (still applying) or `INSYNC` (applied to all Route 
 
 ## Stubborn Resolver Caching
 
-Some ISP resolvers don't respect TTL values and cache for longer. There's not much you can do about this except wait. Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1) generally respect TTLs correctly.
+Some ISP resolvers don't respect TTL values and cache for longer. There's not much you can do about this except wait. Google DNS (8.8.8.8) and Cloudflare DNS (1.1.1.1) generally respect the low TTL values used for migrations correctly.
 
 If you have Google DNS resolvers caching old data, you can flush their cache:
 
@@ -167,24 +167,25 @@ If you have Google DNS resolvers caching old data, you can flush their cache:
 # Visit: https://dns.google/cache
 
 # Flush Cloudflare's cache
-# Visit: https://1.1.1.1/purge-cache/
+# Visit: https://one.one.one.one/purge-cache/
 ```
 
 ## Negative Caching
 
-If a record was queried before it existed, DNS resolvers cache the negative response (NXDOMAIN) for the duration of the SOA record's negative TTL. This means a newly created record might not be visible immediately.
+If a record was queried before it existed, DNS resolvers cache the negative response (NXDOMAIN) for the zone's negative cache TTL. In Route 53, the duration is the lesser of the SOA record's TTL and the minimum TTL value in the SOA record. This means a newly created record might not be visible immediately.
 
 ```bash
-# Check the SOA record's negative TTL
+# Check the SOA record's TTL and minimum TTL
 dig example.com SOA +noall +answer
-# The last number in the SOA record is the negative cache TTL
+# The second column is the SOA record TTL.
+# The last number in the SOA data is the SOA minimum TTL.
 ```
 
 If the negative TTL is high, new records take longer to appear. You can lower it:
 
 ```bash
-# The negative TTL is the last value in the SOA record
-# Default is often 900 seconds (15 minutes)
+# Lower the SOA record TTL, the SOA minimum TTL, or both.
+# Route 53's default SOA record TTL is 900 seconds (15 minutes).
 ```
 
 ## Health Check Propagation
@@ -202,8 +203,6 @@ For critical DNS changes, set up monitoring to verify the change propagated:
 
 ```python
 import dns.resolver
-import time
-
 def check_propagation(domain, expected_ip, resolvers):
     """Check if DNS change has propagated to given resolvers."""
     results = {}
@@ -212,10 +211,10 @@ def check_propagation(domain, expected_ip, resolvers):
         resolver.nameservers = [resolver_ip]
         try:
             answers = resolver.resolve(domain, 'A')
-            actual_ip = str(answers[0])
+            actual_ips = [str(answer) for answer in answers]
             results[resolver_ip] = {
-                'ip': actual_ip,
-                'propagated': actual_ip == expected_ip,
+                'ips': actual_ips,
+                'propagated': expected_ip in actual_ips,
                 'ttl': answers.rrset.ttl
             }
         except Exception as e:
