@@ -21,7 +21,7 @@ Before migrating, understand what is actually changing:
 | Backend definition | CLI prompts + JSON config | TypeScript code |
 | Infrastructure | CloudFormation via Amplify CLI | CDK via Amplify backend |
 | State management | amplify/ directory with team-provider-info.json | amplify/ directory with resource.ts files |
-| Deployment | `amplify push` | Git push or `npx ampx sandbox` |
+| Deployment | `amplify push` | Git push, `npx ampx sandbox`, or `npx ampx pipeline-deploy` |
 | Environment management | `amplify env` commands | Branch-based, automatic |
 | Code generation | `amplify codegen` | Automatic with type inference |
 
@@ -35,7 +35,7 @@ graph TD
     end
 
     subgraph Gen 2 Workflow
-        F[npm create amplify] --> G[Edit resource.ts files]
+        F[amplify gen2-migration generate] --> G[Review resource.ts files]
         G --> H[npx ampx sandbox / git push]
         H --> I[CDK -> CloudFormation Stack]
     end
@@ -45,9 +45,9 @@ graph TD
 
 There are three approaches to migration:
 
-### Option 1: Reference Existing Resources (Recommended)
+### Option 1: Use the Gen 2 Migration Tool (Recommended)
 
-Keep your Gen 1 backend resources running and reference them from a Gen 2 project. This is the safest approach because your existing infrastructure stays untouched.
+Generate a Gen 2 backend from your Gen 1 environment, deploy it alongside Gen 1, test it, and then use the refactor step to move stateful resources such as Cognito user pools, S3 buckets, and DynamoDB tables into the Gen 2 stacks. This is the safest supported approach because your production data is preserved while the new Gen 2 environment is validated.
 
 ### Option 2: Incremental Migration
 
@@ -89,33 +89,39 @@ amplify env list
 # Environments: dev, staging, prod
 ```
 
-## Step 2: Create the Gen 2 Project Structure
+## Step 2: Generate the Gen 2 Project Structure
 
-In your existing project, initialize Amplify Gen 2:
+The official migration flow starts by assessing and locking the Gen 1 environment, then generating Gen 2 TypeScript backend files from the deployed Gen 1 CloudFormation stacks:
 
 ```bash
-# Install Gen 2 dependencies
-npm install @aws-amplify/backend @aws-amplify/backend-cli
+# Assess whether the Gen 1 environment can be migrated
+amplify gen2-migration assess
 
-# Create the Gen 2 backend directory
-npm create amplify@latest
+# Lock the Gen 1 environment during migration
+amplify gen2-migration lock
+
+# Generate Gen 2 backend files on a migration branch
+git checkout -b gen2-main
+amplify gen2-migration generate
 ```
 
-This creates a new `amplify/` directory. If you have an existing `amplify/` directory from Gen 1, the tool will ask you to rename or merge it. Keep the Gen 1 directory as `amplify-gen1/` for reference.
+The generate command replaces the local `amplify/` directory with Gen 2 code. If you need to switch back to work on a Gen 1 environment, run `amplify pull` again.
 
-## Step 3: Reference Existing Auth Resources
+## Step 3: Preserve Auth Resources
 
-Instead of creating new Cognito resources, reference your existing ones:
+The migration tool generates Gen 2 auth code and later moves your Gen 1 Cognito resources into the Gen 2 stacks during the refactor step. If you are not using the migration tool and only need to connect a Gen 2 backend to Cognito resources that are managed outside of Amplify, use `referenceAuth` with the user pool, client, identity pool, and the authenticated and unauthenticated IAM role ARNs:
 
 ```typescript
 // amplify/auth/resource.ts - Reference existing Cognito resources
-import { defineAuth, referenceAuth } from '@aws-amplify/backend';
+import { referenceAuth } from '@aws-amplify/backend';
 
 // Reference the existing Gen 1 Cognito User Pool
 export const auth = referenceAuth({
   userPoolId: 'us-east-1_abc123XYZ',
-  userPoolClientId: 'abc123def456',
   identityPoolId: 'us-east-1:12345678-abcd-1234-abcd-123456789012',
+  authRoleArn: 'arn:aws:iam::123456789012:role/my-authenticated-role',
+  unauthRoleArn: 'arn:aws:iam::123456789012:role/my-unauthenticated-role',
+  userPoolClientId: 'abc123def456',
 });
 ```
 
@@ -127,18 +133,18 @@ Get these IDs from your Gen 1 configuration:
 # Or look in the Cognito console
 ```
 
-This approach means your existing users, passwords, and sessions continue working with zero disruption.
+The migration tool's refactor flow is what preserves your existing users and data during a Gen 1 to Gen 2 migration. A `referenceAuth` setup only references resources that remain managed outside the Amplify backend.
 
-## Step 4: Reference Existing Data Resources
+## Step 4: Migrate Data Resources
 
-If you have a Gen 1 AppSync API with DynamoDB tables, reference them:
+If you have a Gen 1 AppSync API with DynamoDB tables, the migration tool generates a Gen 2 `amplify/data/resource.ts` file from your existing GraphQL API. Review the generated schema carefully before deployment:
 
 ```typescript
-// amplify/data/resource.ts - Reference existing AppSync API
+// amplify/data/resource.ts - Generated Gen 2 schema example
 import { defineData, a, type ClientSchema } from '@aws-amplify/backend';
 
 const schema = a.schema({
-  // Recreate your Gen 1 schema in Gen 2 TypeScript format
+  // Generated from your Gen 1 schema, then adjusted as needed
   Todo: a.model({
     name: a.string().required(),
     description: a.string(),
@@ -152,13 +158,13 @@ export type Schema = ClientSchema<typeof schema>;
 
 export const data = defineData({
   schema,
-  // Point to the existing AppSync API
-  name: 'myExistingApi',
   authorizationModes: {
     defaultAuthorizationMode: 'userPool',
   },
 });
 ```
+
+The `name` property on `defineData` names the Gen 2 data resource; it does not point to an existing AppSync API. During migration, DynamoDB tables that host your models can be reused by the generated Gen 2 application after deployment and refactor. If you only want a frontend to connect directly to an existing AppSync API, configure `amplify_outputs.json` or `Amplify.configure()` with the AppSync endpoint and auth modes instead of using `defineData`.
 
 If your Gen 1 schema used `@model`, `@auth`, `@connection`, and other directives, you need to translate those to Gen 2 equivalents:
 
@@ -167,28 +173,28 @@ If your Gen 1 schema used `@model`, `@auth`, `@connection`, and other directives
 | `@model` | `a.model({})` |
 | `@auth(rules: [{allow: owner}])` | `.authorization((allow) => [allow.owner()])` |
 | `@connection(keyName: ...)` | `a.belongsTo()` / `a.hasMany()` |
-| `@key` | `a.secondaryIndexes()` |
+| `@key` | `.secondaryIndexes((index) => [index('fieldName')])` |
 | `@function` | `a.handler.function()` |
-| `@searchable` | Custom OpenSearch configuration |
+| `@searchable` | Not directly supported; use a custom OpenSearch integration such as DynamoDB zero-ETL to OpenSearch |
 
-## Step 5: Reference Existing Storage
+## Step 5: Migrate Existing Storage
 
-For S3 storage buckets:
+For S3 storage buckets, let the migration tool generate the Gen 2 storage definition and move the bucket during the refactor step. A normal `defineStorage` block creates an Amplify-managed bucket; it does not import an existing bucket by name:
 
 ```typescript
-// amplify/storage/resource.ts - Reference existing S3 bucket
+// amplify/storage/resource.ts - Gen 2 storage definition
 import { defineStorage } from '@aws-amplify/backend';
 
 export const storage = defineStorage({
-  name: 'existingBucket',
-  // If referencing an existing bucket:
-  isDefault: true,
+  name: 'appFiles',
   access: (allow) => ({
     'public/*': [allow.guest.to(['read']), allow.authenticated.to(['read', 'write'])],
     'private/{entity_id}/*': [allow.entity('identity').to(['read', 'write', 'delete'])],
   }),
 });
 ```
+
+If you only want the frontend libraries to use an S3 bucket that remains outside Amplify, configure the bucket name and region in `Amplify.configure()` or `amplify_outputs.json`, and make sure the Cognito identity roles have the required S3 IAM permissions.
 
 ## Step 6: Migrate Lambda Functions
 
@@ -260,12 +266,14 @@ const { data: todos } = await client.models.Todo.list();
 Before deploying to production, test everything with the Gen 2 sandbox:
 
 ```bash
-# Start the sandbox - creates personal cloud resources
-npx ampx sandbox
+# Deploy once to sandbox - creates isolated personal cloud resources
+npx ampx sandbox --once
 
 # Run your frontend against the sandbox backend
 npm run dev
 ```
+
+By default, sandbox uses isolated resources. If you need sandbox to share Gen 1 model DynamoDB tables during migration testing, update the generated `branchName` in `amplify/data/resource.ts` to `"sandbox"` as directed by the migration guide.
 
 Test every feature of your application:
 - Authentication (sign up, sign in, password reset)
@@ -286,24 +294,30 @@ Once testing passes, deploy Gen 2 to production:
 npx ampx pipeline-deploy --branch main --app-id d1234abcde
 ```
 
+After the Gen 2 environment is deployed and tested, run the migration refactor from the Gen 1 branch to move supported stateful resources into the Gen 2 stacks:
+
+```bash
+git checkout main
+amplify pull --appId <appId> --envName main
+amplify gen2-migration refactor --to <gen2-root-stack-name>
+```
+
+Then switch back to the Gen 2 branch, enable the generated post-refactor code in `amplify/backend.ts`, and deploy again so `amplify_outputs.json` reflects the transferred resources.
+
 ## Step 10: Clean Up Gen 1 Resources
 
 After confirming Gen 2 is working in production:
 
-1. Remove the Gen 1 Amplify backend (but keep the underlying resources)
-2. Delete the Gen 1 `amplify/` directory (or the renamed `amplify-gen1/`)
-3. Remove Gen 1 CLI dependencies from your project
+1. Verify no users or applications are still accessing the Gen 1 stateless resources
+2. Run the migration retain command so stateful resources are not deleted
+3. Delete the Gen 1 root CloudFormation stack and then manually remove orphaned stateless resources that are safe to delete
 
 ```bash
-# Remove Gen 1 CLI
-npm uninstall @aws-amplify/cli
-
-# Remove old configuration files
-rm -rf amplify-gen1/
-rm aws-exports.js
+# Retain migrated stateful resources before decommissioning Gen 1
+amplify gen2-migration retain
 ```
 
-Do NOT delete the CloudFormation stacks directly if you are referencing those resources from Gen 2. The Gen 2 project now manages the relationship to those resources.
+You can remove old local Gen 1 configuration files after the migration is complete, but do not run `amplify env remove` or delete Gen 1 CloudFormation stacks directly before following the migration decommissioning steps. Doing so can trigger cleanup that disrupts the migrated Gen 2 environment.
 
 ## Common Migration Issues
 
@@ -319,4 +333,4 @@ For building new features on Gen 2 after migrating, see our guide on [building a
 
 ## Wrapping Up
 
-Migrating from Amplify Gen 1 to Gen 2 does not have to be scary. The reference-existing-resources approach lets you adopt the new development model without touching your production infrastructure. Start by referencing your existing Cognito and AppSync resources, update your frontend imports, and test thoroughly in a sandbox. Once you are confident, flip the switch to Gen 2 and enjoy the benefits of TypeScript-first backend definitions.
+Migrating from Amplify Gen 1 to Gen 2 does not have to be scary. The migration-tool approach lets you adopt the new development model while preserving production data. Start by assessing and generating the Gen 2 backend from your Gen 1 environment, update your frontend imports, and test thoroughly before running the refactor step. Once you are confident, flip the switch to Gen 2 and enjoy the benefits of TypeScript-first backend definitions.
