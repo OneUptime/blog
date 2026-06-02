@@ -46,7 +46,7 @@ Here's a function that processes an order event, validates it, and returns a res
 # lambda_function.py - Order processing function
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 def validate_order(order):
@@ -94,7 +94,7 @@ def lambda_handler(event, context):
 
     # Process the order
     order_id = f"ORD-{context.aws_request_id[:8].upper()}"
-    processed_at = datetime.utcnow().isoformat()
+    processed_at = datetime.now(UTC).isoformat()
 
     result = {
         'order_id': order_id,
@@ -145,7 +145,7 @@ You should see a green "Execution result: succeeded" banner with the function's 
 {
   "statusCode": 200,
   "headers": {"Content-Type": "application/json"},
-  "body": "{\"order_id\": \"ORD-ABC12345\", \"status\": \"confirmed\", \"customer_id\": \"CUST-12345\", \"item_count\": 2, \"total\": 44.97, \"processed_at\": \"2026-02-12T10:30:45.123456\"}"
+  "body": "{\"order_id\": \"ORD-ABC12345\", \"status\": \"confirmed\", \"customer_id\": \"CUST-12345\", \"item_count\": 2, \"total\": 44.97, \"processed_at\": \"2026-02-12T10:30:45.123456+00:00\"}"
 }
 ```
 
