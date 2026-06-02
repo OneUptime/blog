@@ -245,7 +245,7 @@ const waitForApproval = new tasks.LambdaInvoke(this, 'Request Approval', {
     orderId: sfn.JsonPath.stringAt('$.orderId'),
     orderTotal: sfn.JsonPath.numberAt('$.orderTotal'),
   }),
-  timeout: cdk.Duration.days(7), // Approval must happen within 7 days
+  taskTimeout: sfn.Timeout.duration(cdk.Duration.days(7)), // Approval must happen within 7 days
 });
 ```
 
@@ -291,11 +291,11 @@ const notifyComplete = new tasks.SnsPublish(this, 'Notify Complete', {
 });
 ```
 
-Direct integrations skip the Lambda overhead entirely - no cold starts, no execution costs, and lower latency.
+Direct integrations skip the Lambda overhead entirely - no cold starts, no Lambda execution costs, and lower latency.
 
 ## Express vs Standard Workflows
 
-CDK supports both workflow types. Express workflows are cheaper and faster but don't support all features:
+CDK supports both workflow types. Express workflows are designed for high-volume, short-duration workloads but don't support all features:
 
 ```typescript
 // Express workflow for high-volume, short-duration tasks
