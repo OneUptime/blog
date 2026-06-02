@@ -37,7 +37,7 @@ Download and deploy the agent VM image for your hypervisor (VMware ESXi, Hyper-V
 # Get the activation key from the agent VM
 
 # The agent must be reachable on port 80 for activation
-curl -s "http://AGENT_IP_ADDRESS/?activationRegion=us-east-1&redirect_type=TEXT"
+curl -s "http://AGENT_IP_ADDRESS/?gatewayType=SYNC&activationRegion=us-east-1&no_redirect"
 
 # Activate the agent using the key
 aws datasync create-agent \
@@ -196,20 +196,13 @@ That limits the transfer to about 1 Gbps - useful during business hours when you
 For ongoing synchronization, schedule your task to run automatically:
 
 ```bash
-# Create a CloudWatch Events rule to run the task daily
-aws events put-rule \
-  --name "DailyDataSync" \
-  --schedule-expression "cron(0 2 * * ? *)" \
-  --state ENABLED
-
-# Add the DataSync task as the target
-aws events put-targets \
-  --rule "DailyDataSync" \
-  --targets '[{
-    "Id": "datasync-target",
-    "Arn": "arn:aws:datasync:us-east-1:123456789012:task/task-0123456789abcdef0",
-    "RoleArn": "arn:aws:iam::123456789012:role/EventBridgeDataSyncRole"
-  }]'
+# Add a daily schedule to the DataSync task
+aws datasync update-task \
+  --task-arn "arn:aws:datasync:us-east-1:123456789012:task/task-0123456789abcdef0" \
+  --schedule '{
+    "ScheduleExpression": "cron(0 2 * * ? *)",
+    "Status": "ENABLED"
+  }'
 ```
 
 ## Monitoring and Troubleshooting
@@ -228,7 +221,7 @@ aws datasync describe-task-execution \
 ```
 
 Common issues to watch for:
-- **Agent connectivity**: The agent needs outbound HTTPS (443) to the DataSync service endpoints. Also ports 1024-1064 for data transfer.
+- **Agent connectivity**: The agent needs outbound HTTPS (443) to the DataSync service endpoints. If you're using a VPC service endpoint, allow TCP 1024-1064 to the endpoint for control plane traffic and TCP 443 to the task's network interfaces for data plane traffic.
 - **Permissions**: The DataSync agent needs read access to the source. The IAM role needs write access to the destination.
 - **File count limits**: DataSync can handle hundreds of millions of files, but very deep directory structures can slow down scanning.
 
