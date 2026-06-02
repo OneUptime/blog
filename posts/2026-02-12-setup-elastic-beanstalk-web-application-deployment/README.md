@@ -73,7 +73,7 @@ Create a web server environment with a load balancer.
 aws elasticbeanstalk create-environment \
   --application-name my-web-app \
   --environment-name my-web-app-prod \
-  --solution-stack-name "64bit Amazon Linux 2023 v6.1.0 running Node.js 18" \
+  --solution-stack-name "64bit Amazon Linux 2023 v6.11.1 running Node.js 22" \
   --option-settings '[
     {
       "Namespace": "aws:autoscaling:asg",
@@ -120,7 +120,7 @@ eb init
 
 # Create an environment
 eb create production \
-  --instance-type t3.small \
+  --instance_type t3.small \
   --min-instances 2 \
   --max-instances 6 \
   --elb-type application
@@ -236,6 +236,11 @@ aws elasticbeanstalk update-environment \
       "Namespace": "aws:autoscaling:trigger",
       "OptionName": "Statistic",
       "Value": "Average"
+    },
+    {
+      "Namespace": "aws:autoscaling:trigger",
+      "OptionName": "Unit",
+      "Value": "Percent"
     },
     {
       "Namespace": "aws:autoscaling:trigger",
