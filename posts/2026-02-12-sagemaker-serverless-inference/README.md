@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SageMaker, Serverless, Machine Learning, Model Deployment
 
-Description: Deploy machine learning models with SageMaker Serverless Inference for automatic scaling to zero and pay-per-request pricing without managing infrastructure.
+Description: Deploy machine learning models with SageMaker Serverless Inference for automatic scaling to zero and pay-per-use pricing without managing infrastructure.
 
 ---
 
@@ -51,7 +51,7 @@ It's NOT ideal for:
 
 ## Deploying a Serverless Endpoint
 
-Setting up a serverless endpoint is almost identical to a regular deployment, with one key difference: you provide a `ServerlessInferenceConfig` instead of instance type and count.
+Setting up a serverless endpoint with SageMaker Python SDK 2.x is almost identical to a regular deployment, with one key difference: you provide a `ServerlessInferenceConfig` instead of instance type and count.
 
 ```python
 import sagemaker
@@ -178,7 +178,7 @@ Ways to minimize cold start impact:
 # Optimize your model loading code
 # Choose an appropriate memory size - too small can slow things down
 
-# Use provisioned concurrency to keep containers warm (if available)
+# Use provisioned concurrency to keep containers warm
 # The memory size affects the CPU allocation:
 # 1024 MB -> lower CPU
 # 6144 MB -> higher CPU
@@ -209,8 +209,9 @@ requests_per_month = 1000 * 30
 inference_time_seconds = 0.2
 memory_gb = 2  # 2048 MB
 
-# Serverless charges per inference duration
-# Price is approximately $0.0000200 per second per GB of memory
+# Simplified estimate for on-demand compute duration only.
+# SageMaker also charges for data processed, and provisioned concurrency has separate charges.
+# Price is approximately $0.0000200 per second per GB of memory in many US regions.
 serverless_cost_per_request = 0.0000200 * inference_time_seconds * memory_gb
 serverless_monthly = serverless_cost_per_request * requests_per_month
 print(f"Serverless endpoint: ${serverless_monthly:.2f}/month")
@@ -221,10 +222,11 @@ For low-traffic workloads, the savings can be dramatic - often 90% or more compa
 
 ## Monitoring Serverless Endpoints
 
-Serverless endpoints emit the same CloudWatch metrics as regular endpoints, plus some serverless-specific ones.
+Serverless endpoints emit a documented subset of endpoint CloudWatch metrics, plus serverless-specific metrics.
 
 ```python
 import boto3
+from datetime import datetime, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 
@@ -236,8 +238,8 @@ response = cloudwatch.get_metric_statistics(
         {'Name': 'EndpointName', 'Value': 'xgb-serverless-endpoint'},
         {'Name': 'VariantName', 'Value': 'AllTraffic'}
     ],
-    StartTime='2026-02-11T00:00:00Z',
-    EndTime='2026-02-12T00:00:00Z',
+    StartTime=datetime(2026, 2, 11, tzinfo=timezone.utc),
+    EndTime=datetime(2026, 2, 12, tzinfo=timezone.utc),
     Period=3600,
     Statistics=['Sum']
 )
@@ -253,7 +255,7 @@ Set up alerts with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cl
 If you have existing persistent endpoints that don't get much traffic, here's how to migrate them.
 
 ```python
-# Step 1: Create the serverless endpoint with a different name
+# Step 1: Create the serverless endpoint config for a new serverless endpoint
 serverless_config = ServerlessInferenceConfig(
     memory_size_in_mb=2048,
     max_concurrency=10
@@ -277,14 +279,14 @@ client.create_endpoint_config(
     }]
 )
 
-# Step 2: Test the serverless endpoint thoroughly
-
-# Step 3: Update your application to point to the new endpoint
-# Or update the existing endpoint in-place:
-client.update_endpoint(
-    EndpointName='my-existing-endpoint',
+# Step 2: Create a new serverless endpoint and test it thoroughly
+client.create_endpoint(
+    EndpointName='my-model-serverless-endpoint',
     EndpointConfigName='my-model-serverless-config'
 )
+
+# Step 3: Update your application to point to the new endpoint
+# SageMaker does not support updating an instance-based real-time endpoint in-place to serverless.
 
 # Step 4: Delete the old endpoint config
 ```
@@ -294,7 +296,7 @@ client.update_endpoint(
 Before going serverless, be aware of these constraints:
 
 - **Memory limit**: 6 GB maximum
-- **Payload size**: 6 MB request/response limit
+- **Payload size**: 4 MB request/response limit
 - **Timeout**: 60-second invocation timeout
 - **Concurrency**: 200 max concurrent invocations per endpoint
 - **Container startup**: No GPU support (CPU only)
