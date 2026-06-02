@@ -30,7 +30,7 @@ These reports land in a destination bucket of your choosing, organized by date. 
 
 ## Step 1: Create a Destination Bucket
 
-The inventory reports need to go somewhere. You can use the same bucket or a separate one. Using a separate bucket is cleaner for most setups.
+The inventory reports need to go somewhere. You can use the same bucket or a separate one, but the destination bucket must be in the same AWS Region as the source bucket. Using a separate bucket is cleaner for most setups.
 
 ```bash
 # Create a destination bucket for inventory reports
@@ -94,7 +94,7 @@ aws s3api put-bucket-inventory-configuration \
         "AccountId": "123456789012",
         "Bucket": "arn:aws:s3:::my-inventory-reports",
         "Format": "CSV",
-        "Prefix": "inventory/my-source-bucket"
+        "Prefix": "inventory"
       }
     },
     "Schedule": {
@@ -137,8 +137,11 @@ my-inventory-reports/
         2026-02-12T00-00Z/
           manifest.json
           manifest.checksum
-          data/
-            abc123-def456.csv.gz
+        hive/
+          dt=2026-02-12-00-00/
+            symlink.txt
+        data/
+          abc123-def456.csv.gz
 ```
 
 The `manifest.json` file contains metadata about the report and lists all the data files.
@@ -151,7 +154,7 @@ For large inventories, Athena is the best way to query the data. First, create a
 CREATE EXTERNAL TABLE s3_inventory (
   bucket_name string,
   key string,
-  size bigint,
+  size string,
   last_modified_date string,
   storage_class string,
   etag string,
@@ -163,10 +166,19 @@ CREATE EXTERNAL TABLE s3_inventory (
   object_lock_legal_hold_status string,
   bucket_key_status string
 )
+PARTITIONED BY (dt string)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
-STORED AS TEXTFILE
-LOCATION 's3://my-inventory-reports/inventory/my-source-bucket/full-audit-inventory/data/'
-TBLPROPERTIES ('skip.header.line.count'='0');
+STORED AS INPUTFORMAT 'org.apache.hadoop.hive.ql.io.SymlinkTextInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.IgnoreKeyTextOutputFormat'
+LOCATION 's3://my-inventory-reports/inventory/my-source-bucket/full-audit-inventory/hive/'
+TBLPROPERTIES (
+  "projection.enabled" = "true",
+  "projection.dt.type" = "date",
+  "projection.dt.format" = "yyyy-MM-dd-HH-mm",
+  "projection.dt.range" = "2026-02-12-00-00,NOW",
+  "projection.dt.interval" = "1",
+  "projection.dt.interval.unit" = "HOURS"
+);
 ```
 
 Now you can run queries. Here are some useful ones.
@@ -174,10 +186,10 @@ Now you can run queries. Here are some useful ones.
 Find all objects that aren't encrypted.
 
 ```sql
-SELECT key, size, storage_class
+SELECT key, CAST(size AS bigint) AS size_bytes, storage_class
 FROM s3_inventory
 WHERE encryption_status = 'NOT-SSE'
-ORDER BY size DESC
+ORDER BY CAST(size AS bigint) DESC
 LIMIT 100;
 ```
 
@@ -187,7 +199,7 @@ Calculate storage breakdown by class.
 SELECT
   storage_class,
   COUNT(*) as object_count,
-  SUM(size) / 1024 / 1024 / 1024 as total_gb
+  SUM(CAST(size AS bigint)) / 1024 / 1024 / 1024 as total_gb
 FROM s3_inventory
 GROUP BY storage_class
 ORDER BY total_gb DESC;
@@ -196,12 +208,12 @@ ORDER BY total_gb DESC;
 Find large objects that could be moved to cheaper storage.
 
 ```sql
-SELECT key, size / 1024 / 1024 as size_mb, last_modified_date, storage_class
+SELECT key, CAST(size AS bigint) / 1024 / 1024 as size_mb, last_modified_date, storage_class
 FROM s3_inventory
 WHERE storage_class = 'STANDARD'
-  AND size > 104857600  -- larger than 100MB
+  AND CAST(size AS bigint) > 104857600  -- larger than 100MB
   AND last_modified_date < '2025-01-01'
-ORDER BY size DESC
+ORDER BY CAST(size AS bigint) DESC
 LIMIT 50;
 ```
 
@@ -215,8 +227,8 @@ You can trigger a Lambda function when new inventory reports arrive and run auto
 import boto3
 import csv
 import gzip
-import io
 import json
+from urllib.parse import unquote
 
 s3 = boto3.client('s3')
 sns = boto3.client('sns')
@@ -238,6 +250,7 @@ def lambda_handler(event, context):
     manifest = json.loads(manifest_obj['Body'].read())
 
     unencrypted_objects = []
+    total_objects_scanned = 0
 
     # Process each data file listed in the manifest
     for file_info in manifest.get('files', []):
@@ -248,10 +261,11 @@ def lambda_handler(event, context):
         with gzip.open(data_obj['Body'], 'rt') as f:
             reader = csv.reader(f)
             for row in reader:
+                total_objects_scanned += 1
                 # Column index depends on your inventory config
                 # encryption_status is typically column 8
                 if len(row) > 8 and row[8] == 'NOT-SSE':
-                    unencrypted_objects.append(row[1])  # object key
+                    unencrypted_objects.append(unquote(row[1]))  # object key
 
     if unencrypted_objects:
         # Send alert about unencrypted objects
@@ -268,7 +282,7 @@ def lambda_handler(event, context):
 
     return {
         'statusCode': 200,
-        'total_objects_scanned': manifest.get('fileCount', 0),
+        'total_objects_scanned': total_objects_scanned,
         'unencrypted_count': len(unencrypted_objects)
     }
 ```
@@ -289,7 +303,7 @@ aws s3api put-bucket-inventory-configuration \
         "AccountId": "123456789012",
         "Bucket": "arn:aws:s3:::my-inventory-reports",
         "Format": "Parquet",
-        "Prefix": "inventory-parquet/my-source-bucket"
+        "Prefix": "inventory-parquet"
       }
     },
     "Schedule": {
@@ -309,7 +323,7 @@ aws s3api put-bucket-inventory-configuration \
 
 S3 Inventory is cheap - you're charged per million objects listed. At current pricing, that's about $0.0025 per million objects. So even a bucket with 100 million objects only costs $0.25 per inventory run. The storage for the reports themselves is just standard S3 pricing.
 
-Compare that to writing a script that calls ListObjectsV2 repeatedly - you'd be paying for millions of API requests at $0.005 per 1000, plus the compute time to run the script.
+Compare that to writing a script that calls ListObjectsV2 repeatedly - you'd be paying for many paginated API requests at $0.005 per 1000, plus the compute time to run the script.
 
 ## Wrapping Up
 
