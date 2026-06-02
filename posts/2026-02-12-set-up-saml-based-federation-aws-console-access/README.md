@@ -185,11 +185,11 @@ Most users will start from the IdP:
 
 ### SP-Initiated Flow
 
-You can also start from AWS:
+For direct IAM SAML federation, users typically do not start by browsing directly to the AWS SAML endpoint. `https://signin.aws.amazon.com/saml` is the AWS Assertion Consumer Service (ACS) endpoint that receives the SAML POST from your IdP. If your IdP supports SP-initiated launch for the AWS app, use the IdP-provided application URL or access portal link:
 
-1. Go to `https://signin.aws.amazon.com/saml`
-2. You'll be redirected to your IdP
-3. Authenticate and the IdP sends you back to AWS
+1. Open the IdP-provided AWS application URL
+2. Authenticate with your IdP
+3. The IdP posts the SAML response to AWS
 
 ## Programmatic Federation
 
@@ -226,7 +226,7 @@ def assume_role_with_saml(saml_response, role_arn, principal_arn):
 # This handles the IdP authentication and credential extraction
 ```
 
-Tools like `saml2aws` and `aws-vault` automate this flow:
+Tools like `saml2aws` automate this flow:
 
 ```bash
 # Install saml2aws
@@ -279,13 +279,23 @@ For more on cross-account roles, see our guide on [setting up cross-account IAM 
 
 ## Restricting Federation by MFA
 
-Add an MFA condition to the trust policy to ensure only MFA-authenticated SAML assertions are accepted:
+The `aws:MultiFactorAuthPresent` condition key is not present for federated identities, so do not use it to enforce MFA for SAML federation. Instead, have your IdP include an MFA indicator as a SAML session tag, then require that tag in the role trust policy.
+
+For example, configure your IdP to include this attribute only after MFA:
+
+```text
+Name: https://aws.amazon.com/SAML/Attributes/PrincipalTag:authn
+Value: mfa
+```
+
+Then require that tag when the role is assumed:
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "AllowMfaTaggedSamlAssumeRole",
       "Effect": "Allow",
       "Principal": {
         "Federated": "arn:aws:iam::123456789012:saml-provider/CompanyIdP"
@@ -293,10 +303,26 @@ Add an MFA condition to the trust policy to ensure only MFA-authenticated SAML a
       "Action": "sts:AssumeRoleWithSAML",
       "Condition": {
         "StringEquals": {
-          "SAML:aud": "https://signin.aws.amazon.com/saml"
+          "SAML:aud": "https://signin.aws.amazon.com/saml",
+          "aws:RequestTag/authn": "mfa"
+        }
+      }
+    },
+    {
+      "Sid": "AllowOnlyMfaAuthnSessionTag",
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::123456789012:saml-provider/CompanyIdP"
+      },
+      "Action": "sts:TagSession",
+      "Condition": {
+        "StringEquals": {
+          "aws:RequestTag/authn": "mfa"
         },
-        "Bool": {
-          "aws:MultiFactorAuthPresent": "true"
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "authn"
+          ]
         }
       }
     }
@@ -304,7 +330,7 @@ Add an MFA condition to the trust policy to ensure only MFA-authenticated SAML a
 }
 ```
 
-Note: Whether the `aws:MultiFactorAuthPresent` condition works depends on your IdP including the authentication context class in the SAML assertion.
+Note: The exact IdP claim rule depends on your provider. The important part is that AWS receives the `PrincipalTag:authn` SAML attribute only for MFA-authenticated sessions.
 
 ## CloudTrail Logging
 
@@ -331,4 +357,4 @@ Use **direct SAML federation** when:
 - You need to integrate with legacy systems
 - Your organization requires specific SAML attribute customizations
 
-Both approaches are secure and use temporary credentials. Identity Center is built on top of SAML federation, so you're using the same underlying technology either way.
+Both approaches are secure and use temporary credentials. IAM Identity Center adds centralized account assignment, access portal, and permission set management; direct IAM SAML federation keeps the role mapping and assertion customization closer to your IdP and IAM roles.
