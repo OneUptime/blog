@@ -144,14 +144,30 @@ module "vpc" {
   single_nat_gateway   = true
   enable_dns_hostnames = true
   enable_dns_support   = true
+}
 
-  # Gateway endpoints (free)
-  enable_s3_endpoint       = true
-  enable_dynamodb_endpoint = true
+module "endpoints" {
+  source  = "terraform-aws-modules/vpc/aws//modules/vpc-endpoints"
+  version = "5.5.0"
+
+  vpc_id = module.vpc.vpc_id
+
+  endpoints = {
+    s3 = {
+      service         = "s3"
+      service_type    = "Gateway"
+      route_table_ids = module.vpc.private_route_table_ids
+    }
+    dynamodb = {
+      service         = "dynamodb"
+      service_type    = "Gateway"
+      route_table_ids = module.vpc.private_route_table_ids
+    }
+  }
 }
 ```
 
-S3 and DynamoDB endpoints are gateway endpoints - they're free. Interface endpoints (for services like ECR, CloudWatch, SSM) cost money but can reduce your NAT gateway data transfer costs significantly.
+S3 and DynamoDB support gateway endpoints - they're free. Interface endpoints (for services like ECR, CloudWatch, SSM) cost money but can reduce your NAT gateway data transfer costs significantly.
 
 ## EKS-Ready VPC
 
@@ -209,7 +225,7 @@ module "vpc" {
   # Enable VPC flow logs to CloudWatch
   enable_flow_log                      = true
   create_flow_log_cloudwatch_log_group = true
-  create_flow_log_iam_role             = true
+  create_flow_log_cloudwatch_iam_role  = true
   flow_log_max_aggregation_interval    = 60 # 1-minute granularity
 }
 ```
@@ -256,6 +272,7 @@ resource "aws_security_group" "app" {
 module "rds" {
   source = "terraform-aws-modules/rds/aws"
 
+  create_db_subnet_group = true
   subnet_ids = module.vpc.database_subnets
   vpc_security_group_ids = [aws_security_group.db.id]
   # ...
