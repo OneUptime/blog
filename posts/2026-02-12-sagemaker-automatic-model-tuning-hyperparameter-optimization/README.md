@@ -210,9 +210,7 @@ from sagemaker.tuner import WarmStartConfig, WarmStartTypes
 # Warm start from a previous tuning job
 warm_start_config = WarmStartConfig(
     warm_start_type=WarmStartTypes.TRANSFER_LEARNING,
-    parents=[
-        {'HyperParameterTuningJobName': 'xgb-hpo-search'}  # Previous job
-    ]
+    parents={'xgb-hpo-search'}  # Previous job
 )
 
 # Create a new tuner with warm start
@@ -228,6 +226,7 @@ refined_tuner = HyperparameterTuner(
         'colsample_bytree': ContinuousParameter(0.6, 0.9),
         'gamma': ContinuousParameter(0, 2),
         'min_child_weight': ContinuousParameter(2, 7),
+        'alpha': ContinuousParameter(0, 1),
     },
     max_jobs=25,
     max_parallel_jobs=5,
@@ -297,13 +296,13 @@ print(f"val_f1: {f1_score:.4f}")
 print(f"val_accuracy: {accuracy:.4f}")
 ```
 
-## Multi-Objective Tuning
+## Completion Criteria
 
-Sometimes you care about more than one metric. For example, you might want to maximize accuracy while minimizing latency.
+Sometimes you want the tuning job to stop once additional training jobs are no longer improving the objective metric.
 
 ```python
-# Multi-objective tuning
-multi_tuner = HyperparameterTuner(
+# Stop the tuning job when the objective stops improving
+criteria_tuner = HyperparameterTuner(
     estimator=xgb_estimator,
     objective_metric_name='validation:auc',
     objective_type='Maximize',
@@ -311,7 +310,7 @@ multi_tuner = HyperparameterTuner(
     max_jobs=50,
     max_parallel_jobs=5,
     strategy='Bayesian',
-    # Define additional objectives
+    # Stop after 10 training jobs fail to improve the best objective by at least 1%
     completion_criteria_config={
         'BestObjectiveNotImproving': {
             'MaxNumberOfTrainingJobsNotImproving': 10
