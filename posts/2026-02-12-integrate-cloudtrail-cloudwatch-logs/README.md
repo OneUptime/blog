@@ -8,9 +8,9 @@ Description: Learn how to send CloudTrail events to CloudWatch Logs for real-tim
 
 ---
 
-CloudTrail logs are great for after-the-fact investigations, but they've got a problem - they're delivered to S3 with a delay of up to 15 minutes. When someone deletes a production database or creates a new IAM admin user, you don't want to find out 15 minutes later. You want to know right now.
+CloudTrail logs are great for after-the-fact investigations, but they've got a problem - delivery to S3 typically takes a few minutes and isn't guaranteed to be immediate. When someone deletes a production database or creates a new IAM admin user, you don't want to wait for the next log file delivery. You want to know as soon as CloudTrail delivers the event.
 
-That's where the CloudTrail-to-CloudWatch Logs integration comes in. It streams your CloudTrail events to a CloudWatch log group in near real-time, which means you can set up metric filters, alarms, and automated responses that trigger within seconds of an event occurring.
+That's where the CloudTrail-to-CloudWatch Logs integration comes in. It sends your CloudTrail events to a CloudWatch log group, which means you can set up metric filters, alarms, and automated responses that trigger shortly after CloudTrail delivers an event to CloudWatch Logs.
 
 ## How It Works
 
@@ -26,7 +26,7 @@ graph LR
     F --> G[SNS/Lambda]
 ```
 
-CloudTrail delivers events to both S3 and CloudWatch Logs simultaneously. The S3 delivery is for long-term storage and querying. The CloudWatch Logs delivery is for real-time monitoring.
+CloudTrail can deliver events to both S3 and CloudWatch Logs. The S3 delivery is for long-term storage and querying. The CloudWatch Logs delivery is for monitoring and alerting.
 
 ## Setting Up the IAM Role
 
@@ -72,7 +72,7 @@ Now attach the permissions policy. CloudTrail needs to create log streams and pu
         "logs:PutLogEvents"
       ],
       "Resource": [
-        "arn:aws:logs:us-east-1:111111111111:log-group:CloudTrail/DefaultLogGroup:log-stream:111111111111_CloudTrail_us-east-1*"
+        "arn:aws:logs:us-east-1:111111111111:log-group:CloudTrail/DefaultLogGroup:log-stream:111111111111_CloudTrail_*"
       ]
     }
   ]
