@@ -54,13 +54,13 @@ Both are columnar, both are compressed, and both work great with Athena. Here's 
 | Feature | Parquet | ORC |
 |---------|---------|-----|
 | Origin | Apache/Twitter | Apache/Hive |
-| Compression | Snappy (default), GZIP, LZO, ZSTD | ZLIB (default), Snappy, LZO, ZSTD |
+| Compression | GZIP (Athena CTAS default), Snappy, ZSTD | ZLIB (default), Snappy, ZSTD |
 | Nested types | Excellent support | Good support |
 | Ecosystem | Broad (Spark, Presto, pandas) | Strong in Hive ecosystem |
 | Predicate pushdown | Yes | Yes |
 | Stats/indexes | Column statistics | Stripe-level indexes + bloom filters |
 
-**For most Athena use cases, Parquet is the better choice.** It has broader ecosystem support, works well with modern tools, and handles nested/complex types more naturally. ORC can be slightly better for highly filtered queries because of its built-in indexes.
+**For most Athena use cases, Parquet is the better choice.** It has broader ecosystem support and works well with modern tools. ORC can be slightly better for highly filtered queries because of its built-in indexes, and it is also worth testing when you rely heavily on complex types.
 
 ## Converting Data to Parquet
 
@@ -73,7 +73,7 @@ The simplest way to convert existing data to Parquet:
 CREATE TABLE analytics.events_parquet
 WITH (
     format = 'PARQUET',
-    parquet_compression = 'SNAPPY',
+    write_compression = 'SNAPPY',
     external_location = 's3://my-bucket/events-parquet/'
 ) AS
 SELECT * FROM analytics.events_csv;
@@ -88,7 +88,7 @@ Even better - convert to Parquet and partition at the same time:
 CREATE TABLE analytics.events_optimized
 WITH (
     format = 'PARQUET',
-    parquet_compression = 'SNAPPY',
+    write_compression = 'SNAPPY',
     partitioned_by = ARRAY['year', 'month'],
     external_location = 's3://my-bucket/events-optimized/'
 ) AS
@@ -121,7 +121,7 @@ pq.write_table(
     table,
     'events.parquet',
     compression='snappy',
-    row_group_size=128 * 1024 * 1024  # 128 MB row groups
+    row_group_size=1_000_000  # rows per row group; tune based on row width
 )
 ```
 
@@ -166,12 +166,12 @@ Compression reduces file sizes further, on top of the columnar storage savings:
 
 | Codec | Compression Ratio | Speed | Best For |
 |-------|-------------------|-------|----------|
-| Snappy | Good | Very fast | Most use cases (default for Parquet) |
+| Snappy | Good | Very fast | Most query-heavy use cases |
 | GZIP | Better | Slower | Storage-sensitive workloads |
 | ZSTD | Better | Fast | Good balance of ratio and speed |
-| LZO | Good | Fast | Splittable compression |
+| LZO | Good | Fast | Existing datasets that already use it |
 
-Snappy is the default for Parquet and is usually the right choice. It prioritizes decompression speed, which translates to faster queries. If storage cost is a bigger concern than query speed, try ZSTD or GZIP.
+Snappy is a common default in tools like PyArrow and AWS Glue and is usually the right choice for query-heavy workloads. Athena CTAS defaults to GZIP for Parquet writes, so specify `write_compression = 'SNAPPY'` if you want Snappy output. Snappy prioritizes decompression speed, which translates to faster queries. If storage cost is a bigger concern than query speed, try ZSTD or GZIP.
 
 ## Predicate Pushdown
 
@@ -186,7 +186,7 @@ This works best when your data is sorted by the columns you frequently filter on
 CREATE TABLE analytics.events_sorted
 WITH (
     format = 'PARQUET',
-    parquet_compression = 'SNAPPY',
+    write_compression = 'SNAPPY',
     external_location = 's3://my-bucket/events-sorted/',
     bucketed_by = ARRAY['event_type'],
     bucket_count = 10
@@ -222,7 +222,7 @@ If you have thousands of tiny files, consolidate them:
 CREATE TABLE analytics.events_consolidated
 WITH (
     format = 'PARQUET',
-    parquet_compression = 'SNAPPY',
+    write_compression = 'SNAPPY',
     external_location = 's3://my-bucket/events-consolidated/'
 ) AS
 SELECT * FROM analytics.events_small_files;
