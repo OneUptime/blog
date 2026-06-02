@@ -66,7 +66,7 @@ The review consists of answering questions for each pillar. For each question, y
 ```bash
 # List the questions for a specific pillar
 aws wellarchitected list-answers \
-    --workload-id abc123 \
+    --workload-id 1234567890abcdef1234567890abcdef \
     --lens-alias "wellarchitected" \
     --pillar-id "reliability"
 ```
@@ -75,15 +75,17 @@ aws wellarchitected list-answers \
 
 Key questions in this pillar focus on how you design, run, and improve your workloads.
 
-**Do you use infrastructure as code?**
+**How do you design your workload so that you can understand its state?**
+
+Use the `QuestionId` and `ChoiceId` values returned by `list-answers`.
 
 ```bash
 # Answer a question with selected choices
 aws wellarchitected update-answer \
-    --workload-id abc123 \
+    --workload-id 1234567890abcdef1234567890abcdef \
     --lens-alias "wellarchitected" \
-    --question-id "ops-how-do-you-design-your-workload-to-understand-its-state" \
-    --selected-choices '["ops_ops-how-do-you-design_implement_app_telemetry"]' \
+    --question-id "$QUESTION_ID" \
+    --selected-choices "$CHOICE_ID" \
     --notes "We use CloudWatch for metrics, X-Ray for tracing, and Datadog for aggregation"
 ```
 
@@ -145,7 +147,7 @@ Key things to assess:
 
 ### Sustainability Questions
 
-The newest pillar focuses on reducing your environmental footprint.
+The latest-added pillar focuses on reducing your environmental footprint.
 
 Key things to assess:
 
@@ -161,11 +163,11 @@ After answering all questions, review the findings.
 ```bash
 # Get the overall workload risk summary
 aws wellarchitected get-workload \
-    --workload-id abc123
+    --workload-id 1234567890abcdef1234567890abcdef
 
 # List high-risk items
 aws wellarchitected list-answers \
-    --workload-id abc123 \
+    --workload-id 1234567890abcdef1234567890abcdef \
     --lens-alias "wellarchitected" \
     --pillar-id "reliability" \
     --query "AnswerSummaries[?Risk=='HIGH']"
@@ -176,6 +178,7 @@ Risks are categorized as:
 - **High Risk**: Significant issues that should be addressed soon
 - **Medium Risk**: Issues that should be addressed but aren't urgent
 - **No Risk**: Best practices are being followed
+- **Unanswered**: The question has not been answered yet
 - **Not Applicable**: The question doesn't apply to this workload
 
 ## Creating an Improvement Plan
@@ -196,25 +199,35 @@ def generate_improvement_plan(workload_id):
     for pillar in ['operationalExcellence', 'security', 'reliability',
                    'performanceEfficiency', 'costOptimization', 'sustainability']:
 
-        answers = wa.list_answers(
-            WorkloadId=workload_id,
-            LensAlias='wellarchitected',
-            PillarId=pillar
-        )
+        next_token = None
+        while True:
+            request = {
+                'WorkloadId': workload_id,
+                'LensAlias': 'wellarchitected',
+                'PillarId': pillar
+            }
+            if next_token:
+                request['NextToken'] = next_token
 
-        for answer in answers['AnswerSummaries']:
-            if answer['Risk'] == 'HIGH':
-                high_risks.append({
-                    'pillar': pillar,
-                    'question': answer['QuestionTitle'],
-                    'risk': 'HIGH'
-                })
-            elif answer['Risk'] == 'MEDIUM':
-                medium_risks.append({
-                    'pillar': pillar,
-                    'question': answer['QuestionTitle'],
-                    'risk': 'MEDIUM'
-                })
+            answers = wa.list_answers(**request)
+
+            for answer in answers['AnswerSummaries']:
+                if answer['Risk'] == 'HIGH':
+                    high_risks.append({
+                        'pillar': pillar,
+                        'question': answer['QuestionTitle'],
+                        'risk': 'HIGH'
+                    })
+                elif answer['Risk'] == 'MEDIUM':
+                    medium_risks.append({
+                        'pillar': pillar,
+                        'question': answer['QuestionTitle'],
+                        'risk': 'MEDIUM'
+                    })
+
+            next_token = answers.get('NextToken')
+            if not next_token:
+                break
 
     print(f"=== Improvement Plan ===")
     print(f"\nHigh Risk Items ({len(high_risks)}):")
@@ -225,7 +238,7 @@ def generate_improvement_plan(workload_id):
     for i, item in enumerate(medium_risks, 1):
         print(f"  {i}. [{item['pillar']}] {item['question']}")
 
-generate_improvement_plan("abc123")
+generate_improvement_plan("1234567890abcdef1234567890abcdef")
 ```
 
 ## Using Custom Lenses
@@ -236,12 +249,12 @@ Besides the standard Well-Architected lens, you can use specialized lenses for s
 # List available lenses
 aws wellarchitected list-lenses
 
-# Common lenses:
-# - wellarchitected (default)
-# - serverless
-# - saas
-# - foundationaltechnicalreview
-# - iot
+# Common official lens names include:
+# - AWS Well-Architected Framework
+# - Serverless Applications
+# - SaaS
+# - IoT
+# - Machine Learning
 ```
 
 You can also create custom lenses for your organization's specific standards.
@@ -259,12 +272,12 @@ Create milestones to track your progress over time.
 ```bash
 # Record a milestone after initial review
 aws wellarchitected create-milestone \
-    --workload-id abc123 \
+    --workload-id 1234567890abcdef1234567890abcdef \
     --milestone-name "Initial Review - Feb 2026"
 
 # After implementing improvements, create another milestone
 aws wellarchitected create-milestone \
-    --workload-id abc123 \
+    --workload-id 1234567890abcdef1234567890abcdef \
     --milestone-name "Post-Improvement - Mar 2026"
 ```
 
@@ -273,7 +286,7 @@ Compare milestones to see improvement.
 ```bash
 # List milestones
 aws wellarchitected list-milestones \
-    --workload-id abc123
+    --workload-id 1234567890abcdef1234567890abcdef
 ```
 
 ## Review Cadence
@@ -290,11 +303,11 @@ A one-time review is better than no review, but the real benefit comes from regu
 
 Based on hundreds of reviews, these are the most common high-risk findings and their fixes.
 
-**No multi-AZ for databases**: Enable Multi-AZ. It's one CLI command and eliminates a major single point of failure.
+**No multi-AZ for databases**: For databases that support it, enable Multi-AZ or an equivalent highly available deployment. This removes a major single point of failure.
 
 **No backup testing**: Schedule monthly backup restore tests. Backups you've never restored are backups you can't trust.
 
-**Over-provisioned instances**: Right-size based on CloudWatch utilization data. Most organizations are 40-60% over-provisioned.
+**Over-provisioned instances**: Right-size based on CloudWatch utilization data. Many workloads have more capacity than their actual utilization requires.
 
 **No encryption at rest**: Enable default encryption on S3 buckets, EBS volumes, and RDS instances.
 
