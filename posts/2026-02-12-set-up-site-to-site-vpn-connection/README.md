@@ -45,7 +45,7 @@ The customer gateway represents your on-premises router in AWS. You need the pub
 
 CGW_ID=$(aws ec2 create-customer-gateway \
   --type ipsec.1 \
-  --public-ip 203.0.113.50 \
+  --ip-address 203.0.113.50 \
   --bgp-asn 65000 \
   --tag-specifications 'ResourceType=customer-gateway,Tags=[{Key=Name,Value=office-router}]' \
   --query 'CustomerGateway.CustomerGatewayId' \
@@ -115,17 +115,17 @@ aws ec2 create-vpn-connection-route \
 
 ## Step 4: Download the Configuration
 
-AWS generates a configuration file tailored to your specific router:
+AWS returns generic configuration details for the VPN connection:
 
 ```bash
-# Download the configuration for your router type
+# Download the generic XML configuration
 aws ec2 describe-vpn-connections \
   --vpn-connection-ids $VPN_ID \
   --query 'VpnConnections[0].CustomerGatewayConfiguration' \
   --output text > vpn-config.xml
 ```
 
-This XML file contains everything you need: tunnel endpoints, pre-shared keys, BGP configuration, and IPsec parameters. AWS also provides vendor-specific configurations through the console for popular routers (Cisco, Juniper, Palo Alto, etc.).
+This XML file contains everything you need: tunnel endpoints, pre-shared keys, BGP configuration, and IPsec parameters. AWS also provides vendor-specific sample configurations through the console and the `get-vpn-connection-device-sample-configuration` API for popular routers (Cisco, Juniper, Palo Alto, etc.).
 
 The key parameters you'll find in the config:
 
@@ -152,7 +152,7 @@ The exact configuration depends on your router. Here's a generic example for a L
 conn aws-tunnel1
     auto=start
     type=tunnel
-    authby=secret
+    authby=psk
     left=%defaultroute
     leftid=203.0.113.50
     leftsubnet=192.168.0.0/16
@@ -170,7 +170,7 @@ conn aws-tunnel1
 conn aws-tunnel2
     auto=start
     type=tunnel
-    authby=secret
+    authby=psk
     left=%defaultroute
     leftid=203.0.113.50
     leftsubnet=192.168.0.0/16
@@ -203,7 +203,7 @@ aws ec2 enable-vgw-route-propagation \
   --gateway-id $VGW_ID
 ```
 
-With BGP, routes from your on-premises network are automatically propagated. With static routing, you need to add them manually in the VPC route table as well:
+With BGP, routes from your on-premises network are automatically propagated when route propagation is enabled. With static routing, the static routes you added to the VPN connection are also propagated when the VPN connection is `UP`. If you do not enable route propagation, add the route manually in the VPC route table:
 
 ```bash
 # For static routing: add on-premises route to VPC route table
@@ -272,6 +272,7 @@ Resources:
 
   VpnConnection:
     Type: AWS::EC2::VPNConnection
+    DependsOn: VpnGatewayAttachment
     Properties:
       Type: ipsec.1
       CustomerGatewayId: !Ref CustomerGateway
@@ -290,7 +291,7 @@ Resources:
 
 ## Performance Expectations
 
-A single VPN tunnel supports up to 1.25 Gbps. With two tunnels and ECMP (equal-cost multi-path) through a transit gateway, you can get up to 2.5 Gbps. If you need more, consider [AWS Direct Connect](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-direct-connect-dedicated-connectivity/view).
+A standard VPN tunnel supports up to 1.25 Gbps. With dynamic routing and ECMP (equal-cost multi-path) through a transit gateway, you can aggregate multiple standard VPN tunnels; two standard tunnels can provide up to 2.5 Gbps. Transit gateway and Cloud WAN VPN connections can also use Large Bandwidth Tunnels at up to 5 Gbps per tunnel. If you need more predictable private capacity, consider [AWS Direct Connect](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-direct-connect-dedicated-connectivity/view).
 
 For tunnel redundancy details, see [configuring VPN redundancy with dual tunnels](https://oneuptime.com/blog/post/2026-02-12-configure-vpn-redundancy-dual-tunnels/view).
 
