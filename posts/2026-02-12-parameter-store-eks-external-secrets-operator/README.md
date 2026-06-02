@@ -26,6 +26,7 @@ Before we dive in, you'll need:
 - `kubectl` configured to talk to your cluster
 - Helm v3 installed
 - AWS CLI configured with appropriate permissions
+- An IAM OIDC provider associated with your EKS cluster for IRSA
 - Terraform (if you want to manage infrastructure as code)
 
 ## Step 1: Store Parameters in AWS SSM
@@ -33,6 +34,8 @@ Before we dive in, you'll need:
 Let's start by putting some values into Parameter Store. Here's a Terraform configuration that creates a few parameters.
 
 This Terraform block creates two SecureString parameters encrypted with the default AWS KMS key:
+
+Keep in mind that Terraform stores resource values in state. If you manage real secret values this way, protect your remote state carefully or create the parameters outside Terraform and manage only IAM access in code.
 
 ```hcl
 resource "aws_ssm_parameter" "db_password" {
@@ -103,6 +106,7 @@ resource "aws_iam_role" "external_secrets" {
         Condition = {
           StringEquals = {
             "${replace(data.aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")}:sub" = "system:serviceaccount:external-secrets:external-secrets"
+            "${replace(data.aws_eks_cluster.main.identity[0].oidc[0].issuer, "https://", "")}:aud" = "sts.amazonaws.com"
           }
         }
       }
@@ -175,7 +179,7 @@ The `SecretStore` resource tells ESO where to find your secrets. You can create 
 This manifest configures a ClusterSecretStore pointing to AWS Parameter Store in us-east-1:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: aws-parameter-store
@@ -213,7 +217,7 @@ Now for the fun part. Create `ExternalSecret` resources that tell ESO which para
 This ExternalSecret pulls two parameters from SSM and creates a Kubernetes Secret named `myapp-secrets`:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: myapp-secrets
