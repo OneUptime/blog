@@ -14,7 +14,7 @@ That's where Transit Gateway Network Manager comes in. It gives you a single pan
 
 ## What Is Transit Gateway Network Manager?
 
-Transit Gateway Network Manager is a free service that lets you register your transit gateways, Site-to-Site VPN connections, and SD-WAN devices into a single global network. Once registered, you get a topology map, event-based monitoring, and metric dashboards - all without deploying any additional infrastructure.
+Transit Gateway Network Manager is a free service that lets you register your transit gateways and define your on-premises sites, devices, and links in a single global network. Site-to-Site VPN, Direct Connect gateway, Connect, VPC, and peering attachments are automatically included when you register their transit gateway. Once registered, you get a topology map, event-based monitoring, and metric dashboards - all without deploying any additional infrastructure.
 
 The key concepts you need to understand are:
 
@@ -34,12 +34,13 @@ Here's how to create a global network resource:
 
 aws networkmanager create-global-network \
   --description "Production Global Network" \
-  --tags Key=Environment,Value=Production
+  --tags Key=Environment,Value=Production \
+  --region us-west-2
 
 # Note the GlobalNetworkId from the output - you'll need it everywhere
 ```
 
-You can also do this through CloudFormation if you prefer infrastructure as code.
+You can also do this through CloudFormation if you prefer infrastructure as code. Deploy Network Manager resources in the Network Manager home Region, `us-west-2`.
 
 Here's the CloudFormation template for the global network and transit gateway registration:
 
@@ -73,16 +74,19 @@ Register each transit gateway with your global network:
 # Register a transit gateway in us-east-1
 aws networkmanager register-transit-gateway \
   --global-network-id global-network-0123456789abcdef0 \
-  --transit-gateway-arn arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-0123456789abcdef0
+  --transit-gateway-arn arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-0123456789abcdef0 \
+  --region us-west-2
 
 # Register another in eu-west-1
 aws networkmanager register-transit-gateway \
   --global-network-id global-network-0123456789abcdef0 \
-  --transit-gateway-arn arn:aws:ec2:eu-west-1:123456789012:transit-gateway/tgw-abcdef0123456789a
+  --transit-gateway-arn arn:aws:ec2:eu-west-1:123456789012:transit-gateway/tgw-abcdef0123456789a \
+  --region us-west-2
 
 # Check registration status
 aws networkmanager get-transit-gateway-registrations \
-  --global-network-id global-network-0123456789abcdef0
+  --global-network-id global-network-0123456789abcdef0 \
+  --region us-west-2
 ```
 
 Registration takes a couple of minutes. The status will go from `PENDING` to `AVAILABLE` once it's done. If it fails, double-check that the transit gateway exists and that your IAM permissions include `networkmanager:RegisterTransitGateway` and `ec2:DescribeTransitGateways`.
@@ -98,7 +102,8 @@ Create a site representing a physical data center:
 aws networkmanager create-site \
   --global-network-id global-network-0123456789abcdef0 \
   --description "Primary Data Center - Virginia" \
-  --location Latitude=38.9,Longitude=-77.0,Address="Ashburn, VA"
+  --location Latitude=38.9,Longitude=-77.0,Address="Ashburn, VA" \
+  --region us-west-2
 
 # Create a device at that site
 aws networkmanager create-device \
@@ -107,7 +112,8 @@ aws networkmanager create-device \
   --description "Core Router" \
   --type "Cisco ISR 4451" \
   --vendor "Cisco" \
-  --model "ISR 4451-X"
+  --model "ISR 4451-X" \
+  --region us-west-2
 ```
 
 Next, create links to represent your WAN connections.
@@ -122,7 +128,8 @@ aws networkmanager create-link \
   --description "Primary Internet - 1Gbps" \
   --type "Broadband" \
   --bandwidth UploadSpeedMbps=1000,DownloadSpeedMbps=1000 \
-  --provider "ISP Provider"
+  --provider "ISP Provider" \
+  --region us-west-2
 ```
 
 ## Associating VPN Connections
@@ -132,12 +139,20 @@ Here's where it all comes together. You associate your Site-to-Site VPN connecti
 Associate a VPN connection with a device and link:
 
 ```bash
+# Associate the link with the device first
+aws networkmanager associate-link \
+  --global-network-id global-network-0123456789abcdef0 \
+  --device-id device-0123456789abcdef0 \
+  --link-id link-0123456789abcdef0 \
+  --region us-west-2
+
 # Associate the customer gateway with your device
 aws networkmanager associate-customer-gateway \
   --global-network-id global-network-0123456789abcdef0 \
   --customer-gateway-arn arn:aws:ec2:us-east-1:123456789012:customer-gateway/cgw-0123456789abcdef0 \
   --device-id device-0123456789abcdef0 \
-  --link-id link-0123456789abcdef0
+  --link-id link-0123456789abcdef0 \
+  --region us-west-2
 ```
 
 Once associated, Network Manager can track the health of the entire path from your on-premises device through the VPN tunnel to the transit gateway.
@@ -164,6 +179,10 @@ You can route these events to SNS for email alerts or to Lambda for automated re
 Create an SNS-based alerting setup with CloudFormation:
 
 ```yaml
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Network Manager EventBridge alerts
+
+Resources:
   NetworkManagerEventRule:
     Type: AWS::Events::Rule
     Properties:
@@ -184,13 +203,30 @@ Create an SNS-based alerting setup with CloudFormation:
       Subscription:
         - Endpoint: ops-team@example.com
           Protocol: email
+
+  AlertTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref AlertTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref AlertTopic
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt NetworkManagerEventRule.Arn
 ```
 
 ## Monitoring with the Network Manager Console
 
-The AWS console for Network Manager is genuinely useful. The topology map shows your entire global network with color-coded connection states. Green means healthy, yellow means degraded, and red means down. You can click on any resource to drill into metrics like tunnel state, bytes in/out, and packet loss.
+The AWS console for Network Manager is genuinely useful. The topology map shows your entire global network and uses line colors to represent the state of relationships between AWS and on-premises resources. You can click into resources to drill into status and usage metrics like VPN status, bytes in/out, packets in/out, and dropped packets.
 
-The route analyzer is another killer feature. You can test reachability between any two points in your network without sending actual traffic. It traces the route through your transit gateways and shows you exactly which route tables and attachments are involved.
+The route analyzer is another killer feature. You can test reachability between transit gateway attachments without sending actual traffic. It checks the routes in transit gateway route tables and shows you which route tables and attachments are involved.
 
 ## Network Topology Visualization
 
