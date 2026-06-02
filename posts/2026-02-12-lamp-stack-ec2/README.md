@@ -14,7 +14,7 @@ Let's walk through setting up a production-ready LAMP stack from a fresh EC2 ins
 
 ## Launching the EC2 Instance
 
-Start by launching an Amazon Linux 2023 instance. For a LAMP stack, a t3.small (2 vCPU, 2 GB RAM) is a good starting point for small to medium sites.
+Start by launching an Amazon Linux 2023 instance. For a LAMP stack, a t3.small (2 vCPU, 2 GB RAM) is a good starting point for small sites.
 
 Launch the instance with the right security group:
 
@@ -76,13 +76,13 @@ At this point, you should be able to visit your instance's public IP in a browse
 
 ## Installing MySQL (MariaDB)
 
-Amazon Linux 2023 uses MariaDB as its MySQL-compatible database. It's a drop-in replacement that's fully compatible with MySQL clients and applications.
+Amazon Linux 2023 uses MariaDB as its MySQL-compatible database. It's a community-developed fork of MySQL and works with many MySQL clients and applications.
 
 Install and secure MariaDB:
 
 ```bash
 # Install MariaDB server
-sudo yum install -y mariadb105-server
+sudo yum install -y mariadb1011-server
 
 # Start and enable MariaDB
 sudo systemctl start mariadb
@@ -133,7 +133,7 @@ Install PHP and essential extensions:
 ```bash
 # Install PHP and common extensions
 sudo yum install -y php php-mysqlnd php-pdo php-gd php-mbstring \
-  php-xml php-json php-opcache php-zip php-curl php-intl
+  php-xml php-opcache php-zip php-intl php-fpm
 
 # Verify PHP installation
 php -v
@@ -142,9 +142,13 @@ php -v
 php -m
 ```
 
-Restart Apache to load the PHP module:
+Start PHP-FPM and restart Apache to pick up the PHP configuration:
 
 ```bash
+# Start PHP-FPM and enable it on boot
+sudo systemctl start php-fpm
+sudo systemctl enable php-fpm
+
 # Restart Apache to pick up PHP
 sudo systemctl restart httpd
 ```
@@ -157,7 +161,7 @@ Create a test page:
 
 ```bash
 # Create a PHP info page
-sudo cat > /var/www/html/info.php << 'EOF'
+sudo tee /var/www/html/info.php > /dev/null << 'EOF'
 <?php
 phpinfo();
 ?>
@@ -175,7 +179,7 @@ Test the database connection from PHP:
 
 ```bash
 # Create a database connection test
-sudo cat > /var/www/html/dbtest.php << 'EOF'
+sudo tee /var/www/html/dbtest.php > /dev/null << 'EOF'
 <?php
 $host = 'localhost';
 $dbname = 'myapp';
@@ -208,7 +212,7 @@ sudo mkdir -p /var/www/myapp/logs
 sudo chown -R apache:apache /var/www/myapp
 
 # Create the virtual host config
-sudo cat > /etc/httpd/conf.d/myapp.conf << 'EOF'
+sudo tee /etc/httpd/conf.d/myapp.conf > /dev/null << 'EOF'
 <VirtualHost *:80>
     ServerName myapp.example.com
     DocumentRoot /var/www/myapp/public
@@ -238,7 +242,7 @@ Adjust key PHP settings:
 
 ```bash
 # Edit PHP configuration
-sudo cat > /etc/php.d/99-custom.ini << 'EOF'
+sudo tee /etc/php.d/99-custom.ini > /dev/null << 'EOF'
 ; Memory and execution limits
 memory_limit = 256M
 max_execution_time = 60
@@ -254,7 +258,6 @@ opcache.memory_consumption = 128
 opcache.interned_strings_buffer = 16
 opcache.max_accelerated_files = 10000
 opcache.revalidate_freq = 60
-opcache.fast_shutdown = 1
 
 ; Session settings
 session.save_handler = files
@@ -267,6 +270,7 @@ error_log = /var/log/php_errors.log
 EOF
 
 # Restart Apache to apply changes
+sudo systemctl restart php-fpm
 sudo systemctl restart httpd
 ```
 
@@ -278,7 +282,7 @@ Optimize MariaDB for a t3.small instance:
 
 ```bash
 # Create custom MySQL configuration
-sudo cat > /etc/my.cnf.d/custom.cnf << 'EOF'
+sudo tee /etc/my.cnf.d/custom.cnf > /dev/null << 'EOF'
 [mysqld]
 # Buffer pool - set to ~50-70% of available RAM
 innodb_buffer_pool_size = 768M
@@ -289,7 +293,7 @@ innodb_log_file_size = 128M
 # Connection limits
 max_connections = 50
 
-# Query cache (helpful for read-heavy workloads)
+# Query cache (optional for cacheable, read-heavy workloads)
 query_cache_type = 1
 query_cache_size = 32M
 query_cache_limit = 2M
@@ -321,7 +325,7 @@ sudo certbot --apache -d myapp.example.com
 sudo certbot renew --dry-run
 ```
 
-Certbot automatically configures Apache for HTTPS and sets up a cron job for renewal.
+Certbot automatically configures Apache for HTTPS and sets up a scheduled renewal task.
 
 ## Security Hardening
 
@@ -372,6 +376,9 @@ echo "Backup completed: ${DB_NAME}_${DATE}.sql.gz"
 Schedule it with cron:
 
 ```bash
+# Make the backup script executable
+sudo chmod +x /usr/local/bin/backup-db.sh
+
 # Run backup daily at 2 AM
 echo "0 2 * * * /usr/local/bin/backup-db.sh >> /var/log/db-backup.log 2>&1" | sudo crontab -
 ```
