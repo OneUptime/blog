@@ -48,7 +48,7 @@ graph TB
 Before you start, make sure:
 
 1. All accounts are in the same AWS Organization (recommended, though not strictly required)
-2. RAM sharing with Organizations is enabled
+2. RAM sharing with Organizations is enabled if you want to share with the Organization or OUs
 3. The transit gateway exists in the networking account
 
 Enable RAM sharing in your Organization from the management account:
@@ -96,7 +96,7 @@ Sharing with the entire organization is the simplest approach. Any account in th
 
 ## Step 2: Accept the Share (If Not Using Organizations)
 
-If you shared with specific account IDs instead of an Organization, the receiving accounts need to accept the share:
+If you shared with external account IDs, or with account IDs while AWS Organizations sharing is not enabled, the receiving accounts need to accept the share:
 
 ```bash
 # Run in each receiving account
@@ -109,7 +109,7 @@ aws ram accept-resource-share-invitation \
   --resource-share-invitation-arn $INVITATION_ARN
 ```
 
-If you shared through AWS Organizations, acceptance is automatic. No action needed in the receiving accounts.
+If you shared through AWS Organizations, including with individual accounts in the Organization, acceptance is automatic. No action needed in the receiving accounts.
 
 ## Step 3: Create VPC Attachments (From Each Account)
 
@@ -156,13 +156,13 @@ aws ec2 associate-transit-gateway-route-table \
   --transit-gateway-route-table-id $RT_PROD \
   --transit-gateway-attachment-id $ATTACH_PROD
 
-# Enable route propagation
+# Enable route propagation between production and development
 aws ec2 enable-transit-gateway-route-table-propagation \
   --transit-gateway-route-table-id $RT_PROD \
-  --transit-gateway-attachment-id $ATTACH_SHARED
+  --transit-gateway-attachment-id $ATTACH_DEV
 
 aws ec2 enable-transit-gateway-route-table-propagation \
-  --transit-gateway-route-table-id $RT_SHARED \
+  --transit-gateway-route-table-id $RT_DEV \
   --transit-gateway-attachment-id $ATTACH_PROD
 ```
 
@@ -190,6 +190,11 @@ You'll need CloudFormation StackSets or separate stacks per account. Here's the 
 
 ```yaml
 # networking-account.yaml
+Parameters:
+  OrganizationArn:
+    Type: String
+    Description: ARN of the AWS Organization or OU to share the transit gateway with
+
 Resources:
   TransitGateway:
     Type: AWS::EC2::TransitGateway
@@ -284,7 +289,7 @@ aws ec2 describe-transit-gateway-attachments \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/TransitGateway \
   --metric-name BytesIn \
-  --dimensions Name=TransitGateway,Value=$TGW_ID \
+  --dimensions Name=TransitGateway,Value=$TGW_ID Name=TransitGatewayAttachment,Value=$ATTACH_PROD \
   --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
