@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Debugging, Serverless
 
-Description: A practical guide to understanding and resolving DynamoDB ConditionalCheckFailedException errors, including condition expressions, atomic counters, and optimistic locking patterns.
+Description: A practical guide to understanding and resolving DynamoDB ConditionalCheckFailedException errors, including condition expressions, transactions, and optimistic locking patterns.
 
 ---
 
@@ -20,6 +20,7 @@ Here's the simplest example:
 
 ```python
 import boto3
+from decimal import Decimal
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('Products')
@@ -32,7 +33,7 @@ try:
         Item={
             'productId': 'PROD-001',
             'name': 'Widget',
-            'price': 29.99
+            'price': Decimal('29.99')
         },
         ConditionExpression='attribute_not_exists(productId)'
     )
@@ -61,10 +62,11 @@ current_version = item['version']
 try:
     table.update_item(
         Key={'orderId': 'ORD-123'},
-        UpdateExpression='SET #s = :new_status, version = :new_version',
-        ConditionExpression='version = :current_version',
+        UpdateExpression='SET #s = :new_status, #v = :new_version',
+        ConditionExpression='#v = :current_version',
         ExpressionAttributeNames={
-            '#s': 'status'
+            '#s': 'status',
+            '#v': 'version'
         },
         ExpressionAttributeValues={
             ':new_status': 'shipped',
@@ -81,7 +83,7 @@ except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
 Sometimes you want to make sure you don't accidentally overwrite existing data:
 
 ```python
-# Only create user if email doesn't already exist
+# Only create user if email is the table key and doesn't already exist
 try:
     table.put_item(
         Item={
@@ -101,6 +103,8 @@ except dynamodb.meta.client.exceptions.ConditionalCheckFailedException:
 Deleting an item only if it meets certain criteria:
 
 ```python
+import time
+
 # Only delete the session if it's expired
 try:
     table.delete_item(
@@ -141,22 +145,28 @@ def update_with_retry(table, key, update_fn, max_retries=5):
         updates = update_fn(item)
 
         # Build update expression dynamically
-        update_parts = ['version = :new_version']
+        update_parts = ['#version = :new_version']
+        expr_names = {
+            '#version': 'version'
+        }
         expr_values = {
             ':new_version': current_version + 1,
             ':current_version': current_version
         }
 
-        for field, value in updates.items():
-            placeholder = f':val_{field}'
-            update_parts.append(f'{field} = {placeholder}')
+        for i, (field, value) in enumerate(updates.items()):
+            name_placeholder = f'#field_{i}'
+            placeholder = f':val_{i}'
+            update_parts.append(f'{name_placeholder} = {placeholder}')
+            expr_names[name_placeholder] = field
             expr_values[placeholder] = value
 
         try:
             table.update_item(
                 Key=key,
                 UpdateExpression='SET ' + ', '.join(update_parts),
-                ConditionExpression='version = :current_version',
+                ConditionExpression='#version = :current_version',
+                ExpressionAttributeNames=expr_names,
                 ExpressionAttributeValues=expr_values
             )
             return True  # Success
