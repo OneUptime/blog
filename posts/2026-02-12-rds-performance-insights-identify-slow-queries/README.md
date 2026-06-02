@@ -12,6 +12,8 @@ Your application is slow and you suspect the database. CloudWatch shows CPU is h
 
 Performance Insights isn't just a pretty dashboard. It's a powerful tool for pinpointing exactly which SQL statements are dragging down your database. Let's walk through how to use it effectively to identify, analyze, and fix slow queries.
 
+Note: AWS has announced that the Performance Insights console experience and flexible retention periods will no longer be supported after June 30, 2026. The Performance Insights API continues to exist, and AWS recommends CloudWatch Database Insights for the newer console experience.
+
 ## The Starting Point: Database Load
 
 When you open Performance Insights, the first thing you see is the database load chart. This shows Average Active Sessions (AAS) over time, broken down by wait events. Think of it as a real-time view of how busy your database is.
@@ -185,11 +187,13 @@ def find_slow_queries(instance_id, threshold_aas=1.0):
     )
 
     slow_queries = []
-    for data_point in response['MetricList'][0]['DataPoints']:
-        for group in data_point.get('Groups', []):
-            aas = group['Values'][0]
+    for metric in response['MetricList']:
+        dimensions = metric['Key'].get('Dimensions', {})
+        sql = dimensions.get('db.sql.statement', 'Unknown')
+
+        for data_point in metric['DataPoints']:
+            aas = data_point['Value']
             if aas > threshold_aas:
-                sql = group['Dimensions'].get('db.sql.statement', 'Unknown')
                 slow_queries.append({
                     'sql': sql,
                     'aas': aas,
@@ -203,7 +207,7 @@ def find_slow_queries(instance_id, threshold_aas=1.0):
 
 Once you've identified slow queries, here's a systematic approach to fix them:
 
-1. **Get the execution plan**: Run `EXPLAIN ANALYZE` on the query in a non-production environment
+1. **Get the execution plan**: Run `EXPLAIN ANALYZE` on the query in a non-production environment, or use your database engine's equivalent execution plan command
 2. **Check the index usage**: Look for sequential scans, nested loops over large tables, and sort operations
 3. **Add or modify indexes**: Based on what the execution plan tells you
 4. **Test the improvement**: Run the query again and compare execution plans
