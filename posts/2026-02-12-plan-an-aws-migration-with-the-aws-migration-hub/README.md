@@ -8,7 +8,7 @@ Description: Learn how to use AWS Migration Hub to plan, track, and execute your
 
 ---
 
-Migrating to AWS is not something you do on a whim. It requires careful planning, a clear understanding of your existing environment, and a way to track progress across what can be dozens or hundreds of workloads. AWS Migration Hub is the central dashboard that ties together all the AWS migration tools, giving you a single place to plan, track, and manage your migration.
+Migrating to AWS is not something you do on a whim. It requires careful planning, a clear understanding of your existing environment, and a way to track progress across what can be dozens or hundreds of workloads. For existing AWS Migration Hub customers, Migration Hub is the central dashboard that ties together AWS migration tools, giving you a single place to plan, track, and manage your migration. As of November 7, 2025, AWS Migration Hub is no longer open to new customers; new migration programs should evaluate AWS Transform for equivalent migration planning and tracking capabilities.
 
 This guide covers how to use Migration Hub to plan and execute a well-organized cloud migration.
 
@@ -19,7 +19,7 @@ Migration Hub itself does not move anything. Think of it as the project manageme
 - **AWS Application Discovery Service** - inventories your on-premises environment
 - **AWS Application Migration Service (MGN)** - handles server replication
 - **AWS Database Migration Service (DMS)** - handles database migration
-- **AWS Server Migration Service (SMS)** - legacy server migration tool
+- **Migration Hub Strategy Recommendations** - analyzes applications and suggests migration strategies
 
 ```mermaid
 graph TD
@@ -36,7 +36,7 @@ Migration Hub aggregates status from all these tools into a unified view. You ca
 
 ## Setting Up Migration Hub
 
-Start by enabling Migration Hub in your chosen home region. This is important because Migration Hub data stays in one region.
+Start by enabling Migration Hub in your chosen home region if you are an existing Migration Hub customer. This is important because Migration Hub data stays in one region.
 
 ```python
 # Enable Migration Hub and set home region
@@ -62,20 +62,9 @@ Before you can plan a migration, you need to know what you have. AWS Application
 
 ### Agentless Discovery
 
-The agentless approach uses the Discovery Connector, a VMware vCenter appliance that collects VM inventory and performance data.
+The agentless approach uses AWS Application Discovery Service Agentless Collector, a VMware vCenter virtual appliance that collects VM inventory, profile, utilization, database metadata, and network traffic data. The older Discovery Connector reached end of support on November 17, 2025, so use Agentless Collector for ongoing agentless discovery.
 
-```python
-# Start agentless discovery
-import boto3
-
-discovery = boto3.client('discovery')
-
-# After deploying the Discovery Connector to vCenter,
-# start data collection
-response = discovery.start_data_collection_by_agent_ids(
-    agentIds=['connector-id-from-vcenter']
-)
-```
+After deploying and configuring Agentless Collector, start and stop collection from the Agentless Collector dashboard.
 
 ### Agent-Based Discovery
 
@@ -99,42 +88,26 @@ The agent collects detailed performance data, TCP connection data, and process i
 Once discovery data starts flowing in, group your servers into applications in Migration Hub. This is critical for tracking migration progress at the application level rather than the server level.
 
 ```python
-# Create application groups in Migration Hub
+# Create application groups from discovered servers
 import boto3
 
-migration_hub = boto3.client('mgh')
+discovery = boto3.client('discovery')
 
 # Create an application group
-migration_hub.create_progress_update_stream(
-    ProgressUpdateStreamName='webapp-migration'
+app = discovery.create_application(
+    name='webapp-migration',
+    description='Web application migration group',
+    wave='wave-1'
 )
 
 # Associate discovered servers with the application
-migration_hub.associate_discovered_resource(
-    ProgressUpdateStream='webapp-migration',
-    MigrationTaskName='migrate-web-app',
-    DiscoveredResource={
-        'ConfigurationId': 'd-server-abc123',
-        'Description': 'Web server - frontend'
-    }
-)
-
-migration_hub.associate_discovered_resource(
-    ProgressUpdateStream='webapp-migration',
-    MigrationTaskName='migrate-web-app',
-    DiscoveredResource={
-        'ConfigurationId': 'd-server-def456',
-        'Description': 'Application server - backend'
-    }
-)
-
-migration_hub.associate_discovered_resource(
-    ProgressUpdateStream='webapp-migration',
-    MigrationTaskName='migrate-web-app',
-    DiscoveredResource={
-        'ConfigurationId': 'd-server-ghi789',
-        'Description': 'Database server - MySQL'
-    }
+discovery.associate_configuration_items_to_application(
+    applicationConfigurationId=app['configurationId'],
+    configurationIds=[
+        'd-server-abc123',
+        'd-server-def456',
+        'd-server-ghi789'
+    ]
 )
 ```
 
@@ -151,14 +124,16 @@ strategy = boto3.client('migrationhubstrategy')
 # Start assessment
 response = strategy.start_assessment()
 
-# Get recommendations for a specific server
-recommendations = strategy.get_server_details(
+# Get strategy recommendations for a specific server
+recommendations = strategy.get_server_strategies(
     serverId='d-server-abc123'
 )
 
-for rec in recommendations.get('serverDetail', {}).get('applicationComponentStrategySummary', []):
-    print(f"Strategy: {rec['strategy']}")
-    print(f"Recommendation: {rec['recommendation']}")
+for rec in recommendations.get('serverStrategies', []):
+    recommendation = rec.get('recommendation', {})
+    print(f"Strategy: {recommendation.get('strategy')}")
+    print(f"Target: {recommendation.get('targetDestination')}")
+    print(f"Status: {rec.get('status')}")
 ```
 
 For a deeper look at strategy recommendations, check out our guide on [assessing applications with AWS Migration Hub Strategy Recommendations](https://oneuptime.com/blog/post/2026-02-12-assess-your-applications-with-aws-migration-hub-strategy-recommendations/view).
@@ -169,24 +144,36 @@ With your plan in place, start executing migrations. Migration Hub tracks progre
 
 ### For Server Migrations (MGN)
 
-When you start replicating servers with Application Migration Service, the status automatically appears in Migration Hub.
+When you start replicating servers with Application Migration Service, the status appears in Migration Hub when the tool is connected. If you are reporting progress from custom migration tooling, use the Migration Hub API.
 
 ```python
-# Notify Migration Hub of migration progress
+# Notify Migration Hub of migration progress for a custom migration task
+from datetime import datetime, timezone
 import boto3
 
 migration_hub = boto3.client('mgh')
 
+# Create a progress update stream for your migration tool
+migration_hub.create_progress_update_stream(
+    ProgressUpdateStreamName='custom-migration-tool'
+)
+
+# Import the migration task before sending status updates
+migration_hub.import_migration_task(
+    ProgressUpdateStream='custom-migration-tool',
+    MigrationTaskName='migrate-web-app'
+)
+
 # Update migration task status
 migration_hub.notify_migration_task_state(
-    ProgressUpdateStream='webapp-migration',
+    ProgressUpdateStream='custom-migration-tool',
     MigrationTaskName='migrate-web-app',
     Task={
         'Status': 'IN_PROGRESS',
         'StatusDetail': 'Server replication at 75%',
         'ProgressPercent': 75
     },
-    UpdateDateTime=datetime.now(),
+    UpdateDateTime=datetime.now(timezone.utc),
     NextUpdateSeconds=300
 )
 ```
