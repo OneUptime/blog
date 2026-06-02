@@ -44,7 +44,7 @@ aws ivs create-channel \
   --type STANDARD \
   --tags Environment=production,UseCase=gaming
 
-# Response includes the channel ARN and playback URL
+# Response includes the channel ARN, ingest endpoint, playback URL, and stream key
 ```
 
 The `latency-mode` options are:
@@ -60,15 +60,17 @@ The `type` options are:
 The stream key is what your encoder uses to authenticate and push video:
 
 ```bash
-# Create a stream key for the channel
+# The create-channel response includes the stream key value.
+# If you deleted the existing key or created the channel without saving it,
+# create a new key for the channel:
 aws ivs create-stream-key \
   --channel-arn "arn:aws:ivs:us-east-1:123456789012:channel/abc123"
 ```
 
-The response includes the stream key value. Treat this like a password - anyone with the stream key can push video to your channel.
+The `create-stream-key` response includes the stream key value, but each IVS channel can have only one stream key. Treat this like a password - anyone with the stream key can push video to your channel.
 
 ```bash
-# List stream keys for a channel
+# List stream key ARNs for a channel
 aws ivs list-stream-keys \
   --channel-arn "arn:aws:ivs:us-east-1:123456789012:channel/abc123"
 ```
@@ -80,7 +82,7 @@ aws ivs list-stream-keys \
 1. Open OBS Studio
 2. Go to Settings > Stream
 3. Set Service to "Custom"
-4. Server: `rtmps://ingest.ivs.us-east-1.amazonaws.com:443/app/`
+4. Server: `rtmps://<IVS-ingest-server>:443/app/` (for example, use the `ingestEndpoint` from the channel response)
 5. Stream Key: Your stream key from Step 2
 6. Click "Start Streaming"
 
@@ -93,7 +95,7 @@ ffmpeg -re -f lavfi -i "testsrc=size=1280x720:rate=30" \
   -c:v libx264 -preset veryfast -b:v 3000k -maxrate 3000k -bufsize 6000k \
   -pix_fmt yuv420p -g 60 \
   -c:a aac -b:a 128k -ar 44100 \
-  -f flv "rtmps://ingest.ivs.us-east-1.amazonaws.com:443/app/YOUR_STREAM_KEY"
+  -f flv "rtmps://<IVS-ingest-server>:443/app/YOUR_STREAM_KEY"
 ```
 
 ### Using a file as input
@@ -104,7 +106,7 @@ ffmpeg -re -i input-video.mp4 \
   -c:v libx264 -preset veryfast -b:v 3000k -maxrate 3000k -bufsize 6000k \
   -pix_fmt yuv420p -g 60 \
   -c:a aac -b:a 128k -ar 44100 \
-  -f flv "rtmps://ingest.ivs.us-east-1.amazonaws.com:443/app/YOUR_STREAM_KEY"
+  -f flv "rtmps://<IVS-ingest-server>:443/app/YOUR_STREAM_KEY"
 ```
 
 ## Step 4: Integrate the IVS Player
@@ -228,7 +230,7 @@ Integrate chat in your web application:
 
 ```javascript
 // Initialize IVS Chat
-import { ChatRoom } from 'amazon-ivs-chat-messaging';
+import { ChatRoom, SendMessageRequest } from 'amazon-ivs-chat-messaging';
 
 const chatRoom = new ChatRoom({
     regionOrUrl: 'us-east-1',
@@ -238,12 +240,17 @@ const chatRoom = new ChatRoom({
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                roomId: 'arn:aws:ivschat:us-east-1:123456789012:room/abc123',
+                roomIdentifier: 'arn:aws:ivschat:us-east-1:123456789012:room/abc123',
                 userId: currentUser.id,
                 displayName: currentUser.name
             })
         });
-        return response.json();
+        const token = await response.json();
+        return {
+            ...token,
+            sessionExpirationTime: new Date(token.sessionExpirationTime),
+            tokenExpirationTime: new Date(token.tokenExpirationTime)
+        };
     }
 });
 
@@ -252,12 +259,15 @@ chatRoom.connect();
 
 // Listen for messages
 chatRoom.addListener('message', (message) => {
-    appendChatMessage(message.sender.displayName, message.content);
+    appendChatMessage(
+        message.sender.attributes?.displayName || message.sender.userId,
+        message.content
+    );
 });
 
 // Send a message
 async function sendMessage(text) {
-    await chatRoom.sendMessage({ content: text });
+    await chatRoom.sendMessage(new SendMessageRequest(text));
 }
 ```
 
