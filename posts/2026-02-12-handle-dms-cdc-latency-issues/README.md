@@ -71,7 +71,7 @@ aws cloudwatch get-metric-data \
       }
     }
   ]' \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S)
 ```
 
@@ -85,7 +85,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/DMS \
   --metric-name CPUUtilization \
   --dimensions Name=ReplicationInstanceIdentifier,Value=my-instance \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
   --statistics Average Maximum
@@ -118,17 +118,21 @@ aws dms modify-replication-config \
   --compute-config '{"MaxCapacityUnits": 64}'
 ```
 
+You can modify DMS Serverless replication configuration only when the replication is in a modifiable state such as `CREATED`, `STOPPED`, or `FAILED`.
+
 ### Cause 2: LOB Column Processing
 
-Large Object (LOB) columns are performance killers in DMS. By default, DMS uses "limited LOB mode" which reads each LOB value individually. For tables with many LOB columns and frequent updates, this creates enormous overhead.
+Large Object (LOB) columns are performance killers in DMS. Full LOB mode reads LOB values piece by piece, which can create enormous overhead for tables with many LOB columns and frequent updates.
 
 ```json
-// Task settings to optimize LOB handling
 {
   "TargetMetadata": {
+    "SupportLobs": true,
+    "FullLobMode": false,
     "LobChunkSize": 64,
     "LimitedSizeLobMode": true,
-    "LobMaxSize": 32768
+    "LobMaxSize": 32768,
+    "InlineLobMaxSize": 0
   }
 }
 ```
@@ -138,7 +142,6 @@ If you can live with truncating LOBs to a maximum size, limited LOB mode is much
 For tables where LOB data is not important, exclude those columns entirely in your table mappings:
 
 ```json
-// Exclude the large_document column from replication
 {
   "rules": [
     {
@@ -174,20 +177,23 @@ ALTER TABLE order_items DISABLE TRIGGER ALL;
 **Tune the batch apply settings.** DMS can batch multiple changes into a single transaction:
 
 ```json
-// Enable batch apply to reduce per-transaction overhead on the target
 {
+  "TargetMetadata": {
+    "BatchApplyEnabled": true
+  },
   "ChangeProcessingTuning": {
-    "BatchApplyEnabled": true,
-    "BatchApplyPreserveTransaction": true,
+    "BatchApplyTimeoutMin": 1,
+    "BatchApplyTimeoutMax": 30,
+    "BatchApplyMemoryLimit": 500,
     "BatchSplitSize": 0,
-    "MinTransactionSize": 1000,
-    "CommitTimeout": 1,
     "MemoryLimitTotal": 1024,
     "MemoryKeepTime": 60,
     "StatementCacheSize": 50
   }
 }
 ```
+
+Batch apply requires a primary key or unique key on the source table for batch updates and deletes.
 
 ### Cause 4: Network Latency
 
@@ -207,24 +213,18 @@ If network latency is above 10ms to either endpoint, it will materially impact C
 
 For high-volume source databases, the transaction log can grow faster than DMS reads it. This is especially common with Oracle redo logs and SQL Server transaction logs.
 
-For Oracle sources, increase the number of parallel read threads:
+For Oracle sources with high redo generation, check redo generation rate, avoid unnecessary supplemental logging, and use AWS DMS Binary Reader instead of Oracle LogMiner when redo generation is high:
 
 ```json
-// Increase parallel threads for reading Oracle redo logs
 {
-  "ChangeProcessingDdlHandlingPolicy": {
-    "HandleSourceTableDropped": true,
-    "HandleSourceTableTruncated": true,
-    "HandleSourceTableAltered": true
-  },
-  "ChangeProcessingTuning": {
-    "BufferConditionOnSendStream": 10,
-    "BufferConditionOnReadStream": 10
+  "OracleSettings": {
+    "UseLogminerReader": false,
+    "UseBfile": true
   }
 }
 ```
 
-For MySQL sources, make sure `binlog_row_image` is set to `MINIMAL` if you do not need before-image data. This dramatically reduces the volume of data DMS needs to read.
+For MySQL sources, make sure `binlog_row_image` is set to `FULL`. AWS DMS requires full row images to reliably capture changes.
 
 ### Cause 6: High-Volume Batch Operations on Source
 
@@ -254,7 +254,7 @@ watch -n 60 'aws cloudwatch get-metric-statistics \
   --metric-name CDCLatencyTarget \
   --dimensions Name=ReplicationInstanceIdentifier,Value=my-instance \
                Name=ReplicationTaskIdentifier,Value=my-task \
-  --start-time $(date -u -v-10M +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d "10 minutes ago" +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
   --statistics Maximum \
@@ -280,6 +280,11 @@ Resources:
       Period: 300
       Namespace: AWS/DMS
       MetricName: CDCLatencyTarget
+      Dimensions:
+        - Name: ReplicationInstanceIdentifier
+          Value: my-instance
+        - Name: ReplicationTaskIdentifier
+          Value: my-task
       Statistic: Maximum
       AlarmActions:
         - !Ref WarningTopic
@@ -294,6 +299,11 @@ Resources:
       Period: 300
       Namespace: AWS/DMS
       MetricName: CDCLatencyTarget
+      Dimensions:
+        - Name: ReplicationInstanceIdentifier
+          Value: my-instance
+        - Name: ReplicationTaskIdentifier
+          Value: my-task
       Statistic: Maximum
       AlarmActions:
         - !Ref CriticalTopic
