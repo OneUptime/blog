@@ -8,7 +8,7 @@ Description: Diagnose and fix S3 403 Access Denied errors caused by IAM policies
 
 ---
 
-The S3 `403 Access Denied` error is one of the most common and frustrating AWS issues to debug. The error itself tells you almost nothing about why access was denied, and there are at least half a dozen different things that can cause it.
+The S3 `403 Access Denied` error is one of the most common and frustrating AWS issues to debug. S3 can return enhanced access denied messages for same-account requests or requests within the same AWS Organization, but cross-account requests outside the organization and some other cases still return a generic `Access Denied` message. There are at least half a dozen different things that can cause it.
 
 Let's go through each possible cause systematically so you can track down and fix the issue.
 
@@ -108,11 +108,11 @@ aws s3control get-public-access-block --account-id 123456789012
 aws s3api get-public-access-block --bucket my-bucket
 ```
 
-If `BlockPublicPolicy` is enabled and your bucket policy grants public access, the policy will be blocked. If you're trying to make objects public and getting 403s, this is likely the culprit.
+If `BlockPublicPolicy` is enabled, S3 rejects `PutBucketPolicy` calls that would grant public access. If `RestrictPublicBuckets` is enabled, access to a bucket with a public policy is restricted to AWS service principals and authorized users within the bucket owner's account. If you're trying to make objects public and getting 403s, these settings are likely culprits.
 
 ## Step 4: Check Object Ownership and ACLs
 
-This is a sneaky one. If someone from a different AWS account uploaded an object to your bucket, they own that object by default - not you. You won't be able to read it even though it's in your bucket.
+This is a sneaky one for older buckets or buckets with ACLs enabled. If someone from a different AWS account uploaded an object to your bucket while Object Ownership was set to `ObjectWriter`, they own that object by default - not you. You won't be able to read it even though it's in your bucket unless the object's ACL or policy permissions allow it. New S3 buckets default to `BucketOwnerEnforced`, which disables ACLs and gives the bucket owner ownership of objects.
 
 ```bash
 # Check the ownership setting on the bucket
@@ -145,7 +145,7 @@ aws s3api head-object --bucket my-bucket --key my-file.txt \
   --query '{Encryption:ServerSideEncryption,KMSKeyId:SSEKMSKeyId}'
 ```
 
-If the object uses a customer-managed KMS key, make sure your IAM principal has `kms:Decrypt` (for reading) and `kms:GenerateDataKey` (for writing) permissions on that key.
+If the object uses a customer-managed KMS key, make sure your IAM principal has `kms:Decrypt` (for reading) and `kms:GenerateDataKey` (for writing) permissions on that key. Multipart uploads with SSE-KMS also require `kms:Decrypt`.
 
 ```json
 {
