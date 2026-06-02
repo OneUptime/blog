@@ -26,8 +26,8 @@ check "descriptive_name" {
   }
 
   assert {
-    condition     = data.aws_s3_bucket.example.versioning[0].enabled
-    error_message = "S3 bucket versioning is not enabled!"
+    condition     = data.aws_s3_bucket.example.bucket_region == "us-east-1"
+    error_message = "S3 bucket is not in the expected region!"
   }
 }
 ```
@@ -42,24 +42,16 @@ Let's start with practical examples. This check verifies that critical S3 bucket
 # Verify production buckets have versioning enabled
 
 check "s3_versioning" {
-  data "aws_s3_bucket" "production_data" {
-    bucket = aws_s3_bucket.production_data.id
-  }
-
   assert {
-    condition     = data.aws_s3_bucket.production_data.versioning[0].enabled
+    condition     = aws_s3_bucket_versioning.production_data.versioning_configuration[0].status == "Enabled"
     error_message = "Production data bucket does not have versioning enabled. This is a compliance requirement."
   }
 }
 
 # Verify buckets are encrypted
 check "s3_encryption" {
-  data "aws_s3_bucket_server_side_encryption_configuration" "production" {
-    bucket = aws_s3_bucket.production_data.id
-  }
-
   assert {
-    condition     = length(data.aws_s3_bucket_server_side_encryption_configuration.production.rule) > 0
+    condition     = length(aws_s3_bucket_server_side_encryption_configuration.production.rule) > 0
     error_message = "Production data bucket does not have server-side encryption configured."
   }
 }
@@ -85,13 +77,13 @@ check "api_dns" {
 
 This catches issues like accidentally deleted DNS records or misconfigured Route 53 entries.
 
-## Checking Certificate Expiry
+## Checking Certificate Status
 
-Make sure your SSL certificates aren't about to expire:
+Make sure your SSL certificate is issued:
 
 ```hcl
-# Check that certificates aren't expiring soon
-check "cert_expiry" {
+# Check that the certificate is issued
+check "cert_status" {
   data "aws_acm_certificate" "main" {
     domain      = "example.com"
     statuses    = ["ISSUED"]
@@ -114,22 +106,18 @@ Verify your database is running and properly configured:
 ```hcl
 # Verify RDS instance is available
 check "rds_status" {
-  data "aws_db_instance" "production" {
-    db_instance_identifier = aws_db_instance.production.identifier
+  assert {
+    condition     = aws_db_instance.production.status == "available"
+    error_message = "Production database is not in 'available' status. Current status: ${aws_db_instance.production.status}"
   }
 
   assert {
-    condition     = data.aws_db_instance.production.db_instance_status == "available"
-    error_message = "Production database is not in 'available' status. Current status: ${data.aws_db_instance.production.db_instance_status}"
-  }
-
-  assert {
-    condition     = data.aws_db_instance.production.multi_az == true
+    condition     = aws_db_instance.production.multi_az == true
     error_message = "Production database does not have Multi-AZ enabled. This is required for high availability."
   }
 
   assert {
-    condition     = data.aws_db_instance.production.storage_encrypted == true
+    condition     = aws_db_instance.production.storage_encrypted == true
     error_message = "Production database storage is not encrypted."
   }
 }
@@ -176,13 +164,9 @@ Verify that security groups aren't too permissive:
 ```hcl
 # Check that database security groups don't allow public access
 check "db_sg_no_public" {
-  data "aws_security_group" "db" {
-    id = aws_security_group.database.id
-  }
-
   assert {
     condition = !anytrue([
-      for rule in data.aws_security_group.db.ingress :
+      for rule in aws_security_group.database.ingress :
       contains(rule.cidr_blocks, "0.0.0.0/0")
     ])
     error_message = "Database security group allows ingress from 0.0.0.0/0. This is a security risk."
@@ -230,9 +214,9 @@ Each validation mechanism serves a different purpose:
 
 **Check blocks** - top-level, produce warnings, evaluate every run. Good for continuous validation and policy enforcement.
 
-**Preconditions** - inside resource lifecycle blocks, halt execution on failure. Good for validating inputs before creating a resource.
+**Preconditions** - attached to resources, data sources, and outputs, halt execution on failure. Good for validating inputs before creating a resource.
 
-**Postconditions** - inside resource lifecycle blocks, halt execution on failure. Good for validating the result after a resource is created.
+**Postconditions** - attached to resources, data sources, and outputs, halt execution on failure. Good for validating the result after a resource is created.
 
 Here's how they compare in practice:
 
