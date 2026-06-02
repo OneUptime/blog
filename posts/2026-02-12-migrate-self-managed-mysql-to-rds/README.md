@@ -66,7 +66,7 @@ aws rds create-db-instance \
   --db-instance-identifier my-mysql-rds \
   --db-instance-class db.r6g.large \
   --engine mysql \
-  --engine-version 8.0.36 \
+  --engine-version 8.0.46 \
   --master-username admin \
   --master-user-password "$DB_PASSWORD" \
   --allocated-storage 100 \
@@ -81,7 +81,7 @@ Once the instance is available, dump and restore:
 
 ```bash
 # Dump the database from the source server
-# --single-transaction ensures a consistent snapshot without locking tables
+# --single-transaction ensures a consistent snapshot for InnoDB tables without locking them
 # --routines includes stored procedures and functions
 # --triggers includes triggers
 mysqldump \
@@ -105,7 +105,7 @@ mysql \
 For larger dumps, compress the output:
 
 ```bash
-# Compressed dump and restore in a single pipeline
+# Compressed dump and restore
 mysqldump \
   --host=source-mysql-server.example.com \
   --user=admin \
@@ -114,7 +114,9 @@ mysqldump \
   --routines \
   --triggers \
   --databases myapp_production \
-  | gzip | mysql \
+  | gzip > /tmp/myapp_dump.sql.gz
+
+gunzip -c /tmp/myapp_dump.sql.gz | mysql \
   --host=my-mysql-rds.abc123.us-east-1.rds.amazonaws.com \
   --user=admin \
   --password
@@ -134,7 +136,7 @@ Your source MySQL server needs binary logging enabled. In your MySQL config:
 log-bin = mysql-bin
 binlog-format = ROW
 server-id = 1
-binlog-retention-hours = 168  # Keep 7 days of binlogs
+binlog_expire_logs_seconds = 604800  # Keep 7 days of binlogs
 ```
 
 Restart MySQL after making this change.
@@ -143,7 +145,7 @@ Restart MySQL after making this change.
 
 ```sql
 -- Create a user for RDS to connect with for replication
-CREATE USER 'repl_user'@'%' IDENTIFIED BY 'strong_password_here';
+CREATE USER 'repl_user'@'%' IDENTIFIED WITH mysql_native_password BY 'strong_password_here';
 GRANT REPLICATION SLAVE, REPLICATION CLIENT ON *.* TO 'repl_user'@'%';
 FLUSH PRIVILEGES;
 ```
@@ -157,14 +159,14 @@ mysqldump \
   --user=admin \
   --password \
   --single-transaction \
-  --master-data=2 \
+  --source-data=2 \
   --routines \
   --triggers \
   --databases myapp_production \
   > /tmp/myapp_repl_dump.sql
 
 # The file header will contain a line like:
-# -- CHANGE MASTER TO MASTER_LOG_FILE='mysql-bin.000042', MASTER_LOG_POS=12345;
+# -- CHANGE REPLICATION SOURCE TO SOURCE_LOG_FILE='mysql-bin.000042', SOURCE_LOG_POS=12345;
 ```
 
 ### Step 4: Restore to RDS
@@ -202,15 +204,15 @@ CALL mysql.rds_start_replication;
 
 ```sql
 -- Check replication status
-SHOW SLAVE STATUS\G
+SHOW REPLICA STATUS\G
 
 -- Key fields to watch:
--- Slave_IO_Running: Yes
--- Slave_SQL_Running: Yes
--- Seconds_Behind_Master: 0 (or close to it)
+-- Replica_IO_Running: Yes
+-- Replica_SQL_Running: Yes
+-- Seconds_Behind_Source: 0 (or close to it)
 ```
 
-Wait until `Seconds_Behind_Master` reaches 0 and stays there. Your RDS instance is now caught up with the source.
+Wait until `Seconds_Behind_Source` reaches 0 and stays there. Your RDS instance is now caught up with the source.
 
 ### Step 7: Cut Over
 
@@ -267,6 +269,6 @@ Also set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-u
 
 **Stored procedures with DEFINER clauses**: MySQL stored procedures have a DEFINER that specifies which user created them. If that user doesn't exist on RDS, the procedures won't execute. Fix the DEFINERs in your dump file or recreate the procedures.
 
-**Missing features**: RDS MySQL doesn't support some features like the SUPER privilege, file-based operations (LOAD DATA LOCAL), or custom plugins. Test your application thoroughly against RDS before going live.
+**Missing features**: RDS MySQL doesn't support some features like the SUPER privilege, direct host access, or custom plugins. Test your application thoroughly against RDS before going live.
 
 Migrating to RDS is one of those investments that pays for itself quickly. The operational burden of running your own MySQL server is significant, and handing that off lets your team focus on work that actually moves the business forward.
