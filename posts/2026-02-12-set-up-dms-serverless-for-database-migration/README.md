@@ -8,7 +8,7 @@ Description: A practical guide to setting up AWS DMS Serverless for seamless dat
 
 ---
 
-Database migrations are one of those things that every team dreads. You need to move data from point A to point B without losing anything, without downtime, and without spending weeks babysitting the process. AWS Database Migration Service (DMS) Serverless takes away a big chunk of that pain by removing the need to provision and manage replication instances yourself.
+Database migrations are one of those things that every team dreads. You need to move data from point A to point B without losing anything, with minimal downtime, and without spending weeks babysitting the process. AWS Database Migration Service (DMS) Serverless takes away a big chunk of that pain by removing the need to provision and manage replication instances yourself.
 
 In this guide, we will walk through setting up DMS Serverless from scratch, covering everything from IAM roles to endpoint configuration to actually running your first migration.
 
@@ -24,7 +24,7 @@ graph LR
     B --> C[Target Database]
     B --> D[Auto-Scaling DCUs]
     D --> E[Min DCU: 1]
-    D --> F[Max DCU: 128]
+    D --> F[Max DCU: 384]
 ```
 
 ## Prerequisites
@@ -42,7 +42,6 @@ Before you start, make sure you have the following in place:
 DMS needs an IAM role to operate. If you have never used DMS before, you need to create the `dms-vpc-role`.
 
 ```json
-// IAM trust policy for DMS service role
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -113,7 +112,7 @@ aws dms create-endpoint \
   --database-name mydb
 ```
 
-For production environments, use AWS Secrets Manager instead of inline passwords. DMS supports Secrets Manager ARNs directly in endpoint configurations.
+For production environments, use AWS Secrets Manager instead of inline passwords. DMS supports Secrets Manager secrets in endpoint configurations with a Secrets Manager access role ARN and secret ID.
 
 ## Step 4: Create the Serverless Replication Config
 
@@ -147,7 +146,6 @@ The `replication-type` has three options:
 Table mappings control which tables get migrated and how. Here is a basic example that migrates all tables from a schema.
 
 ```json
-// Table mapping that selects all tables from the "myschema" schema
 {
   "rules": [
     {
@@ -193,7 +191,7 @@ For ongoing monitoring, set up CloudWatch alarms on key metrics like `CDCLatency
 
 ## Common Pitfalls
 
-**Security group misconfigurations** are the number one reason DMS migrations fail to start. Make sure the security group attached to your DMS replication allows outbound traffic to both your source and target databases on the correct ports.
+**Security group misconfigurations** are the number one reason DMS migrations fail to start. Make sure the security group attached to your DMS replication allows outbound traffic to both your source and target databases on the correct ports, and that your database security groups allow inbound traffic from the DMS security group.
 
 **LOB column handling** can slow migrations dramatically. By default, DMS uses "limited LOB mode" which truncates large objects. If you need full LOB data, switch to "full LOB mode" but expect slower performance.
 
@@ -201,9 +199,9 @@ For ongoing monitoring, set up CloudWatch alarms on key metrics like `CDCLatency
 
 ## Cost Considerations
 
-DMS Serverless pricing is based on DCU-hours. At the time of writing, each DCU-hour costs around $0.018 in us-east-1. A typical migration using 4 DCUs running for 10 hours would cost roughly $0.72. Compare that to running a dedicated `dms.r5.large` replication instance at $0.29/hour and the savings become clear for bursty or short-lived migrations.
+DMS Serverless pricing is based on DCU-hours. At the time of writing, each Single-AZ DCU-hour costs around $0.0819 in us-east-1. A typical migration using 4 DCUs running for 10 hours would cost roughly $3.28. Compare that to running a dedicated Single-AZ `dms.r5.large` replication instance at $0.176/hour, and the serverless savings are clearest for migrations with variable capacity needs rather than steady workloads.
 
-For long-running CDC replications that operate 24/7, do the math carefully. A dedicated instance might be cheaper if your load is consistent.
+For long-running CDC replications during a migration, do the math carefully. A dedicated instance might be cheaper if your load is consistent.
 
 ## Wrapping Up
 
