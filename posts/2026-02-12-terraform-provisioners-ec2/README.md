@@ -52,7 +52,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy-key")
+    private_key = file(pathexpand("~/.ssh/deploy-key"))
     host        = self.private_ip
   }
 
@@ -110,7 +110,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy-key")
+    private_key = file(pathexpand("~/.ssh/deploy-key"))
     host        = self.private_ip
   }
 
@@ -118,6 +118,11 @@ resource "aws_instance" "app" {
   provisioner "file" {
     source      = "${path.module}/configs/app.conf"
     destination = "/tmp/app.conf"
+  }
+
+  # For SSH directory uploads, the destination directory must already exist
+  provisioner "remote-exec" {
+    inline = ["mkdir -p /tmp/scripts"]
   }
 
   # Copy an entire directory
@@ -181,7 +186,11 @@ resource "aws_instance" "app" {
   # ... configuration ...
 
   provisioner "local-exec" {
-    command = "curl -X POST ${var.slack_webhook} -d '{\"text\": \"Instance ${self.id} deployed\"}'"
+    command = "curl -X POST \"$SLACK_WEBHOOK\" -H 'Content-Type: application/json' -d '{\"text\": \"Instance ${self.id} deployed\"}'"
+
+    environment = {
+      SLACK_WEBHOOK = var.slack_webhook
+    }
   }
 }
 ```
@@ -197,7 +206,7 @@ resource "aws_instance" "app" {
   connection {
     type        = "ssh"
     user        = "ubuntu"
-    private_key = file("~/.ssh/deploy-key")
+    private_key = file(pathexpand("~/.ssh/deploy-key"))
     host        = self.private_ip
   }
 
@@ -318,10 +327,10 @@ For executing commands on running instances without SSH:
 
 ```hcl
 # Use SSM Run Command via local-exec
-resource "null_resource" "configure" {
-  triggers = {
+resource "terraform_data" "configure" {
+  triggers_replace = {
     instance_id = aws_instance.app.id
-    config_hash = md5(file("${path.module}/configs/app.conf"))
+    config_hash = filesha256("${path.module}/configs/app.conf")
   }
 
   provisioner "local-exec" {
@@ -354,8 +363,8 @@ resource "aws_instance" "app" {
 }
 
 # Then run Ansible from your local machine
-resource "null_resource" "ansible" {
-  triggers = {
+resource "terraform_data" "ansible" {
+  triggers_replace = {
     instance_id = aws_instance.app.id
   }
 
