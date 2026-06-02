@@ -173,7 +173,7 @@ With HTTP APIs, the CORS headers are added by the gateway itself, so you don't n
 
 For SAM templates, you configure CORS at the API level.
 
-This SAM template sets up CORS for both preflight and actual responses:
+This SAM template sets up CORS for preflight responses. With Lambda proxy integration, your Lambda function still needs to return CORS headers for the actual responses:
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
