@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: GCP, Vertex AI Search, Search API, Custom Search, Application Development
 
-Description: Build a custom search application using the Vertex AI Search API with features like autocomplete, faceted search, pagination, and personalized ranking.
+Description: Build a custom search application using the Vertex AI Search API with features like autocomplete, faceted search, pagination, and result boosting.
 
 ---
 
@@ -21,7 +21,6 @@ graph TD
     C --> D[Vertex AI Search API]
     D --> E[Search Index]
     C --> F[Autocomplete API]
-    C --> G[Recommendation API]
     B --> H[Search Results]
     B --> I[Faceted Filters]
     B --> J[Autocomplete Suggestions]
@@ -46,18 +45,32 @@ Create a reusable service class that wraps the Vertex AI Search API.
 ```python
 # search_service.py
 
+from google.api_core.client_options import ClientOptions
 from google.cloud import discoveryengine_v1 as discoveryengine
 from typing import Optional
 
 class SearchService:
     """Wrapper around the Vertex AI Search API for custom search applications."""
 
-    def __init__(self, project_id: str, location: str, engine_id: str):
+    def __init__(
+        self,
+        project_id: str,
+        location: str,
+        engine_id: str,
+        data_store_id: Optional[str] = None,
+    ):
         self.project_id = project_id
         self.location = location
         self.engine_id = engine_id
-        self.search_client = discoveryengine.SearchServiceClient()
-        self.completion_client = discoveryengine.CompletionServiceClient()
+        self.data_store_id = data_store_id or engine_id
+
+        client_options = (
+            ClientOptions(api_endpoint=f"{location}-discoveryengine.googleapis.com")
+            if location != "global"
+            else None
+        )
+        self.search_client = discoveryengine.SearchServiceClient(client_options=client_options)
+        self.completion_client = discoveryengine.CompletionServiceClient(client_options=client_options)
 
         # Build the serving config path once
         self.serving_config = (
@@ -82,7 +95,6 @@ class SearchService:
         content_spec = discoveryengine.SearchRequest.ContentSearchSpec(
             snippet_spec=discoveryengine.SearchRequest.ContentSearchSpec.SnippetSpec(
                 return_snippet=True,
-                max_snippet_count=3,
             ),
             extractive_content_spec=discoveryengine.SearchRequest.ContentSearchSpec.ExtractiveContentSpec(
                 max_extractive_answer_count=2,
@@ -110,6 +122,9 @@ class SearchService:
         if order_by:
             request.order_by = order_by
 
+        if boost_spec:
+            request.boost_spec = discoveryengine.SearchRequest.BoostSpec(boost_spec)
+
         # Apply facet specifications for faceted navigation
         if facet_specs:
             request.facet_specs = [
@@ -132,7 +147,7 @@ class SearchService:
         """Get autocomplete suggestions for a partial query."""
         data_store_path = (
             f"projects/{self.project_id}/locations/{self.location}"
-            f"/collections/default_collection/dataStores/{self.engine_id}"
+            f"/collections/default_collection/dataStores/{self.data_store_id}"
         )
 
         request = discoveryengine.CompleteQueryRequest(
@@ -238,6 +253,7 @@ search_service = SearchService(
     project_id="your-project-id",
     location="global",
     engine_id="your-engine-id",
+    data_store_id="your-data-store-id",
 )
 
 @app.get("/api/search")
