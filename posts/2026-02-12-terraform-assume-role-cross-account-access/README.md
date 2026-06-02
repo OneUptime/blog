@@ -128,6 +128,11 @@ resource "aws_iam_policy" "terraform_deploy" {
     ]
   })
 }
+
+resource "aws_iam_role_policy_attachment" "terraform_deploy_custom" {
+  role       = aws_iam_role.terraform_deploy.name
+  policy_arn = aws_iam_policy.terraform_deploy.arn
+}
 ```
 
 ## Step 2: Create the Assuming Identity in the CI/CD Account
@@ -191,6 +196,7 @@ provider "aws" {
   assume_role {
     role_arn     = "arn:aws:iam::111111111111:role/TerraformDeployRole"
     session_name = "terraform-dev"
+    external_id  = "terraform-deploy-2026"
   }
 }
 
@@ -202,6 +208,7 @@ provider "aws" {
   assume_role {
     role_arn     = "arn:aws:iam::222222222222:role/TerraformDeployRole"
     session_name = "terraform-staging"
+    external_id  = "terraform-deploy-2026"
   }
 }
 
@@ -213,6 +220,7 @@ provider "aws" {
   assume_role {
     role_arn     = "arn:aws:iam::333333333333:role/TerraformDeployRole"
     session_name = "terraform-production"
+    external_id  = "terraform-deploy-2026"
   }
 }
 
@@ -239,12 +247,18 @@ variable "deploy_region" {
   default     = "us-east-1"
 }
 
+variable "external_id" {
+  description = "External ID required by the target role trust policy"
+  type        = string
+}
+
 provider "aws" {
   region = var.deploy_region
 
   assume_role {
     role_arn     = var.target_account_role_arn
     session_name = "terraform-deploy"
+    external_id  = var.external_id
   }
 }
 ```
@@ -255,10 +269,12 @@ Then use different `.tfvars` files per environment.
 # dev.tfvars
 target_account_role_arn = "arn:aws:iam::111111111111:role/TerraformDeployRole"
 deploy_region           = "us-east-1"
+external_id             = "terraform-deploy-2026"
 
 # production.tfvars
 target_account_role_arn = "arn:aws:iam::333333333333:role/TerraformDeployRole"
 deploy_region           = "us-east-1"
+external_id             = "terraform-deploy-2026"
 ```
 
 ## CI/CD Integration
@@ -289,7 +305,7 @@ jobs:
   deploy-prod:
     needs: deploy-dev
     runs-on: ubuntu-latest
-    environment: production  # Requires manual approval
+    environment: production  # Can require manual approval if protection rules are configured
     env:
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -312,10 +328,24 @@ For better security, use OIDC federation so your CI/CD platform doesn't need lon
 Sometimes you need to assume a role in the CI/CD account first, then assume another role in the target account. This is called "chained" or "double hop" assume role.
 
 ```hcl
-# Terraform doesn't support chained assume role directly,
-# but you can use the AWS CLI to get intermediate credentials
+# Terraform supports chained assume role in the provider
+# by specifying the roles in the order they should be assumed.
+provider "aws" {
+  region = "us-east-1"
 
-# Option 1: Use a profile with source_profile
+  assume_role {
+    role_arn     = "arn:aws:iam::123456789012:role/CIRole"
+    session_name = "terraform-ci"
+  }
+
+  assume_role {
+    role_arn     = "arn:aws:iam::333333333333:role/TerraformDeployRole"
+    session_name = "terraform-production"
+    external_id  = "terraform-deploy-2026"
+  }
+}
+
+# You can also use a profile with source_profile
 # ~/.aws/config
 # [profile ci]
 # role_arn = arn:aws:iam::123456789012:role/CIRole
@@ -326,6 +356,7 @@ Sometimes you need to assume a role in the CI/CD account first, then assume anot
 # source_profile = ci
 
 provider "aws" {
+  alias   = "profile_chain"
   region  = "us-east-1"
   profile = "deploy-prod"
 }
@@ -341,7 +372,11 @@ Common issues with assume role setups.
 # Check: IAM policy on the assuming identity
 
 # Error: "The security token included in the request is invalid"
-# The external ID doesn't match
+# The base AWS credentials are invalid, expired, or missing a session token
+# Check: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, and AWS_SESSION_TOKEN
+
+# Error: "AccessDenied" when calling sts:AssumeRole
+# The external ID may not match, or the caller may not be trusted
 # Check: external_id in provider matches the trust policy
 
 # Test assume role manually
