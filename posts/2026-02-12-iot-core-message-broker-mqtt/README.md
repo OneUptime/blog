@@ -21,14 +21,13 @@ graph TD
     S1[Sensor 1] -->|Publish: sensors/temp| B[IoT Core Broker]
     S2[Sensor 2] -->|Publish: sensors/humidity| B
     B -->|Deliver| D1[Dashboard]
-    B -->|Deliver| L[Lambda Rule]
+    B -->|Route via rule| L[Lambda Action]
     D1 -->|Subscribe: sensors/#| B
-    L -->|Subscribe: sensors/temp| B
 ```
 
 ## Connecting to the Broker
 
-Every device connects to the broker using its IoT Core endpoint with TLS mutual authentication.
+Certificate-based devices connect to the broker using the IoT Core endpoint with TLS mutual authentication.
 
 ```bash
 # Get your account's IoT endpoint
@@ -57,26 +56,30 @@ CERT_PATH = "./certs/device-cert.pem"
 KEY_PATH = "./certs/device-private.key"
 CA_PATH = "./certs/AmazonRootCA1.pem"
 
-def on_connect(client, userdata, flags, rc):
+def on_connect(client, userdata, flags, reason_code, properties):
     """Callback when connected to the broker."""
-    if rc == 0:
+    if reason_code == 0:
         print(f"Connected to IoT Core as {CLIENT_ID}")
         # Subscribe to command topics after connecting
         client.subscribe(f"devices/{CLIENT_ID}/commands/#", qos=1)
     else:
-        print(f"Connection failed with code {rc}")
+        print(f"Connection failed with code {reason_code}")
 
 def on_message(client, userdata, msg):
     """Callback when a message is received."""
     print(f"Received on {msg.topic}: {msg.payload.decode()}")
 
-def on_disconnect(client, userdata, rc):
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     """Callback when disconnected."""
-    if rc != 0:
-        print(f"Unexpected disconnect (rc={rc}), will auto-reconnect")
+    if reason_code != 0:
+        print(f"Unexpected disconnect ({reason_code}), will auto-reconnect")
 
 # Set up the MQTT client
-client = mqtt.Client(client_id=CLIENT_ID, protocol=mqtt.MQTTv311)
+client = mqtt.Client(
+    mqtt.CallbackAPIVersion.VERSION2,
+    client_id=CLIENT_ID,
+    protocol=mqtt.MQTTv311
+)
 client.on_connect = on_connect
 client.on_message = on_message
 client.on_disconnect = on_disconnect
@@ -194,7 +197,7 @@ system/firmware/updates
 Subscribers can use two wildcards:
 
 - **`+`** (single-level) - Matches exactly one topic level
-- **`#`** (multi-level) - Matches zero or more levels, must be the last character
+- **`#`** (multi-level) - Matches strings at and below its level in the topic hierarchy, must be the last character
 
 ```bash
 # Subscribe to telemetry from all devices
@@ -209,6 +212,8 @@ devices/+/commands/#
 # Subscribe to everything (use with caution)
 #
 ```
+
+In AWS IoT Core, a filter such as `devices/sensor-042/#` matches `devices/sensor-042/telemetry` and `devices/sensor-042/`, but not the parent topic `devices/sensor-042`.
 
 ## Quality of Service (QoS) Levels
 
@@ -259,7 +264,7 @@ client.publish(
 )
 ```
 
-When a new subscriber connects and subscribes to `devices/sensor-042/state`, it immediately receives the last retained message without waiting for the device to publish again.
+When a new subscriber connects and subscribes exactly to `devices/sensor-042/state`, it immediately receives the last retained message without waiting for the device to publish again. Wildcard subscriptions that include the retained message topic receive future messages, but they do not receive the retained message on subscription.
 
 ```bash
 # Clear a retained message by publishing an empty payload with retain flag
@@ -269,7 +274,7 @@ mosquitto_pub --cafile AmazonRootCA1.pem --cert cert.pem --key key.pem \
   -n -r
 ```
 
-IoT Core supports up to 4,000 retained messages per account (configurable).
+IoT Core supports up to 500,000 retained messages per account by default, or 100,000 in select AWS Regions, and the quota is adjustable.
 
 ## Last Will and Testament (LWT)
 
@@ -277,7 +282,10 @@ A last will message is published by the broker when a device disconnects unexpec
 
 ```python
 # Set a last will message when creating the client
-client = mqtt.Client(client_id=CLIENT_ID)
+client = mqtt.Client(
+    mqtt.CallbackAPIVersion.VERSION2,
+    client_id=CLIENT_ID
+)
 
 # Configure LWT before connecting
 client.will_set(
@@ -322,12 +330,12 @@ Be aware of these limits:
 | Resource | Limit |
 |----------|-------|
 | Maximum message size | 128 KB |
-| Topic levels | 7 levels deep |
+| Topic slashes | 7 forward slashes in a topic or topic filter |
 | Subscriptions per connection | 50 |
 | Publish rate (per connection) | 100 messages/sec |
 | Inbound publish rate (per account) | 20,000 messages/sec |
 | Keep-alive interval | 30 to 1200 seconds |
-| Connection duration | Up to 24 hours |
+| Connection duration | 1-2 weeks for X.509 certificate connections under ideal conditions; up to 24 hours for SigV4 connections |
 
 ## Testing with the MQTT Test Client
 
