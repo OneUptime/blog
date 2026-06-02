@@ -51,7 +51,7 @@ If status checks are failing, that's a different problem - see [troubleshooting 
 
 ## Step 2: Check Security Groups
 
-Security groups are the most common cause of connectivity issues. They're stateful (return traffic is automatically allowed), but only for traffic that was allowed inbound in the first place.
+Security groups are the most common cause of connectivity issues. They're stateful: responses to allowed inbound traffic are allowed out, and responses to allowed outbound traffic are allowed in.
 
 ```bash
 # List all security groups attached to the instance
@@ -121,7 +121,7 @@ aws ec2 describe-network-acls \
   }' --output json
 ```
 
-The most common NACL issue: forgetting the outbound ephemeral port rule. When a client connects to port 80, the return traffic goes out on a random ephemeral port (1024-65535). If the NACL doesn't allow outbound traffic on those ports, the response never reaches the client.
+The most common NACL issue: forgetting the outbound ephemeral port rule. When a client connects to port 80, the response leaves the instance's subnet for the client's ephemeral port. If the NACL doesn't allow outbound traffic to those ports, the response never reaches the client.
 
 ```bash
 # Add an outbound rule allowing ephemeral ports (needed for return traffic)
@@ -143,6 +143,18 @@ The subnet's route table determines where traffic goes. A missing or incorrect r
 # Check the route table for the instance's subnet
 aws ec2 describe-route-tables \
   --filters "Name=association.subnet-id,Values=$SUBNET_ID" \
+  --query 'RouteTables[0].Routes[*].{
+    Destination: DestinationCidrBlock,
+    Target: GatewayId || NatGatewayId || TransitGatewayId,
+    State: State
+  }' --output table
+
+# If that returns no route table, the subnet uses the VPC's main route table
+VPC_ID=$(aws ec2 describe-subnets --subnet-ids $SUBNET_ID \
+  --query 'Subnets[0].VpcId' --output text)
+
+aws ec2 describe-route-tables \
+  --filters "Name=vpc-id,Values=$VPC_ID" "Name=association.main,Values=true" \
   --query 'RouteTables[0].Routes[*].{
     Destination: DestinationCidrBlock,
     Target: GatewayId || NatGatewayId || TransitGatewayId,
@@ -208,7 +220,7 @@ aws ec2 describe-instances \
   }'
 ```
 
-No public IP? Either assign an Elastic IP or make sure the instance is in a private subnet with a NAT gateway:
+No public IP? For direct inbound access from the internet, assign an Elastic IP. If you only need outbound internet access, put the instance in a private subnet with a route to a NAT gateway:
 
 ```bash
 # Allocate and associate an Elastic IP
@@ -258,12 +270,13 @@ ANALYSIS_ID=$(aws ec2 create-network-insights-path \
   --query 'NetworkInsightsPath.NetworkInsightsPathId' --output text)
 
 # Start the analysis
-aws ec2 start-network-insights-analysis \
-  --network-insights-path-id $ANALYSIS_ID
+ANALYSIS_RUN_ID=$(aws ec2 start-network-insights-analysis \
+  --network-insights-path-id $ANALYSIS_ID \
+  --query 'NetworkInsightsAnalysis.NetworkInsightsAnalysisId' --output text)
 
 # Get results (may take a minute)
 aws ec2 describe-network-insights-analyses \
-  --network-insights-analysis-ids nia-abc123 \
+  --network-insights-analysis-ids $ANALYSIS_RUN_ID \
   --query 'NetworkInsightsAnalyses[0].{
     Status: Status,
     Reachable: NetworkPathFound,
@@ -345,9 +358,17 @@ aws ec2 describe-network-acls \
 # Check route table
 echo ""
 echo "--- Route Table ---"
-aws ec2 describe-route-tables \
+ROUTE_TABLES=$(aws ec2 describe-route-tables \
   --filters "Name=association.subnet-id,Values=$SUBNET" \
-  --query 'RouteTables[0].Routes' --output table
+  --query 'RouteTables' --output json)
+
+if [ "$(echo "$ROUTE_TABLES" | jq length)" -eq 0 ]; then
+  ROUTE_TABLES=$(aws ec2 describe-route-tables \
+    --filters "Name=vpc-id,Values=$VPC" "Name=association.main,Values=true" \
+    --query 'RouteTables' --output json)
+fi
+
+echo "$ROUTE_TABLES" | jq '.[0].Routes'
 
 echo ""
 echo "=== Diagnosis complete ==="
