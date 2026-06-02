@@ -16,9 +16,10 @@ In this post, we'll cover the full setup process from downloading the gateway ap
 
 Storage Gateway is essentially a virtual appliance that you deploy in your on-premises environment (or in AWS as an EC2 instance). It presents standard storage interfaces like NFS, SMB, iSCSI, and iSCSI VTL to your local applications, while transparently moving data to and from AWS storage services like S3, S3 Glacier, and EBS.
 
-There are three types of gateways:
+The main gateway options are:
 
 - **File Gateway** - presents S3 objects as files via NFS or SMB
+- **FSx File Gateway** - presents Amazon FSx for Windows File Server shares via SMB for existing FSx File Gateway customers
 - **Volume Gateway** - presents iSCSI block storage backed by S3 with EBS snapshots
 - **Tape Gateway** - presents a virtual tape library backed by S3 and Glacier
 
@@ -46,15 +47,14 @@ Before you start, make sure you have:
 
 ## Step 1: Create the Gateway in AWS Console
 
-Start by setting up the gateway resource in your AWS account. You can do this through the CLI as well:
+Activation creates the gateway resource in your AWS account. Before deploying the VM, you can check for existing gateways and prepare IAM resources through the CLI:
 
 ```bash
-# List available gateway types to confirm options
-
+# List existing gateways in the Region
 aws storagegateway list-gateways --region us-east-1
 
 # We'll create the gateway after deploying and activating the VM
-# First, let's prepare by creating an IAM role for the gateway
+# First, let's prepare an IAM role for S3 file shares
 aws iam create-role \
   --role-name StorageGatewayRole \
   --assume-role-policy-document '{
@@ -82,9 +82,16 @@ For VMware ESXi, you'll get an OVA file. For Hyper-V, it's a VHD. For KVM, a QCO
 
 ```bash
 # If deploying on EC2 instead of on-premises,
-# you can launch the gateway AMI directly
+# query the current S3 File Gateway AMI ID for the Region
+GATEWAY_AMI_ID=$(aws ssm get-parameter \
+  --region us-east-1 \
+  --name /aws/service/storagegateway/ami/FILE_S3/latest \
+  --query 'Parameter.Value' \
+  --output text)
+
+# Then launch the gateway AMI
 aws ec2 run-instances \
-  --image-id ami-0123456789abcdef0 \
+  --image-id "$GATEWAY_AMI_ID" \
   --instance-type m5.xlarge \
   --key-name my-key-pair \
   --security-group-ids sg-0123456789abcdef0 \
@@ -109,7 +116,7 @@ The second volume (`/dev/xvdb`) serves as the local cache disk. The cache stores
 Once your VM is running, you need to configure basic network settings. The gateway VM has a local console you can access:
 
 1. Open the VM console through your hypervisor
-2. Set the time zone to UTC (this is important for proper synchronization)
+2. Confirm the gateway's time is synchronized
 3. Configure the network interface with a static IP or DHCP
 4. Note the IP address - you'll need it for activation
 
@@ -138,10 +145,11 @@ The `gateway-type` parameter determines what kind of gateway you're setting up:
 - `CACHED` for Volume Gateway (cached mode)
 - `STORED` for Volume Gateway (stored mode)
 - `VTL` for Tape Gateway
+- `FILE_FSX_SMB` for FSx File Gateway (for existing FSx File Gateway customers)
 
 ## Step 5: Configure Local Disks
 
-After activation, you need to assign the local disks to their roles. The gateway uses local disks for caching and upload buffering:
+After activation, you need to assign the local disks to their roles. For S3 File Gateway, the gateway uses local disks for caching:
 
 ```bash
 # List the local disks on your gateway
@@ -174,10 +182,10 @@ aws cloudwatch put-metric-alarm \
   --dimensions Name=GatewayId,Value=sgw-12345678 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:storage-alerts
 
-# Monitor upload buffer usage
+# Monitor dirty cache waiting to be uploaded to S3
 aws cloudwatch put-metric-alarm \
-  --alarm-name "StorageGateway-UploadBuffer" \
-  --metric-name UploadBufferPercentUsed \
+  --alarm-name "StorageGateway-CachePercentDirty" \
+  --metric-name CachePercentDirty \
   --namespace "AWS/StorageGateway" \
   --statistic Average \
   --period 300 \
@@ -195,14 +203,22 @@ A low cache hit percentage means your applications are frequently requesting dat
 The connection between your gateway and AWS is the lifeline of your hybrid setup. Here are some configurations to optimize it:
 
 ```bash
-# Configure bandwidth throttling to avoid saturating your WAN link
-aws storagegateway update-bandwidth-rate-limit \
+# Configure an upload bandwidth schedule to avoid saturating your WAN link
+aws storagegateway update-bandwidth-rate-limit-schedule \
   --gateway-arn arn:aws:storagegateway:us-east-1:123456789012:gateway/sgw-12345678 \
-  --average-upload-rate-limit-in-bits-per-sec 104857600 \
-  --average-download-rate-limit-in-bits-per-sec 104857600
+  --bandwidth-rate-limit-intervals '[
+    {
+      "StartHourOfDay": 0,
+      "StartMinuteOfHour": 0,
+      "EndHourOfDay": 23,
+      "EndMinuteOfHour": 59,
+      "DaysOfWeek": [0, 1, 2, 3, 4, 5, 6],
+      "AverageUploadRateLimitInBitsPerSec": 104857600
+    }
+  ]'
 ```
 
-That sets both upload and download limits to 100 Mbps. Adjust based on your available bandwidth and what you can dedicate to the gateway without impacting other traffic.
+That sets the S3 File Gateway upload limit to 100 Mbps all week. Adjust based on your available bandwidth and what you can dedicate to the gateway without impacting other traffic.
 
 For production deployments, consider using AWS Direct Connect instead of the public internet. It provides consistent latency, dedicated bandwidth, and lower data transfer costs.
 
