@@ -115,7 +115,7 @@ During a rolling update, ECS needs to run both old and new tasks simultaneously.
 This is controlled by two deployment configuration parameters:
 
 - **minimumHealthyPercent** - The minimum percentage of desired tasks that must stay running
-- **maximumPercent** - The maximum percentage of desired tasks that can be running (including old + new)
+- **maximumPercent** - The maximum percentage of desired tasks that can be in RUNNING or PENDING (including old + new)
 
 For a service with 4 desired tasks and default settings (min 100%, max 200%):
 
@@ -154,7 +154,7 @@ A constraint like `distinctInstance` means each task must run on a different con
 
 ## Circuit Breaker Rollbacks
 
-ECS has a deployment circuit breaker that automatically rolls back failed deployments. If you see a rollback happening, check the events:
+ECS has a deployment circuit breaker that can automatically roll back failed deployments when rollback is enabled. If you see a rollback happening, check the events:
 
 ```bash
 # Look for circuit breaker events
@@ -165,7 +165,7 @@ aws ecs describe-services \
   --output text
 ```
 
-The circuit breaker triggers when too many tasks fail to reach a steady state. By default, if a deployment fails to make progress after a certain number of task failures, ECS rolls back to the previous task definition.
+The circuit breaker triggers when too many tasks fail to reach a steady state. If the circuit breaker is enabled with rollback, ECS rolls back a failed deployment to the last deployment that completed successfully.
 
 You can configure or disable the circuit breaker:
 
