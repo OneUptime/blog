@@ -17,7 +17,7 @@ Let's go through the full setup from bucket configuration to handling edge cases
 S3 offers several encryption methods. Here's the quick comparison:
 
 - **SSE-S3** (AES-256): AWS manages everything. No KMS costs, no KMS throttling, minimal control.
-- **SSE-KMS**: AWS managed KMS key or your own CMK. Full audit trail, key policy control, but adds KMS API costs and potential throttling.
+- **SSE-KMS**: AWS managed KMS key or your own customer managed KMS key. Full audit trail, key policy control, but adds KMS API costs and potential throttling.
 - **DSSE-KMS**: Dual-layer encryption for compliance requirements. Double the KMS calls.
 - **SSE-C**: You provide the key with every request. Maximum control, maximum operational burden.
 
@@ -47,7 +47,7 @@ aws s3api put-bucket-encryption \
       {
         "ApplyServerSideEncryptionByDefault": {
           "SSEAlgorithm": "aws:kms",
-          "KMSMasterKeyID": "alias/s3-production"
+          "KMSMasterKeyID": "arn:aws:kms:us-east-1:123456789012:key/KEY_ID"
         },
         "BucketKeyEnabled": true
       }
@@ -62,6 +62,10 @@ Notice `BucketKeyEnabled: true` - that's important for performance and cost. We'
 Here's the full Terraform setup with a KMS key, bucket, and proper policies.
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
+data "aws_region" "current" {}
+
 # KMS key for S3 encryption
 resource "aws_kms_key" "s3" {
   description         = "S3 encryption key for production"
@@ -136,7 +140,7 @@ The `kms:ViaService` condition in the key policy is a best practice - it ensures
 
 ## Bucket Key - Why It Matters
 
-Without S3 Bucket Keys, every object operation makes a separate KMS API call. Upload 10,000 objects? That's 10,000 GenerateDataKey calls. Download them? 10,000 Decrypt calls. At scale, this hits KMS request quotas (default 5,500-30,000 requests/second depending on region) and racks up costs.
+Without S3 Bucket Keys, every object operation makes a separate KMS API call. Upload 10,000 objects? That's 10,000 GenerateDataKey calls. Download them? 10,000 Decrypt calls. At scale, this hits KMS request quotas (default 10,000-100,000 symmetric cryptographic requests/second depending on region) and racks up costs.
 
 S3 Bucket Keys reduce KMS calls by generating a bucket-level key that's reused for objects within a time window. This can cut KMS costs by up to 99%.
 
@@ -150,21 +154,39 @@ The tradeoff: CloudTrail shows fewer KMS events since the bucket key handles mos
 
 ## Enforcing Encryption with Bucket Policy
 
-Default encryption handles uploads that don't specify encryption, but it doesn't prevent someone from uploading with a different encryption method. Use a bucket policy to enforce KMS encryption.
+Default encryption handles uploads that don't specify encryption, but it doesn't prevent someone from overriding the default with a different encryption method. Use a bucket policy to block explicit encryption settings that don't match your KMS requirements.
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "DenyUnencryptedUploads",
+      "Sid": "DenyExplicitNonKMSUploads",
       "Effect": "Deny",
       "Principal": "*",
       "Action": "s3:PutObject",
       "Resource": "arn:aws:s3:::my-production-bucket/*",
       "Condition": {
+        "Null": {
+          "s3:x-amz-server-side-encryption": "false"
+        },
         "StringNotEquals": {
           "s3:x-amz-server-side-encryption": "aws:kms"
+        }
+      }
+    },
+    {
+      "Sid": "DenyExplicitKMSWithoutKey",
+      "Effect": "Deny",
+      "Principal": "*",
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::my-production-bucket/*",
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-server-side-encryption": "aws:kms"
+        },
+        "Null": {
+          "s3:x-amz-server-side-encryption-aws-kms-key-id": "true"
         }
       }
     },
@@ -175,6 +197,9 @@ Default encryption handles uploads that don't specify encryption, but it doesn't
       "Action": "s3:PutObject",
       "Resource": "arn:aws:s3:::my-production-bucket/*",
       "Condition": {
+        "Null": {
+          "s3:x-amz-server-side-encryption-aws-kms-key-id": "false"
+        },
         "StringNotEquals": {
           "s3:x-amz-server-side-encryption-aws-kms-key-id": "arn:aws:kms:us-east-1:123456789012:key/KEY_ID"
         }
@@ -184,7 +209,7 @@ Default encryption handles uploads that don't specify encryption, but it doesn't
 }
 ```
 
-The second statement is often overlooked. Without it, someone could upload objects using a different KMS key that you don't control.
+The KMS key check is often overlooked. Without it, someone could upload objects using a different KMS key that you don't control.
 
 ## IAM Permissions for KMS-Encrypted S3
 
@@ -234,7 +259,7 @@ aws s3 cp local-file.txt s3://my-production-bucket/data/file.txt
 # Upload with explicit KMS key (overrides default)
 aws s3 cp local-file.txt s3://my-production-bucket/data/file.txt \
   --sse aws:kms \
-  --sse-kms-key-id alias/s3-production
+  --sse-kms-key-id arn:aws:kms:us-east-1:123456789012:key/KEY_ID
 
 # Download - decryption is automatic
 aws s3 cp s3://my-production-bucket/data/file.txt ./downloaded-file.txt
@@ -273,9 +298,12 @@ If you're migrating from SSE-S3 to SSE-KMS, you need to re-encrypt existing obje
 
 ```bash
 # Copy an object to itself with new encryption (small scale)
-aws s3 cp s3://my-bucket/file.txt s3://my-bucket/file.txt \
-  --sse aws:kms \
-  --sse-kms-key-id alias/s3-production
+aws s3api copy-object \
+  --bucket my-production-bucket \
+  --key file.txt \
+  --copy-source my-production-bucket/file.txt \
+  --server-side-encryption aws:kms \
+  --ssekms-key-id arn:aws:kms:us-east-1:123456789012:key/KEY_ID
 
 # For large-scale migration, use S3 Batch Operations
 # First, generate an inventory of objects to re-encrypt
@@ -303,10 +331,10 @@ A few things to keep in mind:
 
 - **Enable Bucket Keys.** This is the single biggest performance optimization.
 - **Watch KMS quotas.** Even with Bucket Keys, high-throughput workloads can hit limits. Request quota increases proactively.
-- **Use regional keys.** If your bucket is in us-east-1, use a key in us-east-1. Cross-region KMS calls add latency.
+- **Use regional keys.** If your bucket is in us-east-1, use a key in us-east-1. Amazon S3 bucket encryption doesn't support cross-region KMS keys.
 - **Consider SSE-S3 for non-sensitive data.** Not everything needs KMS encryption. Use it where you need audit trails and access control.
 
-For more on managing your KMS keys, see our guide on [creating and managing CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view). And if you're looking at encryption for other services, check out [KMS with EBS](https://oneuptime.com/blog/post/2026-02-12-kms-with-ebs-volume-encryption/view) and [KMS with RDS](https://oneuptime.com/blog/post/2026-02-12-kms-with-rds-database-encryption/view).
+For more on managing your KMS keys, see our guide on [creating and managing customer managed KMS keys](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view). And if you're looking at encryption for other services, check out [KMS with EBS](https://oneuptime.com/blog/post/2026-02-12-kms-with-ebs-volume-encryption/view) and [KMS with RDS](https://oneuptime.com/blog/post/2026-02-12-kms-with-rds-database-encryption/view).
 
 ## Wrapping Up
 
