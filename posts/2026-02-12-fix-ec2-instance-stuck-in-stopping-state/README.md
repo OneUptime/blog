@@ -8,7 +8,7 @@ Description: Resolve EC2 instances stuck in the stopping state with practical de
 
 ---
 
-You issue a stop command and your EC2 instance transitions to "stopping" - and stays there. Minutes pass. An hour passes. The instance won't actually stop. This is one of the more annoying EC2 issues because there's no force-stop button in the console, and your options are limited. But there are things you can do, and understanding why it happens helps you prevent it in the future.
+You issue a stop command and your EC2 instance transitions to "stopping" - and stays there. Minutes pass. An hour passes. The instance won't actually stop. This is one of the more annoying EC2 issues because your options are limited. But there are things you can do, and understanding why it happens helps you prevent it in the future.
 
 ## Why Instances Get Stuck Stopping
 
@@ -45,12 +45,12 @@ aws ec2 describe-instances \
   }'
 ```
 
-## Step 1: Force Stop via API
+## Step 1: Force Stop
 
-The AWS CLI has a `--force` flag for stop that sends a hard power-off signal instead of a graceful ACPI shutdown:
+The AWS CLI has a `--force` flag for stop that handles instances stuck in `stopping`. AWS first attempts a graceful shutdown, then forces the shutdown if it doesn't complete within the timeout period:
 
 ```bash
-# Force stop the instance - equivalent to pulling the power plug
+# Force stop the instance
 aws ec2 stop-instances \
   --instance-ids i-0abc123 \
   --force
@@ -62,7 +62,14 @@ aws ec2 describe-instances \
   --query 'Reservations[0].Instances[0].State.Name'
 ```
 
-The `--force` flag tells the hypervisor to immediately terminate the instance without waiting for the OS to shut down cleanly. This is the virtual equivalent of pulling the power cord.
+If you need to bypass the graceful OS shutdown attempt entirely, add `--skip-os-shutdown`:
+
+```bash
+aws ec2 stop-instances \
+  --instance-ids i-0abc123 \
+  --force \
+  --skip-os-shutdown
+```
 
 Important: Force stop can cause data loss. Any data that hasn't been flushed to disk will be lost. EBS volumes should remain intact, but unflushed writes may not be persisted.
 
@@ -73,7 +80,7 @@ Sometimes even force stop doesn't help because the issue is at the infrastructur
 ```bash
 # Try to terminate the instance instead of stopping it
 # WARNING: This permanently destroys the instance
-aws ec2 terminate-instances --instance-ids i-0abc123
+aws ec2 terminate-instances --instance-ids i-0abc123 --force
 ```
 
 If you need the data on the instance, don't terminate yet. Instead, create a snapshot of the EBS volumes while the instance is in the stopping state:
@@ -142,7 +149,7 @@ fi
 
 NFS mounts are a common cause of stuck stops. If the NFS server is unreachable, unmounting hangs indefinitely.
 
-Use the `soft` and `timeo` options when mounting:
+For read-mostly or non-critical mounts, use the `soft`, `timeo`, and `retrans` options when mounting. Don't use `soft` for workloads that require strong write guarantees; timed-out NFS requests can return I/O errors to applications.
 
 ```bash
 # Mount NFS with soft timeout to prevent hanging during shutdown
@@ -192,7 +199,7 @@ For MySQL:
 ```ini
 # /etc/mysql/my.cnf
 [mysqld]
-# Reduce InnoDB shutdown flush - faster stop at the cost of longer recovery
+# Keep fast shutdown enabled - faster stop at the cost of longer recovery
 innodb_fast_shutdown = 1
 ```
 
@@ -200,19 +207,17 @@ For PostgreSQL:
 
 ```ini
 # /etc/postgresql/15/main/postgresql.conf
-# Reduce checkpoint timeout for faster shutdown
+# More frequent checkpoints can reduce crash recovery time after a forced stop
 checkpoint_timeout = 30s
 ```
 
 ## Automating Stuck Instance Detection
 
-Set up a Lambda function that checks for instances in the stopping state for too long:
+Set up a Lambda function that checks for instances currently in the stopping state. To alert only after a specific duration, track the first time each instance was observed in this state externally, such as in DynamoDB:
 
 ```python
 # lambda_check_stuck_stopping.py
 import boto3
-import time
-from datetime import datetime, timezone, timedelta
 
 def lambda_handler(event, context):
     ec2 = boto3.client('ec2')
@@ -228,10 +233,7 @@ def lambda_handler(event, context):
     for reservation in response['Reservations']:
         for instance in reservation['Instances']:
             instance_id = instance['InstanceId']
-            state_change = instance.get('StateTransitionReason', '')
 
-            # If it's been stopping for more than 15 minutes, flag it
-            # Note: you may need to track stop time externally
             stuck_instances.append({
                 'instance_id': instance_id,
                 'instance_type': instance['InstanceType'],
@@ -261,7 +263,7 @@ While this post focuses on the stopping state, instances can get stuck in other 
 |-------|-----------------|----------|
 | pending | 1-3 minutes | Check launch logs, may be user-data issue |
 | stopping | 1-5 minutes | Force stop or terminate |
-| shutting-down | 1-3 minutes | Contact AWS support |
+| shutting-down | 1-3 minutes | Force terminate or contact AWS support |
 | terminated | Visible for ~1 hour | Normal, will disappear |
 
 For launch-related issues, see [troubleshooting EC2 instance launch failures](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-ec2-instance-launch-failures/view).
@@ -281,4 +283,4 @@ systemctl list-units --state=failed
 # (database consistency checks, log file integrity, etc.)
 ```
 
-A stuck stopping state is annoying but usually fixable. Force stop resolves most cases, and if that fails, snapshots plus terminate gets you out of the situation while preserving your data. The real fix is prevention - proper shutdown timeouts, soft NFS mounts, and systemd kill configurations keep your instances from getting stuck in the first place.
+A stuck stopping state is annoying but usually fixable. Force stop resolves most cases, and if that fails, snapshots plus force terminate gets you out of the situation while preserving your data. The real fix is prevention - proper shutdown timeouts, careful NFS mount configuration, and systemd kill configurations keep your instances from getting stuck in the first place.
