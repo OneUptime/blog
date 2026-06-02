@@ -36,15 +36,15 @@ The `stoppedReason` and `stopCode` fields tell you what category of failure you'
 
 ## Container Exit Code Failures
 
-If your container exits with a non-zero exit code, the task stops. Common exit codes and what they mean:
+If an essential container exits, the task stops. Common exit codes and what they mean:
 
 | Exit Code | Meaning | Typical Cause |
 |-----------|---------|---------------|
-| 0 | Success | Normal exit (shouldn't cause restarts) |
+| 0 | Success | Normal exit (services still replace stopped tasks to maintain desired count) |
 | 1 | General error | Application crash, unhandled exception |
 | 126 | Permission denied | Can't execute the entrypoint |
 | 127 | Command not found | Bad entrypoint or missing binary |
-| 137 | SIGKILL (OOM) | Container killed due to memory limit |
+| 137 | SIGKILL | Often OOM, or another forced kill after the stop timeout |
 | 139 | Segfault | Application bug, corrupted binary |
 | 143 | SIGTERM | Graceful shutdown signal |
 
@@ -82,7 +82,7 @@ Common fixes:
 
 ### Exit Code 137 - Out of Memory
 
-Exit code 137 means the container was killed by the OOM killer. The container tried to use more memory than its hard limit allows.
+Exit code 137 means the container was killed with SIGKILL. In ECS, that's commonly because the container tried to use more memory than its hard limit allows, but it can also happen when a container doesn't exit before the stop timeout.
 
 ```bash
 # Check the memory configuration for the task
@@ -112,7 +112,7 @@ aws ecr describe-images \
   --query "imageDetails[0].{digest:imageDigest, pushedAt:imagePushedAt, size:imageSizeInBytes}"
 ```
 
-**Missing ECR permissions:** The ECS task execution role needs `ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, and `ecr:GetAuthorizationToken` permissions.
+**Missing ECR permissions:** For Fargate tasks, and for ECS tasks that use a task execution role for image pulls, the task execution role needs `ecr:GetDownloadUrlForLayer`, `ecr:BatchGetImage`, and `ecr:GetAuthorizationToken` permissions. For EC2 launch type tasks that rely on the container instance role, make sure the container instance role has the equivalent ECR permissions.
 
 ```json
 {
@@ -133,7 +133,7 @@ aws ecr describe-images \
 
 **Private registry authentication:** If you're pulling from Docker Hub or another private registry, you need to configure the `repositoryCredentials` in your task definition with a Secrets Manager ARN.
 
-Resource Constraint Failures
+## Resource Constraint Failures
 
 If your cluster doesn't have enough resources to place a task, you'll see "no container instances met all requirements" or similar messages.
 
@@ -169,6 +169,8 @@ aws ec2 describe-route-tables \
   --query "RouteTables[*].Routes[*].{dest:DestinationCidrBlock, target:NatGatewayId}" \
   --output table
 ```
+
+If that returns no route table, the subnet may be using the VPC's main route table instead of an explicit subnet association.
 
 Required VPC endpoints for private subnets (if you don't have a NAT gateway):
 - `com.amazonaws.region.ecr.dkr` - ECR image pulls
@@ -250,7 +252,7 @@ The trust policy must allow `ecs-tasks.amazonaws.com` to assume the role:
 When you hit a task failure, work through this checklist:
 
 1. Check the stopped task reason - `aws ecs describe-tasks`
-2. Check container exit codes - non-zero means the app crashed
+2. Check container exit codes - an essential container exit means the task stopped
 3. Check logs - `aws logs get-log-events`
 4. Check the image - can you pull it manually?
 5. Check IAM roles - execution role and task role
