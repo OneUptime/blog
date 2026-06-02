@@ -31,13 +31,15 @@ On Fargate, you set the total memory for the task. This is a hard limit - the ta
 
 Valid Fargate memory values depend on the CPU setting:
 
-| CPU (vCPU) | Memory Options (MB) |
+| CPU (vCPU) | Memory Options (MiB) |
 |------------|-------------------|
 | 256 (.25) | 512, 1024, 2048 |
 | 512 (.5) | 1024 - 4096 |
 | 1024 (1) | 2048 - 8192 |
 | 2048 (2) | 4096 - 16384 |
 | 4096 (4) | 8192 - 30720 |
+| 8192 (8) | 16384 - 61440 |
+| 16384 (16) | 32768 - 122880 |
 
 ### Container-Level Memory
 
@@ -63,7 +65,7 @@ Each container can have its own memory limits:
 }
 ```
 
-On Fargate, the sum of all container hard limits can't exceed the task-level memory. On EC2, it's more flexible since containers can share the instance's memory.
+On Fargate, the total memory reserved for all containers must be lower than the task-level memory. If a container has `memoryReservation`, that value is used for reservation; otherwise, the `memory` hard limit is used. On EC2, it's more flexible since containers can share the instance's memory.
 
 ## Identifying OOM Kills
 
@@ -80,7 +82,7 @@ aws ecs describe-tasks \
   --query "tasks[0].containers[*].{name:name, exitCode:exitCode, reason:reason}"
 ```
 
-Exit code 137 means the container received SIGKILL, which is what the OOM killer sends. The `reason` field might also say "OutOfMemoryError" or "Container killed due to memory".
+Exit code 137 means the container received SIGKILL, which is what the OOM killer sends. It can also happen for other forced kills, so check the ECS stop details too. The `reason` field might say "OutOfMemoryError" or "Container killed due to memory usage".
 
 ### Check the Stopped Reason
 
@@ -92,7 +94,7 @@ aws ecs describe-tasks \
   --query "tasks[0].{stopCode:stopCode, stoppedReason:stoppedReason}"
 ```
 
-If the `stoppedReason` includes "OutOfMemoryError" or "Essential container in task exited", and the container exit code is 137, you've confirmed an OOM kill.
+If the `stoppedReason` or container `reason` includes "OutOfMemoryError" or "container killed due to memory usage", and the container exit code is 137, you've confirmed an OOM kill.
 
 ### Check Container Insights Metrics
 
@@ -106,7 +108,7 @@ aws cloudwatch get-metric-statistics \
   --dimensions \
     Name=ClusterName,Value=production \
     Name=ServiceName,Value=api-service \
-  --start-time "$(date -u -v-6H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 60 \
   --statistics Average Maximum
@@ -135,11 +137,22 @@ Fix: Increase the memory limit. But first, check what the application actually n
 ```bash
 # Use CloudWatch Logs Insights to find peak memory usage
 # Query the Container Insights performance log group
-aws logs start-query \
+QUERY_ID=$(aws logs start-query \
   --log-group-name "/aws/ecs/containerinsights/production/performance" \
-  --start-time $(date -u -v-24H +%s) \
+  --start-time $(date -u -d '24 hours ago' +%s) \
   --end-time $(date -u +%s) \
-  --query-string 'fields @timestamp, MemoryUtilized, MemoryReserved | filter Type = "Task" and ServiceName = "api-service" | stats max(MemoryUtilized) as peak_mb, avg(MemoryUtilized) as avg_mb'
+  --query-string 'fields @timestamp, MemoryUtilized, MemoryReserved | filter Type = "Task" and ServiceName = "api-service" | stats max(MemoryUtilized) as peak_mib, avg(MemoryUtilized) as avg_mib' \
+  --query 'queryId' \
+  --output text)
+
+while true; do
+  STATUS=$(aws logs get-query-results --query-id "$QUERY_ID" --query 'status' --output text)
+  [ "$STATUS" = "Complete" ] && break
+  case "$STATUS" in Failed|Cancelled|Timeout|Unknown) exit 1 ;; esac
+  sleep 2
+done
+
+aws logs get-query-results --query-id "$QUERY_ID"
 ```
 
 Set the memory limit to about 1.5x the observed peak to give yourself headroom.
@@ -187,7 +200,7 @@ Common sources of memory leaks:
 
 ### Cause 3: JVM Heap Not Configured for Container Limits
 
-This is a classic Java gotcha. The JVM decides its max heap size based on the system's total memory, not the container's memory limit. On a host with 16 GB of RAM, the JVM might try to allocate 4 GB of heap, even though the container only has 1 GB allocated.
+This is a classic Java gotcha, especially on older Java runtimes or runtimes where container support has been disabled. Modern HotSpot JVMs are container-aware by default on supported Linux platforms, but the default heap percentage can still be too high or too low for your workload once you account for non-heap memory.
 
 Fix: Always set explicit JVM memory flags:
 
@@ -209,11 +222,22 @@ Check how much memory each container is actually using:
 
 ```bash
 # Query per-container memory usage from Container Insights
-aws logs start-query \
+QUERY_ID=$(aws logs start-query \
   --log-group-name "/aws/ecs/containerinsights/production/performance" \
-  --start-time $(date -u -v-1H +%s) \
+  --start-time $(date -u -d '1 hour ago' +%s) \
   --end-time $(date -u +%s) \
-  --query-string 'fields @timestamp, ContainerName, MemoryUtilized | filter Type = "Container" and ServiceName = "api-service" | stats avg(MemoryUtilized) as avg_mb, max(MemoryUtilized) as peak_mb by ContainerName'
+  --query-string 'fields @timestamp, ContainerName, MemoryUtilized | filter Type = "Container" and ServiceName = "api-service" | stats avg(MemoryUtilized) as avg_mib, max(MemoryUtilized) as peak_mib by ContainerName' \
+  --query 'queryId' \
+  --output text)
+
+while true; do
+  STATUS=$(aws logs get-query-results --query-id "$QUERY_ID" --query 'status' --output text)
+  [ "$STATUS" = "Complete" ] && break
+  case "$STATUS" in Failed|Cancelled|Timeout|Unknown) exit 1 ;; esac
+  sleep 2
+done
+
+aws logs get-query-results --query-id "$QUERY_ID"
 ```
 
 You might discover that your Fluent Bit sidecar is using 200 MB instead of the expected 64 MB, leaving less memory for your main application.
