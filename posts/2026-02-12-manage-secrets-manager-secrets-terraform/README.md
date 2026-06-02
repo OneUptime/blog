@@ -42,7 +42,7 @@ resource "aws_secretsmanager_secret_version" "db_credentials" {
 }
 ```
 
-A word of caution: the secret value ends up in your Terraform state file in plain text. This is a fundamental limitation. Make sure your state backend is encrypted (S3 with SSE, Terraform Cloud, etc.) and access-controlled. Some teams choose to create the secret container in Terraform but set the initial value manually through the CLI or console.
+A word of caution: with `secret_string`, the secret value ends up in your Terraform state file in plain text. Make sure your state backend is encrypted (S3 with SSE, Terraform Cloud, etc.) and access-controlled. If your Terraform and AWS provider versions support write-only attributes, use `secret_string_wo` to avoid storing the value in state. Some teams choose to create the secret container in Terraform but set the initial value manually through the CLI or console.
 
 ## Generating Random Passwords
 
@@ -116,7 +116,7 @@ resource "aws_secretsmanager_secret" "encrypted" {
 
 ## Automatic Rotation
 
-Secret rotation is where Secrets Manager really shines. For RDS credentials, AWS provides managed rotation Lambda functions. For custom secrets, you write your own rotation Lambda.
+Secret rotation is where Secrets Manager really shines. For RDS credentials, AWS provides rotation Lambda templates, and RDS-managed master user secrets can use managed rotation without a Lambda function. For custom secrets, you write your own rotation Lambda.
 
 This sets up automatic rotation for an RDS secret every 30 days:
 
@@ -205,6 +205,8 @@ resource "aws_lambda_permission" "secrets_manager" {
 }
 ```
 
+If the secret uses a customer-managed KMS key instead of `aws/secretsmanager`, the rotation Lambda execution role also needs permission to use that key.
+
 ## IAM Access Policies
 
 Granting access to secrets should follow least privilege. Here's a pattern for giving an application role read access to specific secrets.
@@ -247,7 +249,7 @@ resource "aws_iam_policy" "secret_reader" {
 
 Resource policies on secrets enable cross-account access and provide an additional layer of control.
 
-This resource policy allows a specific account to read the secret:
+This resource policy is one part of allowing a specific account to read the secret:
 
 ```hcl
 resource "aws_secretsmanager_secret_policy" "cross_account" {
@@ -272,6 +274,8 @@ resource "aws_secretsmanager_secret_policy" "cross_account" {
   })
 }
 ```
+
+For cross-account access to work, the principal in the other account also needs an identity-based IAM policy that allows the same Secrets Manager actions. If the secret is encrypted with a KMS key, the KMS key policy must also allow that cross-account principal to use the key; the AWS-managed `aws/secretsmanager` key can't be used for cross-account access.
 
 ## Replica Secrets for Multi-Region
 
