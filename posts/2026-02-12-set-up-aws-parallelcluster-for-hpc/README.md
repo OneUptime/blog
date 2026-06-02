@@ -36,8 +36,7 @@ ParallelCluster is distributed as a Python package.
 
 ```bash
 # Install the ParallelCluster CLI
-
-pip3 install aws-parallelcluster
+python3 -m pip install "aws-parallelcluster" --upgrade --user
 
 # Verify the installation
 pcluster version
@@ -50,9 +49,10 @@ You also need Node.js for the CDK components that ParallelCluster uses under the
 # On macOS:
 brew install node
 
-# On Amazon Linux 2:
-curl -sL https://rpm.nodesource.com/setup_18.x | sudo bash -
-sudo yum install -y nodejs
+# On Linux, install Node Version Manager and the latest LTS Node.js:
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.38.0/install.sh | bash
+source ~/.nvm/nvm.sh
+nvm install --lts
 ```
 
 ## Step 2: Create the Cluster Configuration
@@ -204,12 +204,12 @@ SharedStorage:
     FsxLustreSettings:
       StorageCapacity: 1200
       DeploymentType: SCRATCH_2
-      ImportPath: s3://my-hpc-input-data
-      ExportPath: s3://my-hpc-output-data
+      ImportPath: s3://my-hpc-data/input
+      ExportPath: s3://my-hpc-data/output
       AutoImportPolicy: NEW_CHANGED_DELETED
 ```
 
-With this setup, anything in the S3 bucket appears as a file under `/scratch`, and you can write results back using `lfs hsm_archive`.
+With this setup, anything in the S3 bucket appears as a file under `/scratch`, and you can write results back using `sudo lfs hsm_archive`.
 
 ## Step 7: Enable EFA for Low-Latency Communication
 
@@ -224,6 +224,8 @@ SlurmQueues:
         InstanceType: hpc6a.48xlarge
         MinCount: 0
         MaxCount: 50
+        Efa:
+          Enabled: true
     Networking:
       SubnetIds:
         - subnet-0abc123def456
@@ -262,7 +264,7 @@ The default scaledown idle time is 10 minutes. You can adjust it in the configur
 ## Cost Optimization Tips
 
 - Set `MinCount: 0` on all queues so you only pay for compute when jobs are running
-- Use Spot Instances for fault-tolerant workloads by adding `CapacityType: SPOT` to your compute resources
+- Use Spot Instances for fault-tolerant workloads by adding `CapacityType: SPOT` to your Slurm queue
 - Choose the right instance type for your workload. Compute-bound jobs should use C-series, memory-bound should use R-series
 - Use FSx for Lustre SCRATCH_2 deployment type for temporary data since it is cheaper than PERSISTENT
 
@@ -297,7 +299,7 @@ When you are done, clean up.
 pcluster delete-cluster --cluster-name my-hpc-cluster
 ```
 
-This tears down all EC2 instances, networking components, and storage. Make sure you have saved any data on the shared volumes first.
+This tears down the cluster-managed EC2 instances, networking resources, and storage. Existing resources that you referenced in the configuration, such as an existing subnet, are not deleted. Make sure you have saved any data on the shared volumes first.
 
 ## Wrapping Up
 
