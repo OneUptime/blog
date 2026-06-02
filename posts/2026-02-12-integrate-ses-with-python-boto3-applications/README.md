@@ -20,11 +20,12 @@ Install Boto3 if you haven't already.
 pip install boto3
 ```
 
-Make sure your AWS credentials are configured. Boto3 checks these locations in order:
+Make sure your AWS credentials and AWS Region are configured. Boto3 checks several credential providers and stops when it finds valid credentials. Common providers include:
 
-1. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
-2. Shared credentials file (`~/.aws/credentials`)
-3. IAM role (if running on EC2, Lambda, or ECS)
+1. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and optional `AWS_SESSION_TOKEN`)
+2. Shared credentials file (`~/.aws/credentials`) and AWS config file (`~/.aws/config`)
+3. Assume-role or IAM Identity Center profiles
+4. Container credentials or an EC2 instance profile role
 
 For local development, the credentials file is the easiest option.
 
@@ -317,6 +318,9 @@ def send_notification():
 Here's how to create and manage SES templates programmatically.
 
 ```python
+import boto3
+from botocore.exceptions import ClientError
+
 def manage_template(ses_client, name, subject, html, text):
     """Create or update an SES template."""
     template = {
@@ -353,6 +357,8 @@ manage_template(
 When you need to send to a large list, batch your calls and respect rate limits.
 
 ```python
+import time
+
 def send_bulk(email_service, recipients, subject, text, html=None, rate_limit=14):
     """Send to a list of recipients with rate limiting."""
     results = {'sent': 0, 'failed': 0, 'errors': []}
