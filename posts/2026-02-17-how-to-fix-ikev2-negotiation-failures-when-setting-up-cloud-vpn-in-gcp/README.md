@@ -25,17 +25,17 @@ If either phase fails, the tunnel never comes up. Let us look at why this happen
 
 This is the number one cause of IKEv2 failures with Cloud VPN. The shared secret must be exactly the same on both sides - same characters, same case, no trailing whitespace.
 
-To verify the key on the GCP side:
+You cannot retrieve the plaintext key from Google Cloud after the tunnel is created, but you can confirm the tunnel's shared secret hash:
 
 ```bash
-# Retrieve the shared secret for your VPN tunnel
+# Retrieve the shared secret hash for your VPN tunnel
 
 gcloud compute vpn-tunnels describe my-vpn-tunnel \
     --region=us-central1 \
-    --format="value(sharedSecret)"
+    --format="value(sharedSecretHash)"
 ```
 
-Compare this output byte-for-byte with what your on-premises device has configured. Watch out for these common gotchas:
+Compare your recorded pre-shared key with what your on-premises device has configured. Watch out for these common gotchas:
 
 - Copy-paste adding invisible characters or line breaks
 - Different character encoding between systems
@@ -47,21 +47,21 @@ If there is any doubt, regenerate the key on both sides using a known-good strin
 
 GCP Cloud VPN supports specific IKEv2 cipher suites. If your peer device proposes a combination that GCP does not support, the negotiation fails immediately.
 
-Here are the supported combinations for IKE Phase 1 (IKE_SA_INIT):
+Here are the supported values for IKEv2 Phase 1 (IKE_SA_INIT):
 
 | Component | Supported Values |
 |-----------|-----------------|
-| Encryption | AES-CBC-128, AES-CBC-256, AES-GCM-16-128, AES-GCM-16-256 |
-| Integrity | HMAC-SHA1-96, HMAC-SHA2-256-128, HMAC-SHA2-384-192, HMAC-SHA2-512-256 |
-| PRF | PRF-HMAC-SHA1, PRF-HMAC-SHA2-256, PRF-HMAC-SHA2-384, PRF-HMAC-SHA2-512 |
-| DH Group | 14 (2048-bit MODP), 15, 16, 19, 20, 21, 24 |
+| Encryption | AES-CBC-128, AES-CBC-192, AES-CBC-256, 3DES-CBC, AES-GCM-16-128, AES-GCM-16-192, AES-GCM-16-256 |
+| Integrity | HMAC-SHA1-96, HMAC-MD5-96, HMAC-SHA2-256-128, HMAC-SHA2-384-192, HMAC-SHA2-512-256, AES-XCBC-96, AES-CMAC-96 |
+| PRF | PRF-HMAC-SHA1, PRF-HMAC-MD5, PRF-HMAC-SHA2-256, PRF-HMAC-SHA2-384, PRF-HMAC-SHA2-512, PRF-AES128-XCBC, PRF-AES128-CMAC |
+| DH Group | 2, 5, 14, 15, 16, 18, 19, 20, 21, 31, modp_2048_224, modp_2048_256, modp_1024_160 |
 
 For Phase 2 (Child SA / ESP):
 
 | Component | Supported Values |
 |-----------|-----------------|
-| Encryption | AES-CBC-128, AES-CBC-256, AES-GCM-16-128, AES-GCM-16-256 |
-| Integrity | HMAC-SHA1-96, HMAC-SHA2-256-128, HMAC-SHA2-384-192, HMAC-SHA2-512-256 |
+| Encryption | AES-CBC-128, AES-CBC-192, AES-CBC-256, AES-GCM-16-128, AES-GCM-16-192, AES-GCM-16-256 |
+| Integrity | HMAC-SHA1-96, HMAC-SHA2-256-128, HMAC-SHA2-512-256 |
 | PFS Group | Same as DH groups above |
 
 A practical fix - configure your on-premises device to propose AES-256-CBC with SHA-256 and DH group 14. This combination works reliably:
@@ -76,11 +76,13 @@ crypto ikev2 proposal gcp-proposal
 # Example Phase 2 (IPsec transform set)
 crypto ipsec transform-set gcp-transform esp-aes 256 esp-sha256-hmac
   mode tunnel
+
+! Configure PFS group 14 in the crypto map or IPsec profile, depending on your Cisco platform.
 ```
 
 ## Check 3: IKE Version Mismatch
 
-GCP HA VPN only supports IKEv2. Classic VPN supports both IKEv1 and IKEv2, but it defaults to IKEv2. If your on-premises device is configured for IKEv1 only and you are connecting to an HA VPN gateway, the negotiation will never succeed.
+GCP Cloud VPN supports both IKEv1 and IKEv2, but IKEv2 is recommended and is required for IPv6 traffic on HA VPN. If your on-premises device is configured for a different IKE version than the tunnel, the negotiation will never succeed.
 
 Check your tunnel configuration:
 
@@ -126,17 +128,17 @@ Also check that your on-premises firewall allows ESP protocol (IP protocol 50) i
 
 ## Check 6: Dead Peer Detection (DPD) Settings
 
-GCP Cloud VPN sends DPD probes to check if the peer is alive. If your device does not respond to these probes or has incompatible DPD settings, the SA can get torn down.
+GCP Cloud VPN supports DPD and can send DPD probes to check if the peer is alive. If your device does not respond to these probes or has incompatible DPD behavior, the SA can get torn down.
 
-Make sure your on-premises device has DPD enabled with these settings:
+Make sure your on-premises device has DPD enabled. Google recommends aggressive DPD behavior on the peer device, along with automatic restart or clear behavior when a peer is detected as unavailable. The DPD interval on the Google Cloud side is not configurable.
 
-- DPD interval: 10-30 seconds
-- DPD timeout: 2-5 retries
+- DPD mode: aggressive, if your device supports it
 - DPD action: restart or clear
+- INITIAL_CONTACT / unique IDs: enabled, if your device supports it
 
 ## Using Cloud Logging for Diagnosis
 
-When all else fails, Cloud VPN logs tell you exactly what went wrong. Enable VPN tunnel logging and check the logs:
+When all else fails, Cloud VPN logs can help narrow down what went wrong. Check the logs:
 
 ```bash
 # View recent VPN tunnel logs
@@ -174,7 +176,7 @@ graph TD
 Before you spend hours debugging, run through this checklist:
 
 1. Pre-shared key matches exactly on both sides
-2. Both sides use IKEv2
+2. Both sides use the same IKE version
 3. Cipher suites overlap between GCP and your device
 4. Traffic selectors are properly configured
 5. UDP 500 and 4500 are open through all firewalls
