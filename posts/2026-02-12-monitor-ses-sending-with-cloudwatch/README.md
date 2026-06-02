@@ -21,12 +21,14 @@ SES automatically publishes some metrics to CloudWatch, but you get a lot more d
 - Delivery - emails accepted by the recipient's mail server
 - Bounce - emails that bounced
 - Complaint - emails marked as spam by recipients
+- Reject - emails accepted by SES but not attempted for delivery because SES determined they contained a virus
+- Reputation.BounceRate - your account's current bounce rate
+- Reputation.ComplaintRate - your account's current complaint rate
 
-**With configuration sets (additional metrics):**
+**With configuration sets (fine-grained metrics):**
 - Open - emails opened (requires open tracking)
 - Click - links clicked in emails (requires click tracking)
-- Rendering Failure - template rendering errors
-- Reject - emails rejected by SES before sending
+- RenderingFailure - template rendering errors
 
 ## Setting Up a Configuration Set
 
@@ -279,6 +281,7 @@ def publish_custom_ses_metrics(email_type, recipient_domain, send_time_ms):
 Sometimes you want to pull metrics into your own reports or dashboards. Here's how to query SES metrics from the API.
 
 ```python
+import boto3
 from datetime import datetime, timedelta
 
 cloudwatch = boto3.client('cloudwatch')

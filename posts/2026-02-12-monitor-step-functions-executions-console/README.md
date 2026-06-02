@@ -74,9 +74,9 @@ aws cloudwatch put-dashboard --dashboard-name StepFunctionsDashboard \
         "properties": {
           "title": "Execution Status",
           "metrics": [
-            ["AWS/States", "ExecutionsSucceeded", "StateMachineArn", "arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor"],
-            ["AWS/States", "ExecutionsFailed", "StateMachineArn", "arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor"],
-            ["AWS/States", "ExecutionsTimedOut", "StateMachineArn", "arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor"]
+            ["AWS/States", "ExecutionsSucceeded", "StateMachineArn", "arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor"],
+            ["AWS/States", "ExecutionsFailed", "StateMachineArn", "arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor"],
+            ["AWS/States", "ExecutionsTimedOut", "StateMachineArn", "arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor"]
           ],
           "period": 300,
           "stat": "Sum",
@@ -88,9 +88,9 @@ aws cloudwatch put-dashboard --dashboard-name StepFunctionsDashboard \
         "properties": {
           "title": "Execution Duration",
           "metrics": [
-            ["AWS/States", "ExecutionTime", "StateMachineArn", "arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor", {"stat": "p50"}],
-            ["AWS/States", "ExecutionTime", "StateMachineArn", "arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor", {"stat": "p90"}],
-            ["AWS/States", "ExecutionTime", "StateMachineArn", "arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor", {"stat": "p99"}]
+            ["AWS/States", "ExecutionTime", "StateMachineArn", "arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor", {"stat": "p50"}],
+            ["AWS/States", "ExecutionTime", "StateMachineArn", "arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor", {"stat": "p90"}],
+            ["AWS/States", "ExecutionTime", "StateMachineArn", "arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor", {"stat": "p99"}]
           ],
           "period": 300,
           "view": "timeSeries"
@@ -112,13 +112,13 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "Step Functions execution failures exceeded threshold" \
   --metric-name ExecutionsFailed \
   --namespace AWS/States \
-  --dimensions Name=StateMachineArn,Value=arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor \
+  --dimensions Name=StateMachineArn,Value=arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor \
   --statistic Sum \
   --period 300 \
   --threshold 5 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:ops-alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 ```
 
 And this one catches executions that are running longer than expected:
@@ -129,13 +129,13 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "Step Functions execution time exceeded normal range" \
   --metric-name ExecutionTime \
   --namespace AWS/States \
-  --dimensions Name=StateMachineArn,Value=arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor \
-  --statistic p90 \
+  --dimensions Name=StateMachineArn,Value=arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor \
+  --extended-statistic p90 \
   --period 300 \
   --threshold 30000 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 2 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:ops-alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 ```
 
 ## Enabling Logging
@@ -146,19 +146,22 @@ This enables full logging on a state machine:
 
 ```bash
 aws stepfunctions update-state-machine \
-  --state-machine-arn arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor \
+  --state-machine-arn arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor \
+  --role-arn arn:aws:iam::123456789012:role/OrderProcessorStateMachineRole \
   --logging-configuration '{
     "level": "ALL",
     "includeExecutionData": true,
     "destinations": [
       {
         "cloudWatchLogsLogGroup": {
-          "logGroupArn": "arn:aws:logs:us-east-1:123456789:log-group:/aws/states/OrderProcessor:*"
+          "logGroupArn": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/vendedlogs/states/OrderProcessor:*"
         }
       }
     ]
   }'
 ```
+
+Use the same `--role-arn` that is already attached to the state machine unless you also intend to change its execution role.
 
 Log levels:
 - `OFF` - no logging (default)
@@ -201,9 +204,12 @@ This enables X-Ray tracing on your state machine:
 
 ```bash
 aws stepfunctions update-state-machine \
-  --state-machine-arn arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor \
+  --state-machine-arn arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor \
+  --role-arn arn:aws:iam::123456789012:role/OrderProcessorStateMachineRole \
   --tracing-configuration enabled=true
 ```
+
+As with logging, keep `--role-arn` set to the state machine's existing execution role.
 
 With X-Ray enabled, you can see a service map showing how your state machine connects to Lambda functions, DynamoDB tables, and other services. You can trace individual requests through the entire workflow and identify bottlenecks.
 
@@ -225,15 +231,23 @@ const STATE_MACHINE_ARN = process.env.STATE_MACHINE_ARN;
 const MAX_RUNNING_MINUTES = 60;
 
 exports.handler = async () => {
-  // Get all running executions
-  const result = await sfnClient.send(new ListExecutionsCommand({
-    stateMachineArn: STATE_MACHINE_ARN,
-    statusFilter: 'RUNNING',
-    maxResults: 100
-  }));
+  const executions = [];
+  let nextToken;
+
+  do {
+    const result = await sfnClient.send(new ListExecutionsCommand({
+      stateMachineArn: STATE_MACHINE_ARN,
+      statusFilter: 'RUNNING',
+      maxResults: 100,
+      nextToken
+    }));
+
+    executions.push(...result.executions);
+    nextToken = result.nextToken;
+  } while (nextToken);
 
   const now = new Date();
-  const stuckExecutions = result.executions.filter(exec => {
+  const stuckExecutions = executions.filter(exec => {
     const runningMinutes = (now - exec.startDate) / 1000 / 60;
     return runningMinutes > MAX_RUNNING_MINUTES;
   });
@@ -251,7 +265,7 @@ exports.handler = async () => {
   }
 
   return {
-    checked: result.executions.length,
+    checked: executions.length,
     stuck: stuckExecutions.length
   };
 };
