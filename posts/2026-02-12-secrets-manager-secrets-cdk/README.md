@@ -49,7 +49,7 @@ The `generateSecretString` option is powerful. It creates a JSON object with you
 
 ## Database Credentials
 
-For RDS databases, there's a specialized construct that generates properly formatted credentials:
+For RDS databases, format the secret with username and password fields and pass it to RDS credentials:
 
 ```typescript
 // Database credentials with automatic format
@@ -71,7 +71,7 @@ const dbSecret = new secretsmanager.Secret(this, 'DBCredentials', {
 // Use with an RDS instance
 const database = new rds.DatabaseInstance(this, 'Database', {
   engine: rds.DatabaseInstanceEngine.postgres({
-    version: rds.PostgresEngineVersion.VER_15_4,
+    version: rds.PostgresEngineVersion.VER_17_7,
   }),
   instanceType: cdk.aws_ec2.InstanceType.of(
     cdk.aws_ec2.InstanceClass.T3,
@@ -102,6 +102,8 @@ database.addRotationMultiUser('AppUserRotation', {
   automaticallyAfter: cdk.Duration.days(30),
 });
 ```
+
+For multi-user rotation, the application user secret must include the `masterarn` key. A `rds.DatabaseSecret` created with `masterSecret` handles that structure for you.
 
 For non-RDS secrets, you can set up custom rotation with a Lambda function:
 
@@ -190,7 +192,7 @@ const container = taskDefinition.addContainer('AppContainer', {
 });
 ```
 
-ECS handles fetching the secret values and injecting them as environment variables. The second parameter to `fromSecretsManager` is the JSON key within the secret, so you can pull individual fields from a JSON secret.
+ECS handles fetching the secret values and injecting them as environment variables. The second parameter to `fromSecretsManager` is the JSON key within the secret, so you can pull individual fields from a JSON secret. For Fargate tasks, JSON key injection requires platform version 1.4.0 or later.
 
 ## Cross-Stack Secret Sharing
 
