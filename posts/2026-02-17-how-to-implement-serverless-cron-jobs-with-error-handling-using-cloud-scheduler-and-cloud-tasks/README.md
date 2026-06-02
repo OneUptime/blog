@@ -26,7 +26,7 @@ graph LR
     B -->|Dispatches with Retry| C[Cloud Function / Cloud Run]
     C -->|Success| D[Task Complete]
     C -->|Failure| B
-    B -->|Max Retries Exceeded| E[Dead Letter Topic]
+    C -->|Final Attempt Fails| E[Pub/Sub Failure Topic]
 ```
 
 ## Setting Up Cloud Scheduler
@@ -39,6 +39,24 @@ First, create a Cloud Scheduler job that pushes tasks to a Cloud Tasks queue. Yo
 gcloud services enable cloudscheduler.googleapis.com
 gcloud services enable cloudtasks.googleapis.com
 gcloud services enable cloudfunctions.googleapis.com
+gcloud services enable pubsub.googleapis.com
+```
+
+Create the service account that Cloud Scheduler and Cloud Tasks will use, then grant it permission to enqueue tasks and publish failure messages.
+
+```bash
+PROJECT_ID=$(gcloud config get-value project)
+
+gcloud iam service-accounts create cron-job-sa \
+  --display-name="Cron Job Service Account"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cron-job-sa@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/cloudtasks.enqueuer"
+
+gcloud projects add-iam-policy-binding "$PROJECT_ID" \
+  --member="serviceAccount:cron-job-sa@$PROJECT_ID.iam.gserviceaccount.com" \
+  --role="roles/pubsub.publisher"
 ```
 
 Create a Cloud Tasks queue with retry configuration.
@@ -67,11 +85,16 @@ Now create a Cloud Function that processes the scheduled tasks. This example pro
 # main.py - Cloud Function that handles the scheduled task
 import functions_framework
 import logging
+import json
+import os
 from google.cloud import bigquery
+from google.cloud import pubsub_v1
 from datetime import datetime, timedelta
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+MAX_TASK_ATTEMPTS = int(os.environ.get("MAX_TASK_ATTEMPTS", "5"))
+DEAD_LETTER_TOPIC = os.environ.get("DEAD_LETTER_TOPIC")
 
 @functions_framework.http
 def handle_cron_task(request):
@@ -95,6 +118,11 @@ def handle_cron_task(request):
             return {"status": "skipped", "reason": "unknown job type"}, 200
 
     except TransientError as e:
+        retry_count = int(request.headers.get("X-CloudTasks-TaskRetryCount", "0"))
+        if DEAD_LETTER_TOPIC and retry_count >= MAX_TASK_ATTEMPTS - 1:
+            publish_failure(job_type, str(e), retry_count)
+            return {"status": "failed", "message": str(e)}, 200
+
         # Return 500 to trigger Cloud Tasks retry
         logger.error(f"Transient error, will retry: {e}")
         return {"status": "error", "message": str(e)}, 500
@@ -133,6 +161,18 @@ def run_cleanup():
         if "rate limit" in str(e).lower():
             raise TransientError(f"BigQuery rate limited: {e}")
         raise PermanentError(f"Cleanup failed: {e}")
+
+
+def publish_failure(job_type, error_message, retry_count):
+    """Publish a failed task event for alerting."""
+    publisher = pubsub_v1.PublisherClient()
+    payload = {
+        "job_type": job_type,
+        "error": error_message,
+        "retry_count": retry_count,
+        "failed_at": datetime.utcnow().isoformat(),
+    }
+    publisher.publish(DEAD_LETTER_TOPIC, json.dumps(payload).encode()).result()
 ```
 
 Deploy the function.
@@ -149,7 +189,17 @@ gcloud functions deploy cron-task-handler \
   --no-allow-unauthenticated \
   --memory=256MB \
   --timeout=540s \
+  --set-env-vars=MAX_TASK_ATTEMPTS=5,DEAD_LETTER_TOPIC=projects/YOUR_PROJECT/topics/cron-job-dead-letters \
   --service-account=cron-job-sa@YOUR_PROJECT.iam.gserviceaccount.com
+```
+
+Because this is an authenticated Gen2 HTTP function, grant the service account permission to invoke the underlying Cloud Run service.
+
+```bash
+gcloud run services add-iam-policy-binding cron-task-handler \
+  --region=us-central1 \
+  --member="serviceAccount:cron-job-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
+  --role="roles/run.invoker"
 ```
 
 ## Connecting Cloud Scheduler to Cloud Tasks
@@ -159,8 +209,8 @@ Now, instead of pointing Cloud Scheduler directly at the function, create a sche
 ```python
 # create_scheduler.py - Script to set up the scheduler job
 from google.cloud import scheduler_v1
-from google.cloud import tasks_v2
-from google.protobuf import timestamp_pb2
+from google.protobuf import duration_pb2
+import base64
 import json
 
 def create_cron_scheduler(project_id, location, queue_name, function_url):
@@ -169,6 +219,10 @@ def create_cron_scheduler(project_id, location, queue_name, function_url):
     # Build the Cloud Tasks client to create tasks via HTTP target
     scheduler_client = scheduler_v1.CloudSchedulerClient()
     parent = f"projects/{project_id}/locations/{location}"
+
+    task_payload = base64.b64encode(
+        json.dumps({"job_type": "cleanup"}).encode()
+    ).decode()
 
     # The scheduler job creates a Cloud Tasks HTTP request
     job = scheduler_v1.Job(
@@ -181,15 +235,16 @@ def create_cron_scheduler(project_id, location, queue_name, function_url):
             http_method=scheduler_v1.HttpMethod.POST,
             body=json.dumps({
                 "task": {
-                    "http_request": {
+                    "httpRequest": {
                         "url": function_url,
-                        "http_method": "POST",
-                        "body": json.dumps({"job_type": "cleanup"}).encode().decode(),
+                        "httpMethod": "POST",
+                        "body": task_payload,
                         "headers": {
                             "Content-Type": "application/json"
                         },
-                        "oidc_token": {
-                            "service_account_email": f"cron-job-sa@{project_id}.iam.gserviceaccount.com"
+                        "oidcToken": {
+                            "serviceAccountEmail": f"cron-job-sa@{project_id}.iam.gserviceaccount.com",
+                            "audience": function_url
                         }
                     }
                 }
@@ -203,8 +258,8 @@ def create_cron_scheduler(project_id, location, queue_name, function_url):
         ),
         retry_config=scheduler_v1.RetryConfig(
             retry_count=3,
-            min_backoff_duration={"seconds": 5},
-            max_backoff_duration={"seconds": 60},
+            min_backoff_duration=duration_pb2.Duration(seconds=5),
+            max_backoff_duration=duration_pb2.Duration(seconds=60),
         )
     )
 
@@ -213,25 +268,26 @@ def create_cron_scheduler(project_id, location, queue_name, function_url):
     return response
 ```
 
-## Implementing a Dead Letter Queue
+## Implementing a Failure Topic
 
-When a task exhausts all its retries, you want to know about it. Set up a Pub/Sub dead letter topic to catch these failures.
+Cloud Tasks does not provide a built-in Pub/Sub dead letter topic for HTTP target tasks. When a task is on its final retry attempt, publish a failure event from your handler so you can alert on it.
 
 ```bash
-# Create a dead letter topic and subscription for failed tasks
+# Create a failure topic and subscription for failed tasks
 gcloud pubsub topics create cron-job-dead-letters
 gcloud pubsub subscriptions create cron-job-dead-letters-sub \
   --topic=cron-job-dead-letters \
   --ack-deadline=60
 ```
 
-Then create an alerting function that fires when messages land in the dead letter topic.
+Then create an alerting function that fires when messages land in the failure topic.
 
 ```python
-# alert_handler.py - Function triggered by dead letter messages
+# alert_handler.py - Function triggered by failure messages
 import functions_framework
 import base64
 import json
+import os
 import requests
 
 @functions_framework.cloud_event
@@ -247,7 +303,7 @@ def handle_dead_letter(cloud_event):
     }
 
     # Post to a Slack webhook or any alerting endpoint
-    webhook_url = get_secret("slack-webhook-url")
+    webhook_url = os.environ["SLACK_WEBHOOK_URL"]
     requests.post(webhook_url, json=alert_payload)
 
     print(f"Dead letter alert sent for task: {failed_task}")
@@ -258,8 +314,8 @@ def handle_dead_letter(cloud_event):
 The key insight for error handling in this setup is distinguishing between transient and permanent failures. Your response codes control what happens next:
 
 - Return HTTP 2xx: Cloud Tasks considers the task successful and removes it from the queue
-- Return HTTP 5xx: Cloud Tasks considers it a failure and schedules a retry based on your queue configuration
-- Return HTTP 4xx (except 429): Cloud Tasks treats this as a permanent failure and does not retry
+- Return any non-2xx response: Cloud Tasks considers the attempt failed and retries based on your queue configuration
+- Return HTTP 429, 503, or frequent 5xx responses: Cloud Tasks may also apply system throttling to protect the target
 
 This means your task handler should catch exceptions and decide whether to return a retryable status code or a permanent one. Network timeouts, rate limits, and temporary service outages should return 500. Invalid data, missing resources, or permission errors should return 200 with an error logged.
 
@@ -268,14 +324,14 @@ This means your task handler should catch exceptions and decide whether to retur
 Set up monitoring to track the health of your scheduled tasks.
 
 ```bash
-# Create an alert policy that fires when the dead letter topic receives messages
+# Create an alert policy that fires if failure messages remain undelivered
 gcloud alpha monitoring policies create \
   --notification-channels=YOUR_CHANNEL_ID \
   --display-name="Cron Job Failure Alert" \
-  --condition-display-name="Dead letter messages received" \
+  --condition-display-name="Failure messages are undelivered" \
   --condition-filter='resource.type="pubsub_subscription" AND resource.labels.subscription_id="cron-job-dead-letters-sub" AND metric.type="pubsub.googleapis.com/subscription/num_undelivered_messages"' \
-  --condition-threshold-value=1 \
-  --condition-threshold-comparison=COMPARISON_GT
+  --if="> 0" \
+  --duration=60s
 ```
 
 You should also monitor the Cloud Tasks queue itself to watch for growing backlogs.
@@ -288,15 +344,18 @@ One common problem with cron jobs is duplicate execution. Cloud Tasks supports t
 # When creating tasks, use a deterministic name based on schedule time
 from google.cloud import tasks_v2
 from datetime import datetime
+import hashlib
+import json
 
 def create_deduplicated_task(project, location, queue, url, payload):
     """Create a task with a name that prevents duplicates."""
     client = tasks_v2.CloudTasksClient()
     parent = client.queue_path(project, location, queue)
 
-    # Use the current date as part of the task name for deduplication
+    # Use a deterministic, hashed ID based on the schedule date
     today = datetime.utcnow().strftime("%Y-%m-%d")
-    task_name = f"{parent}/tasks/cleanup-{today}"
+    task_id = hashlib.sha256(f"cleanup-{today}".encode()).hexdigest()[:32]
+    task_name = f"{parent}/tasks/{task_id}"
 
     task = tasks_v2.Task(
         name=task_name,
@@ -324,4 +383,4 @@ def create_deduplicated_task(project, location, queue, url, payload):
 
 Combining Cloud Scheduler with Cloud Tasks gives you a production-grade cron system that handles failures, retries intelligently, and scales without any servers to manage. The error handling pattern of classifying failures as transient or permanent keeps your retry logic clean and prevents wasted compute on unrecoverable errors.
 
-The dead letter queue ensures you always know when something goes wrong, and task deduplication prevents the accidental double-processing that plagues many cron implementations. For teams running on GCP, this pattern replaces the fragile VM-based cron setups and gives you something you can actually trust in production.
+The failure topic ensures you always know when something goes wrong, and task deduplication prevents the accidental double-processing that plagues many cron implementations. For teams running on GCP, this pattern replaces the fragile VM-based cron setups and gives you something you can actually trust in production.
