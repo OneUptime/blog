@@ -14,20 +14,21 @@ SAM CLI simulates the Lambda execution environment on your machine, handles API 
 
 ## Installing SAM CLI
 
-SAM CLI requires Docker (for running the Lambda runtime locally) and Python.
+SAM CLI requires Docker for running the Lambda runtime locally. For workflows that deploy or sync to AWS, you should also install the AWS CLI and configure AWS credentials.
 
-These commands install SAM CLI on different platforms:
+These examples install SAM CLI on different platforms:
 
 ```bash
-# macOS with Homebrew
-
+# macOS with Homebrew (community-managed)
 brew install aws-sam-cli
 
-# Linux
-pip install aws-sam-cli
+# Linux x86_64 with the official installer
+curl -Lo aws-sam-cli-linux-x86_64.zip https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
+sudo ./sam-installation/install
 
-# Windows with Chocolatey
-choco install aws-sam-cli
+# Windows
+# Download and run the 64-bit MSI installer from the AWS SAM CLI releases page
 
 # Verify installation
 sam --version
@@ -63,7 +64,7 @@ Description: Orders API
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Timeout: 30
     MemorySize: 256
     Environment:
@@ -314,7 +315,7 @@ exports.handler = async (event) => {
 };
 ```
 
-Note the `host.docker.internal` hostname - this is how Docker containers reach services running on the host machine.
+Note the `host.docker.internal` hostname - on Docker Desktop, this is how Docker containers reach services running on the host machine. On Linux Docker Engine, you may need to add a `host.docker.internal:host-gateway` host mapping or connect the SAM Lambda container to the same Docker network as DynamoDB Local.
 
 Set up the local DynamoDB table:
 
@@ -336,7 +337,7 @@ aws dynamodb put-item \
 
 ## SAM Accelerate for Faster Iteration
 
-`sam sync` watches your code for changes and deploys them instantly without a full CloudFormation deployment. It's faster than local testing for integration testing.
+`sam sync` watches your code for changes and syncs them to AWS. After the initial sync, function code changes can be updated without a full CloudFormation deployment, which makes it useful for integration testing against real AWS services.
 
 ```bash
 # Start watching for changes (deploys to AWS)
@@ -350,7 +351,7 @@ This is great for testing integrations with real AWS services that are hard to e
 
 ## Layer Testing
 
-If your function uses Lambda layers, SAM CLI pulls them automatically during local invocation.
+If your function uses Lambda layers, SAM CLI builds local layers or downloads referenced layers during local invocation.
 
 ```yaml
 Resources:
@@ -359,7 +360,7 @@ Resources:
     Properties:
       ContentUri: layers/shared/
       CompatibleRuntimes:
-        - nodejs20.x
+        - nodejs24.x
 
   GetOrdersFunction:
     Type: AWS::Serverless::Function
