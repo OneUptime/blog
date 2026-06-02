@@ -60,9 +60,8 @@ First, set up the OIDC provider in AWS (one-time setup).
 # This goes in a bootstrap Terraform config or is done manually
 
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
 }
 
 resource "aws_iam_role" "github_actions_terraform" {
@@ -127,15 +126,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials via OIDC
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsTerraform
           aws-region: us-east-1
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Terraform Init
         id: init
@@ -155,20 +154,24 @@ jobs:
 
       - name: Comment Plan on PR
         uses: actions/github-script@v7
+        env:
+          PLAN: ${{ steps.plan.outputs.stdout }}
         with:
           script: |
-            const plan = `${{ steps.plan.outputs.stdout }}`;
+            const plan = process.env.PLAN || '';
             const truncated = plan.length > 60000
               ? plan.substring(0, 60000) + '\n\n... (truncated)'
               : plan;
 
-            const body = `### Terraform Plan - ${{ matrix.environment }}
-            ```
-            ${truncated}
-            ```
-            *Plan exit code: ${{ steps.plan.outcome }}*`;
+            const body = [
+              '### Terraform Plan - ${{ matrix.environment }}',
+              '```',
+              truncated,
+              '```',
+              '*Plan exit code: ${{ steps.plan.outputs.exitcode }}*'
+            ].join('\n');
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -210,15 +213,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsTerraform
           aws-region: us-east-1
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Terraform Init
         run: terraform init
@@ -239,15 +242,15 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsTerraform
           aws-region: us-east-1
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
 
       - name: Terraform Init
         run: terraform init
@@ -271,16 +274,17 @@ This creates a manual approval gate - production deployments wait for a reviewer
 
 ## Handling Terraform State Locking
 
-Concurrent pipeline runs can corrupt state. Use DynamoDB locking (see our guide on [Terraform state with S3 backend](https://oneuptime.com/blog/post/2026-02-12-terraform-state-with-s3-backend-and-dynamodb-locking/view)) and configure concurrency limits in GitHub Actions.
+Concurrent pipeline runs can corrupt state. Use S3 backend locking with `use_lockfile = true` (DynamoDB-based locking is deprecated) and configure concurrency limits in GitHub Actions.
 
 ```yaml
-# Add to your workflow to prevent concurrent runs
+# Add to each matrix-based Terraform job to prevent concurrent runs
 concurrency:
-  group: terraform-${{ github.ref }}-${{ matrix.environment }}
+  group: terraform-${{ github.workflow }}-${{ github.ref }}-${{ matrix.environment }}
   cancel-in-progress: false  # Don't cancel running applies!
+  queue: max                 # Queue newer runs instead of replacing pending runs
 ```
 
-The `cancel-in-progress: false` is critical. You never want to cancel a running `terraform apply` - it could leave your infrastructure in an inconsistent state.
+The `cancel-in-progress: false` and `queue: max` settings are critical. You never want to cancel a running `terraform apply`, and you also do not want newer runs to replace older pending applies.
 
 ## Adding Terraform Format Check
 
@@ -298,7 +302,7 @@ Enforce consistent formatting in PRs.
   uses: actions/github-script@v7
   with:
     script: |
-      github.rest.issues.createComment({
+      await github.rest.issues.createComment({
         issue_number: context.issue.number,
         owner: context.repo.owner,
         repo: context.repo.repo,
@@ -315,7 +319,7 @@ Speed up your pipeline by caching provider downloads.
   uses: actions/cache@v4
   with:
     path: environments/${{ matrix.environment }}/.terraform/providers
-    key: terraform-providers-${{ hashFiles('environments/${{ matrix.environment }}/.terraform.lock.hcl') }}
+    key: terraform-providers-${{ matrix.environment }}-${{ hashFiles(format('environments/{0}/.terraform.lock.hcl', matrix.environment)) }}
     restore-keys: |
       terraform-providers-
 ```
@@ -327,21 +331,21 @@ Send Slack notifications for deployment results.
 ```yaml
 - name: Notify Slack on Success
   if: success()
-  uses: slackapi/slack-github-action@v1
+  uses: slackapi/slack-github-action@v3.0.3
   with:
+    webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+    webhook-type: incoming-webhook
     payload: |
       {
-        "text": "Terraform apply succeeded for ${{ matrix.environment }}",
+        "text": "Terraform apply succeeded for ${{ github.job }}",
         "blocks": [{
           "type": "section",
           "text": {
             "type": "mrkdwn",
-            "text": "*Terraform Apply Succeeded*\nEnvironment: `${{ matrix.environment }}`\nCommit: `${{ github.sha }}`"
+            "text": "*Terraform Apply Succeeded*\nJob: `${{ github.job }}`\nCommit: `${{ github.sha }}`"
           }
         }]
       }
-  env:
-    SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
 ```
 
 ## Security Considerations
