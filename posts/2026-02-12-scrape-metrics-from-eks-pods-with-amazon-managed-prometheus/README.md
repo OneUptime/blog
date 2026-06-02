@@ -204,6 +204,10 @@ Use the Prometheus community Helm chart for a quick deployment.
 # Create the monitoring namespace
 kubectl create namespace monitoring
 
+# Add the Prometheus community Helm repository
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+
 # Install Prometheus
 helm install prometheus prometheus-community/prometheus \
   --namespace monitoring \
@@ -224,9 +228,9 @@ server:
     - url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/api/v1/remote_write
       sigv4:
         region: us-east-1
-      queueConfig:
-        maxSamplesPerSend: 1000
-        maxShards: 200
+      queue_config:
+        max_samples_per_send: 1000
+        max_shards: 200
         capacity: 2500
 
   # Keep local retention low since AMP stores the data
@@ -259,7 +263,9 @@ You can also verify from the command line:
 curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep -A5 "kubernetes-pods"
 
 # Verify a specific metric exists
-curl -s "http://localhost:9090/api/v1/query?query=up{job='kubernetes-pods'}" | python3 -m json.tool
+curl -G -s http://localhost:9090/api/v1/query \
+  --data-urlencode "query=up{job='kubernetes-pods'}" \
+  | python3 -m json.tool
 ```
 
 ## Step 6: Optimize What Gets Scraped
@@ -292,7 +298,7 @@ metric_relabel_configs:
 ```yaml
 # In your remote_write config
 remote_write:
-  - url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123/api/v1/remote_write
+  - url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/api/v1/remote_write
     sigv4:
       region: us-east-1
     write_relabel_configs:
@@ -310,6 +316,7 @@ If your application does not yet expose a `/metrics` endpoint, here is how to ad
 
 ```python
 # Install: pip install prometheus-flask-instrumentator
+from flask import Flask
 from prometheus_flask_instrumentator import Instrumentator
 
 app = Flask(__name__)
@@ -320,7 +327,10 @@ Instrumentator().instrument(app).expose(app)
 
 ```javascript
 // Install: npm install prom-client express-prom-bundle
+const express = require('express');
 const promBundle = require('express-prom-bundle');
+const app = express();
+
 const metricsMiddleware = promBundle({ includeMethod: true, includePath: true });
 
 app.use(metricsMiddleware);
@@ -329,8 +339,19 @@ app.use(metricsMiddleware);
 ### Go
 
 ```go
-// Import: github.com/prometheus/client_golang/prometheus/promhttp
-http.Handle("/metrics", promhttp.Handler())
+// Install: go get github.com/prometheus/client_golang/prometheus/promhttp
+package main
+
+import (
+    "net/http"
+
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
+func main() {
+    http.Handle("/metrics", promhttp.Handler())
+    http.ListenAndServe(":8080", nil)
+}
 ```
 
 For deeper PromQL usage, see our guide on [using PromQL queries in Amazon Managed Prometheus](https://oneuptime.com/blog/post/2026-02-12-use-promql-queries-in-amazon-managed-prometheus/view).
