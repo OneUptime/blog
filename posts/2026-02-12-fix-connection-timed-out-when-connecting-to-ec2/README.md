@@ -14,7 +14,7 @@ You try to SSH into your EC2 instance and nothing happens. After a long wait, yo
 ssh: connect to host 54.123.45.67 port 22: Connection timed out
 ```
 
-A connection timeout means your traffic isn't reaching the instance at all. Unlike "Connection refused" (which means traffic arrived but nothing is listening), a timeout means packets are being dropped somewhere between you and the instance.
+A connection timeout means your SSH client is not getting a TCP response from the instance. Unlike "Connection refused" (which means traffic arrived but nothing is listening), a timeout usually means packets are being dropped somewhere between you and the SSH service.
 
 Let's work through the possible causes from the outside in.
 
@@ -36,7 +36,7 @@ aws ec2 describe-instances \
   --output table
 ```
 
-If the instance is in a `stopped` or `terminated` state, that's your problem. Start it.
+If the instance is in a `stopped` state, start it. If it's `terminated`, you can't start it again; launch a replacement instance.
 
 ## Fix 1: Security Group Rules
 
@@ -104,6 +104,15 @@ Your instance's subnet needs a route to the internet. For public subnets, this m
 # Find the route table for the subnet
 aws ec2 describe-route-tables \
   --filters Name=association.subnet-id,Values=subnet-abc123 \
+  --query "RouteTables[*].Routes[*].[DestinationCidrBlock,GatewayId,NatGatewayId,State]" \
+  --output table
+```
+
+If that returns no route table, the subnet is probably using the VPC's main route table through an implicit association:
+
+```bash
+aws ec2 describe-route-tables \
+  --filters Name=vpc-id,Values=vpc-abc123 Name=association.main,Values=true \
   --query "RouteTables[*].Routes[*].[DestinationCidrBlock,GatewayId,NatGatewayId,State]" \
   --output table
 ```
@@ -194,7 +203,7 @@ sudo ufw allow 22/tcp
 
 ## Fix 6: SSH Service Not Running
 
-If the SSH daemon isn't running, you'll get a timeout (if there's no firewall) or a connection refused.
+If the SSH daemon isn't running, you'll usually get "Connection refused" unless a firewall is dropping the packets.
 
 Access the instance through Session Manager or the serial console.
 
@@ -264,6 +273,7 @@ If SSH is giving you trouble, EC2 Instance Connect lets you push a temporary SSH
 aws ec2-instance-connect send-ssh-public-key \
   --instance-id i-1234567890abcdef0 \
   --instance-os-user ec2-user \
+  --availability-zone us-east-1a \
   --ssh-public-key file://~/.ssh/id_rsa.pub
 
 # Then SSH normally within 60 seconds
