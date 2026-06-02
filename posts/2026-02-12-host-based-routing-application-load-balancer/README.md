@@ -64,7 +64,7 @@ done
 For HTTPS, you need an SSL certificate that covers all your domains. The easiest approach is a wildcard certificate:
 
 ```bash
-# Request a wildcard certificate covering all subdomains
+# Request a certificate covering the apex domain and first-level subdomains
 aws acm request-certificate \
   --domain-name example.com \
   --subject-alternative-names "*.example.com" \
@@ -179,17 +179,17 @@ aws elbv2 create-rule \
 You can use wildcards in host patterns for multi-tenant applications:
 
 ```bash
-# Route all *.api.example.com to API servers
+# Route all *.app.example.com to app servers
 aws elbv2 create-rule \
   --listener-arn $LISTENER_ARN \
   --priority 5 \
   --conditions '[{
     "Field": "host-header",
     "HostHeaderConfig": {
-      "Values": ["*.api.example.com"]
+      "Values": ["*.app.example.com"]
     }
   }]' \
-  --actions '[{"Type": "forward", "TargetGroupArn": "'$API_TG'"}]'
+  --actions '[{"Type": "forward", "TargetGroupArn": "'$APP_TG'"}]'
 ```
 
 This is useful for multi-tenant SaaS applications where each tenant has a subdomain (like `tenant1.app.example.com`, `tenant2.app.example.com`).
@@ -234,7 +234,7 @@ aws elbv2 create-rule \
 
 ## Terraform Configuration
 
-Here's the complete Terraform setup for host-based routing:
+Here's a Terraform setup for the listener and host-based routing rules:
 
 ```hcl
 resource "aws_lb" "main" {
@@ -330,7 +330,7 @@ With multiple services behind one ALB, security becomes important:
 
 1. **Default deny** - Set the default action to return 404 or 403 for unrecognized hosts
 2. **Restrict admin access** - Add IP-based conditions to admin host rules
-3. **Monitor all hosts** - Track request metrics per host to detect abuse
+3. **Monitor all hosts** - Use access logs and per-target-group metrics to detect abuse
 
 Restrict admin access to specific IPs:
 
@@ -365,7 +365,8 @@ ALBs have limits to be aware of:
 
 - Maximum 100 rules per listener (excluding the default rule)
 - Maximum 5 condition values per rule
-- Maximum 5 conditions per rule
+- Maximum 5 match evaluations per rule
+- Maximum 6 wildcard characters per rule
 
 If you're hitting these limits, consider using multiple listeners on different ports or splitting into multiple ALBs.
 
