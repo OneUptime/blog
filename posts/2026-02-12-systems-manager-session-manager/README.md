@@ -106,14 +106,17 @@ sudo systemctl start amazon-ssm-agent
 
 # Ubuntu
 sudo snap install amazon-ssm-agent --classic
-sudo systemctl enable snap.amazon-ssm-agent.amazon-ssm-agent.service
-sudo systemctl start snap.amazon-ssm-agent.amazon-ssm-agent.service
+sudo snap start amazon-ssm-agent
 ```
 
 Verify the agent is running:
 
 ```bash
+# Amazon Linux / deb-based Ubuntu installs
 sudo systemctl status amazon-ssm-agent
+
+# Ubuntu snap installs
+sudo systemctl status snap.amazon-ssm-agent.amazon-ssm-agent.service
 ```
 
 ## Step 3: Install the Session Manager Plugin (Local Machine)
@@ -180,7 +183,7 @@ This replaces the need for SSH tunnels through bastion hosts.
 Configure Session Manager to log sessions and set default shell preferences:
 
 ```bash
-# Create a session preferences document
+# Update the session preferences document
 aws ssm update-document \
   --name "SSM-SessionManagerRunShell" \
   --document-version '$LATEST' \
@@ -194,9 +197,10 @@ aws ssm update-document \
       "s3EncryptionEnabled": true,
       "cloudWatchLogGroupName": "/ssm/session-logs",
       "cloudWatchEncryptionEnabled": true,
+      "cloudWatchStreamingEnabled": true,
       "idleSessionTimeout": "20",
       "maxSessionDuration": "120",
-      "kmsKeyId": "arn:aws:kms:us-east-1:123456789:key/abc-123",
+      "kmsKeyId": "arn:aws:kms:us-east-1:123456789012:key/abc-123",
       "runAsEnabled": true,
       "runAsDefaultUser": "ec2-user",
       "shellProfile": {
@@ -214,7 +218,7 @@ Key settings:
 - **idleSessionTimeout** - Auto-terminate idle sessions (minutes)
 - **maxSessionDuration** - Maximum session length (minutes)
 - **runAsDefaultUser** - Which OS user the session runs as
-- **kmsKeyId** - Encrypt session data in transit
+- **kmsKeyId** - Further encrypt session data between the client and managed node
 
 ## IAM Policies for Users
 
@@ -229,7 +233,15 @@ Allow sessions to all instances:
     {
       "Effect": "Allow",
       "Action": "ssm:StartSession",
-      "Resource": "arn:aws:ec2:us-east-1:123456789:instance/*"
+      "Resource": [
+        "arn:aws:ec2:us-east-1:123456789012:instance/*",
+        "arn:aws:ssm:us-east-1:123456789012:document/SSM-SessionManagerRunShell"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssmmessages:OpenDataChannel",
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
     },
     {
       "Effect": "Allow",
@@ -237,7 +249,12 @@ Allow sessions to all instances:
         "ssm:TerminateSession",
         "ssm:ResumeSession"
       ],
-      "Resource": "arn:aws:ssm:*:*:session/${aws:username}-*"
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "kms:GenerateDataKey",
+      "Resource": "arn:aws:kms:us-east-1:123456789012:key/abc-123"
     }
   ]
 }
@@ -252,12 +269,35 @@ Restrict to specific instances by tag:
     {
       "Effect": "Allow",
       "Action": "ssm:StartSession",
-      "Resource": "arn:aws:ec2:us-east-1:123456789:instance/*",
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*",
       "Condition": {
         "StringEquals": {
           "ssm:resourceTag/Environment": "development"
         }
       }
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:document/SSM-SessionManagerRunShell"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssmmessages:OpenDataChannel",
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ssm:TerminateSession",
+        "ssm:ResumeSession"
+      ],
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "kms:GenerateDataKey",
+      "Resource": "arn:aws:kms:us-east-1:123456789012:key/abc-123"
     }
   ]
 }
@@ -293,7 +333,7 @@ aws ec2 create-vpc-endpoint \
   --security-group-ids sg-endpoint123
 ```
 
-You need all three endpoints: `ssm`, `ssmmessages`, and `ec2messages`.
+You need all three endpoints for Session Manager access: `ssm`, `ssmmessages`, and `ec2messages`. If you're also sending logs to CloudWatch Logs or S3 from private subnets, create the `logs` endpoint or S3 endpoint as needed.
 
 ## SSH Through Session Manager
 
@@ -328,6 +368,6 @@ aws ssm describe-sessions --state History \
   --query 'Sessions[*].{Id:SessionId,Target:Target,User:Owner,Start:StartDate,End:EndDate}'
 ```
 
-Session logs (when configured) capture every command typed and every output produced. This is invaluable for security audits and incident investigation.
+Session logs (when configured) capture commands and output for standard sessions. Logging isn't available for port forwarding or SSH sessions because Session Manager only acts as the tunnel for those connections. For standard sessions, this is invaluable for security audits and incident investigation.
 
 For comprehensive monitoring of your infrastructure access patterns and security events, [OneUptime](https://oneuptime.com) can aggregate Systems Manager session data alongside application metrics. Also check our guide on [Systems Manager Run Command](https://oneuptime.com/blog/post/2026-02-12-systems-manager-run-command/view) for running commands across multiple instances without interactive sessions.
