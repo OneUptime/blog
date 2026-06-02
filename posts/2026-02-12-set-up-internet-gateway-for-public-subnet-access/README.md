@@ -203,7 +203,7 @@ Having an internet gateway doesn't mean everything in your VPC is exposed. Only 
 1. In a subnet with an IGW route
 2. Have a public IP
 3. Have security group rules allowing inbound traffic
-4. Have NACL rules allowing inbound traffic
+4. Have NACL rules allowing inbound traffic and outbound return traffic
 
 Keep your security groups tight. Don't open `0.0.0.0/0` on port 22 unless you want bots hammering your SSH server within minutes. Use specific IP ranges or, better yet, use Systems Manager Session Manager and skip SSH entirely.
 
