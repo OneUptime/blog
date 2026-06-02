@@ -38,7 +38,7 @@ Each RI comes with three payment options that affect the total discount:
 | Partial Upfront| ~50% upfront| Reduced monthly | Medium     |
 | No Upfront     | $0          | Reduced monthly | Lowest     |
 
-Here's a real example for an m5.large in us-east-1 (1-year term):
+Here's an illustrative example for an m5.large in us-east-1 (1-year term):
 
 ```text
 On-Demand:      $0.096/hr  = $840.96/year
@@ -90,7 +90,7 @@ Be careful with this command - RI purchases are non-refundable commitments. Doub
 
 RIs come in two scopes:
 
-**Regional** (recommended) - The discount applies to any matching instance in the entire region, across all AZs. Also provides a capacity reservation benefit region-wide.
+**Regional** (recommended) - The discount applies to any matching instance in the entire region, across all AZs. Regional RIs do not reserve capacity.
 
 **Zonal** - The discount and capacity reservation apply only to a specific AZ. Use this only if you need guaranteed capacity in a specific AZ.
 
@@ -155,13 +155,14 @@ This command modifies an existing RI to change its AZ:
 # Modify RI scope or AZ
 aws ec2 modify-reserved-instances \
   --reserved-instances-ids ri-1234567890abcdef0 \
-  --target-configurations '{
+  --target-configurations '[{
     "AvailabilityZone": "us-east-1b",
-    "InstanceCount": 5
-  }'
+    "InstanceCount": 5,
+    "Scope": "Availability Zone"
+  }]'
 ```
 
-Instance size flexibility is powerful. If you have a regional RI for m5.large (1 unit), it can also cover two m5.medium instances (0.5 units each) or half of an m5.xlarge (2 units). AWS normalizes this automatically using a size-flexible weighting system.
+Instance size flexibility is powerful. If you have a regional Linux/UNIX RI with default tenancy for m5.large (4 units), it can also cover two m5.medium instances (2 units each) or half of an m5.xlarge (8 units). AWS normalizes this automatically using a size-flexible weighting system.
 
 ## Exchanging Convertible RIs
 
@@ -171,7 +172,7 @@ Convertible RIs can be exchanged for different configurations. The key rule: the
 # Exchange a Convertible RI for a different type
 aws ec2 accept-reserved-instances-exchange-quote \
   --reserved-instance-ids ri-1234567890abcdef0 \
-  --target-configurations ReservedInstancesOfferingId=offering-id-here
+  --target-configurations OfferingId=offering-id-here
 ```
 
 This is useful when you're migrating from one instance generation to the next (e.g., m5 to m6i) or changing your workload requirements.
@@ -197,8 +198,7 @@ AWS provides utilization reports to help you track whether your RIs are actually
 ```bash
 # Check RI utilization
 aws ce get-reservation-utilization \
-  --time-period Start=2026-01-01,End=2026-02-01 \
-  --group-by Type=DIMENSION,Key=INSTANCE_TYPE
+  --time-period Start=2026-01-01,End=2026-02-01
 ```
 
 Aim for 95%+ utilization. Anything below 80% means you're paying for capacity you're not using, and you should consider modifying or selling those RIs.
