@@ -21,12 +21,12 @@ Not all CloudWatch metrics are equally important. Here are the ones that actuall
 **CPUUtilization** - If CPU hits 90%+ consistently, your node is overloaded.
 
 ```bash
-# Check CPU utilization across all nodes
+# Check CPU utilization for a specific node
 
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name CPUUtilization \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
@@ -40,7 +40,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name EngineCPUUtilization \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
@@ -54,7 +54,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name DatabaseMemoryUsagePercentage \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
@@ -92,7 +92,7 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 80 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:cache-alerts
 
@@ -106,7 +106,7 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 80 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --evaluation-periods 2 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:cache-alerts
 
@@ -120,7 +120,7 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 1000 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:cache-alerts
 
@@ -134,7 +134,7 @@ aws cloudwatch put-metric-alarm \
   --period 60 \
   --threshold 1 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=CacheClusterId,Value=my-redis-002 \
+  --dimensions Name=CacheClusterId,Value=my-redis-002 Name=CacheNodeId,Value=0001 \
   --evaluation-periods 5 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:cache-alerts
 
@@ -148,7 +148,7 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 60000 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --evaluation-periods 2 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:cache-alerts
 ```
@@ -167,7 +167,7 @@ Here's a CloudFormation template for a monitoring dashboard:
       "Type": "AWS::CloudWatch::Dashboard",
       "Properties": {
         "DashboardName": "ElastiCache-Monitoring",
-        "DashboardBody": "{\"widgets\":[{\"type\":\"metric\",\"x\":0,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"EngineCPUUtilization\",\"CacheClusterId\",\"my-redis-001\"],[\".\",\".\",\".\",\"my-redis-002\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-east-1\",\"title\":\"Engine CPU Utilization\"}},{\"type\":\"metric\",\"x\":12,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"DatabaseMemoryUsagePercentage\",\"CacheClusterId\",\"my-redis-001\"],[\".\",\".\",\".\",\"my-redis-002\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-east-1\",\"title\":\"Memory Usage %\"}},{\"type\":\"metric\",\"x\":0,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"CacheHitRate\",\"CacheClusterId\",\"my-redis-001\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-east-1\",\"title\":\"Cache Hit Rate\"}},{\"type\":\"metric\",\"x\":12,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"Evictions\",\"CacheClusterId\",\"my-redis-001\"]],\"period\":300,\"stat\":\"Sum\",\"region\":\"us-east-1\",\"title\":\"Evictions\"}}]}"
+        "DashboardBody": "{\"widgets\":[{\"type\":\"metric\",\"x\":0,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"EngineCPUUtilization\",\"CacheClusterId\",\"my-redis-001\",\"CacheNodeId\",\"0001\"],[\".\",\".\",\".\",\"my-redis-002\",\".\",\"0001\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-east-1\",\"title\":\"Engine CPU Utilization\"}},{\"type\":\"metric\",\"x\":12,\"y\":0,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"DatabaseMemoryUsagePercentage\",\"CacheClusterId\",\"my-redis-001\",\"CacheNodeId\",\"0001\"],[\".\",\".\",\".\",\"my-redis-002\",\".\",\"0001\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-east-1\",\"title\":\"Memory Usage %\"}},{\"type\":\"metric\",\"x\":0,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"CacheHitRate\",\"CacheClusterId\",\"my-redis-001\",\"CacheNodeId\",\"0001\"]],\"period\":60,\"stat\":\"Average\",\"region\":\"us-east-1\",\"title\":\"Cache Hit Rate\"}},{\"type\":\"metric\",\"x\":12,\"y\":6,\"width\":12,\"height\":6,\"properties\":{\"metrics\":[[\"AWS/ElastiCache\",\"Evictions\",\"CacheClusterId\",\"my-redis-001\",\"CacheNodeId\",\"0001\"]],\"period\":300,\"stat\":\"Sum\",\"region\":\"us-east-1\",\"title\":\"Evictions\"}}]}"
       }
     }
   }
@@ -182,7 +182,7 @@ Here's a Python script that checks all critical metrics and generates a health r
 import boto3
 from datetime import datetime, timedelta, timezone
 
-def check_elasticache_health(cluster_ids, region='us-east-1'):
+def check_elasticache_health(cache_nodes, region='us-east-1'):
     """
     Generate a health report for ElastiCache clusters.
     """
@@ -199,8 +199,10 @@ def check_elasticache_health(cluster_ids, region='us-east-1'):
 
     issues = []
 
-    for cluster_id in cluster_ids:
-        print(f"\nCluster: {cluster_id}")
+    for cache_node in cache_nodes:
+        cluster_id = cache_node['cluster_id']
+        node_id = cache_node['node_id']
+        print(f"\nCluster: {cluster_id}, Node: {node_id}")
         print("-" * 50)
 
         for metric_name, limits in thresholds.items():
@@ -211,6 +213,9 @@ def check_elasticache_health(cluster_ids, region='us-east-1'):
                     Dimensions=[{
                         'Name': 'CacheClusterId',
                         'Value': cluster_id
+                    }, {
+                        'Name': 'CacheNodeId',
+                        'Value': node_id
                     }],
                     StartTime=start,
                     EndTime=now,
@@ -232,10 +237,10 @@ def check_elasticache_health(cluster_ids, region='us-east-1'):
                 status = 'OK'
                 if mx >= limits['critical']:
                     status = 'CRITICAL'
-                    issues.append(f"{cluster_id}: {metric_name} at {mx:.2f}")
+                    issues.append(f"{cluster_id}/{node_id}: {metric_name} at {mx:.2f}")
                 elif mx >= limits['warning']:
                     status = 'WARNING'
-                    issues.append(f"{cluster_id}: {metric_name} at {mx:.2f}")
+                    issues.append(f"{cluster_id}/{node_id}: {metric_name} at {mx:.2f}")
 
                 print(f"  {metric_name}: avg={avg:.2f} max={mx:.2f} [{status}]")
 
@@ -253,9 +258,9 @@ def check_elasticache_health(cluster_ids, region='us-east-1'):
 
 # Run the health check
 check_elasticache_health([
-    'my-redis-001',
-    'my-redis-002',
-    'my-redis-003'
+    {'cluster_id': 'my-redis-001', 'node_id': '0001'},
+    {'cluster_id': 'my-redis-002', 'node_id': '0001'},
+    {'cluster_id': 'my-redis-003', 'node_id': '0001'},
 ])
 ```
 
@@ -268,17 +273,17 @@ If you're running Memcached instead of Redis, these metrics are particularly imp
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name UnusedMemory \
-  --dimensions Name=CacheClusterId,Value=my-memcached-001 \
+  --dimensions Name=CacheClusterId,Value=my-memcached-001 Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
   --statistics Average Minimum
 
-# Memcached: Get/Set ratio
+# Memcached: Get hit count
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name GetHits \
-  --dimensions Name=CacheClusterId,Value=my-memcached-001 \
+  --dimensions Name=CacheClusterId,Value=my-memcached-001 Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
@@ -305,7 +310,7 @@ aws cloudwatch put-metric-alarm \
   --period 60 \
   --threshold 90 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:pagerduty-critical
 ```
