@@ -16,7 +16,7 @@ Let me break it down clearly.
 
 Security groups are stateful. If you allow inbound traffic on port 443, the response traffic on the ephemeral port is automatically allowed. You don't need to think about it.
 
-Network ACLs are stateless. Every single packet is evaluated against the rules independently. Allow inbound on port 443? Great, but the response going back out won't be allowed unless you also have an outbound rule covering the ephemeral port range (1024-65535).
+Network ACLs are stateless. Every single packet is evaluated against the rules independently. Allow inbound on port 443? Great, but the response going back out won't be allowed unless you also have an outbound rule covering the client ephemeral port range. In practice, 1024-65535 is often used when you need to cover different client types.
 
 This one difference is responsible for about 90% of the confusion between the two.
 
@@ -86,7 +86,7 @@ Here's a quick reference table:
 | Default behavior | Deny all inbound, allow all outbound | Default NACL allows all |
 | Return traffic | Automatic | Must be explicitly allowed |
 | Can reference other SGs | Yes | No |
-| Number per resource | Up to 5 per ENI | 1 per subnet |
+| Number per resource | 5 per ENI by default, adjustable up to 16 | 1 per subnet |
 
 ## When to Use Security Groups
 
@@ -98,13 +98,12 @@ Security groups should be your primary firewall mechanism. Use them for:
 
 ```hcl
 # Database only accepts connections from the app security group
-resource "aws_security_group_rule" "db_from_app" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.app.id
-  security_group_id        = aws_security_group.db.id
+resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -114,7 +113,7 @@ resource "aws_security_group_rule" "db_from_app" {
 
 NACLs are best for:
 
-**Blocking specific IPs or ranges.** Since security groups can't deny traffic, NACLs are the only VPC-native option for blacklisting.
+**Blocking specific IPs or ranges.** Since security groups can't deny traffic, NACLs are the built-in subnet-level option for blacklisting.
 
 **Subnet-wide policies.** If every instance in a subnet should have the same baseline network restrictions, a NACL enforces that regardless of what security groups are attached.
 
