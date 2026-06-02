@@ -33,13 +33,20 @@ This is the number one reason stacks fail to delete. CloudFormation won't delete
 # Check if the bucket has objects
 aws s3 ls s3://my-bucket-name --summarize
 
-# Empty the bucket (including versioned objects)
+# Empty the bucket's current objects
 aws s3 rm s3://my-bucket-name --recursive
 
-# If versioning is enabled, you also need to delete version markers
+# If versioning is enabled, delete noncurrent versions
 aws s3api list-object-versions \
     --bucket my-bucket-name \
     --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
+    --output json | \
+    aws s3api delete-objects --bucket my-bucket-name --delete file:///dev/stdin
+
+# Then delete version delete markers
+aws s3api list-object-versions \
+    --bucket my-bucket-name \
+    --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
     --output json | \
     aws s3api delete-objects --bucket my-bucket-name --delete file:///dev/stdin
 ```
@@ -85,9 +92,13 @@ aws ec2 describe-network-interfaces \
     --filters Name=group-id,Values=sg-12345678 \
     --query 'NetworkInterfaces[].{Id:NetworkInterfaceId,Type:InterfaceType,Description:Description}'
 
-# Check for security group rules that reference this group
+# Check for ingress security group rules that reference this group
 aws ec2 describe-security-groups \
     --filters Name=ip-permission.group-id,Values=sg-12345678
+
+# Check for egress security group rules that reference this group
+aws ec2 describe-security-groups \
+    --filters Name=egress.ip-permission.group-id,Values=sg-12345678
 ```
 
 You need to remove those references before the security group can be deleted. If the referencing resources are in another stack, delete or update that stack first.
@@ -146,7 +157,8 @@ aws rds describe-db-instances \
 # Disable deletion protection
 aws rds modify-db-instance \
     --db-instance-identifier my-database \
-    --no-deletion-protection
+    --no-deletion-protection \
+    --apply-immediately
 ```
 
 The same applies to other resources with deletion protection, like DynamoDB tables with deletion protection enabled.
