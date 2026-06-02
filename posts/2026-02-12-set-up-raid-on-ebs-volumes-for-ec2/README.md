@@ -16,9 +16,9 @@ Let's walk through setting up RAID on EBS volumes attached to an EC2 instance, f
 
 Before we start clicking buttons, let's be clear about which RAID levels make sense on AWS:
 
-**RAID 0 (Striping)** - Combines multiple volumes for higher throughput and IOPS. If you need 64,000 IOPS but a single gp3 volume tops out at 16,000, you can stripe four gp3 volumes together. The downside? If any single volume fails, you lose everything. But since EBS volumes already have built-in redundancy within their availability zone, this risk is minimal.
+**RAID 0 (Striping)** - Combines multiple volumes for higher throughput and IOPS. A single gp3 volume can now be provisioned up to 80,000 IOPS and 2,000 MB/s, but striping can still help when you need more aggregate performance than one volume can provide. The downside? If any single volume fails, you lose everything. EBS volumes already have built-in redundancy within their availability zone, but striping across more volumes increases the number of volumes that have to stay healthy.
 
-**RAID 1 (Mirroring)** - Writes the same data to two volumes simultaneously. You get redundancy but no performance boost. This is overkill for most use cases since EBS volumes are already replicated within their AZ.
+**RAID 1 (Mirroring)** - Writes the same data to two volumes simultaneously. You get redundancy but no write performance boost. This is overkill for most use cases since EBS volumes are already replicated within their AZ.
 
 **RAID 5 and RAID 6** - Don't use these on EBS. AWS explicitly recommends against it. The parity write operations consume a significant portion of your IOPS, and the built-in EBS redundancy already handles the use case RAID 5/6 was designed for.
 
@@ -74,7 +74,7 @@ lsblk
 # xvdi    202:128  0  100G  0 disk
 ```
 
-On Nitro-based instances, the device names might show up as `/dev/nvme1n1`, `/dev/nvme2n1`, etc. Use `nvme list` to map NVMe device names to their EBS volume IDs.
+On Nitro-based instances, the device names might show up as `/dev/nvme1n1`, `/dev/nvme2n1`, etc. Use `lsblk -o +SERIAL` or `ebsnvme-id` on Amazon Linux to map NVMe device names to their EBS volume IDs. On other Linux distributions, install `nvme-cli` and use `nvme id-ctrl -V`.
 
 ## Step 3: Create the RAID 0 Array
 
@@ -181,8 +181,8 @@ Once your RAID array is running, there are a few tweaks to squeeze out more perf
 Tune the read-ahead buffer and scheduler for the RAID array:
 
 ```bash
-# Increase read-ahead for better sequential read performance
-sudo blockdev --setra 65536 /dev/md0
+# Increase read-ahead to 1 MiB for large sequential reads
+sudo blockdev --setra 2048 /dev/md0
 
 # Check current read-ahead setting
 sudo blockdev --getra /dev/md0
