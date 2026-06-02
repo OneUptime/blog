@@ -16,11 +16,11 @@ This guide covers enabling encryption at the account level, using customer manag
 
 When you create an encrypted EBS volume, here's what happens under the hood:
 
-1. EBS requests a data key from KMS using your specified CMK
-2. KMS returns a plaintext data key and an encrypted copy
-3. EBS uses the plaintext key to encrypt data written to the volume
-4. The encrypted data key is stored with the volume metadata
-5. When the volume attaches to an instance, EBS decrypts the data key through KMS
+1. EC2 requests a data key from KMS using your specified KMS key
+2. KMS generates a data key and encrypts it under that KMS key
+3. The encrypted data key is stored with the volume metadata
+4. When the volume attaches to an instance, EC2 creates a KMS grant and decrypts the data key
+5. EC2 uses the plaintext data key in Nitro hardware to encrypt disk I/O while the volume is attached
 
 All encryption happens on the EC2 host - your instance sees normal, unencrypted data. There's no software overhead and negligible latency impact. AWS handles everything at the infrastructure level.
 
@@ -136,7 +136,7 @@ aws ec2 create-volume \
   --volume-type gp3 \
   --encrypted
 
-# Create an encrypted volume with a specific CMK
+# Create an encrypted volume with a specific KMS key
 aws ec2 create-volume \
   --availability-zone us-east-1a \
   --size 100 \
@@ -189,9 +189,9 @@ aws ec2 create-snapshot \
 
 # Copy a snapshot with a different KMS key
 aws ec2 copy-snapshot \
+  --region us-west-2 \
   --source-region us-east-1 \
   --source-snapshot-id snap-0123456789abcdef0 \
-  --destination-region us-west-2 \
   --kms-key-id alias/ebs-dr \
   --encrypted \
   --description "DR copy"
@@ -211,23 +211,26 @@ Here's a script that automates this for a single volume.
 
 VOLUME_ID="vol-0123456789abcdef0"
 KMS_KEY="alias/ebs-production"
+REGION="us-east-1"
 AZ="us-east-1a"
 
 # Step 1: Create a snapshot of the unencrypted volume
 echo "Creating snapshot..."
 SNAP_ID=$(aws ec2 create-snapshot \
+  --region "$REGION" \
   --volume-id "$VOLUME_ID" \
   --description "Migration snapshot for $VOLUME_ID" \
   --query 'SnapshotId' \
   --output text)
 
 echo "Waiting for snapshot $SNAP_ID..."
-aws ec2 wait snapshot-completed --snapshot-ids "$SNAP_ID"
+aws ec2 wait snapshot-completed --region "$REGION" --snapshot-ids "$SNAP_ID"
 
 # Step 2: Copy the snapshot with encryption
 echo "Creating encrypted copy..."
 ENC_SNAP_ID=$(aws ec2 copy-snapshot \
-  --source-region us-east-1 \
+  --region "$REGION" \
+  --source-region "$REGION" \
   --source-snapshot-id "$SNAP_ID" \
   --encrypted \
   --kms-key-id "$KMS_KEY" \
@@ -236,11 +239,12 @@ ENC_SNAP_ID=$(aws ec2 copy-snapshot \
   --output text)
 
 echo "Waiting for encrypted snapshot $ENC_SNAP_ID..."
-aws ec2 wait snapshot-completed --snapshot-ids "$ENC_SNAP_ID"
+aws ec2 wait snapshot-completed --region "$REGION" --snapshot-ids "$ENC_SNAP_ID"
 
 # Step 3: Create new encrypted volume
 echo "Creating encrypted volume..."
 NEW_VOL_ID=$(aws ec2 create-volume \
+  --region "$REGION" \
   --availability-zone "$AZ" \
   --snapshot-id "$ENC_SNAP_ID" \
   --volume-type gp3 \
@@ -259,23 +263,44 @@ echo "  6. Delete the old volume and intermediate snapshots"
 
 ## Cross-Account Encrypted Snapshots
 
-Sharing encrypted snapshots across accounts requires the CMK key policy to allow the target account.
+Sharing encrypted snapshots across accounts requires the customer managed key policy to allow the target account.
 
 ```json
-{
-  "Sid": "AllowCrossAccountSnapshotDecrypt",
-  "Effect": "Allow",
-  "Principal": {
-    "AWS": "arn:aws:iam::987654321098:root"
+[
+  {
+    "Sid": "AllowCrossAccountSnapshotUse",
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::987654321098:root"
+    },
+    "Action": [
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:DescribeKey",
+      "kms:GenerateDataKey*",
+      "kms:ReEncrypt*"
+    ],
+    "Resource": "*"
   },
-  "Action": [
-    "kms:Decrypt",
-    "kms:DescribeKey",
-    "kms:CreateGrant",
-    "kms:ReEncrypt*"
-  ],
-  "Resource": "*"
-}
+  {
+    "Sid": "AllowCrossAccountSnapshotGrant",
+    "Effect": "Allow",
+    "Principal": {
+      "AWS": "arn:aws:iam::987654321098:root"
+    },
+    "Action": [
+      "kms:CreateGrant",
+      "kms:ListGrants",
+      "kms:RevokeGrant"
+    ],
+    "Resource": "*",
+    "Condition": {
+      "Bool": {
+        "kms:GrantIsForAWSResource": true
+      }
+    }
+  }
+]
 ```
 
 Then share the snapshot.
@@ -322,6 +347,6 @@ aws configservice put-config-rule \
 
 ## Wrapping Up
 
-EBS encryption with KMS should be a day-one configuration for every AWS account. Enable default encryption, use customer managed keys for control and auditability, and plan for migration of any existing unencrypted volumes. The zero-performance-impact nature of EBS encryption means there's really no excuse not to encrypt everything.
+EBS encryption with KMS should be a day-one configuration for every AWS account. Enable default encryption, use customer managed keys for control and auditability, and plan for migration of any existing unencrypted volumes. The minimal-performance-impact nature of EBS encryption means there's really no excuse not to encrypt everything.
 
 For more on managing your encryption keys, check out [creating KMS CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view) and [KMS with S3](https://oneuptime.com/blog/post/2026-02-12-kms-with-s3-encryption/view).
