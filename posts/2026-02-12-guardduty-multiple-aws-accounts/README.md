@@ -195,46 +195,56 @@ resource "aws_guardduty_organization_admin_account" "admin" {
 resource "aws_guardduty_detector" "admin" {
   enable                       = true
   finding_publishing_frequency = "FIFTEEN_MINUTES"
-
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
-  }
 }
 
 resource "aws_guardduty_organization_configuration" "org" {
   auto_enable_organization_members = "ALL"
   detector_id                      = aws_guardduty_detector.admin.id
+}
 
-  datasources {
-    s3_logs {
-      auto_enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          auto_enable = true
-        }
-      }
-    }
+locals {
+  guardduty_features = toset([
+    "S3_DATA_EVENTS",
+    "EKS_AUDIT_LOGS",
+    "EBS_MALWARE_PROTECTION",
+    "RDS_LOGIN_EVENTS",
+    "LAMBDA_NETWORK_LOGS"
+  ])
+}
+
+resource "aws_guardduty_detector_feature" "admin_features" {
+  for_each    = local.guardduty_features
+  detector_id = aws_guardduty_detector.admin.id
+  name        = each.value
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "admin_eks_runtime_monitoring" {
+  detector_id = aws_guardduty_detector.admin.id
+  name        = "EKS_RUNTIME_MONITORING"
+  status      = "ENABLED"
+
+  additional_configuration {
+    name   = "EKS_ADDON_MANAGEMENT"
+    status = "ENABLED"
+  }
+}
+
+resource "aws_guardduty_organization_configuration_feature" "org_features" {
+  for_each    = local.guardduty_features
+  detector_id = aws_guardduty_detector.admin.id
+  name        = each.value
+  auto_enable = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "org_eks_runtime_monitoring" {
+  detector_id = aws_guardduty_detector.admin.id
+  name        = "EKS_RUNTIME_MONITORING"
+  auto_enable = "ALL"
+
+  additional_configuration {
+    name        = "EKS_ADDON_MANAGEMENT"
+    auto_enable = "ALL"
   }
 }
 ```
@@ -291,12 +301,12 @@ For more on suppression, see [suppressing GuardDuty false positives](https://one
 
 ## Multi-Region Considerations
 
-GuardDuty is a regional service. The delegated administrator setup needs to be repeated in each region where you want threat detection. If you've enabled GuardDuty in `us-east-1`, it won't automatically cover `eu-west-1`.
+GuardDuty is a regional service. The delegated administrator setup and organization configuration need to be repeated in each region where you want threat detection. If you've enabled GuardDuty in `us-east-1`, it won't automatically cover `eu-west-1`.
 
 The best approach is to enable GuardDuty in all regions, even ones you don't actively use. If an attacker uses compromised credentials to launch resources in `ap-southeast-1` and you're not monitoring there, you won't know.
 
 ```bash
-# Loop through all regions to set up GuardDuty
+# Loop through all regions to designate the same delegated administrator
 for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do
   echo "Enabling GuardDuty admin in $region"
   aws guardduty enable-organization-admin-account \
