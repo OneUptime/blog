@@ -54,6 +54,8 @@ This works but doesn't scale. Every new rule means another copy-pasted block.
 
 Dynamic blocks generate nested blocks from a variable or local value.
 
+Note: The AWS provider currently recommends standalone `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources for production security group rules. The inline rule examples here focus on showing how dynamic blocks generate repeatable nested blocks.
+
 ```hcl
 # Define rules as data
 variable "ingress_rules" {
@@ -127,8 +129,8 @@ dynamic "BLOCK_LABEL" {
   iterator = CUSTOM_NAME     # Optional: rename the iterator (defaults to BLOCK_LABEL)
   content {
     # Block content using CUSTOM_NAME.value or BLOCK_LABEL.value
-    key   = CUSTOM_NAME.key   # The map key or list index
-    value = CUSTOM_NAME.value  # The current item
+    argument = CUSTOM_NAME.value.attribute
+    # CUSTOM_NAME.key is the map key or list index
   }
 }
 ```
@@ -365,9 +367,21 @@ resource "aws_dynamodb_table" "main" {
   dynamic "global_secondary_index" {
     for_each = var.gsi_config
     content {
-      name            = global_secondary_index.key
-      hash_key        = global_secondary_index.value.hash_key
-      range_key       = global_secondary_index.value.range_key != "" ? global_secondary_index.value.range_key : null
+      name = global_secondary_index.key
+
+      key_schema {
+        attribute_name = global_secondary_index.value.hash_key
+        key_type       = "HASH"
+      }
+
+      dynamic "key_schema" {
+        for_each = global_secondary_index.value.range_key != "" ? [global_secondary_index.value.range_key] : []
+        content {
+          attribute_name = key_schema.value
+          key_type       = "RANGE"
+        }
+      }
+
       projection_type = global_secondary_index.value.projection_type
     }
   }
@@ -379,19 +393,33 @@ resource "aws_dynamodb_table" "main" {
 You can nest dynamic blocks, though it gets harder to read quickly.
 
 ```hcl
-# Network ACL with dynamic rules and dynamic rule properties
-resource "aws_network_acl" "main" {
-  vpc_id = var.vpc_id
+resource "aws_lb_listener_rule" "advanced_routing" {
+  for_each = var.advanced_routing_rules
 
-  dynamic "ingress" {
-    for_each = var.nacl_rules
+  listener_arn = aws_lb_listener.https.arn
+  priority     = each.value.priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.groups[each.value.target_group].arn
+  }
+
+  dynamic "condition" {
+    for_each = each.value.conditions
     content {
-      protocol   = ingress.value.protocol
-      rule_no    = ingress.value.rule_no
-      action     = ingress.value.action
-      cidr_block = ingress.value.cidr_block
-      from_port  = ingress.value.from_port
-      to_port    = ingress.value.to_port
+      dynamic "host_header" {
+        for_each = condition.value.type == "host_header" ? [condition.value.values] : []
+        content {
+          values = host_header.value
+        }
+      }
+
+      dynamic "path_pattern" {
+        for_each = condition.value.type == "path_pattern" ? [condition.value.values] : []
+        content {
+          values = path_pattern.value
+        }
+      }
     }
   }
 }
