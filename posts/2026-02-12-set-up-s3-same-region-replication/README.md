@@ -10,7 +10,7 @@ Description: Configure S3 Same-Region Replication to automatically copy objects 
 
 S3 Same-Region Replication (SRR) automatically copies objects from one bucket to another bucket in the same AWS region. It's useful for a surprising number of scenarios: maintaining a production and backup copy in separate accounts, aggregating logs from multiple source buckets, replicating data between environments, or meeting compliance requirements that mandate data copies.
 
-SRR works in real-time - objects are typically replicated within seconds. Let's set it up.
+SRR is asynchronous, so expect a short delay rather than an immediate copy. Let's set it up.
 
 ## Prerequisites
 
@@ -105,7 +105,8 @@ cat > s3-replication-policy.json << 'EOF'
             "Action": [
                 "s3:ReplicateObject",
                 "s3:ReplicateDelete",
-                "s3:ReplicateTags"
+                "s3:ReplicateTags",
+                "s3:ObjectOwnerOverrideToBucketOwner"
             ],
             "Resource": "arn:aws:s3:::my-bucket-replica/*"
         }
@@ -139,7 +140,9 @@ cat > replication-config.json << EOF
             "ID": "replicate-all",
             "Status": "Enabled",
             "Priority": 1,
-            "Filter": {},
+            "Filter": {
+                "Prefix": ""
+            },
             "Destination": {
                 "Bucket": "arn:aws:s3:::my-bucket-replica",
                 "StorageClass": "STANDARD"
@@ -199,7 +202,9 @@ cat > replication-config.json << EOF
             "ID": "replicate-to-ia",
             "Status": "Enabled",
             "Priority": 1,
-            "Filter": {},
+            "Filter": {
+                "Prefix": ""
+            },
             "Destination": {
                 "Bucket": "arn:aws:s3:::my-bucket-replica",
                 "StorageClass": "STANDARD_IA"
@@ -305,13 +310,17 @@ By default, replication only applies to new objects uploaded after the rule is c
 Set up batch replication for existing objects:
 
 ```bash
+# Use an S3 Batch Operations role with S3 Batch Replication permissions
+BATCH_ROLE_ARN=arn:aws:iam::123456789012:role/s3-batch-replication-role
+
 # Create a batch replication job
 aws s3control create-job \
     --account-id $(aws sts get-caller-identity --query Account --output text) \
     --operation '{"S3ReplicateObject":{}}' \
     --manifest-generator '{
         "S3JobManifestGenerator": {
-            "SourceS3BucketArn": "arn:aws:s3:::my-bucket-source",
+            "SourceBucket": "arn:aws:s3:::my-bucket-source",
+            "ManifestFormat": "S3InventoryReport_CSV_20211130",
             "EnableManifestOutput": true,
             "ManifestOutputLocation": {
                 "Bucket": "arn:aws:s3:::my-bucket-source",
@@ -331,7 +340,7 @@ aws s3control create-job \
         "ReportScope": "AllTasks"
     }' \
     --priority 1 \
-    --role-arn "$ROLE_ARN" \
+    --role-arn "$BATCH_ROLE_ARN" \
     --confirmation-required
 ```
 
@@ -340,7 +349,7 @@ aws s3control create-job \
 Keep track of replication performance and failures:
 
 ```bash
-# Check replication metrics
+# Check replication metrics if S3 Replication metrics are enabled
 aws cloudwatch get-metric-statistics \
     --namespace AWS/S3 \
     --metric-name OperationsPendingReplication \
@@ -350,7 +359,7 @@ aws cloudwatch get-metric-statistics \
     --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
     --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
     --period 300 \
-    --statistics Average
+    --statistics Maximum
 
 # Enable S3 Replication Time Control (RTC) for SLA-backed replication
 # This guarantees 99.99% of objects replicate within 15 minutes
@@ -364,4 +373,4 @@ aws cloudwatch get-metric-statistics \
 4. **Compliance** - Maintain an immutable copy of data for regulatory requirements
 5. **Access control separation** - Different teams access different replicas with different permissions
 
-SRR is a powerful feature that runs silently in the background once configured. Set it up, verify it's working, and you've got an automatic, real-time backup that requires zero ongoing maintenance.
+SRR is a powerful feature that runs silently in the background once configured. Set it up, verify it's working, and you've got an automatic, asynchronous backup that requires zero ongoing maintenance.
