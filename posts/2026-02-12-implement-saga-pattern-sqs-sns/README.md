@@ -93,6 +93,15 @@ resource "aws_sqs_queue" "payment_dlq" {
   name = "payment-service-dlq"
 }
 
+resource "aws_sqs_queue" "payment_refund" {
+  name                       = "payment-refund"
+  visibility_timeout_seconds = 60
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.payment_dlq.arn
+    maxReceiveCount     = 3
+  })
+}
+
 resource "aws_sqs_queue" "inventory_service" {
   name                       = "inventory-service"
   visibility_timeout_seconds = 60
@@ -111,11 +120,114 @@ resource "aws_sqs_queue" "order_service" {
   visibility_timeout_seconds = 60
 }
 
+# Allow SNS topics to send messages to the SQS queues
+resource "aws_sqs_queue_policy" "payment_service" {
+  queue_url = aws_sqs_queue.payment_service.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.payment_service.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.order_created.arn
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_sqs_queue_policy" "payment_refund" {
+  queue_url = aws_sqs_queue.payment_refund.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.payment_refund.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.inventory_failed.arn
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_sqs_queue_policy" "inventory_service" {
+  queue_url = aws_sqs_queue.inventory_service.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.inventory_service.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.payment_charged.arn
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_sqs_queue_policy" "order_service" {
+  queue_url = aws_sqs_queue.order_service.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.order_service.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.payment_failed.arn
+          }
+        }
+      },
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.order_service.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.inventory_failed.arn
+          }
+        }
+      },
+      {
+        Effect    = "Allow"
+        Principal = { Service = "sns.amazonaws.com" }
+        Action    = "sqs:SendMessage"
+        Resource  = aws_sqs_queue.order_service.arn
+        Condition = {
+          ArnEquals = {
+            "aws:SourceArn" = aws_sns_topic.inventory_reserved.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
 # Subscribe queues to relevant topics
 resource "aws_sns_topic_subscription" "payment_listens_order_created" {
   topic_arn = aws_sns_topic.order_created.arn
   protocol  = "sqs"
   endpoint  = aws_sqs_queue.payment_service.arn
+}
+
+resource "aws_sns_topic_subscription" "payment_listens_inventory_failed" {
+  topic_arn = aws_sns_topic.inventory_failed.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.payment_refund.arn
 }
 
 resource "aws_sns_topic_subscription" "inventory_listens_payment_charged" {
@@ -132,7 +244,13 @@ resource "aws_sns_topic_subscription" "order_listens_payment_failed" {
 }
 
 resource "aws_sns_topic_subscription" "order_listens_inventory_failed" {
-  topic_arn = aws_sns_topic.order_cancelled.arn
+  topic_arn = aws_sns_topic.inventory_failed.arn
+  protocol  = "sqs"
+  endpoint  = aws_sqs_queue.order_service.arn
+}
+
+resource "aws_sns_topic_subscription" "order_listens_inventory_reserved" {
+  topic_arn = aws_sns_topic.inventory_reserved.arn
   protocol  = "sqs"
   endpoint  = aws_sqs_queue.order_service.arn
 }
@@ -146,13 +264,15 @@ The order service kicks off the saga by creating an order and publishing the `or
 import boto3
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 sns = boto3.client("sns")
 dynamodb = boto3.resource("dynamodb")
 orders_table = dynamodb.Table("orders")
 
 ORDER_CREATED_TOPIC = "arn:aws:sns:us-east-1:123456789:order-created"
+ORDER_CONFIRMED_TOPIC = "arn:aws:sns:us-east-1:123456789:order-confirmed"
+ORDER_CANCELLED_TOPIC = "arn:aws:sns:us-east-1:123456789:order-cancelled"
 
 def create_order(customer_id, items, total):
     """Create a new order and start the saga."""
@@ -165,7 +285,7 @@ def create_order(customer_id, items, total):
         "items": items,
         "total": str(total),
         "status": "PENDING",
-        "created_at": datetime.utcnow().isoformat()
+        "created_at": datetime.now(timezone.utc).isoformat()
     })
 
     # Step 2: Publish the event to kick off the saga
@@ -197,7 +317,7 @@ def handle_compensation(event, context):
             "event_type", {}
         ).get("Value", "")
 
-        if event_type in ("payment_failed", "order_cancelled"):
+        if event_type in ("payment_failed", "inventory_failed"):
             # Cancel the order
             orders_table.update_item(
                 Key={"order_id": message["order_id"]},
@@ -205,7 +325,41 @@ def handle_compensation(event, context):
                 ExpressionAttributeNames={"#s": "status"},
                 ExpressionAttributeValues={":status": "CANCELLED"}
             )
+            sns.publish(
+                TopicArn=ORDER_CANCELLED_TOPIC,
+                Message=json.dumps({
+                    "order_id": message["order_id"],
+                    "reason": message.get("reason", "saga compensation")
+                }),
+                MessageAttributes={
+                    "event_type": {
+                        "DataType": "String",
+                        "StringValue": "order_cancelled"
+                    }
+                }
+            )
             print(f"Order {message['order_id']} cancelled")
+
+        elif event_type == "inventory_reserved":
+            orders_table.update_item(
+                Key={"order_id": message["order_id"]},
+                UpdateExpression="SET #s = :status",
+                ExpressionAttributeNames={"#s": "status"},
+                ExpressionAttributeValues={":status": "CONFIRMED"}
+            )
+            sns.publish(
+                TopicArn=ORDER_CONFIRMED_TOPIC,
+                Message=json.dumps({
+                    "order_id": message["order_id"]
+                }),
+                MessageAttributes={
+                    "event_type": {
+                        "DataType": "String",
+                        "StringValue": "order_confirmed"
+                    }
+                }
+            )
+            print(f"Order {message['order_id']} confirmed")
 ```
 
 ## Implementing the Payment Service
@@ -313,7 +467,6 @@ inventory_table = dynamodb.Table("inventory")
 
 INVENTORY_RESERVED_TOPIC = "arn:aws:sns:us-east-1:123456789:inventory-reserved"
 INVENTORY_FAILED_TOPIC = "arn:aws:sns:us-east-1:123456789:inventory-failed"
-ORDER_CANCELLED_TOPIC = "arn:aws:sns:us-east-1:123456789:order-cancelled"
 
 def handle_payment_charged(event, context):
     """Reserve inventory after payment succeeds."""
@@ -351,15 +504,16 @@ def handle_payment_charged(event, context):
 
             # Trigger compensation chain
             sns.publish(
-                TopicArn=ORDER_CANCELLED_TOPIC,
+                TopicArn=INVENTORY_FAILED_TOPIC,
                 Message=json.dumps({
                     "order_id": order_id,
+                    "charge_id": message["charge_id"],
                     "reason": str(e)
                 }),
                 MessageAttributes={
                     "event_type": {
                         "DataType": "String",
-                        "StringValue": "order_cancelled"
+                        "StringValue": "inventory_failed"
                     }
                 }
             )
