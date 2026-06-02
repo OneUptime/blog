@@ -129,12 +129,12 @@ aws lambda create-function \
   --runtime python3.12 \
   --handler lambda_function.lambda_handler \
   --zip-file fileb://function.zip \
-  --role arn:aws:iam::123456789:role/IoTLambdaRole \
+  --role arn:aws:iam::123456789012:role/IoTLambdaRole \
   --timeout 30 \
   --memory-size 256 \
   --environment "Variables={
     TELEMETRY_TABLE=DeviceTelemetry,
-    ALERT_TOPIC_ARN=arn:aws:sns:us-east-1:123456789:iot-alerts,
+    ALERT_TOPIC_ARN=arn:aws:sns:us-east-1:123456789012:iot-alerts,
     TEMP_THRESHOLD=40
   }"
 ```
@@ -148,7 +148,7 @@ aws lambda add-permission \
   --statement-id iot-invoke \
   --action lambda:InvokeFunction \
   --principal iot.amazonaws.com \
-  --source-arn "arn:aws:iot:us-east-1:123456789:rule/ProcessTelemetry"
+  --source-arn "arn:aws:iot:us-east-1:123456789012:rule/ProcessTelemetry"
 ```
 
 ## Step 3: Create the IoT Rule
@@ -164,13 +164,13 @@ aws iot create-topic-rule \
     "actions": [
       {
         "lambda": {
-          "functionArn": "arn:aws:lambda:us-east-1:123456789:function:IoTTelemetryProcessor"
+          "functionArn": "arn:aws:lambda:us-east-1:123456789012:function:IoTTelemetryProcessor"
         }
       }
     ],
     "errorAction": {
       "cloudwatchLogs": {
-        "roleArn": "arn:aws:iam::123456789:role/IoTRuleCloudWatchRole",
+        "roleArn": "arn:aws:iam::123456789012:role/IoTRuleCloudWatchRole",
         "logGroupName": "/iot/rules/errors"
       }
     }
@@ -192,7 +192,7 @@ aws iot create-topic-rule \
     "actions": [
       {
         "lambda": {
-          "functionArn": "arn:aws:lambda:us-east-1:123456789:function:IoTAlertProcessor"
+          "functionArn": "arn:aws:lambda:us-east-1:123456789012:function:IoTAlertProcessor"
         }
       }
     ]
@@ -206,7 +206,7 @@ aws iot create-topic-rule \
     "actions": [
       {
         "lambda": {
-          "functionArn": "arn:aws:lambda:us-east-1:123456789:function:IoTStatusProcessor"
+          "functionArn": "arn:aws:lambda:us-east-1:123456789012:function:IoTStatusProcessor"
         }
       }
     ]
@@ -343,19 +343,19 @@ Resources:
 
 Lambda invocations from IoT Rules can fail. Handle errors properly.
 
-**Retries**: IoT Core does not retry failed Lambda invocations. If the function fails, the message is lost (unless you have an error action).
+**Retries**: AWS IoT invokes Lambda functions asynchronously. The Rules Engine might make multiple attempts if intermittent errors occur while activating the Lambda action; after Lambda accepts the event, Lambda handles function errors using its asynchronous retry policy.
 
-**Error actions**: Always configure an error action on your rule to capture failed messages.
+**Error actions**: Always configure an error action on your rule to capture rule action failures, such as permission or service errors while invoking Lambda.
 
-**Async invocation**: IoT Rules invoke Lambda synchronously, so your function has 15 minutes max, but keep it fast - the Rules Engine has its own timeout.
+**Async invocation**: IoT Rules invoke Lambda asynchronously, so the Rules Engine does not wait for your function response. Lambda can run up to its configured timeout (15 minutes max), but keep it fast to avoid backlogs and retries.
 
-**Dead letter queues**: Configure a DLQ on the Lambda function to capture unprocessed events.
+**Dead letter queues**: Configure a DLQ on the Lambda function to capture asynchronous events that Lambda discards after retries are exhausted.
 
 ```bash
 # Add a dead letter queue to the Lambda function
 aws lambda update-function-configuration \
   --function-name IoTTelemetryProcessor \
-  --dead-letter-config "TargetArn=arn:aws:sqs:us-east-1:123456789:iot-lambda-dlq"
+  --dead-letter-config "TargetArn=arn:aws:sqs:us-east-1:123456789012:iot-lambda-dlq"
 ```
 
 ## Performance Considerations
