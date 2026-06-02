@@ -112,18 +112,14 @@ aws quicksight update-dashboard-permissions \
 For stakeholders who don't want to log into QuickSight, you can schedule email deliveries of dashboard snapshots.
 
 ```bash
-# Create an email schedule for weekly reports
-aws quicksight create-topic-refresh-schedule \
+# Trigger an existing scheduled email report
+aws quicksight start-dashboard-snapshot-job-schedule \
   --aws-account-id 123456789012 \
-  --topic-id sales-topic \
-  --dataset-arn "arn:aws:quicksight:us-east-1:123456789012:dataset/sales-dataset" \
-  --refresh-schedule '{
-    "IsEnabled": true,
-    "BasedOnSpiceSchedule": true
-  }'
+  --dashboard-id sales-dashboard \
+  --schedule-id weekly-sales-report
 ```
 
-For the actual email report, you'll typically use the QuickSight console to set up scheduled reports since the API for email schedules is still being expanded. Navigate to the dashboard, click the share icon, and choose "Email report." You can set the schedule, recipients, and format (PDF or CSV attachment).
+For the actual email report schedule, use the QuickSight console. Navigate to the dashboard, choose "Schedules," and add a schedule. You can set the schedule, recipients, and format (PDF, CSV, or Excel where supported). The API can run an existing schedule after you get its schedule ID from the dashboard's Schedules pane.
 
 ## Embedding Dashboards in Your Application
 
@@ -134,7 +130,6 @@ First, generate an embedding URL.
 ```python
 # generate_embed_url.py
 import boto3
-import json
 
 quicksight = boto3.client('quicksight', region_name='us-east-1')
 account_id = '123456789012'
@@ -172,24 +167,34 @@ Then use the QuickSight embedding SDK in your frontend.
 
     const embeddingContext = await QuickSightEmbedding.createEmbeddingContext();
 
-    const dashboard = await embeddingContext.embedDashboard({
+    const frameOptions = {
       url: embedUrl,
       container: '#dashboard-container',
       height: '800px',
       width: '100%',
+      onChange: (changeEvent) => {
+        if (changeEvent.eventName === 'FRAME_LOADED') {
+          console.log('Dashboard frame loaded');
+        }
+      }
+    };
+
+    const contentOptions = {
       locale: 'en-US',
-      scrolling: 'no',
-      footerPaddingEnabled: true
-    });
+      attributionOptions: {
+        overlayContent: false
+      },
+      onMessage: (messageEvent) => {
+        if (messageEvent.eventName === 'CONTENT_LOADED') {
+          console.log('Dashboard loaded successfully');
+        }
+        if (messageEvent.eventName === 'ERROR_OCCURRED') {
+          console.error('Dashboard error:', messageEvent);
+        }
+      }
+    };
 
-    // Listen for events from the embedded dashboard
-    dashboard.on('error', (error) => {
-      console.error('Dashboard error:', error);
-    });
-
-    dashboard.on('load', () => {
-      console.log('Dashboard loaded successfully');
-    });
+    await embeddingContext.embedDashboard(frameOptions, contentOptions);
   }
 
   embedDashboard();
