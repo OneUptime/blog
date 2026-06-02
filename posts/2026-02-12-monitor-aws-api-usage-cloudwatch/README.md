@@ -34,17 +34,22 @@ aws cloudtrail update-trail \
 The IAM role needs these permissions:
 
 ```json
-// IAM role for CloudTrail to write to CloudWatch Logs
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
       "Action": [
-        "logs:CreateLogStream",
+        "logs:CreateLogStream"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/cloudtrail/api-activity:log-stream:123456789012_CloudTrail_*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/cloudtrail/api-activity:*"
+      "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/cloudtrail/api-activity:log-stream:123456789012_CloudTrail_*"
     }
   ]
 }
@@ -246,21 +251,21 @@ aws cloudwatch put-metric-alarm \
 CloudWatch Logs Insights lets you run powerful queries against CloudTrail data:
 
 ```sql
--- Top 10 API callers in the last hour
+# Top 10 API callers in the last hour
 stats count(*) as call_count by userIdentity.arn as caller
 | sort call_count desc
 | limit 10
 ```
 
 ```sql
--- Most called APIs
+# Most called APIs
 stats count(*) as calls by eventName
 | sort calls desc
 | limit 20
 ```
 
 ```sql
--- Failed API calls by error type
+# Failed API calls by error type
 filter errorCode like /./
 | stats count(*) as errors by errorCode, eventName
 | sort errors desc
@@ -268,13 +273,13 @@ filter errorCode like /./
 ```
 
 ```sql
--- API activity by region
+# API activity by region
 stats count(*) as calls by awsRegion
 | sort calls desc
 ```
 
 ```sql
--- Track specific user's activity
+# Track specific user's activity
 filter userIdentity.arn like /suspicious-user/
 | fields @timestamp, eventName, sourceIPAddress, awsRegion, errorCode
 | sort @timestamp desc
@@ -282,7 +287,7 @@ filter userIdentity.arn like /suspicious-user/
 ```
 
 ```sql
--- Detect unusual source IPs
+# Detect unusual source IPs
 stats count(*) as calls by sourceIPAddress
 | sort calls desc
 | limit 20
@@ -293,7 +298,6 @@ stats count(*) as calls by sourceIPAddress
 Create a dashboard that shows API usage patterns:
 
 ```json
-// CloudWatch dashboard for API activity monitoring
 {
   "widgets": [
     {
