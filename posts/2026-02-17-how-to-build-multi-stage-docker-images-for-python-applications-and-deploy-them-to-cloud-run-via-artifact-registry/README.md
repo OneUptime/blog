@@ -110,7 +110,7 @@ USER appuser
 ENV PORT=8080
 EXPOSE 8080
 
-# Health check endpoint
+# Docker health check for local runs; configure Cloud Run probes during deployment
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
@@ -242,6 +242,12 @@ steps:
       - '${_REGION}'
       - '--platform'
       - 'managed'
+      - '--port'
+      - '8080'
+      - '--startup-probe'
+      - 'httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=5,failureThreshold=3,timeoutSeconds=5,periodSeconds=5'
+      - '--liveness-probe'
+      - 'httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=10,failureThreshold=3,timeoutSeconds=5,periodSeconds=30'
 
 substitutions:
   _REGION: us-central1
@@ -269,6 +275,8 @@ gcloud run deploy my-app \
   --cpu=1 \
   --min-instances=0 \
   --max-instances=10 \
+  --startup-probe=httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=5,failureThreshold=3,timeoutSeconds=5,periodSeconds=5 \
+  --liveness-probe=httpGet.path=/health,httpGet.port=8080,initialDelaySeconds=10,failureThreshold=3,timeoutSeconds=5,periodSeconds=30 \
   --set-env-vars="ENVIRONMENT=production"
 ```
 
