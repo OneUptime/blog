@@ -72,7 +72,7 @@ aws ec2 create-managed-prefix-list \
     {"Cidr": "198.51.100.0/24", "Description": "Branch office NY"},
     {"Cidr": "192.0.2.0/24", "Description": "Branch office London"}
   ]' \
-  --tags Key=Purpose,Value=OfficeAccess Key=ManagedBy,Value=SecurityTeam
+  --tag-specifications 'ResourceType=prefix-list,Tags=[{Key=Purpose,Value=OfficeAccess},{Key=ManagedBy,Value=SecurityTeam}]'
 ```
 
 Create a prefix list for partner networks:
@@ -88,10 +88,10 @@ aws ec2 create-managed-prefix-list \
     {"Cidr": "100.20.31.0/24", "Description": "Partner A - Monitoring"},
     {"Cidr": "172.20.0.0/16", "Description": "Partner B - Full range"}
   ]' \
-  --tags Key=Purpose,Value=PartnerAccess
+  --tag-specifications 'ResourceType=prefix-list,Tags=[{Key=Purpose,Value=PartnerAccess}]'
 ```
 
-The `--max-entries` parameter is important. It determines the maximum number of entries the prefix list can hold. Each entry in a prefix list counts as one rule against the security group limit. Set it high enough for future growth but don't go overboard.
+The `--max-entries` parameter is important. It determines the maximum number of entries the prefix list can hold. For customer-managed prefix lists, the maximum number of entries counts against the security group limit when the prefix list is referenced. Set it high enough for future growth but don't go overboard.
 
 ## Using Prefix Lists in Security Groups
 
@@ -295,9 +295,9 @@ Outputs:
 
 ## Security Group Rule Limits
 
-Each prefix list entry counts against the security group rules-per-rule limit. A prefix list with 10 entries used in one ingress rule counts as 10 rules. Keep this in mind when sizing your prefix lists and planning security group capacity.
+For customer-managed prefix lists, the maximum number of entries counts against the security group rules-per-rule limit. A prefix list with `MaxEntries` set to 10 used in one ingress rule counts as 10 rules, even if it currently has fewer entries. AWS-managed prefix lists use AWS-defined weights instead. Keep this in mind when sizing your prefix lists and planning security group capacity.
 
-The default limit is 60 inbound and 60 outbound rules per security group. If you reference a prefix list with 20 entries, that's 20 rules used just for that one logical rule. You can request a limit increase if needed, but it's better to keep prefix lists focused and appropriately sized.
+The default limit is 60 inbound and 60 outbound rules per security group. If you reference a customer-managed prefix list with `MaxEntries` set to 20, that's 20 rules used just for that one logical rule. You can request a limit increase if needed, but it's better to keep prefix lists focused and appropriately sized.
 
 ## Automation with Lambda
 
