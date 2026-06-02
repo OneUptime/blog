@@ -8,7 +8,7 @@ Description: Configure S3 lifecycle rules to automatically move objects between 
 
 ---
 
-S3 offers seven storage classes, ranging from Standard (fast, expensive) to Glacier Deep Archive (slow retrieval, very cheap). Most objects follow a predictable pattern: they're accessed frequently when new, then less and less over time. Lifecycle rules let you automatically move objects between storage classes based on age, so you're always paying the right price for the right access pattern.
+S3 offers several storage classes, ranging from Standard (fast, expensive) to Glacier Deep Archive (slow retrieval, very cheap). Most objects follow a predictable pattern: they're accessed frequently when new, then less and less over time. Lifecycle rules let you automatically move objects between storage classes based on age, so you're always paying the right price for the right access pattern.
 
 Without lifecycle rules, you're either overpaying (keeping everything in Standard) or manually managing transitions (which nobody actually keeps up with). Let's set up lifecycle rules that handle this automatically.
 
@@ -92,11 +92,11 @@ aws s3api put-bucket-lifecycle-configuration \
                 },
                 "Transitions": [
                     {
-                        "Days": 7,
+                        "Days": 30,
                         "StorageClass": "STANDARD_IA"
                     },
                     {
-                        "Days": 30,
+                        "Days": 60,
                         "StorageClass": "GLACIER"
                     }
                 ]
@@ -113,7 +113,7 @@ aws s3api put-bucket-lifecycle-configuration \
                         "StorageClass": "GLACIER_IR"
                     },
                     {
-                        "Days": 90,
+                        "Days": 104,
                         "StorageClass": "DEEP_ARCHIVE"
                     }
                 ]
@@ -215,15 +215,15 @@ aws s3api put-bucket-lifecycle-configuration \
                 "Filter": {},
                 "NoncurrentVersionTransitions": [
                     {
-                        "NoncurrentDays": 7,
+                        "NoncurrentDays": 30,
                         "StorageClass": "STANDARD_IA"
                     },
                     {
-                        "NoncurrentDays": 30,
+                        "NoncurrentDays": 60,
                         "StorageClass": "GLACIER_IR"
                     },
                     {
-                        "NoncurrentDays": 90,
+                        "NoncurrentDays": 150,
                         "StorageClass": "DEEP_ARCHIVE"
                     }
                 ],
@@ -236,7 +236,7 @@ aws s3api put-bucket-lifecycle-configuration \
     }'
 ```
 
-This keeps the 3 most recent non-current versions, transitions older ones through cheaper storage classes, and eventually deletes them after a year. For more on expiring old objects, see our guide on [automatically deleting old objects](https://oneuptime.com/blog/post/2026-02-12-automatically-delete-old-objects-s3-lifecycle/view).
+This transitions non-current versions through cheaper storage classes, and eventually deletes versions that have been non-current for more than a year once more than 3 newer non-current versions exist. For more on expiring old objects, see our guide on [automatically deleting old objects](https://oneuptime.com/blog/post/2026-02-12-automatically-delete-old-objects-s3-lifecycle/view).
 
 ## Viewing Current Lifecycle Configuration
 
@@ -258,7 +258,7 @@ aws s3api get-bucket-lifecycle-configuration \
 
 There are some rules about which transitions are allowed:
 
-1. **Minimum object size for IA**: Objects smaller than 128 KB are charged as 128 KB in IA classes. Don't transition tiny files to IA.
+1. **Minimum object size**: Objects smaller than 128 KB don't transition by default, and IA and Glacier Instant Retrieval classes bill smaller objects as 128 KB. Don't transition tiny files.
 2. **Minimum 30 days in Standard before IA**: You can transition to Standard-IA after a minimum of 30 days from creation.
 3. **Minimum 30 days between IA and Glacier**: After transitioning to Standard-IA, you need at least 30 more days before moving to Glacier.
 4. **One-way transitions**: You can only move down the storage class hierarchy, not back up.
@@ -275,7 +275,7 @@ aws s3api put-bucket-lifecycle-configuration \
                 "ID": "transition-large-objects-only",
                 "Status": "Enabled",
                 "Filter": {
-                    "ObjectSizeGreaterThan": 131072
+                    "ObjectSizeGreaterThan": 131071
                 },
                 "Transitions": [
                     {
@@ -288,7 +288,7 @@ aws s3api put-bucket-lifecycle-configuration \
     }'
 ```
 
-The `ObjectSizeGreaterThan` filter (128 KB = 131,072 bytes) ensures you only transition objects large enough to benefit from the lower storage rate.
+The `ObjectSizeGreaterThan` filter (128 KB = 131,072 bytes) ensures you only transition objects at least 128 KB, which are large enough to benefit from the lower storage rate.
 
 ## Intelligent-Tiering as an Alternative
 
@@ -305,7 +305,7 @@ aws s3api put-bucket-lifecycle-configuration \
                 "ID": "use-intelligent-tiering",
                 "Status": "Enabled",
                 "Filter": {
-                    "ObjectSizeGreaterThan": 131072
+                    "ObjectSizeGreaterThan": 131071
                 },
                 "Transitions": [
                     {
@@ -318,7 +318,7 @@ aws s3api put-bucket-lifecycle-configuration \
     }'
 ```
 
-Intelligent-Tiering charges a small monitoring fee per object ($0.0025 per 1,000 objects) but automatically moves objects between Frequent Access, Infrequent Access, and Archive tiers. It's a great hands-off option when you can't predict access patterns.
+Intelligent-Tiering charges a small monitoring fee per object ($0.0025 per 1,000 objects) but automatically moves eligible objects between Frequent Access, Infrequent Access, and Archive Instant Access tiers. Optional Archive Access and Deep Archive Access tiers require separate configuration. It's a great hands-off option when you can't predict access patterns.
 
 ## Estimating Savings
 
