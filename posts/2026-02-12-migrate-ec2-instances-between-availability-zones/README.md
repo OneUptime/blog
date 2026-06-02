@@ -62,6 +62,7 @@ echo "New instance: $NEW_INSTANCE"
 aws ec2 wait instance-running --instance-ids $NEW_INSTANCE
 
 # Step 6: Verify the new instance is healthy
+aws ec2 wait instance-status-ok --instance-ids $NEW_INSTANCE
 aws ec2 describe-instance-status \
   --instance-ids $NEW_INSTANCE \
   --query 'InstanceStatuses[0].{
@@ -142,9 +143,9 @@ SG_IDS=$(aws ec2 describe-instances \
   --instance-ids $SOURCE_INSTANCE \
   --query 'Reservations[0].Instances[0].SecurityGroups[*].GroupId' --output text)
 
-IAM_PROFILE=$(aws ec2 describe-instances \
+IAM_PROFILE_ARN=$(aws ec2 describe-instances \
   --instance-ids $SOURCE_INSTANCE \
-  --query 'Reservations[0].Instances[0].IamInstanceProfile.Name' --output text 2>/dev/null || echo "")
+  --query 'Reservations[0].Instances[0].IamInstanceProfile.Arn' --output text 2>/dev/null || echo "")
 
 echo "Type: $INSTANCE_TYPE, Key: $KEY_NAME, SGs: $SG_IDS"
 
@@ -167,14 +168,18 @@ aws ec2 wait image-available --image-ids $AMI_ID
 echo "AMI ready"
 
 # Build the run-instances command
-CMD="aws ec2 run-instances --image-id $AMI_ID --instance-type $INSTANCE_TYPE --subnet-id $TARGET_SUBNET --security-group-ids $SG_IDS"
+CMD=(aws ec2 run-instances
+  --image-id "$AMI_ID"
+  --instance-type "$INSTANCE_TYPE"
+  --subnet-id "$TARGET_SUBNET"
+  --security-group-ids $SG_IDS)
 
 if [ "$KEY_NAME" != "None" ] && [ -n "$KEY_NAME" ]; then
-  CMD="$CMD --key-name $KEY_NAME"
+  CMD+=(--key-name "$KEY_NAME")
 fi
 
-if [ "$IAM_PROFILE" != "None" ] && [ -n "$IAM_PROFILE" ]; then
-  CMD="$CMD --iam-instance-profile Name=$IAM_PROFILE"
+if [ "$IAM_PROFILE_ARN" != "None" ] && [ -n "$IAM_PROFILE_ARN" ]; then
+  CMD+=(--iam-instance-profile "Arn=$IAM_PROFILE_ARN")
 fi
 
 # Copy tags from source instance
@@ -182,16 +187,16 @@ TAGS=$(aws ec2 describe-instances \
   --instance-ids $SOURCE_INSTANCE \
   --query 'Reservations[0].Instances[0].Tags' --output json)
 
-if [ "$TAGS" != "null" ] && [ "$TAGS" != "[]" ]; then
-  CMD="$CMD --tag-specifications 'ResourceType=instance,Tags=$TAGS'"
-fi
-
 # Launch the new instance
 echo "Launching new instance in target AZ..."
-NEW_INSTANCE=$(eval $CMD --query 'Instances[0].InstanceId' --output text)
+NEW_INSTANCE=$("${CMD[@]}" --query 'Instances[0].InstanceId' --output text)
 
 echo "Waiting for $NEW_INSTANCE to start..."
 aws ec2 wait instance-running --instance-ids $NEW_INSTANCE
+
+if [ "$TAGS" != "null" ] && [ "$TAGS" != "[]" ]; then
+  aws ec2 create-tags --resources $NEW_INSTANCE --tags "$TAGS"
+fi
 
 echo "=== Migration complete ==="
 echo "Source instance: $SOURCE_INSTANCE (stopped)"
