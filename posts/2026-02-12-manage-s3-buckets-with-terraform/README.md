@@ -49,7 +49,7 @@ resource "aws_s3_bucket" "my_bucket" {
 }
 ```
 
-One thing to note - S3 bucket names are globally unique across all AWS accounts. If someone else already has the name you want, Terraform will fail. A good pattern is to include your account ID or a random suffix.
+One thing to note - S3 bucket names are globally unique across all AWS accounts in the same AWS partition. If someone else already has the name you want, Terraform will fail. A good pattern is to include your account ID or a random suffix.
 
 ## Enabling Versioning
 
@@ -70,7 +70,7 @@ When versioning is enabled, every overwrite or delete creates a new version inst
 
 ## Server-Side Encryption
 
-You should encrypt every bucket. There's really no reason not to. Here's how to enable default encryption with AWS-managed keys:
+You should encrypt every bucket. There's really no reason not to. Here's how to enable default encryption with Amazon S3 managed keys:
 
 ```hcl
 # Enable server-side encryption with AES-256 by default
@@ -79,14 +79,13 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "my_bucket_encrypt
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "aws:kms"
+      sse_algorithm = "AES256"
     }
-    bucket_key_enabled = true
   }
 }
 ```
 
-Using `aws:kms` with `bucket_key_enabled` reduces the cost of KMS API calls. If you want to use a custom KMS key instead of the default one:
+If you want to use a KMS key instead, `aws:kms` with `bucket_key_enabled` reduces the cost of KMS API calls. Here's how to use a custom KMS key:
 
 ```hcl
 # Use a custom KMS key for bucket encryption
@@ -207,6 +206,11 @@ For disaster recovery or compliance requirements, you might need to replicate ob
 
 ```hcl
 # Set up cross-region replication for disaster recovery
+provider "aws" {
+  alias  = "west"
+  region = "us-west-2"
+}
+
 resource "aws_s3_bucket" "replica" {
   provider = aws.west
   bucket   = "my-company-app-data-replica-2026"
@@ -221,8 +225,70 @@ resource "aws_s3_bucket_versioning" "replica_versioning" {
   }
 }
 
+resource "aws_iam_role" "replication_role" {
+  name = "s3-replication-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "s3.amazonaws.com"
+        }
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "replication_policy" {
+  name = "s3-replication-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetReplicationConfiguration",
+          "s3:ListBucket"
+        ]
+        Resource = aws_s3_bucket.my_bucket.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObjectVersionForReplication",
+          "s3:GetObjectVersionAcl",
+          "s3:GetObjectVersionTagging"
+        ]
+        Resource = "${aws_s3_bucket.my_bucket.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ReplicateObject",
+          "s3:ReplicateDelete",
+          "s3:ReplicateTags"
+        ]
+        Resource = "${aws_s3_bucket.replica.arn}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "replication_policy_attachment" {
+  role       = aws_iam_role.replication_role.name
+  policy_arn = aws_iam_policy.replication_policy.arn
+}
+
 resource "aws_s3_bucket_replication_configuration" "replication" {
-  depends_on = [aws_s3_bucket_versioning.my_bucket_versioning]
+  depends_on = [
+    aws_s3_bucket_versioning.my_bucket_versioning,
+    aws_s3_bucket_versioning.replica_versioning,
+    aws_iam_role_policy_attachment.replication_policy_attachment
+  ]
 
   role   = aws_iam_role.replication_role.arn
   bucket = aws_s3_bucket.my_bucket.id
@@ -327,11 +393,11 @@ If you have buckets that were created manually, you can import them into Terrafo
 terraform import aws_s3_bucket.my_bucket my-existing-bucket-name
 ```
 
-After importing, run `terraform plan` to see what differences exist between your code and the actual bucket configuration. Adjust your Terraform code until the plan shows no changes.
+After importing, run `terraform plan` to see what differences exist between your code and the actual bucket configuration. With the AWS provider version 4 and newer, separate bucket configuration resources such as versioning, encryption, lifecycle rules, and public access blocks need their own imports if you want Terraform to manage existing settings without recreating them. Adjust your Terraform code until the plan shows no changes.
 
 ## State Management Tips
 
-When working with S3 in Terraform, keep these things in mind. Always use remote state storage (ironically, often in S3 itself). Enable state locking with DynamoDB to prevent concurrent modifications. Use separate state files for different environments.
+When working with S3 in Terraform, keep these things in mind. Always use remote state storage (ironically, often in S3 itself). Enable S3 backend state locking with `use_lockfile = true` to prevent concurrent modifications. DynamoDB-based locking still exists for older configurations, but Terraform marks it as deprecated. Use separate state files for different environments.
 
 For monitoring your Terraform-managed infrastructure, consider setting up automated checks. You can learn more about monitoring cloud resources in our [infrastructure monitoring guide](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
