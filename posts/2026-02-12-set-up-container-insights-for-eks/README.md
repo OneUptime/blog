@@ -33,24 +33,22 @@ You'll need:
 
 The easiest way to enable Container Insights is through the EKS managed add-on. This approach keeps the agent updated automatically.
 
-First, create the service account with the necessary permissions:
+First, create the IAM role that the add-on's CloudWatch agent service account will use:
 
 ```bash
-# Create IRSA for the CloudWatch agent
-
-eksctl create iamserviceaccount \
+# Create the OIDC provider if your cluster doesn't already have one
+eksctl utils associate-iam-oidc-provider \
   --cluster my-cluster \
-  --namespace amazon-cloudwatch \
-  --name cloudwatch-agent \
-  --attach-policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy \
   --approve
 
-# Create IRSA for Fluent Bit
+# Create the IAM role for the CloudWatch agent service account
 eksctl create iamserviceaccount \
+  --name cloudwatch-agent \
   --cluster my-cluster \
   --namespace amazon-cloudwatch \
-  --name fluent-bit \
+  --role-name CloudWatchAgentServerRole \
   --attach-policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy \
+  --role-only \
   --approve
 ```
 
@@ -61,7 +59,7 @@ Install the Amazon CloudWatch Observability add-on:
 aws eks create-addon \
   --cluster-name my-cluster \
   --addon-name amazon-cloudwatch-observability \
-  --addon-version v1.5.0-eksbuild.1
+  --service-account-role-arn arn:aws:iam::123456789012:role/CloudWatchAgentServerRole
 ```
 
 Check the add-on status:
@@ -77,131 +75,35 @@ aws eks describe-addon --cluster-name my-cluster \
 
 If you prefer more control over the configuration, install manually.
 
-Create the namespace:
+Make sure the CloudWatch agent has permission to publish metrics and logs. One option is to attach the managed policy to your worker node IAM role:
 
 ```bash
-# Create the CloudWatch namespace
-kubectl create namespace amazon-cloudwatch
+# Allow CloudWatch agent pods to publish metrics and logs
+aws iam attach-role-policy \
+  --role-name my-worker-node-role \
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
 ```
 
-Deploy the CloudWatch Agent as a DaemonSet:
-
-```yaml
-# cloudwatch-agent-config.yaml - Agent configuration
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cwagentconfig
-  namespace: amazon-cloudwatch
-data:
-  cwagentconfig.json: |
-    {
-      "logs": {
-        "metrics_collected": {
-          "kubernetes": {
-            "cluster_name": "my-cluster",
-            "metrics_collection_interval": 60
-          }
-        },
-        "force_flush_interval": 5
-      }
-    }
-```
-
-```yaml
-# cloudwatch-agent-daemonset.yaml - CloudWatch Agent DaemonSet
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: cloudwatch-agent
-  namespace: amazon-cloudwatch
-spec:
-  selector:
-    matchLabels:
-      name: cloudwatch-agent
-  template:
-    metadata:
-      labels:
-        name: cloudwatch-agent
-    spec:
-      serviceAccountName: cloudwatch-agent
-      containers:
-        - name: cloudwatch-agent
-          image: public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300032.2b361
-          resources:
-            limits:
-              cpu: 200m
-              memory: 200Mi
-            requests:
-              cpu: 200m
-              memory: 200Mi
-          env:
-            - name: HOST_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
-            - name: HOST_NAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: spec.nodeName
-            - name: K8S_NAMESPACE
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.namespace
-          volumeMounts:
-            - name: cwagentconfig
-              mountPath: /etc/cwagentconfig
-            - name: rootfs
-              mountPath: /rootfs
-              readOnly: true
-            - name: dockersock
-              mountPath: /var/run/docker.sock
-              readOnly: true
-            - name: varlibdocker
-              mountPath: /var/lib/docker
-              readOnly: true
-            - name: containerdsock
-              mountPath: /run/containerd/containerd.sock
-              readOnly: true
-            - name: sys
-              mountPath: /sys
-              readOnly: true
-            - name: devdisk
-              mountPath: /dev/disk
-              readOnly: true
-      volumes:
-        - name: cwagentconfig
-          configMap:
-            name: cwagentconfig
-        - name: rootfs
-          hostPath:
-            path: /
-        - name: dockersock
-          hostPath:
-            path: /var/run/docker.sock
-        - name: varlibdocker
-          hostPath:
-            path: /var/lib/docker
-        - name: containerdsock
-          hostPath:
-            path: /run/containerd/containerd.sock
-        - name: sys
-          hostPath:
-            path: /sys
-        - name: devdisk
-          hostPath:
-            path: /dev/disk/
-      tolerations:
-        - operator: Exists
-```
+Install the official CloudWatch Observability Helm chart:
 
 ```bash
-# Deploy the CloudWatch agent
-kubectl apply -f cloudwatch-agent-config.yaml
-kubectl apply -f cloudwatch-agent-daemonset.yaml
+# Add the AWS observability Helm repository
+helm repo add aws-observability https://aws-observability.github.io/helm-charts
+helm repo update aws-observability
 
-# Verify pods are running on each node
-kubectl get pods -n amazon-cloudwatch -l name=cloudwatch-agent
+# Install the CloudWatch Observability chart
+helm install --wait --create-namespace \
+  --namespace amazon-cloudwatch \
+  amazon-cloudwatch-observability \
+  aws-observability/amazon-cloudwatch-observability \
+  --set clusterName=my-cluster \
+  --set region=us-west-2
+```
+
+Check that the CloudWatch agent and Fluent Bit pods are running:
+
+```bash
+kubectl get pods -n amazon-cloudwatch
 ```
 
 ## Viewing Container Insights Data
@@ -236,8 +138,8 @@ aws cloudwatch put-metric-alarm \
 ```bash
 # Create an alarm for pod restart counts
 aws cloudwatch put-metric-alarm \
-  --alarm-name "EKS-PodRestarts-my-cluster" \
-  --alarm-description "Alert when pods restart frequently" \
+  --alarm-name "EKS-PodRestarts-my-cluster-my-pod" \
+  --alarm-description "Alert when my-pod restarts frequently" \
   --metric-name pod_number_of_container_restarts \
   --namespace ContainerInsights \
   --statistic Sum \
@@ -245,7 +147,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 5 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --dimensions Name=ClusterName,Value=my-cluster \
+  --dimensions Name=ClusterName,Value=my-cluster Name=Namespace,Value=default Name=PodName,Value=my-pod \
   --alarm-actions arn:aws:sns:us-west-2:123456789012:ops-alerts
 ```
 
@@ -255,8 +157,8 @@ Container Insights stores performance data as structured log events. You can que
 
 ```text
 # Find pods using the most CPU
-STATS avg(pod_cpu_utilization) as avg_cpu by PodName
-| filter Type = "Pod"
+filter Type = "Pod"
+| stats avg(pod_cpu_utilization) as avg_cpu by PodName
 | sort avg_cpu desc
 | limit 20
 ```
@@ -271,7 +173,7 @@ fields NodeName, node_memory_utilization
 
 ## Cost Considerations
 
-Container Insights isn't free. You pay for CloudWatch metrics (custom metrics pricing) and CloudWatch Logs (ingestion and storage). In a large cluster, this can add up quickly. Here are ways to manage costs:
+Container Insights isn't free. With Container Insights with enhanced observability for EKS, you pay for Container Insights observations and CloudWatch Logs usage. Older Container Insights setups are charged as custom metrics and logs. In a large cluster, this can add up quickly. Here are ways to manage costs:
 
 - Reduce the `metrics_collection_interval` to collect less frequently
 - Set log retention policies to avoid storing data indefinitely
