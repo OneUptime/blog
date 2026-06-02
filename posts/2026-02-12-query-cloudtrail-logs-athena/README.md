@@ -14,7 +14,7 @@ Athena is a serverless query engine that lets you run SQL against data in S3. Yo
 
 ## Setting Up the Athena Table
 
-The fastest way to create your CloudTrail table is through the CloudTrail console itself. Go to CloudTrail, click "Event history," then click "Create Athena table." It generates the DDL for you.
+The fastest way to create a non-partitioned CloudTrail table for a regular account trail is through the CloudTrail console itself. Go to CloudTrail, click "Event history," then click "Create Athena table." It generates the DDL for you. For organization trail logs, create the table manually so you can specify the organization trail storage location.
 
 But if you want to do it manually (or understand what's happening), here's the full table definition.
 
@@ -33,6 +33,9 @@ CREATE EXTERNAL TABLE security_logs.cloudtrail_logs (
         invokedBy: STRING,
         accessKeyId: STRING,
         userName: STRING,
+        onBehalfOf: STRUCT<
+            userId: STRING,
+            identityStoreArn: STRING>,
         sessionContext: STRUCT<
             attributes: STRUCT<
                 mfaAuthenticated: STRING,
@@ -44,7 +47,9 @@ CREATE EXTERNAL TABLE security_logs.cloudtrail_logs (
                 accountId: STRING,
                 userName: STRING>,
             ec2RoleDelivery: STRING,
-            webIdFederationData: MAP<STRING,STRING>>>,
+            webIdFederationData: STRUCT<
+                federatedProvider: STRING,
+                attributes: MAP<STRING,STRING>>>>,
     eventTime STRING,
     eventSource STRING,
     eventName STRING,
@@ -69,6 +74,15 @@ CREATE EXTERNAL TABLE security_logs.cloudtrail_logs (
     serviceEventDetails STRING,
     sharedEventID STRING,
     vpcEndpointId STRING,
+    vpcEndpointAccountId STRING,
+    eventCategory STRING,
+    addendum STRUCT<
+        reason: STRING,
+        updatedFields: STRING,
+        originalRequestId: STRING,
+        originalEventId: STRING>,
+    sessionCredentialFromConsole STRING,
+    edgeDeviceDetails STRING,
     tlsDetails STRUCT<
         tlsVersion: STRING,
         cipherSuite: STRING,
@@ -159,7 +173,7 @@ ALTER TABLE security_logs.cloudtrail_partitioned SET TBLPROPERTIES (
   'projection.day.type' = 'integer',
   'projection.day.range' = '01,31',
   'projection.day.digits' = '2',
-  'storage.location.template' = 's3://my-cloudtrail-bucket/AWSLogs/${account}/CloudTrail/${region}/${year}/${month}/${day}'
+  'storage.location.template' = 's3://my-cloudtrail-bucket/AWSLogs/${account}/CloudTrail/${region}/${year}/${month}/${day}/'
 );
 ```
 
@@ -272,10 +286,10 @@ ORDER BY eventTime DESC;
 
 Athena charges $5 per TB of data scanned. Here's how to keep costs down:
 
-1. **Use partitions** - This is the biggest win. Querying one day instead of a year can reduce costs by 99%.
+1. **Use partitions** - This is the biggest win. Querying one day instead of a year can reduce costs by 99% when your query filters on the partition columns.
 2. **Convert to Parquet** - Use a CTAS query to convert JSON logs to Parquet format, which is columnar and compresses better.
-3. **Use column projection** - Only SELECT the columns you need instead of using `SELECT *`.
-4. **Set date filters early** - Put your date conditions in the WHERE clause so Athena can skip irrelevant partitions.
+3. **Use column projection** - Only SELECT the columns you need instead of using `SELECT *`, especially when querying a columnar format like Parquet.
+4. **Set date filters early** - Put your date conditions on the partition columns in the WHERE clause so Athena can skip irrelevant partitions.
 
 Here's how to create a Parquet version of your logs for cheaper queries.
 
