@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, RDS, SQL Server, Database, RDS Custom, Window
+Tags: AWS, RDS, SQL Server, Database, RDS Custom, Windows
 
 Description: Deploy SQL Server on RDS Custom to get managed database automation with OS-level access for custom configurations and third-party tools.
 
@@ -43,7 +43,7 @@ RDS Custom for SQL Server needs an instance profile to manage the underlying Win
 # Create the IAM role for RDS Custom SQL Server
 
 aws iam create-role \
-  --role-name AmazonRDSCustomSQLServerRole \
+  --role-name AWSRDSCustomSQLServerInstanceRole \
   --assume-role-policy-document '{
     "Version": "2012-10-17",
     "Statement": [{
@@ -55,16 +55,16 @@ aws iam create-role \
 
 # Attach the managed policy
 aws iam attach-role-policy \
-  --role-name AmazonRDSCustomSQLServerRole \
+  --role-name AWSRDSCustomSQLServerInstanceRole \
   --policy-arn arn:aws:iam::aws:policy/AmazonRDSCustomInstanceProfileRolePolicy
 
 # Create and configure the instance profile
 aws iam create-instance-profile \
-  --instance-profile-name AmazonRDSCustomSQLServerProfile
+  --instance-profile-name AWSRDSCustomSQLServerInstanceProfile
 
 aws iam add-role-to-instance-profile \
-  --instance-profile-name AmazonRDSCustomSQLServerProfile \
-  --role-name AmazonRDSCustomSQLServerRole
+  --instance-profile-name AWSRDSCustomSQLServerInstanceProfile \
+  --role-name AWSRDSCustomSQLServerInstanceRole
 ```
 
 ### Step 2: Set Up Networking
@@ -117,9 +117,8 @@ aws rds create-db-instance \
   --db-subnet-group-name rds-custom-sqlserver-subnet \
   --vpc-security-group-ids sg-0abc123 \
   --kms-key-id arn:aws:kms:us-east-1:123456789012:key/abcd1234 \
-  --custom-iam-instance-profile AmazonRDSCustomSQLServerProfile \
-  --backup-retention-period 7 \
-  --license-model license-included
+  --custom-iam-instance-profile AWSRDSCustomSQLServerInstanceProfile \
+  --backup-retention-period 7
 ```
 
 Available SQL Server editions:
@@ -172,7 +171,7 @@ Always pause automation before making changes to the OS or SQL Server configurat
 # Pause RDS Custom automation for 120 minutes
 aws rds modify-db-instance \
   --db-instance-identifier my-sqlserver-custom \
-  --automation-mode full \
+  --automation-mode all-paused \
   --resume-full-automation-mode-minutes 120
 ```
 
@@ -233,7 +232,7 @@ Linked servers to on-premises databases are a common use case for RDS Custom.
 EXEC sp_addlinkedserver
   @server = 'ON_PREM_SERVER',
   @srvproduct = '',
-  @provider = 'SQLNCLI',
+  @provider = 'MSOLEDBSQL',
   @datasrc = '10.0.1.50,1433';
 GO
 
@@ -266,7 +265,7 @@ GO
 
 ### Installing Third-Party Monitoring Agents
 
-Via RDP, you can install any Windows software. For example, installing a custom monitoring agent:
+Via RDP, you can install compatible Windows software that stays within the RDS Custom support perimeter. For example, installing a custom monitoring agent:
 
 ```powershell
 # PowerShell - Install a monitoring agent on the Windows host
@@ -287,21 +286,19 @@ After completing your customizations, resume RDS Custom automation.
 # Resume full automation
 aws rds modify-db-instance \
   --db-instance-identifier my-sqlserver-custom \
-  --automation-mode all-paused \
-  --resume-full-automation-mode-minutes 0
+  --automation-mode full
 ```
 
 ## Monitoring
 
-RDS Custom supports CloudWatch metrics, Enhanced Monitoring, and Performance Insights.
+RDS Custom for SQL Server supports CloudWatch metrics and Enhanced Monitoring. Performance Insights and Database Insights are not supported for RDS Custom for SQL Server.
 
 ```bash
-# Enable Performance Insights for query-level monitoring
+# Enable Enhanced Monitoring
 aws rds modify-db-instance \
   --db-instance-identifier my-sqlserver-custom \
-  --enable-performance-insights \
-  --performance-insights-retention-period 731 \
-  --performance-insights-kms-key-id arn:aws:kms:us-east-1:123456789012:key/abcd1234
+  --monitoring-interval 60 \
+  --monitoring-role-arn arn:aws:iam::123456789012:role/rds-monitoring-role
 ```
 
 ## Support Perimeter
@@ -315,6 +312,6 @@ Stay within the support perimeter to keep RDS Custom automation working:
 
 ## Summary
 
-RDS Custom for SQL Server gives you the best of both worlds - managed database infrastructure with the flexibility to customize the OS and SQL Server to your specific needs. It is particularly valuable for enterprise workloads that depend on SQL Server Agent, linked servers, or custom CLR assemblies that standard RDS simply cannot support.
+RDS Custom for SQL Server gives you the best of both worlds - managed database infrastructure with the flexibility to customize the OS and SQL Server to your specific needs. It is particularly valuable for enterprise workloads that depend on OS-level SQL Server Agent workflows, linked-server providers, or CLR scenarios that go beyond standard RDS support.
 
 For more on database migrations and management, see our guides on [RDS Custom for Oracle](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-custom-for-oracle-workloads/view) and [DMS for SQL Server to RDS migration](https://oneuptime.com/blog/post/2026-02-12-set-up-dms-for-sql-server-to-rds-migration/view).
