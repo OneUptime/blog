@@ -16,7 +16,7 @@ Make sure you have these ready:
 
 - A registered domain with Route 53 (or nameservers pointed to Route 53)
 - A Route 53 hosted zone for your domain
-- A CloudFront distribution already created (or we'll create one)
+- A CloudFront distribution already created
 - AWS CLI configured with appropriate permissions
 
 ## The Architecture
@@ -52,7 +52,7 @@ Grab the certificate ARN from the output. Then get the DNS validation records:
 ```bash
 # Get the CNAME records needed for DNS validation
 aws acm describe-certificate \
-  --certificate-arn arn:aws:acm:us-east-1:123456789:certificate/abc-123 \
+  --certificate-arn arn:aws:acm:us-east-1:123456789012:certificate/abc-123 \
   --region us-east-1 \
   --query 'Certificate.DomainValidationOptions[].ResourceRecord'
 ```
@@ -81,7 +81,7 @@ Validation usually takes a few minutes. You can check the status:
 ```bash
 # Wait for certificate validation to complete
 aws acm wait certificate-validated \
-  --certificate-arn arn:aws:acm:us-east-1:123456789:certificate/abc-123 \
+  --certificate-arn arn:aws:acm:us-east-1:123456789012:certificate/abc-123 \
   --region us-east-1
 ```
 
@@ -95,7 +95,7 @@ aws cloudfront get-distribution-config \
   --id E1234567890 > dist-config.json
 ```
 
-Edit the config to add your aliases and certificate. The relevant sections look like this:
+Copy the `ETag` value, then edit the `DistributionConfig` object to add your aliases and certificate. Save only the updated `DistributionConfig` object as `updated-config.json`; don't include the top-level `ETag` field. The relevant sections look like this:
 
 ```json
 {
@@ -104,7 +104,8 @@ Edit the config to add your aliases and certificate. The relevant sections look 
     "Items": ["example.com", "www.example.com"]
   },
   "ViewerCertificate": {
-    "ACMCertificateArn": "arn:aws:acm:us-east-1:123456789:certificate/abc-123",
+    "CloudFrontDefaultCertificate": false,
+    "ACMCertificateArn": "arn:aws:acm:us-east-1:123456789012:certificate/abc-123",
     "SSLSupportMethod": "sni-only",
     "MinimumProtocolVersion": "TLSv1.2_2021"
   }
@@ -121,7 +122,7 @@ aws cloudfront update-distribution \
   --if-match E2QWRUHEXAMPLE
 ```
 
-The `--if-match` value is the ETag from the get-distribution-config response. This prevents concurrent modification issues.
+The `--if-match` value is the ETag from the get-distribution-config response. This prevents concurrent modification issues. CloudFront replaces the distribution config with what you send, so make sure `updated-config.json` includes the full updated `DistributionConfig`, not just the sections shown above.
 
 ## Step 3: Create Route 53 Alias Records
 
