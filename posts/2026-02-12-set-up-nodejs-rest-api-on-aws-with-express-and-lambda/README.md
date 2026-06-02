@@ -20,7 +20,7 @@ Start by creating a new Node.js project and installing the dependencies:
 mkdir express-lambda-api
 cd express-lambda-api
 npm init -y
-npm install express serverless-http cors helmet
+npm install express serverless-http cors helmet @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 npm install -D @types/express typescript serverless serverless-offline
 ```
 
@@ -208,14 +208,15 @@ service: express-lambda-api
 
 provider:
   name: aws
-  runtime: nodejs20.x
+  runtime: nodejs22.x
   region: us-east-1
   memorySize: 256
-  timeout: 30
+  timeout: 29
   stage: ${opt:stage, 'dev'}
   environment:
     NODE_ENV: production
     STAGE: ${self:provider.stage}
+    USERS_TABLE: !Ref UsersTable
   iam:
     role:
       statements:
@@ -274,10 +275,10 @@ const {
   DeleteCommand,
 } = require('@aws-sdk/lib-dynamodb');
 
-const client = new DynamoDBClient({ region: 'us-east-1' });
+const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
 
-const TABLE_NAME = process.env.USERS_TABLE || 'express-lambda-api-users-dev';
+const TABLE_NAME = process.env.USERS_TABLE;
 
 async function getUser(id) {
   const result = await docClient.send(new GetCommand({
@@ -303,6 +304,24 @@ async function createUser(user) {
   return user;
 }
 
+async function updateUser(id, updates) {
+  const result = await docClient.send(new UpdateCommand({
+    TableName: TABLE_NAME,
+    Key: { id },
+    UpdateExpression: 'SET #name = :name, email = :email',
+    ExpressionAttributeNames: {
+      '#name': 'name',
+    },
+    ExpressionAttributeValues: {
+      ':name': updates.name,
+      ':email': updates.email,
+    },
+    ConditionExpression: 'attribute_exists(id)',
+    ReturnValues: 'ALL_NEW',
+  }));
+  return result.Attributes;
+}
+
 async function deleteUser(id) {
   await docClient.send(new DeleteCommand({
     TableName: TABLE_NAME,
@@ -310,7 +329,7 @@ async function deleteUser(id) {
   }));
 }
 
-module.exports = { getUser, listUsers, createUser, deleteUser };
+module.exports = { getUser, listUsers, createUser, updateUser, deleteUser };
 ```
 
 ## Local Development
@@ -345,6 +364,16 @@ Protect your API with a Lambda authorizer or API Gateway's built-in JWT authoriz
 
 ```yaml
 # serverless.yml addition
+provider:
+  httpApi:
+    authorizers:
+      jwtAuthorizer:
+        type: jwt
+        identitySource: $request.header.Authorization
+        issuerUrl: https://cognito-idp.us-east-1.amazonaws.com/us-east-1_example
+        audience:
+          - your-app-client-id
+
 functions:
   api:
     handler: src/handler.handler
@@ -354,8 +383,6 @@ functions:
           method: ANY
           authorizer:
             name: jwtAuthorizer
-            type: jwt
-            id: !Ref HttpApiAuthorizerJwt
 
   # Public routes without auth
   health:
@@ -368,18 +395,20 @@ functions:
 
 ## Monitoring and Cold Starts
 
-Lambda cold starts can add latency to your API responses. For a Node.js Express app, cold starts are typically 200-500ms. You can reduce this by:
+Lambda cold starts can add latency to your API responses. For a Node.js Express app, cold start duration varies based on package size, initialization work, memory, and VPC configuration. You can reduce this by:
 
 - Keeping your deployment package small
 - Using provisioned concurrency for critical endpoints
 - Minimizing top-level imports
 
-```bash
-# Enable provisioned concurrency for production
-aws lambda put-provisioned-concurrency-config \
-  --function-name express-lambda-api-production-api \
-  --qualifier production \
-  --provisioned-concurrent-executions 5
+```yaml
+# Enable provisioned concurrency for the API function
+functions:
+  api:
+    handler: src/handler.handler
+    provisionedConcurrency:
+      alias: live
+      executions: 5
 ```
 
 For monitoring your API's performance and uptime, check out our guide on [setting up monitoring for AWS services](https://oneuptime.com/blog/post/2026-02-13-aws-monitoring-tools-comparison/view).
