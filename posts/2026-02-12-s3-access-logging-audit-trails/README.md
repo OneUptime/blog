@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Logging, Audit, Security
 
-Description: Learn how to enable and configure S3 server access logging to create audit trails of all requests made to your S3 buckets for security and compliance.
+Description: Learn how to enable and configure S3 server access logging to create audit trails for requests made to your S3 buckets for security and compliance.
 
 ---
 
-If someone accesses a sensitive file in your S3 bucket, you need to know who did it, when, and from where. S3 server access logging captures detailed records of every request made to a bucket - GET, PUT, DELETE, everything. These logs are essential for security auditing, compliance requirements, and debugging access issues.
+If someone accesses a sensitive file in your S3 bucket, you need to know who did it, when, and from where. S3 server access logging captures detailed records for requests made to a bucket - GET, PUT, DELETE, everything. These logs are essential for security auditing, compliance requirements, and debugging access issues, but delivery is best-effort rather than a guaranteed complete accounting of every request.
 
 ## What S3 Access Logs Capture
 
@@ -35,14 +35,14 @@ This is different from CloudTrail, which logs management events (API calls to co
 | Cost | Free (just storage costs) | $0.10 per 100,000 events |
 | Delivery | Best-effort, minutes to hours | Near real-time |
 | Format | Space-delimited log files | Structured JSON |
-| Coverage | All requests including anonymous | All authenticated API calls |
-| Guaranteed delivery | No (best effort) | Yes |
+| Coverage | Most requests including anonymous | Authenticated API calls that match your data event selectors |
+| Delivery guarantee | No (best effort) | Typically delivered within minutes; log file validation can verify delivered files |
 
-For compliance and security, many organizations use both: access logging for the complete picture (including anonymous access) and CloudTrail for guaranteed delivery of authenticated events.
+For compliance and security, many organizations use both: access logging for additional request detail (including anonymous access) and CloudTrail for structured audit records of authenticated API activity.
 
 ## Step 1: Create a Logging Destination Bucket
 
-Store your access logs in a separate bucket. Don't log to the same bucket you're monitoring - that creates an infinite loop of log entries.
+Store your access logs in a separate bucket in the same AWS account and Region as the source bucket. Don't log to the same bucket you're monitoring - that creates an infinite loop of log entries.
 
 ```bash
 # Create the logging bucket
@@ -75,7 +75,7 @@ aws s3api put-bucket-lifecycle-configuration \
 
 ## Step 2: Grant Logging Permissions
 
-The S3 logging service needs permission to write to your logging bucket. This is done through the bucket's ACL or a bucket policy.
+The S3 logging service needs permission to write to your logging bucket. This is done through a bucket policy, or through ACLs only when your destination bucket's Object Ownership settings support them.
 
 Using a bucket policy (recommended approach):
 
@@ -153,7 +153,7 @@ REST.GET.OBJECT documents/report.pdf "GET /documents/report.pdf HTTP/1.1"
 200 - 4567890 4567890 50 30
 "https://console.aws.amazon.com/s3/buckets/my-source-bucket"
 "Mozilla/5.0" - BvKMZhMGQ= SigV4 ECDHE-RSA-AES128-GCM-SHA256 AuthHeader
-s3.us-east-1.amazonaws.com TLSv1.2
+s3.us-east-1.amazonaws.com TLSv1.2 - - us-east-1
 ```
 
 The fields are space-delimited. Here's a quick reference for the most useful ones:
@@ -252,7 +252,7 @@ parse_access_logs()
 
 ## Step 6: Enable Logging for Multiple Buckets
 
-Automate logging setup across all your buckets.
+Automate logging setup across all your buckets. This example assumes the source buckets are in the same AWS account and Region as `LOG_BUCKET`; use a separate logging bucket per Region if your buckets span multiple Regions.
 
 ```python
 import boto3
@@ -351,4 +351,4 @@ def lambda_handler(event, context):
 
 ## Wrapping Up
 
-S3 access logging is one of the first things you should enable on any bucket that holds sensitive or important data. It's free (you only pay for log storage), provides detailed records of every request, and gives you the raw data needed for security audits and compliance. Combine it with Athena for querying at scale and Lambda for real-time alerting, and you've got a complete audit trail for your S3 infrastructure.
+S3 access logging is one of the first things you should enable on any bucket that holds sensitive or important data. It's free (you only pay for log storage), provides detailed request records, and gives you raw data for security audits and compliance. Combine it with Athena for querying at scale and Lambda for alerting on newly delivered logs, and you've got a useful audit trail for your S3 infrastructure.
