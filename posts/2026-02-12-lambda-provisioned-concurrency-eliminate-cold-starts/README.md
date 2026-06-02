@@ -8,7 +8,7 @@ Description: Learn how to configure and manage Lambda provisioned concurrency to
 
 ---
 
-Provisioned concurrency is Lambda's answer to "I need zero cold starts, no matter what." It pre-initializes a specified number of execution environments and keeps them warm, ready to respond instantly. Unlike the warmer-function hack, provisioned concurrency is a first-class AWS feature with proper scaling and monitoring.
+Provisioned concurrency is Lambda's answer to "I need zero cold starts for a known amount of traffic." It pre-initializes a specified number of execution environments and keeps them warm, ready to respond instantly. Unlike the warmer-function hack, provisioned concurrency is a first-class AWS feature with proper scaling and monitoring.
 
 The trade-off is cost - you pay for provisioned environments whether they're handling requests or not. But for latency-sensitive workloads, it's worth every penny.
 
@@ -36,7 +36,7 @@ The pre-initialized environments have already:
 - Started the runtime
 - Run all initialization code (imports, connections, global setup)
 
-When a request arrives, it goes straight to the handler with zero cold start.
+When a request is served by provisioned concurrency, it goes straight to the handler with zero cold start.
 
 ## Setting Up Provisioned Concurrency
 
@@ -68,8 +68,8 @@ aws lambda put-provisioned-concurrency-config \
 Or use an alias (recommended - easier to manage):
 
 ```bash
-# Create or update an alias
-aws lambda update-alias \
+# Create an alias
+aws lambda create-alias \
   --function-name my-api-function \
   --name production \
   --function-version $VERSION
@@ -121,7 +121,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name ConcurrentExecutions \
   --dimensions Name=FunctionName,Value=my-api-function \
-  --start-time $(date -u -v-7d +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
   --statistics Maximum \
@@ -175,22 +175,24 @@ This policy:
 If you know your traffic patterns (peak during business hours, low at night), use scheduled scaling:
 
 ```bash
-# Scale up at 8 AM EST on weekdays
+# Scale up at 8 AM Eastern time on weekdays
 aws application-autoscaling put-scheduled-action \
   --service-namespace lambda \
   --resource-id "function:my-api-function:production" \
   --scalable-dimension "lambda:function:ProvisionedConcurrency" \
   --scheduled-action-name "morning-scale-up" \
-  --schedule "cron(0 13 ? * MON-FRI *)" \
+  --schedule "cron(0 8 ? * MON-FRI *)" \
+  --timezone "America/New_York" \
   --scalable-target-action MinCapacity=30,MaxCapacity=50
 
-# Scale down at 8 PM EST on weekdays
+# Scale down at 8 PM Eastern time on weekdays
 aws application-autoscaling put-scheduled-action \
   --service-namespace lambda \
   --resource-id "function:my-api-function:production" \
   --scalable-dimension "lambda:function:ProvisionedConcurrency" \
   --scheduled-action-name "evening-scale-down" \
-  --schedule "cron(0 1 ? * TUE-SAT *)" \
+  --schedule "cron(0 20 ? * MON-FRI *)" \
+  --timezone "America/New_York" \
   --scalable-target-action MinCapacity=5,MaxCapacity=15
 
 # Weekend minimum
@@ -199,7 +201,8 @@ aws application-autoscaling put-scheduled-action \
   --resource-id "function:my-api-function:production" \
   --scalable-dimension "lambda:function:ProvisionedConcurrency" \
   --scheduled-action-name "weekend-scale-down" \
-  --schedule "cron(0 1 ? * SAT-SUN *)" \
+  --schedule "cron(0 0 ? * SAT-SUN *)" \
+  --timezone "America/New_York" \
   --scalable-target-action MinCapacity=2,MaxCapacity=10
 ```
 
@@ -219,7 +222,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name ProvisionedConcurrencySpilloverInvocations \
   --dimensions Name=FunctionName,Value=my-api-function \
-  --start-time $(date -u -v-1d +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
   --statistics Sum \
@@ -245,38 +248,40 @@ aws cloudwatch put-metric-alarm \
 
 ## Cost Analysis
 
-Provisioned concurrency pricing has two components:
+Provisioned concurrency pricing has three components:
 
 1. **Provisioned concurrency charge** - You pay for every GB-second of provisioned capacity, whether it's used or not
-2. **Request charge** - Same $0.20 per million requests as regular Lambda
+2. **Compute duration charge** - Invocations served while provisioned concurrency is enabled use the provisioned concurrency duration rate
+3. **Request charge** - Same $0.20 per million requests as regular Lambda
 
-The provisioned concurrency rate is roughly 60% cheaper per GB-second than on-demand execution. But you pay for it 24/7 if you don't scale it down.
+The provisioned concurrency duration rate is roughly 40% cheaper per GB-second than on-demand execution. But you also pay for the provisioned capacity 24/7 if you don't scale it down.
 
 Here's a cost comparison:
 
 ```python
 # Cost calculation
-import math
-
 # Pricing (us-east-1, 2026)
 ON_DEMAND_PER_GB_SEC = 0.0000166667
 PROVISIONED_PER_GB_SEC = 0.0000097222  # ~40% cheaper per execution
 PROVISIONED_CONCURRENCY_PER_GB_SEC = 0.0000041667  # Cost of keeping warm
+REQUEST_PER_MILLION = 0.20
 
 def monthly_cost_on_demand(memory_mb, avg_duration_ms, monthly_invocations):
     gb_seconds = (memory_mb / 1024) * (avg_duration_ms / 1000) * monthly_invocations
-    return gb_seconds * ON_DEMAND_PER_GB_SEC
+    request_cost = (monthly_invocations / 1_000_000) * REQUEST_PER_MILLION
+    return (gb_seconds * ON_DEMAND_PER_GB_SEC) + request_cost
 
 def monthly_cost_provisioned(memory_mb, avg_duration_ms, monthly_invocations, provisioned_count):
     # Execution cost (cheaper rate)
     gb_seconds = (memory_mb / 1024) * (avg_duration_ms / 1000) * monthly_invocations
     execution_cost = gb_seconds * PROVISIONED_PER_GB_SEC
+    request_cost = (monthly_invocations / 1_000_000) * REQUEST_PER_MILLION
 
     # Keeping-warm cost (24/7)
     seconds_per_month = 30 * 24 * 3600
     warm_cost = (memory_mb / 1024) * provisioned_count * seconds_per_month * PROVISIONED_CONCURRENCY_PER_GB_SEC
 
-    return execution_cost + warm_cost
+    return execution_cost + warm_cost + request_cost
 
 # Example: 512 MB function, 200ms avg, 10M invocations/month
 memory = 512
@@ -298,6 +303,7 @@ Resources:
   MyFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: src/
       Handler: app.handler
       Runtime: python3.12
       MemorySize: 512
