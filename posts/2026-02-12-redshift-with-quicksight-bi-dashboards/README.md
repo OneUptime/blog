@@ -8,7 +8,7 @@ Description: A step-by-step guide to connecting Amazon Redshift to Amazon QuickS
 
 ---
 
-Amazon QuickSight is AWS's cloud-native business intelligence service, and when you pair it with Redshift, you get a powerful combination for building dashboards that pull directly from your data warehouse. Unlike traditional BI tools that require you to manage servers and licenses, QuickSight scales automatically and charges per session - so you only pay when people actually look at the dashboards.
+Amazon QuickSight is AWS's cloud-native business intelligence service, and when you pair it with Redshift, you get a powerful combination for building dashboards that pull directly from your data warehouse. Unlike traditional BI tools that require you to manage servers and licenses, QuickSight scales automatically and offers per-session pricing for readers - so you can pay when people actually look at the dashboards.
 
 This guide walks through connecting Redshift to QuickSight, building your first dashboard, and a few performance tricks that'll keep things snappy.
 
@@ -17,7 +17,7 @@ This guide walks through connecting Redshift to QuickSight, building your first 
 Before you get started, make sure you have:
 
 - An Amazon Redshift cluster (or Redshift Serverless) with data loaded
-- An Amazon QuickSight account (Enterprise edition recommended for row-level security)
+- An Amazon QuickSight account (Enterprise edition required for private VPC connections and row-level security)
 - Network connectivity between QuickSight and your Redshift cluster
 
 The network piece trips up a lot of people. If your Redshift cluster is in a VPC, QuickSight needs a VPC connection to reach it.
@@ -27,8 +27,6 @@ The network piece trips up a lot of people. If your Redshift cluster is in a VPC
 If your Redshift cluster is in a private subnet, you'll need to configure a VPC connection in QuickSight first.
 
 ```json
-// QuickSight VPC connection configuration
-// This goes in the AWS CLI or CloudFormation template
 {
     "VPCConnectionId": "redshift-vpc-connection",
     "Name": "Redshift VPC Connection",
@@ -155,6 +153,7 @@ aws quicksight create-refresh-schedule \
         "ScheduleId": "daily-refresh",
         "ScheduleFrequency": {
             "Interval": "DAILY",
+            "Timezone": "UTC",
             "TimeOfTheDay": "06:00"
         },
         "RefreshType": "FULL_REFRESH",
@@ -166,7 +165,7 @@ aws quicksight create-refresh-schedule \
 
 Once your dataset is ready, the actual dashboard building happens in the QuickSight console. But you can also define analyses and dashboards programmatically using the QuickSight API, which is useful for deploying dashboards across environments.
 
-Here's a simplified template definition:
+Here's a simplified conceptual layout for what the analysis contains. The actual `create-analysis` API definition is more verbose and uses QuickSight's `AnalysisDefinition` schema:
 
 ```json
 {
@@ -209,7 +208,7 @@ If different users should see different data, QuickSight's row-level security (R
 -- Create an RLS rules table in Redshift
 -- QuickSight will use this to filter data per user
 CREATE TABLE quicksight_rls_rules (
-    username VARCHAR(256),
+    UserName VARCHAR(256),
     region VARCHAR(50)
 );
 
@@ -222,6 +221,7 @@ INSERT INTO quicksight_rls_rules VALUES ('bob@company.com', 'EU');
 ```
 
 Then apply the RLS dataset to your main dataset through the QuickSight API or console. This way, when Alice opens the dashboard, she only sees US sales figures without needing separate dashboards.
+If you create the rules dataset programmatically, mark it as an RLS rules dataset with `--use-as RLS_RULES`.
 
 ## Performance Optimization Tips
 
@@ -231,7 +231,7 @@ A few tricks to keep your QuickSight dashboards running smoothly:
 
 ```sql
 -- Create a materialized view for QuickSight to query
--- Refreshes incrementally so it's always fast
+-- Redshift can refresh eligible materialized views incrementally
 CREATE MATERIALIZED VIEW mv_sales_dashboard AS
 SELECT
     DATE_TRUNC('day', s.sale_date) AS sale_day,
