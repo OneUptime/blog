@@ -59,7 +59,7 @@ aws sqs create-queue --queue-name fulfillment-dlq
 aws sqs create-queue \
   --queue-name inventory-queue \
   --attributes '{
-    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:inventory-dlq\",\"maxReceiveCount\":\"3\"}",
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:inventory-dlq\",\"maxReceiveCount\":\"5\"}",
     "VisibilityTimeout": "60",
     "MessageRetentionPeriod": "345600"
   }'
@@ -67,7 +67,7 @@ aws sqs create-queue \
 aws sqs create-queue \
   --queue-name notifications-queue \
   --attributes '{
-    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:notifications-dlq\",\"maxReceiveCount\":\"3\"}",
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:notifications-dlq\",\"maxReceiveCount\":\"5\"}",
     "VisibilityTimeout": "30",
     "MessageRetentionPeriod": "345600"
   }'
@@ -75,7 +75,7 @@ aws sqs create-queue \
 aws sqs create-queue \
   --queue-name analytics-queue \
   --attributes '{
-    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:analytics-dlq\",\"maxReceiveCount\":\"3\"}",
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:analytics-dlq\",\"maxReceiveCount\":\"5\"}",
     "VisibilityTimeout": "60",
     "MessageRetentionPeriod": "345600"
   }'
@@ -83,13 +83,13 @@ aws sqs create-queue \
 aws sqs create-queue \
   --queue-name fulfillment-queue \
   --attributes '{
-    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:fulfillment-dlq\",\"maxReceiveCount\":\"3\"}",
+    "RedrivePolicy": "{\"deadLetterTargetArn\":\"arn:aws:sqs:us-east-1:123456789012:fulfillment-dlq\",\"maxReceiveCount\":\"5\"}",
     "VisibilityTimeout": "120",
     "MessageRetentionPeriod": "345600"
   }'
 ```
 
-Note the different `VisibilityTimeout` values. Each consumer has different processing times. The notification sender is fast (30s), while fulfillment processing takes longer (120s). Set the timeout to at least 6x your expected processing time.
+Note the different `VisibilityTimeout` values. Each consumer has different processing times. The notification sender is fast (30s), while fulfillment processing takes longer (120s). When Lambda consumes from SQS, set the queue visibility timeout to at least 6x the Lambda function timeout.
 
 ## Step 3: Set Up Queue Policies
 
@@ -163,7 +163,7 @@ The producer publishes a single message to the SNS topic. All subscribers receiv
 # publisher.py - Publish order events to SNS
 import boto3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 sns = boto3.client('sns')
 
@@ -178,7 +178,7 @@ def publish_order_event(order):
         'customerId': order['customer_id'],
         'items': order['items'],
         'totalAmount': order['total'],
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     }
 
     # Publish with message attributes for filtering
@@ -311,7 +311,7 @@ aws sns subscribe \
   --notification-endpoint arn:aws:sqs:us-east-1:123456789012:inventory-queue.fifo
 ```
 
-FIFO fan-out guarantees ordering within a message group and exactly-once delivery. The tradeoff is lower throughput (300 messages/second per message group, or 3,000 with batching).
+FIFO fan-out guarantees ordering within a message group and exactly-once delivery under normal operating conditions. The tradeoff is lower throughput than standard topics and queues. By default, SNS FIFO topic throughput is scoped to the topic, with a maximum of 3,000 messages/second or 20 MB/second, whichever comes first; SQS FIFO queues can process up to 300 API calls/second without batching or 3,000 messages/second with batching per API method, unless you enable high-throughput FIFO mode or request quota increases.
 
 ## Monitoring the Fan-Out
 
