@@ -194,6 +194,22 @@ PreTrafficHook:
     Environment:
       Variables:
         NEW_VERSION_ARN: !Ref ApiFunction.Version
+
+# Post-traffic hook function
+PostTrafficHook:
+  Type: AWS::Serverless::Function
+  Properties:
+    FunctionName: !Sub "CodeDeployHook_post-traffic-${ApiFunction}"
+    Handler: hooks/post-traffic.handler
+    Runtime: nodejs20.x
+    Timeout: 60
+    Policies:
+      - Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Action:
+              - codedeploy:PutLifecycleEventHookExecutionStatus
+            Resource: "*"
 ```
 
 ## Custom Deployment Configuration
@@ -230,14 +246,7 @@ aws deploy create-deployment-config \
   }'
 ```
 
-Reference your custom config in SAM:
-
-```yaml
-DeploymentPreference:
-  Type: Canary5Percent10Minutes
-  Alarms:
-    - !Ref ApiErrorAlarm
-```
+Use custom deployment configurations with non-SAM CodeDeploy deployments. AWS SAM templates use the predefined deployment preference types, such as `Canary10Percent5Minutes` and `Linear10PercentEvery1Minute`.
 
 ## Manual Canary with the AWS CLI
 
@@ -273,12 +282,15 @@ echo "Monitoring for 5 minutes..."
 sleep 300
 
 # Step 5: Check for errors (simplified example)
+START_TIME=$(date -u -d '5 minutes ago' '+%Y-%m-%dT%H:%M:%SZ')
+END_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+
 ERRORS=$(aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name Errors \
   --dimensions "Name=FunctionName,Value=my-api" "Name=Resource,Value=my-api:production" \
-  --start-time "$(date -u -v-5M '+%Y-%m-%dT%H:%M:%SZ')" \
-  --end-time "$(date -u '+%Y-%m-%dT%H:%M:%SZ')" \
+  --start-time "$START_TIME" \
+  --end-time "$END_TIME" \
   --period 300 \
   --statistics Sum \
   --query 'Datapoints[0].Sum' --output text)
