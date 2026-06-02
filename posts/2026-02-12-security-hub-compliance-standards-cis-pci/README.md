@@ -8,17 +8,17 @@ Description: Learn how to enable and manage Security Hub compliance standards in
 
 ---
 
-Compliance frameworks like CIS and PCI DSS define hundreds of security controls. Manually checking each one across your AWS environment would take weeks. Security Hub automates this by continuously evaluating your resources against these standards and giving you a compliance score that updates in real time.
+Compliance frameworks like CIS and PCI DSS define hundreds of security controls. Manually checking each one across your AWS environment would take weeks. Security Hub automates this by continuously evaluating your resources against these standards and giving you a compliance score that updates as findings change.
 
 Each standard is a collection of controls - automated checks that evaluate specific aspects of your AWS configuration. When a control fails, Security Hub generates a finding that tells you exactly what's wrong and how to fix it. Let's walk through the available standards and how to get the most out of them.
 
 ## Available Compliance Standards
 
-Security Hub currently supports several standards:
+Security Hub currently supports several standards, including:
 
-1. **CIS AWS Foundations Benchmark v1.4.0** - The most widely adopted AWS security benchmark. Covers IAM, logging, monitoring, and networking controls.
+1. **CIS AWS Foundations Benchmark v5.0.0, v3.0.0, v1.4.0, and v1.2.0** - The most widely adopted AWS security benchmark. Covers IAM, logging, monitoring, and networking controls.
 2. **AWS Foundational Security Best Practices (FSBP)** - AWS's own best practices standard. Broader coverage than CIS, with controls for over 30 AWS services.
-3. **PCI DSS v3.2.1** - Required for organizations that process credit card payments. Maps AWS controls to PCI DSS requirements.
+3. **PCI DSS v4.0.1 and v3.2.1** - Required for organizations that process credit card payments. Maps AWS controls to PCI DSS requirements.
 4. **NIST SP 800-53 Rev. 5** - US government security framework used by federal agencies and contractors.
 
 ## Enabling Standards
@@ -30,7 +30,7 @@ You can enable one or multiple standards simultaneously.
 
 aws securityhub batch-enable-standards \
   --standards-subscription-requests '[{
-    "StandardsArn": "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"
+    "StandardsArn": "arn:aws:securityhub:us-east-1::standards/cis-aws-foundations-benchmark/v/1.4.0"
   }]'
 
 # Enable AWS Foundational Security Best Practices
@@ -68,7 +68,7 @@ The CIS Benchmark is organized into sections:
 - **Section 4: Monitoring** - CloudWatch alarms for security-relevant events
 - **Section 5: Networking** - Security groups, NACLs, VPC configuration
 
-Here are some of the most commonly failed CIS controls and how to fix them.
+Here are some of the most commonly failed Security Hub controls and how to fix them.
 
 ### CIS 1.4 - Ensure no root account access keys exist
 
@@ -77,8 +77,8 @@ Here are some of the most commonly failed CIS controls and how to fix them.
 aws iam get-account-summary \
   --query 'SummaryMap.AccountAccessKeysPresent'
 
-# If the result is 1, delete the root access keys through the console
-# (Cannot be done via CLI for safety)
+# If the result is 1, delete the root access key through the console,
+# or with aws iam delete-access-key while authenticated as the root user.
 ```
 
 ### CIS 1.10 - Ensure MFA is enabled for all IAM users
@@ -91,14 +91,20 @@ aws iam get-credential-report \
   awk -F, '$4 == "true" && $8 == "false" {print $1, "- password enabled but no MFA"}'
 ```
 
-### CIS 2.1.1 - Ensure S3 buckets have server-side encryption
+### FSBP S3.17 - S3 buckets should be encrypted at rest with AWS KMS keys
 
 ```bash
-# Check each bucket for encryption
+# Check each bucket for KMS-based default encryption
 for bucket in $(aws s3api list-buckets --query 'Buckets[].Name' --output text); do
   echo -n "$bucket: "
-  aws s3api get-bucket-encryption --bucket $bucket 2>/dev/null \
-    && echo "encrypted" || echo "NOT ENCRYPTED"
+  algorithm=$(aws s3api get-bucket-encryption --bucket "$bucket" \
+    --query 'ServerSideEncryptionConfiguration.Rules[0].ApplyServerSideEncryptionByDefault.SSEAlgorithm' \
+    --output text 2>/dev/null)
+
+  case "$algorithm" in
+    aws:kms|aws:kms:dsse) echo "KMS encrypted" ;;
+    *) echo "NOT KMS ENCRYPTED" ;;
+  esac
 done
 ```
 
@@ -106,8 +112,13 @@ done
 
 ```bash
 # Check for multi-region trail
-aws cloudtrail describe-trails \
-  --query 'trailList[?IsMultiRegionTrail==`true`].{Name:Name,Logging:HasCustomEventSelectors}'
+for trail in $(aws cloudtrail describe-trails \
+  --query 'trailList[?IsMultiRegionTrail==`true`].TrailARN' \
+  --output text); do
+  aws cloudtrail get-trail-status \
+    --name "$trail" \
+    --query '{IsLogging:IsLogging,LatestDeliveryError:LatestDeliveryError}'
+done
 ```
 
 ## Understanding PCI DSS Controls
@@ -116,11 +127,12 @@ PCI DSS controls in Security Hub map to specific PCI requirements. Not all PCI r
 
 Key PCI controls in Security Hub include:
 
-- **PCI.CloudTrail.1** - CloudTrail should be enabled
+- **PCI.CloudTrail.3** - At least one CloudTrail trail should be enabled
 - **PCI.EC2.2** - VPC default security group should not allow all traffic
-- **PCI.IAM.1** - IAM root user should not have access keys
-- **PCI.S3.1** - S3 buckets should prohibit public read access
-- **PCI.S3.2** - S3 buckets should prohibit public write access
+- **PCI.IAM.4** - IAM root user should not have access keys
+- **PCI.S3.1** - S3 buckets should have block public access settings enabled
+- **PCI.S3.2** - S3 buckets should block public read access
+- **PCI.S3.3** - S3 buckets should block public write access
 
 Remember that passing all Security Hub PCI checks doesn't mean you're PCI DSS compliant. The standard has many requirements (like physical security and process controls) that can't be verified by automated tools.
 
@@ -157,7 +169,7 @@ aws securityhub describe-standards-controls \
 aws securityhub update-standards-control \
   --standards-control-arn "arn:aws:securityhub:us-east-1:111111111111:control/cis-aws-foundations-benchmark/v/1.4.0/1.14" \
   --control-status DISABLED \
-  --disabled-reason "We use AWS SSO exclusively - no IAM user passwords to rotate"
+  --disabled-reason "We use AWS SSO exclusively - no IAM user access keys to rotate"
 ```
 
 Always document why you've disabled a control. Auditors will ask.
@@ -196,7 +208,7 @@ resource "aws_securityhub_account" "main" {}
 
 # CIS Benchmark
 resource "aws_securityhub_standards_subscription" "cis" {
-  standards_arn = "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"
+  standards_arn = "arn:aws:securityhub:${data.aws_region.current.name}::standards/cis-aws-foundations-benchmark/v/1.4.0"
   depends_on    = [aws_securityhub_account.main]
 }
 
