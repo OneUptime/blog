@@ -64,14 +64,14 @@ aws ec2 create-vpc \
 # Create subnets for different workloads
 # Subnet for team A
 aws ec2 create-subnet \
-  --vpc-id "vpc-abc123" \
+  --vpc-id "vpc-0abc123def4567890" \
   --cidr-block "10.0.1.0/24" \
   --availability-zone "us-east-1a" \
   --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=team-a-subnet-1a}]'
 
 # Subnet for team B
 aws ec2 create-subnet \
-  --vpc-id "vpc-abc123" \
+  --vpc-id "vpc-0abc123def4567890" \
   --cidr-block "10.0.2.0/24" \
   --availability-zone "us-east-1a" \
   --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=team-b-subnet-1a}]'
@@ -83,13 +83,10 @@ aws ec2 create-subnet \
 # Create a resource share for team A's subnets
 aws ram create-resource-share \
   --name "TeamA-Networking" \
-  --resource-arns '[
-    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-teamA1a",
-    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-teamA1b"
-  ]' \
-  --principals '[
-    "arn:aws:organizations::111111111111:ou/o-abc123/ou-teamA"
-  ]' \
+  --resource-arns \
+    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0aaa1111bbbb2222c" \
+    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0ddd3333eeee4444f" \
+  --principals "arn:aws:organizations::111111111111:ou/o-a1b2c3d4e5/ou-a1b2-b3c4d5e6" \
   --tags '[
     {"key": "Purpose", "value": "Shared networking for Team A"}
   ]'
@@ -106,18 +103,18 @@ In the team's account, the shared subnets appear just like native subnets. Teams
 aws ec2 run-instances \
   --image-id "ami-0123456789abcdef0" \
   --instance-type "t3.medium" \
-  --subnet-id "subnet-teamA1a" \
+  --subnet-id "subnet-0aaa1111bbbb2222c" \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=team-a-app-server}]'
 ```
 
-The instance launches in the shared subnet but is owned by the team's account. Security groups are account-specific, so each team manages their own security groups.
+The instance launches in the shared subnet but is owned by the team's account. Each team can manage security groups in its own account, and the VPC owner can also share security groups when centralized security group management is needed.
 
 ### What Shared Subnets Can and Cannot Do
 
 Resources in shared subnets:
 
 - Can communicate with each other within the VPC (same as any VPC)
-- Use security groups from their own account
+- Use security groups from their own account, or shared security groups when the VPC owner shares them
 - Appear in their own account's EC2 console and CLI
 - Are billed to their own account
 
@@ -148,12 +145,8 @@ aws ec2 create-transit-gateway \
 # Share it via RAM
 aws ram create-resource-share \
   --name "Org-Transit-Gateway" \
-  --resource-arns '[
-    "arn:aws:ec2:us-east-1:111111111111:transit-gateway/tgw-abc123"
-  ]' \
-  --principals '[
-    "arn:aws:organizations::111111111111:organization/o-abc123"
-  ]'
+  --resource-arns "arn:aws:ec2:us-east-1:111111111111:transit-gateway/tgw-0123456789abcdef0" \
+  --principals "arn:aws:organizations::111111111111:organization/o-a1b2c3d4e5"
 ```
 
 With `AutoAcceptSharedAttachments` enabled, accounts can create VPC attachments to the Transit Gateway without manual approval from the networking account.
@@ -163,9 +156,9 @@ In a team account:
 ```bash
 # Attach a VPC to the shared Transit Gateway
 aws ec2 create-transit-gateway-vpc-attachment \
-  --transit-gateway-id "tgw-abc123" \
-  --vpc-id "vpc-team123" \
-  --subnet-ids '["subnet-team1a", "subnet-team1b"]' \
+  --transit-gateway-id "tgw-0123456789abcdef0" \
+  --vpc-id "vpc-0123456789abcdef0" \
+  --subnet-ids "subnet-0123456789abcdef0" "subnet-0fedcba9876543210" \
   --tag-specifications 'ResourceType=transit-gateway-attachment,Tags=[{Key=Name,Value=team-vpc-attachment}]'
 ```
 
@@ -177,12 +170,14 @@ If you have a hybrid DNS setup with forwarding rules to on-premises DNS servers,
 # Share Route 53 Resolver forwarding rules
 aws ram create-resource-share \
   --name "DNS-Forwarding-Rules" \
-  --resource-arns '[
-    "arn:aws:route53resolver:us-east-1:111111111111:resolver-rule/rslvr-rr-abc123"
-  ]' \
-  --principals '[
-    "arn:aws:organizations::111111111111:organization/o-abc123"
-  ]'
+  --resource-arns "arn:aws:route53resolver:us-east-1:111111111111:resolver-rule/rslvr-rr-0123456789abcdef0" \
+  --principals "arn:aws:organizations::111111111111:organization/o-a1b2c3d4e5"
+
+# Associate the shared rule with a VPC in each participating account
+aws route53resolver associate-resolver-rule \
+  --resolver-rule-id "rslvr-rr-0123456789abcdef0" \
+  --vpc-id "vpc-0123456789abcdef0" \
+  --name "corp-dns-forwarding"
 ```
 
 ## Managing Resource Shares
@@ -199,22 +194,22 @@ aws ram get-resource-shares --resource-owner "OTHER-ACCOUNTS"
 # List resources in a share
 aws ram list-resources \
   --resource-owner "SELF" \
-  --resource-share-arns '["arn:aws:ram:us-east-1:111111111111:resource-share/abc123"]'
+  --resource-share-arns "arn:aws:ram:us-east-1:111111111111:resource-share/01234567-89ab-cdef-0123-456789abcdef"
 
 # Add a resource to an existing share
 aws ram associate-resource-share \
-  --resource-share-arn "arn:aws:ram:us-east-1:111111111111:resource-share/abc123" \
-  --resource-arns '["arn:aws:ec2:us-east-1:111111111111:subnet/subnet-new"]'
+  --resource-share-arn "arn:aws:ram:us-east-1:111111111111:resource-share/01234567-89ab-cdef-0123-456789abcdef" \
+  --resource-arns "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0aaa1111bbbb2222c"
 
 # Add a principal to an existing share
 aws ram associate-resource-share \
-  --resource-share-arn "arn:aws:ram:us-east-1:111111111111:resource-share/abc123" \
-  --principals '["222222222222"]'
+  --resource-share-arn "arn:aws:ram:us-east-1:111111111111:resource-share/01234567-89ab-cdef-0123-456789abcdef" \
+  --principals "222222222222"
 
 # Remove access
 aws ram disassociate-resource-share \
-  --resource-share-arn "arn:aws:ram:us-east-1:111111111111:resource-share/abc123" \
-  --principals '["222222222222"]'
+  --resource-share-arn "arn:aws:ram:us-east-1:111111111111:resource-share/01234567-89ab-cdef-0123-456789abcdef" \
+  --principals "222222222222"
 ```
 
 ## Security Considerations
@@ -223,7 +218,7 @@ aws ram disassociate-resource-share \
 
 **Be deliberate about what you share.** Just because you can share a resource does not mean you should. Share the minimum set of resources needed for the use case.
 
-**Monitor shared resource usage** with CloudTrail. All API calls made against shared resources are logged in both the owner's and the consumer's CloudTrail.
+**Monitor shared resource usage** with CloudTrail. AWS RAM API calls such as creating and associating resource shares are logged by CloudTrail, and you should use CloudTrail in each relevant account to monitor activity on the shared resources themselves.
 
 **Use resource-based policies** in combination with RAM when available. For example, KMS keys and S3 buckets have their own cross-account access mechanisms that may be more appropriate than RAM.
 
