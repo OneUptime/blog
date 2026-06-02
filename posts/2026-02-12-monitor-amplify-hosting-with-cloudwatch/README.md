@@ -8,36 +8,30 @@ Description: Set up comprehensive monitoring for your AWS Amplify hosted applica
 
 ---
 
-Deploying your app on AWS Amplify is only half the job. Once it is live, you need to know when things go wrong, when performance degrades, and when your users are having a bad experience. CloudWatch is the native AWS monitoring service, and it integrates directly with Amplify to give you metrics on builds, hosting, and SSR performance.
+Deploying your app on AWS Amplify is only half the job. Once it is live, you need to know when things go wrong, when performance degrades, and when your users are having a bad experience. CloudWatch is the native AWS monitoring service, and it integrates directly with Amplify to give you hosting metrics and SSR runtime logs.
 
 This guide walks through setting up CloudWatch monitoring for Amplify, including custom dashboards, alarms, and log analysis.
 
 ## What Amplify Reports to CloudWatch
 
-Amplify automatically publishes several categories of metrics to CloudWatch:
+Amplify automatically publishes several hosting metrics to CloudWatch:
 
-**Build metrics**:
-- Build duration
-- Build success/failure counts
+**Traffic and error metrics**:
+- Requests
+- 4xx responses
+- 5xx responses
 
-**Hosting metrics** (for SSR apps):
-- Request count
-- 4xx error count
-- 5xx error count
-- Lambda function duration
-- Lambda cold starts
-- Data transfer out
-
-**Hosting metrics** (for static sites):
-- Request count through CloudFront
-- Error rates
-- Bytes transferred
+**Performance and transfer metrics**:
+- Latency
+- Bytes downloaded
+- Bytes uploaded
+- Request tokens consumed
 
 These metrics appear in the `AWS/AmplifyHosting` namespace in CloudWatch.
 
 ## Step 1: View Default Metrics
 
-The simplest way to see Amplify metrics is through the Amplify console itself. Navigate to your app, then "Hosting" and "Monitoring." You will see basic graphs for requests, errors, and data transfer.
+The simplest way to see Amplify metrics is through the Amplify console itself. Navigate to your app, then "Monitoring" and "Metrics." You will see basic graphs for requests, errors, latency, and data transfer.
 
 But the Amplify console view is limited. For real monitoring, you need CloudWatch directly.
 
@@ -100,7 +94,7 @@ Here is a dashboard definition that covers the essential metrics:
     {
       "type": "metric",
       "properties": {
-        "title": "SSR Lambda Duration",
+        "title": "Latency",
         "metrics": [
           ["AWS/AmplifyHosting", "Latency", "App", "d1234abcde"]
         ],
@@ -145,7 +139,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 10 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts-topic
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts-topic
 ```
 
 **Alarm for high latency**:
@@ -159,59 +153,58 @@ aws cloudwatch put-metric-alarm \
   --dimensions Name=App,Value=d1234abcde \
   --statistic Average \
   --period 300 \
-  --threshold 3000 \
+  --threshold 3 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 2 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts-topic
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts-topic
 ```
 
-**Alarm for build failures**:
+**Alarm for high request-token consumption**:
 
 ```bash
-# Alert on any build failure
+# Alert when request token consumption exceeds your normal baseline
 aws cloudwatch put-metric-alarm \
-  --alarm-name "Amplify-MyApp-Build-Failure" \
+  --alarm-name "Amplify-MyApp-High-Token-Consumption" \
   --namespace "AWS/AmplifyHosting" \
-  --metric-name "BuildFailures" \
+  --metric-name "TokensConsumed" \
   --dimensions Name=App,Value=d1234abcde \
   --statistic Sum \
   --period 300 \
-  --threshold 0 \
+  --threshold 1000000 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts-topic
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts-topic
 ```
 
-## Step 4: Monitor SSR Lambda Logs
+## Step 4: Monitor SSR Runtime Logs
 
-For SSR applications, Amplify creates Lambda functions that handle server-side rendering. These functions write logs to CloudWatch Logs. The log group name follows this pattern:
+For SSR applications, Amplify sends hosting compute runtime logs to CloudWatch Logs. Confirm the exact log group name in the Amplify console under "Monitoring" and "Hosting compute logs." The log group commonly follows this pattern:
 
 ```text
-/aws/amplify/d1234abcde/main
+/aws/amplify/d1234abcde
 ```
 
 You can query these logs using CloudWatch Logs Insights:
 
 ```sql
--- Find the slowest SSR renders in the last hour
-fields @timestamp, @duration, @message
-| filter @type = "REPORT"
-| sort @duration desc
+# Find recent SSR runtime log messages
+fields @timestamp, @message
+| sort @timestamp desc
 | limit 20
 ```
 
 ```sql
--- Count errors by type in the last 24 hours
+# Count errors by hour
 fields @timestamp, @message
 | filter @message like /ERROR/
 | stats count() by bin(1h)
 ```
 
 ```sql
--- Find cold starts and their impact on latency
-fields @timestamp, @duration, @initDuration
-| filter @type = "REPORT" and @initDuration > 0
-| sort @initDuration desc
+# Find slow responses if your SSR app logs response durations
+fields @timestamp, @message
+| filter @message like /duration/
+| sort @timestamp desc
 | limit 50
 ```
 
@@ -222,7 +215,7 @@ Sometimes the metrics Amplify publishes are not granular enough. You can create 
 ```bash
 # Create a metric filter for application errors
 aws logs put-metric-filter \
-  --log-group-name "/aws/amplify/d1234abcde/main" \
+  --log-group-name "/aws/amplify/d1234abcde" \
   --filter-name "ApplicationErrors" \
   --filter-pattern "ERROR" \
   --metric-transformations \
@@ -243,7 +236,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 5 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts-topic
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts-topic
 ```
 
 ## Architecture Overview
@@ -308,32 +301,43 @@ exports.handler = async (event) => {
 };
 ```
 
-## Step 7: Monitor Build Performance Over Time
+## Step 7: Monitor Request Token Consumption Over Time
 
-Track build duration trends to catch regressions early. If builds start taking longer, it usually means dependencies are growing or build steps are becoming more complex.
+Track request token consumption trends to catch SSR cost or traffic regressions early. If token consumption starts growing, it usually means traffic is increasing or server-rendered responses are becoming more expensive to process.
 
-```sql
--- CloudWatch Logs Insights query for build duration trends
-fields @timestamp, @message
-| filter @message like /Build duration/
-| parse @message "Build duration: * seconds" as buildDuration
-| stats avg(buildDuration), max(buildDuration) by bin(1d)
+```json
+{
+  "widgets": [
+    {
+      "type": "metric",
+      "properties": {
+        "title": "Daily Request Tokens Consumed",
+        "metrics": [
+          ["AWS/AmplifyHosting", "TokensConsumed", "App", "d1234abcde"]
+        ],
+        "period": 86400,
+        "stat": "Sum",
+        "region": "us-east-1"
+      }
+    }
+  ]
+}
 ```
 
-Set an alarm if builds consistently exceed your acceptable threshold:
+Set an alarm if request token consumption consistently exceeds your acceptable threshold:
 
 ```bash
 aws cloudwatch put-metric-alarm \
-  --alarm-name "Amplify-MyApp-Slow-Builds" \
+  --alarm-name "Amplify-MyApp-Daily-Token-Consumption" \
   --namespace "AWS/AmplifyHosting" \
-  --metric-name "BuildDuration" \
+  --metric-name "TokensConsumed" \
   --dimensions Name=App,Value=d1234abcde \
-  --statistic Average \
+  --statistic Sum \
   --period 86400 \
-  --threshold 600 \
+  --threshold 10000000 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts-topic
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts-topic
 ```
 
 ## Beyond CloudWatch
@@ -341,7 +345,7 @@ aws cloudwatch put-metric-alarm \
 CloudWatch gives you the basics, but for production applications you might want more comprehensive monitoring. Consider complementing CloudWatch with:
 
 - **Real User Monitoring (RUM)** for client-side performance metrics
-- **AWS X-Ray** for distributed tracing across your SSR functions and API calls
+- **AWS X-Ray** for distributed tracing across your server-side code and API calls
 - **Synthetic monitoring** to proactively test your application from different regions
 
 For a broader view of your monitoring strategy, check out our post on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
