@@ -26,7 +26,7 @@ aws route53 create-hosted-zone \
   --hosted-zone-config Comment="Internal DNS for production",PrivateZone=true
 ```
 
-That's it. The zone is now active and your instances in `vpc-0abc123def456789` can resolve records in `internal.mycompany.com`.
+Once the create change reaches `INSYNC`, your instances in `vpc-0abc123def456789` can resolve records in `internal.mycompany.com`.
 
 Two VPC attributes must be enabled for private hosted zones to work:
 - `enableDnsSupport` must be `true`
@@ -110,8 +110,9 @@ To list current VPC associations:
 
 ```bash
 # List VPCs associated with a private hosted zone
-aws route53 list-hosted-zone-vpcs \
-  --hosted-zone-id Z0PRIVATE123456
+aws route53 get-hosted-zone \
+  --id Z0PRIVATE123456 \
+  --query VPCs
 ```
 
 ## Cross-Account VPC Association
@@ -194,7 +195,7 @@ resource "aws_route53_zone" "internal" {
 resource "aws_route53_record" "db_primary" {
   zone_id = aws_route53_zone.internal.zone_id
   name    = "db-primary.internal.mycompany.com"
-  type    = "A"
+  type    = "CNAME"
   ttl     = 60
   records = [aws_db_instance.primary.address]
 }
@@ -237,7 +238,7 @@ This routes all `*.dev.internal.mycompany.com` queries to a single ingress point
 
 ## Monitoring and Troubleshooting
 
-Route 53 Resolver query logging lets you see every DNS query made within your VPCs. This is invaluable for debugging private hosted zone issues.
+Route 53 Resolver query logging lets you see DNS queries made within your VPCs. Repeated queries answered from the Resolver cache are not logged, but this is still invaluable for debugging private hosted zone issues.
 
 ```bash
 # Create a query log configuration
@@ -251,6 +252,6 @@ aws route53resolver associate-resolver-query-log-config \
   --resource-id vpc-0abc123def456789
 ```
 
-If records aren't resolving, check these common issues: VPC DNS attributes disabled, wrong VPC association, overlapping records in multiple private zones, and security groups blocking DNS port 53.
+If records aren't resolving, check these common issues: VPC DNS attributes disabled, wrong VPC association, overlapping records in multiple private zones, and custom DNS resolvers or firewalls blocking DNS port 53.
 
 Private hosted zones are one of the cleaner ways to manage internal DNS in AWS. They integrate naturally with your VPCs, support multi-account architectures, and provide split-horizon DNS without any hacks. Use them freely for making your infrastructure more navigable.
