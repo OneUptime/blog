@@ -8,7 +8,7 @@ Description: Learn how to import third-party SSL/TLS certificates into AWS Certi
 
 ---
 
-ACM's free certificates are great, but sometimes you need to use an externally-issued certificate. Maybe you have an Extended Validation (EV) certificate for the green address bar. Maybe you've got a certificate from a specific CA that your organization mandates. Or perhaps you're migrating from another platform and want to keep your existing certificates until they expire.
+ACM's free certificates are great, but sometimes you need to use an externally-issued certificate. Maybe you have an Extended Validation (EV) certificate for organization validation or compliance requirements. Maybe you've got a certificate from a specific CA that your organization mandates. Or perhaps you're migrating from another platform and want to keep your existing certificates until they expire.
 
 Whatever the reason, ACM supports importing external certificates. The process is straightforward, but getting the certificate chain right can be tricky. Let's walk through it.
 
@@ -23,7 +23,7 @@ You should **import** when:
 - You need an EV or OV certificate (ACM only issues DV)
 - Your organization requires certificates from a specific CA
 - You have an existing certificate you want to use temporarily
-- You need a certificate for a service that doesn't integrate with ACM (like EC2 directly)
+- You want to use an existing certificate with an ACM-integrated AWS service while also using that same certificate elsewhere
 
 The biggest downside of imported certificates: **they don't auto-renew.** You're responsible for replacing them before expiration.
 
@@ -32,7 +32,7 @@ The biggest downside of imported certificates: **they don't auto-renew.** You're
 You'll need three things to import a certificate:
 
 1. **Certificate body** - The PEM-encoded certificate itself
-2. **Certificate private key** - The PEM-encoded private key
+2. **Certificate private key** - The PEM-encoded, unencrypted private key
 3. **Certificate chain** - The PEM-encoded intermediate certificates (optional but recommended)
 
 These files should look like this:
@@ -67,7 +67,7 @@ openssl pkcs12 -in certificate.pfx -out chain.pem -cacerts -nokeys
 openssl x509 -in certificate.der -inform DER -out certificate.pem -outform PEM
 
 # Convert key from DER to PEM
-openssl rsa -in key.der -inform DER -out key.pem -outform PEM
+openssl pkey -in key.der -inform DER -out key.pem -outform PEM
 ```
 
 ## Verifying Your Files
@@ -79,17 +79,17 @@ Before importing, verify that your certificate, key, and chain are correct and m
 openssl x509 -in cert.pem -text -noout | head -20
 
 # Verify the key matches the certificate
-CERT_MD5=$(openssl x509 -noout -modulus -in cert.pem | openssl md5)
-KEY_MD5=$(openssl rsa -noout -modulus -in key.pem | openssl md5)
+CERT_PUBKEY_SHA256=$(openssl x509 -in cert.pem -pubkey -noout | openssl sha256)
+KEY_PUBKEY_SHA256=$(openssl pkey -in key.pem -pubout | openssl sha256)
 
-if [ "$CERT_MD5" = "$KEY_MD5" ]; then
+if [ "$CERT_PUBKEY_SHA256" = "$KEY_PUBKEY_SHA256" ]; then
   echo "Certificate and key match"
 else
   echo "ERROR: Certificate and key do NOT match!"
 fi
 
-# Verify the chain
-openssl verify -CAfile chain.pem cert.pem
+# Verify the chain against your system trust store
+openssl verify -untrusted chain.pem cert.pem
 ```
 
 ## Importing the Certificate
@@ -161,18 +161,19 @@ resource "aws_acm_certificate" "imported" {
 }
 ```
 
-**Warning:** Storing private keys in your Terraform codebase is a security risk. Consider using Terraform's `sops` provider or fetching the key from a secrets manager at apply time.
+**Warning:** Storing private keys in your Terraform codebase or Terraform state is a security risk. With Terraform 1.11 or later, prefer the provider's write-only private key argument and an ephemeral secret value.
 
 ```hcl
-# Safer approach: read key from Secrets Manager
-data "aws_secretsmanager_secret_version" "cert_key" {
+# Safer approach: read key from Secrets Manager as an ephemeral value
+ephemeral "aws_secretsmanager_secret_version" "cert_key" {
   secret_id = "production/certificates/key"
 }
 
 resource "aws_acm_certificate" "imported" {
-  private_key       = data.aws_secretsmanager_secret_version.cert_key.secret_string
-  certificate_body  = file("${path.module}/certs/cert.pem")
-  certificate_chain = file("${path.module}/certs/chain.pem")
+  private_key_wo         = ephemeral.aws_secretsmanager_secret_version.cert_key.secret_string
+  private_key_wo_version = 1
+  certificate_body       = file("${path.module}/certs/cert.pem")
+  certificate_chain      = file("${path.module}/certs/chain.pem")
 }
 ```
 
@@ -227,22 +228,22 @@ acm = boto3.client('acm', region_name='us-east-1')
 def validate_cert_files(cert_path, key_path, chain_path):
     """Validate that certificate, key, and chain are consistent."""
     # Check cert-key match
-    cert_mod = subprocess.run(
-        ['openssl', 'x509', '-noout', '-modulus', '-in', cert_path],
-        capture_output=True, text=True
-    ).stdout.strip()
+    cert_pubkey = subprocess.run(
+        ['openssl', 'x509', '-in', cert_path, '-pubkey', '-noout'],
+        capture_output=True, text=True, check=True
+    ).stdout
 
-    key_mod = subprocess.run(
-        ['openssl', 'rsa', '-noout', '-modulus', '-in', key_path],
-        capture_output=True, text=True
-    ).stdout.strip()
+    key_pubkey = subprocess.run(
+        ['openssl', 'pkey', '-in', key_path, '-pubout'],
+        capture_output=True, text=True, check=True
+    ).stdout
 
-    if cert_mod != key_mod:
+    if cert_pubkey != key_pubkey:
         raise ValueError("Certificate and private key do not match!")
 
     # Verify chain
     result = subprocess.run(
-        ['openssl', 'verify', '-CAfile', chain_path, cert_path],
+        ['openssl', 'verify', '-untrusted', chain_path, cert_path],
         capture_output=True, text=True
     )
 
@@ -287,18 +288,18 @@ if __name__ == '__main__':
 
 ## Building the Certificate Chain
 
-Getting the chain right is the most common issue. The chain should include all intermediate certificates but NOT the root CA certificate. Order matters: the certificate that signed your cert comes first, then the one that signed that, and so on.
+Getting the chain right is the most common issue. For public certificates used with CloudFront, the chain should include all intermediate certificates but NOT the root CA certificate. For private certificates, include the root certificate last. Order matters: the certificate that signed your cert comes first, then the one that signed that, and so on.
 
 ```bash
 # Download intermediate certificates if you don't have them
-# (example for Let's Encrypt)
-curl -o intermediate.pem https://letsencrypt.org/certs/lets-encrypt-r3.pem
+# (example for a current Let's Encrypt RSA intermediate)
+curl -o intermediate.pem https://letsencrypt.org/certs/2024/r12.pem
 
 # Build the chain by concatenating intermediates
 cat intermediate1.pem intermediate2.pem > chain.pem
 
-# Verify the full chain
-openssl verify -verbose -CAfile chain.pem cert.pem
+# Verify the full chain against your system trust store
+openssl verify -verbose -untrusted chain.pem cert.pem
 ```
 
 If you're getting "unable to get local issuer certificate" errors, your chain is missing an intermediate certificate.
