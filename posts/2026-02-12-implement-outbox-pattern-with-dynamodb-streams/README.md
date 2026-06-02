@@ -39,7 +39,7 @@ flowchart TD
     D -->|Publish| F[Kinesis]
 ```
 
-Both the state change and the event record are written in one atomic DynamoDB transaction. DynamoDB Streams reliably delivers the new records to a Lambda function, which handles the actual publishing. If the Lambda fails, DynamoDB Streams retries automatically.
+Both the state change and the event record are written in one atomic DynamoDB transaction. DynamoDB Streams delivers the new records to a Lambda function, which handles the actual publishing. If the Lambda fails, Lambda retries the stream batch until it succeeds, reaches the configured retry limits, or the stream record expires.
 
 ## Step 1: Design the Outbox Table
 
@@ -61,10 +61,10 @@ aws dynamodb create-table \
   --tags Key=Purpose,Value=OutboxPattern
 ```
 
-You also need a TTL on outbox records to clean them up after they have been processed.
+You can also use TTL on outbox records to clean them up after they have aged out of your retry and audit window.
 
 ```bash
-# Enable TTL to auto-delete processed outbox events
+# Enable TTL to auto-delete old outbox events
 aws dynamodb update-time-to-live \
   --table-name Outbox \
   --time-to-live-specification Enabled=true,AttributeName=ttl
@@ -81,6 +81,7 @@ import json
 import uuid
 import time
 from datetime import datetime
+from datetime import timezone
 
 dynamodb = boto3.client('dynamodb')
 
@@ -91,11 +92,12 @@ def ship_order(order_id, tracking_number):
     """
 
     event_id = str(uuid.uuid4())
-    timestamp = datetime.utcnow().isoformat()
-    ttl = int(time.time()) + 86400  # Clean up after 24 hours
+    timestamp = datetime.now(timezone.utc).isoformat()
+    ttl = int(time.time()) + 604800  # Clean up after 7 days
 
     # Build the outbox event
     outbox_event = {
+        'eventId': event_id,
         'eventType': 'OrderShipped',
         'entityId': order_id,
         'entityType': 'Order',
@@ -121,11 +123,6 @@ def ship_order(order_id, tracking_number):
                     'ExpressionAttributeNames': {
                         '#status': 'status'
                     },
-                    'ExpressionAttributeValues': {
-                        ':status': {'S': 'shipped'},
-                        ':tn': {'S': tracking_number},
-                        ':ts': {'S': timestamp},
-                    },
                     # Optimistic lock: only update if currently in 'processing' status
                     'ConditionExpression': '#status = :expected',
                     'ExpressionAttributeValues': {
@@ -143,6 +140,7 @@ def ship_order(order_id, tracking_number):
                     'Item': {
                         'pk': {'S': f'ORDER#{order_id}'},
                         'sk': {'S': f'EVENT#{event_id}'},
+                        'eventId': {'S': event_id},
                         'eventType': {'S': outbox_event['eventType']},
                         'entityId': {'S': order_id},
                         'entityType': {'S': 'Order'},
@@ -187,6 +185,7 @@ def lambda_handler(event, context):
         try:
             new_image = record['dynamodb']['NewImage']
 
+            event_id = new_image['eventId']['S']
             event_type = new_image['eventType']['S']
             entity_id = new_image['entityId']['S']
             entity_type = new_image['entityType']['S']
@@ -195,6 +194,7 @@ def lambda_handler(event, context):
 
             # Construct the domain event message
             domain_event = {
+                'eventId': event_id,
                 'eventType': event_type,
                 'entityId': entity_id,
                 'entityType': entity_type,
@@ -223,7 +223,7 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Error publishing event: {str(e)}")
             failed_items.append({
-                'itemIdentifier': record['eventID']
+                'itemIdentifier': record['dynamodb']['SequenceNumber']
             })
 
     if failed_items:
@@ -244,7 +244,7 @@ aws lambda create-event-source-mapping \
   --starting-position LATEST \
   --batch-size 50 \
   --maximum-batching-window-in-seconds 5 \
-  --maximum-retry-attempts 10 \
+  --maximum-retry-attempts 10000 \
   --bisect-batch-on-function-error \
   --function-response-types "ReportBatchItemFailures" \
   --destination-config '{"OnFailure":{"Destination":"arn:aws:sqs:us-east-1:123456789012:outbox-dlq"}}'
@@ -252,19 +252,22 @@ aws lambda create-event-source-mapping \
 
 Important settings:
 
-- **maximum-retry-attempts**: Set higher than usual because losing an outbox event defeats the purpose of the pattern.
+- **maximum-retry-attempts**: Set this high because losing an outbox event defeats the purpose of the pattern.
 - **bisect-batch-on-function-error**: Helps isolate problematic records.
 - **DLQ destination**: Events that fail all retries go to a dead-letter queue for manual investigation.
 
 ## Handling Idempotency
 
-DynamoDB Streams guarantees at-least-once delivery, meaning your publisher Lambda may see the same event more than once. Downstream consumers must be idempotent.
+Lambda event source mappings process DynamoDB stream records at least once, meaning your publisher Lambda may see the same event more than once. Downstream consumers must be idempotent.
 
 Include a unique event ID in every published message so consumers can deduplicate.
 
 ```python
 # Consumer-side deduplication
 import boto3
+import time
+from datetime import datetime
+from datetime import timezone
 
 dynamodb = boto3.resource('dynamodb')
 processed_table = dynamodb.Table('ProcessedEvents')
@@ -278,7 +281,7 @@ def process_event(event):
         processed_table.put_item(
             Item={
                 'eventId': event_id,
-                'processedAt': datetime.utcnow().isoformat(),
+                'processedAt': datetime.now(timezone.utc).isoformat(),
                 'ttl': int(time.time()) + 604800,  # Clean up after 7 days
             },
             ConditionExpression='attribute_not_exists(eventId)'
@@ -337,4 +340,4 @@ Monitor these to ensure your outbox is healthy:
 
 ## Wrapping Up
 
-The outbox pattern with DynamoDB Streams is one of the most reliable ways to publish domain events from a microservice. The atomic transaction guarantees you never lose an event, DynamoDB Streams provides reliable delivery to the publisher, and the at-least-once semantics (combined with consumer-side idempotency) ensure every downstream system eventually gets the event. The operational overhead is minimal - DynamoDB Streams and Lambda handle the plumbing. Focus on getting your event schema right and making your consumers idempotent.
+The outbox pattern with DynamoDB Streams is one of the most reliable ways to publish domain events from a microservice. The atomic transaction guarantees the event is recorded with the state change, DynamoDB Streams provides delivery to the publisher, and the at-least-once processing semantics (combined with consumer-side idempotency) help every downstream system process each event correctly. The operational overhead is minimal - DynamoDB Streams and Lambda handle the plumbing. Focus on getting your event schema right and making your consumers idempotent.
