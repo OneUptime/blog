@@ -155,10 +155,12 @@ Security Hub custom actions let you trigger automated responses to findings. Cre
 
 ```bash
 # Create a custom action for isolating compromised instances
-aws securityhub create-action-target \
+CUSTOM_ACTION_ARN=$(aws securityhub create-action-target \
   --name "IsolateInstance" \
   --description "Isolate a compromised EC2 instance by removing its security groups" \
-  --id "IsolateInstance"
+  --id "IsolateInstance" \
+  --query ActionTargetArn \
+  --output text)
 ```
 
 Now create an EventBridge rule that triggers when this custom action is used.
@@ -169,9 +171,7 @@ aws events put-rule \
   --event-pattern '{
     "source": ["aws.securityhub"],
     "detail-type": ["Security Hub Findings - Custom Action"],
-    "detail": {
-      "actionName": ["IsolateInstance"]
-    }
+    "resources": ["'"$CUSTOM_ACTION_ARN"'"]
   }'
 ```
 
@@ -250,7 +250,7 @@ def get_or_create_quarantine_sg(vpc_id):
 ```hcl
 # Enable GuardDuty to Security Hub integration
 resource "aws_securityhub_product_subscription" "guardduty" {
-  product_arn = "arn:aws:securityhub:${data.aws_region.current.name}::product/aws/guardduty"
+  product_arn = "arn:aws:securityhub:${data.aws_region.current.region}::product/aws/guardduty"
   depends_on  = [aws_securityhub_account.main]
 }
 
