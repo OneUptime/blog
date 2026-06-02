@@ -10,7 +10,7 @@ Description: A practical guide to setting up AWS Clean Rooms for secure data col
 
 AWS Clean Rooms lets multiple organizations run joint analytics on their combined data without either party actually sharing raw data with the other. It's designed for scenarios like a retailer and a brand wanting to understand how ad campaigns drive in-store purchases, or two healthcare organizations comparing patient outcomes without exposing individual records.
 
-The key idea is that both parties bring their data to a "clean room," define rules about what analysis is allowed, and only aggregated, privacy-safe results come out. Nobody sees the other party's raw data.
+The key idea is that both parties bring their data to a "clean room," define rules about what analysis is allowed, and only permitted, privacy-controlled results come out. Nobody sees the other party's raw data.
 
 ## How Clean Rooms Work
 
@@ -42,7 +42,7 @@ aws cleanrooms create-collaboration \
   --members '[
     {
       "accountId": "987654321098",
-      "memberAbilities": ["CAN_QUERY", "CAN_RECEIVE_RESULTS"],
+      "memberAbilities": ["CAN_RECEIVE_RESULTS"],
       "displayName": "AdTech Partner"
     }
   ]' \
@@ -54,16 +54,16 @@ aws cleanrooms create-collaboration \
   }'
 ```
 
-The `memberAbilities` field is important. You can restrict who can run queries and who can see results. For example, you might allow only one party to query while both receive results.
+The `memberAbilities` field is important. You can restrict who can run queries and who can see results. For example, you might designate one SQL query runner while allowing one or more members to receive results.
 
 ## Step 2: Create a Membership
 
-Each party needs to accept the collaboration and create their membership. The creator's membership is automatic; the invited party needs to join explicitly.
+Each party needs a membership in the collaboration. The `create-collaboration` command creates the creator's membership, while the invited party needs to join explicitly.
 
 ```bash
 # The invited party creates their membership
 aws cleanrooms create-membership \
-  --collaboration-identifier col-abc123 \
+  --collaboration-identifier 11111111-1111-1111-1111-111111111111 \
   --query-log-status ENABLED \
   --default-result-configuration '{
     "outputConfiguration": {
@@ -102,14 +102,14 @@ Notice `allowed-columns` - you choose exactly which columns are visible in the c
 
 ## Step 4: Define Analysis Rules
 
-Analysis rules are the heart of Clean Rooms. They control what queries can be run against your data. There are two types: aggregation rules and list rules.
+Analysis rules are the heart of Clean Rooms. They control what queries can be run against your data. AWS Clean Rooms supports aggregation, list, and custom rules. This guide uses aggregation and list rules.
 
 **Aggregation rules** ensure queries only return aggregate results (sums, counts, averages) and enforce minimum aggregation thresholds so individual records can't be inferred.
 
 ```bash
 # Create an aggregation analysis rule
 aws cleanrooms create-configured-table-analysis-rule \
-  --configured-table-identifier ct-purchases123 \
+  --configured-table-identifier 22222222-2222-2222-2222-222222222222 \
   --analysis-rule-type AGGREGATION \
   --analysis-rule-policy '{
     "v1": {
@@ -131,7 +131,7 @@ aws cleanrooms create-configured-table-analysis-rule \
         "joinColumns": ["hashed_email"],
         "joinRequired": "QUERY_RUNNER",
         "dimensionColumns": ["product_category", "store_region", "purchase_date"],
-        "scalarFunctions": ["TRUNC", "YEAR", "MONTH"],
+        "scalarFunctions": ["EXTRACT"],
         "outputConstraints": [
           {
             "columnName": "hashed_email",
@@ -151,7 +151,7 @@ The `outputConstraints` section is critical for privacy. The `minimum: 25` setti
 ```bash
 # Create a list analysis rule for the ad partner's data
 aws cleanrooms create-configured-table-analysis-rule \
-  --configured-table-identifier ct-adimpressions456 \
+  --configured-table-identifier 33333333-3333-3333-3333-333333333333 \
   --analysis-rule-type LIST \
   --analysis-rule-policy '{
     "v1": {
@@ -171,15 +171,15 @@ Link your configured tables to the collaboration so they're available for querie
 ```bash
 # Associate the purchase data table
 aws cleanrooms create-configured-table-association \
-  --configured-table-identifier ct-purchases123 \
-  --membership-identifier mem-retailer789 \
+  --configured-table-identifier 22222222-2222-2222-2222-222222222222 \
+  --membership-identifier 44444444-4444-4444-4444-444444444444 \
   --name "purchases" \
   --role-arn "arn:aws:iam::123456789012:role/CleanRoomsTableRole"
 
 # The ad partner associates their table similarly
 aws cleanrooms create-configured-table-association \
-  --configured-table-identifier ct-adimpressions456 \
-  --membership-identifier mem-adpartner789 \
+  --configured-table-identifier 33333333-3333-3333-3333-333333333333 \
+  --membership-identifier 55555555-5555-5555-5555-555555555555 \
   --name "ad_impressions" \
   --role-arn "arn:aws:iam::987654321098:role/CleanRoomsTableRole"
 ```
@@ -192,9 +192,9 @@ With everything set up, run an analysis query. The query joins data from both pa
 # Run a query to analyze campaign effectiveness
 aws cleanrooms start-protected-query \
   --type SQL \
-  --membership-identifier mem-retailer789 \
+  --membership-identifier 44444444-4444-4444-4444-444444444444 \
   --sql-parameters '{
-    "queryString": "SELECT ai.campaign_name, p.product_category, p.store_region, COUNT(DISTINCT p.hashed_email) as matched_customers, SUM(p.purchase_amount) as total_purchases, AVG(p.purchase_amount) as avg_purchase FROM purchases p INNER JOIN ad_impressions ai ON p.hashed_email = ai.hashed_email WHERE YEAR(p.purchase_date) = 2025 AND MONTH(p.purchase_date) = 12 GROUP BY ai.campaign_name, p.product_category, p.store_region HAVING COUNT(DISTINCT p.hashed_email) >= 25"
+    "queryString": "SELECT ai.campaign_name, p.product_category, p.store_region, COUNT(DISTINCT p.hashed_email) as matched_customers, SUM(p.purchase_amount) as total_purchases, AVG(p.purchase_amount) as avg_purchase FROM purchases p INNER JOIN ad_impressions ai ON p.hashed_email = ai.hashed_email WHERE EXTRACT(YEAR FROM p.purchase_date) = 2025 AND EXTRACT(MONTH FROM p.purchase_date) = 12 GROUP BY ai.campaign_name, p.product_category, p.store_region HAVING COUNT(DISTINCT p.hashed_email) >= 25"
   }' \
   --result-configuration '{
     "outputConfiguration": {
@@ -212,25 +212,25 @@ The `HAVING COUNT(DISTINCT p.hashed_email) >= 25` matches our output constraint.
 ```bash
 # Check query status
 aws cleanrooms get-protected-query \
-  --membership-identifier mem-retailer789 \
-  --protected-query-identifier pq-query123
+  --membership-identifier 44444444-4444-4444-4444-444444444444 \
+  --protected-query-identifier 66666666-6666-6666-6666-666666666666
 ```
 
 ## Monitoring and Auditing
 
-Clean Rooms logs all queries to CloudTrail, which is essential for compliance.
+When query logging is enabled, Clean Rooms logs query details to Amazon CloudWatch Logs. AWS API activity is also recorded in AWS CloudTrail, which is essential for compliance.
 
 ```bash
 # List recent protected queries
 aws cleanrooms list-protected-queries \
-  --membership-identifier mem-retailer789 \
-  --status COMPLETED
+  --membership-identifier 44444444-4444-4444-4444-444444444444 \
+  --status SUCCESS
 
 # Get query details including what was queried
 aws cleanrooms get-protected-query \
-  --membership-identifier mem-retailer789 \
-  --protected-query-identifier pq-query123 \
-  --query 'ProtectedQuery.{Status:Status,SQL:SqlParameters.QueryString,Statistics:Statistics}'
+  --membership-identifier 44444444-4444-4444-4444-444444444444 \
+  --protected-query-identifier 66666666-6666-6666-6666-666666666666 \
+  --query 'protectedQuery.{Status:status,SQL:sqlParameters.queryString,Statistics:statistics}'
 ```
 
 ## Best Practices
