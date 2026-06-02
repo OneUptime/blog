@@ -97,7 +97,7 @@ resource "aws_db_instance" "main" {
 
   # Engine configuration
   engine               = "postgres"
-  engine_version       = "16.2"
+  engine_version       = "16.13"
   instance_class       = var.instance_class
   parameter_group_name = aws_db_parameter_group.main.name
 
@@ -115,9 +115,10 @@ resource "aws_db_instance" "main" {
   port                   = 5432
 
   # Credentials
-  db_name  = var.database_name
-  username = var.master_username
-  password = var.master_password
+  db_name                       = var.database_name
+  username                      = var.master_username
+  manage_master_user_password   = true
+  master_user_secret_kms_key_id = var.kms_key_arn
 
   # High availability
   multi_az = var.environment == "production" ? true : false
@@ -147,12 +148,6 @@ resource "aws_db_instance" "main" {
     Name        = "${var.project_name}-${var.environment}"
     Environment = var.environment
     ManagedBy   = "terraform"
-  }
-
-  lifecycle {
-    # Prevent Terraform from trying to change the password
-    # (manage passwords through AWS Secrets Manager instead)
-    ignore_changes = [password]
   }
 }
 ```
@@ -211,12 +206,6 @@ variable "master_username" {
   default     = "admin"
 }
 
-variable "master_password" {
-  description = "Master password for the database"
-  type        = string
-  sensitive   = true
-}
-
 variable "kms_key_arn" {
   description = "ARN of the KMS key for encryption"
   type        = string
@@ -230,6 +219,12 @@ variable "allowed_cidr_blocks" {
 
 variable "allowed_security_group_ids" {
   description = "Security group IDs allowed to connect to the database"
+  type        = list(string)
+  default     = []
+}
+
+variable "alarm_sns_topic_arns" {
+  description = "SNS topic ARNs for CloudWatch alarm notifications"
   type        = list(string)
   default     = []
 }
@@ -374,6 +369,11 @@ output "instance_identifier" {
   description = "RDS instance identifier"
   value       = aws_db_instance.main.identifier
 }
+
+output "master_user_secret_arn" {
+  description = "Secrets Manager ARN for the RDS-managed master user credentials"
+  value       = aws_db_instance.main.master_user_secret[0].secret_arn
+}
 ```
 
 ## Applying the Configuration
@@ -394,9 +394,12 @@ Your `production.tfvars` file might look like:
 ```hcl
 project_name       = "myapp"
 environment        = "production"
+private_subnet_ids = ["subnet-0123456789abcdef0", "subnet-0abcdef1234567890"]
+vpc_id             = "vpc-0123456789abcdef0"
 instance_class     = "db.r6g.xlarge"
 allocated_storage  = 200
 database_name      = "myapp_production"
+kms_key_arn        = "arn:aws:kms:us-east-1:123456789012:key/01234567-89ab-cdef-0123-456789abcdef"
 ```
 
 For a deeper look at monitoring the RDS instance you just created, check out our guides on [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) and [Enhanced Monitoring](https://oneuptime.com/blog/post/2026-02-12-enable-rds-enhanced-monitoring/view). And if you prefer CloudFormation over Terraform, we've got a guide for [setting up RDS with CloudFormation](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-with-cloudformation/view) too.
