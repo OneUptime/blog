@@ -49,7 +49,7 @@ echo "Instance stopped"
 # Step 2: Change the instance type
 aws ec2 modify-instance-attribute \
     --instance-id i-0123456789abcdef0 \
-    --instance-type '{"Value": "m7g.large"}'
+    --instance-type '{"Value": "m7i.large"}'
 
 # Step 3: Start the instance
 aws ec2 start-instances --instance-ids i-0123456789abcdef0
@@ -61,7 +61,7 @@ echo "Instance running with new type"
 
 ## Compatibility Checks
 
-Not every instance type change is valid. Here are the restrictions:
+Not every instance type change is valid. You also can't change the instance type of a Spot Instance. Here are the restrictions:
 
 ### Virtualization Type
 
@@ -85,7 +85,7 @@ If you want to switch architectures, you'll need to create a new AMI for the tar
 
 ### EBS vs Instance Store
 
-Some instance types include local NVMe storage (instance store). If you're switching from an instance store type to an EBS-only type, make sure you're not relying on the local storage - instance store data doesn't persist across stops.
+Some instance types include local NVMe storage (instance store). If your EBS-backed instance uses attached instance store volumes and you're switching to an EBS-only type, make sure you're not relying on the local storage - instance store data doesn't persist across stops.
 
 ### Nitro vs Non-Nitro
 
@@ -124,7 +124,7 @@ If possible, resize during your lowest-traffic window. Use your [monitoring data
 
 ### Health Check Grace Period
 
-If the instance is behind a load balancer, the ALB will mark it as unhealthy when it stops. After restart, it needs to pass health checks before receiving traffic again. Make sure your health check grace period is long enough.
+If the instance is behind a load balancer, the ALB target will be marked unused or unhealthy while the instance is stopped. After restart, it needs to pass the target group's healthy threshold before receiving traffic again. If the instance is in an Auto Scaling group, make sure the group's health check grace period is long enough for startup.
 
 ## Automation Script
 
@@ -208,7 +208,7 @@ Save this as `resize-instance.sh` and use it:
 ```bash
 # Make it executable and run
 chmod +x resize-instance.sh
-./resize-instance.sh i-0123456789abcdef0 m7g.xlarge
+./resize-instance.sh i-0123456789abcdef0 m7i.xlarge
 ```
 
 ## Right-Sizing Recommendations
