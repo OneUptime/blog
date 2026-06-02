@@ -98,7 +98,7 @@ This baseline:
 - Auto-approves bugfix patches after 14 days
 - Blocks all kernel patches (those need separate testing)
 
-For Ubuntu:
+For Ubuntu, auto-approval delays aren't supported because Ubuntu repositories don't provide reliable package release dates for Patch Manager. Use approval rules to filter by priority and section, but don't set `ApproveAfterDays`:
 
 ```bash
 # Create a patch baseline for Ubuntu
@@ -114,7 +114,6 @@ aws ssm create-patch-baseline \
             {"Key": "PRIORITY", "Values": ["Required", "Important"]}
           ]
         },
-        "ApproveAfterDays": 3,
         "ComplianceLevel": "CRITICAL"
       },
       {
@@ -123,7 +122,6 @@ aws ssm create-patch-baseline \
             {"Key": "SECTION", "Values": ["libs", "admin", "utils"]}
           ]
         },
-        "ApproveAfterDays": 7,
         "ComplianceLevel": "MEDIUM"
       }
     ]
@@ -146,17 +144,17 @@ aws ssm get-default-patch-baseline \
 
 ## Step 4: Create Patch Groups
 
-Patch groups let you assign different baselines to different sets of instances. Tag your instances with a `Patch Group` tag:
+Patch groups let you assign different baselines to different sets of instances. Tag your instances with a `PatchGroup` tag:
 
 ```bash
 # Tag instances for their patch group
 aws ec2 create-tags \
   --resources i-0abc123 i-0def456 i-0ghi789 \
-  --tags "Key=Patch Group,Value=Production-WebServers"
+  --tags "Key=PatchGroup,Value=Production-WebServers"
 
 aws ec2 create-tags \
   --resources i-0jkl012 i-0mno345 \
-  --tags "Key=Patch Group,Value=Production-Databases"
+  --tags "Key=PatchGroup,Value=Production-Databases"
 ```
 
 Register the patch group with your baseline:
@@ -176,7 +174,7 @@ Before installing anything, scan to see what's missing:
 # Scan instances for missing patches (scan only, don't install)
 aws ssm send-command \
   --document-name "AWS-RunPatchBaseline" \
-  --targets "Key=tag:Patch Group,Values=Production-WebServers" \
+  --targets "Key=tag:PatchGroup,Values=Production-WebServers" \
   --parameters '{"Operation":["Scan"]}' \
   --comment "Scan for missing patches"
 ```
@@ -226,7 +224,7 @@ Tell the maintenance window which instances to patch:
 aws ssm register-target-with-maintenance-window \
   --window-id mw-0abc123def456 \
   --resource-type "INSTANCE" \
-  --targets "Key=tag:Patch Group,Values=Production-WebServers" \
+  --targets "Key=tag:PatchGroup,Values=Production-WebServers" \
   --name "Production-WebServers"
 ```
 
@@ -289,20 +287,6 @@ Kernel patches are special because they always require a reboot and can cause is
 aws ssm create-patch-baseline \
   --name "MyOrg-KernelPatches" \
   --operating-system "AMAZON_LINUX_2" \
-  --approval-rules '{
-    "PatchRules": [
-      {
-        "PatchFilterGroup": {
-          "PatchFilters": [
-            {"Key": "CLASSIFICATION", "Values": ["Security"]},
-            {"Key": "SEVERITY", "Values": ["Critical"]}
-          ]
-        },
-        "ApproveAfterDays": 14,
-        "ComplianceLevel": "CRITICAL"
-      }
-    ]
-  }' \
   --approved-patches "kernel*" \
   --approved-patches-compliance-level "CRITICAL"
 ```
