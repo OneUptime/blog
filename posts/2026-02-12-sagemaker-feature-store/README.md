@@ -54,6 +54,7 @@ from sagemaker.feature_store.feature_group import FeatureGroup
 from sagemaker.session import Session
 import pandas as pd
 import time
+from datetime import datetime, timezone
 
 session = Session()
 role = sagemaker.get_execution_role()
@@ -68,7 +69,7 @@ feature_group_name = 'customer-features'
 # The DataFrame must include the record identifier and event time columns
 sample_df = pd.DataFrame({
     'customer_id': ['C001'],
-    'event_time': [str(int(time.time()))],  # Unix timestamp as string
+    'event_time': [datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')],
     'total_purchases': [150.0],
     'avg_order_value': [45.50],
     'days_since_last_purchase': [7.0],
@@ -115,12 +116,12 @@ Once the feature group exists, you can start putting features into it. There are
 Here's how to do single-record ingestion.
 
 ```python
-import time
+from datetime import datetime, timezone
 
 # Ingest a single record
 record = {
     'customer_id': 'C001',
-    'event_time': str(int(time.time())),
+    'event_time': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),
     'total_purchases': 1250.75,
     'avg_order_value': 52.30,
     'days_since_last_purchase': 3.0,
@@ -147,14 +148,14 @@ For batch ingestion, use a DataFrame.
 ```python
 import pandas as pd
 import numpy as np
-import time
+from datetime import datetime, timezone
 
 # Generate a batch of customer features
 n_customers = 1000
 
 batch_df = pd.DataFrame({
     'customer_id': [f'C{str(i).zfill(4)}' for i in range(1, n_customers + 1)],
-    'event_time': [str(int(time.time()))] * n_customers,
+    'event_time': [datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')] * n_customers,
     'total_purchases': np.random.uniform(10, 5000, n_customers).round(2),
     'avg_order_value': np.random.uniform(10, 200, n_customers).round(2),
     'days_since_last_purchase': np.random.randint(0, 365, n_customers).astype(float),
@@ -286,8 +287,8 @@ SELECT labels.customer_id,
 FROM labels_table AS labels
 LEFT JOIN "{table_name}" AS features
     ON labels.customer_id = features.customer_id
-    AND features.event_time <= labels.event_timestamp
-    AND features.event_time >= labels.event_timestamp - INTERVAL '24' HOUR
+    AND from_iso8601_timestamp(features.event_time) <= labels.event_timestamp
+    AND from_iso8601_timestamp(features.event_time) >= labels.event_timestamp - INTERVAL '24' HOUR
 ORDER BY labels.event_timestamp DESC
 """
 ```
@@ -297,12 +298,12 @@ ORDER BY labels.event_timestamp DESC
 Features change over time. When you ingest a new record with the same record identifier but a newer event time, the online store updates to show the latest value, while the offline store keeps the historical record.
 
 ```python
-import time
+from datetime import datetime, timezone
 
 # Update features for an existing customer
 updated_record = {
     'customer_id': 'C0042',
-    'event_time': str(int(time.time())),  # New timestamp
+    'event_time': datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'),  # New timestamp
     'total_purchases': 1500.00,           # Updated value
     'avg_order_value': 55.00,
     'days_since_last_purchase': 1.0,      # Just made a purchase
