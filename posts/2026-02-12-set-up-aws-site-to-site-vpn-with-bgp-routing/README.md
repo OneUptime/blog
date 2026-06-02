@@ -30,7 +30,7 @@ graph LR
     A -->|IPSec Tunnel 2| B
 ```
 
-Each VPN connection gets two tunnels for redundancy. With BGP, both tunnels can be active simultaneously and routes are exchanged over each.
+Each VPN connection gets two tunnels for redundancy. With BGP, both tunnels can be established simultaneously and routes are exchanged over each, but a virtual private gateway selects one tunnel as the primary egress path. ECMP across tunnels is supported with transit gateway VPN attachments, not virtual private gateways.
 
 ## Step 1: Create a Customer Gateway
 
@@ -41,12 +41,12 @@ The Customer Gateway (CGW) represents your on-premises VPN device in AWS. You ne
 
 aws ec2 create-customer-gateway \
   --type ipsec.1 \
-  --public-ip 203.0.113.12 \
+  --ip-address 203.0.113.12 \
   --bgp-asn 65000 \
   --tag-specifications 'ResourceType=customer-gateway,Tags=[{Key=Name,Value=on-prem-cgw}]'
 ```
 
-If you do not have a specific ASN, use a private ASN in the range 64512-65534.
+If you do not have a specific ASN, use a private ASN in the range 64512-65534 or 4200000000-4294967294. If you use a 32-bit ASN larger than 2147483647 with the AWS CLI, specify it with `--bgp-asn-extended`.
 
 ## Step 2: Create a Virtual Private Gateway
 
@@ -126,6 +126,7 @@ Here is what a typical BGP configuration looks like for a Linux-based VPN device
 # /etc/frr/frr.conf - BGP configuration for the on-premises router
 router bgp 65000
   bgp router-id 203.0.113.12
+  no bgp ebgp-requires-policy
 
   # Peer with AWS tunnel 1
   neighbor 169.254.10.1 remote-as 64512
@@ -145,6 +146,8 @@ router bgp 65000
     neighbor 169.254.10.5 soft-reconfiguration inbound
   exit-address-family
 ```
+
+The prefixes in the `network` statements must exist in the FRRouting routing table, for example as connected or static routes, before FRR advertises them to AWS.
 
 ## Step 6: Verify the Connection
 
@@ -200,7 +203,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name vpn-tunnel-down \
   --namespace AWS/VPN \
   --metric-name TunnelState \
-  --dimensions Name=VpnId,Value=vpn-0abc123def456789 \
+  --dimensions Name=VpnId,Value=vpn-0abc123def456789 Name=TunnelIpAddress,Value=198.51.100.10 \
   --statistic Maximum \
   --period 300 \
   --threshold 1 \
@@ -216,7 +219,7 @@ Monitor tunnel data transfer to spot anomalies.
 aws cloudwatch get-metric-statistics \
   --namespace AWS/VPN \
   --metric-name TunnelDataIn \
-  --dimensions Name=VpnId,Value=vpn-0abc123def456789 \
+  --dimensions Name=VpnId,Value=vpn-0abc123def456789 Name=TunnelIpAddress,Value=198.51.100.10 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
