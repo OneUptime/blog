@@ -18,9 +18,9 @@ The numbers make a compelling case:
 |---------|----------|----------|
 | Cost per million requests | $3.50 | $1.00 |
 | Average latency overhead | 29ms | 10ms |
-| Maximum integrations per API | 300 | 300 |
+| Resources/routes per API | 300 resources | 300 routes |
 | WebSocket support | No | No |
-| Native CORS support | No | Yes |
+| CORS configuration | Yes | Yes |
 | Auto-deploy | No | Yes |
 
 For a high-traffic API handling 100 million requests per month, switching from REST to HTTP saves $250/month in API Gateway costs alone. The latency improvement compounds across every request.
@@ -34,22 +34,24 @@ Features available in both:
 - HTTP proxy integration
 - Custom domain names
 - Stage variables
-- Authorization (JWT, Lambda authorizers)
-- CloudWatch logging
-- Throttling
+- Authorization (IAM, Cognito-backed auth, Lambda authorizers)
+- CloudWatch access logs and metrics
+- Account and route throttling
 - VPC links
 
 Features only in REST API (not in HTTP API):
 - API keys and usage plans
 - Request/response validation (models)
-- Request/response transformation (mapping templates)
+- Request/response body transformation (VTL mapping templates)
 - Caching
 - WAF integration
 - Resource policies
-- Client certificates (mTLS)
+- Client certificates for backend authentication
 - Private API endpoints
 - Mock integrations
 - Canary deployments
+
+HTTP API does support mutual TLS authentication and request/response parameter mapping, but it doesn't support REST API-style mapping templates for request body transformations.
 
 If you rely heavily on any of those REST-only features, migration gets more complicated. You'd need to implement the missing functionality elsewhere (like validation in your Lambda function).
 
@@ -66,7 +68,7 @@ graph LR
     D --> E
 ```
 
-Both APIs point to the same Lambda functions, so there's no backend change needed. You just shift DNS from one to the other.
+Both APIs point to the same Lambda functions, so there's no backend change needed. You shift traffic at the custom domain, DNS, or proxy layer depending on how your API is exposed.
 
 ## Step 1: Create the HTTP API
 
@@ -80,6 +82,7 @@ import json
 
 apigw = boto3.client("apigateway")
 apigwv2 = boto3.client("apigatewayv2")
+lambda_client = boto3.client("lambda")
 
 
 def get_rest_api_config(api_id):
@@ -145,6 +148,16 @@ def create_http_api(name, routes):
             ApiId=api_id,
             RouteKey=route_key,
             Target=f"integrations/{integration['IntegrationId']}",
+        )
+
+        # Grant the new HTTP API permission to invoke the Lambda integration.
+        function_arn = route["integration_uri"].split("/functions/")[1].split("/invocations")[0]
+        lambda_client.add_permission(
+            FunctionName=function_arn,
+            StatementId=f"apigatewayv2-{api_id}-{integration['IntegrationId']}",
+            Action="lambda:InvokeFunction",
+            Principal="apigateway.amazonaws.com",
+            SourceArn=f"arn:aws:execute-api:{function_arn.split(':')[3]}:{function_arn.split(':')[4]}:{api_id}/*/*{route['path']}",
         )
 
     # Create the default stage with auto-deploy
@@ -302,7 +315,7 @@ aws apigatewayv2 create-api-mapping \
 
 ## Step 5: Gradual Traffic Shift
 
-Use Route 53 weighted routing to shift traffic gradually:
+Use Route 53 weighted routing to shift traffic gradually if your old and new APIs are already fronted by separate custom domains or proxy targets. For API Gateway custom domains, use the API Gateway custom domain's target domain name and hosted zone ID, not the API's default invoke URL:
 
 ```bash
 # REST API gets 90% of traffic initially
@@ -318,7 +331,7 @@ aws route53 change-resource-record-sets \
         "Weight": 90,
         "AliasTarget": {
           "DNSName": "d-rest123.execute-api.us-east-1.amazonaws.com",
-          "HostedZoneId": "Z1UJRXOUMOOFQ8",
+          "HostedZoneId": "regional-hosted-zone-id-from-custom-domain",
           "EvaluateTargetHealth": true
         }
       }
@@ -338,7 +351,7 @@ aws route53 change-resource-record-sets \
         "Weight": 10,
         "AliasTarget": {
           "DNSName": "d-http456.execute-api.us-east-1.amazonaws.com",
-          "HostedZoneId": "Z1UJRXOUMOOFQ8",
+          "HostedZoneId": "regional-hosted-zone-id-from-custom-domain",
           "EvaluateTargetHealth": true
         }
       }
@@ -382,8 +395,17 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !GetAtt MyFunction.Arn
+      IntegrationMethod: POST
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MyFunction.Arn}/invocations"
       PayloadFormatVersion: "1.0"  # Use 1.0 for REST API compatibility
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${HttpApi}/*/*/users"
 
   GetUsersRoute:
     Type: AWS::ApiGatewayV2::Route
@@ -397,4 +419,4 @@ For monitoring during your migration and comparing performance between REST and 
 
 ## Wrapping Up
 
-Migrating from REST API to HTTP API saves money and reduces latency. The key is understanding which features you'll lose and whether that matters for your use case. If you need API keys, WAF, request validation, or caching at the gateway level, stick with REST API. For straightforward Lambda proxy APIs with JWT auth and CORS, HTTP API is the better choice. Always run both in parallel during migration and use weighted routing to shift traffic gradually.
+Migrating from REST API to HTTP API saves money and reduces latency. The key is understanding which features you'll lose and whether that matters for your use case. If you need API keys, WAF, request validation, or caching at the gateway level, stick with REST API. For straightforward Lambda proxy APIs with JWT auth and CORS, HTTP API is the better choice. Always run both in parallel during migration and use a custom domain, DNS, or proxy-layer rollout to shift traffic gradually.
