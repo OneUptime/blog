@@ -29,7 +29,7 @@ graph TB
 
 ## CloudTrail - Your API Audit Trail
 
-CloudTrail records every API call made in your AWS account. This is non-negotiable - it should be enabled everywhere, for every account, logging to a centralized bucket that nobody can tamper with.
+CloudTrail records supported API activity in your AWS account. This is non-negotiable - it should be enabled everywhere, for every account, logging to a centralized bucket that nobody can tamper with.
 
 This Terraform configuration sets up an organization-wide CloudTrail with tamper protection.
 
@@ -37,7 +37,8 @@ This Terraform configuration sets up an organization-wide CloudTrail with tamper
 # S3 bucket for CloudTrail logs with immutability
 
 resource "aws_s3_bucket" "cloudtrail" {
-  bucket = "${var.org_id}-cloudtrail-logs"
+  bucket              = "${var.org_id}-cloudtrail-logs"
+  object_lock_enabled = true
 }
 
 # Enable versioning so logs can't be silently overwritten
@@ -50,7 +51,9 @@ resource "aws_s3_bucket_versioning" "cloudtrail" {
 
 # Object lock prevents deletion of log files
 resource "aws_s3_bucket_object_lock_configuration" "cloudtrail" {
-  bucket = aws_s3_bucket.cloudtrail.id
+  bucket              = aws_s3_bucket.cloudtrail.id
+  object_lock_enabled = "Enabled"
+
   rule {
     default_retention {
       mode = "COMPLIANCE"
@@ -87,10 +90,10 @@ resource "aws_cloudtrail" "org_trail" {
     }
   }
 
-  insight_selectors {
+  insight_selector {
     insight_type = "ApiCallRateInsight"
   }
-  insight_selectors {
+  insight_selector {
     insight_type = "ApiErrorRateInsight"
   }
 }
@@ -114,14 +117,14 @@ Here's a Python application logging setup that sends structured JSON logs to Clo
 import logging
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 class StructuredLogFormatter(logging.Formatter):
     """Format logs as JSON for CloudWatch Logs Insights queries."""
 
     def format(self, record):
         log_entry = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'level': record.levelname,
             'logger': record.name,
             'message': record.getMessage(),
@@ -266,6 +269,18 @@ Resources:
           MetricValue: "1"
           DefaultValue: 0
 
+  # Metric filter to count root account usage from CloudTrail
+  RootAccountUsageFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: /aws/cloudtrail/organization
+      FilterPattern: '{ $.userIdentity.type = "Root" && $.eventName != "ConsoleLogin" }'
+      MetricTransformations:
+        - MetricNamespace: CloudTrailMetrics
+          MetricName: RootAccountUsage
+          MetricValue: "1"
+          DefaultValue: 0
+
   # SNS topic for security alerts
   SecurityAlertTopic:
     Type: AWS::SNS::Topic
@@ -278,12 +293,12 @@ Resources:
 
 GuardDuty uses machine learning to detect threats across your AWS environment. It analyzes CloudTrail logs, VPC Flow Logs, and DNS logs automatically.
 
-This script enables GuardDuty with all available data sources and configures publishing to Security Hub.
+This script enables GuardDuty with the selected data sources and features and configures organization auto-enable. If Security Hub is enabled, it can ingest GuardDuty findings automatically.
 
 ```python
 import boto3
 
-def setup_guardduty(admin_account_id):
+def setup_guardduty():
     """Configure GuardDuty as an organization-wide threat detection system."""
     gd = boto3.client('guardduty')
 
@@ -330,7 +345,7 @@ def setup_guardduty(admin_account_id):
     # Enable auto-enable for new organization accounts
     gd.update_organization_configuration(
         DetectorId=detector_id,
-        AutoEnable=True,
+        AutoEnableOrganizationMembers='ALL',
         DataSources={
             'S3Logs': {'AutoEnable': True},
             'Kubernetes': {'AuditLogs': {'AutoEnable': True}},
@@ -339,13 +354,33 @@ def setup_guardduty(admin_account_id):
                     'EbsVolumes': {'AutoEnable': True}
                 }
             }
-        }
+        },
+        Features=[
+            {
+                'Name': 'EKS_RUNTIME_MONITORING',
+                'AutoEnable': 'ALL',
+                'AdditionalConfiguration': [
+                    {
+                        'Name': 'EKS_ADDON_MANAGEMENT',
+                        'AutoEnable': 'ALL'
+                    }
+                ]
+            },
+            {
+                'Name': 'LAMBDA_NETWORK_LOGS',
+                'AutoEnable': 'ALL'
+            },
+            {
+                'Name': 'RDS_LOGIN_EVENTS',
+                'AutoEnable': 'ALL'
+            }
+        ]
     )
-    print("Auto-enable configured for new accounts")
+    print("Auto-enable configured for organization accounts")
 
     return detector_id
 
-setup_guardduty('123456789012')
+setup_guardduty()
 ```
 
 ## Building Dashboards That Matter
@@ -385,7 +420,7 @@ def create_operations_dashboard():
                 "type": "log",
                 "properties": {
                     "title": "Recent Errors",
-                    "query": "fields @timestamp, @message\n| filter level = 'ERROR'\n| sort @timestamp desc\n| limit 20",
+                    "query": "SOURCE '/app/production' | fields @timestamp, @message\n| filter level = 'ERROR'\n| sort @timestamp desc\n| limit 20",
                     "region": "us-east-1",
                     "stacked": False,
                     "view": "table"
