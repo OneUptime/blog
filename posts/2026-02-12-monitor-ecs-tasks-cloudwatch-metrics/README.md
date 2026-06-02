@@ -14,16 +14,16 @@ This guide covers the built-in ECS metrics available in CloudWatch, how to set u
 
 ## Default ECS Metrics in CloudWatch
 
-ECS automatically publishes metrics to CloudWatch at the service level. You don't need to enable anything - these are available by default in the `AWS/ECS` namespace.
+ECS publishes metrics to CloudWatch at the service level in one-minute intervals for resources with tasks in the `RUNNING` state. Fargate services get these metrics automatically. For services running on EC2 container instances, make sure the ECS container agent and instance role support telemetry and that metrics collection hasn't been disabled. These metrics are available in the `AWS/ECS` namespace.
 
-The default metrics are:
+The core service-level metrics used in this guide are:
 
 | Metric | Description | Useful For |
 |--------|-------------|------------|
 | CPUUtilization | Percentage of CPU units used vs reserved | Capacity planning, autoscaling |
 | MemoryUtilization | Percentage of memory used vs reserved | OOM prevention, right-sizing |
 
-These are aggregated at the service level and reported every minute. While they're helpful, they only give you the service-wide average. If you need per-task or per-container metrics, you'll want to enable Container Insights (covered in our [Container Insights guide](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view)).
+These are aggregated at the service level and reported every minute. While they're helpful, they only give you a service-wide view. If you need per-task or per-container metrics, you'll want to enable Container Insights (covered in our [Container Insights guide](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view)).
 
 ## Querying ECS Metrics with the CLI
 
@@ -38,7 +38,7 @@ aws cloudwatch get-metric-statistics \
   --dimensions \
     Name=ClusterName,Value=production \
     Name=ServiceName,Value=api-service \
-  --start-time "$(date -u -v-3H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 300 \
   --statistics Average Maximum
@@ -54,7 +54,7 @@ aws cloudwatch get-metric-statistics \
   --dimensions \
     Name=ClusterName,Value=production \
     Name=ServiceName,Value=api-service \
-  --start-time "$(date -u -v-3H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '3 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 300 \
   --statistics Average Maximum Minimum
@@ -71,7 +71,7 @@ Here's a simple Python example that publishes request latency as a custom metric
 ```python
 import boto3
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Initialize the CloudWatch client
 cloudwatch = boto3.client('cloudwatch', region_name='us-east-1')
@@ -89,7 +89,7 @@ def publish_latency_metric(service_name, latency_ms):
                         'Value': service_name
                     }
                 ],
-                'Timestamp': datetime.utcnow(),
+                'Timestamp': datetime.now(timezone.utc),
                 'Value': latency_ms,
                 'Unit': 'Milliseconds',
                 'StorageResolution': 60  # standard resolution
@@ -287,7 +287,7 @@ The first row should answer "is the service healthy?" at a glance. Running tasks
 
 ## Metric Resolution and Costs
 
-Standard ECS metrics are published at 1-minute resolution. Custom metrics can be published at 1-second (high resolution) or 1-minute (standard resolution) intervals.
+Standard ECS metrics are published at 1-minute resolution. Custom metrics can be stored at high resolution down to 1 second, or at standard 1-minute resolution.
 
 High-resolution metrics cost more but give you finer granularity during incidents. A practical approach is to use standard resolution for most metrics and high resolution only for your most critical indicators like latency and error rate.
 
