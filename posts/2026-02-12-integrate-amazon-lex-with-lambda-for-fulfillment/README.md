@@ -85,12 +85,11 @@ aws lambda create-function \
 When Lex invokes your Lambda function, it sends an event with this structure:
 
 ```json
-// Example Lex V2 event sent to Lambda
 {
   "messageVersion": "1.0",
   "invocationSource": "DialogCodeHook",
   "inputMode": "Text",
-  "responseContentType": "text/plain",
+  "responseContentType": "text/plain; charset=utf-8",
   "sessionId": "session-123",
   "bot": {
     "id": "BOTID123",
@@ -274,7 +273,7 @@ aws lambda add-permission \
 Then in the Lex console, go to your intent's settings:
 
 1. Under "Code hooks," enable "Use a Lambda function for initialization and validation" (dialog code hook)
-2. Under "Fulfillment," enable "Active" and select your Lambda function
+2. Under "Fulfillment," enable "Active" and select "Use a Lambda function for fulfillment"
 
 Alternatively, use the CLI:
 
@@ -287,7 +286,7 @@ aws lexv2-models update-intent \
   --intent-id YOUR_INTENT_ID \
   --intent-name OrderPizza \
   --dialog-code-hook '{"enabled": true}' \
-  --fulfillment-code-hook '{"enabled": true}'
+  --fulfillment-code-hook '{"enabled": true, "active": true}'
 ```
 
 You also need to set the Lambda function at the bot alias level:
