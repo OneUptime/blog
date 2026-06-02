@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, VPC, Prefix Lists, Security, IP Whitelisting
 
-Description: A hands-on guide to using AWS managed prefix lists for centralized IP whitelisting across security groups, NACLs, and WAF rules in multi-account environments.
+Description: A hands-on guide to using AWS managed prefix lists for centralized IP whitelisting across security groups in multi-account environments.
 
 ---
 
@@ -26,7 +26,7 @@ graph TB
     PL --> CICD[CI/CD Runners]
     PL --> Partners[Partner IPs]
     PL --> Monitoring[Monitoring Services]
-    Office --> MainHQ[HQ - 203.0.113.0/24]
+    Office --> MainHQ[HQ - 203.0.113.0/25]
     Office --> Branch1[NY Branch - 198.51.100.0/24]
     Office --> Branch2[London - 192.0.2.0/24]
     CICD --> GH[GitHub Actions]
@@ -51,12 +51,12 @@ aws ec2 create-managed-prefix-list \
   --max-entries 25 \
   --address-family IPv4 \
   --entries '[
-    {"Cidr": "203.0.113.0/24", "Description": "HQ - Ashburn VA"},
+    {"Cidr": "203.0.113.0/25", "Description": "HQ - Ashburn VA"},
     {"Cidr": "198.51.100.0/24", "Description": "Branch - New York"},
     {"Cidr": "192.0.2.0/24", "Description": "Branch - London"},
     {"Cidr": "203.0.113.128/25", "Description": "HQ VPN Pool"}
   ]' \
-  --tags Key=Category,Value=Offices Key=Owner,Value=IT
+  --tag-specifications 'ResourceType=prefix-list,Tags=[{Key=Category,Value=Offices},{Key=Owner,Value=IT}]'
 
 # CI/CD runners - IPs that need deployment access
 aws ec2 create-managed-prefix-list \
@@ -68,7 +68,7 @@ aws ec2 create-managed-prefix-list \
     {"Cidr": "185.199.108.0/22", "Description": "GitHub Actions - Range 2"},
     {"Cidr": "143.55.64.0/20", "Description": "GitHub Actions - Range 3"}
   ]' \
-  --tags Key=Category,Value=CICD Key=Owner,Value=DevOps
+  --tag-specifications 'ResourceType=prefix-list,Tags=[{Key=Category,Value=CICD},{Key=Owner,Value=DevOps}]'
 
 # Monitoring services - IPs for uptime and health checks
 aws ec2 create-managed-prefix-list \
@@ -79,7 +79,7 @@ aws ec2 create-managed-prefix-list \
     {"Cidr": "52.4.0.0/16", "Description": "OneUptime monitoring"},
     {"Cidr": "34.195.0.0/16", "Description": "External health checker"}
   ]' \
-  --tags Key=Category,Value=Monitoring Key=Owner,Value=SRE
+  --tag-specifications 'ResourceType=prefix-list,Tags=[{Key=Category,Value=Monitoring},{Key=Owner,Value=SRE}]'
 
 # Partner API access
 aws ec2 create-managed-prefix-list \
@@ -91,12 +91,14 @@ aws ec2 create-managed-prefix-list \
     {"Cidr": "100.20.31.0/24", "Description": "Acme Corp - Staging"},
     {"Cidr": "172.16.50.0/24", "Description": "Beta Inc - API servers"}
   ]' \
-  --tags Key=Category,Value=Partners Key=Owner,Value=Partnerships
+  --tag-specifications 'ResourceType=prefix-list,Tags=[{Key=Category,Value=Partners},{Key=Owner,Value=Partnerships}]'
 ```
 
 ## Building Security Groups with Prefix Lists
 
 Now use these prefix lists in your security groups. Each security group references the prefix lists relevant to its role.
+
+The examples below use placeholder prefix list IDs. Replace them with the `PrefixListId` values returned by the create commands.
 
 Security group for bastion hosts:
 
@@ -114,7 +116,7 @@ aws ec2 authorize-security-group-ingress \
       "IpProtocol": "tcp",
       "FromPort": 22,
       "ToPort": 22,
-      "PrefixListIds": [{"PrefixListId": "pl-offices", "Description": "SSH from offices"}]
+      "PrefixListIds": [{"PrefixListId": "pl-0123456789abcdef0", "Description": "SSH from offices"}]
     }
   ]'
 ```
@@ -141,7 +143,7 @@ aws ec2 authorize-security-group-ingress \
       "IpProtocol": "tcp",
       "FromPort": 8080,
       "ToPort": 8080,
-      "PrefixListIds": [{"PrefixListId": "pl-monitoring", "Description": "Health check endpoint"}]
+      "PrefixListIds": [{"PrefixListId": "pl-0fedcba9876543210", "Description": "Health check endpoint"}]
     }
   ]'
 ```
@@ -162,15 +164,15 @@ aws ec2 authorize-security-group-ingress \
       "IpProtocol": "tcp",
       "FromPort": 22,
       "ToPort": 22,
-      "PrefixListIds": [{"PrefixListId": "pl-cicd", "Description": "SSH from CI/CD runners"}]
+      "PrefixListIds": [{"PrefixListId": "pl-00112233445566778", "Description": "SSH from CI/CD runners"}]
     },
     {
       "IpProtocol": "tcp",
       "FromPort": 443,
       "ToPort": 443,
       "PrefixListIds": [
-        {"PrefixListId": "pl-cicd", "Description": "HTTPS from CI/CD"},
-        {"PrefixListId": "pl-offices", "Description": "HTTPS from offices"}
+        {"PrefixListId": "pl-00112233445566778", "Description": "HTTPS from CI/CD"},
+        {"PrefixListId": "pl-0123456789abcdef0", "Description": "HTTPS from offices"}
       ]
     }
   ]'
@@ -187,7 +189,7 @@ aws ec2 authorize-security-group-ingress \
       "IpProtocol": "tcp",
       "FromPort": 443,
       "ToPort": 443,
-      "PrefixListIds": [{"PrefixListId": "pl-partners", "Description": "Partner API access"}]
+      "PrefixListIds": [{"PrefixListId": "pl-8899aabbccddeeff0", "Description": "Partner API access"}]
     }
   ]'
 ```
@@ -202,11 +204,12 @@ Share prefix lists:
 # Share all whitelist prefix lists with the organization
 aws ram create-resource-share \
   --name "ip-whitelists" \
+  --no-allow-external-principals \
   --resource-arns \
-    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-offices \
-    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-cicd \
-    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-monitoring \
-    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-partners \
+    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-0123456789abcdef0 \
+    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-00112233445566778 \
+    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-0fedcba9876543210 \
+    arn:aws:ec2:us-east-1:123456789012:prefix-list/pl-8899aabbccddeeff0 \
   --principals arn:aws:organizations::123456789012:organization/o-org123
 
 # In spoke accounts, find the shared prefix lists
@@ -225,12 +228,40 @@ Lambda function to sync GitHub Actions IPs:
 ```python
 import boto3
 import json
+import time
 import urllib.request
 
 ec2 = boto3.client('ec2')
 
-PREFIX_LIST_ID = 'pl-cicd'
+PREFIX_LIST_ID = 'pl-00112233445566778'
 GITHUB_META_URL = 'https://api.github.com/meta'
+
+def chunks(items, size):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+def get_all_entries(prefix_list_id):
+    paginator = ec2.get_paginator('get_managed_prefix_list_entries')
+    entries = []
+    for page in paginator.paginate(PrefixListId=prefix_list_id):
+        entries.extend(page['Entries'])
+    return entries
+
+def get_current_version(prefix_list_id):
+    return ec2.describe_managed_prefix_lists(
+        PrefixListIds=[prefix_list_id]
+    )['PrefixLists'][0]['Version']
+
+def wait_until_ready(prefix_list_id):
+    while True:
+        prefix_list = ec2.describe_managed_prefix_lists(
+            PrefixListIds=[prefix_list_id]
+        )['PrefixLists'][0]
+        if prefix_list['State'] in ('create-complete', 'modify-complete'):
+            return prefix_list
+        if prefix_list['State'].endswith('-failed'):
+            raise RuntimeError(prefix_list.get('StateMessage', prefix_list['State']))
+        time.sleep(5)
 
 def handler(event, context):
     # Fetch current GitHub Actions IP ranges
@@ -238,17 +269,13 @@ def handler(event, context):
     with urllib.request.urlopen(req) as response:
         meta = json.loads(response.read().decode())
 
-    github_cidrs = set(meta.get('actions', []))
+    github_cidrs = {cidr for cidr in meta.get('actions', []) if ':' not in cidr}
 
     # Get current prefix list entries
     current = ec2.describe_managed_prefix_lists(
         PrefixListIds=[PREFIX_LIST_ID]
     )['PrefixLists'][0]
-    current_version = current['Version']
-
-    existing_entries = ec2.get_managed_prefix_list_entries(
-        PrefixListId=PREFIX_LIST_ID
-    )['Entries']
+    existing_entries = get_all_entries(PREFIX_LIST_ID)
 
     existing_cidrs = {e['Cidr'] for e in existing_entries}
 
@@ -260,8 +287,8 @@ def handler(event, context):
         print("No changes needed")
         return {'changes': 0}
 
-    add_entries = [{'Cidr': cidr, 'Description': 'GitHub Actions'} for cidr in to_add]
-    remove_entries = [{'Cidr': cidr} for cidr in to_remove]
+    add_entries = [{'Cidr': cidr, 'Description': 'GitHub Actions'} for cidr in sorted(to_add)]
+    remove_entries = [{'Cidr': cidr} for cidr in sorted(to_remove)]
 
     # Check if we need to increase max entries
     new_total = len(existing_cidrs) + len(to_add) - len(to_remove)
@@ -270,19 +297,24 @@ def handler(event, context):
             PrefixListId=PREFIX_LIST_ID,
             MaxEntries=new_total + 10  # Add buffer
         )
-        # Need to re-fetch the version after max-entries change
-        current = ec2.describe_managed_prefix_lists(
-            PrefixListIds=[PREFIX_LIST_ID]
-        )['PrefixLists'][0]
-        current_version = current['Version']
+        wait_until_ready(PREFIX_LIST_ID)
 
     # Apply changes
-    ec2.modify_managed_prefix_list(
-        PrefixListId=PREFIX_LIST_ID,
-        CurrentVersion=current_version,
-        AddEntries=add_entries[:20] if add_entries else [],  # API limit per call
-        RemoveEntries=remove_entries[:20] if remove_entries else []
-    )
+    for batch in chunks(remove_entries, 100):
+        ec2.modify_managed_prefix_list(
+            PrefixListId=PREFIX_LIST_ID,
+            CurrentVersion=get_current_version(PREFIX_LIST_ID),
+            RemoveEntries=batch
+        )
+        wait_until_ready(PREFIX_LIST_ID)
+
+    for batch in chunks(add_entries, 100):
+        ec2.modify_managed_prefix_list(
+            PrefixListId=PREFIX_LIST_ID,
+            CurrentVersion=get_current_version(PREFIX_LIST_ID),
+            AddEntries=batch
+        )
+        wait_until_ready(PREFIX_LIST_ID)
 
     print(f"Added {len(to_add)}, removed {len(to_remove)} entries")
     return {'added': len(to_add), 'removed': len(to_remove)}
@@ -303,6 +335,13 @@ aws events put-targets \
     "Id": "github-ip-sync",
     "Arn": "arn:aws:lambda:us-east-1:123456789012:function:sync-github-ips"
   }]'
+
+aws lambda add-permission \
+  --function-name "sync-github-ips" \
+  --statement-id "allow-eventbridge-sync-github-ips" \
+  --action "lambda:InvokeFunction" \
+  --principal events.amazonaws.com \
+  --source-arn "arn:aws:events:us-east-1:123456789012:rule/sync-github-ips"
 ```
 
 ## CloudFormation Template
@@ -346,6 +385,7 @@ Resources:
     Type: AWS::RAM::ResourceShare
     Properties:
       Name: ip-whitelists
+      AllowExternalPrincipals: false
       ResourceArns:
         - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:prefix-list/${OfficeWhitelist}"
         - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:prefix-list/${MonitoringWhitelist}"
@@ -381,7 +421,7 @@ For compliance, regularly verify that prefix list entries match your approved IP
 
 ```bash
 # Export all entries from all prefix lists
-for pl_id in pl-offices pl-cicd pl-monitoring pl-partners; do
+for pl_id in pl-0123456789abcdef0 pl-00112233445566778 pl-0fedcba9876543210 pl-8899aabbccddeeff0; do
   echo "=== $pl_id ==="
   aws ec2 get-managed-prefix-list-entries \
     --prefix-list-id $pl_id \
