@@ -16,7 +16,7 @@ Let's set it up and learn how to actually use it to find the information that ma
 
 Cost Explorer isn't enabled by default. You need to turn it on from the management account if you're using AWS Organizations, or from the standalone account.
 
-Enable it through the AWS CLI.
+You can check whether it's enabled through the AWS CLI.
 
 ```bash
 aws ce get-cost-and-usage \
@@ -25,7 +25,7 @@ aws ce get-cost-and-usage \
   --metrics "BlendedCost"
 ```
 
-If you get an error saying Cost Explorer isn't enabled, you'll need to enable it through the console first. Go to the Billing Dashboard, click on Cost Explorer in the left navigation, and click "Enable Cost Explorer." It takes up to 24 hours for historical data to populate.
+If you get an error saying Cost Explorer isn't enabled, you'll need to enable it through the console first. Sign in to the management account as the root user, go to the Billing and Cost Management console, click on Cost Explorer in the left navigation, and click "Enable Cost Explorer." It takes up to 24 hours for historical data to populate.
 
 For organizations, the management account must enable Cost Explorer, and it automatically becomes available to all member accounts (if you've configured access).
 
@@ -48,34 +48,40 @@ This script shows your costs broken down by service for the current month.
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime
 
 ce = boto3.client("ce")
 
 def get_costs_by_service(start_date, end_date):
     """Get costs grouped by AWS service."""
-    response = ce.get_cost_and_usage(
-        TimePeriod={
+    request = {
+        "TimePeriod": {
             "Start": start_date,
             "End": end_date
         },
-        Granularity="MONTHLY",
-        Metrics=["UnblendedCost"],
-        GroupBy=[
+        "Granularity": "MONTHLY",
+        "Metrics": ["UnblendedCost"],
+        "GroupBy": [
             {
                 "Type": "DIMENSION",
                 "Key": "SERVICE"
             }
         ]
-    )
+    }
 
     results = []
-    for group in response["ResultsByTime"]:
-        for item in group["Groups"]:
-            service = item["Keys"][0]
-            cost = float(item["Metrics"]["UnblendedCost"]["Amount"])
-            if cost > 0.01:  # Skip negligible costs
-                results.append({"service": service, "cost": cost})
+    while True:
+        response = ce.get_cost_and_usage(**request)
+        for group in response["ResultsByTime"]:
+            for item in group["Groups"]:
+                service = item["Keys"][0]
+                cost = float(item["Metrics"]["UnblendedCost"]["Amount"])
+                if cost > 0.01:  # Skip negligible costs
+                    results.append({"service": service, "cost": cost})
+
+        if "NextPageToken" not in response:
+            break
+        request["NextPageToken"] = response["NextPageToken"]
 
     # Sort by cost descending
     results.sort(key=lambda x: x["cost"], reverse=True)
@@ -113,28 +119,34 @@ ce = boto3.client("ce")
 
 def get_costs_by_tag(tag_key, start_date, end_date):
     """Get costs grouped by a specific tag."""
-    response = ce.get_cost_and_usage(
-        TimePeriod={
+    request = {
+        "TimePeriod": {
             "Start": start_date,
             "End": end_date
         },
-        Granularity="MONTHLY",
-        Metrics=["UnblendedCost"],
-        GroupBy=[
+        "Granularity": "MONTHLY",
+        "Metrics": ["UnblendedCost"],
+        "GroupBy": [
             {
                 "Type": "TAG",
                 "Key": tag_key
             }
         ]
-    )
+    }
 
-    for group in response["ResultsByTime"]:
-        print(f"\nPeriod: {group['TimePeriod']['Start']} to {group['TimePeriod']['End']}")
-        for item in group["Groups"]:
-            tag_value = item["Keys"][0]
-            cost = float(item["Metrics"]["UnblendedCost"]["Amount"])
-            if cost > 0.01:
-                print(f"  {tag_value}: ${cost:.2f}")
+    while True:
+        response = ce.get_cost_and_usage(**request)
+        for group in response["ResultsByTime"]:
+            print(f"\nPeriod: {group['TimePeriod']['Start']} to {group['TimePeriod']['End']}")
+            for item in group["Groups"]:
+                tag_value = item["Keys"][0] or "(no tag value)"
+                cost = float(item["Metrics"]["UnblendedCost"]["Amount"])
+                if cost > 0.01:
+                    print(f"  {tag_value}: ${cost:.2f}")
+
+        if "NextPageToken" not in response:
+            break
+        request["NextPageToken"] = response["NextPageToken"]
 
 get_costs_by_tag("Environment", "2026-01-01", "2026-02-01")
 ```
@@ -147,7 +159,7 @@ This script pulls daily costs for the last 30 days and highlights days with unus
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime
 import statistics
 
 ce = boto3.client("ce")
@@ -157,17 +169,23 @@ def analyze_daily_costs(days=30):
     end_date = datetime.utcnow().strftime("%Y-%m-%d")
     start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    response = ce.get_cost_and_usage(
-        TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="DAILY",
-        Metrics=["UnblendedCost"]
-    )
+    request = {
+        "TimePeriod": {"Start": start_date, "End": end_date},
+        "Granularity": "DAILY",
+        "Metrics": ["UnblendedCost"]
+    }
 
     daily_costs = []
-    for day in response["ResultsByTime"]:
-        date = day["TimePeriod"]["Start"]
-        cost = float(day["Total"]["UnblendedCost"]["Amount"])
-        daily_costs.append({"date": date, "cost": cost})
+    while True:
+        response = ce.get_cost_and_usage(**request)
+        for day in response["ResultsByTime"]:
+            date = day["TimePeriod"]["Start"]
+            cost = float(day["Total"]["UnblendedCost"]["Amount"])
+            daily_costs.append({"date": date, "cost": cost})
+
+        if "NextPageToken" not in response:
+            break
+        request["NextPageToken"] = response["NextPageToken"]
 
     # Calculate statistics
     costs = [d["cost"] for d in daily_costs]
@@ -201,8 +219,9 @@ def get_cost_forecast():
     """Get cost forecast for the rest of the month."""
     now = datetime.utcnow()
 
-    # Forecast from tomorrow to end of month
-    start = (now + timedelta(days=1)).strftime("%Y-%m-%d")
+    # Forecast from today to the end of the month. Cost Explorer requires
+    # the forecast start date to be today or earlier.
+    start = now.strftime("%Y-%m-%d")
 
     # End of current month
     if now.month == 12:
@@ -213,7 +232,8 @@ def get_cost_forecast():
     response = ce.get_cost_forecast(
         TimePeriod={"Start": start, "End": end},
         Granularity="MONTHLY",
-        Metric="UNBLENDED_COST"
+        Metric="UNBLENDED_COST",
+        PredictionIntervalLevel=80
     )
 
     forecast = response["Total"]
@@ -221,9 +241,12 @@ def get_cost_forecast():
 
     # Also get confidence intervals
     for prediction in response.get("ForecastResultsByTime", []):
-        lower = float(prediction.get("MeanValue", 0))
+        mean = float(prediction.get("MeanValue", 0))
+        lower = float(prediction.get("PredictionIntervalLowerBound", 0))
+        upper = float(prediction.get("PredictionIntervalUpperBound", 0))
         print(f"  Period: {prediction['TimePeriod']['Start']}")
-        print(f"  Mean: ${lower:.2f}")
+        print(f"  Mean: ${mean:.2f}")
+        print(f"  80% interval: ${lower:.2f} - ${upper:.2f}")
 
 get_cost_forecast()
 ```
@@ -245,14 +268,20 @@ aws ce create-anomaly-monitor \
 aws ce create-anomaly-subscription \
   --anomaly-subscription '{
     "SubscriptionName": "cost-anomaly-alerts",
-    "MonitorArnList": ["arn:aws:ce::123456789:anomalymonitor/abc123"],
+    "MonitorArnList": ["arn:aws:ce::123456789012:anomalymonitor/abc123"],
     "Subscribers": [
       {
         "Address": "finance@example.com",
         "Type": "EMAIL"
       }
     ],
-    "Threshold": 100,
+    "ThresholdExpression": {
+      "Dimensions": {
+        "Key": "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+        "MatchOptions": ["GREATER_THAN_OR_EQUAL"],
+        "Values": ["100"]
+      }
+    },
     "Frequency": "DAILY"
   }'
 ```
@@ -273,7 +302,7 @@ from datetime import datetime, timedelta
 ce = boto3.client("ce")
 sns = boto3.client("sns")
 
-REPORT_TOPIC_ARN = "arn:aws:sns:us-east-1:123456789:cost-reports"
+REPORT_TOPIC_ARN = "arn:aws:sns:us-east-1:123456789012:cost-reports"
 
 def weekly_cost_report(event, context):
     """Generate and send weekly cost report."""
@@ -281,20 +310,26 @@ def weekly_cost_report(event, context):
     start_date = (datetime.utcnow() - timedelta(days=7)).strftime("%Y-%m-%d")
 
     # Get costs by service
-    response = ce.get_cost_and_usage(
-        TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="DAILY",
-        Metrics=["UnblendedCost"],
-        GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}]
-    )
+    request = {
+        "TimePeriod": {"Start": start_date, "End": end_date},
+        "Granularity": "DAILY",
+        "Metrics": ["UnblendedCost"],
+        "GroupBy": [{"Type": "DIMENSION", "Key": "SERVICE"}]
+    }
 
     # Aggregate by service
     service_totals = {}
-    for day in response["ResultsByTime"]:
-        for group in day["Groups"]:
-            service = group["Keys"][0]
-            cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
-            service_totals[service] = service_totals.get(service, 0) + cost
+    while True:
+        response = ce.get_cost_and_usage(**request)
+        for day in response["ResultsByTime"]:
+            for group in day["Groups"]:
+                service = group["Keys"][0]
+                cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
+                service_totals[service] = service_totals.get(service, 0) + cost
+
+        if "NextPageToken" not in response:
+            break
+        request["NextPageToken"] = response["NextPageToken"]
 
     # Sort and format
     sorted_services = sorted(
