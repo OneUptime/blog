@@ -66,7 +66,7 @@ graph TD
     B --> C[Answer Questions - Operational Excellence]
     C --> D[Answer Questions - Security]
     D --> E[Answer Questions - Reliability]
-    E --> F[Answer Questions - Performance]
+    E --> F[Answer Questions - Performance Efficiency]
     F --> G[Answer Questions - Cost Optimization]
     G --> H[Answer Questions - Sustainability]
     H --> I[Review Identified Risks]
@@ -80,20 +80,20 @@ For each pillar, the tool asks a series of questions. Each question has multiple
 
 **Example: Operational Excellence Question**
 
-"How do you design your workload so that you can understand its state?"
+"How do you implement observability in your workload?"
 
 Best practices to consider:
+- Identify key performance indicators
 - Implement application telemetry
-- Implement and configure workload telemetry
-- Implement user activity telemetry
+- Implement user experience telemetry
 - Implement dependency telemetry
-- Implement transaction traceability
+- Implement distributed tracing
 
 If you've implemented comprehensive monitoring with CloudWatch, X-Ray traces, and structured logging, you'd check those boxes. If you're flying blind with no monitoring, that's a high-risk issue.
 
 **Example: Security Question**
 
-"How do you manage identities for people and machines?"
+"How do you manage authentication for people and machines?"
 
 Best practices:
 - Use strong sign-in mechanisms
@@ -110,9 +110,8 @@ If your developers have long-lived IAM access keys instead of SSO with temporary
 
 Best practices:
 - Choose how to segment your workload
-- Build services focused on specific business domains
+- Build services focused on specific business domains and functionality
 - Provide service contracts per API
-- Rely on service-oriented architectures
 
 ### Documenting Answers
 
