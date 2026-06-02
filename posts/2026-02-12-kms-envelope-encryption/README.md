@@ -56,7 +56,7 @@ Three reasons:
 
 **Performance.** Every direct KMS call adds network latency. Envelope encryption lets you encrypt/decrypt locally at memory speed. For a 100MB file, you'd need 25,000+ KMS calls with direct encryption vs. a single call with envelope encryption.
 
-**Cost.** KMS charges per API request. At $0.03 per 10,000 requests, encrypting a 1GB file directly would cost around $7.50. With envelope encryption, it costs $0.000003 - one request.
+**Cost.** KMS charges per API request. At $0.03 per 10,000 requests, encrypting a 1GB file directly would cost around $0.79. With envelope encryption, it costs $0.000003 - one request.
 
 **Data size.** KMS can only handle 4KB payloads directly. Envelope encryption has no size limit.
 
@@ -122,8 +122,9 @@ def envelope_encrypt(plaintext_data, kms_key_id, encryption_context=None):
     aesgcm = AESGCM(plaintext_key)
     ciphertext = aesgcm.encrypt(nonce, plaintext_data, None)
 
-    # Step 3: Immediately zero out the plaintext key
-    plaintext_key = b'\x00' * len(plaintext_key)
+    # Step 3: Drop references to the plaintext key promptly
+    plaintext_key = None
+    aesgcm = None
 
     # Step 4: Return the encrypted data key + encrypted data
     return {
@@ -160,8 +161,9 @@ def envelope_decrypt(encrypted_payload, encryption_context=None):
     aesgcm = AESGCM(plaintext_key)
     plaintext_data = aesgcm.decrypt(nonce, ciphertext, None)
 
-    # Step 3: Zero out the plaintext key
-    plaintext_key = b'\x00' * len(plaintext_key)
+    # Step 3: Drop references to the plaintext key promptly
+    plaintext_key = None
+    aesgcm = None
 
     return plaintext_data
 ```
@@ -225,7 +227,7 @@ decrypted = envelope_decrypt(encrypted, wrong_context)  # Raises exception
 
 Generating a new data key for every encrypt operation adds latency and cost. For high-throughput scenarios, you can cache data keys and reuse them for multiple operations.
 
-The AWS Encryption SDK handles this automatically, but here's a simplified version.
+The AWS Encryption SDK can handle this for you when you configure data key caching, but here's a simplified version.
 
 ```python
 from datetime import datetime, timedelta
@@ -281,21 +283,26 @@ For production use, consider the AWS Encryption SDK instead of rolling your own.
 
 ```python
 import aws_encryption_sdk
+from aws_encryption_sdk.identifiers import CommitmentPolicy
 
 # Set up the KMS key provider
 kms_key_provider = aws_encryption_sdk.StrictAwsKmsMasterKeyProvider(
     key_ids=['arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab']
 )
 
+client = aws_encryption_sdk.EncryptionSDKClient(
+    commitment_policy=CommitmentPolicy.REQUIRE_ENCRYPT_REQUIRE_DECRYPT
+)
+
 # Encrypt
-ciphertext, encryptor_header = aws_encryption_sdk.encrypt(
+ciphertext, encryptor_header = client.encrypt(
     source=plaintext_data,
     key_provider=kms_key_provider,
     encryption_context={'purpose': 'user-data'}
 )
 
 # Decrypt
-plaintext, decryptor_header = aws_encryption_sdk.decrypt(
+plaintext, decryptor_header = client.decrypt(
     source=ciphertext,
     key_provider=kms_key_provider
 )
@@ -305,6 +312,6 @@ The SDK is battle-tested and follows all the best practices around key derivatio
 
 ## Wrapping Up
 
-Envelope encryption is the standard pattern for using KMS in any real application. It removes the 4KB size limit, dramatically reduces costs and latency, and keeps your KMS master key safely in the HSM while data encryption happens locally. Whether you roll your own or use the AWS Encryption SDK, always use encryption context, always zero out plaintext keys after use, and consider data key caching for high-throughput workloads.
+Envelope encryption is the standard pattern for using KMS in any real application. It removes the 4KB size limit, dramatically reduces costs and latency, and keeps your KMS master key safely in the HSM while data encryption happens locally. Whether you roll your own or use the AWS Encryption SDK, always use encryption context, minimize plaintext key lifetime, and consider data key caching for high-throughput workloads.
 
 For more on managing the KMS keys that back your envelope encryption, see our guides on [creating CMKs](https://oneuptime.com/blog/post/2026-02-12-create-manage-kms-customer-managed-keys/view) and [key policies](https://oneuptime.com/blog/post/2026-02-12-kms-key-policies-access-control/view).
