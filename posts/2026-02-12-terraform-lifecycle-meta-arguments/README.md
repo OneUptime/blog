@@ -10,7 +10,7 @@ Description: Deep dive into Terraform lifecycle meta-arguments including create_
 
 Terraform's default behavior is straightforward: create what's missing, update what's changed, destroy what's been removed. But sometimes that default behavior causes problems. What if destroying a resource before creating its replacement causes downtime? What if someone accidentally removes a database from the config? What if an external process modifies a resource and you don't want Terraform to revert it?
 
-That's where lifecycle rules come in. They let you override Terraform's default behavior for specific resources. There are four lifecycle meta-arguments, and understanding them will save you from some painful mistakes.
+That's where lifecycle rules come in. They let you override Terraform's default behavior for specific resources. The four resource lifecycle rules you'll use most often are `create_before_destroy`, `prevent_destroy`, `ignore_changes`, and `replace_triggered_by`, and understanding them will save you from some painful mistakes.
 
 ## create_before_destroy
 
@@ -118,7 +118,7 @@ resource "aws_s3_bucket" "data" {
 }
 ```
 
-If someone runs `terraform destroy` or removes the resource from the configuration, Terraform will throw an error like:
+If someone runs `terraform destroy` or makes a configuration change that would replace or destroy the resource while the `prevent_destroy` rule is still present, Terraform will throw an error like:
 
 ```text
 Error: Instance cannot be destroyed
@@ -126,7 +126,7 @@ Error: Instance cannot be destroyed
   but the plan calls for this resource to be destroyed.
 ```
 
-To actually destroy the resource, you'd need to first remove the `prevent_destroy` rule, apply, then destroy. This two-step process is intentional - it makes you think twice.
+To actually destroy the resource through Terraform, you'd need to first remove the `prevent_destroy` rule, apply that change, then destroy. This two-step process is intentional - it makes you think twice. The rule must still be in the configuration to protect the resource, so if you remove the whole resource block, Terraform no longer sees the `prevent_destroy` setting.
 
 ### When to Use prevent_destroy
 
@@ -180,8 +180,7 @@ resource "aws_lambda_function" "app" {
   lifecycle {
     ignore_changes = [
       filename,
-      source_code_hash,
-      last_modified
+      source_code_hash
     ]
   }
 }
@@ -213,33 +212,35 @@ Don't use `ignore_changes` as a way to avoid fixing configuration drift. If some
 
 Added in Terraform 1.2, `replace_triggered_by` forces a resource to be replaced when another resource or attribute changes. This is useful when Terraform doesn't automatically detect that a dependency change requires replacement.
 
-This forces the ECS service to redeploy when the task definition changes:
+This forces the Application Auto Scaling target to be replaced when the ECS service changes:
 
 ```hcl
-# Force service redeployment when task definition changes
-resource "aws_ecs_service" "app" {
-  name            = "myapp"
-  cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
-  desired_count   = 3
+# Replace the scaling target when the ECS service changes
+resource "aws_appautoscaling_target" "ecs" {
+  max_capacity       = 10
+  min_capacity       = 2
+  resource_id        = "service/${aws_ecs_cluster.main.name}/${aws_ecs_service.app.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
 
   lifecycle {
     replace_triggered_by = [
-      aws_ecs_task_definition.app
+      aws_ecs_service.app.id
     ]
   }
 }
 ```
 
-Another common pattern is triggering a null_resource when a dependency changes:
+For ECS task definition rollouts specifically, the normal pattern is to set the service's `task_definition` argument to the new task definition ARN. If you need to force a deployment without changing the task definition, use the `force_new_deployment` argument on `aws_ecs_service` instead of `replace_triggered_by`.
+
+Another common pattern is triggering a `terraform_data` resource when a dependency changes:
 
 ```hcl
 # Rerun a provisioner when the configuration changes
-resource "null_resource" "deploy" {
+resource "terraform_data" "deploy" {
   lifecycle {
     replace_triggered_by = [
-      aws_lambda_function.app.source_code_hash,
-      aws_lambda_function.app.environment
+      aws_lambda_function.app.source_code_hash
     ]
   }
 
