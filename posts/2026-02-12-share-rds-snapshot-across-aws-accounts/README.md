@@ -128,16 +128,20 @@ Step 1: Update the KMS key policy to allow the target account to use it.
     "AWS": "arn:aws:iam::987654321098:root"
   },
   "Action": [
+    "kms:Encrypt",
     "kms:Decrypt",
+    "kms:ReEncrypt*",
+    "kms:GenerateDataKey*",
     "kms:DescribeKey",
     "kms:CreateGrant",
-    "kms:RetireGrant"
+    "kms:ListGrants",
+    "kms:RevokeGrant"
   ],
   "Resource": "*"
 }
 ```
 
-Add this statement to the KMS key policy in the source account.
+Add this statement to the KMS key policy in the source account. The target account also needs IAM permissions that delegate use of this KMS key to the user or role that copies the shared snapshot.
 
 Step 2: Share the snapshot (same as before):
 
@@ -176,10 +180,9 @@ You **cannot** share snapshots encrypted with the default AWS-managed RDS KMS ke
 If your snapshots are encrypted with the default key, you'll need to:
 
 1. Create a customer-managed KMS key
-2. Create a new RDS instance from the snapshot
-3. Enable encryption with your customer-managed key
-4. Take a new snapshot of that instance
-5. Share that snapshot
+2. Copy the snapshot and specify the customer-managed key for the copy
+3. Share the copied snapshot
+4. In the target account, copy the shared snapshot again using a KMS key in the target account
 
 It's annoying but there's no shortcut around it.
 
