@@ -26,9 +26,12 @@ aws ses verify-domain-identity --domain yourdomain.com
 # Check verification status
 aws ses get-identity-verification-attributes \
   --identities yourdomain.com
+
+# Generate DKIM tokens for Easy DKIM
+aws ses verify-domain-dkim --domain yourdomain.com
 ```
 
-SES will give you a TXT record for domain verification, plus DKIM CNAME records. Add all of them to your DNS provider. DKIM signing is crucial for deliverability - it proves your emails haven't been tampered with in transit.
+The identity verification command gives you a TXT record, and the DKIM command gives you CNAME records for Easy DKIM. Add all of them to your DNS provider. DKIM signing is crucial for deliverability - it proves your emails haven't been tampered with in transit.
 
 ## Moving Out of the SES Sandbox
 
@@ -120,7 +123,7 @@ for i in range(0, len(destinations), batch_size):
             print(f"Error: {status.get('Error', 'Unknown')}")
 ```
 
-A few important notes here. The `SendBulkTemplatedEmail` API accepts a maximum of 50 destinations per call. If you've got 10,000 subscribers, that's 200 API calls. The `DefaultTemplateData` is a fallback - if any recipient is missing a replacement variable, it uses the default instead of failing.
+A few important notes here. The `SendBulkTemplatedEmail` API accepts a maximum of 50 destinations per call. If you've got 10,000 subscribers, that's 200 API calls. The `DefaultTemplateData` is a fallback for destinations that don't specify replacement template data.
 
 ## Rate Limiting and Throttling
 
@@ -213,11 +216,11 @@ Sending bulk email is only useful if it actually reaches inboxes. Here are the t
 
 ## Costs at Scale
 
-Let's talk numbers. SES charges $0.10 per 1,000 emails. If you're sending from EC2, the first 62,000 emails per month are free.
+Let's talk numbers. SES charges $0.10 per 1,000 outbound emails, plus any data transfer, attachment, or add-on charges. The current SES free tier includes up to 3,000 message charges per month for the first 12 months after you start using SES.
 
 For 100,000 subscribers with weekly emails:
 - 400,000 emails per month
-- Cost: roughly $40/month (or less with the EC2 free tier)
+- Cost: roughly $40/month before data transfer, attachment, add-on, and free-tier adjustments
 
 Compare that to Mailchimp or SendGrid at similar volumes, and you're saving hundreds of dollars monthly. The trade-off is that SES gives you less hand-holding - you manage templates, lists, and deliverability yourself.
 
