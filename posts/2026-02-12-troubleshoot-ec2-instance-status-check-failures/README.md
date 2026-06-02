@@ -8,11 +8,11 @@ Description: Diagnose and resolve EC2 instance and system status check failures 
 
 ---
 
-EC2 status checks are your first indication that something is wrong with an instance. When that red "impaired" status shows up in the console, your instance is either not responding correctly or the underlying hardware has a problem. The trick is figuring out which one it is and what to do about it, because the two types of status check failures have very different causes and solutions.
+EC2 status checks are your first indication that something is wrong with an instance. When that red "impaired" status shows up in the console, your instance is either not responding correctly, the underlying hardware has a problem, or an attached EBS volume is impaired. The trick is figuring out which one it is and what to do about it, because the status check failures have very different causes and solutions.
 
-## Understanding the Two Status Checks
+## Understanding the Status Checks
 
-EC2 runs two independent status checks every minute:
+EC2 runs status checks every minute. For most troubleshooting, you start with these two:
 
 **System status check** - Tests the underlying AWS infrastructure:
 - Network reachability
@@ -31,6 +31,8 @@ If this fails, it's AWS's problem. You generally can't fix it from inside the in
 
 If this fails, it's your problem to debug.
 
+Nitro instances can also report an attached EBS status check, which monitors whether attached EBS volumes are reachable and able to complete I/O.
+
 ## Checking Status
 
 ```bash
@@ -46,7 +48,7 @@ aws ec2 describe-instance-status \
     Events: Events
   }' --output json
 
-# Check status for all instances (including those with issues)
+# Check running instances with impaired instance status
 aws ec2 describe-instance-status \
   --filters "Name=instance-status.status,Values=impaired" \
   --query 'InstanceStatuses[*].{
@@ -64,7 +66,7 @@ When the system status check fails, the problem is with the underlying hardware 
 
 1. **Wait and see**: Sometimes the issue resolves on its own within minutes.
 
-2. **Stop and start** (not reboot): This migrates the instance to new physical hardware:
+2. **Stop and start** (not reboot): For EBS-backed instances, this usually migrates the instance to new physical hardware:
 
 ```bash
 # Stop and start to move to new hardware
@@ -80,7 +82,7 @@ aws ec2 describe-instance-status \
   --query 'InstanceStatuses[0].{Instance:InstanceStatus.Status,System:SystemStatus.Status}'
 ```
 
-A reboot keeps the instance on the same physical host, which won't help if the hardware is faulty. A stop/start moves it to a new host.
+A reboot keeps the instance on the same physical host, which won't help if the hardware is faulty. For EBS-backed instances, a stop/start usually moves it to a new host.
 
 3. **Set up auto recovery**: Automate this process with a CloudWatch alarm:
 
@@ -132,7 +134,7 @@ If the instance has a GUI or is stuck at a login prompt, get a screenshot:
 # Get a screenshot of the instance console
 aws ec2 get-console-screenshot \
   --instance-id i-0abc123 \
-  --query 'ImageData' --output text | base64 -d > screenshot.png
+  --query 'ImageData' --output text | base64 -d > screenshot.jpg
 ```
 
 This is particularly useful for Windows instances that might be stuck at a BSOD or a configuration screen.
@@ -188,9 +190,14 @@ aws ec2 stop-instances --instance-ids i-0abc123
 aws ec2 wait instance-stopped --instance-ids i-0abc123
 
 # Step 2: Detach the root volume
+ROOT_DEV=$(aws ec2 describe-instances \
+  --instance-ids i-0abc123 \
+  --query 'Reservations[0].Instances[0].RootDeviceName' \
+  --output text)
+
 ROOT_VOL=$(aws ec2 describe-instances \
   --instance-ids i-0abc123 \
-  --query 'Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId' \
+  --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='$ROOT_DEV'].Ebs.VolumeId | [0]" \
   --output text)
 
 aws ec2 detach-volume --volume-id $ROOT_VOL
@@ -204,6 +211,7 @@ aws ec2 attach-volume \
 
 # Step 4: On the rescue instance, mount and clean up
 # ssh into rescue instance, then:
+# lsblk  (confirm the device and partition name; Nitro instances may show NVMe names)
 # sudo mount /dev/xvdf1 /mnt
 # sudo du -sh /mnt/var/log/*  (find the space hog)
 # sudo truncate -s 0 /mnt/var/log/large-file.log
@@ -212,7 +220,7 @@ aws ec2 attach-volume \
 # Step 5: Detach, reattach to original, and start
 aws ec2 detach-volume --volume-id $ROOT_VOL
 aws ec2 wait volume-available --volume-ids $ROOT_VOL
-aws ec2 attach-volume --volume-id $ROOT_VOL --instance-id i-0abc123 --device /dev/xvda
+aws ec2 attach-volume --volume-id $ROOT_VOL --instance-id i-0abc123 --device $ROOT_DEV
 aws ec2 start-instances --instance-ids i-0abc123
 ```
 
@@ -226,6 +234,7 @@ File system corruption can happen after an ungraceful shutdown or hardware issue
 
 ```bash
 # On the rescue instance after attaching the volume
+# Use lsblk first and adjust the device name if the volume appears as an NVMe device.
 sudo fsck -y /dev/xvdf1
 ```
 
@@ -246,6 +255,8 @@ aws ec2-instance-connect send-serial-console-ssh-public-key \
   --instance-id i-0abc123 \
   --serial-port 0 \
   --ssh-public-key file://~/.ssh/id_rsa.pub
+
+ssh -i ~/.ssh/id_rsa i-0abc123.port0@serial-console.ec2-instance-connect.us-east-1.aws
 ```
 
 ### Kernel Panic
@@ -262,6 +273,7 @@ A bad kernel update or incompatible driver can cause a kernel panic on boot.
 ```bash
 # On the rescue instance, after mounting the volume
 # Edit grub to boot the previous kernel
+# Use lsblk first and adjust the device name if the volume appears as an NVMe device.
 sudo mount /dev/xvdf1 /mnt
 sudo chroot /mnt
 
