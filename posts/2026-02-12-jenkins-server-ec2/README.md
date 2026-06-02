@@ -33,19 +33,19 @@ SSH into your instance and install Jenkins with Java.
 Install Java and Jenkins on Amazon Linux 2023:
 
 ```bash
-# Install Java 17
+# Install Java 21
 
-sudo yum install -y java-17-amazon-corretto-devel
+sudo yum install -y fontconfig java-21-amazon-corretto-devel
 
 # Verify Java installation
 java -version
 
 # Add the Jenkins repo
 sudo wget -O /etc/yum.repos.d/jenkins.repo \
-  https://pkg.jenkins.io/redhat-stable/jenkins.repo
+  https://pkg.jenkins.io/rpm-stable/jenkins.repo
 
 # Import the Jenkins GPG key
-sudo rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
+sudo rpm --import https://pkg.jenkins.io/rpm-stable/jenkins.io-2023.key
 
 # Install Jenkins
 sudo yum install -y jenkins
@@ -92,11 +92,23 @@ Install and configure Nginx for Jenkins:
 # Install Nginx
 sudo yum install -y nginx
 
+# Install Certbot and get SSL certificate
+sudo yum install -y certbot python3-certbot-nginx
+sudo certbot certonly --standalone \
+  --pre-hook "systemctl stop nginx" \
+  --post-hook "systemctl start nginx" \
+  -d jenkins.example.com
+
 # Create Jenkins proxy configuration
-sudo cat > /etc/nginx/conf.d/jenkins.conf << 'EOF'
+sudo tee /etc/nginx/conf.d/jenkins.conf > /dev/null << 'EOF'
 upstream jenkins {
     server 127.0.0.1:8080;
     keepalive 32;
+}
+
+map $http_upgrade $connection_upgrade {
+    default upgrade;
+    '' close;
 }
 
 server {
@@ -117,7 +129,7 @@ server {
         proxy_pass http://jenkins;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+        proxy_set_header Connection $connection_upgrade;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -130,10 +142,6 @@ server {
 }
 EOF
 
-# Install Certbot and get SSL certificate
-sudo yum install -y certbot python3-certbot-nginx
-sudo certbot --nginx -d jenkins.example.com
-
 # Start Nginx
 sudo systemctl start nginx
 sudo systemctl enable nginx
@@ -144,7 +152,7 @@ Update Jenkins to know about the proxy. Edit `/etc/sysconfig/jenkins` (or the sy
 ```bash
 # Tell Jenkins it's behind a reverse proxy
 sudo mkdir -p /etc/systemd/system/jenkins.service.d
-sudo cat > /etc/systemd/system/jenkins.service.d/override.conf << 'EOF'
+sudo tee /etc/systemd/system/jenkins.service.d/override.conf > /dev/null << 'EOF'
 [Service]
 Environment="JENKINS_OPTS=--httpListenAddress=127.0.0.1"
 EOF
@@ -170,7 +178,8 @@ You can also install plugins from the CLI:
 
 ```bash
 # Install plugins via Jenkins CLI
-java -jar /var/lib/jenkins/jenkins-cli.jar -s http://localhost:8080/ \
+curl -O http://localhost:8080/jnlpJars/jenkins-cli.jar
+java -jar jenkins-cli.jar -s http://localhost:8080/ \
   install-plugin pipeline-stage-view docker-workflow git \
   -deploy -restart
 ```
@@ -179,7 +188,7 @@ java -jar /var/lib/jenkins/jenkins-cli.jar -s http://localhost:8080/ \
 
 Jenkins Pipelines as Code (Jenkinsfile) is the modern way to define CI/CD workflows.
 
-Create a Jenkinsfile in your project repository:
+Create a Jenkinsfile in your project repository for a Multibranch Pipeline:
 
 ```groovy
 // Jenkinsfile
@@ -315,8 +324,8 @@ Jenkins security is critical since it has access to your source code and deploym
 Key security settings:
 
 ```bash
-# Disable Jenkins CLI over remoting (security risk)
-# In Manage Jenkins > Security > enable "Disable CLI over Remoting"
+# Use the Jenkins CLI over SSH, WebSocket, or HTTP(S)
+# The old remoting CLI mode was removed from Jenkins in 2019
 
 # Configure CSRF protection (enabled by default in modern Jenkins)
 # In Manage Jenkins > Security > CSRF Protection
