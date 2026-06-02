@@ -196,7 +196,7 @@ async function publishOrderEvent(order) {
 }
 ```
 
-You can publish up to 10 events per `PutEvents` call, and each event can be up to 256 KB.
+You can publish up to 10 events per `PutEvents` call, and the total request size must be less than 1 MB.
 
 ## Writing the Lambda Handler
 
@@ -327,7 +327,7 @@ Your Lambda function receives a clean, minimal payload instead of the full Event
 
 ## Retry and DLQ Configuration
 
-EventBridge retries failed Lambda invocations for up to 24 hours with exponential backoff. You can configure this per target:
+EventBridge retries failed target deliveries for up to 24 hours with exponential backoff and jitter. You can configure this per target:
 
 ```typescript
 new targets.LambdaFunction(handler, {
@@ -337,7 +337,7 @@ new targets.LambdaFunction(handler, {
 })
 ```
 
-The DLQ here is for the EventBridge-to-Lambda delivery, separate from any DLQ on the Lambda function itself. For Lambda-level error handling, check our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/2026-02-12-configure-dead-letter-queues-lambda-functions/view).
+The DLQ here is for the EventBridge-to-Lambda delivery, separate from Lambda's own asynchronous invocation retry and failure handling. For Lambda-level error handling, check our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/2026-02-12-configure-dead-letter-queues-lambda-functions/view).
 
 ## EventBridge vs. SNS
 
