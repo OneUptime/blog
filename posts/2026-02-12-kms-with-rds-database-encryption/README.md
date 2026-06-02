@@ -8,7 +8,7 @@ Description: Learn how to encrypt RDS databases with KMS customer managed keys, 
 
 ---
 
-Database encryption is non-negotiable for any production workload handling sensitive data. AWS RDS makes this relatively painless with KMS integration - it encrypts data at rest, automated backups, snapshots, and read replicas using the same key. But there are some gotchas, especially around migrating existing unencrypted databases and cross-account snapshot sharing.
+Database encryption is non-negotiable for any production workload handling sensitive data. AWS RDS makes this relatively painless with KMS integration - it encrypts data at rest, automated backups, snapshots, and same-region read replicas using the same key. Cross-region read replicas use a KMS key in the destination region. But there are some gotchas, especially around migrating existing unencrypted databases and cross-account snapshot sharing.
 
 Let's walk through the setup, management, and edge cases of RDS encryption with KMS.
 
@@ -50,7 +50,7 @@ aws rds create-db-instance \
   --db-instance-identifier production-db \
   --db-instance-class db.r6g.xlarge \
   --engine postgres \
-  --engine-version 15.4 \
+  --engine-version 15.17 \
   --master-username admin \
   --master-user-password "YOUR_SECURE_PASSWORD" \
   --allocated-storage 100 \
@@ -127,7 +127,7 @@ resource "aws_kms_alias" "rds" {
 resource "aws_db_instance" "production" {
   identifier     = "production-db"
   engine         = "postgres"
-  engine_version = "15.4"
+  engine_version = "15.17"
   instance_class = "db.r6g.xlarge"
 
   allocated_storage     = 100
@@ -160,9 +160,9 @@ Read replicas of encrypted instances are automatically encrypted using the same 
 # Create a cross-region read replica with encryption
 aws rds create-db-instance-read-replica \
   --db-instance-identifier production-db-replica-eu \
-  --source-db-instance-identifier production-db \
+  --source-db-instance-identifier arn:aws:rds:us-east-1:123456789012:db:production-db \
   --source-region us-east-1 \
-  --destination-region eu-west-1 \
+  --region eu-west-1 \
   --kms-key-id alias/rds-eu \
   --db-instance-class db.r6g.xlarge
 ```
@@ -208,9 +208,10 @@ aws rds copy-db-snapshot \
 
 # Copy a snapshot to another region
 aws rds copy-db-snapshot \
-  --source-db-snapshot-identifier production-db-manual-2026-02-12 \
+  --source-db-snapshot-identifier arn:aws:rds:us-east-1:123456789012:snapshot:production-db-manual-2026-02-12 \
   --target-db-snapshot-identifier production-db-dr-copy \
   --source-region us-east-1 \
+  --region eu-west-1 \
   --kms-key-id alias/rds-dr-key
 ```
 
@@ -300,7 +301,7 @@ Aurora works the same way, but encryption is set at the cluster level. All insta
 resource "aws_rds_cluster" "production" {
   cluster_identifier  = "production-aurora"
   engine              = "aurora-postgresql"
-  engine_version      = "15.4"
+  engine_version      = "15.17"
   database_name       = "myapp"
   master_username     = "admin"
   master_password     = var.db_password
