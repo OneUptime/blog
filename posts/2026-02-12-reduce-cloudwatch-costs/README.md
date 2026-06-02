@@ -31,11 +31,11 @@ The exact breakdown varies, but custom metrics and log ingestion are almost alwa
 
 ## Reducing Custom Metrics Costs
 
-Custom metrics cost $0.30 per metric per month (first 10,000), and each unique combination of metric name + dimensions counts as a separate metric.
+Custom metrics cost $0.30 per metric per month for the first 10,000 metrics in many regions, with lower rates at higher tiers. Each unique combination of namespace + metric name + dimension names and values counts as a separate metric.
 
 ### Problem: Dimension Explosion
 
-The most common cost trap is high-cardinality dimensions. If you publish a metric with a `userId` dimension and you have 100,000 users, that's 100,000 custom metrics - $30,000/month for a single metric name.
+The most common cost trap is high-cardinality dimensions. If you publish a metric with a `userId` dimension and you have 100,000 users, that's 100,000 custom metrics - about $12,000/month in us-east-1 pricing tiers for a single metric name.
 
 **Fix: Remove high-cardinality dimensions.**
 
@@ -88,7 +88,7 @@ done
 
 ### Problem: Detailed Monitoring on EC2
 
-Detailed monitoring (1-minute metrics) costs $3.50 per instance per month compared to free 5-minute metrics.
+Detailed monitoring (1-minute metrics) is billed as CloudWatch detailed monitoring metrics, compared to free 5-minute EC2 basic monitoring. For example, if an instance emits 7 detailed monitoring metrics, that is about $2.10 per instance per month at $0.30 per metric.
 
 **Fix:** Only enable detailed monitoring on instances where 1-minute granularity matters. For most workloads, 5-minute metrics are sufficient:
 
@@ -162,6 +162,7 @@ The cheapest log line is the one you don't send:
 ```python
 # Use appropriate log levels - don't log DEBUG in production
 import logging
+import os
 
 logger = logging.getLogger()
 
@@ -241,7 +242,7 @@ Unless you truly need 10-second evaluation, use standard alarms with 60-second o
 
 ### Use Composite Alarms
 
-Instead of having 10 alarms that each trigger a notification, create a composite alarm that fires only when a meaningful combination triggers:
+Instead of having 10 alarms that each trigger a notification, create a composite alarm that fires only when a meaningful combination triggers. Composite alarms have their own cost, so this reduces alarm spend only if it lets you remove redundant alarms; otherwise, use it primarily to reduce notification noise:
 
 ```bash
 # One composite alarm instead of multiple individual notifications
@@ -264,7 +265,7 @@ Each dashboard costs $3/month. That adds up if you have lots of them.
 
 **Fix:** Set dashboard auto-refresh to 5 minutes instead of 1 minute. This reduces API calls by 5x.
 
-**Fix:** Use `GetMetricData` instead of `GetMetricStatistics` for batch queries. It's more efficient for pulling multiple metrics at once.
+**Fix:** Use `GetMetricData` for batch queries when you need to pull multiple metrics at once. If you only need a small number of simple queries, `GetMetricStatistics` may be cheaper because it is included in the CloudWatch API free tier while `GetMetricData` is always charged.
 
 ## Monitoring Your CloudWatch Costs
 
@@ -310,7 +311,7 @@ Here's a quick checklist you can work through:
 |--------|-------------------|
 | Set log retention to 30 days | 30-60% on log storage |
 | Remove high-cardinality dimensions | 50-90% on custom metrics |
-| Disable unnecessary detailed monitoring | $3.50/instance/month |
+| Disable unnecessary detailed monitoring | About $2.10/instance/month for 7 detailed EC2 metrics at first-tier pricing |
 | Delete INSUFFICIENT_DATA alarms | $0.10-0.30/alarm/month |
 | Reduce dashboard refresh interval | 40-80% on API costs |
 | Use Infrequent Access log class | 50% on log ingestion |
