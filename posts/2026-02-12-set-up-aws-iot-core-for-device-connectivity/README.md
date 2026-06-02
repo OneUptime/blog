@@ -36,18 +36,7 @@ graph TD
 
 ## Creating a Thing
 
-A Thing is IoT Core's representation of your physical device. Start by creating one.
-
-```bash
-# Create a thing in IoT Core
-
-aws iot create-thing \
-    --thing-name "temperature-sensor-001" \
-    --thing-type-name "TemperatureSensor" \
-    --attribute-payload '{"attributes": {"location": "warehouse-a", "firmware": "1.2.0"}}'
-```
-
-Before creating things, you might want to define a thing type for categorization.
+A Thing is IoT Core's representation of your physical device. Before creating things, you might want to define a thing type for categorization.
 
 ```bash
 # Create a thing type
@@ -57,6 +46,17 @@ aws iot create-thing-type \
         "thingTypeDescription": "Temperature and humidity sensor",
         "searchableAttributes": ["location", "firmware"]
     }'
+```
+
+Then create the thing and associate it with that type.
+
+```bash
+# Create a thing in IoT Core
+
+aws iot create-thing \
+    --thing-name "temperature-sensor-001" \
+    --thing-type-name "TemperatureSensor" \
+    --attribute-payload '{"attributes": {"location": "warehouse-a", "firmware": "1.2.0"}}'
 ```
 
 ## Creating and Attaching Certificates
@@ -278,7 +278,11 @@ For bulk registration, prepare a JSON file and use the bulk registration API.
 
 ```bash
 # Register things in bulk
-aws iot register-thing --template-body file://bulk-template.json
+aws iot start-thing-registration-task \
+    --template-body file://bulk-template.json \
+    --input-file-bucket "my-provisioning-bucket" \
+    --input-file-key "bulk-input.json" \
+    --role-arn "arn:aws:iam::123456789:role/IoTBulkProvisioningRole"
 ```
 
 ## Security Best Practices
