@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Cost Optimization, Cloud Storage, Data Transfer
 
-Description: Learn practical strategies to reduce Amazon S3 data transfer costs including using VPC endpoints, CloudFront, S3 Transfer Acceleration, and intelligent tiering.
+Description: Learn practical strategies to reduce Amazon S3 data transfer costs including using VPC endpoints, CloudFront, compression, and intelligent tiering.
 
 ---
 
-If you've ever opened your AWS bill and felt a jolt of surprise, there's a good chance S3 data transfer charges were part of the problem. Storage itself is relatively cheap on S3 - it's the movement of data that gets expensive fast. Every time data leaves an S3 bucket, whether it's heading to the internet, another region, or even another service in the same account, you could be paying transfer fees.
+If you've ever opened your AWS bill and felt a jolt of surprise, there's a good chance S3 data transfer charges were part of the problem. Storage itself is relatively cheap on S3 - it's the movement of data that gets expensive fast. Every time data leaves an S3 bucket, whether it's heading to the internet, another region, or a service in another region, you could be paying transfer fees.
 
 Let's walk through the most effective ways to bring those costs down without sacrificing performance or availability.
 
@@ -18,14 +18,14 @@ Before you can cut costs, you need to understand where the charges come from. S3
 
 - **Data transfer to the internet** - This is the most expensive, ranging from $0.09/GB down to $0.05/GB at higher tiers.
 - **Data transfer between regions** - Typically $0.02/GB, which adds up quickly for cross-region replication.
-- **Data transfer to other AWS services in the same region** - Usually free for most services, but not always.
+- **Data transfer to other AWS services in the same region** - Free when data is transferred from an S3 bucket to AWS services in the same region.
 - **Data transfer in from the internet** - Free.
 
 The key takeaway is that outbound transfer is where the money goes. Your strategy should focus on minimizing unnecessary outbound data movement.
 
 ## Use VPC Endpoints for Internal Traffic
 
-One of the simplest wins is setting up a VPC Gateway Endpoint for S3. Without one, traffic from your EC2 instances to S3 goes through the internet gateway or NAT gateway, both of which incur data transfer charges.
+One of the simplest wins is setting up a VPC Gateway Endpoint for S3. Without one, traffic from your EC2 instances to S3 goes through the internet gateway or NAT gateway. In private subnets, the NAT gateway path also incurs NAT data processing charges.
 
 Here's how to create an S3 VPC endpoint using the AWS CLI:
 
@@ -42,11 +42,11 @@ aws ec2 describe-vpc-endpoints \
   --filters "Name=service-name,Values=com.amazonaws.us-east-1.s3"
 ```
 
-This routes S3 traffic through AWS's private network at no extra cost. If your EC2 instances are regularly pulling data from S3, this single change can save hundreds or thousands of dollars a month.
+This lets resources in your VPC reach S3 without an internet gateway or NAT device, and gateway endpoints have no additional charge. If your private-subnet EC2 instances are regularly pulling data from S3 through NAT, this single change can save hundreds or thousands of dollars a month.
 
 ## Put CloudFront in Front of S3
 
-When you're serving content to end users from S3, using CloudFront as a CDN can dramatically reduce transfer costs. CloudFront's data transfer rates are lower than S3's direct transfer rates, and cached content doesn't trigger S3 transfers at all.
+When you're serving content to end users from S3, using CloudFront as a CDN can dramatically reduce transfer costs. Data transfer from S3 to CloudFront for origin fetches is free, and cached content doesn't trigger S3 transfers at all.
 
 Here's a basic CloudFront distribution setup with an S3 origin using CloudFormation:
 
@@ -60,8 +60,9 @@ Resources:
         Origins:
           - DomainName: my-bucket.s3.amazonaws.com
             Id: S3Origin
+            OriginAccessControlId: !Ref CloudFrontOAC
             S3OriginConfig:
-              OriginAccessIdentity: !Sub origin-access-identity/cloudfront/${CloudFrontOAI}
+              OriginAccessIdentity: ""
         DefaultCacheBehavior:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
@@ -72,14 +73,17 @@ Resources:
             QueryString: false
         Enabled: true
 
-  CloudFrontOAI:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
     Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: OAI for S3 bucket access
+      OriginAccessControlConfig:
+        Name: my-bucket-oac
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
 ```
 
-The math works out in your favor because CloudFront charges around $0.085/GB for the first 10TB, and the first 1TB each month is free. Compare that to S3's $0.09/GB, and you're saving money while also getting better latency for your users.
+The math often works out in your favor because CloudFront includes a monthly free tier for data transfer out and requests, and S3 doesn't charge for data transfer out to CloudFront. Compare that to serving directly from S3, and you're often saving money while also getting better latency for your users.
 
 ## Use S3 Intelligent-Tiering
 
@@ -139,6 +143,9 @@ aws s3api put-bucket-replication \
         "Filter": {
           "Prefix": "critical-data/"
         },
+        "DeleteMarkerReplication": {
+          "Status": "Disabled"
+        },
         "Destination": {
           "Bucket": "arn:aws:s3:::destination-bucket"
         }
@@ -178,9 +185,9 @@ def upload_compressed(data, bucket, key):
     print(f"Compression saved {savings:.1f}% - {original_size} -> {compressed_size} bytes")
 ```
 
-## Use S3 Select and Glacier Select
+## Use S3 Select if You Already Have Access
 
-Instead of downloading entire objects and filtering locally, use S3 Select to retrieve only the data you need. This can reduce transferred data by up to 80% for analytical queries.
+Instead of downloading entire objects and filtering locally, existing S3 Select customers can use S3 Select to retrieve only the data they need. S3 Select is no longer available to new customers, so new workloads should use services such as Amazon Athena for query-in-place analytics.
 
 ```bash
 # Use S3 Select to query only specific columns from a CSV file
@@ -199,6 +206,12 @@ aws s3api select-object-content \
 You can't optimize what you can't see. Set up CloudWatch alarms on your S3 transfer metrics and use Cost Explorer to identify which buckets are the biggest offenders.
 
 ```bash
+# Enable S3 request metrics for the bucket first
+aws s3api put-bucket-metrics-configuration \
+  --bucket my-bucket \
+  --id EntireBucket \
+  --metrics-configuration '{"Id":"EntireBucket"}'
+
 # Create a CloudWatch alarm for high data transfer
 aws cloudwatch put-metric-alarm \
   --alarm-name "S3-High-Data-Transfer" \
@@ -210,7 +223,7 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:billing-alerts \
-  --dimensions Name=BucketName,Value=my-bucket Name=FilterId,Value=AllMetrics
+  --dimensions Name=BucketName,Value=my-bucket Name=FilterId,Value=EntireBucket
 ```
 
 For a comprehensive monitoring approach, consider setting up anomaly detection on your AWS costs. You can learn more about that in our post on [setting up anomaly detection for AWS costs](https://oneuptime.com/blog/post/2026-02-12-set-up-anomaly-detection-for-aws-costs/view).
@@ -242,9 +255,9 @@ aws s3control put-storage-lens-configuration \
 Here's a prioritized list of actions, ranked by typical impact:
 
 1. **Set up VPC endpoints** - Zero cost, immediate savings on internal traffic
-2. **Use CloudFront for public content** - Lower per-GB rates plus caching benefits
+2. **Use CloudFront for public content** - Free S3-to-CloudFront origin transfer plus caching benefits
 3. **Compress data** - Reduces all transfer costs proportionally
-4. **Use S3 Select** - Eliminates unnecessary data downloads for analytics
+4. **Use S3 Select if you already have access** - Eliminates unnecessary data downloads for analytics
 5. **Audit cross-region transfers** - Identify and eliminate unnecessary replication
 6. **Enable monitoring** - Catch cost spikes before they become budget problems
 
