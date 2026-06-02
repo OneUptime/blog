@@ -18,9 +18,9 @@ Let's break down each option so you can pick the best fit for your use case.
 |---------|-----------|-------|-------|------------|
 | Latency | Milliseconds | Minutes to hours | Seconds to minutes | Seconds (cold start) |
 | Scaling | Manual or auto | Job-based | Queue-based | Automatic |
-| Cost model | Per-instance-hour | Per-instance-hour | Per-instance-hour | Per-request |
+| Cost model | Per-instance-hour | Per-instance-hour | Per-instance-hour | Duration and data processed |
 | Scale to zero | No | Yes (jobs are ephemeral) | Yes | Yes |
-| Max payload | 6 MB | Unlimited (S3) | 1 GB | 6 MB |
+| Max payload | 25 MB | GB-scale S3 input; 100 MB mini-batch payload | 1 GB | 4 MB |
 | Best for | Interactive apps | Large datasets | Large payloads, variable traffic | Low traffic |
 
 ## Real-Time Inference
@@ -121,11 +121,11 @@ transformer.transform(
 
 **Use when**: You need to score a large dataset all at once. Monthly credit scoring, periodic customer segmentation, or any offline prediction job.
 
-**Watch out for**: It's not real-time. You can't use batch transform for interactive applications. Also, the minimum job duration means very small datasets aren't cost-effective.
+**Watch out for**: It's not real-time. You can't use batch transform for interactive applications. Also, the job startup overhead means very small datasets may not be cost-effective.
 
 ## Asynchronous Inference
 
-Async inference sits between real-time and batch. You submit a request, get back a token, and poll for the result later. It's designed for large payloads or when inference takes more than a few seconds.
+Async inference sits between real-time and batch. You submit a request, get back an inference ID and output location, and poll for the result later. It's designed for large payloads or when inference takes more than a few seconds.
 
 ```python
 from sagemaker.async_inference import AsyncInferenceConfig
@@ -234,7 +234,7 @@ asg_client.put_scaling_policy(
 
 ## Serverless Inference
 
-Serverless inference automatically provisions compute when requests arrive and scales to zero when idle. You pay per request, not per instance-hour.
+Serverless inference automatically provisions compute when requests arrive and scales to zero when idle. You pay for the compute duration and data processed, not per instance-hour.
 
 ```python
 from sagemaker.serverless import ServerlessInferenceConfig
@@ -278,8 +278,8 @@ graph TB
     C -->|Seconds OK| F{Payload Size?}
     E -->|Steady| G[Real-Time Endpoint]
     E -->|Low/Variable| H[Serverless Inference]
-    F -->|< 6 MB| H
-    F -->|> 6 MB| I[Async Inference]
+    F -->|<= 4 MB| H
+    F -->|> 4 MB| I[Async Inference]
 ```
 
 ## Cost Comparison
@@ -306,7 +306,7 @@ for scenario in scenarios:
     # Real-time (1 instance, always on)
     realtime_daily = instance_hourly_rate * 24
 
-    # Serverless
+    # Serverless compute duration; data processing charges are not included
     serverless_daily = daily_requests * serverless_rate_per_sec_per_gb * inference_time_sec * memory_gb
 
     # Batch (assuming 1 hour job)
