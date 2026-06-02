@@ -14,48 +14,39 @@ Let's walk through what io2 Block Express actually is, when to use it, and how t
 
 ## What Makes io2 Block Express Different?
 
-Regular io2 volumes max out at 64,000 IOPS and 1,000 MB/s. io2 Block Express pushes those limits to 256,000 IOPS and 4,000 MB/s. The difference comes from the underlying architecture - Block Express uses Scalable Reliable Datagrams (SRD), the same network protocol that powers EFA (Elastic Fabric Adapter).
+Older io1 volumes max out at 64,000 IOPS and 1,000 MB/s. io2 Block Express pushes those limits to 256,000 IOPS and 4,000 MB/s. The difference comes from the underlying architecture - Block Express uses Scalable Reliable Datagrams (SRD), the same network protocol that powers EFA (Elastic Fabric Adapter).
 
 Here's a quick comparison:
 
-| Feature | gp3 | io2 | io2 Block Express |
+| Feature | gp3 | io1 | io2 Block Express |
 |---------|-----|-----|-------------------|
-| Max IOPS | 16,000 | 64,000 | 256,000 |
-| Max throughput | 1,000 MB/s | 1,000 MB/s | 4,000 MB/s |
-| Max volume size | 16 TiB | 16 TiB | 64 TiB |
+| Max IOPS | 80,000 | 64,000 | 256,000 |
+| Max throughput | 2,000 MB/s | 1,000 MB/s | 4,000 MB/s |
+| Max volume size | 64 TiB | 16 TiB | 64 TiB |
 | Latency | Single-digit ms | Single-digit ms | Sub-millisecond |
-| Durability | 99.8-99.9% | 99.999% | 99.999% |
+| Durability | 99.8-99.9% | 99.8-99.9% | 99.999% |
 | Multi-Attach | No | Yes | Yes |
 
 The 99.999% durability is worth calling out - that's 100x more durable than gp3 volumes. For mission-critical databases, that matters a lot.
 
 ## Prerequisites
 
-Not every EC2 instance type supports io2 Block Express. You need a Nitro-based instance that supports Block Express. As of now, these instance families work:
-
-- R5b (memory-optimized, Block Express)
-- R6i, R6in, R7i, R7iz
-- M6i, M6in, M7i
-- C6i, C6in, C7i
-- X2idn, X2iedn
-- I4i, Im4gn, Is4gen
-- Trn1, Inf2
-- Hpc7g
+To get the full io2 Block Express performance envelope, use a Nitro-based instance with enough EBS-optimized bandwidth for your target IOPS and throughput. Other instance types can attach to io2 volumes provisioned with up to 64,000 IOPS, but they can achieve up to 32,000 IOPS.
 
 The easiest way to check if your instance supports it:
 
 ```bash
-# Check if your instance type supports io2 Block Express
+# Check Nitro and EBS performance limits for your instance type
 
 aws ec2 describe-instance-types \
     --instance-types r6i.xlarge \
-    --query "InstanceTypes[].EbsInfo.EbsOptimizedInfo" \
+    --query "InstanceTypes[].{InstanceType:InstanceType,Hypervisor:Hypervisor,EbsOptimized:EbsInfo.EbsOptimizedSupport,MaxIops:EbsInfo.EbsOptimizedInfo.MaximumIops,MaxThroughputMBps:EbsInfo.EbsOptimizedInfo.MaximumThroughputInMBps}" \
     --output table
 ```
 
 ## Creating an io2 Block Express Volume
 
-When you create an io2 volume with more than 64,000 IOPS or 16 TiB size, it automatically becomes a Block Express volume. But you can also create one at lower specs - the key is the instance type you attach it to.
+As of April 30, 2025, all new and existing io2 volumes are io2 Block Express volumes. The key is attaching them to a Nitro-based instance when you need the highest limits.
 
 Create a high-performance io2 Block Express volume:
 
@@ -65,12 +56,11 @@ aws ec2 create-volume \
     --volume-type io2 \
     --size 500 \
     --iops 100000 \
-    --throughput 2000 \
     --availability-zone us-east-1a \
     --tag-specifications 'ResourceType=volume,Tags=[{Key=Name,Value=high-perf-db}]'
 ```
 
-Note that IOPS are provisioned independently from volume size, but there's a ratio limit. You can provision up to 1,000 IOPS per GiB of volume size. So a 500 GiB volume can have up to 500,000 IOPS (though the volume max is 256,000).
+Note that IOPS are provisioned independently from volume size, but there's a ratio limit. You can provision up to 1,000 IOPS per GiB of volume size. So a 500 GiB volume can have up to 500,000 IOPS (though the volume max is 256,000). Throughput isn't a separate create-volume setting for io2; it scales at 0.256 MiB/s per provisioned IOPS, up to the 4,000 MiB/s volume maximum.
 
 ## Attaching and Configuring the Volume
 
@@ -123,7 +113,7 @@ Tune the operating system for high-IOPS workloads:
 # Set the I/O scheduler to none (best for NVMe/SSD)
 echo "none" | sudo tee /sys/block/nvme1n1/queue/scheduler
 
-# Increase the NVMe queue depth
+# Set the request queue depth
 echo 32 | sudo tee /sys/block/nvme1n1/queue/nr_requests
 
 # Increase read-ahead for sequential workloads
@@ -161,19 +151,19 @@ Run a comprehensive fio benchmark targeting your io2 Block Express volume:
 sudo fio --name=randread --ioengine=libaio --direct=1 \
     --bs=4k --size=10G --numjobs=16 --iodepth=32 \
     --rw=randread --group_reporting \
-    --filename=/dev/nvme1n1
+    --filename=/data/fio-testfile
 
 # Random write IOPS test
 sudo fio --name=randwrite --ioengine=libaio --direct=1 \
     --bs=4k --size=10G --numjobs=16 --iodepth=32 \
     --rw=randwrite --group_reporting \
-    --filename=/dev/nvme1n1
+    --filename=/data/fio-testfile
 
 # Sequential throughput test
 sudo fio --name=seqread --ioengine=libaio --direct=1 \
     --bs=256k --size=10G --numjobs=4 --iodepth=32 \
     --rw=read --group_reporting \
-    --filename=/dev/nvme1n1
+    --filename=/data/fio-testfile
 ```
 
 If you're not hitting your provisioned IOPS, check that your instance type's EBS bandwidth limit isn't the bottleneck. For more on benchmarking EC2 performance, see our guide on [benchmarking EC2 instances](https://oneuptime.com/blog/post/2026-02-12-benchmark-ec2-instance-performance/view).
@@ -206,7 +196,7 @@ aws ec2 describe-volumes-modifications \
     --volume-ids vol-0123456789abcdef0
 ```
 
-Keep in mind there's a cooldown period of 6 hours between modifications.
+Keep in mind that the previous modification must reach the `completed` state before you can modify the same volume again, and AWS limits each volume to four modifications in a rolling 24-hour period.
 
 ## When to Use io2 Block Express
 
