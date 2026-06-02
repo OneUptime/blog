@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Replication, Compliance
 
-Description: Configure S3 Replication Time Control to guarantee that 99.99 percent of objects replicate within 15 minutes, meeting compliance requirements for data residency and disaster recovery.
+Description: Configure S3 Replication Time Control to replicate objects within 15 minutes, meeting compliance requirements for data residency and disaster recovery.
 
 ---
 
 Standard S3 cross-region replication doesn't give you any time guarantees. Most objects replicate within minutes, but some can take hours - especially large objects or during high-traffic periods. For compliance scenarios where you need provable replication SLAs, that's not good enough.
 
-S3 Replication Time Control (RTC) guarantees that 99.99% of new objects replicate within 15 minutes. It also comes with CloudWatch metrics so you can prove compliance to auditors. Let's set it up.
+S3 Replication Time Control (RTC) is designed to replicate 99.99% of new objects within 15 minutes, with an SLA commitment of 99.9% during a monthly billing cycle. It also comes with CloudWatch metrics so you can prove compliance to auditors. Let's set it up.
 
 ## What RTC Gives You
 
 Regular replication replicates objects on a "best effort" basis. RTC adds:
 
-- **15-minute SLA**: 99.99% of objects replicate within 15 minutes
+- **15-minute target**: Designed to replicate 99.99% of objects within 15 minutes, with an SLA commitment of 99.9% during a monthly billing cycle
 - **Replication metrics**: Real-time CloudWatch metrics showing pending bytes and operations
 - **S3 event notifications**: Notifications when replication completes or fails
 - **Backed by SLA**: AWS provides service credits if they miss the 15-minute target
@@ -206,24 +206,30 @@ The IAM role also needs KMS permissions.
 
 ```json
 {
-  "Effect": "Allow",
-  "Action": ["kms:Decrypt"],
-  "Resource": "arn:aws:kms:us-east-1:123456789012:key/source-key-id"
-},
-{
-  "Effect": "Allow",
-  "Action": ["kms:Encrypt"],
-  "Resource": "arn:aws:kms:eu-west-1:123456789012:key/dest-key-id"
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt"],
+      "Resource": "arn:aws:kms:us-east-1:123456789012:key/source-key-id"
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["kms:Encrypt"],
+      "Resource": "arn:aws:kms:eu-west-1:123456789012:key/dest-key-id"
+    }
+  ]
 }
 ```
 
 ## Monitoring Replication with CloudWatch
 
-RTC provides three CloudWatch metrics you should monitor closely.
+RTC provides four CloudWatch metrics you should monitor closely. These metrics are published in the destination bucket's Region.
 
 ```bash
 # Check bytes pending replication
 aws cloudwatch get-metric-statistics \
+  --region eu-west-1 \
   --namespace AWS/S3 \
   --metric-name BytesPendingReplication \
   --dimensions Name=SourceBucket,Value=source-bucket-us-east-1 \
@@ -236,6 +242,7 @@ aws cloudwatch get-metric-statistics \
 
 # Check operations pending replication
 aws cloudwatch get-metric-statistics \
+  --region eu-west-1 \
   --namespace AWS/S3 \
   --metric-name OperationsPendingReplication \
   --dimensions Name=SourceBucket,Value=source-bucket-us-east-1 \
@@ -248,6 +255,7 @@ aws cloudwatch get-metric-statistics \
 
 # Check replication latency
 aws cloudwatch get-metric-statistics \
+  --region eu-west-1 \
   --namespace AWS/S3 \
   --metric-name ReplicationLatency \
   --dimensions Name=SourceBucket,Value=source-bucket-us-east-1 \
@@ -257,6 +265,19 @@ aws cloudwatch get-metric-statistics \
   --end-time 2026-02-12T23:59:59Z \
   --period 300 \
   --statistics Maximum
+
+# Check operations that failed replication
+aws cloudwatch get-metric-statistics \
+  --region eu-west-1 \
+  --namespace AWS/S3 \
+  --metric-name OperationsFailedReplication \
+  --dimensions Name=SourceBucket,Value=source-bucket-us-east-1 \
+               Name=DestinationBucket,Value=destination-bucket-eu-west-1 \
+               Name=RuleId,Value=RTC-Compliance-Rule \
+  --start-time 2026-02-12T00:00:00Z \
+  --end-time 2026-02-12T23:59:59Z \
+  --period 300 \
+  --statistics Sum
 ```
 
 ## Setting Up Alarms
@@ -266,6 +287,7 @@ Create CloudWatch alarms to alert when replication falls behind.
 ```bash
 # Alarm when replication latency exceeds 10 minutes
 aws cloudwatch put-metric-alarm \
+  --region eu-west-1 \
   --alarm-name rtc-replication-latency \
   --alarm-description "S3 RTC replication latency approaching SLA" \
   --metric-name ReplicationLatency \
@@ -275,6 +297,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 600 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 2 \
+  --treat-missing-data ignore \
   --dimensions \
     Name=SourceBucket,Value=source-bucket-us-east-1 \
     Name=DestinationBucket,Value=destination-bucket-eu-west-1 \
@@ -283,6 +306,7 @@ aws cloudwatch put-metric-alarm \
 
 # Alarm when pending bytes exceed threshold
 aws cloudwatch put-metric-alarm \
+  --region eu-west-1 \
   --alarm-name rtc-pending-bytes \
   --alarm-description "Large replication backlog detected" \
   --metric-name BytesPendingReplication \
@@ -292,6 +316,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 1073741824 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
+  --treat-missing-data ignore \
   --dimensions \
     Name=SourceBucket,Value=source-bucket-us-east-1 \
     Name=DestinationBucket,Value=destination-bucket-eu-west-1 \
@@ -301,13 +326,14 @@ aws cloudwatch put-metric-alarm \
 
 ## Compliance Reporting
 
-For auditors, you can generate replication compliance reports from CloudWatch metrics showing that 99.99% of objects replicated within 15 minutes.
+For auditors, you can generate replication compliance reports from CloudWatch metrics showing replication latency and any operations that missed or failed replication.
 
 Build a dashboard that tracks the metrics over time.
 
 ```bash
 # Create a compliance dashboard
 aws cloudwatch put-dashboard \
+  --region eu-west-1 \
   --dashboard-name S3-RTC-Compliance \
   --dashboard-body '{
     "widgets": [
@@ -317,8 +343,7 @@ aws cloudwatch put-dashboard \
         "height": 6,
         "properties": {
           "metrics": [
-            ["AWS/S3", "ReplicationLatency", "SourceBucket", "source-bucket-us-east-1", "DestinationBucket", "destination-bucket-eu-west-1", "RuleId", "RTC-Compliance-Rule", {"stat": "Maximum"}],
-            ["...", {"stat": "Average"}]
+            ["AWS/S3", "ReplicationLatency", "SourceBucket", "source-bucket-us-east-1", "DestinationBucket", "destination-bucket-eu-west-1", "RuleId", "RTC-Compliance-Rule", {"stat": "Maximum"}]
           ],
           "title": "Replication Latency (seconds)",
           "period": 300,
@@ -348,6 +373,18 @@ aws cloudwatch put-dashboard \
             ["AWS/S3", "OperationsPendingReplication", "SourceBucket", "source-bucket-us-east-1", "DestinationBucket", "destination-bucket-eu-west-1", "RuleId", "RTC-Compliance-Rule"]
           ],
           "title": "Operations Pending Replication",
+          "period": 300
+        }
+      },
+      {
+        "type": "metric",
+        "width": 12,
+        "height": 6,
+        "properties": {
+          "metrics": [
+            ["AWS/S3", "OperationsFailedReplication", "SourceBucket", "source-bucket-us-east-1", "DestinationBucket", "destination-bucket-eu-west-1", "RuleId", "RTC-Compliance-Rule", {"stat": "Sum"}]
+          ],
+          "title": "Operations Failed Replication",
           "period": 300
         }
       }
