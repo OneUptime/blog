@@ -64,6 +64,7 @@ You can configure the data source through the Grafana UI or through provisioning
 apiVersion: 1
 datasources:
   - name: Google Cloud Monitoring
+    uid: google-cloud-monitoring
     type: stackdriver
     access: proxy
     jsonData:
@@ -72,6 +73,7 @@ datasources:
       defaultProject: my-project
       tokenUri: https://oauth2.googleapis.com/token
       clientEmail: grafana-monitoring@my-project.iam.gserviceaccount.com
+      universeDomain: googleapis.com
     secureJsonData:
       # The private key from your service account JSON key file
       privateKey: |
@@ -89,11 +91,13 @@ If running on GKE with Workload Identity, you can skip the key file entirely.
 apiVersion: 1
 datasources:
   - name: Google Cloud Monitoring
+    uid: google-cloud-monitoring
     type: stackdriver
     access: proxy
     jsonData:
       authenticationType: gce
       defaultProject: my-project
+      universeDomain: googleapis.com
     isDefault: true
 ```
 
@@ -115,7 +119,7 @@ In the Grafana query editor, select the Google Cloud Monitoring data source and 
 ### Cloud SQL Connection Count
 
 ```text
-# Grafana query for Cloud SQL active connections
+# Grafana query for Cloud SQL active connections on MySQL or SQL Server
 Service: Cloud SQL
 Metric: cloudsql.googleapis.com/database/network/connections
 Filter: resource.label.database_id = "my-project:my-database"
@@ -183,6 +187,8 @@ groups:
       - uid: gce-cpu-high
         title: High CPU on GCE Instance
         condition: C
+        noDataState: NoData
+        execErrState: Alerting
         data:
           - refId: A
             relativeTimeRange:
@@ -227,8 +233,13 @@ groups:
       - uid: cloudsql-disk-high
         title: Cloud SQL Disk Usage High
         condition: C
+        noDataState: NoData
+        execErrState: Alerting
         data:
           - refId: A
+            relativeTimeRange:
+              from: 600
+              to: 0
             datasourceUid: google-cloud-monitoring
             model:
               metricType: cloudsql.googleapis.com/database/disk/utilization
@@ -294,24 +305,38 @@ One of Grafana's strengths is the ability to create alerts that combine multiple
 # Multi-condition alert: High CPU AND High Memory
 - uid: gce-resource-exhaustion
   title: GCE Instance Resource Exhaustion
-  condition: D
+  condition: E
+  noDataState: NoData
+  execErrState: Alerting
   data:
     - refId: A
+      datasourceUid: google-cloud-monitoring
       model:
         metricType: compute.googleapis.com/instance/cpu/utilization
+        groupBys:
+          - resource.label.instance_name
     - refId: B
+      datasourceUid: google-cloud-monitoring
       model:
         metricType: compute.googleapis.com/instance/memory/balloon/ram_used
+        groupBys:
+          - resource.label.instance_name
     - refId: C
-      datasourceUid: __expr__
+      datasourceUid: google-cloud-monitoring
       model:
-        type: math
-        expression: "$A > 0.8 && $B > 0.9"
+        metricType: compute.googleapis.com/instance/memory/balloon/ram_size
+        groupBys:
+          - resource.label.instance_name
     - refId: D
       datasourceUid: __expr__
       model:
+        type: math
+        expression: "$A > 0.8 && ($B / $C) > 0.9"
+    - refId: E
+      datasourceUid: __expr__
+      model:
         type: threshold
-        expression: C
+        expression: D
         conditions:
           - evaluator:
               type: gt
@@ -320,6 +345,8 @@ One of Grafana's strengths is the ability to create alerts that combine multiple
   annotations:
     summary: "Both CPU and memory are critically high on {{ $labels.instance_name }}"
 ```
+
+The `compute.googleapis.com/instance/memory/balloon/*` metrics are available only for VM instances in the E2 machine family. For other machine families, use guest or Ops Agent memory metrics instead.
 
 ## Practical Tips
 
