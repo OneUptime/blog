@@ -10,7 +10,7 @@ Description: A detailed comparison of Route 53 Alias records and standard CNAME 
 
 If you've worked with Route 53, you've probably wondered whether to use an Alias record or a CNAME when pointing one domain name at another. They seem to do the same thing - redirect DNS queries from one name to another - but they work differently under the hood, and choosing wrong can cost you money or break your setup entirely.
 
-The short answer: use Alias records for AWS resources whenever possible. For everything else, use CNAMEs. But let me explain why.
+The short answer: use Alias records for supported AWS resources whenever possible. For everything else, use CNAMEs. But let me explain why.
 
 ## How CNAME Records Work
 
@@ -100,7 +100,7 @@ If you want `example.com` to point to an ALB, CloudFront, or S3 bucket, Alias is
 
 ## Cost Difference
 
-Alias records that point to AWS resources (ALBs, CloudFront, S3, API Gateway, etc.) are free - Route 53 doesn't charge for the DNS queries. CNAME queries are charged at the standard rate of $0.40 per million queries.
+Alias records that point to supported AWS resources (ALBs, CloudFront, S3, API Gateway, etc.) are free - Route 53 doesn't charge for the DNS queries. CNAME queries are charged at the standard rate of $0.40 per million queries for the first billion standard queries per month.
 
 For a high-traffic website, the cost difference can be significant. If `www.example.com` gets 100 million DNS queries per month:
 - CNAME: $40/month in query charges
@@ -126,11 +126,11 @@ With an Alias, Route 53 does the resolution internally and returns IP addresses 
 | DNS standard | Route 53 proprietary | Universal DNS standard |
 | Works with routing policies | Yes | Yes |
 | Health check integration | EvaluateTargetHealth | Separate health checks |
-| Record type | A or AAAA | CNAME |
+| Record type | Usually A or AAAA for AWS targets; matching type for Route 53 record aliases | CNAME |
 
 ## Supported Alias Targets
 
-Alias records only work with specific AWS resources:
+Alias records only work with selected targets:
 
 - Elastic Load Balancers (ALB, NLB, CLB)
 - CloudFront distributions
@@ -140,12 +140,15 @@ Alias records only work with specific AWS resources:
 - AWS Global Accelerator
 - Route 53 records in the same hosted zone
 - Elastic Beanstalk environments
+- AWS App Runner services
+- AWS AppSync domain names
+- Amazon OpenSearch Service custom domains
 
 You can't create an Alias record pointing to an arbitrary domain like `myapp.netlify.app` or `my-site.herokuapp.com`. For non-AWS targets, you must use CNAME.
 
 ## Finding the Correct HostedZoneId
 
-Each AWS service has a hosted zone ID for each region. You need this when creating Alias records. Here's how to find it.
+Each Alias target has a hosted zone ID that you need when creating Alias records. Some are regional, while global services like CloudFront use a fixed value. Here's how to find it.
 
 ```bash
 # For an ALB - the zone ID is in the ALB's description
@@ -217,7 +220,7 @@ resource "aws_route53_record" "cdn" {
 
 This Alias-specific feature integrates the target's health status with DNS routing. When set to true, Route 53 checks if the target resource has healthy endpoints.
 
-For ALBs, it checks if the ALB has at least one healthy target in its target groups. For S3 website endpoints, there's no health evaluation (S3 is managed and always considered healthy). For CloudFront, it checks the distribution's status.
+For ALBs and NLBs, Route 53 considers the load balancer healthy only if every target group that contains targets has at least one healthy target. For S3 website endpoints, API Gateway, and VPC interface endpoints, you can set this to true, but AWS says it provides no operational benefit for failover because these services are highly available by design. For CloudFront, you can't set `EvaluateTargetHealth` to true.
 
 ```bash
 # Alias with health evaluation enabled
@@ -228,11 +231,11 @@ For ALBs, it checks if the ALB has at least one healthy target in its target gro
 }
 ```
 
-When combined with failover routing, EvaluateTargetHealth enables automatic failover without a separate Route 53 health check - the ALB's built-in health checks drive the DNS routing decision. See https://oneuptime.com/blog/post/2026-02-12-route-53-failover-routing-policy/view for details.
+When combined with failover routing for an ALB or NLB, EvaluateTargetHealth enables automatic failover without a separate Route 53 health check - the load balancer's built-in health checks drive the DNS routing decision. See https://oneuptime.com/blog/post/2026-02-12-route-53-failover-routing-policy/view for details.
 
 ## Decision Framework
 
-When pointing to an AWS resource: use Alias. Always. You get free queries, zone apex support, better performance, and integrated health evaluation.
+When pointing to a supported AWS resource: use Alias. You get free queries, zone apex support, better performance, and, for some targets like load balancers, integrated health evaluation.
 
 When pointing to a non-AWS resource: use CNAME. It's the only option, and it works fine.
 
