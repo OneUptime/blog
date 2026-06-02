@@ -8,13 +8,13 @@ Description: Learn how to properly release unused Elastic IP addresses in AWS, r
 
 ---
 
-Elastic IP addresses are a finite resource. AWS charges you for idle ones, and there's a per-account limit on how many you can have. Knowing how to properly release EIPs you're done with - and how to recover one if you accidentally release it - is a basic operational skill that'll save you money and headaches.
+Elastic IP addresses are a finite resource. AWS charges you for them whether they're in use or idle, and there's a per-account limit on how many you can have. Knowing how to properly release EIPs you're done with - and how to recover one if you accidentally release it - is a basic operational skill that'll save you money and headaches.
 
 Let me walk through the lifecycle of managing EIPs, from identifying unused ones to handling the "oh no, I just released the wrong IP" situation.
 
 ## Finding Unused Elastic IPs
 
-The first step is knowing which EIPs you actually have and whether they're in use. An EIP that's allocated but not associated with any resource is costing you money for nothing.
+The first step is knowing which EIPs you actually have and whether they're in use. An EIP that's allocated but not associated with any resource is costing you money for nothing useful.
 
 ```bash
 # List all EIPs and their association status
@@ -24,7 +24,7 @@ aws ec2 describe-addresses \
   --output table
 ```
 
-EIPs with an empty AssociationId are not attached to anything - these are the ones costing you idle fees. Look for them regularly.
+EIPs with an empty AssociationId are not attached to anything - these are the obvious cleanup candidates. Look for them regularly.
 
 For a quick count of how many orphaned EIPs you have across regions, here's a handy script.
 
@@ -33,8 +33,7 @@ For a quick count of how many orphaned EIPs you have across regions, here's a ha
 for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do
   count=$(aws ec2 describe-addresses \
     --region "$region" \
-    --filters "Name=association-id,Values=" \
-    --query 'length(Addresses)' \
+    --query 'length(Addresses[?AssociationId==null])' \
     --output text 2>/dev/null)
   if [ "$count" != "0" ] && [ "$count" != "None" ]; then
     echo "$region: $count unused EIPs"
@@ -56,9 +55,9 @@ aws ec2 release-address \
   --allocation-id eipalloc-0123456789abcdef0
 ```
 
-If you try to release an EIP that's still associated, you'll get an error. The two-step process is intentional - it prevents accidental releases.
+In a nondefault VPC, if you try to release an EIP that's still associated, you'll get an error. The two-step process is intentional - it prevents accidental releases.
 
-You can also force-release by disassociating and releasing in one script.
+You can also release all currently unassociated EIPs in one script.
 
 ```bash
 # Find and release all unassociated EIPs in the current region
@@ -178,7 +177,7 @@ resource "aws_eip" "critical" {
 }
 ```
 
-The `prevent_destroy` lifecycle rule means Terraform will refuse to destroy this resource, even if you remove it from the configuration. You'd have to explicitly remove the lifecycle block first, which forces a conscious decision.
+The `prevent_destroy` lifecycle rule means Terraform will refuse plans that would destroy this resource while the resource block remains in the configuration. If you remove the resource block entirely, the lifecycle rule is removed too, so keep the block in place or remove the resource from Terraform state instead of deleting the real EIP.
 
 ## Transferring EIPs Between Accounts
 
@@ -195,7 +194,7 @@ aws ec2 accept-address-transfer \
   --address 52.1.2.3
 ```
 
-The transfer must be accepted within 7 days or it expires. During the transfer window, the EIP remains usable in the source account.
+The transfer must be accepted within 7 days or it expires. The EIP remains owned by the source account until the destination account accepts it, and the destination account can't accept the transfer while the EIP is still associated with an ENI or EC2 instance.
 
 This is really useful when you have EIPs that are whitelisted by external partners. Instead of going through the process of getting new IPs whitelisted, just transfer the existing ones to the new account.
 
@@ -211,11 +210,13 @@ aws ce get-cost-and-usage \
   --filter '{
     "Dimensions": {
       "Key": "USAGE_TYPE",
-      "Values": ["ElasticIP:IdleAddress"]
+      "Values": ["USE1-PublicIPv4:IdleAddress"]
     }
   }' \
   --metrics "BlendedCost"
 ```
+
+Replace `USE1` with the billing code for the region you're checking, or group by `USAGE_TYPE` to discover the exact values in your account.
 
 With the 2024 public IPv4 pricing changes, even active EIPs now have a cost. It's worth reviewing your EIP usage quarterly and asking whether each one is still necessary. For general best practices on using EIPs, check out https://oneuptime.com/blog/post/2026-02-12-elastic-ip-addresses-effectively/view.
 
