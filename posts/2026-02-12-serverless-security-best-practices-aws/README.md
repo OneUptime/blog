@@ -107,11 +107,13 @@ This Python function demonstrates proper input validation for an API Gateway-tri
 ```python
 import json
 import re
-from typing import Any
 
 def validate_order_input(body: dict) -> dict:
     """Validate and sanitize order input."""
     errors = []
+
+    if not isinstance(body, dict):
+        return {'valid': False, 'errors': ['Request body must be a JSON object']}
 
     # Validate required fields
     required_fields = ['customer_id', 'items', 'shipping_address']
@@ -133,6 +135,9 @@ def validate_order_input(body: dict) -> dict:
         errors.append("Items must be a non-empty array with at most 100 items")
 
     for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            errors.append(f"Item {i}: must be an object")
+            continue
         if not isinstance(item.get('quantity'), int) or item['quantity'] < 1:
             errors.append(f"Item {i}: quantity must be a positive integer")
         if not isinstance(item.get('price'), (int, float)) or item['price'] < 0:
@@ -141,6 +146,7 @@ def validate_order_input(body: dict) -> dict:
     if errors:
         return {'valid': False, 'errors': errors}
 
+    body['customer_id'] = customer_id
     return {'valid': True, 'data': body}
 
 
@@ -174,7 +180,7 @@ def handler(event, context):
 
 ## Secrets Management
 
-Never put sensitive values in Lambda environment variables. They're visible in the console, they show up in CloudFormation templates, and they're logged in deployment events. Use Secrets Manager or SSM Parameter Store instead.
+Never put sensitive values in Lambda environment variables. They're encrypted at rest, but anyone with permission to view the function configuration can read them, and they can end up in infrastructure templates or state files. Use Secrets Manager or SSM Parameter Store instead.
 
 This shows the right way to handle secrets in Lambda.
 
@@ -236,11 +242,11 @@ jobs:
         run: pip install -r requirements.txt
 
       # Scan for known vulnerabilities in dependencies
-      - name: Run safety check
+      - name: Run Safety scan
         run: |
           pip install safety
-          safety check --json --output safety-report.json
-          safety check
+          safety scan --save-as json safety-report.json
+          safety scan
 
       # Static analysis for security issues in your code
       - name: Run bandit
@@ -305,7 +311,7 @@ resource "aws_lambda_function" "api_handler" {
 If your Lambda is behind API Gateway, secure the API layer too.
 
 ```hcl
-# API Gateway with WAF, throttling, and authorization
+# API Gateway with throttling and request validation
 resource "aws_api_gateway_rest_api" "api" {
   name = "secure-api"
 
