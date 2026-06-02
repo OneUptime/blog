@@ -8,7 +8,7 @@ Description: Practical strategies and code examples for handling EC2 Spot Instan
 
 ---
 
-Spot Instances can save you up to 90% on EC2 costs, but there's a trade-off: AWS can reclaim them with just 2 minutes of notice. If you're not prepared for interruptions, you'll have a bad time. If you are prepared, they're barely noticeable.
+Spot Instances can save you up to 90% on EC2 costs, but there's a trade-off: AWS can reclaim them with 2 minutes of notice before stop or termination interruptions. If you configure hibernation as the interruption behavior, hibernation starts immediately after the notice. If you're not prepared for interruptions, you'll have a bad time. If you are prepared, they're barely noticeable.
 
 This post covers everything you need to build robust interruption handling - from detecting the warning to gracefully draining connections and replacing capacity.
 
@@ -34,7 +34,7 @@ sequenceDiagram
     ASG->>ASG: Launch replacement instance
 ```
 
-You get exactly 2 minutes. That's enough time for most graceful shutdown procedures, but you need to have them automated and tested.
+For stop and termination interruptions, you typically get 2 minutes. That's enough time for most graceful shutdown procedures, but you need to have them automated and tested.
 
 ## Detecting Interruptions via Instance Metadata
 
@@ -55,14 +55,16 @@ logger = logging.getLogger("spot-monitor")
 METADATA_URL = "http://169.254.169.254/latest/meta-data/spot/instance-action"
 TOKEN_URL = "http://169.254.169.254/latest/api/token"
 POLL_INTERVAL = 5  # seconds
+TOKEN_EXPIRED = object()
 
 def get_imds_token():
     """Get a token for IMDSv2."""
     response = requests.put(
         TOKEN_URL,
-        headers={"X-aws-ec2-metadata-token-ttl-seconds": "300"},
+        headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
         timeout=2
     )
+    response.raise_for_status()
     return response.text
 
 def check_for_interruption(token):
@@ -75,6 +77,8 @@ def check_for_interruption(token):
         )
         if response.status_code == 200:
             return json.loads(response.text)
+        if response.status_code == 401:
+            return TOKEN_EXPIRED
         return None
     except requests.exceptions.RequestException:
         return None
@@ -103,6 +107,10 @@ def main():
 
     while True:
         action = check_for_interruption(token)
+
+        if action is TOKEN_EXPIRED:
+            token = get_imds_token()
+            continue
 
         if action:
             logger.warning(f"Interruption notice received: {action}")
@@ -171,6 +179,35 @@ Resources:
               # Optionally, proactively launch replacement
               # This is useful if you're not using Auto Scaling
               return {'statusCode': 200}
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: publish-spot-alerts
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: sns:Publish
+                Resource: arn:aws:sns:us-east-1:123456789012:spot-alerts
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SpotHandlerFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SpotInterruptionRule.Arn
 ```
 
 ## EC2 Instance Rebalance Recommendation
@@ -196,7 +233,7 @@ aws autoscaling update-auto-scaling-group \
   --capacity-rebalance
 ```
 
-When capacity rebalancing is enabled, the ASG launches a new instance as soon as it receives a rebalance recommendation. Once the new instance passes health checks, the old one is terminated. This dramatically reduces the chance of running below desired capacity.
+When capacity rebalancing is enabled, the ASG attempts to launch a new instance as soon as it receives a rebalance recommendation. Once the new instance passes health checks, the old one can be terminated. This dramatically reduces the chance of running below desired capacity.
 
 ## Draining Connections from a Load Balancer
 
@@ -208,7 +245,6 @@ This script deregisters an instance from its target group and waits for connecti
 #!/bin/bash
 # deregister-from-lb.sh
 
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
 TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
   -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
 
@@ -217,12 +253,6 @@ INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
 
 REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
   http://169.254.169.254/latest/meta-data/placement/region)
-
-# Find the target group this instance belongs to
-TARGET_GROUPS=$(aws elbv2 describe-target-health \
-  --region "$REGION" \
-  --query "TargetHealthDescriptions[?Target.Id=='$INSTANCE_ID']" \
-  --output json 2>/dev/null)
 
 # Deregister from all target groups
 for tg_arn in $(aws elbv2 describe-target-groups \
@@ -261,6 +291,7 @@ This Python example shows a basic checkpointing pattern for batch processing:
 ```python
 import json
 import boto3
+import time
 
 s3 = boto3.client('s3')
 CHECKPOINT_BUCKET = 'my-checkpoints'
