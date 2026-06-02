@@ -13,8 +13,8 @@ Lightsail managed databases give you MySQL or PostgreSQL without the operational
 ## Available Database Options
 
 Lightsail offers two database engines:
-- **MySQL 8.0** (and older versions)
-- **PostgreSQL 14** (and older versions)
+- **MySQL 8.0**
+- **PostgreSQL 16** (and older supported versions)
 
 Both come in Standard and High Availability configurations. High availability gives you a standby instance in a different AZ for automatic failover.
 
@@ -26,6 +26,8 @@ Both come in Standard and High Availability configurations. High availability gi
 | Small    | 2GB    | 80GB   | 100GB    | $30               | $60          |
 | Medium   | 4GB    | 120GB  | 100GB    | $60               | $120         |
 | Large    | 8GB    | 240GB  | 200GB    | $115              | $230         |
+| XLarge   | 16GB   | 480GB  | 300GB    | $245              | $490         |
+| 2XLarge  | 32GB   | 960GB  | 400GB    | $490              | $980         |
 
 ## Creating a Database
 
@@ -41,7 +43,7 @@ aws lightsail create-relational-database \
   --relational-database-bundle-id micro_2_0 \
   --master-database-name appdb \
   --master-username admin \
-  --master-user-password "YourStr0ngP@ssword!" \
+  --master-user-password "YourStr0ngP#ssword!" \
   --tags key=Environment,value=production
 ```
 
@@ -56,7 +58,7 @@ aws lightsail create-relational-database \
   --relational-database-bundle-id small_2_0 \
   --master-database-name appdb \
   --master-username admin \
-  --master-user-password "YourStr0ngP@ssword!"
+  --master-user-password "YourStr0ngP#ssword!"
 ```
 
 For high availability, add the `--no-publicly-accessible` flag (recommended for production) and create it as a multi-AZ deployment.
@@ -70,7 +72,7 @@ aws lightsail create-relational-database \
   --relational-database-bundle-id medium_ha_2_0 \
   --master-database-name production \
   --master-username admin \
-  --master-user-password "YourStr0ngP@ssword!" \
+  --master-user-password "YourStr0ngP#ssword!" \
   --no-publicly-accessible
 ```
 
@@ -94,7 +96,7 @@ aws lightsail get-relational-database \
 
 ## Connecting from a Lightsail Instance
 
-If you made the database publicly accessible, you can connect from anywhere. If not (which is more secure), you can connect from Lightsail instances in the same region.
+If you made the database publicly accessible, anyone with the endpoint, port, username, and password can connect. If not (which is more secure), you can connect from Lightsail resources in the same account and region.
 
 First, get the connection details.
 
@@ -242,7 +244,7 @@ aws lightsail create-relational-database-from-snapshot \
 
 ## Modifying Database Parameters
 
-You can customize database parameters using parameter groups.
+You can customize database parameters.
 
 ```bash
 # Update database parameters (example: increasing max_connections)
@@ -257,7 +259,7 @@ aws lightsail update-relational-database-parameters \
     {
       "parameterName": "slow_query_log",
       "parameterValue": "1",
-      "applyMethod": "immediate"
+      "applyMethod": "pending-reboot"
     },
     {
       "parameterName": "long_query_time",
@@ -270,7 +272,7 @@ aws lightsail update-relational-database-parameters \
 Some parameters require a reboot to take effect.
 
 ```bash
-# Reboot the database to apply pending parameter changes
+# Reboot the database to apply pending-reboot parameter changes
 aws lightsail reboot-relational-database \
   --relational-database-name my-app-db
 ```
@@ -323,7 +325,7 @@ aws lightsail get-relational-database-metric-data \
 # Change the master password
 aws lightsail update-relational-database \
   --relational-database-name my-app-db \
-  --master-user-password "NewStr0ngerP@ssword!2026"
+  --master-user-password "NewStr0ngerP#ssword!2026"
 
 # Disable public access
 aws lightsail update-relational-database \
