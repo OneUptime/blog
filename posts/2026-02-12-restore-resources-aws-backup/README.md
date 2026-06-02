@@ -37,7 +37,7 @@ aws backup list-recovery-points-by-backup-vault \
   --max-results 10
 
 # Filter by resource ARN
-aws backup list-recovery-points-by-resource-arn \
+aws backup list-recovery-points-by-resource \
   --resource-arn "arn:aws:rds:us-east-1:123456789012:db:production-db"
 ```
 
@@ -46,8 +46,8 @@ aws backup list-recovery-points-by-resource-arn \
 EBS restores create a new volume from the backup snapshot. You can then attach it to an instance.
 
 ```bash
-# Get the recovery point details
-aws backup describe-recovery-point \
+# Get the recovery point restore metadata
+aws backup get-recovery-point-restore-metadata \
   --backup-vault-name "production-backups" \
   --recovery-point-arn "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-ebs-001"
 
@@ -71,10 +71,10 @@ aws backup describe-restore-job \
 After the volume is created, attach it to your instance:
 
 ```bash
-# Find the restored volume
-aws ec2 describe-volumes \
-  --filters "Name=tag:aws:backup:source-resource,Values=*" \
-  --query 'Volumes[0].VolumeId' --output text
+# Find the restored volume ARN from the restore job
+aws backup describe-restore-job \
+  --restore-job-id "restore-ebs-001" \
+  --query 'CreatedResourceArn' --output text
 
 # Attach to an instance
 aws ec2 attach-volume \
@@ -130,14 +130,15 @@ aws rds modify-db-instance \
 If you have continuous backup enabled, you can restore to any second within the retention period:
 
 ```bash
-# Find the available PITR window
+# Find RDS recovery points in the vault
 aws backup list-recovery-points-by-backup-vault \
   --backup-vault-name "production-backups" \
   --by-resource-type "RDS" \
-  --query 'RecoveryPoints[?RecoveryPointType==`CONTINUOUS`].{
+  --query 'RecoveryPoints[?Status==`COMPLETED`].{
     ARN:RecoveryPointArn,
-    Earliest:CreationDate,
-    Resource:ResourceArn
+    Created:CreationDate,
+    Resource:ResourceArn,
+    Name:ResourceName
   }'
 
 # Restore to a specific point in time
@@ -146,7 +147,9 @@ aws backup start-restore-job \
   --iam-role-arn "arn:aws:iam::123456789012:role/AWSBackupServiceRole" \
   --metadata '{
     "DBInstanceIdentifier": "production-db-pitr",
+    "Engine": "postgres",
     "DBInstanceClass": "db.r5.large",
+    "UseLatestRestorableTime": "false",
     "RestoreTime": "2026-02-12T14:30:00Z",
     "MultiAZ": "false",
     "DBSubnetGroupName": "production-subnet-group"
@@ -166,7 +169,7 @@ aws backup start-restore-job \
   --iam-role-arn "arn:aws:iam::123456789012:role/AWSBackupServiceRole" \
   --metadata '{
     "targetTableName": "orders-restored",
-    "encryptionType": "AWS_OWNED_KMS_KEY"
+    "encryptionType": "Default"
   }'
 
 # Once restored, verify the data
@@ -175,22 +178,19 @@ aws dynamodb scan \
   --select COUNT
 ```
 
-For DynamoDB with continuous backup, you can do PITR:
+For DynamoDB point-in-time recovery, use DynamoDB PITR:
 
 ```bash
 # Restore DynamoDB to a specific point
-aws backup start-restore-job \
-  --recovery-point-arn "arn:aws:backup:us-east-1:123456789012:recovery-point:continuous:rp-ddb-pitr" \
-  --iam-role-arn "arn:aws:iam::123456789012:role/AWSBackupServiceRole" \
-  --metadata '{
-    "targetTableName": "orders-pitr-restore",
-    "restoreDateTime": "2026-02-12T10:00:00Z"
-  }'
+aws dynamodb restore-table-to-point-in-time \
+  --source-table-name "orders" \
+  --target-table-name "orders-pitr-restore" \
+  --restore-date-time "2026-02-12T10:00:00Z"
 ```
 
 ## Restoring an EFS File System
 
-EFS restores can go to a new file system or to a specific directory within an existing one:
+EFS restores can go to a new file system or to a recovery directory within an existing one:
 
 ```bash
 # Restore to a new EFS file system
@@ -198,7 +198,6 @@ aws backup start-restore-job \
   --recovery-point-arn "arn:aws:backup:us-east-1:123456789012:recovery-point:rp-efs-001" \
   --iam-role-arn "arn:aws:iam::123456789012:role/AWSBackupServiceRole" \
   --metadata '{
-    "file-system-id": "fs-0123456789abcdef0",
     "Encrypted": "true",
     "PerformanceMode": "generalPurpose",
     "newFileSystem": "true"
@@ -211,7 +210,7 @@ aws backup start-restore-job \
   --metadata '{
     "file-system-id": "fs-0123456789abcdef0",
     "newFileSystem": "false",
-    "ItemsToRestore": "[\"/*\"]"
+    "ItemsToRestore": "[\"/app/config\"]"
   }'
 ```
 
