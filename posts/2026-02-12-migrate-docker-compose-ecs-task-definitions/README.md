@@ -8,13 +8,13 @@ Description: A step-by-step guide to migrating your Docker Compose applications 
 
 ---
 
-You started with Docker Compose because it was easy. One `docker-compose up` and your whole application stack was running locally. Then you deployed it to ECS using the Compose integration, and it worked well enough. But now you need autoscaling, blue/green deployments, or more control over networking. That means moving to native ECS task definitions.
+You started with Docker Compose because it was easy. One `docker compose up` and your whole application stack was running locally. Maybe you also used Docker's now-retired ECS Compose integration, or a similar Compose-to-ECS workflow, and it worked well enough. But now you need autoscaling, blue/green deployments, or more control over networking. That means moving to native ECS task definitions.
 
 This migration doesn't have to happen all at once. You can convert services one at a time, testing each conversion before moving on. Let's walk through the process.
 
 ## Why Migrate?
 
-The Docker Compose to ECS integration is convenient but limited. Native ECS task definitions give you:
+The Docker Compose to ECS integration was convenient, but Docker has retired it. Native ECS task definitions give you:
 
 - Full control over deployment configuration (circuit breakers, rollback)
 - Target tracking and step autoscaling
@@ -35,7 +35,7 @@ Here's a reference table for translating Compose constructs to their ECS equival
 | `image` | `containerDefinitions[].image` |
 | `ports` | `containerDefinitions[].portMappings` |
 | `environment` | `containerDefinitions[].environment` |
-| `env_file` | Use Secrets Manager or SSM Parameter Store |
+| `env_file` | `containerDefinitions[].environmentFiles` for S3-hosted env files; use `secrets` for sensitive values |
 | `volumes` (named) | `volumes` + `mountPoints` |
 | `depends_on` | `containerDefinitions[].dependsOn` |
 | `command` | `containerDefinitions[].command` |
@@ -50,9 +50,7 @@ Here's a reference table for translating Compose constructs to their ECS equival
 Let's convert a real Docker Compose file. Here's our starting point:
 
 ```yaml
-# docker-compose.yml
-
-version: "3.8"
+# compose.yaml
 
 services:
   web:
@@ -134,7 +132,7 @@ Here's the web service task definition:
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:webapp/database-url"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:webapp/database-url-AbCdEf"
         }
       ],
       "healthCheck": {
@@ -328,8 +326,7 @@ aws application-autoscaling put-scaling-policy \
 You don't have to abandon Docker Compose entirely. Keep it for local development while using native ECS for production:
 
 ```yaml
-# docker-compose.local.yml - for local development only
-version: "3.8"
+# compose.local.yaml - for local development only
 
 services:
   web:
