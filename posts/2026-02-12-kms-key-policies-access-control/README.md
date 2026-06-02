@@ -8,20 +8,20 @@ Description: A practical guide to writing and managing AWS KMS key policies for 
 
 ---
 
-KMS key policies are the primary mechanism controlling who can do what with your encryption keys. Unlike most AWS resources where IAM policies alone determine access, KMS uses a dual-authorization model: both the key policy and IAM policies must allow an action. Getting key policies wrong can lock you out of your own keys or expose them to unintended principals.
+KMS key policies are the primary mechanism controlling who can do what with your encryption keys. Unlike most AWS resources where IAM policies alone determine access, AWS KMS always requires a key policy, and access can be authorized by a key policy, IAM policy, or grant. Getting key policies wrong can lock you out of your own keys or expose them to unintended principals.
 
 This guide walks through writing effective key policies, implementing separation of duties, handling cross-account scenarios, and using grants for service-level access.
 
 ## How KMS Authorization Works
 
-Before writing policies, you need to understand the authorization flow. When someone tries to use a KMS key, AWS checks two things:
+Before writing policies, you need to understand the authorization flow. When someone tries to use a KMS key with IAM-delegated permissions, AWS checks two things:
 
 1. Does the **key policy** allow this principal to perform this action?
 2. Does the principal's **IAM policy** allow this action on this key?
 
-Both must say yes, with one exception: if the key policy explicitly grants access to a principal, IAM policies don't need to be involved. The key policy can be the sole authority.
+Both must say yes. If the key policy explicitly grants access to a principal, or a grant authorizes the operation, IAM policies don't need to be involved. The key policy or grant can be the sole authority.
 
-Here's the critical part most people miss: by default, a newly created key policy only grants access to the root account. This root account statement is what enables IAM policies to work.
+Here's the critical part most people miss: by default, a key created programmatically without a custom policy gets a policy that allows the owning AWS account to use IAM policies. This account-principal statement is what enables IAM policies to work.
 
 ```json
 {
@@ -35,11 +35,11 @@ Here's the critical part most people miss: by default, a newly created key polic
 }
 ```
 
-If you remove this statement, only principals explicitly named in the key policy can access the key. IAM policies become irrelevant.
+If you remove this statement, IAM allow policies become ineffective unless another key policy statement enables them. Only principals explicitly named in the key policy, or principals with grants, can access the key.
 
 ## Building a Proper Key Policy
 
-A well-structured key policy separates three concerns: root access (safety net), key administration, and key usage. Here's a complete example.
+A well-structured key policy separates three concerns: AWS account access (safety net), key administration, and key usage. Here's a complete example.
 
 ```json
 {
@@ -127,7 +127,7 @@ A well-structured key policy separates three concerns: root access (safety net),
 
 Let's break down why each statement matters.
 
-**Root account access** is your escape hatch. If every named principal loses access or their roles get deleted, you can still manage the key through the root account. Never remove this.
+**AWS account access** is your escape hatch. If every named principal loses access or their roles get deleted, account administrators can still recover access through IAM permissions. Never remove this without replacing it with another statement that keeps policy management possible.
 
 **Key administrators** can manage the key but can't use it for encryption/decryption. This is the separation of duties principle - the people who configure keys shouldn't be the same people using them.
 
@@ -151,6 +151,7 @@ aws kms put-key-policy \
 aws kms get-key-policy \
   --key-id alias/production-database \
   --policy-name default \
+  --query Policy \
   --output text | python3 -m json.tool
 ```
 
@@ -268,7 +269,7 @@ This means TenantARole can only decrypt data that was encrypted with the encrypt
 
 ## Understanding KMS Grants
 
-Grants are an alternative to key policies for granting temporary or programmatic access. AWS services like EBS, RDS, and Redshift use grants under the hood.
+Grants work alongside key policies and IAM policies for granting temporary or programmatic access. AWS services like EBS, RDS, and Redshift use grants under the hood.
 
 ```bash
 # Create a grant allowing a role to decrypt
@@ -305,10 +306,10 @@ aws cloudtrail lookup-events \
 You should also periodically review key policies to check for overly permissive access.
 
 ```bash
-# List all CMKs and their policies
+# List all KMS keys and their policies
 for key_id in $(aws kms list-keys --query 'Keys[*].KeyId' --output text); do
   echo "=== Key: $key_id ==="
-  aws kms get-key-policy --key-id "$key_id" --policy-name default --output text
+  aws kms get-key-policy --key-id "$key_id" --policy-name default --query Policy --output text
   echo ""
 done
 ```
