@@ -262,7 +262,7 @@ Set up Docker daemon log rotation:
 
 ```bash
 # Create Docker daemon configuration
-sudo cat > /etc/docker/daemon.json << 'EOF'
+sudo tee /etc/docker/daemon.json > /dev/null << 'EOF'
 {
   "log-driver": "json-file",
   "log-opts": {
@@ -286,9 +286,12 @@ docker run -d \
   --log-opt awslogs-group=/ec2/docker/my-app \
   --log-opt awslogs-region=us-east-1 \
   --log-opt awslogs-stream=my-app \
+  --log-opt awslogs-create-group=true \
   -p 3000:3000 \
   my-app:latest
 ```
+
+Make sure the instance profile has CloudWatch Logs permissions, including `logs:CreateLogGroup` if you use `awslogs-create-group=true`.
 
 ## Health Checks and Auto-Recovery
 
@@ -325,8 +328,11 @@ echo "Container is healthy"
 Schedule it with cron:
 
 ```bash
+# Make the script executable
+sudo chmod +x /usr/local/bin/container-health-check.sh
+
 # Add to crontab - check every minute
-echo "* * * * * /usr/local/bin/container-health-check.sh >> /var/log/container-health.log 2>&1" | crontab -
+(sudo crontab -l 2>/dev/null; echo "* * * * * /usr/local/bin/container-health-check.sh >> /var/log/container-health.log 2>&1") | sudo crontab -
 ```
 
 ## Security Best Practices
