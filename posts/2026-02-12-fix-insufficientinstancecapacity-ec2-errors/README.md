@@ -82,32 +82,36 @@ If you're launching multiple instances at once and hitting this error, try launc
 ```python
 import boto3
 import time
+from botocore.exceptions import ClientError
 
 ec2 = boto3.client('ec2', region_name='us-east-1')
 
 # Instead of launching 20 at once, launch in smaller batches
 desired_count = 20
 batch_size = 5
+retry_delay = 30
 launched = []
 
 for i in range(0, desired_count, batch_size):
-    try:
-        response = ec2.run_instances(
-            ImageId='ami-0abcdef1234567890',
-            InstanceType='m5.xlarge',
-            MinCount=batch_size,
-            MaxCount=batch_size,
-            KeyName='my-key-pair',
-            SubnetId='subnet-0bb1c79de3EXAMPLE'
-        )
-        launched.extend([inst['InstanceId'] for inst in response['Instances']])
-        print(f"Launched batch {i // batch_size + 1}")
-    except ec2.exceptions.ClientError as e:
-        if 'InsufficientInstanceCapacity' in str(e):
-            print(f"Capacity issue on batch {i // batch_size + 1}, retrying in 30s...")
-            time.sleep(30)
-        else:
-            raise
+    while True:
+        try:
+            response = ec2.run_instances(
+                ImageId='ami-0abcdef1234567890',
+                InstanceType='m5.xlarge',
+                MinCount=batch_size,
+                MaxCount=batch_size,
+                KeyName='my-key-pair',
+                SubnetId='subnet-0bb1c79de3EXAMPLE'
+            )
+            launched.extend([inst['InstanceId'] for inst in response['Instances']])
+            print(f"Launched batch {i // batch_size + 1}")
+            break
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'InsufficientInstanceCapacity':
+                print(f"Capacity issue on batch {i // batch_size + 1}, retrying in {retry_delay}s...")
+                time.sleep(retry_delay)
+            else:
+                raise
 
 print(f"Total launched: {len(launched)} instances")
 ```
@@ -179,7 +183,7 @@ Setting up alerts with a monitoring tool like [OneUptime](https://oneuptime.com/
 
 ## What About Spot Instances?
 
-If your workload can handle interruptions, Spot Instances are less likely to hit capacity issues because you're bidding on unused capacity across the entire pool. The Spot placement score API can help you find the best regions and AZs for your instance types.
+If your workload can handle interruptions, Spot Instances can help because they use spare EC2 capacity, but capacity can still fluctuate. Diversify across instance types and AZs, and use the Spot placement score API to help find the best regions and AZs for your instance types.
 
 ```bash
 # Check spot placement scores to find the best AZs
