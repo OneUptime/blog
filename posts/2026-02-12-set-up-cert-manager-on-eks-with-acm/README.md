@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EKS, Kubernetes, TLS, Security
 
-Description: Learn how to set up cert-manager on Amazon EKS and integrate with AWS Certificate Manager for automated TLS certificate management for your Kubernetes workloads.
+Description: Learn how to use AWS Certificate Manager with an ALB on Amazon EKS, and how to set up cert-manager for automated TLS certificate management for your Kubernetes workloads.
 
 ---
 
 TLS certificates are table stakes for any production service, but managing them manually is painful. Certificates expire, renewal is easy to forget, and distributing them across a Kubernetes cluster adds another layer of complexity. cert-manager automates the entire lifecycle - requesting, issuing, renewing, and rotating certificates - so you never have to think about it again.
 
-On EKS, you have two main approaches to TLS: terminate SSL at the ALB using ACM certificates (the simpler option), or use cert-manager to provision certificates for your pods directly. This guide covers both approaches, since each has its place.
+On EKS, you have two main approaches to TLS: terminate SSL at the ALB using ACM certificates (the simpler option), or use cert-manager to provision certificates as Kubernetes secrets for your workloads and ingress controllers. This guide covers both approaches, since each has its place.
 
 ## Option 1: ACM Certificates at the ALB (Simple Approach)
 
-If you're using an ALB Ingress, the simplest way to get TLS is through AWS Certificate Manager. ACM certificates are free, auto-renewing, and managed entirely by AWS. You just reference the certificate ARN in your Ingress annotations.
+If you're using an ALB Ingress, the simplest way to get TLS is through AWS Certificate Manager. Default ACM public certificates for integrated AWS services such as ALB are no-cost, auto-renewing, and managed entirely by AWS. You just reference the certificate ARN in your Ingress annotations.
 
 Request a certificate in ACM:
 
@@ -59,24 +59,23 @@ spec:
 
 This terminates TLS at the ALB. Traffic between the ALB and your pods is unencrypted (within the VPC), which is fine for most use cases. For more on ALB Ingress, see our [ALB setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-ingress-with-alb-on-eks/view).
 
-## Option 2: cert-manager for Pod-Level TLS
+## Option 2: cert-manager for Kubernetes-Managed TLS
 
-When you need end-to-end encryption, mTLS, or you're using an ingress controller other than ALB (like NGINX), cert-manager is the way to go.
+When you need Kubernetes-managed certificates for an ingress controller that consumes Kubernetes TLS secrets, mTLS, or certificates mounted into your pods, cert-manager is the way to go.
 
 ## Installing cert-manager
 
 Install cert-manager using Helm:
 
-```bash
-# Add the Jetstack Helm repository
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
+If you're going to use Route 53 DNS01 validation, create the IAM policy and IRSA role shown in the next section before running this Helm command.
 
+```bash
 # Install cert-manager with CRDs
-helm install cert-manager jetstack/cert-manager \
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true \
+  --set crds.enabled=true \
+  --set securityContext.fsGroup=1001 \
   --set serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="arn:aws:iam::123456789012:role/cert-manager-role"
 ```
 
@@ -86,8 +85,8 @@ Verify the installation:
 # Check cert-manager pods
 kubectl get pods -n cert-manager
 
-# Verify the webhook is working
-kubectl get apiservice v1.cert-manager.io
+# Verify the cert-manager API is ready
+cmctl check api --wait=2m
 ```
 
 ## Setting Up a Let's Encrypt Issuer
@@ -122,17 +121,18 @@ First, create the IAM policy for Route 53 access:
 }
 ```
 
-Create the IRSA service account:
+Create the IRSA role. Since Helm manages the cert-manager ServiceAccount in this guide, use `--role-only` and pass the same role ARN to the Helm install command above:
 
 ```bash
-# Create IRSA for cert-manager
+# Create an IRSA role for cert-manager
 eksctl create iamserviceaccount \
   --cluster my-cluster \
   --namespace cert-manager \
   --name cert-manager \
+  --role-name cert-manager-role \
   --attach-policy-arn arn:aws:iam::123456789012:policy/CertManagerRoute53Policy \
   --approve \
-  --override-existing-serviceaccounts
+  --role-only
 ```
 
 Now create the ClusterIssuer:
@@ -210,7 +210,7 @@ kubectl apply -f certificate.yaml
 kubectl get certificate app-tls -w
 ```
 
-The certificate goes through several stages: Pending, then Ready once cert-manager completes the DNS challenge and receives the certificate from Let's Encrypt.
+The certificate starts with `Ready=False`, then changes to `Ready=True` once cert-manager completes the DNS challenge and receives the certificate from Let's Encrypt.
 
 Check the status:
 
@@ -225,9 +225,9 @@ kubectl get certificaterequest
 kubectl get secret app-tls-secret
 ```
 
-## Using Certificates with NGINX Ingress
+## Using Certificates with an Ingress Controller
 
-If you're using NGINX ingress controller instead of ALB, cert-manager can provision certificates automatically via annotations:
+If you're using an ingress controller that consumes Kubernetes TLS secrets instead of ALB, cert-manager can provision certificates automatically via annotations:
 
 ```yaml
 # nginx-ingress-with-cert.yaml - Automatic TLS with cert-manager
@@ -286,4 +286,4 @@ kubectl logs -n cert-manager -l app=cert-manager --tail=100
 
 Common issues include Route 53 permission errors, DNS propagation delays, and rate limits on the Let's Encrypt production server.
 
-Whether you go with ACM at the ALB layer or cert-manager for pod-level TLS, automating certificate management removes one of the most annoying operational tasks from your plate. Combined with [ExternalDNS](https://oneuptime.com/blog/post/2026-02-12-set-up-external-dns-on-eks-with-route-53/view), you get a fully automated workflow from deployment to working HTTPS endpoint.
+Whether you go with ACM at the ALB layer or cert-manager for Kubernetes-managed TLS, automating certificate management removes one of the most annoying operational tasks from your plate. Combined with [ExternalDNS](https://oneuptime.com/blog/post/2026-02-12-set-up-external-dns-on-eks-with-route-53/view), you get a fully automated workflow from deployment to working HTTPS endpoint.
