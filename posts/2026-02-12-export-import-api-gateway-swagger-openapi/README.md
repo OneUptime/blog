@@ -12,7 +12,7 @@ Managing API Gateway configurations through the console gets tedious fast, espec
 
 ## Exporting an API to OpenAPI
 
-You can export any REST API to OpenAPI 3.0 or Swagger 2.0 format. The export includes all your resources, methods, integrations, models, and authorizers.
+You can export a deployed REST API stage to OpenAPI 3.0 or Swagger 2.0 format. The standard export includes the OpenAPI representation of your resources, methods, and models; include API Gateway extensions when you also need AWS-specific settings such as integrations, request validators, and authorizers.
 
 Export your API to OpenAPI 3.0:
 
@@ -45,7 +45,7 @@ aws apigateway get-export \
 
 ## Including API Gateway Extensions
 
-By default, the export only includes the standard OpenAPI definition. To capture API Gateway-specific settings like integrations, authorizers, and CORS configuration, include the extensions.
+By default, the export only includes the standard OpenAPI definition. To capture API Gateway-specific settings like integrations, authorizers, request validators, and CORS configuration, include the extensions.
 
 Export with API Gateway extensions:
 
@@ -78,7 +78,7 @@ aws apigateway get-export \
   openapi-authorizers.json
 ```
 
-The `extensions=apigateway` parameter adds `x-amazon-apigateway-*` extensions to the OpenAPI file. These extensions contain the Lambda integrations, request/response mappings, and other AWS-specific configurations.
+The `extensions=apigateway` parameter adds API Gateway extensions such as `x-amazon-apigateway-integration` to the OpenAPI file. These extensions contain Lambda integrations, request/response mappings, request validators, and other AWS-specific configurations. Use `extensions=authorizers` when you specifically need `x-amazon-apigateway-authorizer` extensions.
 
 ## Anatomy of an Exported File
 
@@ -151,6 +151,13 @@ components:
       required:
         - customer_id
         - items
+    OrderResponse:
+      type: "object"
+      properties:
+        order_id:
+          type: "string"
+        status:
+          type: "string"
 ```
 
 ## Importing an OpenAPI Definition
@@ -192,7 +199,7 @@ aws apigateway create-deployment \
   --stage-name prod
 ```
 
-The `overwrite` mode replaces everything. The `merge` mode is safer for incremental changes - it adds new resources and methods without deleting existing ones.
+The `overwrite` mode replaces the existing API definition. The `merge` mode is safer for incremental changes - it leaves existing items alone when they are not included in the imported definition, while imported conflicting method definitions override the existing ones.
 
 ## Building an OpenAPI Definition from Scratch
 
@@ -235,9 +242,7 @@ Here's a complete definition you can import directly:
         "x-amazon-apigateway-integration": {
           "type": "aws_proxy",
           "httpMethod": "POST",
-          "uri": {
-            "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ListUsersFunction.Arn}/invocations"
-          }
+          "uri": "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:ListUsers/invocations"
         }
       },
       "post": {
@@ -257,9 +262,7 @@ Here's a complete definition you can import directly:
         "x-amazon-apigateway-integration": {
           "type": "aws_proxy",
           "httpMethod": "POST",
-          "uri": {
-            "Fn::Sub": "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${CreateUserFunction.Arn}/invocations"
-          }
+          "uri": "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:CreateUser/invocations"
         },
         "x-amazon-apigateway-request-validator": "ValidateBody"
       }
@@ -296,9 +299,9 @@ Here's a complete definition you can import directly:
 
 ## Automating Cross-Account Replication
 
-A common use case is replicating an API across AWS accounts (dev, staging, prod). Here's a script that exports from one account and imports to another.
+A common use case is replicating an API across AWS accounts (dev, staging, prod). Here's a script that exports from one account and imports to another. Make sure the target account also has the referenced Lambda functions and invoke permissions in place.
 
-This script handles the full cross-account replication workflow:
+This script handles the basic cross-account API definition replication workflow:
 
 ```python
 import boto3
@@ -378,7 +381,7 @@ jobs:
           aws-region: us-east-1
 
       - name: Validate OpenAPI spec
-        run: npx @apidevtools/swagger-cli validate api/openapi.yaml
+        run: npx @redocly/cli@latest lint api/openapi.yaml
 
       - name: Import API definition
         run: |
