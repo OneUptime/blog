@@ -127,10 +127,12 @@ Most modern build tools do this automatically:
 
 ```javascript
 // webpack.config.js
+const path = require('path');
+
 module.exports = {
     output: {
         filename: '[name].[contenthash].js',
-        path: '/dist'
+        path: path.resolve(__dirname, 'dist')
     }
 };
 ```
@@ -139,7 +141,7 @@ module.exports = {
 // vite.config.js
 export default {
     build: {
-        rollupOptions: {
+        rolldownOptions: {
             output: {
                 entryFileNames: 'assets/[name].[hash].js',
                 chunkFileNames: 'assets/[name].[hash].js',
@@ -222,15 +224,10 @@ DISTRIBUTION_ID="E1234567890"
 # Upload new files
 aws s3 sync ./dist s3://$BUCKET --delete
 
-# Invalidate HTML files (static assets use hashed filenames)
-aws cloudfront create-invalidation \
-    --distribution-id $DISTRIBUTION_ID \
-    --paths "/index.html" "/about/index.html" "/contact/index.html"
-
-# Wait for invalidation to complete
+# Invalidate HTML files and wait for the invalidation to complete
 INVALIDATION_ID=$(aws cloudfront create-invalidation \
     --distribution-id $DISTRIBUTION_ID \
-    --paths "/*" \
+    --paths "/index.html" "/about/index.html" "/contact/index.html" \
     --query 'Invalidation.Id' --output text)
 
 aws cloudfront wait invalidation-completed \
