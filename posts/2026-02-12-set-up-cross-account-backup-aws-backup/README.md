@@ -39,26 +39,16 @@ Cross-account backup requires:
 
 ## Step 1: Enable Cross-Account Backup in AWS Organizations
 
-You need to enable the cross-account backup feature from the organization's management account (or a delegated admin):
+You need to enable the cross-account backup feature from the organization's management account:
 
 ```bash
-# Enable cross-account backup in the organization
-
-aws backup update-region-settings \
-  --region us-east-1 \
-  --resource-type-management-preference '{
-    "EBS": true,
-    "EC2": true,
-    "RDS": true,
-    "DynamoDB": true,
-    "EFS": true,
-    "FSx": true,
-    "S3": true
-  }'
-
-# Enable cross-account features
+# Enable AWS Backup service access for the organization
 aws organizations enable-aws-service-access \
   --service-principal backup.amazonaws.com
+
+# Enable cross-account backup in the organization
+aws backup update-global-settings \
+  --global-settings isCrossAccountBackupEnabled=true
 
 # Register a delegated administrator for AWS Backup (optional)
 aws organizations register-delegated-administrator \
@@ -198,7 +188,7 @@ aws backup create-backup-plan \
             "DestinationBackupVaultArn": "arn:aws:backup:us-east-1:222222222222:backup-vault:cross-account-vault",
             "Lifecycle": {
               "MoveToColdStorageAfterDays": 7,
-              "DeleteAfterDays": 90
+              "DeleteAfterDays": 120
             }
           }
         ]
@@ -216,7 +206,7 @@ aws backup create-backup-selection \
   --backup-plan-id "plan-prod123" \
   --backup-selection '{
     "SelectionName": "CriticalResources",
-    "IamRoleArn": "arn:aws:iam::111111111111:role/AWSBackupServiceRole",
+    "IamRoleArn": "arn:aws:iam::111111111111:role/service-role/AWSBackupDefaultServiceRole",
     "ListOfTags": [{
       "ConditionType": "STRINGEQUALS",
       "ConditionKey": "Criticality",
@@ -258,6 +248,9 @@ aws organizations create-policy \
             },
             "copy_actions": {
               "arn:aws:backup:us-east-1:222222222222:backup-vault:cross-account-vault": {
+                "target_backup_vault_arn": {
+                  "@@assign": "arn:aws:backup:us-east-1:222222222222:backup-vault:cross-account-vault"
+                },
                 "lifecycle": {
                   "delete_after_days": {"@@assign": "90"}
                 }
@@ -268,7 +261,7 @@ aws organizations create-policy \
         "selections": {
           "tags": {
             "BackupRequired": {
-              "iam_role_arn": {"@@assign": "arn:aws:iam::$account:role/AWSBackupServiceRole"},
+              "iam_role_arn": {"@@assign": "arn:aws:iam::$account:role/service-role/AWSBackupDefaultServiceRole"},
               "tag_key": {"@@assign": "Backup"},
               "tag_value": {"@@assign": ["true"]}
             }
@@ -313,9 +306,11 @@ When disaster strikes, restore from the backup account:
 aws backup start-restore-job \
   --region us-east-1 \
   --recovery-point-arn "arn:aws:backup:us-east-1:222222222222:recovery-point:rp-cross-123" \
-  --iam-role-arn "arn:aws:iam::222222222222:role/AWSBackupServiceRole" \
+  --iam-role-arn "arn:aws:iam::222222222222:role/service-role/AWSBackupDefaultServiceRole" \
+  --resource-type RDS \
   --metadata '{
     "DBInstanceIdentifier": "restored-production-db",
+    "Engine": "mysql",
     "DBInstanceClass": "db.r5.large"
   }'
 ```
