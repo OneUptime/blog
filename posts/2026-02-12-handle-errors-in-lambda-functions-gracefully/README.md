@@ -16,11 +16,11 @@ Let's go through the patterns and practices that make Lambda functions resilient
 
 Lambda errors fall into two categories:
 
-**Invocation errors** happen before your code runs - invalid payloads, permission issues, out-of-memory crashes, or timeouts. AWS handles retries for these based on the invocation type.
+**Invocation errors** happen when Lambda can't invoke your function - invalid payloads, permission issues, throttling, or service errors before your handler runs. AWS handles retries for these based on the invocation type and event source.
 
-**Function errors** happen in your code - unhandled exceptions, assertion failures, or errors you explicitly throw. How these are retried depends on the event source.
+**Function errors** happen in your code or runtime - unhandled exceptions, assertion failures, errors you explicitly throw, out-of-memory crashes, or timeouts. How these are retried depends on the event source.
 
-The retry behavior differs based on how Lambda is invoked:
+The default Lambda retry behavior for function errors differs based on how Lambda is invoked:
 
 | Invocation Type | Retries | Examples |
 |---|---|---|
@@ -30,7 +30,7 @@ The retry behavior differs based on how Lambda is invoked:
 
 ## Structured Error Handling
 
-The first rule: never let unhandled exceptions escape your handler. Always wrap your handler logic in try-catch:
+For synchronous request/response integrations, return a clear error response instead of letting unhandled exceptions escape your handler. Wrap your handler logic in try-catch:
 
 ```javascript
 // Always wrap handler logic in try-catch
@@ -49,7 +49,7 @@ exports.handler = async (event) => {
       event: JSON.stringify(event).substring(0, 1000),
     });
 
-    // Return an error response instead of throwing
+    // Return an error response instead of throwing for synchronous integrations
     return {
       statusCode: error.statusCode || 500,
       body: JSON.stringify({
@@ -167,7 +167,7 @@ For a deep dive on retry patterns, check out our post on [implementing retry log
 
 ## Dead Letter Queues
 
-For asynchronous invocations, configure a dead letter queue (DLQ) to capture events that fail after all retries are exhausted:
+For asynchronous invocations, configure a dead letter queue (DLQ) to capture events that fail after all retries are exhausted. Make sure your function's execution role can send messages to the SQS queue or publish to the SNS topic:
 
 ```yaml
 # CloudFormation: Lambda with SQS dead letter queue
@@ -197,8 +197,9 @@ EventInvokeConfig:
   Type: AWS::Lambda::EventInvokeConfig
   Properties:
     FunctionName: !Ref MyFunction
+    Qualifier: $LATEST
     MaximumRetryAttempts: 2
-    MaximumEventAgeSeconds: 3600  # Discard events older than 1 hour
+    MaximumEventAgeInSeconds: 3600  # Discard events older than 1 hour
     DestinationConfig:
       OnSuccess:
         Destination: !GetAtt SuccessQueue.Arn
