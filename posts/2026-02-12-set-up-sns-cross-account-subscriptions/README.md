@@ -14,10 +14,10 @@ In multi-account AWS environments, services in one account often need to receive
 
 ```mermaid
 flowchart LR
-    subgraph Account A - Publisher
+    subgraph AccountA["Account A - Publisher"]
         A[Application] -->|Publish| B[SNS Topic]
     end
-    subgraph Account B - Subscriber
+    subgraph AccountB["Account B - Subscriber"]
         C[SQS Queue]
         D[Lambda Function]
     end
@@ -29,9 +29,11 @@ Two things need to happen:
 1. The topic owner (Account A) must grant permission for Account B to subscribe
 2. The subscriber (Account B) must allow SNS from Account A to deliver messages
 
+The IAM principal that creates the subscription also needs identity-based permission to call `sns:Subscribe`.
+
 ## Setting Up the Topic Policy (Account A)
 
-The topic owner needs to add a resource policy that allows the other account to subscribe and receive messages.
+The topic owner needs to add a resource policy that allows the other account to subscribe.
 
 ```bash
 # In Account A (111111111111) - the topic owner
@@ -49,10 +51,7 @@ aws sns set-topic-attributes \
         "Principal": {
           "AWS": "arn:aws:iam::222222222222:root"
         },
-        "Action": [
-          "sns:Subscribe",
-          "sns:Receive"
-        ],
+        "Action": "sns:Subscribe",
         "Resource": "arn:aws:sns:us-east-1:111111111111:order-events"
       }
     ]
@@ -75,10 +74,7 @@ aws sns set-topic-attributes \
         "Principal": {
           "AWS": "arn:aws:iam::222222222222:root"
         },
-        "Action": [
-          "sns:Subscribe",
-          "sns:Receive"
-        ],
+        "Action": "sns:Subscribe",
         "Resource": "arn:aws:sns:us-east-1:111111111111:order-events",
         "Condition": {
           "StringEquals": {
@@ -122,7 +118,7 @@ For SQS subscriptions, no confirmation is needed - the subscription becomes acti
 
 ## Cross-Account with Python
 
-Here's a complete setup script that handles both sides.
+Here's a complete setup script for an SQS subscription that handles both sides.
 
 ```python
 import json
@@ -149,7 +145,7 @@ def setup_cross_account_topic_policy(
         'Sid': 'CrossAccountSubscribe',
         'Effect': 'Allow',
         'Principal': {'AWS': principals},
-        'Action': ['sns:Subscribe', 'sns:Receive'],
+        'Action': 'sns:Subscribe',
         'Resource': topic_arn,
     }
 
@@ -267,14 +263,14 @@ aws sns set-topic-attributes \
         "Principal": {
           "AWS": "arn:aws:iam::222222222222:root"
         },
-        "Action": ["sns:Subscribe", "sns:Receive"],
+        "Action": "sns:Subscribe",
         "Resource": "arn:aws:sns:us-east-1:111111111111:shared-events"
       }
     ]
   }'
 ```
 
-## Setting Up with CDK (Using Cross-Stack References)
+## Setting Up with CDK
 
 In CDK, cross-account setups require deploying stacks in both accounts.
 
@@ -288,17 +284,17 @@ const topic = new sns.Topic(this, 'OrderEvents', {
   topicName: 'order-events',
 });
 
-// Allow Account B to subscribe and receive
+// Allow Account B to subscribe
 topic.addToResourcePolicy(new iam.PolicyStatement({
-  actions: ['sns:Subscribe', 'sns:Receive'],
+  actions: ['sns:Subscribe'],
   principals: [new iam.AccountPrincipal('222222222222')],
   resources: [topic.topicArn],
 }));
 
-// Export the topic ARN so Account B can reference it
+// Output the topic ARN so Account B can use it as a stack parameter or configuration value.
+// CloudFormation exports cannot be imported across AWS accounts.
 new cdk.CfnOutput(this, 'TopicArn', {
   value: topic.topicArn,
-  exportName: 'OrderEventsTopicArn',
 });
 ```
 
@@ -322,6 +318,8 @@ topic.addSubscription(
   new snsSubscriptions.SqsSubscription(queue)
 );
 ```
+
+If the subscription is left in `PendingConfirmation`, confirm it by reading the initial confirmation message from the queue and using the confirmation link.
 
 ## Security Best Practices
 
