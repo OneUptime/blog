@@ -8,7 +8,7 @@ Description: Learn how to switch your Lambda functions to ARM64 Graviton2 proces
 
 ---
 
-AWS Lambda functions run on x86_64 by default, but switching to ARM64 (Graviton2) gives you up to 20% better performance and 20% lower cost. That's a 34% improvement in price-performance for changing a single configuration setting. Most functions work without any code modifications. Let's walk through when and how to make the switch.
+AWS Lambda functions run on x86_64 by default, but switching to ARM64 (Graviton2) gives you up to 19% better performance for compute-intensive workloads and 20% lower duration cost. That's up to a 34% improvement in price-performance for changing a single configuration setting. Most functions work without any code modifications. Let's walk through when and how to make the switch.
 
 ## Why Graviton2 Matters
 
@@ -16,8 +16,8 @@ Graviton2 is AWS's custom ARM-based processor. It's been battle-tested in EC2, F
 
 For Lambda specifically, you get:
 - 20% lower cost per millisecond of execution
-- Up to 20% better performance for most workloads
-- Same Lambda features, limits, and integrations
+- Up to 19% better performance for compute-intensive workloads
+- Same invocation model and integrations
 - Available in most AWS regions
 
 ## Switching to ARM64
@@ -116,19 +116,20 @@ Pure Python, Node.js, and Java code runs on ARM64 without changes. The problem c
 
 Common packages that need ARM64-specific builds include `numpy`, `pandas`, `Pillow`, `psycopg2`, and anything using `cffi`. If you're bundling these in a Lambda layer or deployment package, you need to compile them for ARM64.
 
-Build your dependencies on an ARM64 environment:
+Build your dependencies on a Linux ARM64 environment:
 
 ```bash
-# Option 1: Build on an ARM64 EC2 instance or Mac with M-series chip
+# Option 1: Build on an ARM64 Linux EC2 instance
 pip install -r requirements.txt -t ./package/
 
 # Option 2: Use Docker with an ARM64 Lambda base image
 docker run --platform linux/arm64 \
   -v "$PWD":/var/task \
+  -w /var/task \
   public.ecr.aws/sam/build-python3.12:latest \
   pip install -r requirements.txt -t /var/task/package/
 
-# Option 3: Use SAM build (handles cross-compilation)
+# Option 3: Use SAM build with an architecture-specific container
 sam build --use-container
 ```
 
@@ -235,8 +236,8 @@ print("arm64 results:", benchmark_function("my-function-arm64"))
 
 Not every workload sees the same improvement. Here's what typically gains the most:
 
-- **Compute-heavy tasks** - Data processing, image manipulation, JSON parsing. These see the biggest gains, sometimes exceeding 20%.
-- **Web API handlers** - Typical CRUD operations with database calls see moderate improvement, usually 10-15%.
+- **Compute-heavy tasks** - Data processing, image manipulation, JSON parsing. These see the biggest gains, and optimized dependencies can improve results further.
+- **Web API handlers** - Typical CRUD operations with database calls can see moderate improvement when CPU time is a meaningful part of the request.
 - **I/O-bound functions** - Functions that mostly wait on network calls (API requests, database queries) see less improvement since the bottleneck isn't the CPU.
 
 ## Gradual Migration Strategy
@@ -250,6 +251,9 @@ This sets up a gradual rollout from x86 to ARM64:
 aws lambda update-function-configuration \
   --function-name my-function \
   --architectures arm64
+
+aws lambda wait function-updated \
+  --function-name my-function
 
 aws lambda publish-version \
   --function-name my-function
