@@ -19,9 +19,9 @@ Before migrating, verify your Elasticsearch version is compatible:
 | Source Elasticsearch Version | Target OpenSearch Version | Migration Path |
 |---|---|---|
 | 6.x | OpenSearch 1.x | Snapshot/restore or reindex |
-| 7.0-7.10 | OpenSearch 1.x or 2.x | Snapshot/restore (preferred) |
-| 7.11+ | OpenSearch 2.x | Reindex (license changes affect compatibility) |
-| 8.x | OpenSearch 2.x | Reindex with mapping adjustments |
+| 7.0-7.10 | OpenSearch 1.x | Snapshot/restore (preferred) or reindex |
+| 7.11+ | OpenSearch 2.x | Remote reindex or Logstash/custom ETL (snapshots are not supported) |
+| 8.x | OpenSearch 2.x | Remote reindex or Logstash/custom ETL with mapping adjustments |
 
 ```bash
 # Check your current Elasticsearch version
@@ -69,7 +69,7 @@ response = opensearch.create_domain(
     NodeToNodeEncryptionOptions={'Enabled': True},
     DomainEndpointOptions={
         'EnforceHTTPS': True,
-        'TLSSecurityPolicy': 'Policy-Min-TLS-1-2-PF-2023-10'
+        'TLSSecurityPolicy': 'Policy-Min-TLS-1-2-PFS-2023-10'
     },
     AdvancedSecurityOptions={
         'Enabled': True,
@@ -96,13 +96,12 @@ curl -X PUT "http://elasticsearch-host:9200/_snapshot/migration-repo" \
     "type": "s3",
     "settings": {
       "bucket": "elasticsearch-migration-snapshots",
-      "region": "us-east-1",
-      "role_arn": "arn:aws:iam::123456789:role/ElasticsearchSnapshotRole"
+      "region": "us-east-1"
     }
   }'
 ```
 
-You need the `repository-s3` plugin installed on your self-hosted Elasticsearch cluster for this to work.
+On older Elasticsearch versions, you need the `repository-s3` plugin installed on every node for this to work. Configure S3 credentials through the Elasticsearch keystore or the instance/container role used by the cluster.
 
 ### Take a Snapshot
 
@@ -176,19 +175,9 @@ curl -s "https://admin:password@migrated-search.us-east-1.es.amazonaws.com/_cat/
 
 For version mismatches or when you need to transform data during migration, use the remote reindex API.
 
-### Configure OpenSearch to Allow Remote Reindex
+### Configure Remote Reindex Requirements
 
-Add your source cluster to the OpenSearch domain's reindex allowlist:
-
-```python
-# Update OpenSearch domain to allow remote reindex
-opensearch.update_domain_config(
-    DomainName='migrated-search',
-    AdvancedOptions={
-        'rest.action.multi.allow_explicit_index': 'true'
-    }
-)
-```
+For a self-managed Elasticsearch source, make sure the source endpoint is publicly reachable over HTTPS with a certificate signed by a public CA. Amazon OpenSearch Service requires the `external` parameter for non-OpenSearch Service sources:
 
 ### Run the Reindex
 
@@ -199,9 +188,10 @@ curl -X POST "https://admin:password@migrated-search.us-east-1.es.amazonaws.com/
   -d '{
     "source": {
       "remote": {
-        "host": "http://elasticsearch-host:9200",
+        "host": "https://elasticsearch-host.example.com:443",
         "username": "elastic",
-        "password": "password"
+        "password": "password",
+        "external": true
       },
       "index": "my-index",
       "query": {
@@ -214,22 +204,23 @@ curl -X POST "https://admin:password@migrated-search.us-east-1.es.amazonaws.com/
   }'
 ```
 
-For large indices, use slicing for parallel reindex:
+For large indices, run the task asynchronously and tune the scroll, socket timeout, and batch size:
 
 ```bash
-# Parallel reindex using slicing
-curl -X POST "https://admin:password@migrated-search.us-east-1.es.amazonaws.com/_reindex?wait_for_completion=false" \
+# Async remote reindex with a longer scroll and smaller batch size
+curl -X POST "https://admin:password@migrated-search.us-east-1.es.amazonaws.com/_reindex?pretty=true&scroll=10h&wait_for_completion=false" \
   -H 'Content-Type: application/json' \
   -d '{
     "source": {
       "remote": {
-        "host": "http://elasticsearch-host:9200"
+        "host": "https://elasticsearch-host.example.com:443",
+        "username": "elastic",
+        "password": "password",
+        "external": true,
+        "socket_timeout": "60m"
       },
-      "index": "large-index",
-      "slice": {
-        "id": 0,
-        "max": 5
-      }
+      "size": 100,
+      "index": "large-index"
     },
     "dest": {
       "index": "large-index"
@@ -237,11 +228,11 @@ curl -X POST "https://admin:password@migrated-search.us-east-1.es.amazonaws.com/
   }'
 ```
 
-Run multiple slices in parallel for faster migration.
+Remote reindex does not support slicing, so you cannot parallelize multiple scroll operations for the same remote reindex request.
 
 ## Migration Option 3: Logstash Pipeline
 
-For ongoing data streams (like log data), use Logstash to dual-write to both clusters during migration:
+For ongoing data streams (like log data), use Logstash to copy recent data during migration:
 
 ```ruby
 # logstash-migration.conf
@@ -267,14 +258,10 @@ output {
 }
 ```
 
-For new incoming data, configure your log shippers (Fluentd, Filebeat, etc.) to write to both clusters:
+For new incoming data, configure your log shippers (Fluentd, Filebeat, etc.) to write through Logstash, then configure Logstash with both Elasticsearch and OpenSearch outputs. Filebeat supports only one output in a single configuration:
 
 ```yaml
-# Filebeat dual output configuration
-output.elasticsearch:
-  hosts: ["http://elasticsearch-host:9200"]
-
-# Add OpenSearch output
+# Filebeat output to Logstash
 output.logstash:
   hosts: ["logstash-host:5044"]
 ```
@@ -287,7 +274,8 @@ Migrate your index templates and aliases:
 # Export templates from source
 import requests
 
-# Get all templates from source
+# Get all composable templates from source. For Elasticsearch 6.x or legacy
+# templates, use the _template endpoint instead.
 templates = requests.get('http://elasticsearch-host:9200/_index_template/*').json()
 
 # Create templates on OpenSearch
