@@ -28,7 +28,7 @@ resource "aws_sqs_queue" "orders" {
   # How long messages stay in the queue if not processed
   message_retention_seconds = 1209600  # 14 days (maximum)
 
-  # Max message size (default is 256 KB, which is also the max)
+  # Max message size (default is 256 KiB; SQS supports up to 1 MiB)
   max_message_size = 262144
 
   # Long polling - reduces empty receives and lowers cost
@@ -98,7 +98,7 @@ resource "aws_sqs_queue" "payments" {
   content_based_deduplication = true
 
   # FIFO throughput mode - "perQueue" or "perMessageGroupId"
-  # perMessageGroupId enables high throughput mode (up to 70,000 msg/s)
+  # perMessageGroupId enables high throughput mode; quotas vary by Region and batching
   deduplication_scope   = "messageGroup"
   fifo_throughput_limit = "perMessageGroupId"
 
@@ -133,7 +133,7 @@ Key FIFO concepts:
 
 **Deduplication**: FIFO queues reject duplicate messages within a 5-minute window. With `content_based_deduplication = true`, SQS uses the message body hash. Otherwise, you must provide a `MessageDeduplicationId`.
 
-**High throughput mode**: Setting `fifo_throughput_limit` to `perMessageGroupId` enables up to 70,000 messages per second (across all message groups). The default `perQueue` limit is 3,000 messages per second.
+**High throughput mode**: Setting `fifo_throughput_limit` to `perMessageGroupId` enables high throughput FIFO mode across message groups. The exact quota varies by Region and batching; the default non-high-throughput FIFO quota is 300 transactions per second per API action, or up to 3,000 messages per second with batching.
 
 ## KMS Encryption
 
@@ -256,11 +256,28 @@ Wrap your queue configuration in a module for consistency across teams.
 
 ```hcl
 # modules/sqs-queue/variables.tf
-variable "name" { type = string }
-variable "fifo" { type = bool; default = false }
-variable "visibility_timeout" { type = number; default = 300 }
-variable "max_receive_count" { type = number; default = 5 }
-variable "environment" { type = string }
+variable "name" {
+  type = string
+}
+
+variable "fifo" {
+  type    = bool
+  default = false
+}
+
+variable "visibility_timeout" {
+  type    = number
+  default = 300
+}
+
+variable "max_receive_count" {
+  type    = number
+  default = 5
+}
+
+variable "environment" {
+  type = string
+}
 
 # modules/sqs-queue/main.tf
 resource "aws_sqs_queue" "main" {
