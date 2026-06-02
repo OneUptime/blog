@@ -58,27 +58,31 @@ Here are the Oracle features that require the most manual effort:
 ```sql
 -- Oracle
 CREATE SEQUENCE order_seq START WITH 1 INCREMENT BY 1;
-INSERT INTO orders (id, ...) VALUES (order_seq.NEXTVAL, ...);
+INSERT INTO orders (id, order_number) VALUES (order_seq.NEXTVAL, 'A100');
 
 -- PostgreSQL equivalent
 CREATE TABLE orders (
     id BIGINT GENERATED ALWAYS AS IDENTITY,
-    ...
+    order_number TEXT
 );
 -- Or use a sequence explicitly
 CREATE SEQUENCE order_seq START WITH 1 INCREMENT BY 1;
-INSERT INTO orders (id, ...) VALUES (nextval('order_seq'), ...);
+CREATE TABLE orders_with_sequence (
+    id BIGINT DEFAULT nextval('order_seq'),
+    order_number TEXT
+);
+INSERT INTO orders_with_sequence (order_number) VALUES ('A100');
 ```
 
 **Oracle SYSDATE vs PostgreSQL:**
 ```sql
 -- Oracle
 SELECT SYSDATE FROM DUAL;
-WHERE created_at > SYSDATE - 7;
+SELECT * FROM orders WHERE created_at > SYSDATE - 7;
 
 -- PostgreSQL
 SELECT CURRENT_TIMESTAMP;
-WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '7 days';
+SELECT * FROM orders WHERE created_at > CURRENT_TIMESTAMP - INTERVAL '7 days';
 ```
 
 **Oracle NVL vs PostgreSQL COALESCE:**
@@ -142,7 +146,7 @@ BEGIN
     UPDATE accounts SET balance = v_current_balance + p_amount
     WHERE account_id = p_account_id;
 
-    COMMIT;
+    -- Commit or roll back in the caller.
 EXCEPTION
     WHEN NO_DATA_FOUND THEN
         RAISE EXCEPTION 'Account not found: %', p_account_id;
@@ -160,6 +164,7 @@ aws rds create-db-cluster \
   --engine-version 16.4 \
   --master-username postgres \
   --master-user-password 'YourStr0ngP@ss!' \
+  --database-name myapp \
   --db-subnet-group-name my-db-subnet-group \
   --vpc-security-group-ids sg-0abc123
 
@@ -209,7 +214,7 @@ aws dms create-endpoint \
   --username dms_user \
   --password 'DmsUserP@ss!' \
   --database-name ORCL \
-  --extra-connection-attributes "useLogMinerReader=N;useBfile=Y;addSupplementalLogging=Y"
+  --oracle-settings '{"AddSupplementalLogging": true}'
 ```
 
 The Oracle source requires supplemental logging for CDC. Enable it on the source.
@@ -220,14 +225,42 @@ ALTER DATABASE ADD SUPPLEMENTAL LOG DATA;
 ALTER DATABASE ADD SUPPLEMENTAL LOG DATA (PRIMARY KEY) COLUMNS;
 
 -- Grant DMS user necessary privileges
-GRANT SELECT ANY TABLE TO dms_user;
+GRANT CREATE SESSION TO dms_user;
 GRANT SELECT ANY TRANSACTION TO dms_user;
 GRANT SELECT ON V_$ARCHIVED_LOG TO dms_user;
 GRANT SELECT ON V_$LOG TO dms_user;
 GRANT SELECT ON V_$LOGFILE TO dms_user;
 GRANT SELECT ON V_$LOGMNR_LOGS TO dms_user;
 GRANT SELECT ON V_$LOGMNR_CONTENTS TO dms_user;
-GRANT LOGMINING TO dms_user;
+GRANT SELECT ON V_$DATABASE TO dms_user;
+GRANT SELECT ON V_$DATABASE_INCARNATION TO dms_user;
+GRANT SELECT ON V_$THREAD TO dms_user;
+GRANT SELECT ON V_$PARAMETER TO dms_user;
+GRANT SELECT ON V_$NLS_PARAMETERS TO dms_user;
+GRANT SELECT ON V_$TIMEZONE_NAMES TO dms_user;
+GRANT SELECT ON V_$TRANSACTION TO dms_user;
+GRANT SELECT ON V_$CONTAINERS TO dms_user;
+GRANT SELECT ON ALL_INDEXES TO dms_user;
+GRANT SELECT ON ALL_OBJECTS TO dms_user;
+GRANT SELECT ON ALL_TABLES TO dms_user;
+GRANT SELECT ON ALL_USERS TO dms_user;
+GRANT SELECT ON ALL_CATALOG TO dms_user;
+GRANT SELECT ON ALL_CONSTRAINTS TO dms_user;
+GRANT SELECT ON ALL_CONS_COLUMNS TO dms_user;
+GRANT SELECT ON ALL_TAB_COLS TO dms_user;
+GRANT SELECT ON ALL_IND_COLUMNS TO dms_user;
+GRANT SELECT ON ALL_ENCRYPTED_COLUMNS TO dms_user;
+GRANT SELECT ON ALL_LOG_GROUPS TO dms_user;
+GRANT SELECT ON ALL_TAB_PARTITIONS TO dms_user;
+GRANT SELECT ON SYS.DBA_REGISTRY TO dms_user;
+GRANT SELECT ON SYS.OBJ$ TO dms_user;
+GRANT SELECT ON DBA_TABLESPACES TO dms_user;
+GRANT EXECUTE ON DBMS_LOGMNR TO dms_user;
+GRANT LOGMINING TO dms_user; -- Required for Oracle 12c and later
+
+-- Repeat for each replicated table
+GRANT SELECT ON MYAPP.orders TO dms_user;
+GRANT ALTER ON MYAPP.orders TO dms_user;
 ```
 
 ### Create Target Endpoint (PostgreSQL)
@@ -243,12 +276,12 @@ aws dms create-endpoint \
   --username postgres \
   --password 'YourStr0ngP@ss!' \
   --database-name myapp \
-  --extra-connection-attributes "maxFileSize=512000;executeTimeout=300"
+  --postgre-sql-settings '{"MaxFileSize": 512000, "ExecuteTimeout": 300}'
 ```
 
 ## Step 5: Create Table Mappings with Transformations
 
-Oracle to PostgreSQL often needs data type transformations.
+Oracle to PostgreSQL often needs identifier transformations.
 
 ```json
 {
@@ -308,9 +341,9 @@ The lowercase transformations are important because Oracle uses uppercase identi
 # Create the full-load + CDC migration task
 aws dms create-replication-task \
   --replication-task-identifier oracle-to-pg-task \
-  --source-endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:oracle-source \
-  --target-endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:pg-target \
-  --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:oracle-to-pg-migration \
+  --source-endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890ABC \
+  --target-endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890DEF \
+  --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890GHI \
   --migration-type full-load-and-cdc \
   --table-mappings file://table-mappings.json \
   --replication-task-settings '{
@@ -330,7 +363,7 @@ aws dms create-replication-task \
 
 # Start the task
 aws dms start-replication-task \
-  --replication-task-arn arn:aws:dms:us-east-1:123456789012:task:oracle-to-pg-task \
+  --replication-task-arn arn:aws:dms:us-east-1:123456789012:task:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890JKL \
   --start-replication-task-type start-replication
 ```
 
@@ -339,8 +372,8 @@ aws dms start-replication-task \
 ```bash
 # Monitor task progress
 aws dms describe-replication-tasks \
-  --filters Name=replication-task-arn,Values=arn:aws:dms:us-east-1:123456789012:task:oracle-to-pg-task \
-  --query 'ReplicationTasks[0].{Status:Status,FullLoadPercent:ReplicationTaskStats.FullLoadProgressPercent,CDCLatency:ReplicationTaskStats.FreshStartDate}'
+  --filters Name=replication-task-arn,Values=arn:aws:dms:us-east-1:123456789012:task:ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890JKL \
+  --query 'ReplicationTasks[0].{Status:Status,FullLoadPercent:ReplicationTaskStats.FullLoadProgressPercent,TablesLoaded:ReplicationTaskStats.TablesLoaded,TablesErrored:ReplicationTaskStats.TablesErrored}'
 
 # Monitor CDC latency
 aws cloudwatch get-metric-statistics \
@@ -359,10 +392,10 @@ Here are the key Oracle to PostgreSQL data type mappings DMS applies:
 
 | Oracle Type | PostgreSQL Type |
 |------------|----------------|
-| NUMBER | NUMERIC |
-| NUMBER(p,0) where p < 5 | SMALLINT |
-| NUMBER(p,0) where p < 10 | INTEGER |
-| NUMBER(p,0) where p < 19 | BIGINT |
+| NUMBER(p,s) where s > 0 | DECIMAL(p,s) |
+| NUMBER(p,0) where p <= 4 | SMALLINT |
+| NUMBER(p,0) where p <= 9 | INTEGER |
+| NUMBER(p,0) where p > 9 | DECIMAL(p,0) |
 | VARCHAR2(n) | VARCHAR(n) |
 | CLOB | TEXT |
 | BLOB | BYTEA |
