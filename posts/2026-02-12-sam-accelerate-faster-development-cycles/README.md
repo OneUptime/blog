@@ -130,7 +130,7 @@ When your Lambda function has dependencies, SAM Accelerate is smart enough to de
 
 For Python projects:
 
-```python
+```text
 # src/get_items/requirements.txt
 requests==2.31.0
 boto3==1.34.0
@@ -212,14 +212,14 @@ SAM Accelerate is powerful, but there are some things to watch out for:
 A few tricks to make SAM Accelerate even faster:
 
 ```bash
-# Skip the build step if your functions don't need compilation
+# Limit syncing to code resources when you have not changed infrastructure
 sam sync --watch --stack-name my-sam-app --code
 
-# Use a specific build directory to avoid rebuilding everything
-sam sync --watch --stack-name my-sam-app --build-dir .aws-sam/build
+# Build in the source folder for supported runtimes and build methods
+sam sync --watch --stack-name my-sam-app --build-in-source
 ```
 
-Keep your Lambda deployment packages small. The less code that needs to be uploaded, the faster the sync. Move shared utilities into Lambda layers, and use `.samignore` to exclude test files and documentation from the deployment package.
+Keep your Lambda deployment packages small. The less code that needs to be uploaded, the faster the sync. Move shared utilities into Lambda layers, and keep test files and documentation outside the paths referenced by your function `CodeUri`.
 
 ## Wrapping Up
 
