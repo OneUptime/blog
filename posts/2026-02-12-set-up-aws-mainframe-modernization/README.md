@@ -8,7 +8,7 @@ Description: Learn how to set up AWS Mainframe Modernization to migrate and mode
 
 ---
 
-Mainframes are not going away anytime soon, but maintaining them is getting harder and more expensive. The hardware is aging, the workforce that understands COBOL and JCL is shrinking, and licensing costs keep climbing. AWS Mainframe Modernization is a managed service designed specifically to help organizations migrate mainframe workloads to AWS using two distinct approaches: replatforming (running existing mainframe code on AWS) and automated refactoring (converting mainframe code to modern languages).
+Mainframes are not going away anytime soon, but maintaining them is getting harder and more expensive. The hardware is aging, the workforce that understands COBOL and JCL is shrinking, and licensing costs keep climbing. AWS Mainframe Modernization helps organizations migrate mainframe workloads to AWS using two distinct approaches: replatforming (running existing mainframe code on AWS) and automated refactoring (converting mainframe code to modern languages). The AWS Mainframe Modernization managed runtime environment is no longer open to new customers, but existing customers can continue to use it; new projects should evaluate the self-managed experience or AWS Transform for mainframe.
 
 This guide covers how to set up both approaches and choose the right one for your situation.
 
@@ -17,41 +17,41 @@ This guide covers how to set up both approaches and choose the right one for you
 ```mermaid
 graph TD
     A[Mainframe Workload] --> B{Which approach?}
-    B --> C[Replatform with Micro Focus]
-    B --> D[Refactor with Blu Age]
-    C --> E[COBOL/PL1 runs on AWS]
+    B --> C[Replatform with Rocket Software]
+    B --> D[Refactor with AWS Transform for mainframe]
+    C --> E[COBOL/PL/I runs on AWS]
     C --> F[Minimal code changes]
     C --> G[Faster migration]
-    D --> H[Code converted to Java/.NET]
+    D --> H[Code converted to Java]
     D --> I[Significant code transformation]
     D --> J[Cloud-native result]
 ```
 
-**Replatforming (Micro Focus)**: Your COBOL, PL/I, and JCL code runs on AWS using the Micro Focus runtime environment. The code stays largely the same, but runs on modern infrastructure. This is faster and lower risk.
+**Replatforming (Rocket Software, formerly Micro Focus)**: Your COBOL, PL/I, and JCL code runs on AWS using the Rocket Software runtime environment. The code stays largely the same, but runs on modern infrastructure. This is faster and lower risk.
 
-**Automated Refactoring (Blu Age)**: Your mainframe code is automatically converted to modern Java or .NET code. The result is a cloud-native application, but the transformation process is more complex.
+**Automated Refactoring (AWS Transform for mainframe, formerly AWS Blu Age)**: Your mainframe code is automatically converted to modern Java code. The result is a cloud-native application, but the transformation process is more complex.
 
 ## Choosing Your Approach
 
-| Factor | Replatform (Micro Focus) | Refactor (Blu Age) |
+| Factor | Replatform (Rocket Software) | Refactor (AWS Transform for mainframe) |
 |---|---|---|
 | Speed | Weeks to months | Months to years |
 | Risk | Lower | Higher |
-| Code changes | Minimal | Complete rewrite |
+| Code changes | Minimal | Automated conversion |
 | Long-term maintenance | Still COBOL | Modern language |
-| Developer availability | Shrinking COBOL pool | Broad Java/.NET pool |
+| Developer availability | Shrinking COBOL pool | Broad Java pool |
 | Cloud-native features | Limited | Full |
 | Cost to migrate | Lower | Higher |
 | Cost to operate | Medium | Lower long-term |
 
 For most organizations, the practical approach is to replatform first to get off the mainframe quickly, then selectively refactor the most critical applications over time.
 
-## Setting Up Replatforming with Micro Focus
+## Setting Up Replatforming with Rocket Software
 
 ### Step 1: Create a Managed Runtime Environment
 
 ```python
-# Create a Micro Focus managed runtime environment
+# Create a Rocket Software managed runtime environment
 
 import boto3
 
@@ -61,6 +61,7 @@ response = m2.create_environment(
     name='mainframe-replatform',
     engineType='microfocus',
     instanceType='M2.m5.large',
+    # Choose a supported version returned by list_engine_versions.
     engineVersion='8.0.11',
     subnetIds=['subnet-private-1', 'subnet-private-2'],
     securityGroupIds=['sg-mainframe-runtime'],
@@ -91,16 +92,14 @@ Before deploying to the managed environment, you need to:
 
 1. **Export source code** from the mainframe (COBOL, PL/I, JCL, copybooks)
 2. **Export data** (VSAM files, DB2 databases, IMS databases)
-3. **Compile the code** for the Micro Focus runtime
+3. **Compile the code** for the Rocket Software runtime
 
 Create an application definition:
 
 ```json
 {
   "definition": {
-    "content": {
-      "s3Location": "s3://mainframe-migration/app-definition.json"
-    }
+    "s3Location": "s3://mainframe-migration/app-definition.json"
   },
   "name": "core-banking-app",
   "description": "Core banking batch and CICS transactions",
@@ -130,30 +129,32 @@ The application definition file describes your application components:
   "definition": {
     "listeners": [
       {
-        "port": 6000,
-        "type": "CICS"
+        "port": 5101,
+        "type": "tn3270"
       }
     ],
+    "dataset-location": {
+      "db-locations": [
+        {
+          "name": "Database",
+          "secret-manager-arn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:m2-datasets-AbCdEf"
+        }
+      ]
+    },
     "batch-settings": {
       "initiators": [
         {
           "classes": ["A", "B"],
           "description": "Batch job initiators"
         }
-      ]
+      ],
+      "jcl-file-location": "${s3-source}/batch/jcl",
+      "program-path": "/m2/mount/libs/loadlib"
     },
-    "dataset-locations": {
-      "db-locations": [
-        {
-          "name": "Database",
-          "type": "rds",
-          "properties": {
-            "endpoint": "mainframe-db.abc123.us-east-1.rds.amazonaws.com",
-            "port": 5432,
-            "databaseName": "banking"
-          }
-        }
-      ]
+    "cics-settings": {
+      "binary-file-location": "${s3-source}/cics/binaries",
+      "csd-file-location": "${s3-source}/cics/def",
+      "system-initialization-table": "BNKCICV"
     }
   }
 }
@@ -178,20 +179,23 @@ app_response = m2.create_application(
 )
 
 app_id = app_response['applicationId']
+app_version = app_response['applicationVersion']
 
-# Create a version with the compiled artifacts
-version_response = m2.create_application_version(
+# Update the application definition to create a new application version
+version_response = m2.update_application(
     applicationId=app_id,
-    applicationVersion='1.0.0',
-    sourceContent={
-        's3Location': 's3://mainframe-migration/compiled-artifacts/'
+    currentApplicationVersion=app_version,
+    definition={
+        's3Location': 's3://mainframe-migration/app-definition-v2.json'
     }
 )
+
+new_app_version = version_response['applicationVersion']
 
 # Deploy to the runtime environment
 m2.create_deployment(
     applicationId=app_id,
-    applicationVersion=1,
+    applicationVersion=new_app_version,
     environmentId=environment_id
 )
 ```
@@ -204,7 +208,7 @@ Mainframe data lives in various formats: VSAM, sequential files, DB2, and IMS. E
 
 ```python
 # Use the File Transfer utility to convert VSAM to relational format
-# The Micro Focus runtime includes data migration utilities
+# The Rocket Software runtime includes data migration utilities
 
 # For DB2 databases, use DMS
 dms = boto3.client('dms')
@@ -232,11 +236,11 @@ dms.create_endpoint(
 )
 ```
 
-## Setting Up Automated Refactoring with Blu Age
+## Setting Up Automated Refactoring with AWS Transform for mainframe
 
 ### Step 1: Analyze Your Code
 
-Before refactoring, Blu Age analyzes your mainframe code to understand complexity and identify potential issues:
+Before refactoring, AWS Transform for mainframe analyzes your mainframe code to understand complexity and identify potential issues:
 
 ```python
 # Start code analysis
@@ -249,7 +253,7 @@ m2 = boto3.client('m2')
 # - JCL procedures
 # - BMS maps (screen definitions)
 
-# Create analysis job (done through the console or API)
+# Create the transformation project and run analysis in AWS Transform for mainframe
 ```
 
 The analysis produces a report covering:
@@ -262,15 +266,16 @@ The analysis produces a report covering:
 
 ### Step 2: Configure the Refactoring Project
 
-Create a Blu Age refactoring project:
+Create an AWS Transform for mainframe refactoring project. Existing AWS Mainframe Modernization managed runtime customers can use a managed runtime environment for AWS Transform for mainframe applications:
 
 ```python
-# Create a Blu Age managed environment
+# Create an AWS Transform for mainframe managed runtime environment
 response = m2.create_environment(
     name='mainframe-refactor',
     engineType='bluage',
     instanceType='M2.m5.xlarge',
-    engineVersion='3.6.0',
+    # Choose a supported version returned by list_engine_versions.
+    engineVersion='3.7.0',
     subnetIds=['subnet-private-1', 'subnet-private-2'],
     securityGroupIds=['sg-bluage-runtime']
 )
@@ -278,7 +283,7 @@ response = m2.create_environment(
 
 ### Step 3: Execute the Refactoring
 
-Blu Age converts your COBOL/PL1 code to Java:
+AWS Transform for mainframe converts your COBOL/PL/I code to Java:
 
 ```text
 COBOL Source                    -->  Java Output
@@ -299,7 +304,7 @@ PROCEDURE DIVISION.                   public void execute() {
 ```
 
 The automated conversion handles:
-- COBOL/PL1 to Java class conversion
+- COBOL/PL/I to Java class conversion
 - CICS transaction to REST API mapping
 - BMS screen to web UI conversion
 - JCL to Spring Batch job conversion
@@ -343,7 +348,7 @@ cloudwatch.put_metric_alarm(
     Namespace='AWS/M2',
     MetricName='CPUUtilization',
     Dimensions=[
-        {'Name': 'EnvironmentId', 'Value': environment_id}
+        {'Name': 'environmentId', 'Value': environment_id}
     ],
     Statistic='Average',
     Period=300,
