@@ -21,10 +21,9 @@ Enable Identity Platform and configure the sign-in providers you want to support
 
 gcloud services enable identitytoolkit.googleapis.com
 
-# Enable email/password authentication
-gcloud identity-platform config update \
-  --enable-email-signin
-
+# Enable email/password authentication from the Google Cloud console:
+# Identity Platform > Providers > Add a provider > Email/Password
+#
 # You can also enable social providers through the console:
 # Google, Facebook, Apple, GitHub, Twitter, etc.
 ```
@@ -197,8 +196,8 @@ exports.setUserRole = async (req, res) => {
   // Set the custom claim on the user
   await admin.auth().setCustomUserClaims(userId, { role });
 
-  // The user will need to refresh their token to get the new claims
-  // You can also revoke existing tokens to force a refresh
+  // The user will need to refresh their ID token to get the new claims.
+  // Revoking refresh tokens signs out existing sessions after their current ID token expires.
   await admin.auth().revokeRefreshTokens(userId);
 
   res.json({ message: `Role ${role} assigned to user ${userId}` });
@@ -332,17 +331,17 @@ functions.http('listAllUsers', async (req, res) => {
 
 ## Handling User Lifecycle Events
 
-Use blocking functions to intercept authentication events and add custom logic.
+Use an authenticated HTTP function after sign-up to add custom user setup logic.
 
 ```javascript
 // auth-triggers.js - React to authentication events
 const admin = require('firebase-admin');
-const { Firestore } = require('@google-cloud/firestore');
+const { Firestore, Timestamp } = require('@google-cloud/firestore');
 
 admin.initializeApp();
 const db = new Firestore();
 
-// Triggered when a new user signs up via Identity Platform
+// Called by the client after a new user signs up via Identity Platform
 exports.onUserCreated = async (req, res) => {
   const token = req.headers.authorization?.split('Bearer ')[1];
   const decoded = await admin.auth().verifyIdToken(token);
@@ -353,7 +352,7 @@ exports.onUserCreated = async (req, res) => {
     email: decoded.email,
     displayName: displayName || decoded.name || '',
     photoURL: decoded.picture || '',
-    createdAt: Firestore.Timestamp.now(),
+    createdAt: Timestamp.now(),
     plan: 'free',
   });
 
