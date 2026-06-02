@@ -24,7 +24,7 @@ graph LR
     D -->|Less Customer Responsibility| E[Fully Managed]
 ```
 
-With EC2, you're responsible for the operating system, patching, firewall configuration, and everything above. With Lambda, AWS handles the runtime, scaling, and OS - you just handle your code and IAM configuration. Choosing the right service model is itself a security decision.
+With EC2, you're responsible for the operating system, patching, firewall configuration, and everything above. With Lambda managed runtimes, AWS handles scaling and the underlying OS, and it applies runtime updates when you use automatic runtime updates - you still handle your code, IAM configuration, and runtime update settings. Choosing the right service model is itself a security decision.
 
 ## Identity and Access Management - Your Most Critical Responsibility
 
@@ -75,6 +75,15 @@ resource "aws_iam_policy" "enforce_mfa" {
   })
 }
 
+resource "aws_iam_group" "mfa_required" {
+  name = "mfa-required-users"
+}
+
+resource "aws_iam_group_policy_attachment" "enforce_mfa" {
+  group      = aws_iam_group.mfa_required.name
+  policy_arn = aws_iam_policy.enforce_mfa.arn
+}
+
 # Break-glass emergency access role with strict conditions
 resource "aws_iam_role" "emergency_access" {
   name = "emergency-access-role"
@@ -117,23 +126,43 @@ def audit_security_groups():
     ec2 = boto3.client('ec2')
     findings = []
 
-    response = ec2.describe_security_groups()
-    for sg in response['SecurityGroups']:
-        for rule in sg.get('IpPermissions', []):
-            for ip_range in rule.get('IpRanges', []):
-                cidr = ip_range.get('CidrIp', '')
-                # Flag rules that allow traffic from anywhere
-                if cidr == '0.0.0.0/0':
+    paginator = ec2.get_paginator('describe_security_groups')
+    for page in paginator.paginate():
+        for sg in page['SecurityGroups']:
+            for rule in sg.get('IpPermissions', []):
+                open_ranges = [
+                    ip_range.get('CidrIp')
+                    for ip_range in rule.get('IpRanges', [])
+                    if ip_range.get('CidrIp') == '0.0.0.0/0'
+                ]
+                open_ranges.extend(
+                    ip_range.get('CidrIpv6')
+                    for ip_range in rule.get('Ipv6Ranges', [])
+                    if ip_range.get('CidrIpv6') == '::/0'
+                )
+
+                for cidr in open_ranges:
                     port_info = f"Port {rule.get('FromPort', 'ALL')}"
                     if rule.get('IpProtocol') == '-1':
                         port_info = "ALL ports"
+
+                    dangerous_ports = {22, 3389, 3306, 5432}
+                    from_port = rule.get('FromPort')
+                    to_port = rule.get('ToPort', from_port)
+                    is_critical = (
+                        rule.get('IpProtocol') == '-1'
+                        or (
+                            from_port is not None
+                            and any(from_port <= port <= to_port for port in dangerous_ports)
+                        )
+                    )
 
                     findings.append({
                         'SecurityGroupId': sg['GroupId'],
                         'SecurityGroupName': sg['GroupName'],
                         'VpcId': sg.get('VpcId', 'EC2-Classic'),
-                        'Rule': f"{port_info} open to 0.0.0.0/0",
-                        'Severity': 'CRITICAL' if rule.get('FromPort') in [22, 3389, 3306, 5432] else 'HIGH'
+                        'Rule': f"{port_info} open to {cidr}",
+                        'Severity': 'CRITICAL' if is_critical else 'HIGH'
                     })
 
     if findings:
@@ -159,8 +188,57 @@ This CloudFormation template creates an S3 bucket with every security control yo
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
+  DataEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: KMS key for the secure data bucket
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableRootAccountAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+
+  LoggingBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${AWS::AccountId}-secure-data-logs"
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  LoggingBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref LoggingBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowS3ServerAccessLogs
+            Effect: Allow
+            Principal:
+              Service: logging.s3.amazonaws.com
+            Action: "s3:PutObject"
+            Resource: !Sub "${LoggingBucket.Arn}/s3-access-logs/*"
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub "arn:aws:s3:::${AWS::AccountId}-secure-data"
+              StringEquals:
+                aws:SourceAccount: !Sub "${AWS::AccountId}"
+
   SecureBucket:
     Type: AWS::S3::Bucket
+    DependsOn: LoggingBucketPolicy
     Properties:
       BucketName: !Sub "${AWS::AccountId}-secure-data"
       # Enable default encryption
@@ -190,6 +268,7 @@ Resources:
     Properties:
       Bucket: !Ref SecureBucket
       PolicyDocument:
+        Version: '2012-10-17'
         Statement:
           - Sid: DenyUnencryptedTransport
             Effect: Deny
@@ -231,6 +310,11 @@ resource "aws_ssm_patch_baseline" "production" {
   }
 }
 
+resource "aws_ssm_patch_group" "production" {
+  baseline_id = aws_ssm_patch_baseline.production.id
+  patch_group = "production"
+}
+
 # Maintenance window for patching
 resource "aws_ssm_maintenance_window" "patch_window" {
   name              = "weekly-patch-window"
@@ -249,6 +333,31 @@ resource "aws_ssm_maintenance_window_target" "patch_targets" {
   targets {
     key    = "tag:PatchGroup"
     values = ["production"]
+  }
+}
+
+# Run Patch Manager during the maintenance window
+resource "aws_ssm_maintenance_window_task" "install_patches" {
+  window_id        = aws_ssm_maintenance_window.patch_window.id
+  name             = "install-production-patches"
+  task_type        = "RUN_COMMAND"
+  task_arn         = "AWS-RunPatchBaseline"
+  priority         = 1
+  max_concurrency  = "10"
+  max_errors       = "1"
+
+  targets {
+    key    = "WindowTargetIds"
+    values = [aws_ssm_maintenance_window_target.patch_targets.id]
+  }
+
+  task_invocation_parameters {
+    run_command_parameters {
+      parameter {
+        name   = "Operation"
+        values = ["Install"]
+      }
+    }
   }
 }
 ```
@@ -276,22 +385,34 @@ def handle_guardduty_finding(event, context):
     # For high severity findings, take immediate action
     if severity >= 7.0:
         # If an EC2 instance is compromised, isolate it
-        if 'Resource' in finding and finding['Resource'].get('ResourceType') == 'Instance':
-            instance_id = finding['Resource']['InstanceDetails']['InstanceId']
+        resource = finding.get('resource', {})
+        if resource.get('resourceType') == 'Instance':
+            instance_details = resource['instanceDetails']
+            instance_id = instance_details['instanceId']
 
             # Create an isolation security group
-            vpc_id = finding['Resource']['InstanceDetails']['NetworkInterfaces'][0]['VpcId']
+            network_interfaces = instance_details['networkInterfaces']
+            vpc_id = network_interfaces[0]['vpcId']
             isolation_sg = ec2.create_security_group(
                 GroupName=f'isolation-{instance_id}',
                 Description=f'Isolation group for compromised instance {instance_id}',
                 VpcId=vpc_id
             )
+            isolation_group = ec2.describe_security_groups(
+                GroupIds=[isolation_sg['GroupId']]
+            )['SecurityGroups'][0]
+            if isolation_group.get('IpPermissionsEgress'):
+                ec2.revoke_security_group_egress(
+                    GroupId=isolation_sg['GroupId'],
+                    IpPermissions=isolation_group['IpPermissionsEgress']
+                )
 
-            # Replace all security groups with the isolation group (no rules = no traffic)
-            ec2.modify_instance_attribute(
-                InstanceId=instance_id,
-                Groups=[isolation_sg['GroupId']]
-            )
+            # Replace each network interface's security groups with the isolation group
+            for network_interface in network_interfaces:
+                ec2.modify_network_interface_attribute(
+                    NetworkInterfaceId=network_interface['networkInterfaceId'],
+                    Groups=[isolation_sg['GroupId']]
+                )
 
             print(f"Isolated instance {instance_id} due to finding: {finding_type}")
 
