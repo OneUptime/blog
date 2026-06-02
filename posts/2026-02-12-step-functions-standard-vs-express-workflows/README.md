@@ -14,16 +14,16 @@ Let's break down the differences and figure out which one you actually need.
 
 ## The Quick Comparison
 
-Here's the key difference in one sentence: Standard workflows are for long-running, exactly-once processes. Express workflows are for high-volume, short-lived, at-least-once processes.
+Here's the key difference in one sentence: Standard workflows are for long-running, exactly-once processes. Express workflows are for high-volume, short-lived processes, with at-least-once execution for asynchronous workflows and at-most-once execution for synchronous workflows.
 
 That might sound abstract, so let's make it concrete.
 
 | Feature | Standard | Express |
 |---------|----------|---------|
 | Max duration | 1 year | 5 minutes |
-| Execution guarantee | Exactly once | At least once |
+| Execution guarantee | Exactly once | Asynchronous: at least once; synchronous: at most once |
 | Pricing model | Per state transition | Per execution + duration |
-| Max execution rate | 2,000/sec | 100,000/sec |
+| Execution start rate | Regional API quota | Higher regional API quota; synchronous executions scale on demand |
 | Execution history | Stored for 90 days | CloudWatch Logs only |
 | Visual debugging | Full support | Limited |
 
@@ -47,14 +47,14 @@ aws stepfunctions create-state-machine \
     "States": {
       "ValidateOrder": {
         "Type": "Task",
-        "Resource": "arn:aws:lambda:us-east-1:123456789:function:validate",
+        "Resource": "arn:aws:lambda:us-east-1:123456789012:function:validate",
         "Next": "WaitForApproval"
       },
       "WaitForApproval": {
         "Type": "Task",
         "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
         "Parameters": {
-          "QueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789/approvals",
+          "QueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/approvals",
           "MessageBody": {
             "taskToken.$": "$$.Task.Token",
             "orderId.$": "$.orderId"
@@ -64,12 +64,12 @@ aws stepfunctions create-state-machine \
       },
       "ProcessOrder": {
         "Type": "Task",
-        "Resource": "arn:aws:lambda:us-east-1:123456789:function:process",
+        "Resource": "arn:aws:lambda:us-east-1:123456789012:function:process",
         "End": true
       }
     }
   }' \
-  --role-arn arn:aws:iam::123456789:role/StepFunctionsRole
+  --role-arn arn:aws:iam::123456789012:role/StepFunctionsRole
 ```
 
 Notice the `WaitForApproval` state - it uses a task token to pause execution until a human approves the order. This could take minutes, hours, or days. Standard workflows handle this naturally because they can run for up to a year.
@@ -84,7 +84,7 @@ There are actually two subtypes: Synchronous Express and Asynchronous Express.
 
 Synchronous Express workflows wait for the execution to complete and return the result. They're ideal when you need a response, like an API call.
 
-This creates a synchronous Express workflow for real-time data validation:
+This is an Express workflow definition for real-time data validation that you could invoke synchronously:
 
 ```json
 {
@@ -93,12 +93,12 @@ This creates a synchronous Express workflow for real-time data validation:
   "States": {
     "ValidateInput": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:validate-input",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:validate-input",
       "Next": "EnrichData"
     },
     "EnrichData": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:enrich-data",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:enrich-data",
       "Next": "FormatResponse"
     },
     "FormatResponse": {
@@ -178,18 +178,25 @@ A good example is an employee onboarding workflow:
   "States": {
     "CreateAccount": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:create-account",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:create-account",
       "Next": "WaitForBackgroundCheck"
     },
     "WaitForBackgroundCheck": {
       "Type": "Task",
       "Resource": "arn:aws:states:::sqs:sendMessage.waitForTaskToken",
+      "Parameters": {
+        "QueueUrl": "https://sqs.us-east-1.amazonaws.com/123456789012/background-checks",
+        "MessageBody": {
+          "taskToken.$": "$$.Task.Token",
+          "employeeId.$": "$.employeeId"
+        }
+      },
       "TimeoutSeconds": 604800,
       "Next": "ProvisionAccess"
     },
     "ProvisionAccess": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:provision-access",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:provision-access",
       "End": true
     }
   }
@@ -203,7 +210,7 @@ The background check could take days. Only Standard workflows can handle that wa
 Express workflows are the right choice when your workflow:
 
 - Completes in under 5 minutes
-- Can tolerate at-least-once execution
+- Can tolerate at-least-once execution for asynchronous workflows or at-most-once execution for synchronous workflows
 - Handles high volume (event processing, IoT data, API orchestration)
 - Needs to be cost-effective at scale
 - Benefits from synchronous invocation
@@ -217,7 +224,7 @@ Event processing is the classic Express use case:
   "States": {
     "ParseEvent": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:parse-iot-event",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:parse-iot-event",
       "Next": "CheckThreshold"
     },
     "CheckThreshold": {
@@ -233,23 +240,23 @@ Event processing is the classic Express use case:
     },
     "TriggerAlert": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:trigger-alert",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:trigger-alert",
       "Next": "StoreReading"
     },
     "StoreReading": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:store-reading",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:store-reading",
       "End": true
     }
   }
 }
 ```
 
-Processing thousands of IoT events per second? Express can handle 100,000 executions per second while keeping your bill reasonable.
+Processing thousands of IoT events per second? Express has much higher start and transition throughput than Standard while keeping your bill reasonable.
 
 ## Monitoring Both Types
 
-Standard workflows give you built-in execution history in the console, which is fantastic for debugging. Express workflows push execution details to CloudWatch Logs, so you'll want to set up log groups and dashboards. For tips on monitoring Step Functions executions effectively, check out our post on [monitoring Step Functions in the console](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
+Standard workflows give you built-in execution history in the console, which is fantastic for debugging. Express workflows rely on CloudWatch Logs for execution history, so you'll want to enable logging and set up log groups and dashboards. For tips on monitoring Step Functions executions effectively, check out our post on [monitoring Step Functions in the console](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Making the Decision
 
