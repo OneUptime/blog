@@ -78,15 +78,19 @@ Register the appropriate instances in each target group:
 ```bash
 # Register API servers
 aws elbv2 register-targets --target-group-arn $API_TG \
-  --targets Id=i-api1 Id=i-api2 Id=i-api3
+  --targets Id=i-0123456789abcdef0 Id=i-0abcdef1234567890 Id=i-0fedcba9876543210
 
 # Register web servers
 aws elbv2 register-targets --target-group-arn $WEB_TG \
-  --targets Id=i-web1 Id=i-web2
+  --targets Id=i-0a1b2c3d4e5f67890 Id=i-1234567890abcdef0
 
 # Register admin servers
 aws elbv2 register-targets --target-group-arn $ADMIN_TG \
-  --targets Id=i-admin1
+  --targets Id=i-0987654321abcdef0
+
+# Register static asset servers
+aws elbv2 register-targets --target-group-arn $STATIC_TG \
+  --targets Id=i-0f1e2d3c4b5a67890
 ```
 
 ## Creating the Listener with Default Action
@@ -228,6 +232,19 @@ resource "aws_lb_target_group" "admin" {
   }
 }
 
+resource "aws_lb_target_group" "static" {
+  name     = "static-targets"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = var.vpc_id
+
+  health_check {
+    path     = "/static/health"
+    interval = 30
+    matcher  = "200"
+  }
+}
+
 # HTTPS Listener with default action
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.main.arn
@@ -272,6 +289,22 @@ resource "aws_lb_listener_rule" "admin" {
   action {
     type             = "forward"
     target_group_arn = aws_lb_target_group.admin.arn
+  }
+}
+
+resource "aws_lb_listener_rule" "static" {
+  listener_arn = aws_lb_listener.https.arn
+  priority     = 30
+
+  condition {
+    path_pattern {
+      values = ["/static/*", "/assets/*"]
+    }
+  }
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.static.arn
   }
 }
 ```
