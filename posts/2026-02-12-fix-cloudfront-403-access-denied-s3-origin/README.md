@@ -27,7 +27,7 @@ CloudFront needs permission to read from S3. There are two mechanisms: Origin Ac
 
 ## Fix 1: Set Up Origin Access Control (OAC)
 
-OAC is the recommended way to give CloudFront access to S3. It uses SigV4 signing and supports all S3 features including SSE-KMS.
+OAC is the recommended way to give CloudFront access to S3. It uses SigV4 signing and supports features that OAI does not, including SSE-KMS. For OAC, use S3 Object Ownership set to `BucketOwnerEnforced` (the default for new buckets), or `BucketOwnerPreferred` if you still need ACLs.
 
 First, create an OAC:
 
@@ -115,7 +115,7 @@ The bucket policy for OAI looks different:
             "Sid": "AllowCloudFrontOAI",
             "Effect": "Allow",
             "Principal": {
-                "AWS": "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity E1234567890"
+                "AWS": "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity E2ABCDEFGHIJKL"
             },
             "Action": "s3:GetObject",
             "Resource": "arn:aws:s3:::my-bucket/*"
@@ -130,7 +130,7 @@ Even with OAC or OAI configured, a conflicting bucket policy can block access. C
 
 ```bash
 # Check the current bucket policy
-aws s3api get-bucket-policy --bucket my-bucket --output text | python3 -m json.tool
+aws s3api get-bucket-policy --bucket my-bucket --query Policy --output text | python3 -m json.tool
 ```
 
 Look for:
@@ -141,18 +141,18 @@ Look for:
 
 ## Fix 4: S3 Block Public Access
 
-S3 Block Public Access can interfere with CloudFront access, especially with older OAI configurations:
+S3 Block Public Access can interfere with public-read fallback configurations, but it should not block a correctly scoped OAC or OAI bucket policy:
 
 ```bash
 # Check block public access settings
 aws s3api get-public-access-block --bucket my-bucket
 ```
 
-For OAC, the block public access settings shouldn't cause issues because the CloudFront service principal isn't "public access." But for OAI, if you see issues, verify the bucket policy is correctly set up.
+For OAC and OAI, the block public access settings shouldn't cause issues when the bucket policy grants access only to the CloudFront service principal, a fixed OAI principal, or another non-public principal. If you see issues, verify the bucket policy is correctly scoped and does not include a public `Principal: "*"`.
 
 ## Fix 5: Object-Level Permissions
 
-Individual objects can have their own ACLs that override bucket-level permissions. If some objects work and others don't, check object-level ACLs:
+If some objects work and others don't, check object ownership and ACLs. With S3 Object Ownership set to `BucketOwnerEnforced`, ACLs are disabled and bucket policies control access. With ACLs enabled, objects uploaded by a different account can still fail if the bucket owner doesn't have the right ownership or ACL grant:
 
 ```bash
 # Check ACL on a specific object
@@ -164,7 +164,7 @@ aws s3 cp s3://my-bucket/index.html s3://my-bucket/index.html \
     --acl bucket-owner-full-control
 ```
 
-Better yet, use bucket ownership controls to make the bucket owner own all objects:
+Better yet, use bucket ownership controls to make the bucket owner own objects and disable ACLs:
 
 ```bash
 # Enforce bucket owner ownership
@@ -240,7 +240,11 @@ If your S3 objects are encrypted with SSE-KMS, the CloudFront service needs perm
             "Principal": {
                 "Service": "cloudfront.amazonaws.com"
             },
-            "Action": "kms:Decrypt",
+            "Action": [
+                "kms:Decrypt",
+                "kms:Encrypt",
+                "kms:GenerateDataKey*"
+            ],
             "Resource": "*",
             "Condition": {
                 "StringEquals": {
