@@ -162,7 +162,7 @@ Restrict access to a specific VPC endpoint:
             ],
             "Condition": {
                 "StringNotEquals": {
-                    "aws:sourceVpce": "vpce-1a2b3c4d"
+                    "aws:SourceVpce": "vpce-1a2b3c4d"
                 }
             }
         }
@@ -289,13 +289,27 @@ cat > production-policy.json << 'POLICY'
             }
         },
         {
-            "Sid": "AllowDataTeamRead",
+            "Sid": "AllowDataTeamListAnalytics",
             "Effect": "Allow",
             "Principal": {
                 "AWS": "arn:aws:iam::123456789012:role/DataTeamRole"
             },
-            "Action": ["s3:GetObject", "s3:ListBucket"],
-            "Resource": ["arn:aws:s3:::prod-bucket", "arn:aws:s3:::prod-bucket/analytics/*"]
+            "Action": "s3:ListBucket",
+            "Resource": "arn:aws:s3:::prod-bucket",
+            "Condition": {
+                "StringLike": {
+                    "s3:prefix": "analytics/*"
+                }
+            }
+        },
+        {
+            "Sid": "AllowDataTeamReadAnalytics",
+            "Effect": "Allow",
+            "Principal": {
+                "AWS": "arn:aws:iam::123456789012:role/DataTeamRole"
+            },
+            "Action": "s3:GetObject",
+            "Resource": "arn:aws:s3:::prod-bucket/analytics/*"
         },
         {
             "Sid": "AllowCloudFront",
@@ -340,14 +354,14 @@ AWS_ACCESS_KEY_ID=... AWS_SECRET_ACCESS_KEY=... AWS_SESSION_TOKEN=... \
 
 When access isn't working as expected:
 
-1. **Check IAM policies** - The requester needs both IAM permission AND bucket policy permission (unless you're using explicit Deny).
+1. **Check IAM policies** - For same-account access, an Allow in either an IAM identity policy or bucket policy can grant access unless an explicit Deny applies. For cross-account access, the external identity needs permission from its own account and the bucket policy must allow it.
 2. **Check public access block** - If [public access is blocked](https://oneuptime.com/blog/post/2026-02-12-block-public-access-on-s3-buckets/view), bucket policies granting public access won't work.
 3. **Enable S3 access logging** or check CloudTrail for denied requests.
 4. **Use the IAM Policy Simulator** to test specific actions.
 
 ```bash
 # Check current bucket policy
-aws s3api get-bucket-policy --bucket my-bucket --output text | python3 -m json.tool
+aws s3api get-bucket-policy --bucket my-bucket --query Policy --output text | python3 -m json.tool
 
 # Delete a bucket policy entirely
 aws s3api delete-bucket-policy --bucket my-bucket
