@@ -21,10 +21,10 @@ Install Nginx on Amazon Linux 2023:
 ```bash
 # Update packages
 
-sudo yum update -y
+sudo dnf update -y
 
 # Install Nginx
-sudo yum install -y nginx
+sudo dnf install -y nginx
 
 # Start and enable Nginx
 sudo systemctl start nginx
@@ -90,7 +90,7 @@ The most basic use case - serving a static website or single-page application.
 Configure Nginx to serve static files:
 
 ```bash
-sudo cat > /etc/nginx/conf.d/static-site.conf << 'EOF'
+sudo tee /etc/nginx/conf.d/static-site.conf > /dev/null << 'EOF'
 server {
     listen 80;
     server_name example.com www.example.com;
@@ -124,7 +124,7 @@ Create the site directory and add content:
 sudo mkdir -p /var/www/mysite
 
 # Add a simple index page
-sudo cat > /var/www/mysite/index.html << 'EOF'
+sudo tee /var/www/mysite/index.html > /dev/null << 'EOF'
 <!DOCTYPE html>
 <html>
 <head><title>My Site</title></head>
@@ -133,7 +133,11 @@ sudo cat > /var/www/mysite/index.html << 'EOF'
 EOF
 
 # Set proper ownership
-sudo chown -R nginx:nginx /var/www/mysite
+if id nginx >/dev/null 2>&1; then
+  sudo chown -R nginx:nginx /var/www/mysite
+else
+  sudo chown -R www-data:www-data /var/www/mysite
+fi
 
 # Test and reload
 sudo nginx -t && sudo systemctl reload nginx
@@ -146,7 +150,7 @@ This is the most common pattern - Nginx sits in front of your application server
 Set up Nginx as a reverse proxy:
 
 ```bash
-sudo cat > /etc/nginx/conf.d/app-proxy.conf << 'EOF'
+sudo tee /etc/nginx/conf.d/app-proxy.conf > /dev/null << 'EOF'
 upstream app_backend {
     server 127.0.0.1:3000;
     keepalive 32;
@@ -163,13 +167,11 @@ server {
     location / {
         proxy_pass http://app_backend;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_cache_bypass $http_upgrade;
 
         # Timeouts
         proxy_connect_timeout 60s;
@@ -195,18 +197,16 @@ When you have multiple backend servers, Nginx can distribute traffic across them
 Configure load balancing across multiple backends:
 
 ```bash
-sudo cat > /etc/nginx/conf.d/load-balancer.conf << 'EOF'
+sudo tee /etc/nginx/conf.d/load-balancer.conf > /dev/null << 'EOF'
 upstream app_cluster {
     # Round-robin by default
+    # To use least connections or IP hash instead, place one of these directives before the server list:
+    # least_conn;
+    # ip_hash;
+
     server 10.0.1.10:3000;
     server 10.0.1.11:3000;
     server 10.0.1.12:3000;
-
-    # Or use least connections
-    # least_conn;
-
-    # Or IP hash for session stickiness
-    # ip_hash;
 
     keepalive 64;
 }
@@ -218,11 +218,12 @@ server {
     location / {
         proxy_pass http://app_cluster;
         proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 
-        # Health check - mark server as down after 3 failures
+        # Retry another upstream on these failures, up to 3 tries
         proxy_next_upstream error timeout http_502 http_503 http_504;
         proxy_next_upstream_tries 3;
     }
@@ -234,11 +235,26 @@ EOF
 
 Every production site needs HTTPS. Let's Encrypt makes this free and automated.
 
-Install Certbot and obtain a certificate:
+Install Certbot and obtain a certificate.
+
+On Amazon Linux 2023:
 
 ```bash
 # Install Certbot for Nginx
-sudo yum install -y certbot python3-certbot-nginx
+sudo dnf install -y certbot python3-certbot-nginx
+
+# Obtain certificate (Certbot automatically configures Nginx)
+sudo certbot --nginx -d app.example.com
+
+# Verify auto-renewal
+sudo certbot renew --dry-run
+```
+
+On Ubuntu:
+
+```bash
+# Install Certbot for Nginx
+sudo apt install -y certbot python3-certbot-nginx
 
 # Obtain certificate (Certbot automatically configures Nginx)
 sudo certbot --nginx -d app.example.com
@@ -250,9 +266,10 @@ sudo certbot renew --dry-run
 For manual SSL configuration (if you have your own certificate):
 
 ```bash
-sudo cat > /etc/nginx/conf.d/ssl-app.conf << 'EOF'
+sudo tee /etc/nginx/conf.d/ssl-app.conf > /dev/null << 'EOF'
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name app.example.com;
 
     ssl_certificate /etc/letsencrypt/live/app.example.com/fullchain.pem;
@@ -267,7 +284,7 @@ server {
     add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;
 
     location / {
-        proxy_pass http://app_backend;
+        proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-Proto https;
@@ -290,8 +307,13 @@ Tune Nginx for your instance size and expected traffic.
 Optimize the main Nginx configuration:
 
 ```bash
-sudo cat > /etc/nginx/nginx.conf << 'EOF'
-user nginx;
+NGINX_USER=nginx
+if ! id nginx >/dev/null 2>&1; then
+  NGINX_USER=www-data
+fi
+
+sudo tee /etc/nginx/nginx.conf > /dev/null << EOF
+user ${NGINX_USER};
 
 # Set worker processes to number of CPU cores
 worker_processes auto;
@@ -315,10 +337,10 @@ http {
     default_type application/octet-stream;
 
     # Logging format
-    log_format main '$remote_addr - $remote_user [$time_local] '
-                    '"$request" $status $body_bytes_sent '
-                    '"$http_referer" "$http_user_agent" '
-                    '$request_time';
+    log_format main '\$remote_addr - \$remote_user [\$time_local] '
+                    '"\$request" \$status \$body_bytes_sent '
+                    '"\$http_referer" "\$http_user_agent" '
+                    '\$request_time';
 
     access_log /var/log/nginx/access.log main;
 
@@ -345,7 +367,7 @@ http {
     add_header X-XSS-Protection "1; mode=block" always;
 
     # Rate limiting
-    limit_req_zone $binary_remote_addr zone=general:10m rate=10r/s;
+    limit_req_zone \$binary_remote_addr zone=general:10m rate=10r/s;
 
     # Include site configurations
     include /etc/nginx/conf.d/*.conf;
@@ -376,7 +398,7 @@ location /api/ {
 
 Enable the stub status module for basic monitoring:
 
-```bash
+```nginx
 # Add to your server block
 location /nginx_status {
     stub_status;
@@ -400,7 +422,7 @@ For comprehensive monitoring of Nginx alongside your application, check our guid
 Prevent log files from filling your disk:
 
 ```bash
-sudo cat > /etc/logrotate.d/nginx << 'EOF'
+sudo tee /etc/logrotate.d/nginx > /dev/null << 'EOF'
 /var/log/nginx/*.log {
     daily
     missingok
@@ -408,7 +430,7 @@ sudo cat > /etc/logrotate.d/nginx << 'EOF'
     compress
     delaycompress
     notifempty
-    create 0640 nginx adm
+    create 0640 root root
     sharedscripts
     postrotate
         /bin/kill -USR1 $(cat /run/nginx.pid 2>/dev/null) 2>/dev/null || true
