@@ -23,23 +23,27 @@ aws cloudfront get-distribution --id E1234567890 \
     --query 'Distribution.{Status:Status,DomainName:DomainName,Enabled:DistributionConfig.Enabled}'
 ```
 
-The status needs to be "Deployed" and Enabled must be true. If the status is "InProgress," changes are still propagating to CloudFront's edge locations. This can take 5-15 minutes.
+The status needs to be "Deployed" and Enabled must be true. If the status is "InProgress," changes are still propagating to CloudFront's edge locations. Propagation usually completes within minutes, but can take longer.
 
 ## DNS Not Pointing to CloudFront
 
-If you're using a custom domain, it must point to your CloudFront distribution's domain name:
+If you're using a custom domain, it must point to your CloudFront distribution. For a DNS CNAME record, it should point to the distribution's domain name:
 
 ```bash
-# Check what your domain resolves to
+# Check a CNAME record
 dig app.example.com CNAME +short
 
 # It should return something like d1234567890.cloudfront.net
+
+# For a Route 53 alias A/AAAA record, query the address record instead
+# It will return CloudFront edge IP addresses, not the cloudfront.net name
+dig app.example.com A +short
 ```
 
-If it doesn't resolve to your CloudFront domain:
+If it doesn't resolve to CloudFront:
 
 ```bash
-# Create or update the CNAME record in Route 53
+# Create or update an alias A record in Route 53
 aws route53 change-resource-record-sets \
     --hosted-zone-id Z1234567890 \
     --change-batch '{
@@ -114,20 +118,17 @@ aws cloudfront get-distribution-config --id E1234567890 \
     --query 'DistributionConfig.Origins.Items[].{Id:Id,DomainName:DomainName,S3Config:S3OriginConfig}'
 ```
 
-For S3, use the regional endpoint, not the global one:
+For an S3 bucket origin, use the regional bucket endpoint:
 
 ```text
 # Correct
 my-bucket.s3.us-east-1.amazonaws.com
 
-# Also works with newer OAC
-my-bucket.s3.amazonaws.com
-
-# Problematic (can cause redirect issues)
+# Static website endpoint (only for S3 static website hosting)
 my-bucket.s3-website-us-east-1.amazonaws.com
 ```
 
-If you're using the S3 website endpoint (for static website hosting), you need to configure the origin as a "Custom Origin" not an "S3 Origin."
+If you're using the S3 website endpoint (for static website hosting), you need to configure the origin as a "Custom Origin" not an "S3 Origin." S3 website endpoints support HTTP only.
 
 ### Custom Origin (ALB, API Gateway, etc.)
 
@@ -135,13 +136,12 @@ If you're using the S3 website endpoint (for static website hosting), you need t
 # Verify the origin is reachable
 curl -I https://your-origin.example.com
 
-# Check if security groups allow CloudFront's IP ranges
-# CloudFront uses the ip-ranges.json for its IPs
+# Check if firewalls allow CloudFront's origin-facing IP ranges
 curl -s https://ip-ranges.amazonaws.com/ip-ranges.json | \
-    python3 -c "import sys,json; data=json.load(sys.stdin); [print(p['ip_prefix']) for p in data['prefixes'] if p['service']=='CLOUDFRONT']" | head -5
+    python3 -c "import sys,json; data=json.load(sys.stdin); [print(p['ip_prefix']) for p in data['prefixes'] if p['service']=='CLOUDFRONT_ORIGIN_FACING']" | head -5
 ```
 
-The origin's security group or firewall needs to allow traffic from CloudFront's IP ranges.
+The origin's security group or firewall needs to allow traffic from CloudFront's origin-facing IP ranges. For AWS origins protected by security groups, AWS also provides the managed prefix lists `com.amazonaws.global.cloudfront.origin-facing` and `com.amazonaws.global.ipv6.cloudfront.origin-facing`.
 
 ## Cache Behavior Mismatches
 
@@ -199,8 +199,11 @@ If you have AWS WAF attached to the distribution, it might be blocking legitimat
 aws cloudfront get-distribution-config --id E1234567890 \
     --query 'DistributionConfig.WebACLId'
 
-# Check WAF logs for blocked requests
+# Check the Web ACL configuration
 aws wafv2 get-web-acl --name my-web-acl --scope CLOUDFRONT --id <acl-id> --region us-east-1
+
+# Check where WAF logs are delivered, then inspect that destination for blocked requests
+aws wafv2 get-logging-configuration --resource-arn <web-acl-arn> --region us-east-1
 ```
 
 ## Testing and Debugging
