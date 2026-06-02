@@ -14,7 +14,7 @@ Let's walk through how to set this up, handle different event types, and avoid t
 
 ## How S3 Event Notifications Work
 
-When something happens in an S3 bucket - an object is created, deleted, or restored - S3 can send a notification to one of three targets: Lambda, SQS, or SNS. For Lambda, S3 invokes your function asynchronously with an event payload containing the bucket name, object key, event type, and other metadata.
+When something happens in an S3 bucket - an object is created, deleted, or restored - S3 can send a notification to Lambda, SNS, SQS, or EventBridge. For Lambda, S3 invokes your function asynchronously with an event payload containing the bucket name, object key, event type, and other metadata.
 
 The flow looks like this:
 
@@ -60,6 +60,12 @@ export class S3TriggerStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // Create the output bucket for processed files
+    const outputBucket = new s3.Bucket(this, 'ProcessedImagesBucket', {
+      bucketName: 'processed-images-bucket',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // Create the processing Lambda function
     const processor = new lambda.Function(this, 'ImageProcessor', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -68,7 +74,7 @@ export class S3TriggerStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(5),
       memorySize: 1024,
       environment: {
-        OUTPUT_BUCKET: 'processed-images-bucket',
+        OUTPUT_BUCKET: outputBucket.bucketName,
       },
     });
 
@@ -87,6 +93,9 @@ export class S3TriggerStack extends cdk.Stack {
 
     // Grant the Lambda function read access to the upload bucket
     uploadBucket.grantRead(processor);
+
+    // Grant the Lambda function write access to the output bucket
+    outputBucket.grantWrite(processor);
   }
 }
 ```
@@ -135,6 +144,8 @@ aws s3api put-bucket-notification-configuration \
     ]
   }'
 ```
+
+Make sure the Lambda function's execution role also has permission to read from `raw-uploads-bucket` and write to whatever output bucket your handler uses.
 
 ## Writing the Lambda Handler
 
@@ -262,7 +273,7 @@ uploadBucket.addEventNotification(
 
 ## Using S3 Event Notifications with EventBridge
 
-Starting in 2023, S3 can send events to EventBridge instead of (or in addition to) Lambda directly. This gives you more powerful filtering and routing.
+Since late 2021, S3 can send events to EventBridge instead of (or in addition to) Lambda directly. This gives you more powerful filtering and routing.
 
 Enable EventBridge notifications on your bucket:
 
