@@ -32,7 +32,7 @@ mkdir eks-cdk && cd eks-cdk
 cdk init app --language typescript
 
 # Install the EKS-related CDK constructs
-npm install @aws-cdk/lambda-layer-kubectl-v29
+npm install @aws-cdk/lambda-layer-kubectl-v35
 ```
 
 The core EKS constructs are included in `aws-cdk-lib`, so you don't need additional packages for most things.
@@ -48,7 +48,7 @@ import * as eks from 'aws-cdk-lib/aws-eks';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
-import { KubectlV29Layer } from '@aws-cdk/lambda-layer-kubectl-v29';
+import { KubectlV35Layer } from '@aws-cdk/lambda-layer-kubectl-v35';
 
 export class EksCdkStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -75,12 +75,13 @@ export class EksCdkStack extends cdk.Stack {
     // Create the EKS cluster
     const cluster = new eks.Cluster(this, 'MyCluster', {
       clusterName: 'production-cluster',
-      version: eks.KubernetesVersion.V1_29,
-      kubectlLayer: new KubectlV29Layer(this, 'KubectlLayer'),
+      version: eks.KubernetesVersion.V1_35,
+      kubectlLayer: new KubectlV35Layer(this, 'KubectlLayer'),
       vpc: vpc,
       vpcSubnets: [{ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }],
       defaultCapacity: 0, // We'll add node groups manually
       endpointAccess: eks.EndpointAccess.PUBLIC_AND_PRIVATE,
+      authenticationMode: eks.AuthenticationMode.API_AND_CONFIG_MAP,
     });
 
     // Output the cluster name and kubectl config command
@@ -110,7 +111,7 @@ const generalNodeGroup = cluster.addNodegroupCapacity('GeneralNodes', {
   maxSize: 10,
   desiredSize: 3,
   diskSize: 100,
-  amiType: eks.NodegroupAmiType.AL2_X86_64,
+  amiType: eks.NodegroupAmiType.AL2023_X86_64_STANDARD,
   labels: {
     'workload-type': 'general',
   },
@@ -161,7 +162,7 @@ const appSa = cluster.addServiceAccount('AppServiceAccount', {
   namespace: 'default',
 });
 
-appSa.role.addToPolicy(new iam.PolicyStatement({
+appSa.role.addToPrincipalPolicy(new iam.PolicyStatement({
   actions: ['dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:Query'],
   resources: ['arn:aws:dynamodb:*:*:table/my-app-*'],
 }));
@@ -176,7 +177,7 @@ Add EKS managed add-ons:
 new eks.CfnAddon(this, 'VpcCni', {
   clusterName: cluster.clusterName,
   addonName: 'vpc-cni',
-  addonVersion: 'v1.16.0-eksbuild.1',
+  addonVersion: 'v1.19.5-eksbuild.3',
   resolveConflicts: 'OVERWRITE',
 });
 
@@ -195,11 +196,17 @@ new eks.CfnAddon(this, 'KubeProxy', {
 });
 
 // Install EBS CSI driver with IRSA
+const oidcIssuer = cluster.openIdConnectProvider.openIdConnectProviderIssuer;
 const ebsCsiRole = new iam.Role(this, 'EbsCsiRole', {
-  assumedBy: new iam.ServicePrincipal('pods.eks.amazonaws.com'),
+  assumedBy: new iam.OpenIdConnectPrincipal(cluster.openIdConnectProvider).withConditions({
+    StringEquals: {
+      [`${oidcIssuer}:aud`]: 'sts.amazonaws.com',
+      [`${oidcIssuer}:sub`]: 'system:serviceaccount:kube-system:ebs-csi-controller-sa',
+    },
+  }),
   managedPolicies: [
     iam.ManagedPolicy.fromAwsManagedPolicyName(
-      'service-role/AmazonEBSCSIDriverPolicy'
+      'service-role/AmazonEBSCSIDriverPolicyV2'
     ),
   ],
 });
@@ -262,8 +269,22 @@ appDeployment.node.addDependency(namespace);
 CDK supports Helm chart installation:
 
 ```typescript
+// Create the service account used by the AWS Load Balancer Controller
+const awsLbControllerSa = cluster.addServiceAccount('AwsLbControllerSa', {
+  name: 'aws-load-balancer-controller',
+  namespace: 'kube-system',
+});
+
+awsLbControllerSa.role.addManagedPolicy(
+  iam.ManagedPolicy.fromManagedPolicyArn(
+    this,
+    'AwsLoadBalancerControllerPolicy',
+    'arn:aws:iam::123456789012:policy/AWSLoadBalancerControllerIAMPolicy'
+  )
+);
+
 // Install the AWS Load Balancer Controller via Helm
-cluster.addHelmChart('AwsLbController', {
+const awsLbControllerChart = cluster.addHelmChart('AwsLbController', {
   chart: 'aws-load-balancer-controller',
   repository: 'https://aws.github.io/eks-charts',
   namespace: 'kube-system',
@@ -275,6 +296,8 @@ cluster.addHelmChart('AwsLbController', {
     },
   },
 });
+
+awsLbControllerChart.node.addDependency(awsLbControllerSa);
 
 // Install Prometheus stack
 cluster.addHelmChart('Prometheus', {
@@ -321,26 +344,28 @@ For more on cluster logging, see our [EKS logging guide](https://oneuptime.com/b
 
 ## Granting Cluster Access
 
-Map IAM roles and users to Kubernetes RBAC:
+Grant IAM roles and users access to Kubernetes APIs:
 
 ```typescript
 // Grant cluster admin access to a role
 const adminRole = iam.Role.fromRoleArn(this, 'AdminRole',
   'arn:aws:iam::123456789012:role/PlatformAdmin'
 );
-cluster.awsAuth.addRoleMapping(adminRole, {
-  groups: ['system:masters'],
-  username: 'platform-admin',
-});
+cluster.grantAccess('AdminAccess', adminRole.roleArn, [
+  eks.AccessPolicy.fromAccessPolicyName('AmazonEKSClusterAdminPolicy', {
+    accessScopeType: eks.AccessScopeType.CLUSTER,
+  }),
+]);
 
 // Grant read-only access to developers
 const devRole = iam.Role.fromRoleArn(this, 'DevRole',
   'arn:aws:iam::123456789012:role/Developer'
 );
-cluster.awsAuth.addRoleMapping(devRole, {
-  groups: ['developers'],
-  username: 'developer',
-});
+cluster.grantAccess('DeveloperViewAccess', devRole.roleArn, [
+  eks.AccessPolicy.fromAccessPolicyName('AmazonEKSViewPolicy', {
+    accessScopeType: eks.AccessScopeType.CLUSTER,
+  }),
+]);
 ```
 
 ## Deploying the Stack
