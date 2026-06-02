@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Python, Testing, Mocking, Boto3
 
-Description: Learn how to use the moto library to mock AWS services in Python unit and integration tests, with examples for S3, DynamoDB, SQS, Lambda, and complex multi-service workflows.
+Description: Learn how to use the moto library to mock AWS services in Python unit and integration tests, with examples for S3, DynamoDB, SQS, and complex multi-service workflows.
 
 ---
 
@@ -13,11 +13,11 @@ Moto is a Python library that mocks AWS services at the API level. Unlike basic 
 ## Installation
 
 ```bash
-pip install moto[all]  # install all service mocks
+pip install 'moto[all]'  # install all service mocks
 
 # Or install specific services
 
-pip install moto[s3,dynamodb,sqs,lambda,iam]
+pip install 'moto[s3,dynamodb,sqs]'
 ```
 
 ## Basic Usage with Decorators
@@ -86,6 +86,7 @@ Moto's DynamoDB mock is particularly good. It supports queries, scans, GSIs, con
 ```python
 import boto3
 from moto import mock_aws
+from decimal import Decimal
 import pytest
 
 @pytest.fixture
@@ -112,19 +113,19 @@ def dynamodb_table():
             batch.put_item(Item={
                 'customer_id': 'cust-123',
                 'order_id': 'ord-001',
-                'total': 99.99,
+                'total': Decimal('99.99'),
                 'status': 'shipped'
             })
             batch.put_item(Item={
                 'customer_id': 'cust-123',
                 'order_id': 'ord-002',
-                'total': 49.99,
+                'total': Decimal('49.99'),
                 'status': 'pending'
             })
             batch.put_item(Item={
                 'customer_id': 'cust-456',
                 'order_id': 'ord-003',
-                'total': 199.99,
+                'total': Decimal('199.99'),
                 'status': 'delivered'
             })
 
