@@ -8,9 +8,9 @@ Description: A complete guide to setting up AWS CodeCommit Git repositories, con
 
 ---
 
-AWS CodeCommit is a fully managed Git repository service. If your team is already deep in the AWS ecosystem, CodeCommit keeps your source code within your AWS boundary - same account, same IAM policies, same encryption. There's no need to manage a Git server, worry about scaling, or deal with storage limits.
+AWS CodeCommit is a fully managed Git repository service. If your team is already deep in the AWS ecosystem, CodeCommit keeps your source code within your AWS boundary - same account, same IAM policies, same encryption. There's no need to manage a Git server, worry about scaling repository infrastructure, or deal with Git server maintenance.
 
-That said, CodeCommit is deliberately simple. It's a Git hosting service, not a full development platform like GitHub or GitLab. There are no built-in CI/CD runners, no issue tracker, and no pull request reviews in the way GitHub does them. What it does offer is tight IAM integration, encryption at rest, and a reliable Git remote that lives in your AWS account.
+That said, CodeCommit is deliberately simple. It's a Git hosting service, not a full development platform like GitHub or GitLab. There are no built-in CI/CD runners or issue tracker, and pull request workflows are simpler than GitHub's. What it does offer is tight IAM integration, encryption at rest, and a reliable Git remote that lives in your AWS account.
 
 ## Step 1: Create a Repository
 
@@ -45,7 +45,7 @@ aws codecommit get-repository \
 
 ## Step 2: Configure Authentication
 
-CodeCommit supports three authentication methods: HTTPS with Git credentials, SSH keys, and the credential helper. Each has its place.
+CodeCommit supports several authentication methods. Three common options are HTTPS with Git credentials, SSH keys, and the credential helper. Each has its place.
 
 ### Option A: HTTPS Git Credentials
 
@@ -136,13 +136,17 @@ cat > dev-codecommit-policy.json << 'EOF'
         "codecommit:MergePullRequestBySquash",
         "codecommit:UpdatePullRequestDescription",
         "codecommit:UpdatePullRequestTitle",
-        "codecommit:GetRepository",
-        "codecommit:ListRepositories"
+        "codecommit:GetRepository"
       ],
       "Resource": [
         "arn:aws:codecommit:us-east-1:123456789012:my-application",
         "arn:aws:codecommit:us-east-1:123456789012:auth-service"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "codecommit:ListRepositories",
+      "Resource": "*"
     }
   ]
 }
@@ -170,9 +174,13 @@ cat > readonly-codecommit-policy.json << 'EOF'
         "codecommit:GetCommit",
         "codecommit:GetRepository",
         "codecommit:ListBranches",
-        "codecommit:ListRepositories",
         "codecommit:BatchGetRepositories"
       ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "codecommit:ListRepositories",
       "Resource": "*"
     }
   ]
@@ -230,11 +238,6 @@ This forces developers to use pull requests for changes to main.
 Configure default branch and repository metadata.
 
 ```bash
-# Set the default branch
-aws codecommit update-default-branch \
-  --repository-name my-application \
-  --default-branch-name main
-
 # Add a README and initial commit
 cd /tmp
 git clone https://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-application
@@ -247,6 +250,11 @@ echo "Main application repository" >> README.md
 git add README.md
 git commit -m "Initial commit"
 git push origin main
+
+# Set the default branch after the branch exists
+aws codecommit update-default-branch \
+  --repository-name my-application \
+  --default-branch-name main
 ```
 
 ## Step 6: Enable Repository Encryption
@@ -255,14 +263,16 @@ CodeCommit encrypts repositories at rest by default using AWS-managed keys. If y
 
 ```bash
 # Create a KMS key for CodeCommit
-aws kms create-key \
+KMS_KEY_ID=$(aws kms create-key \
   --description "KMS key for CodeCommit repository encryption" \
-  --key-usage ENCRYPT_DECRYPT
+  --key-usage ENCRYPT_DECRYPT \
+  --query 'KeyMetadata.KeyId' \
+  --output text)
 
 # Associate the key with a repository
-aws codecommit associate-approval-rule-template-with-repository \
+aws codecommit update-repository-encryption-key \
   --repository-name my-application \
-  --approval-rule-template-name require-approvals
+  --kms-key-id "$KMS_KEY_ID"
 ```
 
 ## Step 7: Create Approval Rule Templates
@@ -279,7 +289,7 @@ aws codecommit create-approval-rule-template \
     "Statements": [{
       "Type": "Approvers",
       "NumberOfApprovalsNeeded": 2,
-      "ApprovalPoolMembers": ["arn:aws:iam::123456789012:root"]
+      "ApprovalPoolMembers": ["arn:aws:sts::123456789012:assumed-role/CodeCommitReview/*"]
     }]
   }'
 
