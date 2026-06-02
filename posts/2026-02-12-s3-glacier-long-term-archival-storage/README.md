@@ -73,6 +73,8 @@ The more common approach is to upload data to Standard storage and let lifecycle
 
 Here's a lifecycle configuration that transitions data progressively through cheaper storage tiers.
 
+By default, new or modified lifecycle configurations do not transition objects smaller than 128 KB to any storage class. If you need to archive smaller objects, add an object-size filter or use the `x-amz-transition-default-minimum-object-size` header when setting the lifecycle configuration.
+
 ```json
 {
   "Rules": [
@@ -191,11 +193,11 @@ for point in metrics['Datapoints']:
 
 2. **Set appropriate expiration rules.** Don't archive forever if you don't need to. Even at Glacier pricing, terabytes add up over years.
 
-3. **Batch small objects before archiving.** Glacier charges a minimum of 40KB per object (8KB for metadata + 32KB minimum). Thousands of small files are expensive. Tar them up first.
+3. **Batch small objects before archiving.** Glacier Flexible Retrieval and Deep Archive add 40KB of metadata per object (8KB charged at S3 Standard rates + 32KB charged at the archive storage-class rate). Glacier Instant Retrieval has a 128KB minimum billable object size. Thousands of small files are expensive. Tar them up first.
 
 ```bash
 # Bad: archiving thousands of small files individually
-# Each small file incurs 40KB minimum charge
+# Each small file incurs per-object overhead or a minimum billable size
 
 # Good: combine them first
 tar czf logs-2025-01.tar.gz logs/2025/01/
