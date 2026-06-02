@@ -173,25 +173,13 @@ Deny any uploads that don't use your specific KMS key.
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "DenyNonKMSEncryption",
-      "Effect": "Deny",
-      "Principal": "*",
-      "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::my-secure-bucket/*",
-      "Condition": {
-        "StringNotEquals": {
-          "s3:x-amz-server-side-encryption": "aws:kms"
-        }
-      }
-    },
-    {
       "Sid": "DenyWrongKMSKey",
       "Effect": "Deny",
       "Principal": "*",
       "Action": "s3:PutObject",
       "Resource": "arn:aws:s3:::my-secure-bucket/*",
       "Condition": {
-        "StringNotEqualsIfExists": {
+        "ArnNotEqualsIfExists": {
           "s3:x-amz-server-side-encryption-aws-kms-key-id": "arn:aws:kms:us-east-1:123456789012:key/<key-id>"
         }
       }
@@ -230,12 +218,15 @@ sequenceDiagram
 Every KMS operation shows up in CloudTrail. You can query these events to see who's accessing encrypted data.
 
 ```python
+import json
 import boto3
 from datetime import datetime, timedelta
 
 cloudtrail = boto3.client('cloudtrail')
+kms_key_arn = 'arn:aws:kms:us-east-1:123456789012:key/your-key-id'
+kms_key_id = kms_key_arn.rsplit('/', 1)[-1]
 
-# Look up recent KMS decrypt events for our key
+# Look up recent KMS decrypt events, then keep the entries for our key
 response = cloudtrail.lookup_events(
     LookupAttributes=[
         {
@@ -249,6 +240,19 @@ response = cloudtrail.lookup_events(
 )
 
 for event in response['Events']:
+    details = json.loads(event['CloudTrailEvent'])
+    request_parameters = details.get('requestParameters') or {}
+    response_elements = details.get('responseElements') or {}
+    resource_names = {resource.get('ResourceName') for resource in event.get('Resources', [])}
+    event_key_ids = {
+        request_parameters.get('keyId'),
+        response_elements.get('keyId'),
+        *resource_names
+    }
+
+    if kms_key_arn not in event_key_ids and kms_key_id not in event_key_ids:
+        continue
+
     print(f"Time: {event['EventTime']}")
     print(f"User: {event.get('Username', 'N/A')}")
     print(f"Event: {event['EventName']}")
@@ -257,10 +261,10 @@ for event in response['Events']:
 
 ## Step 7: Enable Automatic Key Rotation
 
-For customer-managed keys, enable automatic rotation so the key material changes annually.
+For customer-managed keys, enable automatic rotation so the key material changes on a regular schedule. By default, AWS KMS rotates the key material every year.
 
 ```bash
-# Enable automatic rotation (rotates every year)
+# Enable automatic rotation (defaults to every year)
 aws kms enable-key-rotation \
   --key-id <key-id>
 
