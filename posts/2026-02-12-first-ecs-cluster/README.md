@@ -50,24 +50,35 @@ aws ecs describe-clusters --clusters my-first-cluster \
 
 ## Creating a Cluster with EC2 Instances
 
-If you want more control over the underlying compute, or you're running workloads that need specific instance types (like GPU instances), use the EC2 launch type.
+If you want more control over the underlying compute, or you're running workloads that need specific instance types (like GPU instances), use EC2-backed capacity.
 
-First, create a launch template for your container instances.
+First, create a launch template for your container instances. Make sure the EC2 instance role from the IAM section below exists before you run this command.
 
 ```bash
+# Get the latest recommended Amazon ECS-optimized Amazon Linux 2 AMI
+ECS_AMI_ID=$(aws ssm get-parameter \
+  --name /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id \
+  --query 'Parameter.Value' \
+  --output text)
+
+USER_DATA=$(cat <<'EOF' | base64 -w 0
+#!/bin/bash
+echo "ECS_CLUSTER=my-ec2-cluster" >> /etc/ecs/ecs.config
+echo "ECS_ENABLE_CONTAINER_METADATA=true" >> /etc/ecs/ecs.config
+EOF
+)
+
 # Create a launch template for ECS container instances
 aws ec2 create-launch-template \
   --launch-template-name ecs-instance-template \
-  --launch-template-data '{
-    "ImageId": "ami-0c55b159cbfafe1f0",
-    "InstanceType": "t3.medium",
-    "IamInstanceProfile": {
-      "Arn": "arn:aws:iam::123456789:instance-profile/ecsInstanceRole"
+  --launch-template-data "{
+    \"ImageId\": \"${ECS_AMI_ID}\",
+    \"InstanceType\": \"t3.medium\",
+    \"IamInstanceProfile\": {
+      \"Name\": \"ecsInstanceRole\"
     },
-    "UserData": "'$(echo '#!/bin/bash
-echo "ECS_CLUSTER=my-ec2-cluster" >> /etc/ecs/ecs.config
-echo "ECS_ENABLE_CONTAINER_METADATA=true" >> /etc/ecs/ecs.config' | base64)'"
-  }'
+    \"UserData\": \"${USER_DATA}\"
+  }"
 ```
 
 The UserData script tells the ECS agent which cluster to join. The AMI should be the latest Amazon ECS-optimized AMI, which comes with the ECS agent pre-installed.
@@ -82,13 +93,14 @@ aws autoscaling create-auto-scaling-group \
   --min-size 1 \
   --max-size 10 \
   --desired-capacity 2 \
+  --new-instances-protected-from-scale-in \
   --vpc-zone-identifier "subnet-abc123,subnet-def456"
 
 # Create a capacity provider that uses this ASG
 aws ecs create-capacity-provider \
   --name ec2-capacity \
   --auto-scaling-group-provider '{
-    "autoScalingGroupArn": "arn:aws:autoscaling:us-east-1:123456789:autoScalingGroup:xxx:autoScalingGroupName/ecs-asg",
+    "autoScalingGroupArn": "arn:aws:autoscaling:us-east-1:123456789012:autoScalingGroup:xxx:autoScalingGroupName/ecs-asg",
     "managedScaling": {
       "status": "ENABLED",
       "targetCapacity": 80,
@@ -175,12 +187,12 @@ This publishes metrics to CloudWatch under the `ECS/ContainerInsights` namespace
 
 ## CloudFormation Template
 
-Here's a CloudFormation template that creates a production-ready cluster with both Fargate and EC2 capacity.
+Here's a CloudFormation template that creates a production-ready cluster with both Fargate and Fargate Spot capacity.
 
 ```yaml
 # CloudFormation template for an ECS cluster
 AWSTemplateFormatVersion: '2010-09-09'
-Description: ECS Cluster with Fargate and Container Insights
+Description: ECS Cluster with Fargate capacity providers and Container Insights
 
 Resources:
   ECSCluster:
