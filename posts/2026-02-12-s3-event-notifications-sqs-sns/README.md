@@ -63,6 +63,7 @@ aws sqs set-queue-attributes \
 Configure S3 to send events to the SQS queue:
 
 ```bash
+# This replaces the bucket's existing notification configuration.
 aws s3api put-bucket-notification-configuration \
     --bucket my-bucket \
     --notification-configuration '{
@@ -93,7 +94,7 @@ Process S3 events from SQS with Python:
 ```python
 import boto3
 import json
-import time
+from urllib.parse import unquote_plus
 
 sqs = boto3.client('sqs')
 s3 = boto3.client('s3')
@@ -121,7 +122,7 @@ def process_messages():
 
                 for record in body.get('Records', []):
                     bucket = record['s3']['bucket']['name']
-                    key = record['s3']['object']['key']
+                    key = unquote_plus(record['s3']['object']['key'])
                     event_type = record['eventName']
 
                     print(f"Processing: {event_type} - {bucket}/{key}")
@@ -212,11 +213,26 @@ aws sns set-topic-attributes \
 Subscribe multiple consumers to the topic:
 
 ```bash
+# Allow SNS to invoke the Lambda function
+aws lambda add-permission \
+    --function-name image-processor \
+    --source-arn "$TOPIC_ARN" \
+    --statement-id sns-invoke-image-processor \
+    --action "lambda:InvokeFunction" \
+    --principal sns.amazonaws.com
+
 # Subscribe a Lambda function
 aws sns subscribe \
     --topic-arn "$TOPIC_ARN" \
     --protocol lambda \
     --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:image-processor
+
+# Allow SNS to send messages to the SQS queue
+aws sqs set-queue-attributes \
+    --queue-url "$QUEUE_URL" \
+    --attributes '{
+        "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowSNS\",\"Effect\":\"Allow\",\"Principal\":\"*\",\"Action\":\"sqs:SendMessage\",\"Resource\":\"'"$QUEUE_ARN"'\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"'"$TOPIC_ARN"'"}}}]}"
+    }'
 
 # Subscribe an SQS queue
 aws sns subscribe \
@@ -245,6 +261,7 @@ aws sns list-subscriptions-by-topic --topic-arn "$TOPIC_ARN"
 Configure S3 event notifications to the SNS topic:
 
 ```bash
+# This replaces the bucket's existing notification configuration.
 aws s3api put-bucket-notification-configuration \
     --bucket my-bucket \
     --notification-configuration '{
@@ -262,7 +279,7 @@ aws s3api put-bucket-notification-configuration \
 
 You can combine all three notification types on a single bucket.
 
-Configure multiple notification targets:
+Make sure each destination policy allows S3 to publish or invoke it, then configure multiple notification targets:
 
 ```bash
 aws s3api put-bucket-notification-configuration \
