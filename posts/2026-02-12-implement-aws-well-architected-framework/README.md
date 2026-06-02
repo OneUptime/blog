@@ -102,7 +102,7 @@ Cost Optimization is about running systems at the lowest price point while deliv
 
 Sustainability focuses on minimizing the environmental impact of your cloud workloads. Key principles:
 
-**Understand your impact.** Use the AWS Customer Carbon Footprint Tool to measure your carbon emissions.
+**Understand your impact.** Use the AWS Sustainability service to review estimated carbon emissions. The AWS Customer Carbon Footprint Tool remains available until its June 30, 2026 deprecation.
 
 **Establish sustainability goals.** Set targets for resource utilization and efficiency improvements.
 
@@ -136,7 +136,7 @@ AWS provides tools for each pillar:
 - **Reliability**: Resilience Hub, Backup, Route 53 health checks
 - **Performance**: Compute Optimizer, X-Ray, CloudWatch
 - **Cost**: Cost Explorer, Budgets, Savings Plans, Trusted Advisor
-- **Sustainability**: Carbon Footprint Tool, Compute Optimizer
+- **Sustainability**: AWS Sustainability service, Compute Optimizer
 
 ### Step 5: Automate Compliance
 
