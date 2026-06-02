@@ -8,13 +8,13 @@ Description: Learn how to trigger Lambda functions from CloudWatch Alarms for au
 
 ---
 
-CloudWatch Alarms are usually associated with sending notifications to SNS topics or scaling Auto Scaling groups. But you can also trigger Lambda functions directly from alarm state changes through EventBridge. This opens up powerful auto-remediation workflows - when a metric crosses a threshold, your Lambda function can take immediate action to fix the problem before a human even sees the alert.
+CloudWatch Alarms are usually associated with sending notifications to SNS topics or scaling Auto Scaling groups. But you can also route alarm state changes to Lambda functions through EventBridge. CloudWatch also supports Lambda as a direct alarm action, but SNS and EventBridge remain useful patterns when you want fan-out, message filtering, or shared routing. This opens up powerful auto-remediation workflows - when a metric crosses a threshold, your Lambda function can take immediate action to fix the problem before a human even sees the alert.
 
 Let's set up CloudWatch Alarms that trigger Lambda functions for automated incident response.
 
-## Two Approaches: SNS or EventBridge
+## Two Routing Approaches: SNS or EventBridge
 
-There are two ways to trigger Lambda from CloudWatch Alarms:
+Here are two common ways to trigger Lambda from CloudWatch Alarms:
 
 **Via SNS (traditional)**: The alarm sends to an SNS topic, which triggers the Lambda function. Simple and widely used.
 
@@ -162,6 +162,9 @@ exports.handler = async (event) => {
       Trigger: event.detail.configuration,
     };
     console.log('Alarm via EventBridge:', alarmData.AlarmName);
+  } else {
+    console.warn('Unsupported event source');
+    return;
   }
 
   // Only remediate on ALARM state
@@ -217,6 +220,21 @@ async function handleHealthCheckFailure(alarmData) {
     console.log(`Rebooted instance ${instanceId}`);
   }
 }
+
+function extractInstanceId(alarmData) {
+  const dimensions = alarmData.Trigger?.Dimensions;
+  if (Array.isArray(dimensions)) {
+    return dimensions.find((dimension) => dimension.name === 'InstanceId')?.value;
+  }
+
+  const metrics = alarmData.Trigger?.metrics;
+  for (const metricConfig of metrics ?? []) {
+    const instanceId = metricConfig.metricStat?.metric?.dimensions?.InstanceId;
+    if (instanceId) {
+      return instanceId;
+    }
+  }
+}
 ```
 
 ## The EventBridge Alarm Event Format
@@ -232,6 +250,9 @@ When using the EventBridge approach, here's what the event looks like:
   "account": "123456789012",
   "time": "2026-02-12T10:00:00Z",
   "region": "us-east-1",
+  "resources": [
+    "arn:aws:cloudwatch:us-east-1:123456789012:alarm:EC2-High-CPU-i-1234567890"
+  ],
   "detail": {
     "alarmName": "EC2-High-CPU-i-1234567890",
     "state": {
