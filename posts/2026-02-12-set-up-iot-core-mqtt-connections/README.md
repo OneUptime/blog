@@ -38,9 +38,19 @@ The most secure and recommended method. Each device has its own certificate.
 ```python
 # mqtt_x509.py - MQTT connection with X.509 certificate authentication
 
-from awscrt import mqtt, io, auth
+from awscrt import io
 from awsiot import mqtt_connection_builder
-import time
+
+def on_connection_interrupted(connection, error, **kwargs):
+    """Called when the MQTT connection is unexpectedly lost."""
+    print(f"Connection interrupted: {error}")
+
+def on_connection_resumed(connection, return_code, session_present, **kwargs):
+    """Called when an interrupted connection is re-established."""
+    print(f"Connection resumed. Session present: {session_present}")
+    if not session_present:
+        # Re-subscribe to topics if the session was lost
+        connection.resubscribe_existing_topics()
 
 # TLS and event loop setup
 event_loop_group = io.EventLoopGroup(1)
@@ -62,17 +72,6 @@ connection = mqtt_connection_builder.mtls_from_path(
     on_connection_resumed=on_connection_resumed
 )
 
-def on_connection_interrupted(connection, error, **kwargs):
-    """Called when the MQTT connection is unexpectedly lost."""
-    print(f"Connection interrupted: {error}")
-
-def on_connection_resumed(connection, return_code, session_present, **kwargs):
-    """Called when an interrupted connection is re-established."""
-    print(f"Connection resumed. Session present: {session_present}")
-    if not session_present:
-        # Re-subscribe to topics if the session was lost
-        resubscribe()
-
 # Connect
 connect_future = connection.connect()
 connect_future.result()
@@ -85,8 +84,13 @@ WebSocket connections use IAM credentials (Signature V4) instead of certificates
 
 ```python
 # mqtt_websocket.py - MQTT connection over WebSocket with IAM auth
-from awscrt import mqtt, io, auth
+from awscrt import io, auth
 from awsiot import mqtt_connection_builder
+
+# Event loop setup
+event_loop_group = io.EventLoopGroup(1)
+host_resolver = io.DefaultHostResolver(event_loop_group)
+client_bootstrap = io.ClientBootstrap(event_loop_group, host_resolver)
 
 # Use default credentials provider (reads from environment, profile, or EC2 role)
 credentials_provider = auth.AwsCredentialsProvider.new_default_chain(
@@ -119,10 +123,13 @@ async function connectBrowser() {
     const credentials = await fetch('/api/iot-credentials').then(r => r.json());
 
     const config = iot.AwsIotMqttConnectionConfigBuilder
-        .new_with_websockets({
-            region: 'us-east-1',
-            credentials_provider: /* ... */
-        })
+        .new_with_websockets()
+        .with_credentials(
+            'us-east-1',
+            credentials.accessKeyId,
+            credentials.secretAccessKey,
+            credentials.sessionToken
+        )
         .with_endpoint('abc123-ats.iot.us-east-1.amazonaws.com')
         .with_client_id(`browser-${Date.now()}`)
         .with_clean_session(true)
@@ -150,6 +157,7 @@ MQTT defines three Quality of Service levels. IoT Core supports QoS 0 and QoS 1.
 
 ```python
 # Publishing with different QoS levels
+import json
 
 # QoS 0 - Best for frequent, non-critical data like sensor readings
 connection.publish(
@@ -188,7 +196,7 @@ connection = mqtt_connection_builder.mtls_from_path(
 )
 ```
 
-IoT Core stores queued messages for up to 1 hour. If the device doesn't reconnect within that window, the messages are dropped. The queue holds up to 10 QoS 1 messages per subscription.
+By default, IoT Core stores queued messages for persistent sessions for up to 1 hour. If the device doesn't reconnect within that window, the messages are dropped. Stored messages are delivered after reconnection at up to 10 messages per second, and queuing is subject to AWS IoT Core account quotas.
 
 ## Keep-Alive and Connection Management
 
@@ -217,6 +225,10 @@ MQTT's Last Will and Testament (LWT) feature lets you specify a message that the
 
 ```python
 # Configure Last Will and Testament
+import json
+import time
+from awscrt import mqtt
+
 will_topic = "devices/sensor-001/status"
 will_payload = json.dumps({
     "device_id": "sensor-001",
@@ -272,7 +284,7 @@ alerts/critical/+                 # All critical alerts
 IoT Core has connection limits you need to be aware of:
 
 - **Maximum concurrent connections**: Soft limit of 500,000 per account (can be increased)
-- **Connection rate**: 500 connections per second per account
+- **Connection rate**: 3,000 CONNECT requests per second per account in most regions, with lower defaults in some regions
 - **Subscriptions per connection**: 50
 - **Publish rate**: 100 messages per second per connection
 - **Maximum message size**: 128 KB
@@ -282,6 +294,7 @@ If you're hitting the connection rate limit during fleet restarts, implement exp
 ```python
 # Reconnection with exponential backoff
 import random
+import time
 
 def connect_with_backoff(max_retries=10):
     base_delay = 1  # Starting delay in seconds
