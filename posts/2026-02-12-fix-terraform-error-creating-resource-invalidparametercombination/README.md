@@ -10,7 +10,7 @@ Description: Resolve Terraform InvalidParameterCombination errors when creating 
 
 Terraform relays errors from the AWS API, and `InvalidParameterCombination` is one of those errors that comes directly from AWS. It means the combination of parameters you provided in your resource configuration doesn't make sense together - even though each parameter might be valid on its own, they can't be used together.
 
-This error is frustrating because Terraform can't catch it during `plan`. It only surfaces during `apply` when the actual API call is made.
+This error is frustrating because Terraform often can't catch AWS-specific compatibility rules during `plan`. Many of them only surface during `apply` when the actual API call is made.
 
 ## Understanding the Error
 
@@ -68,12 +68,12 @@ aws ec2 describe-images --image-ids ami-0abcdef1234567890 \
     --query 'Images[0].Architecture'
 ```
 
-## EC2 Instance Type and EBS Volume Type
+## EC2 Instance Type and EBS Volume Settings
 
-Certain instance types only support specific EBS volume types. For example, some older instance types don't support `io2` volumes:
+Certain instance types cap the EBS performance you can actually use. For example, `io2` volumes can be provisioned with very high IOPS, but only Nitro-based instances can achieve the highest `io2` performance:
 
 ```hcl
-# Make sure volume type is compatible with instance type
+# Make sure the requested EBS performance matches the instance's EBS limits
 resource "aws_instance" "db" {
   ami           = "ami-12345678"
   instance_type = "m5.xlarge"
@@ -153,7 +153,8 @@ resource "aws_db_instance" "main" {
 resource "aws_db_instance" "main" {
   allocated_storage = 100
   storage_type      = "gp3"
-  iops              = 3000  # Optional for gp3, baseline is 3000
+  # Don't set iops here for MySQL, MariaDB, PostgreSQL, Db2, or Oracle
+  # below their gp3 provisioning threshold; RDS provides baseline IOPS.
   # ...
 }
 
