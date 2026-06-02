@@ -120,10 +120,12 @@ WITH sensor_ts AS (
     GROUP BY device_id
 )
 SELECT device_id,
-       MIN(temp_series) AS min_temp,
-       MAX(temp_series) AS max_temp,
-       AVG(temp_series) AS avg_temp
+       MIN(t.value) AS min_temp,
+       MAX(t.value) AS max_temp,
+       AVG(t.value) AS avg_temp
 FROM sensor_ts
+CROSS JOIN UNNEST(temp_series) AS t (time, value)
+GROUP BY device_id
 ```
 
 ### INTERPOLATE_LINEAR
@@ -185,8 +187,9 @@ WITH ordered_readings AS (
 SELECT device_id, time, temperature,
        CASE
            WHEN prev_time IS NOT NULL
+                AND date_diff('second', prev_time, time) > 0
            THEN (temperature - prev_temp) /
-                (EXTRACT(EPOCH FROM time - prev_time) / 60.0)
+                (date_diff('second', prev_time, time) / 60.0)
            ELSE NULL
        END AS degrees_per_minute
 FROM ordered_readings
