@@ -91,6 +91,14 @@ aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:critical-alerts \
   --protocol lambda \
   --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:alarm-handler
+
+# Allow SNS to invoke the Lambda function
+aws lambda add-permission \
+  --function-name alarm-handler \
+  --statement-id allow-sns-critical-alerts \
+  --action lambda:InvokeFunction \
+  --principal sns.amazonaws.com \
+  --source-arn arn:aws:sns:us-east-1:123456789012:critical-alerts
 ```
 
 **HTTPS endpoint (for webhooks):**
@@ -256,7 +264,8 @@ aws sns subscribe \
   --protocol email \
   --notification-endpoint oncall@company.com \
   --attributes '{
-    "FilterPolicy": "{\"NewStateValue\": [\"ALARM\"]}"
+    "FilterPolicy": "{\"NewStateValue\": [\"ALARM\"]}",
+    "FilterPolicyScope": "MessageBody"
   }'
 ```
 
@@ -284,7 +293,6 @@ done
 Make sure your SNS topic allows CloudWatch to publish to it:
 
 ```json
-// SNS topic policy allowing CloudWatch to publish
 {
   "Version": "2012-10-17",
   "Statement": [
