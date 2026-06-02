@@ -32,7 +32,7 @@ AWS applies rate limits at multiple levels:
 - **Resource level** - limits on individual resources (like Lambda concurrency)
 - **Region level** - limits apply per region
 
-For example, EC2 API calls are typically limited to around 100 calls per second for describe operations. That sounds like a lot until you've got automated tooling, monitoring, and multiple services all hitting the same APIs.
+For example, many EC2 non-mutating API calls use a token bucket with a maximum capacity of 100 requests and a refill rate of 20 requests per second. Some unfiltered and unpaginated describe operations, including `DescribeInstances`, use a smaller bucket. That sounds like a lot until you've got automated tooling, monitoring, and multiple services all hitting the same APIs.
 
 ## Implementing Exponential Backoff
 
@@ -80,7 +80,6 @@ instances = call_with_backoff(lambda: ec2.describe_instances())
 
 ```javascript
 // retry-with-backoff.js
-const { ThrottlingException } = require('@aws-sdk/client-ec2');
 
 async function callWithBackoff(apiCall, maxRetries = 5, baseDelay = 1000) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
@@ -123,20 +122,19 @@ from botocore.config import Config
 # Configure retry behavior
 config = Config(
     retries={
-        'max_attempts': 10,
-        'mode': 'adaptive'  # 'legacy', 'standard', or 'adaptive'
+        'total_max_attempts': 10,
+        'mode': 'standard'  # 'legacy', 'standard', or 'adaptive'
     }
 )
 
-# 'adaptive' mode dynamically adjusts retry behavior
-# based on the throttling response
+# 'standard' mode uses jittered exponential backoff.
 ec2 = boto3.client('ec2', config=config)
 
 # Now all API calls automatically retry on throttling
 instances = ec2.describe_instances()
 ```
 
-The `adaptive` mode is the best choice for throttling. It automatically implements exponential backoff and also adjusts the rate of requests based on throttling signals.
+The `standard` mode is the recommended default for most workloads. If one client targets a single resource and frequent throttling is expected, `adaptive` mode can also adjust the rate of requests based on throttling signals.
 
 ### Node.js (AWS SDK v3)
 
@@ -145,8 +143,8 @@ const { EC2Client, DescribeInstancesCommand } = require('@aws-sdk/client-ec2');
 
 const ec2 = new EC2Client({
   region: 'us-east-1',
-  maxAttempts: 10
-  // SDK v3 uses adaptive retry by default
+  maxAttempts: 10,
+  retryMode: 'standard'
 });
 ```
 
@@ -266,7 +264,8 @@ for instance_id in all_instances:
 ## Service-Specific Limits and Tips
 
 ### EC2
-- Most describe calls: ~100 requests/second
+- Many non-mutating calls: 100-token bucket with 20-token-per-second refill
+- Unfiltered and unpaginated describe calls: smaller 50-token bucket with 10-token-per-second refill
 - Use filters to reduce the number of calls instead of describe-then-filter
 - Use `describe-instances` with filters instead of calling `describe-instance-status` for each instance
 
@@ -296,14 +295,13 @@ If legitimate usage is hitting limits, you can request increases.
 ```bash
 # Check current limits for a service
 aws service-quotas list-service-quotas \
-  --service-code ec2 \
-  --query "Quotas[?contains(QuotaName, 'rate')]"
+  --service-code lambda
 
 # Request an increase
 aws service-quotas request-service-quota-increase \
-  --service-code ec2 \
+  --service-code lambda \
   --quota-code L-XXXXXXXX \
-  --desired-value 200
+  --desired-value 2000
 ```
 
 ## Monitoring Throttling
@@ -325,4 +323,4 @@ aws cloudwatch get-metric-statistics \
 
 ## Summary
 
-Throttling is a normal part of working with AWS at scale. The key defenses are: use the SDK's built-in adaptive retry mode, reduce API call volume through batching and caching, add rate limiting to your code, and request quota increases when needed. Don't fight throttling by retrying faster - that makes it worse. Back off, batch up, and cache intelligently.
+Throttling is a normal part of working with AWS at scale. The key defenses are: use the SDK's built-in retry modes, reduce API call volume through batching and caching, add rate limiting to your code, and request quota increases when needed. Don't fight throttling by retrying faster - that makes it worse. Back off, batch up, and cache intelligently.
