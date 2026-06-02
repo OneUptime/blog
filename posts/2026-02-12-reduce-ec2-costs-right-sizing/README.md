@@ -10,13 +10,13 @@ Description: A practical guide to reducing EC2 costs by right-sizing instances b
 
 Most EC2 instances are larger than they need to be. Developers pick an instance size during initial deployment based on rough estimates or "better safe than sorry" thinking, and then nobody revisits the decision. The result? You're paying for compute capacity that sits idle.
 
-Right-sizing is the process of matching your instance types and sizes to your actual workload requirements. It's consistently the biggest opportunity for EC2 cost reduction, often saving 30-50% on compute costs. Let's walk through how to do it safely.
+Right-sizing is the process of matching your instance types and sizes to your actual workload requirements. It's one of the biggest opportunities for EC2 cost reduction, and can save 30-50% on compute costs when instances are significantly over-provisioned. Let's walk through how to do it safely.
 
 ## Step 1: Gather Utilization Data
 
 You need at least two weeks of utilization data, preferably a month, to capture weekly patterns and any monthly spikes.
 
-This script collects CPU, memory, and network metrics for all running instances.
+This script collects CPU and network metrics for all running instances. EC2 does not publish memory utilization to the `AWS/EC2` namespace by default; use the CloudWatch agent or Compute Optimizer memory metrics if memory is a sizing constraint.
 
 ```python
 import boto3
@@ -55,12 +55,12 @@ def analyze_instance(instance_id, instance_type, name, days=14):
         StartTime=start,
         EndTime=end,
         Period=86400,
-        Statistics=["Average"]
+        Statistics=["Sum"]
     )
 
     net_avg = 0
     if net_in["Datapoints"]:
-        net_avg = sum(dp["Average"] for dp in net_in["Datapoints"]) / len(net_in["Datapoints"])
+        net_avg = sum(dp["Sum"] for dp in net_in["Datapoints"]) / len(net_in["Datapoints"])
         net_avg = net_avg / 1024 / 1024  # Convert to MB/day
 
     return {
@@ -129,13 +129,13 @@ When downsizing, consider more than just CPU. Here's a decision matrix.
 
 | Current Finding | Recommended Action |
 |---|---|
-| CPU avg < 5%, max < 20% | Downsize by 2 sizes (e.g., xlarge to small) |
+| CPU avg < 5%, max < 20% | Downsize by 2 sizes (e.g., xlarge to medium) |
 | CPU avg 5-10%, max < 40% | Downsize by 1 size (e.g., xlarge to large) |
 | CPU avg 10-40%, max < 70% | Currently right-sized |
 | CPU avg > 40% or max > 80% | Monitor closely, possibly upsize |
 | Memory-bound workload | Switch to memory-optimized (r-series) |
 | Compute-bound, steady | Switch to compute-optimized (c-series) |
-| Bursty, low baseline | Consider T-series with unlimited credits |
+| Bursty, low baseline | Consider T-series, and monitor CPU credits and any unlimited-mode surplus charges |
 
 AWS Compute Optimizer handles this analysis automatically. See our guide on [using Compute Optimizer](https://oneuptime.com/blog/post/2026-02-12-use-aws-compute-optimizer-right-sizing/view) for data-driven recommendations.
 
@@ -242,8 +242,9 @@ For instances you can't easily replace, use a stop-and-resize approach during a 
 # 1. Create a snapshot/backup first
 aws ec2 create-image \
   --instance-id i-0abc123def456 \
-  --name "pre-rightsize-backup-$(date +%Y%m%d)" \
-  --no-reboot
+  --name "pre-rightsize-backup-$(date +%Y%m%d)"
+
+# Use --no-reboot only if you can accept a crash-consistent image.
 
 # 2. Stop the instance
 aws ec2 stop-instances --instance-ids i-0abc123def456
