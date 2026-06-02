@@ -12,7 +12,7 @@ You hit "Launch" and instead of a running instance, you get an error. EC2 launch
 
 ## The Most Common Launch Errors
 
-Here are the errors you'll encounter most often, in order of frequency:
+Here are common errors you may encounter:
 
 1. InsufficientInstanceCapacity
 2. InstanceLimitExceeded
@@ -42,21 +42,30 @@ We currently do not have sufficient capacity in the Availability Zone you reques
 
 **Solutions:**
 
-Try a different AZ:
+Try a different AZ. `--dry-run` only checks whether you have permission to make the request; it does not test real-time capacity. To test capacity, you need to make a real launch request.
 
 ```bash
-# List available AZs and try each one
+# List AZs where the instance type is offered, then try each one
 
-for AZ in us-east-1a us-east-1b us-east-1c us-east-1d us-east-1e us-east-1f; do
+for AZ in $(aws ec2 describe-instance-type-offerings \
+  --location-type availability-zone \
+  --filters "Name=instance-type,Values=m5.xlarge" \
+  --query 'InstanceTypeOfferings[].Location' \
+  --output text); do
   echo "Trying $AZ..."
+  SUBNET_ID=$(aws ec2 describe-subnets \
+    --filters "Name=availability-zone,Values=$AZ" "Name=vpc-id,Values=vpc-abc123" \
+    --query 'Subnets[0].SubnetId' --output text)
+
+  [ "$SUBNET_ID" = "None" ] && continue
+
   aws ec2 run-instances \
     --image-id ami-0abc123 \
     --instance-type m5.xlarge \
     --placement "AvailabilityZone=$AZ" \
-    --subnet-id $(aws ec2 describe-subnets \
-      --filters "Name=availability-zone,Values=$AZ" "Name=vpc-id,Values=vpc-abc123" \
-      --query 'Subnets[0].SubnetId' --output text) \
-    --dry-run 2>&1 && break
+    --subnet-id "$SUBNET_ID" \
+    --query 'Instances[0].InstanceId' \
+    --output text && break
 done
 ```
 
@@ -66,14 +75,13 @@ Try a different instance type from the same family:
 # If m5.xlarge isn't available, try alternatives
 for TYPE in m5.xlarge m5a.xlarge m5n.xlarge m6i.xlarge m6a.xlarge; do
   echo "Trying $TYPE..."
-  RESULT=$(aws ec2 run-instances \
+  if aws ec2 run-instances \
     --image-id ami-0abc123 \
     --instance-type $TYPE \
     --subnet-id subnet-abc123 \
-    --dry-run 2>&1)
-
-  if echo "$RESULT" | grep -q "DryRunOperation"; then
-    echo "$TYPE is available!"
+    --query 'Instances[0].InstanceId' \
+    --output text; then
+    echo "$TYPE launched successfully!"
     break
   fi
 done
@@ -127,11 +135,10 @@ aws ec2 run-instances \
   --image-id ami-from-different-region \
   --instance-type m5.large
 
-# Fix: Find the AMI in your current region
-aws ec2 describe-images \
-  --filters "Name=name,Values=amzn2-ami-hvm-*-x86_64-gp2" \
-  --owners amazon \
-  --query 'sort_by(Images, &CreationDate)[-1].ImageId' \
+# Fix: Find the latest Amazon Linux 2023 AMI in your current region
+aws ssm get-parameter \
+  --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+  --query 'Parameter.Value' \
   --output text
 ```
 
@@ -213,7 +220,7 @@ aws ec2 run-instances \
 
 Common missing permissions:
 - `ec2:RunInstances` on the instance
-- `ec2:RunInstances` on the subnet, security group, or AMI
+- `ec2:RunInstances` on the subnet, security group, AMI, or key pair
 - `iam:PassRole` if specifying an instance profile
 - `ec2:CreateTags` if tag-on-create is required
 
@@ -232,6 +239,7 @@ Here's the minimum IAM policy for launching instances:
         "arn:aws:ec2:*:*:network-interface/*",
         "arn:aws:ec2:*:*:security-group/*",
         "arn:aws:ec2:*:*:subnet/*",
+        "arn:aws:ec2:*:*:key-pair/*",
         "arn:aws:ec2:*::image/*"
       ]
     },
@@ -262,10 +270,10 @@ aws kms describe-key --key-id alias/my-key
 aws kms get-key-policy --key-id alias/my-key --policy-name default
 ```
 
-**Volume limit exceeded:**
+**EBS storage quota exceeded:**
 
 ```bash
-# Check EBS volume limits
+# Check the gp2 EBS storage quota
 aws service-quotas get-service-quota \
   --service-code ebs \
   --quota-code L-D18FCD1D \
@@ -343,8 +351,8 @@ aws service-quotas list-service-quotas \
   --query 'Quotas[?contains(QuotaName, `Running On-Demand`)].{Name:QuotaName,Limit:Value}' \
   --output table
 
-# 6. Dry run the launch
-echo "6. Dry run test..."
+# 6. Dry run the launch permissions
+echo "6. Dry run permission test..."
 aws ec2 run-instances \
   --image-id $AMI_ID \
   --instance-type $INSTANCE_TYPE \
