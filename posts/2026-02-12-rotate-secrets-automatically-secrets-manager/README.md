@@ -8,7 +8,7 @@ Description: Learn how to set up automatic secret rotation with AWS Secrets Mana
 
 ---
 
-Hard-coded credentials that never change are a ticking time bomb. AWS Secrets Manager solves this by automating secret rotation on a schedule - your database passwords, API keys, and tokens get updated automatically without any application downtime. The trick is getting the rotation Lambda function right and making sure your applications handle the transition smoothly.
+Hard-coded credentials that never change are a ticking time bomb. AWS Secrets Manager solves this by automating secret rotation on a schedule - your database passwords, API keys, and tokens get updated automatically with little or no application downtime when your applications handle the transition smoothly. The trick is getting the rotation Lambda function right.
 
 This guide walks through setting up automatic rotation for RDS databases (the most common case) and building custom rotation functions for other types of secrets.
 
@@ -21,7 +21,7 @@ Secrets Manager rotation follows a four-step process, implemented by a Lambda fu
 3. **testSecret** - Verifies the new credentials work
 4. **finishSecret** - Marks the new version as current
 
-During rotation, Secrets Manager maintains two versions: `AWSCURRENT` (the active credentials) and `AWSPENDING` (the new credentials being validated). Applications using `AWSCURRENT` keep working throughout the rotation.
+During rotation, Secrets Manager uses staging labels to track versions: `AWSCURRENT` (the active credentials) and `AWSPENDING` (the new credentials being validated). After a successful rotation, Secrets Manager also labels the previous version as `AWSPREVIOUS`. Applications using `AWSCURRENT` keep working throughout the validation phase.
 
 ```mermaid
 sequenceDiagram
@@ -61,7 +61,7 @@ aws secretsmanager create-secret \
   }'
 ```
 
-Now enable rotation. Secrets Manager can automatically create the rotation Lambda for supported database engines.
+Now enable rotation with the ARN of the rotation Lambda. Secrets Manager can create hosted rotation Lambda functions for supported database engines through the console or CloudFormation, but the CLI command below attaches an existing function.
 
 ```bash
 # Enable rotation with a 30-day schedule
@@ -82,10 +82,15 @@ The easiest way to get the rotation Lambda is through the Serverless Application
 aws serverlessrepo create-cloud-formation-change-set \
   --application-id arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser \
   --stack-name secrets-rotation-postgres \
+  --capabilities CAPABILITY_IAM CAPABILITY_RESOURCE_POLICY \
   --parameter-overrides '[
     {"Name": "endpoint", "Value": "https://secretsmanager.us-east-1.amazonaws.com"},
     {"Name": "functionName", "Value": "SecretsManagerPostgresRotation"}
   ]'
+
+# Execute the returned change set ARN to create the Lambda application
+aws cloudformation execute-change-set \
+  --change-set-name "arn:aws:cloudformation:us-east-1:123456789012:changeSet/CHANGE_SET_NAME/CHANGE_SET_ID"
 ```
 
 ## Terraform Configuration
@@ -157,7 +162,7 @@ resource "aws_secretsmanager_secret_rotation" "db_master" {
 }
 ```
 
-The Lambda needs to be in the same VPC as the database. Make sure the security group allows outbound connections to both the database and the Secrets Manager VPC endpoint.
+The Lambda needs network access to both the database and Secrets Manager. For private RDS databases, that usually means placing the function in the database VPC and allowing traffic between the Lambda security group, the database security group, and a Secrets Manager VPC endpoint or other route to the regional Secrets Manager endpoint.
 
 ## Single-User vs Multi-User Rotation
 
@@ -173,12 +178,12 @@ For multi-user rotation, you need a separate "master" secret that has permission
 # Create the master secret (with admin privileges)
 aws secretsmanager create-secret \
   --name "production/database/master" \
-  --secret-string '{"username":"admin","password":"master-pass",...}'
+  --secret-string '{"username":"admin","password":"master-pass","engine":"postgres","host":"production-db.cluster-abc123.us-east-1.rds.amazonaws.com","port":5432,"dbname":"myapp"}'
 
 # Create the application secret that references the master
 aws secretsmanager create-secret \
   --name "production/database/app-user" \
-  --secret-string '{"username":"app_user","password":"app-pass",...,"masterarn":"arn:aws:secretsmanager:us-east-1:123456789012:secret:production/database/master-abc123"}'
+  --secret-string '{"username":"app_user","password":"app-pass","engine":"postgres","host":"production-db.cluster-abc123.us-east-1.rds.amazonaws.com","port":5432,"dbname":"myapp","masterarn":"arn:aws:secretsmanager:us-east-1:123456789012:secret:production/database/master-abc123"}'
 ```
 
 ## Custom Rotation Functions
