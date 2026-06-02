@@ -14,7 +14,7 @@ Tag policies in AWS Organizations solve this by defining standardized tag keys a
 
 ## Enabling Tag Policies
 
-First, enable tag policies in your organization:
+First, enable tag policies in your organization with all features enabled:
 
 ```bash
 # Get the root ID
@@ -70,7 +70,7 @@ Let's break down what each section does:
 
 - **tag_key with @@assign** - Defines the exact casing of the tag key. Even if someone types "environment" or "ENVIRONMENT", the policy says it should be "Environment".
 - **tag_value with @@assign** - Lists the only allowed values. Anything else gets flagged or blocked.
-- **enforced_for** - Which resource types must comply. Without this, the policy only reports non-compliance but doesn't prevent it.
+- **enforced_for** - Which resource types should block non-compliant tagging operations. Without this, the policy reports non-compliance but doesn't prevent it.
 
 ## Comprehensive Tag Policy
 
@@ -179,7 +179,7 @@ You can also attach different policies to different OUs. For example, production
 
 ```bash
 # Stricter policy for production OU - more resource types enforced
-aws organizations create-policy \
+PROD_TAG_POLICY_ID=$(aws organizations create-policy \
     --name "ProductionTagPolicy" \
     --description "Stricter tagging for production accounts" \
     --type "TAG_POLICY" \
@@ -210,7 +210,9 @@ aws organizations create-policy \
                 }
             }
         }
-    }'
+    }' \
+    --query 'Policy.PolicySummary.Id' \
+    --output text)
 
 # Attach to the Production OU
 aws organizations attach-policy \
@@ -218,7 +220,7 @@ aws organizations attach-policy \
     --target-id "$PROD_OU_ID"
 ```
 
-When multiple tag policies apply (from root and OU), they merge. The OU-level policy can add values or resource types but can't remove ones defined by the parent.
+When multiple tag policies apply (from root and OU), they merge into an effective tag policy. With the default inheritance settings, child policies can use operators such as `@@assign`, `@@append`, or `@@remove`; the production OU example uses `@@assign` to replace the inherited values and resource types with stricter ones.
 
 ## Checking Compliance
 
@@ -231,13 +233,14 @@ aws resourcegroupstaggingapi get-compliance-summary \
 
 # Get detailed compliance for a specific tag key
 aws resourcegroupstaggingapi get-compliance-summary \
-    --tag-key-filters Key=Environment \
+    --tag-key-filters Environment \
     --region us-east-1
 
 # Get non-compliant resources
 aws resourcegroupstaggingapi get-resources \
     --tag-filters Key=Environment \
-    --compliance-status NON_COMPLIANT \
+    --include-compliance-details \
+    --exclude-compliant-resources \
     --region us-east-1
 ```
 
@@ -246,14 +249,13 @@ aws resourcegroupstaggingapi get-resources \
 Even with tag policies, you might have resources created before the policy that need remediation:
 
 ```bash
-# Find all EC2 instances missing the Environment tag
-aws resourcegroupstaggingapi get-resources \
-    --resource-type-filters ec2:instance \
-    --region us-east-1 \
-    --query "ResourceTagMappingList[?!contains(Tags[*].Key, 'Environment')]"
+# Find EC2 instances in us-east-1 missing the Environment tag
+# Requires an AWS Resource Explorer view that includes tag properties
+aws resource-explorer-2 search \
+    --query-string "region:us-east-1 resourcetype:ec2:instance -tag.key:Environment"
 ```
 
-Here's a Python script that reports on tagging compliance across your account:
+Here's a Python script that reports missing required tags for resources returned by the Resource Groups Tagging API:
 
 ```python
 # Script to audit tag compliance and generate a report
