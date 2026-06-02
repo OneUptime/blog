@@ -18,7 +18,7 @@ Amazon Braket is a fully managed quantum computing service that lets you:
 
 - Design quantum algorithms using a Python SDK
 - Run them on simulators (for testing and debugging)
-- Execute them on actual quantum hardware from providers like IonQ, Rigetti, and QuEra
+- Execute them on actual quantum hardware from providers like AQT, IonQ, IQM, QuEra, and Rigetti
 - Analyze results using Jupyter notebooks in a managed environment
 
 The name "Braket" comes from the Dirac bra-ket notation used in quantum mechanics (the angle brackets in quantum state notation like |0> and <1|).
@@ -31,22 +31,22 @@ graph TD
     B --> C[Local Simulator]
     B --> D[On-Demand Simulator - SV1, DM1, TN1]
     B --> E[Quantum Hardware]
-    E --> F[IonQ - Trapped Ion]
-    E --> G[Rigetti - Superconducting]
-    E --> H[QuEra - Neutral Atom]
+    E --> F[IonQ and AQT - Trapped Ion]
+    E --> G[Rigetti and IQM - Superconducting]
+    E --> H[QuEra - Neutral Atom AHS]
     D --> I[S3 Bucket - Results]
     E --> I
     I --> J[Analysis in Jupyter Notebook]
 ```
 
-You write your circuits once using the Braket SDK, then target them to any available device - simulators or real quantum computers. Results always land in an S3 bucket you specify.
+For gate-based devices, you write your circuits once using the Braket SDK, then target them to compatible simulators or real quantum computers. Results from managed simulators and QPUs land in an S3 bucket you specify.
 
 ## Prerequisites
 
 You will need:
 
 - An AWS account
-- Python 3.9+ installed locally
+- Python 3.11+ installed locally
 - Basic understanding of quantum computing concepts (qubits, gates, measurement)
 - An S3 bucket to store results
 
@@ -89,7 +89,7 @@ bell.cnot(0, 1)
 print(bell)
 ```
 
-This prints the circuit diagram:
+This prints a circuit diagram similar to:
 
 ```text
 T  : |0|1|
@@ -131,7 +131,7 @@ AWS offers three managed simulators, each optimized for different use cases:
 
 - **SV1** - State vector simulator. Handles up to 34 qubits. Best for general-purpose circuit simulation.
 - **DM1** - Density matrix simulator. Up to 17 qubits. Supports noise modeling.
-- **TN1** - Tensor network simulator. Handles certain circuits with many more qubits. Best for sparse or structured circuits.
+- **TN1** - Tensor network simulator. Handles certain circuits with up to 50 qubits. Best for sparse or structured circuits.
 
 ```python
 # Run on the SV1 managed simulator
@@ -157,7 +157,7 @@ This is where it gets exciting. You can send your circuits to actual quantum pro
 
 ```python
 # Run on IonQ's trapped-ion quantum computer
-ionq_device = AwsDevice("arn:aws:braket:us-east-1::device/qpu/ionq/Aria-1")
+ionq_device = AwsDevice("arn:aws:braket:us-east-1::device/qpu/ionq/Forte-1")
 
 # Check device availability first
 print(f"Device status: {ionq_device.status}")
@@ -182,7 +182,7 @@ Let us try something more practical - a Grover's search algorithm that finds a m
 # Grover's algorithm for searching 2 qubits (4 items)
 # Finds the marked state |11>
 from braket.circuits import Circuit
-import numpy as np
+from braket.devices import LocalSimulator
 
 grover = Circuit()
 
@@ -249,7 +249,7 @@ The notebook comes with a collection of tutorials covering everything from basic
 Quantum computing on Braket has specific pricing:
 
 - **Simulators** - Charged per minute of simulation time. SV1 costs $0.075/minute.
-- **Quantum hardware** - Per-task fee plus per-shot fee. IonQ charges $0.30/task + $0.01/shot. Rigetti charges $0.30/task + $0.00035/shot.
+- **Quantum hardware** - Per-task fee plus per-shot fee. IonQ Forte charges $0.30/task + $0.08/shot. Rigetti Cepheus charges $0.30/task + $0.000425/shot.
 - **Notebooks** - Standard SageMaker notebook instance pricing.
 
 A practical budget approach:
@@ -257,12 +257,12 @@ A practical budget approach:
 ```python
 # Always check costs before submitting to hardware
 shots = 1000
-per_shot_cost = 0.01  # IonQ pricing
+per_shot_cost = 0.08  # IonQ Forte pricing
 per_task_cost = 0.30
 
 total_cost = per_task_cost + (shots * per_shot_cost)
 print(f"Estimated cost for this task: ${total_cost:.2f}")
-# Output: Estimated cost for this task: $10.30
+# Output: Estimated cost for this task: $80.30
 ```
 
 Develop and debug on local simulators (free), validate on managed simulators (cheap), and only go to hardware when you need real quantum results.
@@ -295,11 +295,11 @@ You can also monitor Braket usage through CloudWatch metrics. For broader infras
 
 2. **Keep circuits shallow.** Current quantum hardware is noisy. Fewer gates means less accumulated error. Aim for the minimum circuit depth that solves your problem.
 
-3. **Use error mitigation.** Techniques like zero-noise extrapolation and probabilistic error cancellation can improve results on real hardware.
+3. **Use error mitigation.** On supported IonQ devices, techniques like debiasing and sharpening can improve results on real hardware.
 
 4. **Pick the right hardware.** IonQ's trapped-ion machines have high gate fidelity but slower execution. Rigetti's superconducting processors are faster but noisier. Match the hardware to your circuit needs.
 
-5. **Set budget alerts.** Create a CloudWatch billing alarm specifically for Braket charges so you do not get surprised.
+5. **Set budget alerts.** Use AWS Budgets or billing alarms for Braket charges so you do not get surprised.
 
 ## Wrapping Up
 
