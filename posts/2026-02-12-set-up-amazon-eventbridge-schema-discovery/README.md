@@ -14,7 +14,7 @@ In this guide, you will learn how to enable schema discovery, explore discovered
 
 ## What Is EventBridge Schema Discovery?
 
-EventBridge Schema Discovery is a feature that watches events flowing through an EventBridge event bus and automatically infers the JSON schema for each distinct event type. Once discovered, these schemas are stored in the EventBridge Schema Registry, where you can browse them, download code bindings, and track schema versions over time.
+EventBridge Schema Discovery is a feature that watches events flowing through an EventBridge event bus and automatically infers the schema for each distinct event type. Once discovered, these schemas are stored in the EventBridge Schema Registry, where you can browse them, download code bindings, and track schema versions over time.
 
 This is particularly useful when you are building microservices that communicate via events. Instead of maintaining schema documentation manually, you let EventBridge figure out the structure from real traffic.
 
@@ -36,19 +36,20 @@ The following command enables schema discovery on the default event bus:
 ```bash
 # Enable schema discovery on the default event bus
 
-aws schemas put-discoverer \
+aws schemas create-discoverer \
   --source-arn arn:aws:events:us-east-1:123456789012:event-bus/default \
   --description "Discover schemas on the default event bus" \
-  --cross-account false
+  --no-cross-account
 ```
 
 If you are using a custom event bus, replace the ARN accordingly:
 
 ```bash
 # Enable schema discovery on a custom event bus
-aws schemas put-discoverer \
+aws schemas create-discoverer \
   --source-arn arn:aws:events:us-east-1:123456789012:event-bus/my-custom-bus \
-  --description "Discover schemas on my custom bus"
+  --description "Discover schemas on my custom bus" \
+  --no-cross-account
 ```
 
 The response will include a `DiscovererId` that you can use to manage the discoverer later.
@@ -90,7 +91,7 @@ aws schemas describe-schema \
   --schema-name "com.myapp.orders@OrderCreated"
 ```
 
-The schema name follows the pattern `source@detail-type`. The output includes the full JSON Schema definition that EventBridge inferred from your events.
+The schema name follows the pattern `source@detail-type`. The output includes the full schema definition that EventBridge inferred from your events.
 
 ## Step 4: Download Code Bindings
 
@@ -99,6 +100,12 @@ One of the most practical features of schema discovery is the ability to generat
 ```bash
 # Generate code bindings for a discovered schema
 aws schemas put-code-binding \
+  --registry-name "discovered-schemas" \
+  --schema-name "com.myapp.orders@OrderCreated" \
+  --language "Python36"
+
+# Check that code binding generation has completed
+aws schemas describe-code-binding \
   --registry-name "discovered-schemas" \
   --schema-name "com.myapp.orders@OrderCreated" \
   --language "Python36"
@@ -137,7 +144,7 @@ Resources:
 
 Outputs:
   DiscovererId:
-    Value: !Ref SchemaDiscoverer
+    Value: !GetAtt SchemaDiscoverer.DiscovererId
     Description: The ID of the schema discoverer
 ```
 
@@ -202,11 +209,11 @@ aws schemas start-discoverer --discoverer-id "d-1234567890"
 If schemas are not appearing after enabling discovery, check the following:
 
 - Verify the discoverer is in the "STARTED" state using `aws schemas describe-discoverer`
-- Ensure events are actually flowing through the bus (check CloudWatch metrics for `EventsMatched`)
+- Ensure events are actually flowing through the bus (check CloudWatch metrics for `MatchedEvents`)
 - Confirm your IAM role has the `schemas:*` permissions needed
 - Wait at least 5-10 minutes after sending events before checking for schemas
 
-If you are working with monitoring event-driven architectures, you might also want to check out how to [set up observability for your microservices](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-eventbridge-schema-discovery/view) to keep track of event flow health.
+If you are working with monitoring event-driven architectures, you might also want to check out how to [set up observability for your microservices](https://oneuptime.com/blog/post/2026-01-24-implement-observability-microservices/view) to keep track of event flow health.
 
 ## Wrapping Up
 
