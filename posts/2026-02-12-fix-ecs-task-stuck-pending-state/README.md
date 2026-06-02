@@ -17,12 +17,10 @@ Let's walk through the reasons this happens and how to get your tasks running.
 When a task is in PENDING, ECS is trying to do one or more of these things:
 
 1. Find a container instance with enough resources (EC2 launch type)
-2. Provision compute capacity (Fargate)
-3. Pull the container image
-4. Set up networking (ENI attachment for awsvpc mode)
-5. Fetch secrets from Secrets Manager or SSM
+2. Wait for the container agent to take action
+3. Wait for available resources for the task
 
-The task stays in PENDING until all of these succeed or ECS gives up.
+For tasks that use `awsvpc` network mode, ENI provisioning happens in the `PROVISIONING` state before PENDING. Image pulls, container creation, task networking setup, load balancer registration, service discovery, and secret retrieval happen after placement as the task moves toward RUNNING. Failures in any of those steps can still prevent the task from reaching RUNNING, so check both the task details and service events.
 
 ```bash
 # Check the task's current status and reason
@@ -118,9 +116,9 @@ aws ecs describe-services \
     --query 'services[0].events[:5]'
 ```
 
-If you see messages like "service was unable to place a task because no container instance met all of its requirements," try:
+If you see messages like "service was unable to place a task. Reason: Capacity is unavailable at this time. Please try again later or in a different availability zone," try:
 
-1. Use Fargate Spot as a fallback capacity provider
+1. Use Fargate Spot for interruption-tolerant workloads
 2. Spread across multiple AZs
 3. Use `FARGATE` and `FARGATE_SPOT` capacity providers together
 
@@ -142,7 +140,7 @@ If you see messages like "service was unable to place a task because no containe
 
 ## Subnet and Security Group Issues
 
-Tasks in `awsvpc` mode need valid subnets and security groups. If the specified subnet doesn't exist, has no available IP addresses, or the security group is invalid, the task stays in PENDING.
+Tasks in `awsvpc` mode need valid subnets and security groups. If the specified subnet doesn't exist, has no available IP addresses, or the security group is invalid, the task can fail before it reaches RUNNING.
 
 ```bash
 # Check available IPs in your subnet
@@ -155,7 +153,7 @@ If available IPs is very low or zero, you need a larger subnet or need to clean 
 
 ## Secrets and Parameter Store Access
 
-If your task definition references secrets from AWS Secrets Manager or SSM Parameter Store, and the task execution role can't access them, the task gets stuck in PENDING.
+If your task definition references secrets from AWS Secrets Manager or SSM Parameter Store, and the task execution role can't access them, the task can fail before it reaches RUNNING.
 
 ```json
 {
@@ -187,7 +185,7 @@ aws iam list-attached-role-policies \
 
 ## Image Pull Taking Too Long
 
-Large container images can take minutes to pull, especially on small instances with limited bandwidth. During this time, the task stays in PENDING.
+Large container images can take minutes to pull, especially on small instances with limited bandwidth. During this time, the task has been placed but won't reach RUNNING until the image pull completes.
 
 ```bash
 # Check image size
