@@ -261,11 +261,11 @@ resource "aws_route53_record" "app_default" {
 
 ## Health Checks and Failover
 
-Add health checks to geolocation records so that unhealthy endpoints get skipped. When a geolocation record fails its health check, Route 53 tries the next most specific matching record. If that also fails, it falls through to the default.
+Add health checks to geolocation records so that unhealthy endpoints get skipped. When a geolocation record fails its health check, Route 53 looks for a healthy record for the larger, associated geographic region. If that also fails, it falls through to the default.
 
 For example, if the Germany-specific record is unhealthy, a German user falls back to the Europe continent record. If that's also unhealthy, they fall back to the default.
 
-This gives you a natural failover chain: Country -> Continent -> Default.
+This gives you a natural failover chain: Country -> Continent -> Default. If all applicable records are unhealthy, Route 53 still answers with the smallest geographic match.
 
 ## Geolocation vs Latency-Based Routing
 
@@ -303,7 +303,7 @@ aws route53 test-dns-answer \
 
 ## Limitations
 
-Geolocation routing is based on the DNS resolver's IP, not the end user's IP. If a user in Europe uses a VPN that exits in the US, they'll get the US endpoint. EDNS Client Subnet helps mitigate this for major public resolvers like Google DNS and Cloudflare.
+Geolocation routing is based on the DNS resolver's IP unless the resolver sends EDNS Client Subnet, in which case Route 53 can use the truncated client IP address. If a user in Europe uses a VPN that exits in the US, they'll get the US endpoint. EDNS Client Subnet helps mitigate resolver-location errors for resolvers that support it, such as Google Public DNS. Cloudflare's 1.1.1.1 resolver does not send EDNS Client Subnet.
 
 Also, the GeoIP database isn't perfect. Edge cases exist, especially for mobile users and corporate VPNs. Design your system so that getting the "wrong" endpoint degrades performance but doesn't break functionality.
 
