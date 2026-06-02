@@ -16,7 +16,7 @@ AWS Systems Manager Automation fixes this by letting you turn those runbooks int
 
 Systems Manager Automation is a feature within AWS Systems Manager that lets you define multi-step workflows called Automation documents (sometimes called SSM documents of type "Automation"). Each step in the document can perform an action - running a script on an instance, calling an AWS API, waiting for approval, branching based on conditions, and more.
 
-Think of it as a lightweight orchestration engine built right into your AWS account. You don't need to manage any servers or install any agents beyond the SSM Agent that's already on most modern AMIs.
+Think of it as a lightweight orchestration engine built right into your AWS account. You don't need to manage any servers, and SSM Agent is already preinstalled on many AWS-provided AMIs.
 
 ## Why Automation Runbooks Beat Manual Procedures
 
@@ -110,7 +110,7 @@ This step definition pauses execution until someone approves:
   - name: ApproveTermination
     action: 'aws:approve'
     inputs:
-      NotificationArn: 'arn:aws:sns:us-east-1:123456789012:ops-approvals'
+      NotificationArn: 'arn:aws:sns:us-east-1:123456789012:AutomationOpsApprovals'
       Message: 'Please approve termination of instance {{ InstanceId }}'
       MinRequiredApprovals: 1
       Approvers:
@@ -204,15 +204,14 @@ You can list them with:
 ```bash
 # List all AWS-provided Automation documents
 aws ssm list-documents \
-  --filters "Key=Owner,Values=Amazon" \
-  --filters "Key=DocumentType,Values=Automation" \
+  --filters "Key=Owner,Values=Amazon" "Key=DocumentType,Values=Automation" \
   --query "DocumentIdentifiers[].Name" \
   --output table
 ```
 
 ## Setting Up IAM Permissions
 
-Automation needs an IAM role to perform actions on your behalf. Here's a trust policy for the role:
+Automation can use an IAM role to perform actions on your behalf. The example document above exposes that role as the `AutomationAssumeRole` parameter. Here's a trust policy for the role:
 
 ```json
 {
