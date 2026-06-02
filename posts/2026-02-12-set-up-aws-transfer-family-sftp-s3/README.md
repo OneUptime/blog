@@ -58,6 +58,7 @@ aws iam put-role-policy \
       "Action": [
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
+        "logs:DescribeLogStreams",
         "logs:PutLogEvents"
       ],
       "Resource": "arn:aws:logs:*:*:log-group:/aws/transfer/*"
@@ -65,7 +66,7 @@ aws iam put-role-policy \
   }'
 ```
 
-The user role (scoped to specific S3 paths):
+The base user role:
 
 ```bash
 # Create a role that SFTP users will assume
@@ -89,7 +90,10 @@ aws iam put-role-policy \
     "Statement": [
       {
         "Effect": "Allow",
-        "Action": ["s3:ListBucket"],
+        "Action": [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ],
         "Resource": "arn:aws:s3:::sftp-files-bucket"
       },
       {
@@ -98,6 +102,7 @@ aws iam put-role-policy \
           "s3:PutObject",
           "s3:GetObject",
           "s3:DeleteObject",
+          "s3:DeleteObjectVersion",
           "s3:GetObjectVersion"
         ],
         "Resource": "arn:aws:s3:::sftp-files-bucket/*"
@@ -177,6 +182,35 @@ aws transfer create-user \
   --user-name "partner-acme" \
   --role "arn:aws:iam::123456789012:role/TransferFamilyUserRole" \
   --home-directory "/sftp-files-bucket/partners/acme" \
+  --policy '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": ["s3:ListBucket"],
+        "Resource": "arn:aws:s3:::sftp-files-bucket",
+        "Condition": {
+          "StringLike": {
+            "s3:prefix": [
+              "partners/acme",
+              "partners/acme/*"
+            ]
+          }
+        }
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion",
+          "s3:GetObjectVersion"
+        ],
+        "Resource": "arn:aws:s3:::sftp-files-bucket/partners/acme/*"
+      }
+    ]
+  }' \
   --ssh-public-key-body "$PUB_KEY" \
   --home-directory-type PATH
 ```
@@ -190,6 +224,7 @@ aws transfer create-user \
   --user-name "vendor-globex" \
   --role "arn:aws:iam::123456789012:role/TransferFamilyUserRole" \
   --home-directory-type LOGICAL \
+  --ssh-public-key-body "$PUB_KEY" \
   --home-directory-mappings '[
     {"Entry": "/", "Target": "/sftp-files-bucket/vendors/globex"},
     {"Entry": "/shared", "Target": "/sftp-files-bucket/shared-resources"}
@@ -201,20 +236,14 @@ With logical mappings, the user sees a root directory and a `/shared` folder wit
 ## Step 5: Test the Connection
 
 ```bash
-# Get the server endpoint
-ENDPOINT=$(aws transfer describe-server \
-  --server-id s-0123456789abcdef0 \
-  --query 'Server.EndpointDetails.VpcEndpointId' \
-  --output text)
-
-# For public endpoints, use the auto-generated hostname
-aws transfer describe-server \
-  --server-id s-0123456789abcdef0 \
-  --query 'Server.Endpoint' \
-  --output text
+# For public IPv4 endpoints, use the auto-generated hostname
+SERVER_ID=s-0123456789abcdef0
+AWS_REGION=us-east-1
+SERVER_HOST="${SERVER_ID}.server.transfer.${AWS_REGION}.amazonaws.com"
+printf '%s\n' "$SERVER_HOST"
 
 # Connect via SFTP
-sftp -i sftp_user1_key partner-acme@s-0123456789abcdef0.server.transfer.us-east-1.amazonaws.com
+sftp -i sftp_user1_key "partner-acme@${SERVER_HOST}"
 
 # Once connected, test file operations
 # sftp> pwd
@@ -228,11 +257,10 @@ sftp -i sftp_user1_key partner-acme@s-0123456789abcdef0.server.transfer.us-east-
 The auto-generated Transfer Family hostname is long and not exactly memorable. Set up a custom domain using Route 53:
 
 ```bash
-# Get the server hostname
-SERVER_HOST=$(aws transfer describe-server \
-  --server-id s-0123456789abcdef0 \
-  --query 'Server.Endpoint' \
-  --output text)
+# Set the server hostname
+SERVER_ID=s-0123456789abcdef0
+AWS_REGION=us-east-1
+SERVER_HOST="${SERVER_ID}.server.transfer.${AWS_REGION}.amazonaws.com"
 
 # Create a CNAME record in Route 53
 aws route53 change-resource-record-sets \
@@ -257,6 +285,15 @@ Now users can connect with `sftp partner-acme@sftp.example.com`.
 Get notified when files are uploaded - useful for triggering downstream processing:
 
 ```bash
+# Allow S3 to invoke the Lambda function
+aws lambda add-permission \
+  --function-name process-sftp-upload \
+  --statement-id s3-sftp-files-bucket \
+  --action lambda:InvokeFunction \
+  --principal s3.amazonaws.com \
+  --source-arn arn:aws:s3:::sftp-files-bucket \
+  --source-account 123456789012
+
 # Set up S3 event notifications to trigger a Lambda function
 aws s3api put-bucket-notification-configuration \
   --bucket sftp-files-bucket \
@@ -278,17 +315,17 @@ aws s3api put-bucket-notification-configuration \
 
 ## Monitoring and Security
 
-Transfer Family logs all SFTP activity to CloudWatch. Enable structured logging for easy analysis:
+Transfer Family can log SFTP activity to CloudWatch. Use CloudWatch Logs to inspect user sessions, or query workflow executions if you've attached a managed workflow:
 
 ```bash
-# List user sessions
+# List in-progress workflow executions
 aws transfer list-executions \
   --workflow-id w-0123456789abcdef0
 
 # Check server status
 aws transfer describe-server \
   --server-id s-0123456789abcdef0 \
-  --query 'Server.{State:State,UserCount:UserCount,Endpoint:Endpoint}'
+  --query 'Server.{State:State,UserCount:UserCount,EndpointType:EndpointType}'
 ```
 
 Security best practices:
