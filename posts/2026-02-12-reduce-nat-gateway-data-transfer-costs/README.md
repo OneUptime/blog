@@ -8,7 +8,7 @@ Description: Practical strategies to reduce AWS NAT Gateway data transfer costs 
 
 ---
 
-NAT Gateway costs are one of the sneakiest line items on an AWS bill. The per-hour charge of $0.045 seems harmless, but the data processing charge of $0.045 per GB is where things get out of hand. A modest 1TB of monthly traffic through a NAT Gateway costs $45 in processing alone, on top of the $32 monthly base charge. Scale that across multiple availability zones and heavy workloads, and you're looking at thousands of dollars.
+NAT Gateway costs are one of the sneakiest line items on an AWS bill. In us-east-1 and many other regions, the per-hour charge of $0.045 seems harmless, but the data processing charge of $0.045 per GB is where things get out of hand. A modest 1TB of monthly traffic through a NAT Gateway costs $45 in processing alone, on top of the $32 monthly base charge. Scale that across multiple availability zones and heavy workloads, and you're looking at thousands of dollars.
 
 The frustrating part is that much of this traffic doesn't need to go through the NAT Gateway at all. Let's fix that.
 
@@ -16,8 +16,8 @@ The frustrating part is that much of this traffic doesn't need to go through the
 
 Before optimizing, you need to understand the traffic flowing through your NAT Gateway. There are two charges:
 
-- **Hourly charge**: $0.045/hour per NAT Gateway (about $32/month). Not much you can do about this per gateway, but you can reduce the number of gateways.
-- **Data processing charge**: $0.045/GB for all data processed. This is where the big money goes.
+- **Hourly charge**: $0.045/hour per NAT Gateway in us-east-1 and many other regions (about $32/month). Not much you can do about this per gateway, but you can reduce the number of gateways.
+- **Data processing charge**: $0.045/GB for all data processed in us-east-1 and many other regions. This is where the big money goes.
 
 The data processing charge applies to all traffic passing through the NAT Gateway, regardless of direction. Every byte going from your private subnets to the internet (and back) gets charged.
 
@@ -49,7 +49,7 @@ aws logs start-query \
   --start-time $(date -d '24 hours ago' +%s) \
   --end-time $(date +%s) \
   --query-string '
-    filter interfaceId = "eni-nat-gateway-id"
+    filter interfaceId = "eni-0a1b2c3d4e5f67890"
     | stats sum(bytes) as totalBytes by dstAddr
     | sort totalBytes desc
     | limit 20
@@ -80,7 +80,7 @@ aws ec2 create-vpc-endpoint \
   --route-table-ids rtb-0a1b2c3d4e5f67890
 ```
 
-**Interface Endpoints** ($0.01/hour + $0.01/GB) - Available for most other AWS services. Even though they have a cost, it's less than NAT Gateway processing for high-volume services:
+**Interface Endpoints** (starting at $0.01/hour per endpoint ENI + $0.01/GB) - Available for most other AWS services. Even though they have a cost, it's less than NAT Gateway processing for high-volume services:
 
 ```bash
 # Create an Interface Endpoint for CloudWatch Logs
@@ -89,7 +89,8 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.us-east-1.logs \
   --vpc-endpoint-type Interface \
   --subnet-ids subnet-0a1b2c3d subnet-0e5f67890 \
-  --security-group-ids sg-0a1b2c3d4e5f67890
+  --security-group-ids sg-0a1b2c3d4e5f67890 \
+  --private-dns-enabled
 
 # Create Interface Endpoints for other common high-traffic services
 for service in ecr.api ecr.dkr monitoring secretsmanager sqs sns; do
@@ -98,12 +99,13 @@ for service in ecr.api ecr.dkr monitoring secretsmanager sqs sns; do
     --service-name com.amazonaws.us-east-1.$service \
     --vpc-endpoint-type Interface \
     --subnet-ids subnet-0a1b2c3d subnet-0e5f67890 \
-    --security-group-ids sg-0a1b2c3d4e5f67890
+    --security-group-ids sg-0a1b2c3d4e5f67890 \
+    --private-dns-enabled
   echo "Created endpoint for $service"
 done
 ```
 
-For ECS workloads, the ECR endpoints are especially impactful. Every container image pull goes through the NAT Gateway without them, and container images can be hundreds of megabytes each.
+For ECS workloads, the ECR endpoints are especially impactful. Every container image pull goes through the NAT Gateway without them, and container images can be hundreds of megabytes each. You also need the S3 gateway endpoint because ECR stores image layers in S3.
 
 ## Consolidate NAT Gateways
 
@@ -167,14 +169,16 @@ aws ec2 create-route \
 You'll also need to configure the instance itself for NAT:
 
 ```bash
-# Run on the NAT instance to enable IP forwarding
-sudo sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward = 1" | sudo tee -a /etc/sysctl.conf
+# Run on the NAT instance to enable IP forwarding and iptables
+sudo yum install iptables-services -y
+echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/custom-ip-forwarding.conf
+sudo sysctl -p /etc/sysctl.d/custom-ip-forwarding.conf
 
 # Set up iptables NAT rules
 sudo iptables -t nat -A POSTROUTING -o ens5 -j MASQUERADE
-sudo iptables -A FORWARD -i ens5 -o ens5 -m state --state RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -A FORWARD -i ens5 -o ens5 -j ACCEPT
+sudo systemctl enable iptables
+sudo systemctl start iptables
+sudo service iptables save
 ```
 
 ## Cache Package Downloads
@@ -191,19 +195,22 @@ Options include:
 # Set up ECR pull-through cache for Docker Hub
 aws ecr create-pull-through-cache-rule \
   --ecr-repository-prefix docker-hub \
-  --upstream-registry-url registry-1.docker.io
+  --upstream-registry-url registry-1.docker.io \
+  --credential-arn arn:aws:secretsmanager:us-east-1:123456789012:secret:ecr-pullthroughcache/dockerhub
 
 # Now pull images through ECR instead of Docker Hub
 # Old: docker pull nginx:latest
 # New: docker pull 123456789012.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/nginx:latest
 ```
 
+The first pull may still need internet access so ECR can populate the cache from the upstream registry. Subsequent cached pulls are served from your private ECR registry.
+
 ## Monitor NAT Gateway Costs
 
 Set up CloudWatch alarms to catch unexpected traffic spikes:
 
 ```bash
-# Alert when NAT Gateway processes more than 100GB in a day
+# Alert when NAT Gateway sends more than 100GB to destinations in a day
 aws cloudwatch put-metric-alarm \
   --alarm-name "NAT-Gateway-High-Traffic" \
   --metric-name BytesOutToDestination \
