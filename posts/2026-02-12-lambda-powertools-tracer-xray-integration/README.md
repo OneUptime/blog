@@ -55,7 +55,7 @@ from aws_lambda_powertools.utilities.typing import LambdaContext
 logger = Logger(service="order-service")
 tracer = Tracer(service="order-service")
 
-# The Tracer automatically patches boto3, requests, and other libraries
+# The Tracer automatically patches supported libraries such as boto3 and requests
 # so all AWS SDK calls and HTTP requests are traced
 
 @tracer.capture_lambda_handler
@@ -79,6 +79,7 @@ Decorate individual methods to create subsegments in your trace. This shows exac
 
 ```python
 import boto3
+import json
 from aws_lambda_powertools import Tracer
 
 tracer = Tracer()
@@ -117,7 +118,7 @@ def calculate_total(order: dict) -> float:
         total -= discount
         tracer.put_annotation(key="DiscountApplied", value=True)
 
-    tracer.put_annotation(key="OrderTotal", value=str(round(total, 2)))
+    tracer.put_annotation(key="OrderTotal", value=round(total, 2))
     return round(total, 2)
 
 
@@ -153,7 +154,7 @@ def process_payment(payment_id: str, amount: float, method: str):
     # Use for values you want to filter traces by
     tracer.put_annotation(key="PaymentId", value=payment_id)
     tracer.put_annotation(key="PaymentMethod", value=method)
-    tracer.put_annotation(key="PaymentAmount", value=str(amount))
+    tracer.put_annotation(key="PaymentAmount", value=amount)
 
     # METADATA: Not indexed, but visible in trace details
     # Use for debugging data that you don't need to search by
@@ -169,7 +170,7 @@ def process_payment(payment_id: str, amount: float, method: str):
     )
 
     # Annotations let you search like:
-    # "annotation.PaymentMethod = 'credit_card' AND annotation.PaymentAmount > '100'"
+    # 'annotation[PaymentMethod] = "credit_card" AND annotation[PaymentAmount] > 100'
     # in the X-Ray console filter expression
 ```
 
@@ -189,7 +190,8 @@ sqs = boto3.client("sqs")
 def queue_fulfillment(order: dict):
     """Send to SQS - the message carries the trace header automatically."""
     # Tracer patches boto3, so the X-Ray trace header is
-    # automatically included in the SQS message attributes
+    # automatically sent to SQS and propagated via the AWSTraceHeader
+    # message system attribute
 
     sqs.send_message(
         QueueUrl="https://sqs.us-east-1.amazonaws.com/123456789012/fulfillment",
@@ -274,7 +276,7 @@ Once your traces are flowing, use filter expressions to find specific traces in 
 
 ```text
 # Find traces for a specific order
-annotation.OrderId = "ORD-12345"
+annotation[OrderId] = "ORD-12345"
 
 # Find slow traces (over 2 seconds)
 responsetime > 2
@@ -286,7 +288,7 @@ fault = true OR error = true
 service("order-service") AND responsetime > 1
 
 # Combine annotations with performance filters
-annotation.PaymentMethod = "credit_card" AND responsetime > 3
+annotation[PaymentMethod] = "credit_card" AND responsetime > 3
 
 # Find traces with specific HTTP status codes
 http.status = 500
