@@ -67,7 +67,7 @@ aws ec2 create-placement-group \
   --tag-specifications 'ResourceType=placement-group,Tags=[{Key=Name,Value=critical-db-spread},{Key=Service,Value=database}]'
 ```
 
-The `spread-level` can be `rack` (each instance on a different rack) or `host` (each instance on a different physical host). Rack-level gives you network and power isolation, which is what you typically want.
+The `spread-level` can be `rack` (each instance on a different rack) or, for AWS Outposts placement groups only, `host` (each instance on a different physical host). Rack-level gives you network and power isolation, which is what you typically want in AWS Regions.
 
 ## Launching Instances into a Spread Group
 
@@ -176,7 +176,7 @@ aws ec2 create-placement-group --group-name cache-spread --strategy spread
 
 ## Verifying Placement
 
-After launching instances, verify they're actually on separate hardware:
+After launching instances, verify that they are in the placement group and distributed across the AZs you expect. AWS does not expose rack IDs for rack-level spread placement groups; the spread guarantee comes from the placement group itself.
 
 ```bash
 # Check instance placement details
@@ -186,13 +186,13 @@ aws ec2 describe-instances \
     ID:InstanceId,
     Name:Tags[?Key==`Name`].Value|[0],
     AZ:Placement.AvailabilityZone,
-    HostId:Placement.HostId,
+    PlacementGroup:Placement.GroupName,
     State:State.Name
   }' \
   --output table
 ```
 
-Each instance should show a different HostId, confirming they're on separate physical hardware.
+Each instance should show the expected placement group name. For rack-level spread placement groups, AWS enforces the separate-rack placement but does not return the rack identifier in the instance metadata or `describe-instances` output.
 
 ## Monitoring Spread Group Health
 
