@@ -49,7 +49,7 @@ aws cloudwatch get-metric-statistics \
   --metric-name CDCLatencyTarget \
   --dimensions Name=ReplicationInstanceIdentifier,Value=my-replication-instance \
                Name=ReplicationTaskIdentifier,Value=my-task \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
   --statistics Average Maximum
@@ -69,13 +69,13 @@ A healthy replication task should show source and target throughput numbers that
 
 During the initial full load phase, watch these:
 
-**FullLoadThroughputRowsSource** - Rows per second being read from source during full load.
+**FullLoadThroughputRowsTarget** - Rows per second being written to the target during full load.
 
 **FullLoadThroughputBandwidthTarget** - Bandwidth being written to target during full load.
 
 ## Setting Up CloudWatch Alarms
 
-You should have alarms on at least CDC latency and error metrics. Here is a CloudFormation snippet for a latency alarm.
+You should have alarms on at least CDC latency and task status or log-derived errors. Here is a CloudFormation snippet for a latency alarm.
 
 ```yaml
 # CloudWatch alarm that triggers when CDC target latency exceeds 5 minutes
@@ -105,7 +105,7 @@ Setting the threshold at 300 seconds (5 minutes) with 2 evaluation periods means
 
 ## Enabling and Using Task Logs
 
-DMS can write detailed logs to CloudWatch Logs. You need to enable logging when creating or modifying a task.
+DMS can write detailed logs to CloudWatch Logs. You need to enable logging when creating or modifying a task. If you are modifying an existing task, stop the task before changing its settings.
 
 ```bash
 # Enable detailed logging on an existing replication task
@@ -180,10 +180,11 @@ aws dms describe-table-statistics \
 
 The output shows you exactly how many rows have been loaded, inserted, updated, and deleted for each table. Table states include:
 
-- `Table does not exist` - Not yet started
+- `Table does not exist` - DMS cannot find the table on the source endpoint
 - `Before load` - Queued for loading
 - `Full load` - Currently loading
-- `Table completed` - Full load done, CDC active
+- `Table completed` - Full load done
+- `Table cancelled` - Loading of the table was cancelled
 - `Table error` - Something went wrong
 
 ## Building a Monitoring Dashboard
