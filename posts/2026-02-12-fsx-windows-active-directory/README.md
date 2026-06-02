@@ -20,7 +20,7 @@ When FSx for Windows joins Active Directory, it:
 2. Registers DNS records so clients can find it by name
 3. Uses Kerberos authentication for SMB connections
 4. Evaluates NTFS permissions based on AD users and groups
-5. Supports Group Policy for consistent management
+5. Supports AD-based workflows, such as using Group Policy to map FSx shares for users
 
 Without AD, you can't create or access file shares. This is fundamental to how Windows file sharing works.
 
@@ -90,7 +90,7 @@ Your VPC needs DNS resolution enabled and the DHCP options set must point to the
 # Get the AD DNS IPs
 DNS_IPS=$(aws ds describe-directories \
   --directory-ids "$DIR_ID" \
-  --query "DirectoryDescriptions[0].DnsIpAddrs" \
+  --query "join(',', DirectoryDescriptions[0].DnsIpAddrs)" \
   --output text)
 
 echo "AD DNS IPs: $DNS_IPS"
@@ -135,6 +135,7 @@ On your domain controller, create a service account with specific permissions. Y
 # On the AD domain controller
 # Create an OU for FSx computer objects
 New-ADOrganizationalUnit -Name "FSx" -Path "DC=corp,DC=example,DC=com"
+New-ADOrganizationalUnit -Name "ServiceAccounts" -Path "DC=corp,DC=example,DC=com"
 
 # Create a service account for FSx
 New-ADUser -Name "fsx-service" `
@@ -146,27 +147,14 @@ New-ADUser -Name "fsx-service" `
   -CannotChangePassword $true `
   -Path "OU=ServiceAccounts,DC=corp,DC=example,DC=com"
 
-# Delegate permissions to join computers to the FSx OU
-$ou = "OU=FSx,DC=corp,DC=example,DC=com"
-$user = "CORP\fsx-service"
-
-# Grant permissions to create and delete computer objects
-dsacls $ou /G "${user}:CC;computer"
-dsacls $ou /G "${user}:DC;computer"
-dsacls $ou /G "${user}:LC"
-
-# Grant permissions to set specific properties on computer objects
-$props = @(
-    "servicePrincipalName",
-    "dNSHostName",
-    "msDS-SupportedEncryptionTypes",
-    "description",
-    "userAccountControl"
-)
-foreach ($prop in $props) {
-    dsacls $ou /G "${user}:WP;${prop};computer"
-    dsacls $ou /G "${user}:RP;${prop};computer"
-}
+# Delegate permissions to join computer objects to the FSx OU.
+# In Active Directory Users and Computers, use Delegate Control on the OU,
+# choose a custom task for Computer objects, allow creating and deleting
+# computer objects, and grant:
+# - Reset Password
+# - Read and write Account Restrictions
+# - Validated write to DNS host name
+# - Validated write to service principal name
 ```
 
 ### Setting Up DNS Forwarding
@@ -187,17 +175,19 @@ ENDPOINT_ID=$(aws route53resolver create-resolver-endpoint \
   --output text)
 
 # Create forwarding rule for your AD domain
-aws route53resolver create-resolver-rule \
+RULE_ID=$(aws route53resolver create-resolver-rule \
   --creator-request-id "ad-forward-rule" \
   --name "forward-to-ad" \
   --rule-type "FORWARD" \
   --domain-name "corp.example.com" \
   --resolver-endpoint-id "$ENDPOINT_ID" \
-  --target-ips "Ip=10.1.1.10" "Ip=10.1.2.10"
+  --target-ips "Ip=10.1.1.10" "Ip=10.1.2.10" \
+  --query "ResolverRule.Id" \
+  --output text)
 
 # Associate the rule with your VPC
 aws route53resolver associate-resolver-rule \
-  --resolver-rule-id "rslvr-rr-abc123" \
+  --resolver-rule-id "$RULE_ID" \
   --vpc-id "vpc-0abc123"
 ```
 
@@ -243,6 +233,7 @@ Your security groups must allow these ports between FSx and the AD domain contro
 |------|----------|---------|
 | 53 | TCP/UDP | DNS |
 | 88 | TCP/UDP | Kerberos authentication |
+| 123 | UDP | Network Time Protocol (NTP) |
 | 135 | TCP | DCE/RPC |
 | 389 | TCP/UDP | LDAP |
 | 445 | TCP | SMB |
@@ -250,6 +241,7 @@ Your security groups must allow these ports between FSx and the AD domain contro
 | 636 | TCP | LDAPS |
 | 3268 | TCP | Global Catalog LDAP |
 | 3269 | TCP | Global Catalog LDAPS |
+| 5985 | TCP | WinRM 2.0 |
 | 9389 | TCP | AD Web Services |
 | 49152-65535 | TCP | Dynamic RPC ports |
 
@@ -257,7 +249,7 @@ Here's the security group setup:
 
 ```bash
 # Ports from FSx to AD domain controllers
-for PORT in 53 88 135 389 445 464 636 3268 3269 9389; do
+for PORT in 53 88 135 389 445 464 636 3268 3269 5985 9389; do
   aws ec2 authorize-security-group-ingress \
     --group-id "sg-0ad-controllers" \
     --protocol tcp --port $PORT \
@@ -265,7 +257,7 @@ for PORT in 53 88 135 389 445 464 636 3268 3269 9389; do
 done
 
 # UDP ports
-for PORT in 53 88 389 464; do
+for PORT in 53 88 123 389 464; do
   aws ec2 authorize-security-group-ingress \
     --group-id "sg-0ad-controllers" \
     --protocol udp --port $PORT \
