@@ -20,7 +20,7 @@ Not very helpful, is it? A 502 from API Gateway almost always means the backend 
 
 This is the most common cause by far. API Gateway expects Lambda to return a response in a very specific format. If your function returns anything else, you get a 502.
 
-The required format for Lambda proxy integration:
+The required format for REST API Lambda proxy integration, and HTTP APIs using payload format version 1.0:
 
 ```json
 {
@@ -36,6 +36,8 @@ Key requirements:
 - `statusCode` must be an integer (not a string)
 - `body` must be a string (not an object)
 - `headers` must be an object with string values
+
+For HTTP APIs using payload format version 2.0, API Gateway can infer a response from valid JSON, but if you return this response envelope yourself, `body` still needs to be a string.
 
 ### Common Mistakes in Python
 
@@ -153,7 +155,7 @@ exports.handler = async (event) => {
 
 ## Cause 3: Lambda Timeout
 
-If Lambda takes longer than API Gateway's timeout (29 seconds for REST APIs, 30 seconds for HTTP APIs), API Gateway returns a 502. The Lambda function might still be running, but API Gateway has already given up.
+If Lambda takes longer than API Gateway's integration timeout, API Gateway usually returns a 504 Gateway Timeout rather than a 502. It's still worth checking during 502 investigations because timeout errors often show up in the same deployment or integration debugging flow. The default REST API integration timeout is 29 seconds, and the maximum HTTP API integration timeout is 30 seconds. Regional and private REST APIs can request an integration timeout increase beyond 29 seconds, but AWS might reduce the account-level throttle quota.
 
 Check your Lambda timeout:
 
@@ -164,7 +166,7 @@ aws lambda get-function-configuration \
   --query 'Timeout'
 ```
 
-If your Lambda timeout is longer than 29 seconds, reduce it or optimize your function. API Gateway has a hard limit of 29 seconds that you can't increase.
+If your Lambda timeout is longer than the API Gateway integration timeout, either reduce the Lambda timeout, optimize the function, use an asynchronous workflow, or increase the REST API integration timeout if your API type supports it.
 
 For more on fixing Lambda timeouts, see our guide on [Lambda Task Timed Out errors](https://oneuptime.com/blog/post/2026-02-12-fix-lambda-task-timed-out-errors/view).
 
@@ -173,21 +175,20 @@ For more on fixing Lambda timeouts, see our guide on [Lambda Task Timed Out erro
 API Gateway has a payload size limit:
 - REST API: 10 MB
 - HTTP API: 10 MB
-- WebSocket API: 128 KB per frame
+- WebSocket API: 128 KB per message, with a 32 KB frame size
 
-If your Lambda returns a response larger than this, you get a 502:
+For Lambda proxy integrations, also remember that synchronous Lambda invocation responses are limited to 6 MB. If your Lambda returns a response larger than these limits, the request can fail before the client receives your intended response:
 
 ```python
 import json
-import sys
 
 def lambda_handler(event, context):
     result = get_large_data()
     response_body = json.dumps(result)
 
     # Check size before returning
-    size_mb = sys.getsizeof(response_body) / (1024 * 1024)
-    if size_mb > 9:  # Leave some buffer below 10MB
+    size_mb = len(response_body.encode('utf-8')) / (1024 * 1024)
+    if size_mb > 5:  # Leave some buffer below Lambda's 6MB synchronous response limit
         # Paginate or compress instead
         return {
             'statusCode': 413,
@@ -232,7 +233,8 @@ aws apigateway update-stage \
   --rest-api-id abc123 \
   --stage-name prod \
   --patch-operations '[
-    {"op":"replace","path":"/accessLogSetting/destinationArn","value":"arn:aws:logs:us-east-1:123456789012:log-group:api-gateway-logs"},
+    {"op":"replace","path":"/accessLogSettings/destinationArn","value":"arn:aws:logs:us-east-1:123456789012:log-group:api-gateway-logs"},
+    {"op":"replace","path":"/accessLogSettings/format","value":"$context.requestId $context.extendedRequestId $context.status $context.integrationStatus $context.error.message"},
     {"op":"replace","path":"/*/*/logging/loglevel","value":"INFO"}
   ]'
 ```
@@ -242,7 +244,7 @@ Then check the execution logs. They'll show you the exact response your Lambda r
 ```bash
 # Search for 502 errors in the logs
 aws logs filter-log-events \
-  --log-group-name /aws/apigateway/abc123/prod \
+  --log-group-name API-Gateway-Execution-Logs_abc123/prod \
   --filter-pattern "502" \
   --start-time $(date -d '1 hour ago' +%s000)
 ```
@@ -254,8 +256,8 @@ When you get a 502 from API Gateway:
 1. Check Lambda logs first - is the function erroring out?
 2. Verify the response format - `statusCode` is an integer, `body` is a string
 3. Check for unhandled exceptions in your function code
-4. Verify Lambda timeout is under 29 seconds
-5. Check response payload size (under 10 MB)
+4. Verify Lambda timeout is not longer than the API Gateway integration timeout
+5. Check response payload size (under 6 MB for buffered Lambda proxy responses)
 6. Enable API Gateway execution logs for more detail
 
 ## Helper Function for Consistent Responses
