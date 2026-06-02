@@ -16,7 +16,7 @@ In this post, we'll walk through setting up SageMaker Studio, explore its key fe
 
 SageMaker Studio is a web-based IDE that gives you access to every tool you need for ML development. Think of it as VS Code meets Jupyter, but specifically designed for machine learning workflows. You get notebooks, a file browser, terminal access, Git integration, and purpose-built ML tools all in one interface.
 
-The big selling point is that you don't manage infrastructure. You pick an instance type, and Studio spins up the compute for you. Need a GPU for training? Switch your kernel. Need to go back to a small CPU instance for data exploration? Switch again. You're only paying for what you use.
+The big selling point is that you don't manage infrastructure. You pick an instance type, and Studio spins up the compute for you. Need a GPU for training? Switch to a GPU-backed instance and kernel. Need to go back to a small CPU instance for data exploration? Switch again. You're only paying for what you use.
 
 ## Setting Up SageMaker Studio
 
@@ -68,7 +68,7 @@ The sidebar is where you'll spend a lot of time. It has dedicated sections for S
 
 ## Working with Notebooks
 
-Studio notebooks work like standard Jupyter notebooks but with a few important differences. You can change the underlying compute instance without restarting your notebook, and you can share notebooks with teammates who have access to the same domain.
+Studio notebooks work like standard Jupyter notebooks but with a few important differences. You can change the underlying compute instance from the notebook environment, and you can share notebooks with teammates who have access to the same domain. Save your work before switching compute, because the app or kernel runtime may restart even though the notebook file remains available.
 
 Here's a typical workflow for starting a new ML project in Studio.
 
@@ -81,7 +81,7 @@ import pandas as pd
 # SageMaker session handles interactions with the SageMaker API
 session = sagemaker.Session()
 
-# Get the default bucket - Studio creates one automatically
+# Get the default bucket - the SageMaker session creates one if needed
 bucket = session.default_bucket()
 prefix = 'studio-demo'
 
@@ -100,7 +100,7 @@ One feature that's easy to miss is the image terminal. You can open a system ter
 This is where Studio really shines. Instead of provisioning EC2 instances manually, you pick from a list of instance types and Studio handles the rest.
 
 ```python
-# You can check available instance types programmatically
+# You can check running Studio apps programmatically
 import boto3
 
 client = boto3.client('sagemaker')
@@ -116,7 +116,7 @@ for app in response['Apps']:
     print(f"App: {app['AppName']}, Type: {app['AppType']}, Status: {app['Status']}")
 ```
 
-A practical tip: start with a small instance (like ml.t3.medium) for data exploration and coding. When you're ready to run heavier computations, switch to a larger instance. Studio lets you do this without losing your notebook state.
+A practical tip: start with a small instance (like ml.t3.medium) for data exploration and coding. When you're ready to run heavier computations, switch to a larger instance. Save your notebook first so the file is preserved if the runtime is restarted during the switch.
 
 ## Git Integration
 
@@ -154,19 +154,21 @@ S3Uploader.upload(
 print("Notebook shared successfully!")
 ```
 
-Studio also supports lifecycle configurations - scripts that run when a notebook instance starts up. This is great for standardizing environments across your team.
+Studio also supports lifecycle configurations - scripts that run when a Studio application starts up. This is great for standardizing environments across your team.
 
 ```bash
 #!/bin/bash
 # Lifecycle configuration script example
-# This runs every time a new kernel gateway app starts
+# This runs every time the configured Studio app starts
 
 # Install team-specific packages
 pip install great-expectations mlflow-skinny
 
-# Set up environment variables
+# Persist environment variables for new shell sessions
+cat >> ~/.bashrc <<'EOF'
 export TEAM_DATA_BUCKET=s3://our-team-data
 export EXPERIMENT_PREFIX=team-experiments
+EOF
 ```
 
 ## Customizing Your Environment
@@ -174,7 +176,7 @@ export EXPERIMENT_PREFIX=team-experiments
 You're not stuck with the default images. Studio lets you bring custom Docker images, which means you can have exactly the libraries and tools your team needs.
 
 ```python
-# Register a custom image with your domain
+# Create a custom SageMaker image and image version
 import boto3
 
 client = boto3.client('sagemaker')
@@ -186,7 +188,8 @@ client.create_image(
     Description='Custom image with our ML stack'
 )
 
-# Then create an image version pointing to your ECR image
+# Then create an image version pointing to your ECR image.
+# Attach it to your domain or user profile from Studio app settings.
 client.create_image_version(
     ImageName='custom-ml-image',
     BaseImage='123456789012.dkr.ecr.us-east-1.amazonaws.com/custom-ml:latest'
@@ -205,14 +208,18 @@ Studio charges you for the compute instances running underneath. Here are a few 
 You can set auto-shutdown at the domain level.
 
 ```bash
-# Update domain to enable auto-shutdown after 60 minutes of idle time
+# Update domain to enable JupyterLab auto-shutdown after 60 minutes of idle time
 aws sagemaker update-domain \
   --domain-id d-xxxxxxxxxxxx \
   --default-user-settings '{
-    "JupyterServerAppSettings": {
-      "DefaultResourceSpec": {
-        "InstanceType": "system",
-        "LifecycleConfigArn": "arn:aws:sagemaker:us-east-1:123456789012:studio-lifecycle-config/auto-shutdown"
+    "JupyterLabAppSettings": {
+      "AppLifecycleManagement": {
+        "IdleSettings": {
+          "LifecycleManagement": "ENABLED",
+          "IdleTimeoutInMinutes": 60,
+          "MinIdleTimeoutInMinutes": 60,
+          "MaxIdleTimeoutInMinutes": 60
+        }
       }
     }
   }'
