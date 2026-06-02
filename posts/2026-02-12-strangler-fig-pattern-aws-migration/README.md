@@ -67,20 +67,33 @@ aws apigateway create-resource \
   --parent-id "$ROOT_ID" \
   --path-part "users"
 
-# Point /users to the new Lambda-based service
+# Create a greedy child resource for /users/login, /users/profile, etc.
+aws apigateway create-resource \
+  --rest-api-id "abc123" \
+  --parent-id "users-resource-id" \
+  --path-part "{proxy+}"
+
+# Point /users/* to the new Lambda-based service
 aws apigateway put-method \
   --rest-api-id "abc123" \
-  --resource-id "users-resource-id" \
+  --resource-id "users-proxy-resource-id" \
   --http-method ANY \
   --authorization-type NONE
 
 aws apigateway put-integration \
   --rest-api-id "abc123" \
-  --resource-id "users-resource-id" \
+  --resource-id "users-proxy-resource-id" \
   --http-method ANY \
   --type AWS_PROXY \
   --integration-http-method POST \
-  --uri "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789:function:users-service/invocations"
+  --uri "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:users-service/invocations"
+
+aws lambda add-permission \
+  --function-name "users-service" \
+  --statement-id "allow-api-gateway-users" \
+  --action "lambda:InvokeFunction" \
+  --principal "apigateway.amazonaws.com" \
+  --source-arn "arn:aws:execute-api:us-east-1:123456789012:abc123/*/*/users/*"
 
 # Create a catch-all proxy for everything else -> legacy system
 aws apigateway create-resource \
@@ -88,13 +101,21 @@ aws apigateway create-resource \
   --parent-id "$ROOT_ID" \
   --path-part "{proxy+}"
 
+aws apigateway put-method \
+  --rest-api-id "abc123" \
+  --resource-id "proxy-resource-id" \
+  --http-method ANY \
+  --authorization-type NONE \
+  --request-parameters "method.request.path.proxy=true"
+
 aws apigateway put-integration \
   --rest-api-id "abc123" \
   --resource-id "proxy-resource-id" \
   --http-method ANY \
   --type HTTP_PROXY \
   --integration-http-method ANY \
-  --uri "http://legacy-server.internal.example.com/{proxy}"
+  --uri "https://legacy.example.com/{proxy}" \
+  --request-parameters "integration.request.path.proxy=method.request.path.proxy"
 ```
 
 ## Step 2: Migrate Your First Feature
@@ -113,10 +134,12 @@ import json
 import boto3
 import hashlib
 import os
+from boto3.dynamodb.conditions import Key
 
 # New user authentication service running on Lambda + DynamoDB
 dynamodb = boto3.resource('dynamodb')
 users_table = dynamodb.Table(os.environ['USERS_TABLE'])
+users_by_email_index = os.environ['USERS_BY_EMAIL_INDEX']
 
 def handler(event, context):
     path = event['path']
@@ -134,8 +157,12 @@ def handle_login(body):
     password = body.get('password')
 
     # Look up user in DynamoDB (migrated from legacy database)
-    response = users_table.get_item(Key={'email': email})
-    user = response.get('Item')
+    response = users_table.query(
+        IndexName=users_by_email_index,
+        KeyConditionExpression=Key('email').eq(email)
+    )
+    users = response.get('Items', [])
+    user = users[0] if users else None
 
     if not user:
         return {'statusCode': 401, 'body': json.dumps({'error': 'Invalid credentials'})}
@@ -260,6 +287,7 @@ Use feature flags to control the rollout. This lets you gradually shift traffic 
 
 ```python
 import boto3
+import hashlib
 
 # Use AWS AppConfig or a simple DynamoDB table for feature flags
 dynamodb = boto3.resource('dynamodb')
@@ -357,7 +385,7 @@ aws apigateway create-deployment \
 
 ## Migration Tracking
 
-Keep a simple tracker for which modules have been migrated. You can also use [AWS Migration Hub Refactor Spaces](https://oneuptime.com/blog/post/2026-02-12-aws-migration-hub-refactor-spaces/view) to manage the routing and migration state.
+Keep a simple tracker for which modules have been migrated. If you already have access to [AWS Migration Hub Refactor Spaces](https://oneuptime.com/blog/post/2026-02-12-aws-migration-hub-refactor-spaces/view), you can use it to manage the routing and migration state; for new customers, AWS recommends exploring AWS Transform for similar capabilities.
 
 | Module | Status | Start Date | Completion | Traffic % New |
 |--------|--------|-----------|------------|--------------|
