@@ -14,7 +14,7 @@ AWS Auto Scaling groups support this mixed approach natively through mixed insta
 
 ## The Mixed Instances Model
 
-The idea is simple. You define a base of On-Demand instances that always run, ensuring minimum capacity even during widespread Spot interruptions. Everything above that base uses Spot Instances. If Spot capacity isn't available, the ASG can optionally fall back to On-Demand.
+The idea is simple. You define a base of On-Demand instances that always run, ensuring minimum capacity even during widespread Spot interruptions. Everything above that base uses Spot Instances. If Spot capacity isn't available, you can adjust the mixed instances policy to use more On-Demand capacity.
 
 ```mermaid
 graph TB
@@ -80,7 +80,7 @@ aws autoscaling create-auto-scaling-group \
     "InstancesDistribution": {
       "OnDemandBaseCapacity": 2,
       "OnDemandPercentageAboveBaseCapacity": 0,
-      "SpotAllocationStrategy": "capacity-optimized",
+      "SpotAllocationStrategy": "price-capacity-optimized",
       "SpotMaxPrice": ""
     }
   }'
@@ -133,8 +133,8 @@ resource "aws_autoscaling_group" "app" {
       # Everything above the base is Spot
       on_demand_percentage_above_base_capacity = 0
 
-      # Use capacity-optimized to minimize interruptions
-      spot_allocation_strategy = "capacity-optimized"
+      # Use price-capacity-optimized to balance low interruption risk and price
+      spot_allocation_strategy = "price-capacity-optimized"
     }
 
     launch_template {
@@ -192,7 +192,7 @@ How many On-Demand instances should you keep as your base? It depends on your to
 Here's a practical framework:
 
 - **Minimum viable capacity** - How many instances can handle your lowest acceptable traffic level? That's your On-Demand base.
-- **Peak handling** - Use Spot for everything above the minimum. Dynamic scaling policies will add more Spot (or On-Demand as fallback) when needed.
+- **Peak handling** - Use Spot for everything above the minimum. Dynamic scaling policies will add more capacity according to the mixed instances policy.
 - **Regulatory or SLA requirements** - If you have strict SLA commitments, a higher On-Demand base might be justified.
 
 A common split for production web applications is 20-30% On-Demand and 70-80% Spot. For batch processing workloads with no SLA, you might go 0% On-Demand and 100% Spot.
@@ -248,7 +248,7 @@ aws autoscaling put-scaling-policy \
   }'
 ```
 
-When the policy scales out, new instances follow the mixed instances policy - On-Demand up to the base, then Spot above. When scaling in, Spot instances are terminated before On-Demand instances, preserving your guaranteed base.
+When the policy scales out, new instances follow the mixed instances policy - On-Demand up to the base, then Spot above. When scaling in, Amazon EC2 Auto Scaling chooses which purchase option to terminate based on the group's configured On-Demand and Spot ratio, preserving your guaranteed base over time.
 
 ## Monitoring Mixed Workloads
 
@@ -256,13 +256,17 @@ Keep track of your instance mix to make sure you're actually saving money:
 
 ```bash
 # Check the current instance distribution
-aws autoscaling describe-auto-scaling-groups \
-  --auto-scaling-group-names mixed-asg \
-  --query 'AutoScalingGroups[0].Instances[].{
+aws ec2 describe-instances \
+  --instance-ids $(aws autoscaling describe-auto-scaling-groups \
+    --auto-scaling-group-names mixed-asg \
+    --query 'AutoScalingGroups[0].Instances[].InstanceId' \
+    --output text) \
+  --query 'Reservations[].Instances[].{
     ID:InstanceId,
     Type:InstanceType,
-    AZ:AvailabilityZone,
-    Lifecycle:LifecycleState
+    AZ:Placement.AvailabilityZone,
+    Purchase:InstanceLifecycle,
+    State:State.Name
   }' \
   --output table
 ```
