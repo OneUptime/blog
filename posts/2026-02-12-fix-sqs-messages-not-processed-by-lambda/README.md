@@ -57,7 +57,8 @@ Lambda's execution role needs permission to interact with SQS. Without these per
             "Action": [
                 "sqs:ReceiveMessage",
                 "sqs:DeleteMessage",
-                "sqs:GetQueueAttributes"
+                "sqs:GetQueueAttributes",
+                "sqs:ChangeMessageVisibility"
             ],
             "Resource": "arn:aws:sqs:us-east-1:123456789012:my-queue"
         }
@@ -65,10 +66,11 @@ Lambda's execution role needs permission to interact with SQS. Without these per
 }
 ```
 
-All three actions are required:
+All four actions are required:
 - `sqs:ReceiveMessage` - to read messages
 - `sqs:DeleteMessage` - to remove messages after successful processing
 - `sqs:GetQueueAttributes` - to check queue metrics for scaling decisions
+- `sqs:ChangeMessageVisibility` - to let Lambda manage message visibility while processing
 
 Verify the role has these permissions:
 
@@ -125,7 +127,7 @@ Common Lambda errors that cause message reprocessing:
 
 ## Visibility Timeout Mismatch
 
-This is a critical setting. The SQS visibility timeout must be at least 6 times your Lambda timeout. When Lambda picks up a message, SQS makes it invisible to other consumers for the visibility timeout duration. If Lambda takes longer than the visibility timeout, SQS assumes processing failed and makes the message visible again.
+This is a critical setting. The SQS visibility timeout should be at least 6 times your Lambda timeout, plus the maximum batching window if you configured one. When Lambda picks up a message, SQS makes it invisible to other consumers for the visibility timeout duration. If Lambda takes longer than the visibility timeout, SQS assumes processing failed and makes the message visible again.
 
 ```bash
 # Check Lambda timeout
@@ -139,13 +141,13 @@ aws sqs get-queue-attributes \
     --attribute-names VisibilityTimeout
 ```
 
-If Lambda timeout is 60 seconds, set visibility timeout to at least 360 seconds:
+If Lambda timeout is 60 seconds and the maximum batching window is 5 seconds, set visibility timeout to at least 365 seconds:
 
 ```bash
 # Update SQS visibility timeout
 aws sqs set-queue-attributes \
     --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/my-queue \
-    --attributes VisibilityTimeout=360
+    --attributes VisibilityTimeout=365
 ```
 
 ## Lambda Concurrency Issues
@@ -189,7 +191,7 @@ aws sqs set-queue-attributes \
     }'
 ```
 
-`maxReceiveCount` of 3 means after 3 failed processing attempts, the message goes to the DLQ. Check your DLQ for failed messages:
+`maxReceiveCount` of 3 means after the receive count exceeds 3, the message goes to the DLQ. Check your DLQ for failed messages:
 
 ```bash
 # Check how many messages are in the DLQ
@@ -249,6 +251,8 @@ def handler(event, context):
 ```
 
 This prevents successfully processed messages from being reprocessed when one message in the batch fails.
+
+For FIFO queues, stop processing after the first failed message and include that failed message and any unprocessed messages in `batchItemFailures` so ordering is preserved.
 
 ## Monitoring the Integration
 
