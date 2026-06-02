@@ -14,7 +14,7 @@ Think of it as a one-way door. Traffic goes out, responses come back, but nobody
 
 ## How NAT Gateway Works
 
-A NAT gateway sits in a public subnet and performs Network Address Translation. When a resource in a private subnet sends a packet to the internet, the NAT gateway replaces the source IP (the private IP) with its own Elastic IP. When the response comes back, the NAT gateway translates it back and forwards it to the original resource.
+A public NAT gateway sits in a public subnet and performs Network Address Translation. When a resource in a private subnet sends a packet to the internet, the NAT gateway maps the source IP (the private IP) to the NAT gateway's private IP, and the internet gateway maps that address to the NAT gateway's Elastic IP. When the response comes back, the translation is reversed and the NAT gateway forwards it to the original resource.
 
 ```mermaid
 sequenceDiagram
@@ -94,11 +94,11 @@ sudo apt update       # Ubuntu
 
 If the curl returns the EIP you allocated, the NAT gateway is working correctly.
 
-## High Availability: One NAT Gateway Per AZ
+## High Availability: One Zonal NAT Gateway Per AZ
 
-A single NAT gateway is a single point of failure. If the AZ it's in goes down, all private subnets lose internet access - even those in healthy AZs.
+A single zonal NAT gateway is a single point of failure. If the AZ it's in goes down, all private subnets routed through it lose internet access - even those in healthy AZs.
 
-For production, deploy one NAT gateway per AZ and create per-AZ route tables:
+For production with zonal NAT gateways, deploy one NAT gateway per AZ and create per-AZ route tables:
 
 ```bash
 # NAT gateway in AZ-a
@@ -135,7 +135,7 @@ Each private subnet routes through its own AZ's NAT gateway. If AZ-a goes down, 
 
 ## CloudFormation Template
 
-Here's the complete NAT gateway setup in CloudFormation with HA across two AZs:
+Here's the core NAT gateway setup in CloudFormation with HA across two AZs:
 
 ```yaml
 # nat-gateway-ha.yaml
@@ -221,7 +221,7 @@ NAT gateways aren't free, and the costs can sneak up on you:
 
 - **Hourly charge**: ~$0.045/hour per NAT gateway (~$32/month)
 - **Data processing**: $0.045 per GB processed
-- **Two NAT gateways for HA**: ~$64/month baseline
+- **Two zonal NAT gateways for HA**: ~$64/month baseline
 
 The data processing charge is what gets expensive. If your private instances are downloading large datasets or serving lots of traffic through the NAT, costs add up quickly. Consider using VPC endpoints for AWS services like S3 and DynamoDB - they bypass the NAT gateway entirely and are free for gateway endpoints. See [setting up VPC gateway endpoints for S3 and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-set-up-vpc-gateway-endpoints-s3-dynamodb/view) for more.
 
