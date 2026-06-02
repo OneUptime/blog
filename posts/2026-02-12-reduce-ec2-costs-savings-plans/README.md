@@ -14,13 +14,15 @@ The trick is committing to the right amount. Commit too much and you're paying f
 
 ## Understanding Savings Plan Types
 
-AWS offers three types of Savings Plans:
+AWS offers four types of Savings Plans:
 
-**Compute Savings Plans** are the most flexible. They apply to any EC2 instance regardless of region, instance family, OS, or tenancy. They also apply to Fargate and Lambda. Discounts are typically 40-60% off On-Demand.
+**Compute Savings Plans** are the most flexible. They apply to any EC2 instance regardless of region, instance family, OS, or tenancy. They also apply to Fargate and Lambda. Discounts are up to 66% off On-Demand.
 
 **EC2 Instance Savings Plans** are locked to a specific instance family and region (e.g., m5 in us-east-1), but offer deeper discounts - typically 50-72% off On-Demand.
 
-**SageMaker Savings Plans** apply to SageMaker usage. We won't cover these here.
+**SageMaker AI Savings Plans** apply to SageMaker AI usage. We won't cover these here.
+
+**Database Savings Plans** apply to eligible AWS database services. We won't cover these here.
 
 The tradeoff is flexibility versus savings. Compute Savings Plans give you room to change instance types, regions, and even services. EC2 Instance Savings Plans require more commitment but save more money.
 
@@ -28,7 +30,7 @@ The tradeoff is flexibility versus savings. Compute Savings Plans give you room 
 
 The most important step is figuring out how much to commit. You want to cover your steady-state baseline, not your peaks.
 
-This script analyzes your hourly EC2 spend to determine the right commitment.
+This script analyzes your hourly EC2 spend to determine the right commitment. Cost Explorer hourly granularity must be enabled, and AWS provides hourly data for the past 14 days.
 
 ```python
 import boto3
@@ -37,14 +39,14 @@ import statistics
 
 ce = boto3.client("ce")
 
-def analyze_hourly_spend(days=30):
+def analyze_hourly_spend(days=14):
     """Analyze hourly EC2 spend to find the baseline for Savings Plans."""
     end_date = datetime.utcnow().strftime("%Y-%m-%d")
     start_date = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
 
     response = ce.get_cost_and_usage(
         TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="DAILY",
+        Granularity="HOURLY",
         Metrics=["UnblendedCost"],
         Filter={
             "Dimensions": {
@@ -54,17 +56,14 @@ def analyze_hourly_spend(days=30):
         }
     )
 
-    daily_costs = [
-        float(day["Total"]["UnblendedCost"]["Amount"])
-        for day in response["ResultsByTime"]
+    hourly_costs = [
+        float(hour["Total"]["UnblendedCost"]["Amount"])
+        for hour in response["ResultsByTime"]
     ]
 
-    if not daily_costs:
+    if not hourly_costs:
         print("No EC2 cost data found")
         return
-
-    # Convert daily to hourly
-    hourly_costs = [cost / 24 for cost in daily_costs]
 
     avg_hourly = statistics.mean(hourly_costs)
     min_hourly = min(hourly_costs)
@@ -130,8 +129,8 @@ def get_savings_plan_recommendations():
               f"{float(summary.get('EstimatedSavingsPercentage', 0)):.1f}%")
         print(f"  Hourly commitment: "
               f"${float(summary.get('HourlyCommitmentToPurchase', 0)):,.2f}/hr")
-        print(f"  Current On-Demand spend: "
-              f"${float(summary.get('CurrentOnDemandSpend', 0)):,.2f}/hr")
+        print(f"  Current On-Demand spend over lookback: "
+              f"${float(summary.get('CurrentOnDemandSpend', 0)):,.2f}")
 
         # Individual recommendations
         details = meta.get("SavingsPlansPurchaseRecommendationDetails", [])
@@ -162,9 +161,11 @@ aws savingsplans create-savings-plan \
 Before purchasing, list available offerings to find the right one.
 
 ```bash
-# List available Savings Plan offerings
-aws savingsplans describe-savings-plan-rates \
-  --savings-plan-id "sp-xxxxxxxx" \
+# List available Savings Plan offering rates
+aws savingsplans describe-savings-plans-offering-rates \
+  --savings-plan-types "EC2Instance" \
+  --products "EC2" \
+  --savings-plan-payment-options "No Upfront" \
   --filters '[
     {"name": "region", "values": ["us-east-1"]},
     {"name": "instanceFamily", "values": ["m5"]}
@@ -172,10 +173,10 @@ aws savingsplans describe-savings-plan-rates \
 
 # Or list all available offerings
 aws savingsplans describe-savings-plans-offerings \
-  --product-types "EC2" \
-  --plan-types "COMPUTE_SP" \
-  --payment-options "NO_UPFRONT" \
-  --durations 94608000
+  --product-type "EC2" \
+  --plan-types "Compute" \
+  --payment-options "No Upfront" \
+  --durations 31536000
 ```
 
 ## Payment Options Comparison
@@ -188,7 +189,7 @@ Each payment option offers different savings levels.
 | Partial Upfront | 50% upfront + monthly | Middle savings | Balance of savings and cash flow |
 | All Upfront | Full payment at purchase | Highest savings | Maximum discount, available capital |
 
-For a $10/hr commitment on a 1-year Compute SP:
+For a $10/hr commitment on a 1-year Compute SP, exact discounts vary by usage type and offering. In general:
 
 - **No Upfront**: ~40% savings
 - **Partial Upfront**: ~46% savings
@@ -263,7 +264,7 @@ Reserved Instances still make sense if you already have them (they can coexist w
 Here's a practical approach for your first Savings Plan purchase:
 
 1. **Right-size first**: Downsize over-provisioned instances before committing. See [right-sizing EC2](https://oneuptime.com/blog/post/2026-02-12-reduce-ec2-costs-right-sizing/view).
-2. **Analyze 30 days of usage**: Use the scripts above to find your baseline.
+2. **Analyze recent usage**: Use the scripts above to find your baseline.
 3. **Start conservative**: Commit to the 10th percentile of hourly spend.
 4. **Choose Compute SP**: Unless you're very certain about instance families.
 5. **Pick No Upfront initially**: You can always purchase All Upfront later.
