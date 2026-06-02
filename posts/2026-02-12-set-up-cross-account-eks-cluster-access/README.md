@@ -42,18 +42,13 @@ In Account B (where the EKS cluster lives), create an IAM role that Account A's 
       "Principal": {
         "AWS": "arn:aws:iam::111111111111:root"
       },
-      "Action": "sts:AssumeRole",
-      "Condition": {
-        "StringEquals": {
-          "sts:ExternalId": "eks-cross-account-access"
-        }
-      }
+      "Action": "sts:AssumeRole"
     }
   ]
 }
 ```
 
-Replace `111111111111` with Account A's ID. The external ID adds an extra layer of security.
+Replace `111111111111` with Account A's ID. If a third-party system is assuming this role on your behalf, add an external ID condition to the trust policy and configure that system to pass the same external ID when it calls `sts:AssumeRole`.
 
 ```bash
 # In Account B: Create the cross-account role
@@ -113,7 +108,7 @@ aws iam put-user-policy \
 
 ## Step 3: Map the Role in the EKS Cluster
 
-Now you need to tell the EKS cluster to recognize the cross-account role. There are two approaches depending on your EKS version.
+Now you need to tell the EKS cluster to recognize the cross-account role. There are two approaches depending on your cluster authentication mode.
 
 ### Using aws-auth ConfigMap (Traditional)
 
@@ -162,6 +157,11 @@ eksctl create iamidentitymapping \
 EKS access entries are the newer, recommended approach. They don't require editing the aws-auth ConfigMap:
 
 ```bash
+# Enable access entries if the cluster is still using only the aws-auth ConfigMap
+aws eks update-cluster-config \
+  --name my-cluster \
+  --access-config authenticationMode=API_AND_CONFIG_MAP
+
 # Create an access entry for the cross-account role
 aws eks create-access-entry \
   --cluster-name my-cluster \
@@ -187,10 +187,11 @@ From Account A, configure kubectl to use the cross-account role:
 aws eks update-kubeconfig \
   --name my-cluster \
   --region us-west-2 \
+  --assume-role-arn arn:aws:iam::222222222222:role/EKSCrossAccountAccess \
   --role-arn arn:aws:iam::222222222222:role/EKSCrossAccountAccess
 ```
 
-This updates your kubeconfig with the role ARN. Every kubectl command will now assume the role before authenticating:
+The `--assume-role-arn` flag lets the AWS CLI assume the role to retrieve cluster details while updating kubeconfig. The `--role-arn` flag is written into kubeconfig so every kubectl command assumes the role before authenticating:
 
 ```yaml
 # Resulting kubeconfig user section
@@ -269,10 +270,17 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Configure AWS credentials
+      - name: Configure AWS credentials for Account A
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::111111111111:role/GitHubActionsDeployRole
+          aws-region: us-west-2
+
+      - name: Assume workload account role
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: arn:aws:iam::222222222222:role/EKSCrossAccountAccess
+          role-chaining: true
           aws-region: us-west-2
 
       - name: Update kubeconfig
