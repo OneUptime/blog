@@ -14,10 +14,10 @@ When you share large datasets on S3, the data transfer costs can get expensive f
 
 With Requester Pays enabled:
 
-- **Bucket owner pays**: Storage costs only
+- **Bucket owner pays**: Storage costs, plus a few AWS-documented exceptions
 - **Requester pays**: Data transfer out, request costs (GET, PUT, LIST, etc.)
 - **Anonymous access**: Disabled entirely. Every request must be authenticated.
-- **Requester identification**: Each request must include the `x-amz-request-payer` header
+- **Requester identification**: Each request must include the `x-amz-request-payer` header or the equivalent `RequestPayer` / `--request-payer` parameter
 
 This is commonly used for:
 - Scientific datasets (genomics, climate data, satellite imagery)
@@ -219,6 +219,7 @@ IAM policy for the requester's role:
 ## Monitoring Requester Pays Usage
 
 Track who's accessing your data and how much they're downloading using S3 access logs.
+The log target bucket must be in the same AWS account and Region, must not have Requester Pays enabled, and must allow the S3 logging service to write log objects.
 
 ```bash
 # Enable access logging to track requester activity
@@ -232,11 +233,11 @@ aws s3api put-bucket-logging \
   }'
 ```
 
-Then analyze the logs to see which accounts are accessing your data. See our guide on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-s3-access-logs-athena/view) for setting up log analysis.
+Then analyze the logs to see which requester canonical IDs, IAM users, or assumed roles are accessing your data. See our guide on [analyzing S3 access logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-s3-access-logs-athena/view) for setting up log analysis.
 
 ## Practical Example: Sharing a Machine Learning Dataset
 
-Here's a complete setup for sharing a large ML dataset using Requester Pays.
+Here's a setup script for sharing a large ML dataset using Requester Pays. This assumes the access log bucket already exists in the same AWS account and Region, has Requester Pays disabled, and grants write access to the S3 logging service.
 
 ```python
 import boto3
@@ -283,7 +284,8 @@ def setup_shared_dataset(bucket_name, region='us-east-1'):
         Policy=json.dumps(policy)
     )
 
-    # Enable access logging
+    # Enable access logging. The target bucket must already be configured
+    # to allow writes from the S3 logging service.
     s3.put_bucket_logging(
         Bucket=bucket_name,
         BucketLoggingStatus={
@@ -327,7 +329,7 @@ setup_shared_dataset('my-ml-dataset')
 
 4. **CORS requests from browsers**: The browser needs to include the `x-amz-request-payer` header, which requires CORS to be configured properly.
 
-5. **BitTorrent**: Not supported with Requester Pays.
+5. **SOAP requests**: Not supported with Requester Pays.
 
 ## Cost Savings Example
 
