@@ -77,7 +77,7 @@ aws ec2 authorize-security-group-ingress \
 
 ## Step 3: Check if RDS is Publicly Accessible
 
-If you're connecting from outside the VPC (like from your laptop), the RDS instance must have `PubliclyAccessible` set to `true` AND be in a public subnet (one with a route to an Internet Gateway).
+If you're connecting from outside the VPC (like from your laptop), the RDS instance must have `PubliclyAccessible` set to `true` AND the subnets in its DB subnet group must be public (with routes to an Internet Gateway).
 
 ```bash
 # Check public accessibility
@@ -89,14 +89,14 @@ aws rds describe-db-instances \
 If it returns `false` and you need to connect from outside the VPC:
 
 ```bash
-# Make the instance publicly accessible (requires the subnet to be public)
+# Make the instance publicly accessible (requires the DB subnet group subnets to be public)
 aws rds modify-db-instance \
   --db-instance-identifier my-database \
   --publicly-accessible \
   --apply-immediately
 ```
 
-But if your instance is in a private subnet (which is the security best practice), you can't make it publicly accessible. Instead, use one of these alternatives:
+But if your instance is in a DB subnet group with private subnets (which is the security best practice), you can't reach it directly from the internet. Instead, use one of these alternatives:
 
 - SSH tunnel through a bastion host
 - AWS Systems Manager Session Manager port forwarding
@@ -140,7 +140,7 @@ aws ec2 describe-network-acls \
   --query 'NetworkAcls[0].Entries[*].{RuleNumber:RuleNumber,Protocol:Protocol,RuleAction:RuleAction,CidrBlock:CidrBlock,PortRange:PortRange}'
 ```
 
-NACLs need both inbound AND outbound rules (they're stateless, unlike security groups). Make sure there's an allow rule for the database port in both directions.
+NACLs need both inbound AND outbound rules (they're stateless, unlike security groups). For the RDS subnet, make sure inbound traffic is allowed on the database port from the client, and outbound response traffic is allowed back to the client's ephemeral port range. If the client is in another subnet with a restrictive NACL, that subnet also needs outbound access to the database port and inbound access for the return traffic.
 
 ## Step 6: Check DNS Resolution
 
@@ -161,7 +161,7 @@ aws ec2 describe-vpc-attribute --vpc-id vpc-0abc123 --attribute enableDnsSupport
 aws ec2 describe-vpc-attribute --vpc-id vpc-0abc123 --attribute enableDnsHostnames
 ```
 
-Both should return `true`.
+Both `Value` fields should be `true`.
 
 ## Step 7: Check Authentication
 
