@@ -8,7 +8,7 @@ Description: Detailed guide to setting up S3 bucket metrics in CloudWatch, inclu
 
 ---
 
-S3 gives you two categories of CloudWatch metrics: storage metrics (free, reported daily) and request metrics (optional, reported every minute). Most people only see the storage metrics and miss the request-level data that's actually useful for operational monitoring.
+For bucket monitoring, S3 gives you storage metrics (free, reported daily) and request metrics (optional, reported every minute). Replication metrics are available separately when you enable them for replication rules. Most people only see the storage metrics and miss the request-level data that's actually useful for operational monitoring.
 
 Let's configure both and set up meaningful alarms.
 
@@ -34,10 +34,10 @@ aws cloudwatch get-metric-statistics \
   --statistics Average
 ```
 
-The StorageType dimension matters. You need to query each storage class separately.
+The StorageType dimension matters for bucket size. Query each storage class separately for **BucketSizeBytes**. For **NumberOfObjects**, use **AllStorageTypes**.
 
 ```bash
-# Get object count for Standard storage
+# Get object count across all storage types
 aws cloudwatch get-metric-statistics \
   --namespace AWS/S3 \
   --metric-name NumberOfObjects \
@@ -178,7 +178,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "S3 first byte latency exceeded 500ms" \
   --metric-name FirstByteLatency \
   --namespace AWS/S3 \
-  --statistic p99 \
+  --extended-statistic p99 \
   --period 300 \
   --threshold 500 \
   --comparison-operator GreaterThanThreshold \
@@ -241,7 +241,7 @@ aws cloudwatch put-dashboard \
         "properties": {
           "metrics": [
             ["AWS/S3", "FirstByteLatency", "BucketName", "my-data-bucket", "FilterId", "EntireBucket", {"stat": "p50"}],
-            ["...", {"stat": "p99"}]
+            [".", ".", ".", ".", ".", ".", {"stat": "p99"}]
           ],
           "period": 300,
           "title": "First Byte Latency (p50 and p99)",
