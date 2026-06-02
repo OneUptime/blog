@@ -8,13 +8,13 @@ Description: Use Amazon SageMaker Data Wrangler's visual interface to transform,
 
 ---
 
-Feature engineering is where data becomes useful for machine learning. Raw data rarely works well as-is - you need to clean it, transform it, combine columns, handle missing values, and create new features that capture meaningful patterns. SageMaker Data Wrangler gives you a visual interface to do all of this, with the ability to export your transformations as code when you're ready to productionize.
+Feature engineering is where data becomes useful for machine learning. Raw data rarely works well as-is - you need to clean it, transform it, combine columns, handle missing values, and create new features that capture meaningful patterns. SageMaker Data Wrangler gives you a visual interface to do all of this, with the ability to export your transformations as code or notebooks when you're ready to productionize.
 
 This guide covers how to use Data Wrangler for common feature engineering tasks.
 
 ## What is Data Wrangler?
 
-Data Wrangler is a visual data preparation tool inside SageMaker Studio. It connects to your data sources, lets you explore and transform data through a drag-and-drop interface, and generates the code (Python, PySpark, or SQL) needed to reproduce your transformations in a production pipeline.
+Data Wrangler is a visual data preparation tool integrated into SageMaker Canvas, with the Studio Classic Data Wrangler experience still documented for existing Studio Classic workflows. It connects to your data sources, lets you explore and transform data through a visual interface, and can export your transformations to destinations such as SageMaker Pipelines, SageMaker Feature Store, Amazon S3, or Python code.
 
 ```mermaid
 graph LR
@@ -100,8 +100,8 @@ Data Wrangler offers over 300 built-in transformations. Here are the ones you'll
 Data Wrangler provides several strategies for missing data.
 
 ```python
-# What Data Wrangler generates under the hood
-# when you select "Fill missing" -> "Fill with median" for unit_price
+# Equivalent pandas logic for selecting
+# "Fill missing" -> "Fill with median" for unit_price
 
 import pandas as pd
 
@@ -167,7 +167,7 @@ def extract_datetime_features(df):
 ML models need numeric inputs. Data Wrangler offers several encoding options.
 
 ```python
-# One-hot encoding (what Data Wrangler generates)
+# Equivalent pandas logic for one-hot encoding
 def one_hot_encode(df, column='product_category'):
     """One-hot encode a categorical column."""
     dummies = pd.get_dummies(df[column], prefix=column)
@@ -259,17 +259,19 @@ Once you're happy with your transformations, Data Wrangler can export them in se
 ### Export as a Processing Job
 
 ```python
-# Data Wrangler generates a processing job that applies all your transformations
+# A Data Wrangler export can run a processing job that applies your transformations
 from sagemaker.processing import ProcessingInput, ProcessingOutput
 from sagemaker.processing import Processor
+from sagemaker import image_uris
 
 # The flow file contains all your transformation logic
 flow_uri = f's3://{bucket}/data-wrangler/my-flow.flow'
+image_uri = image_uris.retrieve(framework='data-wrangler', region='us-east-1')
 
 # Run the transformations at scale
 processor = Processor(
     role=role,
-    image_uri='174368400705.dkr.ecr.us-east-1.amazonaws.com/sagemaker-data-wrangler-container:1.x',
+    image_uri=image_uri,
     instance_count=1,
     instance_type='ml.m5.4xlarge',
     sagemaker_session=session
@@ -303,7 +305,7 @@ Integrate your Data Wrangler transformations into a [SageMaker Pipeline](https:/
 
 ## Custom Transformations
 
-When the built-in transforms aren't enough, write custom Python or PySpark code.
+When the built-in transforms aren't enough, write custom Python user-defined functions, pandas, PySpark, or PySpark SQL code.
 
 ```python
 # Custom transformation in Data Wrangler
