@@ -43,7 +43,7 @@ Start by telling Resilience Hub about your application and its resources.
 aws resiliencehub create-app \
     --name "payment-service" \
     --description "Payment processing service" \
-    --app-assessment-schedule "Daily"
+    --assessment-schedule "Daily"
 ```
 
 Import resources from CloudFormation stacks, resource groups, or Terraform state files.
@@ -51,17 +51,17 @@ Import resources from CloudFormation stacks, resource groups, or Terraform state
 ```bash
 # Import from a CloudFormation stack
 aws resiliencehub import-resources-to-draft-app-version \
-    --app-arn "arn:aws:resiliencehub:us-east-1:123456789:app/abc123" \
-    --source-arns '["arn:aws:cloudformation:us-east-1:123456789:stack/payment-service-stack/xyz"]'
+    --app-arn "arn:aws:resiliencehub:us-east-1:123456789012:app/abc123" \
+    --source-arns '["arn:aws:cloudformation:us-east-1:123456789012:stack/payment-service-stack/xyz"]'
 
-# Or import specific resources manually
-aws resiliencehub import-resources-to-draft-app-version \
-    --app-arn "arn:aws:resiliencehub:us-east-1:123456789:app/abc123" \
-    --source-arns '[
-        "arn:aws:ec2:us-east-1:123456789:instance/i-abc123",
-        "arn:aws:rds:us-east-1:123456789:db:payment-db",
-        "arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/payment-alb/xyz"
-    ]'
+# Or add a specific resource manually
+aws resiliencehub create-app-version-resource \
+    --app-arn "arn:aws:resiliencehub:us-east-1:123456789012:app/abc123" \
+    --resource-name "payment-db" \
+    --resource-type "AWS::RDS::DBInstance" \
+    --logical-resource-id '{"identifier": "payment-db"}' \
+    --physical-resource-id "payment-db" \
+    --app-components "database"
 ```
 
 ## Setting a Resilience Policy
@@ -108,8 +108,8 @@ For a payment service, you'd want aggressive objectives - 5-minute RTO for softw
 ```bash
 # Attach the policy to your application
 aws resiliencehub update-app \
-    --app-arn "arn:aws:resiliencehub:us-east-1:123456789:app/abc123" \
-    --policy-arn "arn:aws:resiliencehub:us-east-1:123456789:resiliency-policy/def456"
+    --app-arn "arn:aws:resiliencehub:us-east-1:123456789012:app/abc123" \
+    --policy-arn "arn:aws:resiliencehub:us-east-1:123456789012:resiliency-policy/def456"
 ```
 
 ## Publishing the Application Version
@@ -119,7 +119,7 @@ Before running an assessment, publish your application version.
 ```bash
 # Publish the draft app version
 aws resiliencehub publish-app-version \
-    --app-arn "arn:aws:resiliencehub:us-east-1:123456789:app/abc123"
+    --app-arn "arn:aws:resiliencehub:us-east-1:123456789012:app/abc123"
 ```
 
 ## Running a Resilience Assessment
@@ -129,7 +129,7 @@ Now run the assessment. Resilience Hub analyzes your architecture and compares i
 ```bash
 # Start a resilience assessment
 aws resiliencehub start-app-assessment \
-    --app-arn "arn:aws:resiliencehub:us-east-1:123456789:app/abc123" \
+    --app-arn "arn:aws:resiliencehub:us-east-1:123456789012:app/abc123" \
     --app-version "release" \
     --assessment-name "initial-assessment"
 ```
@@ -139,7 +139,7 @@ The assessment takes a few minutes. Check its status.
 ```bash
 # Check assessment status
 aws resiliencehub describe-app-assessment \
-    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789:app-assessment/ghi789"
+    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789012:app-assessment/ghi789"
 ```
 
 ## Reading Assessment Results
@@ -149,11 +149,11 @@ The assessment produces a detailed report showing your compliance status and any
 ```bash
 # List assessment recommendations
 aws resiliencehub list-app-assessment-compliance-drifts \
-    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789:app-assessment/ghi789"
+    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789012:app-assessment/ghi789"
 
 # Get specific recommendations
 aws resiliencehub list-recommendation-templates \
-    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789:app-assessment/ghi789"
+    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789012:app-assessment/ghi789"
 ```
 
 A typical assessment might produce results like this.
@@ -255,12 +255,12 @@ aws fis create-experiment-template \
     }' \
     --stop-conditions '[{
         "source": "aws:cloudwatch:alarm",
-        "value": "arn:aws:cloudwatch:us-east-1:123456789:alarm:PaymentServiceCritical"
+        "value": "arn:aws:cloudwatch:us-east-1:123456789012:alarm:PaymentServiceCritical"
     }]' \
-    --role-arn "arn:aws:iam::123456789:role/FISRole"
+    --role-arn "arn:aws:iam::123456789012:role/FISRole"
 ```
 
-The stop condition is your safety net - if the alarm triggers, the experiment automatically stops and instances are restored.
+The stop condition is your safety net - if the alarm triggers, the experiment automatically stops. The `startInstancesAfterDuration` parameter starts the instances again after five minutes.
 
 ## Generating Operational Runbooks
 
@@ -269,9 +269,9 @@ Resilience Hub can generate Systems Manager runbooks for recovery procedures.
 ```bash
 # Create recommendation templates (including runbooks)
 aws resiliencehub create-recommendation-template \
-    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789:app-assessment/ghi789" \
+    --assessment-arn "arn:aws:resiliencehub:us-east-1:123456789012:app-assessment/ghi789" \
     --name "payment-service-runbooks" \
-    --recommendation-types '["SopRecommendation", "TestRecommendation"]'
+    --recommendation-types '["Sop", "Test"]'
 ```
 
 This generates:
@@ -286,7 +286,7 @@ Run assessments regularly to catch drift as your architecture evolves.
 ```bash
 # Configure daily assessments
 aws resiliencehub update-app \
-    --app-arn "arn:aws:resiliencehub:us-east-1:123456789:app/abc123" \
+    --app-arn "arn:aws:resiliencehub:us-east-1:123456789012:app/abc123" \
     --assessment-schedule "Daily"
 ```
 
@@ -305,7 +305,8 @@ def check_compliance(app_arn):
     # Get the latest assessment
     assessments = hub.list_app_assessments(
         appArn=app_arn,
-        assessmentStatus='Success'
+        assessmentStatus=['Success'],
+        reverseOrder=True
     )
 
     if not assessments['assessmentSummaries']:
@@ -326,11 +327,13 @@ def check_compliance(app_arn):
             assessmentArn=latest['assessmentArn']
         )
         compliance = detail['assessment']['compliance']
+        policy = detail['assessment']['policy']['policy']
         for disruption, data in compliance.items():
             if data['complianceStatus'] == 'PolicyBreached':
-                print(f"  {disruption}: RTO {data['currentRtoInSecs']}s (target: {data['achievableRtoInSecs']}s)")
+                target_rto = policy[disruption]['rtoInSecs']
+                print(f"  {disruption}: RTO {data['currentRtoInSecs']}s (target: {target_rto}s)")
 
-check_compliance("arn:aws:resiliencehub:us-east-1:123456789:app/abc123")
+check_compliance("arn:aws:resiliencehub:us-east-1:123456789012:app/abc123")
 ```
 
 ## Wrapping Up
