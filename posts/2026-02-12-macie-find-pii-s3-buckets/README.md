@@ -72,7 +72,7 @@ aws macie2 create-classification-job \
         "and": [
           {
             "simpleScopeTerm": {
-              "comparator": "CONTAINS",
+              "comparator": "EQ",
               "key": "OBJECT_EXTENSION",
               "values": ["csv", "json", "xlsx", "txt", "pdf", "doc", "docx"]
             }
@@ -99,8 +99,8 @@ aws macie2 create-classification-job \
     "US_SOCIAL_SECURITY_NUMBER",
     "EMAIL_ADDRESS",
     "PHONE_NUMBER",
-    "US_PASSPORT_NUMBER",
-    "US_DRIVER_LICENSE",
+    "USA_PASSPORT_NUMBER",
+    "DRIVERS_LICENSE",
     "ADDRESS",
     "NAME",
     "DATE_OF_BIRTH",
@@ -147,8 +147,13 @@ aws macie2 list-findings \
       "category": {
         "eq": ["CLASSIFICATION"]
       },
-      "classificationDetails.result.sensitiveData.detections.type": {
-        "eq": ["PII"]
+      "type": {
+        "eq": [
+          "SensitiveData:S3Object/Personal",
+          "SensitiveData:S3Object/Multiple",
+          "SensitiveData:S3Object/Financial",
+          "SensitiveData:S3Object/Credentials"
+        ]
       }
     }
   }' \
@@ -181,7 +186,7 @@ Macie assigns severity based on the type and quantity of PII found:
 - **Medium** - Moderate volumes or less sensitive types like email addresses and names
 - **Low** - Small amounts or low-sensitivity data
 
-The severity is also influenced by the bucket's security configuration. PII in a public bucket gets a higher severity than PII in an encrypted, private bucket.
+The finding details also include the bucket's security configuration, which can help you prioritize remediation alongside Macie's severity score.
 
 ## Building an Automated Response
 
@@ -337,24 +342,37 @@ aws macie2 create-custom-data-identifier \
 
 ## Generating PII Reports
 
-For compliance reporting, you can export Macie findings to S3.
+For compliance reporting, you can export Macie sensitive data discovery results to S3.
 
 ```bash
-# Configure findings export to S3
-aws macie2 put-findings-publication-configuration \
-  --security-hub-configuration '{"publishClassificationFindings": true, "publishPolicyFindings": true}' \
-  --client-token "$(uuidgen)"
+# Configure sensitive data discovery results export to S3
+aws macie2 put-classification-export-configuration \
+  --configuration '{
+    "s3Destination": {
+      "bucketName": "macie-results-bucket",
+      "keyPrefix": "classification-results/",
+      "kmsKeyArn": "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555"
+    }
+  }'
 ```
 
 You can also query findings programmatically to build custom reports.
 
 ```bash
-# Get a count of PII findings by type
+# Get a count of PII findings by finding type
 aws macie2 get-finding-statistics \
-  --group-by "classificationDetails.result.sensitiveData.detections.type" \
+  --group-by "type" \
   --finding-criteria '{
     "criterion": {
       "category": {"eq": ["CLASSIFICATION"]},
+      "type": {
+        "eq": [
+          "SensitiveData:S3Object/Personal",
+          "SensitiveData:S3Object/Multiple",
+          "SensitiveData:S3Object/Financial",
+          "SensitiveData:S3Object/Credentials"
+        ]
+      },
       "updatedAt": {"gte": 1706745600}
     }
   }'
