@@ -76,7 +76,7 @@ aws cognito-idp admin-set-user-password \
 
 ## Cause 2: Missing Client Secret Hash
 
-If your app client has a client secret (which is the default when creating one through CloudFormation or the CLI), you need to compute and send a `SECRET_HASH` with every authentication request. Forgetting this is extremely common.
+If your app client has a client secret (for example, because you set `GenerateSecret` in CloudFormation or used `--generate-secret` with the CLI), you need to compute and send a `SECRET_HASH` with every authentication request. Forgetting this is extremely common.
 
 Here's how to compute the secret hash in Python.
 
@@ -134,7 +134,7 @@ When you see `Access Token has been revoked`, it means the token was explicitly 
 
 This can happen when:
 - Someone called `AdminUserGlobalSignOut` or `GlobalSignOut`
-- The user's password was changed by an admin
+- A refresh token was revoked with `RevokeToken` or the revocation endpoint
 - Token revocation is enabled on the app client and the refresh token was revoked
 
 To check if token revocation is enabled on your app client:
