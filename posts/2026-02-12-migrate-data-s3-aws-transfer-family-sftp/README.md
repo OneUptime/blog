@@ -51,20 +51,24 @@ And the permissions policy for S3 access.
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "AllowS3Access",
+      "Sid": "AllowBucketAccess",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation",
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::sftp-landing-bucket"
+    },
+    {
+      "Sid": "AllowObjectAccess",
       "Effect": "Allow",
       "Action": [
         "s3:PutObject",
         "s3:GetObject",
         "s3:DeleteObject",
-        "s3:GetObjectVersion",
-        "s3:GetBucketLocation",
-        "s3:ListBucket"
+        "s3:GetObjectVersion"
       ],
-      "Resource": [
-        "arn:aws:s3:::sftp-landing-bucket",
-        "arn:aws:s3:::sftp-landing-bucket/*"
-      ]
+      "Resource": "arn:aws:s3:::sftp-landing-bucket/*"
     }
   ]
 }
@@ -100,7 +104,7 @@ aws transfer create-server \
   --tags Key=Name,Value=partner-sftp-server
 ```
 
-For production environments, you'll likely want a VPC endpoint instead of a public one. This keeps SFTP traffic within your VPC.
+For production environments, you'll likely want a VPC endpoint instead of a public one. This lets you keep the endpoint accessible only inside your VPC, or make it internet-facing with Elastic IP addresses and security groups.
 
 ```bash
 # Create a VPC-hosted SFTP server
@@ -242,6 +246,11 @@ Create a Lambda function that returns user configuration.
 
 ```python
 import json
+import hmac
+
+def validate_password(password, expected_password):
+    # Replace this with your real password hash verification.
+    return hmac.compare_digest(password, expected_password)
 
 def lambda_handler(event, context):
     """
@@ -256,7 +265,7 @@ def lambda_handler(event, context):
     # This is a simplified example
     users_db = {
         "partner-acme": {
-            "password": "hashed_password_here",
+            "password": "example-password",
             "role": "arn:aws:iam::123456789012:role/TransferFamilySFTPRole",
             "home_directory": "/sftp-landing-bucket/partners/acme"
         }
@@ -281,6 +290,15 @@ def lambda_handler(event, context):
 Set up S3 event notifications to trigger processing when files arrive. You can send events to Lambda, SQS, or EventBridge.
 
 ```bash
+# Allow S3 to invoke the Lambda function
+aws lambda add-permission \
+  --function-name process-sftp-upload \
+  --statement-id s3-invoke-sftp-landing-bucket \
+  --action lambda:InvokeFunction \
+  --principal s3.amazonaws.com \
+  --source-arn arn:aws:s3:::sftp-landing-bucket \
+  --source-account 123456789012
+
 # Configure S3 event notifications for new uploads
 aws s3api put-bucket-notification-configuration \
   --bucket sftp-landing-bucket \
@@ -307,9 +325,9 @@ aws s3api put-bucket-notification-configuration \
 Transfer Family publishes metrics to CloudWatch. Keep an eye on these.
 
 ```bash
-# Create a CloudWatch alarm for failed authentications
+# Create a CloudWatch alarm if no files arrive during an expected transfer window
 aws cloudwatch put-metric-alarm \
-  --alarm-name sftp-failed-auth \
+  --alarm-name sftp-no-files-in \
   --metric-name FilesIn \
   --namespace AWS/Transfer \
   --statistic Sum \
@@ -317,8 +335,11 @@ aws cloudwatch put-metric-alarm \
   --threshold 0 \
   --comparison-operator LessThanOrEqualToThreshold \
   --evaluation-periods 6 \
+  --treat-missing-data breaching \
   --dimensions Name=ServerId,Value=s-abc123def456
 ```
+
+For failed authentication monitoring, use your Transfer Family logs in CloudWatch Logs and create a metric filter for the authentication failure messages you care about.
 
 For a more comprehensive monitoring setup, integrate with [OneUptime](https://oneuptime.com) to track SFTP server availability, transfer success rates, and alert on failures across your entire pipeline.
 
@@ -326,11 +347,11 @@ For a more comprehensive monitoring setup, integrate with [OneUptime](https://on
 
 Transfer Family pricing has three components:
 
-- **Server endpoint**: ~$0.30/hour (roughly $216/month) while the server is running
+- **Server endpoint**: ~$0.30/hour (roughly $216/month) while the endpoint is provisioned
 - **Data uploaded**: ~$0.04 per GB
 - **Data downloaded**: ~$0.04 per GB
 
-The endpoint cost is the big one. If you don't need 24/7 availability, you can stop the server during off-hours to save costs. But for most production use cases, you'll want it running continuously.
+The endpoint cost is the big one. Stopping a server takes it offline, but AWS still charges for the protocol endpoint until you delete the server. For most production use cases, you'll want it available continuously.
 
 ## Wrapping Up
 
