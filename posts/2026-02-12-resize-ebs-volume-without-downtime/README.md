@@ -8,7 +8,7 @@ Description: Learn how to increase the size of an EBS volume on a running EC2 in
 
 ---
 
-Running out of disk space used to mean downtime - you'd have to stop the instance, create a bigger volume, copy data, and swap things around. With modern EBS, you can increase a volume's size, change its type, or adjust its IOPS while the volume is attached and in use. The instance never needs to stop.
+Running out of disk space used to mean downtime - you'd have to stop the instance, create a bigger volume, copy data, and swap things around. With modern EBS, you can increase a volume's size, change its type, or adjust its IOPS while the volume is attached and in use, as long as the instance supports Elastic Volumes.
 
 This guide walks through the process from start to finish, including the filesystem-level steps that AWS doesn't handle for you automatically.
 
@@ -21,7 +21,7 @@ EBS Elastic Volumes lets you modify these parameters on a live, attached volume:
 - **IOPS** - adjust provisioned IOPS (for io1, io2, and gp3)
 - **Throughput** - adjust provisioned throughput (for gp3)
 
-There's one restriction: you can only modify a volume once every 6 hours. After a modification, the volume enters an "optimizing" state, and you need to wait for it to complete before making another change.
+There's one restriction: after a modification, the volume enters an "optimizing" state, and you need to wait for it to reach "completed" before making another change. AWS allows up to four modifications for the same volume within a rolling 24-hour period, as long as each previous modification has completed.
 
 ## Step 1: Modify the Volume in AWS
 
@@ -260,6 +260,9 @@ while true; do
 
     if [ "$STATE" = "optimizing" ] || [ "$STATE" = "completed" ]; then
         break
+    elif [ "$STATE" = "failed" ]; then
+        echo "Error: Volume modification failed"
+        exit 1
     fi
     sleep 10
 done
@@ -302,7 +305,7 @@ df -h $MOUNT_POINT
 
 ## Things to Watch Out For
 
-**6-hour cooldown between modifications.** If you resize to 200 GB and realize you need 300 GB, you have to wait 6 hours. Plan ahead.
+**Wait for modifications to complete before making another one.** If you resize to 200 GB and realize you need 300 GB, you must wait for the current modification to reach "completed" before submitting the next change. AWS allows up to four modifications for the same volume in a rolling 24-hour period. Plan ahead.
 
 **You can't shrink volumes.** If you over-provisioned, your only option is to create a smaller volume, copy the data, and swap them.
 
