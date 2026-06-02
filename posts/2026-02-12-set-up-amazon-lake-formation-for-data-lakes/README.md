@@ -47,16 +47,9 @@ aws lakeformation put-data-lake-settings \
 
 Setting `CreateDatabaseDefaultPermissions` and `CreateTableDefaultPermissions` to empty arrays is important. By default, Lake Formation grants `IAMAllowedPrincipals` access to everything, which effectively bypasses Lake Formation permissions. Clearing these defaults forces all access to go through Lake Formation's permission model.
 
-## Step 2: Create the Service-Linked Role
+## Step 2: Create the Data Access Role
 
-Lake Formation needs a service-linked role to access your S3 data on your behalf.
-
-```bash
-# Create the service-linked role for Lake Formation
-aws iam create-service-linked-role --aws-service-name lakeformation.amazonaws.com
-```
-
-You also need a role that Lake Formation will use to register and access S3 locations.
+Lake Formation needs a role that it can use to register and access S3 locations. You can use the Lake Formation service-linked role, but a custom role is more flexible and is required for some workloads, such as EMR access.
 
 ```bash
 # Create the data lake access role
@@ -111,8 +104,7 @@ Now tell Lake Formation about your S3 locations. Registered locations are manage
 # Register the data lake S3 location
 aws lakeformation register-resource \
   --resource-arn "arn:aws:s3:::my-company-data-lake" \
-  --role-arn "arn:aws:iam::123456789012:role/LakeFormationDataAccessRole" \
-  --use-service-linked-role
+  --role-arn "arn:aws:iam::123456789012:role/LakeFormationDataAccessRole"
 
 # Verify registration
 aws lakeformation list-resources
@@ -175,6 +167,30 @@ aws iam attach-role-policy \
   --role-name GlueCrawlerRole \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
 
+aws iam put-role-policy \
+  --role-name GlueCrawlerRole \
+  --policy-name LakeFormationCrawlerAccess \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Action": "lakeformation:GetDataAccess",
+      "Resource": "*"
+    }]
+  }'
+
+# Allow the crawler to create tables in the raw_data database
+aws lakeformation grant-permissions \
+  --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/GlueCrawlerRole"}' \
+  --resource '{"Database": {"Name": "raw_data"}}' \
+  --permissions '["CREATE_TABLE", "DESCRIBE"]'
+
+# Allow the crawler to use the registered S3 location
+aws lakeformation grant-permissions \
+  --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/GlueCrawlerRole"}' \
+  --resource '{"DataLocation": {"ResourceArn": "arn:aws:s3:::my-company-data-lake"}}' \
+  --permissions '["DATA_LOCATION_ACCESS"]'
+
 # Create the crawler
 aws glue create-crawler \
   --name raw-data-crawler \
@@ -192,6 +208,10 @@ aws glue create-crawler \
   --schema-change-policy '{
     "UpdateBehavior": "UPDATE_IN_DATABASE",
     "DeleteBehavior": "LOG"
+  }' \
+  --lake-formation-configuration '{
+    "UseLakeFormationCredentials": true,
+    "AccountId": "123456789012"
   }'
 
 # Run the crawler manually for the first time
@@ -230,7 +250,7 @@ aws glue get-tables --database-name raw_data \
 
 ## Step 7: Grant Permissions
 
-This is where Lake Formation really shines. Instead of managing complex IAM policies for each user, you grant permissions through Lake Formation's centralized model.
+This is where Lake Formation really shines. Instead of managing complex S3 policies for each user, you grant data lake permissions through Lake Formation's centralized model. Users still need IAM permissions for the AWS services they call, such as Athena and Glue.
 
 ```bash
 # Grant an analyst read access to the raw_data database
