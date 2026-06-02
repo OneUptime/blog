@@ -10,7 +10,7 @@ Description: Configure an AWS Amplify backend using CDK for full infrastructure-
 
 AWS Amplify is great for quickly spinning up backends with authentication, APIs, and storage. But the Amplify CLI abstracts away a lot of infrastructure details, and when you need fine-grained control or want to integrate with your existing CDK infrastructure, you hit limitations. The solution is to use CDK to define your Amplify backend resources directly.
 
-With Amplify Gen 2 and CDK, you get the best of both worlds: the developer experience of Amplify's libraries on the frontend and the full power of CDK on the backend. This guide walks through setting up an Amplify backend with CDK from scratch.
+With Amplify's frontend libraries and CDK, you get the best of both worlds: the developer experience of Amplify on the frontend and the full power of CDK on the backend. This guide walks through setting up an Amplify-compatible backend with CDK from scratch.
 
 ## Why CDK Instead of the Amplify CLI
 
@@ -34,7 +34,7 @@ flowchart LR
 
 ## Prerequisites
 
-- Node.js 18 or later
+- Node.js 20 or 22
 - AWS CDK v2 installed (`npm install -g aws-cdk`)
 - An AWS account with admin access
 - Basic familiarity with CDK constructs
@@ -48,7 +48,7 @@ mkdir my-amplify-backend && cd my-amplify-backend
 cdk init app --language typescript
 
 # Install Amplify-related CDK packages
-npm install @aws-cdk/aws-cognito @aws-cdk/aws-appsync @aws-cdk/aws-dynamodb @aws-cdk/aws-lambda @aws-cdk/aws-s3 aws-cdk-lib constructs
+npm install aws-cdk-lib constructs
 ```
 
 ## Step 2: Define the Authentication Stack
@@ -59,11 +59,13 @@ Most Amplify apps start with authentication. Create a Cognito User Pool with the
 // lib/auth-stack.ts
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as identitypool from 'aws-cdk-lib/aws-cognito-identitypool';
 import { Construct } from 'constructs';
 
 export class AuthStack extends cdk.Stack {
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
+  public readonly identityPool: identitypool.IdentityPool;
 
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
@@ -116,15 +118,17 @@ export class AuthStack extends cdk.Stack {
     });
 
     // Create an Identity Pool for AWS credentials
-    const identityPool = new cognito.CfnIdentityPool(this, 'AppIdentityPool', {
+    this.identityPool = new identitypool.IdentityPool(this, 'AppIdentityPool', {
       identityPoolName: 'my-app-identity-pool',
       allowUnauthenticatedIdentities: false,
-      cognitoIdentityProviders: [
-        {
-          clientId: this.userPoolClient.userPoolClientId,
-          providerName: this.userPool.userPoolProviderName,
-        },
-      ],
+      authenticationProviders: {
+        userPools: [
+          new identitypool.UserPoolAuthenticationProvider({
+            userPool: this.userPool,
+            userPoolClient: this.userPoolClient,
+          }),
+        ],
+      },
     });
 
     // Output the IDs for frontend configuration
@@ -135,7 +139,7 @@ export class AuthStack extends cdk.Stack {
       value: this.userPoolClient.userPoolClientId,
     });
     new cdk.CfnOutput(this, 'IdentityPoolId', {
-      value: identityPool.ref,
+      value: this.identityPool.identityPoolId,
     });
   }
 }
@@ -143,7 +147,7 @@ export class AuthStack extends cdk.Stack {
 
 ## Step 3: Define the API Stack
 
-Create a GraphQL API with AppSync, similar to what Amplify's `@model` directive gives you.
+Create a GraphQL API with AppSync and add a DynamoDB-backed resolver.
 
 ```typescript
 // lib/api-stack.ts
@@ -184,7 +188,6 @@ export class ApiStack extends cdk.Stack {
     const todoTable = new dynamodb.Table(this, 'TodoTable', {
       tableName: 'Todo',
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-      sortKey: { name: 'createdAt', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
@@ -207,7 +210,7 @@ export class ApiStack extends cdk.Stack {
       responseMappingTemplate: appsync.MappingTemplate.dynamoDbResultItem(),
     });
 
-    // Output the API URL and key
+    // Output the API URL
     new cdk.CfnOutput(this, 'GraphQLEndpoint', {
       value: api.graphqlUrl,
     });
@@ -223,13 +226,17 @@ Add S3 storage for file uploads, with proper access controls.
 // lib/storage-stack.ts
 import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as iam from 'aws-cdk-lib/aws-iam';
+import * as identitypool from 'aws-cdk-lib/aws-cognito-identitypool';
 import { Construct } from 'constructs';
+
+interface StorageStackProps extends cdk.StackProps {
+  identityPool: identitypool.IdentityPool;
+}
 
 export class StorageStack extends cdk.Stack {
   public readonly bucket: s3.Bucket;
 
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: StorageStackProps) {
     super(scope, id, props);
 
     // Create the S3 bucket for user uploads
@@ -253,6 +260,9 @@ export class StorageStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
+
+    // Allow signed-in users to access objects through Amplify Storage
+    this.bucket.grantReadWrite(props.identityPool.authenticatedRole);
 
     new cdk.CfnOutput(this, 'BucketName', {
       value: this.bucket.bucketName,
@@ -288,11 +298,16 @@ const apiStack = new ApiStack(app, 'ApiStack', {
   userPool: authStack.userPool,
 });
 
-// Storage is independent
-const storageStack = new StorageStack(app, 'StorageStack', { env });
+// Storage uses the identity pool role for authenticated S3 access
+const storageStack = new StorageStack(app, 'StorageStack', {
+  env,
+  identityPool: authStack.identityPool,
+});
 ```
 
 ## Step 6: Create the GraphQL Schema
+
+This schema includes fields you can implement with additional resolvers; the CDK snippet above wires the `getTodo` resolver.
 
 ```graphql
 # graphql/schema.graphql
@@ -392,7 +407,7 @@ export class FunctionsStack extends cdk.Stack {
 
     // Create a Lambda function with bundled TypeScript
     const processOrderFn = new nodejs.NodejsFunction(this, 'ProcessOrder', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       entry: 'functions/process-order/index.ts',
       handler: 'handler',
       timeout: cdk.Duration.seconds(30),
