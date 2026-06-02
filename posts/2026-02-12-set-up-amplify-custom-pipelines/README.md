@@ -10,7 +10,7 @@ Description: Configure custom CI/CD pipelines for AWS Amplify applications using
 
 The default Amplify Hosting build pipeline works well for straightforward deployments. Push to a branch, Amplify builds, and your site goes live. But as your project grows, you need more control. Maybe you need to run integration tests before deploying, deploy to multiple environments with approval gates, or integrate with your existing CI/CD tooling. Custom pipelines give you that control.
 
-This guide covers three approaches: customizing the built-in Amplify build specification, using AWS CodePipeline with Amplify, and integrating with GitHub Actions.
+This guide covers four approaches: customizing the built-in Amplify build specification, using environment-specific build commands, using AWS CodePipeline with Amplify, and integrating with GitHub Actions.
 
 ## Approach 1: Custom Build Specification
 
@@ -57,11 +57,13 @@ test:
     preTest:
       commands:
         # Install Cypress for E2E testing
-        - npm install cypress
+        - npm install cypress wait-on
         - npx cypress install
     test:
       commands:
         # Run E2E tests
+        - npm start &
+        - npx wait-on http://localhost:3000
         - npx cypress run --config baseUrl=http://localhost:3000
   artifacts:
     baseDirectory: cypress
@@ -120,7 +122,7 @@ frontend:
 
 ## Approach 3: AWS CodePipeline Integration
 
-For enterprise workflows with approval gates, parallel stages, and multi-account deployments, use CodePipeline with Amplify as a deploy action.
+For enterprise workflows with approval gates, parallel stages, and multi-account deployments, use CodePipeline with a deploy step that triggers Amplify through the AWS CLI.
 
 ```mermaid
 flowchart LR
@@ -178,6 +180,10 @@ aws codepipeline create-pipeline \
   --pipeline '{
     "name": "amplify-app-pipeline",
     "roleArn": "arn:aws:iam::123456789012:role/CodePipelineRole",
+    "artifactStore": {
+      "type": "S3",
+      "location": "my-codepipeline-artifacts-bucket"
+    },
     "stages": [
       {
         "name": "Source",
@@ -185,15 +191,14 @@ aws codepipeline create-pipeline \
           "name": "GitHubSource",
           "actionTypeId": {
             "category": "Source",
-            "owner": "ThirdParty",
-            "provider": "GitHub",
+            "owner": "AWS",
+            "provider": "CodeStarSourceConnection",
             "version": "1"
           },
           "configuration": {
-            "Owner": "my-org",
-            "Repo": "my-app",
-            "Branch": "main",
-            "OAuthToken": "{{resolve:secretsmanager:github-token}}"
+            "ConnectionArn": "arn:aws:codeconnections:us-east-1:123456789012:connection/your-connection-id",
+            "FullRepositoryId": "my-org/my-app",
+            "BranchName": "main"
           },
           "outputArtifacts": [{"name": "SourceOutput"}]
         }]
@@ -234,16 +239,15 @@ aws codepipeline create-pipeline \
       {
         "name": "Deploy",
         "actions": [{
-          "name": "AmplifyDeploy",
+          "name": "TriggerAmplifyRelease",
           "actionTypeId": {
-            "category": "Deploy",
+            "category": "Build",
             "owner": "AWS",
-            "provider": "AmplifyConsole",
+            "provider": "CodeBuild",
             "version": "1"
           },
           "configuration": {
-            "AppId": "your-amplify-app-id",
-            "BranchName": "main"
+            "ProjectName": "my-app-amplify-release"
           },
           "inputArtifacts": [{"name": "BuildOutput"}]
         }]
@@ -313,10 +317,11 @@ jobs:
 
       - name: Start Amplify deployment
         run: |
-          # Trigger a deployment for the staging branch
-          aws amplify start-deployment \
+          # Trigger a release for the staging branch
+          aws amplify start-job \
             --app-id ${{ secrets.AMPLIFY_APP_ID }} \
-            --branch-name staging
+            --branch-name staging \
+            --job-type RELEASE
 
       - name: Wait for deployment
         run: |
@@ -333,7 +338,7 @@ jobs:
             if [ "$STATUS" = "SUCCEED" ]; then
               echo "Deployment successful"
               break
-            elif [ "$STATUS" = "FAILED" ]; then
+            elif [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "CANCELLED" ]; then
               echo "Deployment failed"
               exit 1
             fi
@@ -359,9 +364,10 @@ jobs:
 
       - name: Deploy to production
         run: |
-          aws amplify start-deployment \
+          aws amplify start-job \
             --app-id ${{ secrets.AMPLIFY_APP_ID }} \
-            --branch-name main
+            --branch-name main \
+            --job-type RELEASE
 ```
 
 The `environment` key in GitHub Actions provides built-in approval gates. Configure required reviewers in your repository settings.
