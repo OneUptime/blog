@@ -25,13 +25,11 @@ If you haven't created an EFS file system yet, see our guide on [creating an Ama
 
 ## Installing the EFS Mount Helper
 
-The EFS mount helper (`amazon-efs-utils`) comes pre-installed on Amazon Linux 2 and Amazon Linux 2023. For other distributions, you'll need to install it.
+The EFS mount helper (`amazon-efs-utils`) is available from the package repositories on Amazon Linux 2 and Amazon Linux 2023. For other distributions, you'll need to install it.
 
-On Amazon Linux / Amazon Linux 2:
+On Amazon Linux 2023 / Amazon Linux 2:
 
 ```bash
-# Usually already installed, but just in case
-
 sudo yum install -y amazon-efs-utils
 ```
 
@@ -40,7 +38,7 @@ On Ubuntu/Debian:
 ```bash
 # Install dependencies
 sudo apt-get update
-sudo apt-get install -y git binutils rustc cargo pkg-config libssl-dev
+sudo apt-get install -y git binutils rustc cargo libssl-dev pkg-config gettext make gcc g++ cmake wget perl
 
 # Clone and install the package
 git clone https://github.com/aws/efs-utils
@@ -52,7 +50,7 @@ sudo apt-get install -y ./build/amazon-efs-utils*deb
 On RHEL/CentOS:
 
 ```bash
-sudo yum install -y git rpm-build make
+sudo yum install -y git rpm-build make rust cargo openssl-devel gcc gcc-c++ cmake3 wget perl
 git clone https://github.com/aws/efs-utils
 cd efs-utils
 make rpm
@@ -105,13 +103,13 @@ sudo mount -t nfs4 \
 
 The mount options explained:
 
-- **nfsvers=4.1** - Use NFS version 4.1 (required for EFS)
+- **nfsvers=4.1** - Use NFS version 4.1 (recommended for Linux clients)
 - **rsize=1048576** - Read buffer size of 1 MB (maximizes throughput)
 - **wsize=1048576** - Write buffer size of 1 MB
 - **hard** - Retries NFS requests indefinitely (don't use soft - it can cause data corruption)
 - **timeo=600** - 60-second timeout before retrying
-- **retrans=2** - Retry twice before the timeout
-- **noresvport** - Don't use a reserved port (allows more concurrent connections)
+- **retrans=2** - Retry twice before attempting further recovery
+- **noresvport** - Use a new non-privileged TCP source port when reconnecting after a network recovery event
 
 ## Making the Mount Persist Across Reboots
 
@@ -201,7 +199,7 @@ sudo mount -t efs -o tls fs-0abc123def456789:/ /mnt/shared
 sudo mount -t efs -o tls fs-0abc123def456789:/ /mnt/shared
 ```
 
-Files written on one instance are visible on all others within a few seconds (EFS provides close-to-open consistency).
+Files written on one instance are visible to other clients after the writing client closes the file and the other clients open it again (EFS provides close-to-open consistency).
 
 ## Performance Optimization
 
