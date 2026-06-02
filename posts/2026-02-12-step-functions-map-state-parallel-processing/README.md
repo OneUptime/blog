@@ -14,7 +14,7 @@ There are two flavors: Inline Map for small batches (up to 40 concurrent iterati
 
 ## Inline Map State
 
-The Inline Map runs a set of steps for each item in an array. It's the simpler option and works well when your collection has fewer than a few hundred items.
+The Inline Map runs a set of steps for each item in an array. It's the simpler option and works well when your collection has fewer than a few hundred items and the workflow's execution history stays under the 25,000-event limit.
 
 Here's a workflow that validates and processes each item in an order:
 
@@ -27,7 +27,10 @@ Here's a workflow that validates and processes each item in an order:
       "Type": "Map",
       "ItemsPath": "$.items",
       "MaxConcurrency": 10,
-      "Iterator": {
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
         "StartAt": "ValidateItem",
         "States": {
           "ValidateItem": {
@@ -54,7 +57,7 @@ Here's a workflow that validates and processes each item in an order:
 }
 ```
 
-`ItemsPath` points to the array in your input. Each element becomes the input to one iteration of the Map's `Iterator`. `MaxConcurrency` caps how many iterations run at the same time - set it to 0 for unlimited concurrency.
+`ItemsPath` points to the array in your input. Each element becomes the input to one iteration of the Map's `ItemProcessor`. `MaxConcurrency` caps how many iterations run at the same time - set it to 0 for no additional concurrency limit, while still staying within Inline Map's 40-iteration concurrency cap.
 
 ## Passing Context to Map Iterations
 
@@ -73,7 +76,10 @@ This passes both the current item and the parent order ID to each iteration:
       "orderId.$": "$.orderId",
       "customerId.$": "$.customerId"
     },
-    "Iterator": {
+    "ItemProcessor": {
+      "ProcessorConfig": {
+        "Mode": "INLINE"
+      },
       "StartAt": "ProcessSingleItem",
       "States": {
         "ProcessSingleItem": {
@@ -124,7 +130,7 @@ The Map state collects all the return values into an array. So if you process 5 
 
 ## Error Handling in Map States
 
-When one iteration fails, you have options. By default, the entire Map state fails if any iteration fails. You can change this with `ToleratedFailurePercentage` or `ToleratedFailureCount`.
+When one iteration fails, you have options. By default, the entire Map state fails if any iteration fails. In Distributed Map, you can change this with `ToleratedFailurePercentage` or `ToleratedFailureCount`.
 
 This configuration allows up to 10% of iterations to fail without failing the whole Map:
 
@@ -135,7 +141,11 @@ This configuration allows up to 10% of iterations to fail without failing the wh
     "ItemsPath": "$.records",
     "MaxConcurrency": 20,
     "ToleratedFailurePercentage": 10,
-    "Iterator": {
+    "ItemProcessor": {
+      "ProcessorConfig": {
+        "Mode": "DISTRIBUTED",
+        "ExecutionType": "STANDARD"
+      },
       "StartAt": "ProcessRecord",
       "States": {
         "ProcessRecord": {
@@ -158,7 +168,7 @@ This configuration allows up to 10% of iterations to fail without failing the wh
 }
 ```
 
-You can also add Retry and Catch blocks to individual states within the Iterator, just like you would in a normal workflow.
+You can also add Retry and Catch blocks to individual states within the `ItemProcessor`, just like you would in a normal workflow.
 
 ## Distributed Map for Large-Scale Processing
 
@@ -212,7 +222,7 @@ This Distributed Map reads items from an S3 CSV file and processes each row:
 }
 ```
 
-Notice the differences from Inline Map. `ItemProcessor` replaces `Iterator` and includes a `ProcessorConfig` with mode set to "DISTRIBUTED". `ItemReader` pulls data from S3 instead of the state input. `ResultWriter` sends outputs to S3 instead of collecting them in memory.
+Notice the differences from Inline Map. The `ItemProcessor` includes a `ProcessorConfig` with mode set to "DISTRIBUTED". `ItemReader` pulls data from S3 instead of the state input. `ResultWriter` sends outputs to S3 instead of collecting them in memory.
 
 ## Batching Items
 
@@ -311,7 +321,10 @@ This workflow resizes and generates thumbnails for every image in a folder:
       "Type": "Map",
       "ItemsPath": "$.images",
       "MaxConcurrency": 20,
-      "Iterator": {
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
         "StartAt": "DownloadImage",
         "States": {
           "DownloadImage": {
@@ -352,7 +365,7 @@ This workflow resizes and generates thumbnails for every image in a folder:
 
 ## Monitoring Map State Performance
 
-Keep an eye on how your Map state iterations are performing. CloudWatch gives you metrics on running, succeeded, and failed iterations. If you're seeing a lot of failures, check whether you're hitting Lambda concurrency limits or downstream rate limits. For more on monitoring, check out our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
+Keep an eye on how your Map state iterations are performing. The Step Functions console and CloudWatch metrics help you track execution and Map Run behavior, including failures and throttling. If you're seeing a lot of failures, check whether you're hitting Lambda concurrency limits or downstream rate limits. For more on monitoring, check out our post on [monitoring Step Functions executions](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Wrapping Up
 
