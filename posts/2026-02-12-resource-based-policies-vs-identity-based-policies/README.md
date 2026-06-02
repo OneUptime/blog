@@ -275,7 +275,7 @@ Cross-account requires BOTH an identity-based Allow in the requester's account A
 
 ### Use Both When:
 
-- Defense in depth (require both the user's policy and the resource policy to allow access)
+- Cross-account access where both the user's identity policy and the resource policy must allow access
 - Different teams manage identity and resource access separately
 - Cross-account scenarios where you want fine-grained control on both sides
 
@@ -294,8 +294,9 @@ Not all AWS services support resource-based policies. Here are the major ones th
 - **EventBridge** (event bus policies)
 - **Glacier** (vault policies)
 - **CloudWatch Logs** (resource policies)
+- **DynamoDB** (table and stream policies)
 
-Services like EC2, RDS, and DynamoDB don't support resource-based policies. For those, you need identity-based policies or tag-based conditions.
+Services like EC2 and RDS don't support resource-based policies. For those, you need identity-based policies or tag-based conditions.
 
 ## Common Patterns
 
