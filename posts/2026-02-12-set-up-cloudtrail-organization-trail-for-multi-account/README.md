@@ -37,6 +37,7 @@ When new accounts join the organization, they automatically start sending events
 - Access to the management account (or a delegated admin account)
 - An S3 bucket for log storage (we will create one)
 - AWS CLI configured for the management account
+- Trusted access enabled for CloudTrail in AWS Organizations
 
 ## Step 1: Create the Centralized S3 Bucket
 
@@ -52,7 +53,6 @@ aws s3 mb s3://org-cloudtrail-logs-123456789012 \
 Now apply the bucket policy. This policy grants CloudTrail write access from any account in the organization.
 
 ```json
-// S3 bucket policy for organization-wide CloudTrail
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -71,7 +71,22 @@ Now apply the bucket policy. This policy grants CloudTrail write access from any
       }
     },
     {
-      "Sid": "AWSCloudTrailWrite",
+      "Sid": "AWSCloudTrailWriteManagementAccount",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "cloudtrail.amazonaws.com"
+      },
+      "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::org-cloudtrail-logs-123456789012/AWSLogs/123456789012/*",
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-acl": "bucket-owner-full-control",
+          "aws:SourceArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/org-trail"
+        }
+      }
+    },
+    {
+      "Sid": "AWSCloudTrailOrganizationWrite",
       "Effect": "Allow",
       "Principal": {
         "Service": "cloudtrail.amazonaws.com"
@@ -106,19 +121,20 @@ For compliance, encrypt the log files at rest using a KMS key.
 # Create a KMS key for CloudTrail encryption
 KEY_ID=$(aws kms create-key \
   --description "CloudTrail Organization Trail Encryption" \
+  --region us-east-1 \
   --query "KeyMetadata.KeyId" \
   --output text)
 
 # Create an alias for easy reference
 aws kms create-alias \
   --alias-name alias/cloudtrail-org \
-  --target-key-id $KEY_ID
+  --target-key-id $KEY_ID \
+  --region us-east-1
 ```
 
 The KMS key policy needs to allow CloudTrail to use it:
 
 ```json
-// KMS key policy statement for CloudTrail
 {
   "Sid": "AllowCloudTrailEncrypt",
   "Effect": "Allow",
@@ -131,6 +147,9 @@ The KMS key policy needs to allow CloudTrail to use it:
   ],
   "Resource": "*",
   "Condition": {
+    "StringEquals": {
+      "aws:SourceArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/org-trail"
+    },
     "StringLike": {
       "kms:EncryptionContext:aws:cloudtrail:arn": "arn:aws:cloudtrail:*:123456789012:trail/*"
     }
@@ -143,6 +162,10 @@ The KMS key policy needs to allow CloudTrail to use it:
 Now create the trail itself. The `--is-organization-trail` flag is what makes it span all accounts.
 
 ```bash
+# Enable trusted access for CloudTrail in AWS Organizations
+aws organizations enable-aws-service-access \
+  --service-principal cloudtrail.amazonaws.com
+
 # Create the organization trail
 aws cloudtrail create-trail \
   --name org-trail \
@@ -151,7 +174,8 @@ aws cloudtrail create-trail \
   --is-multi-region-trail \
   --enable-log-file-validation \
   --kms-key-id alias/cloudtrail-org \
-  --include-global-service-events
+  --include-global-service-events \
+  --region us-east-1
 ```
 
 Key flags explained:
@@ -167,10 +191,14 @@ Creating the trail does not start logging. You need to explicitly start it.
 
 ```bash
 # Start the organization trail
-aws cloudtrail start-logging --name org-trail
+aws cloudtrail start-logging \
+  --name org-trail \
+  --region us-east-1
 
 # Verify the trail status
-aws cloudtrail get-trail-status --name org-trail
+aws cloudtrail get-trail-status \
+  --name org-trail \
+  --region us-east-1
 ```
 
 The output should show `IsLogging: true` and `LatestDeliveryTime` should update within a few minutes.
@@ -198,7 +226,8 @@ aws cloudtrail put-event-selectors \
         {"Field": "resources.ARN", "StartsWith": ["arn:aws:s3:::sensitive-data-bucket/"]}
       ]
     }
-  ]'
+  ]' \
+  --region us-east-1
 ```
 
 Be selective with data events. Logging every S3 GetObject across an entire organization can produce terabytes of logs and a hefty bill.
@@ -241,7 +270,8 @@ aws iam put-role-policy \
 aws cloudtrail update-trail \
   --name org-trail \
   --cloud-watch-logs-log-group-arn "arn:aws:logs:us-east-1:123456789012:log-group:/aws/cloudtrail/org-trail:*" \
-  --cloud-watch-logs-role-arn "arn:aws:iam::123456789012:role/CloudTrailToCloudWatchRole"
+  --cloud-watch-logs-role-arn "arn:aws:iam::123456789012:role/CloudTrailToCloudWatchRole" \
+  --region us-east-1
 ```
 
 ## Step 7: Set Up S3 Lifecycle Policies
@@ -307,7 +337,7 @@ The delegated admin can then create and manage organization trails without needi
 
 **Missing events from specific accounts**: Verify the account is part of the organization and has not explicitly disabled the trail (member accounts cannot disable an organization trail, but check for SCP restrictions).
 
-**KMS errors**: Make sure the KMS key policy allows CloudTrail to encrypt. Also verify the key is in the same region as the trail.
+**KMS errors**: Make sure the KMS key policy allows CloudTrail to encrypt. Also verify the key is in the same region as the S3 bucket that receives the logs.
 
 ## Wrapping Up
 
