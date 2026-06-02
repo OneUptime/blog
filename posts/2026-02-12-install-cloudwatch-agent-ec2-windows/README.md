@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, CloudWatch, EC2, Window, Monitoring
+Tags: AWS, CloudWatch, EC2, Windows, Monitoring
 
 Description: Complete walkthrough for installing and configuring the CloudWatch Agent on Windows Server EC2 instances to collect performance counters, event logs, and custom metrics.
 
@@ -93,8 +93,7 @@ Here's a practical configuration file for a Windows web server:
         "measurement": [
           "% Disk Time",
           "Disk Read Bytes/sec",
-          "Disk Write Bytes/sec",
-          "% Free Space"
+          "Disk Write Bytes/sec"
         ],
         "resources": ["*"]
       },
@@ -250,7 +249,7 @@ For web servers running IIS, add these performance counters to your configuratio
       "Get Requests/sec",
       "Post Requests/sec",
       "Not Found Errors/sec",
-      "Total Connection Attempts (all instances)/sec"
+      "Connection Attempts/sec"
     ],
     "resources": ["_Total"]
   },
@@ -268,7 +267,7 @@ For web servers running IIS, add these performance counters to your configuratio
 
 ## Collecting .NET Application Metrics
 
-If you're running .NET applications, collect CLR-specific counters:
+If you're running .NET Framework applications, collect CLR-specific counters:
 
 ```json
 {
@@ -280,13 +279,13 @@ If you're running .NET applications, collect CLR-specific counters:
       "# Gen 2 Collections",
       "Large Object Heap size"
     ],
-    "resources": ["_Global_"]
+    "resources": ["*"]
   },
   ".NET CLR Exceptions": {
     "measurement": [
       "# of Exceps Thrown / sec"
     ],
-    "resources": ["_Global_"]
+    "resources": ["*"]
   }
 }
 ```
@@ -316,7 +315,7 @@ Read-S3Object -BucketName "my-config-bucket" -Key "cw-agent-windows.json" -File 
 
 **Metrics not appearing**: Verify the IAM role permissions. Check that the performance counter names in your config match exactly what Windows exposes (use `perfmon` to browse available counters).
 
-**Windows Event Logs not flowing**: Make sure the event level names are correct: `INFORMATION`, `WARNING`, `ERROR`, `CRITICAL`. Typos here fail silently.
+**Windows Event Logs not flowing**: Make sure the event level names are correct: `INFORMATION`, `WARNING`, `ERROR`, `CRITICAL`, `VERBOSE`. Typos here fail silently.
 
 **Permission issues**: The agent service runs as LocalSystem by default, which has access to most resources. If you've changed the service account, ensure it has read access to all configured log files and performance counters.
 
