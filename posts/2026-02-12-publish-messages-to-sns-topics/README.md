@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SNS, Messaging, Serverless, Python
 
-Description: Learn how to publish messages to Amazon SNS topics using the CLI, Python, Node.js, and Go, including message attributes, filtering, and batch publishing.
+Description: Learn how to publish messages to Amazon SNS topics using the CLI, Python, and Node.js, including message attributes, filtering, and batch publishing.
 
 ---
 
@@ -39,7 +39,7 @@ Message attributes are key to SNS message filtering. Subscribers can set filter 
 
 ## Publishing with Python (Boto3)
 
-Here's a production-ready publisher class in Python.
+Here's a production-ready publisher function in Python.
 
 ```python
 import json
@@ -333,7 +333,7 @@ def publish_with_retry(topic_arn, message, max_retries=3):
             error_code = e.response['Error']['Code']
 
             # Throttling - wait and retry
-            if error_code == 'Throttling':
+            if error_code in ('Throttled', 'ThrottledException', 'ThrottlingException', 'KMSThrottling'):
                 wait_time = (2 ** attempt) + 0.5
                 print(f'Throttled, retrying in {wait_time}s...')
                 time.sleep(wait_time)
