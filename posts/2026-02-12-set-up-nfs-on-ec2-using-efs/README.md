@@ -8,7 +8,7 @@ Description: Learn how to set up Amazon Elastic File System (EFS) as a shared NF
 
 ---
 
-Need to share files between multiple EC2 instances? Amazon EFS (Elastic File System) is the simplest way to do it. EFS gives you a fully managed NFS filesystem that automatically scales, works across multiple Availability Zones, and requires zero maintenance. You mount it just like any other NFS share, and AWS handles replication, backups, and availability behind the scenes.
+Need to share files between multiple EC2 instances? Amazon EFS (Elastic File System) is the simplest way to do it. EFS gives you a fully managed NFS filesystem that automatically scales, works across multiple Availability Zones, and requires zero maintenance. You mount it just like any other NFS share, and AWS handles replication and availability behind the scenes. Backups integrate with AWS Backup and can be enabled for the filesystem.
 
 Let's set up an EFS filesystem from scratch and mount it on your EC2 instances.
 
@@ -96,7 +96,7 @@ aws efs describe-file-systems \
 A few notes on the options:
 
 - **Performance mode**: `generalPurpose` works for most workloads. Use `maxIO` only for highly parallelized workloads with thousands of instances (it adds slightly higher latency).
-- **Throughput mode**: `bursting` scales throughput with filesystem size. `elastic` provides automatic scaling up to 10 GB/s. `provisioned` lets you set a fixed throughput.
+- **Throughput mode**: `bursting` scales throughput with filesystem size. `elastic` automatically scales throughput with your workload activity, subject to regional EFS quotas. `provisioned` lets you set a fixed throughput.
 - **Encryption**: Always enable encryption. There's no performance penalty and it protects your data at rest.
 
 ## Step 3: Create Mount Targets
@@ -149,8 +149,8 @@ Install the amazon-efs-utils package and mount:
 # Amazon Linux 2023
 sudo yum install -y amazon-efs-utils
 
-# Ubuntu
-# sudo apt-get install -y amazon-efs-utils
+# Ubuntu/Debian
+# Install amazon-efs-utils from the AWS efs-utils DEB package or with AWS Systems Manager.
 
 # Create mount point
 sudo mkdir -p /efs
@@ -257,7 +257,7 @@ nfsiostat 5
 Some practical tips for better EFS performance:
 - Use larger I/O sizes when possible (EFS is optimized for large sequential operations)
 - Parallelize your file operations across multiple threads
-- Avoid workloads with millions of tiny files - EFS charges per request and metadata operations add up
+- Avoid workloads with millions of tiny files - metadata operations add up, especially with Elastic throughput billing
 - Consider EFS One Zone storage class if you don't need multi-AZ and want lower cost
 
 ## Enabling Lifecycle Management
@@ -268,15 +268,13 @@ Configure lifecycle policies to reduce costs:
 
 ```bash
 # Move files to Infrequent Access after 30 days of no access
+# Archive requires Elastic throughput and General Purpose performance mode
 aws efs put-lifecycle-configuration \
     --file-system-id $FS_ID \
-    --lifecycle-policies \
-        TransitionToIA=AFTER_30_DAYS \
-        TransitionToArchive=AFTER_90_DAYS \
-        TransitionToPrimaryStorageClass=AFTER_1_ACCESS
+    --lifecycle-policies '[{"TransitionToIA":"AFTER_30_DAYS"},{"TransitionToArchive":"AFTER_90_DAYS"},{"TransitionToPrimaryStorageClass":"AFTER_1_ACCESS"}]'
 ```
 
-The IA (Infrequent Access) storage class costs about 92% less than Standard. The Archive class is even cheaper. Files are automatically moved back to Standard on first access if you set the `TransitionToPrimaryStorageClass` policy.
+The IA (Infrequent Access) storage class costs about 92% less than Standard. The Archive class is even cheaper and is available for filesystems using Elastic throughput and General Purpose performance mode. Files are automatically moved back to Standard on first access if you set the `TransitionToPrimaryStorageClass` policy.
 
 ## Backup and Monitoring
 
