@@ -26,7 +26,7 @@ DynamoDB capacity is measured in Read Capacity Units (RCUs) and Write Capacity U
 - **1 WCU** = one write per second for items up to 1 KB
 - Eventually consistent reads use half an RCU
 
-Check your current provisioned capacity and consumption:
+Check your current provisioned capacity settings:
 
 ```bash
 # Check table capacity settings
@@ -44,7 +44,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/DynamoDB \
   --metric-name ReadThrottleEvents \
   --dimensions Name=TableName,Value=my-table \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 300 \
   --statistics Sum
@@ -54,7 +54,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/DynamoDB \
   --metric-name WriteThrottleEvents \
   --dimensions Name=TableName,Value=my-table \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 300 \
   --statistics Sum
@@ -71,12 +71,12 @@ aws dynamodb update-table \
   --billing-mode PAY_PER_REQUEST
 ```
 
-On-demand costs more per request than provisioned capacity, but you never get throttled (within account limits). It's ideal for:
+On-demand costs more per request than provisioned capacity, but it removes provisioned capacity planning and automatically scales within DynamoDB's table-level limits. Throttling can still happen if you exceed account or table quotas, configured maximum throughput, hot partition limits, or more than double the previous traffic peak within 30 minutes. It's ideal for:
 - Unpredictable workloads
 - New applications where you don't know the traffic pattern yet
 - Applications with sharp traffic spikes
 
-You can switch between on-demand and provisioned once every 24 hours.
+You can switch from provisioned to on-demand up to four times in a 24-hour rolling window. You can switch from on-demand back to provisioned at any time.
 
 ## Fix 2: Increase Provisioned Capacity
 
@@ -89,7 +89,7 @@ aws dynamodb update-table \
   --provisioned-throughput ReadCapacityUnits=500,WriteCapacityUnits=200
 ```
 
-Increases take effect immediately. Decreases are limited to 4 per day.
+Increases take effect after the `UpdateTable` operation completes. Decreases are quota-limited: you start each UTC day with 4 available decreases, then gain 1 additional decrease per hour, up to 27 decreases over a full day.
 
 ## Fix 3: Enable Auto Scaling
 
@@ -143,7 +143,7 @@ aws application-autoscaling put-scaling-policy \
   }'
 ```
 
-Auto scaling reacts to increased usage, but it's not instant. It can take 1-2 minutes to scale up, so sudden spikes can still cause throttling.
+Auto scaling reacts to increased usage, but it's not instant. It triggers after sustained utilization and can take several minutes to update provisioned capacity, so sudden spikes can still cause throttling.
 
 ## Fix 4: Don't Forget GSI Capacity
 
@@ -217,6 +217,7 @@ Other strategies for avoiding hot partitions:
 # Use: PK = "STATUS#<hash_suffix>", SK = timestamp
 
 import hashlib
+import time
 
 def get_distributed_pk(base_key, num_shards=10):
     """Create a distributed partition key."""
@@ -275,7 +276,7 @@ But be aware that batch operations can concentrate load if all items hit the sam
 
 ## Fix 8: Use DynamoDB DAX for Read-Heavy Workloads
 
-If your throttling is on reads, DynamoDB Accelerator (DAX) can cache reads and reduce the load on your table:
+If your throttling is on eventually consistent reads, DynamoDB Accelerator (DAX) can cache reads and reduce the load on your table:
 
 ```bash
 # Create a DAX cluster
@@ -287,7 +288,7 @@ aws dax create-cluster \
   --subnet-group-name my-subnet-group
 ```
 
-DAX provides microsecond-latency reads and absorbs read traffic that would otherwise hit your table.
+DAX provides microsecond-latency eventually consistent reads and absorbs cacheable read traffic that would otherwise hit your table.
 
 ## Monitoring Throttling
 
