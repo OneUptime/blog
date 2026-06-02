@@ -17,9 +17,9 @@ This guide covers everything you need to go from zero to working Bedrock applica
 Bedrock is a fully managed service that provides API access to foundation models (FMs) for text generation, image generation, embeddings, and more. The key features:
 
 - **Multiple model providers** - Access Claude, Llama, Titan, Cohere, and Stable Diffusion models through one API
-- **Serverless** - No infrastructure to manage. Pay per token (input and output)
+- **Serverless** - No infrastructure to manage. Pay per token for text models (input and output)
 - **Private** - Your data isn't used to train the models
-- **Customizable** - Fine-tune models on your data or use RAG (Retrieval-Augmented Generation)
+- **Customizable** - Fine-tune supported models on your data or use RAG (Retrieval-Augmented Generation)
 
 ```mermaid
 graph TB
@@ -33,7 +33,7 @@ graph TB
 
 ## Setting Up Access
 
-Before you can use Bedrock, you need to request access to the models you want. This is a one-time setup per AWS account per model.
+Before you can use Bedrock, make sure your IAM role has permission to invoke Bedrock models. In commercial AWS Regions, foundation model access is enabled by default when your account has the required AWS Marketplace permissions. For Anthropic models, first-time customers also need to submit use case details once per account or AWS Organization.
 
 ```python
 import boto3
@@ -53,18 +53,20 @@ for model in response['modelSummaries']:
     print()
 ```
 
-To request model access through the console: go to Amazon Bedrock, click "Model access" in the sidebar, and enable the models you want. Some models are available instantly, others require a brief approval.
+To get started through the console: go to Amazon Bedrock, open the model catalog, choose the model you want, and open it in the playground. If you're using Anthropic for the first time, submit the use case details form when prompted.
 
 You can also manage access programmatically.
 
 ```python
-# Check your current model access
-response = bedrock.list_foundation_models(
-    byProvider='Anthropic'
+# Check whether a third-party model agreement is available for your account
+response = bedrock.get_foundation_model_availability(
+    modelId='anthropic.claude-sonnet-4-5-20250929-v1:0'
 )
 
-for model in response['modelSummaries']:
-    print(f"{model['modelId']}: {model.get('modelLifecycle', {}).get('status', 'unknown')}")
+print(response['modelId'])
+print(f"Agreement: {response['agreementAvailability']['status']}")
+print(f"Authorization: {response['authorizationStatus']}")
+print(f"Region: {response['regionAvailability']}")
 ```
 
 ## Your First Bedrock API Call
@@ -80,7 +82,7 @@ bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-east-1')
 
 # Use the Converse API - works across all text models
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+    modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
     messages=[
         {
             'role': 'user',
@@ -114,7 +116,7 @@ One of Bedrock's strengths is that you can switch between models easily. The Con
 ```python
 # Same prompt, different models
 models_to_try = [
-    'anthropic.claude-3-sonnet-20240229-v1:0',
+    'anthropic.claude-sonnet-4-5-20250929-v1:0',
     'meta.llama3-8b-instruct-v1:0',
     'amazon.titan-text-express-v1',
 ]
@@ -154,7 +156,7 @@ For better user experience in interactive applications, stream responses token b
 ```python
 # Stream a response for faster time-to-first-token
 response = bedrock_runtime.converse_stream(
-    modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+    modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
     messages=[{
         'role': 'user',
         'content': [{'text': 'Write a short guide on setting up CloudWatch alarms.'}]
@@ -196,7 +198,7 @@ messages.append({
 })
 
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+    modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
     messages=messages,
     inferenceConfig={'maxTokens': 500}
 )
@@ -214,7 +216,7 @@ messages.append({
 })
 
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+    modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
     messages=messages,
     inferenceConfig={'maxTokens': 500}
 )
@@ -279,7 +281,7 @@ Use system prompts to control the model's behavior and persona.
 ```python
 # Use a system prompt to set context and behavior
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+    modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
     system=[{
         'text': """You are a DevOps expert who specializes in AWS infrastructure monitoring.
         Keep your answers practical and include code examples when relevant.
@@ -329,7 +331,7 @@ class BedrockUsageTracker:
         print(f"Total API calls: {self.call_count}")
         print(f"Total input tokens: {self.total_input_tokens}")
         print(f"Total output tokens: {self.total_output_tokens}")
-        # Approximate cost for Claude Sonnet
+        # Example rate for Claude Sonnet. Always verify current Bedrock pricing.
         input_cost = self.total_input_tokens * 0.000003
         output_cost = self.total_output_tokens * 0.000015
         print(f"Estimated cost: ${input_cost + output_cost:.4f}")
@@ -338,7 +340,7 @@ class BedrockUsageTracker:
 tracker = BedrockUsageTracker()
 response = tracker.invoke(
     bedrock_runtime,
-    'anthropic.claude-3-sonnet-20240229-v1:0',
+    'anthropic.claude-sonnet-4-5-20250929-v1:0',
     messages=[{'role': 'user', 'content': [{'text': 'Hello!'}]}],
     inferenceConfig={'maxTokens': 100}
 )
@@ -384,7 +386,7 @@ guardrail_version = response['version']
 
 # Use the guardrail with your model call
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+    modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
     messages=[{
         'role': 'user',
         'content': [{'text': 'Your prompt here'}]
