@@ -10,7 +10,7 @@ Description: A practical guide to creating and configuring IPv6-only subnets in 
 
 IPv4 address exhaustion is real. AWS charges for public IPv4 addresses now, and the cost adds up fast when you're running hundreds or thousands of instances. IPv6-only subnets offer a way out. Your instances get IPv6 addresses (which are free and abundant) and can still reach IPv4 services through NAT64 and DNS64 translation.
 
-This isn't just about saving money, though. IPv6-only subnets simplify network design - no more NAT gateways for outbound IPv4 traffic, no more worrying about overlapping private IPv4 ranges, and no more CIDR planning headaches. Let's set it up.
+This isn't just about saving money, though. IPv6-only subnets simplify network design - less NAT gateway dependency for native IPv6 traffic, no more worrying about overlapping private IPv4 ranges, and fewer IPv4 CIDR planning headaches. Let's set it up.
 
 ## Prerequisites
 
@@ -60,6 +60,10 @@ aws ec2 create-subnet \
 aws ec2 modify-subnet-attribute \
   --subnet-id subnet-ipv6-az1 \
   --assign-ipv6-address-on-creation
+
+aws ec2 modify-subnet-attribute \
+  --subnet-id subnet-ipv6-az2 \
+  --assign-ipv6-address-on-creation
 ```
 
 The `--ipv6-native` flag is key - it tells AWS this subnet is IPv6-only. Instances launched here won't get IPv4 addresses.
@@ -68,7 +72,7 @@ The `--ipv6-native` flag is key - it tells AWS this subnet is IPv6-only. Instanc
 
 IPv6-only instances can't reach IPv4 services directly. DNS64 translates IPv4 DNS responses into IPv6-compatible addresses, and NAT64 (provided by the NAT gateway) handles the actual packet translation.
 
-Enable DNS64 and create a NAT gateway with IPv6:
+Enable DNS64 and create a NAT gateway for NAT64:
 
 ```bash
 # Enable DNS64 on the subnet
@@ -80,11 +84,11 @@ aws ec2 modify-subnet-attribute \
   --subnet-id subnet-ipv6-az2 \
   --enable-dns64
 
-# Create a NAT gateway with NAT64 support in a dual-stack public subnet
+# Create a NAT gateway with NAT64 support in a public subnet
 # First, allocate an Elastic IP for the NAT gateway
 aws ec2 allocate-address --domain vpc
 
-# Create the NAT gateway (must be in a dual-stack public subnet)
+# Create the NAT gateway (must be in a public subnet with IPv4 internet access)
 aws ec2 create-nat-gateway \
   --subnet-id subnet-public-az1 \
   --allocation-id eipalloc-abc123 \
@@ -170,6 +174,7 @@ Resources:
       VpcId: !Ref VpcId
       Ipv6Native: true
       Ipv6CidrBlock: !Select [1, !Cidr [!Ref VpcIpv6Cidr, 8, 64]]
+      AssignIpv6AddressOnCreation: true
       AvailabilityZone: !Select [0, !GetAZs ""]
       EnableDns64: true
       Tags:
@@ -182,6 +187,7 @@ Resources:
       VpcId: !Ref VpcId
       Ipv6Native: true
       Ipv6CidrBlock: !Select [2, !Cidr [!Ref VpcIpv6Cidr, 8, 64]]
+      AssignIpv6AddressOnCreation: true
       AvailabilityZone: !Select [1, !GetAZs ""]
       EnableDns64: true
       Tags:
@@ -293,15 +299,15 @@ aws ec2 describe-instances \
 
 Not everything works with IPv6-only subnets yet. Here are things to watch for:
 
-**Instance metadata service**: IMDSv2 works fine on IPv6-only instances. The metadata endpoint uses a link-local address that's available regardless of the subnet's IP version.
+**Instance metadata service**: IMDSv2 works on IPv6-only instances. Use the IPv6 endpoint `[fd00:ec2::254]` on Nitro-based instances in IPv6-supported subnets, or the IPv4 link-local endpoint where your OS networking supports it.
 
-**AWS services**: Most AWS services support IPv6, but some endpoints are still IPv4-only. DNS64 handles this transparently for most cases.
+**AWS services**: Many AWS services support IPv6, but some endpoints are still IPv4-only. DNS64 handles this transparently for most cases.
 
 **AMI compatibility**: Make sure your AMI supports IPv6-only networking. Amazon Linux 2023 and Ubuntu 22.04+ work out of the box. Older AMIs might need configuration.
 
 **Application dependencies**: Some applications hardcode IPv4 addresses or don't handle IPv6 sockets correctly. Test thoroughly before migrating production workloads.
 
-**SSM Agent**: Systems Manager Agent works on IPv6-only instances, so you can still use Session Manager for shell access.
+**SSM Agent**: Systems Manager Agent can work in IPv6-only environments, but make sure you're running SSM Agent 3.3270.0 or later and that the agent is configured to use dual-stack endpoints when needed.
 
 ## Cost Savings
 
