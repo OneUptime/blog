@@ -18,7 +18,7 @@ An ISM policy is a state machine. Each state can have:
 - **Actions** - Things to do when entering the state (rollover, snapshot, shrink, etc.)
 - **Transitions** - Conditions that trigger moving to the next state (age, size, document count)
 
-The ISM engine checks your indexes periodically (every 5 minutes by default) and applies transitions when conditions are met.
+The ISM engine checks your indexes periodically (every 5 to 8 minutes by default on Amazon OpenSearch Service) and applies transitions when conditions are met.
 
 ## A Practical ISM Policy
 
@@ -104,7 +104,7 @@ curl -XPUT "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/polic
                     {
                         "notification": {
                             "destination": {
-                                "custom_webhook": {
+                                "slack": {
                                     "url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
                                 }
                             },
@@ -120,12 +120,10 @@ curl -XPUT "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/polic
                 "transitions": []
             }
         ],
-        "ism_template": [
-            {
-                "index_patterns": ["logs-*"],
-                "priority": 100
-            }
-        ]
+        "ism_template": {
+            "index_patterns": ["logs-*"],
+            "priority": 100
+        }
     }
 }'
 ```
@@ -207,11 +205,6 @@ curl -XPUT "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/polic
                 "actions": [
                     {
                         "warm_migration": {}
-                    },
-                    {
-                        "force_merge": {
-                            "max_num_segments": 1
-                        }
                     }
                 ],
                 "transitions": [
@@ -253,7 +246,7 @@ curl -XPUT "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/polic
 }'
 ```
 
-UltraWarm uses S3-backed storage that's much cheaper than standard SSD storage. Cold storage is even cheaper but indexes must be detached and reattached to query them.
+UltraWarm uses S3-backed storage that's much cheaper than standard SSD storage. Cold storage is even cheaper but cold indexes must be attached to UltraWarm nodes before you can query them.
 
 ## Snapshot Before Delete
 
@@ -285,7 +278,7 @@ curl -XPUT "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/polic
                     {
                         "snapshot": {
                             "repository": "s3-backup-repo",
-                            "snapshot": "{{ctx.index}}-{{ctx.index_uuid}}"
+                            "snapshot": "{{ctx.index}}-{{ctx.indexUuid}}"
                         }
                     }
                 ],
@@ -319,11 +312,15 @@ curl -XGET "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/expla
     python3 -c "import sys,json; d=json.load(sys.stdin); [print(k,v.get('info',{}).get('message','OK')) for k,v in d.items() if isinstance(v,dict)]"
 ```
 
-If an ISM operation fails (like a force merge running out of disk space), the policy retries automatically. You can also manually retry:
+If an ISM operation fails (like a force merge running out of disk space), ISM uses the action's retry configuration if you set one. You can also manually retry:
 
 ```bash
 # Retry a failed ISM operation on a specific index
-curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/retry/logs-000042"
+curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_ism/retry/logs-000042" \
+    -H "Content-Type: application/json" \
+    -d '{
+    "state": "warm"
+}'
 ```
 
 ## Best Practices
