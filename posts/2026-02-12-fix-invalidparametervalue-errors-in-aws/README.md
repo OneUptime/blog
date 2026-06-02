@@ -58,14 +58,17 @@ aws ec2 copy-image \
 ARNs have a specific format, and getting it wrong triggers this error.
 
 ```bash
-# Wrong - missing account ID
-arn:aws:s3:::my-bucket
+# Wrong - missing account ID for an EC2 resource
+arn:aws:ec2:us-east-1::instance/i-abc123
 
 # Wrong - wrong service name
-arn:aws:ec:us-east-1:123456789:instance/i-abc123
+arn:aws:ec:us-east-1:123456789012:instance/i-abc123
 
 # Correct
-arn:aws:ec2:us-east-1:123456789:instance/i-abc123
+arn:aws:ec2:us-east-1:123456789012:instance/i-abc123
+
+# Correct S3 bucket ARN format
+arn:aws:s3:::my-bucket
 ```
 
 ### Unsupported Values
@@ -107,8 +110,8 @@ aws ec2 describe-key-pairs  # List available key pairs
 
 ```bash
 # Problem: Invalid runtime
-# Check available runtimes
-aws lambda list-layers --compatible-runtime python3.12
+# Check the --runtime valid values
+aws lambda create-function help | grep -A40 -- "--runtime"
 
 # Problem: Invalid handler format
 # Handler format depends on runtime:
@@ -134,7 +137,7 @@ aws lambda update-function-configuration \
 # Bucket names must:
 # - Be 3-63 characters
 # - Only contain lowercase letters, numbers, hyphens, and periods
-# - Start with a letter or number
+# - Start and end with a letter or number
 # - Not be formatted as an IP address
 aws s3 mb s3://My-Bucket  # Invalid - uppercase not allowed
 aws s3 mb s3://my-bucket  # Valid
