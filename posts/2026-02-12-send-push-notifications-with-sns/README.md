@@ -33,7 +33,8 @@ First, create a platform application for FCM in SNS.
 ```bash
 # Create an SNS platform application for FCM (Android/Web)
 
-# You'll need the FCM API key from the Firebase console
+# Legacy FCM server keys are deprecated; prefer FCM v1 with a service account
+# JSON key for new applications.
 aws sns create-platform-application \
   --name MyApp-FCM \
   --platform GCM \
@@ -42,7 +43,7 @@ aws sns create-platform-application \
   }'
 ```
 
-For FCM v1 API (recommended), you'll use a service account JSON key instead.
+For FCM v1 API (recommended), use a service account JSON key instead.
 
 ```python
 import json
@@ -146,11 +147,34 @@ from botocore.exceptions import ClientError
 
 sns = boto3.client('sns')
 
-def register_or_update_device(platform_app_arn, device_token, user_id):
+def register_or_update_device(platform_app_arn, device_token, user_id, existing_endpoint_arn=None):
     """Register a new device or update an existing one.
 
-    Handles the case where the token has changed for an existing device.
+    Store the endpoint ARN with the user/device record and pass it back in
+    when the app receives an updated device token.
     """
+    endpoint_arn = existing_endpoint_arn
+
+    if endpoint_arn:
+        try:
+            attrs = sns.get_endpoint_attributes(EndpointArn=endpoint_arn)
+            if (
+                attrs['Attributes'].get('Token') != device_token or
+                attrs['Attributes'].get('Enabled') == 'false'
+            ):
+                sns.set_endpoint_attributes(
+                    EndpointArn=endpoint_arn,
+                    Attributes={
+                        'Token': device_token,
+                        'Enabled': 'true',
+                        'CustomUserData': f'user_id:{user_id}',
+                    }
+                )
+            return endpoint_arn
+        except ClientError as e:
+            if e.response['Error']['Code'] != 'NotFound':
+                raise
+
     try:
         response = sns.create_platform_endpoint(
             PlatformApplicationArn=platform_app_arn,
@@ -161,11 +185,11 @@ def register_or_update_device(platform_app_arn, device_token, user_id):
 
     except ClientError as e:
         if 'already exists' in str(e):
-            # Endpoint exists but token might have changed
+            # Endpoint already exists for this token
             # Extract the existing endpoint ARN from the error
             endpoint_arn = str(e).split('Endpoint ')[1].split(' ')[0]
 
-            # Update the token and re-enable the endpoint
+            # Re-enable the endpoint and refresh custom data
             sns.set_endpoint_attributes(
                 EndpointArn=endpoint_arn,
                 Attributes={
@@ -176,14 +200,6 @@ def register_or_update_device(platform_app_arn, device_token, user_id):
             )
         else:
             raise
-
-    # Ensure the endpoint is enabled
-    attrs = sns.get_endpoint_attributes(EndpointArn=endpoint_arn)
-    if attrs['Attributes'].get('Enabled') == 'false':
-        sns.set_endpoint_attributes(
-            EndpointArn=endpoint_arn,
-            Attributes={'Enabled': 'true', 'Token': device_token}
-        )
 
     return endpoint_arn
 ```
@@ -206,13 +222,19 @@ def send_push_notification(endpoint_arn, title, body, data=None):
     """
     # Build platform-specific payloads
     fcm_payload = {
-        'notification': {
-            'title': title,
-            'body': body,
+        'fcmV1Message': {
+            'message': {
+                'notification': {
+                    'title': title,
+                    'body': body,
+                },
+            },
         },
     }
     if data:
-        fcm_payload['data'] = data
+        fcm_payload['fcmV1Message']['message']['data'] = {
+            str(key): str(value) for key, value in data.items()
+        }
 
     apns_payload = {
         'aps': {
@@ -281,7 +303,11 @@ def broadcast_notification(topic_arn, title, body):
     message = {
         'default': body,
         'GCM': json.dumps({
-            'notification': {'title': title, 'body': body}
+            'fcmV1Message': {
+                'message': {
+                    'notification': {'title': title, 'body': body}
+                }
+            }
         }),
         'APNS': json.dumps({
             'aps': {'alert': {'title': title, 'body': body}, 'sound': 'default'}
@@ -305,7 +331,7 @@ broadcast_notification(
 
 ## Cleaning Up Disabled Endpoints
 
-Endpoints get disabled when device tokens become invalid (app uninstalled, token expired). Regularly clean these up to avoid unnecessary costs.
+Endpoints get disabled when device tokens become invalid (app uninstalled, token expired). Regularly clean these up to avoid unnecessary costs. If you subscribe endpoints to topics, also unsubscribe those subscriptions when deleting endpoints.
 
 ```python
 import boto3
