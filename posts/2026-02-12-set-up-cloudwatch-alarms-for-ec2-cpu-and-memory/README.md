@@ -25,14 +25,14 @@ aws sns subscribe \
   --protocol email \
   --notification-endpoint ops-team@yourcompany.com
 
-# Subscribe a Slack webhook via Lambda or HTTPS endpoint
+# Subscribe a Slack bridge, such as an API Gateway or Lambda HTTPS endpoint
 aws sns subscribe \
   --topic-arn $TOPIC_ARN \
   --protocol https \
-  --notification-endpoint https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+  --notification-endpoint https://alerts.yourcompany.com/sns-to-slack
 ```
 
-Check your email and confirm the subscription before alarms can deliver notifications.
+Check your email and confirm any email or HTTPS subscriptions before alarms can deliver notifications. Don't subscribe a raw Slack incoming webhook directly; use Lambda, API Gateway, or another HTTPS endpoint that can confirm the SNS subscription and transform the message for Slack.
 
 ## CPU Utilization Alarm
 
@@ -89,7 +89,7 @@ aws cloudwatch put-metric-alarm \
 
 CloudWatch doesn't collect memory metrics by default. You need the CloudWatch agent installed and configured. If you haven't set that up yet, check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view).
 
-Once the agent is reporting memory metrics, you can create alarms against them:
+Once the agent is reporting memory metrics with `InstanceId` as a dimension, you can create alarms against them:
 
 ```bash
 # Create a memory high alarm - fires when memory usage exceeds 90%
@@ -109,7 +109,7 @@ aws cloudwatch put-metric-alarm \
   --ok-actions $TOPIC_ARN
 ```
 
-Note the namespace is `CWAgent`, not `AWS/EC2`. The metric name `mem_used_percent` comes from the CloudWatch agent configuration.
+Note the namespace is `CWAgent`, not `AWS/EC2`. The metric name `mem_used_percent` and the `InstanceId` dimension come from the CloudWatch agent configuration.
 
 ## Creating Alarms with Terraform
 
@@ -122,7 +122,7 @@ variable "instance_id" {
 }
 
 variable "sns_topic_arn" {
-  default = "arn:aws:sns:us-east-1:123456789:ec2-alerts"
+  default = "arn:aws:sns:us-east-1:123456789012:ec2-alerts"
 }
 
 # CPU high alarm
@@ -212,14 +212,14 @@ aws cloudwatch put-composite-alarm \
   --alarm-name "resource-warning-i-0abc123" \
   --alarm-description "Either CPU or memory is elevated" \
   --alarm-rule 'ALARM("cpu-high-i-0abc123") OR ALARM("memory-high-i-0abc123")' \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:warnings
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:warnings
 
 # Critical alarm - both are high
 aws cloudwatch put-composite-alarm \
   --alarm-name "resource-critical-i-0abc123" \
   --alarm-description "Both CPU and memory are critically high" \
   --alarm-rule 'ALARM("cpu-high-i-0abc123") AND ALARM("memory-high-i-0abc123")' \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:pagerduty
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:pagerduty
 ```
 
 ## Auto Scaling Integration
@@ -238,7 +238,7 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 3 \
   --threshold 70 \
   --comparison-operator GreaterThanThreshold \
-  --alarm-actions arn:aws:autoscaling:us-east-1:123456789:scalingPolicy:abc-123:autoScalingGroupName/my-asg:policyName/scale-out
+  --alarm-actions arn:aws:autoscaling:us-east-1:123456789012:scalingPolicy:abc-123:autoScalingGroupName/my-asg:policyName/scale-out
 
 # Create a scale-in alarm - remove instances when CPU is low
 aws cloudwatch put-metric-alarm \
@@ -251,7 +251,7 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 10 \
   --threshold 30 \
   --comparison-operator LessThanThreshold \
-  --alarm-actions arn:aws:autoscaling:us-east-1:123456789:scalingPolicy:abc-123:autoScalingGroupName/my-asg:policyName/scale-in
+  --alarm-actions arn:aws:autoscaling:us-east-1:123456789012:scalingPolicy:abc-123:autoScalingGroupName/my-asg:policyName/scale-in
 ```
 
 Notice the scale-in alarm uses a longer evaluation period (10 x 300s = 50 minutes). You want to be really sure traffic has dropped before removing instances.
