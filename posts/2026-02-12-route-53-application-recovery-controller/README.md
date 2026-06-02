@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Route 53, Disaster Recovery, High Availability
 
-Description: Learn how to configure Route 53 Application Recovery Controller for readiness checks, routing controls, and automated failover across AWS regions.
+Description: Learn how to configure Route 53 Application Recovery Controller for readiness checks, routing controls, and controlled failover across AWS regions.
 
 ---
 
@@ -141,7 +141,7 @@ aws route53-recovery-readiness get-readiness-check-resource-status \
   --resource-identifier "arn:aws:autoscaling:eu-west-1:123456789012:autoScalingGroup:guid:autoScalingGroupName/order-app-asg"
 ```
 
-The readiness status will be `READY`, `NOT_READY`, or `UNKNOWN`. If it's `NOT_READY`, ARC tells you exactly what's wrong - maybe the secondary ASG has a smaller max capacity, or a target group is missing health check configuration.
+The readiness status will be `READY`, `NOT_READY`, `UNKNOWN`, or `NOT_AUTHORIZED`. If it's `NOT_READY`, ARC tells you exactly what's wrong - maybe the secondary ASG has a smaller max capacity, or a target group is missing health check configuration.
 
 ## Configuring Routing Controls
 
@@ -151,7 +151,7 @@ Create a routing control cluster and controls:
 
 ```bash
 # Create a cluster (5 regional endpoints for high availability)
-aws route53-recovery-cluster create-cluster \
+aws route53-recovery-control-config create-cluster \
   --cluster-name "order-app-cluster"
 
 # Create a control panel
@@ -237,6 +237,7 @@ aws route53-recovery-control-config describe-cluster \
 # Update routing controls using a cluster endpoint
 aws route53-recovery-cluster update-routing-control-states \
   --endpoint-url https://host-abc123.us-east-1.route53-recovery-cluster.amazonaws.com/v1 \
+  --region us-east-1 \
   --update-routing-control-state-entries '[
     {
       "RoutingControlArn": "arn:aws:route53-recovery-control::123456789012:controlpanel/def-456/routingcontrol/rc-useast1",
@@ -249,7 +250,7 @@ aws route53-recovery-cluster update-routing-control-states \
   ]'
 ```
 
-That's it. Route 53 health checks detect the state change, and DNS starts routing all traffic to eu-west-1. The whole process takes seconds, not minutes.
+That's it. Route 53 health checks detect the state change, and DNS starts routing traffic to eu-west-1. The control update itself is fast, but how quickly every client moves depends on your DNS record TTLs and resolver caching.
 
 ## Regular DR Testing
 
