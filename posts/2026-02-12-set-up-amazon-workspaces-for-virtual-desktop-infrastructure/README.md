@@ -21,7 +21,7 @@ graph TD
         B --> C[WorkSpace 1 - Windows]
         B --> D[WorkSpace 2 - Windows]
         B --> E[WorkSpace 3 - Linux]
-        F[S3 - User Backups]
+        F[Automatic User Volume Backups]
         G[VPC / Subnets]
         C --> G
         D --> G
@@ -54,8 +54,8 @@ aws ds create-microsoft-ad \
   --password "DirectoryAdminPassword123!" \
   --edition "Standard" \
   --vpc-settings '{
-    "VpcId": "vpc-abc123",
-    "SubnetIds": ["subnet-1a", "subnet-1b"]
+    "VpcId": "vpc-0abc1234def567890",
+    "SubnetIds": ["subnet-0abc1234def567890", "subnet-0def5678abc123456"]
   }' \
   --tags '[{"Key": "Purpose", "Value": "WorkSpaces"}]'
 ```
@@ -70,8 +70,8 @@ aws ds create-directory \
   --password "DirectoryPassword123!" \
   --size "Small" \
   --vpc-settings '{
-    "VpcId": "vpc-abc123",
-    "SubnetIds": ["subnet-1a", "subnet-1b"]
+    "VpcId": "vpc-0abc1234def567890",
+    "SubnetIds": ["subnet-0abc1234def567890", "subnet-0def5678abc123456"]
   }'
 ```
 
@@ -79,7 +79,7 @@ Wait for the directory status to become "Active" before proceeding:
 
 ```bash
 # Check directory status
-aws ds describe-directories --directory-ids "d-abc123"
+aws ds describe-directories --directory-ids "d-1234567890"
 ```
 
 ## Step 2: Register the Directory with WorkSpaces
@@ -87,9 +87,8 @@ aws ds describe-directories --directory-ids "d-abc123"
 ```bash
 # Register the directory for use with WorkSpaces
 aws workspaces register-workspace-directory \
-  --directory-id "d-abc123" \
-  --subnet-ids "subnet-1a" "subnet-1b" \
-  --enable-work-docs \
+  --directory-id "d-1234567890" \
+  --subnet-ids "subnet-0abc1234def567890" "subnet-0def5678abc123456" \
   --enable-self-service \
   --tenancy "SHARED"
 ```
@@ -102,13 +101,32 @@ If you are using AWS Managed Microsoft AD, create users that will get WorkSpaces
 
 ```bash
 # Create a user in the directory
-aws ds create-user \
-  --directory-id "d-abc123" \
-  --user-name "jsmith" \
+aws ds enable-directory-data-access \
+  --directory-id "d-1234567890"
+
+aws ds-data create-user \
+  --directory-id "d-1234567890" \
+  --sam-account-name "jsmith" \
   --given-name "Jane" \
   --surname "Smith" \
-  --email-address "jsmith@yourcompany.com" \
-  --password "UserPassword123!"
+  --email-address "jsmith@yourcompany.com"
+
+aws ds-data create-user \
+  --directory-id "d-1234567890" \
+  --sam-account-name "mjones" \
+  --given-name "Mark" \
+  --surname "Jones" \
+  --email-address "mjones@yourcompany.com"
+
+aws ds reset-user-password \
+  --directory-id "d-1234567890" \
+  --user-name "jsmith" \
+  --new-password "UserPassword123!"
+
+aws ds reset-user-password \
+  --directory-id "d-1234567890" \
+  --user-name "mjones" \
+  --new-password "UserPassword123!"
 ```
 
 If you are connecting to an existing Active Directory, your existing users are already available.
@@ -122,7 +140,7 @@ Now provision WorkSpaces for your users:
 aws workspaces create-workspaces \
   --workspaces '[
     {
-      "DirectoryId": "d-abc123",
+      "DirectoryId": "d-1234567890",
       "UserName": "jsmith",
       "BundleId": "wsb-clj85qzj1",
       "WorkspaceProperties": {
@@ -138,7 +156,7 @@ aws workspaces create-workspaces \
       ]
     },
     {
-      "DirectoryId": "d-abc123",
+      "DirectoryId": "d-1234567890",
       "UserName": "mjones",
       "BundleId": "wsb-clj85qzj1",
       "WorkspaceProperties": {
@@ -158,11 +176,11 @@ aws workspaces create-workspaces \
 
 Key configuration options:
 
-**BundleId** - determines the OS and pre-installed software. AWS provides standard bundles with Windows 10/11 or Amazon Linux. You can also create custom bundles.
+**BundleId** - determines the OS and pre-installed software. AWS provides public bundles for Windows and Linux options such as Ubuntu, Rocky Linux, Red Hat Enterprise Linux, and Amazon Linux 2 (deprecated; end of life June 30, 2026). You can also create custom bundles.
 
 **RunningMode** - either `AUTO_STOP` (stops after idle timeout, pay hourly when running) or `ALWAYS_ON` (always running, flat monthly rate). AUTO_STOP is cheaper for users who do not use their desktop 24/7.
 
-**ComputeTypeName** - ranges from VALUE (1 vCPU, 2 GB RAM) to GRAPHICSPRO (16 vCPU, 122 GB RAM, GPU). Pick based on workload requirements.
+**ComputeTypeName** - includes options such as VALUE, STANDARD, PERFORMANCE, POWER, POWERPRO, GeneralPurpose, and GPU-enabled Graphics families. Pick based on workload requirements.
 
 ## Step 5: Create Custom Bundles
 
@@ -177,14 +195,14 @@ Standard bundles work for basic use cases, but most organizations need custom bu
 aws workspaces create-workspace-image \
   --name "Engineering-Desktop-v1" \
   --description "Standard engineering desktop with IDE, tools, and VPN client" \
-  --workspace-id "ws-abc123" \
+  --workspace-id "ws-0abc1234def567890" \
   --tags '[{"Key": "Version", "Value": "1.0"}]'
 
 # Create a custom bundle from the image
 aws workspaces create-workspace-bundle \
   --bundle-name "Engineering Desktop" \
   --bundle-description "Custom bundle for engineering team" \
-  --image-id "wsi-abc123" \
+  --image-id "wsi-0abc1234d" \
   --compute-type '{"Name": "STANDARD"}' \
   --user-storage '{"Capacity": "50"}' \
   --root-storage '{"Capacity": "80"}'
@@ -206,8 +224,8 @@ aws workspaces create-ip-group \
 
 # Associate the IP group with your directory
 aws workspaces associate-ip-groups \
-  --directory-id "d-abc123" \
-  --group-ids '["wsipg-abc123"]'
+  --directory-id "d-1234567890" \
+  --group-ids '["wsipg-0abc1234d"]'
 ```
 
 For more granular control, configure the directory access settings:
@@ -215,7 +233,7 @@ For more granular control, configure the directory access settings:
 ```bash
 # Update workspace access properties
 aws workspaces modify-workspace-access-properties \
-  --resource-id "d-abc123" \
+  --resource-id "d-1234567890" \
   --workspace-access-properties '{
     "DeviceTypeWindows": "ALLOW",
     "DeviceTypeOsx": "ALLOW",
@@ -262,11 +280,11 @@ For large deployments, automate lifecycle management:
 ```bash
 # List all WorkSpaces with their status
 aws workspaces describe-workspaces \
-  --directory-id "d-abc123"
+  --directory-id "d-1234567890"
 
 # Modify a running WorkSpace (change compute type)
 aws workspaces modify-workspace-properties \
-  --workspace-id "ws-abc123" \
+  --workspace-id "ws-0abc1234def567890" \
   --workspace-properties '{
     "ComputeTypeName": "PERFORMANCE",
     "RunningMode": "AUTO_STOP",
@@ -275,11 +293,11 @@ aws workspaces modify-workspace-properties \
 
 # Rebuild a WorkSpace (resets to bundle state, preserves user data)
 aws workspaces rebuild-workspaces \
-  --rebuild-workspace-requests '[{"WorkspaceId": "ws-abc123"}]'
+  --rebuild-workspace-requests '[{"WorkspaceId": "ws-0abc1234def567890"}]'
 
 # Terminate WorkSpaces for departed employees
 aws workspaces terminate-workspaces \
-  --terminate-workspace-requests '[{"WorkspaceId": "ws-abc123"}]'
+  --terminate-workspace-requests '[{"WorkspaceId": "ws-0abc1234def567890"}]'
 ```
 
 ## Cost Optimization
@@ -295,7 +313,7 @@ WorkSpaces pricing varies significantly based on your choices:
 ```bash
 # Find WorkSpaces that have not connected recently
 aws workspaces describe-workspaces-connection-status \
-  --workspace-ids "ws-abc123" "ws-def456"
+  --workspace-ids "ws-0abc1234def567890" "ws-0def5678abc123456"
 ```
 
 ## Wrapping Up
