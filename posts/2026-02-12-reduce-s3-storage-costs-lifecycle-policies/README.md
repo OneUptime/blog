@@ -8,13 +8,13 @@ Description: A practical guide to using S3 lifecycle policies to automatically t
 
 ---
 
-S3 storage costs seem small per GB, but they add up. Once you're storing terabytes of logs, backups, and historical data, those $0.023/GB/month charges for Standard storage become a significant line item. The thing is, most of that data doesn't need to be in Standard storage. Logs from last month don't need millisecond access times. Backups from last year can sit in Glacier. And temporary files from completed jobs should be deleted entirely.
+S3 storage costs seem small per GB, but they add up. Once you're storing terabytes of logs, backups, and historical data, those $0.023/GB/month charges for S3 Standard storage in US East (N. Virginia) become a significant line item. The thing is, most of that data doesn't need to be in Standard storage. Logs from last month don't need millisecond access times. Backups from last year can sit in Glacier. And temporary files from completed jobs should be deleted entirely.
 
 Lifecycle policies automate this. You define rules, and S3 automatically moves objects to cheaper storage or deletes them based on age. Set it once and stop paying for storage you don't need.
 
 ## Understanding S3 Storage Classes
 
-Before writing lifecycle policies, know what's available and what it costs.
+Before writing lifecycle policies, know what's available and what it costs. These prices use US East (N. Virginia) as an example; pricing varies by Region.
 
 | Storage Class | Use Case | Retrieval Time | Cost (per GB/mo) |
 |---|---|---|---|
@@ -34,7 +34,7 @@ Let's start with the most common lifecycle scenarios.
 
 ### Move Logs to Cheaper Storage and Eventually Delete
 
-This policy transitions log files through storage tiers and deletes them after a year.
+This policy transitions log files through storage tiers and deletes them after two years.
 
 ```json
 {
@@ -163,12 +163,12 @@ resource "aws_s3_bucket_lifecycle_configuration" "data" {
     }
 
     transition {
-      days          = 7
+      days          = 30
       storage_class = "STANDARD_IA"
     }
 
     transition {
-      days          = 30
+      days          = 90
       storage_class = "GLACIER"
     }
 
@@ -332,9 +332,10 @@ Before creating policies, understand what's in your bucket and how it's being ac
 This script analyzes a bucket's storage distribution and identifies savings opportunities.
 
 ```python
-import boto3
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
+
+import boto3
 
 s3 = boto3.client("s3")
 
@@ -345,7 +346,8 @@ def analyze_bucket(bucket_name, sample_size=10000):
         "total_objects": 0,
         "by_prefix": defaultdict(lambda: {"size": 0, "count": 0, "oldest": None}),
         "by_storage_class": defaultdict(lambda: {"size": 0, "count": 0}),
-        "age_distribution": defaultdict(lambda: {"size": 0, "count": 0})
+        "age_distribution": defaultdict(lambda: {"size": 0, "count": 0}),
+        "standard_age_distribution": defaultdict(lambda: {"size": 0, "count": 0})
     }
 
     paginator = s3.get_paginator("list_objects_v2")
@@ -353,13 +355,14 @@ def analyze_bucket(bucket_name, sample_size=10000):
 
     for page in paginator.paginate(Bucket=bucket_name):
         for obj in page.get("Contents", []):
-            count += 1
-            if count > sample_size:
+            if count >= sample_size:
                 break
+
+            count += 1
 
             size = obj["Size"]
             key = obj["Key"]
-            modified = obj["LastModified"].replace(tzinfo=None)
+            modified = obj["LastModified"]
             storage_class = obj.get("StorageClass", "STANDARD")
 
             # Top-level prefix
@@ -377,7 +380,7 @@ def analyze_bucket(bucket_name, sample_size=10000):
             stats["by_storage_class"][storage_class]["count"] += 1
 
             # Age bucket
-            age_days = (datetime.utcnow() - modified).days
+            age_days = (datetime.now(timezone.utc) - modified).days
             if age_days < 30:
                 age_bucket = "< 30 days"
             elif age_days < 90:
@@ -389,6 +392,13 @@ def analyze_bucket(bucket_name, sample_size=10000):
 
             stats["age_distribution"][age_bucket]["size"] += size
             stats["age_distribution"][age_bucket]["count"] += 1
+
+            if storage_class == "STANDARD":
+                stats["standard_age_distribution"][age_bucket]["size"] += size
+                stats["standard_age_distribution"][age_bucket]["count"] += 1
+
+        if count >= sample_size:
+            break
 
     # Print analysis
     gb = 1024 * 1024 * 1024
@@ -407,11 +417,8 @@ def analyze_bucket(bucket_name, sample_size=10000):
         print(f"  {age}: {data['size']/gb:.2f} GB ({pct:.1f}%)")
 
     # Estimate savings
-    standard_data = stats["by_storage_class"].get("STANDARD", {"size": 0})
-    standard_gb = standard_data["size"] / gb
-
     old_standard = sum(
-        data["size"] for age, data in stats["age_distribution"].items()
+        data["size"] for age, data in stats["standard_age_distribution"].items()
         if age in ("90-365 days", "> 365 days")
     ) / gb
 
@@ -430,7 +437,7 @@ analyze_bucket("my-company-data")
 
 ## S3 Intelligent-Tiering
 
-If you're not sure about access patterns, S3 Intelligent-Tiering automatically moves objects between access tiers based on actual usage. There's no retrieval fee, and the monitoring fee is $0.0025 per 1,000 objects per month.
+If you're not sure about access patterns, S3 Intelligent-Tiering automatically moves objects between access tiers based on actual usage. Standard and bulk retrievals are free, and the monitoring fee is $0.0025 per 1,000 monitored objects per month.
 
 ```hcl
 rule {
@@ -476,9 +483,9 @@ aws s3api put-bucket-intelligent-tiering-configuration \
 
 **Transition order matters**: Objects must transition from hotter to cooler tiers. You can't go from Glacier back to Standard-IA via lifecycle rules.
 
-**Retrieval costs**: Cheaper storage means retrieval costs. Glacier Flexible Retrieval charges $0.01/GB for standard retrieval. Deep Archive charges $0.02/GB. Factor this into your calculations.
+**Retrieval costs**: Cheaper storage means retrieval costs. In US East (N. Virginia), Glacier Flexible Retrieval charges $0.01/GB for standard retrieval, and Deep Archive charges $0.02/GB. Factor this into your calculations.
 
-**Small objects**: Objects smaller than 128 KB in Standard-IA are charged as 128 KB. Don't transition small objects to IA tiers - the minimum charge makes it more expensive.
+**Small objects**: For new or modified lifecycle configurations, S3 Lifecycle won't transition objects smaller than 128 KB to any storage class by default. If you override that behavior with object-size filters, small objects in Standard-IA, One Zone-IA, and Glacier Instant Retrieval are charged as 128 KB, and transition request costs can wipe out the savings.
 
 For more on managing S3 and other AWS costs, see our guides on [setting up Cost Explorer](https://oneuptime.com/blog/post/2026-02-12-setup-aws-cost-explorer-cost-analysis/view) and [setting up AWS Budgets](https://oneuptime.com/blog/post/2026-02-12-setup-aws-budgets-cost-alerts/view).
 
