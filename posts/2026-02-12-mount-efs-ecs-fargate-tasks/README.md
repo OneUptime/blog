@@ -32,10 +32,10 @@ graph TB
 
 You'll need:
 
-1. An EFS file system with mount targets in the subnets where your Fargate tasks run
+1. An EFS file system with mount targets in the Availability Zones where your Fargate tasks run
 2. A security group on the EFS mount targets that allows inbound NFS (port 2049) from your Fargate task security group
 3. An ECS cluster with Fargate capacity
-4. Platform version 1.4.0 or later (this is the default now)
+4. Platform version 1.4.0 or later (or `LATEST`, which is the default when you don't specify a platform version)
 
 If you don't have an EFS file system yet, see our guide on [creating an Amazon EFS file system](https://oneuptime.com/blog/post/2026-02-12-amazon-efs-file-system/view).
 
@@ -101,6 +101,10 @@ Here's a task definition with EFS:
 Register the task definition:
 
 ```bash
+# Create the CloudWatch log group if it doesn't already exist
+aws logs create-log-group \
+  --log-group-name "/ecs/web-app"
+
 # Register the task definition
 
 aws ecs register-task-definition \
@@ -196,7 +200,7 @@ aws ecs create-service \
   }'
 ```
 
-All three tasks will mount the same EFS file system. Files created by one task are immediately visible to the others.
+All three tasks will mount the same EFS file system. Files created by one task are visible to the others according to the NFS close-to-open consistency semantics that EFS provides.
 
 ## CloudFormation Example
 
@@ -328,11 +332,11 @@ EFS with Fargate performs well for most use cases, but keep these in mind:
 
 ## Troubleshooting
 
-**Task fails to start with "ResourceInitializationError"**: This usually means the task can't reach the EFS mount target. Check security groups and subnet configuration. The task must run in a subnet that has an EFS mount target.
+**Task fails to start with "ResourceInitializationError"**: This usually means the task can't reach the EFS mount target. Check security groups, subnet configuration, and task role permissions. For best performance and availability, run tasks in Availability Zones that have EFS mount targets; a mount target only needs to exist in one subnet per Availability Zone.
 
 **Permission denied inside the container**: The container's user might not have permission to read/write the mounted directory. Use EFS access points with a posixUser to set the UID/GID.
 
-**Slow startup**: If your EFS file system has encryption in transit enabled (which it should), TLS handshake adds a small amount of startup latency. This is usually under 2 seconds.
+**Slow startup**: If your EFS file system has encryption in transit enabled (which it should), TLS setup can add a small amount of startup latency. The exact impact depends on the task and network environment.
 
 ## Wrapping Up
 
