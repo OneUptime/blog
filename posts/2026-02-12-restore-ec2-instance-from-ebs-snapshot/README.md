@@ -71,14 +71,15 @@ On the instance:
 
 ```bash
 # Mount the restored volume (no formatting needed - it already has data)
+# On Nitro-based instances, use lsblk to find the actual /dev/nvme* device.
 sudo mount /dev/xvdf /data
 
 # Verify your data is there
 ls -la /data
 
-# Update fstab if the UUID changed
+# Verify the filesystem UUID before updating fstab
 sudo blkid /dev/xvdf
-# Update /etc/fstab with the new UUID
+# If the old volume is no longer mounted and the UUID is unchanged, existing UUID-based fstab entries can keep working
 ```
 
 ### Alternative: Mount as a Secondary Volume for Cherry-Picking
@@ -115,11 +116,22 @@ aws ec2 wait instance-stopped --instance-ids i-0123456789abcdef0
 
 ```bash
 # Get the current root volume ID and device name
-ROOT_INFO=$(aws ec2 describe-instances \
+ROOT_DEVICE=$(aws ec2 describe-instances \
     --instance-ids i-0123456789abcdef0 \
-    --query 'Reservations[0].Instances[0].{RootDevice:RootDeviceName,BlockDevices:BlockDeviceMappings}')
+    --query 'Reservations[0].Instances[0].RootDeviceName' \
+    --output text)
 
-echo $ROOT_INFO
+OLD_ROOT_VOL=$(aws ec2 describe-instances \
+    --instance-ids i-0123456789abcdef0 \
+    --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='$ROOT_DEVICE'].Ebs.VolumeId | [0]" \
+    --output text)
+
+INSTANCE_AZ=$(aws ec2 describe-instances \
+    --instance-ids i-0123456789abcdef0 \
+    --query 'Reservations[0].Instances[0].Placement.AvailabilityZone' \
+    --output text)
+
+echo "Root device: $ROOT_DEVICE, root volume: $OLD_ROOT_VOL, AZ: $INSTANCE_AZ"
 
 # Typically: /dev/xvda or /dev/sda1 with vol-xxxxx
 ```
@@ -127,8 +139,6 @@ echo $ROOT_INFO
 ### Step 3: Detach the Old Root Volume
 
 ```bash
-OLD_ROOT_VOL="vol-old-root-id"
-
 # Detach the old root volume
 aws ec2 detach-volume --volume-id $OLD_ROOT_VOL
 aws ec2 wait volume-available --volume-ids $OLD_ROOT_VOL
@@ -141,7 +151,7 @@ aws ec2 wait volume-available --volume-ids $OLD_ROOT_VOL
 NEW_ROOT_VOL=$(aws ec2 create-volume \
     --snapshot-id snap-root-0123456789 \
     --volume-type gp3 \
-    --availability-zone us-east-1a \
+    --availability-zone $INSTANCE_AZ \
     --query 'VolumeId' \
     --output text)
 
@@ -155,9 +165,9 @@ aws ec2 wait volume-available --volume-ids $NEW_ROOT_VOL
 aws ec2 attach-volume \
     --volume-id $NEW_ROOT_VOL \
     --instance-id i-0123456789abcdef0 \
-    --device /dev/xvda  # Use the same device name as the original root
+    --device $ROOT_DEVICE
 
-aws ec2 wait instance-stopped --instance-ids i-0123456789abcdef0
+aws ec2 wait volume-in-use --volume-ids $NEW_ROOT_VOL
 ```
 
 ### Step 6: Start the Instance
@@ -173,7 +183,7 @@ aws ec2 wait instance-running --instance-ids i-0123456789abcdef0
 AWS also provides a simpler way to replace root volumes without manually detaching/attaching:
 
 ```bash
-# Replace root volume using a snapshot (instance must be stopped)
+# Replace root volume using a snapshot (instance must be running)
 aws ec2 create-replace-root-volume-task \
     --instance-id i-0123456789abcdef0 \
     --snapshot-id snap-root-0123456789
@@ -183,7 +193,7 @@ aws ec2 describe-replace-root-volume-tasks \
     --replace-root-volume-task-ids replacevol-0123456789
 ```
 
-This method handles the detach/create/attach process for you.
+This method handles the detach/create/attach process for you, and AWS automatically reboots the instance during the replacement.
 
 ## Scenario 3: Full Instance Rebuild
 
@@ -227,7 +237,7 @@ aws ec2 register-image \
 # Launch a new instance from the restored AMI
 aws ec2 run-instances \
     --image-id ami-restored-0123456789 \
-    --instance-type m7g.large \
+    --instance-type m7i.large \
     --key-name my-key \
     --security-group-ids sg-0123456789abcdef0 \
     --subnet-id subnet-0123456789abcdef0
@@ -301,9 +311,9 @@ If your snapshots are in a different region (a common DR setup), you'll need to 
 ```bash
 # Copy a snapshot from the DR region to the primary region
 COPIED_SNAP=$(aws ec2 copy-snapshot \
+    --region us-east-1 \
     --source-region us-west-2 \
     --source-snapshot-id snap-dr-0123456789 \
-    --destination-region us-east-1 \
     --description "DR restore from us-west-2" \
     --query 'SnapshotId' \
     --output text)
@@ -336,7 +346,7 @@ Set up [monitoring with OneUptime](https://oneuptime.com) to verify the restored
 
 **Missing fstab entries.** Restoring a data volume doesn't automatically set up mount points. You may need to manually mount and update fstab.
 
-**Changed UUIDs.** Volumes created from snapshots get new UUIDs. If your fstab uses UUIDs (which it should), you need to update them after restoration.
+**Duplicate UUIDs.** Volumes created from snapshots are block-level replicas, so filesystem UUIDs usually remain the same. That helps when replacing a volume, but it can cause ambiguity if you mount the original and restored filesystems on the same instance at the same time.
 
 **Encryption key access.** If snapshots are encrypted with a KMS key and you're restoring in a different account, you need access to that key. See our guide on [encrypting EBS volumes](https://oneuptime.com/blog/post/2026-02-12-encrypt-ebs-volumes-on-existing-ec2-instances/view).
 
