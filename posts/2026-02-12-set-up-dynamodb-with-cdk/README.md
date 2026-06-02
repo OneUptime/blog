@@ -81,7 +81,9 @@ const ordersTable = new dynamodb.Table(this, 'OrdersTable', {
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
   removalPolicy: cdk.RemovalPolicy.RETAIN,
   // Enable point-in-time recovery for production tables
-  pointInTimeRecovery: true,
+  pointInTimeRecoverySpecification: {
+    pointInTimeRecoveryEnabled: true,
+  },
 });
 
 // Add a GSI to query orders by status
@@ -113,10 +115,10 @@ ordersTable.addGlobalSecondaryIndex({
 
 ## Adding a Local Secondary Index
 
-LSIs must be defined at table creation time (you can't add them later). They share the same partition key as the base table but have a different sort key.
+LSIs must be defined before the table is created in DynamoDB (you can't add them to an existing table later). They share the same partition key as the base table but have a different sort key.
 
 ```typescript
-// LSI must be added during table creation
+// LSI must be added before the table is deployed
 const messagesTable = new dynamodb.Table(this, 'MessagesTable', {
   tableName: 'Messages',
   partitionKey: {
@@ -248,9 +250,13 @@ const sensitiveTable = new dynamodb.Table(this, 'SensitiveDataTable', {
   // Use customer-managed KMS key for encryption
   encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
   encryptionKey: encryptionKey,
-  pointInTimeRecovery: true,
+  pointInTimeRecoverySpecification: {
+    pointInTimeRecoveryEnabled: true,
+  },
   removalPolicy: cdk.RemovalPolicy.RETAIN,
-  contributorInsightsEnabled: true,
+  contributorInsightsSpecification: {
+    enabled: true,
+  },
 });
 
 // Add tags for cost allocation and management
@@ -269,7 +275,7 @@ import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 
 // Create a Lambda function that reads from the table
 const readFunction = new lambda.Function(this, 'ReadFunction', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/read'),
   environment: {
@@ -282,7 +288,7 @@ this.usersTable.grantReadData(readFunction);
 
 // Create a Lambda that processes DynamoDB stream events
 const streamProcessor = new lambda.Function(this, 'StreamProcessor', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/stream-processor'),
 });
