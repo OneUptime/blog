@@ -71,16 +71,13 @@ Parameters:
   Environment:
     Type: String
     AllowedValues: [dev, staging, production]
-  TemplateBucketUrl:
-    Type: String
-    Description: S3 URL where child templates are stored
 
 Resources:
   # Network layer
   VpcStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: !Sub "${TemplateBucketUrl}/main/vpc.yaml"
+      TemplateURL: main/vpc.yaml
       Parameters:
         Environment: !Ref Environment
       Tags:
@@ -92,7 +89,7 @@ Resources:
     Type: AWS::CloudFormation::Stack
     DependsOn: VpcStack
     Properties:
-      TemplateURL: !Sub "${TemplateBucketUrl}/data/rds.yaml"
+      TemplateURL: data/rds.yaml
       Parameters:
         Environment: !Ref Environment
         VpcId: !GetAtt VpcStack.Outputs.VpcId
@@ -108,7 +105,7 @@ Resources:
       - VpcStack
       - DatabaseStack
     Properties:
-      TemplateURL: !Sub "${TemplateBucketUrl}/compute/ecs-cluster.yaml"
+      TemplateURL: compute/ecs-cluster.yaml
       Parameters:
         Environment: !Ref Environment
         VpcId: !GetAtt VpcStack.Outputs.VpcId
@@ -116,7 +113,9 @@ Resources:
         DatabaseEndpoint: !GetAtt DatabaseStack.Outputs.DatabaseEndpoint
 ```
 
-The child VPC template exports the values that other stacks need.
+The local `TemplateURL` paths are rewritten to S3 URLs by the package step before deployment.
+
+The child VPC template returns the values that other nested stacks need.
 
 ```yaml
 # main/vpc.yaml - VPC child template
@@ -193,8 +192,9 @@ Resources:
   MySecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      VpcId: !ImportValue
-        Fn::Sub: "${Environment}-vpc-id"
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: "${Environment}-vpc-id"
 ```
 
 A word of caution - cross-stack references create implicit dependencies. You can't delete or modify an exported value if another stack is importing it. This can make stack updates tricky. For this reason, I prefer passing values through parameters in nested stacks when possible.
@@ -203,8 +203,9 @@ A word of caution - cross-stack references create implicit dependencies. You can
 
 Use parameter files to manage environment differences. CloudFormation supports JSON parameter files that you pass at deploy time.
 
+`config/production.json`:
+
 ```json
-// config/production.json
 [
   {
     "ParameterKey": "Environment",
@@ -225,8 +226,9 @@ Use parameter files to manage environment differences. CloudFormation supports J
 ]
 ```
 
+`config/dev.json`:
+
 ```json
-// config/dev.json
 [
   {
     "ParameterKey": "Environment",
@@ -247,12 +249,12 @@ Use parameter files to manage environment differences. CloudFormation supports J
 ]
 ```
 
-Deploy with the appropriate config file.
+After packaging the template, deploy with the appropriate config file.
 
 ```bash
 # Deploy to production using the production config
 aws cloudformation deploy \
-  --template-file master.yaml \
+  --template-file packaged.yaml \
   --stack-name myapp-production \
   --parameter-overrides file://config/production.json \
   --capabilities CAPABILITY_IAM
@@ -295,7 +297,7 @@ echo "Deploying ${STACK_NAME} (version: ${VERSION})"
 
 # Validate all templates first
 echo "Validating templates..."
-cfn-lint cloudformation/**/*.yaml
+cfn-lint cloudformation/*.yaml cloudformation/**/*.yaml
 
 # Package and upload nested templates
 echo "Packaging templates..."
