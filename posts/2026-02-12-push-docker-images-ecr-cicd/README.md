@@ -24,7 +24,7 @@ Regardless of your CI/CD platform, the steps are:
 ```bash
 # The universal ECR push pattern
 
-AWS_ACCOUNT_ID=123456789
+AWS_ACCOUNT_ID=123456789012
 REGION=us-east-1
 REPO_NAME=my-web-app
 IMAGE_TAG=$(git rev-parse --short HEAD)
@@ -53,9 +53,8 @@ First, set up the OIDC provider in AWS.
 ```hcl
 # Terraform - GitHub OIDC provider and role
 resource "aws_iam_openid_connect_provider" "github" {
-  url             = "https://token.actions.githubusercontent.com"
-  client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
+  url            = "https://token.actions.githubusercontent.com"
+  client_id_list = ["sts.amazonaws.com"]
 }
 
 resource "aws_iam_role" "github_actions" {
@@ -106,7 +105,7 @@ resource "aws_iam_role_policy" "ecr_push" {
           "ecr:UploadLayerPart",
           "ecr:CompleteLayerUpload"
         ]
-        Resource = "arn:aws:ecr:us-east-1:123456789:repository/my-web-app"
+        Resource = "arn:aws:ecr:us-east-1:123456789012:repository/my-web-app"
       }
     ]
   })
@@ -141,7 +140,7 @@ jobs:
       - name: Configure AWS credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789:role/github-actions-ecr-push
+          role-to-assume: arn:aws:iam::123456789012:role/github-actions-ecr-push
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login to Amazon ECR
@@ -178,23 +177,26 @@ stages:
 
 variables:
   AWS_REGION: us-east-1
-  ECR_REPO: 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app
+  ECR_REGISTRY: 123456789012.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPO: 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
 
 build-and-push:
   stage: build
-  image: docker:24
+  image: docker:24.0.5-cli
   services:
-    - docker:24-dind
+    - docker:24.0.5-dind
   before_script:
     # Install AWS CLI
     - apk add --no-cache aws-cli
     # Authenticate with ECR
-    - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REPO
+    - aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_REGISTRY
   script:
     - IMAGE_TAG=${CI_COMMIT_SHORT_SHA}
     - docker build -t $ECR_REPO:$IMAGE_TAG .
     - docker push $ECR_REPO:$IMAGE_TAG
-    # Tag with branch name for non-main branches
+    # Tag as latest on the main branch
     - |
       if [ "$CI_COMMIT_BRANCH" = "main" ]; then
         docker tag $ECR_REPO:$IMAGE_TAG $ECR_REPO:latest
@@ -216,8 +218,9 @@ pipeline {
 
     environment {
         AWS_REGION     = 'us-east-1'
-        AWS_ACCOUNT_ID = '123456789'
-        ECR_REPO       = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/my-web-app"
+        AWS_ACCOUNT_ID = '123456789012'
+        ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+        ECR_REPO       = "${ECR_REGISTRY}/my-web-app"
         IMAGE_TAG      = "${GIT_COMMIT.take(7)}"
     }
 
@@ -228,7 +231,7 @@ pipeline {
                     sh '''
                         # Authenticate Docker with ECR
                         aws ecr get-login-password --region $AWS_REGION | \
-                            docker login --username AWS --password-stdin $ECR_REPO
+                            docker login --username AWS --password-stdin $ECR_REGISTRY
 
                         # Build and push
                         docker build -t $ECR_REPO:$IMAGE_TAG .
@@ -243,7 +246,7 @@ pipeline {
 
 ## AWS CodeBuild
 
-CodeBuild runs inside AWS, so authentication is simpler - just give the CodeBuild service role ECR permissions.
+CodeBuild runs inside AWS, so authentication is simpler - just give the CodeBuild service role ECR permissions. Enable privileged mode on the build project so Docker commands can build images.
 
 ```yaml
 # buildspec.yml
@@ -251,7 +254,7 @@ version: 0.2
 
 env:
   variables:
-    AWS_ACCOUNT_ID: "123456789"
+    AWS_ACCOUNT_ID: "123456789012"
     AWS_DEFAULT_REGION: "us-east-1"
     IMAGE_REPO_NAME: "my-web-app"
 
@@ -328,7 +331,7 @@ If you need to build for both x86 and ARM (for Graviton-based Fargate), use Dock
   uses: docker/setup-buildx-action@v3
 
 - name: Build and push multi-arch image
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     context: .
     platforms: linux/amd64,linux/arm64
@@ -347,7 +350,7 @@ Docker layer caching speeds up builds significantly. Here are approaches for dif
 ```yaml
 # GitHub Actions - Use GitHub Actions cache
 - name: Build with cache
-  uses: docker/build-push-action@v5
+  uses: docker/build-push-action@v7
   with:
     context: .
     push: true
