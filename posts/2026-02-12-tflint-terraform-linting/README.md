@@ -8,21 +8,23 @@ Description: Set up TFLint to catch errors, enforce best practices, and validate
 
 ---
 
-Terraform's built-in `validate` command checks syntax, but it doesn't catch a lot of common mistakes. Using an invalid instance type? It won't tell you until apply time. Referencing an AMI that doesn't exist in your region? Same deal. TFLint fills that gap by catching AWS-specific errors and enforcing best practices at lint time.
+Terraform's built-in `validate` command checks syntax, but it doesn't catch a lot of common mistakes. Using an invalid instance type? It won't tell you until apply time. Referencing an AMI that doesn't exist in your region? TFLint can catch that too when AWS deep checking is enabled. TFLint fills that gap by catching AWS-specific errors and enforcing best practices at lint time.
 
-TFLint is a pluggable linter with deep AWS knowledge. It validates resource configurations against the actual AWS API constraints, something Terraform's validation can't do on its own.
+TFLint is a pluggable linter with deep AWS knowledge. It validates resource configurations against provider-specific rules, and with deep checking it can use AWS credentials to check resources that require AWS API reads.
 
 ## Installation
 
-TFLint has straightforward installation on all major platforms:
+TFLint has straightforward installation on macOS and Linux:
 
 ```bash
 # macOS with Homebrew
 
-brew install tflint
+brew install terraform-linters/tap/tflint
 
-# Linux - using the install script
-curl -s https://raw.githubusercontent.com/terraform-linters/tflint/master/install_linux.sh | bash
+# Linux - download the latest release
+curl -sSLO https://github.com/terraform-linters/tflint/releases/latest/download/tflint_linux_amd64.zip
+unzip tflint_linux_amd64.zip
+sudo install -c -v tflint /usr/local/bin/
 
 # Verify installation
 tflint --version
@@ -33,6 +35,9 @@ For Docker users:
 ```bash
 # Run TFLint in Docker
 docker run --rm -v $(pwd):/data -t ghcr.io/terraform-linters/tflint
+
+# Initialize plugins and run TFLint in Docker
+docker run --rm -v $(pwd):/data -t --entrypoint /bin/sh ghcr.io/terraform-linters/tflint -c "tflint --init && tflint"
 ```
 
 ## Configuration
@@ -42,17 +47,17 @@ TFLint uses a `.tflint.hcl` configuration file. Here's a solid starting point fo
 ```hcl
 # .tflint.hcl
 config {
-  # Enable module inspection
-  module = true
+  # Enable local and remote module inspection
+  call_module_type = "all"
 
-  # Treat warnings as errors in CI
+  # Return non-zero when issues are found
   force = false
 }
 
 # AWS provider plugin
 plugin "aws" {
   enabled = true
-  version = "0.30.0"
+  version = "0.47.0"
   source  = "github.com/terraform-linters/tflint-ruleset-aws"
 }
 
@@ -79,7 +84,7 @@ Basic usage is simple:
 tflint
 
 # Lint a specific directory
-tflint ./terraform/modules/vpc
+tflint --chdir=./terraform/modules/vpc
 
 # Output as JSON for CI processing
 tflint --format json
@@ -99,24 +104,21 @@ resource "aws_instance" "web" {
 }
 ```
 
-Same goes for invalid IAM policy actions:
+Same goes for invalid security group rule protocols:
 
 ```hcl
-# TFLint catches typos in IAM actions
-resource "aws_iam_policy" "example" {
-  name = "example"
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [{
-      Effect   = "Allow"
-      Action   = "s3:GetObejct"  # Typo - TFLint catches this
-      Resource = "*"
-    }]
-  })
+# TFLint catches invalid security group rule protocols
+resource "aws_security_group_rule" "example" {
+  type              = "ingress"
+  from_port         = 443
+  to_port           = 443
+  protocol          = "tcpx"  # Typo - TFLint catches this
+  cidr_blocks       = ["10.0.0.0/8"]
+  security_group_id = "sg-0123456789abcdef0"
 }
 ```
 
-And referencing nonexistent attributes:
+And previous generation instance types:
 
 ```hcl
 # Previous generation instance type - TFLint can warn about this
@@ -205,7 +207,7 @@ name: TFLint
 on:
   pull_request:
     paths:
-      - '**.tf'
+      - '**/*.tf'
       - '.tflint.hcl'
 
 jobs:
@@ -215,14 +217,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Setup TFLint
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: v0.50.0
+          tflint_version: v0.62.1
 
       - name: Init TFLint
         run: tflint --init
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
 
       - name: Run TFLint
         run: tflint --format compact --recursive
@@ -237,11 +239,10 @@ Catching lint issues before they even reach CI saves time. Add TFLint to your pr
 ```yaml
 # .pre-commit-config.yaml
 repos:
-  - repo: https://github.com/terraform-linters/tflint
-    rev: v0.50.0
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.106.0
     hooks:
-      - id: tflint
-        args: ['--recursive']
+      - id: terraform_tflint
 ```
 
 ```bash
@@ -249,7 +250,7 @@ repos:
 pre-commit install
 
 # Run manually against all files
-pre-commit run tflint --all-files
+pre-commit run terraform_tflint --all-files
 ```
 
 ## TFLint vs Terraform Validate
@@ -278,12 +279,12 @@ terraform validate && tflint
 
 ## Scanning Modules
 
-TFLint can inspect Terraform modules when the `module` option is enabled:
+TFLint can inspect Terraform module calls. By default it calls local modules, and you can enable remote module calls with `call_module_type`:
 
 ```hcl
 # .tflint.hcl
 config {
-  module = true
+  call_module_type = "all"
 }
 ```
 
@@ -338,8 +339,8 @@ For security scanning specifics, check out [using Checkov for Terraform security
 
 **"Failed to check ruleset"** - The GitHub API rate limit might be hit during plugin download. Set `GITHUB_TOKEN` to increase the limit.
 
-**Module scanning errors** - If modules reference remote sources, make sure `terraform init` has been run first so modules are downloaded.
+**Module scanning errors** - If modules reference remote sources and `call_module_type = "all"` is enabled, make sure `terraform init` has been run first so modules are downloaded.
 
 ## Summary
 
-TFLint catches a class of errors that no other tool in the Terraform ecosystem handles. Invalid instance types, deprecated configurations, and naming convention violations are exactly the kind of things that slip through code review but cause problems at apply time. Setting it up takes five minutes, and it saves you from countless failed deployments.
+TFLint catches a useful class of errors that Terraform's built-in validation does not. Invalid instance types, deprecated configurations, and naming convention violations are exactly the kind of things that slip through code review but cause problems at apply time. Setting it up takes five minutes, and it saves you from countless failed deployments.
