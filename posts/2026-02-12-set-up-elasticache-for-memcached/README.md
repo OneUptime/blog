@@ -143,7 +143,7 @@ aws elasticache describe-cache-clusters \
 
 ### Python Connection
 
-Using `pymemcache` with auto-discovery:
+Using `pymemcache` with individual node endpoints:
 
 ```python
 from pymemcache.client.hash import HashClient
@@ -174,24 +174,32 @@ result = client.get('user:12345')
 print(result)  # b'{"name": "Alice", "email": "alice@example.com"}'
 ```
 
-Using the ElastiCache auto-discovery client (recommended for production):
+Discovering nodes with the AWS API before creating the client:
 
 ```python
-from elasticache_auto_discovery import AutoDiscovery
+import boto3
 from pymemcache.client.hash import HashClient
 
-# Use the configuration endpoint for auto-discovery
-config_endpoint = 'my-memcached-cluster.abc123.cfg.use1.cache.amazonaws.com:11211'
-nodes = AutoDiscovery(config_endpoint).get_nodes()
+elasticache = boto3.client('elasticache', region_name='us-east-1')
+response = elasticache.describe_cache_clusters(
+    CacheClusterId='my-memcached-cluster',
+    ShowCacheNodeInfo=True
+)
 
-# Nodes are automatically discovered and updated
+nodes = [
+    (node['Endpoint']['Address'], node['Endpoint']['Port'])
+    for node in response['CacheClusters'][0]['CacheNodes']
+]
+
 client = HashClient(
-    [(n.ip, n.port) for n in nodes],
+    nodes,
     connect_timeout=2,
     timeout=1,
     no_delay=True
 )
 ```
+
+For automatic updates when nodes are added or removed, use an Auto Discovery-capable Memcached client or refresh this node list and recreate the client.
 
 ### Node.js Connection
 
@@ -261,7 +269,7 @@ Set up CloudWatch monitoring for your Memcached cluster:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name GetHits \
-  --dimensions Name=CacheClusterId,Value=my-memcached-cluster \
+  --dimensions Name=CacheClusterId,Value=my-memcached-cluster Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
@@ -271,7 +279,7 @@ aws cloudwatch get-metric-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name Evictions \
-  --dimensions Name=CacheClusterId,Value=my-memcached-cluster \
+  --dimensions Name=CacheClusterId,Value=my-memcached-cluster Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
