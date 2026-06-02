@@ -72,8 +72,8 @@ resource "aws_iam_role_policy" "app_permissions" {
           "dynamodb:UpdateItem",
         ]
         Resource = [
-          "arn:aws:s3:::arn:aws:dynamodb:us-east-1:123456789012:table/app-data",
-          "arn:aws:s3:::arn:aws:dynamodb:us-east-1:123456789012:table/app-data/index/*",
+          "arn:aws:dynamodb:us-east-1:123456789012:table/app-data",
+          "arn:aws:dynamodb:us-east-1:123456789012:table/app-data/index/*",
         ]
       },
       {
@@ -135,19 +135,19 @@ One of the most powerful least privilege techniques is generating policies from 
 # Start a policy generation request
 aws accessanalyzer start-policy-generation \
   --policy-generation-details '{
-    "principalArn": "arn:aws:iam::123456789012:role/application-role",
-    "cloudTrailDetails": {
-      "trails": [
-        {
-          "cloudTrailArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/management-trail",
-          "regions": ["us-east-1"],
-          "allRegions": false
-        }
-      ],
-      "accessRole": "arn:aws:iam::123456789012:role/access-analyzer-role",
-      "startTime": "2026-01-01T00:00:00Z",
-      "endTime": "2026-02-01T00:00:00Z"
-    }
+    "principalArn": "arn:aws:iam::123456789012:role/application-role"
+  }' \
+  --cloud-trail-details '{
+    "trails": [
+      {
+        "cloudTrailArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/management-trail",
+        "regions": ["us-east-1"],
+        "allRegions": false
+      }
+    ],
+    "accessRole": "arn:aws:iam::123456789012:role/access-analyzer-role",
+    "startTime": "2026-01-01T00:00:00Z",
+    "endTime": "2026-02-01T00:00:00Z"
   }'
 ```
 
@@ -198,15 +198,17 @@ resource "aws_iam_policy" "permission_boundary" {
       {
         Sid    = "DenyOutsideRegion"
         Effect = "Deny"
-        Action = "*"
+        NotAction = [
+          "cloudfront:*",
+          "iam:*",
+          "organizations:*",
+          "route53:*",
+          "support:*",
+        ]
         Resource = "*"
         Condition = {
           StringNotEquals = {
             "aws:RequestedRegion" = ["us-east-1", "us-west-2"]
-          }
-          # Exclude global services
-          "ForAnyValue:StringNotLike" = {
-            "aws:PrincipalArn" = ["arn:aws:iam::*:role/aws-service-role/*"]
           }
         }
       }
@@ -263,7 +265,7 @@ resource "aws_iam_role_policy" "conditional_access" {
         Sid    = "AllowEC2OnlySpecificTypes"
         Effect = "Allow"
         Action = ["ec2:RunInstances"]
-        Resource = "arn:aws:ec2:*:*:instance/*"
+        Resource = "*"
         Condition = {
           StringEquals = {
             "ec2:InstanceType" = ["t3.micro", "t3.small", "t3.medium"]
@@ -300,7 +302,7 @@ resource "aws_iam_role_policy" "conditional_access" {
 These conditions enforce:
 - S3 uploads must use KMS encryption
 - EC2 instances are limited to specific types
-- Secrets can only be accessed from within the VPC
+- Secrets can only be accessed through a VPC endpoint in the specified VPC
 - Resources must be tagged with the creator's team
 
 ## Service Control Policies for Organizational Guardrails
@@ -359,13 +361,13 @@ Least privilege isn't a one-time setup. Permissions drift as applications evolve
 4. **Continuously**: Use Config rules to detect overly permissive policies
 
 ```hcl
-# Config rule to detect IAM policies with wildcards
+# Config rule to detect IAM policies with full-access wildcards
 resource "aws_config_config_rule" "no_wildcard_policies" {
   name = "iam-no-wildcard-policies"
 
   source {
     owner             = "AWS"
-    source_identifier = "IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS"
+    source_identifier = "IAM_POLICY_NO_STATEMENTS_WITH_FULL_ACCESS"
   }
 }
 
