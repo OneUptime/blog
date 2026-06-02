@@ -30,6 +30,8 @@ Account A's application assumes a role in Account B to access shared resources. 
 1. **Trust policy** in Account B allows Account A to assume the role
 2. **Permission policy** in Account A allows its role to call `sts:AssumeRole` on Account B's role
 
+The role in Account B also needs its own permission policy for the resources it will access.
+
 ## Setting Up a Basic Cross-Account Role
 
 ### In the Target Account (Account B - Shared Services)
@@ -146,7 +148,7 @@ def access_shared_service():
 
 ## Pattern 1: Centralized Logging
 
-A shared logging account collects CloudTrail, VPC Flow Logs, and application logs from all accounts:
+A shared logging account collects application and agent logs from all accounts. AWS services such as CloudTrail and VPC Flow Logs usually use service-specific delivery principals and resource policies rather than this `AssumeRole` pattern:
 
 ```json
 {
@@ -161,10 +163,19 @@ A shared logging account collects CloudTrail, VPC Flow Logs, and application log
           "arn:aws:iam::333333333333:root"
         ]
       },
-      "Action": "sts:AssumeRole",
+      "Action": [
+        "sts:AssumeRole",
+        "sts:TagSession"
+      ],
       "Condition": {
         "StringEquals": {
-          "aws:PrincipalOrgID": "o-abc123def4"
+          "aws:PrincipalOrgID": "o-abc123def4",
+          "aws:RequestTag/sourceAccount": "${aws:PrincipalAccount}"
+        },
+        "ForAllValues:StringEquals": {
+          "aws:TagKeys": [
+            "sourceAccount"
+          ]
         }
       }
     }
@@ -186,13 +197,13 @@ The role's permission policy allows writing to the centralized logging bucket:
         "s3:PutObject",
         "s3:PutObjectAcl"
       ],
-      "Resource": "arn:aws:s3:::central-logs-bucket/${aws:PrincipalAccount}/*"
+      "Resource": "arn:aws:s3:::central-logs-bucket/${aws:PrincipalTag/sourceAccount}/*"
     }
   ]
 }
 ```
 
-Using `${aws:PrincipalAccount}` in the resource path ensures each account can only write to its own prefix - they can't tamper with other accounts' logs.
+Callers pass a `sourceAccount` session tag when assuming the role. The trust policy requires that tag to match the caller's account, and `${aws:PrincipalTag/sourceAccount}` in the resource path ensures each account can only write to its own prefix - they can't tamper with other accounts' logs.
 
 ## Pattern 2: Shared CI/CD Pipeline
 
@@ -223,9 +234,27 @@ aws iam create-role \
 aws iam attach-role-policy \
   --role-name CrossAccount-Deploy \
   --policy-arn arn:aws:iam::aws:policy/PowerUserAccess
+
+# In the central DevOps account, allow the pipeline role to assume deployment roles
+aws iam put-role-policy \
+  --role-name CICD-PipelineRole \
+  --policy-name assume-deployment-roles \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "sts:AssumeRole",
+        "Resource": [
+          "arn:aws:iam::222222222222:role/CrossAccount-Deploy",
+          "arn:aws:iam::333333333333:role/CrossAccount-Deploy"
+        ]
+      }
+    ]
+  }'
 ```
 
-In your CI/CD pipeline (e.g., GitHub Actions):
+In your CI/CD pipeline (e.g., GitHub Actions), first assume the central DevOps role using OIDC, then role-chain into each target account:
 
 ```yaml
 # GitHub Actions workflow that deploys to multiple accounts
@@ -243,8 +272,14 @@ jobs:
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
+          role-to-assume: arn:aws:iam::444444444444:role/CICD-PipelineRole
+          aws-region: us-east-1
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
           role-to-assume: arn:aws:iam::222222222222:role/CrossAccount-Deploy
           aws-region: us-east-1
+          role-chaining: true
 
       - name: Deploy to staging
         run: |
@@ -259,8 +294,14 @@ jobs:
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
+          role-to-assume: arn:aws:iam::444444444444:role/CICD-PipelineRole
+          aws-region: us-east-1
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
           role-to-assume: arn:aws:iam::333333333333:role/CrossAccount-Deploy
           aws-region: us-east-1
+          role-chaining: true
 
       - name: Deploy to production
         run: |
@@ -320,11 +361,11 @@ A security account can read (but not modify) resources in all accounts:
 }
 ```
 
-Attach `SecurityAudit` and `ReadOnlyAccess` managed policies. This is exactly how AWS Security Hub and GuardDuty work when aggregating findings across accounts.
+Attach `SecurityAudit` and `ReadOnlyAccess` managed policies. This is a common pattern for human or tooling audit access; AWS Security Hub and GuardDuty use their own AWS Organizations and delegated administrator integrations when aggregating findings across accounts.
 
 ## Using AWS Organizations for Simplified Trust
 
-With AWS Organizations, use SCPs and organization-level conditions:
+With AWS Organizations, use organization-level conditions in trust and resource policies. SCPs are useful as guardrails, but they do not grant access by themselves:
 
 ```json
 {
@@ -336,10 +377,12 @@ With AWS Organizations, use SCPs and organization-level conditions:
 }
 ```
 
-This is more secure than listing individual account IDs because:
+This can be easier to maintain than listing individual account IDs because:
 - New accounts in the org automatically work
 - Accounts removed from the org automatically lose access
 - You don't need to update the trust policy when accounts are added
+
+Use it with a scoped `Principal` or additional conditions such as `aws:PrincipalArn` so you do not trust every principal in every account by accident.
 
 ## Terraform Module for Cross-Account Roles
 
@@ -357,14 +400,18 @@ resource "aws_iam_role" "cross_account" {
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
-      {
-        Effect    = "Allow"
-        Principal = { AWS = [for id in var.trusted_account_ids : "arn:aws:iam::${id}:root"] }
-        Action    = "sts:AssumeRole"
-        Condition = var.org_id != "" ? {
-          StringEquals = { "aws:PrincipalOrgID" = var.org_id }
+      merge(
+        {
+          Effect    = "Allow"
+          Principal = { AWS = [for id in var.trusted_account_ids : "arn:aws:iam::${id}:root"] }
+          Action    = "sts:AssumeRole"
+        },
+        var.org_id != "" ? {
+          Condition = {
+            StringEquals = { "aws:PrincipalOrgID" = var.org_id }
+          }
         } : {}
-      }
+      )
     ]
   })
 }
