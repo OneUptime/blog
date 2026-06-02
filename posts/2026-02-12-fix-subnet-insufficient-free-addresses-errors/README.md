@@ -71,7 +71,7 @@ Look for patterns. Common culprits include:
 
 ## Step 3: Clean Up Unused Resources
 
-Delete orphaned ENIs that are in "available" status.
+Delete orphaned ENIs that are in "available" status and are not managed by another AWS service.
 
 ```bash
 # Find and list orphaned ENIs in the subnet
@@ -169,7 +169,7 @@ Rules of thumb:
 
 ## Lambda-Specific Considerations
 
-Lambda functions in VPCs can consume many IPs, especially under high concurrency. With Hyperplane ENIs, Lambda shares ENIs more efficiently, but each unique subnet/security-group combination still needs at least one ENI.
+Lambda functions in VPCs still need subnet IPs for Hyperplane ENIs, but IP usage no longer grows one-for-one with concurrency. Lambda creates a Hyperplane ENI for each unique subnet/security-group combination and can reuse it across functions.
 
 If Lambda is exhausting your subnet IPs, consider:
 - Using larger subnets (at least /24)
@@ -188,11 +188,12 @@ EKS pods consume one IP each in the default VPC CNI configuration. A cluster run
 Set up monitoring to catch this before it becomes an emergency.
 
 ```bash
-# Create a CloudWatch alarm for low available IPs (using a custom metric)
+# Create a CloudWatch alarm after publishing AvailableIpAddressCount as a custom metric
 aws cloudwatch put-metric-alarm \
   --alarm-name "LowSubnetIPs-subnet-abc123" \
   --metric-name AvailableIpAddressCount \
   --namespace "Custom/VPC" \
+  --dimensions Name=SubnetId,Value=subnet-abc123 \
   --statistic Minimum \
   --period 300 \
   --threshold 10 \
