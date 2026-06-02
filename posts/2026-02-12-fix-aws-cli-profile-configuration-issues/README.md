@@ -12,14 +12,18 @@ The AWS CLI profile system is powerful but has a few quirks that trip people up.
 
 ## How AWS CLI Credentials Work
 
-The CLI looks for credentials in this order (first match wins):
+The CLI resolves authentication methods in this order (first match wins):
 
-1. Command-line options (`--profile`, `--region`)
-2. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_PROFILE`)
-3. Credentials file (`~/.aws/credentials`)
-4. Config file (`~/.aws/config`)
-5. Container credentials (ECS)
-6. Instance profile (EC2)
+1. Command-line options, such as `--profile` to select a profile
+2. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `AWS_PROFILE`)
+3. Assume role configuration
+4. Assume role with web identity
+5. IAM Identity Center (SSO) configuration
+6. Credentials file (`~/.aws/credentials`)
+7. Custom credential process
+8. Config file (`~/.aws/config`)
+9. Container credentials (ECS)
+10. Instance profile (EC2)
 
 Understanding this order is key to debugging most profile issues.
 
@@ -102,7 +106,7 @@ Notice the important difference: in the credentials file, profile sections are j
 
 ## Problem 3: Credentials File Permissions
 
-On Linux and macOS, if your credentials file has overly permissive permissions, the CLI might refuse to use it or other users could read your secrets.
+On Linux and macOS, if your credentials file has overly permissive permissions, other users on the machine could read your secrets.
 
 ```bash
 # Check current permissions on AWS config files
@@ -140,7 +144,7 @@ aws sso login --profile sso-dev
 aws sts get-caller-identity --profile sso-dev
 ```
 
-If the token expires (they typically last 8 hours), just run `aws sso login` again.
+If the token expires, just run `aws sso login` again.
 
 For the newer SSO session format that shares tokens across profiles:
 
@@ -212,7 +216,7 @@ credential_process = /path/to/credential-helper --arg1 value1
 region = us-east-1
 ```
 
-The program must output JSON in this format:
+The program must output JSON in this format. `Expiration` is required for temporary credentials and should be omitted for long-term credentials.
 
 ```json
 {
