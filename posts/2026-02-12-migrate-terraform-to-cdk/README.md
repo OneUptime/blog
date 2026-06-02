@@ -16,7 +16,7 @@ Let's go through the strategies, tools, and patterns for making this migration s
 
 Before diving into the how, it's worth understanding the common motivations:
 
-**Type safety and IDE support**. Terraform's HCL is declarative but lacks the type checking and autocomplete that TypeScript provides. Catching errors at compile time instead of plan time saves real time.
+**Type safety and IDE support**. Terraform's HCL is declarative and validates types during Terraform runs, but it doesn't provide the same compile-time type checking and autocomplete that TypeScript provides. Catching errors at compile time instead of plan time saves real time.
 
 **Abstraction with real code**. CDK constructs are objects with methods, inheritance, and composition. Building reusable infrastructure patterns in CDK is more natural than Terraform modules.
 
@@ -66,7 +66,7 @@ Create a spreadsheet or document mapping Terraform resources to their CDK equiva
 
 ## Step 2: CDK Import for Existing Resources
 
-CDK can import existing AWS resources into a CloudFormation stack. This is the key mechanism for migration.
+CDK can import existing AWS resources that support CloudFormation resource import into a CloudFormation stack. This is the key mechanism for migration.
 
 First, write the CDK code that describes your existing resources:
 
@@ -117,20 +117,21 @@ Then use CDK import:
 cdk import VpcStack
 ```
 
-CDK will prompt you for the physical resource IDs of each resource it needs to import. You'll need the VPC ID, subnet IDs, route table IDs, and so on.
+Before importing, run `cdk diff` and make sure the only pending changes are the resources you plan to import. CDK will prompt you for the physical resource IDs of each resource it needs to import. You'll need the VPC ID, subnet IDs, route table IDs, and so on.
 
 ## Step 3: Using cdktf as a Bridge
 
-If you want to take a more gradual approach, CDKTF (CDK for Terraform) lets you write CDK code that generates Terraform configs instead of CloudFormation. This can be an intermediate step:
+CDKTF (CDK for Terraform) used to be another gradual approach because it lets you write TypeScript code that generates Terraform configs instead of CloudFormation. HashiCorp deprecated CDKTF on December 10, 2025 and no longer supports or maintains it, so treat this as a legacy bridge only if you already use CDKTF:
 
 ```typescript
-// Using CDKTF as an intermediate step
-import { App, TerraformStack } from 'cdktf';
-import { AwsProvider } from '@cdktf/provider-aws/lib/provider';
+// Existing CDKTF code as an intermediate step
+import { TerraformStack } from 'cdktf';
+import { Construct } from 'constructs';
+import { AwsProvider } from '@cdktf/provider-aws/lib/aws-provider';
 import { Vpc } from '@cdktf/provider-aws/lib/vpc';
 
 class MyStack extends TerraformStack {
-  constructor(scope: App, id: string) {
+  constructor(scope: Construct, id: string) {
     super(scope, id);
 
     new AwsProvider(this, 'aws', { region: 'us-east-1' });
@@ -144,7 +145,7 @@ class MyStack extends TerraformStack {
 }
 ```
 
-This lets your team learn CDK patterns while still using Terraform's state management.
+For new migrations in 2026, prefer side-by-side AWS CDK stacks or CloudFormation imports instead of adopting CDKTF.
 
 ## Step 4: Reference Terraform Outputs from CDK
 
@@ -189,10 +190,10 @@ After successfully importing resources into CDK, remove them from Terraform stat
 ```bash
 # Remove the VPC from Terraform state (does NOT delete the actual resource)
 terraform state rm aws_vpc.main
-terraform state rm aws_subnet.public[0]
-terraform state rm aws_subnet.public[1]
-terraform state rm aws_subnet.private[0]
-terraform state rm aws_subnet.private[1]
+terraform state rm 'aws_subnet.public[0]'
+terraform state rm 'aws_subnet.public[1]'
+terraform state rm 'aws_subnet.private[0]'
+terraform state rm 'aws_subnet.private[1]'
 ```
 
 This is the most nerve-wracking part. Always back up your Terraform state before removing resources.
@@ -205,21 +206,35 @@ Here's a quick reference for common Terraform to CDK conversions:
 # Terraform: S3 bucket
 resource "aws_s3_bucket" "data" {
   bucket = "my-data-bucket"
+}
 
-  server_side_encryption_configuration {
-    rule {
-      apply_server_side_encryption_by_default {
-        sse_algorithm = "AES256"
-      }
+resource "aws_s3_bucket_server_side_encryption_configuration" "data" {
+  bucket = aws_s3_bucket.data.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
     }
   }
+}
 
-  versioning {
-    enabled = true
+resource "aws_s3_bucket_versioning" "data" {
+  bucket = aws_s3_bucket.data.id
+
+  versioning_configuration {
+    status = "Enabled"
   }
+}
 
-  lifecycle_rule {
-    enabled = true
+resource "aws_s3_bucket_lifecycle_configuration" "data" {
+  bucket = aws_s3_bucket.data.id
+
+  rule {
+    id     = "transition-to-ia"
+    status = "Enabled"
+
+    filter {}
+
     transition {
       days          = 90
       storage_class = "STANDARD_IA"
@@ -257,7 +272,6 @@ Terraform modules map roughly to CDK constructs. If you have a Terraform module 
 // CDK construct replacing a Terraform module
 import { Construct } from 'constructs';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
 
 export interface MicroserviceProps {
   cluster: ecs.ICluster;
@@ -298,7 +312,7 @@ export class Microservice extends Construct {
 
 **Don't change logical IDs**. CDK generates CloudFormation logical IDs from construct paths. If you refactor your construct tree, resources get replaced instead of updated.
 
-**Watch for drift**. If Terraform applies changes to a resource after CDK has imported it, you've got conflicting state management. Remove from Terraform state before CDK deploys.
+**Watch for drift**. If Terraform applies changes to a resource after CDK has imported it, you've got conflicting state management. Remove from Terraform state after the import succeeds, before any future Terraform apply or normal CDK deployment changes.
 
 **Test the import in a staging environment first**. Practice the import process on a non-production copy of your infrastructure before touching production.
 
