@@ -244,12 +244,14 @@ If you get `NoSuchCORSConfiguration`, there are no CORS rules at all.
 
 ## CORS with CloudFront
 
-If you're serving S3 content through CloudFront, the CORS setup is a bit different. CloudFront needs to be configured to forward the `Origin` header to S3 and to cache the CORS response headers.
+If you're serving S3 content through CloudFront, the CORS setup is a bit different. CloudFront needs to be configured to forward the `Origin` header to S3. If you cache preflight `OPTIONS` responses, CloudFront also needs to forward `Access-Control-Request-Headers` and `Access-Control-Request-Method`.
 
 ```bash
 # In your CloudFront distribution, make sure to:
 # 1. Forward the Origin header to S3
-# 2. Include Origin in the cache key (or use a cache policy that does)
+# 2. For cached OPTIONS responses, also forward Access-Control-Request-Headers
+#    and Access-Control-Request-Method
+# 3. Include these CORS request headers in the cache key with a cache policy
 ```
 
 Without forwarding the Origin header, S3 never sees the CORS request and won't include CORS headers in its response. CloudFront then caches that response without CORS headers, and all subsequent requests fail.
@@ -257,7 +259,7 @@ Without forwarding the Origin header, S3 never sees the CORS request and won't i
 You can use CloudFront's response headers policy to add CORS headers at the CloudFront level instead:
 
 ```bash
-# Create a response headers policy with CORS config
+# Create a response headers policy with CORS config, then attach it to a cache behavior
 aws cloudfront create-response-headers-policy --response-headers-policy-config '{
   "Name": "S3-CORS-Policy",
   "CorsConfig": {
