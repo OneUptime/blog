@@ -8,7 +8,7 @@ Description: Configure S3 Storage Class Analysis to identify data that can be mo
 
 ---
 
-Most S3 buckets are over-provisioned. Data gets uploaded to Standard storage and stays there forever, even when nobody has accessed it in months. S3 Storage Class Analysis watches your access patterns and tells you exactly which data can be moved to cheaper storage classes like Infrequent Access or Glacier.
+Most S3 buckets are over-provisioned. Data gets uploaded to Standard storage and stays there forever, even when nobody has accessed it in months. S3 Storage Class Analysis watches your access patterns and helps you decide when Standard objects can be moved to Standard-IA, which can also inform broader lifecycle rules for archive storage.
 
 Instead of guessing which lifecycle rules to create, let the data tell you.
 
@@ -115,16 +115,20 @@ aws s3api put-bucket-analytics-configuration \
 
 ## Understanding the Analysis Results
 
-Storage Class Analysis needs at least 30 days of data before making recommendations. The analysis results are exported daily as CSV files to your specified S3 location.
+Storage Class Analysis usually needs at least 30 days of data before making recommendations, and it can take longer depending on your access patterns. The analysis results are exported daily as CSV files to your specified S3 location.
 
 The exported data includes:
 
 - **Date** - When the data point was recorded
 - **ConfigId** - Your analysis configuration ID
-- **Filter** - The prefix or tag filter
-- **ObjectCount** - Total objects matching the filter
-- **ObjectSizeBytes** - Total size of matching objects
+- **Filter** - Intentionally empty in the exported report
+- **StorageClass** - Storage class of the data
+- **ObjectCount** - Total objects counted per storage class for the day, populated for the ALL age group
+- **Storage_MB** - Total storage in MB per storage class and age group
+- **DataRetrieved_MB** - Data transferred out in MB with GET requests
+- **GetRequestCount** - GET and PUT request count, despite the column name
 - **ObjectAge** groupings showing access frequency for different age ranges
+- **ObjectAgeForSIATransition** and **RecommendedObjectAgeForSIATransition** - Standard-IA transition guidance for Standard storage rows
 
 You can also view recommendations in the S3 console, which shows a graph of accessed vs non-accessed data over time.
 
@@ -140,13 +144,13 @@ aws s3api list-bucket-analytics-configurations --bucket my-data-bucket
 aws s3 ls s3://analytics-output-bucket/storage-analysis/ --recursive
 ```
 
-The analysis tells you what percentage of your data is "infrequently accessed" - meaning it hasn't been accessed for 30+ days. If a large portion of your data is infrequent, you'll save money by transitioning it.
+The analysis tells you which object age groups are "infrequently accessed" based on storage volume and bytes retrieved, not per-object last-access timestamps. If a large portion of your Standard data is infrequent, you'll save money by transitioning it.
 
 ## Creating Lifecycle Rules Based on Analysis
 
 Once you have data-backed recommendations, create lifecycle rules to automate transitions.
 
-Move data to Standard-IA after 30 days and Glacier after 90 days.
+Move data to Standard-IA after 30 days and Glacier Instant Retrieval after 90 days.
 
 ```bash
 # Create lifecycle rules based on analysis findings
@@ -176,16 +180,16 @@ aws s3api put-bucket-lifecycle-configuration \
         ],
         "NoncurrentVersionTransitions": [
           {
-            "NoncurrentDays": 7,
+            "NoncurrentDays": 30,
             "StorageClass": "STANDARD_IA"
           },
           {
-            "NoncurrentDays": 30,
+            "NoncurrentDays": 60,
             "StorageClass": "DEEP_ARCHIVE"
           }
         ],
         "NoncurrentVersionExpiration": {
-          "NoncurrentDays": 90
+          "NoncurrentDays": 240
         }
       }
     ]
@@ -230,7 +234,6 @@ aws s3api put-bucket-intelligent-tiering-configuration \
   --intelligent-tiering-configuration '{
     "Id": "archive-config",
     "Status": "Enabled",
-    "Filter": {},
     "Tierings": [
       {
         "AccessTier": "ARCHIVE_ACCESS",
@@ -244,7 +247,7 @@ aws s3api put-bucket-intelligent-tiering-configuration \
   }'
 ```
 
-With this configuration, Intelligent-Tiering will automatically move objects to increasingly cheaper tiers as they age without access, and instantly move them back to frequent access when accessed.
+With this configuration, Intelligent-Tiering will automatically move objects to increasingly cheaper tiers as they age without access. Objects in the Infrequent Access and Archive Instant Access tiers move back to Frequent Access when accessed; objects in the optional Archive Access and Deep Archive Access tiers must be restored first.
 
 ## Using S3 Storage Lens for Broader Analysis
 
@@ -277,12 +280,12 @@ Here's a Python script that estimates savings based on your current storage dist
 
 ```python
 import boto3
+from datetime import datetime, timedelta, timezone
 
 def estimate_savings(bucket_name):
     """
     Estimate potential savings by analyzing storage class distribution.
     """
-    s3 = boto3.client('s3')
     cloudwatch = boto3.client('cloudwatch')
 
     # Pricing per GB per month (approximate us-east-1 prices)
@@ -305,6 +308,8 @@ def estimate_savings(bucket_name):
     ]
 
     total_standard_gb = 0
+    end_time = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    start_time = end_time - timedelta(days=1)
 
     for storage_type in storage_types:
         try:
@@ -315,8 +320,8 @@ def estimate_savings(bucket_name):
                     {'Name': 'BucketName', 'Value': bucket_name},
                     {'Name': 'StorageType', 'Value': storage_type},
                 ],
-                StartTime='2026-02-11T00:00:00Z',
-                EndTime='2026-02-12T00:00:00Z',
+                StartTime=start_time,
+                EndTime=end_time,
                 Period=86400,
                 Statistics=['Average'],
             )
