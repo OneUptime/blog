@@ -76,19 +76,20 @@ resource "aws_controltower_landing_zone" "main" {
   version = "3.3"
 }
 
-# Enable guardrails (controls)
+# Enable guardrails (controls). Use the global control ARNs returned by
+# the AWS Control Catalog API for the specific controls you want to enable.
 resource "aws_controltower_control" "disallow_public_s3" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS_PERIODIC"
+  control_identifier = "arn:aws:controlcatalog:::control/<global-control-id-for-AWS-GR_S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS_PERIODIC>"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 
 resource "aws_controltower_control" "require_ebs_encryption" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_ENCRYPTED_VOLUMES"
+  control_identifier = "arn:aws:controlcatalog:::control/<global-control-id-for-AWS-GR_ENCRYPTED_VOLUMES>"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 
 resource "aws_controltower_control" "disallow_root_access_keys" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_RESTRICT_ROOT_USER_ACCESS_KEYS"
+  control_identifier = "arn:aws:controlcatalog:::control/<global-control-id-for-AWS-GR_RESTRICT_ROOT_USER_ACCESS_KEYS>"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 ```
@@ -110,19 +111,9 @@ Parameters:
     Type: String
 
 Resources:
-  # Enable EBS encryption by default
-  EBSEncryptionDefault:
-    Type: AWS::EC2::EncryptionByDefault
-    Properties: {}
-
-  # Block public S3 access at account level
-  S3PublicAccessBlock:
-    Type: AWS::S3::AccountPublicAccessBlock
-    Properties:
-      BlockPublicAcls: true
-      BlockPublicPolicy: true
-      IgnorePublicAcls: true
-      RestrictPublicBuckets: true
+  # CloudFormation does not provide native resources for account-level
+  # EBS encryption by default or account-level S3 Block Public Access.
+  # Apply those settings with Terraform, AWS CLI, or a custom resource.
 
   # Enable GuardDuty
   GuardDutyDetector:
@@ -287,17 +278,23 @@ resource "aws_route53_zone" "internal" {
   }
 }
 
-# Share with other accounts via RAM
-resource "aws_ram_resource_share" "dns" {
-  name                      = "internal-dns-share"
-  allow_external_principals = false
-}
+# Share or associate DNS configuration with other accounts
+# For broad sharing, use Route 53 Profiles with AWS RAM. For direct private
+# hosted zone associations, authorize each cross-account VPC and then create
+# the association from the VPC-owning account.
 
 # Associate VPCs from other accounts
 # This is done via cross-account authorization
 resource "aws_route53_vpc_association_authorization" "production" {
   vpc_id  = var.production_vpc_id
   zone_id = aws_route53_zone.internal.id
+}
+
+resource "aws_route53_zone_association" "production" {
+  provider = aws.production
+
+  vpc_id  = aws_route53_vpc_association_authorization.production.vpc_id
+  zone_id = aws_route53_vpc_association_authorization.production.zone_id
 }
 ```
 
@@ -306,26 +303,26 @@ resource "aws_route53_vpc_association_authorization" "production" {
 Control Tower provides three types of guardrails. Here's how to think about them.
 
 ```hcl
-# Preventive guardrails - stop bad things from happening (SCPs)
+# Preventive guardrails - stop bad things from happening (SCPs, RCPs, or declarative policies)
 resource "aws_controltower_control" "prevent_public_access" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS_PERIODIC"
+  control_identifier = "arn:aws:controlcatalog:::control/<global-control-id-for-CT.S3.PV.4>"
   target_identifier  = aws_organizations_organizational_unit.production.arn
 }
 
 # Detective guardrails - alert on policy violations (Config Rules)
 resource "aws_controltower_control" "detect_unencrypted_volumes" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_ENCRYPTED_VOLUMES"
+  control_identifier = "arn:aws:controlcatalog:::control/<global-control-id-for-AWS-GR_ENCRYPTED_VOLUMES>"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 
 # Proactive guardrails - check CloudFormation before deployment
 resource "aws_controltower_control" "proactive_rds_encryption" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/CT.RDS.PR.1"
+  control_identifier = "arn:aws:controlcatalog:::control/<global-control-id-for-CT.RDS.PR.24>"
   target_identifier  = aws_organizations_organizational_unit.production.arn
 }
 ```
 
-Preventive guardrails are implemented as SCPs and stop actions entirely. Detective guardrails use AWS Config and alert on violations. Proactive guardrails check CloudFormation templates before resources are created.
+Preventive guardrails are implemented as AWS Organizations policies and stop actions entirely. Detective guardrails use AWS Config and alert on violations. Proactive guardrails use CloudFormation hooks to check CloudFormation resources before they are created or updated.
 
 ## Landing Zone Maintenance
 
@@ -347,7 +344,7 @@ def generate_compliance_report():
 
     report = []
     for account in accounts:
-        if account['Status'] != 'ACTIVE':
+        if account['State'] != 'ACTIVE':
             continue
 
         # Check compliance via Config aggregator
@@ -357,6 +354,7 @@ def generate_compliance_report():
                 ConfigurationAggregatorName='org-aggregator',
                 ConfigRuleName='encrypted-volumes',
                 AccountId=account['Id'],
+                AwsRegion='us-east-1',
                 ComplianceType='NON_COMPLIANT',
                 Limit=10
             )
