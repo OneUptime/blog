@@ -89,7 +89,7 @@ The key parameters:
 
 - `use_spot_instances=True` - Tells SageMaker to use spot instances
 - `max_run` - Maximum training time (excludes time spent waiting for capacity)
-- `max_wait` - Maximum total time including waits. Must be greater than `max_run`
+- `max_wait` - Maximum total time including waits. Must be greater than or equal to `max_run`
 - `checkpoint_s3_uri` - Where to save checkpoints for resuming after interruption
 
 ## Adding Checkpointing to Your Training Script
@@ -106,7 +106,26 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import argparse
-import json
+from torch.utils.data import DataLoader, TensorDataset
+
+def load_data(channel_dir, batch_size):
+    """Load CSV training data from a SageMaker channel directory."""
+    tensors = []
+    for filename in os.listdir(channel_dir):
+        if filename.endswith('.csv'):
+            path = os.path.join(channel_dir, filename)
+            with open(path) as f:
+                rows = [list(map(float, line.strip().split(','))) for line in f if line.strip()]
+            data = torch.tensor(rows, dtype=torch.float32)
+            tensors.append(data)
+
+    if not tensors:
+        raise ValueError(f"No CSV files found in {channel_dir}")
+
+    dataset = torch.cat(tensors)
+    features = dataset[:, :-1]
+    labels = dataset[:, -1]
+    return DataLoader(TensorDataset(features, labels), batch_size=batch_size, shuffle=True)
 
 def save_checkpoint(model, optimizer, epoch, loss, checkpoint_dir):
     """Save a training checkpoint for spot instance recovery."""
@@ -122,12 +141,12 @@ def save_checkpoint(model, optimizer, epoch, loss, checkpoint_dir):
 
     print(f"Checkpoint saved at epoch {epoch}")
 
-def load_checkpoint(model, optimizer, checkpoint_dir):
+def load_checkpoint(model, optimizer, checkpoint_dir, device):
     """Load a checkpoint if one exists (for resuming after spot interruption)."""
     checkpoint_path = os.path.join(checkpoint_dir, 'checkpoint.pth')
 
     if os.path.exists(checkpoint_path):
-        checkpoint = torch.load(checkpoint_path)
+        checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch'] + 1
@@ -138,6 +157,8 @@ def load_checkpoint(model, optimizer, checkpoint_dir):
         return 0
 
 def train(args):
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     # Create model
     model = nn.Sequential(
         nn.Linear(args.input_dim, 256),
@@ -147,7 +168,7 @@ def train(args):
         nn.ReLU(),
         nn.Linear(128, 1),
         nn.Sigmoid()
-    )
+    ).to(device)
 
     optimizer = optim.Adam(model.parameters(), lr=args.learning_rate)
     criterion = nn.BCELoss()
@@ -156,16 +177,18 @@ def train(args):
     checkpoint_dir = '/opt/ml/checkpoints'
 
     # Try to resume from a checkpoint
-    start_epoch = load_checkpoint(model, optimizer, checkpoint_dir)
+    start_epoch = load_checkpoint(model, optimizer, checkpoint_dir, device)
 
     # Load training data
-    train_data = load_data(os.environ.get('SM_CHANNEL_TRAIN'))
+    train_data = load_data(os.environ.get('SM_CHANNEL_TRAIN'), args.batch_size)
 
     for epoch in range(start_epoch, args.epochs):
         model.train()
         running_loss = 0.0
 
         for batch_idx, (data, target) in enumerate(train_data):
+            data = data.to(device)
+            target = target.to(device)
             optimizer.zero_grad()
             output = model(data)
             loss = criterion(output.squeeze(), target.float())
@@ -191,6 +214,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=50)
     parser.add_argument('--learning-rate', type=float, default=0.001)
     parser.add_argument('--input-dim', type=int, default=20)
+    parser.add_argument('--batch-size', type=int, default=64)
     args = parser.parse_args()
 
     train(args)
@@ -221,7 +245,8 @@ pytorch_estimator = PyTorch(
     hyperparameters={
         'epochs': 100,
         'learning-rate': 0.001,
-        'input-dim': 20
+        'input-dim': 20,
+        'batch-size': 64
     }
 )
 
@@ -254,11 +279,11 @@ if training_time > 0:
     print(f"Billable time: {billable_time / 3600:.2f} hours")
     print(f"Spot savings: {savings_pct:.1f}%")
 
-    # Calculate dollar savings
+    # Calculate dollar savings using the on-demand price and the
+    # managed spot billable time reported by SageMaker
     # ml.p3.2xlarge on-demand: ~$3.825/hour
-    # ml.p3.2xlarge spot: ~$1.15/hour (varies)
     on_demand_cost = (training_time / 3600) * 3.825
-    spot_cost = (billable_time / 3600) * 1.15
+    spot_cost = (billable_time / 3600) * 3.825
     print(f"Estimated on-demand cost: ${on_demand_cost:.2f}")
     print(f"Estimated spot cost: ${spot_cost:.2f}")
     print(f"Estimated savings: ${on_demand_cost - spot_cost:.2f}")
