@@ -92,28 +92,30 @@ npx cdk bootstrap aws://123456789012/us-east-1 \
 
 ## Understanding Version Requirements
 
-Different CDK features require different bootstrap versions. Here's a rough guide:
+Different CDK features require different bootstrap versions. Here's a rough guide based on the AWS CDK bootstrap template version history:
 
 | Bootstrap Version | Required For |
 |------------------|-------------|
-| 1-5 | Basic CDK deployment |
-| 6 | Docker asset support |
-| 7-8 | Cross-account deployment improvements |
-| 9-10 | New-style synthesis |
-| 11+ | Lookup role, additional security features |
-| 14+ | Custom permissions boundary support |
+| 1 | Initial modern template with S3 bucket, KMS key, ECR repository, and IAM roles |
+| 4 | SSM bootstrap version parameter (`CdkBootstrapVersion`) |
+| 6 | Separate lookup role |
+| 8 | Lookup role with full read-only permissions to the target environment |
+| 12 | Experimental `cdk import` support |
+| 20 | `ssm:GetParameters` permission for the CloudFormation deploy role |
+| 23 | Permissions used by the `cdk rollback` command |
+| 24-25 | Bootstrap bucket lifecycle updates used with newer asset garbage collection behavior |
 
 Check what version your CDK app requires:
 
 ```bash
 # The error message tells you the required version
-# Or check the CDK version requirements in your package.json
+# Or check which CDK library version your app is using
 npm ls aws-cdk-lib
 ```
 
 ## Cross-Account Bootstrap
 
-If you're deploying across accounts (e.g., from a CI/CD account to a target account), both accounts need to be bootstrapped with trust relationships:
+If you're deploying across accounts (e.g., from a CI/CD account to a target account), the target account needs to be bootstrapped with trust for the CI/CD account. Bootstrap the CI/CD account too if it hosts your pipeline or CDK assets:
 
 ```bash
 # Bootstrap the target account, trusting the CI/CD account
