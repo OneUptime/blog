@@ -12,7 +12,7 @@ Traditionally, sharing data between Redshift clusters meant ETL pipelines, S3 ex
 
 ## How Data Sharing Works
 
-The producer cluster creates a "datashare" that contains references to specific schemas, tables, or views. Consumer clusters mount that datashare as a read-only database. When a consumer runs a query against the shared data, Redshift reads it from the producer's managed storage. The data stays in one place.
+The producer cluster creates a "datashare" that contains references to specific schemas, tables, or views. Consumer clusters mount that datashare as a database. When a consumer runs a query against the shared data, Redshift reads it from the producer's managed storage. The data stays in one place.
 
 ```mermaid
 graph LR
@@ -27,7 +27,7 @@ graph LR
 
 Important details:
 - Data sharing only works with RA3 node types or Redshift Serverless
-- Consumers get read-only access
+- Consumers get read-only access unless the datashare is explicitly configured and authorized for writes
 - Producer data is always live - no refresh lag
 - Cross-region sharing is supported (with some latency)
 
@@ -56,7 +56,7 @@ ALTER DATASHARE sales_share ADD ALL TABLES IN SCHEMA sales;
 
 -- Grant usage to a consumer cluster (same account)
 GRANT USAGE ON DATASHARE sales_share
-TO NAMESPACE '12345678-abcd-1234-efgh-123456789012';
+TO NAMESPACE '12345678-abcd-1234-9abc-123456789012';
 -- The namespace is the consumer cluster's namespace UUID
 ```
 
@@ -68,6 +68,8 @@ Find the consumer's namespace:
 aws redshift describe-clusters \
   --cluster-identifier consumer-cluster \
   --query 'Clusters[0].ClusterNamespaceArn'
+
+# The namespace UUID is the final segment of that ARN.
 
 # For Redshift Serverless
 aws redshift-serverless get-namespace \
@@ -81,9 +83,9 @@ Mount the datashare as a local database:
 
 ```sql
 -- Create a database from the datashare
-CREATE DATABASE shared_sales
+CREATE DATABASE shared_sales WITH PERMISSIONS
 FROM DATASHARE sales_share
-OF NAMESPACE '87654321-dcba-4321-hgfe-987654321098';
+OF NAMESPACE '87654321-dcba-4321-9876-987654321098';
 -- This namespace is the PRODUCER's namespace UUID
 
 -- Now query it like a local database
@@ -127,7 +129,7 @@ The account owner needs to authorize the sharing through the API:
 ```bash
 # Authorize the datashare for the consumer account
 aws redshift authorize-data-share \
-  --data-share-arn "arn:aws:redshift:us-east-1:123456789012:datashare:producer-namespace/cross_account_share" \
+  --data-share-arn "arn:aws:redshift:us-east-1:123456789012:datashare:12345678-abcd-1234-9abc-123456789012/cross_account_share" \
   --consumer-identifier "987654321098"
 ```
 
@@ -138,13 +140,13 @@ The consumer account associates the datashare with their cluster:
 ```bash
 # Associate the datashare with the consumer cluster
 aws redshift associate-data-share-consumer \
-  --data-share-arn "arn:aws:redshift:us-east-1:123456789012:datashare:producer-namespace/cross_account_share" \
-  --consumer-arn "arn:aws:redshift:us-east-1:987654321098:namespace:consumer-namespace-id"
+  --data-share-arn "arn:aws:redshift:us-east-1:123456789012:datashare:12345678-abcd-1234-9abc-123456789012/cross_account_share" \
+  --consumer-arn "arn:aws:redshift:us-east-1:987654321098:namespace:87654321-dcba-4321-9876-987654321098"
 
 # For Redshift Serverless consumer
 aws redshift associate-data-share-consumer \
-  --data-share-arn "arn:aws:redshift:us-east-1:123456789012:datashare:producer-namespace/cross_account_share" \
-  --consumer-arn "arn:aws:redshift-serverless:us-east-1:987654321098:namespace/consumer-namespace-id"
+  --data-share-arn "arn:aws:redshift:us-east-1:123456789012:datashare:12345678-abcd-1234-9abc-123456789012/cross_account_share" \
+  --consumer-arn "arn:aws:redshift-serverless:us-east-1:987654321098:namespace/87654321-dcba-4321-9876-987654321098"
 ```
 
 ### On the Consumer Cluster
@@ -154,7 +156,7 @@ aws redshift associate-data-share-consumer \
 CREATE DATABASE partner_data
 FROM DATASHARE cross_account_share
 OF ACCOUNT '123456789012'
-NAMESPACE '12345678-abcd-1234-efgh-123456789012';
+NAMESPACE '12345678-abcd-1234-9abc-123456789012';
 
 -- Query the shared data
 SELECT COUNT(*) FROM partner_data.analytics.daily_metrics;
@@ -215,7 +217,7 @@ DROP DATASHARE sales_share;
 
 ## User Access Control on Shared Data
 
-The consumer controls who can query the shared database. Use standard GRANT statements:
+The consumer controls who can query the shared database. If you created the database with `WITH PERMISSIONS`, use standard GRANT statements for object-level access:
 
 ```sql
 -- On the consumer cluster
@@ -265,13 +267,14 @@ Data sharing reads from the producer's managed storage, so queries run at storag
 ```sql
 -- Check query performance on shared data
 SELECT
-    query,
-    TRIM(querytxt) AS sql,
-    DATEDIFF(millisecond, starttime, endtime) AS duration_ms,
-    bytes_scanned
-FROM stl_query
-WHERE database_name = 'shared_sales'
-  AND starttime > DATEADD(hour, -1, GETDATE())
+    query_id,
+    TRIM(query_text) AS sql,
+    elapsed_time / 1000 AS duration_ms,
+    returned_rows,
+    returned_bytes
+FROM sys_query_history
+WHERE query_text ILIKE '%shared_sales.%'
+  AND start_time > DATEADD(hour, -1, GETDATE())
 ORDER BY duration_ms DESC
 LIMIT 10;
 ```
