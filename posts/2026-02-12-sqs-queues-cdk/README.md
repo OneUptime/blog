@@ -31,7 +31,7 @@ export class QueuesStack extends cdk.Stack {
       queueName: 'order-processing',
       visibilityTimeout: cdk.Duration.seconds(300),
       retentionPeriod: cdk.Duration.days(7),
-      receiveMessageWaitTimeSeconds: 20,
+      receiveMessageWaitTime: cdk.Duration.seconds(20),
     });
   }
 }
@@ -41,7 +41,7 @@ Let me explain the key properties here:
 
 - **visibilityTimeout** - How long a message stays invisible after a consumer picks it up. Set this to at least as long as your processing time, or messages will get processed twice.
 - **retentionPeriod** - How long unprocessed messages stay in the queue. Default is 4 days, maximum is 14 days.
-- **receiveMessageWaitTimeSeconds** - Setting this to 20 enables long polling, which reduces costs and latency compared to short polling.
+- **receiveMessageWaitTime** - Setting this to 20 seconds enables long polling, which reduces costs and latency compared to short polling.
 
 ## Dead Letter Queues
 
@@ -90,7 +90,7 @@ dlqAlarm.addAlarmAction(new actions.SnsAction(alertTopic));
 
 ## FIFO Queues
 
-When message order matters, use FIFO queues. They guarantee that messages are processed exactly once and in the order they were sent.
+When message order matters, use FIFO queues. They support exactly-once processing semantics with deduplication and preserve ordering within each message group.
 
 ```typescript
 // FIFO queue with deduplication and message grouping
@@ -187,7 +187,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as eventsources from 'aws-cdk-lib/aws-lambda-event-sources';
 
 const processor = new lambda.Function(this, 'OrderProcessor', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/order-processor'),
   timeout: cdk.Duration.seconds(30),
@@ -230,10 +230,9 @@ export const handler = async (event: any) => {
 For consistent queue configurations across your org, wrap the setup in a construct:
 
 ```typescript
-// lib/standard-queue.ts - Reusable queue construct with DLQ and monitoring
+// lib/standard-queue.ts - Reusable queue construct with DLQ
 import { Construct } from 'constructs';
 import * as sqs from 'aws-cdk-lib/aws-sqs';
-import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as cdk from 'aws-cdk-lib';
 
 interface StandardQueueProps {
@@ -264,7 +263,7 @@ export class StandardQueue extends Construct {
       fifo: props.fifo,
       visibilityTimeout: props.visibilityTimeout ?? cdk.Duration.seconds(300),
       retentionPeriod: cdk.Duration.days(7),
-      receiveMessageWaitTimeSeconds: 20,
+      receiveMessageWaitTime: cdk.Duration.seconds(20),
       encryption: sqs.QueueEncryption.SQS_MANAGED,
       deadLetterQueue: {
         queue: this.dlq,
