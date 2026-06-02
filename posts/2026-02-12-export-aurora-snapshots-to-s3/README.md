@@ -55,7 +55,7 @@ aws s3api put-bucket-versioning \
 
 ## Step 2: Create or Identify a KMS Key
 
-The exported data must be encrypted. You can use the default `aws/s3` key or create a custom one:
+The exported data must be encrypted with an AWS KMS key. Create a customer managed key if you don't already have one:
 
 ```bash
 # Create a custom KMS key for snapshot exports
@@ -110,10 +110,10 @@ cat > export-permissions.json << 'JSONEOF'
     {
       "Effect": "Allow",
       "Action": [
-        "s3:PutObject",
-        "s3:GetObject",
+        "s3:PutObject*",
+        "s3:GetObject*",
         "s3:ListBucket",
-        "s3:DeleteObject",
+        "s3:DeleteObject*",
         "s3:GetBucketLocation"
       ],
       "Resource": [
@@ -226,7 +226,7 @@ CREATE EXTERNAL TABLE aurora_export.users (
     status STRING
 )
 STORED AS PARQUET
-LOCATION 's3://my-aurora-exports/aurora/full-export/mydb/users/'
+LOCATION 's3://my-aurora-exports/aurora/full-export/my-snapshot-export-20260212/mydb/mydb.users/'
 TBLPROPERTIES ('parquet.compression'='SNAPPY');
 
 -- Query the exported data
@@ -295,7 +295,7 @@ aws events put-rule \
     "source": ["aws.rds"],
     "detail-type": ["RDS DB Cluster Snapshot Event"],
     "detail": {
-      "EventID": ["RDS-EVENT-0075"]
+      "EventID": ["RDS-EVENT-0075", "RDS-EVENT-0169"]
     }
   }'
 
