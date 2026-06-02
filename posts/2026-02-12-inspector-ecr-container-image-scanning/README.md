@@ -16,7 +16,7 @@ This means an image that was clean last week might have new findings today becau
 
 ECR offers two scanning modes:
 
-**Basic scanning** (free, built into ECR) scans images on push using the open-source Clair scanner. It only checks for CVEs in OS packages and only runs at push time. No continuous monitoring.
+**Basic scanning** (free, built into ECR) scans images using AWS native scanning. It only checks for CVEs in OS packages and can run manually or on push. No continuous monitoring.
 
 **Enhanced scanning** (powered by Inspector) scans on push AND continuously. It covers OS packages and application-layer packages (npm, pip, Maven, etc.). It also provides CVSS scores, fix information, and integration with Security Hub.
 
@@ -123,10 +123,6 @@ resource "aws_ecr_repository" "app" {
   name                 = "prod-my-app"
   image_tag_mutability = "IMMUTABLE"
 
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
   encryption_configuration {
     encryption_type = "KMS"
     kms_key         = aws_kms_key.ecr.arn
@@ -195,6 +191,7 @@ docker push "$ECR_URI/$REPO_NAME:$IMAGE_TAG"
 
 # Wait for scan to complete
 echo "Waiting for scan results..."
+SCAN_READY=false
 for i in $(seq 1 60); do
   STATUS=$(aws ecr describe-image-scan-findings \
     --repository-name "$REPO_NAME" \
@@ -202,12 +199,13 @@ for i in $(seq 1 60); do
     --query 'imageScanStatus.status' \
     --output text 2>/dev/null || echo "IN_PROGRESS")
 
-  if [ "$STATUS" = "COMPLETE" ]; then
+  if [ "$STATUS" = "COMPLETE" ] || [ "$STATUS" = "ACTIVE" ]; then
     echo "Scan complete"
+    SCAN_READY=true
     break
   fi
 
-  if [ "$STATUS" = "FAILED" ]; then
+  if [ "$STATUS" = "FAILED" ] || [ "$STATUS" = "UNSUPPORTED_IMAGE" ] || [ "$STATUS" = "FINDINGS_UNAVAILABLE" ]; then
     echo "Scan failed!"
     exit 1
   fi
@@ -215,6 +213,11 @@ for i in $(seq 1 60); do
   echo "  Scan status: $STATUS (attempt $i/60)"
   sleep 10
 done
+
+if [ "$SCAN_READY" != "true" ]; then
+  echo "Timed out waiting for scan results"
+  exit 1
+fi
 
 # Check for critical/high vulnerabilities
 CRITICAL=$(aws inspector2 list-findings \
@@ -258,10 +261,10 @@ resource "aws_cloudwatch_event_rule" "ecr_critical" {
   event_pattern = jsonencode({
     source      = ["aws.inspector2"]
     detail-type = ["Inspector2 Finding"]
+    resources   = [{ prefix = "arn:aws:ecr:" }]
     detail = {
-      severity   = ["CRITICAL"]
-      status     = ["ACTIVE"]
-      resourceType = ["AWS_ECR_CONTAINER_IMAGE"]
+      severity = ["CRITICAL"]
+      status   = ["ACTIVE"]
     }
   })
 }
@@ -331,12 +334,12 @@ When Inspector finds vulnerabilities in your container images:
 
 ```dockerfile
 # Good: Minimal base image with pinned version
-FROM node:20.11.1-alpine3.19 AS builder
+FROM node:24.16.0-alpine3.23 AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
-FROM node:20.11.1-alpine3.19
+FROM node:24.16.0-alpine3.23
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
