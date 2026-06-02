@@ -21,7 +21,7 @@ Let's break down the typical cost structure:
 - **Data transfer** - cross-AZ traffic adds up fast
 - **Load balancers** - ALBs, NLBs, each costs ~$20/month plus data processing
 - **EBS volumes** - persistent storage for pods
-- **NAT gateways** - $0.045/GB processed, often a surprise cost
+- **NAT gateways** - $0.045/GB processed in many US regions, often a surprise cost
 - **CloudWatch logs** - ingestion and storage fees
 
 ```mermaid
@@ -37,7 +37,7 @@ pie title Typical EKS Cost Breakdown
 
 ## Step 1: Enable Cost Allocation Tags
 
-First, make sure your EKS resources are tagged for cost tracking. Tags flow through to your AWS Cost Explorer reports.
+First, make sure your EKS resources are tagged for cost tracking. Activated cost allocation tags appear in AWS Cost Explorer reports.
 
 ```bash
 # Tag your EKS cluster
@@ -48,8 +48,9 @@ aws eks tag-resource \
 
 # Activate cost allocation tags in the billing console
 aws ce update-cost-allocation-tags-status \
-  --cost-allocation-tags-status TagKey=Environment,Status=Active \
-  --cost-allocation-tags-status TagKey=Team,Status=Active
+  --cost-allocation-tags-status \
+    TagKey=Environment,Status=Active \
+    TagKey=Team,Status=Active
 ```
 
 ## Step 2: Install Kubecost
@@ -192,7 +193,7 @@ spec:
 
 ## Step 6: Reduce NAT Gateway Costs
 
-NAT gateways charge $0.045 per GB processed. If your pods pull large container images or make lots of external API calls, this cost adds up.
+NAT gateways charge per GB processed, with pricing such as $0.045/GB in many US regions. If your pods pull large container images or make lots of external API calls, this cost adds up.
 
 Strategies to reduce NAT costs:
 - Use VPC endpoints for AWS services (S3, ECR, CloudWatch)
@@ -200,10 +201,17 @@ Strategies to reduce NAT costs:
 - Use private ECR endpoints
 
 ```bash
-# Create a VPC endpoint for ECR to avoid NAT costs
+# Create VPC endpoints for ECR to avoid NAT costs
 aws ec2 create-vpc-endpoint \
   --vpc-id vpc-0abc123 \
   --service-name com.amazonaws.us-west-2.ecr.dkr \
+  --vpc-endpoint-type Interface \
+  --subnet-ids subnet-0abc123 subnet-0def456 \
+  --security-group-ids sg-0abc123
+
+aws ec2 create-vpc-endpoint \
+  --vpc-id vpc-0abc123 \
+  --service-name com.amazonaws.us-west-2.ecr.api \
   --vpc-endpoint-type Interface \
   --subnet-ids subnet-0abc123 subnet-0def456 \
   --security-group-ids sg-0abc123
