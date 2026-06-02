@@ -36,10 +36,10 @@ Different AMIs use different default usernames. This is the most common cause.
 | Amazon Linux 2/2023 | `ec2-user` |
 | Ubuntu | `ubuntu` |
 | Debian | `admin` |
-| CentOS (older) | `centos` |
-| RHEL | `ec2-user` |
-| SUSE | `ec2-user` |
-| Fedora | `fedora` |
+| CentOS | `centos` or `ec2-user` |
+| RHEL | `ec2-user` or `root` |
+| SUSE | `ec2-user` or `root` |
+| Fedora | `fedora` or `ec2-user` |
 | Bitnami | `bitnami` |
 
 ```bash
@@ -142,15 +142,15 @@ You can check and fix this using EC2 Instance Connect, Session Manager, or by de
 aws ssm start-session --target i-1234567890abcdef0
 
 # Check the authorized_keys file
-cat /home/ec2-user/.ssh/authorized_keys
+sudo cat /home/ec2-user/.ssh/authorized_keys
 
 # If it's empty or wrong, add your public key
-echo "ssh-rsa AAAA...your-public-key... user@host" >> /home/ec2-user/.ssh/authorized_keys
+echo "ssh-rsa AAAA...your-public-key... user@host" | sudo tee -a /home/ec2-user/.ssh/authorized_keys
 
 # Fix permissions
-chmod 600 /home/ec2-user/.ssh/authorized_keys
-chmod 700 /home/ec2-user/.ssh
-chown -R ec2-user:ec2-user /home/ec2-user/.ssh
+sudo chmod 600 /home/ec2-user/.ssh/authorized_keys
+sudo chmod 700 /home/ec2-user/.ssh
+sudo chown -R ec2-user:ec2-user /home/ec2-user/.ssh
 ```
 
 ### Using Volume Detach/Attach
@@ -221,6 +221,9 @@ If you change sshd_config, restart the service.
 
 ```bash
 sudo systemctl restart sshd
+
+# On Ubuntu/Debian, the service is usually named ssh
+sudo systemctl restart ssh
 ```
 
 ## Debugging SSH Connections
@@ -264,7 +267,7 @@ aws ec2-instance-connect send-ssh-public-key \
 ssh -i ~/.ssh/id_rsa ec2-user@54.123.45.67
 ```
 
-This requires the instance to have the EC2 Instance Connect agent installed (it's included by default on recent Amazon Linux and Ubuntu AMIs).
+This requires the instance to have EC2 Instance Connect installed (it's preinstalled on AL2023 standard AMIs, Amazon Linux 2 2.0.20190618 or later, and Ubuntu 20.04 or later).
 
 ## Prevention
 
