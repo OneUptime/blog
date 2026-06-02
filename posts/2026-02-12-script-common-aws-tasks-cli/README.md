@@ -54,7 +54,7 @@ aws ec2 describe-volumes \
   --output table
 
 echo ""
-echo "=== Unassociated Elastic IPs (costing \$3.65/month each) ==="
+echo "=== Unassociated Elastic IPs (public IPv4 charges apply) ==="
 aws ec2 describe-addresses \
   --profile "$PROFILE" \
   --query "Addresses[?AssociationId==null].{IP:PublicIp, AllocationId:AllocationId}" \
@@ -146,21 +146,21 @@ case "$ACTION" in
 esac
 ```
 
-## Script 3: S3 Bucket Size and Cost Reporter
+## Script 3: S3 Standard Bucket Size and Cost Reporter
 
-Know how much each bucket is actually costing you.
+Know roughly how much S3 Standard storage in each bucket is costing you.
 
 ```bash
 #!/bin/bash
-# s3-size-report.sh
-# Report sizes and estimated costs for all S3 buckets
+# s3-standard-size-report.sh
+# Report S3 Standard sizes and estimated costs for all S3 buckets
 
 set -euo pipefail
 PROFILE="${1:-default}"
 
 echo "Fetching S3 bucket sizes (this may take a minute)..."
 echo ""
-printf "%-40s %15s %15s\n" "Bucket" "Size (GB)" "Est. Monthly Cost"
+printf "%-40s %15s %15s\n" "Bucket" "S3 Standard (GB)" "Est. Monthly Cost"
 printf "%-40s %15s %15s\n" "------" "---------" "-----------------"
 
 TOTAL_SIZE=0
@@ -176,12 +176,12 @@ for BUCKET in $(aws s3api list-buckets --profile "$PROFILE" --query "Buckets[].N
       --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
       --period 86400 \
       --statistics "Average" \
-      --query "Datapoints[0].Average" \
+      --query "sort_by(Datapoints, &Timestamp)[-1].Average" \
       --output text 2>/dev/null)
 
     if [ "$SIZE_BYTES" != "None" ] && [ -n "$SIZE_BYTES" ]; then
         SIZE_GB=$(echo "scale=2; $SIZE_BYTES / 1073741824" | bc)
-        # S3 Standard: ~$0.023/GB/month
+        # S3 Standard in us-east-1, first 50 TB tier: ~$0.023/GB/month
         COST=$(echo "scale=2; $SIZE_GB * 0.023" | bc)
         TOTAL_SIZE=$(echo "$TOTAL_SIZE + $SIZE_GB" | bc)
         printf "%-40s %12s GB %12s USD\n" "$BUCKET" "$SIZE_GB" "$COST"
@@ -239,16 +239,16 @@ Find overly permissive security groups.
 set -euo pipefail
 PROFILE="${1:-default}"
 
-echo "=== Security Groups Open to 0.0.0.0/0 ==="
+echo "=== Security Groups Open to 0.0.0.0/0 or ::/0 ==="
 echo ""
 
 aws ec2 describe-security-groups \
   --profile "$PROFILE" \
-  --query "SecurityGroups[?IpPermissions[?IpRanges[?CidrIp=='0.0.0.0/0']]].{
+  --query "SecurityGroups[?IpPermissions[?IpRanges[?CidrIp=='0.0.0.0/0'] || Ipv6Ranges[?CidrIpv6=='::/0']]].{
     GroupId:GroupId,
     GroupName:GroupName,
     VpcId:VpcId,
-    OpenPorts:IpPermissions[?IpRanges[?CidrIp=='0.0.0.0/0']].{From:FromPort,To:ToPort,Protocol:IpProtocol}
+    OpenPorts:IpPermissions[?IpRanges[?CidrIp=='0.0.0.0/0'] || Ipv6Ranges[?CidrIpv6=='::/0']].{From:FromPort,To:ToPort,Protocol:IpProtocol}
   }" \
   --output json | python3 -c "
 import json, sys
@@ -289,9 +289,10 @@ PROFILE="${1:-default}"
 YEAR=$(date +%Y)
 MONTH=$(date +%m)
 START="${YEAR}-${MONTH}-01"
-END=$(date +%Y-%m-%d)
+DISPLAY_END=$(date +%Y-%m-%d)
+END=$(date -v+1d +%Y-%m-%d 2>/dev/null || date -d 'tomorrow' +%Y-%m-%d)
 
-echo "Cost summary: ${START} to ${END}"
+echo "Cost summary: ${START} to ${DISPLAY_END}"
 echo ""
 
 # Get costs by service
@@ -347,7 +348,7 @@ aws cloudformation deploy \
 DEPLOY_PID=$!
 
 # Monitor progress while deployment runs
-while kill -0 $DEPLOY_PID 2>/dev/null; do
+while kill -0 "$DEPLOY_PID" 2>/dev/null; do
     STATUS=$(aws cloudformation describe-stacks \
       --profile "$PROFILE" \
       --stack-name "$STACK_NAME" \
@@ -359,8 +360,11 @@ while kill -0 $DEPLOY_PID 2>/dev/null; do
 done
 
 # Check final status
-wait $DEPLOY_PID
-EXIT_CODE=$?
+if wait "$DEPLOY_PID"; then
+    EXIT_CODE=0
+else
+    EXIT_CODE=$?
+fi
 
 if [ $EXIT_CODE -eq 0 ]; then
     echo ""
