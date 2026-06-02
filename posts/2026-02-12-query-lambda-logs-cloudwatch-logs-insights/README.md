@@ -69,9 +69,9 @@ Cold starts are one of the most common Lambda performance concerns. Here's how t
 
 ```text
 filter @type = "REPORT"
-| stats sum(ispresent(@initDuration)) as coldStarts,
-        sum(not ispresent(@initDuration)) as warmStarts,
-        sum(ispresent(@initDuration)) / count(*) * 100 as coldStartPercent
+| stats sum(strcontains(@message, "Init Duration")) as coldStarts,
+        count(*) - sum(strcontains(@message, "Init Duration")) as warmStarts,
+        sum(strcontains(@message, "Init Duration")) / count(*) * 100 as coldStartPercent
 ```
 
 ### Cold start duration over time
@@ -145,12 +145,12 @@ Estimate your Lambda costs from the REPORT data:
 
 ```text
 filter @type = "REPORT"
-| stats sum(@billedDuration) / 1000 as totalBilledSeconds,
+| stats sum(@billedDuration / 1000 * @memorySize / 1024) as totalBilledGBSeconds,
         count(*) as invocations,
         avg(@billedDuration) as avgBilledMs
 ```
 
-To get a dollar estimate, multiply `totalBilledSeconds` by the per-GB-second price for your memory configuration.
+To get a dollar estimate, multiply `totalBilledGBSeconds` by the per-GB-second price for your architecture and Region.
 
 ## Error and Timeout Analysis
 
@@ -188,8 +188,9 @@ filter @message like /Runtime.UnhandledPromiseRejection/ or @message like /Runti
 
 ```text
 filter @type = "REPORT"
-| stats sum(@message like /Error/) as errors, count(*) as total,
-        sum(@message like /Error/) / count(*) * 100 as errorRate by bin(5m)
+| fields case(strcontains(@message, "Status: error") = 1 or strcontains(@message, "Status: timeout") = 1, 1, 0) as failed
+| stats sum(failed) as failures, count(*) as total,
+        sum(failed) / count(*) * 100 as failureRate by bin(5m)
 ```
 
 ## Application-Level Queries
@@ -219,7 +220,7 @@ filter level = "error"
 
 ### API Gateway integration logs
 
-When Lambda is behind API Gateway:
+When Lambda is behind API Gateway and your application logs request fields such as `httpMethod`, `path`, and `duration`:
 
 ```text
 filter ispresent(httpMethod)
@@ -234,7 +235,7 @@ For Lambda processing SQS messages:
 ```text
 filter @message like /Records/
 | parse @message '"messageId":"*"' as messageId
-| fields @timestamp, @requestId, messageId, @duration
+| fields @timestamp, @requestId, messageId
 | sort @timestamp desc
 | limit 30
 ```
@@ -247,10 +248,11 @@ You can query multiple Lambda log groups at once. In the Logs Insights console, 
 # Compare performance across Lambda functions (select multiple log groups)
 
 filter @type = "REPORT"
+| parse @log "*:/aws/lambda/*" as accountId, functionName
 | stats avg(@duration) as avgDuration,
         pct(@duration, 99) as p99Duration,
         count(*) as invocations
-by @logStream
+by functionName
 | sort avgDuration desc
 ```
 
@@ -260,7 +262,7 @@ If you use provisioned concurrency to eliminate cold starts:
 
 ```text
 filter @type = "REPORT"
-| stats sum(ispresent(@initDuration)) as coldStarts, count(*) as total by bin(15m)
+| stats sum(strcontains(@message, "Init Duration")) as coldStarts, count(*) as total by bin(15m)
 ```
 
 If `coldStarts` is consistently 0, your provisioned concurrency is sufficient. If you're seeing cold starts, you may need to increase it.
