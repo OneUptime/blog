@@ -39,11 +39,11 @@ The simplest approach works on any instance you can currently access via SSH.
 Step 1 - Generate a new key pair locally:
 
 ```bash
-# Generate a new ED25519 key pair (more secure than RSA)
+# Generate a new ED25519 key pair (supported for Linux instances)
 
 ssh-keygen -t ed25519 -f ~/.ssh/ec2-new-key -C "ec2-rotated-$(date +%Y%m%d)"
 
-# Or RSA if your instance requires it
+# Or RSA if an older client, server, or Windows workflow requires it
 ssh-keygen -t rsa -b 4096 -f ~/.ssh/ec2-new-key -C "ec2-rotated-$(date +%Y%m%d)"
 ```
 
@@ -72,8 +72,8 @@ ssh -i ~/.ssh/ec2-new-key ec2-user@instance-ip
 # First, view the current keys
 cat ~/.ssh/authorized_keys
 
-# Remove the old key (replace OLD_KEY_CONTENT with the actual old public key)
-grep -v "OLD_KEY_IDENTIFIER" ~/.ssh/authorized_keys > /tmp/authorized_keys_new
+# Remove the old key (replace OLD_KEY_IDENTIFIER with the old key comment or another unique identifier)
+grep -F -v "OLD_KEY_IDENTIFIER" ~/.ssh/authorized_keys > /tmp/authorized_keys_new
 mv /tmp/authorized_keys_new ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
@@ -125,7 +125,7 @@ aws ssm send-command \
   --targets '[{"Key":"tag:Environment","Values":["production"]}]' \
   --parameters "{
     \"commands\": [
-      \"grep -v '$OLD_KEY_IDENTIFIER' /home/ec2-user/.ssh/authorized_keys > /tmp/auth_keys_tmp\",
+      \"grep -F -v '$OLD_KEY_IDENTIFIER' /home/ec2-user/.ssh/authorized_keys > /tmp/auth_keys_tmp\",
       \"mv /tmp/auth_keys_tmp /home/ec2-user/.ssh/authorized_keys\",
       \"chmod 600 /home/ec2-user/.ssh/authorized_keys\",
       \"chown ec2-user:ec2-user /home/ec2-user/.ssh/authorized_keys\",
@@ -173,9 +173,22 @@ CMD_ID=$(aws ssm send-command \
   --output text)
 
 echo "Waiting for key addition (Command: $CMD_ID)..."
-aws ssm wait command-executed \
+sleep 5
+INSTANCE_IDS=$(aws ssm list-command-invocations \
   --command-id "$CMD_ID" \
-  --instance-id "$(aws ssm list-command-invocations --command-id "$CMD_ID" --query 'CommandInvocations[0].InstanceId' --output text)" 2>/dev/null || true
+  --query 'CommandInvocations[].InstanceId' \
+  --output text)
+
+if [ -z "$INSTANCE_IDS" ]; then
+  echo "ERROR: No SSM command invocations found. Aborting rotation."
+  exit 1
+fi
+
+for INSTANCE_ID in $INSTANCE_IDS; do
+  aws ssm wait command-executed \
+    --command-id "$CMD_ID" \
+    --instance-id "$INSTANCE_ID"
+done
 
 sleep 10
 
@@ -232,7 +245,7 @@ Remember, deleting the EC2 key pair resource doesn't remove the key from running
 
 ## Moving to Session Manager Instead
 
-The best way to handle SSH key rotation is to eliminate SSH keys entirely. AWS Systems Manager Session Manager provides shell access without SSH keys, without opening port 22, and with full audit logging.
+The best way to handle SSH key rotation is to eliminate SSH keys entirely. AWS Systems Manager Session Manager provides shell access without SSH keys and without opening port 22. Session API activity is logged through AWS CloudTrail, and interactive session data can be logged to Amazon S3 or CloudWatch Logs when Session Manager logging is configured.
 
 Connect via Session Manager:
 
@@ -246,7 +259,7 @@ aws ssm start-session --target i-0abc123
 #   ProxyCommand sh -c "aws ssm start-session --target %h --document-name AWS-StartSSHSession --parameters 'portNumber=%p'"
 ```
 
-This approach eliminates key rotation entirely since there are no keys to rotate. All access is controlled through IAM policies, and every session is logged.
+This approach eliminates key rotation entirely since there are no keys to rotate. All access is controlled through IAM policies. Regular Session Manager sessions can log session data when you enable logging, but SSH-over-Session-Manager sessions are encrypted inside the tunnel and don't support Session Manager session-data logging.
 
 ## Best Practices
 
