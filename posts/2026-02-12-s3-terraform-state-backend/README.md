@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Terraform, Infrastructure as Code
 
-Description: Learn how to configure Amazon S3 as a Terraform state backend with DynamoDB locking, encryption, and best practices for team collaboration.
+Description: Learn how to configure Amazon S3 as a Terraform state backend with state locking, encryption, and best practices for team collaboration.
 
 ---
 
-If you're using Terraform with a team, the default local state file won't cut it. You need a shared, remote backend. S3 is the go-to choice for AWS-based infrastructure because it's durable, versioned, and integrates nicely with DynamoDB for state locking.
+If you're using Terraform with a team, the default local state file won't cut it. You need a shared, remote backend. S3 is the go-to choice for AWS-based infrastructure because it's durable, versioned, and supports state locking.
 
 Let's set this up properly - including the bootstrap problem of creating the backend infrastructure itself.
 
@@ -20,7 +20,7 @@ Terraform state contains everything about your infrastructure: resource IDs, att
 - If your laptop dies, you lose your state
 - No locking means concurrent runs can corrupt state
 
-S3 solves all of these. Combined with DynamoDB for locking, it gives you a production-grade state management setup.
+S3 solves all of these. Combined with S3 lockfile-based locking, it gives you a production-grade state management setup.
 
 ## The Bootstrap Problem
 
@@ -67,9 +67,8 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "terraform_state" 
 
   rule {
     apply_server_side_encryption_by_default {
-      sse_algorithm = "aws:kms"
+      sse_algorithm = "AES256"
     }
-    bucket_key_enabled = true
   }
 }
 
@@ -83,29 +82,8 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Name        = "Terraform State Locks"
-    Environment = "shared"
-  }
-}
-
 output "state_bucket_name" {
   value = aws_s3_bucket.terraform_state.id
-}
-
-output "lock_table_name" {
-  value = aws_dynamodb_table.terraform_locks.id
 }
 ```
 
@@ -131,8 +109,7 @@ terraform {
     key            = "production/networking/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-locks"
-    kms_key_id     = "alias/terraform-state-key"
+    use_lockfile   = true
   }
 }
 ```
@@ -232,7 +209,7 @@ terraform init \
   -backend-config="bucket=mycompany-terraform-state" \
   -backend-config="key=production/app/terraform.tfstate" \
   -backend-config="region=us-east-1" \
-  -backend-config="dynamodb_table=terraform-state-locks" \
+  -backend-config="use_lockfile=true" \
   -backend-config="encrypt=true"
 ```
 
@@ -243,7 +220,7 @@ The backend config file keeps things clean.
 bucket         = "mycompany-terraform-state"
 key            = "production/app/terraform.tfstate"
 region         = "us-east-1"
-dynamodb_table = "terraform-state-locks"
+use_lockfile   = true
 encrypt        = true
 ```
 
@@ -266,19 +243,18 @@ Users running Terraform need specific permissions.
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject"
+        "s3:PutObject"
       ],
-      "Resource": "arn:aws:s3:::mycompany-terraform-state/*"
+      "Resource": "arn:aws:s3:::mycompany-terraform-state/production/app/terraform.tfstate"
     },
     {
       "Effect": "Allow",
       "Action": [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:DeleteItem"
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
       ],
-      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/terraform-state-locks"
+      "Resource": "arn:aws:s3:::mycompany-terraform-state/production/app/terraform.tfstate.tflock"
     }
   ]
 }
@@ -288,7 +264,7 @@ If you're using KMS encryption, also add `kms:Encrypt`, `kms:Decrypt`, and `kms:
 
 ## Handling Lock Issues
 
-Sometimes Terraform exits ungracefully and leaves a stale lock. You'll see an error like "Error locking state: ConditionalCheckFailedException."
+Sometimes Terraform exits ungracefully and leaves a stale lock. You'll see an error that starts with "Error acquiring the state lock."
 
 Force unlock the state, but be careful - make sure nobody else is actually running Terraform.
 
@@ -322,7 +298,7 @@ This is why versioning is non-negotiable for state buckets. It's your safety net
 
 1. **Always enable versioning** - State corruption happens. Versioning lets you roll back.
 2. **Always enable encryption** - State files contain sensitive data like passwords and API keys.
-3. **Always use DynamoDB locking** - Without it, concurrent applies will corrupt your state.
+3. **Always use state locking** - Without it, concurrent applies can corrupt your state. Current Terraform versions support S3 lockfiles; DynamoDB-based locking is deprecated.
 4. **Use separate state files per component** - Keep blast radius small.
 5. **Never manually edit state files** - Use `terraform state mv` and `terraform import` instead.
 6. **Set up monitoring** - Use [OneUptime](https://oneuptime.com) or CloudWatch to alert on failed applies and state lock issues.
