@@ -14,7 +14,7 @@ This guide walks through creating a digital twin from scratch, from defining you
 
 ## What Is IoT TwinMaker?
 
-TwinMaker is a data and model orchestration layer. It does not store your IoT data or host your 3D models - instead, it connects to where that data already lives and provides a unified API for querying it.
+TwinMaker is a data and model orchestration layer. It does not store your operational IoT time-series data itself; workspace resources such as scenes and 3D models are stored in your S3 bucket, and TwinMaker connects to where your data already lives and provides a unified API for querying it.
 
 ```mermaid
 graph TD
@@ -48,7 +48,7 @@ Key concepts:
 - **Entity**: Represents a physical thing (a machine, a room, a sensor)
 - **Component**: Connects an entity to a data source (time series, metadata, alarms)
 - **Scene**: A 3D visualization combining entities with spatial models
-- **Data Connector**: Lambda function that fetches data from external sources
+- **Data Connector**: Custom Lambda function that fetches data from external sources
 
 ## Step 1: Create a TwinMaker Workspace
 
@@ -99,7 +99,7 @@ cat > twinmaker-policy.json << 'EOF'
       "Action": [
         "lambda:InvokeFunction"
       ],
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:twinmaker-*"
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:twinmaker-*"
     },
     {
       "Effect": "Allow",
@@ -122,8 +122,8 @@ aws iam put-role-policy \
 # Create the workspace
 aws iottwinmaker create-workspace \
   --workspace-id "my-factory-twin" \
-  --s3-location "s3://my-twinmaker-workspace" \
-  --role "arn:aws:iam::123456789:role/IoTTwinMakerRole" \
+  --s3-location "arn:aws:s3:::my-twinmaker-workspace" \
+  --role "arn:aws:iam::123456789012:role/IoTTwinMakerRole" \
   --description "Digital twin of the factory floor"
 ```
 
@@ -163,10 +163,10 @@ aws iottwinmaker create-component-type \
   }' \
   --functions '{
     "dataReader": {
+      "scope": "ENTITY",
       "implementedBy": {
-        "type": "DATA_CONNECTOR",
         "lambda": {
-          "arn": "arn:aws:lambda:us-east-1:123456789:function:twinmaker-sitewise-reader"
+          "arn": "arn:aws:lambda:us-east-1:123456789012:function:twinmaker-sitewise-reader"
         }
       }
     }
@@ -257,7 +257,7 @@ Data connectors are Lambda functions that TwinMaker calls to fetch data from you
 # twinmaker_data_connector.py - Fetches data from DynamoDB
 import json
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('DeviceTelemetry')
@@ -297,19 +297,24 @@ def lambda_handler(event, context):
         values = []
         for item in response.get('Items', []):
             if prop in item:
+                timestamp = datetime.fromtimestamp(
+                    int(item['timestamp']) / 1000,
+                    tz=timezone.utc
+                ).isoformat().replace('+00:00', 'Z')
                 values.append({
-                    'time': datetime.fromtimestamp(
-                        int(item['timestamp']) / 1000
-                    ).isoformat() + 'Z',
+                    'time': timestamp,
                     'value': {
                         'doubleValue': float(item[prop])
                     }
                 })
-        property_values[prop] = {'propertyReference': {
-            'propertyName': prop,
-            'entityId': entity_id,
-            'componentName': component_name
-        }, 'propertyValue': values}
+        property_values[prop] = {
+            'entityPropertyReference': {
+                'propertyName': prop,
+                'entityId': entity_id,
+                'componentName': component_name
+            },
+            'values': values
+        }
 
     return {
         'propertyValues': list(property_values.values())
@@ -326,7 +331,7 @@ aws lambda create-function \
   --runtime python3.12 \
   --handler twinmaker_data_connector.lambda_handler \
   --zip-file fileb://connector.zip \
-  --role arn:aws:iam::123456789:role/TwinMakerConnectorRole \
+  --role arn:aws:iam::123456789012:role/TwinMakerConnectorRole \
   --timeout 30
 
 # Allow TwinMaker to invoke the Lambda
@@ -349,7 +354,7 @@ aws s3 cp factory-floor.gltf s3://my-twinmaker-workspace/models/factory-floor.gl
 aws iottwinmaker create-scene \
   --workspace-id "my-factory-twin" \
   --scene-id "factory-overview" \
-  --content-location "s3://my-twinmaker-workspace/scenes/factory-overview.json" \
+  --content-location "scenes/factory-overview.json" \
   --description "3D overview of the factory floor"
 ```
 
