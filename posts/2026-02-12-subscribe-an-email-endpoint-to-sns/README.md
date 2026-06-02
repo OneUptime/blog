@@ -31,7 +31,7 @@ The response includes a subscription ARN that says "pending confirmation."
 }
 ```
 
-This is important: the subscription doesn't work until the email recipient clicks the confirmation link. AWS sends a confirmation email with a link that the subscriber must click. There's no way around this - it's a spam prevention measure.
+This is important: the subscription doesn't work until the email recipient confirms it. AWS sends a confirmation email with a link that the subscriber must click. The topic owner can't bypass this confirmation - it's a spam prevention measure.
 
 ## Confirmation Workflow
 
@@ -303,7 +303,7 @@ results = bulk_subscribe_emails(
 
 Email subscriptions have some limitations to be aware of:
 
-- **Confirmation required**: Every email subscription needs manual confirmation. You can't automate this.
+- **Confirmation required**: Every email subscription needs confirmation by the endpoint owner. The topic owner can't bypass this.
 - **No rich HTML**: SNS email messages are plain text only. If you need formatted emails, use SNS to trigger a Lambda that sends emails through SES instead.
 - **Delivery isn't guaranteed**: Email delivery depends on the recipient's mail server. Some messages may end up in spam folders.
 - **Rate limits**: SNS throttles email delivery to prevent abuse.
