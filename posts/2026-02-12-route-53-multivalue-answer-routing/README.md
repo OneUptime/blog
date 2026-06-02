@@ -8,15 +8,15 @@ Description: Learn how to configure Route 53 multivalue answer routing to return
 
 ---
 
-Multivalue answer routing in Route 53 is like simple routing with health checks bolted on. When a client queries a record with multiple values, Route 53 returns up to eight healthy IP addresses. The client picks one (usually at random), and since Route 53 only returns healthy endpoints, the client is much less likely to hit a dead server.
+Multivalue answer routing in Route 53 is like simple routing with health checks bolted on. When a client queries a record with multiple values, Route 53 returns up to eight healthy IP addresses. The client then uses one of the addresses, and since Route 53 normally excludes endpoints with failed health checks, the client is much less likely to hit a dead server.
 
 It's not a replacement for a real load balancer - there's no session affinity, no connection draining, and no intelligent distribution. But it's a solid improvement over simple DNS round-robin when you need basic availability across multiple endpoints without the cost and complexity of an ALB or NLB.
 
 ## How Multivalue Answer Routing Works
 
-You create multiple records with the same name, each with a unique set identifier, and each associated with a health check. Route 53 returns all healthy records in the response (up to 8 out of any number you configure). If a health check fails, that record is removed from responses.
+You create multiple records with the same name, each with a unique set identifier, and usually each associated with a health check. Route 53 returns healthy records in the response (up to 8 out of any number you configure). If a health check fails, that record is removed from responses unless all records are unhealthy.
 
-The difference from simple routing with multiple values: with simple routing, Route 53 returns all values regardless of health. With multivalue answer routing, unhealthy values are excluded.
+The difference from simple routing with multiple values: with simple routing, Route 53 returns all values regardless of health. With multivalue answer routing, unhealthy values are excluded when at least one healthy value is available.
 
 The difference from failover routing: failover gives you one primary and one secondary. Multivalue answer gives you many values with individual health checks, all active simultaneously.
 
@@ -103,7 +103,7 @@ Each record has exactly one IP address and its own health check. When server-2's
 
 ## Creating the Health Checks
 
-Each multivalue answer record needs its own health check.
+Each multivalue answer record should have its own health check if you want Route 53 to remove unhealthy endpoints automatically.
 
 ```bash
 # Create health checks for each server
@@ -188,7 +188,7 @@ Load balancers do real-time health checking, connection draining, sticky session
 
 ## Response Behavior
 
-When a DNS client queries a multivalue answer record, Route 53 returns up to 8 records. If you have more than 8 healthy records, Route 53 selects 8 at random. DNS clients typically use the first IP in the response, though some shuffle the list.
+When a DNS client queries a multivalue answer record, Route 53 returns up to 8 records. If you have more than 8 healthy records, Route 53 selects 8 at random. If every associated health check is unhealthy, Route 53 can still return up to 8 records. DNS clients typically use the first IP in the response, though some shuffle the list.
 
 ```bash
 # Query to see what Route 53 returns
@@ -219,8 +219,8 @@ dig app.example.com +short
 ## Limitations
 
 - Each record can only contain one IP address (unlike simple routing where one record can have multiple IPs)
-- Returns up to 8 healthy values per query
-- No support for Alias records - you must use IP addresses
+- Returns up to 8 values per query, and can return unhealthy values if every health check is unhealthy
+- No support for Alias records - you must use non-alias records such as A or AAAA records with IP addresses
 - The traffic distribution is random, not weighted or latency-based
 - DNS caching means it takes time for clients to stop hitting a newly-unhealthy server
 
