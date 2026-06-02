@@ -91,7 +91,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-With `EvaluateTargetHealth` set to true, Route 53 checks whether the ALB has healthy targets. If all targets are unhealthy, Route 53 still returns the record (since there's no failover target with simple routing), but at least the ALB handles the unhealthy backend logic.
+With `EvaluateTargetHealth` set to true, Route 53 evaluates the ALB based on the health of its target groups. If a target group that contains targets has no healthy targets, Route 53 considers the alias target unhealthy. With a single simple alias record and no alternate record to choose, Route 53 still needs to return an answer, so this does not replace failover routing.
 
 ## Common Record Types with Simple Routing
 
