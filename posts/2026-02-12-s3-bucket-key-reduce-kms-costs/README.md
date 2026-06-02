@@ -45,7 +45,7 @@ graph TD
     end
 ```
 
-The bucket key is refreshed periodically, so KMS is still called - just far less frequently. For most workloads, this reduces KMS requests by 90-99%.
+The bucket key is refreshed periodically, so KMS is still called - just far less frequently. Depending on the number of requesters, request patterns, and object age, this can reduce KMS requests by up to 99%.
 
 ## Enabling Bucket Keys on a New Bucket
 
@@ -241,7 +241,7 @@ You can track your actual KMS costs before and after enabling Bucket Keys using 
 
 3. **Cross-account considerations** - Bucket Keys work fine with cross-account access, but the KMS key policy must allow the bucket's account. For more on cross-account setups, see our guide on [cross-account S3 bucket access](https://oneuptime.com/blog/post/2026-02-12-cross-account-s3-bucket-access/view).
 
-4. **Replication** - Bucket Key settings are not replicated. You need to configure Bucket Keys separately on both source and destination buckets.
+4. **Replication** - Bucket Keys work with Same-Region Replication and Cross-Region Replication. Replicas generally preserve the source object's encryption settings, and destination bucket default encryption applies when the source object is not encrypted.
 
 5. **SSE-S3 doesn't need this** - Bucket Keys only matter for SSE-KMS. If you use SSE-S3 (AES-256), there are no KMS calls to reduce.
 
@@ -250,11 +250,11 @@ You can track your actual KMS costs before and after enabling Bucket Keys using 
 After enabling Bucket Keys, monitor your KMS request metrics to verify the cost reduction.
 
 ```bash
-# Check KMS API call volume in CloudWatch
+# Check successful KMS Decrypt calls in CloudWatch
 aws cloudwatch get-metric-statistics \
   --namespace AWS/KMS \
-  --metric-name RequestCount \
-  --dimensions Name=KeyId,Value=abc123-456-789 \
+  --metric-name SuccessfulRequest \
+  --dimensions Name=KeyArn,Value=arn:aws:kms:us-east-1:123456789012:key/abc123-456-789 Name=Operation,Value=Decrypt \
   --start-time 2026-02-01T00:00:00Z \
   --end-time 2026-02-12T00:00:00Z \
   --period 86400 \
