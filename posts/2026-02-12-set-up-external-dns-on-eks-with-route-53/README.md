@@ -44,7 +44,9 @@ ExternalDNS needs permission to list hosted zones and manage records in Route 53
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ChangeResourceRecordSets"
+        "route53:ChangeResourceRecordSets",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResources"
       ],
       "Resource": [
         "arn:aws:route53:::hostedzone/*"
@@ -53,9 +55,7 @@ ExternalDNS needs permission to list hosted zones and manage records in Route 53
     {
       "Effect": "Allow",
       "Action": [
-        "route53:ListHostedZones",
-        "route53:ListResourceRecordSets",
-        "route53:ListTagsForResource"
+        "route53:ListHostedZones"
       ],
       "Resource": ["*"]
     }
@@ -105,7 +105,8 @@ Create a values file:
 
 ```yaml
 # external-dns-values.yaml - ExternalDNS configuration
-provider: aws
+provider:
+  name: aws
 
 env:
   - name: AWS_DEFAULT_REGION
@@ -160,11 +161,11 @@ kind: Ingress
 metadata:
   name: my-app
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     external-dns.alpha.kubernetes.io/hostname: app.example.com
 spec:
+  ingressClassName: alb
   rules:
     - host: app.example.com
       http:
@@ -219,7 +220,7 @@ annotations:
 ExternalDNS creates TXT records alongside your A/CNAME records to track ownership. This prevents it from modifying records it didn't create. The TXT records look like:
 
 ```text
-_externaldns.app.example.com  TXT  "heritage=external-dns,external-dns/owner=my-cluster,external-dns/resource=ingress/default/my-app"
+app.example.com  TXT  "heritage=external-dns,external-dns/owner=my-cluster,external-dns/resource=ingress/default/my-app"
 ```
 
 The `txtOwnerId` in the configuration ensures that multiple EKS clusters managing the same hosted zone don't interfere with each other.
