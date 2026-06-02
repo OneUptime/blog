@@ -8,7 +8,7 @@ Description: Understand when to use DynamoDB on-demand versus provisioned capaci
 
 ---
 
-DynamoDB pricing seems straightforward until you realize picking the wrong capacity mode can cost you 5-7x more than necessary. On-demand mode is convenient but expensive for steady workloads. Provisioned mode is cheaper but risky if you underestimate capacity and start getting throttled requests.
+DynamoDB pricing seems straightforward until you realize picking the wrong capacity mode can cost you several times more than necessary. On-demand mode is convenient but expensive for steady workloads. Provisioned mode is cheaper but risky if you underestimate capacity and start getting throttled requests.
 
 The right choice depends entirely on your traffic patterns. Let's break it down with real numbers.
 
@@ -17,16 +17,16 @@ The right choice depends entirely on your traffic patterns. Let's break it down 
 Here's the cost comparison for 1 million write requests per day in us-east-1:
 
 **On-demand mode:**
-- Write request units: $1.25 per million
+- Write request units: $0.625 per million
 - 1M writes/day x 30 days = 30M writes/month
-- Monthly cost: $37.50
+- Monthly cost: $18.75
 
 **Provisioned mode (steady traffic):**
-- You need about 12 WCUs (writes per second) to handle 1M writes/day
+- You need about 12 WCUs (1KB writes per second) to handle 1M writes/day
 - 12 WCUs x $0.00065/hour x 730 hours = $5.69/month
 - Monthly cost: $5.69
 
-That's a 6.6x difference. For reads, the gap is similar - on-demand is about 5-7x more expensive than well-provisioned capacity.
+That's a 3.3x difference. For reads, the gap is similar - on-demand is about 3x more expensive than well-provisioned capacity.
 
 But here's the catch: provisioned mode only works this well if your traffic is predictable. If traffic spikes 10x during peak hours and you've provisioned for average load, you'll get throttled. If you provision for peak, you're paying for unused capacity during quiet hours.
 
@@ -51,13 +51,13 @@ Before switching modes, understand your actual traffic patterns:
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 cw = boto3.client('cloudwatch')
 
 def analyze_dynamodb_usage(table_name, days=14):
     """Analyze read and write patterns for a DynamoDB table"""
-    end = datetime.utcnow()
+    end = datetime.now(timezone.utc)
     start = end - timedelta(days=days)
 
     # Get consumed write capacity
@@ -85,25 +85,25 @@ def analyze_dynamodb_usage(table_name, days=14):
     # Analyze write patterns
     write_sums = [dp['Sum'] for dp in sorted(writes['Datapoints'], key=lambda x: x['Timestamp'])]
     if write_sums:
-        avg_writes_per_hour = sum(write_sums) / len(write_sums)
-        max_writes_per_hour = max(write_sums)
-        min_writes_per_hour = min(w for w in write_sums if w > 0) if any(w > 0 for w in write_sums) else 0
+        avg_write_units_per_hour = sum(write_sums) / len(write_sums)
+        max_write_units_per_hour = max(write_sums)
+        min_write_units_per_hour = min(w for w in write_sums if w > 0) if any(w > 0 for w in write_sums) else 0
 
-        peak_to_avg_ratio = max_writes_per_hour / avg_writes_per_hour if avg_writes_per_hour > 0 else 0
+        peak_to_avg_ratio = max_write_units_per_hour / avg_write_units_per_hour if avg_write_units_per_hour > 0 else 0
 
         print(f"Table: {table_name}")
         print(f"\nWrite Pattern (past {days} days):")
-        print(f"  Avg writes/hour:  {avg_writes_per_hour:,.0f}")
-        print(f"  Max writes/hour:  {max_writes_per_hour:,.0f}")
-        print(f"  Min writes/hour:  {min_writes_per_hour:,.0f}")
+        print(f"  Avg write capacity units/hour:  {avg_write_units_per_hour:,.0f}")
+        print(f"  Max write capacity units/hour:  {max_write_units_per_hour:,.0f}")
+        print(f"  Min write capacity units/hour:  {min_write_units_per_hour:,.0f}")
         print(f"  Peak/Avg ratio:   {peak_to_avg_ratio:.1f}x")
 
         # Recommendation
         if peak_to_avg_ratio > 4:
             print(f"\n  Recommendation: ON-DEMAND (high variability - {peak_to_avg_ratio:.1f}x peak/avg)")
         else:
-            avg_wcu = avg_writes_per_hour / 3600
-            peak_wcu = max_writes_per_hour / 3600
+            avg_wcu = avg_write_units_per_hour / 3600
+            peak_wcu = max_write_units_per_hour / 3600
             print(f"\n  Recommendation: PROVISIONED with auto-scaling")
             print(f"  Suggested base WCU: {avg_wcu:.0f}")
             print(f"  Suggested max WCU:  {peak_wcu * 1.2:.0f}")
@@ -113,15 +113,17 @@ def analyze_dynamodb_usage(table_name, days=14):
     total_reads = sum([dp['Sum'] for dp in reads['Datapoints']])
 
     # On-demand cost
-    od_write_cost = (total_writes / 1_000_000) * 1.25 * (30 / days)
-    od_read_cost = (total_reads / 1_000_000) * 0.25 * (30 / days)
+    od_write_cost = (total_writes / 1_000_000) * 0.625 * (30 / days)
+    od_read_cost = (total_reads / 1_000_000) * 0.125 * (30 / days)
 
     # Provisioned cost (using average as base)
+    prov_write_cost = 0
     if write_sums:
         avg_wcu = sum(write_sums) / len(write_sums) / 3600
         prov_write_cost = avg_wcu * 1.2 * 0.00065 * 730  # 20% headroom
 
     read_sums = [dp['Sum'] for dp in reads['Datapoints']]
+    prov_read_cost = 0
     if read_sums:
         avg_rcu = sum(read_sums) / len(read_sums) / 3600
         prov_read_cost = avg_rcu * 1.2 * 0.00013 * 730
@@ -136,7 +138,7 @@ analyze_dynamodb_usage('my-table')
 
 ## Switching Between Modes
 
-You can switch a table's capacity mode, but there are limits - you can only switch once every 24 hours:
+You can switch a table's capacity mode, but there are limits: you can switch from provisioned to on-demand up to four times in a 24-hour rolling window, and from on-demand to provisioned at any time:
 
 ```bash
 # Switch to on-demand mode
@@ -154,7 +156,7 @@ aws dynamodb update-table \
 
 ## Setting Up Auto-Scaling for Provisioned Mode
 
-Auto-scaling is critical for provisioned mode. It adjusts capacity based on actual usage, giving you cost savings without the risk of throttling:
+Auto-scaling is critical for provisioned mode. It adjusts capacity based on actual usage, giving you cost savings while reducing the risk of throttling:
 
 ```bash
 # Register the table as a scalable target for writes
@@ -211,8 +213,8 @@ Set the target utilization to 70% for a good balance between cost and performanc
 
 If your DynamoDB usage is stable and you're confident in the long-term need, reserved capacity provides additional savings on top of provisioned mode:
 
-- **1-year term**: ~53% savings over on-demand pricing
-- **3-year term**: ~76% savings over on-demand pricing
+- **1-year term**: up to 54% savings over regular provisioned hourly rates
+- **3-year term**: up to 77% savings over regular provisioned hourly rates
 
 Reserved capacity is purchased in blocks of 100 WCUs or 100 RCUs. It makes sense when you have a consistent baseline that you're confident won't decrease.
 
@@ -252,13 +254,13 @@ response = table.get_item(
 )
 ```
 
-**Project only the attributes you need.** This reduces the amount of data read and the RCUs consumed:
+**Project only the attributes you need.** This reduces the amount of data returned to your application, though DynamoDB still calculates read capacity from the full item size:
 
 ```python
 # Bad: reads entire item even if you only need two fields
 response = table.get_item(Key={'pk': 'user#123'})
 
-# Good: reads only the fields you need, reducing data transferred and RCUs
+# Good: returns only the fields you need, reducing data transferred
 response = table.get_item(
     Key={'pk': 'user#123'},
     ProjectionExpression='username, email'
