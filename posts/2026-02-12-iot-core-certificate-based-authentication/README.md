@@ -177,7 +177,7 @@ aws iot attach-policy \
   --target "$CERT_ARN"
 ```
 
-A certificate must have at least one policy attached to it for the device to perform any actions beyond connecting.
+A certificate must have an appropriate policy attached to it for the device to connect, publish, subscribe, or perform any other AWS IoT action.
 
 ## Testing Device Connection
 
@@ -255,21 +255,26 @@ aws iot delete-certificate --certificate-id "old-cert-id"
 If a device is compromised, revoke its certificate immediately.
 
 ```bash
-# Deactivate the certificate (immediate effect)
+# Revoke the certificate
 aws iot update-certificate \
   --certificate-id "compromised-cert-id" \
   --new-status REVOKED
 
-# The device will be disconnected on its next connection attempt
+# Existing connections using this certificate are disconnected within a few minutes,
+# and the device cannot reconnect with the revoked certificate
 ```
 
 ### Monitoring Certificate Expiration
 
 ```bash
-# List all certificates with their expiration dates
-aws iot list-certificates \
-  --query 'certificates[].{Id:certificateId,Status:status,Created:creationDate}' \
-  --output table
+# List all certificates, then describe each one to see its expiration date
+for CERT_ID in $(aws iot list-certificates \
+  --query 'certificates[].certificateId' --output text); do
+  aws iot describe-certificate \
+    --certificate-id "$CERT_ID" \
+    --query 'certificateDescription.{Id:certificateId,Status:status,NotAfter:validity.notAfter}' \
+    --output table
+done
 
 # Check a specific certificate's details
 aws iot describe-certificate \
