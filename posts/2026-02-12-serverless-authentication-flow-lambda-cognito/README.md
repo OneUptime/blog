@@ -10,7 +10,7 @@ Description: Complete guide to implementing serverless user authentication using
 
 Authentication is the kind of thing you really don't want to build from scratch. Password hashing, token management, MFA, account recovery - there are too many ways to get it wrong. AWS Cognito handles the heavy lifting, and when you pair it with Lambda triggers, you get a fully customizable auth system without managing any servers.
 
-Let's build a complete authentication flow that handles sign-up, sign-in, token refresh, and custom logic during the auth process.
+Let's build a complete authentication flow that handles sign-up, sign-in, refresh-token support, and custom logic during the auth process.
 
 ## How Cognito Works
 
@@ -380,7 +380,7 @@ exports.handler = async (event) => {
 
 ## Monitoring Auth Failures
 
-Keep an eye on failed authentication attempts. A spike in failures could mean a brute-force attack or a broken client. Cognito publishes metrics to CloudWatch, and you can set up alarms on `SignInFailures`. For a comprehensive approach to monitoring your authentication infrastructure, see our guide on [setting up effective monitoring](https://oneuptime.com/blog/post/2026-01-24-apm-monitoring/view).
+Keep an eye on failed authentication attempts. A spike in failures could mean a brute-force attack or a broken client. Cognito publishes metrics to CloudWatch, and you can derive failed sign-ins from the `SignInSuccesses` metric by subtracting the `Sum` statistic from the `Sample Count` statistic. For a comprehensive approach to monitoring your authentication infrastructure, see our guide on [setting up effective monitoring](https://oneuptime.com/blog/post/2026-01-24-apm-monitoring/view).
 
 ## Wrapping Up
 
