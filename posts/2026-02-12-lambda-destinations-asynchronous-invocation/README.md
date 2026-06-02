@@ -17,8 +17,9 @@ In this guide, we'll walk through everything you need to know about Lambda Desti
 Lambda Destinations let you configure where the results of asynchronous invocations go after execution completes. You can set up separate destinations for successful invocations and failed invocations. The supported destination types are:
 
 - Another Lambda function
-- An SQS queue
-- An SNS topic
+- A standard SQS queue
+- A standard SNS topic
+- An S3 bucket for failure destinations
 - An EventBridge event bus
 
 The key difference between Destinations and DLQs is that Destinations work for both success and failure cases. DLQs only capture failures after all retries are exhausted. Destinations also include richer context in the payload - you get the original event, the response (or error), and metadata about the invocation.
@@ -201,9 +202,9 @@ This is a question that comes up a lot. Here's the breakdown:
 **Use DLQs when:**
 - You only care about failures
 - You have existing infrastructure built around DLQs
-- You need the DLQ behavior for Step Functions integration
+- You only need the original discarded event, not the full invocation record
 
-You can actually use both simultaneously. The DLQ catches failures at the Lambda service level (before your code runs), while Destinations handle the results after execution. For more on DLQ configuration, see our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/2026-02-12-configure-dead-letter-queues-lambda-functions/view).
+You can actually use both simultaneously. A DLQ and an on-failure destination are both used when an asynchronous event fails all processing attempts or expires before processing, but the DLQ receives the original event while the destination receives a richer invocation record. For more on DLQ configuration, see our post on [configuring Dead Letter Queues for Lambda](https://oneuptime.com/blog/post/2026-02-12-configure-dead-letter-queues-lambda-functions/view).
 
 ## Common Pitfalls
 
@@ -213,7 +214,7 @@ You can actually use both simultaneously. The DLQ catches failures at the Lambda
 
 **Not setting retry limits.** By default, Lambda retries failed async invocations twice. If your function is idempotent, that's fine. If it's not, you might want to set `retryAttempts` to 0 and let your failure destination handle the retry logic.
 
-**Payload size limits.** The destination payload includes both the request and response. If your function returns a large payload, you might hit the 256 KB limit for SQS messages. Consider returning a reference (like an S3 key) instead of the full data.
+**Payload size limits.** The destination payload includes both the request and response. If your function returns a large payload, you might hit destination-specific limits, such as the 256 KB limit for SNS messages or the 1 MiB limit for SQS messages. Consider returning a reference (like an S3 key) instead of the full data.
 
 ## Testing Destinations Locally
 
