@@ -20,7 +20,7 @@ or
 OperationalError: (2003, "Can't connect to MySQL server on 'my-db.abc123.us-east-1.rds.amazonaws.com' (110)")
 ```
 
-This is a networking issue. Your Lambda function can't reach your RDS instance. The most common reason is that they're not in the same VPC, or the security groups aren't configured to allow traffic between them. Let's fix it.
+This is usually a networking issue. Your Lambda function either can't reach your RDS instance, or the database isn't listening on the port you're trying to use. The most common reason is that they're not in the same VPC, or the security groups aren't configured to allow traffic between them. Let's fix it.
 
 ## Understanding the Problem
 
@@ -47,7 +47,7 @@ aws rds describe-db-instances \
   --query 'DBInstances[0].{VpcId:DBSubnetGroup.VpcId,Subnets:DBSubnetGroup.Subnets[*].SubnetIdentifier,SecurityGroups:VpcSecurityGroups[*].VpcSecurityGroupId,Endpoint:Endpoint}'
 ```
 
-Now configure your Lambda to use the same VPC. You need at least two subnets (for high availability) and a security group:
+Now configure your Lambda to use the same VPC. Use at least two subnets (for high availability) and a security group:
 
 ```bash
 # Create a security group for Lambda
@@ -113,7 +113,11 @@ aws iam attach-role-policy \
 This grants:
 - `ec2:CreateNetworkInterface`
 - `ec2:DescribeNetworkInterfaces`
+- `ec2:DescribeSubnets`
 - `ec2:DeleteNetworkInterface`
+- `ec2:AssignPrivateIpAddresses`
+- `ec2:UnassignPrivateIpAddresses`
+- CloudWatch Logs permissions
 
 Without these permissions, Lambda can't create the ENI (Elastic Network Interface) it needs to connect to the VPC.
 
@@ -192,6 +196,28 @@ aws rds describe-db-instances \
 For Lambda-to-RDS connections, RDS Proxy is highly recommended. It handles connection pooling, which is critical because Lambda can create hundreds of concurrent connections during traffic spikes.
 
 ```bash
+# Create a security group for the proxy
+PROXY_SG=$(aws ec2 create-security-group \
+  --group-name rds-proxy-access \
+  --description "Security group for RDS Proxy" \
+  --vpc-id vpc-0abc123 \
+  --query 'GroupId' \
+  --output text)
+
+# Allow Lambda to connect to the proxy
+aws ec2 authorize-security-group-ingress \
+  --group-id $PROXY_SG \
+  --protocol tcp \
+  --port 3306 \
+  --source-group $LAMBDA_SG
+
+# Allow the proxy to connect to RDS
+aws ec2 authorize-security-group-ingress \
+  --group-id $RDS_SG \
+  --protocol tcp \
+  --port 3306 \
+  --source-group $PROXY_SG
+
 # Create an RDS Proxy
 aws rds create-db-proxy \
   --db-proxy-name my-proxy \
@@ -199,7 +225,13 @@ aws rds create-db-proxy \
   --auth '[{"AuthScheme":"SECRETS","SecretArn":"arn:aws:secretsmanager:us-east-1:123456789012:secret:my-db-creds","IAMAuth":"DISABLED"}]' \
   --role-arn arn:aws:iam::123456789012:role/rds-proxy-role \
   --vpc-subnet-ids subnet-0abc123 subnet-0def456 \
-  --vpc-security-group-ids $RDS_SG
+  --vpc-security-group-ids $PROXY_SG
+
+# Register your database as a proxy target
+aws rds register-db-proxy-targets \
+  --db-proxy-name my-proxy \
+  --target-group-name default \
+  --db-instance-identifiers my-database
 ```
 
 Then point your Lambda function at the proxy endpoint instead of the RDS endpoint directly.
