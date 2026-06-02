@@ -19,9 +19,9 @@ Launch Configurations were the original way to define instance settings for Auto
 Launch Templates fix all of this. Here's what you get:
 
 - **Versioning** - Make changes without creating entirely new resources
-- **Default and latest version tracking** - Point your ASG at "latest" and it picks up changes automatically
-- **Mixed instance types** - Run multiple instance types in a single ASG
-- **Spot and On-Demand mixing** - Combine pricing models in one group
+- **Default and latest version tracking** - Point your ASG at `$Latest` or `$Default` and new launches use that version automatically
+- **Mixed instance types** - Run multiple instance types in a single ASG with a mixed instances policy
+- **Spot and On-Demand mixing** - Combine pricing models in one group with a mixed instances policy
 - **T2/T3 Unlimited support** - Configure burstable instance credit settings
 - **Network interface settings** - More granular networking control
 
@@ -29,7 +29,7 @@ Launch Templates fix all of this. Here's what you get:
 
 Before you start migrating, you need to know what you're working with. Let's pull a list of all Launch Configurations in your account.
 
-This command lists all your Launch Configurations with their associated Auto Scaling groups:
+This command lists all your Launch Configurations and the key settings you'll need to copy:
 
 ```bash
 # List all Launch Configurations
@@ -39,7 +39,7 @@ aws autoscaling describe-launch-configurations \
   --output table
 ```
 
-And here's how to see which Auto Scaling groups reference Launch Configurations vs Launch Templates:
+And here's how to see which Auto Scaling groups still reference Launch Configurations:
 
 ```bash
 # Find ASGs still using Launch Configurations
@@ -52,7 +52,7 @@ Take note of every Launch Configuration and what settings it uses. You'll need t
 
 ## Creating a Launch Template from an Existing Launch Configuration
 
-AWS provides a way to convert a Launch Configuration into a Launch Template directly. This is the easiest migration path.
+AWS provides a console option to copy a Launch Configuration into a Launch Template directly. If you're working from the CLI, you'll recreate the template from the Launch Configuration's settings.
 
 Here's how to export a Launch Configuration's settings and create a matching Launch Template:
 
@@ -114,7 +114,7 @@ resource "aws_launch_template" "migrated" {
     name = data.aws_launch_configuration.existing.iam_instance_profile
   }
 
-  user_data = data.aws_launch_configuration.existing.user_data
+  user_data = data.aws_launch_configuration.existing.user_data != null ? base64encode(data.aws_launch_configuration.existing.user_data) : null
 
   monitoring {
     enabled = data.aws_launch_configuration.existing.enable_monitoring
@@ -181,7 +181,7 @@ If your ASG is pointed at `$Latest` or `$Default`, it'll automatically use the n
 
 There are a few gotchas to watch out for during migration.
 
-**Security Group References**: Launch Configurations use security group names or IDs. Launch Templates use security group IDs only when you specify a network interface. If you're specifying a subnet in the ASG, put security groups at the top level of the template. If you're specifying network interfaces in the template, put security groups inside the network interface block.
+**Security Group References**: Launch Configurations can reference security groups by name or ID. In Launch Templates, use `SecurityGroupIds` at the top level when the ASG supplies the subnet. If you're specifying network interfaces in the template, put the security group IDs inside the network interface `Groups` field instead.
 
 **User Data Encoding**: Launch Configurations accept raw user data. Launch Templates expect base64-encoded user data. If you're copying user data over, make sure to encode it:
 
