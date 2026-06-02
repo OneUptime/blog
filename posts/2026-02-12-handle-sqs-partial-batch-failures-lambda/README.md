@@ -150,22 +150,19 @@ async function processOrder(order: OrderMessage): Promise<void> {
 
 FIFO queues add a wrinkle. Because messages within a message group must be processed in order, you can't just skip a failed message and continue. If message 3 in a group fails, you shouldn't process messages 4 and 5 from the same group because that would violate ordering.
 
-This handler respects FIFO ordering by stopping processing for a message group when a failure occurs.
+This handler respects FIFO ordering by stopping processing after the first failure and reporting the failed message plus all unprocessed messages in the batch.
 
 ```python
 import json
-from collections import defaultdict
 
 def handler(event, context):
     """FIFO-aware partial batch failure handler."""
     batch_item_failures = []
-    failed_groups = set()
+    stop_processing = False
 
     for record in event["Records"]:
-        message_group_id = record["attributes"].get("MessageGroupId", "")
-
-        # If this message group already had a failure, skip remaining messages in it
-        if message_group_id in failed_groups:
+        # If a previous message failed, report this unprocessed message as failed too
+        if stop_processing:
             batch_item_failures.append({
                 "itemIdentifier": record["messageId"]
             })
@@ -175,9 +172,8 @@ def handler(event, context):
             body = json.loads(record["body"])
             process_order(body)
         except Exception as e:
-            print(f"Failed message {record['messageId']} "
-                  f"(group: {message_group_id}): {e}")
-            failed_groups.add(message_group_id)
+            print(f"Failed message {record['messageId']}: {e}")
+            stop_processing = True
             batch_item_failures.append({
                 "itemIdentifier": record["messageId"]
             })
@@ -185,7 +181,7 @@ def handler(event, context):
     return {"batchItemFailures": batch_item_failures}
 ```
 
-This way, if a message fails, all subsequent messages in the same group are also reported as failed and will be retried in order.
+This way, if a message fails, all subsequent messages in the batch are also reported as failed and will be retried in order.
 
 ## Error Classification
 
