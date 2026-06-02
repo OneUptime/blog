@@ -101,7 +101,7 @@ aws s3api get-bucket-cors --bucket my-bucket
 
 ### Mistake 1: Wildcard Origins in Production
 
-Using `"AllowedOrigins": ["*"]` seems tempting, but it's a bad idea for production. It opens your bucket to requests from any website. If your bucket contains user data or private assets, this is a security risk.
+Using `"AllowedOrigins": ["*"]` seems tempting, but it's a bad idea for production. CORS doesn't make private objects public, but it does let any website read browser-accessible responses for requests that are otherwise authorized. If your bucket contains user data or private assets, this is a security risk.
 
 Instead, list your specific origins:
 
@@ -132,13 +132,14 @@ If your app uploads files to S3, you need PUT in `AllowedMethods`. If you're usi
 
 If you put CloudFront in front of S3, CloudFront can cache the response without CORS headers. When a non-browser request hits CloudFront first, the cached response won't include CORS headers. Then when a browser request arrives, it gets the cached version without headers and fails.
 
-The fix is to forward the `Origin` header through CloudFront. In your CloudFront distribution, add `Origin` to the cache key:
+The fix is to forward the `Origin` header through CloudFront. If you cache `OPTIONS` responses, include the preflight headers in the cache key too:
 
 ```json
 {
     "HeadersConfig": {
         "HeaderBehavior": "whitelist",
         "Headers": {
+            "Quantity": 3,
             "Items": ["Origin", "Access-Control-Request-Headers", "Access-Control-Request-Method"]
         }
     }
@@ -184,16 +185,16 @@ You can have multiple CORS rules for different use cases. S3 evaluates them in o
 [
     {
         "AllowedHeaders": ["*"],
-        "AllowedMethods": ["GET"],
-        "AllowedOrigins": ["*"],
-        "MaxAgeSeconds": 86400
-    },
-    {
-        "AllowedHeaders": ["*"],
         "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
         "AllowedOrigins": ["https://admin.myapp.com"],
         "ExposeHeaders": ["ETag", "x-amz-request-id"],
         "MaxAgeSeconds": 3600
+    },
+    {
+        "AllowedHeaders": ["*"],
+        "AllowedMethods": ["GET"],
+        "AllowedOrigins": ["*"],
+        "MaxAgeSeconds": 86400
     }
 ]
 ```
