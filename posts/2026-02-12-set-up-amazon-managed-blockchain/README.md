@@ -53,13 +53,14 @@ Before you start, make sure you have:
 
 - An AWS account with appropriate IAM permissions
 - AWS CLI installed and configured
-- A VPC with at least two subnets in different availability zones
+- A VPC with at least one subnet, or two subnets in different availability zones for higher availability
 - Basic familiarity with blockchain concepts
 
 You will need the following IAM permissions at minimum:
 
+IAM policy for Managed Blockchain administration:
+
 ```json
-// IAM policy for Managed Blockchain administration
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -92,6 +93,7 @@ aws managedblockchain create-network \
   --description "Supply chain tracking network" \
   --framework HYPERLEDGER_FABRIC \
   --framework-version 2.2 \
+  --framework-configuration "Fabric={Edition=STARTER}" \
   --voting-policy "ApprovalThresholdPolicy={ThresholdPercentage=50,ProposalDurationInHours=24,ThresholdComparator=GREATER_THAN}" \
   --member-configuration \
     "Name=OrgAlpha,Description=First organization,FrameworkConfiguration={Fabric={AdminUsername=admin,AdminPassword=Password123!}}"
@@ -133,16 +135,23 @@ Wait until the status shows `AVAILABLE` before proceeding.
 Your application needs a way to talk to the blockchain network. This happens through a VPC endpoint.
 
 ```bash
+# Get the VPC endpoint service name for the Managed Blockchain network
+aws managedblockchain get-network \
+  --network-id n-ABCDEFGHIJKLMNOP1234567890 \
+  --query 'Network.VpcEndpointServiceName' \
+  --output text
+
 # Create a VPC endpoint for the Managed Blockchain network
 aws ec2 create-vpc-endpoint \
   --vpc-id vpc-0123456789abcdef0 \
   --service-name com.amazonaws.us-east-1.managedblockchain.n-ABCDEFGHIJKLMNOP1234567890 \
   --vpc-endpoint-type Interface \
   --subnet-ids subnet-0123456789abcdef0 subnet-abcdef0123456789a \
-  --security-group-ids sg-0123456789abcdef0
+  --security-group-ids sg-0123456789abcdef0 \
+  --private-dns-enabled
 ```
 
-Make sure your security group allows inbound traffic on ports 443 (for the CA) and 30001-30004 (for peer and ordering service communication).
+Make sure your VPC endpoint security group allows inbound traffic from your Fabric clients to the ordering service, CA service, and peer event service ports returned by `get-network`, `get-member`, and `get-node`. These ports are typically in the 30000-34000 range, such as 30001 for the ordering service, 30002 for the CA, and 30003 for a peer endpoint.
 
 ## Step 4: Enroll the Admin User
 
@@ -168,6 +177,13 @@ fabric-ca-client enroll \
 ```
 
 This generates the admin's cryptographic material in the specified MSP (Membership Service Provider) directory.
+
+Copy the signing certificate into the `admincerts` directory so Fabric recognizes the identity as an admin:
+
+```bash
+mkdir -p /home/ec2-user/admin-msp/admincerts
+cp /home/ec2-user/admin-msp/signcerts/* /home/ec2-user/admin-msp/admincerts/
+```
 
 ## Step 5: Create a Channel
 
@@ -252,10 +268,10 @@ Package and install it on your peer, then approve and commit the chaincode defin
 
 Amazon Managed Blockchain integrates with CloudWatch for monitoring. Key metrics to watch include:
 
-- **PeerNodeCPUUtilization** - Keep this below 80% for stable performance
-- **PeerNodeMemoryUtilization** - High memory usage can indicate you need a larger instance
-- **TransactionCount** - Track throughput over time
-- **BlockHeight** - Confirm your peer stays in sync
+- **CPUUtilization** - Keep this below 80% for stable performance
+- **MemoryUtilization** - High memory usage can indicate you need a larger instance
+- **Transactions** - Track transactions received by the peer node over time
+- **EndorserProposalDuration** - Watch proposal latency as traffic increases
 
 For a deeper look at monitoring practices, check out our post on [AWS CloudWatch monitoring strategies](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
@@ -268,7 +284,7 @@ Managed Blockchain pricing has several components:
 - Data storage for the ledger
 - Data transfer through the VPC endpoint
 
-For a development environment with a single `bc.t3.small` node, expect to pay roughly $50-80/month. Production setups with multiple nodes and larger instance types will cost more.
+For a development environment with a Starter Edition membership and a single `bc.t3.small` node, expect to pay roughly $240-260/month before data transfer and variable usage charges. Production setups with multiple nodes and larger instance types will cost more.
 
 ## Inviting Other Members
 
@@ -289,7 +305,7 @@ Existing members vote on the proposal based on your network's voting policy. Onc
 A few things that trip people up regularly:
 
 1. **Forgetting the TLS certificate** - Always download the Managed Blockchain TLS certificate chain and reference it in your commands.
-2. **Security group misconfiguration** - The VPC endpoint needs specific ports open. Double-check 443, 30001-30004.
+2. **Security group misconfiguration** - The VPC endpoint needs the ordering service, CA, and peer event service ports open from your Fabric clients. Double-check the endpoint ports returned by `get-network`, `get-member`, and `get-node`.
 3. **Instance sizing** - Starting too small leads to performance issues under load. Monitor and scale proactively.
 4. **Not backing up crypto material** - The admin enrollment generates keys and certificates. Store them securely in AWS Secrets Manager or similar.
 
