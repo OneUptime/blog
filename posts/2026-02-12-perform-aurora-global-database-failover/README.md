@@ -10,32 +10,37 @@ Description: A practical guide to performing Aurora Global Database failover, co
 
 You've set up an Aurora Global Database. Your data is replicating across regions with sub-second lag. Everything looks great on the dashboard. But here's the question that matters most: have you actually tested what happens when things go wrong?
 
-Failover is the single most important operation in a global database setup, and there are two very different kinds. Planned failover (also called switchover) is what you do during maintenance or migration. Unplanned failover is what you do when a region goes down and you need to recover fast. Let's walk through both.
+Failover is the single most important operation in a global database setup, and there are two very different kinds. Switchover (previously called managed planned failover) is what you do during maintenance or migration. Managed failover is what you do when a region goes down and you need to recover fast. Let's walk through both, plus the manual detach-and-promote fallback.
 
-## Understanding the Two Failover Types
+## Understanding the Failover Types
 
-Aurora Global Databases support two failover mechanisms:
+Aurora Global Databases support these mechanisms:
 
-**Managed planned failover** - This is the graceful path. Aurora stops writes on the primary, waits for all secondary clusters to catch up, promotes a secondary to primary, and demotes the old primary to secondary. Zero data loss. Takes about a minute.
+**Switchover** - This is the graceful path. Aurora stops writes on the primary, waits for all secondary clusters to catch up, promotes a secondary to primary, and demotes the old primary to secondary. Zero data loss. Takes about a minute.
 
-**Unmanaged failover (detach and promote)** - This is the emergency path. You detach a secondary cluster from the global database, making it a standalone cluster that accepts writes. There may be some data loss depending on replication lag at the moment of failure.
+**Managed failover** - This is the recommended emergency path for an unplanned regional outage. Aurora promotes a secondary to primary and, when the old primary region becomes available again, automatically adds it back as a secondary. There may be some data loss depending on replication lag at the moment of failure.
+
+**Manual failover (detach and promote)** - This is the fallback path when managed failover isn't an option, such as incompatible engine versions. You detach a secondary cluster from the global database, making it a standalone cluster that accepts writes. There may be some data loss depending on replication lag at the moment of failure.
 
 ```mermaid
 graph TD
     A[Failover Needed] --> B{Planned or Emergency?}
-    B -->|Planned| C[Managed Planned Failover]
-    B -->|Emergency| D[Detach and Promote]
+    B -->|Planned| C[Switchover]
+    B -->|Emergency| D{Managed failover available?}
     C --> E[Aurora stops writes on primary]
     E --> F[Secondaries catch up]
     F --> G[Secondary promoted to primary]
     G --> H[Old primary becomes secondary]
-    D --> I[Detach secondary from global DB]
+    D -->|Yes| M[Managed failover]
+    M --> N[Secondary promoted to primary]
+    N --> O[Old primary re-added as secondary]
+    D -->|No| I[Detach secondary from global DB]
     I --> J[Secondary becomes standalone]
     J --> K[Update application endpoints]
     K --> L[Recreate global DB from new primary]
 ```
 
-## Performing a Managed Planned Failover
+## Performing a Switchover
 
 This is the approach you should use whenever you have the luxury of planning ahead - region migrations, maintenance windows, or DR testing.
 
@@ -43,7 +48,7 @@ This is the approach you should use whenever you have the luxury of planning ahe
 
 1. Open the RDS console and navigate to your global database
 2. Click **Actions** then **Switch over or fail over global database**
-3. Select **Planned managed failover**
+3. Select **Switchover**
 4. Choose the secondary cluster you want to promote
 5. Confirm and wait for the process to complete
 
@@ -52,11 +57,12 @@ This is the approach you should use whenever you have the luxury of planning ahe
 The CLI command is straightforward. You specify the global cluster and the ARN of the secondary cluster you want to make the new primary:
 
 ```bash
-# Perform a managed planned failover to the secondary cluster
+# Perform a switchover to the secondary cluster
 
-aws rds failover-global-cluster \
+aws rds switchover-global-cluster \
   --global-cluster-identifier my-global-db \
-  --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789012:cluster:my-secondary-cluster
+  --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789012:cluster:my-secondary-cluster \
+  --region us-east-1
 ```
 
 Monitor the status of the failover:
@@ -72,7 +78,18 @@ The whole operation typically takes 1-2 minutes. During this time, your applicat
 
 ## Performing an Emergency Failover (Detach and Promote)
 
-When your primary region is actually down, the managed failover won't work because it needs the primary to be reachable. Instead, you detach the secondary cluster.
+When your primary region is actually down, use managed failover if your global database supports it. It is the recommended disaster recovery path because Aurora keeps the global database topology and automatically adds the old primary region back as a secondary when it recovers:
+
+```bash
+# Perform a managed failover to the secondary cluster, allowing possible data loss
+aws rds failover-global-cluster \
+  --global-cluster-identifier my-global-db \
+  --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789012:cluster:my-secondary-cluster \
+  --allow-data-loss \
+  --region eu-west-1
+```
+
+If managed failover isn't an option, such as when the primary and secondary clusters are running incompatible engine versions, detach the secondary cluster.
 
 ### Step 1: Detach the Secondary Cluster
 
@@ -100,7 +117,7 @@ aws rds describe-db-clusters \
 
 ### Step 3: Update Your Application
 
-Your application needs to point to the new cluster's endpoints. If you're using Route 53 CNAME records (which you should be), update them now:
+Your application needs to point to the new cluster's endpoints. If you're using Route 53 CNAME records instead of the Aurora global writer endpoint, update them now:
 
 ```bash
 # Update Route 53 to point to the new primary cluster
@@ -123,7 +140,7 @@ aws route53 change-resource-record-sets \
 
 ### Step 4: Clean Up and Rebuild
 
-Once the original primary region recovers, you'll want to rebuild the global database. Delete the old global database resource and create a new one from the now-primary cluster in the secondary region:
+Once the original primary region recovers, you'll want to rebuild the global database if you used the manual detach-and-promote process. After all clusters have been removed from the old global database, delete the old global database resource and create a new one from the now-primary cluster in the secondary region:
 
 ```bash
 # Delete the old global database (after primary region recovers)
@@ -139,7 +156,7 @@ aws rds create-global-cluster \
 
 ## Writing a Failover Runbook Script
 
-Having a manual process documented is good. Having a script ready to go is better. Here's a Python script that handles the emergency failover sequence:
+Having a manual process documented is good. Having a script ready to go is better. Here's a Python script that handles the manual emergency failover sequence:
 
 ```python
 import boto3
@@ -198,8 +215,8 @@ if __name__ == "__main__":
 
 You should be testing failover at least quarterly. Here's a testing checklist:
 
-1. **Verify replication lag** - Check that `AuroraGlobalDBReplicationLag` is under 1 second before starting
-2. **Run the planned failover** - Use managed failover for routine tests
+1. **Verify replication lag** - Check that `AuroraGlobalDBRPOLag` is under 1 second before starting. For older Aurora MySQL global databases before version 3.04.0 or 2.12.0, check `AuroraGlobalDBReplicationLag` instead.
+2. **Run the switchover** - Use switchover for routine tests
 3. **Validate application behavior** - Make sure reads and writes work against the new primary
 4. **Measure total downtime** - Track how long writes are unavailable
 5. **Fail back** - Switch back to the original region
@@ -242,6 +259,6 @@ def get_connection_with_retry(endpoint, max_retries=5):
 
 ## Wrapping Up
 
-Failover is something you hope you'll never need in production but absolutely must be prepared for. The managed planned failover is clean and data-safe - use it for testing and planned maintenance. Keep the emergency detach-and-promote process scripted and ready for when a region actually goes down.
+Failover is something you hope you'll never need in production but absolutely must be prepared for. The switchover path is clean and data-safe - use it for testing and planned maintenance. Use managed failover for disaster recovery when your global database supports it, and keep the emergency detach-and-promote process scripted as a fallback.
 
 The worst time to figure out your failover process is during an actual outage. Test early, test often, and make sure everyone on the team knows where the runbook lives. For more on building resilient Aurora setups, check out the guide on [Aurora Global Databases for multi-region](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view) deployments.
