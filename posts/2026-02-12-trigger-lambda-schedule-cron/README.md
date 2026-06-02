@@ -8,7 +8,9 @@ Description: Complete guide to running Lambda functions on a schedule using Even
 
 ---
 
-Cron jobs have been around forever, and serverless doesn't change the need for them. You still need to generate nightly reports, clean up stale data, check for expiring certificates, and send summary emails. The difference is that instead of maintaining a cron server, you use EventBridge (formerly CloudWatch Events) to trigger Lambda functions on a schedule. No servers to manage, no crontab to edit, and you only pay for the execution time.
+Cron jobs have been around forever, and serverless doesn't change the need for them. You still need to generate nightly reports, clean up stale data, check for expiring certificates, and send summary emails. The difference is that instead of maintaining a cron server, you use EventBridge to trigger Lambda functions on a schedule. No servers to manage, no crontab to edit, and you only pay for the execution time.
+
+These examples use EventBridge scheduled rules, which were formerly part of CloudWatch Events. AWS now labels scheduled rules as a legacy EventBridge feature and recommends EventBridge Scheduler for newer scheduling workflows.
 
 Let's set up scheduled Lambda functions using both rate expressions and cron expressions.
 
@@ -230,7 +232,23 @@ new events.Rule(this, 'EveningRule', {
 
 ### Last Day of the Month
 
-AWS cron doesn't support "last day of month" directly, but you can work around it in your Lambda code:
+AWS cron supports the `L` wildcard for "last day of the month":
+
+```typescript
+new events.Rule(this, 'LastDayRule', {
+  schedule: events.Schedule.cron({
+    minute: '0',
+    hour: '0',
+    day: 'L',
+    month: '*',
+    weekDay: '?',
+    year: '*',
+  }),
+  targets: [new targets.LambdaFunction(handler)],
+});
+```
+
+If you prefer a defensive check in code, you can also schedule the function daily and only do real work on the last day:
 
 ```javascript
 exports.handler = async (event) => {
@@ -248,7 +266,7 @@ exports.handler = async (event) => {
 };
 ```
 
-Schedule this to run daily, and it'll only do real work on the last day.
+Schedule this version to run daily, and it'll only do real work on the last day.
 
 ## Passing Input to Scheduled Functions
 
@@ -327,9 +345,9 @@ For more detailed monitoring approaches, see our guide on [debugging Lambda with
 
 ## Timezone Considerations
 
-EventBridge cron expressions use UTC. If you need a job to run at 9 AM Eastern time, you need to account for daylight saving time. During EST (UTC-5), schedule it for 14:00 UTC. During EDT (UTC-4), it should be 13:00 UTC.
+EventBridge scheduled rule cron expressions use UTC. If you need a job to run at 9 AM Eastern time with scheduled rules, you need to account for daylight saving time. During EST (UTC-5), schedule it for 14:00 UTC. During EDT (UTC-4), it should be 13:00 UTC.
 
-There's no automatic timezone adjustment. The simplest approach is to schedule the job for the earlier time and check the local time in your Lambda code:
+Scheduled rules don't have automatic timezone adjustment. EventBridge Scheduler can evaluate schedules in a named time zone, but if you stay with scheduled rules, the simplest approach is to schedule the job for the earlier time and check the local time in your Lambda code:
 
 ```javascript
 function isBusinessHours() {
