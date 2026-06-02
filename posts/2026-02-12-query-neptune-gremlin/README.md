@@ -28,6 +28,7 @@ Before running queries, you need a connection. Here's how to connect from a Pyth
 from gremlin_python.driver.driver_remote_connection import DriverRemoteConnection
 from gremlin_python.process.anonymous_traversal import traversal
 from gremlin_python.process.graph_traversal import __
+from gremlin_python.process.traversal import WithOptions
 
 # Connect to your Neptune cluster endpoint
 neptune_endpoint = 'wss://your-cluster.cluster-xxx.us-east-1.neptune.amazonaws.com:8182/gremlin'
@@ -87,13 +88,13 @@ Here are the fundamental query patterns you'll use constantly.
 
 ```python
 # Get all vertices with a specific label
-all_people = g.V().hasLabel('person').valueMap(True).toList()
+all_people = g.V().hasLabel('person').valueMap().with_(WithOptions.tokens).toList()
 
 # Find a specific vertex by property
-alice = g.V().has('person', 'name', 'Alice').valueMap(True).next()
+alice = g.V().has('person', 'name', 'Alice').valueMap().with_(WithOptions.tokens).next()
 
 # Get all edges from a vertex
-alice_relationships = g.V().has('person', 'name', 'Alice').outE().valueMap(True).toList()
+alice_relationships = g.V().has('person', 'name', 'Alice').outE().valueMap().with_(WithOptions.tokens).toList()
 
 # Find who Alice knows
 alice_friends = g.V().has('person', 'name', 'Alice').out('knows').values('name').toList()
@@ -153,10 +154,10 @@ fof_new = g.V().has('person', 'name', 'Alice') \
   .dedup() \
   .values('name').toList()
 
-# Find the shortest path between two people
+# Find a path between two people
 path = g.V().has('person', 'name', 'Alice') \
   .repeat(__.out('knows').simplePath()) \
-  .until(__.has('person', 'name', 'Diana')) \
+  .until(__.has('person', 'name', 'Charlie')) \
   .path() \
   .limit(1) \
   .toList()
@@ -167,6 +168,8 @@ path = g.V().has('person', 'name', 'Alice') \
 Gremlin handles aggregation differently than SQL, but it's quite powerful.
 
 ```python
+from gremlin_python.process.traversal import Order
+
 # Count people per city
 city_counts = g.V().hasLabel('person') \
   .groupCount().by('city').next()
@@ -222,7 +225,7 @@ Use `limit()` when you only need a subset of results. Neptune will stop traversi
 
 ```python
 # Only get the first 10 results instead of materializing everything
-g.V().hasLabel('person').limit(10).valueMap(True).toList()
+g.V().hasLabel('person').limit(10).valueMap().with_(WithOptions.tokens).toList()
 ```
 
 Avoid using `valueMap()` without filtering properties when vertices have many properties. Fetch only what you need.
