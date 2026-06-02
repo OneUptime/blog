@@ -16,9 +16,9 @@ SNS publishes several metrics to CloudWatch. Let's break down the ones that matt
 
 **NumberOfMessagesPublished**: Total messages published to a topic. This is your throughput indicator. If it drops unexpectedly, your producers might be having issues.
 
-**NumberOfNotificationsDelivered**: Messages successfully delivered to subscribers. Compare this against published messages to spot delivery problems.
+**NumberOfNotificationsDelivered**: Messages successfully delivered to subscribers. Compare this against your expected delivery count based on subscriber fanout to spot delivery problems.
 
-**NumberOfNotificationsFailed**: Failed delivery attempts. This is the most critical metric to alarm on. Any persistent failures mean messages are being lost.
+**NumberOfNotificationsFailed**: Failed delivery attempts. This is the most critical metric to alarm on. Any persistent failures mean messages might not be reaching subscribers.
 
 **PublishSize**: The size of published messages in bytes. Useful for tracking whether message sizes are creeping toward the 256 KB limit.
 
@@ -28,7 +28,7 @@ SNS publishes several metrics to CloudWatch. Let's break down the ones that matt
 
 Let's create alarms for the metrics that matter most. Start with delivery failures - that's the one you absolutely can't miss.
 
-This Terraform configuration creates a CloudWatch alarm that fires when SNS delivery failures exceed zero for 5 minutes.
+This Terraform configuration creates a CloudWatch alarm that fires when SNS delivery failures exceed zero for two consecutive 5-minute periods.
 
 ```hcl
 resource "aws_cloudwatch_metric_alarm" "sns_delivery_failures" {
@@ -75,65 +75,58 @@ resource "aws_cloudwatch_metric_alarm" "sns_publish_drop" {
 
 Notice the `treat_missing_data = "breaching"` setting. If CloudWatch isn't receiving any data points at all, we want the alarm to fire because that likely means zero messages are being published.
 
-## Monitoring Per-Subscriber Delivery
+## Monitoring Per-Topic Delivery
 
-SNS metrics can be filtered by protocol (HTTP, SQS, Lambda, etc.), which lets you see which delivery channels are having issues.
+SNS topic metrics can be filtered by topic name. For protocol-specific troubleshooting, use delivery status logs because the built-in topic metrics do not include a protocol dimension.
 
-This Python script checks delivery success by protocol for a specific topic.
+This Python script checks delivery success for a specific topic.
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 cloudwatch = boto3.client("cloudwatch")
 
 def get_delivery_stats(topic_name, hours=1):
-    """Get delivery stats per protocol for an SNS topic."""
-    end_time = datetime.utcnow()
+    """Get delivery stats for an SNS topic."""
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(hours=hours)
 
-    protocols = ["sqs", "lambda", "http", "https"]
+    delivered = cloudwatch.get_metric_statistics(
+        Namespace="AWS/SNS",
+        MetricName="NumberOfNotificationsDelivered",
+        Dimensions=[
+            {"Name": "TopicName", "Value": topic_name}
+        ],
+        StartTime=start_time,
+        EndTime=end_time,
+        Period=3600,
+        Statistics=["Sum"]
+    )
 
-    for protocol in protocols:
-        # Get delivered count
-        delivered = cloudwatch.get_metric_statistics(
-            Namespace="AWS/SNS",
-            MetricName="NumberOfNotificationsDelivered",
-            Dimensions=[
-                {"Name": "TopicName", "Value": topic_name},
-                {"Name": "Protocol", "Value": protocol}
-            ],
-            StartTime=start_time,
-            EndTime=end_time,
-            Period=3600,
-            Statistics=["Sum"]
-        )
+    failed = cloudwatch.get_metric_statistics(
+        Namespace="AWS/SNS",
+        MetricName="NumberOfNotificationsFailed",
+        Dimensions=[
+            {"Name": "TopicName", "Value": topic_name}
+        ],
+        StartTime=start_time,
+        EndTime=end_time,
+        Period=3600,
+        Statistics=["Sum"]
+    )
 
-        # Get failed count
-        failed = cloudwatch.get_metric_statistics(
-            Namespace="AWS/SNS",
-            MetricName="NumberOfNotificationsFailed",
-            Dimensions=[
-                {"Name": "TopicName", "Value": topic_name},
-                {"Name": "Protocol", "Value": protocol}
-            ],
-            StartTime=start_time,
-            EndTime=end_time,
-            Period=3600,
-            Statistics=["Sum"]
-        )
+    delivered_count = sum(
+        dp["Sum"] for dp in delivered["Datapoints"]
+    )
+    failed_count = sum(
+        dp["Sum"] for dp in failed["Datapoints"]
+    )
 
-        delivered_count = sum(
-            dp["Sum"] for dp in delivered["Datapoints"]
-        )
-        failed_count = sum(
-            dp["Sum"] for dp in failed["Datapoints"]
-        )
-
-        if delivered_count > 0 or failed_count > 0:
-            success_rate = delivered_count / (delivered_count + failed_count) * 100
-            print(f"{protocol}: {delivered_count} delivered, "
-                  f"{failed_count} failed ({success_rate:.1f}% success)")
+    if delivered_count > 0 or failed_count > 0:
+        success_rate = delivered_count / (delivered_count + failed_count) * 100
+        print(f"{topic_name}: {delivered_count} delivered, "
+              f"{failed_count} failed ({success_rate:.1f}% success)")
 
 get_delivery_stats("order-events")
 ```
@@ -142,7 +135,7 @@ get_delivery_stats("order-events")
 
 A dashboard gives you a single pane of glass for all your SNS metrics. Here's how to create one that covers the essential views.
 
-This CloudFormation snippet creates a dashboard with publish rate, delivery rate, and failure metrics.
+This CloudWatch dashboard body creates a dashboard with publish rate, delivery rate, and failure metrics.
 
 ```json
 {
@@ -200,7 +193,7 @@ aws cloudwatch put-dashboard \
 
 CloudWatch metrics tell you that deliveries failed, but they don't tell you why. Enable delivery status logging to get detailed failure reasons in CloudWatch Logs.
 
-This Terraform configuration enables delivery status logging for SQS and Lambda subscribers.
+This Terraform configuration enables delivery status logging for SQS, Lambda, and HTTP/S subscribers.
 
 ```hcl
 resource "aws_sns_topic" "order_events" {
@@ -216,7 +209,7 @@ resource "aws_sns_topic" "order_events" {
   lambda_failure_feedback_role_arn    = aws_iam_role.sns_logging.arn
   lambda_success_feedback_sample_rate = 100
 
-  # Enable delivery status logging for HTTP
+  # Enable delivery status logging for HTTP/S
   http_success_feedback_role_arn    = aws_iam_role.sns_logging.arn
   http_failure_feedback_role_arn    = aws_iam_role.sns_logging.arn
   http_success_feedback_sample_rate = 50  # Sample 50% of successes to save costs
@@ -264,7 +257,7 @@ Once enabled, you can search the logs for failure details.
 # Search for delivery failures in the last hour
 
 aws logs filter-log-events \
-  --log-group-name "sns/us-east-1/123456789/order-events/Failure" \
+  --log-group-name "sns/us-east-1/123456789/order-events" \
   --start-time $(date -d '1 hour ago' +%s)000 \
   --filter-pattern "FAILURE"
 ```
@@ -273,15 +266,15 @@ aws logs filter-log-events \
 
 Sometimes the built-in metrics aren't granular enough. You can create metric filters on the delivery status logs to extract custom metrics.
 
-This filter extracts a metric for HTTP delivery timeouts specifically.
+This filter extracts a metric for HTTP 500 responses specifically.
 
 ```bash
 aws logs put-metric-filter \
-  --log-group-name "sns/us-east-1/123456789/order-events/Failure" \
-  --filter-name "http-delivery-timeout" \
-  --filter-pattern '{ $.delivery.statusCode = "408" }' \
+  --log-group-name "sns/us-east-1/123456789/order-events" \
+  --filter-name "http-delivery-500" \
+  --filter-pattern '{ $.delivery.statusCode = 500 }' \
   --metric-transformations \
-    metricName=SNSHttpDeliveryTimeout,metricNamespace=Custom/SNS,metricValue=1
+    metricName=SNSHttpDelivery500,metricNamespace=Custom/SNS,metricValue=1
 ```
 
 ## Anomaly Detection
@@ -317,7 +310,7 @@ resource "aws_cloudwatch_metric_alarm" "sns_anomaly" {
     id          = "ad1"
     expression  = "ANOMALY_DETECTION_BAND(m1, 2)"
     label       = "Expected range"
-    return_data = true
+    return_data = false
   }
 }
 ```
