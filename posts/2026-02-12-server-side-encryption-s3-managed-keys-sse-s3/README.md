@@ -14,7 +14,7 @@ Every object in S3 should be encrypted at rest. It's not a nice-to-have anymore 
 
 When you upload an object with SSE-S3 encryption:
 
-1. S3 encrypts the object using AES-256
+1. S3 encrypts the object using 256-bit AES-GCM
 2. S3 generates a unique data key for each object
 3. The data key itself is encrypted with a root key that AWS manages
 4. The encrypted data key is stored as metadata alongside the object
@@ -51,8 +51,7 @@ aws s3api put-bucket-encryption \
       {
         "ApplyServerSideEncryptionByDefault": {
           "SSEAlgorithm": "AES256"
-        },
-        "BucketKeyEnabled": false
+        }
       }
     ]
   }'
@@ -148,11 +147,11 @@ aws s3api put-bucket-policy \
   --policy file://encryption-policy.json
 ```
 
-Note: With AWS's default encryption, the second statement (denying null encryption header) might not be necessary, but it's good defense-in-depth.
+Note: With AWS's default encryption, uploads without this header are still encrypted by the bucket default. Keep the second statement only if you want to require clients to send the SSE-S3 header explicitly.
 
 ## Step 4: Verify Existing Objects Are Encrypted
 
-If you have an existing bucket, some older objects might not be encrypted. Use S3 Inventory to find them.
+If you have an existing bucket, some older objects might not be encrypted. Use S3 Inventory to find them. Make sure the destination bucket policy allows S3 to write the inventory reports.
 
 ```bash
 # Set up inventory to check encryption status
@@ -217,7 +216,7 @@ for page in pages:
 print(f"\nTotal objects encrypted: {encrypted_count}")
 ```
 
-For millions of objects, use S3 Batch Operations instead of scripting it yourself. See our guide on [S3 Batch Operations](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view).
+For objects larger than 5 GB, or for millions of objects, use multipart copy or S3 Batch Operations instead of this simple script. See our guide on [S3 Batch Operations](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view).
 
 ## How SSE-S3 Encryption Works Under the Hood
 
@@ -225,7 +224,7 @@ For millions of objects, use S3 Batch Operations instead of scripting it yoursel
 sequenceDiagram
     participant Client
     participant S3
-    participant KeyMgmt as AWS Key Management
+    participant KeyMgmt as S3 Key Management
 
     Client->>S3: PutObject (with SSE-S3)
     S3->>KeyMgmt: Generate unique data key
@@ -272,7 +271,7 @@ s3.upload_file(
 
 Use S3 Storage Lens to continuously monitor the encryption status across all your buckets. It'll flag any buckets that don't have default encryption configured. Check out our guide on [S3 Storage Lens](https://oneuptime.com/blog/post/2026-02-12-s3-storage-lens-visibility-storage-usage/view) for setup details.
 
-You should also set up AWS Config rules to detect and auto-remediate buckets without encryption.
+You should also set up AWS Config rules to detect buckets without encryption, then add remediation separately if you need it.
 
 ```bash
 # AWS Config rule that checks for S3 bucket encryption
