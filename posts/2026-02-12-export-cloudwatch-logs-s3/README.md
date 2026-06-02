@@ -117,7 +117,7 @@ Use a Lambda function triggered by EventBridge to export logs daily:
 ```python
 import boto3
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logs_client = boto3.client('logs')
 
@@ -129,9 +129,9 @@ def handler(event, context):
         '/aws/lambda/order-processor',
     ]
 
-    yesterday = datetime.utcnow() - timedelta(days=1)
-    from_time = int(yesterday.replace(hour=0, minute=0, second=0).timestamp() * 1000)
-    to_time = int(yesterday.replace(hour=23, minute=59, second=59).timestamp() * 1000)
+    yesterday = datetime.now(timezone.utc) - timedelta(days=1)
+    from_time = int(yesterday.replace(hour=0, minute=0, second=0, microsecond=0).timestamp() * 1000)
+    to_time = int(yesterday.replace(hour=23, minute=59, second=59, microsecond=999000).timestamp() * 1000)
     date_prefix = yesterday.strftime('%Y/%m/%d')
 
     for log_group in log_groups:
@@ -185,7 +185,7 @@ graph LR
 aws firehose create-delivery-stream \
   --delivery-stream-name "cloudwatch-logs-to-s3" \
   --delivery-stream-type DirectPut \
-  --s3-destination-configuration '{
+  --extended-s3-destination-configuration '{
     "RoleARN": "arn:aws:iam::123456789012:role/FirehoseToS3Role",
     "BucketARN": "arn:aws:s3:::my-cloudwatch-log-exports",
     "Prefix": "streaming-logs/!{timestamp:yyyy/MM/dd}/",
@@ -194,9 +194,38 @@ aws firehose create-delivery-stream \
       "SizeInMBs": 64,
       "IntervalInSeconds": 300
     },
-    "CompressionFormat": "GZIP"
+    "CompressionFormat": "UNCOMPRESSED",
+    "ProcessingConfiguration": {
+      "Enabled": true,
+      "Processors": [
+        {
+          "Type": "Decompression",
+          "Parameters": [
+            {
+              "ParameterName": "CompressionFormat",
+              "ParameterValue": "GZIP"
+            }
+          ]
+        },
+        {
+          "Type": "CloudWatchLogProcessing",
+          "Parameters": [
+            {
+              "ParameterName": "DataMessageExtraction",
+              "ParameterValue": "true"
+            }
+          ]
+        },
+        {
+          "Type": "AppendDelimiterToRecord",
+          "Parameters": []
+        }
+      ]
+    }
   }'
 ```
+
+CloudWatch Logs sends subscription records to Firehose in gzip-compressed format. The processing configuration above decompresses those records, extracts the original log event messages, and writes each message on its own line for downstream tools.
 
 ### Create the subscription filter
 
@@ -214,7 +243,7 @@ An empty filter pattern (`""`) sends all log events. You can add a pattern to on
 
 ## Querying Exported Logs with Athena
 
-Once your logs are in S3, you can query them with Athena. Create a table definition that matches your log format:
+Once your logs are in S3, you can query them with Athena. If your Firehose stream extracts the original log event messages as shown above, create a table definition that matches your log format:
 
 ```sql
 CREATE EXTERNAL TABLE cloudwatch_logs (
