@@ -39,10 +39,10 @@ An init duration of 6.8 seconds means the first user waits almost 7 seconds for 
 
 ## How SnapStart Works
 
-SnapStart uses the CRaC (Coordinated Restore at Checkpoint) mechanism. Here's the process:
+SnapStart uses Firecracker microVM snapshots, and the Java runtime exposes CRaC (Coordinated Restore at Checkpoint) hooks so your code can run before the snapshot and after restore. Here's the process:
 
 1. When you publish a function version, Lambda initializes your function (loads classes, runs init code)
-2. Lambda takes a Firecracker microVM snapshot of the entire execution environment - memory, CPU state, everything
+2. Lambda takes a Firecracker microVM snapshot of the initialized execution environment's memory and disk state
 3. When a cold start happens, Lambda restores from the snapshot instead of initializing from scratch
 
 The restore takes about 100-200 milliseconds instead of seconds. That's a 10-50x improvement.
@@ -120,16 +120,16 @@ Resources:
 
 ## CRaC Hooks for Proper Snapshot Handling
 
-Some resources don't survive a snapshot/restore cycle well. Network connections, file handles, and random number generators need to be refreshed after restore. The CRaC API provides hooks for this.
+Some resources don't survive a snapshot/restore cycle well. Network connections, file handles, and values that depend on uniqueness may need to be refreshed after restore. The CRaC API provides hooks for this.
 
 Add the CRaC dependency to your project:
 
 ```xml
 <!-- pom.xml -->
 <dependency>
-    <groupId>io.github.crac</groupId>
-    <artifactId>org-crac</artifactId>
-    <version>0.1.3</version>
+    <groupId>org.crac</groupId>
+    <artifactId>crac</artifactId>
+    <version>1.4.0</version>
 </dependency>
 ```
 
@@ -194,12 +194,12 @@ public class OrderHandler implements RequestHandler<APIGatewayProxyRequestEvent,
 Not everything needs hooks. Here's a guide:
 
 **Needs beforeCheckpoint/afterRestore:**
-- Database connections (JDBC, DynamoDB clients)
+- Database connections (JDBC, for example)
 - HTTP clients with connection pools
 - gRPC channels
 - File handles
 - Custom caches with TTL-based expiration
-- Random number generators (security-sensitive)
+- Values that depend on uniqueness, such as generated IDs or random seeds
 
 **Usually fine without hooks:**
 - Static configuration values
@@ -207,7 +207,7 @@ Not everything needs hooks. Here's a guide:
 - Pre-computed lookup tables
 - Immutable data structures
 
-The AWS SDK v2 for Java handles SnapStart automatically - you generally don't need CRaC hooks for AWS service clients if you're using the latest SDK.
+The AWS SDK v2 for Java handles most SnapStart connection and credential behavior automatically - you generally don't need CRaC hooks for AWS service clients if you're using a current SDK.
 
 ## Handling Uniqueness After Restore
 
@@ -261,6 +261,7 @@ REPORT RequestId: abc-123
   Memory Size: 512 MB
   Max Memory Used: 178 MB
   Restore Duration: 156.78 ms    <-- Much faster than Init Duration
+  Billed Restore Duration: 12.34 ms
 ```
 
 That 156 ms restore is a massive improvement over the 6+ second init duration without SnapStart.
@@ -276,7 +277,7 @@ Use the `aws-serverless-java-container` library:
 <dependency>
     <groupId>com.amazonaws.serverless</groupId>
     <artifactId>aws-serverless-java-container-springboot3</artifactId>
-    <version>2.0.0</version>
+    <version>2.1.5</version>
 </dependency>
 ```
 
@@ -328,12 +329,13 @@ With SnapStart, a Spring Boot Lambda function that took 8 seconds to cold start 
 
 SnapStart has some restrictions to be aware of:
 
-- Only available for Java 11, Java 17, and Java 21 runtimes
-- Only works with x86_64 architecture (not ARM64/Graviton)
+- For Java functions, only available for Java 11 and later managed runtimes
+- Also available for Python 3.12 and later, and .NET 8 and later
 - Not compatible with provisioned concurrency
 - Not compatible with EFS mounts
 - Not compatible with ephemeral storage greater than 512 MB
-- The snapshot must be under 250 MB (same as function size limit)
+- Not compatible with Amazon S3 mounted files
+- Not supported for OS-only runtimes or container images
 
 ## Wrapping Up
 
