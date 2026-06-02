@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudFront, S3, Multi-Region, High Availability, Content Delivery
 
-Description: Learn how to configure CloudFront with S3 Multi-Region Access Points for automatic failover and lowest-latency routing to replicated S3 buckets.
+Description: Learn how to configure CloudFront with S3 Multi-Region Access Points for lowest-latency routing and failover controls with replicated S3 buckets.
 
 ---
 
-Serving content from a single S3 bucket in one region works fine until that region has issues. S3 Multi-Region Access Points (MRAP) give you a single endpoint that automatically routes requests to the closest healthy S3 bucket across multiple regions. Combine that with CloudFront, and you get a content delivery architecture that is both fast and resilient.
+Serving content from a single S3 bucket in one region works fine until that region has issues. S3 Multi-Region Access Points (MRAP) give you a single endpoint that routes requests to the closest active S3 bucket across multiple regions. Combine that with CloudFront, and you get a content delivery architecture that is both fast and resilient.
 
 ## How It Works
 
-S3 Multi-Region Access Points provide a global endpoint that routes to the nearest S3 bucket based on network latency. When you pair this with CloudFront, cache misses get served from the closest bucket, and if one region fails, traffic automatically routes to the next closest healthy bucket.
+S3 Multi-Region Access Points provide a global endpoint that routes to the nearest active S3 bucket based on network latency. When you pair this with CloudFront, cache misses get served from the closest bucket, and you can use MRAP routing controls to shift traffic away from a region during failover scenarios.
 
 ```mermaid
 graph TD
@@ -62,7 +62,7 @@ done
 
 ## Step 2: Configure Cross-Region Replication
 
-Set up replication so content uploaded to any bucket is replicated to all others.
+Set up replication so content uploaded to the primary bucket is replicated to the others.
 
 ```bash
 # Create an IAM role for replication
@@ -116,7 +116,7 @@ aws iam put-role-policy \
 Configure replication rules on the primary bucket:
 
 ```bash
-# Set up bi-directional replication from us-east-1 to other regions
+# Set up replication from us-east-1 to other regions
 aws s3api put-bucket-replication \
     --bucket my-content-us-east-1 \
     --replication-configuration '{
@@ -183,8 +183,8 @@ aws s3control describe-multi-region-access-point-operation \
     --request-token-arn "arn:aws:s3:us-west-2:123456789012:async-request/mrap/create/abc123"
 ```
 
-Once created, the MRAP endpoint looks like:
-`my-content-mrap.mrap.accesspoint.s3-global.amazonaws.com`
+Once created, use the generated MRAP alias for the endpoint. It looks like:
+`mfzwi23gnjvgw.mrap.accesspoint.s3-global.amazonaws.com`
 
 ## Step 4: Configure CloudFront
 
@@ -198,9 +198,9 @@ aws cloudfront create-origin-access-control \
     --origin-access-control-config '{
         "Name": "mrap-oac",
         "Description": "OAC for S3 Multi-Region Access Point",
-        "SigningProtocol": "sigv4",
+        "SigningProtocol": "sigv4a",
         "SigningBehavior": "always",
-        "OriginAccessControlOriginType": "s3"
+        "OriginAccessControlOriginType": "s3mrap"
     }'
 ```
 
@@ -218,7 +218,7 @@ aws cloudfront create-distribution \
             "Items": [
                 {
                     "Id": "mrap-origin",
-                    "DomainName": "my-content-mrap.mrap.accesspoint.s3-global.amazonaws.com",
+                    "DomainName": "mfzwi23gnjvgw.mrap.accesspoint.s3-global.amazonaws.com",
                     "OriginAccessControlId": "OAC_ID_HERE",
                     "S3OriginConfig": {
                         "OriginAccessIdentity": ""
@@ -245,9 +245,17 @@ aws cloudfront create-distribution \
 
 ## Step 5: Configure S3 Bucket Policies
 
-Each bucket needs a policy allowing CloudFront to access objects through the MRAP:
+The MRAP and each bucket need policies allowing CloudFront to access objects through the MRAP. Use the generated MRAP alias in the MRAP ARN:
 
 ```bash
+# Apply a Multi-Region Access Point policy
+aws s3control put-multi-region-access-point-policy \
+    --account-id 123456789012 \
+    --details '{
+        "Name": "my-content-mrap",
+        "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Sid\":\"AllowCloudFrontViaMRAP\",\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"cloudfront.amazonaws.com\"},\"Action\":\"s3:GetObject\",\"Resource\":\"arn:aws:s3::123456789012:accesspoint/mfzwi23gnjvgw.mrap/object/*\",\"Condition\":{\"StringEquals\":{\"aws:SourceArn\":\"arn:aws:cloudfront::123456789012:distribution/E1234567890ABC\"}}}]}"
+    }'
+
 # Apply bucket policy to each bucket
 for BUCKET in my-content-us-east-1 my-content-eu-west-1 my-content-ap-southeast-1; do
     aws s3api put-bucket-policy \
@@ -281,9 +289,10 @@ MRAP supports active-active and active-passive routing configurations:
 
 ```bash
 # Configure active-active routing (all regions active)
-aws s3control put-multi-region-access-point-routing-configuration \
+aws s3control submit-multi-region-access-point-routes \
     --account-id 123456789012 \
-    --mrap "arn:aws:s3::123456789012:accesspoint/my-content-mrap.mrap" \
+    --mrap "arn:aws:s3::123456789012:accesspoint/mfzwi23gnjvgw.mrap" \
+    --region us-west-2 \
     --route-updates '[
         {
             "Bucket": "my-content-us-east-1",
@@ -307,9 +316,10 @@ For failover scenarios, you can set a region to 0% to stop routing traffic there
 
 ```bash
 # Failover: remove us-east-1 from active routing
-aws s3control put-multi-region-access-point-routing-configuration \
+aws s3control submit-multi-region-access-point-routes \
     --account-id 123456789012 \
-    --mrap "arn:aws:s3::123456789012:accesspoint/my-content-mrap.mrap" \
+    --mrap "arn:aws:s3::123456789012:accesspoint/mfzwi23gnjvgw.mrap" \
+    --region us-west-2 \
     --route-updates '[
         {
             "Bucket": "my-content-us-east-1",
@@ -360,6 +370,7 @@ aws cloudwatch get-metric-statistics \
 ```bash
 # Monitor cache hit ratio to ensure CloudFront is caching effectively
 aws cloudwatch get-metric-statistics \
+    --region us-east-1 \
     --namespace AWS/CloudFront \
     --metric-name CacheHitRate \
     --dimensions Name=DistributionId,Value=E1234567890ABC \
@@ -381,4 +392,4 @@ However, the latency improvement for global users and the availability improveme
 
 ## Conclusion
 
-CloudFront with S3 Multi-Region Access Points gives you the best of both worlds: CloudFront edge caching for fast content delivery and multi-region S3 for origin resilience. Users always get content from the closest location, and if an entire AWS region goes down, the MRAP automatically routes to the next closest healthy bucket. Set up replication, create the MRAP, point CloudFront at it, and you have a content delivery architecture that handles regional failures gracefully.
+CloudFront with S3 Multi-Region Access Points gives you the best of both worlds: CloudFront edge caching for fast content delivery and multi-region S3 for origin resilience. Users get content from the closest active location, and if you need to shift traffic away from a region, MRAP routing controls let you route requests to the remaining buckets. Set up replication, create the MRAP, point CloudFront at it, and you have a content delivery architecture that handles regional failures gracefully.
