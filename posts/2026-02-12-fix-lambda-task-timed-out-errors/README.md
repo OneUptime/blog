@@ -47,7 +47,7 @@ Set your timeout to a reasonable value - maybe 2-3x what the function normally t
 
 ## Fix 2: Increase Memory (and CPU)
 
-This is the fix people don't realize. Lambda allocates CPU power proportionally to memory. A 128 MB function gets a fraction of a CPU core. A 1024 MB function gets a full core. A 1769 MB function gets a full vCPU.
+This is the fix people don't realize. Lambda allocates CPU power proportionally to memory. A 128 MB function gets much less CPU than a 1024 MB function. At 1769 MB, a function gets the equivalent of one vCPU.
 
 If your function is CPU-bound (processing data, parsing JSON, compressing files), increasing memory can dramatically speed it up:
 
@@ -126,9 +126,9 @@ aws rds describe-db-proxies \
   --query 'DBProxies[*].{Name:DBProxyName,Endpoint:Endpoint}'
 ```
 
-## Fix 4: Fix DNS Resolution in VPC
+## Fix 4: Fix VPC Internet Access
 
-If your Lambda is in a VPC and making external API calls, DNS resolution can add significant latency. Each cold start needs to resolve DNS names, which goes through the VPC's DNS settings.
+If your Lambda is in a VPC and making external API calls, missing outbound internet access is a common timeout culprit. By default, Lambda functions run in a Lambda-managed VPC with internet access. When you attach a function to subnets in your own VPC, those subnets need a route for outbound traffic.
 
 Check if your function is in a VPC:
 
@@ -139,20 +139,7 @@ aws lambda get-function-configuration \
   --query 'VpcConfig.{SubnetIds:SubnetIds,SecurityGroupIds:SecurityGroupIds}'
 ```
 
-If it's in a VPC and making external calls, make sure you have a NAT Gateway (for internet access) and consider caching DNS results:
-
-```python
-import socket
-import os
-
-# Cache DNS resolution results
-_dns_cache = {}
-
-def cached_dns_resolve(hostname):
-    if hostname not in _dns_cache:
-        _dns_cache[hostname] = socket.gethostbyname(hostname)
-    return _dns_cache[hostname]
-```
+If it's in a VPC and making external calls, make sure the function uses private subnets with a route to a NAT Gateway for IPv4 internet access. Also check that the security group and network ACL allow outbound traffic to the dependency.
 
 ## Fix 5: Use Async Operations
 
@@ -183,8 +170,7 @@ async def fetch_data():
     return results
 
 def lambda_handler(event, context):
-    loop = asyncio.get_event_loop()
-    results = loop.run_until_complete(fetch_data())
+    results = asyncio.run(fetch_data())
     return {'statusCode': 200}
 ```
 
@@ -235,7 +221,7 @@ def lambda_handler(event, context):
 
 ## Diagnosing Timeouts with X-Ray
 
-AWS X-Ray can show you exactly where time is being spent in your function:
+AWS X-Ray can help show where time is being spent in your function, especially when downstream calls are instrumented:
 
 ```bash
 # Enable X-Ray tracing on your function
@@ -248,12 +234,12 @@ Then check the X-Ray console to see a breakdown of time spent in each service ca
 
 ## Monitoring and Alerting
 
-Set up CloudWatch alarms for Lambda timeouts so you know about them immediately:
+Set up CloudWatch alarms for Lambda errors so you know about timeouts and other failures immediately:
 
 ```bash
 # Create an alarm for Lambda errors (including timeouts)
 aws cloudwatch put-metric-alarm \
-  --alarm-name "my-function-timeouts" \
+  --alarm-name "my-function-errors" \
   --metric-name Errors \
   --namespace AWS/Lambda \
   --statistic Sum \
