@@ -10,7 +10,7 @@ Description: A practical guide to implementing graceful shutdown in AWS Lambda f
 
 Lambda functions are ephemeral by design. AWS can freeze, thaw, or terminate your execution environment at any time. When a function instance is about to be shut down, you often have resources that need cleanup: database connections to close, buffered data to flush, metrics to send, or temporary files to remove.
 
-Without graceful shutdown handling, these cleanup tasks simply do not happen. Database connection pools leak, metrics get lost, and buffered data vanishes. Lambda's runtime extensions API provides a mechanism to hook into the shutdown lifecycle and run cleanup code before the environment is destroyed.
+Without graceful shutdown handling, these cleanup tasks may not happen. Database connection pools can remain open until the backend times them out, metrics can get lost, and buffered data can vanish. Lambda's Extensions API provides a mechanism to hook into the shutdown lifecycle and run cleanup code before the environment is destroyed.
 
 In this guide, you will learn how graceful shutdown works in Lambda, how to implement it in different runtimes, and what you can realistically accomplish in the shutdown window.
 
@@ -29,13 +29,13 @@ stateDiagram-v2
 
 - **Init**: Your function code is loaded and initialized. This is where global variables are set up, connections are opened, and extensions are registered.
 - **Invoke**: Your handler function runs. This can happen many times on the same execution environment.
-- **Shutdown**: Lambda is about to destroy the execution environment. Extensions and the runtime get a chance to clean up.
+- **Shutdown**: Lambda is about to destroy the execution environment. Registered extensions and the runtime get a limited chance to clean up.
 
-The shutdown phase is where graceful shutdown logic runs. You get up to 2 seconds (or 300ms for functions with 128MB memory) to complete cleanup tasks.
+The shutdown phase is where graceful shutdown logic runs. The shutdown duration depends on the extensions configured for the function: 0ms with no registered extensions, 500ms with an internal extension, and up to 2 seconds when one or more external extensions are registered. For a function with an external extension, Lambda reserves up to 300ms for the runtime process and allocates the remaining shutdown time to external extensions.
 
 ## Using SIGTERM in Lambda
 
-When Lambda is about to shut down an execution environment, it sends a SIGTERM signal to your function process. You can register a signal handler to catch this and run cleanup code.
+For a function with a registered external extension, when Lambda is about to shut down an execution environment, it sends a SIGTERM signal to your function process and then sends a SHUTDOWN event to each registered external extension. You can register a signal handler to catch this and run cleanup code. Without a registered extension, Lambda does not provide a shutdown window for function code.
 
 ### Node.js Implementation
 
@@ -127,6 +127,8 @@ export const handler = async (event) => {
 ```
 
 ### Python Implementation
+
+The Python example assumes a runtime version that supports Lambda graceful shutdown through SIGTERM, such as Python 3.12.
 
 ```python
 # handler.py - Lambda handler with graceful shutdown
@@ -238,16 +240,16 @@ The shutdown phase gives you a limited window. Here is what is realistic:
 |------|-----------|-------|
 | Close database connections | Yes | Usually completes in milliseconds |
 | Flush buffered metrics | Yes | Keep buffers small for fast flushing |
-| Send final log entries | Yes | CloudWatch agent handles this |
+| Send final log entries | Yes | Lambda log delivery handles this |
 | Write to S3 | Risky | Small objects are fine, large uploads may timeout |
 | Complex HTTP calls | Risky | Keep it simple and fast |
-| Database transactions | No | Not enough time for complex queries |
+| Database transactions | Risky | Only very small, bounded operations are realistic |
 
 The shutdown window is not guaranteed to be long. Keep your cleanup fast and essential.
 
 ## Enabling Lambda Extensions for Enhanced Shutdown
 
-Lambda Extensions run as separate processes alongside your function. They have their own shutdown hook and can perform cleanup tasks independently.
+External Lambda Extensions run as separate processes alongside your function. They have their own shutdown hook and can perform cleanup tasks independently.
 
 ```bash
 # Extensions receive their own SHUTDOWN event
@@ -255,10 +257,10 @@ Lambda Extensions run as separate processes alongside your function. They have t
 
 # INIT phase: Extension registers
 # INVOKE phase: Extension runs alongside handler
-# SHUTDOWN phase: Extension gets up to 2 seconds for cleanup
+# SHUTDOWN phase: The function and extensions share the configured shutdown window
 ```
 
-If your cleanup needs are more complex, consider writing a Lambda Extension that handles resource cleanup. Extensions get their own 2-second shutdown window, separate from the function runtime.
+If your cleanup needs are more complex, consider writing a Lambda Extension that handles resource cleanup. With one or more external extensions, the total shutdown phase can run for up to 2 seconds. Lambda reserves a short portion of that time for the runtime process and allocates the remainder to external extensions.
 
 ## Monitoring Shutdown Behavior
 
@@ -274,7 +276,7 @@ You should verify that your graceful shutdown logic actually runs. Add logging t
 
 If you do not see shutdown logs, your function environments may not be getting recycled. This is normal for functions under steady load - Lambda keeps environments warm as long as they are needed.
 
-To force a shutdown for testing, update your function configuration (like changing an environment variable). This causes Lambda to create new environments and shut down old ones.
+To trigger shutdown behavior for testing in AWS, update your function configuration (like changing an environment variable). This can cause Lambda to create new environments and shut down old ones.
 
 ## Common Patterns
 
@@ -344,4 +346,4 @@ For more Lambda best practices, see our guide on [configuring Lambda reserved vs
 
 ## Wrapping Up
 
-Graceful shutdown is one of those things that separates production-quality Lambda functions from prototypes. It is simple to implement - just register a SIGTERM handler and clean up your resources. The key is keeping your cleanup fast and focused on the essentials: close connections, flush buffers, and exit. Do not try to fit complex operations into the shutdown window. If you need more sophisticated cleanup, look into Lambda Extensions, which give you an independent shutdown lifecycle.
+Graceful shutdown is one of those things that separates production-quality Lambda functions from prototypes. When you have a registered external extension, it is simple to implement - register a SIGTERM handler and clean up your resources. The key is keeping your cleanup fast and focused on the essentials: close connections, flush buffers, and exit. Do not try to fit complex operations into the shutdown window. If you need more sophisticated cleanup, look into Lambda Extensions, which give you access to the shutdown lifecycle.
