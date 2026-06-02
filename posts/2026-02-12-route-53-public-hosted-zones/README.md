@@ -23,7 +23,7 @@ aws route53 create-hosted-zone \
   --hosted-zone-config Comment="Production hosted zone for example.com"
 ```
 
-The `caller-reference` must be unique for each create request. Using a timestamp ensures uniqueness. If you accidentally run the command twice with the same caller reference, Route 53 returns the existing zone rather than creating a duplicate.
+The `caller-reference` must be unique for each create request. Using a timestamp ensures uniqueness. If you accidentally run the command twice with the same caller reference, Route 53 returns a `HostedZoneAlreadyExists` error rather than creating a duplicate.
 
 The output gives you the hosted zone ID and four name server records. These are crucial - you'll need them to delegate the domain to Route 53.
 
@@ -44,7 +44,7 @@ aws route53 get-hosted-zone \
 
 ## Delegating Your Domain
 
-After creating the hosted zone, you need to update your domain registrar to use Route 53's name servers. If your domain is registered with Route 53 (see https://oneuptime.com/blog/post/2026-02-12-register-domain-with-route-53/view), this happens automatically. Otherwise, log into your registrar and replace the existing name servers with the four Route 53 name servers.
+After creating the hosted zone, you need to update your domain registrar to use Route 53's name servers. If you registered a new domain with Route 53 and use the hosted zone Route 53 created during registration (see https://oneuptime.com/blog/post/2026-02-12-register-domain-with-route-53/view), this happens automatically. If you create a replacement hosted zone for a Route 53-registered domain, update the registered domain to use the new hosted zone's name servers. Otherwise, log into your registrar and replace the existing name servers with the four Route 53 name servers.
 
 This delegation change can take up to 48 hours to propagate, though it usually happens within a few hours. During the transition period, some DNS resolvers will use the old name servers and some will use the new ones.
 
@@ -270,9 +270,9 @@ Lower TTLs on your records before the migration (set them to 60-300 seconds). Th
 
 ## Costs
 
-Route 53 public hosted zones cost $0.50 per month per zone. DNS queries are billed at $0.40 per million for the first billion queries, then cheaper after that. Alias queries to AWS resources (ALBs, CloudFront, S3) are free.
+Route 53 public hosted zones cost $0.50 per month per zone for the first 25 hosted zones, then $0.10 per month for additional hosted zones. DNS queries are billed at $0.40 per million for the first billion queries, then cheaper after that. Alias queries to AWS resources (ALBs, CloudFront, S3) are free.
 
-For most applications, Route 53 costs are negligible. But if you have thousands of hosted zones (maybe you're a SaaS provider with custom domains for each customer), those $0.50/month charges add up.
+For most applications, Route 53 costs are negligible. But if you have thousands of hosted zones (maybe you're a SaaS provider with custom domains for each customer), those monthly hosted zone charges add up.
 
 ## Best Practices
 
