@@ -8,7 +8,7 @@ Description: Diagnose and resolve ECS OutOfMemoryError issues including containe
 
 ---
 
-When an ECS task gets killed with an OutOfMemoryError (OOM), it means the container tried to use more memory than it was allowed. The Linux kernel's OOM killer steps in and terminates the process. In ECS, this usually shows up as an exit code 137 or a clear OOM error message in the task's stopped reason.
+When an ECS task gets killed with an OutOfMemoryError (OOM), it usually means the container tried to use more memory than it was allowed, or it hit a host or operating system memory constraint. The Linux kernel's OOM killer steps in and terminates the process. In ECS, this usually shows up as an exit code 137 or a clear OOM error message in the task's stopped reason.
 
 This is one of the more common production issues with containerized applications, and getting the memory configuration right requires understanding how ECS, Docker, and your application all interact.
 
@@ -80,11 +80,11 @@ aws cloudwatch get-metric-statistics \
     --statistics Maximum Average
 ```
 
-If memory utilization consistently approaches 100% before the OOM kill, the container simply needs more memory. If it spikes suddenly, you may have a memory leak.
+If memory utilization consistently approaches 100% before the OOM kill, the container simply needs more memory. If it spikes suddenly, you may have a workload-driven allocation spike or a memory leak.
 
 ## Java Applications and JVM Heap
 
-Java applications are the most common culprit for OOM kills in containers because the JVM allocates a heap that can easily exceed container limits. Modern JVMs are container-aware, but you still need to configure them properly.
+Java applications are a common culprit for OOM kills in containers because the JVM allocates a heap that can easily exceed container limits. Modern JVMs are container-aware, but you still need to configure them properly.
 
 ```dockerfile
 # Set JVM to respect container memory limits
@@ -122,7 +122,7 @@ Total:               ~1024 MB
 
 ## Node.js Memory Limits
 
-Node.js has its own default heap limit (about 1.5 GB on 64-bit systems). If your container limit is lower, Node will try to allocate more memory than available:
+Node.js has its own V8 heap limit, and the default can be higher than a small container's memory budget. If your container limit is lower, Node may try to allocate more memory than available:
 
 ```dockerfile
 FROM node:20-slim
@@ -139,7 +139,7 @@ Set `--max-old-space-size` to about 75-80% of your container's memory limit.
 
 ## Python Memory Issues
 
-Python doesn't have a built-in memory limit, but it's prone to memory leaks through circular references and large data structures:
+Python doesn't have a built-in memory limit, but applications can still leak memory through retained references, unbounded caches, native extensions, and large data structures:
 
 ```python
 import tracemalloc
@@ -157,7 +157,7 @@ def log_memory_usage():
     for stat in top_stats[:10]:
         print(f"  {stat}")
 
-# Force garbage collection for circular references
+# Force a garbage collection cycle while debugging
 gc.collect()
 ```
 
@@ -199,12 +199,16 @@ Fargate has specific CPU/memory combinations. You can't set arbitrary values:
 | 1024 | 2048 - 8192 (in 1024 increments) |
 | 2048 | 4096 - 16384 (in 1024 increments) |
 | 4096 | 8192 - 30720 (in 1024 increments) |
+| 8192 | 16384 - 61440 (in 4096 increments) |
+| 16384 | 32768 - 122880 (in 8192 increments) |
+
+The 8192 and 16384 CPU options require Linux platform version 1.4.0 or later.
 
 Pick the right combination for your workload.
 
 ## Detecting Memory Leaks
 
-If your container gradually uses more memory over time until it's killed, you have a memory leak. Set up monitoring to track memory over time:
+If your container gradually uses more memory over time until it's killed, you likely have a memory leak or unbounded cache growth. Set up monitoring to track memory over time:
 
 ```python
 # Flask example: add a memory usage endpoint
