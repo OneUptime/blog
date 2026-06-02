@@ -8,7 +8,7 @@ Description: Step-by-step guide to integrating AWS IAM Identity Center with Micr
 
 ---
 
-If your organization uses Azure AD (now called Microsoft Entra ID) for identity management, integrating it with AWS IAM Identity Center means your users can access AWS accounts using their existing Microsoft credentials. No separate AWS passwords, no duplicate accounts, and when someone leaves the company, disabling their Azure AD account automatically revokes their AWS access.
+If your organization uses Azure AD (now called Microsoft Entra ID) for identity management, integrating it with AWS IAM Identity Center means your users can access AWS accounts using their existing Microsoft credentials. No separate AWS passwords, no duplicate accounts, and when someone leaves the company, disabling their Azure AD account prevents new AWS sign-ins and provisioning can remove their AWS access.
 
 This guide covers the full integration - SAML federation for authentication and SCIM for automatic user provisioning.
 
@@ -19,7 +19,7 @@ After this integration:
 - Users sign into AWS using their Azure AD credentials
 - Azure AD MFA applies to AWS access automatically
 - Users and groups sync automatically from Azure AD to Identity Center
-- Disabling a user in Azure AD disables their AWS access
+- Disabling a user in Azure AD prevents new AWS sign-ins and can deprovision their AWS access
 - Conditional Access policies from Azure AD apply to AWS logins
 
 ```mermaid
@@ -55,13 +55,13 @@ In the Azure AD enterprise application:
 1. Go to "Single sign-on" in the left menu
 2. Select "SAML"
 3. Edit the "Basic SAML Configuration":
-   - **Identifier (Entity ID)**: `https://us-east-1.signin.aws.amazon.com/saml` (replace region)
-   - **Reply URL (ACS URL)**: Get this from IAM Identity Center settings
-   - **Sign on URL**: Your IAM Identity Center portal URL (e.g., `https://my-company.awsapps.com/start`)
+   - **Identifier (Entity ID)**: Upload the IAM Identity Center service provider metadata file, or use the Issuer URL from IAM Identity Center (for example, `https://us-east-1.signin.aws.amazon.com/platform/saml/EXAMPLE`)
+   - **Reply URL (ACS URL)**: Upload the IAM Identity Center service provider metadata file, or use the ACS URL from IAM Identity Center (for example, `https://us-east-1.signin.aws.amazon.com/platform/saml/acs/EXAMPLE`)
+   - **Sign on URL**: The AWS access portal sign-in URL from IAM Identity Center (for example, `https://portal.sso.us-east-1.amazonaws.com/saml/assertion/EXAMPLE`)
 
 4. Under "Attributes & Claims", configure:
-   - Required claim: `Subject` -> `user.userprincipalname`
-   - Add claim: `https://aws.amazon.com/SAML/Attributes/SessionDuration` -> `28800`
+   - Required claim: `Subject` -> `user.userprincipalname` (or the Entra attribute that matches the IAM Identity Center username)
+   - Keep the default gallery application claims unless you use IAM Identity Center attributes for access control
 
 5. Download the **Federation Metadata XML** file from the SAML Signing Certificate section
 
@@ -81,8 +81,8 @@ Update the Azure AD SAML configuration with these values:
 ```text
 # Values to copy from IAM Identity Center to Azure AD
 
-ACS URL:    https://us-east-1.signin.aws.amazon.com/saml (from Identity Center)
-Issuer:     https://us-east-1.signin.aws.amazon.com/saml (from Identity Center)
+ACS URL:    https://us-east-1.signin.aws.amazon.com/platform/saml/acs/EXAMPLE (from Identity Center)
+Issuer:     https://us-east-1.signin.aws.amazon.com/platform/saml/EXAMPLE (from Identity Center)
 ```
 
 ## Step 4: Test SAML Sign-On
@@ -141,7 +141,7 @@ Decide which users and groups to sync:
 3. Go to "Users and groups" in the enterprise application
 4. Add the Azure AD groups you want to sync to AWS
 
-This approach gives you explicit control over who gets AWS access. Only users in the assigned groups will be provisioned.
+This approach gives you explicit control over who gets AWS access. Only assigned users and direct members of assigned groups will be provisioned.
 
 ```bash
 # After provisioning syncs, verify users exist in Identity Center
@@ -246,14 +246,14 @@ SCIM provisioning runs on a schedule (roughly every 40 minutes). Force a sync:
 
 ## Monitoring the Integration
 
-Set up monitoring for authentication failures:
+Set up monitoring for IAM Identity Center sign-in events:
 
 ```bash
-# Search CloudTrail for failed SSO authentications
+# Search CloudTrail for recent IAM Identity Center sign-ins
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=EventName,AttributeValue=Federate \
+  --lookup-attributes AttributeKey=EventName,AttributeValue=UserAuthentication \
   --max-items 20 \
-  --query 'Events[*].{Time:EventTime,User:Username,Error:Resources[0].ResourceName}'
+  --query 'Events[*].{Time:EventTime,User:Username,Summary:CloudTrailEvent}'
 ```
 
 Also monitor the Azure AD sign-in logs for failed AWS access attempts. If you're using OneUptime for monitoring, you can set up alerts on both the Azure AD and AWS sides to catch authentication issues before users report them.
