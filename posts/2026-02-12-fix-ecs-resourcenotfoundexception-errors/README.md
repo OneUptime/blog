@@ -8,7 +8,7 @@ Description: Troubleshoot and resolve ECS ResourceNotFoundException errors cause
 
 ---
 
-The `ResourceNotFoundException` from ECS means you're referencing something that doesn't exist - a cluster, service, task definition, or container instance that ECS can't find. It's a straightforward error in concept, but tracking down exactly which resource is missing and why can take some digging.
+Not-found errors around ECS usually mean you're referencing something that doesn't exist - a cluster, service, task definition, task, container instance, or a task-referenced resource that can't be found. Depending on the API call, ECS may return a specific exception like `ClusterNotFoundException`, a `failures` entry, a client error, or a related `ResourceNotFoundException`. It's a straightforward error in concept, but tracking down exactly which resource is missing and why can take some digging.
 
 ## Common Causes
 
@@ -60,7 +60,7 @@ aws ecs create-cluster --cluster-name default
 
 ## Missing Service
 
-Services live inside clusters. If you ask for a service in the wrong cluster, you'll get `ResourceNotFoundException`.
+Services live inside clusters. If you ask for a service in the wrong cluster, you'll get a not-found failure or exception.
 
 ```bash
 # List services in a cluster
@@ -73,14 +73,13 @@ aws ecs describe-services \
     --query 'services[0].{Name:serviceName,Status:status,DesiredCount:desiredCount}'
 ```
 
-If the service was recently deleted, it won't show up in `list-services` by default. Deleted services are retained for a short period in an INACTIVE state:
+If the service was recently deleted, it won't show up in `list-services` or the console. Deleted services move through DRAINING to INACTIVE and can still be viewed with `describe-services` until ECS purges them:
 
 ```bash
-# Include inactive services in the listing
+# Describe a deleted service by name
 aws ecs describe-services \
     --cluster my-cluster \
     --services my-service \
-    --include TAGS \
     --query 'services[0].status'
 ```
 
@@ -99,7 +98,7 @@ aws ecs list-task-definitions --family-prefix my-app
 aws ecs describe-task-definition --task-definition my-app:42
 ```
 
-Task definitions can be deregistered but not deleted. A deregistered task definition can still be used to run tasks, but new services and deployments should use active revisions.
+Task definitions can be deregistered, and inactive task definition revisions can also be deleted. A deregistered task definition can't be used to run new tasks or create new services, but existing tasks and services aren't affected.
 
 ```bash
 # Check if a task definition was deregistered
@@ -115,7 +114,7 @@ Common mistakes:
 
 ## Missing Task
 
-Individual tasks are ephemeral. Once a task stops, ECS retains its information for about 1 hour (for tasks that are part of a service) or until the stopped task limit is reached. After that, `describe-tasks` will return `ResourceNotFoundException`.
+Individual tasks are ephemeral. Once a task stops, ECS retains its information in API results for at least 1 hour. After that, `describe-tasks` might no longer return the task details.
 
 ```bash
 # List running tasks
@@ -180,7 +179,7 @@ ecs.describe_services(
 )
 ```
 
-If you mix up the ARN format (like using a task ARN where a service ARN is expected), you'll get `ResourceNotFoundException`.
+If you mix up the ARN format (like using a task ARN where a service ARN is expected), you'll get a not-found failure, client error, or exception.
 
 The new ARN format includes the cluster name:
 ```text
@@ -230,6 +229,8 @@ Sometimes what looks like a `ResourceNotFoundException` is actually an access is
 Validate resource existence in your deployment scripts before attempting operations:
 
 ```python
+import boto3
+
 def ensure_cluster_exists(cluster_name, region='us-east-1'):
     """Verify ECS cluster exists before deploying."""
     ecs = boto3.client('ecs', region_name=region)
@@ -245,4 +246,4 @@ Set up [monitoring and alerting](https://oneuptime.com/blog/post/2026-02-13-aws-
 
 ## Summary
 
-ECS `ResourceNotFoundException` means you're referencing a cluster, service, task, or task definition that doesn't exist. Start by verifying you're in the right region, then check the exact name or ARN. Stopped tasks are cleaned up quickly, task definitions can be deregistered, and services must be in the correct cluster. Validate resources exist before operating on them in your deployment scripts.
+ECS not-found errors mean you're referencing a cluster, service, task, task definition, or task-referenced resource that doesn't exist or can't be found from the current API call. Start by verifying you're in the right region, then check the exact name or ARN. Stopped tasks are cleaned up quickly, task definitions can be deregistered, and services must be in the correct cluster. Validate resources exist before operating on them in your deployment scripts.
