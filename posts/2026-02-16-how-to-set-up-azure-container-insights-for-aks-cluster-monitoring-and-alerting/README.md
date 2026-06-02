@@ -28,7 +28,7 @@ You need:
 
 - An AKS cluster (any supported Kubernetes version)
 - A Log Analytics workspace (Container Insights will create one if you do not specify)
-- Azure CLI 2.40 or later
+- Azure CLI with the AKS and Azure Monitor command groups available
 - Owner or Contributor role on the AKS cluster and the Log Analytics workspace
 
 ## Step 1: Enable Container Insights
@@ -65,21 +65,20 @@ az aks enable-addons \
 
 ## Step 2: Verify the Agent Is Running
 
-After enabling the add-on, the monitoring agent deploys as a DaemonSet.
+After enabling the add-on, the Azure Monitor agent deploys as a DaemonSet.
 
 ```bash
-# Check that the OMS agent pods are running on every node
-kubectl get pods -n kube-system -l component=oms-agent
+# Check that the AMA logs DaemonSet is running on every Linux node
+kubectl get daemonset ama-logs -n kube-system
 
-# You should see one pod per node in Running state
-kubectl get daemonset omsagent -n kube-system
+# Check the ReplicaSet deployment used by the logging solution
+kubectl get deployment ama-logs-rs -n kube-system
 ```
 
-If using the newer Azure Monitor agent (AMA), check for those pods instead.
+If your cluster has Windows node pools, check the Windows DaemonSet too.
 
 ```bash
-# For clusters using the Azure Monitor agent
-kubectl get pods -n kube-system -l rsName=ama-logs-ds
+kubectl get daemonset ama-logs-windows -n kube-system
 ```
 
 ## Step 3: Configure Data Collection Rules
@@ -87,12 +86,11 @@ kubectl get pods -n kube-system -l rsName=ama-logs-ds
 By default, Container Insights collects everything, which can get expensive for large clusters. Data Collection Rules (DCR) let you control what gets collected and how often.
 
 ```bash
-# Create a data collection rule that filters out verbose logs
-# and reduces collection frequency for non-critical metrics
-az aks update \
+# Apply monitoring data collection settings
+az aks enable-addons \
+  --addon monitoring \
   --resource-group myResourceGroup \
   --name myAKSCluster \
-  --enable-managed-identity \
   --data-collection-settings datacollection.json
 ```
 
@@ -148,16 +146,20 @@ KubePodInventory
 Find nodes approaching memory pressure.
 
 ```text
-// Nodes using more than 80% of their allocatable memory
+// Nodes using more than 80% of memory capacity
 // Helps catch memory pressure before pods get evicted
+let trendBinSize = 1m;
 Perf
 | where TimeGenerated > ago(1h)
-| where ObjectName == "K8SNode" and CounterName == "memoryAllocatableBytes"
-| join kind=inner (
+| where ObjectName == "K8SNode" and CounterName == "memoryCapacityBytes"
+| summarize CapacityBytes = max(CounterValue) by Computer, bin(TimeGenerated, trendBinSize)
+| join kind=innerunique (
     Perf
+    | where TimeGenerated > ago(1h)
     | where ObjectName == "K8SNode" and CounterName == "memoryRssBytes"
+    | summarize RssBytes = max(CounterValue) by Computer, bin(TimeGenerated, trendBinSize)
 ) on Computer, TimeGenerated
-| extend MemoryUtilization = CounterValue1 / CounterValue * 100
+| extend MemoryUtilization = RssBytes / CapacityBytes * 100
 | where MemoryUtilization > 80
 | project TimeGenerated, Computer, MemoryUtilization
 | order by MemoryUtilization desc
@@ -172,7 +174,7 @@ ContainerInventory
 | where TimeGenerated > ago(7d)
 | where ContainerState == "Terminated"
 | where ExitCode == 137
-| project TimeGenerated, ContainerName, Namespace = ContainerHostname, ExitCode
+| project TimeGenerated, ContainerName = Name, PodName = ContainerHostname, ExitCode
 | order by TimeGenerated desc
 ```
 
@@ -184,7 +186,7 @@ Alerts notify you when something goes wrong before users notice. Start with thes
 
 ```bash
 # Create an alert rule for high node CPU utilization
-# Fires when any node exceeds 90% CPU for 10 minutes
+# Fires when average node CPU usage exceeds 90% for 10 minutes
 az monitor metrics alert create \
   --resource-group myResourceGroup \
   --name "High Node CPU" \
@@ -200,12 +202,12 @@ az monitor metrics alert create \
 
 ```bash
 # Create an alert for pods in a failed state
-# Catches CrashLoopBackOff, ImagePullBackOff, and other failures
+# Catches pods whose Kubernetes phase is Failed
 az monitor metrics alert create \
   --resource-group myResourceGroup \
   --name "Failed Pods" \
   --scopes "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/Microsoft.ContainerService/managedClusters/myAKSCluster" \
-  --condition "count kube_pod_status_phase{phase=Failed} > 0" \
+  --condition "total kube_pod_status_phase > 0 where phase includes Failed" \
   --window-size 5m \
   --evaluation-frequency 1m \
   --severity 1 \
@@ -222,12 +224,12 @@ az monitor scheduled-query create \
   --resource-group myResourceGroup \
   --name "OOM Kill Alert" \
   --scopes "$WORKSPACE_ID" \
-  --condition "count > 0" \
-  --condition-query "ContainerInventory | where ContainerState == 'Terminated' and ExitCode == 137 | where TimeGenerated > ago(15m)" \
+  --condition "count 'OOMQuery' > 0" \
+  --condition-query OOMQuery="ContainerInventory | where TimeGenerated > ago(15m) | where ContainerState == 'Terminated' and ExitCode == 137" \
   --evaluation-frequency 5m \
   --window-size 15m \
   --severity 2 \
-  --action "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/microsoft.insights/actionGroups/myActionGroup"
+  --action-groups "/subscriptions/<sub-id>/resourceGroups/myResourceGroup/providers/microsoft.insights/actionGroups/myActionGroup"
 ```
 
 ## Step 7: Set Up an Action Group
@@ -240,8 +242,8 @@ az monitor action-group create \
   --resource-group myResourceGroup \
   --name myActionGroup \
   --short-name PlatTeam \
-  --email-receiver name=PlatformLead email=platform-lead@example.com \
-  --email-receiver name=OnCall email=oncall@example.com
+  --action email PlatformLead platform-lead@example.com \
+  --action email OnCall oncall@example.com
 ```
 
 ## Cost Management Tips
