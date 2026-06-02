@@ -69,6 +69,13 @@ aws ec2 authorize-security-group-ingress \
   --ip-permissions \
     '[{"IpProtocol":"tcp","FromPort":53,"ToPort":53,"IpRanges":[{"CidrIp":"10.0.0.0/16"}]},
       {"IpProtocol":"udp","FromPort":53,"ToPort":53,"IpRanges":[{"CidrIp":"10.0.0.0/16"}]}]'
+
+# Allow outbound DNS to on-premises DNS servers
+aws ec2 authorize-security-group-egress \
+  --group-id sg-resolver123 \
+  --ip-permissions \
+    '[{"IpProtocol":"tcp","FromPort":53,"ToPort":53,"IpRanges":[{"CidrIp":"172.16.0.0/12"}]},
+      {"IpProtocol":"udp","FromPort":53,"ToPort":53,"IpRanges":[{"CidrIp":"172.16.0.0/12"}]}]'
 ```
 
 ## Step 2: Create the Inbound Endpoint
@@ -174,7 +181,7 @@ zone "aws.example.com" {
     forwarders { 10.0.1.10; 10.0.2.10; };
 };
 
-zone "us-east-1.compute.internal" {
+zone "ec2.internal" {
     type forward;
     forward only;
     forwarders { 10.0.1.10; 10.0.2.10; };
@@ -219,8 +226,13 @@ Enable query logging to troubleshoot resolution issues:
 # Create a query log config for the resolver
 aws route53resolver create-resolver-query-log-config \
   --name "hybrid-dns-logging" \
-  --destination-arn "arn:aws:logs:us-east-1:123456789:log-group:/aws/route53resolver" \
+  --destination-arn "arn:aws:logs:us-east-1:123456789:log-group:/aws/route53resolver:*" \
   --creator-request-id "logging-$(date +%s)"
+
+# Associate the query log configuration with your VPC
+aws route53resolver associate-resolver-query-log-config \
+  --resolver-query-log-config-id rqlc-abc123 \
+  --resource-id vpc-abc123
 ```
 
 For more on DNS logging, see our guide on [Route 53 query logging for DNS diagnostics](https://oneuptime.com/blog/post/2026-02-12-route-53-query-logging-dns-diagnostics/view).
