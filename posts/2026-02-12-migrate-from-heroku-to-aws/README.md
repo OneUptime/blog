@@ -49,18 +49,18 @@ If your Heroku app uses a Procfile, you need to create a Dockerfile. Here is an 
 ```dockerfile
 # Dockerfile for a Node.js Heroku app
 
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
 
-# Expose the port (Heroku uses dynamic PORT, AWS uses fixed)
+# Expose the application port
 EXPOSE 3000
 
 # Start command (equivalent to Procfile web process)
@@ -91,7 +91,7 @@ CMD ["gunicorn", "myapp.wsgi:application", "--bind", "0.0.0.0:8000", "--workers"
 ```
 
 Key differences from Heroku:
-- Heroku injects `PORT` as an environment variable. On AWS, you define the port explicitly.
+- Heroku injects `PORT` as an environment variable for web dynos. On AWS container platforms, you define the container port explicitly or set `PORT` yourself in the task or environment configuration.
 - Heroku buildpacks handle dependencies automatically. With Docker, you manage this in the Dockerfile.
 - Heroku's slug size limit (500 MB) does not apply on AWS.
 
@@ -124,7 +124,7 @@ rds.create_db_instance(
     DBInstanceIdentifier='migrated-from-heroku',
     DBInstanceClass='db.t3.medium',
     Engine='postgres',
-    EngineVersion='15.4',
+    EngineVersion='17',
     MasterUsername='admin',
     MasterUserPassword='SecurePassword123!',
     AllocatedStorage=50,
@@ -149,16 +149,17 @@ pg_restore --verbose --clean --no-acl --no-owner \
   heroku_backup.dump
 ```
 
-For zero-downtime migration, use AWS DMS for continuous replication. See our [DMS migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view).
+For near-zero-downtime migration, use AWS DMS for continuous replication and plan a short final cutover window. See our [DMS migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view).
 
 ## Step 3: Migrate Redis
 
 ```bash
 # Export Redis data from Heroku
-heroku redis:info --app your-app-name
+heroku redis:credentials --app your-app-name
 
-# For small datasets, use redis-cli to dump and restore
-redis-cli -h heroku-redis-host -p port -a password --rdb dump.rdb
+# For small datasets, use redis-cli over TLS to dump and restore
+REDIS_URL=$(heroku config:get REDIS_URL --app your-app-name)
+redis-cli --tls --insecure -u "$REDIS_URL" --rdb dump.rdb
 
 # Create ElastiCache Redis cluster
 ```
