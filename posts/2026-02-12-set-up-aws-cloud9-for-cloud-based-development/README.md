@@ -8,7 +8,7 @@ Description: Set up AWS Cloud9 as a browser-based cloud IDE with pre-configured 
 
 ---
 
-Local development environments are a constant source of friction. Different OS versions, conflicting dependency versions, "it works on my machine" bugs, and new team members spending days getting set up. AWS Cloud9 sidesteps all of this by providing a browser-based IDE backed by a cloud compute instance that you configure once and access from anywhere.
+Local development environments are a constant source of friction. Different OS versions, conflicting dependency versions, "it works on my machine" bugs, and new team members spending days getting set up. For existing AWS Cloud9 customers, Cloud9 sidesteps all of this by providing a browser-based IDE backed by a cloud compute instance that you configure once and access from anywhere. AWS Cloud9 is no longer available to new customers, but existing customers can continue to use the service.
 
 Cloud9 runs on an EC2 instance (or your own server via SSH) and gives you a full IDE experience in the browser - code editor with syntax highlighting, built-in terminal, debugger, and direct integration with AWS services. Every developer on your team gets the exact same environment.
 
@@ -24,7 +24,7 @@ aws cloud9 create-environment-ec2 \
   --description "Standard development environment" \
   --instance-type "t3.medium" \
   --image-id "amazonlinux-2023-x86_64" \
-  --subnet-id "subnet-abc123" \
+  --subnet-id "subnet-0abc123def4567890" \
   --automatic-stop-time-minutes 30 \
   --connection-type "CONNECT_SSM" \
   --tags '[
@@ -39,23 +39,21 @@ Key options explained:
 
 **automatic-stop-time-minutes** - Cloud9 automatically stops the EC2 instance after this many minutes of inactivity, saving costs. The instance starts automatically when you open the IDE again.
 
-**connection-type** - `CONNECT_SSM` uses Systems Manager Session Manager instead of SSH, which means no inbound security group rules needed. This is the recommended option.
+**connection-type** - `CONNECT_SSM` uses Systems Manager Session Manager instead of SSH, which means no inbound security group rules needed. This is the recommended option. If you create your first no-ingress Cloud9 environment with the AWS CLI, create the required `AWSCloud9SSMAccessRole` service role and `AWSCloud9SSMInstanceProfile` instance profile first.
 
 **image-id** - the base OS for the instance. Options include Amazon Linux 2023, Amazon Linux 2, and Ubuntu.
 
 ### SSH Environment (Bring Your Own Server)
 
-If you want Cloud9 on your own EC2 instance, on-premises server, or even a different cloud:
+If you want Cloud9 on your own EC2 instance, on-premises server, or even a different cloud, create an SSH environment from the AWS Cloud9 console. AWS does not support creating SSH environments with the AWS CLI.
 
 ```bash
-# Create a Cloud9 environment connected via SSH
-aws cloud9 create-environment-ec2 \
-  --name "custom-dev-environment" \
-  --description "Cloud9 on custom infrastructure" \
-  --instance-type "t3.large" \
-  --image-id "amazonlinux-2023-x86_64" \
-  --subnet-id "subnet-abc123" \
-  --automatic-stop-time-minutes 60
+# Connect to your server and add the Cloud9 public SSH key
+ssh ec2-user@203.0.113.10
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+# Paste the public key from the Cloud9 console into ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
 ```
 
 ## Configuring the Development Environment
@@ -100,30 +98,48 @@ The default EBS volume is 10 GB, which fills up quickly with node_modules and co
 
 ```bash
 # Resize the EBS volume to 30 GB
-# First, get the instance ID and volume ID
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
+# First, get the instance ID, region, and volume ID
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 60")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-id)
+REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/placement/region)
 VOLUME_ID=$(aws ec2 describe-instances \
   --instance-id "$INSTANCE_ID" \
   --query "Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId" \
-  --output text)
+  --output text \
+  --region "$REGION")
 
 # Resize the volume
 aws ec2 modify-volume \
   --volume-id "$VOLUME_ID" \
-  --size 30
+  --size 30 \
+  --region "$REGION"
 
 # Wait for the modification to complete
-aws ec2 describe-volumes-modifications \
-  --volume-id "$VOLUME_ID"
+while [ "$(aws ec2 describe-volumes-modifications \
+  --volume-id "$VOLUME_ID" \
+  --filters Name=modification-state,Values=optimizing,completed \
+  --query "length(VolumesModifications)" \
+  --output text \
+  --region "$REGION")" != "1" ]; do
+  sleep 1
+done
 
 # Grow the filesystem
-sudo growpart /dev/xvda 1
-sudo xfs_growfs /dev/xvda1
+if [[ -e "/dev/xvda" && $(readlink -f /dev/xvda) = "/dev/xvda" ]]; then
+  sudo growpart /dev/xvda 1
+else
+  sudo growpart /dev/nvme0n1 1
+fi
+
+sudo xfs_growfs -d /
 ```
 
 ### Configure AWS Credentials
 
-Cloud9 comes with AWS managed temporary credentials by default. These credentials automatically get the permissions of the IAM user or role that created the environment. For more control, you can disable managed credentials and use your own:
+Cloud9 EC2 environments come with AWS managed temporary credentials by default. AWS recommends this approach for EC2 environments because the credentials are already set up and managed on your behalf. For more control, you can use an IAM instance profile or store credentials in the environment:
 
 ```bash
 # Disable managed temporary credentials (do this in Cloud9 Preferences)
@@ -146,17 +162,17 @@ One of Cloud9's standout features is real-time collaboration. Multiple developer
 ```bash
 # List current environment members
 aws cloud9 describe-environment-memberships \
-  --environment-id "env-abc123"
+  --environment-id "a1b2c3d4e5f6g7h8"
 
 # Add a team member with read-write access
 aws cloud9 create-environment-membership \
-  --environment-id "env-abc123" \
+  --environment-id "a1b2c3d4e5f6g7h8" \
   --user-arn "arn:aws:iam::123456789012:user/teammate" \
   --permissions "read-write"
 
 # Add someone with read-only access (for code reviews or pair debugging)
 aws cloud9 create-environment-membership \
-  --environment-id "env-abc123" \
+  --environment-id "a1b2c3d4e5f6g7h8" \
   --user-arn "arn:aws:iam::123456789012:user/reviewer" \
   --permissions "read-only"
 ```
@@ -204,8 +220,9 @@ git clone https://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-project
 
 Cloud9 supports debugging for Node.js, Python, and other languages:
 
+.c9/launch.json - debug configuration for a Node.js app:
+
 ```json
-// .c9/launch.json - debug configuration for a Node.js app
 {
   "version": "0.2.0",
   "configurations": [
