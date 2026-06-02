@@ -8,7 +8,7 @@ Description: Learn how to set up Amazon MQ with RabbitMQ engine, including broke
 
 ---
 
-Amazon MQ is AWS's managed message broker service. If you're already using RabbitMQ on-premises or in EC2 and want a managed alternative, Amazon MQ gives you a fully managed RabbitMQ broker with automatic patching, failover, and backups. Unlike SNS/SQS which are AWS-proprietary, Amazon MQ speaks standard AMQP 0-9-1, so your existing RabbitMQ code works without changes.
+Amazon MQ is AWS's managed message broker service. If you're already using RabbitMQ on-premises or in EC2 and want a managed alternative, Amazon MQ gives you a fully managed RabbitMQ broker with automatic patching, managed maintenance, and durable storage. Unlike SNS/SQS which are AWS-proprietary, Amazon MQ speaks standard AMQP 0-9-1, so most existing RabbitMQ client code can move over without protocol-level changes.
 
 ## When to Use Amazon MQ vs SNS/SQS
 
@@ -41,8 +41,7 @@ aws mq create-broker \
   --publicly-accessible \
   --users '[{
     "Username": "admin",
-    "Password": "YourSecurePassword123!",
-    "ConsoleAccess": true
+    "Password": "YourSecurePassword123!"
   }]'
 ```
 
@@ -56,15 +55,14 @@ aws mq create-broker \
   --engine-version "3.13" \
   --host-instance-type mq.m5.large \
   --deployment-mode CLUSTER_MULTI_AZ \
-  --publicly-accessible false \
+  --no-publicly-accessible \
   --subnet-ids subnet-abc123 subnet-def456 subnet-ghi789 \
   --security-groups sg-abc123 \
   --users '[{
     "Username": "admin",
-    "Password": "YourSecurePassword123!",
-    "ConsoleAccess": true
+    "Password": "YourSecurePassword123!"
   }]' \
-  --logs '{"General": true, "Audit": false}' \
+  --logs '{"General": true}' \
   --maintenance-window-start-time '{
     "DayOfWeek": "SUNDAY",
     "TimeOfDay": "03:00",
@@ -274,7 +272,7 @@ setup_messaging_topology()
 ```python
 import pika
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 def publish_order_event(event_type, order_data):
     """Publish an order event to the topic exchange.
@@ -287,7 +285,7 @@ def publish_order_event(event_type, order_data):
     message = {
         'event_type': event_type,
         'data': order_data,
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     }
 
     # Publish with persistent delivery mode so messages survive broker restarts
@@ -428,7 +426,6 @@ const broker = new mq.CfnBroker(this, 'RabbitMQBroker', {
   users: [{
     username: 'admin',
     password: 'YourSecurePassword123!',
-    consoleAccess: true,
   }],
   logs: { general: true },
   maintenanceWindowStartTime: {
@@ -461,4 +458,4 @@ aws cloudwatch put-metric-alarm \
 
 For sending those alarm notifications, check out [using SNS with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-use-sns-with-cloudwatch-alarms/view).
 
-Amazon MQ with RabbitMQ gives you a fully managed broker with all the features of open-source RabbitMQ. If you're already invested in AMQP and RabbitMQ patterns, it's the path of least resistance for running on AWS without managing the broker infrastructure yourself.
+Amazon MQ with RabbitMQ gives you a fully managed broker with core RabbitMQ messaging features, though Amazon MQ does not support every open-source RabbitMQ capability such as streams. If you're already invested in AMQP and RabbitMQ patterns, it's the path of least resistance for running on AWS without managing the broker infrastructure yourself.
