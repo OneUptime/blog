@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, Cost Optimization, Reserved Instances, Database
 
-Description: A practical guide to saving up to 72% on Amazon RDS costs by using Reserved Instances, including how to choose the right term, payment option, and instance type.
+Description: A practical guide to saving up to 69% on Amazon RDS costs by using Reserved Instances, including how to choose the right term, payment option, and instance type.
 
 ---
 
-Running databases on Amazon RDS is convenient, but the on-demand pricing adds up fast. A single db.r6g.xlarge instance running 24/7 costs roughly $4,300 per year in us-east-1. Multiply that by a few environments and a handful of read replicas, and you're looking at a serious chunk of your AWS bill.
+Running databases on Amazon RDS is convenient, but the on-demand pricing adds up fast. A single db.r6g.xlarge MySQL Single-AZ instance running 24/7 costs roughly $3,800 per year in us-east-1. Multiply that by a few environments and a handful of read replicas, and you're looking at a serious chunk of your AWS bill.
 
-Reserved Instances (RIs) are the most straightforward way to reduce those costs. They don't change anything about how your databases run - same instance, same performance, same availability. You're simply committing to use a specific instance type for one or three years in exchange for a discount of up to 72%.
+Reserved Instances (RIs) are the most straightforward way to reduce those costs. They don't change anything about how your databases run - same instance, same performance, same availability. You're simply committing to use a specific instance type for one or three years in exchange for a discount of up to 69%.
 
 ## How RDS Reserved Instances Work
 
-An RDS Reserved Instance is a billing discount, not a physical resource. When you purchase an RI, AWS matches it against running on-demand instances that have the same attributes: engine, instance type, region, and deployment option (Single-AZ or Multi-AZ).
+An RDS Reserved Instance is a billing discount, not a physical resource. When you purchase an RI, AWS matches it against running on-demand instances that have compatible attributes: engine, region, license model, and instance type or instance family, depending on whether size flexibility applies.
 
 The discount applies automatically. You don't need to tag instances or modify anything. If you have a matching on-demand instance running, the RI pricing kicks in.
 
@@ -22,12 +22,12 @@ There are three payment options:
 
 - **All Upfront** - Pay the entire cost when you purchase. Gives you the biggest discount.
 - **Partial Upfront** - Pay some upfront, the rest monthly. A middle ground.
-- **No Upfront** - No upfront payment, just a lower monthly rate than on-demand. Least savings but most flexible for cash flow.
+- **No Upfront** - No upfront payment, just a lower monthly rate than on-demand. Least savings but most flexible for cash flow, and only available as a 1-year reservation.
 
 And two term lengths:
 
-- **1-year term** - Savings of 25-40% over on-demand.
-- **3-year term** - Savings of 40-72% over on-demand.
+- **1-year term** - Savings of 25-46% over on-demand.
+- **3-year term** - Savings of 40-69% over on-demand.
 
 ## Calculating Your Savings
 
@@ -47,14 +47,14 @@ aws rds describe-db-instances \
   --output table
 ```
 
-Now let's look at actual numbers. Here's a comparison for a db.r6g.xlarge MySQL instance in us-east-1:
+Now let's look at actual numbers. Here's a comparison for a db.r6g.xlarge MySQL Single-AZ instance in us-east-1:
 
 | Payment Option | 1-Year Term | 3-Year Term |
 |---|---|---|
-| On-Demand | $4,307/yr | $12,921 (3yr) |
-| All Upfront | $2,715/yr (37% off) | $5,844 (55% off) |
-| Partial Upfront | $2,776/yr (35% off) | $6,100 (53% off) |
-| No Upfront | $2,890/yr (33% off) | $6,480 (50% off) |
+| On-Demand | $3,767/yr | $11,300 (3yr) |
+| All Upfront | $2,028/yr (46% off) | $4,094 (64% off) |
+| Partial Upfront | $2,069/yr (45% off) | $4,179 (63% off) |
+| No Upfront | $2,173/yr (42% off) | Not available |
 
 The sweet spot for most organizations is the 1-year All Upfront option. It provides meaningful savings without locking you in for three years, which matters because instance requirements change as your application evolves.
 
@@ -116,14 +116,14 @@ Here's how the normalization works:
 
 | Instance Size | Normalization Factor |
 |---|---|
-| db.r6g.large | 2 |
-| db.r6g.xlarge | 4 |
-| db.r6g.2xlarge | 8 |
-| db.r6g.4xlarge | 16 |
+| db.r6g.large | 4 |
+| db.r6g.xlarge | 8 |
+| db.r6g.2xlarge | 16 |
+| db.r6g.4xlarge | 32 |
 
-So if you buy one db.r6g.2xlarge RI (factor 8), it can cover two db.r6g.xlarge instances (factor 4 each) or four db.r6g.large instances (factor 2 each). This gives you room to resize instances without wasting your reservation.
+So if you buy one db.r6g.2xlarge RI (factor 16), it can cover two db.r6g.xlarge instances (factor 8 each) or four db.r6g.large instances (factor 4 each). This gives you room to resize instances without wasting your reservation.
 
-Size flexibility applies to MySQL, MariaDB, PostgreSQL, and Oracle (BYOL) engines. It does not apply to SQL Server or Multi-AZ deployments.
+Size flexibility applies to MySQL, MariaDB, PostgreSQL, Db2, and Oracle (BYOL) engines. It applies to both Single-AZ and Multi-AZ configurations, but it does not apply to SQL Server or Oracle License Included.
 
 ## Automating RI Utilization Monitoring
 
@@ -164,11 +164,12 @@ def check_ri_utilization():
     print(f"{'Subscription ID':<40} {'Utilization %':<15} {'Savings':<15}")
     print("-" * 70)
 
-    for group in response['UtilizationsByTime'][0]['Groups']:
-        sub_id = group['Attributes']['subscription_id'][:38]
-        utilization = group['Utilization']['UtilizationPercentage']
-        savings = group['Utilization']['NetRISavings']
-        print(f"{sub_id:<40} {utilization:<15} ${savings:<15}")
+    for utilization_by_time in response['UtilizationsByTime']:
+        for group in utilization_by_time['Groups']:
+            sub_id = group.get('Value', group['Key'])[:38]
+            utilization = group['Utilization']['UtilizationPercentage']
+            savings = group['Utilization']['NetRISavings']
+            print(f"{sub_id:<40} {utilization:<15} ${savings:<15}")
 
 check_ri_utilization()
 ```
@@ -206,18 +207,18 @@ aws ce get-reservation-purchase-recommendation \
   --lookback-period-in-days SIXTY_DAYS
 ```
 
-5. **Consider the RI Marketplace.** If your needs change, you can sell unused RIs on the AWS Reserved Instance Marketplace. You won't get the full value back, but it's better than letting them sit unused.
+5. **Plan for the full term.** RDS Reserved Instances can't be canceled or sold on the EC2 Reserved Instance Marketplace. If your needs change, launch another DB instance with compatible specifications so the reservation can keep applying.
 
 ## Combining RIs with Other Savings
 
 Reserved Instances work best as part of a broader cost optimization strategy. Pair them with:
 
 - **Right-sizing** - Make sure you're on the right instance type before committing. Use CloudWatch metrics to check CPU and memory utilization over the past month.
-- **Aurora Serverless** - For databases with unpredictable workloads, Aurora Serverless v2 can scale to zero and might be cheaper than even reserved pricing.
+- **Aurora Serverless** - For databases with unpredictable workloads, Aurora Serverless v2 can scale to zero on supported Aurora MySQL and PostgreSQL versions and might be cheaper than even reserved pricing.
 - **Read replica optimization** - Only maintain read replicas you actually need. Each replica is a separate instance that needs its own RI.
 
 For the full picture on AWS cost reduction, take a look at our guide on [creating a cost optimization strategy for AWS](https://oneuptime.com/blog/post/2026-02-12-create-a-cost-optimization-strategy-for-aws/view).
 
 ## Key Takeaways
 
-RDS Reserved Instances are one of the most reliable ways to reduce your AWS database costs. The discounts are substantial - 33% to 72% depending on your commitment level. Start with your most expensive, most stable instances, use 1-year terms until you're confident, and monitor utilization to make sure your investment is paying off. The whole process takes about an hour to set up and can save thousands of dollars per year.
+RDS Reserved Instances are one of the most reliable ways to reduce your AWS database costs. The discounts are substantial - up to 69% depending on your commitment level. Start with your most expensive, most stable instances, use 1-year terms until you're confident, and monitor utilization to make sure your investment is paying off. The whole process takes about an hour to set up and can save thousands of dollars per year.
