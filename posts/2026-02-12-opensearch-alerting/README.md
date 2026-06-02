@@ -23,6 +23,7 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_notifica
     -H "Content-Type: application/json" \
     -d '{
     "config_id": "slack-ops-channel",
+    "name": "slack-ops-channel",
     "config": {
         "name": "Ops Team Slack",
         "description": "Alerts for the operations team",
@@ -39,6 +40,7 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_notifica
     -H "Content-Type: application/json" \
     -d '{
     "config_id": "pagerduty-sns",
+    "name": "pagerduty-sns",
     "config": {
         "name": "PagerDuty via SNS",
         "description": "Critical alerts that page on-call",
@@ -51,21 +53,19 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_notifica
     }
 }'
 
-# Create an email notification channel
+# Create a webhook notification channel
 curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_notifications/configs" \
     -H "Content-Type: application/json" \
     -d '{
-    "config_id": "email-team",
+    "config_id": "incident-webhook",
+    "name": "incident-webhook",
     "config": {
-        "name": "Engineering Team Email",
-        "description": "Non-urgent alerts via email",
-        "config_type": "email_group",
+        "name": "Incident Webhook",
+        "description": "Non-urgent alerts via webhook",
+        "config_type": "webhook",
         "is_enabled": true,
-        "email_group": {
-            "recipient_list": [
-                {"recipient": "team@company.com"},
-                {"recipient": "oncall@company.com"}
-            ]
+        "webhook": {
+            "url": "https://alerts.company.com/opensearch"
         }
     }
 }'
@@ -102,13 +102,8 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
                         "bool": {
                             "filter": [
                                 {"term": {"level": "ERROR"}},
-                                {"range": {"timestamp": {"gte": "{{period_end}}||-5m", "lte": "{{period_end}}"}}}
+                                {"range": {"timestamp": {"gte": "{{period_end}}||-5m", "lte": "{{period_end}}", "format": "epoch_millis"}}}
                             ]
-                        }
-                    },
-                    "aggs": {
-                        "error_count": {
-                            "value_count": {"field": "_id"}
                         }
                     }
                 }
@@ -117,30 +112,28 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
     ],
     "triggers": [
         {
-            "query_level_trigger": {
-                "name": "Error count too high",
-                "severity": "2",
-                "condition": {
-                    "script": {
-                        "source": "ctx.results[0].aggregations.error_count.value > 100",
-                        "lang": "painless"
+            "name": "Error count too high",
+            "severity": "2",
+            "condition": {
+                "script": {
+                    "source": "ctx.results[0].hits.total.value > 100",
+                    "lang": "painless"
+                }
+            },
+            "actions": [
+                {
+                    "name": "Notify Slack",
+                    "destination_id": "slack-ops-channel",
+                    "message_template": {
+                        "source": "High error rate detected!\nError count: {{ctx.results[0].hits.total.value}} errors in the last 5 minutes.\nDashboard: https://search-domain/_dashboards/app/dashboards#/view/error-dashboard"
+                    },
+                    "throttle_enabled": true,
+                    "throttle": {
+                        "value": 15,
+                        "unit": "MINUTES"
                     }
-                },
-                "actions": [
-                    {
-                        "name": "Notify Slack",
-                        "destination_id": "slack-ops-channel",
-                        "message_template": {
-                            "source": "High error rate detected!\nError count: {{ctx.results[0].aggregations.error_count.value}} errors in the last 5 minutes.\nDashboard: https://search-domain/_dashboards/app/dashboards#/view/error-dashboard"
-                        },
-                        "throttle_enabled": true,
-                        "throttle": {
-                            "value": 15,
-                            "unit": "MINUTES"
-                        }
-                    }
-                ]
-            }
+                }
+            ]
         }
     ]
 }'
@@ -173,31 +166,27 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
                     "query": {
                         "bool": {
                             "filter": [
-                                {"range": {"timestamp": {"gte": "{{period_end}}||-5m", "lte": "{{period_end}}"}}}
+                                {"range": {"timestamp": {"gte": "{{period_end}}||-5m", "lte": "{{period_end}}", "format": "epoch_millis"}}}
                             ]
                         }
                     },
                     "aggs": {
                         "by_service": {
-                            "terms": {
-                                "field": "service",
-                                "size": 50
+                            "composite": {
+                                "size": 50,
+                                "sources": [
+                                    {
+                                        "service": {
+                                            "terms": {
+                                                "field": "service.keyword"
+                                            }
+                                        }
+                                    }
+                                ]
                             },
                             "aggs": {
                                 "error_count": {
-                                    "filter": {"term": {"level": "ERROR"}}
-                                },
-                                "total_count": {
-                                    "value_count": {"field": "_id"}
-                                },
-                                "error_rate": {
-                                    "bucket_script": {
-                                        "buckets_path": {
-                                            "errors": "error_count._count",
-                                            "total": "total_count"
-                                        },
-                                        "script": "params.total > 0 ? (params.errors / params.total) * 100 : 0"
-                                    }
+                                    "filter": {"term": {"level.keyword": "ERROR"}}
                                 }
                             }
                         }
@@ -212,8 +201,13 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
                 "name": "Service error rate above 5%",
                 "severity": "2",
                 "condition": {
+                    "buckets_path": {
+                        "errors": "error_count._count",
+                        "total": "_count"
+                    },
+                    "parent_bucket_path": "by_service",
                     "script": {
-                        "source": "params._value > 5.0",
+                        "source": "params.total > 0 && (params.errors / params.total) * 100 > 5.0",
                         "lang": "painless"
                     }
                 },
@@ -222,7 +216,7 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
                         "name": "Alert on high error rate service",
                         "destination_id": "slack-ops-channel",
                         "message_template": {
-                            "source": "Service {{bucket_keys}} has a {{_value}}% error rate in the last 5 minutes."
+                            "source": "Service {{bucket_keys}} has an error rate above 5% in the last 5 minutes."
                         },
                         "action_execution_policy": {
                             "action_execution_scope": {
@@ -286,7 +280,7 @@ curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
                 "severity": "1",
                 "condition": {
                     "script": {
-                        "source": "true",
+                        "source": "query[id=fatal-query] || query[id=oom-query]",
                         "lang": "painless"
                     }
                 },
@@ -314,42 +308,47 @@ Composite monitors let you combine conditions from multiple monitors into a sing
 curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting/workflows" \
     -H "Content-Type: application/json" \
     -d '{
+    "type": "workflow",
     "name": "Service Degradation Workflow",
+    "workflow_type": "composite",
     "enabled": true,
     "schedule": {
         "period": {"interval": 5, "unit": "MINUTES"}
     },
-    "inputs": {
-        "composite_input": {
-            "sequence": {
-                "delegates": [
-                    {"order": 1, "monitor_id": "<error-rate-monitor-id>"},
-                    {"order": 2, "monitor_id": "<response-time-monitor-id>"}
-                ]
+    "inputs": [
+        {
+            "composite_input": {
+                "sequence": {
+                    "delegates": [
+                        {"order": 1, "monitor_id": "error-rate-monitor-id"},
+                        {"order": 2, "monitor_id": "response-time-monitor-id"}
+                    ]
+                }
             }
         }
-    },
+    ],
     "triggers": [
         {
             "chained_alert_trigger": {
+                "id": "errors-and-latency",
                 "name": "Both conditions met",
                 "severity": "1",
                 "condition": {
                     "script": {
-                        "source": "monitor[id=<error-rate-monitor-id>] && monitor[id=<response-time-monitor-id>]",
+                        "source": "monitor[id=error-rate-monitor-id] && monitor[id=response-time-monitor-id]",
                         "lang": "painless"
                     }
-                },
-                "actions": [
-                    {
-                        "name": "Page on-call",
-                        "destination_id": "pagerduty-sns",
-                        "message_template": {
-                            "source": "Service degradation confirmed: high errors AND slow response times detected simultaneously."
-                        }
+                }
+            },
+            "actions": [
+                {
+                    "name": "Page on-call",
+                    "destination_id": "pagerduty-sns",
+                    "message_template": {
+                        "source": "Service degradation confirmed: high errors AND slow response times detected simultaneously."
                     }
-                ]
-            }
+                }
+            ]
         }
     ]
 }'
@@ -361,7 +360,7 @@ Check active alerts and acknowledge them:
 
 ```bash
 # Get all active alerts
-curl -XGET "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting/monitors/alerts?state=ACTIVE"
+curl -XGET "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting/monitors/alerts?alertState=ACTIVE"
 
 # Acknowledge an alert to stop repeat notifications
 curl -XPOST "https://search-domain.us-east-1.es.amazonaws.com/_plugins/_alerting/monitors/<monitor-id>/_acknowledge/alerts" \
