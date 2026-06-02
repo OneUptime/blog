@@ -29,7 +29,7 @@ Benefits:
 - **Reduced database load**: Fewer connections means less memory and CPU overhead on the database
 - **Better failover handling**: The proxy handles Multi-AZ failover transparently, reducing application downtime
 - **Connection reuse**: Connections are reused instead of created and destroyed for each request
-- **IAM authentication**: Centralized auth through IAM instead of managing database passwords
+- **IAM authentication support**: Optionally require IAM database authentication for clients instead of passing database passwords from the application
 
 ## Prerequisites
 
@@ -130,7 +130,7 @@ aws iam put-role-policy \
 
 Now create the proxy itself.
 
-This command creates an RDS Proxy with IAM authentication enabled.
+This command creates an RDS Proxy that uses the Secrets Manager credentials for client authentication.
 
 ```bash
 aws rds create-db-proxy \
@@ -139,7 +139,7 @@ aws rds create-db-proxy \
   --auth '[{
     "AuthScheme": "SECRETS",
     "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:rds-proxy/my-db-credentials-AbCdEf",
-    "IAMAuth": "ALLOWED"
+    "IAMAuth": "DISABLED"
   }]' \
   --role-arn arn:aws:iam::123456789012:role/rds-proxy-role \
   --vpc-subnet-ids subnet-private-1 subnet-private-2 \
@@ -153,7 +153,7 @@ aws rds create-db-proxy \
 Let's break down the important options:
 
 - `--engine-family`: POSTGRESQL or MYSQL (covers MariaDB too)
-- `--auth`: Authentication configuration. `IAMAuth` can be ALLOWED or REQUIRED
+- `--auth`: Authentication configuration. With `AuthScheme` set to `SECRETS`, `IAMAuth` can be DISABLED or REQUIRED
 - `--require-tls`: Forces all connections to use TLS
 - `--idle-client-timeout`: How long idle client connections stay open (seconds)
 - `--debug-logging`: Sends detailed logs to CloudWatch (turn off in production for performance)
@@ -234,8 +234,7 @@ aws rds modify-db-proxy-target-group \
   --connection-pool-config '{
     "MaxConnectionsPercent": 90,
     "MaxIdleConnectionsPercent": 50,
-    "ConnectionBorrowTimeout": 120,
-    "SessionPinningFilters": ["EXCLUDE_VARIABLE_SETS"]
+    "ConnectionBorrowTimeout": 120
   }'
 ```
 
@@ -244,7 +243,7 @@ The key settings:
 - **MaxConnectionsPercent**: Maximum percentage of `max_connections` the proxy can use (default 100)
 - **MaxIdleConnectionsPercent**: How many idle connections to keep in the pool
 - **ConnectionBorrowTimeout**: How long a client waits for a connection before timing out
-- **SessionPinningFilters**: Controls when connections get "pinned" to a session (more on this below)
+- **SessionPinningFilters**: For MySQL-family proxies, can reduce pinning for supported session variable statements (more on this below)
 
 ## Understanding Connection Pinning
 
@@ -252,12 +251,12 @@ Connection pinning is important to understand. Normally, the proxy can multiplex
 
 Operations that cause pinning:
 - Setting session-level variables
-- Using prepared statements (in some cases)
+- Using prepared statements
 - Using temporary tables
 - Holding explicit locks
-- Calling functions with side effects
+- Calling sequence functions such as `nextval` and `setval`
 
-Pinned connections reduce the effectiveness of the proxy because they can't be shared. The `SessionPinningFilters` setting helps by excluding certain variable sets from triggering pins.
+Pinned connections reduce the effectiveness of the proxy because they can't be shared. For MySQL-family proxies, the `SessionPinningFilters` setting can exclude supported variable sets from triggering pins.
 
 ## Security Group Configuration
 
@@ -289,8 +288,8 @@ Key metrics to watch:
 
 - **DatabaseConnections**: Connections from proxy to database
 - **ClientConnections**: Connections from applications to proxy
-- **QueryRequests**: Number of queries processed
-- **ClientConnectionsSetupSucceeded/Failed**: Connection success rate
+- **QueryRequests**: Number of queries received (not reported for PostgreSQL workloads using Extended Protocol)
+- **ClientConnectionsSetupSucceeded/ClientConnectionsSetupFailedAuth**: Connection success rate and authentication or TLS setup failures
 - **AvailabilityPercentage**: Should be close to 100%
 
 This creates a CloudWatch alarm for proxy connection usage.
@@ -313,11 +312,11 @@ For comprehensive monitoring, check out [AWS infrastructure monitoring with OneU
 
 ## Proxy and Multi-AZ Failover
 
-One of the best features of RDS Proxy is how it handles Multi-AZ failover. Without a proxy, your application experiences 60-120 seconds of connection errors during failover. With a proxy, the downtime is typically under 10 seconds because the proxy maintains its connections and redirects traffic to the new primary transparently.
+One of the best features of RDS Proxy is how it handles Multi-AZ failover. Without a proxy, your application can experience a noticeable window of connection errors during failover. With a proxy, failover times are typically reduced because the proxy maintains its connections and redirects traffic to the new primary transparently.
 
 ## Pricing
 
-RDS Proxy is priced based on the instance size of your target database. It costs approximately 15-20% of the hourly cost of your RDS instance. For a db.r6g.large, that's about $0.04/hour or $29/month. It's a worthwhile investment if you have connection management issues.
+RDS Proxy is priced per vCPU-hour for the database instances or Aurora capacity units behind the proxy, with a minimum charge for each proxy. For a db.r6g.large with 2 vCPUs, the proxy cost is based on those 2 vCPUs at the current regional RDS Proxy rate. It's a worthwhile investment if you have connection management issues.
 
 ## Wrapping Up
 
