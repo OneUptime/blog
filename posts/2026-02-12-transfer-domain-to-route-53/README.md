@@ -23,12 +23,13 @@ Before kicking off the transfer, you need to handle a few things at your current
 1. **Unlock the domain** - Most registrars lock domains by default to prevent unauthorized transfers. You'll need to disable this lock.
 2. **Get the authorization code** - Also called an EPP code or transfer key. Your current registrar provides this.
 3. **Verify contact information** - Make sure the email address on the domain's WHOIS record is one you can access. AWS sends confirmation emails there.
-4. **Check the domain age** - ICANN rules say domains must be at least 60 days old before transfer. Same goes if you recently transferred it.
+4. **Check the domain age** - ICANN rules say domains must be at least 60 days old before transfer. Same goes if you recently transferred it or made certain registrant contact changes.
 5. **Disable WHOIS privacy temporarily** - Some registrars require this during transfer. Check with yours.
+6. **Disable DNSSEC if it's enabled** - Remove DS records at your current registrar before transferring, then wait at least 24 hours for the change to propagate.
 
 ## Step 1: Set Up Your Hosted Zone First
 
-Before you transfer the registration, create a hosted zone for the domain. This lets you set up all your DNS records ahead of time so there's zero downtime during the transfer.
+Before you transfer the registration, create a hosted zone for the domain. This lets you set up all your DNS records ahead of time so you can minimize downtime during the transfer.
 
 Here's how to create a hosted zone using the AWS CLI:
 
@@ -93,7 +94,7 @@ aws route53 change-resource-record-sets \
 
 ## Step 2: Update Nameservers at Your Current Registrar
 
-Before initiating the transfer, point your domain's nameservers to the Route 53 ones you got in Step 1. This way, DNS resolution switches over to Route 53 immediately, and the actual registration transfer can take its time without affecting your site.
+Before initiating the transfer, point your domain's nameservers to the Route 53 ones you got in Step 1. This way, DNS resolution starts switching over to Route 53 as caches expire, and the actual registration transfer can take its time without affecting your site.
 
 Log into your current registrar and update the nameservers to something like:
 
@@ -104,7 +105,7 @@ ns-456.awsdns-23.co.uk
 ns-012.awsdns-45.com
 ```
 
-Lower your TTL values to 300 seconds (5 minutes) a day or two before making this change. That way, the old cached records expire quickly and clients pick up the new nameservers faster.
+Lower your existing DNS record TTL values, and nameserver TTLs where your current registrar allows it, to 300 seconds (5 minutes) a day or two before making this change. That way, old cached DNS answers expire more quickly while the nameserver change propagates.
 
 ## Step 3: Initiate the Transfer in Route 53
 
@@ -113,6 +114,7 @@ Now start the actual transfer from the AWS console or CLI.
 ```bash
 # Initiate the domain transfer to Route 53
 aws route53domains transfer-domain \
+  --region us-east-1 \
   --domain-name example.com \
   --duration-in-years 1 \
   --auth-code "YOUR_EPP_AUTH_CODE" \
@@ -144,15 +146,16 @@ The contact JSON file looks like this:
 
 After initiating the transfer, a few things happen:
 
-1. AWS sends a confirmation email to the registrant email address. You must click the approval link.
+1. AWS may send a verification or authorization email to the registrant email address. Click any required links promptly; generic TLDs such as .com, .net, and .org don't require a separate transfer authorization email, but new registrant email addresses may still need verification.
 2. Your current registrar may also send a confirmation. Some registrars auto-approve after 5 days if you don't explicitly reject it.
-3. The transfer typically completes in 5-7 days, though some TLDs are faster.
+3. Generic TLD transfers such as .com, .net, and .org can take up to 7 days after approval; geographic TLDs can take up to 10 days, though some TLDs are faster.
 
 You can check the status anytime:
 
 ```bash
 # Check the transfer status of your domain
 aws route53domains get-domain-detail \
+  --region us-east-1 \
   --domain-name example.com
 ```
 
@@ -161,6 +164,7 @@ Or list all pending operations:
 ```bash
 # List all domain operations including pending transfers
 aws route53domains list-operations \
+  --region us-east-1 \
   --sort-by SubmittedDate \
   --sort-order DESC
 ```
@@ -178,13 +182,14 @@ dig example.com A +short
 
 # Verify the domain is registered with Route 53
 aws route53domains get-domain-detail \
+  --region us-east-1 \
   --domain-name example.com \
   --query 'Nameservers'
 ```
 
 ## Common Issues and Fixes
 
-**Transfer stuck in pending**: This usually means the confirmation email hasn't been approved. Check your spam folder. You can resend the confirmation from the Route 53 console.
+**Transfer stuck in pending**: This can mean an authorization or verification email needs action, or that Route 53 is waiting on the current registrar. Check your spam folder. You can resend the authorization or verification email from the Route 53 console when the request is still in progress.
 
 **Domain locked error**: Go back to your current registrar and make sure the transfer lock (also called clientTransferProhibited) is disabled.
 
@@ -198,8 +203,8 @@ Once everything is settled, set up monitoring to make sure your domain stays hea
 
 ## Cost Considerations
 
-Route 53 charges for domain registration (varies by TLD - .com is about $14/year), hosted zones ($0.50/month per zone), and DNS queries ($0.40 per million for the first billion). The transfer itself just costs one year of renewal at the registration price. There's no separate transfer fee.
+Route 53 charges for domain registration (varies by TLD - .com is $15/year at the time of writing), hosted zones ($0.50/month per zone for the first 25 hosted zones), and standard DNS queries ($0.40 per million for the first billion). The transfer price varies by TLD; for .com, the transfer is $15 and the domain is renewed with the transfer.
 
 ## Wrapping Up
 
-The domain transfer process to Route 53 is straightforward if you follow the steps in order: set up your hosted zone and records first, update nameservers, then transfer the registration. This two-phase approach ensures zero DNS downtime during the migration. Once everything's in Route 53, you get the benefit of managing your entire infrastructure - DNS, hosting, CDN, load balancers - from a single AWS account.
+The domain transfer process to Route 53 is straightforward if you follow the steps in order: set up your hosted zone and records first, update nameservers, then transfer the registration. This two-phase approach minimizes DNS downtime during the migration. Once everything's in Route 53, you get the benefit of managing your entire infrastructure - DNS, hosting, CDN, load balancers - from a single AWS account.
