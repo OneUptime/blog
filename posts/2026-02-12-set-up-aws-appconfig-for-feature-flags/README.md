@@ -119,7 +119,9 @@ aws appconfig create-hosted-configuration-version \
     --application-id abc123 \
     --configuration-profile-id def456 \
     --content-type "application/json" \
-    --content file://feature-flags.json
+    --content file://feature-flags.json \
+    --cli-binary-format raw-in-base64-out \
+    configuration-version-output.json
 ```
 
 ## Creating a Deployment Strategy
@@ -140,6 +142,7 @@ aws appconfig create-deployment-strategy \
     --name "FeatureFlagGradual" \
     --deployment-duration-in-minutes 10 \
     --growth-factor 20 \
+    --growth-type "LINEAR" \
     --final-bake-time-in-minutes 5 \
     --replicate-to "NONE"
 ```
@@ -324,30 +327,31 @@ else:
 
 ## Adding Validators
 
-Validators catch configuration errors before they reach production. AppConfig supports JSON Schema validators and Lambda validators.
+Validators catch configuration errors before they reach production. AppConfig automatically validates feature flags against the `AWS.AppConfig.FeatureFlags` JSON schema, and you can add a Lambda validator for custom business rules.
 
 ```bash
-# Create a JSON Schema validator
+# Create a feature flag configuration profile with a Lambda validator
 aws appconfig create-configuration-profile \
     --application-id abc123 \
     --name "feature-flags-validated" \
     --location-uri "hosted" \
     --type "AWS.AppConfig.FeatureFlags" \
     --validators '[{
-        "Type": "JSON_SCHEMA",
-        "Content": "{\"$schema\":\"http://json-schema.org/draft-07/schema#\",\"type\":\"object\",\"required\":[\"version\",\"flags\",\"values\"]}"
+        "Type": "LAMBDA",
+        "Content": "arn:aws:lambda:us-east-1:123456789012:function:validate-feature-flags"
     }]'
 ```
 
-For more complex validation, use a Lambda function.
+The Lambda function receives the configuration content as a base64-encoded string.
 
 ```python
 # validator_lambda.py - Validate feature flag configuration
+import base64
 import json
 
 def handler(event, context):
     """Validate feature flag configuration before deployment."""
-    config = json.loads(event['content'])
+    config = json.loads(base64.b64decode(event['content']).decode('utf-8'))
 
     # Ensure all flags have corresponding values
     flag_names = set(config.get('flags', {}).keys())
