@@ -22,7 +22,7 @@ The log entries include:
 - **When** the change was made (timestamp)
 - **What** changed (the IAM method called)
 - **Where** the change was applied (the resource)
-- **How** the change was made (API call details, including the before and after policy)
+- **How** the change was made (API call details, including the IAM policy delta when available)
 
 ## Viewing IAM Changes in Cloud Console
 
@@ -32,7 +32,7 @@ The quickest way to see recent IAM changes is through the Cloud Console:
 2. Use this filter:
 
 ```text
-protoPayload.methodName="SetIamPolicy"
+protoPayload.methodName:SetIamPolicy
 ```
 
 This shows all IAM policy changes across the project.
@@ -44,7 +44,7 @@ For command-line access, use gcloud to query the logs:
 ```bash
 # View all IAM policy changes in the last 24 hours
 
-gcloud logging read 'protoPayload.methodName="SetIamPolicy"' \
+gcloud logging read 'protoPayload.methodName:SetIamPolicy' \
     --project=my-project \
     --freshness=1d \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.resourceName, protoPayload.methodName)"
@@ -54,7 +54,7 @@ For more detail on each change:
 
 ```bash
 # View detailed IAM changes including the policy diff
-gcloud logging read 'protoPayload.methodName="SetIamPolicy"' \
+gcloud logging read 'protoPayload.methodName:SetIamPolicy' \
     --project=my-project \
     --freshness=1d \
     --limit=10 \
@@ -69,7 +69,7 @@ You can narrow down to IAM changes on specific resource types:
 
 ```bash
 # Only project-level IAM changes
-gcloud logging read 'protoPayload.methodName="SetIamPolicy" AND protoPayload.resourceName:"projects/"' \
+gcloud logging read 'protoPayload.methodName:SetIamPolicy AND protoPayload.resourceName:"projects/"' \
     --project=my-project \
     --freshness=7d \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.resourceName)"
@@ -79,7 +79,7 @@ gcloud logging read 'protoPayload.methodName="SetIamPolicy" AND protoPayload.res
 
 ```bash
 # IAM changes on Cloud Storage buckets
-gcloud logging read 'protoPayload.methodName="storage.setIamPermissions" OR (protoPayload.methodName="SetIamPolicy" AND protoPayload.resourceName:"buckets/")' \
+gcloud logging read 'protoPayload.methodName="storage.setIamPermissions" OR (protoPayload.methodName:SetIamPolicy AND protoPayload.resourceName:"buckets/")' \
     --project=my-project \
     --freshness=7d \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.resourceName)"
@@ -103,7 +103,7 @@ Some IAM changes are more concerning than others. Here are queries for the most 
 
 ```bash
 # Detect when someone is granted the Owner role
-gcloud logging read 'protoPayload.methodName="SetIamPolicy" AND protoPayload.serviceData.policyDelta.bindingDeltas.role="roles/owner" AND protoPayload.serviceData.policyDelta.bindingDeltas.action="ADD"' \
+gcloud logging read 'protoPayload.methodName:SetIamPolicy AND protoPayload.serviceData.policyDelta.bindingDeltas.role="roles/owner" AND protoPayload.serviceData.policyDelta.bindingDeltas.action="ADD"' \
     --project=my-project \
     --freshness=30d \
     --format="table(timestamp, protoPayload.authenticationInfo.principalEmail, protoPayload.serviceData.policyDelta.bindingDeltas.member)"
@@ -113,7 +113,7 @@ gcloud logging read 'protoPayload.methodName="SetIamPolicy" AND protoPayload.ser
 
 ```bash
 # Detect when non-organization members are added to IAM
-gcloud logging read 'protoPayload.methodName="SetIamPolicy" AND protoPayload.serviceData.policyDelta.bindingDeltas.action="ADD"' \
+gcloud logging read 'protoPayload.methodName:SetIamPolicy AND protoPayload.serviceData.policyDelta.bindingDeltas.action="ADD"' \
     --project=my-project \
     --freshness=7d \
     --format=json | python3 -c "
@@ -151,19 +151,20 @@ Here is a Python script that generates a comprehensive IAM change report:
 ```python
 # iam_audit_report.py - Generate an IAM change audit report
 from google.cloud import logging as cloud_logging
-from datetime import datetime, timedelta
-import json
+from datetime import datetime, timedelta, timezone
 
 def get_iam_changes(project_id, days=7):
     """Fetch all IAM policy changes from the last N days."""
     client = cloud_logging.Client(project=project_id)
+    start_time = datetime.now(timezone.utc) - timedelta(days=days)
+    start_time_str = start_time.isoformat().replace("+00:00", "Z")
 
     # Build the filter for IAM changes
     filter_str = (
-        'protoPayload.methodName="SetIamPolicy" OR '
-        'protoPayload.methodName="google.iam.admin.v1.SetIAMPolicy" OR '
+        f'timestamp >= "{start_time_str}" AND ('
+        'protoPayload.methodName:SetIamPolicy OR '
         'protoPayload.methodName="google.iam.admin.v1.CreateServiceAccountKey" OR '
-        'protoPayload.methodName="google.iam.admin.v1.DeleteServiceAccountKey"'
+        'protoPayload.methodName="google.iam.admin.v1.DeleteServiceAccountKey")'
     )
 
     # Query the logs
@@ -241,16 +242,15 @@ Monitoring IAM changes reactively by reading logs is important, but real-time al
 gcloud logging metrics create iam-policy-changes \
     --project=my-project \
     --description="Count of IAM policy changes" \
-    --log-filter='protoPayload.methodName="SetIamPolicy"'
+    --log-filter='protoPayload.methodName:SetIamPolicy'
 
 # Create an alerting policy based on the metric
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="IAM Policy Changed" \
     --condition-display-name="IAM policy change detected" \
     --condition-filter='metric.type="logging.googleapis.com/user/iam-policy-changes"' \
-    --condition-comparison=COMPARISON_GT \
-    --condition-threshold-value=0 \
-    --condition-duration=0s \
+    --if='> 0' \
+    --duration=0s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -261,16 +261,15 @@ gcloud alpha monitoring policies create \
 gcloud logging metrics create owner-role-granted \
     --project=my-project \
     --description="Count of Owner role grants" \
-    --log-filter='protoPayload.methodName="SetIamPolicy" AND protoPayload.serviceData.policyDelta.bindingDeltas.role="roles/owner" AND protoPayload.serviceData.policyDelta.bindingDeltas.action="ADD"'
+    --log-filter='protoPayload.methodName:SetIamPolicy AND protoPayload.serviceData.policyDelta.bindingDeltas.role="roles/owner" AND protoPayload.serviceData.policyDelta.bindingDeltas.action="ADD"'
 
 # Alert immediately when Owner is granted
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
     --display-name="Owner Role Granted - CRITICAL" \
     --condition-display-name="Owner role was granted" \
     --condition-filter='metric.type="logging.googleapis.com/user/owner-role-granted"' \
-    --condition-comparison=COMPARISON_GT \
-    --condition-threshold-value=0 \
-    --condition-duration=0s \
+    --if='> 0' \
+    --duration=0s \
     --notification-channels=projects/my-project/notificationChannels/12345
 ```
 
@@ -310,18 +309,13 @@ Once you have logs in BigQuery, you can run analytical queries:
 -- Find the most active IAM policy changers in the last 30 days
 SELECT
   protopayload_auditlog.authenticationInfo.principalEmail AS caller,
-  COUNT(*) AS change_count,
-  COUNTIF(JSON_EXTRACT_SCALAR(
-    TO_JSON_STRING(protopayload_auditlog.serviceData),
-    '$.policyDelta.bindingDeltas[0].action'
-  ) = 'ADD') AS additions,
-  COUNTIF(JSON_EXTRACT_SCALAR(
-    TO_JSON_STRING(protopayload_auditlog.serviceData),
-    '$.policyDelta.bindingDeltas[0].action'
-  ) = 'REMOVE') AS removals
+  COUNT(DISTINCT insertId) AS change_count,
+  COUNTIF(delta.action = 'ADD') AS additions,
+  COUNTIF(delta.action = 'REMOVE') AS removals
 FROM `my-project.iam_audit_logs.cloudaudit_googleapis_com_activity_*`
+LEFT JOIN UNNEST(protopayload_auditlog.servicedata_v1_iam.policyDelta.bindingDeltas) AS delta
 WHERE
-  protopayload_auditlog.methodName = 'SetIamPolicy'
+  REGEXP_CONTAINS(protopayload_auditlog.methodName, r'SetI[Aa]mPolicy')
   AND _TABLE_SUFFIX >= FORMAT_DATE('%Y%m%d', DATE_SUB(CURRENT_DATE(), INTERVAL 30 DAY))
 GROUP BY caller
 ORDER BY change_count DESC
@@ -337,7 +331,7 @@ SELECT
   EXTRACT(HOUR FROM timestamp AT TIME ZONE 'America/New_York') AS hour_et
 FROM `my-project.iam_audit_logs.cloudaudit_googleapis_com_activity_*`
 WHERE
-  protopayload_auditlog.methodName = 'SetIamPolicy'
+  REGEXP_CONTAINS(protopayload_auditlog.methodName, r'SetI[Aa]mPolicy')
   AND (
     EXTRACT(HOUR FROM timestamp AT TIME ZONE 'America/New_York') < 9
     OR EXTRACT(HOUR FROM timestamp AT TIME ZONE 'America/New_York') >= 17
