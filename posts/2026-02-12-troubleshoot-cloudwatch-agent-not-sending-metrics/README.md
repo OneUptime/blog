@@ -20,27 +20,28 @@ This seems obvious, but always start here:
 # Check agent status on Linux
 
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -m ec2 \
   -a status
 ```
 
-The output should show:
+The important fields in the output should show:
 
 ```json
 {
   "status": "running",
   "starttime": "2026-02-12T10:00:00Z",
   "configstatus": "configured",
-  "cwoc_status": "running"
+  "version": "1.300000.0"
 }
 ```
 
-If it shows `stopped` or `not_configured`, there's your problem.
+If `status` shows `stopped` or `configstatus` shows `not_configured`, there's your problem.
 
 On Windows:
 
 ```powershell
 # Check agent status on Windows
-& "C:\Program Files\Amazon\AmazonCloudWatchAgent\amazon-cloudwatch-agent-ctl.ps1" -a status
+& "C:\Program Files\Amazon\AmazonCloudWatchAgent\amazon-cloudwatch-agent-ctl.ps1" -m ec2 -a status
 ```
 
 For containers:
@@ -94,10 +95,9 @@ curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/
 aws iam list-attached-role-policies --role-name <role-name-from-above>
 ```
 
-The agent needs these permissions at minimum:
+The agent needs these permissions at minimum. This is valid JSON; if you paste it into IAM, don't add comments inside the policy document:
 
 ```json
-// Minimum IAM policy for CloudWatch agent
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -158,10 +158,9 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
 ```
 
-Here's a working baseline configuration to compare against:
+Here's a working baseline configuration to compare against. The agent configuration file is JSON, so comments are not allowed inside the file:
 
 ```json
-// Working CloudWatch agent configuration for EC2
 {
   "agent": {
     "metrics_collection_interval": 60,
@@ -215,7 +214,6 @@ Common configuration mistakes:
 Enable debug logging to get more detail:
 
 ```json
-// Enable debug mode in agent configuration
 {
   "agent": {
     "debug": true,
@@ -298,11 +296,7 @@ The agent sends metrics to the region it's configured for. If your agent is conf
 grep -i region /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.toml
 ```
 
-The agent determines the region from (in order):
-1. Agent configuration
-2. EC2 instance metadata
-3. AWS config file
-4. Environment variable `AWS_REGION`
+For EC2, the agent uses the `region` value in the agent configuration if you set one; otherwise, it sends metrics to the region where the instance is located. If you use `common-config.toml` with a named credential profile, that profile can also specify a different region.
 
 ## Step 8: Wait for Data
 
@@ -343,21 +337,21 @@ flowchart TD
 
 ```bash
 # Start the agent
-sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a start
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a start
 
 # Stop the agent
-sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a stop
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a stop
 
 # Check status
-sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a status
+sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -m ec2 -a status
 
 # Apply new config and restart
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -a fetch-config -m ec2 -s \
   -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
 
-# Get the running config
-sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl -a get-config
+# Inspect the translated running config
+sudo cat /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.toml
 ```
 
 ## Wrapping Up
