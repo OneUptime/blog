@@ -48,7 +48,7 @@ flowchart TB
 
 ## Step 1: Create an Isolated Test Network
 
-The test VMs must be created in a network that is isolated from both your production network and the DR network. This prevents IP conflicts and accidental traffic routing.
+The test VMs must be created in a network that is isolated from both your production network and the DR network. This prevents accidental traffic routing. If you want Site Recovery to preserve the configured subnet placement and private IP addresses during the test, the isolated network should use the same subnet names and address ranges as your production network.
 
 ```bash
 # Create an isolated virtual network for test failovers
@@ -58,22 +58,22 @@ az network vnet create \
     --resource-group rg-dr-centralus \
     --name vnet-dr-test-isolated \
     --location centralus \
-    --address-prefix 10.99.0.0/16 \
-    --subnet-name subnet-test \
-    --subnet-prefix 10.99.1.0/24
+    --address-prefixes 10.99.0.0/16 \
+    --subnet-name subnet-web \
+    --subnet-prefixes 10.99.1.0/24
 
-# Add additional subnets matching your production topology
+# Add additional subnets matching your production topology and subnet names
 az network vnet subnet create \
     --resource-group rg-dr-centralus \
     --vnet-name vnet-dr-test-isolated \
-    --name subnet-test-app \
-    --address-prefix 10.99.2.0/24
+    --name subnet-app \
+    --address-prefixes 10.99.2.0/24
 
 az network vnet subnet create \
     --resource-group rg-dr-centralus \
     --vnet-name vnet-dr-test-isolated \
-    --name subnet-test-db \
-    --address-prefix 10.99.3.0/24
+    --name subnet-db \
+    --address-prefixes 10.99.3.0/24
 ```
 
 Do not peer this network with any other network. The isolation is the whole point. If you need the test VMs to reach each other, they will because they share the same virtual network. If you need them to reach external services for validation, add a temporary NAT gateway.
@@ -84,11 +84,15 @@ When initiating a test failover, you choose which recovery point to use:
 
 **Latest processed** - The most recent recovery point that has been processed by Site Recovery. This gives you the closest-to-current state with minimal data loss. Recommended for most test scenarios.
 
-**Latest app-consistent** - The most recent application-consistent recovery point. Use this when you want to verify that applications come up cleanly without needing crash recovery.
+**Latest app-consistent** - The most recent application-consistent recovery point, if app-consistent recovery points are enabled. Use this when you want to verify that applications come up cleanly without needing crash recovery.
 
 **Latest** - Processes all pending replication data first, then creates a recovery point. This takes longer but gives you the absolute latest state.
 
-**Custom** - Pick a specific recovery point from the history. Useful for verifying that you can recover to a point before a known data corruption event.
+**Latest multi-VM processed** - Available for recovery plans with VMs that have multi-VM consistency enabled. VMs in the replication group fail over to the latest common multi-VM consistent recovery point.
+
+**Latest multi-VM app-consistent** - Available for recovery plans with VMs that have multi-VM consistency enabled. VMs in the replication group fail over to the latest common multi-VM application-consistent recovery point.
+
+**Custom** - Pick a specific recovery point from the history for a single VM. Useful for verifying that you can recover to a point before a known data corruption event.
 
 For routine DR testing, "Latest processed" is usually the right choice. It completes quickly and represents a realistic failover scenario.
 
@@ -130,10 +134,15 @@ $vault = Get-AzRecoveryServicesVault -Name "rsv-dr-centralus-001" -ResourceGroup
 Set-AzRecoveryServicesAsrVaultContext -Vault $vault
 
 # Get the replicated item (protected VM)
-$container = Get-AzRecoveryServicesAsrProtectionContainer
-$protectedItem = Get-AzRecoveryServicesAsrReplicationProtectedItem `
-    -ProtectionContainer $container `
-    -FriendlyName "vm-web-01"
+$protectedItem = Get-AzRecoveryServicesAsrFabric |
+    Get-AzRecoveryServicesAsrProtectionContainer |
+    ForEach-Object {
+        Get-AzRecoveryServicesAsrReplicationProtectedItem `
+            -ProtectionContainer $_ `
+            -FriendlyName "vm-web-01" `
+            -ErrorAction SilentlyContinue
+    } |
+    Select-Object -First 1
 
 # Get the latest processed recovery point
 $recoveryPoints = Get-AzRecoveryServicesAsrRecoveryPoint -ReplicationProtectedItem $protectedItem
@@ -197,7 +206,8 @@ $powerState = ($vm.Statuses | Where-Object Code -like "PowerState/*").DisplaySta
 Write-Output "VM Power State: $powerState"
 
 # Check boot diagnostics for errors
-$bootDiag = Get-AzVMBootDiagnosticsData -ResourceGroupName $ResourceGroup -Name $VMName -Windows
+$bootDiagPath = Join-Path $env:TEMP "$VMName-boot-diagnostics"
+$bootDiag = Get-AzVMBootDiagnosticsData -ResourceGroupName $ResourceGroup -Name $VMName -Windows -LocalPath $bootDiagPath
 
 # Run a command inside the VM to check services
 $result = Invoke-AzVMRunCommand -ResourceGroupName $ResourceGroup -VMName $VMName -CommandId 'RunPowerShellScript' -ScriptString '
@@ -256,7 +266,7 @@ If you used a recovery plan, clean up from the recovery plan level to remove all
 
 ## Common Test Failover Issues
 
-**Test VM fails to boot with DHCP error.** The test network does not have a DHCP server. Configure static IPs for the failover VMs in the "Compute and Network" settings of each replicated item.
+**Test VM is created on the wrong subnet or with an unexpected IP address.** Make sure the isolated test network has subnets with the same names as the source network. If the same subnet name or IP address is not available, Site Recovery falls back to another subnet or another available IP address.
 
 **Application cannot connect to database.** In the isolated test network, internal DNS might not resolve. Add host file entries or configure a DNS server in the test network.
 
