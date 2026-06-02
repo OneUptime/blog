@@ -15,7 +15,7 @@ Let's walk through how to find and recover your data.
 ## Understanding What Happens on Delete
 
 When you delete an object from a versioned bucket, S3 does two things:
-1. Creates a special zero-byte object called a "delete marker" and makes it the "latest" version
+1. Creates a special placeholder called a "delete marker" and makes it the "latest" version
 2. Keeps all previous versions untouched
 
 The object appears gone when you list the bucket normally, but it's still there.
@@ -131,7 +131,7 @@ aws s3api list-object-versions \
     --bucket "$BUCKET" \
     --prefix "$PREFIX" \
     --query "DeleteMarkers[?IsLatest==\`true\`].[Key,VersionId]" \
-    --output text | while read KEY VERSION_ID; do
+    --output text | while IFS=$'\t' read -r KEY VERSION_ID; do
 
     if [ -n "$KEY" ] && [ -n "$VERSION_ID" ]; then
         echo "Recovering: $KEY (delete marker: $VERSION_ID)"
@@ -169,14 +169,16 @@ TOTAL=$(python3 -c "import json; print(len(json.load(open('/tmp/delete-markers.j
 echo "Found $TOTAL delete markers to remove"
 
 # Process in batches of 1000 (S3 batch delete limit)
-python3 << 'PYEOF'
+BUCKET="$BUCKET" BATCH_SIZE="$BATCH_SIZE" python3 << 'PYEOF'
 import json
+import os
 import subprocess
 
 with open('/tmp/delete-markers.json') as f:
     markers = json.load(f)
 
-batch_size = 1000
+bucket = os.environ["BUCKET"]
+batch_size = int(os.environ["BATCH_SIZE"])
 for i in range(0, len(markers), batch_size):
     batch = markers[i:i + batch_size]
     delete_request = {
@@ -187,11 +189,11 @@ for i in range(0, len(markers), batch_size):
     with open('/tmp/batch-delete.json', 'w') as f:
         json.dump(delete_request, f)
 
-    result = subprocess.run([
+    subprocess.run([
         'aws', 's3api', 'delete-objects',
-        '--bucket', 'my-bucket',
+        '--bucket', bucket,
         '--delete', 'file:///tmp/batch-delete.json'
-    ], capture_output=True, text=True)
+    ], check=True)
 
     batch_num = (i // batch_size) + 1
     total_batches = (len(markers) + batch_size - 1) // batch_size
@@ -205,17 +207,17 @@ PYEOF
 
 Sometimes you know approximately when the deletion happened and want to recover to a point in time.
 
-Recover all objects to their state before a specific timestamp:
+Identify the object versions that were current before a specific timestamp:
 
 ```bash
 #!/bin/bash
-# point-in-time-recover.sh - Restore objects to their state at a specific time
+# point-in-time-recover.sh - Find versions to restore to a specific time
 
 BUCKET="my-bucket"
 PREFIX="data/"
 RESTORE_TIME="2026-02-12T10:00:00Z"
 
-echo "Restoring to state at: $RESTORE_TIME"
+echo "Finding versions current at: $RESTORE_TIME"
 
 # Find the correct version for each object at the specified time
 aws s3api list-object-versions \
@@ -282,21 +284,22 @@ aws s3api put-bucket-versioning \
     --mfa "arn:aws:iam::123456789012:mfa/root-mfa 123456"
 
 # 2. Use S3 Object Lock for critical data
+# The bucket must have Object Lock enabled before you can apply retention
 aws s3api put-object-retention \
     --bucket my-bucket \
     --key critical-data.csv \
     --retention '{"Mode":"GOVERNANCE","RetainUntilDate":"2027-01-01T00:00:00Z"}'
 
 # 3. Restrict delete permissions in IAM policies
-# Only grant s3:DeleteObject to specific roles
+# Only grant s3:DeleteObject and s3:DeleteObjectVersion to specific roles
 ```
 
 ## Using S3 Batch Operations for Large-Scale Recovery
 
-For enterprise-scale recovery (millions of objects), use S3 Batch Operations. This is more efficient than scripting individual API calls.
+For enterprise-scale recovery (millions of objects), use S3 Batch Operations with a Lambda function that calls DeleteObject for each delete marker version. S3 Batch Operations does not provide a native "delete object" operation, so Lambda is the supported way to run this recovery at that scale.
 
 ```bash
-# Create an inventory of delete markers to remove
+# Create an inventory of delete markers for the Lambda job to process
 # First, generate a CSV manifest of delete markers
 aws s3api list-object-versions \
     --bucket my-bucket \
@@ -307,8 +310,8 @@ aws s3api list-object-versions \
 # Upload the manifest
 aws s3 cp manifest.csv s3://my-manifest-bucket/recovery-manifest.csv
 
-# Create a Batch Operations job to delete the delete markers
-# (This is done through the console or with a more detailed API call)
+# Create a Batch Operations job that invokes a Lambda function
+# The Lambda function should call DeleteObject with the key and version ID
 ```
 
 ## Quick Reference
