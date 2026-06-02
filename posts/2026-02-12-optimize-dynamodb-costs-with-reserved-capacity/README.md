@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, Cost Optimization, Reserved Capacity
 
-Description: Learn how to reduce DynamoDB costs by up to 77% using reserved capacity, when to use it versus on-demand, and strategies for right-sizing your reservations.
+Description: Learn how to reduce DynamoDB provisioned capacity costs by up to 77% using reserved capacity, when to use it versus on-demand, and strategies for right-sizing your reservations.
 
 ---
 
-DynamoDB can get expensive fast, especially with provisioned capacity tables running 24/7. Reserved capacity lets you commit to a baseline level of read and write capacity for 1 or 3 years in exchange for a significant discount - up to 77% off on-demand pricing. But getting it wrong means either paying for capacity you don't use or not reserving enough to capture the full savings.
+DynamoDB can get expensive fast, especially with provisioned capacity tables running 24/7. Reserved capacity lets you commit to a baseline level of provisioned read and write capacity for 1 or 3 years in exchange for a significant discount - up to 77% off standard provisioned capacity pricing. But getting it wrong means either paying for capacity you don't use or not reserving enough to capture the full savings.
 
 Let's break down how to make the right call.
 
 ## Understanding the Pricing Models
 
-DynamoDB offers three pricing models, and understanding how they relate is crucial before buying reserved capacity.
+DynamoDB offers two throughput pricing modes, plus reserved capacity as a savings option for provisioned capacity. Understanding how they relate is crucial before buying reserved capacity.
 
 ```mermaid
 flowchart TD
@@ -27,39 +27,39 @@ flowchart TD
     C --> D
 ```
 
-Reserved capacity only applies to provisioned mode tables. You can't use reserved capacity with on-demand tables. The reservation covers a specific number of read or write capacity units, and anything above that is charged at the standard provisioned rate.
+Reserved capacity only applies to single-Region provisioned mode tables that use the DynamoDB Standard table class. You can't use reserved capacity with on-demand tables, DynamoDB Standard-IA tables, or replicated write capacity units (rWCUs). The reservation covers a specific number of provisioned read or write capacity units, including local and global secondary indexes, and anything above that is charged at the standard provisioned rate.
 
 ## How Reserved Capacity Works
 
 When you purchase reserved capacity, you're committing to a minimum number of capacity units in a specific region. Here's the pricing breakdown (approximate, check current pricing).
 
 For write capacity units (WCU):
-- **On-demand**: ~$1.25 per million write request units
+- **On-demand**: ~$0.625 per million write request units
 - **Provisioned**: ~$0.00065 per WCU per hour (~$0.47/month per WCU)
 - **1-year reserved**: ~$0.000128 per WCU per hour (~$0.09/month per WCU) + upfront
 - **3-year reserved**: ~$0.000051 per WCU per hour (~$0.037/month per WCU) + upfront
 
 That's a massive difference. A table running 1000 WCUs:
 - Provisioned: ~$470/month
-- 1-year reserved: ~$150/month (including amortized upfront)
+- 1-year reserved: ~$218/month (including amortized upfront)
 - 3-year reserved: ~$107/month (including amortized upfront)
 
 ## Analyzing Your Usage Patterns
 
-Before buying, you need to understand your actual capacity usage. Pull CloudWatch metrics to see your consumption patterns.
+Before buying, you need to understand your provisioned capacity baseline. Pull CloudWatch metrics to see how much capacity your tables and indexes have provisioned over time. Consumed capacity metrics are still useful for right-sizing the table first, but reserved capacity discounts apply to provisioned RCUs and WCUs.
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 
 def get_capacity_stats(table_name, metric_name, days=30):
-    """Get min, max, and average capacity consumption over a period."""
-    end_time = datetime.utcnow()
+    """Get min, max, and average provisioned capacity over a period."""
+    end_time = datetime.now(timezone.utc)
     start_time = end_time - timedelta(days=days)
 
-    # Get the consumed capacity over the period
+    # Get the provisioned capacity over the period
     response = cloudwatch.get_metric_statistics(
         Namespace='AWS/DynamoDB',
         MetricName=metric_name,
@@ -89,7 +89,7 @@ def get_capacity_stats(table_name, metric_name, days=30):
     print(f'  Max hourly avg: {max(averages):.1f}')
     print(f'  Peak: {max(maximums):.1f}')
 
-    # The baseline for reservation is the minimum sustained usage
+    # The baseline for reservation is the minimum sustained provisioned capacity
     baseline = min(averages)
     print(f'  Recommended reservation baseline: {baseline:.0f} capacity units')
 
@@ -99,8 +99,8 @@ def get_capacity_stats(table_name, metric_name, days=30):
 
 tables = ['Users', 'Orders', 'Products']
 for table in tables:
-    get_capacity_stats(table, 'ConsumedReadCapacityUnits')
-    get_capacity_stats(table, 'ConsumedWriteCapacityUnits')
+    get_capacity_stats(table, 'ProvisionedReadCapacityUnits')
+    get_capacity_stats(table, 'ProvisionedWriteCapacityUnits')
 ```
 
 ## The Right-Sizing Strategy
@@ -158,13 +158,9 @@ calculate_reservation_savings(2000, 'read')
 
 ## Purchasing Reserved Capacity
 
-Reserved capacity is purchased through the AWS console or CLI. Note that it's bought in blocks of 100 capacity units.
+Reserved capacity is purchased through the AWS Management Console. Note that it's bought in blocks of 100 capacity units.
 
 ```bash
-# Purchase 500 reserved write capacity units for 1 year
-# (This is done through the console - the CLI command below
-# is for reference; actual purchase requires console confirmation)
-
 # View available reserved capacity offerings
 aws dynamodb describe-reserved-capacity-offerings \
   --region us-east-1
@@ -222,7 +218,6 @@ Here's a script to review your DynamoDB costs and identify optimization opportun
 import boto3
 
 ce = boto3.client('ce')
-dynamodb = boto3.client('dynamodb')
 
 def get_dynamodb_monthly_cost():
     """Get the current month's DynamoDB costs broken down by usage type."""
@@ -230,32 +225,42 @@ def get_dynamodb_monthly_cost():
 
     today = datetime.date.today()
     first_of_month = today.replace(day=1)
-
-    response = ce.get_cost_and_usage(
-        TimePeriod={
-            'Start': first_of_month.isoformat(),
-            'End': today.isoformat()
-        },
-        Granularity='MONTHLY',
-        Metrics=['UnblendedCost'],
-        Filter={
-            'Dimensions': {
-                'Key': 'SERVICE',
-                'Values': ['Amazon DynamoDB']
-            }
-        },
-        GroupBy=[
-            {'Type': 'DIMENSION', 'Key': 'USAGE_TYPE'}
-        ]
-    )
+    next_day = today + datetime.timedelta(days=1)
 
     print('DynamoDB costs this month:')
-    for result in response['ResultsByTime']:
-        for group in result['Groups']:
-            usage_type = group['Keys'][0]
-            cost = float(group['Metrics']['UnblendedCost']['Amount'])
-            if cost > 0.01:
-                print(f'  {usage_type}: ${cost:.2f}')
+    next_token = None
+    while True:
+        request = {
+            'TimePeriod': {
+                'Start': first_of_month.isoformat(),
+                'End': next_day.isoformat()
+            },
+            'Granularity': 'MONTHLY',
+            'Metrics': ['UnblendedCost'],
+            'Filter': {
+                'Dimensions': {
+                    'Key': 'SERVICE',
+                    'Values': ['Amazon DynamoDB']
+                }
+            },
+            'GroupBy': [
+                {'Type': 'DIMENSION', 'Key': 'USAGE_TYPE'}
+            ]
+        }
+        if next_token:
+            request['NextPageToken'] = next_token
+
+        response = ce.get_cost_and_usage(**request)
+        for result in response['ResultsByTime']:
+            for group in result['Groups']:
+                usage_type = group['Keys'][0]
+                cost = float(group['Metrics']['UnblendedCost']['Amount'])
+                if cost > 0.01:
+                    print(f'  {usage_type}: ${cost:.2f}')
+
+        next_token = response.get('NextPageToken')
+        if not next_token:
+            break
 
 get_dynamodb_monthly_cost()
 ```
