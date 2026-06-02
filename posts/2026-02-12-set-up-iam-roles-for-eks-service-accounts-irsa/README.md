@@ -14,7 +14,7 @@ This guide covers setting up IRSA from scratch, including the OIDC provider conf
 
 ## How IRSA Works
 
-The mechanism behind IRSA is clever. When a pod with an annotated service account starts, the EKS Pod Identity webhook injects AWS credentials as environment variables and mounts a projected service account token. This token is a JWT that AWS STS can validate through the cluster's OIDC provider.
+The mechanism behind IRSA is clever. When a pod with an annotated service account starts, the EKS Pod Identity webhook injects the role ARN and token file path as environment variables and mounts a projected service account token. This token is a JWT that AWS STS can validate through the cluster's OIDC provider.
 
 ```mermaid
 sequenceDiagram
@@ -25,7 +25,7 @@ sequenceDiagram
     participant S3 as AWS Service (S3)
 
     Pod->>Webhook: Pod created with annotated SA
-    Webhook->>Pod: Inject token + env vars
+    Webhook->>Pod: Inject role ARN, token path + token volume
     Pod->>STS: AssumeRoleWithWebIdentity
     STS->>OIDC: Validate JWT token
     OIDC-->>STS: Token valid
@@ -73,14 +73,10 @@ Or create it manually with the AWS CLI:
 # Get the OIDC issuer URL
 OIDC_URL=$(aws eks describe-cluster --name my-cluster --query "cluster.identity.oidc.issuer" --output text)
 
-# Get the thumbprint
-THUMBPRINT=$(openssl s_client -connect oidc.eks.us-west-2.amazonaws.com:443 -servername oidc.eks.us-west-2.amazonaws.com 2>/dev/null | openssl x509 -fingerprint -noout | sed 's/://g' | cut -d= -f2)
-
 # Create the OIDC provider
 aws iam create-open-id-connect-provider \
   --url "${OIDC_URL}" \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list "${THUMBPRINT}"
+  --client-id-list sts.amazonaws.com
 ```
 
 ## Step 2: Create an IAM Role
@@ -218,6 +214,7 @@ Deploy a test pod and verify that IRSA is working:
 # Run a test pod with the service account
 kubectl run aws-test --image=amazon/aws-cli \
   --overrides='{"spec":{"serviceAccountName":"my-app-sa"}}' \
+  --restart=Never \
   --rm -it -- sts get-caller-identity
 ```
 
