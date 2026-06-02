@@ -41,7 +41,7 @@ Before you start, you need:
 
 - AWS Organizations set up with at least two accounts
 - The networking account designated as the VPC owner
-- RAM sharing enabled in your organization (it is by default in newer setups)
+- RAM sharing enabled in your organization
 
 ### Enable RAM Sharing in Organizations
 
@@ -116,12 +116,32 @@ aws ec2 attach-internet-gateway \
     --internet-gateway-id igw-0123456789abcdef0 \
     --vpc-id vpc-0123456789abcdef0
 
+# Create a public subnet for the NAT gateway
+aws ec2 create-subnet \
+    --vpc-id vpc-0123456789abcdef0 \
+    --cidr-block 10.0.0.0/24 \
+    --availability-zone us-east-1a \
+    --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=shared-public-1a},{Key=Environment,Value=networking}]'
+
+aws ec2 create-route-table \
+    --vpc-id vpc-0123456789abcdef0 \
+    --tag-specifications 'ResourceType=route-table,Tags=[{Key=Name,Value=shared-public-rt}]'
+
+aws ec2 create-route \
+    --route-table-id rtb-0abcde12345678901 \
+    --destination-cidr-block 0.0.0.0/0 \
+    --gateway-id igw-0123456789abcdef0
+
+aws ec2 associate-route-table \
+    --route-table-id rtb-0abcde12345678901 \
+    --subnet-id subnet-0abcde12345678901
+
 # Create NAT gateway for private subnets
 aws ec2 allocate-address --domain vpc
 # Returns: AllocationId: eipalloc-0123456789abcdef0
 
 aws ec2 create-nat-gateway \
-    --subnet-id subnet-public-1a \
+    --subnet-id subnet-0abcde12345678901 \
     --allocation-id eipalloc-0123456789abcdef0 \
     --tag-specifications 'ResourceType=natgateway,Tags=[{Key=Name,Value=shared-nat-1a}]'
 
@@ -149,9 +169,10 @@ Now share the subnets with participant accounts using Resource Access Manager.
 # Create a resource share for production subnets
 aws ram create-resource-share \
     --name "production-subnet-share" \
+    --no-allow-external-principals \
     --resource-arns \
-        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-prod-1a" \
-        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-prod-1b" \
+        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0aaa1111bbbb2222c" \
+        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0bbb2222cccc3333d" \
     --principals \
         "arn:aws:organizations::111111111111:ou/o-abc123/ou-def456" \
     --tags 'key=Environment,value=production'
@@ -159,16 +180,17 @@ aws ram create-resource-share \
 # Create a separate share for development subnets
 aws ram create-resource-share \
     --name "development-subnet-share" \
+    --no-allow-external-principals \
     --resource-arns \
-        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-dev-1a" \
-        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-dev-1b" \
+        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0ccc3333dddd4444e" \
+        "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0ddd4444eeee5555f" \
     --principals \
         "arn:aws:organizations::111111111111:ou/o-abc123/ou-ghi789" \
     --tags 'key=Environment,value=development'
 ```
 
 You can share with:
-- Specific AWS account IDs
+- Specific AWS account IDs in your organization
 - Organizational Units (OUs) - all accounts in the OU get access
 - The entire organization
 
@@ -186,8 +208,8 @@ aws ec2 describe-subnets \
 aws ec2 run-instances \
     --image-id ami-0abcdef1234567890 \
     --instance-type t3.medium \
-    --subnet-id subnet-prod-1a \
-    --security-group-ids sg-participant-sg \
+    --subnet-id subnet-0aaa1111bbbb2222c \
+    --security-group-ids sg-0123456789abcdef0 \
     --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=my-app-server}]'
 ```
 
@@ -217,7 +239,7 @@ NACLs set by the VPC owner apply to all resources in the subnet, regardless of w
 
 ### Security Groups are Account-Scoped
 
-Each account manages its own security groups. A participant cannot reference security groups from another participant account. If cross-account security group references are needed, you will need to use CIDR-based rules instead.
+Each account manages its own security groups. A participant can reference security groups that belong to the VPC owner or other participants by using the `account-id/security-group-id` format. If cross-account security group references do not fit your access model, use CIDR-based rules instead.
 
 ```bash
 # Participant account creates its own security group in the shared VPC
@@ -226,9 +248,17 @@ aws ec2 create-security-group \
     --description "Security group for application servers" \
     --vpc-id vpc-0123456789abcdef0
 
-# Use CIDR ranges instead of security group IDs for cross-account rules
+# Reference a security group owned by another account
 aws ec2 authorize-security-group-ingress \
-    --group-id sg-participant-sg \
+    --group-id sg-0123456789abcdef0 \
+    --protocol tcp \
+    --port 443 \
+    --source-group sg-0fedcba9876543210 \
+    --group-owner 111111111111
+
+# Or use CIDR ranges when that better matches your access model
+aws ec2 authorize-security-group-ingress \
+    --group-id sg-0123456789abcdef0 \
     --protocol tcp \
     --port 443 \
     --cidr 10.0.1.0/24
@@ -254,7 +284,7 @@ For a detailed cost analysis approach, see our post on [calculating TCO for AWS 
 - Participant accounts cannot modify VPC-level settings (DNS, DHCP options)
 - VPC peering and VPN connections are managed only by the owner
 - Some services have restrictions in shared subnets (check AWS docs for specifics)
-- Default security group is not shared - participants create their own
+- Default security group is not shared - participants create their own custom security groups
 - You cannot share a default VPC
 
 ## Conclusion
