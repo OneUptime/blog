@@ -73,26 +73,27 @@ FROM events.user_activity
 GROUP BY DATE_TRUNC('hour', event_time), event_type;
 ```
 
-Auto-refresh runs in the background when Redshift detects that the base tables have new data. It doesn't guarantee immediate freshness, but it keeps the view reasonably up to date without manual intervention.
+Auto-refresh runs as soon as possible after Redshift detects that the base tables have new data. It doesn't guarantee immediate freshness, but it keeps the view reasonably up to date without manual intervention.
 
 ## Manual Refresh
 
 For more control, refresh manually or on a schedule:
 
 ```sql
--- Full refresh - recomputes the entire view
+-- Refresh the view; Redshift uses incremental refresh when the view is eligible
 REFRESH MATERIALIZED VIEW analytics.daily_sales;
 
 -- Check when the view was last refreshed
 SELECT
     schema_name,
     mv_name,
-    state,
-    autorefresh,
-    last_refresh_time
+    status,
+    refresh_type,
+    starttime,
+    endtime
 FROM svl_mv_refresh_status
 WHERE mv_name = 'daily_sales'
-ORDER BY last_refresh_time DESC
+ORDER BY starttime DESC
 LIMIT 5;
 ```
 
@@ -101,19 +102,20 @@ LIMIT 5;
 Some materialized views support incremental refresh, which only processes new data instead of recomputing everything. This is much faster for large datasets.
 
 Incremental refresh works automatically when:
-- The view doesn't use certain operations (UNION, HAVING, external tables)
-- The base tables have been loaded with COPY or INSERT
+- The view definition uses supported constructs like SELECT, FROM, INNER JOIN, WHERE, GROUP BY, HAVING, and supported aggregate functions
+- The view doesn't use unsupported patterns such as outer joins, set operations, DISTINCT aggregate functions, window functions, subqueries, or unsupported external table formats
 
 ```sql
 -- Check if a view supports incremental refresh
 SELECT
-    mv_name,
-    is_incremental
+    schema,
+    name,
+    state
 FROM stv_mv_info
-WHERE schema_name = 'analytics';
+WHERE schema = 'analytics';
 ```
 
-If `is_incremental` is true, REFRESH will only process the delta.
+If `state` is 1, REFRESH can process the delta incrementally. If `state` is 0, Redshift recomputes the materialized view from scratch.
 
 ## Materialized View on Top of Materialized View
 
@@ -150,7 +152,7 @@ FROM analytics.monthly_sales
 GROUP BY DATE_TRUNC('year', month);
 ```
 
-When you refresh the daily view, the monthly and yearly views pick up the changes on their next refresh.
+When you refresh the daily view, the monthly and yearly views pick up the changes on their next refresh. Refresh nested materialized views in dependency order, or refresh the top-level view with `CASCADE`.
 
 ## Materialized Views for Dashboard Queries
 
@@ -160,9 +162,7 @@ Create views that power a sales dashboard:
 
 ```sql
 -- Revenue by region for the map widget
-CREATE MATERIALIZED VIEW dashboard.revenue_by_region
-AUTO REFRESH YES
-AS
+CREATE MATERIALIZED VIEW dashboard.revenue_by_region AS
 SELECT
     c.state,
     c.country,
@@ -175,9 +175,7 @@ WHERE o.order_date >= DATEADD(month, -6, CURRENT_DATE)
 GROUP BY c.state, c.country, DATE_TRUNC('week', o.order_date);
 
 -- Top products for the leaderboard widget
-CREATE MATERIALIZED VIEW dashboard.top_products
-AUTO REFRESH YES
-AS
+CREATE MATERIALIZED VIEW dashboard.top_products AS
 SELECT
     p.product_id,
     p.name,
@@ -192,9 +190,7 @@ WHERE o.order_date >= DATEADD(day, -30, CURRENT_DATE)
 GROUP BY p.product_id, p.name, p.category;
 
 -- Customer cohort analysis
-CREATE MATERIALIZED VIEW dashboard.customer_cohorts
-AUTO REFRESH YES
-AS
+CREATE MATERIALIZED VIEW dashboard.customer_cohorts AS
 WITH first_purchase AS (
     SELECT
         customer_id,
@@ -244,19 +240,16 @@ Useful operations for managing your views:
 ```sql
 -- List all materialized views
 SELECT
-    schemaname,
-    matviewname,
-    matviewowner
-FROM pg_matviews
-ORDER BY schemaname, matviewname;
+    schema,
+    name,
+    owner_user_name,
+    state,
+    autorefresh
+FROM stv_mv_info
+ORDER BY schema, name;
 
 -- Check view definitions
-SELECT
-    schemaname,
-    matviewname,
-    definition
-FROM pg_matviews
-WHERE matviewname = 'daily_sales';
+SELECT pg_get_viewdef('analytics.daily_sales'::regclass::oid, true);
 
 -- Drop a materialized view
 DROP MATERIALIZED VIEW IF EXISTS analytics.daily_sales CASCADE;
@@ -313,8 +306,9 @@ def lambda_handler(event, context):
 
 A few constraints to be aware of:
 
-- Materialized views can't include external tables (Spectrum) in auto-refresh mode
-- Some SQL features aren't supported: UNION, EXCEPT, INTERSECT, HAVING (with some exceptions)
+- Materialized views can include some external tables, but external schemas can't be used with `AUTO REFRESH YES` and external table refresh behavior has format-specific limits
+- `AUTO REFRESH YES` can't be used when the materialized view definition includes mutable functions or external schemas
+- Some SQL features prevent incremental refresh: outer joins, UNION, EXCEPT, INTERSECT, DISTINCT aggregate functions, window functions, and subqueries
 - Interleaved sort keys aren't supported on materialized views
 - Late binding views (`WITH NO SCHEMA BINDING`) can't be materialized
 - Incremental refresh has its own restrictions on which SQL patterns are supported
