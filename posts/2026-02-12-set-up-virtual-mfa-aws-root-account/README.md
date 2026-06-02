@@ -10,7 +10,7 @@ Description: Step-by-step guide to securing your AWS root account with virtual M
 
 The root account is the keys to your entire AWS kingdom. If someone gets access to it, they can do literally anything - delete every resource, change billing, close the account. Securing it with MFA should be the very first thing you do after creating an AWS account. No exceptions.
 
-This guide walks you through setting up virtual MFA on the root account using an authenticator app. We'll also cover what to do if you lose your MFA device and how to store backup codes safely.
+This guide walks you through setting up virtual MFA on the root account using an authenticator app. We'll also cover what to do if you lose your MFA device and how to store the recovery secret safely.
 
 ## Why Virtual MFA?
 
@@ -23,7 +23,7 @@ Popular authenticator apps that work with AWS:
 - Microsoft Authenticator
 - 1Password (built-in TOTP support)
 
-I personally recommend Authy or 1Password because they support backup and recovery. With Google Authenticator, if you lose your phone, you lose your codes.
+I personally recommend using an authenticator app with a backup or transfer feature, such as Authy, 1Password, Microsoft Authenticator, or Google Authenticator with Google Account sync enabled. Without a backup, transfer, or saved secret key, losing your phone can mean losing access to the codes.
 
 ## Step-by-Step Setup
 
@@ -89,7 +89,7 @@ The first data row is always the root account. Look for the `mfa_active` column 
 
 This is the scenario that keeps people up at night. You dropped your phone in a lake, and now you can't log into your root account. Here's how to recover:
 
-### Option 1: Use Backup Codes (If You Saved Them)
+### Option 1: Use the Saved Secret Key
 
 If you saved the secret key during setup, you can register it on a new authenticator app.
 
@@ -99,22 +99,24 @@ If you used Authy, install it on a new device and restore from the cloud backup 
 
 ### Option 3: Contact AWS Support
 
-If you have no backup, you'll need to contact AWS Support through the sign-in page. This process involves:
+If you have no backup, first try AWS's root user MFA recovery flow from the sign-in page. This process involves:
 
-1. Click "Sign in using root account credentials"
-2. Enter your email
-3. Click "Forgot password?" (even though you know the password)
-4. AWS will send you a password reset email
-5. During the reset process, there's an option to request MFA removal
-6. AWS will verify your identity through the email and possibly a phone call
+1. Sign in as the root user with your account email and password
+2. On the MFA prompt, choose "Troubleshoot MFA" or the equivalent troubleshooting option
+3. Choose "Sign in using alternative factors"
+4. AWS will verify your identity through the root account email address
+5. AWS will verify the primary contact phone number on the account, usually with an automated phone call
+6. After signing in, delete the old MFA device and register a new one
+
+If you can't verify the account email and primary contact phone number, contact AWS Support to deactivate the MFA device.
 
 This can take anywhere from a few hours to a couple of business days. During this time, you won't have root access to your account.
 
 ## Best Practices for Root Account MFA
 
-### Register the MFA on Two Devices
+### Register Multiple MFA Devices
 
-Authy lets you register on multiple devices. Set it up on your phone and a tablet, or your phone and your partner's phone. That way, losing one device doesn't lock you out.
+AWS lets you register up to eight MFA devices for the root user. Set up more than one MFA method, such as your phone plus a hardware security key or another trusted device. That way, losing one device doesn't lock you out.
 
 ### Store the Secret Key Securely
 
@@ -154,15 +156,37 @@ Store this document in a secure, shared location that at least two trusted peopl
 
 ### Enable Billing Alerts
 
-While you're in the root account, set up billing alerts so you'll know if someone compromises the account and starts spinning up resources:
+While you're in the root account, set up Cost Anomaly Detection so you'll know if someone compromises the account and starts spinning up resources:
 
 ```bash
-# Enable billing alerts in CloudWatch (must be done as root or billing admin)
-aws ce create-anomaly-monitor \
+# Create a cost anomaly monitor, then attach an email alert subscription
+MONITOR_ARN=$(aws ce create-anomaly-monitor \
   --anomaly-monitor '{
     "MonitorName": "account-cost-monitor",
     "MonitorType": "DIMENSIONAL",
     "MonitorDimension": "SERVICE"
+  }' \
+  --query 'MonitorArn' \
+  --output text)
+
+aws ce create-anomaly-subscription \
+  --anomaly-subscription '{
+    "SubscriptionName": "account-cost-alerts",
+    "MonitorArnList": ["'"$MONITOR_ARN"'"],
+    "Subscribers": [
+      {
+        "Type": "EMAIL",
+        "Address": "admin@example.com"
+      }
+    ],
+    "Frequency": "DAILY",
+    "ThresholdExpression": {
+      "Dimensions": {
+        "Key": "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+        "MatchOptions": ["GREATER_THAN_OR_EQUAL"],
+        "Values": ["100"]
+      }
+    }
   }'
 ```
 
@@ -175,7 +199,10 @@ import boto3
 
 # Check root account MFA status across all accounts in an organization
 org_client = boto3.client("organizations")
-accounts = org_client.list_accounts()["Accounts"]
+accounts = []
+
+for page in org_client.get_paginator("list_accounts").paginate():
+    accounts.extend(page["Accounts"])
 
 for account in accounts:
     account_id = account["Id"]
@@ -228,4 +255,4 @@ This rule evaluates periodically and flags the account as non-compliant if root 
 
 Setting up virtual MFA on the root account takes about five minutes. Recovering from a compromised root account without MFA can take weeks and cost you thousands. The math is pretty clear.
 
-Do it now. Open a new tab, sign into your root account, and set up MFA. Then save the backup codes. Then stop using root for daily work. Your future self will thank you.
+Do it now. Open a new tab, sign into your root account, and set up MFA. Then save the secret key securely. Then stop using root for daily work. Your future self will thank you.
