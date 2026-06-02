@@ -8,7 +8,7 @@ Description: Learn how to generate S3 presigned URLs to provide temporary, secur
 
 ---
 
-You've got a private S3 bucket full of files, and you need to let someone download one without giving them AWS credentials. Maybe it's a user downloading a report from your web app, or a partner accessing a shared document. Presigned URLs solve this elegantly - they encode your AWS credentials and permissions into a time-limited URL that anyone can use to access a specific object.
+You've got a private S3 bucket full of files, and you need to let someone download one without giving them AWS credentials. Maybe it's a user downloading a report from your web app, or a partner accessing a shared document. Presigned URLs solve this elegantly - they use your AWS credentials and permissions to create a time-limited signed URL that anyone can use to access a specific object.
 
 ## How Presigned URLs Work
 
@@ -117,6 +117,7 @@ Here's a complete example of a Flask endpoint that generates presigned URLs on d
 ```python
 from flask import Flask, request, jsonify, abort
 import boto3
+from botocore.exceptions import ClientError
 
 app = Flask(__name__)
 s3 = boto3.client('s3')
@@ -140,7 +141,7 @@ def get_download_url():
     # Check that the object actually exists
     try:
         s3.head_object(Bucket=BUCKET, Key=file_key)
-    except s3.exceptions.ClientError as e:
+    except ClientError as e:
         if e.response['Error']['Code'] == '404':
             abort(404, 'File not found')
         raise
@@ -200,8 +201,7 @@ sequenceDiagram
 
     User->>Backend: Request file download
     Backend->>Backend: Verify user permissions
-    Backend->>S3: Generate presigned URL
-    S3-->>Backend: Presigned URL
+    Backend->>Backend: Sign S3 GET request URL
     Backend-->>User: Return presigned URL
     User->>S3: Direct download using URL
     S3-->>User: File data
@@ -240,9 +240,9 @@ safe_key = f"users/{current_user.id}/{key}"
 url = s3.generate_presigned_url('get_object', Params={'Bucket': BUCKET, 'Key': safe_key})
 ```
 
-### Restrict Upload Content Types
+### Require Upload Content-Type Metadata
 
-When generating upload URLs, specify the content type to prevent users from uploading unexpected file types.
+When generating upload URLs, specify the content type to require the client to send matching Content-Type metadata. Validate the actual file contents separately if file type matters.
 
 ```python
 # Restrict uploads to specific content types
@@ -266,7 +266,7 @@ For more control over uploads, use presigned POST instead of presigned PUT. See 
 The maximum expiration time depends on how you generate the URL:
 
 - **IAM user credentials**: Up to 7 days (604,800 seconds)
-- **IAM role (temporary credentials)**: Limited to the remaining validity of the session token, which is typically 1-12 hours
+- **IAM role (temporary credentials)**: Limited to the remaining validity of the session token. For EC2 instance role credentials, AWS notes this is typically 6 hours
 - **STS temporary credentials**: Limited to the session duration
 
 If you're running on EC2 or Lambda (which use role-based credentials), your presigned URLs can't exceed the role session duration.
