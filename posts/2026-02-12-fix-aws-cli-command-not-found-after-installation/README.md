@@ -16,22 +16,22 @@ When you type `aws` in your terminal, your shell searches through the directorie
 
 ## Fix on macOS
 
-The AWS CLI v2 installer on macOS puts the binary in `/usr/local/aws-cli/` and creates a symlink in `/usr/local/bin/`. If the symlink wasn't created, you'll get the error.
+The AWS CLI v2 package installer on macOS puts the CLI in `/usr/local/aws-cli/` by default and creates a symlink in `/usr/local/bin/`. If the symlink wasn't created, you'll get the error.
 
 Check if the binary exists.
 
 ```bash
 # Check if the AWS CLI binary was actually installed
 
-ls -la /usr/local/aws-cli/v2/current/bin/aws
+ls -la /usr/local/aws-cli/aws
 ```
 
 If the file exists, the installation worked but the symlink is missing. Create it.
 
 ```bash
 # Create the symlink for the aws command
-sudo ln -s /usr/local/aws-cli/v2/current/bin/aws /usr/local/bin/aws
-sudo ln -s /usr/local/aws-cli/v2/current/bin/aws_completer /usr/local/bin/aws_completer
+sudo ln -s /usr/local/aws-cli/aws /usr/local/bin/aws
+sudo ln -s /usr/local/aws-cli/aws_completer /usr/local/bin/aws_completer
 ```
 
 Now verify it works.
@@ -49,7 +49,7 @@ echo 'export PATH="/usr/local/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 ```
 
-For macOS users with Apple Silicon (M1/M2/M3), the installation path is the same. The CLI distributes a universal binary that works on both Intel and ARM.
+For macOS users with Apple Silicon, the installation path is the same. Starting with AWS CLI v2 version 2.30.0, the macOS installers provide universal binary support for both Intel and Apple silicon.
 
 ## Fix on Linux
 
@@ -137,7 +137,7 @@ source ~/.bashrc
 In Docker containers, you might install the CLI during the build but then not find it at runtime. Make sure the installation happens in the right layer and the PATH is set correctly.
 
 ```dockerfile
-# Install AWS CLI v2 in a Docker container
+# Install AWS CLI v2 in an x86_64 Docker container
 FROM python:3.11-slim
 
 RUN apt-get update && apt-get install -y curl unzip \
@@ -196,7 +196,7 @@ aws --version
 
 If nothing else works, do a clean reinstall.
 
-On macOS/Linux:
+On Linux x86_64:
 
 ```bash
 # Remove existing installation
