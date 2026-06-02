@@ -21,7 +21,7 @@ Install Lambda Powertools if you haven't already.
 This installs the library with validation support:
 
 ```bash
-pip install aws-lambda-powertools
+pip install "aws-lambda-powertools[validation]"
 ```
 
 ## Basic Input Validation
@@ -231,9 +231,7 @@ from aws_lambda_powertools.utilities.validation import validator
 def check_phone_number(value):
     """Validate US phone number format."""
     pattern = r"^\+1[0-9]{10}$"
-    if not re.match(pattern, value):
-        raise ValueError(f"Invalid phone number: {value}")
-    return True
+    return bool(re.match(pattern, value))
 
 
 CONTACT_SCHEMA = {
@@ -241,7 +239,7 @@ CONTACT_SCHEMA = {
     "type": "object",
     "properties": {
         "name": {"type": "string", "minLength": 1},
-        "phone": {"type": "string"},
+        "phone": {"type": "string", "format": "phone"},
         "preferred_contact": {
             "type": "string",
             "enum": ["phone", "email", "text"],
@@ -251,11 +249,11 @@ CONTACT_SCHEMA = {
 }
 
 
-@validator(inbound_schema=CONTACT_SCHEMA)
+@validator(
+    inbound_schema=CONTACT_SCHEMA,
+    inbound_formats={"phone": check_phone_number},
+)
 def lambda_handler(event, context):
-    # Additional phone validation beyond schema
-    check_phone_number(event["phone"])
-
     save_contact(event)
     return {"saved": True}
 ```
