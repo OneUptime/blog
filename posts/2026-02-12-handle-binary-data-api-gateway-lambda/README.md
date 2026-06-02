@@ -138,7 +138,8 @@ def lambda_handler(event, context):
         body = event["body"].encode()
 
     # Get the content type from headers
-    content_type = event["headers"].get("content-type", "application/octet-stream")
+    headers = {k.lower(): v for k, v in event.get("headers", {}).items()}
+    content_type = headers.get("content-type", "application/octet-stream")
 
     # Determine file extension
     extensions = {
@@ -175,9 +176,10 @@ Parse multipart form data in Lambda:
 
 ```python
 import base64
-import cgi
-from io import BytesIO
 import boto3
+from email.parser import BytesParser
+from email.policy import default
+import json
 import uuid
 
 s3 = boto3.client("s3")
@@ -185,7 +187,8 @@ s3 = boto3.client("s3")
 
 def parse_multipart(event):
     """Parse multipart form data from API Gateway event."""
-    content_type = event["headers"].get("content-type", "")
+    headers = {k.lower(): v for k, v in event.get("headers", {}).items()}
+    content_type = headers.get("content-type", "")
 
     # Decode the body
     if event.get("isBase64Encoded"):
@@ -194,14 +197,12 @@ def parse_multipart(event):
         body = event["body"].encode()
 
     # Parse the multipart data
-    environ = {
-        "REQUEST_METHOD": "POST",
-        "CONTENT_TYPE": content_type,
-        "CONTENT_LENGTH": len(body),
-    }
-
-    fp = BytesIO(body)
-    form = cgi.FieldStorage(fp=fp, environ=environ, keep_blank_values=True)
+    message = (
+        f"Content-Type: {content_type}\r\n"
+        f"Content-Length: {len(body)}\r\n"
+        "\r\n"
+    ).encode("utf-8") + body
+    form = BytesParser(policy=default).parsebytes(message)
 
     return form
 
@@ -211,20 +212,21 @@ def lambda_handler(event, context):
 
     uploaded_files = []
 
-    for field_name in form:
-        field = form[field_name]
-        if field.filename:
+    for part in form.iter_parts():
+        filename = part.get_filename()
+        if filename:
             # It's a file upload
-            file_key = f"uploads/{uuid.uuid4()}-{field.filename}"
+            field_name = part.get_param("name", header="content-disposition")
+            file_key = f"uploads/{uuid.uuid4()}-{filename}"
             s3.put_object(
                 Bucket="my-uploads-bucket",
                 Key=file_key,
-                Body=field.file.read(),
-                ContentType=field.type,
+                Body=part.get_payload(decode=True),
+                ContentType=part.get_content_type(),
             )
             uploaded_files.append({
                 "field": field_name,
-                "filename": field.filename,
+                "filename": filename,
                 "s3_key": file_key,
             })
 
@@ -254,7 +256,7 @@ def lambda_handler(event, context):
     if is_binary:
         body = base64.b64decode(event["body"])
     else:
-        body = event["body"]
+        body = event["body"].encode()
 
     # Process the binary data
     result = process_file(body)
@@ -320,7 +322,7 @@ Keep these limits in mind when working with binary data:
 
 - **API Gateway REST API** - 10MB maximum payload size
 - **API Gateway HTTP API** - 10MB maximum payload size
-- **Lambda request payload** - 6MB synchronous, 256KB asynchronous
+- **Lambda request payload** - 6MB synchronous, 1MB asynchronous
 - **Base64 overhead** - Encoding increases size by about 33%, so a 6MB Lambda limit means roughly 4.5MB of actual binary data
 
 For larger files, use S3 presigned URLs instead of passing data through API Gateway:
