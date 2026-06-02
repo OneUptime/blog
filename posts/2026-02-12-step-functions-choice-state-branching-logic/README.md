@@ -266,7 +266,7 @@ Now the Choice state routes based on the enriched data:
   "States": {
     "EnrichTicket": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:enrich-ticket",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:enrich-ticket",
       "Next": "RouteTicket"
     },
     "RouteTicket": {
@@ -305,7 +305,7 @@ Now the Choice state routes based on the enriched data:
     },
     "EscalateToSeniorEngineer": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:assign-ticket",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:assign-ticket",
       "Parameters": {
         "ticket.$": "$",
         "queue": "senior-engineering",
@@ -315,7 +315,7 @@ Now the Choice state routes based on the enriched data:
     },
     "AssignToOnCall": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:assign-ticket",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:assign-ticket",
       "Parameters": {
         "ticket.$": "$",
         "queue": "on-call",
@@ -325,7 +325,7 @@ Now the Choice state routes based on the enriched data:
     },
     "RouteToBilling": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:assign-ticket",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:assign-ticket",
       "Parameters": {
         "ticket.$": "$",
         "queue": "billing",
@@ -335,7 +335,7 @@ Now the Choice state routes based on the enriched data:
     },
     "RouteToEngineering": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:assign-ticket",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:assign-ticket",
       "Parameters": {
         "ticket.$": "$",
         "queue": "engineering",
@@ -345,7 +345,7 @@ Now the Choice state routes based on the enriched data:
     },
     "RouteToGeneralSupport": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:assign-ticket",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:assign-ticket",
       "Parameters": {
         "ticket.$": "$",
         "queue": "general",
