@@ -8,7 +8,7 @@ Description: Learn how to set up automated notifications for Fargate task retire
 
 ---
 
-Fargate occasionally retires tasks. This happens when AWS needs to update the underlying infrastructure - security patches, hardware maintenance, or capacity rebalancing. When a task is retired, Fargate launches a replacement automatically. Your service stays up, but the task gets a new IP address, loses any ephemeral storage data, and restarts from scratch.
+Fargate occasionally retires tasks. This happens when AWS needs to replace an older Fargate platform version revision with a newer revision that includes updates to the runtime software and underlying dependencies. When a service task is retired, ECS launches a replacement automatically when it can. Your service stays up when ECS can maintain the desired count, but the replacement task gets a new IP address, loses any ephemeral storage data, and starts from scratch.
 
 Most of the time, this is invisible and harmless. But sometimes you need to know about it - for audit purposes, to correlate with application issues, or to understand why a long-running task suddenly restarted. Setting up retirement notifications gives you that visibility.
 
@@ -16,11 +16,11 @@ Most of the time, this is invisible and harmless. But sometimes you need to know
 
 When Fargate decides to retire a task, here's what happens:
 
-1. AWS sends a retirement notification event (if you've set up notifications)
-2. The task receives a SIGTERM signal
-3. After the stop timeout (default 30 seconds), it receives SIGKILL
-4. ECS launches a replacement task if the task belongs to a service
-5. The new task registers with the load balancer and starts receiving traffic
+1. AWS sends an AWS Health retirement notification event
+2. ECS launches a replacement task if the task belongs to a service and the service configuration allows it
+3. The old task receives a SIGTERM signal
+4. After the stop timeout (default 30 seconds), it receives SIGKILL if it has not exited
+5. The replacement task registers with the load balancer and starts receiving traffic
 
 ```mermaid
 graph TD
@@ -30,7 +30,7 @@ graph TD
     C -->|no| E[Wait for stop timeout]
     D --> F[Task stopped]
     E --> F
-    F --> G[Replacement task launched]
+    F --> G[ECS maintains desired count]
     G --> H[Service restored]
 ```
 
@@ -38,7 +38,7 @@ The key thing to understand is that retirement is a normal Fargate operation. It
 
 ## Setting Up EventBridge Rules
 
-Fargate task state changes are published to Amazon EventBridge. You can create rules that match retirement events and route them to your notification targets.
+AWS Health publishes Fargate task retirement notifications to Amazon EventBridge. You can create rules that match those retirement events and route them to your notification targets.
 
 ### Step 1: Create an SNS Topic for Notifications
 
@@ -59,23 +59,31 @@ aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:fargate-task-retirements \
   --protocol lambda \
   --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:slack-notifier
+
+aws lambda add-permission \
+  --function-name slack-notifier \
+  --statement-id sns-invoke \
+  --action lambda:InvokeFunction \
+  --principal sns.amazonaws.com \
+  --source-arn arn:aws:sns:us-east-1:123456789012:fargate-task-retirements
 ```
 
 ### Step 2: Create the EventBridge Rule
 
-ECS publishes task state change events whenever a task stops. You can filter for retirement-specific events:
+AWS Health sends Fargate task retirement notifications as `AWS Health Event` events. You can filter for the Fargate task patching retirement event type:
 
 ```bash
-# Create an EventBridge rule for task state changes
+# Create an EventBridge rule for Fargate retirement notifications
 aws events put-rule \
   --name fargate-task-retirement \
   --description "Capture Fargate task retirements" \
   --event-pattern '{
-    "source": ["aws.ecs"],
-    "detail-type": ["ECS Task State Change"],
+    "source": ["aws.health"],
+    "detail-type": ["AWS Health Event"],
     "detail": {
-      "lastStatus": ["STOPPED"],
-      "stopCode": ["TaskRetired"]
+      "service": ["ECS"],
+      "eventTypeCode": ["AWS_ECS_TASK_PATCHING_RETIREMENT"],
+      "eventTypeCategory": ["scheduledChange"]
     }
   }'
 
@@ -88,15 +96,14 @@ aws events put-targets \
       "Arn": "arn:aws:sns:us-east-1:123456789012:fargate-task-retirements",
       "InputTransformer": {
         "InputPathsMap": {
-          "cluster": "$.detail.clusterArn",
-          "taskArn": "$.detail.taskArn",
-          "taskDef": "$.detail.taskDefinitionArn",
-          "stopCode": "$.detail.stopCode",
-          "stoppedReason": "$.detail.stoppedReason",
-          "stoppedAt": "$.detail.stoppedAt",
-          "group": "$.detail.group"
+          "eventArn": "$.detail.eventArn",
+          "eventTypeCode": "$.detail.eventTypeCode",
+          "eventRegion": "$.detail.eventRegion",
+          "statusCode": "$.detail.statusCode",
+          "startTime": "$.detail.startTime",
+          "affectedEntities": "$.detail.affectedEntities"
         },
-        "InputTemplate": "\"Fargate Task Retired\\nCluster: <cluster>\\nService: <group>\\nTask: <taskArn>\\nTask Definition: <taskDef>\\nStop Code: <stopCode>\\nReason: <stoppedReason>\\nStopped At: <stoppedAt>\""
+        "InputTemplate": "\"Fargate Task Retirement Scheduled\\nEvent: <eventArn>\\nType: <eventTypeCode>\\nRegion: <eventRegion>\\nStatus: <statusCode>\\nStart Time: <startTime>\\nAffected Entities: <affectedEntities>\""
       }
     }
   ]'
@@ -104,18 +111,37 @@ aws events put-targets \
 
 The `InputTransformer` formats the notification into a readable message instead of dumping the entire raw JSON event.
 
+EventBridge needs permission to publish to the SNS topic:
+
+```bash
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:fargate-task-retirements \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Principal": {"Service": "events.amazonaws.com"},
+        "Action": "sns:Publish",
+        "Resource": "arn:aws:sns:us-east-1:123456789012:fargate-task-retirements"
+      }
+    ]
+  }'
+```
+
 ## Broader Task Stop Monitoring
 
 You might want to track all task stops, not just retirements. Different stop codes indicate different reasons:
 
 | Stop Code | Meaning |
 |-----------|---------|
-| TaskRetired | Fargate infrastructure maintenance |
 | TaskFailedToStart | Task couldn't start (image pull, etc.) |
 | EssentialContainerExited | A container marked essential stopped |
 | UserInitiated | Someone stopped the task manually |
 | ServiceSchedulerInitiated | Service scaling event |
 | SpotInterruption | Fargate Spot capacity reclaimed |
+| TerminationNotice | A task received a termination notice |
 
 Here's a rule that captures all non-normal task stops:
 
@@ -129,7 +155,7 @@ aws events put-rule \
     "detail-type": ["ECS Task State Change"],
     "detail": {
       "lastStatus": ["STOPPED"],
-      "stopCode": ["TaskRetired", "EssentialContainerExited", "TaskFailedToStart", "SpotInterruption"]
+      "stopCode": ["EssentialContainerExited", "TaskFailedToStart", "SpotInterruption", "TerminationNotice"]
     }
   }'
 ```
@@ -139,33 +165,35 @@ aws events put-rule \
 For more sophisticated handling, route events to a Lambda function:
 
 ```python
-# lambda_function.py - Process Fargate task retirement events
+# lambda_function.py - Process Fargate task retirement notifications
 import json
 import boto3
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 def lambda_handler(event, context):
     detail = event['detail']
 
-    task_arn = detail['taskArn']
-    cluster = detail['clusterArn'].split('/')[-1]
-    stop_code = detail.get('stopCode', 'Unknown')
-    stopped_reason = detail.get('stoppedReason', 'No reason provided')
-    group = detail.get('group', 'Unknown')
-
-    # Extract the service name from the group
-    service_name = group.replace('service:', '') if group.startswith('service:') else group
+    event_arn = detail['eventArn']
+    event_type = detail.get('eventTypeCode', 'Unknown')
+    event_region = detail.get('eventRegion', 'Unknown')
+    status = detail.get('statusCode', 'Unknown')
+    start_time = detail.get('startTime', 'Unknown')
+    affected_entities = detail.get('affectedEntities', [])
+    affected_values = [
+        entity.get('entityValue', 'Unknown')
+        for entity in affected_entities
+    ]
 
     # Log the event for auditing
     print(json.dumps({
-        'event_type': 'task_retirement',
-        'cluster': cluster,
-        'service': service_name,
-        'task_arn': task_arn,
-        'stop_code': stop_code,
-        'reason': stopped_reason,
-        'timestamp': datetime.utcnow().isoformat()
+        'event_type': event_type,
+        'event_arn': event_arn,
+        'event_region': event_region,
+        'status': status,
+        'start_time': start_time,
+        'affected_entities': affected_values,
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }))
 
     # Send to Slack
@@ -174,11 +202,12 @@ def lambda_handler(event, context):
         import urllib.request
 
         message = {
-            'text': f':warning: *Fargate Task Retired*\n'
-                    f'*Cluster:* {cluster}\n'
-                    f'*Service:* {service_name}\n'
-                    f'*Reason:* {stopped_reason}\n'
-                    f'*Task:* `{task_arn.split("/")[-1]}`'
+            'text': f':warning: *Fargate Task Retirement Scheduled*\n'
+                    f'*Event:* {event_type}\n'
+                    f'*Region:* {event_region}\n'
+                    f'*Status:* {status}\n'
+                    f'*Start Time:* {start_time}\n'
+                    f'*Affected Entities:* {", ".join(affected_values) or "None listed"}'
         }
 
         req = urllib.request.Request(
@@ -196,8 +225,8 @@ def lambda_handler(event, context):
             {
                 'MetricName': 'TaskRetirements',
                 'Dimensions': [
-                    {'Name': 'ClusterName', 'Value': cluster},
-                    {'Name': 'ServiceName', 'Value': service_name}
+                    {'Name': 'EventTypeCode', 'Value': event_type},
+                    {'Name': 'EventRegion', 'Value': event_region}
                 ],
                 'Value': 1,
                 'Unit': 'Count'
@@ -240,7 +269,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "high-task-retirement-rate" \
   --namespace "Custom/ECS" \
   --metric-name TaskRetirements \
-  --dimensions Name=ClusterName,Value=production \
+  --dimensions Name=EventTypeCode,Value=AWS_ECS_TASK_PATCHING_RETIREMENT Name=EventRegion,Value=us-east-1 \
   --statistic Sum \
   --period 3600 \
   --threshold 10 \
@@ -249,13 +278,13 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-alerts"
 ```
 
-This alerts you if more than 10 tasks are retired in a single hour, which could indicate a larger infrastructure event.
+This alerts you if more than 10 retirement notifications are received in a single hour, which could indicate a larger infrastructure event.
 
 ## Making Your Application Retirement-Ready
 
 Since retirements are inevitable, your application should handle them gracefully:
 
-1. **Handle SIGTERM.** When Fargate retires a task, it sends SIGTERM. Your application should catch this signal and shut down cleanly:
+1. **Handle SIGTERM.** When ECS stops a Linux container, it sends the container stop signal, which defaults to SIGTERM. Your application should catch this signal and shut down cleanly:
 
 ```javascript
 // Handle graceful shutdown in Node.js
@@ -308,14 +337,16 @@ Resources:
       Name: fargate-task-retirement
       EventPattern:
         source:
-          - aws.ecs
+          - aws.health
         detail-type:
-          - "ECS Task State Change"
+          - "AWS Health Event"
         detail:
-          lastStatus:
-            - STOPPED
-          stopCode:
-            - TaskRetired
+          service:
+            - ECS
+          eventTypeCode:
+            - AWS_ECS_TASK_PATCHING_RETIREMENT
+          eventTypeCategory:
+            - scheduledChange
       Targets:
         - Arn: !Ref RetirementTopic
           Id: retirement-sns
@@ -326,6 +357,7 @@ Resources:
       Topics:
         - !Ref RetirementTopic
       PolicyDocument:
+        Version: "2012-10-17"
         Statement:
           - Effect: Allow
             Principal:
