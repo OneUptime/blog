@@ -32,11 +32,6 @@ The simplest approach is an IAM policy that denies actions outside your approved
             "us-west-2",
             "eu-west-1"
           ]
-        },
-        "ForAnyValue:StringNotLike": {
-          "aws:CalledVia": [
-            "cloudformation.amazonaws.com"
-          ]
         }
       }
     }
@@ -46,7 +41,7 @@ The simplest approach is an IAM policy that denies actions outside your approved
 
 The `aws:RequestedRegion` condition key checks which region an API call is targeting. If it's not in the approved list, the request is denied.
 
-Note the `aws:CalledVia` exception: CloudFormation sometimes makes calls in multiple regions (for global resources). Without this exception, CloudFormation stacks might fail.
+This policy does not grant any permissions by itself. Attach it alongside policies that grant the actions users actually need.
 
 ### Attaching the Policy
 
@@ -73,47 +68,6 @@ Here's a more practical policy that handles global services:
 {
   "Version": "2012-10-17",
   "Statement": [
-    {
-      "Sid": "AllowGlobalServices",
-      "Effect": "Allow",
-      "Action": [
-        "iam:*",
-        "sts:*",
-        "organizations:*",
-        "route53:*",
-        "route53domains:*",
-        "cloudfront:*",
-        "waf:*",
-        "wafv2:*",
-        "waf-regional:*",
-        "support:*",
-        "health:*",
-        "trustedadvisor:*",
-        "budgets:*",
-        "ce:*",
-        "cur:*",
-        "globalaccelerator:*",
-        "importexport:*",
-        "shield:*",
-        "tag:*"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "AllowRegionalServicesInApprovedRegions",
-      "Effect": "Allow",
-      "Action": "*",
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "aws:RequestedRegion": [
-            "us-east-1",
-            "us-west-2",
-            "eu-west-1"
-          ]
-        }
-      }
-    },
     {
       "Sid": "DenyRegionalServicesOutsideApprovedRegions",
       "Effect": "Deny",
@@ -259,10 +213,8 @@ Before rolling out, test that the restrictions work as expected:
 import boto3
 from botocore.exceptions import ClientError
 
-def test_region_restrictions(role_name, test_regions, allowed_regions):
-    """Test which regions are accessible for a given role."""
-    sts = boto3.client("sts")
-
+def test_region_restrictions(test_regions, allowed_regions):
+    """Test which regions are accessible for the current credentials."""
     for region in test_regions:
         try:
             # Try to list EC2 instances in each region
@@ -286,7 +238,7 @@ test_regions = [
 ]
 allowed = ["us-east-1", "us-west-2", "eu-west-1"]
 
-test_region_restrictions("DeveloperRole", test_regions, allowed)
+test_region_restrictions(test_regions, allowed)
 ```
 
 ## Monitoring Region Usage
