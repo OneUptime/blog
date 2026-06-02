@@ -54,10 +54,10 @@ Here's the task definition in JSON format:
       "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-          "Name": "cloudwatch",
+          "Name": "cloudwatch_logs",
           "region": "us-east-1",
           "log_group_name": "/ecs/webapp",
-          "log_stream_prefix": "webapp-"
+          "log_stream_name": "webapp-$(ecs_task_id)"
         }
       },
       "dependsOn": [
@@ -142,7 +142,7 @@ ECS gives you control over startup order through the `dependsOn` field. This is 
 The supported conditions are:
 
 - **START** - The dependency container has started
-- **COMPLETE** - The dependency container has run to completion (exited with code 0)
+- **COMPLETE** - The dependency container has run to completion, regardless of exit code
 - **SUCCESS** - Same as COMPLETE but specifically exit code 0
 - **HEALTHY** - The dependency container's health check is passing
 
@@ -188,12 +188,12 @@ The webapp won't start until `config-loader` exits successfully. This pattern is
 
 ## Envoy Proxy Sidecar for Service Mesh
 
-If you're using AWS App Mesh, you'll run Envoy as a sidecar. Here's what that looks like:
+If you're using AWS App Mesh, you'll run Envoy as a sidecar. Keep in mind that AWS has announced App Mesh end of support for September 30, 2026. Here's what that looks like:
 
 ```json
 {
   "name": "envoy",
-  "image": "840364872350.dkr.ecr.us-east-1.amazonaws.com/aws-appmesh-envoy:v1.27.0.0-prod",
+  "image": "840364872350.dkr.ecr.us-east-1.amazonaws.com/aws-appmesh-envoy:v1.34.13.1-prod",
   "essential": true,
   "environment": [
     {
@@ -222,7 +222,7 @@ A few practical tips:
 
 1. **Set memory limits on sidecars.** If your Fluent Bit sidecar doesn't have a memory limit and it starts buffering too many logs, it can starve your main application of memory.
 
-2. **Use soft limits (`memoryReservation`) for sidecars** and hard limits (`memory`) for the main container. This gives sidecars flexibility while protecting the app.
+2. **Use soft limits (`memoryReservation`) together with hard limits (`memory`) for sidecars** and hard limits (`memory`) for the main container. This gives sidecars flexibility while protecting the app.
 
 3. **Don't over-allocate.** A Fluent Bit sidecar typically needs 64-128 MB of memory. An Envoy proxy usually needs 128-256 MB. Your main app gets the rest.
 
@@ -233,7 +233,7 @@ Here's a balanced allocation example for a 1024 MB task:
   "containerDefinitions": [
     {
       "name": "webapp",
-      "memory": 768,
+      "memory": 512,
       "cpu": 384
     },
     {
