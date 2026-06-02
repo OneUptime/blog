@@ -19,8 +19,8 @@ Before migrating anything, you need to understand what works and what doesn't. D
 Here's a quick checklist of features that might cause issues:
 
 - **Retryable writes** - not supported, set `retryWrites=false` in your connection string
-- **Client-side field-level encryption** - not supported
-- **$graphLookup** - limited support
+- **Client-side field-level encryption** - supported for explicit encryption, but only point equality queries are reliable
+- **$graphLookup** - not supported
 - **Multi-document ACID transactions** - supported on DocumentDB 4.0+
 - **Change streams** - supported but behavior differs from MongoDB
 - **Collation** - only partially supported
@@ -34,11 +34,11 @@ git clone https://github.com/awslabs/amazon-documentdb-tools.git
 cd amazon-documentdb-tools/compat-tool
 
 # Run the compatibility assessment against your MongoDB instance
-python3 compat.py --uri "mongodb://user:pass@your-mongodb-host:27017" \
-  --output-file compatibility-report.json
+python3 compat.py --uri "mongodb://user:pass@your-mongodb-host:27017/admin?directConnection=true" \
+  --version 5.0
 ```
 
-The tool analyzes your collections, indexes, and queries to flag anything that won't work on DocumentDB. Fix any critical incompatibilities before proceeding.
+The tool analyzes MongoDB `serverStatus()` counters, profiling logs, or application source code to flag unsupported operators. Fix any critical incompatibilities before proceeding.
 
 ## Step 2: Analyze Your Indexes
 
@@ -60,7 +60,7 @@ dbs.forEach(function(database) {
 });
 ```
 
-DocumentDB supports most index types but doesn't support partial indexes or wildcard indexes in all cases. Review the output and note any indexes that need modification.
+DocumentDB supports most common index types, but support is version-specific. For example, partial indexes are supported on DocumentDB 5.0+ instance-based clusters, while wildcard indexes are not supported. Review the output and note any indexes that need modification.
 
 ## Step 3: Choose Your Migration Approach
 
@@ -108,7 +108,7 @@ aws dms create-endpoint \
   --username user \
   --password pass \
   --database-name mydb \
-  --mongodb-settings "AuthType=password,AuthMechanism=scram-sha-1,NestingLevel=one"
+  --mongodb-settings "AuthType=password,AuthMechanism=scram_sha_1,NestingLevel=none,ExtractDocId=true"
 
 # Create the target endpoint (DocumentDB)
 aws dms create-endpoint \
@@ -151,7 +151,8 @@ class DualWriteClient:
         self.docdb = pymongo.MongoClient(
             docdb_uri,
             tls=True,
-            tlsCAFile='global-bundle.pem'
+            tlsCAFile='global-bundle.pem',
+            retryWrites=False
         )
 
     def insert_one(self, db_name, collection_name, document):
@@ -182,7 +183,8 @@ mongo_client = pymongo.MongoClient('mongodb://user:pass@source-mongodb:27017')
 docdb_client = pymongo.MongoClient(
     'mongodb://dbadmin:password@your-docdb-cluster.cluster-xxxxx.us-east-1.docdb.amazonaws.com:27017',
     tls=True,
-    tlsCAFile='global-bundle.pem'
+    tlsCAFile='global-bundle.pem',
+    retryWrites=False
 )
 
 db_name = 'mydb'
@@ -219,7 +221,7 @@ The connection string change is the simplest part, but there are subtleties. Mak
 DOCDB_URI = (
     "mongodb://dbadmin:password@"
     "your-docdb-cluster.cluster-xxxxx.us-east-1.docdb.amazonaws.com:27017/mydb"
-    "?tls=true&tlsCAFile=global-bundle.pem&retryWrites=false&readPreference=secondaryPreferred"
+    "?tls=true&tlsCAFile=global-bundle.pem&replicaSet=rs0&retryWrites=false&readPreference=secondaryPreferred"
 )
 ```
 
@@ -248,13 +250,13 @@ The key is to switch reads first. If reads work correctly, switch writes. Keep M
 
 A few things that bite people during migration:
 
-**ObjectId ordering** - DocumentDB generates ObjectIds differently. If your application relies on ObjectId ordering for pagination, this could break.
+**Implicit result ordering** - DocumentDB does not guarantee implicit result sort ordering. If your application relies on natural ordering for pagination, add an explicit `sort()`.
 
 **Connection pooling** - DocumentDB has lower connection limits than self-managed MongoDB. Monitor your `DatabaseConnections` metric and adjust your pool settings.
 
-**Write concern** - DocumentDB always uses `w: majority` regardless of what you specify. This is actually safer but means single-node write performance may be slightly different.
+**Write durability** - DocumentDB acknowledges writes after they are durably recorded on a majority of storage nodes. This is safer but means write performance may differ from a self-managed MongoDB replica set.
 
-**Index builds** - Large index builds on DocumentDB can take longer than on MongoDB since they always run in the background. Plan for this during migration.
+**Index builds** - Background index builds can wait for long-running queries to finish, and DocumentDB allows only one background index build at a time on a collection. Plan for this during migration.
 
 ## Wrapping Up
 
