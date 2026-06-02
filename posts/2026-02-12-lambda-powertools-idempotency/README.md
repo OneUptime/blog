@@ -8,7 +8,7 @@ Description: A practical guide to implementing idempotency in Lambda functions u
 
 ---
 
-Lambda functions can be invoked more than once for the same event. API Gateway might retry on timeout. SQS delivers messages at least once, not exactly once. EventBridge rules can trigger multiple times. If your function creates an order, processes a payment, or sends an email, duplicate invocations mean duplicate operations. That's how customers get charged twice or receive the same confirmation email three times.
+Lambda functions can be invoked more than once for the same event. Clients might retry after an API Gateway timeout. SQS delivers messages at least once, not exactly once. EventBridge rules can trigger multiple times. If your function creates an order, processes a payment, or sends an email, duplicate invocations mean duplicate operations. That's how customers get charged twice or receive the same confirmation email three times.
 
 Idempotency means that running the same operation multiple times produces the same result as running it once. Lambda Powertools Idempotency handles this transparently, so your function always produces the right result regardless of how many times it's invoked.
 
@@ -198,6 +198,7 @@ from aws_lambda_powertools.utilities.idempotency import (
     IdempotencyConfig,
     idempotent
 )
+import json
 
 persistence = DynamoDBPersistenceLayer(table_name="idempotency-store")
 
@@ -208,7 +209,7 @@ config = IdempotencyConfig(
     expires_after_seconds=86400  # 24 hours
 )
 
-# For SQS events, use the message ID
+# For SQS events with batch size 1, use the message ID
 sqs_config = IdempotencyConfig(
     event_key_jmespath="Records[0].messageId",
     expires_after_seconds=86400
@@ -255,7 +256,10 @@ import json
 logger = Logger()
 processor = BatchProcessor(event_type=EventType.SQS)
 persistence = DynamoDBPersistenceLayer(table_name="idempotency-store")
-idem_config = IdempotencyConfig(expires_after_seconds=3600)
+idem_config = IdempotencyConfig(
+    event_key_jmespath="messageId",
+    expires_after_seconds=3600
+)
 
 @idempotent_function(
     data_keyword_argument="record",
@@ -291,7 +295,9 @@ What happens when two invocations start at the same time? Powertools uses an "in
 from aws_lambda_powertools.utilities.idempotency import (
     DynamoDBPersistenceLayer,
     IdempotencyConfig,
-    idempotent,
+    idempotent
+)
+from aws_lambda_powertools.utilities.idempotency.exceptions import (
     IdempotencyAlreadyInProgressError
 )
 
@@ -358,41 +364,47 @@ Key behavior: if the function raises an exception, the idempotency record is rem
 
 ## Testing Idempotent Functions
 
-Testing idempotent functions requires mocking the persistence layer.
+For unit tests that focus on your business logic, you can disable the idempotency utility. For integration tests, use DynamoDB Local or mock the DynamoDB client used by the persistence layer.
 
 ```python
 import pytest
-from unittest.mock import patch, MagicMock
 from app import handler
 
-@pytest.fixture
-def mock_persistence():
-    """Mock the DynamoDB persistence layer for testing."""
-    with patch("app.persistence") as mock:
-        # Simulate no existing idempotency record
-        mock.get_record.side_effect = Exception("Record not found")
-        yield mock
+class LambdaContext:
+    function_name = "test"
+    memory_limit_in_mb = 128
+    invoked_function_arn = "arn:aws:lambda:us-east-1:123456789012:function:test"
+    aws_request_id = "test-request-id"
 
-def test_first_invocation(mock_persistence):
-    """First invocation should process normally."""
+    def get_remaining_time_in_millis(self):
+        return 1000
+
+@pytest.fixture
+def lambda_context():
+    return LambdaContext()
+
+def test_first_invocation(monkeypatch, lambda_context):
+    """Business logic should process normally."""
+    monkeypatch.setenv("POWERTOOLS_IDEMPOTENCY_DISABLED", "true")
     event = {
         "payment_id": "PAY-123",
         "customer_id": "CUST-456",
         "amount": 99.99
     }
 
-    result = handler(event, {})
+    result = handler(event, lambda_context)
 
     assert result["statusCode"] == 200
     assert result["body"]["status"] == "charged"
 
-def test_idempotency_key_required():
-    """Should fail if idempotency key is missing."""
+def test_missing_payment_id(monkeypatch, lambda_context):
+    """Should fail if the payment_id field is missing."""
+    monkeypatch.setenv("POWERTOOLS_IDEMPOTENCY_DISABLED", "true")
     event = {"customer_id": "CUST-456", "amount": 99.99}
     # Missing payment_id
 
     with pytest.raises(Exception):
-        handler(event, {})
+        handler(event, lambda_context)
 ```
 
 ## Summary
