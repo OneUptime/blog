@@ -8,7 +8,7 @@ Description: Complete walkthrough for setting up an Amazon MSK cluster including
 
 ---
 
-Amazon MSK gives you Apache Kafka without the pain of managing ZooKeeper, broker patches, and disk space alerts at 3 AM. It runs the actual open-source Kafka, so all your existing Kafka tools, clients, and knowledge transfer directly. Let's get a production-ready cluster running.
+Amazon MSK gives you Apache Kafka without the pain of managing ZooKeeper or KRaft controllers, broker patches, and disk space alerts at 3 AM. It runs the actual open-source Kafka, so all your existing Kafka tools, clients, and knowledge transfer directly. Let's get a production-ready cluster running.
 
 ## Planning Your Cluster
 
@@ -36,7 +36,7 @@ This creates an MSK cluster with 3 brokers spread across 3 availability zones.
 ```bash
 aws kafka create-cluster \
   --cluster-name production-kafka \
-  --kafka-version 3.6.0 \
+  --kafka-version 3.9.x \
   --number-of-broker-nodes 3 \
   --broker-node-group-info '{
     "InstanceType": "kafka.m5.large",
@@ -48,11 +48,7 @@ aws kafka create-cluster \
     "SecurityGroups": ["sg-kafka-brokers"],
     "StorageInfo": {
       "EbsStorageInfo": {
-        "VolumeSize": 1000,
-        "ProvisionedThroughput": {
-          "Enabled": true,
-          "VolumeThroughput": 250
-        }
+        "VolumeSize": 1000
       }
     }
   }' \
@@ -121,7 +117,7 @@ EOF
 # Create the MSK configuration
 aws kafka create-configuration \
   --name production-config \
-  --kafka-versions 3.6.0 \
+  --kafka-versions 3.9.x \
   --server-properties fileb://kafka-config.properties \
   --description "Production Kafka configuration"
 ```
@@ -161,14 +157,14 @@ This creates a Kafka topic with appropriate replication and partitioning.
 
 ```bash
 # Install Kafka CLI tools
-wget https://archive.apache.org/dist/kafka/3.6.0/kafka_2.13-3.6.0.tgz
-tar xzf kafka_2.13-3.6.0.tgz
+wget https://downloads.apache.org/kafka/3.9.2/kafka_2.13-3.9.2.tgz
+tar xzf kafka_2.13-3.9.2.tgz
 
 # Set the bootstrap servers
 BROKERS="b-1.production-kafka.abc123.c1.kafka.us-east-1.amazonaws.com:9094,b-2.production-kafka.abc123.c1.kafka.us-east-1.amazonaws.com:9094,b-3.production-kafka.abc123.c1.kafka.us-east-1.amazonaws.com:9094"
 
 # Create a topic
-kafka_2.13-3.6.0/bin/kafka-topics.sh \
+kafka_2.13-3.9.2/bin/kafka-topics.sh \
   --bootstrap-server $BROKERS \
   --command-config client.properties \
   --create \
@@ -177,7 +173,7 @@ kafka_2.13-3.6.0/bin/kafka-topics.sh \
   --replication-factor 3
 
 # List topics
-kafka_2.13-3.6.0/bin/kafka-topics.sh \
+kafka_2.13-3.9.2/bin/kafka-topics.sh \
   --bootstrap-server $BROKERS \
   --command-config client.properties \
   --list
@@ -266,18 +262,21 @@ for message in consumer:
 
 ## Monitoring
 
-MSK publishes extensive metrics to CloudWatch. The enhanced monitoring level (PER_TOPIC_PER_BROKER) gives you the most detail.
+MSK publishes extensive metrics to CloudWatch. The enhanced monitoring level (PER_TOPIC_PER_BROKER) gives you topic-level broker metrics.
 
 Critical metrics to watch:
 
 ```bash
-# Check under-replicated partitions
+# Check under-replicated partitions for broker 1
+START_TIME=$(python3 -c 'from datetime import datetime, timezone, timedelta; print((datetime.now(timezone.utc) - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%S"))')
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%S)
+
 aws cloudwatch get-metric-statistics \
   --namespace AWS/Kafka \
   --metric-name UnderReplicatedPartitions \
-  --dimensions Name=Cluster\ Name,Value=production-kafka \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --dimensions Name="Cluster Name",Value=production-kafka Name="Broker ID",Value=1 \
+  --start-time "$START_TIME" \
+  --end-time "$END_TIME" \
   --period 300 \
   --statistics Maximum
 ```
@@ -299,9 +298,8 @@ MSK supports two types of scaling:
 ```bash
 aws kafka update-broker-storage \
   --cluster-arn arn:aws:kafka:us-east-1:123456789:cluster/production-kafka/abc-123 \
-  --target-broker-ebs-volume-info '[
-    {"KafkaBrokerNodeId": "All", "VolumeSizeGB": 2000}
-  ]'
+  --current-version K21V3IB1VIZYYH \
+  --target-broker-ebs-volume-info KafkaBrokerNodeId=ALL,VolumeSizeGB=2000
 ```
 
 **Broker count scaling** - Add more brokers. Note: existing partitions don't automatically rebalance to new brokers. You need to reassign partitions manually.
@@ -309,6 +307,7 @@ aws kafka update-broker-storage \
 ```bash
 aws kafka update-broker-count \
   --cluster-arn arn:aws:kafka:us-east-1:123456789:cluster/production-kafka/abc-123 \
+  --current-version K21V3IB1VIZYYH \
   --target-number-of-broker-nodes 6
 ```
 
