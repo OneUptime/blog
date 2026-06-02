@@ -102,7 +102,7 @@ terraform {
     bucket         = "mycompany-terraform-state"
     key            = "prod/us-east-1/networking/terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
     encrypt        = true
   }
 }
@@ -127,7 +127,7 @@ data "terraform_remote_state" "networking" {
 
 # Use the VPC ID from networking
 module "ecs_cluster" {
-  source = "../../../modules/ecs-cluster"
+  source = "../../../../modules/ecs-cluster"
 
   vpc_id     = data.terraform_remote_state.networking.outputs.vpc_id
   subnet_ids = data.terraform_remote_state.networking.outputs.private_subnet_ids
@@ -220,7 +220,7 @@ output "private_subnet_ids" {
 For large deployments, Terragrunt reduces duplication across environments. It wraps Terraform and provides DRY configurations:
 
 ```hcl
-# terragrunt.hcl at the root
+# root.hcl at the root
 remote_state {
   backend = "s3"
   config = {
@@ -228,7 +228,7 @@ remote_state {
     key            = "${path_relative_to_include()}/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-locks"
+    use_lockfile   = true
   }
 }
 
@@ -241,7 +241,7 @@ inputs = {
 ```hcl
 # environments/prod/us-east-1/networking/terragrunt.hcl
 include "root" {
-  path = find_in_parent_folders()
+  path = find_in_parent_folders("root.hcl")
 }
 
 terraform {
