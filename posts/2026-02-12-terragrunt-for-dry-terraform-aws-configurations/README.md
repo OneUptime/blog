@@ -192,10 +192,10 @@ terragrunt apply
 terragrunt destroy
 
 # Plan all environments at once (from the repository root)
-terragrunt run-all plan
+terragrunt run --all plan
 
 # Apply all environments
-terragrunt run-all apply
+terragrunt run --all apply
 ```
 
 ## Multi-Component Architecture
@@ -306,7 +306,7 @@ inputs = {
 }
 ```
 
-When you run `terragrunt run-all apply` from the `dev` directory, Terragrunt figures out the dependency order and applies networking first, then database, then compute.
+When you run `terragrunt run --all apply` from the `dev` directory, Terragrunt figures out the dependency order and applies networking first, then database, then compute.
 
 ## Shared Variables with Common Includes
 
@@ -370,11 +370,8 @@ terraform {
 Terragrunt has a built-in protection against accidental destroys.
 
 ```hcl
-# In the root terragrunt.hcl
-terraform {
-  # Prompt before destroy
-  prevent_destroy = true
-}
+# In the terragrunt.hcl for a protected module
+prevent_destroy = true
 ```
 
 For production environments specifically:
@@ -383,12 +380,9 @@ For production environments specifically:
 # environments/production/terragrunt.hcl
 terraform {
   source = "../../modules/vpc"
-
-  extra_arguments "prevent_destroy" {
-    commands = ["destroy"]
-    arguments = ["-lock=true"]
-  }
 }
+
+prevent_destroy = true
 ```
 
 ## CI/CD with Terragrunt
@@ -423,7 +417,7 @@ jobs:
       - name: Deploy Dev
         run: |
           cd environments/dev
-          terragrunt run-all apply --terragrunt-non-interactive
+          terragrunt run --all --non-interactive apply
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
