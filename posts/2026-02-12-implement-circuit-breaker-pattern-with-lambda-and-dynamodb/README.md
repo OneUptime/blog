@@ -8,7 +8,7 @@ Description: Build a circuit breaker pattern using AWS Lambda and DynamoDB to pr
 
 ---
 
-When a downstream service goes down, the worst thing you can do is keep hammering it with requests. Your Lambda function retries, the downstream service stays overwhelmed, timeouts pile up, your Lambda concurrency spikes, and suddenly every service in your architecture is degraded. This is a cascading failure, and the circuit breaker pattern is the standard defense against it.
+When a downstream service goes down, the worst thing you can do is keep hammering it with requests. Lambda asynchronous invocation retries, event source retries, or application-level retries can keep hitting the downstream service, the downstream service stays overwhelmed, timeouts pile up, your Lambda concurrency spikes, and suddenly every service in your architecture is degraded. This is a cascading failure, and the circuit breaker pattern is the standard defense against it.
 
 A circuit breaker tracks failures to a downstream service. When failures exceed a threshold, it "opens" the circuit and stops making calls, returning a fallback response immediately. After a cooldown period, it allows a few test requests through. If those succeed, the circuit closes and normal operation resumes.
 
@@ -58,7 +58,7 @@ Each item in the table represents a circuit breaker for one downstream service:
 
 ## The Circuit Breaker Implementation
 
-Here is a complete, production-ready circuit breaker for Lambda:
+Here is a complete circuit breaker for Lambda:
 
 ```python
 # Circuit breaker implementation using DynamoDB for state management
@@ -245,6 +245,7 @@ def circuit_protected(service_name, fallback_fn=None, **cb_kwargs):
 
 ```python
 # Lambda function with circuit breaker protecting downstream payment API
+import json
 import requests
 
 def payment_fallback(order):
@@ -349,14 +350,17 @@ However, concurrent DynamoDB updates can cause race conditions. For most use cas
 
 ```python
 # Atomic failure counter increment using DynamoDB
-table.update_item(
+response = table.update_item(
     Key={'serviceName': self.service_name},
-    UpdateExpression='SET failureCount = failureCount + :inc, lastFailureTime = :lft',
+    UpdateExpression='SET failureCount = if_not_exists(failureCount, :zero) + :inc, lastFailureTime = :lft',
     ExpressionAttributeValues={
+        ':zero': 0,
         ':inc': 1,
         ':lft': int(time.time())
-    }
+    },
+    ReturnValues='UPDATED_NEW'
 )
+new_failure_count = int(response['Attributes']['failureCount'])
 ```
 
 ## Wrapping Up
