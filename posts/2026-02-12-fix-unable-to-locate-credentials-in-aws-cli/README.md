@@ -20,13 +20,16 @@ It's one of the most common AWS errors, and it means the CLI can't find any cred
 
 Before fixing the problem, it helps to understand the credential chain. The AWS CLI checks for credentials in this order:
 
-1. **Command line options** - `--profile` flag
+1. **Command line options** - settings such as the `--profile` flag
 2. **Environment variables** - `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`
-3. **Shared credentials file** - `~/.aws/credentials`
-4. **Shared config file** - `~/.aws/config`
-5. **Container credentials** - ECS task role (if running in a container)
-6. **Instance profile** - EC2 instance IAM role
-7. **SSO credentials** - AWS SSO (if configured)
+3. **Assume role configuration** - profiles that use `role_arn`
+4. **Assume role with web identity** - profiles or environment variables for web identity federation
+5. **IAM Identity Center credentials** - AWS SSO credentials authenticated with `aws sso login`
+6. **Shared credentials file** - `~/.aws/credentials`
+7. **Custom credential process** - profiles that use `credential_process`
+8. **Shared config file** - `~/.aws/config`
+9. **Container credentials** - ECS task role (if running in a container)
+10. **Instance profile** - EC2 instance IAM role
 
 The CLI stops at the first source that provides credentials. If none of these have credentials, you get the error.
 
@@ -76,6 +79,7 @@ echo $AWS_DEFAULT_REGION
 export AWS_ACCESS_KEY_ID="AKIAIOSFODNN7EXAMPLE"
 export AWS_SECRET_ACCESS_KEY="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
 export AWS_DEFAULT_REGION="us-east-1"
+# If you're using temporary credentials, also set AWS_SESSION_TOKEN
 ```
 
 Common gotchas with environment variables:
@@ -93,7 +97,7 @@ echo $AWS_SHARED_CREDENTIALS_FILE
 echo $AWS_CONFIG_FILE
 ```
 
-If `AWS_PROFILE` is set to a profile that doesn't exist in your credentials file, you'll get this error.
+If `AWS_PROFILE` is set to a profile that doesn't exist in your credentials or config files, you'll get a profile-not-found error or no credentials for the profile you expected to use.
 
 ## Fix 3: Check the Credentials File
 
@@ -128,8 +132,9 @@ aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 aws_access_key_id = AKIAIOSFODNN7EXAMPLE
 aws_secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 
-# Wrong - extra spaces around equals
-aws_access_key_id=AKIAIOSFODNN7EXAMPLE
+# Wrong - incorrect key names
+access_key_id = AKIAIOSFODNN7EXAMPLE
+secret_access_key = wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY
 ```
 
 **Using a named profile but not specifying it:**
@@ -157,9 +162,12 @@ If you're running the CLI on an EC2 instance and get this error, the instance pr
 
 ```bash
 # Check if instance metadata is available (indicates IAM role)
-curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/
 
-# If this returns nothing or an error, no IAM role is attached
+# If this returns nothing or an error, no IAM role is attached or metadata access is unavailable
 ```
 
 To fix this, attach an IAM role to the instance.
@@ -184,8 +192,8 @@ If you've recently attached a role, it can take a few minutes for the instance m
 Lambda functions get credentials from their execution role automatically. If you're seeing this error in Lambda, something unusual is happening:
 
 - The function doesn't have an execution role (unlikely - it can't be created without one)
-- You're explicitly creating a client with `None` credentials
-- You're overriding environment variables in the Lambda configuration
+- You're explicitly creating a client with incomplete credentials
+- You're unsetting or overwriting credential environment variables in your code
 
 Check your Lambda function code.
 
@@ -194,11 +202,12 @@ Check your Lambda function code.
 import boto3
 s3 = boto3.client('s3')  # Correct
 
-# Don't do this - it clears the automatic credentials
-s3 = boto3.client('s3',
-    aws_access_key_id=None,
-    aws_secret_access_key=None
-)
+# Don't do this - it removes Lambda-provided credentials from the process
+import os
+for name in ('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN'):
+    os.environ.pop(name, None)
+
+s3 = boto3.client('s3')
 ```
 
 ## Fix 6: Docker Containers and ECS
@@ -221,7 +230,7 @@ For ECS, make sure your task definition has a task role ARN.
 ```json
 {
   "family": "my-task",
-  "taskRoleArn": "arn:aws:iam::123456789:role/my-task-role",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/my-task-role",
   "containerDefinitions": [...]
 }
 ```
