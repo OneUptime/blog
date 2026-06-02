@@ -10,11 +10,11 @@ Description: Learn how to use EC2 partition placement groups for large-scale dis
 
 Spread placement groups are great for small critical clusters, but they cap out at 7 instances per AZ. If you're running a 100-node Cassandra cluster or a large HDFS deployment, you need something that scales bigger while still providing hardware isolation. That's where partition placement groups come in.
 
-Partition placement groups divide your instances into logical partitions, where each partition sits on a separate set of racks. Instances within the same partition share hardware, but instances in different partitions are guaranteed to be on different racks.
+Partition placement groups divide your instances into logical partitions, where each partition sits on a separate set of racks. Instances within the same partition can share hardware, but instances in different partitions do not share the same racks.
 
 ## The Partition Model
 
-Think of it like this: a partition is a group of racks. You can have up to 7 partitions per AZ. Each partition can hold as many instances as you want. The key guarantee is that no two partitions share the same underlying hardware.
+Think of it like this: a partition is a group of racks. You can have up to 7 partitions per AZ. The number of instances you can launch into a partition placement group is limited by your account limits and available distinct hardware. The key guarantee is that no two partitions share the same underlying racks.
 
 ```mermaid
 graph TB
@@ -101,7 +101,7 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=cassandra-node-2},{Key=Partition,Value=2}]'
 ```
 
-For auto-assignment, omit the `PartitionNumber` and AWS distributes instances across partitions:
+For auto-assignment, omit the `PartitionNumber` and AWS tries to distribute instances evenly across partitions:
 
 ```bash
 # Let AWS choose the partition
@@ -150,7 +150,7 @@ aws ec2 describe-instances \
 
 ## Rack-Aware Configuration for Cassandra
 
-Cassandra has a built-in concept of racks (called racks, conveniently). Map each Cassandra rack to a partition for optimal fault tolerance.
+Cassandra has a built-in concept of racks (called racks, conveniently). With a rack-aware snitch such as `GossipingPropertyFileSnitch`, map each Cassandra rack to a partition for optimal fault tolerance.
 
 Here's a `cassandra-rackdc.properties` configuration that maps to partition-based racks:
 
@@ -185,7 +185,7 @@ EOF
 echo "Configured Cassandra: dc=$REGION, rack=partition-$PARTITION"
 ```
 
-This way, Cassandra's replication strategy naturally distributes replicas across partitions (racks), ensuring hardware-level fault isolation.
+This way, Cassandra's `NetworkTopologyStrategy` can distribute replicas across partitions (racks), ensuring hardware-level fault isolation.
 
 ## Terraform Configuration for a Large Cluster
 
