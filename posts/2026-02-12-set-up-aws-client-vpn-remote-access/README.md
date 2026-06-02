@@ -69,7 +69,7 @@ SERVER_CERT_ARN=$(aws acm import-certificate \
   --query 'CertificateArn' \
   --output text)
 
-# Upload the client certificate (only if using mutual auth)
+# Upload the client certificate (optional if it uses the same CA as the server certificate)
 CLIENT_CERT_ARN=$(aws acm import-certificate \
   --certificate fileb://pki/issued/client1.crt \
   --private-key fileb://pki/private/client1.key \
@@ -84,6 +84,12 @@ echo "Client cert: $CLIENT_CERT_ARN"
 ## Step 2: Create the Client VPN Endpoint
 
 ```bash
+# Create the CloudWatch Logs destination before enabling connection logging
+aws logs create-log-group --log-group-name /aws/clientvpn
+aws logs create-log-stream \
+  --log-group-name /aws/clientvpn \
+  --log-stream-name connections
+
 # Create the Client VPN endpoint
 ENDPOINT_ID=$(aws ec2 create-client-vpn-endpoint \
   --client-cidr-block 10.100.0.0/16 \
@@ -167,22 +173,22 @@ aws ec2 authorize-client-vpn-ingress \
   --access-group-id "dba-group-id"
 ```
 
-## Step 5: Add Routes (If Using Split Tunnel)
+## Step 5: Add Routes for Additional Networks
 
-If split tunnel is enabled, you need to add routes for the networks you want clients to reach:
+When you associate the endpoint with a subnet, AWS automatically adds a route for the VPC CIDR. For additional networks, such as on-premises networks, add routes for each associated subnet:
 
 ```bash
-# Route to the VPC
-aws ec2 create-client-vpn-route \
-  --client-vpn-endpoint-id $ENDPOINT_ID \
-  --destination-cidr-block 10.0.0.0/16 \
-  --target-vpc-subnet-id $PRIVATE_SUBNET_1
-
-# Route to on-premises network (if you have site-to-site VPN)
+# Route to on-premises network through the first associated subnet
 aws ec2 create-client-vpn-route \
   --client-vpn-endpoint-id $ENDPOINT_ID \
   --destination-cidr-block 192.168.0.0/16 \
   --target-vpc-subnet-id $PRIVATE_SUBNET_1
+
+# Add the same route through the second associated subnet for consistent HA behavior
+aws ec2 create-client-vpn-route \
+  --client-vpn-endpoint-id $ENDPOINT_ID \
+  --destination-cidr-block 192.168.0.0/16 \
+  --target-vpc-subnet-id $PRIVATE_SUBNET_2
 ```
 
 ## Step 6: Download and Distribute the Client Configuration
@@ -224,18 +230,17 @@ aws ec2 create-client-vpn-endpoint \
       "SAMLProviderArn": "arn:aws:iam::123456789012:saml-provider/OktaVPN"
     }
   }]' \
+  --connection-log-options '{
+    "Enabled": true,
+    "CloudwatchLogGroup": "/aws/clientvpn",
+    "CloudwatchLogStream": "connections"
+  }' \
   --split-tunnel true
 ```
 
 **Enable connection logging.** Always know who's connecting:
 
-```bash
-# Connection logs go to CloudWatch
-aws logs create-log-group --log-group-name /aws/clientvpn
-aws logs create-log-stream \
-  --log-group-name /aws/clientvpn \
-  --log-stream-name connections
-```
+The endpoint examples above send connection logs to CloudWatch Logs. Create the log group before enabling connection logging; the log stream is optional because AWS Client VPN can create one for you if you omit it.
 
 **Rotate certificates regularly.** Set up a process to regenerate and redistribute client certificates on a schedule.
 
@@ -259,8 +264,9 @@ aws ec2 terminate-client-vpn-connections \
 Client VPN charges:
 - **Endpoint association**: $0.10/hour per subnet association (~$72/month per subnet)
 - **Connection fee**: $0.05/hour per active client connection
+- **Other charges**: Public IPv4 address, data transfer, and CloudWatch Logs charges can also apply
 
-With two subnet associations, the baseline is $144/month before any client connections. Each connected user adds about $36/month (assuming 8 hours/day, 22 days/month).
+With two subnet associations, the baseline is $144/month before any client connections. Each connected user adds about $8.80/month (assuming 8 hours/day, 22 days/month).
 
 For smaller teams, this might be overkill. Consider AWS Systems Manager Session Manager as a free alternative for SSH-style access without a VPN.
 
