@@ -81,7 +81,7 @@ Data replication is the foundation. If your data isn't current in the DR region,
 
 aws rds create-global-cluster \
   --global-cluster-identifier "app-global-db" \
-  --source-db-cluster-identifier "arn:aws:rds:us-east-1:123456789:cluster:primary-cluster" \
+  --source-db-cluster-identifier "arn:aws:rds:us-east-1:123456789012:cluster:primary-cluster" \
   --engine "aurora-postgresql"
 
 # Add a secondary cluster in us-west-2
@@ -101,7 +101,7 @@ aws rds create-db-instance \
   --region "us-west-2"
 ```
 
-Aurora global database replication lag is typically under a second. That means you'll lose at most a second of data during failover.
+Aurora global database replication lag is typically under a second. In an unplanned failover, any data loss depends on the replication lag at the time of the outage, so monitor it against your RPO.
 
 ### S3 Cross-Region Replication
 
@@ -120,12 +120,12 @@ aws s3api put-bucket-versioning \
 aws s3api put-bucket-replication \
   --bucket "app-assets-us-east-1" \
   --replication-configuration '{
-    "Role": "arn:aws:iam::123456789:role/S3ReplicationRole",
+    "Role": "arn:aws:iam::123456789012:role/S3ReplicationRole",
     "Rules": [
       {
         "Status": "Enabled",
         "Priority": 1,
-        "Filter": {},
+        "Filter": {"Prefix": ""},
         "Destination": {
           "Bucket": "arn:aws:s3:::app-assets-us-west-2",
           "StorageClass": "STANDARD"
@@ -177,7 +177,7 @@ aws autoscaling create-auto-scaling-group \
   --max-size 10 \
   --desired-capacity 0 \
   --vpc-zone-identifier "subnet-dr-1,subnet-dr-2" \
-  --target-group-arns "arn:aws:elasticloadbalancing:us-west-2:123456789:targetgroup/dr-targets/abc" \
+  --target-group-arns "arn:aws:elasticloadbalancing:us-west-2:123456789012:targetgroup/dr-targets/abc" \
   --region "us-west-2"
 ```
 
@@ -203,7 +203,8 @@ def failover_handler(event, context):
     print("Promoting Aurora DR cluster to primary...")
     rds.failover_global_cluster(
         GlobalClusterIdentifier='app-global-db',
-        TargetDbClusterIdentifier='arn:aws:rds:us-west-2:123456789:cluster:dr-cluster'
+        TargetDbClusterIdentifier='arn:aws:rds:us-west-2:123456789012:cluster:dr-cluster',
+        AllowDataLoss=True
     )
 
     # Step 2: Scale up the compute
@@ -221,7 +222,7 @@ def failover_handler(event, context):
     print("Waiting for targets to become healthy...")
     waiter = elbv2.get_waiter('target_in_service')
     waiter.wait(
-        TargetGroupArn='arn:aws:elasticloadbalancing:us-west-2:123456789:targetgroup/dr-targets/abc',
+        TargetGroupArn='arn:aws:elasticloadbalancing:us-west-2:123456789012:targetgroup/dr-targets/abc',
         WaiterConfig={'Delay': 15, 'MaxAttempts': 40}
     )
 
@@ -278,8 +279,9 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 3 \
   --threshold 1 \
   --comparison-operator "LessThanThreshold" \
-  --alarm-actions "arn:aws:sns:us-west-2:123456789:failover-trigger" \
-  --dimensions "Name=HealthCheckId,Value=your-health-check-id"
+  --alarm-actions "arn:aws:sns:us-east-1:123456789012:failover-trigger" \
+  --dimensions "Name=HealthCheckId,Value=your-health-check-id" \
+  --region "us-east-1"
 ```
 
 Whether you trigger failover automatically or require manual approval is a business decision. Automatic failover is faster but risks false positives. Many teams use a hybrid approach: automated detection with human approval for the actual cutover.
@@ -314,10 +316,10 @@ The beauty of pilot light is the cost savings compared to active-active:
 | EC2 Instances | 3x c5.xlarge | 0 (scaled to zero) |
 | Aurora | db.r5.large writer + reader | db.r5.large reader only |
 | ElastiCache | 3-node cluster | None (created on failover) |
-| S3 | Standard pricing | Replication storage only |
+| S3 | Standard pricing | Replica storage, requests, and data transfer |
 | ALB | Active, serving traffic | Idle (minimal cost) |
 
-The DR region costs roughly 20-30% of what the primary costs, mostly for the Aurora replica and S3 replication storage.
+The DR region often costs roughly 20-30% of what the primary costs, mostly for the Aurora replica and S3 replica storage, requests, and data transfer.
 
 ## Monitoring Your DR Readiness
 
