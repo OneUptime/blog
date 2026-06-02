@@ -48,8 +48,8 @@ VPC_ID=$(aws ec2 create-vpc \
   --cidr-block 10.0.0.0/16 \
   --query 'Vpc.VpcId' --output text)
 
-aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support
-aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support '{"Value":true}'
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames '{"Value":true}'
 
 aws ec2 create-tags --resources $VPC_ID --tags Key=Name,Value=app-vpc
 
@@ -122,7 +122,7 @@ aws ec2 associate-route-table --route-table-id $PUB_RT --subnet-id $PUB_SUBNET_2
 
 ## Creating the NAT Gateway
 
-NAT gateways need an Elastic IP and must be placed in a public subnet:
+Public NAT gateways need an Elastic IP and must be placed in a public subnet:
 
 ```bash
 # Allocate an Elastic IP for the NAT gateway
@@ -199,20 +199,35 @@ aws ec2 authorize-security-group-ingress \
   --port 80 \
   --source-group $ALB_SG
 
-# Allow all outbound (needed for NAT gateway access)
-# This is the default, but being explicit is good practice
-aws ec2 authorize-security-group-egress \
-  --group-id $APP_SG \
-  --protocol -1 \
-  --cidr 0.0.0.0/0
+# New security groups allow all outbound traffic by default,
+# which is needed for NAT gateway access.
 ```
 
 ## Launching Instances in Private Subnets
 
 ```bash
+# Create an IAM role and instance profile for Systems Manager access
+aws iam create-role \
+  --role-name SSMInstanceRole \
+  --assume-role-policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":"ec2.amazonaws.com"},"Action":"sts:AssumeRole"}]}'
+
+aws iam attach-role-policy \
+  --role-name SSMInstanceRole \
+  --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+
+aws iam create-instance-profile --instance-profile-name SSMInstanceProfile
+aws iam add-role-to-instance-profile \
+  --instance-profile-name SSMInstanceProfile \
+  --role-name SSMInstanceRole
+
+# Get the latest Amazon Linux 2023 AMI ID for this Region
+AMI_ID=$(aws ssm get-parameter \
+  --name /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
+  --query 'Parameter.Value' --output text)
+
 # Launch an instance in the private subnet - no public IP
 aws ec2 run-instances \
-  --image-id ami-0abc123 \
+  --image-id $AMI_ID \
   --instance-type m5.large \
   --subnet-id $PRIV_SUBNET \
   --security-group-ids $APP_SG \
@@ -271,6 +286,26 @@ resource "aws_subnet" "private" {
 
 data "aws_availability_zones" "available" {
   state = "available"
+}
+
+data "aws_ami" "amazon_linux" {
+  most_recent = true
+  owners      = ["amazon"]
+
+  filter {
+    name   = "name"
+    values = ["al2023-ami-2023*-kernel-*-x86_64"]
+  }
+
+  filter {
+    name   = "architecture"
+    values = ["x86_64"]
+  }
+
+  filter {
+    name   = "virtualization-type"
+    values = ["hvm"]
+  }
 }
 
 # Internet gateway
@@ -370,15 +405,43 @@ resource "aws_security_group" "alb" {
   }
 }
 
+# IAM role and instance profile for Systems Manager access
+resource "aws_iam_role" "ssm" {
+  name = "SSMInstanceRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ec2.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ssm" {
+  role       = aws_iam_role.ssm.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+}
+
+resource "aws_iam_instance_profile" "ssm" {
+  name = "SSMInstanceProfile"
+  role = aws_iam_role.ssm.name
+}
+
 # Launch instances in private subnets
 resource "aws_instance" "app" {
   count                       = 2
-  ami                         = "ami-0abc123"
+  ami                         = data.aws_ami.amazon_linux.id
   instance_type               = "m5.large"
   subnet_id                   = aws_subnet.private[count.index].id
   vpc_security_group_ids      = [aws_security_group.app.id]
   associate_public_ip_address = false
   iam_instance_profile        = aws_iam_instance_profile.ssm.name
+
+  depends_on = [aws_iam_role_policy_attachment.ssm]
 
   tags = { Name = "app-server-${count.index + 1}" }
 }
@@ -386,7 +449,7 @@ resource "aws_instance" "app" {
 
 ## NAT Gateway Costs and Alternatives
 
-NAT gateways aren't cheap. At $0.045/hour plus $0.045/GB of data processed, a moderately busy NAT gateway can cost $100-500/month.
+NAT gateways aren't cheap. In us-east-1, at $0.045/hour plus $0.045/GB of data processed, a moderately busy NAT gateway can cost $100-500/month.
 
 **Cost reduction strategies:**
 
@@ -399,13 +462,27 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.us-east-1.s3 \
   --route-table-ids $PRIV_RT
 
+# Create a security group for interface endpoints
+ENDPOINT_SG=$(aws ec2 create-security-group \
+  --group-name endpoint-sg \
+  --description "Interface VPC endpoints" \
+  --vpc-id $VPC_ID \
+  --query 'GroupId' --output text)
+
+aws ec2 authorize-security-group-ingress \
+  --group-id $ENDPOINT_SG \
+  --protocol tcp \
+  --port 443 \
+  --source-group $APP_SG
+
 # Create an interface endpoint for CloudWatch (also avoids NAT)
 aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --service-name com.amazonaws.us-east-1.monitoring \
   --vpc-endpoint-type Interface \
   --subnet-ids $PRIV_SUBNET \
-  --security-group-ids $APP_SG
+  --security-group-ids $ENDPOINT_SG \
+  --private-dns-enabled
 ```
 
 2. **NAT instances**: For dev/test, a t3.micro running NAT is much cheaper than a managed NAT gateway (though less reliable).
