@@ -18,7 +18,7 @@ You are not authorized to perform this operation.
 Or its close cousin:
 
 ```text
-User: arn:aws:iam::123456789:user/devuser is not authorized to perform:
+User: arn:aws:iam::123456789012:user/devuser is not authorized to perform:
 ec2:DescribeInstances on resource: *
 ```
 
@@ -46,7 +46,7 @@ Make sure this matches what you expect. Sometimes you're authenticated as a diff
 AWS error messages have gotten better over the years. Parse the message carefully:
 
 ```text
-User: arn:aws:iam::123456789:user/devuser
+User: arn:aws:iam::123456789012:user/devuser
 is not authorized to perform: ec2:DescribeInstances
 on resource: *
 with an explicit deny in a service control policy
@@ -88,11 +88,11 @@ Then examine each policy to see what it allows.
 
 ```bash
 # Get the details of an attached policy
-aws iam get-policy --policy-arn arn:aws:iam::123456789:policy/my-policy
+aws iam get-policy --policy-arn arn:aws:iam::123456789012:policy/my-policy
 
 # Get the actual policy document (need the version ID from above)
 aws iam get-policy-version \
-  --policy-arn arn:aws:iam::123456789:policy/my-policy \
+  --policy-arn arn:aws:iam::123456789012:policy/my-policy \
   --version-id v1
 ```
 
@@ -103,12 +103,12 @@ AWS provides a policy simulator that tells you whether a specific action would b
 ```bash
 # Simulate a specific action
 aws iam simulate-principal-policy \
-  --policy-source-arn arn:aws:iam::123456789:user/devuser \
+  --policy-source-arn arn:aws:iam::123456789012:user/devuser \
   --action-names ec2:DescribeInstances
 
 # Simulate multiple actions
 aws iam simulate-principal-policy \
-  --policy-source-arn arn:aws:iam::123456789:user/devuser \
+  --policy-source-arn arn:aws:iam::123456789012:user/devuser \
   --action-names ec2:DescribeInstances ec2:StartInstances ec2:StopInstances
 ```
 
@@ -138,7 +138,7 @@ aws iam create-policy \
 # Attach it to the user
 aws iam attach-user-policy \
   --user-name devuser \
-  --policy-arn arn:aws:iam::123456789:policy/ec2-describe-access
+  --policy-arn arn:aws:iam::123456789012:policy/ec2-describe-access
 ```
 
 For broader access, use AWS managed policies.
@@ -242,7 +242,7 @@ If a permission boundary exists, your effective permissions are the intersection
 
 ## Debugging with CloudTrail
 
-For intermittent or hard-to-reproduce issues, CloudTrail logs every API call with the authorization details.
+For intermittent or hard-to-reproduce issues, CloudTrail records API activity so you can confirm which identity made the failed request and what error AWS returned.
 
 ```bash
 # Look up recent access denied events
@@ -251,7 +251,7 @@ aws cloudtrail lookup-events \
   --max-results 5
 ```
 
-The CloudTrail event includes the error code and details about which policy caused the denial.
+The CloudTrail event includes the error code and error message. For detailed policy evaluation, use the access denied message, the IAM Policy Simulator, or an encoded authorization message if the service returns one.
 
 ## A Systematic Approach
 
