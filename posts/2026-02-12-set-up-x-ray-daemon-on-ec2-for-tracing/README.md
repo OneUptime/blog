@@ -31,6 +31,8 @@ The daemon runs as a background process and is designed to be lightweight. It ty
 - An IAM role attached to the EC2 instance with X-Ray permissions
 - An application instrumented with the X-Ray SDK (or OpenTelemetry with X-Ray exporter)
 
+As of February 25, 2026, the AWS X-Ray SDKs and daemon are in maintenance mode and no longer receive new feature enhancements. For new instrumentation work, AWS recommends migrating to OpenTelemetry, but the daemon remains usable for existing X-Ray SDK deployments.
+
 ## Step 1: Configure the IAM Role
 
 The X-Ray daemon needs permission to call the X-Ray API. The simplest approach is to attach the `AWSXRayDaemonWriteAccess` managed policy to your EC2 instance role.
@@ -46,11 +48,11 @@ aws iam attach-role-policy \
 This managed policy grants the following permissions:
 
 ```json
-// AWSXRayDaemonWriteAccess policy document
 {
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "AWSXRayDaemonWriteAccess",
       "Effect": "Allow",
       "Action": [
         "xray:PutTraceSegments",
@@ -130,6 +132,9 @@ ResourceARN: ""
 
 # Role ARN if you want the daemon to assume a different role
 RoleARN: ""
+
+# Daemon configuration file format version
+Version: 2
 ```
 
 Key settings to consider:
@@ -228,24 +233,14 @@ aws xray get-trace-summaries \
 
 If you see trace summaries, the pipeline is working end to end.
 
-## Step 7: Set Up Log Rotation
+## Step 7: Check Log Rotation
 
-The daemon writes logs to `/var/log/xray/xray.log`. On long-running instances, these logs can grow. Set up log rotation to keep things tidy.
+The daemon writes logs to `/var/log/xray/xray.log` when installed as a systemd service. The daemon supports built-in log rotation, and the packaged configuration enables it by default. Confirm that `LogRotation` is enabled in `/etc/amazon/xray/cfg.yaml`:
 
-```bash
-# Create logrotate config for X-Ray daemon
-sudo tee /etc/logrotate.d/xray << 'EOF'
-/var/log/xray/xray.log {
-    daily
-    rotate 7
-    compress
-    missingok
-    notifempty
-    postrotate
-        systemctl reload xray > /dev/null 2>&1 || true
-    endscript
-}
-EOF
+```yaml
+Logging:
+  LogRotation: true
+  LogPath: "/var/log/xray/xray.log"
 ```
 
 ## Running the Daemon in User Data
@@ -268,7 +263,7 @@ This ensures every new instance in your Auto Scaling group comes up with the dae
 
 **Permission denied errors in logs**: The instance profile is missing the `AWSXRayDaemonWriteAccess` policy, or the role trust policy does not include `ec2.amazonaws.com`.
 
-**High daemon memory usage**: Increase `TotalBufferSizeMB` in the config, or check if your application is sending an extremely high volume of trace segments. Consider adjusting sampling rules.
+**High daemon memory usage**: Set an explicit `TotalBufferSizeMB` limit in the config, or check if your application is sending an extremely high volume of trace segments. Consider adjusting sampling rules.
 
 ## Wrapping Up
 
