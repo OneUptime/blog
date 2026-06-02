@@ -75,7 +75,7 @@ for cidr, az, name in subnets:
 
 ### Option A: Image Export and Import
 
-DigitalOcean allows you to create snapshots and export them. However, the format may not be directly importable to AWS. The most reliable approach is to use a fresh EC2 instance and migrate the application.
+DigitalOcean allows you to create snapshots, but it does not currently let you download Droplet backups or snapshots directly. The most reliable approach is to use a fresh EC2 instance and migrate the application.
 
 ### Option B: Application-Level Migration (Recommended)
 
@@ -89,8 +89,8 @@ pip freeze > python-requirements.txt
 # Archive application files
 tar czf app-backup.tar.gz /var/www/myapp /etc/nginx /etc/systemd/system/myapp.service
 
-# Copy to the new EC2 instance
-scp app-backup.tar.gz packages.txt ec2-user@new-ec2-ip:/tmp/
+# Copy to the new Ubuntu EC2 instance
+scp app-backup.tar.gz packages.txt python-requirements.txt ubuntu@new-ec2-ip:/tmp/
 ```
 
 On the new EC2 instance:
@@ -103,6 +103,7 @@ tar xzf app-backup.tar.gz -C /
 # Install the same packages
 sudo dpkg --set-selections < packages.txt
 sudo apt-get dselect-upgrade -y
+pip3 install -r python-requirements.txt
 
 # Restart services
 sudo systemctl daemon-reload
@@ -135,7 +136,7 @@ CMD ["bash", "-c", "service nginx start && python3 /app/main.py"]
 
 ## Phase 3: Migrate Managed Databases
 
-### PostgreSQL/MySQL Migration
+### PostgreSQL Migration
 
 ```bash
 # Export from DigitalOcean Managed Database
@@ -157,12 +158,13 @@ rds.create_db_instance(
     DBInstanceIdentifier='migrated-from-do',
     DBInstanceClass='db.t3.medium',  # Map from DO db size
     Engine='postgres',
-    EngineVersion='15.4',
+    EngineVersion='15',
+    DBName='your_database',
     MasterUsername='admin',
     MasterUserPassword='SecurePassword123!',
     AllocatedStorage=50,
     StorageType='gp3',
-    VpcSecurityGroupIds=['sg-database'],
+    VpcSecurityGroupIds=['sg-0123456789abcdef0'],
     DBSubnetGroupName='private-subnets',
     MultiAZ=True,
     StorageEncrypted=True,
@@ -180,7 +182,7 @@ pg_restore --verbose --clean --no-acl --no-owner \
   do_database_backup.dump
 ```
 
-For zero-downtime migration, use [AWS DMS](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view) for continuous replication from DigitalOcean to RDS.
+For near-zero-downtime migration, use [AWS DMS](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view) for continuous replication from DigitalOcean to RDS.
 
 ## Phase 4: Migrate Spaces to S3
 
@@ -217,15 +219,17 @@ rclone sync do-spaces:my-bucket aws-s3:my-aws-bucket \
 ### Using AWS CLI with S3-Compatible Endpoint
 
 ```bash
+# Configure separate AWS CLI profiles for your Spaces keys and AWS keys first.
+
 # List objects in DO Spaces using AWS CLI
-aws s3 ls s3://my-bucket/ \
+aws --profile do-spaces s3 ls s3://my-bucket/ \
   --endpoint-url https://nyc3.digitaloceanspaces.com
 
 # Copy from Spaces to S3 via a local intermediary
-aws s3 sync s3://my-bucket/ /tmp/spaces-data/ \
+aws --profile do-spaces s3 sync s3://my-bucket/ /tmp/spaces-data/ \
   --endpoint-url https://nyc3.digitaloceanspaces.com
 
-aws s3 sync /tmp/spaces-data/ s3://my-aws-bucket/
+aws --profile aws s3 sync /tmp/spaces-data/ s3://my-aws-bucket/
 ```
 
 For large datasets, use direct server-to-server transfer by running the sync from an EC2 instance for better bandwidth.
@@ -237,15 +241,15 @@ If you are running Kubernetes on DigitalOcean, the migration to EKS is relativel
 ### Export Your Manifests
 
 ```bash
-# Export all Kubernetes resources from DOKS
+# Export common Kubernetes workload resources from DOKS
 kubectl get all --all-namespaces -o yaml > all-resources.yaml
 
 # Export specific resources
-kubectl get deployments -o yaml > deployments.yaml
-kubectl get services -o yaml > services.yaml
-kubectl get configmaps -o yaml > configmaps.yaml
-kubectl get secrets -o yaml > secrets.yaml
-kubectl get ingress -o yaml > ingress.yaml
+kubectl get deployments --all-namespaces -o yaml > deployments.yaml
+kubectl get services --all-namespaces -o yaml > services.yaml
+kubectl get configmaps --all-namespaces -o yaml > configmaps.yaml
+kubectl get secrets --all-namespaces -o yaml > secrets.yaml
+kubectl get ingress --all-namespaces -o yaml > ingress.yaml
 ```
 
 ### Create EKS Cluster
@@ -266,8 +270,8 @@ eksctl create cluster \
 ### Apply Manifests to EKS
 
 Before applying, update cloud-specific references:
-- Replace DigitalOcean load balancer annotations with AWS ALB annotations
-- Replace DigitalOcean Spaces storage class with EBS or EFS storage class
+- Install the AWS Load Balancer Controller and replace DigitalOcean load balancer annotations with AWS ALB annotations
+- Install the relevant EBS or EFS CSI driver and replace DigitalOcean storage classes
 - Update container registry references from DO Container Registry to ECR
 
 ```bash
@@ -312,14 +316,24 @@ changes = []
 for record in do_records:
     record_type = record['type']
     if record_type in ['A', 'AAAA', 'CNAME', 'MX', 'TXT']:
+        name = f"{record['name']}.your-domain.com" if record['name'] != '@' else 'your-domain.com'
+        if record_type == 'CNAME' and record['name'] == '@':
+            continue
+
+        value = record['data']
+        if record_type == 'MX':
+            value = f"{record['priority']} {record['data']}"
+        elif record_type == 'TXT':
+            value = f'"{record["data"]}"'
+
         changes.append({
             'Action': 'CREATE',
             'ResourceRecordSet': {
-                'Name': f"{record['name']}.your-domain.com" if record['name'] != '@' else 'your-domain.com',
+                'Name': name,
                 'Type': record_type,
                 'TTL': record['ttl'],
                 'ResourceRecords': [
-                    {'Value': record['data']}
+                    {'Value': value}
                 ]
             }
         })
@@ -336,7 +350,7 @@ if changes:
 Update all DigitalOcean-specific references in your application:
 
 - Database connection strings pointing to DO managed databases
-- Spaces URLs (replace `*.digitaloceanspaces.com` with `*.s3.amazonaws.com`)
+- Spaces URLs (replace `*.digitaloceanspaces.com` with your S3 virtual-hosted URL, such as `https://bucket.s3.us-east-1.amazonaws.com`, or with a CloudFront/custom domain)
 - API keys and credentials
 - Monitoring and logging endpoints
 
