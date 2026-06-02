@@ -16,8 +16,8 @@ Getting this balance right is where the real savings are. Let's dig into the pra
 
 Lambda bills you on two dimensions:
 
-- **Requests**: $0.20 per million invocations
-- **Duration**: $0.0000166667 per GB-second (rounded to the nearest millisecond)
+- **Requests**: $0.20 per million invocations in many regions
+- **Duration**: $0.0000166667 per GB-second for x86 in the first pricing tier in many US regions, billed in 1-millisecond increments
 
 The duration charge is calculated as: (memory allocated in GB) x (execution time in seconds). So a function with 512MB that runs for 2 seconds costs the same as a function with 1024MB that runs for 1 second.
 
@@ -25,10 +25,10 @@ Here's where it gets interesting: Lambda allocates CPU power proportionally to m
 
 ## Profiling Your Current Lambda Costs
 
-Before optimizing, get a baseline. Here's how to pull your most expensive Lambda functions:
+Before optimizing, get a baseline. Here's how to pull duration data for a Lambda function:
 
 ```bash
-# Find Lambda functions with the highest invocation counts and durations
+# Get average duration for a Lambda function
 
 aws cloudwatch get-metric-data \
   --metric-data-queries '[
@@ -72,10 +72,15 @@ Deploy it as a Step Functions state machine:
 
 ```bash
 # Deploy Lambda Power Tuning using SAR (Serverless Application Repository)
-aws serverlessrepo create-cloud-formation-change-set \
+CHANGE_SET_ID=$(aws serverlessrepo create-cloud-formation-change-set \
   --application-id arn:aws:serverlessrepo:us-east-1:451282441545:applications/aws-lambda-power-tuning \
   --stack-name lambda-power-tuning \
-  --capabilities CAPABILITY_IAM
+  --capabilities CAPABILITY_IAM \
+  --query ChangeSetId \
+  --output text)
+
+aws cloudformation execute-change-set \
+  --change-set-name "$CHANGE_SET_ID"
 ```
 
 Then run a tuning session:
@@ -83,7 +88,7 @@ Then run a tuning session:
 ```json
 {
   "lambdaARN": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
-  "powerValues": [128, 256, 512, 1024, 1536, 2048, 3008],
+  "powerValues": [128, 256, 512, 1024, 1536, 2048, 3008, 4096, 10240],
   "num": 50,
   "payload": {"key": "sample-input"},
   "parallelInvocation": true,
@@ -91,13 +96,13 @@ Then run a tuning session:
 }
 ```
 
-The output gives you a visualization showing cost vs. duration for each memory configuration. You'll often find a sweet spot where increasing memory from 128MB to 512MB cuts duration by 75% while only doubling the memory allocation, resulting in a net 50% cost reduction.
+The output gives you a visualization showing cost vs. duration for each memory configuration. You'll often find a sweet spot where increasing memory from 128MB to 512MB cuts duration by 90% while quadrupling the memory allocation, resulting in a net 60% cost reduction.
 
 ## Optimize Cold Start Duration
 
-Cold starts inflate duration and therefore cost. Here are concrete ways to minimize them.
+Cold starts inflate billed duration and therefore cost. Here are concrete ways to minimize them.
 
-**Keep functions warm for critical paths.** Use a scheduled CloudWatch event to ping your function every 5 minutes:
+**Keep functions warm for critical paths.** Use a scheduled EventBridge rule to ping your function every 5 minutes:
 
 ```python
 # handler.py - Add a warm-up check at the top of your handler
@@ -195,7 +200,7 @@ def process_file(key):
     return transform(content)
 ```
 
-**Use ARM64 architecture.** Lambda functions running on Graviton2 (arm64) are 20% cheaper and often faster:
+**Use ARM64 architecture.** Lambda functions running on Graviton2 (arm64) have 20% lower duration pricing than x86 and can be faster when your runtime and dependencies support arm64:
 
 ```bash
 # Update function to use ARM64 architecture
@@ -204,7 +209,7 @@ aws lambda update-function-configuration \
   --architectures arm64
 ```
 
-This is a free performance win for most workloads. See our guide on [using Graviton instances for cost-effective compute](https://oneuptime.com/blog/post/2026-02-12-use-graviton-instances-for-cost-effective-compute/view) for more on ARM-based savings.
+This can be a straightforward performance win for compatible workloads. See our guide on [using Graviton instances for cost-effective compute](https://oneuptime.com/blog/post/2026-02-12-use-graviton-instances-for-cost-effective-compute/view) for more on ARM-based savings.
 
 ## Set Appropriate Timeouts
 
@@ -221,7 +226,7 @@ aws cloudwatch get-metric-statistics \
   --start-time 2026-02-05T00:00:00Z \
   --end-time 2026-02-12T00:00:00Z \
   --period 604800 \
-  --statistics p99
+  --extended-statistics p99
 
 # Set timeout to p99 + 50% buffer (e.g., if p99 is 4s, set to 6s)
 aws lambda update-function-configuration \
@@ -241,46 +246,57 @@ def analyze_lambda_costs():
     lambda_client = boto3.client('lambda')
     cw = boto3.client('cloudwatch')
 
-    functions = lambda_client.list_functions()['Functions']
+    paginator = lambda_client.get_paginator('list_functions')
 
     end = datetime.utcnow()
     start = end - timedelta(days=7)
 
     results = []
 
-    for fn in functions:
-        name = fn['FunctionName']
-        memory = fn['MemorySize']
+    for page in paginator.paginate():
+        for fn in page['Functions']:
+            name = fn['FunctionName']
+            memory = fn['MemorySize']
 
-        # Get average duration and invocation count
-        metrics = cw.get_metric_statistics(
-            Namespace='AWS/Lambda',
-            MetricName='Duration',
-            Dimensions=[{'Name': 'FunctionName', 'Value': name}],
-            StartTime=start,
-            EndTime=end,
-            Period=604800,
-            Statistics=['Average', 'Sum', 'SampleCount']
-        )
+            # Get average duration
+            duration_metrics = cw.get_metric_statistics(
+                Namespace='AWS/Lambda',
+                MetricName='Duration',
+                Dimensions=[{'Name': 'FunctionName', 'Value': name}],
+                StartTime=start,
+                EndTime=end,
+                Period=604800,
+                Statistics=['Average']
+            )
 
-        if metrics['Datapoints']:
-            dp = metrics['Datapoints'][0]
-            avg_duration_ms = dp['Average']
-            invocations = int(dp['SampleCount'])
+            # Get invocation count
+            invocation_metrics = cw.get_metric_statistics(
+                Namespace='AWS/Lambda',
+                MetricName='Invocations',
+                Dimensions=[{'Name': 'FunctionName', 'Value': name}],
+                StartTime=start,
+                EndTime=end,
+                Period=604800,
+                Statistics=['Sum']
+            )
 
-            # Calculate weekly cost estimate
-            gb_seconds = (memory / 1024) * (avg_duration_ms / 1000) * invocations
-            duration_cost = gb_seconds * 0.0000166667
-            request_cost = invocations * 0.0000002
-            total_cost = duration_cost + request_cost
+            if duration_metrics['Datapoints'] and invocation_metrics['Datapoints']:
+                avg_duration_ms = duration_metrics['Datapoints'][0]['Average']
+                invocations = int(invocation_metrics['Datapoints'][0]['Sum'])
 
-            results.append({
-                'name': name,
-                'memory': memory,
-                'avg_duration_ms': round(avg_duration_ms),
-                'invocations': invocations,
-                'weekly_cost': round(total_cost, 2)
-            })
+                # Calculate weekly cost estimate
+                gb_seconds = (memory / 1024) * (avg_duration_ms / 1000) * invocations
+                duration_cost = gb_seconds * 0.0000166667
+                request_cost = invocations * 0.0000002
+                total_cost = duration_cost + request_cost
+
+                results.append({
+                    'name': name,
+                    'memory': memory,
+                    'avg_duration_ms': round(avg_duration_ms),
+                    'invocations': invocations,
+                    'weekly_cost': round(total_cost, 2)
+                })
 
     # Sort by cost, highest first
     results.sort(key=lambda x: x['weekly_cost'], reverse=True)
