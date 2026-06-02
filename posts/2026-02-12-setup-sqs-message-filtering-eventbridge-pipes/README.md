@@ -257,7 +257,7 @@ resource "aws_pipes_pipe" "transformed_orders" {
   role_arn = aws_iam_role.pipe_role.arn
 
   source = aws_sqs_queue.orders.arn
-  target = aws_sqs_queue.processed_orders.arn
+  target = aws_sqs_queue.processed_orders_fifo.arn
 
   source_parameters {
     sqs_queue_parameters {
@@ -341,7 +341,7 @@ EventBridge Pipes publishes metrics to CloudWatch. The key ones to watch are:
 
 - **ExecutionThrottled**: Your pipe is hitting rate limits.
 - **ExecutionFailed**: Something went wrong during processing.
-- **Ingestion**: Messages read from the source.
+- **EventCount**: Events processed by the pipe.
 - **ExecutionTimeout**: Processing took too long.
 
 ```bash
@@ -361,7 +361,7 @@ aws cloudwatch get-metric-statistics \
 
 Use EventBridge Pipes when you need filtering, enrichment, or transformation before processing. Use direct SQS-Lambda integration when every message needs processing and you don't need to modify messages before they reach your handler.
 
-Pipes add a small amount of latency (typically under 100ms) and cost ($0.40 per million invocations). The savings from not invoking Lambda on irrelevant messages usually outweigh the pipe cost, especially when your filter removes a significant percentage of messages.
+Pipes add a small amount of latency and cost ($0.40 per million requests after filtering in supported Regions). The savings from not invoking Lambda on irrelevant messages usually outweigh the pipe cost, especially when your filter removes a significant percentage of messages.
 
 ## Wrapping Up
 
