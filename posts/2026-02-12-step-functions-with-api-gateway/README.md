@@ -46,7 +46,7 @@ First, create an IAM role that allows API Gateway to start Step Functions execut
     {
       "Effect": "Allow",
       "Action": "states:StartExecution",
-      "Resource": "arn:aws:states:us-east-1:123456789:stateMachine:OrderProcessor"
+      "Resource": "arn:aws:states:us-east-1:123456789012:stateMachine:OrderProcessor"
     }
   ]
 }
@@ -64,7 +64,7 @@ Resources:
     Properties:
       StageName: prod
       DefinitionBody:
-        openapi: "3.0"
+        openapi: "3.0.1"
         info:
           title: "Order API"
           version: "1.0"
@@ -80,15 +80,16 @@ Resources:
                   application/json: !Sub |
                     {
                       "stateMachineArn": "${OrderStateMachine.Arn}",
-                      "input": "$util.escapeJavaScript($input.body)"
+                      "input": "$util.escapeJavaScript($input.json('$')).replaceAll("\\'","'")"
                     }
                 responses:
                   "200":
                     statusCode: "202"
                     responseTemplates:
                       application/json: |
+                        #set($executionArn = $input.path('$.executionArn'))
                         {
-                          "executionId": "$input.json('executionArn').split(':').get(7)",
+                          "executionId": "$executionArn.split(':').get(7)",
                           "status": "processing"
                         }
               responses:
@@ -111,7 +112,7 @@ Resources:
     Properties:
       StageName: prod
       DefinitionBody:
-        openapi: "3.0"
+        openapi: "3.0.1"
         info:
           title: "Validation API"
           version: "1.0"
@@ -127,15 +128,14 @@ Resources:
                   application/json: !Sub |
                     {
                       "stateMachineArn": "${ValidationStateMachine.Arn}",
-                      "input": "$util.escapeJavaScript($input.body)"
+                      "input": "$util.escapeJavaScript($input.json('$')).replaceAll("\\'","'")"
                     }
                 responses:
                   "200":
                     statusCode: "200"
                     responseTemplates:
                       application/json: |
-                        #set($output = $util.parseJson($input.json('output')))
-                        $output
+                        $input.path('$.output')
 
   ValidationStateMachine:
     Type: AWS::Serverless::StateMachine
@@ -248,7 +248,7 @@ exports.handler = async (event) => {
 
 API Gateway can validate requests before they reach Step Functions, saving you state transitions on invalid input.
 
-This model validates the request body at the API Gateway level:
+Define a model and request validator, then attach them to the method that should validate the body:
 
 ```yaml
 Resources:
@@ -300,14 +300,14 @@ responses:
     statusCode: "200"
     responseTemplates:
       application/json: |
-        #set($status = $input.json('status'))
+        #set($status = $input.path('$.status'))
         #if($status == "SUCCEEDED")
-          $input.json('output')
+          $input.path('$.output')
         #elseif($status == "FAILED")
           #set($context.responseOverride.status = 400)
           {
-            "error": $input.json('error'),
-            "message": $input.json('cause')
+            "error": "$util.escapeJavaScript($input.path('$.error')).replaceAll("\\'","'")",
+            "message": "$util.escapeJavaScript($input.path('$.cause')).replaceAll("\\'","'")"
           }
         #else
           #set($context.responseOverride.status = 500)
