@@ -8,7 +8,7 @@ Description: Learn how to partition your S3 data for Amazon Athena to dramatical
 
 ---
 
-Every Athena query has a cost, and that cost is directly tied to how much data it scans. Run a query against a 1 TB dataset when you only need last week's data? You just paid to scan the whole thing. Partitioning fixes this by organizing your data so Athena can skip irrelevant files entirely.
+Every Athena query that scans data has a cost, and that cost is directly tied to how much data it scans. Run a query against a 1 TB dataset when you only need last week's data? You just paid to scan the whole thing. Partitioning fixes this by organizing your data so Athena can skip irrelevant files entirely.
 
 A well-partitioned dataset can reduce both query time and cost by 90% or more. Let's look at how to set it up.
 
@@ -52,7 +52,7 @@ STORED AS PARQUET
 LOCATION 's3://my-bucket/events/';
 ```
 
-The partition columns don't appear in the `STORED AS` part of the definition. They're inferred from the directory structure.
+The partition columns don't appear in the main column list. They're declared in `PARTITIONED BY` and inferred from the directory structure.
 
 ## Adding Partitions
 
@@ -88,7 +88,7 @@ For automated partition management, use an AWS Glue crawler. It periodically sca
 
 ### Partition Projection
 
-This is the best approach for most cases. Instead of maintaining a list of partitions in the catalog, you tell Athena how to calculate partition locations at query time:
+This is a strong approach for highly partitioned tables or datasets where new partitions arrive regularly. Instead of maintaining a list of partitions in the catalog, you tell Athena how to calculate partition locations at query time:
 
 ```sql
 -- Create a table with partition projection (no need to add partitions manually)
@@ -115,7 +115,7 @@ TBLPROPERTIES (
 );
 ```
 
-With partition projection, Athena never queries the Glue Data Catalog for partition information. It calculates the S3 paths dynamically. This is faster and eliminates the need to manage partitions.
+With partition projection, Athena does not call the Glue Data Catalog to retrieve partition metadata for the table. It calculates the S3 paths dynamically. This can be faster for highly partitioned tables and eliminates the need to manage partitions.
 
 ## Choosing Partition Keys
 
@@ -134,7 +134,7 @@ Common partition strategies:
 
 There's a sweet spot. Too many partitions create problems:
 
-- Each partition should contain at least 128 MB of data
+- Keep files in each partition reasonably large; for Parquet, the default row group size is 128 MB
 - Too many small files hurt performance (the "small files problem")
 - AWS Glue has a limit of how many partitions it can manage efficiently
 
