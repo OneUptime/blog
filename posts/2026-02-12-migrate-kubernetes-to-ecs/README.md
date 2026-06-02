@@ -129,6 +129,9 @@ spec:
     matchLabels:
       app: web-api
   template:
+    metadata:
+      labels:
+        app: web-api
     spec:
       containers:
       - name: api
@@ -176,12 +179,12 @@ The equivalent ECS task definition and service:
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::123456789:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/ecsTaskRole",
   "containerDefinitions": [
     {
       "name": "api",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/web-api:v1.2.3",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/web-api:v1.2.3",
       "essential": true,
       "portMappings": [
         {
@@ -192,11 +195,11 @@ The equivalent ECS task definition and service:
       "secrets": [
         {
           "name": "DB_HOST",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/web-api/db_host"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/production/web-api/db_host"
         },
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/web-api/db-password"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/web-api/db-password-a1b2c3"
         }
       ],
       "healthCheck": {
@@ -218,6 +221,8 @@ The equivalent ECS task definition and service:
   ]
 }
 ```
+
+ECS container health checks run inside the container, so make sure the image includes the command you use for the check, such as `curl` in this example.
 
 ```bash
 # Create the ECS service
