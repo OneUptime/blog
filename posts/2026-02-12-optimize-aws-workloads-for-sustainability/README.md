@@ -54,13 +54,13 @@ Most organizations run instances that are 40-60% oversized. AWS Compute Optimize
 # Get recommendations for oversized EC2 instances
 
 aws compute-optimizer get-ec2-instance-recommendations \
-  --filters "Name=Finding,Values=OVER_PROVISIONED" \
+  --filters "name=Finding,values=Overprovisioned" \
   --output table \
   --query 'instanceRecommendations[*].{
     Instance:instanceArn,
     Current:currentInstanceType,
     Recommended:recommendationOptions[0].instanceType,
-    Savings:recommendationOptions[0].projectedUtilizationMetrics[0].value
+    ProjectedUtilization:recommendationOptions[0].projectedUtilizationMetrics
   }'
 ```
 
@@ -77,7 +77,7 @@ For most workloads, the migration is straightforward:
 # Launch a Graviton instance alongside your existing x86 instance
 aws ec2 run-instances \
   --instance-type m7g.xlarge \
-  --image-id ami-0graviton-amazon-linux \
+  --image-id ami-0123456789abcdef0 \
   --count 1 \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Purpose,Value=graviton-benchmark}]'
 ```
@@ -112,7 +112,7 @@ def lambda_handler(event, context):
         data = json.loads(response['Body'].read())
 
         # Do your processing here
-        process_data(data)
+        print(f"Processing {key}: {data}")
 
     return {'statusCode': 200, 'body': 'Processed successfully'}
 ```
@@ -122,20 +122,28 @@ def lambda_handler(event, context):
 Spot instances use spare EC2 capacity. By using capacity that would otherwise sit idle, you are effectively recycling compute resources:
 
 ```bash
-# Launch a Spot fleet for batch processing
-aws ec2 request-spot-fleet \
-  --spot-fleet-request-config '{
-    "IamFleetRole": "arn:aws:iam::123456789012:role/spot-fleet-role",
-    "TargetCapacity": 10,
-    "SpotPrice": "0.05",
-    "LaunchSpecifications": [
+# Launch an EC2 Fleet that uses Spot capacity for batch processing
+aws ec2 create-fleet \
+  --type request \
+  --target-capacity-specification '{
+    "TotalTargetCapacity": 10,
+    "DefaultTargetCapacityType": "spot"
+  }' \
+  --spot-options '{"AllocationStrategy": "price-capacity-optimized"}' \
+  --launch-template-configs '[
+    {
+      "LaunchTemplateSpecification": {
+        "LaunchTemplateName": "batch-worker-template",
+        "Version": "$Latest"
+      },
+      "Overrides": [
       {
         "InstanceType": "m6g.large",
-        "ImageId": "ami-0abcdef1234567890",
         "SubnetId": "subnet-0123456789abcdef0"
       }
-    ]
-  }'
+      ]
+    }
+  ]'
 ```
 
 ### Schedule Non-Production Environments
@@ -148,7 +156,7 @@ Resources:
   SchedulerStack:
     Type: AWS::CloudFormation::Stack
     Properties:
-      TemplateURL: https://s3.amazonaws.com/solutions-reference/aws-instance-scheduler-on-aws/latest/instance-scheduler-on-aws.template
+      TemplateURL: https://s3.amazonaws.com/solutions-reference/instance-scheduler-on-aws/latest/instance-scheduler-on-aws.template
       Parameters:
         SchedulingActive: 'Yes'
         DefaultTimezone: 'US/Eastern'
@@ -257,6 +265,8 @@ aws cloudfront create-distribution \
       ],
       "Quantity": 1
     },
+    "CacheBehaviors": {"Quantity": 0},
+    "Comment": "Static asset distribution",
     "Enabled": true
   }'
 ```
@@ -303,7 +313,7 @@ Resources:
     Properties:
       Environment:
         ComputeType: BUILD_GENERAL1_MEDIUM
-        Image: aws/codebuild/amazonlinux2-aarch64-standard:3.0
+        Image: aws/codebuild/amazonlinux-aarch64-standard:3.0
         Type: ARM_CONTAINER
       Cache:
         Type: S3
