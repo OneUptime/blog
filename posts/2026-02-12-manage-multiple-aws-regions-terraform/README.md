@@ -8,7 +8,7 @@ Description: Learn how to manage AWS resources across multiple regions in a sing
 
 ---
 
-There are plenty of reasons to deploy across multiple AWS regions: disaster recovery, reduced latency for global users, compliance requirements, or services like CloudFront that require resources in specific regions. Terraform handles multi-region deployments through provider aliases, which let you define multiple AWS providers targeting different regions in the same configuration.
+There are plenty of reasons to deploy across multiple AWS regions: disaster recovery, reduced latency for global users, compliance requirements, or services like CloudFront that require resources in specific regions. Terraform commonly handles multi-region deployments through provider aliases, which let you define multiple AWS providers targeting different regions in the same configuration. In AWS Provider v6 and later, most regional resources also support a top-level `region` argument, but provider aliases remain useful and are still widely used.
 
 Let's walk through the patterns and practices for managing multi-region infrastructure effectively.
 
@@ -172,6 +172,47 @@ resource "aws_iam_role" "replication" {
   })
 }
 
+resource "aws_iam_policy" "replication" {
+  name = "s3-replication-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetReplicationConfiguration",
+          "s3:ListBucket",
+        ]
+        Resource = aws_s3_bucket.primary.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObjectVersionForReplication",
+          "s3:GetObjectVersionAcl",
+          "s3:GetObjectVersionTagging",
+        ]
+        Resource = "${aws_s3_bucket.primary.arn}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:ReplicateObject",
+          "s3:ReplicateDelete",
+          "s3:ReplicateTags",
+        ]
+        Resource = "${aws_s3_bucket.replica.arn}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "replication" {
+  role       = aws_iam_role.replication.name
+  policy_arn = aws_iam_policy.replication.arn
+}
+
 # Replication configuration on the primary bucket
 resource "aws_s3_bucket_replication_configuration" "primary" {
   role   = aws_iam_role.replication.arn
@@ -180,6 +221,8 @@ resource "aws_s3_bucket_replication_configuration" "primary" {
   rule {
     id     = "replicate-all"
     status = "Enabled"
+
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.replica.arn
@@ -190,6 +233,7 @@ resource "aws_s3_bucket_replication_configuration" "primary" {
   depends_on = [
     aws_s3_bucket_versioning.primary,
     aws_s3_bucket_versioning.replica,
+    aws_iam_role_policy_attachment.replication,
   ]
 }
 ```
@@ -291,7 +335,7 @@ locals {
 }
 ```
 
-Unfortunately, Terraform doesn't support dynamic provider configuration with `for_each` on providers. Each provider alias must be explicitly defined. This is a known limitation. The workaround is to define all the providers you need statically and map them in your module calls.
+Terraform doesn't support dynamic provider configuration with `for_each` on provider blocks. With the alias-based pattern, each provider alias must be explicitly defined and mapped in your module calls. If you're using AWS Provider v6 or later and the resources in your module support the top-level `region` argument, you can also pass the region as a module input instead of creating an alias for every region.
 
 ## Data Sources Across Regions
 
