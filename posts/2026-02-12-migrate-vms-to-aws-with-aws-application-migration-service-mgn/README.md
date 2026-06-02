@@ -18,6 +18,7 @@ This guide covers the entire MGN migration process from initial setup to final c
 sequenceDiagram
     participant Source as Source Server
     participant Agent as MGN Agent
+    participant MGN as MGN Service
     participant Staging as Staging Area (AWS)
     participant Target as Target EC2 Instance
 
@@ -27,9 +28,9 @@ sequenceDiagram
         Agent->>Staging: Block-level changes
     end
     Note over Source,Target: Ready for cutover
-    Agent->>Target: Launch test instance
+    MGN->>Target: Launch test instance
     Note over Target: Test and validate
-    Agent->>Target: Launch cutover instance
+    MGN->>Target: Launch cutover instance
     Note over Source: Decommission source
 ```
 
@@ -65,10 +66,11 @@ print("MGN initialized successfully")
 
 ```bash
 # Download and install the MGN replication agent on Linux
-wget -O ./aws-replication-installer-init.py \
-  https://aws-application-migration-service-us-east-1.s3.amazonaws.com/latest/linux/aws-replication-installer-init.py
+wget -O ./aws-replication-installer-init \
+  https://aws-application-migration-service-us-east-1.s3.us-east-1.amazonaws.com/latest/linux/aws-replication-installer-init
 
-sudo python3 aws-replication-installer-init.py \
+sudo chmod +x aws-replication-installer-init
+sudo ./aws-replication-installer-init \
   --region us-east-1 \
   --aws-access-key-id YOUR_ACCESS_KEY \
   --aws-secret-access-key YOUR_SECRET_KEY
@@ -79,7 +81,7 @@ sudo python3 aws-replication-installer-init.py \
 ```powershell
 # Download and install the MGN replication agent on Windows
 # Run PowerShell as Administrator
-Invoke-WebRequest -Uri "https://aws-application-migration-service-us-east-1.s3.amazonaws.com/latest/windows/AwsReplicationWindowsInstaller.exe" -OutFile "AwsReplicationWindowsInstaller.exe"
+Invoke-WebRequest -Uri "https://aws-application-migration-service-us-east-1.s3.us-east-1.amazonaws.com/latest/windows/AwsReplicationWindowsInstaller.exe" -OutFile "AwsReplicationWindowsInstaller.exe"
 
 .\AwsReplicationWindowsInstaller.exe `
   --region us-east-1 `
@@ -87,7 +89,7 @@ Invoke-WebRequest -Uri "https://aws-application-migration-service-us-east-1.s3.a
   --aws-secret-access-key YOUR_SECRET_KEY
 ```
 
-For production environments, use temporary credentials or an IAM role instead of long-lived access keys.
+For production environments, use temporary credentials from an IAM role instead of long-lived access keys. If you use temporary credentials, also provide the session token when prompted by the installer.
 
 ## Monitoring Replication Status
 
@@ -123,7 +125,7 @@ for server in response['items']:
         print(f"  Disk {device}: {replicated_gb:.1f}/{total_gb:.1f} GB replicated, {backlog_gb:.1f} GB backlog")
 
     # Show lag
-    lag = server.get('dataReplicationInfo', {}).get('dataReplicationInfo', {}).get('lagDuration', 'N/A')
+    lag = server.get('dataReplicationInfo', {}).get('lagDuration', 'N/A')
     print(f"  Replication Lag: {lag}")
 ```
 
@@ -138,27 +140,17 @@ import boto3
 mgn = boto3.client('mgn')
 
 mgn.update_launch_configuration(
-    sourceServerID='s-abc123def456',
+    sourceServerID='s-0123456789abcdef0',
     name='web-server-prod',
-    ec2LaunchTemplateID='lt-0123456789abcdef0',
     launchDisposition='STARTED',  # Instance starts automatically after launch
     licensing={
         'osByol': True  # Bring your own license
     },
     targetInstanceTypeRightSizingMethod='BASIC',  # or NONE for exact match
-    bootMode='LEGACY_BIOS',  # or UEFI
+    bootMode='USE_SOURCE',  # or LEGACY_BIOS / UEFI
     postLaunchActions={
         'deployment': 'TEST_AND_CUTOVER',
-        's3LogBucket': 'mgn-post-launch-logs',
-        'ssmDocuments': [
-            {
-                'ssmDocumentName': 'AWS-RunShellScript',
-                'timeoutSeconds': 300,
-                'parameters': {
-                    'commands': ['#!/bin/bash', 'echo "Post-launch script running"', 'systemctl restart httpd']
-                }
-            }
-        ]
+        's3LogBucket': 'mgn-post-launch-logs'
     }
 )
 ```
@@ -168,14 +160,21 @@ mgn.update_launch_configuration(
 Set the target instance type, subnet, security groups, and other EC2 settings:
 
 ```python
-# Configure the target EC2 instance template
+# Configure the target EC2 launch template that MGN created for the source server
 import boto3
 
+mgn = boto3.client('mgn')
 ec2 = boto3.client('ec2')
 
-# Create a launch template for MGN target instances
-response = ec2.create_launch_template(
-    LaunchTemplateName='mgn-web-server',
+# Get the launch template ID for this source server
+launch_config = mgn.get_launch_configuration(
+    sourceServerID='s-0123456789abcdef0'
+)
+
+# Create a new version of the MGN launch template with your target settings
+response = ec2.create_launch_template_version(
+    LaunchTemplateId=launch_config['ec2LaunchTemplateID'],
+    SourceVersion='$Latest',
     LaunchTemplateData={
         'InstanceType': 'm5.large',
         'NetworkInterfaces': [
@@ -198,6 +197,12 @@ response = ec2.create_launch_template(
         ]
     }
 )
+
+# MGN uses the default launch template version when launching test/cutover instances
+ec2.modify_launch_template(
+    LaunchTemplateId=launch_config['ec2LaunchTemplateID'],
+    DefaultVersion=str(response['LaunchTemplateVersion']['VersionNumber'])
+)
 ```
 
 ## Running a Test Launch
@@ -211,12 +216,14 @@ import boto3
 mgn = boto3.client('mgn')
 
 response = mgn.start_test(
-    sourceServerIDs=['s-abc123def456']
+    sourceServerIDs=['s-0123456789abcdef0']
 )
 
-for server in response['items']:
+job = response['job']
+print(f"Test job started: {job['jobID']}")
+for server in job['participatingServers']:
     print(f"Test launched for: {server['sourceServerID']}")
-    print(f"  Job ID: {server.get('lifeCycle', {}).get('lastTest', {}).get('initiated', {}).get('jobID', 'N/A')}")
+    print(f"  Launch status: {server['launchStatus']}")
 ```
 
 After the test instance launches, validate:
@@ -226,9 +233,10 @@ After the test instance launches, validate:
 - Performance meets expectations
 
 ```python
-# Mark test as complete after validation
-mgn.finalize_test(
-    sourceServerIDs=['s-abc123def456']
+# Mark the server as ready for cutover after validation
+mgn.change_server_life_cycle_state(
+    sourceServerID='s-0123456789abcdef0',
+    lifeCycle={'state': 'READY_FOR_CUTOVER'}
 )
 ```
 
@@ -244,17 +252,18 @@ mgn = boto3.client('mgn')
 
 # Start cutover - this creates the final EC2 instance
 response = mgn.start_cutover(
-    sourceServerIDs=['s-abc123def456']
+    sourceServerIDs=['s-0123456789abcdef0']
 )
 
-for server in response['items']:
-    job_id = server.get('lifeCycle', {}).get('lastCutover', {}).get('initiated', {}).get('jobID')
+job = response['job']
+for server in job['participatingServers']:
     print(f"Cutover started for: {server['sourceServerID']}")
-    print(f"  Job ID: {job_id}")
+    print(f"  Job ID: {job['jobID']}")
+    print(f"  Launch status: {server['launchStatus']}")
 ```
 
 The cutover process:
-1. Final replication sync (brief pause in I/O)
+1. Stop or quiesce application writes, then allow replication lag to drain
 2. Launch new EC2 instance from replicated data
 3. Instance boots and runs post-launch actions
 4. You validate and switch DNS/load balancers
@@ -262,12 +271,12 @@ The cutover process:
 ```python
 # After validation, finalize the cutover
 mgn.finalize_cutover(
-    sourceServerIDs=['s-abc123def456']
+    sourceServerID='s-0123456789abcdef0'
 )
 
 # Mark the source server as archived
 mgn.mark_as_archived(
-    sourceServerIDs=['s-abc123def456']
+    sourceServerID='s-0123456789abcdef0'
 )
 ```
 
@@ -289,7 +298,7 @@ mgn = boto3.client('mgn')
 
 # Disconnect from replication
 mgn.disconnect_from_service(
-    sourceServerID='s-abc123def456'
+    sourceServerID='s-0123456789abcdef0'
 )
 ```
 
@@ -335,8 +344,8 @@ def migrate_wave(server_ids, wave_name):
 
 # Define migration waves
 waves = {
-    'wave-1': ['s-server1', 's-server2', 's-server3'],
-    'wave-2': ['s-server4', 's-server5'],
+    'wave-1': ['s-0123456789abcdef0', 's-1234567890abcdef1', 's-2345678901abcdef2'],
+    'wave-2': ['s-3456789012abcdef3', 's-4567890123abcdef4'],
 }
 
 for wave_name, servers in waves.items():
