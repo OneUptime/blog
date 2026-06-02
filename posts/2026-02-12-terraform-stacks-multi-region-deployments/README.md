@@ -8,17 +8,17 @@ Description: Learn how to use Terraform Stacks to manage and coordinate multi-re
 
 ---
 
-Deploying infrastructure across multiple AWS regions introduces a coordination challenge that single-region Terraform doesn't prepare you for. You need the same resources in each region, but with region-specific differences like AMI IDs, endpoint URLs, and failover configurations. Terraform Stacks, introduced in Terraform 1.7+, provide a native solution for orchestrating these multi-region deployments.
+Deploying infrastructure across multiple AWS regions introduces a coordination challenge that single-region Terraform doesn't prepare you for. You need the same resources in each region, but with region-specific differences like AMI IDs, endpoint URLs, and failover configurations. Terraform Stacks provide a native solution for coordinating these multi-region deployments in HCP Terraform.
 
 ## What Are Terraform Stacks?
 
-Terraform Stacks sit above regular Terraform configurations. A Stack defines a set of components (each being a Terraform root module), deployment targets, and the orchestration logic that ties them together. Think of it as a way to deploy the same infrastructure across multiple regions or accounts with coordinated planning and applying.
+Terraform Stacks sit above regular Terraform modules. A Stack defines a set of components, deployment targets, and the rollout logic that ties them together. Think of it as a way to deploy the same infrastructure across multiple regions or accounts with coordinated planning and applying.
 
 The key concepts are:
 
-- **Components**: Individual Terraform root modules that deploy specific infrastructure
+- **Components**: Individual Terraform modules that deploy specific infrastructure
 - **Deployments**: Instances of your stack in different environments or regions
-- **Orchestration rules**: Logic that controls rollout order and dependencies
+- **Deployment groups and auto-approval rules**: Logic that controls which deployment runs can be approved automatically
 
 ## Project Structure
 
@@ -40,12 +40,12 @@ stack/
       variables.tf
       outputs.tf
   deployments.tfdeploy.hcl
-  components.tfstack.hcl
+  components.tfcomponent.hcl
 ```
 
 ## Defining Components
 
-Each component is a standard Terraform configuration. The networking component, for example:
+Each component sources a standard Terraform module. The networking module, for example:
 
 ```hcl
 # stack/components/networking/main.tf
@@ -60,10 +60,6 @@ variable "cidr_block" {
 
 variable "environment" {
   type = string
-}
-
-provider "aws" {
-  region = var.region
 }
 
 resource "aws_vpc" "main" {
@@ -108,7 +104,7 @@ output "private_subnet_ids" {
 The stack configuration file defines which components exist and how they relate:
 
 ```hcl
-# stack/components.tfstack.hcl
+# stack/components.tfcomponent.hcl
 
 # Variables that each deployment provides
 variable "region" {
@@ -127,13 +123,26 @@ variable "role_arn" {
   type = string
 }
 
+variable "identity_token" {
+  type      = string
+  ephemeral = true
+}
+
+required_providers {
+  aws = {
+    source  = "hashicorp/aws"
+    version = "~> 5.7.0"
+  }
+}
+
 # AWS provider configuration
 provider "aws" "this" {
   config {
     region = var.region
 
     assume_role_with_web_identity {
-      role_arn = var.role_arn
+      role_arn           = var.role_arn
+      web_identity_token = var.identity_token
     }
   }
 }
@@ -179,64 +188,64 @@ The deployment file defines where your stack gets deployed:
 
 # Identity token for OIDC authentication
 identity_token "aws" {
-  audience = ["terraform-stacks"]
+  audience = ["aws.workload.identity"]
 }
 
 # Primary region deployment
 deployment "us_east_1" {
   inputs = {
-    region      = "us-east-1"
-    environment = "prod"
-    cidr_block  = "10.0.0.0/16"
-    role_arn    = "arn:aws:iam::111111111111:role/terraform-stacks"
+    region         = "us-east-1"
+    environment    = "prod"
+    cidr_block     = "10.0.0.0/16"
+    role_arn       = "arn:aws:iam::111111111111:role/terraform-stacks"
+    identity_token = identity_token.aws.jwt
   }
 }
 
 # Secondary region deployment
 deployment "us_west_2" {
+  deployment_group = deployment_group.regional_rollout
+
   inputs = {
-    region      = "us-west-2"
-    environment = "prod"
-    cidr_block  = "10.1.0.0/16"
-    role_arn    = "arn:aws:iam::111111111111:role/terraform-stacks"
+    region         = "us-west-2"
+    environment    = "prod"
+    cidr_block     = "10.1.0.0/16"
+    role_arn       = "arn:aws:iam::111111111111:role/terraform-stacks"
+    identity_token = identity_token.aws.jwt
   }
 }
 
 # EU region deployment
 deployment "eu_west_1" {
+  deployment_group = deployment_group.regional_rollout
+
   inputs = {
-    region      = "eu-west-1"
-    environment = "prod"
-    cidr_block  = "10.2.0.0/16"
-    role_arn    = "arn:aws:iam::111111111111:role/terraform-stacks"
+    region         = "eu-west-1"
+    environment    = "prod"
+    cidr_block     = "10.2.0.0/16"
+    role_arn       = "arn:aws:iam::111111111111:role/terraform-stacks"
+    identity_token = identity_token.aws.jwt
   }
 }
 ```
 
-## Orchestration Rules
+## Deployment Groups
 
-Orchestration rules control the rollout order. You can deploy regions sequentially to limit blast radius:
+Deployment groups and auto-approval rules control which deployment runs can proceed automatically. You can leave the canary region in its default group for manual approval and only auto-approve the remaining regions after review:
 
 ```hcl
 # stack/deployments.tfdeploy.hcl
 
-# Deploy US East first as canary
-orchestrate "auto_approve" "canary" {
+deployment_auto_approve "no_destroy" {
   check {
-    condition = context.plan.deployment == deployment.us_east_1
-    reason    = "US East 1 is the canary region and auto-approves"
+    condition = context.plan.changes.remove == 0
+    reason    = "Plan destroys ${context.plan.changes.remove} resources."
   }
 }
 
-# Deploy remaining regions after canary succeeds
-orchestrate "auto_approve" "remaining" {
-  check {
-    condition = context.plan.deployment != deployment.us_east_1
-    reason    = "Non-canary regions deploy after canary success"
-  }
-
-  depends_on = [
-    orchestrate.auto_approve.canary
+deployment_group "regional_rollout" {
+  auto_approve_checks = [
+    deployment_auto_approve.no_destroy
   ]
 }
 ```
@@ -274,7 +283,7 @@ resource "aws_instance" "app" {
 
 ## Cross-Region Dependencies
 
-Some resources need to reference resources in other regions. Route 53 failover routing is a common example:
+Some global resources need to reference outputs from regional components. Route 53 failover routing is a common example:
 
 ```hcl
 # Global DNS component that references regional ALBs
@@ -296,22 +305,22 @@ component "dns" {
 
 ## State Management
 
-Each deployment within a Stack gets its own state file automatically. The state structure looks like:
+Each deployment within a Stack gets its own state file automatically. Each deployment state file includes all of the components in that deployment. Conceptually, the state structure looks like:
 
 ```text
 stacks/
-  us_east_1/
-    networking.tfstate
-    compute.tfstate
-    data.tfstate
-  us_west_2/
-    networking.tfstate
-    compute.tfstate
-    data.tfstate
-  eu_west_1/
-    networking.tfstate
-    compute.tfstate
-    data.tfstate
+  us_east_1.tfstate
+    - networking component resources
+    - compute component resources
+    - data component resources
+  us_west_2.tfstate
+    - networking component resources
+    - compute component resources
+    - data component resources
+  eu_west_1.tfstate
+    - networking component resources
+    - compute component resources
+    - data component resources
 ```
 
 This isolation means a failure in one region's deployment doesn't affect another region's state.
@@ -323,17 +332,17 @@ One of the biggest advantages of Stacks is controlled rollouts. Instead of deplo
 1. Deploy to the canary region
 2. Run health checks
 3. Deploy to remaining regions one at a time
-4. Roll back if any region fails
+4. Revert the change and apply again if any region fails
 
 ```mermaid
 graph LR
     A[Plan All Regions] --> B[Apply us-east-1]
     B --> C{Health Check}
     C -->|Pass| D[Apply us-west-2]
-    C -->|Fail| E[Rollback us-east-1]
+    C -->|Fail| E[Revert and apply us-east-1]
     D --> F{Health Check}
     F -->|Pass| G[Apply eu-west-1]
-    F -->|Fail| H[Rollback Both]
+    F -->|Fail| H[Revert and apply affected regions]
 ```
 
 ## Comparison with Other Approaches
@@ -354,4 +363,4 @@ After deploying across regions, you need visibility into what's running where. F
 
 ## Summary
 
-Terraform Stacks solve the real coordination problem of multi-region deployments. Instead of running Terraform separately in each region and hoping everything stays in sync, Stacks give you a single plan that covers all regions, orchestrated rollouts that limit blast radius, and isolated state per deployment. If you're managing AWS infrastructure across three or more regions, Stacks are worth evaluating as a replacement for ad-hoc scripting or Terragrunt.
+Terraform Stacks solve the real coordination problem of multi-region deployments. Instead of running Terraform separately in each region and hoping everything stays in sync, Stacks give you one versioned configuration that spans all regions, deployment groups that limit blast radius, and isolated state per deployment. If you're managing AWS infrastructure across three or more regions, Stacks are worth evaluating as a replacement for ad-hoc scripting or Terragrunt.
