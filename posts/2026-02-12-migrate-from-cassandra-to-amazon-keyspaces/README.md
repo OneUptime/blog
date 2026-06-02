@@ -30,16 +30,16 @@ graph TD
 
 Keyspaces supports CQL (Cassandra Query Language) but does not support everything Cassandra does. Check for these common incompatibilities.
 
-### Unsupported Features
+### Compatibility Differences
 
-- Lightweight transactions (LWT) have some limitations
-- User-defined types (UDTs) are supported but with restrictions
+- Lightweight transactions (LWT) are supported, but failed condition checks consume capacity and TTL tables can require additional read capacity
+- User-defined types (UDTs) are supported but have quotas and nesting requirements
 - Materialized views are not supported
 - Secondary indexes are not supported (use separate tables instead)
 - ALLOW FILTERING is supported but may perform differently
-- Batch statements have a limit of 30 statements
+- Batch statements have different limits: 100 statements for logged batches, 50 for logged batches with static columns, and 30 for unlogged batches
 - TTL maximum is 630,720,000 seconds (20 years)
-- No support for counters in some configurations
+- Counters are supported, but counter tables have Cassandra-style restrictions and retry behavior requires care
 
 ### Check Your Schema
 
@@ -92,7 +92,7 @@ for ks in keyspaces:
         )
         for col in columns:
             if col.type == 'counter':
-                issues.append(f"COUNTER: {ks_name}.{table_name}.{col.column_name} - Limited support")
+                issues.append(f"COUNTER: {ks_name}.{table_name}.{col.column_name} - Review counter-table restrictions and retry behavior")
 
 print("Compatibility Issues Found:")
 for issue in issues:
@@ -110,7 +110,7 @@ if not issues:
 # Create a keyspace in Amazon Keyspaces
 aws keyspaces create-keyspace \
   --keyspace-name my_application \
-  --tags Key=MigratedFrom,Value=self-managed-cassandra
+  --tags key=MigratedFrom,value=self-managed-cassandra
 ```
 
 ### Convert and Create Tables
@@ -148,11 +148,11 @@ CREATE TABLE my_application.user_profiles (
 """
 ```
 
-Create tables using cqlsh connected to Keyspaces.
+Create tables using cqlsh-expansion connected to Keyspaces.
 
 ```bash
-# Connect to Keyspaces using cqlsh with SSL
-cqlsh cassandra.us-east-1.amazonaws.com 9142 \
+# Connect to Keyspaces using cqlsh-expansion with SSL
+cqlsh-expansion cassandra.us-east-1.amazonaws.com 9142 \
   --ssl \
   --execute "CREATE TABLE my_application.user_profiles (
     user_id text,
@@ -175,7 +175,7 @@ For tables under a few GB, cqlsh COPY is the simplest approach.
 cqlsh cassandra-node-1 -e "COPY my_application.user_profiles TO '/tmp/user_profiles.csv' WITH HEADER = TRUE;"
 
 # Import to Keyspaces
-cqlsh cassandra.us-east-1.amazonaws.com 9142 --ssl \
+cqlsh-expansion cassandra.us-east-1.amazonaws.com 9142 --ssl \
   -e "COPY my_application.user_profiles FROM '/tmp/user_profiles.csv' WITH HEADER = TRUE AND INGESTRATE = 1500;"
 ```
 
@@ -202,29 +202,31 @@ job = Job(glueContext)
 job.init(args['JOB_NAME'], args)
 
 # Read from source Cassandra
+spark.conf.set("spark.cassandra.connection.host", "cassandra-node-1")
+spark.conf.set("spark.cassandra.connection.port", "9042")
+
 source_df = spark.read \
     .format("org.apache.spark.sql.cassandra") \
     .options(
         table="user_profiles",
-        keyspace="my_application",
-        spark_cassandra_connection_host="cassandra-node-1",
-        spark_cassandra_connection_port="9042"
+        keyspace="my_application"
     ) \
     .load()
 
 # Write to Amazon Keyspaces
+spark.conf.set("spark.cassandra.connection.host", "cassandra.us-east-1.amazonaws.com")
+spark.conf.set("spark.cassandra.connection.port", "9142")
+spark.conf.set("spark.cassandra.connection.ssl.enabled", "true")
+spark.conf.set("spark.cassandra.auth.username", "your-keyspaces-user")
+spark.conf.set("spark.cassandra.auth.password", "your-keyspaces-password")
+spark.conf.set("spark.cassandra.output.consistency.level", "LOCAL_QUORUM")
+spark.conf.set("spark.cassandra.output.batch.size.rows", "1")
+
 source_df.write \
     .format("org.apache.spark.sql.cassandra") \
     .options(
         table="user_profiles",
-        keyspace="my_application",
-        spark_cassandra_connection_host="cassandra.us-east-1.amazonaws.com",
-        spark_cassandra_connection_port="9142",
-        spark_cassandra_connection_ssl_enabled="true",
-        spark_cassandra_auth_username="your-keyspaces-user",
-        spark_cassandra_auth_password="your-keyspaces-password",
-        spark_cassandra_output_consistency_level="LOCAL_QUORUM",
-        spark_cassandra_output_batch_size_rows="1"
+        keyspace="my_application"
     ) \
     .mode("append") \
     .save()
@@ -268,7 +270,7 @@ session = cluster.connect('my_application')
 
 # After: connecting to Amazon Keyspaces
 from cassandra.cluster import Cluster
-from ssl import SSLContext, PROTOCOL_TLS, CERT_REQUIRED
+from ssl import SSLContext, PROTOCOL_TLS_CLIENT, CERT_REQUIRED
 from cassandra_sigv4.auth import SigV4AuthProvider
 import boto3
 
@@ -276,9 +278,9 @@ import boto3
 boto_session = boto3.Session()
 auth_provider = SigV4AuthProvider(boto_session)
 
-ssl_context = SSLContext(PROTOCOL_TLS)
+ssl_context = SSLContext(PROTOCOL_TLS_CLIENT)
 ssl_context.verify_mode = CERT_REQUIRED
-ssl_context.load_verify_locations('sf-class2-root.crt')
+ssl_context.load_verify_locations('path_to_file/keyspaces-bundle.pem')
 
 cluster = Cluster(
     ['cassandra.us-east-1.amazonaws.com'],
@@ -366,7 +368,7 @@ aws cloudwatch get-metric-statistics \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Average,p99
+  --statistics Average
 ```
 
 ## Summary
