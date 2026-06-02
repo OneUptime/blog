@@ -16,7 +16,7 @@ AWS supports sharing AMIs through launch permissions, and there are a few approa
 
 When you share an AMI, you're granting another AWS account permission to launch instances from it. The AMI stays in your account - it doesn't get copied. The other account sees it in their EC2 console under "Private images" and can launch instances from it.
 
-The important thing to understand: sharing an AMI also implicitly shares access to the underlying EBS snapshots. The other account can read those snapshots (to launch instances) but can't modify or delete them.
+The important thing to understand: you don't need to share the underlying EBS snapshots separately for another account to launch instances from a shared AMI. EC2 provides the launch-time access it needs to the referenced snapshots. If the other account needs to copy the shared AMI, you must grant read access to the backing storage, and encrypted snapshots also require KMS key access.
 
 ```mermaid
 flowchart LR
@@ -67,7 +67,7 @@ aws ec2 describe-image-attribute \
 
 ## Making an AMI Public
 
-You can also make an AMI public so anyone with an AWS account can use it:
+You can also make an AMI public so anyone with an AWS account can use it. The AMI must be eligible for public sharing; for example, AMIs with encrypted volumes, encrypted snapshots, or product codes can't be made public:
 
 ```bash
 # Make an AMI public (accessible to all AWS accounts)
@@ -76,7 +76,7 @@ aws ec2 modify-image-attribute \
     --launch-permission "Add=[{Group=all}]"
 ```
 
-Be very careful with this. Public AMIs are visible to everyone. Make sure you've removed all credentials, API keys, and sensitive data before making an image public. AWS also scans public AMIs for common security issues.
+Be very careful with this. Public AMIs are visible to everyone. Make sure you've removed all credentials, API keys, and sensitive data before making an image public. Also confirm that AMI block public access is disabled in the Region where you want to make the AMI public.
 
 To revoke public access:
 
@@ -141,9 +141,9 @@ Create the AMI with volumes encrypted using a customer-managed KMS key, then sha
 ```bash
 # Step 1: Share the KMS key with the target account
 aws kms create-grant \
-    --key-id arn:aws:kms:us-east-1:111111111111:key/mrk-abc123 \
+    --key-id arn:aws:kms:us-east-1:111111111111:key/1234abcd-12ab-34cd-56ef-1234567890ab \
     --grantee-principal arn:aws:iam::222222222222:root \
-    --operations Decrypt CreateGrant DescribeKey GenerateDataKeyWithoutPlaintext ReEncryptFrom ReEncryptTo
+    --operations Decrypt CreateGrant DescribeKey GenerateDataKey GenerateDataKeyWithoutPlaintext ReEncryptFrom ReEncryptTo
 
 # Step 2: Also update the key policy to allow the target account
 # This needs to be done in the KMS console or via put-key-policy
@@ -167,7 +167,7 @@ aws ec2 copy-image \
     --source-region us-east-1 \
     --name "webapp-local-copy" \
     --encrypted \
-    --kms-key-id arn:aws:kms:us-east-1:222222222222:key/local-key-id
+    --kms-key-id arn:aws:kms:us-east-1:222222222222:key/abcd1234-12ab-34cd-56ef-abcdef123456
 ```
 
 This creates an independent copy that doesn't depend on the original account's KMS key. It's more work but gives the receiving account full ownership.
@@ -222,7 +222,7 @@ You'd typically run this as part of a CI/CD pipeline after building and testing 
 
 **Dependencies on the owner account.** If the AMI owner deregisters the AMI, you can no longer launch new instances from it. Existing instances aren't affected. If the AMI is critical to your operations, consider copying it to your account.
 
-**Snapshot access.** When someone shares an AMI with you, you can technically describe the backing snapshots. Keep this in mind if the AMI contains sensitive data.
+**Snapshot access.** You don't need separate snapshot sharing to launch from a shared AMI, but copying a shared AMI requires read permissions for the backing storage. Keep this in mind if the AMI contains sensitive data.
 
 **Region-specific.** AMI sharing only works within the same region. If the AMI is in us-east-1 and the other account needs it in eu-west-1, the other account needs to copy it across regions after you share it. See our guide on [copying AMIs to other regions](https://oneuptime.com/blog/post/2026-02-12-copy-ami-to-another-aws-region/view).
 
