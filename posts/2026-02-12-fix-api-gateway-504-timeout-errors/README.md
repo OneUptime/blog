@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, Lambda, Performance, Troubleshooting
 
-Description: Fix API Gateway 504 timeout errors by understanding the 29-second limit, optimizing backend performance, and implementing async patterns for long-running tasks.
+Description: Fix API Gateway 504 timeout errors by understanding API Gateway integration timeouts, optimizing backend performance, and implementing async patterns for long-running tasks.
 
 ---
 
@@ -14,16 +14,16 @@ Your API Gateway endpoint returns a 504 Gateway Timeout after about 30 seconds o
 { "message": "Endpoint request timed out" }
 ```
 
-This happens when your backend (Lambda, HTTP endpoint, or other integration) takes longer than API Gateway's hard timeout limit. Let's figure out why and what you can do about it.
+This happens when your backend (Lambda, HTTP endpoint, or other integration) takes longer than API Gateway's configured integration timeout. Let's figure out why and what you can do about it.
 
 ## The Hard Truth: API Gateway's Timeout Limit
 
-API Gateway has a maximum integration timeout that you cannot increase:
+API Gateway has a maximum integration timeout:
 
-- **REST API**: 29 seconds (configurable from 50ms to 29s)
+- **REST API**: 29 seconds by default (configurable from 50ms to 29s). You can request a quota increase above 29 seconds for Regional and private REST APIs, but not edge-optimized REST APIs.
 - **HTTP API**: 30 seconds (configurable from 50ms to 30s)
 
-That's it. There's no way to extend these limits. If your backend needs more than 29-30 seconds to respond, API Gateway will cut it off with a 504.
+If your backend needs more than the configured timeout to respond, API Gateway will cut it off with a 504. For HTTP APIs and edge-optimized REST APIs, that means long-running work still needs to complete within about 30 seconds or move to an asynchronous pattern.
 
 Check your current timeout setting:
 
@@ -46,7 +46,7 @@ aws apigatewayv2 get-integration \
 If you've set it lower than the maximum, increase it:
 
 ```bash
-# Set REST API integration timeout to maximum (29 seconds)
+# Set REST API integration timeout to the default maximum (29 seconds)
 aws apigateway update-integration \
   --rest-api-id abc123 \
   --resource-id xyz789 \
@@ -70,7 +70,7 @@ aws logs filter-log-events \
   --output text | head -10
 ```
 
-Look at the `Duration` field. If it's consistently near 29 seconds, your function is the bottleneck.
+Look at the `Duration` field. If it's consistently near your API Gateway integration timeout, your function is the bottleneck.
 
 ### Common Backend Bottlenecks
 
@@ -86,6 +86,7 @@ Start by making your backend faster so it responds within the timeout:
 
 ```python
 import boto3
+import json
 import time
 
 # Initialize outside the handler (reused across invocations)
@@ -98,6 +99,7 @@ def lambda_handler(event, context):
     # Add timeouts to external calls
     import requests
     response = requests.get('https://api.example.com/data', timeout=10)
+    partial_result = response.json()
 
     # Check remaining time
     remaining = context.get_remaining_time_in_millis()
@@ -109,6 +111,7 @@ def lambda_handler(event, context):
         }
 
     # Continue processing...
+    result = response.json()
     return {
         'statusCode': 200,
         'body': json.dumps(result)
@@ -117,11 +120,12 @@ def lambda_handler(event, context):
 
 ## Fix 2: Async Pattern - Return Immediately, Process Later
 
-For operations that genuinely take more than 29 seconds, switch to an asynchronous pattern. The API returns immediately with a job ID, and the client polls for the result.
+For operations that genuinely take more than your API Gateway timeout, switch to an asynchronous pattern. The API returns immediately with a job ID, and the client polls for the result.
 
 ```python
 import json
 import boto3
+import time
 import uuid
 
 dynamodb = boto3.resource('dynamodb')
@@ -315,9 +319,9 @@ Use [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-e
 
 ## Summary
 
-The 504 timeout from API Gateway is a hard limit you can't override. Your options are:
+The 504 timeout from API Gateway means the integration did not respond before the configured timeout. Your options are:
 
-1. **Make it faster** - Optimize your backend to respond within 29 seconds
+1. **Make it faster** - Optimize your backend to respond within the configured timeout
 2. **Go async** - Accept the request immediately, process in the background
 3. **Use Step Functions** - For multi-step long-running workflows
 4. **Use WebSockets** - For real-time progress updates
