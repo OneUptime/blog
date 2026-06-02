@@ -85,7 +85,7 @@ aws elbv2 create-listener \
 aws ec2 create-vpc-endpoint-service-configuration \
     --network-load-balancer-arns arn:aws:elasticloadbalancing:us-east-1:111111111111:loadbalancer/net/my-service-nlb/abc123 \
     --acceptance-required \
-    --tag-specifications 'ResourceType=vpc-endpoint-service-configuration,Tags=[{Key=Name,Value=my-api-service}]'
+    --tag-specifications 'ResourceType=vpc-endpoint-service,Tags=[{Key=Name,Value=my-api-service}]'
 
 # Output includes the ServiceId and ServiceName
 # ServiceName format: com.amazonaws.vpce.us-east-1.vpce-svc-0123456789abcdef0
@@ -108,10 +108,10 @@ aws ec2 modify-vpc-endpoint-service-permissions \
     --service-id vpce-svc-0123456789abcdef0 \
     --add-allowed-principals "arn:aws:iam::333333333333:role/ServiceConsumerRole"
 
-# Allow an entire organization
+# Allow all AWS principals (use only with manual acceptance and additional controls)
 aws ec2 modify-vpc-endpoint-service-permissions \
     --service-id vpce-svc-0123456789abcdef0 \
-    --add-allowed-principals "arn:aws:organizations::111111111111:organization/o-abc123"
+    --add-allowed-principals "*"
 ```
 
 ## Step 2: Set Up the Consumer Side
@@ -167,6 +167,10 @@ aws ec2 modify-vpc-endpoint-service-configuration \
 You will need to verify domain ownership by adding a TXT record to your DNS. The API response includes the verification details.
 
 ```bash
+# After adding the TXT record, start domain verification
+aws ec2 start-vpc-endpoint-service-private-dns-verification \
+    --service-id vpce-svc-0123456789abcdef0
+
 # Check verification status
 aws ec2 describe-vpc-endpoint-service-configurations \
     --service-ids vpce-svc-0123456789abcdef0 \
@@ -241,25 +245,14 @@ aws ec2 authorize-security-group-ingress \
 
 ### Endpoint Policies
 
-You can attach a resource policy to the VPC endpoint to further restrict access:
+Endpoint policies are useful for AWS service endpoints that support them. For an endpoint connected to your own NLB-backed endpoint service, AWS allows full access through the endpoint; use endpoint security groups, endpoint service permissions, connection acceptance, and your application-level authentication instead.
 
 ```bash
-# Create an endpoint policy that restricts which API actions are allowed
-aws ec2 modify-vpc-endpoint \
-    --vpc-endpoint-id vpce-0123456789abcdef0 \
-    --policy-document '{
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Effect": "Allow",
-                "Principal": {
-                    "AWS": "arn:aws:iam::222222222222:role/AppRole"
-                },
-                "Action": "*",
-                "Resource": "*"
-            }
-        ]
-    }'
+# Check whether a service supports endpoint policies
+aws ec2 describe-vpc-endpoint-services \
+    --service-names com.amazonaws.us-east-1.s3 \
+    --query 'ServiceDetails[*].VpcEndpointPolicySupported' \
+    --output text
 ```
 
 ## Testing the Connection
@@ -315,7 +308,11 @@ resource "aws_vpc_endpoint" "my_service" {
 aws cloudwatch get-metric-statistics \
     --namespace AWS/PrivateLinkEndpoints \
     --metric-name BytesProcessed \
-    --dimensions Name=VPC_Endpoint_Id,Value=vpce-0123456789abcdef0 \
+    --dimensions \
+        Name="Endpoint Type",Value=Interface \
+        Name="Service Name",Value=com.amazonaws.vpce.us-east-1.vpce-svc-0123456789abcdef0 \
+        Name="VPC Endpoint Id",Value=vpce-0123456789abcdef0 \
+        Name="VPC Id",Value=vpc-consumer \
     --start-time "2026-02-12T00:00:00Z" \
     --end-time "2026-02-13T00:00:00Z" \
     --period 3600 \
