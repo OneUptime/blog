@@ -14,7 +14,7 @@ That single characteristic eliminates an entire category of mistakes. You don't 
 
 ## Security Group Basics
 
-Every security group starts with zero inbound rules (deny all inbound) and an allow-all outbound rule. This default configuration means your instances can reach the internet but nothing can reach them until you open specific ports.
+Every new custom security group starts with zero inbound rules (deny all inbound) and an allow-all outbound rule. This default configuration means security groups won't block outbound traffic, but actual internet access still depends on your route tables, NAT gateways, internet gateways, and other network configuration. Nothing can reach your instances until you open specific inbound ports.
 
 A few things to keep in mind:
 - Security groups are associated with network interfaces, not subnets
@@ -195,7 +195,7 @@ Sometimes instances within the same tier need to talk to each other - for exampl
 # Allow instances in the same security group to communicate on all ports
 aws ec2 authorize-security-group-ingress \
   --group-id sg-cluster-id \
-  --protocol -1 \
+  --protocol all \
   --source-group sg-cluster-id
 ```
 
@@ -209,7 +209,7 @@ Most people leave the default allow-all outbound rule in place, but tightening o
 # Remove the default allow-all outbound rule
 aws ec2 revoke-security-group-egress \
   --group-id sg-0123456789abcdef0 \
-  --protocol -1 \
+  --protocol all \
   --cidr 0.0.0.0/0
 
 # Only allow outbound HTTPS (for API calls and package updates)
