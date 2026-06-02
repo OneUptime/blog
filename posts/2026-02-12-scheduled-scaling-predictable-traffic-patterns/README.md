@@ -53,7 +53,7 @@ aws autoscaling put-scheduled-update-group-action \
   --desired-capacity 2
 ```
 
-The recurrence field uses cron syntax. Important note: all times are in UTC. Make sure you convert from your local timezone, and remember that UTC doesn't observe daylight saving time, so your schedule might be off by an hour depending on the time of year.
+The recurrence field uses cron syntax. By default, recurring schedules use UTC. If you want the schedule to follow a local timezone and adjust for daylight saving time, add the `--time-zone` option with an IANA timezone name, such as `America/New_York`.
 
 ## Cron Expression Reference
 
@@ -196,9 +196,7 @@ aws autoscaling put-scaling-policy \
     "PredefinedMetricSpecification": {
       "PredefinedMetricType": "ASGAverageCPUUtilization"
     },
-    "TargetValue": 60.0,
-    "ScaleInCooldown": 300,
-    "ScaleOutCooldown": 60
+    "TargetValue": 60.0
   }'
 ```
 
@@ -229,9 +227,9 @@ That's a **40% savings** just by scaling down during off-hours. And this is a co
 
 ## Tips and Gotchas
 
-**Timezone awareness**: If you're using the CLI, times are in UTC. Terraform and CloudFormation support the `time_zone` parameter. Plan for daylight saving shifts.
+**Timezone awareness**: CLI recurring schedules use UTC by default, but you can set `--time-zone` to an IANA timezone name. Terraform supports `time_zone`, and CloudFormation supports `TimeZone`. Plan for daylight saving shifts.
 
-**Overlapping actions**: If two scheduled actions fire at the same time, the one with the later scheduled time takes precedence. If they're exactly the same, the behavior is unpredictable. Avoid overlaps.
+**Overlapping actions**: If multiple recurring scheduled actions in the same Auto Scaling group have identical cron expressions, the execution order is arbitrary and undefined. Avoid overlaps.
 
 **Instance launch time**: Schedule your scale-up action early enough that instances are healthy before traffic arrives. If your instances take 5 minutes to boot and pass health checks, schedule the action 10 minutes before you need the capacity.
 
