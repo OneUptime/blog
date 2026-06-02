@@ -10,7 +10,7 @@ Description: Learn how to call AWS services directly from Step Functions without
 
 Here's something that trips up a lot of Step Functions beginners: you don't always need Lambda. Step Functions can call over 200 AWS services directly. Instead of writing a Lambda function that sends an SQS message, you can have Step Functions send the message itself. Instead of a Lambda that starts a Glue job, Step Functions can do it natively.
 
-This is called SDK integration, and it's one of the most underused features of Step Functions.
+This is called service integration, and it's one of the most underused features of Step Functions.
 
 ## Why Skip Lambda?
 
@@ -40,7 +40,7 @@ Step Functions offers three types of service integrations:
 
 ## Direct DynamoDB Integration
 
-Instead of a Lambda function that reads from DynamoDB, you can query DynamoDB directly.
+Instead of a Lambda function that reads from DynamoDB, you can read from DynamoDB directly.
 
 This state gets an item from DynamoDB without any Lambda code:
 
@@ -248,13 +248,13 @@ For more on EventBridge, check out our post on [setting up EventBridge rules for
 
 Beyond the optimized integrations above, Step Functions supports generic SDK integrations for almost any AWS service. The resource ARN follows a pattern.
 
-This starts a Glue ETL job and waits for it to complete:
+For services with optimized integrations, you can use additional integration patterns. This starts a Glue ETL job and waits for it to complete:
 
 ```json
 {
   "RunETLJob": {
     "Type": "Task",
-    "Resource": "arn:aws:states:::aws-sdk:glue:startJobRun.sync",
+    "Resource": "arn:aws:states:::glue:startJobRun.sync",
     "Parameters": {
       "JobName": "transform-data",
       "Arguments": {
@@ -377,7 +377,7 @@ This IAM policy covers the services used in the workflow above:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["dynamodb:PutItem", "dynamodb:GetItem"],
+      "Action": "dynamodb:PutItem",
       "Resource": "arn:aws:dynamodb:us-east-1:123456789:table/Orders"
     },
     {
