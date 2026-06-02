@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: AWS, ECS, Troubleshooting, Docker, Health Check
 
-Description: A practical guide to diagnosing and fixing ECS container health check failures, covering both Docker health checks and ALB target group health checks.
+Description: A practical guide to diagnosing and fixing ECS container health check failures, covering both ECS container health checks and ALB target group health checks.
 
 ---
 
@@ -16,7 +16,7 @@ ECS has two different health check mechanisms, and they interact in ways that ca
 
 There are two distinct health check systems at play in ECS:
 
-1. **Container health checks** - Defined in the task definition (or Dockerfile). These run inside the container and determine if the ECS task is healthy.
+1. **Container health checks** - Defined in the task definition. These run inside the container and determine if the ECS task is healthy. ECS doesn't monitor Dockerfile `HEALTHCHECK` instructions unless the health check is specified in the container definition.
 2. **Target group health checks** - Defined on the ALB/NLB target group. These determine if the target should receive traffic.
 
 They're independent systems that serve different purposes, but ECS uses both of them to make decisions about your tasks.
@@ -201,11 +201,11 @@ aws ec2 describe-security-groups \
   --query "SecurityGroups[0].IpPermissions[?FromPort==\`8080\`]"
 ```
 
-The task's security group must allow inbound traffic on the container port from the ALB's security group.
+For tasks using `awsvpc` networking, the task's security group must allow inbound traffic on the container port from the ALB's security group. For EC2 tasks using bridge or host networking, make sure the container instance security group allows inbound traffic on the registered host port.
 
 ### Port Mismatches
 
-A sneaky issue: the target group health check port doesn't match the container port.
+A sneaky issue: the ECS service's load balancer configuration doesn't match the container port, or the target group's health check is configured to probe the wrong port.
 
 ```bash
 # Check the container port in the task definition
@@ -213,13 +213,19 @@ aws ecs describe-task-definition \
   --task-definition api-service \
   --query "taskDefinition.containerDefinitions[0].portMappings"
 
-# Compare with the target group port
+# Check the container port that the ECS service registers with the target group
+aws ecs describe-services \
+  --cluster production \
+  --services api-service \
+  --query "services[0].loadBalancers"
+
+# Check the target group health check port
 aws elbv2 describe-target-groups \
   --target-group-arns arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-tg/abc123 \
-  --query "TargetGroups[0].Port"
+  --query "TargetGroups[0].{targetPort:Port, healthCheckPort:HealthCheckPort}"
 ```
 
-If these don't match, the health check will always fail.
+If `HealthCheckPort` is an explicit port, it must be a port your target can actually receive health check traffic on. If it's `traffic-port`, the load balancer uses the port registered for each target.
 
 ## Health Check Grace Period
 
