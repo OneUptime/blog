@@ -24,7 +24,7 @@ You can use both simultaneously on the same object. An object with a retention p
 
 Legal Hold requires an S3 bucket with Object Lock enabled. If you haven't set that up yet, check out our guide on [configuring S3 Object Lock for WORM compliance](https://oneuptime.com/blog/post/2026-02-12-configure-s3-object-lock-worm-compliance/view).
 
-Quick reminder - Object Lock must be enabled at bucket creation time.
+Quick reminder - Object Lock can be enabled when you create a bucket, or later on an existing versioned general purpose bucket. After you enable Object Lock on a bucket, you can't disable it.
 
 ```bash
 # Create a bucket with Object Lock enabled
@@ -32,7 +32,7 @@ Quick reminder - Object Lock must be enabled at bucket creation time.
 aws s3api create-bucket \
   --bucket my-legal-hold-bucket \
   --region us-east-1 \
-  --object-lock-enabled-for-object-configuration '{"ObjectLockEnabled": "Enabled"}'
+  --object-lock-enabled-for-bucket
 ```
 
 ## Placing a Legal Hold on an Object
@@ -77,7 +77,7 @@ s3.put_object_legal_hold(
 print("Legal hold applied successfully")
 ```
 
-For placing holds on many objects at once (like all files in a specific prefix), you can iterate through the objects.
+For placing holds on many current object versions at once (like all files in a specific prefix), you can iterate through the objects.
 
 ```python
 import boto3
@@ -86,7 +86,7 @@ s3 = boto3.client('s3')
 bucket = 'my-legal-hold-bucket'
 prefix = 'litigation/case-12345/'
 
-# List all objects under the litigation case prefix
+# List current objects under the litigation case prefix
 paginator = s3.get_paginator('list_objects_v2')
 pages = paginator.paginate(Bucket=bucket, Prefix=prefix)
 
@@ -217,7 +217,7 @@ flowchart TD
 
 ## Building a Legal Hold Audit System
 
-For compliance, you'll want to track every legal hold change. Here's a pattern using CloudTrail and a Lambda function.
+For compliance, you'll want to track every legal hold change. Here's a pattern using CloudTrail with S3 data events enabled and a Lambda function.
 
 ```python
 import json
@@ -240,7 +240,8 @@ def lambda_handler(event, context):
         bucket = detail.get('requestParameters', {}).get('bucketName', '')
         key = detail.get('requestParameters', {}).get('key', '')
         user = detail.get('userIdentity', {}).get('arn', 'unknown')
-        status = detail.get('requestParameters', {}).get('legalHold', {}).get('Status', '')
+        legal_hold = detail.get('requestParameters', {}).get('legalHold', {})
+        status = legal_hold.get('Status') or legal_hold.get('status', '')
 
         # Log to DynamoDB
         table.put_item(
@@ -273,7 +274,7 @@ def lambda_handler(event, context):
 
 ## What Happens When You Try to Delete a Held Object?
 
-Attempting to delete an object with an active legal hold returns an `AccessDenied` error. This applies to all users, regardless of their IAM permissions. The only way to delete the object is to first remove the legal hold, and only users with the `s3:PutObjectLegalHold` permission can do that.
+Attempting to permanently delete a protected object version with an active legal hold returns an `AccessDenied` error. This applies to all users, regardless of their IAM permissions. A simple delete request without a version ID can still add a delete marker, but the protected version remains preserved. The only way to permanently delete that version is to first remove the legal hold, and only users with the `s3:PutObjectLegalHold` permission can do that.
 
 ```bash
 # This will fail with AccessDenied if legal hold is ON
