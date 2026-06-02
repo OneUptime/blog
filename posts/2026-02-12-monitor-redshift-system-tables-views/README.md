@@ -14,7 +14,7 @@ CloudWatch gives you the high-level Redshift metrics - CPU, disk usage, connecti
 
 Redshift has several categories of system tables:
 
-- **STL tables** - System log tables. Historical query execution data. Retained for a few days.
+- **STL tables** - System log tables. Historical query execution data. Retained for seven days.
 - **STV tables** - System view tables. Current snapshot of cluster state.
 - **SVV views** - System visibility views. Combine multiple system tables for convenience.
 - **SVL views** - System log views. Combine log tables for easier analysis.
@@ -28,27 +28,25 @@ See what's currently running on your cluster:
 ```sql
 -- Currently running queries
 SELECT
-    query,
     pid,
     TRIM(user_name) AS user_name,
-    TRIM(querytxt) AS sql,
+    TRIM(query) AS sql,
     starttime,
-    DATEDIFF(second, starttime, GETDATE()) AS running_seconds,
-    suspended
+    DATEDIFF(second, starttime, GETDATE()) AS running_seconds
 FROM stv_recents
 WHERE status = 'Running'
 ORDER BY running_seconds DESC;
 
 -- Currently queued queries (waiting to run)
 SELECT
-    query,
     pid,
     TRIM(user_name) AS user_name,
-    TRIM(querytxt) AS sql,
+    TRIM(query) AS sql,
     starttime,
     DATEDIFF(second, starttime, GETDATE()) AS waiting_seconds
 FROM stv_recents
-WHERE status = 'Queued'
+WHERE status <> 'Done'
+  AND pid NOT IN (SELECT pid FROM stv_inflight)
 ORDER BY waiting_seconds DESC;
 ```
 
@@ -64,7 +62,6 @@ SELECT
     q.starttime,
     q.endtime,
     DATEDIFF(millisecond, q.starttime, q.endtime) AS duration_ms,
-    q.elapsed / 1000000.0 AS elapsed_seconds,
     q.aborted,
     TRIM(u.usename) AS user_name
 FROM stl_query q
@@ -73,7 +70,7 @@ WHERE q.starttime > DATEADD(hour, -24, GETDATE())
   AND q.querytxt NOT LIKE 'padb_fetch%'  -- Exclude system queries
   AND q.querytxt NOT LIKE 'COPY ANALYZE%'
   AND q.aborted = 0
-ORDER BY elapsed_seconds DESC
+ORDER BY duration_ms DESC
 LIMIT 20;
 ```
 
@@ -85,11 +82,11 @@ SELECT
     query,
     segment,
     step,
-    TRIM(label) AS operation,
+    step_type,
     rows,
-    bytes,
-    elapsed / 1000 AS elapsed_ms,
-    is_diskbased  -- True means it spilled to disk (bad for performance)
+    query_scan_size AS scan_mb,
+    blocks_to_disk,
+    run_time / 1000 AS run_time_ms
 FROM stl_query_metrics
 WHERE query = 12345  -- Replace with your query ID
 ORDER BY segment, step;
@@ -102,15 +99,15 @@ Track how long queries wait before they start running:
 ```sql
 -- Average queue wait time by hour
 SELECT
-    DATE_TRUNC('hour', starttime) AS hour,
+    DATE_TRUNC('hour', queue_start_time) AS hour,
     service_class,
     COUNT(*) AS query_count,
     AVG(total_queue_time) / 1000000.0 AS avg_wait_seconds,
     MAX(total_queue_time) / 1000000.0 AS max_wait_seconds,
     AVG(total_exec_time) / 1000000.0 AS avg_exec_seconds
 FROM stl_wlm_query
-WHERE starttime > DATEADD(hour, -24, GETDATE())
-GROUP BY DATE_TRUNC('hour', starttime), service_class
+WHERE queue_start_time > DATEADD(hour, -24, GETDATE())
+GROUP BY DATE_TRUNC('hour', queue_start_time), service_class
 ORDER BY hour DESC, service_class;
 ```
 
@@ -123,21 +120,13 @@ Monitor how much storage your tables use:
 ```sql
 -- Table sizes in your database
 SELECT
-    TRIM(pgn.nspname) AS schema_name,
-    TRIM(pgt.relname) AS table_name,
-    pgt.reltuples::BIGINT AS row_count,
-    SUM(b.mbytes) AS total_mb,
-    SUM(b.mbytes) / 1024.0 AS total_gb,
-    COUNT(DISTINCT b.slice) AS num_slices
-FROM
-    (SELECT tbl, name, slice, COUNT(*) AS mbytes
-     FROM stv_blocklist
-     GROUP BY tbl, name, slice) b
-JOIN pg_class pgt ON b.tbl = pgt.oid
-JOIN pg_namespace pgn ON pgn.oid = pgt.relnamespace
-WHERE pgn.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_internal')
-GROUP BY pgn.nspname, pgt.relname, pgt.reltuples
-ORDER BY total_mb DESC
+    "schema" AS schema_name,
+    "table" AS table_name,
+    tbl_rows AS row_count,
+    size AS total_mb,
+    size / 1024.0 AS total_gb
+FROM svv_table_info
+ORDER BY size DESC
 LIMIT 30;
 ```
 
@@ -148,10 +137,10 @@ Check overall cluster disk usage:
 SELECT
     owner AS node,
     used,
+    tossed,
     capacity,
-    ROUND(used::FLOAT / capacity * 100, 2) AS pct_used
+    ROUND((used - tossed) / capacity::NUMERIC * 100, 2) AS pct_used
 FROM stv_partitions
-WHERE type = 0
 ORDER BY node;
 ```
 
@@ -162,21 +151,18 @@ Redshift tables need periodic VACUUM (to reclaim deleted space and re-sort) and 
 Find tables that need maintenance:
 
 ```sql
--- Tables needing VACUUM (high percentage of deleted rows)
+-- Tables needing VACUUM or ANALYZE (high unsorted percentage or stale stats)
 SELECT
-    TRIM(pgn.nspname) AS schema_name,
-    TRIM(pgt.relname) AS table_name,
-    pgt.reltuples::BIGINT AS total_rows,
-    t.empty AS empty_blocks,
-    t.unsorted_rows,
-    ROUND(t.unsorted_rows::FLOAT / GREATEST(pgt.reltuples, 1) * 100, 2) AS pct_unsorted,
-    t.stats_off AS stats_staleness
-FROM svv_table_info t
-JOIN pg_class pgt ON t.table_id = pgt.oid
-JOIN pg_namespace pgn ON pgn.oid = pgt.relnamespace
-WHERE t.unsorted_rows > 0
-   OR t.stats_off > 10
-ORDER BY t.unsorted_rows DESC
+    "schema" AS schema_name,
+    "table" AS table_name,
+    tbl_rows AS total_rows,
+    size AS size_mb,
+    unsorted AS pct_unsorted,
+    stats_off AS stats_staleness
+FROM svv_table_info
+WHERE unsorted > 0
+   OR stats_off > 10
+ORDER BY unsorted DESC
 LIMIT 20;
 
 -- More detailed table info
@@ -227,13 +213,13 @@ ORDER BY connections DESC;
 
 -- Connection history
 SELECT
-    DATE_TRUNC('hour', starttime) AS hour,
+    DATE_TRUNC('hour', recordtime) AS hour,
     COUNT(*) AS new_connections,
-    COUNT(DISTINCT TRIM(user_name)) AS unique_users
+    COUNT(DISTINCT TRIM(username)) AS unique_users
 FROM stl_connection_log
 WHERE event = 'initiating session'
-  AND starttime > DATEADD(day, -7, GETDATE())
-GROUP BY DATE_TRUNC('hour', starttime)
+  AND recordtime > DATEADD(day, -7, GETDATE())
+GROUP BY DATE_TRUNC('hour', recordtime)
 ORDER BY hour DESC;
 ```
 
@@ -279,16 +265,15 @@ Detect lock contention that slows down queries:
 ```sql
 -- Current locks and what's waiting
 SELECT
-    l.table_id,
+    l.relation AS table_id,
     TRIM(pgt.relname) AS table_name,
     l.lock_mode,
     l.granted,
     l.pid,
-    TRIM(s.user_name) AS user_name,
-    TRIM(q.querytxt) AS query
-FROM pg_locks l
+    TRIM(l.txn_owner) AS user_name,
+    TRIM(q.query) AS query
+FROM svv_transactions l
 LEFT JOIN pg_class pgt ON l.relation = pgt.oid
-LEFT JOIN stv_sessions s ON l.pid = s.process
 LEFT JOIN stv_recents q ON l.pid = q.pid AND q.status = 'Running'
 WHERE l.granted = false  -- Show blocked locks
 ORDER BY l.pid;
@@ -313,11 +298,13 @@ BEGIN
 
     -- Count queued queries
     SELECT COUNT(*) INTO queued_queries
-    FROM stv_recents WHERE status = 'Queued';
+    FROM stv_recents
+    WHERE status <> 'Done'
+      AND pid NOT IN (SELECT pid FROM stv_inflight);
 
     -- Get disk utilization
-    SELECT ROUND(AVG(used::FLOAT / capacity * 100), 2) INTO disk_pct
-    FROM stv_partitions WHERE type = 0;
+    SELECT ROUND(AVG((used - tossed) / capacity::NUMERIC * 100), 2) INTO disk_pct
+    FROM stv_partitions;
 
     -- Count tables needing vacuum
     SELECT COUNT(*) INTO tables_needing_vacuum
@@ -343,7 +330,7 @@ Query system tables periodically and push metrics to CloudWatch:
 
 ```python
 import boto3
-import redshift_connector
+import time
 
 redshift_data = boto3.client("redshift-data")
 cloudwatch = boto3.client("cloudwatch")
@@ -354,7 +341,7 @@ def lambda_handler(event, context):
 
     queries = {
         "active_queries": "SELECT COUNT(*) FROM stv_recents WHERE status = 'Running'",
-        "queued_queries": "SELECT COUNT(*) FROM stv_recents WHERE status = 'Queued'",
+        "queued_queries": "SELECT COUNT(*) FROM stv_recents WHERE status <> 'Done' AND pid NOT IN (SELECT pid FROM stv_inflight)",
         "active_connections": "SELECT COUNT(*) FROM stv_sessions",
     }
 
@@ -366,9 +353,13 @@ def lambda_handler(event, context):
             Sql=sql,
         )
 
-        # Wait for result (simplified - use waiter in production)
-        import time
-        time.sleep(2)
+        while True:
+            status = redshift_data.describe_statement(Id=response["Id"])["Status"]
+            if status == "FINISHED":
+                break
+            if status in ("ABORTED", "FAILED"):
+                raise RuntimeError(f"{metric_name} query {status.lower()}")
+            time.sleep(1)
 
         result = redshift_data.get_statement_result(Id=response["Id"])
         value = float(result["Records"][0][0]["longValue"])
