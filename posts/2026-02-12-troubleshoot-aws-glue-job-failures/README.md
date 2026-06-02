@@ -29,9 +29,9 @@ aws logs get-log-events \
   --limit 50
 ```
 
-If you don't have continuous logging enabled, you should turn it on. Without it, you only get logs after the job finishes (or crashes), and the logs are less detailed.
+If you're using AWS Glue 4.0 or earlier and don't have continuous logging enabled, you should turn it on. Without it, you only get logs after the job finishes (or crashes), and the logs are less detailed. AWS Glue 5.0 jobs have real-time logging by default.
 
-This enables continuous logging for a Glue job, giving you real-time log output.
+This enables continuous logging for an AWS Glue 4.0 or earlier job, giving you real-time log output. When using `update-job`, include the rest of your existing job configuration in `JobUpdate` because omitted fields can be reset.
 
 ```bash
 aws glue update-job --job-name my-etl-job \
@@ -55,7 +55,7 @@ This is probably the number one cause of Glue job failures. The symptoms look li
 
 ### Fix 1: Scale Up Worker Type
 
-Glue offers different worker types with varying amounts of memory. If you're running Standard workers and hitting memory issues, try G.1X or G.2X.
+Glue offers different worker types with varying amounts of memory. For AWS Glue 2.0 and later Spark jobs, use `G.1X` or `G.2X` for standard workloads, and consider memory-optimized `R` workers for frequent out-of-memory failures.
 
 ```bash
 aws glue update-job --job-name my-etl-job \
@@ -69,11 +69,12 @@ The memory per worker type breaks down like this:
 
 | Worker Type | vCPUs | Memory | Disk |
 |-------------|-------|--------|------|
-| Standard    | 4     | 16 GB  | 50 GB |
-| G.1X        | 4     | 16 GB  | 64 GB |
-| G.2X        | 8     | 32 GB  | 128 GB |
+| G.1X        | 4     | 16 GB  | 94 GB |
+| G.2X        | 8     | 32 GB  | 138 GB |
 | G.4X        | 16    | 64 GB  | 256 GB |
 | G.8X        | 32    | 128 GB | 512 GB |
+| R.1X        | 4     | 32 GB  | 94 GB |
+| R.2X        | 8     | 64 GB  | 138 GB |
 
 ### Fix 2: Optimize Your Data Processing
 
@@ -133,7 +134,7 @@ result = df_large.join(
 
 ## Timeout Failures
 
-Glue jobs have a default timeout (48 hours for most job types). If your job is timing out, it's usually because of one of these:
+Glue jobs have a default timeout of 48 hours for AWS Glue 4.0 and earlier, and 8 hours for AWS Glue 5.0 and later. If your job is timing out, it's usually because of one of these:
 
 1. **Slow S3 reads** - Too many small files, or throttling from too many requests
 2. **Inefficient joins** - Cartesian joins or broadcast joins on large tables
@@ -179,7 +180,8 @@ You need a self-referencing security group rule for Glue workers to communicate 
 aws ec2 authorize-security-group-ingress \
   --group-id sg-0123456789abcdef0 \
   --source-group sg-0123456789abcdef0 \
-  --protocol -1
+  --protocol tcp \
+  --port 0-65535
 ```
 
 ## Permission Errors
@@ -233,7 +235,7 @@ This IAM policy provides the minimum permissions a typical Glue ETL job needs.
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:*:*:/aws-glue/*"
+      "Resource": "arn:aws:logs:*:*:log-group:/aws-glue/*"
     }
   ]
 }
@@ -255,7 +257,7 @@ aws glue get-job-bookmark --job-name my-etl-job
 
 If your job bookmark isn't advancing, verify that:
 - You're using `commit` after processing: `job.commit()`
-- The source data is in a supported format (S3 with consistent paths)
+- The source is supported by job bookmarks (JDBC, Relationalize, or supported S3 formats)
 - You haven't changed the job script significantly between runs
 
 ## Debugging Locally
@@ -273,7 +275,7 @@ docker run -it \
   --rm \
   -p 4040:4040 \
   -p 18080:18080 \
-  amazon/aws-glue-libs:glue_libs_4.0.0_image_01 \
+  public.ecr.aws/glue/aws-glue-libs:glue_libs_4.0.0_image_01 \
   pyspark
 ```
 
