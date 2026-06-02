@@ -60,7 +60,7 @@ The `preserveLogicalIds` flag is critical. CloudFormation uses logical IDs to tr
 
 ## Option 2: Using cdk migrate
 
-CDK has a built-in migration command that generates CDK code from CloudFormation templates or deployed stacks.
+CDK has a built-in migration command that generates CDK code from CloudFormation templates or deployed stacks. The command is currently a preview/experimental feature, so check the current AWS CDK documentation before relying on it for a production migration workflow.
 
 From a template file:
 
@@ -139,13 +139,13 @@ const bucket = new s3.Bucket(this, 'MyBucket', {
 });
 ```
 
-The L2 version is shorter and includes sensible defaults. But be careful - upgrading constructs can change logical IDs, which may trigger resource replacement. Always run `cdk diff` before deploying.
+The L2 version is shorter and lets you add higher-level settings like SSL enforcement and public access blocking. But be careful - upgrading constructs can change logical IDs or resource properties, which may trigger updates or resource replacement. Always run `cdk diff` before deploying.
 
 ## Option 3: Import Existing Resources
 
 If you want to write fresh CDK code but keep existing resources, you can import them.
 
-Step 1: Write your CDK stack as if creating resources from scratch.
+Step 1: Write your CDK stack as if creating resources from scratch, and set a retain removal policy on each resource you plan to import so the synthesized template includes a `DeletionPolicy`.
 
 Step 2: Generate the CloudFormation template.
 
@@ -170,7 +170,7 @@ aws cloudformation execute-change-set \
   --change-set-name ImportChangeSet
 ```
 
-This is the cleanest approach, but it requires matching every logical ID and property exactly.
+This is the cleanest approach, but it requires a template that describes the current resource configuration, a `DeletionPolicy` for each imported resource, and resource identifiers that map each existing resource to the logical ID in the template.
 
 ## The Gradual Migration Pattern
 
@@ -196,6 +196,7 @@ Here's how to share references between a CloudFormation stack and a CDK stack.
 
 ```typescript
 // In your CDK stack, read values from SSM that were written by CloudFormation
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 const vpcId = ssm.StringParameter.valueFromLookup(this, '/infra/vpc-id');
@@ -203,6 +204,8 @@ const vpc = ec2.Vpc.fromLookup(this, 'ExistingVpc', {
   vpcId: vpcId,
 });
 ```
+
+Because both `valueFromLookup` and `Vpc.fromLookup` run during synthesis, this pattern requires the stack to have an explicit account and Region and stores lookup results in `cdk.context.json`.
 
 ## Testing Your Migration
 
