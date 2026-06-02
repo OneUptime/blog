@@ -39,7 +39,7 @@ aws s3api put-bucket-versioning \
   --versioning-configuration Status=Enabled
 ```
 
-You also need to opt in to S3 backup support in your account (it's not enabled by default).
+If you use tag-based resource selections, opt in to S3 backup support in your account so AWS Backup includes tagged S3 buckets.
 
 ```bash
 # Enable S3 backup support
@@ -91,7 +91,6 @@ aws backup create-backup-plan \
         "StartWindowMinutes": 60,
         "CompletionWindowMinutes": 480,
         "Lifecycle": {
-          "MoveToColdStorageAfterDays": 30,
           "DeleteAfterDays": 365
         },
         "CopyActions": [
@@ -118,7 +117,7 @@ aws backup create-backup-plan \
 
 This plan does two things:
 
-1. **Daily snapshots** at 3 AM UTC, kept for 365 days (moved to cold storage after 30), with cross-region copies to us-west-2
+1. **Daily snapshots** at 3 AM UTC, kept for 365 days, with cross-region copies to us-west-2
 2. **Continuous backup** for point-in-time recovery within the last 35 days
 
 ## Assign Resources to the Plan
@@ -170,47 +169,21 @@ aws s3api put-bucket-tagging \
 
 ## IAM Role for AWS Backup
 
-The backup service role needs permissions to read S3 and write to the vault.
+The backup service role needs the AWS managed S3 backup and restore policies attached.
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetInventoryConfiguration",
-        "s3:PutInventoryConfiguration",
-        "s3:ListBucketVersions",
-        "s3:ListBucket",
-        "s3:GetBucketVersioning",
-        "s3:GetBucketNotification",
-        "s3:PutBucketNotification",
-        "s3:GetBucketLocation",
-        "s3:GetBucketTagging",
-        "s3:GetObject",
-        "s3:GetObjectVersion",
-        "s3:GetObjectVersionTagging",
-        "s3:GetObjectTagging"
-      ],
-      "Resource": [
-        "arn:aws:s3:::*"
-      ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "s3:ListAllMyBuckets"
-      ],
-      "Resource": "*"
-    }
-  ]
-}
+```bash
+aws iam attach-role-policy \
+  --role-name AWSBackupDefaultServiceRole \
+  --policy-arn arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Backup
+
+aws iam attach-role-policy \
+  --role-name AWSBackupDefaultServiceRole \
+  --policy-arn arn:aws:iam::aws:policy/AWSBackupServiceRolePolicyForS3Restore
 ```
 
 ## Restoring from Backup
 
-When you need to restore, you can recover to the same bucket, a different bucket, or even a different account.
+When you need to restore, you can recover to the same bucket or a different bucket. For a different account, copy the backup to that account first and restore it there.
 
 Restore an entire bucket to a new location.
 
@@ -221,8 +194,6 @@ aws backup start-restore-job \
   --iam-role-arn arn:aws:iam::123456789012:role/AWSBackupDefaultServiceRole \
   --metadata '{
     "DestinationBucketName": "my-restored-data",
-    "NewBucket": "true",
-    "Encrypted": "true",
     "EncryptionType": "SSE-S3"
   }'
 ```
@@ -236,7 +207,6 @@ aws backup start-restore-job \
   --iam-role-arn arn:aws:iam::123456789012:role/AWSBackupDefaultServiceRole \
   --metadata '{
     "DestinationBucketName": "my-restored-data",
-    "NewBucket": "true",
     "RestoreTime": "2026-02-10T14:30:00Z"
   }'
 ```
@@ -273,6 +243,8 @@ For comprehensive monitoring across all your backup jobs, integrate with [OneUpt
 
 AWS Backup provides built-in compliance reporting through Backup Audit Manager.
 
+Before creating your first compliance framework, turn on AWS Config resource tracking for AWS Backup.
+
 ```bash
 # Create a backup audit framework
 aws backup create-framework \
@@ -280,12 +252,10 @@ aws backup create-framework \
   --framework-controls '[
     {
       "ControlName": "BACKUP_RESOURCES_PROTECTED_BY_BACKUP_PLAN",
-      "ControlInputParameters": [
-        {
-          "ParameterName": "resourceType",
-          "ParameterValue": "S3"
-        }
-      ]
+      "ControlInputParameters": [],
+      "ControlScope": {
+        "ComplianceResourceTypes": ["S3"]
+      }
     },
     {
       "ControlName": "BACKUP_RECOVERY_POINT_MINIMUM_RETENTION_CHECK",
@@ -294,10 +264,17 @@ aws backup create-framework \
           "ParameterName": "requiredRetentionDays",
           "ParameterValue": "30"
         }
-      ]
+      ],
+      "ControlScope": {
+        "ComplianceResourceTypes": ["S3"]
+      }
     },
     {
-      "ControlName": "BACKUP_RECOVERY_POINT_ENCRYPTED"
+      "ControlName": "BACKUP_RECOVERY_POINT_ENCRYPTED",
+      "ControlInputParameters": [],
+      "ControlScope": {
+        "ComplianceResourceTypes": ["S3"]
+      }
     }
   ]'
 ```
@@ -309,10 +286,10 @@ This checks that all S3 resources have backup plans, meet minimum retention requ
 AWS Backup for S3 charges based on:
 
 - **Warm storage**: Per GB of backup data stored
-- **Cold storage**: Cheaper per GB, but minimum 90-day retention
+- **Backup tiering**: Lower-cost warm storage tier for eligible long-lived S3 backup data
 - **Restore**: Per GB restored
 - **Cross-region copies**: Data transfer charges
 
-Continuous backup costs more than periodic snapshots because it maintains a complete change log. Use periodic backups for data that doesn't change frequently and continuous backup for critical data where you need point-in-time recovery.
+Continuous backup can be cheaper for buckets with frequent backups or large buckets where many objects are unchanged, because AWS Backup can avoid repeated full-bucket scans. Use periodic backups for simpler long-term retention and continuous backup for critical data where you need point-in-time recovery.
 
 For optimizing your S3 storage costs overall, take a look at our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/2026-02-12-s3-storage-class-analysis-optimize-costs/view).
