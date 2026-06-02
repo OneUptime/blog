@@ -101,6 +101,11 @@ resource "aws_acm_certificate" "cdn" {
   }
 }
 
+data "aws_route53_zone" "main" {
+  name         = "example.com"
+  private_zone = false
+}
+
 # Route 53 is global, so it works with any provider
 resource "aws_route53_record" "cdn_validation" {
   for_each = {
@@ -229,6 +234,8 @@ resource "aws_s3_bucket_replication_configuration" "primary" {
     id     = "replicate-all"
     status = "Enabled"
 
+    filter {}
+
     destination {
       bucket        = aws_s3_bucket.replica.arn
       storage_class = "STANDARD_IA"
@@ -244,7 +251,7 @@ resource "aws_s3_bucket_replication_configuration" "primary" {
 
 ## Passing Providers to Modules
 
-When you use modules, providers need to be explicitly passed through.
+Child modules automatically inherit default provider configurations, but aliased providers need to be explicitly passed through when a module should use them.
 
 This shows how to create a module that works in any region:
 
@@ -371,7 +378,7 @@ data "aws_ami" "ubuntu_eu" {
 
 ## Multi-Region with for_each
 
-For deploying to many regions, combine `for_each` with a map of providers. Unfortunately, Terraform doesn't support dynamic provider configurations, so you need to define each provider explicitly. But you can use modules with `for_each` and provider maps.
+For deploying to many regions, keep the list of regions in one place, but define each provider explicitly. Terraform doesn't support dynamic provider configurations or dynamically selecting provider aliases with `for_each`, so each aliased provider reference still needs to be static.
 
 This pattern uses locals to manage region-specific configurations:
 
@@ -403,7 +410,7 @@ provider "aws" {
 
 ## Common Gotchas
 
-**Provider in state**: When you change a resource's provider, Terraform treats it as a destroy-and-recreate. Plan carefully before changing provider assignments.
+**Provider in state**: Terraform records which provider configuration manages each resource. If you remove or change provider aliases while resources still exist in state, planning can fail or Terraform may look for the resource in a different region. Plan migrations carefully before changing provider assignments.
 
 **Global services**: Some AWS services (IAM, Route 53, CloudFront) are global. They work with any regional provider, but only need to be created once.
 
