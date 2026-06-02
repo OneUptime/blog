@@ -17,10 +17,6 @@ AWS does send free tier usage alerts by email, but they're often too late (you'v
 Start with the built-in option. AWS can email you when you reach 85% of a free tier limit:
 
 ```bash
-# Check if billing alerts are enabled
-
-aws ce get-preferences
-
 # The free tier alerts are enabled through the Billing console
 # But you can create your own budget-based alerts with more control
 aws budgets create-budget \
@@ -36,7 +32,8 @@ aws budgets create-budget \
       "Notification": {
         "NotificationType": "ACTUAL",
         "ComparisonOperator": "GREATER_THAN",
-        "Threshold": 0.01
+        "Threshold": 0.01,
+        "ThresholdType": "ABSOLUTE_VALUE"
       },
       "Subscribers": [
         {"SubscriptionType": "EMAIL", "Address": "your-email@example.com"}
@@ -45,7 +42,7 @@ aws budgets create-budget \
   ]'
 ```
 
-This zero-dollar budget sends an alert the moment any charge appears on your account. It's the simplest way to catch free tier overages immediately.
+This near-zero budget sends an alert when charges exceed $0.01 on your account. It's the simplest way to catch free tier overages quickly.
 
 ## Check Free Tier Usage Programmatically
 
@@ -126,16 +123,17 @@ def lambda_handler(event, context):
             })
 
     if len(running) > 1:
-        issues.append(f"WARNING: {len(running)} running EC2 instances (free tier covers 1)")
+        issues.append(f"WARNING: {len(running)} running EC2 instances (free tier is based on monthly instance-hour limits)")
     for inst in running:
-        if inst['type'] not in ['t2.micro', 't3.micro']:
+        # Free tier eligible EC2 types vary by account creation date and plan.
+        if inst['type'] not in ['t2.micro', 't3.micro', 't3.small', 't4g.micro', 't4g.small', 'c7i-flex.large', 'm7i-flex.large']:
             issues.append(f"WARNING: {inst['id']} is {inst['type']} (not free tier eligible)")
 
-    # Check for unattached Elastic IPs
+    # Check for Elastic IPs
     addresses = ec2.describe_addresses()
     unattached = [a for a in addresses['Addresses'] if 'AssociationId' not in a]
     if unattached:
-        issues.append(f"WARNING: {len(unattached)} unattached Elastic IPs (costs $0.005/hr each)")
+        issues.append(f"WARNING: {len(unattached)} unattached Elastic IPs (charged along with all public IPv4 addresses)")
 
     # Check for NAT Gateways (never free)
     nat_gws = ec2.describe_nat_gateways(
@@ -162,7 +160,7 @@ def lambda_handler(event, context):
     rds = boto3.client('rds')
     db_instances = rds.describe_db_instances()['DBInstances']
     for db in db_instances:
-        if db['DBInstanceClass'] not in ['db.t2.micro', 'db.t3.micro', 'db.t4g.micro']:
+        if db['DBInstanceClass'] not in ['db.t3.micro', 'db.t4g.micro']:
             issues.append(f"WARNING: RDS {db['DBInstanceIdentifier']} is {db['DBInstanceClass']} (not free tier)")
         if db.get('MultiAZ'):
             issues.append(f"WARNING: RDS {db['DBInstanceIdentifier']} has Multi-AZ enabled (doubles hours)")
@@ -208,7 +206,7 @@ aws events put-targets \
 
 ## Track Usage Over Time with CloudWatch
 
-Create a dashboard that shows your free tier consumption trends:
+Create a dashboard that shows resource activity trends related to free tier usage:
 
 ```bash
 # Create a CloudWatch dashboard for free tier monitoring
@@ -219,12 +217,12 @@ aws cloudwatch put-dashboard \
       {
         "type": "metric",
         "properties": {
-          "title": "EC2 Instance Hours",
+          "title": "EC2 CPU Utilization",
           "metrics": [
             ["AWS/EC2", "CPUUtilization", "InstanceId", "i-0a1b2c3d"]
           ],
           "period": 3600,
-          "stat": "SampleCount"
+          "stat": "Average"
         }
       },
       {
@@ -330,7 +328,7 @@ def emergency_stop(event, context):
     return {'stopped_instances': stopped}
 ```
 
-Connect it to a budget alert so it triggers automatically when you exceed your threshold.
+Connect the budget alert to an SNS topic, subscribe the Lambda function to that topic, and grant AWS Budgets permission to publish to the topic so it triggers automatically when you exceed your threshold.
 
 ## Key Takeaways
 
