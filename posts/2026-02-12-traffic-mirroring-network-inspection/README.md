@@ -31,7 +31,7 @@ graph LR
 
 ## Creating a Mirror Target
 
-First, set up where the mirrored traffic will go. The most common approach is sending it to a Network Load Balancer that distributes traffic across a fleet of inspection instances.
+First, set up where the mirrored traffic will go. The most common approach is sending it to a Network Load Balancer that distributes traffic across a fleet of inspection instances. Make sure the Network Load Balancer has a UDP listener on port 4789.
 
 ```bash
 # Create a mirror target pointing to a Network Load Balancer
@@ -54,7 +54,7 @@ aws ec2 create-traffic-mirror-target \
 
 ## Creating Mirror Filters
 
-Filters control which traffic gets mirrored. Without filters, you'd mirror everything, which generates a lot of data and network overhead. Typically you want to focus on specific ports or protocols.
+Filters control which traffic gets mirrored. Broad accept rules can mirror a lot of data and create network overhead. Typically you want to focus on specific ports or protocols.
 
 ```bash
 # Create a mirror filter
@@ -134,11 +134,12 @@ aws ec2 create-traffic-mirror-session \
   --network-interface-id eni-source-instance \
   --traffic-mirror-filter-id tmf-0123456789abcdef0 \
   --session-number 1 \
+  --virtual-network-id 1234 \
   --description "Mirror web server traffic" \
   --tag-specifications 'ResourceType=traffic-mirror-session,Tags=[{Key=Name,Value=webserver-mirror}]'
 ```
 
-The `session-number` is used when you have multiple mirror sessions on the same source ENI. Lower numbers have higher priority if there's contention for bandwidth.
+The `session-number` is used when you have multiple mirror sessions on the same source ENI. Lower-numbered sessions are evaluated first; the first session with a matching filter mirrors the packet.
 
 You can also truncate mirrored packets to reduce bandwidth usage.
 
@@ -149,6 +150,7 @@ aws ec2 create-traffic-mirror-session \
   --network-interface-id eni-source-instance \
   --traffic-mirror-filter-id tmf-0123456789abcdef0 \
   --session-number 1 \
+  --virtual-network-id 1234 \
   --packet-length 128
 ```
 
@@ -223,10 +225,10 @@ resource "aws_ec2_traffic_mirror_session" "web" {
 
 ## Limitations and Considerations
 
-- Traffic mirroring is supported on Nitro-based instance types only
+- Traffic mirroring sources must use AWS-supported instance families; check the current AWS supported instance type list before enabling it
 - Each ENI can be the source for a limited number of mirror sessions
 - Mirrored traffic counts toward your network bandwidth, so budget accordingly
-- VXLAN overhead adds about 50 bytes per packet
+- VXLAN overhead adds 54 bytes per packet for IPv4 traffic and 74 bytes per packet for IPv6 traffic
 - Cross-AZ mirroring incurs data transfer charges
 
 For flow-level analysis without full packet capture, VPC Flow Logs might be sufficient and more cost-effective. See https://oneuptime.com/blog/post/2026-02-12-enable-and-analyze-vpc-flow-logs/view for details.
