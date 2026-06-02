@@ -29,7 +29,7 @@ Quick sizing guide:
 | Medium production | r6g.xlarge.search | 1-2 TB |
 | Large production | r6g.2xlarge.search | 2-4 TB |
 
-A common rule of thumb: plan for each node to handle 30-50 GB of data (after accounting for replicas and overhead). More memory means more data cached and faster queries.
+A common rule of thumb for write-heavy workloads: keep shard sizes around 30-50 GB (after accounting for replicas and overhead). More memory means more data cached and faster queries.
 
 ## Creating a Basic Domain
 
@@ -59,12 +59,12 @@ aws opensearch create-domain \
     "Throughput": 125
   }' \
   --vpc-options '{
-    "SubnetIds": ["subnet-az1-abc", "subnet-az2-def", "subnet-az3-ghi"],
-    "SecurityGroupIds": ["sg-opensearch"]
+    "SubnetIds": ["subnet-0abc1234def567890", "subnet-0123abc456def7890", "subnet-0def1234abc567890"],
+    "SecurityGroupIds": ["sg-0123abc456def7890"]
   }' \
   --encryption-at-rest-options '{
     "Enabled": true,
-    "KmsKeyId": "arn:aws:kms:us-east-1:123456789:key/my-key"
+    "KmsKeyId": "12345678-1234-1234-1234-123456789012"
   }' \
   --node-to-node-encryption-options '{
     "Enabled": true
@@ -98,7 +98,7 @@ If you do need external access (for Kibana/Dashboards), set up a VPN or use a re
 
 ## Access Policies
 
-If using VPC access, a simple identity-based policy works well.
+If using VPC access, a simple resource-based domain access policy works well.
 
 This access policy allows the OpenSearch admin role and the application role to access the domain.
 
@@ -110,12 +110,12 @@ This access policy allows the OpenSearch admin role and the application role to 
       "Effect": "Allow",
       "Principal": {
         "AWS": [
-          "arn:aws:iam::123456789:role/OpenSearchAdmin",
-          "arn:aws:iam::123456789:role/ApplicationRole"
+          "arn:aws:iam::123456789012:role/OpenSearchAdmin",
+          "arn:aws:iam::123456789012:role/ApplicationRole"
         ]
       },
       "Action": "es:*",
-      "Resource": "arn:aws:es:us-east-1:123456789:domain/my-search-domain/*"
+      "Resource": "arn:aws:es:us-east-1:123456789012:domain/my-search-domain/*"
     }
   ]
 }
@@ -131,9 +131,9 @@ aws opensearch update-domain-config \
     "Statement": [
       {
         "Effect": "Allow",
-        "Principal": {"AWS": "arn:aws:iam::123456789:role/OpenSearchAdmin"},
+        "Principal": {"AWS": "arn:aws:iam::123456789012:role/OpenSearchAdmin"},
         "Action": "es:*",
-        "Resource": "arn:aws:es:us-east-1:123456789:domain/my-search-domain/*"
+        "Resource": "arn:aws:es:us-east-1:123456789012:domain/my-search-domain/*"
       }
     ]
   }'
@@ -147,7 +147,7 @@ For log analytics workloads, UltraWarm and cold storage dramatically reduce cost
 - **UltraWarm** - S3-backed, good query performance, 50-80% cheaper
 - **Cold storage** - S3-backed, slowest (needs to be warmed up before querying), cheapest
 
-Enable UltraWarm when creating the domain.
+Enable UltraWarm on an existing eligible domain.
 
 ```bash
 aws opensearch update-domain-config \
@@ -182,17 +182,11 @@ curl -XPUT "https://vpc-my-search-domain.us-east-1.es.amazonaws.com/_plugins/_is
     "policy": {
       "description": "Log index lifecycle management",
       "default_state": "hot",
+      "schema_version": 1,
       "states": [
         {
           "name": "hot",
-          "actions": [
-            {
-              "rollover": {
-                "min_index_age": "1d",
-                "min_primary_shard_size": "30gb"
-              }
-            }
-          ],
+          "actions": [],
           "transitions": [
             {
               "state_name": "warm",
@@ -207,11 +201,6 @@ curl -XPUT "https://vpc-my-search-domain.us-east-1.es.amazonaws.com/_plugins/_is
           "actions": [
             {
               "warm_migration": {}
-            },
-            {
-              "force_merge": {
-                "max_num_segments": 1
-              }
             }
           ],
           "transitions": [
@@ -245,7 +234,7 @@ curl -XPUT "https://vpc-my-search-domain.us-east-1.es.amazonaws.com/_plugins/_is
           "name": "delete",
           "actions": [
             {
-              "delete": {}
+              "cold_delete": {}
             }
           ]
         }
@@ -306,8 +295,8 @@ aws cloudwatch put-metric-alarm \
   --threshold 1 \
   --comparison-operator GreaterThanOrEqualToThreshold \
   --evaluation-periods 1 \
-  --dimensions Name=DomainName,Value=my-search-domain Name=ClientId,Value=123456789 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:critical-alerts
+  --dimensions Name=DomainName,Value=my-search-domain Name=ClientId,Value=123456789012 \
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:critical-alerts
 
 # Alert on low storage
 aws cloudwatch put-metric-alarm \
@@ -318,8 +307,8 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 25000 \
   --comparison-operator LessThanThreshold \
-  --dimensions Name=DomainName,Value=my-search-domain Name=ClientId,Value=123456789 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+  --dimensions Name=DomainName,Value=my-search-domain Name=ClientId,Value=123456789012 \
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 Key metrics to watch:
@@ -339,6 +328,20 @@ For repeatable deployments, use CloudFormation.
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  AdminPassword:
+    Type: String
+    NoEcho: true
+    MinLength: 8
+    MaxLength: 128
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet::Id
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet::Id
+  OpenSearchSecurityGroup:
+    Type: AWS::EC2::SecurityGroup::Id
 Resources:
   OpenSearchDomain:
     Type: AWS::OpenSearchService::Domain
@@ -383,4 +386,4 @@ Resources:
 
 Once your domain is up, the next step is indexing data. Check out our guide on [indexing data into Amazon OpenSearch](https://oneuptime.com/blog/post/2026-02-12-index-data-into-amazon-opensearch/view) and [using OpenSearch Dashboards for visualization](https://oneuptime.com/blog/post/2026-02-12-opensearch-dashboards-for-visualization/view).
 
-Getting the domain setup right is the foundation for everything else. Take the time to plan your instance types, storage, and network configuration - changing these later often requires a blue-green deployment, which means downtime and data migration.
+Getting the domain setup right is the foundation for everything else. Take the time to plan your instance types, storage, and network configuration - changing these later often requires a blue-green deployment, which can temporarily increase latency while OpenSearch Service migrates data to the new environment.
