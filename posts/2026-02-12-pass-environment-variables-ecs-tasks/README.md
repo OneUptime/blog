@@ -26,7 +26,7 @@ The most straightforward approach is defining environment variables directly in 
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/app:latest",
       "essential": true,
       "environment": [
         {
@@ -102,11 +102,11 @@ For passwords, API keys, and other sensitive data, use the `secrets` property to
       "secrets": [
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:prod/db-password-AbCdEf"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-password-AbCdEf"
         },
         {
           "name": "API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:prod/api-key-GhIjKl"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-GhIjKl"
         }
       ]
     }
@@ -155,11 +155,11 @@ Reference them in your task definition.
       "secrets": [
         {
           "name": "DATABASE_URL",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/app/database-url"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/production/app/database-url"
         },
         {
           "name": "API_KEY",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/app/api-key"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/production/app/api-key"
         }
       ]
     }
@@ -183,7 +183,7 @@ resource "aws_iam_role_policy" "ssm_access" {
           "ssm:GetParameters",
           "ssm:GetParameter"
         ]
-        Resource = "arn:aws:ssm:us-east-1:123456789:parameter/production/*"
+        Resource = "arn:aws:ssm:us-east-1:123456789012:parameter/production/*"
       },
       {
         Effect   = "Allow"
@@ -268,11 +268,11 @@ resource "aws_iam_role_policy" "s3_envfile" {
 
 ## Precedence Rules
 
-When you use multiple methods, ECS follows specific precedence rules:
+When you use environment files with inline variables, ECS follows specific precedence rules:
 
 1. **Inline `environment`** has the highest priority
-2. **`secrets`** (from Secrets Manager or SSM) come next
-3. **`environmentFiles`** (from S3) have the lowest priority
+2. **`environmentFiles`** (from S3) have lower priority
+3. If you specify multiple environment files and they contain the same variable, ECS uses the first value and ignores later duplicates
 
 So if you define `PORT=8080` in your S3 env file and `PORT=3000` inline, the container gets `PORT=3000`.
 
@@ -295,7 +295,7 @@ This is actually useful. You can put defaults in an S3 file and override specifi
       "secrets": [
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:db-pass-AbCdEf"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:db-pass-AbCdEf"
         }
       ]
     }
@@ -311,12 +311,10 @@ For configuration that changes frequently without requiring redeployment, consid
 # Python - Read config at runtime for dynamic updates
 import boto3
 import os
-from functools import lru_cache
 
 ssm = boto3.client('ssm')
 
-@lru_cache(maxsize=None)
-def get_config(key, use_cache=True):
+def get_config(key):
     """Fetch config from SSM, falling back to env vars."""
     try:
         response = ssm.get_parameter(
@@ -343,7 +341,7 @@ aws ecs execute-command \
   --cluster my-cluster \
   --task TASK_ID \
   --interactive \
-  --command "env | sort"
+  --command "sh -c 'env | sort'"
 ```
 
 You can also check the task definition to see what's configured.
