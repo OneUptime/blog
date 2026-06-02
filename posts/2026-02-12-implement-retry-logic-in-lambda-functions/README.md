@@ -26,7 +26,7 @@ Before implementing your own retries, understand what Lambda already does:
 aws lambda put-function-event-invoke-config \
   --function-name my-function \
   --maximum-retry-attempts 1 \
-  --maximum-event-age-seconds 3600
+  --maximum-event-age-in-seconds 3600
 ```
 
 **Stream-based triggers** (Kinesis, DynamoDB Streams): Lambda retries until the record expires from the stream or you configure it otherwise.
@@ -136,7 +136,7 @@ const item = await retryWithBackoff(
 
 ## Idempotency - The Critical Companion to Retries
 
-Retries mean your function might execute the same operation multiple times. If that operation creates an order, charges a credit card, or sends an email, you have a problem. This is where idempotency comes in - making it safe to execute the same operation multiple times with the same result.
+Retries mean your function might execute the same operation multiple times. If that operation creates an order, charges a credit card, or sends an email, you have a problem. This is where idempotency comes in - making it safe to execute the same operation multiple times with the same result. For operations with multiple side effects, also use idempotency keys or checkpoints for each downstream step.
 
 Here's a DynamoDB-based idempotency implementation:
 
@@ -215,7 +215,7 @@ exports.handler = async (event) => {
   const orderId = event.orderId;
 
   return executeIdempotent(`process-order-${orderId}`, async () => {
-    // This block runs at most once for each orderId
+    // A successful result is reused for duplicate requests with the same orderId
     const charge = await chargePayment(event);
     await sendConfirmationEmail(event);
     return { orderId, chargeId: charge.id };
@@ -269,7 +269,7 @@ exports.handler = async (event, context) => {
 Each AWS service has its own throttling behavior. Here are targeted retry strategies:
 
 ```javascript
-// DynamoDB: respect the RetryAfterSeconds hint
+// DynamoDB: use short delays for throttling that can clear quickly
 async function dynamoRetry(fn) {
   return retryWithBackoff(fn, {
     maxAttempts: 5,
@@ -278,7 +278,7 @@ async function dynamoRetry(fn) {
   });
 }
 
-// S3: handle eventual consistency and throttling
+// S3: handle throttling and transient service errors
 async function s3Retry(fn) {
   return retryWithBackoff(fn, {
     maxAttempts: 3,
@@ -306,6 +306,7 @@ Here's the equivalent in Python using a decorator pattern:
 import time
 import random
 import functools
+import requests
 
 def retry(max_attempts=3, base_delay=0.2, max_delay=30, retryable_exceptions=None):
     if retryable_exceptions is None:
