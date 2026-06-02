@@ -19,7 +19,7 @@ IAM Identity Center provides:
 - A single login portal for all your AWS accounts
 - Centralized user and group management
 - Permission sets that map to IAM roles in each account
-- Integration with external identity providers (Okta, Azure AD, Google Workspace)
+- Integration with external identity providers (Okta, Microsoft Entra ID, Google Workspace)
 - Temporary credentials that auto-rotate (no more access keys)
 - Built-in MFA support
 
@@ -37,28 +37,20 @@ flowchart TD
 
 ## Prerequisites
 
-- An AWS Organization (Identity Center requires AWS Organizations)
+- An AWS Organization if you want multi-account access (recommended for this guide)
 - Management account access
-- A region to host Identity Center (this can't be changed later, so choose wisely)
+- A region to host Identity Center (changing the primary region requires deleting and recreating the instance, so choose wisely)
 
 ## Step 1: Enable IAM Identity Center
 
-In the management account:
+In the management account, enable IAM Identity Center through the console. The `sso-admin create-instance` CLI command creates account instances for standalone or member accounts, and is rejected for an organization instance in the management account.
 
-```bash
-# Enable IAM Identity Center (must be done in the management account)
-
-# Note: This is typically done through the console on first setup
-# The CLI equivalent creates the instance
-aws sso-admin create-instance-metadata
-```
-
-In practice, the first-time setup is easiest through the console:
+For the first-time organization setup:
 
 1. Go to IAM Identity Center in the AWS Console
 2. Click "Enable"
 3. Choose your region (us-east-1 is common, but pick one close to your users)
-4. Select "Enable with AWS Organizations"
+4. On the "Enable IAM Identity Center with AWS Organizations" page, review the information and select "Enable"
 
 ## Step 2: Choose Your Identity Source
 
@@ -66,9 +58,9 @@ IAM Identity Center can use three identity sources:
 
 1. **Built-in directory** - Identity Center manages users directly
 2. **Active Directory** - Connect to AWS Managed Microsoft AD or AD Connector
-3. **External identity provider** - SAML 2.0 federation (Okta, Azure AD, etc.)
+3. **External identity provider** - SAML 2.0 federation (Okta, Microsoft Entra ID, etc.)
 
-For small teams, the built-in directory is fine. For organizations with an existing IdP, federation is the way to go. We'll cover external IdP integration in separate guides for [Azure AD](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-azure-ad/view), [Okta](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-okta/view), and [Google Workspace](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-google-workspace/view).
+For small teams, the built-in directory is fine. For organizations with an existing IdP, federation is the way to go. We'll cover external IdP integration in separate guides for [Microsoft Entra ID](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-azure-ad/view), [Okta](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-okta/view), and [Google Workspace](https://oneuptime.com/blog/post/2026-02-12-integrate-iam-identity-center-google-workspace/view).
 
 For now, let's use the built-in directory.
 
@@ -134,9 +126,9 @@ Add users to groups:
 # Add a user to a group
 aws identitystore create-group-membership \
   --identity-store-id "$IDENTITY_STORE_ID" \
-  --group-id "group-id-here" \
+  --group-id "11111111-1111-1111-1111-111111111111" \
   --member-id '{
-    "UserId": "user-id-here"
+    "UserId": "22222222-2222-2222-2222-222222222222"
   }'
 ```
 
@@ -159,7 +151,7 @@ aws sso-admin create-permission-set \
 # Attach the AWS managed AdministratorAccess policy
 aws sso-admin attach-managed-policy-to-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
-  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890/ps-admin123" \
+  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-0123456789abcdef" \
   --managed-policy-arn "arn:aws:iam::aws:policy/AdministratorAccess"
 ```
 
@@ -176,7 +168,7 @@ aws sso-admin create-permission-set \
 # Attach a custom inline policy to the developer permission set
 aws sso-admin put-inline-policy-to-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
-  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890/ps-dev123" \
+  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-abcdef0123456789" \
   --inline-policy '{
     "Version": "2012-10-17",
     "Statement": [
@@ -221,7 +213,7 @@ aws sso-admin create-permission-set \
 
 aws sso-admin attach-managed-policy-to-permission-set \
   --instance-arn "$SSO_INSTANCE_ARN" \
-  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890/ps-readonly123" \
+  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-fedcba9876543210" \
   --managed-policy-arn "arn:aws:iam::aws:policy/ReadOnlyAccess"
 ```
 
@@ -235,18 +227,18 @@ aws sso-admin create-account-assignment \
   --instance-arn "$SSO_INSTANCE_ARN" \
   --target-id "111111111111" \
   --target-type AWS_ACCOUNT \
-  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890/ps-admin123" \
+  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-0123456789abcdef" \
   --principal-type GROUP \
-  --principal-id "group-id-for-platform-admins"
+  --principal-id "11111111-1111-1111-1111-111111111111"
 
 # Assign Developers group with DeveloperAccess to dev account
 aws sso-admin create-account-assignment \
   --instance-arn "$SSO_INSTANCE_ARN" \
   --target-id "222222222222" \
   --target-type AWS_ACCOUNT \
-  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890/ps-dev123" \
+  --permission-set-arn "arn:aws:sso:::permissionSet/ssoins-1234567890abcdef/ps-abcdef0123456789" \
   --principal-type GROUP \
-  --principal-id "group-id-for-developers"
+  --principal-id "33333333-3333-3333-3333-333333333333"
 ```
 
 ## Step 7: Configure the CLI
@@ -302,20 +294,20 @@ For infrastructure-as-code management:
 # Create permission set
 resource "aws_ssoadmin_permission_set" "developer" {
   name             = "DeveloperAccess"
-  instance_arn     = data.aws_ssoadmin_instances.main.arns[0]
+  instance_arn     = tolist(data.aws_ssoadmin_instances.main.arns)[0]
   session_duration = "PT8H"
 }
 
 # Attach managed policy
 resource "aws_ssoadmin_managed_policy_attachment" "developer_power" {
-  instance_arn       = data.aws_ssoadmin_instances.main.arns[0]
+  instance_arn       = tolist(data.aws_ssoadmin_instances.main.arns)[0]
   managed_policy_arn = "arn:aws:iam::aws:policy/PowerUserAccess"
   permission_set_arn = aws_ssoadmin_permission_set.developer.arn
 }
 
 # Assign to account
 resource "aws_ssoadmin_account_assignment" "dev_account" {
-  instance_arn       = data.aws_ssoadmin_instances.main.arns[0]
+  instance_arn       = tolist(data.aws_ssoadmin_instances.main.arns)[0]
   permission_set_arn = aws_ssoadmin_permission_set.developer.arn
   principal_id       = aws_identitystore_group.developers.group_id
   principal_type     = "GROUP"
