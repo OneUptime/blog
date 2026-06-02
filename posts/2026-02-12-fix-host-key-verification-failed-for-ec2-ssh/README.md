@@ -140,7 +140,8 @@ If security is important (production environments), you should verify the new ho
 # Get the instance's console output which includes the host key fingerprint
 aws ec2 get-console-output \
   --instance-id i-1234567890abcdef0 \
-  --output text | grep -A1 "fingerprint"
+  --query Output \
+  --output text | grep -A5 "SSH HOST KEY FINGERPRINTS"
 ```
 
 The output includes lines like:
@@ -166,7 +167,7 @@ For CI/CD pipelines and automation scripts, you don't want host key prompts inte
 #!/bin/bash
 
 INSTANCE_IP="54.123.45.67"
-KEY_FILE="~/.ssh/deploy-key.pem"
+KEY_FILE="$HOME/.ssh/deploy-key.pem"
 
 # Remove old key and add new one in a single step
 ssh-keygen -R "$INSTANCE_IP" 2>/dev/null
@@ -198,10 +199,10 @@ resource "aws_instance" "example" {
   connection {
     type        = "ssh"
     user        = "ec2-user"
-    private_key = file("~/.ssh/my-key.pem")
+    private_key = file(pathexpand("~/.ssh/my-key.pem"))
     host        = self.public_ip
 
-    # Skip host key checking for new instances
+    # Disable ssh-agent authentication
     agent = false
   }
 
@@ -210,6 +211,8 @@ resource "aws_instance" "example" {
   }
 }
 ```
+
+Terraform does not validate SSH host keys by default. If you want host key verification, set the `host_key` argument in the connection block.
 
 ## When This IS a Security Concern
 
