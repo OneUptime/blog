@@ -29,7 +29,8 @@ The key benefit: your application servers never see the plaintext sensitive data
 
 - A CloudFront distribution serving your application
 - Your application uses POST requests with form-encoded data (application/x-www-form-urlencoded)
-- An RSA key pair (2048-bit minimum)
+- An RSA key pair (2048-bit; CloudFront field-level encryption requires this key size)
+- An origin that supports chunked encoding
 
 ## Step 1: Generate the Key Pair
 
@@ -52,8 +53,8 @@ Store the private key securely. Use AWS Secrets Manager, HSM, or a secure vault.
 ## Step 2: Upload the Public Key to CloudFront
 
 ```bash
-# Read the public key content
-PUBLIC_KEY=$(cat public_key.pem)
+# Read the public key content and escape newlines for JSON
+PUBLIC_KEY=$(awk '{printf "%s\\n", $0}' public_key.pem)
 
 # Upload the public key to CloudFront
 aws cloudfront create-public-key \
@@ -116,13 +117,11 @@ aws cloudfront create-field-level-encryption-config \
     --field-level-encryption-config '{
         "CallerReference": "fle-config-2026-02-12",
         "Comment": "FLE for customer registration form",
-        "QueryArgProfiles": {
-            "Config": {
-                "ForwardWhenQueryArgProfileIsUnknown": true,
-                "QueryArgProfiles": {
-                    "Quantity": 0,
-                    "Items": []
-                }
+        "QueryArgProfileConfig": {
+            "ForwardWhenQueryArgProfileIsUnknown": true,
+            "QueryArgProfiles": {
+                "Quantity": 0,
+                "Items": []
             }
         },
         "ContentTypeProfileConfig": {
@@ -175,8 +174,8 @@ In the distribution configuration, the field-level encryption ID goes in the cac
                 "ViewerProtocolPolicy": "https-only",
                 "FieldLevelEncryptionId": "FLE_CONFIG_ID",
                 "AllowedMethods": {
-                    "Quantity": 3,
-                    "Items": ["GET", "HEAD", "POST"]
+                    "Quantity": 7,
+                    "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
                 },
                 "ForwardedValues": {
                     "QueryString": false,
@@ -209,45 +208,57 @@ Only the service with the private key can decrypt the fields:
 
 ```python
 import base64
-import json
-from cryptography.hazmat.primitives import serialization, hashes
-from cryptography.hazmat.primitives.asymmetric import padding
+import aws_encryption_sdk
+from aws_encryption_sdk import CommitmentPolicy
+from aws_cryptographic_material_providers.mpl import AwsCryptographicMaterialProviders
+from aws_cryptographic_material_providers.mpl.config import MaterialProvidersConfig
+from aws_cryptographic_material_providers.mpl.models import (
+    CreateRawRsaKeyringInput,
+    PaddingScheme,
+)
 
-def decrypt_fle_field(encrypted_value, private_key_path):
+def decrypt_fle_field(encrypted_value, public_key_path, private_key_path):
     """
     Decrypt a CloudFront field-level encrypted value.
-    The encrypted value is base64-encoded and contains
-    the encrypted data envelope.
+    CloudFront produces a base64-encoded AWS Encryption SDK message.
     """
-    # Load the private key
-    with open(private_key_path, 'rb') as key_file:
-        private_key = serialization.load_pem_private_key(
-            key_file.read(),
-            password=None
-        )
+    with open(public_key_path, "rb") as key_file:
+        public_key = key_file.read()
 
-    # Decode the encrypted value
-    encrypted_bytes = base64.b64decode(encrypted_value)
+    with open(private_key_path, "rb") as key_file:
+        private_key = key_file.read()
 
-    # The encrypted value contains a JSON envelope with
-    # the encrypted symmetric key and the encrypted data
-    # Parse and decrypt according to the FLE format
+    material_providers = AwsCryptographicMaterialProviders(
+        config=MaterialProvidersConfig()
+    )
 
-    # Decrypt using RSA-OAEP
-    decrypted = private_key.decrypt(
-        encrypted_bytes,
-        padding.OAEP(
-            mgf=padding.MGF1(algorithm=hashes.SHA256()),
-            algorithm=hashes.SHA256(),
-            label=None
+    # key_namespace must match ProviderId; key_name must match the CloudFront public key name.
+    keyring = material_providers.create_raw_rsa_keyring(
+        input=CreateRawRsaKeyringInput(
+            key_namespace="PiiProtection",
+            key_name="sensitive-data-encryption-key",
+            padding_scheme=PaddingScheme.OAEP_SHA256_MGF1,
+            public_key=public_key,
+            private_key=private_key,
         )
     )
+
+    client = aws_encryption_sdk.EncryptionSDKClient(
+        commitment_policy=CommitmentPolicy.FORBID_ENCRYPT_ALLOW_DECRYPT
+    )
+
+    encrypted_bytes = base64.b64decode(encrypted_value)
+    decrypted, _ = client.decrypt(source=encrypted_bytes, keyring=keyring)
 
     return decrypted.decode('utf-8')
 
 # Usage in your secure processing service
 encrypted_ssn = "AYABeKrawExample...=="
-plaintext_ssn = decrypt_fle_field(encrypted_ssn, "/secure/private_key.pem")
+plaintext_ssn = decrypt_fle_field(
+    encrypted_ssn,
+    "/secure/public_key.pem",
+    "/secure/private_key.pem"
+)
 print(f"Decrypted SSN: {plaintext_ssn}")
 ```
 
@@ -315,11 +326,13 @@ Periodically rotate your encryption keys:
 
 ```bash
 # Upload new public key
+NEW_PUBLIC_KEY=$(awk '{printf "%s\\n", $0}' new_public_key.pem)
+
 aws cloudfront create-public-key \
     --public-key-config '{
         "CallerReference": "fle-key-rotation-2026-03",
         "Name": "sensitive-data-encryption-key-v2",
-        "EncodedKey": "'"$(cat new_public_key.pem)"'",
+        "EncodedKey": "'"$NEW_PUBLIC_KEY"'",
         "Comment": "Rotated key - March 2026"
     }'
 ```
