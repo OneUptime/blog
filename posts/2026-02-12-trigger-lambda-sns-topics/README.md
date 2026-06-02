@@ -217,19 +217,25 @@ async function publishOrderEvent(eventType, order) {
         DataType: 'String',
         StringValue: order.orderId,
       },
+      total: {
+        DataType: 'Number',
+        StringValue: order.total.toString(),
+      },
     },
   }));
 
   console.log(`Published ${eventType} event for order ${order.orderId}`);
 }
 
-// Usage
-await publishOrderEvent('ORDER_CREATED', {
-  orderId: 'ORD-001',
-  customerId: 'CUST-123',
-  items: [{ productId: 'PROD-1', quantity: 2 }],
-  total: 99.99,
-});
+// Usage from an async function or Lambda handler
+exports.handler = async () => {
+  await publishOrderEvent('ORDER_CREATED', {
+    orderId: 'ORD-001',
+    customerId: 'CUST-123',
+    items: [{ productId: 'PROD-1', quantity: 2 }],
+    total: 99.99,
+  });
+};
 ```
 
 ## Message Filtering
@@ -264,11 +270,14 @@ orderTopic.addSubscription(
 // Only receives high-value orders
 orderTopic.addSubscription(
   new subs.LambdaSubscription(vipProcessor, {
-    filterPolicyScope: sns.FilterOrPolicy.policy({
+    filterPolicy: {
       eventType: sns.SubscriptionFilter.stringFilter({
         allowlist: ['ORDER_CREATED'],
       }),
-    }),
+      total: sns.SubscriptionFilter.numericFilter({
+        greaterThanOrEqualTo: 1000,
+      }),
+    },
   })
 );
 ```
@@ -313,23 +322,9 @@ Note: SNS FIFO topics don't support Lambda subscriptions directly. You need to s
 
 ## Error Handling and Delivery Policies
 
-SNS has its own delivery retry policy. For Lambda targets, the default is 3 retries with an exponential backoff. You can customize this:
+SNS has its own delivery retry policy for delivery failures, such as when SNS can't reach Lambda or Lambda rejects the invocation request. For AWS managed endpoints like Lambda and SQS, AWS defines this policy for you; custom delivery policies are only supported for HTTP/S endpoints.
 
-```bash
-aws sns set-subscription-attributes \
-  --subscription-arn arn:aws:sns:us-east-1:123456789012:order-events:abc-123 \
-  --attribute-name DeliveryPolicy \
-  --attribute-value '{
-    "healthyRetryPolicy": {
-      "numRetries": 5,
-      "minDelayTarget": 1,
-      "maxDelayTarget": 60,
-      "backoffFunction": "exponential"
-    }
-  }'
-```
-
-After SNS exhausts its retries, the Lambda service's own retry mechanism kicks in (if the invocation fails). So you effectively get two layers of retries. Make sure your processing is idempotent.
+Once Lambda accepts the asynchronous invocation, Lambda's own async retry settings handle function errors. By default, Lambda retries a function error up to 2 more times. So there are two retry paths to understand: SNS retries delivery failures before Lambda accepts the event, and Lambda retries processing failures after it accepts the event. Make sure your processing is idempotent.
 
 ## Wrapping Up
 
