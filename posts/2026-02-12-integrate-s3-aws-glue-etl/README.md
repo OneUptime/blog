@@ -119,7 +119,7 @@ aws glue create-crawler \
     ]
   }' \
   --schema-change-policy '{
-    "UpdateBehavior": "UPDATE_IN_DATABASE",
+    "UpdateBehavior": "LOG",
     "DeleteBehavior": "LOG"
   }' \
   --recrawl-policy '{
@@ -208,12 +208,13 @@ output_frame = DynamicFrame.fromDF(transformed_df, glueContext, "output")
 glueContext.write_dynamic_frame.from_options(
     frame=output_frame,
     connection_type="s3",
-    format="glueparquet",
+    format="parquet",
     connection_options={
         "path": "s3://company-data-processed/logs/",
         "partitionKeys": ["event_date", "event_category"]
     },
     format_options={
+        "useGlueParquetWriter": True,
         "compression": "snappy"
     },
     transformation_ctx="output"
@@ -297,6 +298,7 @@ aws glue create-crawler \
   --name processed-logs-crawler \
   --role arn:aws:iam::123456789012:role/GlueCrawlerRole \
   --database-name company_analytics \
+  --table-prefix processed_ \
   --targets '{
     "S3Targets": [
       {
