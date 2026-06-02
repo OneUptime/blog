@@ -271,6 +271,25 @@ Note the second statement: it allows developers to delete resources in dev/stagi
       "Resource": "*"
     },
     {
+      "Sid": "AllowPassDeploymentRoles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::123456789012:role/application-*",
+        "arn:aws:iam::123456789012:role/deployment-*"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": [
+            "cloudformation.amazonaws.com",
+            "ecs-tasks.amazonaws.com",
+            "lambda.amazonaws.com",
+            "codebuild.amazonaws.com"
+          ]
+        }
+      }
+    },
+    {
       "Sid": "DenyIAMExceptPassRole",
       "Effect": "Deny",
       "Action": [
@@ -331,14 +350,15 @@ Don't guess what services users need. Use Access Analyzer to see what they actua
 aws accessanalyzer start-policy-generation \
   --policy-generation-details '{
     "principalArn": "arn:aws:iam::123456789012:user/jane"
-  }'
+  }' \
+  --cloud-trail-details file://cloudtrail-details.json
 ```
 
 See our detailed guide on [generating IAM policies from access activity](https://oneuptime.com/blog/post/2026-02-12-generate-iam-policies-access-activity-access-analyzer/view) for the full process.
 
 ## Combining Service and Region Restrictions
 
-For maximum security, combine service restrictions with [region restrictions](https://oneuptime.com/blog/post/2026-02-12-restrict-iam-users-specific-aws-regions/view):
+For an additional guardrail, combine service restrictions with [region restrictions](https://oneuptime.com/blog/post/2026-02-12-restrict-iam-users-specific-aws-regions/view):
 
 ```json
 {
@@ -362,6 +382,8 @@ For maximum security, combine service restrictions with [region restrictions](ht
   ]
 }
 ```
+
+`aws:RequestedRegion` controls which regional endpoint is called, not every regional side effect of the operation. For example, if you allow `s3:CreateBucket`, also use `s3:LocationConstraint` to control where new buckets can be created.
 
 ## Monitoring Policy Effectiveness
 
