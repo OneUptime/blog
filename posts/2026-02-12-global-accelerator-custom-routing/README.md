@@ -31,13 +31,13 @@ The custom routing accelerator provides a fixed mapping between its listener por
 
 ## How the Port Mapping Works
 
-Custom routing accelerators create a static mapping: each EC2 instance in your subnet gets assigned a range of ports on the accelerator. For example:
+Custom routing accelerators create a static mapping from accelerator listener ports to destination IP address and port combinations in your subnet. For example:
 
 - Instance A gets ports 10000-10099
 - Instance B gets ports 10100-10199
 - Instance C gets ports 10200-10299
 
-When a client connects to the accelerator on port 10150, traffic goes to Instance B. Your application is responsible for telling clients which port to use.
+When a client connects to the accelerator on port 10150, traffic goes to the destination socket for Instance B. Your application is responsible for telling clients which port to use.
 
 ## Step 1: Create a Custom Routing Accelerator
 
@@ -101,7 +101,7 @@ aws globalaccelerator add-custom-routing-endpoints \
   --region us-west-2
 ```
 
-Global Accelerator discovers all EC2 instances in these subnets and creates port mappings automatically.
+Global Accelerator creates static port mappings for the subnet when you add it as an endpoint.
 
 ## Step 5: Allow Traffic to Specific Instances
 
@@ -201,8 +201,6 @@ import boto3
 
 ga_client = boto3.client('globalaccelerator', region_name='us-west-2')
 
-ACCELERATOR_IPS = ['75.2.60.1', '99.83.190.1']
-
 def assign_player_to_server(player_id, game_server_ip, game_server_port):
     """Find the accelerator port for a specific game server."""
 
@@ -215,12 +213,12 @@ def assign_player_to_server(player_id, game_server_ip, game_server_port):
     # Find the mapping for the specific destination port
     for mapping in response['DestinationPortMappings']:
         if mapping['DestinationSocketAddress']['Port'] == game_server_port:
-            accelerator_port = mapping['AcceleratorPort']
+            accelerator_socket = mapping['AcceleratorSocketAddresses'][0]
 
             # Tell the player to connect to the accelerator IP and port
             return {
-                'server_ip': ACCELERATOR_IPS[0],
-                'server_port': accelerator_port,
+                'server_ip': accelerator_socket['IpAddress'],
+                'server_port': accelerator_socket['Port'],
                 'player_id': player_id
             }
 
@@ -240,11 +238,12 @@ The player connects to `75.2.60.1:10000`, and Global Accelerator routes that UDP
 
 ## Scaling Considerations
 
-When you add new EC2 instances to the subnets, Global Accelerator automatically detects them and creates new port mappings. But remember:
+When you add new subnet endpoints, Global Accelerator creates new static port mappings. But remember:
 
-- Each instance consumes ports from your listener range
+- Each destination IP address, destination port, and protocol combination consumes ports from your listener range
 - Make the listener port range large enough for your maximum expected capacity
-- New instances start with traffic denied - you need to explicitly allow traffic
+- Adding or removing EC2 instances in an existing subnet does not change the port mappings
+- Destinations start with traffic denied unless you allow all traffic to the endpoint or explicitly allow specific destinations
 
 ## Monitoring Custom Routing
 
