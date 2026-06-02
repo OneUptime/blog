@@ -16,8 +16,8 @@ Every HTTP response from your Amplify app includes headers. The defaults are fin
 
 - **Cache-Control**: How long browsers and CDNs cache your content
 - **Security headers**: Protection against XSS, clickjacking, and other attacks
-- **CORS headers**: Which domains can make API calls to your app
-- **SEO headers**: Canonical URLs and indexing directives
+- **CORS headers**: Which origins can read responses from your app or API routes
+- **SEO headers**: Indexing directives for crawlers
 
 Getting these wrong can mean slow page loads, security vulnerabilities, or duplicate content penalties from search engines.
 
@@ -106,7 +106,7 @@ Images change less frequently than code but more often than hashed bundles. A mi
         value: 'public, max-age=86400, stale-while-revalidate=3600'
 ```
 
-The `stale-while-revalidate` directive serves the cached version while fetching an updated version in the background.
+The `stale-while-revalidate` directive lets supporting caches serve the cached version while fetching an updated version in the background.
 
 ## Cache Strategy Diagram
 
@@ -139,9 +139,9 @@ customHeaders:
       - key: 'X-Content-Type-Options'
         value: 'nosniff'
 
-      # Enable XSS protection in older browsers
+      # Disable deprecated browser XSS filters; use CSP for XSS mitigation
       - key: 'X-XSS-Protection'
-        value: '1; mode=block'
+        value: '0'
 
       # Control what information is sent in the Referer header
       - key: 'Referrer-Policy'
@@ -149,9 +149,9 @@ customHeaders:
 
       # Content Security Policy - customize based on your app's needs
       - key: 'Content-Security-Policy'
-        value: "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.example.com"
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' https://fonts.gstatic.com; connect-src 'self' https://api.example.com; frame-ancestors 'none'"
 
-      # Strict Transport Security - force HTTPS
+      # Strict Transport Security - require HTTPS after the first secure response
       - key: 'Strict-Transport-Security'
         value: 'max-age=31536000; includeSubDomains; preload'
 
@@ -160,11 +160,11 @@ customHeaders:
         value: 'camera=(), microphone=(), geolocation=(self), payment=(self)'
 ```
 
-Be careful with Content-Security-Policy. An overly restrictive CSP will break third-party scripts, analytics, and embedded content. Start permissive and tighten gradually.
+Be careful with Content-Security-Policy. An overly restrictive CSP will break third-party scripts, analytics, and embedded content. Start with a policy that matches your app's current dependencies and tighten gradually. Only include the `preload` directive in `Strict-Transport-Security` if you intend to submit the domain to the HSTS preload list and all subdomains support HTTPS.
 
 ## CORS Headers
 
-If your Amplify app serves an API that other domains need to call, you need CORS headers:
+If routes hosted by your Amplify app return responses that other origins need to read, you need CORS headers:
 
 ```yaml
 customHeaders:
@@ -180,7 +180,7 @@ customHeaders:
         value: '86400'
 ```
 
-If you need to allow multiple origins, you cannot use a comma-separated list in Amplify's static header configuration. Instead, handle CORS in your application code or use a Lambda@Edge function.
+If you need to allow multiple origins, you cannot use a comma-separated list in `Access-Control-Allow-Origin`. Instead, handle CORS in your application or API code so it can validate the request's `Origin` header and return one allowed origin.
 
 ## SEO Headers
 
@@ -219,7 +219,11 @@ customHeaders:
         value: 'camera=(), microphone=()'
 
   # HTML - do not cache
-  - pattern: '*.html'
+  - pattern: '**/*.html'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=0, must-revalidate'
+  - pattern: '/'
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=0, must-revalidate'
@@ -231,13 +235,49 @@ customHeaders:
         value: 'public, max-age=31536000, immutable'
 
   # Images - cache for a day
-  - pattern: '*.{png,jpg,jpeg,gif,webp,svg,ico}'
+  - pattern: '**/*.png'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
+  - pattern: '**/*.jpg'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
+  - pattern: '**/*.jpeg'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
+  - pattern: '**/*.gif'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
+  - pattern: '**/*.webp'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
+  - pattern: '**/*.svg'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=86400'
+  - pattern: '**/*.ico'
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=86400'
 
   # Fonts - cache for a year
-  - pattern: '*.{woff,woff2,ttf,eot}'
+  - pattern: '**/*.woff'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, immutable'
+  - pattern: '**/*.woff2'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, immutable'
+  - pattern: '**/*.ttf'
+    headers:
+      - key: 'Cache-Control'
+        value: 'public, max-age=31536000, immutable'
+  - pattern: '**/*.eot'
     headers:
       - key: 'Cache-Control'
         value: 'public, max-age=31536000, immutable'
@@ -264,9 +304,9 @@ You can also use browser DevTools. Open the Network tab, select a request, and i
 
 **Pattern matching is case-sensitive**: `*.PNG` and `*.png` are different patterns. If your build process outputs uppercase extensions, account for that.
 
-**CloudFront may override headers**: Since Amplify uses CloudFront, some headers might be overridden by CloudFront behaviors. If your custom headers are not appearing, check the CloudFront distribution settings.
+**Cache-Control only applies to successful responses**: Amplify applies custom `Cache-Control` headers only to `200 OK` responses. If you are tuning CDN caching, use `s-maxage` when you specifically want to control how long content stays cached at the edge.
 
-**Headers apply to all branches**: The `customHttp.yml` file in your repository applies to whichever branch it is deployed on. If you need different headers for staging vs production, use branch-specific overrides in the Amplify console.
+**Headers come from the deployed branch**: The `customHttp.yml` file in your repository applies to whichever branch it is deployed on, and file-based headers override headers configured in the Amplify console. If you need different headers for staging vs production, keep the branch-specific `customHttp.yml` content different in those branches.
 
 For related configuration, see our guide on [configuring Amplify redirects and rewrites](https://oneuptime.com/blog/post/2026-02-12-configure-amplify-redirects-and-rewrites/view).
 
