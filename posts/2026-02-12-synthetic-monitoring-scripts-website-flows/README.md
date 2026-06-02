@@ -32,8 +32,8 @@ Screenshots are saved to S3 automatically, which is incredibly useful for debugg
 The simplest browser canary loads a page and checks that it rendered correctly:
 
 ```javascript
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const loadPageAndValidate = async () => {
   // Get a Puppeteer page object
@@ -41,6 +41,13 @@ const loadPageAndValidate = async () => {
 
   // Configure viewport
   await page.setViewport({ width: 1920, height: 1080 });
+
+  // Check for JavaScript errors in the console
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      log.warn(`Console error: ${msg.text()}`);
+    }
+  });
 
   // Step 1: Navigate to the home page
   const response = await page.goto('https://www.example.com', {
@@ -68,13 +75,6 @@ const loadPageAndValidate = async () => {
     throw new Error('Main content container not found on page');
   }
 
-  // Check for JavaScript errors in the console
-  page.on('console', (msg) => {
-    if (msg.type() === 'error') {
-      log.warn(`Console error: ${msg.text()}`);
-    }
-  });
-
   log.info(`Home page loaded successfully. Title: ${title}`);
 };
 
@@ -88,8 +88,8 @@ exports.handler = async () => {
 Testing authentication flows is one of the most valuable things browser canaries can do:
 
 ```javascript
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 const AWS = require('aws-sdk');
 
 async function getTestCredentials() {
@@ -177,8 +177,8 @@ exports.handler = async () => {
 Test that your search functionality works end to end:
 
 ```javascript
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const testSearchFlow = async () => {
   const page = await synthetics.getPage();
@@ -259,8 +259,8 @@ exports.handler = async () => {
 Testing a checkout or purchase flow is one of the highest-value canaries:
 
 ```javascript
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const testCheckoutFlow = async () => {
   const page = await synthetics.getPage();
@@ -328,7 +328,7 @@ const testCheckoutFlow = async () => {
   const removeBtn = await page.$('.remove-item, .delete-item, button[data-action="remove"]');
   if (removeBtn) {
     await removeBtn.click();
-    await page.waitForTimeout(2000); // Wait for cart update
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait for cart update
     log.info('Test item removed from cart');
   }
 
@@ -346,8 +346,8 @@ exports.handler = async () => {
 Measure real page load performance metrics:
 
 ```javascript
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const measurePerformance = async () => {
   const page = await synthetics.getPage();
@@ -404,8 +404,8 @@ exports.handler = async () => {
 Single-page applications require special handling since content loads asynchronously:
 
 ```javascript
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const testSPA = async () => {
   const page = await synthetics.getPage();
@@ -436,7 +436,7 @@ const testSPA = async () => {
   if (tabs.length > 1) {
     // Click the second tab and verify content updates
     await tabs[1].click();
-    await page.waitForTimeout(2000); // Allow for transition/loading
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Allow for transition/loading
     await synthetics.takeScreenshot('spa', 'second-tab');
   }
 
@@ -453,8 +453,8 @@ exports.handler = async () => {
 Catch JavaScript errors and failed network requests:
 
 ```javascript
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const detectErrors = async () => {
   const page = await synthetics.getPage();
