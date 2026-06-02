@@ -21,10 +21,13 @@ mkdir flask-lambda-api
 cd flask-lambda-api
 python -m venv venv
 source venv/bin/activate
-pip install flask mangum boto3 marshmallow
+pip install flask mangum boto3 marshmallow asgiref
+pip freeze > requirements.txt
+npm init -y
+npm install --save-dev serverless serverless-python-requirements
 ```
 
-The key package is `mangum` - it's an ASGI/WSGI adapter that lets Flask (and other Python frameworks) run inside Lambda. It handles the translation between API Gateway events and WSGI requests.
+The key package is `mangum` - it's an ASGI adapter that lets Python web frameworks run inside Lambda. Because Flask is a WSGI application, we'll use `asgiref` to wrap it as ASGI before Mangum handles the translation between API Gateway events and application requests.
 
 Set up your project structure:
 
@@ -179,11 +182,12 @@ def get_user(user_id):
 @users_bp.route('/', methods=['POST'])
 def create_user():
     # Validate input
-    errors = create_schema.validate(request.json)
+    payload = request.get_json(silent=True) or {}
+    errors = create_schema.validate(payload)
     if errors:
         return jsonify({"error": "Validation failed", "details": errors}), 400
 
-    data = create_schema.load(request.json)
+    data = create_schema.load(payload)
     user = {
         "id": str(uuid.uuid4()),
         "name": data["name"],
@@ -201,11 +205,12 @@ def update_user(user_id):
     if not existing:
         return jsonify({"error": "User not found"}), 404
 
-    errors = update_schema.validate(request.json)
+    payload = request.get_json(silent=True) or {}
+    errors = update_schema.validate(payload)
     if errors:
         return jsonify({"error": "Validation failed", "details": errors}), 400
 
-    data = update_schema.load(request.json)
+    data = update_schema.load(payload)
     updated = {**existing, **data, "updated_at": time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}
 
     db.put_item(updated)
@@ -276,13 +281,15 @@ The handler file bridges Flask and Lambda:
 
 ```python
 # handler.py
+from asgiref.wsgi import WsgiToAsgi
 from mangum import Mangum
 from src.app import create_app
 
 app = create_app()
+asgi_app = WsgiToAsgi(app)
 
-# Mangum wraps the Flask app for Lambda
-handler = Mangum(app, lifespan="off")
+# Mangum wraps the ASGI adapter for Lambda
+handler = Mangum(asgi_app, lifespan="off")
 ```
 
 ## Serverless Configuration
@@ -299,7 +306,7 @@ provider:
   region: us-east-1
   stage: ${opt:stage, 'dev'}
   memorySize: 256
-  timeout: 30
+  timeout: 28
   environment:
     STAGE: ${self:provider.stage}
   iam:
@@ -365,7 +372,7 @@ python local.py
 
 # Test endpoints
 curl http://localhost:5000/health
-curl -X POST http://localhost:5000/api/users \
+curl -X POST http://localhost:5000/api/users/ \
   -H "Content-Type: application/json" \
   -d '{"name": "Alice", "email": "alice@example.com"}'
 ```
@@ -391,4 +398,4 @@ If you're also building a Flask app for a traditional server deployment, take a 
 
 ## Summary
 
-Flask on Lambda is a great choice for Python APIs. You get the simplicity of Flask's routing and ecosystem with Lambda's automatic scaling and minimal ops overhead. The mangum adapter makes the integration nearly transparent - you write Flask code and it just works on Lambda. For APIs that handle variable traffic or need to scale to zero during quiet periods, this architecture is hard to beat.
+Flask on Lambda is a great choice for Python APIs. You get the simplicity of Flask's routing and ecosystem with Lambda's automatic scaling and minimal ops overhead. With a small WSGI-to-ASGI wrapper, the mangum adapter makes the integration nearly transparent - you write Flask code and it runs on Lambda. For APIs that handle variable traffic or need to scale to zero during quiet periods, this architecture is hard to beat.
