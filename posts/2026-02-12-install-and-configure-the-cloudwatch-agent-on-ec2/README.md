@@ -16,7 +16,7 @@ Without the agent, you can't answer basic questions like:
 - How much memory is my instance using?
 - Is my disk about to fill up?
 - What's in my application log files?
-- What processes are consuming the most CPU?
+- How many processes are running, sleeping, or stuck as zombies?
 
 These are pretty fundamental for operations. The agent makes them all available in CloudWatch.
 
@@ -32,19 +32,34 @@ On Amazon Linux 2023 or Amazon Linux 2:
 sudo yum install -y amazon-cloudwatch-agent
 ```
 
-On Ubuntu/Debian:
+On Ubuntu:
 
 ```bash
 # Install the CloudWatch agent on Ubuntu
-wget https://s3.amazonaws.com/amazoncloudwatch-agent/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
 sudo dpkg -i amazon-cloudwatch-agent.deb
 ```
 
-On Red Hat/CentOS:
+On Debian:
 
 ```bash
-# Install the CloudWatch agent on RHEL/CentOS
-sudo yum install -y https://s3.amazonaws.com/amazoncloudwatch-agent/redhat/amd64/latest/amazon-cloudwatch-agent.rpm
+# Install the CloudWatch agent on Debian
+wget https://amazoncloudwatch-agent.s3.amazonaws.com/debian/amd64/latest/amazon-cloudwatch-agent.deb
+sudo dpkg -i amazon-cloudwatch-agent.deb
+```
+
+On Red Hat:
+
+```bash
+# Install the CloudWatch agent on RHEL
+sudo yum install -y https://amazoncloudwatch-agent.s3.amazonaws.com/redhat/amd64/latest/amazon-cloudwatch-agent.rpm
+```
+
+On CentOS:
+
+```bash
+# Install the CloudWatch agent on CentOS
+sudo yum install -y https://amazoncloudwatch-agent.s3.amazonaws.com/centos/amd64/latest/amazon-cloudwatch-agent.rpm
 ```
 
 Using Systems Manager (recommended for fleet management):
@@ -76,6 +91,7 @@ The instance needs an IAM role with permissions to write metrics and logs to Clo
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
+        "logs:PutRetentionPolicy",
         "logs:DescribeLogStreams",
         "ec2:DescribeVolumes",
         "ec2:DescribeTags",
@@ -266,7 +282,7 @@ For managing the config across a fleet, store it in SSM Parameter Store:
 ```bash
 # Store the agent config in SSM Parameter Store
 aws ssm put-parameter \
-  --name "/cloudwatch-agent/config/linux" \
+  --name "AmazonCloudWatch-linux" \
   --type String \
   --value file:///opt/aws/amazon-cloudwatch-agent/etc/config.json
 
@@ -275,7 +291,7 @@ sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -a fetch-config \
   -m ec2 \
   -s \
-  -c ssm:/cloudwatch-agent/config/linux
+  -c ssm:AmazonCloudWatch-linux
 ```
 
 This way, you update the config in one place and roll it out to all instances.
@@ -310,7 +326,7 @@ Common issues:
 - **Agent not running**: Check with `systemctl status amazon-cloudwatch-agent`
 - **Network issues**: The instance can't reach the CloudWatch endpoint (check VPC endpoints or NAT gateway)
 
-For instances in private subnets, you'll need either a NAT gateway or VPC endpoints for CloudWatch and CloudWatch Logs. See [setting up EC2 instances in a private subnet with NAT](https://oneuptime.com/blog/post/2026-02-12-set-up-ec2-instances-in-a-private-subnet-with-nat/view) for details.
+For instances in private subnets, you'll need either a NAT gateway or VPC endpoints for CloudWatch and CloudWatch Logs. If you're installing the agent with Systems Manager or fetching the config from Parameter Store, you'll also need Systems Manager connectivity. See [setting up EC2 instances in a private subnet with NAT](https://oneuptime.com/blog/post/2026-02-12-set-up-ec2-instances-in-a-private-subnet-with-nat/view) for details.
 
 ## Next Steps
 
