@@ -69,7 +69,7 @@ aws ec2 create-transit-gateway \
 Important settings:
 - **DefaultRouteTableAssociation: disable** - We want to manage route tables explicitly for segmentation
 - **DefaultRouteTablePropagation: disable** - Same reason; we will control which routes propagate where
-- **DnsSupport: enable** - Allows VPCs to resolve private DNS across the Transit Gateway
+- **DnsSupport: enable** - Allows Amazon-provided public DNS hostnames for resources in attached VPCs to resolve to private IP addresses where supported. Route 53 private hosted zones still require private hosted zone associations or Route 53 Resolver rules.
 
 ## Step 2: Create Route Tables for Segmentation
 
@@ -224,10 +224,10 @@ graph LR
 Each VPC needs routes pointing to the Transit Gateway for cross-VPC traffic.
 
 ```bash
-# In the Production VPC route table, add routes to other VPCs via TGW
+# In the Production VPC route table, add routes to allowed VPCs via TGW
 aws ec2 create-route \
     --route-table-id rtb-production-private \
-    --destination-cidr-block 10.1.0.0/16 \
+    --destination-cidr-block 10.3.0.0/16 \
     --transit-gateway-id tgw-0123456789abcdef0
 
 # Route to shared services CIDR
@@ -303,10 +303,9 @@ aws ec2 describe-transit-gateway-attachments \
 
 ```bash
 # Enable flow logs on the Transit Gateway for visibility
-aws ec2 create-flow-log \
+aws ec2 create-flow-logs \
     --resource-type TransitGateway \
     --resource-ids tgw-0123456789abcdef0 \
-    --traffic-type ALL \
     --log-destination-type cloud-watch-logs \
     --log-group-name /aws/tgw/flow-logs \
     --deliver-logs-permission-arn arn:aws:iam::123456789012:role/flow-logs-role
@@ -348,7 +347,7 @@ resource "aws_ec2_transit_gateway_route_table_association" "production" {
 
 ## Cost Considerations
 
-Transit Gateway charges per attachment per hour plus per GB of data processed. For a typical setup with 5 VPCs and moderate traffic:
+Transit Gateway charges per attachment per hour plus per GB of data processed, and pricing varies by Region. For a typical setup with 5 VPCs and moderate traffic in a Region where VPC attachments are $0.05 per hour and data processing is $0.02 per GB:
 
 - 5 attachments * $0.05/hour = $0.25/hour = ~$180/month
 - Data processing: $0.02/GB
