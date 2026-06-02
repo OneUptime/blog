@@ -15,11 +15,11 @@ Access to fetch at 'https://abc123.lambda-url.us-east-1.on.aws/'
 from origin 'https://myapp.com' has been blocked by CORS policy
 ```
 
-The fix involves two things: configuring CORS on the Function URL itself AND returning CORS headers in your function's response. Let's walk through both.
+The recommended fix is to configure CORS on the Function URL itself. You can also return CORS headers manually from your function, but don't configure the same CORS headers in both places because that can create duplicate headers.
 
 ## Understanding the Two CORS Layers
 
-Lambda Function URLs have a built-in CORS configuration that handles preflight (OPTIONS) requests automatically. But your function also needs to include CORS headers in its actual response. This trips up a lot of people because they configure one but not the other.
+Lambda Function URLs have a built-in CORS configuration that handles preflight (OPTIONS) requests automatically and adds the configured CORS headers to responses through the Function URL. This trips up a lot of people because manually returning the same CORS headers from the function can cause duplicate headers on non-preflight requests.
 
 ```mermaid
 sequenceDiagram
@@ -28,7 +28,7 @@ sequenceDiagram
     Browser->>Lambda URL: GET/POST (actual request)
     Lambda URL->>Lambda Function: Invokes function
     Lambda Function->>Lambda URL: Response
-    Lambda URL->>Browser: Response + CORS headers (from function)
+    Lambda URL->>Browser: Response + CORS headers (from URL config)
 ```
 
 ## Step 1: Configure CORS on the Function URL
@@ -79,9 +79,9 @@ aws lambda update-function-url-config \
   }'
 ```
 
-## Step 2: Return CORS Headers in Your Function Response
+## Step 2: Return CORS Headers Manually Only If Needed
 
-This is the part people miss. Even with CORS configured on the Function URL, your Lambda function must return CORS headers in its response for non-preflight requests.
+If you don't use the Function URL CORS configuration, your Lambda function can return CORS headers manually. If you do use the Function URL CORS configuration from Step 1, don't return the same CORS headers from the function response because Lambda returns both sets of headers for non-preflight requests.
 
 ### Python Example
 
@@ -97,7 +97,7 @@ CORS_HEADERS = {
 def lambda_handler(event, context):
     # Handle the actual request
     try:
-        body = json.loads(event.get('body', '{}'))
+        body = json.loads(event.get('body') or '{}')
         result = process_request(body)
 
         return {
@@ -151,7 +151,7 @@ async function processRequest(body) {
 
 ## Handling Multiple Origins
 
-If you need to support multiple origins (like production and staging), you can dynamically set the `Access-Control-Allow-Origin` header:
+If you handle CORS manually and need to support multiple origins (like production and staging), you can dynamically set the `Access-Control-Allow-Origin` header:
 
 ```python
 import json
@@ -178,7 +178,7 @@ def lambda_handler(event, context):
     }
 
     try:
-        body = json.loads(event.get('body', '{}'))
+        body = json.loads(event.get('body') or '{}')
         result = {'message': 'Success', 'data': body}
 
         return {
@@ -194,7 +194,7 @@ def lambda_handler(event, context):
         }
 ```
 
-When doing this, make sure to update the Function URL CORS config to include all origins too:
+If you prefer to use the Function URL CORS config instead of manual response headers, include all origins there:
 
 ```bash
 aws lambda update-function-url-config \
@@ -227,7 +227,7 @@ aws lambda update-function-url-config \
 
 ### Mistake 2: Forgetting CORS Headers on Error Responses
 
-When your function throws an error, you still need CORS headers. Otherwise, the browser blocks the error response and your frontend can't even read the error message:
+When you handle CORS manually and your function throws an error, you still need CORS headers. Otherwise, the browser blocks the error response and your frontend can't even read the error message:
 
 ```python
 # Bad: No CORS headers on error
@@ -252,7 +252,7 @@ If your frontend sends `Content-Type: application/json`, that header must be in 
 ```bash
 aws lambda update-function-url-config \
   --function-name my-function \
-  --cors '{"AllowOrigins": ["*"], "AllowHeaders": ["Content-Type", "Authorization"]}'
+  --cors '{"AllowOrigins": ["*"], "AllowMethods": ["GET", "POST"], "AllowHeaders": ["Content-Type", "Authorization"]}'
 ```
 
 ## Testing CORS
@@ -299,10 +299,17 @@ aws lambda create-function-url-config \
 # 3. Add resource policy for public access
 aws lambda add-permission \
   --function-name my-api \
-  --statement-id FunctionURLPublicAccess \
+  --statement-id FunctionURLAllowPublicAccess \
   --action lambda:InvokeFunctionUrl \
   --principal "*" \
   --function-url-auth-type NONE
+
+aws lambda add-permission \
+  --function-name my-api \
+  --statement-id FunctionURLInvokeAllowPublicAccess \
+  --action lambda:InvokeFunction \
+  --principal "*" \
+  --invoked-via-function-url
 ```
 
 For monitoring your Lambda Function URLs and catching CORS misconfigurations in production, [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can alert you to elevated error rates before your users start complaining.
