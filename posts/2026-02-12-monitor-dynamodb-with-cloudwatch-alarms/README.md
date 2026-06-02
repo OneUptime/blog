@@ -27,9 +27,9 @@ flowchart TD
     C --> C1[SuccessfulRequestLatency]
     D --> D1[SystemErrors]
     D --> D2[UserErrors]
-    E --> E1[ConsumedReadCapacity]
-    E --> E2[ConsumedWriteCapacity]
-    E --> E3[AccountProvisionedReadCapacity]
+    E --> E1[ConsumedReadCapacityUnits]
+    E --> E2[ConsumedWriteCapacityUnits]
+    E --> E3[AccountProvisionedReadCapacityUnits]
 ```
 
 ## Throttling Alarms
@@ -53,8 +53,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 1 \
   --comparison-operator GreaterThanOrEqualToThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts \
-  --treat-missing-data notBreaching
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts
 ```
 
 ```bash
@@ -70,11 +69,10 @@ aws cloudwatch put-metric-alarm \
   --threshold 1 \
   --comparison-operator GreaterThanOrEqualToThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts \
-  --treat-missing-data notBreaching
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts
 ```
 
-The `treat-missing-data notBreaching` setting is important here. Missing data points mean zero throttle events, which is a good thing - don't let the alarm fire when there's no data.
+CloudWatch always ignores missing data for alarms that evaluate metrics in the `AWS/DynamoDB` namespace, even if you set `treat-missing-data` to something else. When a DynamoDB metric has missing data, the alarm stays in its current state.
 
 ## Latency Alarms
 
@@ -105,44 +103,27 @@ System errors are DynamoDB's fault, not yours - HTTP 500 responses. They're rare
 ```bash
 # Alarm for DynamoDB system errors
 aws cloudwatch put-metric-alarm \
-  --alarm-name "DynamoDB-Users-SystemErrors" \
-  --alarm-description "System errors on Users table - DynamoDB service issue" \
+  --alarm-name "DynamoDB-Users-GetItem-SystemErrors" \
+  --alarm-description "GetItem system errors on Users table - DynamoDB service issue" \
   --namespace "AWS/DynamoDB" \
   --metric-name "SystemErrors" \
-  --dimensions Name=TableName,Value=Users \
+  --dimensions Name=TableName,Value=Users Name=Operation,Value=GetItem \
   --statistic Sum \
   --period 60 \
   --threshold 5 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts-critical \
-  --treat-missing-data notBreaching
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts-critical
 ```
 
 ## Capacity Consumption Alarms
 
 For tables using provisioned capacity, you want to know when you're approaching your limits before throttling starts.
 
-```bash
-# Alarm when consumed read capacity exceeds 80% of provisioned
-aws cloudwatch put-metric-alarm \
-  --alarm-name "DynamoDB-Users-HighReadCapacity" \
-  --alarm-description "Read capacity consumption above 80% on Users table" \
-  --namespace "AWS/DynamoDB" \
-  --metric-name "ConsumedReadCapacityUnits" \
-  --dimensions Name=TableName,Value=Users \
-  --statistic Sum \
-  --period 300 \
-  --threshold 4000 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 2 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts
-```
-
-The threshold of 4000 assumes your provisioned read capacity is 1000 RCUs. Over 5 minutes, that's 5000 consumed units at full capacity (1000 * 5 seconds... wait, no). Let me be precise: DynamoDB reports ConsumedReadCapacityUnits as the total number consumed during the period. With 1000 provisioned RCUs and a 300-second period, maximum consumption is 300,000. Setting the threshold at 240,000 (80%) is more accurate.
+The threshold should account for the alarm period. DynamoDB reports `ConsumedReadCapacityUnits` as the total number consumed during the period. With 1000 provisioned RCUs and a 300-second period, maximum consumption is 300,000. Setting the threshold at 240,000 (80%) is accurate.
 
 ```bash
-# Corrected: alarm at 80% of provisioned capacity over 5 minutes
+# Alarm at 80% of provisioned capacity over 5 minutes
 # With 1000 RCU provisioned, max per 5 min = 1000 * 300 = 300,000
 aws cloudwatch put-metric-alarm \
   --alarm-name "DynamoDB-Users-HighReadCapacity" \
@@ -191,40 +172,36 @@ def create_dynamodb_alarms(table_name, sns_topic_arn):
         },
         {
             'name': f'{table_name}-SystemErrors',
-            'description': f'System errors on {table_name}',
+            'description': f'GetItem system errors on {table_name}',
             'metric': 'SystemErrors',
             'statistic': 'Sum',
             'threshold': 5,
             'period': 60,
             'eval_periods': 1,
-        },
-        {
-            'name': f'{table_name}-UserErrors',
-            'description': f'High user error rate on {table_name}',
-            'metric': 'UserErrors',
-            'statistic': 'Sum',
-            'threshold': 50,
-            'period': 300,
-            'eval_periods': 2,
+            'dimensions': [
+                {'Name': 'TableName', 'Value': table_name},
+                {'Name': 'Operation', 'Value': 'GetItem'},
+            ],
         },
     ]
 
     for alarm in alarms:
+        dimensions = alarm.get('dimensions', [
+            {'Name': 'TableName', 'Value': table_name}
+        ])
+
         cloudwatch.put_metric_alarm(
             AlarmName=alarm['name'],
             AlarmDescription=alarm['description'],
             Namespace='AWS/DynamoDB',
             MetricName=alarm['metric'],
-            Dimensions=[
-                {'Name': 'TableName', 'Value': table_name}
-            ],
+            Dimensions=dimensions,
             Statistic=alarm['statistic'],
             Period=alarm['period'],
             Threshold=alarm['threshold'],
             ComparisonOperator='GreaterThanOrEqualToThreshold',
             EvaluationPeriods=alarm['eval_periods'],
             AlarmActions=[sns_topic_arn],
-            TreatMissingData='notBreaching',
         )
         print(f'Created alarm: {alarm["name"]}')
 
@@ -253,8 +230,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 1 \
   --comparison-operator GreaterThanOrEqualToThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts \
-  --treat-missing-data notBreaching
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:dynamodb-alerts
 ```
 
 ## Composite Alarms
