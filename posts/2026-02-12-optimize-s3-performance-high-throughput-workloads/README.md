@@ -12,7 +12,7 @@ S3 can handle enormous throughput - up to 5,500 GET requests per second and 3,50
 
 ## Understanding S3's Performance Model
 
-S3 automatically scales to handle high request rates. The key concept is that S3 partitions your bucket's keyspace and distributes requests across partitions based on key prefixes. Since 2018, S3 no longer requires gradual traffic scaling - you get full performance immediately.
+S3 automatically scales to handle high request rates. The key concept is that S3 partitions your bucket's keyspace and distributes requests across partitions based on key prefixes. Since 2018, S3 no longer requires randomized key prefixes for performance, but scaling to a new, much higher request rate can still happen gradually.
 
 The per-prefix limits are:
 - **3,500 PUT/COPY/POST/DELETE requests per second**
@@ -224,11 +224,12 @@ Then use the accelerated endpoint.
 
 ```python
 import boto3
+from botocore.config import Config
 
 # Create client with Transfer Acceleration endpoint
 s3_accelerated = boto3.client(
     's3',
-    endpoint_url='https://my-global-bucket.s3-accelerate.amazonaws.com'
+    config=Config(s3={'use_accelerate_endpoint': True})
 )
 
 # Upload through accelerated endpoint
@@ -318,10 +319,10 @@ def parallel_range_download(bucket, key, total_size, chunk_size=10*1024*1024):
 
 ## Technique 5: Optimize Request Patterns
 
-Avoid request patterns that create hotspots.
+Use multiple prefixes when your workload needs more than the per-prefix request rate.
 
 ```python
-# BAD: Sequential key naming creates hotspots
+# Sequential keys are fine in modern S3, but this writes to a single prefix
 for i in range(1000000):
     s3.put_object(
         Bucket='my-bucket',
@@ -329,7 +330,7 @@ for i in range(1000000):
         Body=data
     )
 
-# GOOD: Use hashed prefixes to distribute across partitions
+# Use multiple prefixes when you need to scale beyond one prefix's request rate
 import hashlib
 
 for i in range(1000000):
@@ -355,10 +356,10 @@ flowchart TD
     B --> B3[Multipart uploads\nfor large files]
 
     C --> C1[Byte-range fetches\nfor partial reads]
-    C --> C2[S3 Select\nfor filtering]
+    C --> C2[Athena or client-side\nfiltering]
 
     D --> D1[Distributed prefixes]
-    D --> D2[Avoid sequential keys]
+    D --> D2[Scale beyond\none prefix]
 
     E --> E1[Transfer Acceleration]
     E --> E2[VPC Endpoints]
@@ -367,7 +368,7 @@ flowchart TD
 
 ## Monitoring Performance
 
-Keep track of your S3 performance with CloudWatch metrics.
+Keep track of your S3 performance with CloudWatch request metrics. Request metrics must be enabled on the bucket or prefix before these metrics appear.
 
 ```python
 import boto3
@@ -375,7 +376,7 @@ from datetime import datetime, timedelta
 
 cloudwatch = boto3.client('cloudwatch')
 
-# Check request latency
+# Check p99 request latency
 response = cloudwatch.get_metric_statistics(
     Namespace='AWS/S3',
     MetricName='FirstByteLatency',
@@ -386,11 +387,12 @@ response = cloudwatch.get_metric_statistics(
     StartTime=datetime.utcnow() - timedelta(hours=1),
     EndTime=datetime.utcnow(),
     Period=300,
-    Statistics=['Average', 'p99']
+    ExtendedStatistics=['p99']
 )
 
 for point in sorted(response['Datapoints'], key=lambda x: x['Timestamp']):
-    print(f"Time: {point['Timestamp']}, Avg: {point['Average']:.0f}ms")
+    p99 = point['ExtendedStatistics']['p99']
+    print(f"Time: {point['Timestamp']}, p99: {p99:.0f}ms")
 ```
 
 ## Wrapping Up
