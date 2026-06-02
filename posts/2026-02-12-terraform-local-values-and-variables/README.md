@@ -97,9 +97,10 @@ variable "security_group_rules" {
 variable "services" {
   description = "Service configurations"
   type = map(object({
-    cpu    = number
-    memory = number
-    port   = number
+    cpu         = number
+    memory      = number
+    port        = number
+    environment = string
   }))
   default = {}
 }
@@ -143,7 +144,7 @@ variable "instance_count" {
 
 ### Sensitive Variables
 
-Mark sensitive variables to prevent them from showing in logs and console output.
+Mark sensitive variables to prevent them from showing in regular Terraform CLI output. Terraform still records sensitive values in state unless you use features designed to omit them.
 
 ```hcl
 variable "db_password" {
@@ -261,6 +262,11 @@ variable "vpc_cidr" {
 locals {
   # Naming convention
   name_prefix = "${var.project}-${var.environment}"
+  common_tags = {
+    Project     = var.project
+    Environment = var.environment
+    ManagedBy   = "terraform"
+  }
 
   # Subnet CIDR calculation
   public_subnets = [
@@ -355,7 +361,7 @@ output "vpc_id" {
   value       = aws_vpc.main.id
 }
 
-# Sensitive output (hidden from CLI)
+# Sensitive output (hidden in default CLI output)
 output "db_password" {
   description = "Database master password"
   value       = random_password.db.result
