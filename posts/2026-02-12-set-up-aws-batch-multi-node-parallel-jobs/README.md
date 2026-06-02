@@ -18,7 +18,7 @@ A multi-node parallel job in AWS Batch launches multiple EC2 instances (nodes) t
 
 - Its own index in the group
 - Whether it is the main node
-- The IP addresses of all other nodes
+- The private IP address of the main node on child nodes
 
 This is different from array jobs, where each child runs independently. Multi-node jobs are for tightly coupled workloads where nodes need to talk to each other.
 
@@ -36,7 +36,7 @@ graph TB
 
 ## Prerequisites
 
-- An AWS Batch compute environment with EFA-enabled or placement-group-enabled instances (for high-performance networking)
+- An AWS Batch managed EC2 compute environment with a cluster placement group, and EFA configured if you need the lowest-latency networking
 - A Docker image with MPI libraries (OpenMPI, Intel MPI, or similar) if you are running MPI workloads
 - Sufficient instance capacity in your compute environment for all nodes
 
@@ -45,8 +45,14 @@ graph TB
 For multi-node jobs, you want instances in a placement group for low-latency networking.
 
 ```bash
-# Create a compute environment suitable for multi-node jobs
+# Create a cluster placement group first
+aws ec2 create-placement-group \
+  --group-name mpi-cluster-pg \
+  --strategy cluster
+```
 
+```bash
+# Create a compute environment suitable for multi-node jobs
 aws batch create-compute-environment \
   --compute-environment-name mpi-compute-env \
   --type MANAGED \
@@ -66,15 +72,6 @@ aws batch create-compute-environment \
 ```
 
 The `c5n` instances have enhanced networking with up to 100 Gbps bandwidth, which matters for MPI communication. You can also use EFA-enabled instances for even lower latency. See our guide on [configuring EFA for HPC](https://oneuptime.com/blog/post/2026-02-12-configure-efa-elastic-fabric-adapter-for-hpc/view).
-
-Create the placement group first:
-
-```bash
-# Create a cluster placement group
-aws ec2 create-placement-group \
-  --group-name mpi-cluster-pg \
-  --strategy cluster
-```
 
 ## Step 2: Create a Multi-Node Job Definition
 
@@ -124,6 +121,7 @@ RUN apt-get update && apt-get install -y \
     libopenmpi-dev \
     openssh-server \
     openssh-client \
+    awscli \
     python3 \
     python3-pip \
     iproute2 \
@@ -137,6 +135,7 @@ RUN mkdir -p /root/.ssh && \
 
 # SSH config to skip host key checking between nodes
 RUN echo "Host *\n  StrictHostKeyChecking no\n  UserKnownHostsFile /dev/null" > /root/.ssh/config
+RUN mkdir -p /run/sshd
 
 # Copy your MPI application
 COPY simulation /app/simulation
@@ -170,8 +169,8 @@ if [ "$AWS_BATCH_JOB_NODE_INDEX" == "$AWS_BATCH_JOB_MAIN_NODE_INDEX" ]; then
     echo "I am the main node. Waiting for all nodes to be ready..."
 
     # The main node needs to discover all child node IPs
-    # AWS Batch provides them via the AWS_BATCH_JOB_NODE_INDEX env var on each node
-    # Main node waits for child nodes to register their IPs in a shared location
+    # Child nodes know the main node IP via AWS_BATCH_JOB_MAIN_NODE_PRIVATE_IPV4_ADDRESS
+    # The main node still needs child node IPs, so child nodes register them in a shared location
 
     # Wait for all nodes to write their IPs to S3
     EXPECTED_NODES=$AWS_BATCH_JOB_NUM_NODES
@@ -199,7 +198,8 @@ if [ "$AWS_BATCH_JOB_NODE_INDEX" == "$AWS_BATCH_JOB_MAIN_NODE_INDEX" ]; then
     cat $HOSTFILE
 
     # Run the MPI application
-    mpirun --hostfile $HOSTFILE \
+    mpirun --allow-run-as-root \
+           --hostfile $HOSTFILE \
            --mca btl_tcp_if_include eth0 \
            -np $((EXPECTED_NODES * 16)) \
            /app/simulation --input /data/input.dat --output /data/output.dat
