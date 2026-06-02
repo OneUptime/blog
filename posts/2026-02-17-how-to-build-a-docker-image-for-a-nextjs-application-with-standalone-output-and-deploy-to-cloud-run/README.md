@@ -23,7 +23,7 @@ First, configure your Next.js application to use standalone output. Edit your `n
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     output: 'standalone',
-    // Useful for Cloud Run - trust the proxy headers
+    // Disable the X-Powered-By response header
     poweredByHeader: false,
 };
 
@@ -45,7 +45,7 @@ WORKDIR /app
 # Copy package files
 COPY package.json package-lock.json ./
 
-# Install only production dependencies
+# Install locked dependencies for the build
 RUN npm ci
 
 # Stage 2: Build the application
@@ -101,7 +101,7 @@ CMD ["node", "server.js"]
 
 Let me break down why this three-stage approach works well.
 
-**Stage 1 (deps)**: Installs dependencies in an isolated stage. By copying only `package.json` and `package-lock.json` first, Docker caches this layer. Dependencies only get reinstalled when the lockfile changes.
+**Stage 1 (deps)**: Installs the locked dependencies in an isolated stage. By copying only `package.json` and `package-lock.json` first, Docker caches this layer. Dependencies only get reinstalled when the lockfile changes.
 
 **Stage 2 (builder)**: Builds the Next.js application. The `npm run build` command generates the standalone output in `.next/standalone`.
 
@@ -233,19 +233,25 @@ substitutions:
 
 ## Handling Static Asset Caching
 
-For production, you want Cloud Run to serve static assets efficiently. Next.js sets long cache headers for assets in `_next/static/`, but you can also put a CDN in front.
+For production, you want Cloud Run to serve static assets efficiently. Next.js sets long cache headers for assets in `_next/static/`, but you can also put Cloud CDN in front by using a serverless NEG behind an external Application Load Balancer.
 
 ```bash
-# Set up Cloud CDN with a load balancer for static asset caching
+# Create the Cloud Run serverless NEG and CDN-enabled backend
+gcloud compute network-endpoint-groups create nextjs-neg \
+    --region=us-central1 \
+    --network-endpoint-type=serverless \
+    --cloud-run-service=nextjs-app
+
 gcloud compute backend-services create nextjs-backend \
     --global \
+    --load-balancing-scheme=EXTERNAL_MANAGED \
     --enable-cdn \
     --cache-mode=USE_ORIGIN_HEADERS
 
-# Or use Cloud Run's built-in CDN integration
-gcloud run services update nextjs-app \
-    --region=us-central1 \
-    --session-affinity
+gcloud compute backend-services add-backend nextjs-backend \
+    --global \
+    --network-endpoint-group=nextjs-neg \
+    --network-endpoint-group-region=us-central1
 ```
 
 ## Image Size Comparison
