@@ -14,7 +14,7 @@ If your organization runs a hybrid setup with workloads in AWS and on-premises d
 
 When you connect your on-premises network to AWS via VPN or Direct Connect, you get network-level connectivity. Packets can flow between the two environments. But DNS is a different story.
 
-Your VPC's built-in resolver (at the .2 address of your VPC CIDR) only handles queries for public domains and VPC-associated private hosted zones. It doesn't know about `dc01.corp.local`. And your on-premises DNS server running on Windows Server or BIND doesn't know about `myapp.internal.aws`.
+Your VPC's built-in resolver (at the .2 address of your VPC CIDR, and also available at `169.254.169.253`) handles queries for public domains, Amazon VPC-specific DNS names, and VPC-associated private hosted zones. It doesn't know about `dc01.corp.local`. And your on-premises DNS server running on Windows Server or BIND doesn't know about `myapp.internal.aws`.
 
 Route 53 Resolver endpoints solve this with two components:
 
@@ -29,7 +29,7 @@ Before creating anything, plan the following:
 
 **Subnet Selection**: Deploy endpoints in at least two AZs for high availability. Use private subnets that have connectivity to your on-premises network.
 
-**Security Groups**: You'll need a security group allowing DNS traffic (TCP/UDP port 53) from both your VPC CIDR and on-premises CIDR ranges.
+**Security Groups**: You'll need a security group allowing inbound DNS traffic (TCP/UDP port 53) from your on-premises CIDR ranges, plus outbound DNS traffic from outbound endpoints to your on-premises DNS servers. The examples below rely on the default allow-all egress rule for outbound traffic.
 
 **Capacity**: Each endpoint IP address can handle about 10,000 queries per second. For most organizations, two IPs per endpoint is plenty.
 
@@ -152,7 +152,7 @@ aws route53resolver create-resolver-rule \
     'Ip=172.16.2.53,Port=53' \
   --creator-request-id "rule-ad-$(date +%s)"
 
-# Forward reverse DNS for on-premises IP ranges
+# Forward reverse DNS for the 172.16.0.0/16 on-premises IP range
 aws route53resolver create-resolver-rule \
   --name "forward-reverse-onprem" \
   --rule-type FORWARD \
@@ -163,6 +163,8 @@ aws route53resolver create-resolver-rule \
     'Ip=172.16.2.53,Port=53' \
   --creator-request-id "rule-reverse-$(date +%s)"
 ```
+
+For a larger range such as `172.16.0.0/12`, create equivalent reverse lookup rules for each delegated `in-addr.arpa` zone, such as `16.172.in-addr.arpa` through `31.172.in-addr.arpa`.
 
 Associate each rule with the VPCs that need it:
 
@@ -220,8 +222,8 @@ From an EC2 instance:
 nslookup dc01.corp.local
 dig fileserver.corp.local A +short
 
-# Verify the query goes through the outbound endpoint
-dig +trace fileserver.corp.local
+# Verify the resolver answer without bypassing normal forwarding behavior
+dig fileserver.corp.local
 ```
 
 From an on-premises server:
@@ -240,9 +242,9 @@ If you're running a multi-account setup with AWS Organizations, you can share re
 # Share a resolver rule with your AWS Organization
 aws ram create-resource-share \
   --name "dns-resolver-rules" \
-  --resource-arns "arn:aws:route53resolver:us-east-1:123456789:resolver-rule/rslvr-rr-abc123" \
-  --principals "arn:aws:organizations::123456789:organization/o-abc123" \
-  --permission-arns "arn:aws:ram::aws:permission/ARAMDefaultPermissionResolverRule"
+  --resource-arns "arn:aws:route53resolver:us-east-1:123456789012:resolver-rule/rslvr-rr-abc123" \
+  --principals "arn:aws:organizations::123456789012:organization/o-abc123" \
+  --no-allow-external-principals
 ```
 
 This way, spoke accounts in your organization can associate the forwarding rules with their own VPCs without duplicating the outbound endpoint.
@@ -259,8 +261,13 @@ aws logs create-log-group \
 # Create resolver query log configuration
 aws route53resolver create-resolver-query-log-config \
   --name "hybrid-dns-logs" \
-  --destination-arn "arn:aws:logs:us-east-1:123456789:log-group:/aws/route53resolver/hybrid-dns" \
+  --destination-arn "arn:aws:logs:us-east-1:123456789012:log-group:/aws/route53resolver/hybrid-dns" \
   --creator-request-id "qlog-$(date +%s)"
+
+# Associate the query log configuration with the VPC to log queries from it
+aws route53resolver associate-resolver-query-log-config \
+  --resolver-query-log-config-id rqlc-abc123 \
+  --resource-id vpc-0abc123def
 ```
 
 Common issues to watch for:
