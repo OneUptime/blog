@@ -20,13 +20,13 @@ The architecture has two parts.
 graph TB
     A[Your Backend] -->|Create Meeting| B[Chime SDK API]
     A -->|Create Attendee| B
-    B -->|Meeting + Attendee Tokens| A
-    A -->|Tokens| C[Your Frontend]
+    B -->|Meeting Details + Attendee Join Token| A
+    A -->|Meeting Details + Attendee Info| C[Your Frontend]
     C -->|Join Meeting| D[Chime Media Service]
     D -->|Audio/Video| C
 ```
 
-Your backend calls the Chime SDK API to create meetings and attendees. It gets back tokens that your frontend uses to connect to the Chime media service. All the actual audio/video flows through AWS infrastructure.
+Your backend calls the Chime SDK API to create meetings and attendees. It gets back meeting details and an attendee join token that your frontend uses to connect to the Chime media service. All the actual audio/video flows through AWS infrastructure.
 
 ## Backend Setup
 
@@ -235,7 +235,7 @@ class VideoClient {
 
     // Bind audio output to an HTML audio element
     const audioElement = document.getElementById('meeting-audio');
-    this.meetingSession.audioVideo.bindAudioElement(audioElement);
+    await this.meetingSession.audioVideo.bindAudioElement(audioElement);
 
     // Set up video
     const videoInputDevices = await this.meetingSession.audioVideo.listVideoInputDevices();
@@ -369,10 +369,10 @@ function stopScreenShare(meetingSession) {
 
 ## Pricing and Limits
 
-Chime SDK charges per attendee-minute. As of now, you pay for each minute an attendee is connected to a meeting. Audio-only meetings are cheaper than video meetings. There's no upfront cost or minimum commitment.
+Chime SDK WebRTC media sessions charge per attendee-minute. As of now, you pay for each minute an attendee is connected to a meeting, regardless of whether you use audio, video, or screen share. There's no upfront cost or minimum commitment.
 
-Meetings can have up to 250 attendees by default, with video limited to a smaller number of active video streams.
+Standard meetings can have up to 250 attendees, with 25 concurrent published video streams per meeting by default and 25 concurrent video streams subscribed per attendee.
 
 ## Summary
 
-The Chime SDK gives you production-quality video calling without building media infrastructure. Your backend creates meetings and attendees through the API, your frontend connects using the JavaScript SDK, and AWS handles everything in between - the WebRTC signaling, TURN servers, media routing, and transcoding. Start with basic audio/video, then add features like screen sharing, recording, and chat as you need them.
+The Chime SDK gives you production-quality video calling without building media infrastructure. Your backend creates meetings and attendees through the API, your frontend connects using the JavaScript SDK, and AWS handles everything in between - the WebRTC signaling, TURN servers, and media routing. Start with basic audio/video, then add features like screen sharing, recording, and chat as you need them.
