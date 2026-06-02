@@ -12,7 +12,7 @@ Hardware fails. It doesn't happen often on AWS, but when the physical server und
 
 ## Understanding Status Checks
 
-EC2 runs two types of status checks every minute:
+EC2 runs status checks every minute. The two that matter most for auto recovery are:
 
 **System status checks** detect problems with the underlying hardware or AWS infrastructure:
 - Loss of network connectivity
@@ -28,6 +28,8 @@ EC2 runs two types of status checks every minute:
 - Incompatible kernel
 
 Auto recovery only triggers on system status check failures - problems that are AWS's responsibility, not yours. If your instance has a bad kernel or runs out of memory, auto recovery won't help.
+
+EC2 also has an attached EBS status check for Nitro instances, which detects whether attached EBS volumes are reachable and able to complete I/O. That check is useful for monitoring, but it is separate from the `StatusCheckFailed_System` metric used for instance recovery.
 
 ## Setting Up Auto Recovery with CloudWatch Alarms
 
@@ -66,9 +68,9 @@ You can verify it's enabled:
 
 ```bash
 # Check if auto recovery is enabled on an instance
-aws ec2 describe-instance-status \
+aws ec2 describe-instances \
   --instance-ids i-0abc123 \
-  --query 'InstanceStatuses[0].Events'
+  --query 'Reservations[0].Instances[0].MaintenanceOptions.AutoRecovery'
 ```
 
 To explicitly set the maintenance behavior:
@@ -202,7 +204,7 @@ sequenceDiagram
     CW->>EC2: Trigger ec2:recover action
     EC2->>Old: Stop instance
     EC2->>New: Migrate instance to healthy hardware
-    Note over New: Same instance ID<br/>Same private IP<br/>Same EBS volumes<br/>Same Elastic IP
+    Note over New: Same instance ID<br/>Same private IP<br/>Same public/Elastic IP<br/>Same EBS volumes
     EC2->>New: Start instance
     CW->>CW: Status check passes
     CW-->>CW: Alarm returns to OK
@@ -211,15 +213,16 @@ sequenceDiagram
 Key things that are preserved:
 - Instance ID
 - Private IPv4 address
+- Public IPv4 address
 - Elastic IP address
 - All instance metadata
 - EBS volume attachments
 - Placement group membership
 
 Things that are NOT preserved:
-- Instance store data (ephemeral storage is lost)
 - Data in RAM
-- Public IPv4 address (if not using Elastic IP)
+- Instance store data for CloudWatch action based recovery (ephemeral storage is lost)
+- Operating system uptime
 
 ## Requirements and Limitations
 
@@ -227,11 +230,11 @@ Auto recovery has specific requirements:
 
 **Supported instance types**: Most current-generation instances (C5, M5, R5, T3, etc.). Check the AWS docs for the full list.
 
-**Must use EBS**: Instance store-only instances can't be recovered because there's nowhere to migrate the data.
+**Storage**: Simplified automatic recovery doesn't support instances with instance store volumes. CloudWatch action based recovery supports instance store volumes only on selected instance families, and instance store data is lost during recovery.
 
 **Must be in a VPC**: Classic EC2 instances don't support auto recovery.
 
-**Single instance, not Spot**: Auto recovery doesn't work with Spot instances.
+**Individual instances, not Auto Scaling groups**: Automatic instance recovery mechanisms are designed for individual instances. Instances that are part of an Auto Scaling group aren't supported for simplified or CloudWatch action based recovery; use Auto Scaling health checks and replacement instead.
 
 **Encryption**: EBS volumes can be encrypted - that doesn't affect recovery.
 
@@ -292,11 +295,16 @@ Set up EventBridge to capture and act on recovery events:
 aws events put-rule \
   --name "ec2-auto-recovery" \
   --event-pattern '{
-    "source": ["aws.ec2"],
-    "detail-type": ["EC2 Instance State-change Notification"],
+    "source": ["aws.health"],
+    "detail-type": ["AWS Health Event"],
     "detail": {
-      "state": ["running"],
-      "cause": ["auto-recovery"]
+      "service": ["EC2"],
+      "eventTypeCode": [
+        "AWS_EC2_SIMPLIFIED_AUTO_RECOVERY_SUCCESS",
+        "AWS_EC2_SIMPLIFIED_AUTO_RECOVERY_FAILURE",
+        "AWS_EC2_INSTANCE_AUTO_RECOVERY_SUCCESS",
+        "AWS_EC2_INSTANCE_AUTO_RECOVERY_FAILURE"
+      ]
     }
   }'
 
