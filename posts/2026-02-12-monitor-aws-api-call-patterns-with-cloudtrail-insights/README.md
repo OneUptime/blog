@@ -16,10 +16,10 @@ CloudTrail Insights detects these anomalies automatically. It analyzes your API 
 
 Insights looks at two types of anomalies:
 
-1. **API call rate anomalies**: Unusual increases or decreases in the volume of management API calls
-2. **API error rate anomalies**: Unusual spikes in error rates for management API calls
+1. **API call rate anomalies**: Unusual volume of write management API calls (or data API calls, if you enable Insights for data events on a trail)
+2. **API error rate anomalies**: Unusual spikes in error rates for management API calls (or data API calls, if you enable Insights for data events on a trail)
 
-For each anomaly, Insights tells you which API action is anomalous, the baseline call rate, the actual call rate during the anomaly, and the associated identity and source IP.
+For each anomaly, Insights tells you which API action is anomalous, the baseline call rate, the actual call rate during the anomaly, and top contributing identities, user agents, or error codes.
 
 ```mermaid
 flowchart TD
@@ -34,7 +34,7 @@ flowchart TD
 
 ## Prerequisites
 
-- An active CloudTrail trail (or use the default trail)
+- An active CloudTrail trail that logs the required management events
 - An S3 bucket for insight events (can be the same as your trail bucket)
 - AWS CLI configured with admin permissions
 
@@ -65,7 +65,7 @@ aws cloudtrail put-insight-selectors \
   ]'
 ```
 
-After enabling, Insights needs about 36 hours to establish a baseline. During this period, it is learning what normal looks like for your account. Do not expect insight events right away.
+After enabling Insights on a trail, CloudTrail may take up to 36 hours to begin delivering insight events, provided that unusual activity is detected during that time. During this period, it is learning what normal looks like for your account. Do not expect insight events right away.
 
 ## Step 2: Verify Insights Configuration
 
@@ -74,7 +74,7 @@ After enabling, Insights needs about 36 hours to establish a baseline. During th
 aws cloudtrail get-insight-selectors --trail-name my-trail
 ```
 
-The output should list both insight types as enabled.
+The output should list both insight types as enabled. If the trail was created in a different Region, run the command in the trail's home Region or add the `--region` parameter.
 
 ## Step 3: Set Up EventBridge Rules for Insight Events
 
@@ -97,6 +97,21 @@ aws sns subscribe \
   --protocol email \
   --notification-endpoint ops-team@example.com
 
+# Allow EventBridge to publish to the SNS topic
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:cloudtrail-insights-alerts \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Sid": "PublishEventsToCloudTrailInsightsTopic",
+      "Effect": "Allow",
+      "Principal": {"Service": "events.amazonaws.com"},
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:cloudtrail-insights-alerts"
+    }]
+  }'
+
 # Route insight events to SNS with formatted message
 aws events put-targets \
   --rule cloudtrail-insights-detected \
@@ -105,12 +120,12 @@ aws events put-targets \
     "Arn": "arn:aws:sns:us-east-1:123456789012:cloudtrail-insights-alerts",
     "InputTransformer": {
       "InputPathsMap": {
-        "insightType": "$.detail.insightType",
+        "insightType": "$.detail.insightDetails.insightType",
         "eventName": "$.detail.insightDetails.eventName",
         "eventSource": "$.detail.insightDetails.eventSource",
         "baseline": "$.detail.insightDetails.insightContext.statistics.baseline.average",
         "insight": "$.detail.insightDetails.insightContext.statistics.insight.average",
-        "startTime": "$.detail.insightDetails.insightContext.startTime"
+        "startTime": "$.detail.eventTime"
       },
       "InputTemplate": "\"CloudTrail Insight Detected\\n\\nType: <insightType>\\nAPI: <eventName>\\nService: <eventSource>\\nBaseline Rate: <baseline> calls/min\\nAnomalous Rate: <insight> calls/min\\nStarted: <startTime>\""
     }
@@ -121,18 +136,21 @@ aws events put-targets \
 
 When an anomaly is detected, the insight event contains rich detail. Here is what a typical event looks like:
 
+Sample CloudTrail Insight event for an API call rate anomaly:
+
 ```json
-// Sample CloudTrail Insight event for an API call rate anomaly
 {
   "version": "0",
   "source": "aws.cloudtrail",
   "detail-type": "AWS Insight via CloudTrail",
   "detail": {
-    "insightType": "ApiCallRateInsight",
+    "eventTime": "2026-02-12T14:30:00Z",
+    "eventCategory": "Insight",
     "insightDetails": {
       "state": "Start",
       "eventSource": "ec2.amazonaws.com",
       "eventName": "DescribeInstances",
+      "insightType": "ApiCallRateInsight",
       "insightContext": {
         "statistics": {
           "baseline": {
@@ -158,16 +176,14 @@ When an anomaly is detected, the insight event contains rich detail. Here is wha
               }
             ]
           }
-        ],
-        "startTime": "2026-02-12T14:30:00Z",
-        "endTime": null
+        ]
       }
     }
   }
 }
 ```
 
-The `attributions` section is particularly useful. It shows which identity caused the anomaly, making investigation much faster.
+The `attributions` section is particularly useful. It shows top identities, user agents, or error codes that contributed to the anomaly, making investigation much faster.
 
 ## Step 5: Build a Lambda for Automated Response
 
@@ -183,8 +199,8 @@ iam = boto3.client('iam')
 
 def handler(event, context):
     detail = event['detail']
-    insight_type = detail['insightType']
     insight_details = detail['insightDetails']
+    insight_type = insight_details['insightType']
     event_name = insight_details['eventName']
     event_source = insight_details['eventSource']
 
@@ -237,7 +253,7 @@ The CloudTrail console has a dedicated Insights page where you can browse detect
 
 - A timeline chart showing the baseline and anomalous activity
 - The specific API action involved
-- Top contributing identities and source IPs
+- Top contributing identities, user agents, and error codes
 - Start and end times
 
 This visual view is excellent for post-incident investigation.
@@ -249,18 +265,18 @@ If you have CloudTrail Lake set up, you can query insights events using SQL:
 ```sql
 -- Find all insights in the last 30 days
 SELECT
-    eventTime,
-    eventName,
-    insightDetails.eventSource,
-    insightDetails.insightContext.statistics.baseline.average AS baseline_rate,
-    insightDetails.insightContext.statistics.insight.average AS anomaly_rate
+    eventtime,
+    insighteventname,
+    insighteventsource,
+    insightContext.baselineaverage AS baseline_rate,
+    insightContext.insightaverage AS anomaly_rate
 FROM
     abc123_event_data_store
 WHERE
-    eventCategory = 'Insight'
-    AND eventTime > '2026-01-13 00:00:00'
+    eventcategory = 'Insight'
+    AND eventtime > '2026-01-13 00:00:00'
 ORDER BY
-    eventTime DESC
+    eventtime DESC
 ```
 
 ## What Insights Does NOT Detect
@@ -275,7 +291,7 @@ For these threats, you need AWS GuardDuty, which uses ML models trained on known
 
 ## Cost Considerations
 
-CloudTrail Insights pricing is based on the number of events analyzed. It processes only management events, not data events. For most accounts, the cost is modest, but it scales with your API call volume. If your account generates millions of management API calls per day, the Insights cost can add up.
+CloudTrail Insights pricing is based on the number of events analyzed. In the examples above, it analyzes management events; Insights for data events are supported on trails, but not on CloudTrail Lake event data stores. For most accounts, the cost is modest, but it scales with your API call volume. If your account generates millions of management API calls per day, the Insights cost can add up.
 
 You can reduce costs by enabling Insights only on your production trail, not on every trail.
 
@@ -283,7 +299,7 @@ You can reduce costs by enabling Insights only on your production trail, not on 
 
 **Enable both insight types**: API call rate and error rate anomalies catch different problems. The call rate catches unusual activity volume, while the error rate catches potential permission probing.
 
-**Wait for the baseline**: Do not expect useful insights immediately. The 36-hour baseline period is important. If you make major changes to your workload during this period, the baseline may be inaccurate.
+**Wait for the baseline**: Do not expect useful insights immediately. CloudTrail may take up to 36 hours to begin delivering Insights events for a trail, if unusual activity is detected. If you make major changes to your workload during this period, the baseline may be inaccurate.
 
 **Combine with other detection methods**: Insights is one layer in a defense-in-depth strategy. Pair it with EventBridge rules for specific API patterns (see [detecting unauthorized API calls](https://oneuptime.com/blog/post/2026-02-12-detect-unauthorized-api-calls-with-cloudtrail-and-eventbridge/view)) and GuardDuty for ML-based threat detection.
 
