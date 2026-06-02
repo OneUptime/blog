@@ -14,13 +14,13 @@ You don't set a shard count. You don't configure auto-scaling policies. You just
 
 ## How On-Demand Mode Works
 
-In on-demand mode, Kinesis starts with a baseline capacity and automatically scales up as your throughput increases. It can handle up to double your previous peak write throughput within seconds, and if you sustain a new higher throughput, it adjusts the baseline upward.
+In on-demand mode, Kinesis starts with a baseline capacity and automatically scales up as your throughput increases. It accommodates up to double the previous peak write throughput observed in the last 30 days. If traffic grows to more than double the previous peak within a 15-minute window, you can still see throttling and need to retry those requests.
 
 The key numbers:
-- Default capacity: 4 MB/s write and 8 MB/s read (equivalent to about 4 shards)
-- Scale up: Accommodates up to 2x previous peak within 15 minutes
-- Scale down: Gradual, over a 24-hour period
-- Maximum: Same limits as provisioned mode (account-level shard limits apply)
+- Default capacity: 4 MB/s write and 8 MB/s read, with 4,000 records per second for writes
+- Scale up: Accommodates up to 2x the previous peak write throughput observed in the last 30 days
+- Throttling window: Traffic above 2x the previous peak can be throttled for about 15 minutes
+- Maximum: By default, on-demand streams scale up to 10 GB/s write and 20 GB/s read in US East (N. Virginia), US West (Oregon), and Europe (Ireland), and up to 200 MB/s write and 400 MB/s read in other Regions unless you request an increase
 
 ## Creating an On-Demand Stream
 
@@ -56,7 +56,10 @@ aws kinesis update-stream-mode \
     --stream-arn "arn:aws:kinesis:us-east-1:123456789012:stream/orders-stream" \
     --stream-mode-details '{"StreamMode": "PROVISIONED"}'
 
-# Then set the shard count
+# Wait until the stream is active, then set the shard count
+aws kinesis wait stream-exists \
+    --stream-name "orders-stream"
+
 aws kinesis update-shard-count \
     --stream-name "orders-stream" \
     --target-shard-count 10 \
@@ -75,7 +78,7 @@ The producer code is identical whether you're using on-demand or provisioned mod
 import boto3
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 kinesis = boto3.client('kinesis', region_name='us-east-1')
 
@@ -96,7 +99,7 @@ for i in range(1000):
         'product': 'Widget Pro',
         'quantity': 1,
         'price': 29.99,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     }
     response = send_order_event(order)
     print(f"Sent order {order['order_id']} to shard {response['ShardId']}")
@@ -115,7 +118,7 @@ def send_order_batch(orders):
             'PartitionKey': str(order['customer_id'])
         })
 
-    # PutRecords handles up to 500 records or 5 MB per call
+    # PutRecords handles up to 500 records or 10 MiB per call
     response = kinesis.put_records(
         StreamName='orders-stream',
         Records=records
@@ -151,7 +154,7 @@ The response includes `OpenShardCount`, which tells you how many shards Kinesis 
 Key CloudWatch metrics to watch:
 
 ```bash
-# Check write throttling - should be 0 in on-demand mode
+# Check write throttling - spikes can still happen during rapid ramps or hot partitions
 aws cloudwatch get-metric-statistics \
     --namespace "AWS/Kinesis" \
     --metric-name "WriteProvisionedThroughputExceeded" \
@@ -194,12 +197,12 @@ aws cloudwatch get-metric-statistics \
 **Choose provisioned when:**
 - Your traffic is steady and predictable
 - You want to optimize costs (provisioned is cheaper at steady-state)
-- You need more than the on-demand scaling speed
+- You need fine-grained control over shard splits and partition-key distribution
 - You're running at very high throughput consistently
 
 ## Cost Comparison
 
-On-demand mode charges per GB of data written and read, plus a per-stream-hour charge. Provisioned mode charges per shard-hour. At steady-state with predictable traffic, provisioned is typically 15-20% cheaper. But when you factor in over-provisioning to handle spikes (which is what most people do), on-demand often comes out cheaper.
+On-demand Standard mode charges per GB of data written and read, plus a per-stream-hour charge. Provisioned mode charges per shard-hour and PUT payload units. At steady-state with predictable traffic, provisioned can be cheaper. But when you factor in over-provisioning to handle spikes (which is what most people do), on-demand often comes out cheaper.
 
 Here's a rough comparison:
 
@@ -212,8 +215,7 @@ Provisioned approach:
 - Paying for 15 shards 24/7
 
 On-demand approach:
-- Scales from ~5 shards to ~15 shards during peaks
-- Scales back down after peaks
+- Automatically scales capacity during peaks
 - Pay based on actual data throughput
 ```
 
