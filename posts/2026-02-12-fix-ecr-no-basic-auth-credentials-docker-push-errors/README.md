@@ -28,7 +28,7 @@ If this works, you should see "Login Succeeded" and your push will work. But if 
 
 ## Understanding ECR Authentication
 
-ECR uses temporary authentication tokens. When you call `get-login-password`, AWS returns a token that's valid for 12 hours. Docker stores this token in its config file (usually `~/.docker/config.json`).
+ECR uses temporary authentication tokens. When you call `get-login-password`, AWS returns a token that's valid for 12 hours. Docker stores this token in its configured credential store, or in `~/.docker/config.json` if you haven't configured a credential store.
 
 After 12 hours, the token expires and you need to log in again. This is the number one reason people see this error intermittently - their token expired.
 
@@ -49,11 +49,11 @@ The registry URL must match exactly. A common mistake is to include a repository
 
 ```bash
 # Wrong - don't include the repository name in the login URL
-aws ecr get-login-password | docker login --username AWS --password-stdin \
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin \
     123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app
 
 # Correct - just the registry URL
-aws ecr get-login-password | docker login --username AWS --password-stdin \
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin \
     123456789012.dkr.ecr.us-east-1.amazonaws.com
 ```
 
@@ -99,11 +99,16 @@ Instead of manually logging in every 12 hours, use the Amazon ECR Docker Credent
 # On macOS
 brew install docker-credential-helper-ecr
 
-# On Amazon Linux / RHEL
+# On Amazon Linux 2023
+sudo dnf install -y amazon-ecr-credential-helper
+
+# On Amazon Linux 2
+sudo amazon-linux-extras enable docker
 sudo yum install amazon-ecr-credential-helper
 
-# On Ubuntu/Debian
-sudo apt-get install amazon-ecr-credential-helper
+# On Ubuntu 19.04+ / Debian Buster+
+sudo apt update
+sudo apt install amazon-ecr-credential-helper
 ```
 
 Configure Docker to use it by editing `~/.docker/config.json`:
@@ -202,7 +207,6 @@ The IAM user or role running `get-login-password` needs the `ecr:GetAuthorizatio
             "Effect": "Allow",
             "Action": [
                 "ecr:BatchCheckLayerAvailability",
-                "ecr:GetDownloadUrlForLayer",
                 "ecr:BatchGetImage",
                 "ecr:PutImage",
                 "ecr:InitiateLayerUpload",
