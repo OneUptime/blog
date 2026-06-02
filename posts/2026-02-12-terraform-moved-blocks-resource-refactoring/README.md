@@ -223,7 +223,7 @@ If someone runs Terraform after the moved block is removed but before they've ap
 
 ```hcl
 # It's safe to leave moved blocks in your code
-# They have no effect after the first apply
+# They cause no further changes once an environment has applied them
 moved {
   from = aws_instance.web
   to   = aws_instance.app_server
@@ -244,9 +244,9 @@ Here's why moved blocks are better than `terraform state mv`:
 | Repeatable | Yes | No |
 | Works across environments | Yes | Manual per env |
 | Rollback-friendly | Yes | Difficult |
-| Requires state access | No | Yes |
+| Requires manual state editing | No | Yes |
 
-The only time you still need `terraform state mv` is when you're splitting or merging state files, which moved blocks don't support.
+Moved blocks only work within the same state. If you're moving resources between separate state files, use configuration-driven `removed` and `import` blocks, or `terraform state mv` for legacy workflows.
 
 ## Chaining Moves
 
