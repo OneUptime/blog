@@ -8,7 +8,7 @@ Description: Learn how to use security group referencing to build layered, dynam
 
 ---
 
-Most people configure security groups with CIDR blocks - allowing traffic from specific IP ranges. That works, but it's brittle. Every time an IP changes, you're updating rules. Security group referencing is a better approach. Instead of specifying IP addresses, you reference another security group. Any instance in that referenced group is automatically allowed, even if IPs change or new instances spin up.
+Most people configure security groups with CIDR blocks - allowing traffic from specific IP ranges. That works, but it can be brittle if you're allowing individual instance IPs. Every time an IP changes, you're updating rules. Security group referencing is a better approach. Instead of specifying IP addresses, you reference another security group. Any network interface in that referenced group is automatically allowed, even if IPs change or new instances spin up.
 
 This is the foundation of layered security in AWS.
 
@@ -51,7 +51,7 @@ Now any instance in `frontend-sg` can reach port 8080 on any instance in `backen
 
 ## Why This Matters for Auto Scaling
 
-In an auto-scaling environment, instances come and go constantly. Their IP addresses change every time. If you used CIDR blocks, you'd need to update security group rules every time an instance launches or terminates.
+In an auto-scaling environment, instances come and go constantly. Their IP addresses change every time. If you used individual instance IPs in CIDR rules, you'd need to update security group rules every time an instance launches or terminates.
 
 With security group referencing, the scaling is seamless:
 
@@ -137,7 +137,7 @@ aws ec2 authorize-security-group-ingress \
   --protocol tcp --port 5432 --source-group $API_SG
 ```
 
-Each tier is completely isolated from non-adjacent tiers. The database can't be reached directly from the web tier. The cache can't be reached from the load balancer. Traffic must flow through each layer in order.
+Each tier is isolated according to the rules you define. The database can't be reached directly from the web tier. The cache can't be reached from the load balancer. Traffic can only flow along the allowed relationships.
 
 ## Self-Referencing Security Groups
 
@@ -172,7 +172,7 @@ aws ec2 authorize-security-group-ingress \
 
 ## Cross-Account References
 
-Security group referencing works across AWS accounts within the same VPC peering connection or Transit Gateway attachment. The syntax includes the account ID:
+Security group referencing also works across AWS accounts in supported cases, such as shared VPCs, VPC peering, or inbound rules across VPCs attached to the same Transit Gateway in the same Region when security group referencing is enabled. The syntax includes the account ID:
 
 ```bash
 # Allow traffic from a security group in another account
@@ -265,11 +265,11 @@ resource "aws_security_group" "db" {
 
 ## Common Mistakes to Avoid
 
-**Using CIDR blocks for internal traffic** - If two security groups are in the same VPC, always use security group references instead of CIDR blocks. CIDRs break when IPs change.
+**Using CIDR blocks for internal traffic** - If two security groups are in the same VPC and traffic is not routed through a middlebox appliance, prefer security group references instead of instance-specific CIDR blocks. Instance IP CIDRs break when IPs change.
 
 **Overly broad self-references** - Don't open all ports with a self-reference unless you really need it. Specify only the ports your cluster protocol requires.
 
-**Forgetting outbound rules** - If you've restricted outbound traffic (which you should in production), make sure outbound rules also use security group references where applicable.
+**Forgetting outbound rules** - If you've restricted outbound traffic (which you should in production), make sure outbound rules also use security group references where applicable. Security group references in outbound rules work within the same VPC or over VPC peering, but not over Transit Gateway.
 
 **Not tagging security groups** - When you have dozens of security groups with cross-references, good names and tags are essential for keeping track of what connects to what.
 
@@ -290,6 +290,6 @@ aws ec2 describe-security-groups \
 
 ## Wrapping Up
 
-Security group referencing is the right way to handle inter-tier communication in AWS. It's dynamic, scales with auto-scaling, works across accounts via peering, and creates clear, auditable relationships between your application tiers. Every multi-tier architecture should use this pattern instead of CIDR-based rules for internal traffic.
+Security group referencing is the right way to handle inter-tier communication in AWS. It's dynamic, scales with auto-scaling, works across accounts in supported peering, shared VPC, and Transit Gateway scenarios, and creates clear, auditable relationships between your application tiers. Every multi-tier architecture should use this pattern instead of instance-specific CIDR-based rules for internal traffic.
 
 For the broader picture on securing your network, see our guides on [security group configurations for common architectures](https://oneuptime.com/blog/post/2026-02-12-security-group-rules-common-architectures/view) and [Network ACLs for subnet-level security](https://oneuptime.com/blog/post/2026-02-12-network-acls-subnet-level-security/view).
