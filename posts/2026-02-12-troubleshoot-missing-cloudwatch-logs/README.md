@@ -58,8 +58,9 @@ If you're using the CloudWatch agent on EC2 to send logs, check these:
 
 The agent config must include a `logs` section:
 
+CloudWatch agent config with log collection:
+
 ```json
-// CloudWatch agent config with log collection
 {
   "logs": {
     "logs_collected": {
@@ -69,7 +70,6 @@ The agent config must include a `logs` section:
             "file_path": "/var/log/app/application.log",
             "log_group_name": "/app/production/application",
             "log_stream_name": "{instance_id}",
-            "timezone": "UTC",
             "retention_in_days": 30
           },
           {
@@ -144,8 +144,9 @@ aws iam list-attached-role-policies --role-name <role-name>
 
 Required permissions:
 
+Minimum log permissions for Lambda:
+
 ```json
-// Minimum log permissions for Lambda
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -156,7 +157,7 @@ Required permissions:
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:*:*:*"
+      "Resource": "*"
     }
   ]
 }
@@ -170,9 +171,9 @@ aws logs create-log-group \
   --log-group-name "/aws/lambda/my-function"
 ```
 
-### VPC Lambda
+### Lambda Managed Instances or Direct Logs API Calls in a VPC
 
-If your Lambda function is in a VPC, it needs a route to the CloudWatch Logs endpoint. Either:
+Standard Lambda runtime logs are delivered by Lambda when the execution role has the right permissions. If you're using Lambda Managed Instances, or your function code or an extension calls the CloudWatch Logs API directly from inside a VPC, it needs a route to the CloudWatch Logs endpoint. Either:
 
 1. Add a NAT gateway to the VPC
 2. Create a VPC endpoint for CloudWatch Logs:
@@ -216,8 +217,9 @@ For ECS tasks using the `awslogs` log driver:
 
 The log configuration must be correct in the container definition:
 
+ECS container definition with correct log configuration:
+
 ```json
-// ECS container definition with correct log configuration
 {
   "name": "my-app",
   "image": "my-app:latest",
@@ -233,14 +235,15 @@ The log configuration must be correct in the container definition:
 }
 ```
 
-Note the `awslogs-create-group` option. If this is `false` or missing, the log group must already exist. If it doesn't, the task will fail to start or start but silently drop logs.
+Note the `awslogs-create-group` option. If this is `false` or missing, the log group must already exist. If it doesn't, the task can fail to start with a log driver initialization error.
 
 ### Check the ECS Task Execution Role
 
-The task **execution role** (not the task role) needs log permissions:
+For Fargate tasks, the task **execution role** (not the task role) needs log permissions. For EC2 launch type tasks, the container instance role or assigned task execution role must have the permissions used by the `awslogs` log driver:
+
+ECS task execution role permissions for logging:
 
 ```json
-// ECS task execution role permissions for logging
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -248,14 +251,15 @@ The task **execution role** (not the task role) needs log permissions:
       "Effect": "Allow",
       "Action": [
         "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:CreateLogGroup"
+        "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:*:*:*"
+      "Resource": "*"
     }
   ]
 }
 ```
+
+If you rely on `awslogs-create-group`, also grant `logs:CreateLogGroup`.
 
 ### Check if the Task is Running
 
@@ -277,17 +281,18 @@ If tasks are stopping with log-related errors, the issue is usually the executio
 
 ## Other AWS Service Logs Missing
 
-### API Gateway Execution Logs
+### API Gateway Access and Execution Logs
 
 API Gateway doesn't send logs by default. You need to enable them:
 
 ```bash
-# Enable API Gateway execution logging
+# Enable API Gateway access logging and execution logging
 aws apigateway update-stage \
   --rest-api-id abc123 \
   --stage-name prod \
   --patch-operations \
-    op=replace,path=/accessLogSetting/destinationArn,value=arn:aws:logs:us-east-1:123456789012:log-group:/apigateway/prod \
+    op=replace,path=/accessLogSettings/destinationArn,value=arn:aws:logs:us-east-1:123456789012:log-group:/apigateway/prod \
+    'op=replace,path=/accessLogSettings/format,value={"requestId":"$context.requestId","extendedRequestId":"$context.extendedRequestId","sourceIp":"$context.identity.sourceIp","httpMethod":"$context.httpMethod","resourcePath":"$context.resourcePath","status":"$context.status"}' \
     op=replace,path=/*/*/logging/loglevel,value=INFO
 ```
 
@@ -323,8 +328,8 @@ If logs existed before but are gone now:
 ```bash
 # Check if the log group has a retention policy that may have expired old data
 aws logs describe-log-groups \
-  --log-group-name "/your/log/group" \
-  --query "logGroups[0].retentionInDays"
+  --log-group-name-prefix "/your/log/group" \
+  --query "logGroups[?logGroupName=='/your/log/group'].retentionInDays | [0]"
 ```
 
 If retention is set to a short period (like 1 day), older logs will be automatically deleted. Set a more appropriate retention:
@@ -368,12 +373,12 @@ flowchart TD
 | Problem | Fix |
 |---------|-----|
 | Log group doesn't exist | Create it or enable auto-creation |
-| Permission denied | Add `logs:CreateLogStream`, `logs:PutLogEvents` to the IAM role |
+| Permission denied | Add `logs:CreateLogStream`, `logs:PutLogEvents`, and `logs:CreateLogGroup` if the source creates groups |
 | VPC connectivity | Add NAT gateway or VPC endpoint for logs |
 | Agent not collecting files | Verify `file_path` in config and file permissions |
 | Wrong region | Check resource region matches CloudWatch console region |
 | Retention expired | Set a longer retention period |
-| Lambda in VPC | Add VPC endpoint for CloudWatch Logs service |
+| Lambda Managed Instances or direct Logs API calls in a VPC | Add VPC endpoint for CloudWatch Logs service |
 
 For issues with the CloudWatch agent not sending metrics (which often accompanies log issues), see our guide on [troubleshooting the CloudWatch agent](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-cloudwatch-agent-not-sending-metrics/view).
 
