@@ -21,7 +21,7 @@ Resources:
   CreateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Timeout: 30
       MemorySize: 256
       Tracing: Active
@@ -34,7 +34,7 @@ Resources:
   ReadFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: nodejs20.x     # Same
+      Runtime: nodejs24.x     # Same
       Timeout: 30              # Same
       MemorySize: 256          # Same
       Tracing: Active          # Same
@@ -47,7 +47,7 @@ Resources:
   UpdateFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: nodejs20.x     # Same again
+      Runtime: nodejs24.x     # Same again
       Timeout: 30
       MemorySize: 256
       Tracing: Active
@@ -72,7 +72,7 @@ Transform: AWS::Serverless-2016-10-31
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Timeout: 30
     MemorySize: 256
     Tracing: Active
@@ -102,14 +102,14 @@ Much cleaner. Each function inherits runtime, timeout, memory, tracing, and envi
 
 ## What Globals Support
 
-Globals work with three resource types:
+Globals work with several SAM resource types, including `AWS::Serverless::Api`, `AWS::Serverless::CapacityProvider`, `AWS::Serverless::Function`, `AWS::Serverless::HttpApi`, `AWS::Serverless::SimpleTable`, and `AWS::Serverless::StateMachine`. These are the three you'll use most often:
 
 **Function** (AWS::Serverless::Function):
 
 ```yaml
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Handler: index.handler
     Timeout: 30
     MemorySize: 256
@@ -151,12 +151,15 @@ Globals:
   HttpApi:
     Auth:
       DefaultAuthorizer: OAuth2
-    CorsConfiguration:
-      AllowMethods:
-        - GET
-        - POST
-      AllowOrigins:
-        - https://myapp.com
+      Authorizers:
+        OAuth2:
+          JwtConfiguration:
+            issuer: https://www.example.com/oauth2
+            audience:
+              - my-api
+          IdentitySource: "$request.header.Authorization"
+    StageVariables:
+      Environment: prod
 ```
 
 ## Overriding Globals
@@ -168,7 +171,7 @@ This shows a function that overrides the global timeout and adds extra environme
 ```yaml
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Timeout: 10
     MemorySize: 256
     Environment:
@@ -245,7 +248,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     Timeout: 30
     MemorySize: !Ref MemorySize
     Environment:
@@ -297,6 +300,10 @@ Parameters:
     Type: String
     Default: dev
 
+  AlertEmail:
+    Type: String
+    Default: ""
+
 Conditions:
   IsProduction: !Equals [!Ref Environment, prod]
   HasAlertEmail: !Not [!Equals [!Ref AlertEmail, ""]]
@@ -337,6 +344,15 @@ When you have multiple values that vary together by environment, Mappings are cl
 This uses a mapping to set environment-specific configurations:
 
 ```yaml
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+
 Mappings:
   EnvironmentConfig:
     dev:
@@ -357,7 +373,7 @@ Mappings:
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs24.x
     MemorySize: !FindInMap [EnvironmentConfig, !Ref Environment, MemorySize]
     Timeout: !FindInMap [EnvironmentConfig, !Ref Environment, Timeout]
     Environment:
