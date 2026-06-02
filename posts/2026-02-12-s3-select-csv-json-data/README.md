@@ -8,7 +8,7 @@ Description: Guide to using S3 Select to query CSV, JSON, and Parquet data direc
 
 ---
 
-S3 Select lets you run SQL queries directly against objects stored in S3. Instead of downloading a 10 GB CSV file to find 50 rows, S3 Select reads the file server-side and returns only the matching data. This can reduce data transfer by up to 400x and speed up queries dramatically.
+S3 Select lets existing S3 Select customers run SQL queries directly against objects stored in S3. AWS closed new customer access to S3 Select on July 25, 2024, but existing customers can continue using it. Instead of downloading a 10 GB CSV file to find 50 rows, S3 Select reads the file server-side and returns only the matching data. This can reduce data transfer significantly and speed up queries dramatically.
 
 It's not a replacement for Athena or Redshift - those are for complex analytics. S3 Select is for simple, fast filtering on individual objects.
 
@@ -119,7 +119,7 @@ s3 = boto3.client('s3')
 def query_csv(bucket, key, sql_expression):
     """
     Run an S3 Select query against a CSV file
-    and return the results as a list of strings.
+    and return the results as a string.
     """
     response = s3.select_object_content(
         Bucket=bucket,
@@ -157,7 +157,7 @@ def query_csv(bucket, key, sql_expression):
 result = query_csv(
     'analytics-bucket',
     'sales/2025-data.csv',
-    "SELECT date, product, revenue FROM s3object s WHERE s.region = 'us-east' AND CAST(s.revenue AS FLOAT) > 10000 ORDER BY s.revenue DESC"
+    "SELECT date, product, revenue FROM s3object s WHERE s.region = 'us-east' AND CAST(s.revenue AS FLOAT) > 10000"
 )
 
 print(result)
@@ -210,7 +210,7 @@ for error in errors:
 
 ## Querying Compressed Files
 
-S3 Select can query gzipped and bzip2 compressed files directly. You don't need to decompress first.
+S3 Select can query CSV and JSON files compressed with gzip or bzip2 directly. You don't need to decompress first. For Parquet, S3 Select supports columnar compression such as GZIP or Snappy, but not whole-object compression.
 
 ```python
 # Query a gzipped CSV
@@ -277,9 +277,9 @@ S3 Select has some important constraints.
 - **Single object queries only** - You can't join or query across multiple objects. Use Athena for that.
 - **No UPDATE or DELETE** - It's read-only.
 - **Limited SQL** - No JOINs, subqueries, GROUP BY, or window functions.
-- **Max result size** - Results are limited based on your S3 Select output.
+- **Record size limits** - The maximum length of an input or result record is 1 MB. The S3 console also limits returned data to 40 MB; use the CLI or API for larger result streams.
 - **Supported formats** - CSV, JSON, and Parquet only.
-- **Max object size** - Works best with objects under a few GB.
+- **Max object size** - S3 Select supports querying objects up to 5 TB, but performance and cost depend on the amount of data scanned and returned.
 
 ## When to Use S3 Select vs Alternatives
 
@@ -295,7 +295,7 @@ For ETL pipelines that process S3 data at scale, check out our guide on [integra
 
 ## Cost Savings
 
-S3 Select charges based on data scanned and data returned. Since you're scanning the same amount of data regardless, the real savings come from:
+S3 Select charges based on data scanned and data returned. For row-oriented CSV and JSON objects, queries often still scan much of the object, so the savings usually come from:
 
 1. **Reduced data transfer** - Pay for less egress
 2. **Reduced compute** - Your application processes less data
