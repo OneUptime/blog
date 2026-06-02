@@ -10,7 +10,7 @@ Description: Learn how to use Route 53 geoproximity routing with Traffic Flow to
 
 Geoproximity routing is the most flexible geographic routing option in Route 53. It routes traffic based on the physical distance between your users and your resources, but with a twist - you can add a bias to expand or shrink the geographic area that routes to each endpoint. This means you can shift traffic between regions without changing your infrastructure, just by adjusting a number.
 
-Geoproximity routing requires Route 53 Traffic Flow, which is a visual policy editor for building complex routing configurations. You can't create geoproximity records with simple CLI commands the way you can with other routing policies.
+You can create geoproximity records directly in Route 53, but Route 53 Traffic Flow is useful when you want a visual policy editor, versioning, policy records, or combinations of multiple routing rules.
 
 ## How Geoproximity Routing Works
 
@@ -27,7 +27,7 @@ graph LR
 
 ## Creating a Traffic Flow Policy
 
-Since geoproximity routing requires Traffic Flow, you create a traffic policy that defines the routing logic, then create a policy record that applies it to your domain.
+With Traffic Flow, you create a traffic policy that defines the routing logic, then create a policy record that applies it to your domain.
 
 Here's a traffic policy that routes to three regions with bias adjustments.
 
@@ -43,32 +43,32 @@ Here's a traffic policy that routes to three regions with bias adjustments.
         {
           "EndpointReference": "usEast",
           "Region": "aws:route53:us-east-1",
-          "Bias": 10
+          "Bias": "10"
         },
         {
           "EndpointReference": "euWest",
           "Region": "aws:route53:eu-west-1",
-          "Bias": 0
+          "Bias": "0"
         },
         {
           "EndpointReference": "apSoutheast",
           "Region": "aws:route53:ap-southeast-1",
-          "Bias": -10
+          "Bias": "-10"
         }
       ]
     }
   },
   "Endpoints": {
     "usEast": {
-      "Type": "elastic-load-balancer",
+      "Type": "application-load-balancer",
       "Value": "us-east-alb-123.us-east-1.elb.amazonaws.com"
     },
     "euWest": {
-      "Type": "elastic-load-balancer",
+      "Type": "application-load-balancer",
       "Value": "eu-west-alb-456.eu-west-1.elb.amazonaws.com"
     },
     "apSoutheast": {
-      "Type": "elastic-load-balancer",
+      "Type": "application-load-balancer",
       "Value": "ap-se-alb-789.ap-southeast-1.elb.amazonaws.com"
     }
   }
@@ -115,12 +115,12 @@ Geoproximity routing also works with non-AWS endpoints. For resources not in AWS
       "EndpointReference": "onPremDC",
       "Latitude": "40.7128",
       "Longitude": "-74.0060",
-      "Bias": 0
+      "Bias": "0"
     },
     {
       "EndpointReference": "awsRegion",
       "Region": "aws:route53:us-east-1",
-      "Bias": 0
+      "Bias": "0"
     }
   ]
 }
@@ -130,20 +130,37 @@ This is useful in hybrid deployments where you have on-premises data centers alo
 
 ## Combining with Health Checks
 
-Traffic Flow policies can include health checks. When an endpoint fails its health check, its geoproximity area collapses to zero and nearby endpoints absorb the traffic.
+Traffic Flow policies can include health checks on rule items. When an endpoint fails its health check, Route 53 stops routing to that endpoint while other healthy endpoints can answer.
 
 ```json
 {
+  "Rules": {
+    "geoProximityRule": {
+      "RuleType": "geoproximity",
+      "GeoproximityLocations": [
+        {
+          "EndpointReference": "usEast",
+          "Region": "aws:route53:us-east-1",
+          "Bias": "0",
+          "HealthCheck": "health-check-id-us"
+        },
+        {
+          "EndpointReference": "euWest",
+          "Region": "aws:route53:eu-west-1",
+          "Bias": "0",
+          "HealthCheck": "health-check-id-eu"
+        }
+      ]
+    }
+  },
   "Endpoints": {
     "usEast": {
-      "Type": "elastic-load-balancer",
-      "Value": "us-east-alb.us-east-1.elb.amazonaws.com",
-      "HealthCheck": "health-check-id-us"
+      "Type": "application-load-balancer",
+      "Value": "us-east-alb.us-east-1.elb.amazonaws.com"
     },
     "euWest": {
-      "Type": "elastic-load-balancer",
-      "Value": "eu-west-alb.eu-west-1.elb.amazonaws.com",
-      "HealthCheck": "health-check-id-eu"
+      "Type": "application-load-balancer",
+      "Value": "eu-west-alb.eu-west-1.elb.amazonaws.com"
     }
   }
 }
@@ -163,16 +180,14 @@ The real power of Traffic Flow is combining multiple routing types. Here's a pol
       "RuleType": "geoproximity",
       "GeoproximityLocations": [
         {
-          "EndpointReference": null,
           "RuleReference": "usWeightedRule",
           "Region": "aws:route53:us-east-1",
-          "Bias": 0
+          "Bias": "0"
         },
         {
-          "EndpointReference": null,
           "RuleReference": "euWeightedRule",
           "Region": "aws:route53:eu-west-1",
-          "Bias": 0
+          "Bias": "0"
         }
       ]
     },
@@ -181,11 +196,11 @@ The real power of Traffic Flow is combining multiple routing types. Here's a pol
       "Items": [
         {
           "EndpointReference": "usProd",
-          "Weight": 90
+          "Weight": "90"
         },
         {
           "EndpointReference": "usCanary",
-          "Weight": 10
+          "Weight": "10"
         }
       ]
     },
@@ -194,30 +209,30 @@ The real power of Traffic Flow is combining multiple routing types. Here's a pol
       "Items": [
         {
           "EndpointReference": "euProd",
-          "Weight": 95
+          "Weight": "95"
         },
         {
           "EndpointReference": "euCanary",
-          "Weight": 5
+          "Weight": "5"
         }
       ]
     }
   },
   "Endpoints": {
     "usProd": {
-      "Type": "elastic-load-balancer",
+      "Type": "application-load-balancer",
       "Value": "us-prod-alb.us-east-1.elb.amazonaws.com"
     },
     "usCanary": {
-      "Type": "elastic-load-balancer",
+      "Type": "application-load-balancer",
       "Value": "us-canary-alb.us-east-1.elb.amazonaws.com"
     },
     "euProd": {
-      "Type": "elastic-load-balancer",
+      "Type": "application-load-balancer",
       "Value": "eu-prod-alb.eu-west-1.elb.amazonaws.com"
     },
     "euCanary": {
-      "Type": "elastic-load-balancer",
+      "Type": "application-load-balancer",
       "Value": "eu-canary-alb.eu-west-1.elb.amazonaws.com"
     }
   }
@@ -241,23 +256,23 @@ resource "aws_route53_traffic_policy" "geoproximity" {
           {
             EndpointReference = "usEast"
             Region           = "aws:route53:us-east-1"
-            Bias             = 10
+            Bias             = "10"
           },
           {
             EndpointReference = "euWest"
             Region           = "aws:route53:eu-west-1"
-            Bias             = 0
+            Bias             = "0"
           }
         ]
       }
     }
     Endpoints = {
       usEast = {
-        Type  = "elastic-load-balancer"
+        Type  = "application-load-balancer"
         Value = aws_lb.us_east.dns_name
       }
       euWest = {
-        Type  = "elastic-load-balancer"
+        Type  = "application-load-balancer"
         Value = aws_lb.eu_west.dns_name
       }
     }
@@ -277,7 +292,7 @@ resource "aws_route53_traffic_policy_instance" "main" {
 
 Traffic Flow policies cost $50 per month per policy record. That's per domain name you apply the policy to, not per endpoint. If you use the same policy for `app.example.com` and `api.example.com`, that's $100/month.
 
-This pricing makes Traffic Flow cost-effective for important domains but less practical for hundreds of records. For simpler geographic routing without bias control, regular geolocation routing (see https://oneuptime.com/blog/post/2026-02-12-route-53-geolocation-routing-policy/view) is free beyond standard query charges.
+This pricing makes Traffic Flow cost-effective for important domains but less practical for hundreds of records. For simpler geographic routing without Traffic Flow's policy editor, versioning, and routing-rule combinations, direct geoproximity records or regular geolocation routing (see https://oneuptime.com/blog/post/2026-02-12-route-53-geolocation-routing-policy/view) avoid Traffic Flow policy-record charges.
 
 ## Versioning and Rollback
 
