@@ -27,15 +27,15 @@ The process looks like this:
 sequenceDiagram
     participant Admin
     participant ECS
-    participant ALB
+    participant LB
     participant Instance
 
     Admin->>ECS: Set instance to DRAINING
     ECS->>ECS: Stop scheduling new tasks
-    ECS->>ALB: Deregister targets
-    ALB->>ALB: Wait for deregistration delay
-    ALB->>ALB: Drain active connections
-    ALB->>ECS: Target deregistered
+    ECS->>LB: Deregister targets
+    LB->>LB: Wait for deregistration delay
+    LB->>LB: Drain active connections
+    LB->>ECS: Target deregistered
     ECS->>Instance: Stop tasks
     Instance->>ECS: Tasks stopped
     ECS->>Admin: Instance drained
@@ -68,9 +68,9 @@ For services that handle short-lived HTTP requests, 30 seconds is usually plenty
 
 ## Long-Running Connections Preventing Drain
 
-If your service handles long-lived connections (like WebSockets, gRPC streams, or persistent HTTP connections), these connections won't close until the deregistration delay expires or the client disconnects.
+If your service handles long-lived connections (like WebSockets, gRPC streams, or persistent HTTP connections), these connections can keep the target draining until the deregistration delay expires or the client disconnects.
 
-You can configure connection draining behavior:
+For Network Load Balancer target groups, you can configure connection termination behavior:
 
 ```bash
 # Enable connection termination when deregistration delay expires
@@ -79,11 +79,11 @@ aws elbv2 modify-target-group-attributes \
     --attributes Key=deregistration_delay.connection_termination.enabled,Value=true
 ```
 
-This forcefully closes connections when the delay period ends instead of waiting indefinitely.
+This closes connections to deregistered targets shortly after the delay period ends. Application Load Balancer target groups support the deregistration delay setting, but not this connection termination attribute.
 
 ## Tasks Not Stopping
 
-Sometimes the issue isn't the drain itself but that tasks won't stop. ECS sends a SIGTERM to the container, then waits for `stopTimeout` before sending SIGKILL.
+Sometimes the issue isn't the drain itself but that tasks won't stop. ECS sends the container stop signal, which defaults to SIGTERM, then waits for `stopTimeout` before sending SIGKILL.
 
 Check your task definition's stop timeout:
 
@@ -99,7 +99,7 @@ Check your task definition's stop timeout:
 }
 ```
 
-The default `stopTimeout` is 30 seconds for Fargate and 30 seconds for EC2 launch type (configurable via ECS agent). If your application doesn't handle SIGTERM properly, it'll hang until the timeout.
+The default `stopTimeout` is 30 seconds for Fargate and 30 seconds for EC2 launch type (configurable via ECS agent). If your application doesn't handle the stop signal properly, it'll hang until the timeout.
 
 Make sure your application handles SIGTERM:
 
@@ -108,9 +108,12 @@ Make sure your application handles SIGTERM:
 import signal
 import sys
 
+def cleanup():
+    # Close database connections, finish current requests, etc.
+    pass
+
 def handle_sigterm(signum, frame):
     print("Received SIGTERM, shutting down gracefully...")
-    # Close database connections, finish current requests, etc.
     cleanup()
     sys.exit(0)
 
