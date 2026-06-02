@@ -18,13 +18,13 @@ Before you can generate policies with Access Analyzer, you need:
 
 - An AWS account with administrative access
 - CloudTrail enabled and logging API calls (we'll cover this briefly)
-- At least 90 days of CloudTrail data for meaningful policy generation
+- Enough representative CloudTrail data for meaningful policy generation (Access Analyzer can analyze up to 90 days at a time)
 
 If you haven't set up CloudTrail yet, check out our guide on [enabling AWS CloudTrail for API auditing](https://oneuptime.com/blog/post/2026-02-12-enable-aws-cloudtrail-api-auditing/view).
 
 ## How Access Analyzer Policy Generation Works
 
-Access Analyzer examines CloudTrail logs over a specified time window and identifies which AWS services and actions a role or user actually called. It then produces a least-privilege policy that covers exactly those actions - nothing more.
+Access Analyzer examines CloudTrail logs over a specified time window and identifies which AWS services and actions a role or user actually called. It then produces a policy template based on that activity, which you can review and refine into a least-privilege policy.
 
 ```mermaid
 flowchart LR
@@ -44,7 +44,13 @@ Access Analyzer needs CloudTrail data to work. Here's a quick check using the AW
 ```bash
 # List existing trails to see if CloudTrail is already configured
 
-aws cloudtrail describe-trails --query 'trailList[*].{Name:Name,IsMultiRegion:IsMultiRegionTrail,IsLogging:HasCustomEventSelectors}'
+aws cloudtrail describe-trails \
+  --query 'trailList[*].{Name:Name,HomeRegion:HomeRegion,IsMultiRegion:IsMultiRegionTrail}'
+
+# Check whether a specific trail is logging
+aws cloudtrail get-trail-status \
+  --name my-org-trail \
+  --query 'IsLogging'
 ```
 
 If you don't have a trail, create one:
@@ -86,22 +92,22 @@ Now here's where it gets interesting. You pick a role and a time window, and Acc
 
 ```bash
 # Start policy generation for a specific IAM role
-# This analyzes the last 90 days of CloudTrail activity
+# This analyzes up to 90 days of CloudTrail activity
 aws accessanalyzer start-policy-generation \
   --policy-generation-details '{
-    "principalArn": "arn:aws:iam::123456789012:role/MyAppRole",
-    "cloudTrailDetails": {
-      "trails": [
-        {
-          "cloudTrailArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/my-org-trail",
-          "regions": ["us-east-1"],
-          "allRegions": false
-        }
-      ],
-      "accessRole": "arn:aws:iam::123456789012:role/AccessAnalyzerMonitorServiceRole",
-      "startTime": "2025-11-01T00:00:00Z",
-      "endTime": "2026-02-01T00:00:00Z"
-    }
+    "principalArn": "arn:aws:iam::123456789012:role/MyAppRole"
+  }' \
+  --cloud-trail-details '{
+    "trails": [
+      {
+        "cloudTrailArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/my-org-trail",
+        "regions": ["us-east-1"],
+        "allRegions": false
+      }
+    ],
+    "accessRole": "arn:aws:iam::123456789012:role/AccessAnalyzerMonitorServiceRole",
+    "startTime": "2025-11-03T00:00:00Z",
+    "endTime": "2026-02-01T00:00:00Z"
   }'
 ```
 
@@ -165,15 +171,15 @@ The output will be a JSON policy document. Here's an example of what you might s
 }
 ```
 
-Notice how the policy only includes the specific actions and resources that were actually used. No wildcards, no extra permissions.
+Notice how the policy includes the actions that were actually used. Access Analyzer can also return resource placeholders, wildcard resources, or service-level templates for services where action-level information isn't complete, so you still need to review the result.
 
 ## Step 6: Review and Refine
 
 Don't just blindly apply the generated policy. There are a few things to check:
 
 1. **Missing seasonal actions** - If a task only runs monthly or quarterly, it might not show up in the analysis window.
-2. **Resource ARNs** - Access Analyzer sometimes includes specific resource ARNs. Consider whether you need slightly broader patterns.
-3. **Service-linked roles** - Some actions might be performed by service-linked roles rather than your application role.
+2. **Resource ARNs** - Access Analyzer sometimes includes resource placeholders or wildcard resources. Replace placeholders and consider whether you need narrower or slightly broader patterns.
+3. **Unsupported action-level data** - Access Analyzer does not identify action-level activity for data events such as Amazon S3 data events, and `iam:PassRole` is not included in generated policies.
 
 Here's a Python script that helps you compare the generated policy against the current policy:
 
@@ -257,40 +263,41 @@ def lambda_handler(event, context):
     iam = boto3.client("iam")
     analyzer = boto3.client("accessanalyzer")
 
-    # Get all roles with a specific tag
-    roles = iam.list_roles()["Roles"]
+    # Get all roles
+    paginator = iam.get_paginator("list_roles")
 
-    for role in roles:
-        # Skip service-linked roles
-        if role["Path"].startswith("/aws-service-role/"):
-            continue
+    for page in paginator.paginate():
+        for role in page["Roles"]:
+            # Skip service-linked roles
+            if role["Path"].startswith("/aws-service-role/"):
+                continue
 
-        end_time = datetime.utcnow()
-        start_time = end_time - timedelta(days=90)
+            end_time = datetime.utcnow()
+            start_time = end_time - timedelta(days=90)
 
-        try:
-            response = analyzer.start_policy_generation(
-                policyGenerationDetails={
-                    "principalArn": role["Arn"],
-                    "cloudTrailDetails": {
+            try:
+                response = analyzer.start_policy_generation(
+                    policyGenerationDetails={
+                        "principalArn": role["Arn"]
+                    },
+                    cloudTrailDetails={
                         "trails": [{
                             "cloudTrailArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/my-org-trail",
                             "allRegions": True
                         }],
                         "accessRole": "arn:aws:iam::123456789012:role/AccessAnalyzerMonitorServiceRole",
-                        "startTime": start_time.isoformat() + "Z",
-                        "endTime": end_time.isoformat() + "Z"
+                        "startTime": start_time,
+                        "endTime": end_time
                     }
-                }
-            )
-            print(f"Started generation for {role['RoleName']}: {response['jobId']}")
-        except Exception as e:
-            print(f"Failed for {role['RoleName']}: {str(e)}")
+                )
+                print(f"Started generation for {role['RoleName']}: {response['jobId']}")
+            except Exception as e:
+                print(f"Failed for {role['RoleName']}: {str(e)}")
 ```
 
 ## Common Pitfalls
 
-**Not enough data**: If a role has been active for less than a few weeks, the generated policy might miss important actions. Wait until you have at least 90 days of data.
+**Not enough data**: If a role has been active for less than a few weeks, the generated policy might miss important actions. Wait until you have representative activity data, then choose a window of up to 90 days.
 
 **Cross-region activity**: Make sure your CloudTrail trail covers all regions where the role operates. A single-region trail will miss actions in other regions.
 
