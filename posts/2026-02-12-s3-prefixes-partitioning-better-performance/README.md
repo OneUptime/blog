@@ -8,20 +8,20 @@ Description: Learn how S3 prefixes affect performance and how to design your key
 
 ---
 
-S3 doesn't have directories. It has keys. And the way you structure those keys directly impacts performance, cost, and how easy your data is to work with. Understanding prefixes and how S3 partitions data internally is critical for anyone building high-throughput applications or managing large datasets on S3.
+S3 doesn't have directories. It has keys. And the way you structure those keys directly impacts performance, cost, and how easy your data is to work with. Understanding prefixes and request-rate scaling is critical for anyone building high-throughput applications or managing large datasets on S3.
 
 ## What's a Prefix?
 
-In S3, a prefix is everything in the object key before the final object name. For the key `data/2026/02/12/sensor-readings.json`, the prefix is `data/2026/02/12/`. The forward slashes are just characters in the key - S3 doesn't have a real folder hierarchy. But the console shows them as folders, and more importantly, S3 uses prefixes for internal partitioning.
+In S3, a prefix is a string at the beginning of an object key. For the key `data/2026/02/12/sensor-readings.json`, one useful prefix is `data/2026/02/12/`. The forward slashes are just characters in the key - S3 doesn't have a real folder hierarchy. But the console shows them as folders, and S3 publishes performance guidance per prefix.
 
 ## How S3 Partitions Data
 
-S3 automatically partitions your bucket based on key prefixes to spread load across multiple servers. Each partition can handle:
+S3 automatically scales request performance for prefixes in a bucket. AWS documents that your application can achieve at least:
 
 - **3,500 PUT/COPY/POST/DELETE requests per second**
 - **5,500 GET/HEAD requests per second**
 
-If all your objects share the same prefix, they're likely on the same partition, limiting you to those per-partition rates. Distribute across multiple prefixes, and you multiply those limits.
+If your workload needs more than those per-prefix rates, parallelize requests across multiple prefixes.
 
 For example, with 10 distinct prefixes, you could theoretically handle 55,000 GET requests per second.
 
@@ -42,13 +42,13 @@ This naturally spreads data across prefixes over time. Querying recent data is e
 
 ```python
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 s3 = boto3.client('s3')
 
 def store_log_entry(bucket, log_data):
     """Store a log entry using date-based partitioning."""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     key = f"logs/{now.strftime('%Y/%m/%d/%H')}/entry-{now.strftime('%M%S%f')}.json"
 
     s3.put_object(
@@ -58,7 +58,7 @@ def store_log_entry(bucket, log_data):
     )
     return key
 
-# Each hour gets its own prefix, spreading the load
+# Each hour gets its own prefix, which makes targeted reads easier
 
 key = store_log_entry('my-log-bucket', '{"level": "info", "message": "test"}')
 print(f"Stored at: {key}")
@@ -66,7 +66,7 @@ print(f"Stored at: {key}")
 
 ### Pattern 2: Hash-Based Partitioning
 
-When you need maximum throughput and don't care about browsing objects by name. Add a hash prefix to distribute objects evenly.
+When you need maximum throughput and want to parallelize requests across many predictable prefixes. Add a hash prefix to distribute objects evenly.
 
 ```python
 import hashlib
@@ -76,7 +76,7 @@ s3 = boto3.client('s3')
 
 def store_with_hash_prefix(bucket, logical_key, data):
     """
-    Add a hash prefix to distribute objects across S3 partitions.
+    Add a hash prefix to distribute objects across many prefixes.
     The hash ensures even distribution regardless of the logical key pattern.
     """
     # Create a short hash from the logical key
@@ -88,7 +88,7 @@ def store_with_hash_prefix(bucket, logical_key, data):
     s3.put_object(Bucket=bucket, Key=physical_key, Body=data)
     return physical_key
 
-# These objects distribute across 65,536 possible prefix partitions
+# These objects distribute across 65,536 possible hash prefixes
 store_with_hash_prefix('my-bucket', 'users/12345/profile.json', b'...')
 # Stored as: a1b2/users/12345/profile.json
 
@@ -110,7 +110,7 @@ exports/daily/2026-02-12/full-export.csv
 
 ### Pattern 4: Hive-Style Partitioning for Analytics
 
-If you're using Athena, Spark, or any Hive-compatible tool, this partitioning style is the standard. The tools automatically detect partition columns from the path.
+If you're using Athena, Spark, or any Hive-compatible tool, this partitioning style is the standard. The tools can use partition columns from the path when those partitions are registered in the catalog or configured with partition projection.
 
 ```text
 events/year=2026/month=02/day=12/hour=14/data.parquet
@@ -126,7 +126,7 @@ SELECT * FROM events
 WHERE year = '2026' AND month = '02' AND day = '12';
 ```
 
-Setup the Athena table with partition projection for automatic partition discovery.
+Set up the Athena table with partition projection so Athena can calculate partition locations without adding each partition to the catalog.
 
 ```sql
 CREATE EXTERNAL TABLE events (
@@ -152,7 +152,7 @@ TBLPROPERTIES (
   'projection.hour.type' = 'integer',
   'projection.hour.range' = '0,23',
   'projection.hour.digits' = '2',
-  'storage.location.template' = 's3://my-analytics-bucket/events/year=${year}/month=${month}/day=${day}/hour=${hour}'
+  'storage.location.template' = 's3://my-analytics-bucket/events/year=${year}/month=${month}/day=${day}/hour=${hour}/'
 );
 ```
 
@@ -161,12 +161,12 @@ TBLPROPERTIES (
 ### Sequential Numeric Prefixes
 
 ```text
-# BAD: All objects land on the same partition initially
+# HARDER TO BROWSE: No logical grouping beyond the shared data/ prefix
 data/0000001.json
 data/0000002.json
 data/0000003.json
 
-# GOOD: Add randomness or use dates
+# GOOD: Add a meaningful grouping or hash when it fits your access pattern
 data/a1b2/0000001.json
 data/c3d4/0000002.json
 ```
@@ -188,13 +188,13 @@ files/documents/2026/02/doc1.pdf
 ### Timestamp-First Keys
 
 ```text
-# PROBLEMATIC: All recent writes hit the same prefix
+# HARDER TO QUERY BY CATEGORY: The date is the only top-level grouping
 2026-02-12T14:30:00-data.json
 2026-02-12T14:30:01-data.json
 2026-02-12T14:30:02-data.json
 
-# BETTER: Reverse or hash the timestamp
-data/21-20-41-21-20-6202.json  # reversed
+# BETTER: Add a category or hash before the timestamp
+data/events/2026-02-12T14:30:00.json
 # OR
 data/a1b2/2026-02-12T14:30:00.json  # hash prefix
 ```
@@ -204,18 +204,18 @@ data/a1b2/2026-02-12T14:30:00.json  # hash prefix
 ```mermaid
 graph LR
     subgraph Single Prefix
-        A[All Objects] --> B[One Partition\n5,500 GET/s]
+        A[All Objects] --> B[One Prefix\n5,500 GET/s baseline]
     end
 
     subgraph Multiple Prefixes
-        C[Objects A-F] --> D[Partition 1\n5,500 GET/s]
-        E[Objects G-L] --> F[Partition 2\n5,500 GET/s]
-        G[Objects M-R] --> H[Partition 3\n5,500 GET/s]
-        I[Objects S-Z] --> J[Partition 4\n5,500 GET/s]
+        C[Objects A-F] --> D[Prefix 1\n5,500 GET/s baseline]
+        E[Objects G-L] --> F[Prefix 2\n5,500 GET/s baseline]
+        G[Objects M-R] --> H[Prefix 3\n5,500 GET/s baseline]
+        I[Objects S-Z] --> J[Prefix 4\n5,500 GET/s baseline]
     end
 ```
 
-With 4 well-distributed prefixes, you get 4x the throughput: 22,000 GET/s instead of 5,500.
+With 4 well-distributed prefixes, you can scale read throughput to at least 22,000 GET/s instead of 5,500.
 
 ## Choosing the Right Strategy
 
@@ -259,7 +259,11 @@ def list_by_prefix(bucket, prefix, max_keys=1000):
     total_objects = 0
     total_size = 0
 
-    for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+    for page in paginator.paginate(
+        Bucket=bucket,
+        Prefix=prefix,
+        PaginationConfig={'PageSize': max_keys}
+    ):
         for obj in page.get('Contents', []):
             total_objects += 1
             total_size += obj['Size']
