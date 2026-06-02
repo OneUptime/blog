@@ -8,11 +8,11 @@ Description: Learn how to use S3 Object Lambda to automatically transform object
 
 ---
 
-Imagine you have a CSV file in S3 with customer data. Marketing needs all the columns. Customer support needs everything except credit card numbers. Analytics needs just the aggregate numbers. With traditional S3, you'd store three copies of the data with different redaction levels. S3 Object Lambda lets you store one copy and transform it on the fly when it's retrieved, applying different transformations based on who's requesting it.
+Imagine you have a CSV file in S3 with customer data. Marketing needs all the columns. Customer support needs everything except credit card numbers. Analytics needs just the aggregate numbers. With traditional S3, you'd store three copies of the data with different redaction levels. S3 Object Lambda lets existing S3 Object Lambda customers store one copy and transform it on the fly when it's retrieved, applying different transformations based on who's requesting it. As of November 7, 2025, AWS makes S3 Object Lambda available only to existing customers who were already using the service and to select AWS Partner Network partners.
 
 ## How S3 Object Lambda Works
 
-S3 Object Lambda sits between the caller and S3. When someone requests an object through an Object Lambda Access Point, S3 invokes your Lambda function instead of returning the raw object. Your function receives the original object data, transforms it however you want, and returns the modified version to the caller.
+S3 Object Lambda sits between the caller and S3. When someone requests an object through an Object Lambda Access Point, S3 invokes your Lambda function instead of returning the raw object. Your function receives request context with a presigned URL for the original object, fetches the object, transforms it however you want, and returns the modified version to the caller.
 
 The caller doesn't know any transformation is happening - they just make a normal GetObject call.
 
@@ -47,7 +47,7 @@ Here's a Lambda function that redacts personally identifiable information from C
 import boto3
 import csv
 import io
-import requests
+from urllib.request import urlopen
 
 def lambda_handler(event, context):
     """
@@ -61,8 +61,8 @@ def lambda_handler(event, context):
     original_url = object_get_context['inputS3Url']
 
     # Fetch the original object from S3
-    response = requests.get(original_url)
-    original_data = response.text
+    with urlopen(original_url) as response:
+        original_data = response.read().decode('utf-8')
 
     # Parse CSV and redact PII columns
     reader = csv.DictReader(io.StringIO(original_data))
@@ -185,9 +185,10 @@ Here's a Lambda function that resizes images on retrieval, perfect for serving t
 
 ```python
 import boto3
-import requests
 from PIL import Image
 import io
+from urllib.parse import parse_qs, urlparse
+from urllib.request import urlopen
 
 def lambda_handler(event, context):
     """
@@ -204,15 +205,16 @@ def lambda_handler(event, context):
 
     # Parse width from URL query params (default 200)
     width = 200
-    if 'width=' in url:
-        try:
-            width = int(url.split('width=')[1].split('&')[0])
-        except (ValueError, IndexError):
-            width = 200
+    try:
+        width_values = parse_qs(urlparse(url).query).get('width', [])
+        if width_values:
+            width = int(width_values[0])
+    except ValueError:
+        width = 200
 
     # Fetch original image
-    response = requests.get(original_url)
-    original_image = Image.open(io.BytesIO(response.content))
+    with urlopen(original_url) as response:
+        original_image = Image.open(io.BytesIO(response.read()))
 
     # Resize maintaining aspect ratio
     ratio = width / original_image.width
@@ -243,7 +245,7 @@ Filter JSON data to return only specific fields based on the caller's role.
 ```python
 import boto3
 import json
-import requests
+from urllib.request import urlopen
 
 def lambda_handler(event, context):
     """
@@ -261,8 +263,8 @@ def lambda_handler(event, context):
     allowed_fields = payload.get('allowed_fields', [])
 
     # Fetch original JSON
-    response = requests.get(original_url)
-    original_data = response.json()
+    with urlopen(original_url) as response:
+        original_data = json.loads(response.read().decode('utf-8'))
 
     # Filter: keep only allowed fields
     if isinstance(original_data, list):
@@ -302,8 +304,8 @@ S3 Object Lambda charges include:
 
 - **Lambda invocation costs**: Standard Lambda pricing (per request + duration)
 - **S3 requests**: Standard GetObject pricing for fetching the original
-- **Data transfer**: Standard rates for returning the transformed object
-- **No additional Object Lambda service fee**
+- **S3 Object Lambda data return charge**: Charged per GB returned by the Lambda function
+- **Data transfer**: Standard rates might also apply depending on where the client receives the transformed object
 
 For high-volume workloads, the Lambda costs can add up. Compare against the cost of storing multiple transformed copies.
 
