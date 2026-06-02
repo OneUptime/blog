@@ -10,7 +10,7 @@ Description: Configure alerting rules in Amazon Managed Prometheus to detect iss
 
 Collecting metrics is only half of monitoring. The other half is knowing when those metrics indicate a problem. Amazon Managed Prometheus (AMP) supports alerting rules that continuously evaluate PromQL expressions and fire alerts when conditions are met.
 
-AMP alerting rules work the same way as open-source Prometheus alerting rules. You define conditions using PromQL, set duration thresholds, and route alerts to an alert manager. On AWS, you use Amazon Managed Grafana's alerting or connect to an alert manager that routes notifications through SNS, Slack, PagerDuty, or other channels.
+AMP alerting rules work the same way as open-source Prometheus alerting rules. You define conditions using PromQL, set duration thresholds, and route alerts to an alert manager. In Amazon Managed Service for Prometheus, alert manager can route notifications to Amazon SNS, where you can fan them out to email, SMS, Lambda, or other subscribers.
 
 This guide covers creating alerting rules in AMP, configuring the alert manager, and building rules for common production scenarios.
 
@@ -21,10 +21,8 @@ flowchart LR
     A[AMP Workspace] -->|Evaluates Rules| B{Alert Condition Met?}
     B -->|Yes, for duration| C[Fire Alert]
     B -->|No| D[No Action]
-    C -->|Route| E[Alert Manager in Managed Grafana]
+    C -->|Route| E[AMP Alert Manager]
     E --> F[SNS Topic]
-    E --> G[Slack]
-    E --> H[PagerDuty]
     F --> I[Email / SMS / Lambda]
 ```
 
@@ -75,14 +73,16 @@ EOF
 )"
 ```
 
-Note: Some versions of the CLI require the data as base64-encoded. If your CLI version accepts raw YAML, omit the base64 encoding.
+Note: AWS CLI v2 expects blob parameters to be passed as base64-encoded strings by default. For larger rules files, base64-encode the YAML first and pass the encoded file with `file://`.
 
 ```bash
 # Alternative: using a file
+base64 -w0 alerting-rules.yaml > alerting-rules.yaml.b64
+
 aws amp create-rule-groups-namespace \
   --workspace-id ws-abc123-def456 \
   --name "production-alerts" \
-  --data fileb://alerting-rules.yaml
+  --data file://alerting-rules.yaml.b64
 ```
 
 ## Step 2: Define Common Alerting Rules
@@ -180,14 +180,15 @@ groups:
       - alert: DeploymentReplicasMismatch
         expr: |
           kube_deployment_spec_replicas
-          !=
-          kube_deployment_status_available_replicas
+          -
+          kube_deployment_status_replicas_available
+          != 0
         for: 10m
         labels:
           severity: warning
         annotations:
           summary: "Deployment {{ $labels.deployment }} replica mismatch"
-          description: "Deployment {{ $labels.deployment }} has {{ $value }} replicas but expected {{ $labels.spec_replicas }}"
+          description: "Deployment {{ $labels.deployment }} available replicas differ from the spec by {{ $value }}"
 ```
 
 Resource Utilization Rules
@@ -234,54 +235,51 @@ Resource Utilization Rules
           summary: "Node {{ $labels.instance }} disk usage above 85%"
 ```
 
-## Step 3: Configure Alert Routing in Managed Grafana
+## Step 3: Configure Alert Routing with Alert Manager
 
-AMP fires alerts, but you need an alert manager to route them to notification channels. Managed Grafana includes a built-in alert manager.
+AMP fires alerts, but you need an alert manager definition to route them to notification channels. Amazon Managed Service for Prometheus alert manager supports Amazon SNS as a receiver.
 
-In Managed Grafana:
+### SNS Receiver
 
-1. Navigate to **Alerting > Contact points**
-2. Add a contact point for each notification channel
-
-### SNS Contact Point
+Configure an SNS receiver in your alert manager definition.
 
 ```yaml
-# Grafana alert manager config for SNS
-contact_points:
-  - name: sns-critical
-    type: sns
-    settings:
-      topic: arn:aws:sns:us-east-1:123456789012:critical-alerts
-      region: us-east-1
-```
+alertmanager_config: |
+  route:
+    receiver: sns-default
+    routes:
+      - receiver: sns-critical
+        matchers:
+          - severity="critical"
+      - receiver: sns-default
+        matchers:
+          - severity="warning"
 
-### Slack Contact Point
-
-```yaml
-contact_points:
-  - name: slack-warnings
-    type: slack
-    settings:
-      url: https://hooks.slack.com/services/T00/B00/xxxx
-      channel: "#alerts-warning"
-      title: "{{ .CommonLabels.alertname }}"
-      text: "{{ .CommonAnnotations.description }}"
+  receivers:
+    - name: sns-default
+      sns_configs:
+        - sigv4:
+            region: us-east-1
+          topic_arn: arn:aws:sns:us-east-1:123456789012:warning-alerts
+          subject: 'AMP alert: {{ .CommonLabels.alertname }}'
+    - name: sns-critical
+      sns_configs:
+        - sigv4:
+            region: us-east-1
+          topic_arn: arn:aws:sns:us-east-1:123456789012:critical-alerts
+          subject: 'AMP alert: {{ .CommonLabels.alertname }}'
 ```
 
 ### Routing Configuration
 
-Route alerts based on severity labels.
+Upload the alert manager definition to AMP. As with rule files, AWS CLI v2 expects a base64-encoded file for this blob parameter.
 
-```yaml
-# Route critical alerts to SNS, warnings to Slack
-routes:
-  - receiver: sns-critical
-    match:
-      severity: critical
-  - receiver: slack-warnings
-    match:
-      severity: warning
-  - receiver: slack-warnings  # default
+```bash
+base64 -w0 alertmanager.yaml > alertmanager.yaml.b64
+
+aws amp create-alert-manager-definition \
+  --workspace-id ws-abc123-def456 \
+  --data file://alertmanager.yaml.b64
 ```
 
 ## Step 4: Update and Manage Rules
@@ -306,7 +304,7 @@ aws amp describe-rule-groups-namespace \
 aws amp put-rule-groups-namespace \
   --workspace-id ws-abc123-def456 \
   --name "production-alerts" \
-  --data fileb://updated-rules.yaml
+  --data "$(base64 -w0 updated-rules.yaml)"
 ```
 
 ### Deleting Rules
@@ -334,13 +332,13 @@ awscurl --service aps \
   "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123/api/v1/alerts"
 ```
 
-In Managed Grafana, navigate to **Alerting > Alert rules** to see the status of all configured rules.
+In Managed Grafana, configure an Alertmanager data source for your AMP workspace to see AMP alert rules, alert groups, and silences in Grafana's Alerting page.
 
 ## Best Practices for Alerting Rules
 
 **Set appropriate `for` durations**: A 1-minute `for` duration will generate noisy alerts from brief spikes. Start with 5-10 minutes for most alerts and adjust based on your experience.
 
-**Use severity labels consistently**: Define severity levels (critical, warning, info) and route them to appropriate channels. Critical alerts page on-call engineers. Warnings go to Slack. Info goes to a dashboard.
+**Use severity labels consistently**: Define severity levels (critical, warning, info) and route them to appropriate SNS topics or subscribers. Critical alerts page on-call engineers. Warnings can go to lower-urgency notification paths. Info goes to a dashboard.
 
 **Include useful annotations**: The description annotation should tell the on-call engineer what is wrong and ideally what to do about it. Include the current value using `{{ $value }}`.
 
@@ -363,4 +361,4 @@ For more PromQL patterns to use in your rules, see our guide on [using PromQL qu
 
 ## Wrapping Up
 
-Alerting rules in AMP turn passive monitoring into active incident detection. Define rules using the same PromQL queries you use in dashboards, route them through Managed Grafana's alert manager, and deliver notifications through SNS, Slack, or PagerDuty. The key to effective alerting is starting conservatively, with high thresholds and long durations, then tightening as you learn your system's normal behavior. Too many false positives will train your team to ignore alerts, which defeats the entire purpose.
+Alerting rules in AMP turn passive monitoring into active incident detection. Define rules using the same PromQL queries you use in dashboards, route them through AMP alert manager, and deliver notifications through SNS. The key to effective alerting is starting conservatively, with high thresholds and long durations, then tightening as you learn your system's normal behavior. Too many false positives will train your team to ignore alerts, which defeats the entire purpose.
