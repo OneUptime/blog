@@ -8,7 +8,7 @@ Description: Guide to requesting production access for Amazon SES, including wha
 
 ---
 
-Every new AWS account starts with SES in sandbox mode. In the sandbox, you can only send emails to verified addresses, and you're limited to 200 emails per day with a maximum send rate of 1 email per second. That's fine for testing, but completely useless for production workloads.
+Every new SES account starts in sandbox mode in each AWS Region. In the sandbox, you can only send emails to verified addresses and domains, and you're limited to 200 emails per day with a maximum send rate of 1 email per second. That's fine for testing, but completely useless for production workloads.
 
 Getting out of the sandbox requires submitting a request to AWS. They review it manually, and approvals typically take about 24 hours. But if your request is vague or missing key details, it'll get rejected - and then you're waiting even longer.
 
@@ -21,20 +21,21 @@ Before we get into the request process, let's be clear about what sandbox mode l
 - **Recipients must be verified**: You can only send to email addresses or domains you've verified in SES
 - **Daily send limit**: 200 emails per 24 hours
 - **Send rate**: 1 email per second
-- **No bulk sending**: Can't send marketing emails or newsletters
+- **Limited real-world sending**: You can use SES features, but real marketing emails or newsletters are only practical after production access
 
 Once you're in production:
 - Send to any valid email address
-- Starting quota of 50,000 emails per day (automatically scales up)
-- Send rate of 14 emails per second (also scales)
-- Full access to all SES features
+- Sending quota and send rate based on your approved use case
+- Quotas can increase automatically over time for high-quality production sending
+- Sandbox-specific restrictions are removed
 
 ## Step 1: Complete Prerequisites
 
-Before requesting production access, make sure you have these in place. AWS reviewers check for them:
+Before requesting production access, make sure you have these in place. They are not all hard requirements, but they show AWS that you have a real sending setup and a process for handling bad outcomes:
 
 ```bash
-# Verify your domain (not just an email address)
+# Start domain verification (not just an email address),
+# then add the DKIM CNAME records SES returns to your DNS
 
 aws sesv2 create-email-identity \
   --email-identity "example.com" \
@@ -50,11 +51,13 @@ aws sesv2 get-email-identity \
 aws sesv2 create-configuration-set \
   --configuration-set-name "production-tracking" \
   --reputation-options '{"ReputationMetricsEnabled": true}' \
-  --sending-options '{"SendingEnabled": true}'
+  --sending-options '{"SendingEnabled": true}' \
+  --region us-east-1
 
 # Enable account-level suppression list
 aws sesv2 put-account-suppression-attributes \
-  --suppressed-reasons BOUNCE COMPLAINT
+  --suppressed-reasons BOUNCE COMPLAINT \
+  --region us-east-1
 
 # Verify bounce handling is configured
 aws sesv2 create-configuration-set-event-destination \
@@ -66,7 +69,8 @@ aws sesv2 create-configuration-set-event-destination \
     "SnsDestination": {
       "TopicArn": "arn:aws:sns:us-east-1:123456789012:ses-bounces"
     }
-  }'
+  }' \
+  --region us-east-1
 ```
 
 ## Step 2: Submit the Production Access Request
@@ -217,12 +221,13 @@ aws sesv2 create-email-identity-policy \
       "Action": ["ses:SendEmail", "ses:SendRawEmail"],
       "Resource": "arn:aws:ses:us-east-1:123456789012:identity/example.com"
     }]
-  }'
+  }' \
+  --region us-east-1
 ```
 
 ## Step 6: Monitor Your Reputation
 
-After going to production, keeping a clean reputation is critical. If your bounce or complaint rates get too high, AWS can put you back in the sandbox:
+After going to production, keeping a clean reputation is critical. If your bounce or complaint rates get too high, AWS can place your account under review or pause your ability to send email:
 
 ```bash
 # Check your sending statistics
@@ -232,8 +237,8 @@ aws ses get-send-statistics --region us-east-1
 aws sesv2 get-account \
   --region us-east-1 \
   --query '{
-    ReputationDashboard: ReputationOptions.ReputationMetricsEnabled,
-    EnforcementStatus: EnforcementStatus
+    EnforcementStatus: EnforcementStatus,
+    SendingEnabled: SendingEnabled
   }'
 ```
 
@@ -252,7 +257,8 @@ aws cloudwatch put-metric-alarm \
   --threshold 0.05 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:ses-alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:ses-alerts \
+  --region us-east-1
 
 aws cloudwatch put-metric-alarm \
   --alarm-name "SES-ComplaintRate-High" \
@@ -263,12 +269,13 @@ aws cloudwatch put-metric-alarm \
   --threshold 0.001 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:ses-alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:ses-alerts \
+  --region us-east-1
 ```
 
 ## Automatic Quota Increases
 
-After you're in production, SES automatically increases your sending quota over time based on your sending volume and reputation. You don't need to request increases manually - just gradually ramp up your volume, maintain good metrics, and the limits will grow.
+After you're in production, SES might automatically increase your sending quota over time based on your sending volume and reputation. You usually don't need to request increases manually - just gradually ramp up your volume, maintain good metrics, and the limits can grow.
 
 If you need a faster increase, you can request one through the AWS Support Center, but in most cases the automatic scaling is sufficient.
 
