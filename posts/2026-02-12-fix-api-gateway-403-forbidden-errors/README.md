@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, IAM, Security, Troubleshooting
 
-Description: Debug and resolve API Gateway 403 Forbidden errors caused by missing API keys, WAF rules, resource policies, IAM authorization, and usage plan throttling.
+Description: Debug and resolve API Gateway 403 Forbidden errors caused by missing API keys, WAF rules, resource policies, IAM authorization, and usage plan configuration.
 
 ---
 
@@ -205,9 +205,9 @@ aws logs filter-log-events \
 
 A common issue is the authorizer not returning the correct policy document format.
 
-## Cause 6: Usage Plan Throttling
+## Cause 6: Usage Plan Configuration
 
-If you've exceeded your API key's usage plan limits, you'll get a 429 (throttled), but some configurations can return 403 instead.
+If you've exceeded your API key's usage plan throttle or quota limits, you'll get a 429 (throttled), not a 403. But if the API key is disabled, missing, invalid, or not associated with a usage plan that includes the API stage, API Gateway returns a 403.
 
 ```bash
 # Check usage for a specific API key
@@ -242,7 +242,7 @@ aws apigateway update-stage \
   --patch-operations '[{"op":"replace","path":"/*/*/logging/loglevel","value":"INFO"}]'
 ```
 
-2. Check CloudTrail for execute-api events
+2. Check CloudTrail for API Gateway configuration changes, IAM policy changes, and resource policy changes
 3. Test with curl using verbose output to see all headers
 
 ```bash
