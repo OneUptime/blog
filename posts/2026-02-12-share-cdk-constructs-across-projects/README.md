@@ -114,7 +114,6 @@ export class SecureBucket extends Construct {
             : undefined,
         },
       ],
-      serverAccessLogsPrefix: 'access-logs/',
     });
   }
 }
@@ -286,7 +285,7 @@ describe('SecureBucket', () => {
         ServerSideEncryptionConfiguration: [
           {
             ServerSideEncryptionByDefault: {
-              SSEAlgorithm: 'aws:kms',
+              SSEAlgorithm: 'AES256',
             },
           },
         ],
