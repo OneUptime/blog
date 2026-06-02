@@ -16,11 +16,11 @@ This guide covers how to create, resize, and manage capacity pools, how to move 
 
 Every Azure NetApp Files volume must belong to a capacity pool. The capacity pool defines:
 
-1. **Service level**: Determines throughput per TiB (Standard, Premium, or Ultra)
+1. **Service level**: Determines throughput per TiB (including Standard, Premium, Ultra, Flexible, and Elastic)
 2. **Size**: The total provisioned capacity available to volumes in the pool
 3. **QoS type**: Either auto (throughput scales with volume size) or manual (you assign throughput explicitly)
 
-Here is how the service levels compare:
+Here is how the common Standard, Premium, and Ultra service levels compare:
 
 | Service Level | Throughput per TiB | Typical Use Cases |
 |--------------|-------------------|------------------|
@@ -64,7 +64,7 @@ az netappfiles pool create \
   --service-level Ultra
 ```
 
-The `--size` parameter is in TiB. The minimum pool size is 4 TiB for all service levels, and the maximum is 500 TiB.
+The `--size` parameter is in TiB. The minimum pool size is 1 TiB when all volumes in the pool use Standard network features. If any volume uses Basic network features, the minimum is 4 TiB. The maximum pool size is 2,048 TiB.
 
 ## Step 2: Create Volumes in the Pool
 
@@ -167,6 +167,8 @@ az netappfiles volume pool-change \
   --new-pool-resource-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/capacityPools/pool-premium"
 ```
 
+If you move a volume to a higher service level, you must wait at least 24 hours before moving it back to a lower service level. You can always move to a higher service level without a wait time.
+
 ## Step 5: Use Manual QoS for Fine-Grained Control
 
 By default, pools use auto QoS, where throughput is automatically assigned based on volume size. Manual QoS lets you explicitly assign throughput to each volume, independent of its size.
@@ -263,24 +265,24 @@ Here are practical ways to reduce Azure NetApp Files costs:
 
 **Use tiered service levels**: Not every workload needs Ultra performance. Use Standard for dev/test, Premium for general production, and Ultra only for truly performance-sensitive workloads.
 
-**Schedule service level changes**: If workloads have predictable patterns (high performance during business hours, low at night), script service level changes:
+**Schedule service level changes**: If workloads have predictable patterns, script service level changes. If you move a volume to a higher service level, remember that Azure requires at least 24 hours before moving it back to a lower service level:
 
 ```bash
 #!/bin/bash
-# Move volume to Ultra during business hours, back to Premium at night
+# Move volume to Ultra for a weekly high-performance window, then back to Premium
 
-HOUR=$(date +%H)
+DAY_OF_WEEK=$(date +%u)
 
-if [ "$HOUR" -ge 8 ] && [ "$HOUR" -lt 18 ]; then
-    # Business hours - promote to Ultra
+if [ "$DAY_OF_WEEK" -eq 1 ]; then
+    # Monday - promote to Ultra
     az netappfiles volume pool-change \
       --resource-group rg-netapp \
       --account-name na-production \
       --pool-name pool-premium \
       --volume-name vol-app-data \
       --new-pool-resource-id "/subscriptions/<sub-id>/resourceGroups/rg-netapp/providers/Microsoft.NetApp/netAppAccounts/na-production/capacityPools/pool-ultra"
-else
-    # Off-hours - demote to Premium
+elif [ "$DAY_OF_WEEK" -eq 5 ]; then
+    # Friday - demote to Premium after the 24-hour cooldown has passed
     az netappfiles volume pool-change \
       --resource-group rg-netapp \
       --account-name na-production \
