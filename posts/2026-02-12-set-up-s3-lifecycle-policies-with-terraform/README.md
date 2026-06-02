@@ -70,6 +70,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "data_lifecycle" {
 
 Objects start in STANDARD, move to STANDARD_IA after 30 days, GLACIER after 90 days, and DEEP_ARCHIVE after 180 days. Each transition is relative to the object creation date, not the previous transition.
 
+One important Terraform detail: S3 buckets only support one lifecycle configuration. If you need multiple rules for the same bucket, put multiple `rule` blocks inside the same `aws_s3_bucket_lifecycle_configuration` resource instead of creating separate lifecycle configuration resources for that bucket.
+
 ## Object Expiration
 
 For temporary data like logs or session files, you probably want to delete objects after a certain period:
@@ -157,20 +159,16 @@ The `noncurrent_version_expiration` block is critical. Without it, old versions 
 
 ## Cleaning Up Incomplete Multipart Uploads
 
-This is the rule everyone forgets. When a multipart upload fails or is abandoned, the partial parts stay in your bucket and you keep paying for them. Add this to every bucket:
+This is the rule everyone forgets. When a multipart upload fails or is abandoned, the partial parts stay in your bucket and you keep paying for them. Add this rule to every bucket's lifecycle configuration:
 
 ```hcl
 # Always clean up incomplete multipart uploads
-resource "aws_s3_bucket_lifecycle_configuration" "cleanup_lifecycle" {
-  bucket = aws_s3_bucket.data.id
+rule {
+  id     = "abort-incomplete-uploads"
+  status = "Enabled"
 
-  rule {
-    id     = "abort-incomplete-uploads"
-    status = "Enabled"
-
-    abort_incomplete_multipart_upload {
-      days_after_initiation = 7
-    }
+  abort_incomplete_multipart_upload {
+    days_after_initiation = 7
   }
 }
 ```
@@ -315,7 +313,7 @@ For broader infrastructure monitoring, consider setting up alerts when storage c
 
 ## Common Pitfalls
 
-There are a few things to watch out for. First, STANDARD_IA has a minimum object size of 128 KB. Smaller objects get charged as if they're 128 KB, which can make the transition more expensive than keeping them in STANDARD. Second, STANDARD_IA and One-Zone IA have a minimum 30-day storage duration charge. If you delete an object after 10 days, you still pay for 30 days. Third, transition days are cumulative from object creation, not from the previous transition. So if you set IA at 30 days and GLACIER at 60 days, objects spend 30 days in IA before moving to GLACIER - not 60 days.
+There are a few things to watch out for. First, S3 Lifecycle prevents objects smaller than 128 KB from transitioning by default. You can override that with object size filters, but small-object transition costs can outweigh the storage savings. Second, STANDARD_IA and One-Zone IA have a minimum 30-day storage duration charge. If you delete an object after 10 days, you still pay for 30 days. Third, transition days are cumulative from object creation, not from the previous transition. So if you set IA at 30 days and GLACIER at 60 days, objects spend 30 days in IA before moving to GLACIER - not 60 days.
 
 ## Wrapping Up
 
