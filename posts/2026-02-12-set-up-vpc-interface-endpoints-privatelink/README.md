@@ -39,7 +39,7 @@ SQS_ENDPOINT=$(aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --vpc-endpoint-type Interface \
   --service-name com.amazonaws.us-east-1.sqs \
-  --subnet-ids subnet-priv-1a subnet-priv-1b \
+  --subnet-ids $SUBNET_1 $SUBNET_2 \
   --security-group-ids $ENDPOINT_SG \
   --private-dns-enabled true \
   --tag-specifications 'ResourceType=vpc-endpoint,Tags=[{Key=Name,Value=sqs-endpoint}]' \
@@ -281,7 +281,7 @@ Resources:
 
 ## Endpoint Policies
 
-Like gateway endpoints, interface endpoints support policies:
+Like gateway endpoints, interface endpoints for AWS services can support policies. Not every AWS service supports endpoint policies, so check the service documentation before relying on one:
 
 ```bash
 # Restrict the Secrets Manager endpoint to specific secrets
