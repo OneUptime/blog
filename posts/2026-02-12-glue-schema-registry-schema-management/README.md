@@ -14,17 +14,17 @@ In this post, we'll walk through what Glue Schema Registry does, how to set it u
 
 ## What Is Glue Schema Registry?
 
-Glue Schema Registry is a centralized repository for managing and enforcing schemas. It supports both Apache Avro and JSON Schema formats. The registry lets you version your schemas, enforce compatibility rules, and automatically serialize/deserialize records in your producers and consumers.
+Glue Schema Registry is a centralized repository for managing and enforcing schemas. It supports Apache Avro, JSON Schema, and Protocol Buffers formats. The registry lets you version your schemas, enforce compatibility rules, and automatically serialize/deserialize records in your producers and consumers.
 
 Think of it as a contract between data producers and consumers. When a producer writes data, the registry validates that the data matches the expected schema. When a consumer reads data, it can fetch the correct schema version to deserialize the payload.
 
 Here's what it gives you out of the box:
 
 - Centralized schema storage and versioning
-- Compatibility enforcement (backward, forward, full, none)
-- Integration with Kafka, Kinesis, and Glue ETL
+- Compatibility enforcement (backward, backward all, forward, forward all, full, full all, none, disabled)
+- Integration with Kafka, Kinesis, AWS Glue streaming, and other AWS streaming services
 - Auto-registration of new schemas
-- Schema compression for reduced payload sizes
+- Optional ZLIB compression for reduced payload sizes
 
 ## Setting Up a Schema Registry
 
@@ -64,10 +64,12 @@ aws glue create-schema \
 
 Choosing the right compatibility mode matters a lot. Here's the breakdown:
 
-- **BACKWARD** - New schema can read data written with the old schema. You can add fields with defaults or remove optional fields.
-- **FORWARD** - Old schema can read data written with the new schema. You can remove fields with defaults or add optional fields.
-- **FULL** - Both backward and forward compatible. The safest option but also the most restrictive.
+- **BACKWARD** - New schema can read data written with the previous schema version. You can add optional fields or remove fields.
+- **FORWARD** - Previous schema can read data written with the new schema. You can add fields or remove optional fields.
+- **FULL** - Both backward and forward compatible against the previous schema version. The safest option but also the most restrictive.
 - **NONE** - No compatibility checks. Use this only if you really know what you're doing.
+
+AWS also supports the `BACKWARD_ALL`, `FORWARD_ALL`, and `FULL_ALL` modes when you need checks against all previous versions, and `DISABLED` when you want to prevent additional versions for a schema.
 
 For most streaming pipelines, BACKWARD compatibility is the sweet spot. It lets consumers upgrade at their own pace while producers can start writing new fields immediately.
 
@@ -131,6 +133,7 @@ This configures a Kafka consumer to automatically fetch and apply the correct sc
 
 ```java
 import com.amazonaws.services.schemaregistry.deserializers.GlueSchemaRegistryKafkaDeserializer;
+import com.amazonaws.services.schemaregistry.utils.AvroRecordType;
 
 Properties consumerProps = new Properties();
 consumerProps.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, "broker1:9092");
@@ -138,7 +141,7 @@ consumerProps.put(ConsumerConfig.GROUP_ID_CONFIG, "my-consumer-group");
 consumerProps.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
 consumerProps.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, GlueSchemaRegistryKafkaDeserializer.class.getName());
 consumerProps.put(AWSSchemaRegistryConstants.AWS_REGION, "us-east-1");
-consumerProps.put(AWSSchemaRegistryConstants.AVRO_RECORD_TYPE, "GENERIC_RECORD");
+consumerProps.put(AWSSchemaRegistryConstants.AVRO_RECORD_TYPE, AvroRecordType.GENERIC_RECORD.getName());
 
 KafkaConsumer<String, GenericRecord> consumer = new KafkaConsumer<>(consumerProps);
 ```
@@ -147,45 +150,45 @@ The deserializer automatically fetches the correct schema version based on the s
 
 ## Using with Kinesis Data Streams
 
-If you're using Kinesis instead of Kafka, the integration works similarly. You'll use the `GlueSchemaRegistrySerializer` and `GlueSchemaRegistryDeserializer` classes directly.
+If you're using Kinesis instead of Kafka, the integration works similarly. AWS documents Java integrations through KPL/KCL or through the Kinesis Data Streams APIs. For direct Kinesis API usage, you use the `GlueSchemaRegistrySerializerImpl` and `GlueSchemaRegistryDeserializerImpl` classes to add and read the schema registry header.
 
-This Python example shows how to serialize a record using the Glue Schema Registry before putting it into Kinesis.
+This Java example shows the key producer-side step: encode an Avro payload with the Glue Schema Registry header before putting it into Kinesis.
 
-```python
-import boto3
-from aws_schema_registry import SchemaRegistryClient, DataAndSchema
-from aws_schema_registry.avro import AvroSchema
+```java
+import com.amazonaws.services.schemaregistry.common.Schema;
+import com.amazonaws.services.schemaregistry.common.configs.GlueSchemaRegistryConfiguration;
+import com.amazonaws.services.schemaregistry.serializers.GlueSchemaRegistrySerializerImpl;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.core.SdkBytes;
+import software.amazon.awssdk.services.glue.model.DataFormat;
+import software.amazon.awssdk.services.kinesis.model.PutRecordRequest;
 
-# Initialize the schema registry client
+String streamName = "user-events-stream";
+String schemaName = "user-events";
+String schemaDefinition = "{"
+    + "\"type\":\"record\","
+    + "\"name\":\"UserEvent\","
+    + "\"fields\":["
+    + "{\"name\":\"userId\",\"type\":\"string\"},"
+    + "{\"name\":\"eventType\",\"type\":\"string\"},"
+    + "{\"name\":\"timestamp\",\"type\":\"long\"}"
+    + "]}";
 
-glue_client = boto3.client('glue', region_name='us-east-1')
-registry_client = SchemaRegistryClient(
-    glue_client,
-    registry_name='my-data-registry'
-)
+byte[] avroPayload = serializeUserEventToAvroBytes(userEvent);
 
-# Define your schema
-schema = AvroSchema({
-    "type": "record",
-    "name": "UserEvent",
-    "fields": [
-        {"name": "userId", "type": "string"},
-        {"name": "eventType", "type": "string"},
-        {"name": "timestamp", "type": "long"}
-    ]
-})
+Schema schema = new Schema(schemaDefinition, DataFormat.AVRO.name(), schemaName);
+GlueSchemaRegistrySerializerImpl serializer = new GlueSchemaRegistrySerializerImpl(
+    DefaultCredentialsProvider.builder().build(),
+    new GlueSchemaRegistryConfiguration("us-east-1")
+);
 
-# Serialize a record
-data = {"userId": "user-123", "eventType": "login", "timestamp": 1707753600}
-encoded = registry_client.encode("user-events", DataAndSchema(data, schema))
+byte[] encoded = serializer.encode(streamName, schema, avroPayload);
 
-# Put it into Kinesis
-kinesis = boto3.client('kinesis', region_name='us-east-1')
-kinesis.put_record(
-    StreamName='user-events-stream',
-    Data=encoded,
-    PartitionKey=data['userId']
-)
+PutRecordRequest request = PutRecordRequest.builder()
+    .streamName(streamName)
+    .partitionKey(userEvent.getUserId())
+    .data(SdkBytes.fromByteArray(encoded))
+    .build();
 ```
 
 ## Schema Discovery and Governance
@@ -209,7 +212,7 @@ aws glue get-schema-version \
 
 ## Monitoring Schema Registry
 
-You should monitor schema registration failures and compatibility check rejections. These are signs that teams are trying to make breaking changes. Set up CloudWatch alarms on the `SchemaVersionFailure` metric, and pipe notifications into your monitoring stack. If you're running OneUptime for observability, you can create alerts that trigger when schema validation failures spike - check out how to [set up custom monitoring](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view) for your streaming pipeline.
+You should monitor schema registration failures and compatibility check rejections. These are signs that teams are trying to make breaking changes. AWS Glue Schema Registry publishes API-level CloudWatch metrics such as `RegisterSchemaVersion` success and latency, and resource-level metrics such as `SchemaVersion.ThrottledByLimit` and `SchemaVersion.Size`. Pipe notifications from those signals into your monitoring stack. If you're running OneUptime for observability, you can create alerts that trigger when schema registration failures or throttling spike - check out how to [set up custom monitoring](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view) for your streaming pipeline.
 
 ## Best Practices
 
