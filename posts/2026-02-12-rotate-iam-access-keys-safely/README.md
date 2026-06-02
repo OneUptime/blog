@@ -158,34 +158,36 @@ from datetime import datetime, timezone
 iam = boto3.client("iam")
 max_age_days = 90
 
-users = iam.list_users()["Users"]
 stale_keys = []
 
-for user in users:
-    username = user["UserName"]
-    keys = iam.list_access_keys(UserName=username)["AccessKeyMetadata"]
+user_paginator = iam.get_paginator("list_users")
 
-    for key in keys:
-        if key["Status"] != "Active":
-            continue
+for page in user_paginator.paginate():
+    for user in page["Users"]:
+        username = user["UserName"]
+        keys = iam.list_access_keys(UserName=username)["AccessKeyMetadata"]
 
-        age = (datetime.now(timezone.utc) - key["CreateDate"]).days
+        for key in keys:
+            if key["Status"] != "Active":
+                continue
 
-        if age > max_age_days:
-            # Check when the key was last used
-            last_used_info = iam.get_access_key_last_used(
-                AccessKeyId=key["AccessKeyId"]
-            )
-            last_used = last_used_info["AccessKeyLastUsed"].get(
-                "LastUsedDate", "Never"
-            )
+            age = (datetime.now(timezone.utc) - key["CreateDate"]).days
 
-            stale_keys.append({
-                "user": username,
-                "key_id": key["AccessKeyId"],
-                "age_days": age,
-                "last_used": last_used
-            })
+            if age > max_age_days:
+                # Check when the key was last used
+                last_used_info = iam.get_access_key_last_used(
+                    AccessKeyId=key["AccessKeyId"]
+                )
+                last_used = last_used_info["AccessKeyLastUsed"].get(
+                    "LastUsedDate", "Never"
+                )
+
+                stale_keys.append({
+                    "user": username,
+                    "key_id": key["AccessKeyId"],
+                    "age_days": age,
+                    "last_used": last_used
+                })
 
 print(f"\nFound {len(stale_keys)} stale access keys (>{max_age_days} days old):\n")
 print(f"{'User':<25} {'Key ID':<22} {'Age':<10} {'Last Used'}")
@@ -217,63 +219,69 @@ def lambda_handler(event, context):
     max_age_days = 85  # rotate 5 days before the 90-day limit
     notification_topic = "arn:aws:sns:us-east-1:123456789012:key-rotation-alerts"
 
-    users = iam.list_users()["Users"]
+    user_paginator = iam.get_paginator("list_users")
 
-    for user in users:
-        username = user["UserName"]
+    for page in user_paginator.paginate():
+        for user in page["Users"]:
+            username = user["UserName"]
 
-        # Check user tags to find the linked secret
-        tags = iam.list_user_tags(UserName=username)["Tags"]
-        secret_name = next(
-            (t["Value"] for t in tags if t["Key"] == "credentials-secret"),
-            None
-        )
-
-        if not secret_name:
-            continue  # skip users without managed secrets
-
-        keys = iam.list_access_keys(UserName=username)["AccessKeyMetadata"]
-        active_keys = [k for k in keys if k["Status"] == "Active"]
-
-        for key in active_keys:
-            age = (datetime.now(timezone.utc) - key["CreateDate"]).days
-
-            if age < max_age_days:
-                continue
-
-            if len(active_keys) >= 2:
-                print(f"User {username} already has 2 keys. Skipping.")
-                continue
-
-            # Create new key
-            new_key = iam.create_access_key(UserName=username)["AccessKey"]
-
-            # Store new key in Secrets Manager
-            secrets.update_secret(
-                SecretId=secret_name,
-                SecretString=json.dumps({
-                    "aws_access_key_id": new_key["AccessKeyId"],
-                    "aws_secret_access_key": new_key["SecretAccessKey"]
-                })
+            # Check user tags to find the linked secret
+            tag_paginator = iam.get_paginator("list_user_tags")
+            tags = [
+                tag
+                for tag_page in tag_paginator.paginate(UserName=username)
+                for tag in tag_page["Tags"]
+            ]
+            secret_name = next(
+                (t["Value"] for t in tags if t["Key"] == "credentials-secret"),
+                None
             )
 
-            # Deactivate old key
-            iam.update_access_key(
-                UserName=username,
-                AccessKeyId=key["AccessKeyId"],
-                Status="Inactive"
-            )
+            if not secret_name:
+                continue  # skip users without managed secrets
 
-            # Send notification
-            sns.publish(
-                TopicArn=notification_topic,
-                Subject=f"Access Key Rotated: {username}",
-                Message=f"Old key {key['AccessKeyId']} deactivated.\n"
-                       f"New key {new_key['AccessKeyId']} created and "
-                       f"stored in {secret_name}."
-            )
+            keys = iam.list_access_keys(UserName=username)["AccessKeyMetadata"]
+            active_keys = [k for k in keys if k["Status"] == "Active"]
 
-            print(f"Rotated key for {username}")
+            for key in active_keys:
+                age = (datetime.now(timezone.utc) - key["CreateDate"]).days
+
+                if age < max_age_days:
+                    continue
+
+                if len(keys) >= 2:
+                    print(f"User {username} already has 2 keys. Skipping.")
+                    continue
+
+                # Create new key
+                new_key = iam.create_access_key(UserName=username)["AccessKey"]
+
+                # Store new key in Secrets Manager
+                secrets.update_secret(
+                    SecretId=secret_name,
+                    SecretString=json.dumps({
+                        "aws_access_key_id": new_key["AccessKeyId"],
+                        "aws_secret_access_key": new_key["SecretAccessKey"]
+                    })
+                )
+
+                # Deactivate old key
+                iam.update_access_key(
+                    UserName=username,
+                    AccessKeyId=key["AccessKeyId"],
+                    Status="Inactive"
+                )
+
+                # Send notification
+                sns.publish(
+                    TopicArn=notification_topic,
+                    Subject=f"Access Key Rotated: {username}",
+                    Message=f"Old key {key['AccessKeyId']} deactivated.\n"
+                           f"New key {new_key['AccessKeyId']} created and "
+                           f"stored in {secret_name}."
+                )
+
+                print(f"Rotated key for {username}")
 ```
 
 ## AWS Config Rule for Key Age
