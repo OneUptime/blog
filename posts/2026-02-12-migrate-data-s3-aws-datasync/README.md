@@ -101,7 +101,7 @@ aws datasync create-location-s3 \
   --s3-bucket-arn arn:aws:s3:::migration-target-bucket \
   --s3-config BucketAccessRoleArn=arn:aws:iam::123456789012:role/DataSyncS3Role \
   --s3-storage-class STANDARD \
-  --subdirectory "/migrated-data"
+  --subdirectory "migrated-data"
 ```
 
 The IAM role needs these permissions to write to S3.
@@ -178,11 +178,11 @@ Key options to understand:
 You can include or exclude specific files using filters.
 
 ```bash
-# Update task with filters to exclude temp files and include only CSV data
+# Update task with filters to exclude temp files and include specific data folders
 aws datasync update-task \
   --task-arn arn:aws:datasync:us-east-1:123456789012:task/task-abc123 \
   --includes '[
-    {"FilterType": "SIMPLE_PATTERN", "Value": "*.csv|*.parquet"}
+    {"FilterType": "SIMPLE_PATTERN", "Value": "/csv-data/*|/parquet-data/*"}
   ]' \
   --excludes '[
     {"FilterType": "SIMPLE_PATTERN", "Value": "*.tmp|*.log|.DS_Store"}
@@ -225,7 +225,7 @@ aws datasync describe-task-execution \
   --task-execution-arn arn:aws:datasync:us-east-1:123456789012:task/task-abc123/execution/exec-xyz789
 ```
 
-The response includes bytes transferred, files transferred, estimated time remaining, and any errors.
+The response includes status, transfer counters such as bytes and files transferred, and any errors.
 
 For production migrations, set up CloudWatch alarms to catch failures early. You can also integrate with [OneUptime](https://oneuptime.com) for monitoring the health of your migration pipeline and getting alerts if transfers stall or fail.
 
@@ -242,7 +242,7 @@ DataSync can achieve sustained transfer rates of several Gbps per agent when the
 
 ## Cost Considerations
 
-DataSync charges per GB of data transferred. As of writing, it's roughly $0.0125 per GB. For a 10 TB migration, that's about $125. There are no charges for the agent itself.
+DataSync charges per GB of data transferred. As of writing, it's roughly $0.0125 per GB for Basic mode. For a 10 TB migration, that's about $125 before S3 request, storage, and other service charges. There are no charges for the agent itself.
 
 If you're doing a one-time migration of very large datasets (hundreds of TB), consider whether AWS Snowball might be more cost-effective. But for ongoing synchronization or migrations under 50 TB, DataSync is usually the better choice.
 
