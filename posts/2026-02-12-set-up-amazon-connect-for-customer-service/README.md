@@ -45,14 +45,13 @@ aws connect search-available-phone-numbers \
   --target-arn "arn:aws:connect:us-east-1:123456789012:instance/abc-123" \
   --phone-number-country-code "US" \
   --phone-number-type "TOLL_FREE" \
-  --max-results 5
+  --max-items 5
 
 # Claim a phone number
 aws connect claim-phone-number \
   --target-arn "arn:aws:connect:us-east-1:123456789012:instance/abc-123" \
-  --phone-number-description "Main customer service line" \
-  --phone-number-country-code "US" \
-  --phone-number-type "TOLL_FREE"
+  --phone-number "+18005550123" \
+  --phone-number-description "Main customer service line"
 ```
 
 You can claim local numbers, toll-free numbers, or port existing numbers from your current provider.
@@ -305,7 +304,7 @@ Amazon Connect pricing is entirely usage-based:
 - Voice calls: per-minute rate for inbound and outbound
 - Chat: per-message rate
 - Tasks: per-task rate
-- Phone numbers: monthly fee per number
+- Phone numbers: daily fee per number
 
 There are no per-agent fees, no minimum commitments, and no upfront costs. You pay only for what you use, which makes it extremely cost-effective for variable workloads.
 
