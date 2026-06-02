@@ -8,7 +8,7 @@ Description: Learn how to use AWS Lambda Extensions to add monitoring, logging, 
 
 ---
 
-Lambda Extensions let you plug monitoring, security, and governance tools into the Lambda execution environment without touching your function code. They run as separate processes alongside your function, receiving lifecycle events and telemetry data. You can use them to ship logs to third-party services, collect custom metrics, cache configuration, or enforce security policies - all without modifying a single line of your handler.
+Lambda Extensions let you plug monitoring, security, and governance tools into the Lambda execution environment without touching your function code. External extensions run as separate processes alongside your function, receiving lifecycle events and telemetry data, while internal extensions run inside the runtime process. You can use them to ship logs to third-party services, collect custom metrics, cache configuration, or enforce security policies - all without modifying a single line of your handler.
 
 This is how modern observability platforms integrate with Lambda. Let's understand how extensions work and build one from scratch.
 
@@ -16,9 +16,9 @@ This is how modern observability platforms integrate with Lambda. Let's understa
 
 Extensions come in two flavors:
 
-**Internal extensions** run as part of the function's runtime process. They're loaded as Lambda Layers and start before your handler runs. Think of them as middleware.
+**Internal extensions** run as part of the function's runtime process. They're usually delivered with Lambda Layers and activated with runtime settings such as wrapper scripts or `NODE_OPTIONS`. Think of them as middleware.
 
-**External extensions** run as separate processes in the Lambda execution environment. They start during the INIT phase and can continue running after your function invocation completes (during the SHUTDOWN phase). This is how monitoring agents work - they batch and ship telemetry data asynchronously.
+**External extensions** run as separate processes in the Lambda execution environment. They start during the INIT phase and can continue running after your function code returns, then receive a SHUTDOWN event when Lambda is about to remove the execution environment. This is how monitoring agents work - they batch and ship telemetry data asynchronously.
 
 The lifecycle looks like this:
 
@@ -46,7 +46,7 @@ Before building your own, check if your monitoring tool provides a Lambda extens
 
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers arn:aws:lambda:us-east-1:464622532012:layer:Datadog-Extension:latest \
+  --layers arn:aws:lambda:us-east-1:464622532012:layer:Datadog-Extension:<version> \
   --environment "Variables={DD_API_KEY=your-api-key,DD_SITE=datadoghq.com}"
 ```
 
@@ -55,8 +55,8 @@ aws lambda update-function-configuration \
 ```bash
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers arn:aws:lambda:us-east-1:451483290750:layer:NewRelicNodeJS20X:latest \
-  --environment "Variables={NEW_RELIC_LAMBDA_HANDLER=index.handler,NEW_RELIC_ACCOUNT_ID=your-account-id}"
+  --layers arn:aws:lambda:us-east-1:451483290750:layer:NewRelicLambdaExtension:<version> \
+  --environment "Variables={NEW_RELIC_LAMBDA_HANDLER=index.handler,NEW_RELIC_ACCOUNT_ID=your-account-id,NEW_RELIC_LICENSE_KEY=your-license-key,NEW_RELIC_APM_LAMBDA_MODE=true}"
 ```
 
 ### Adding Extensions with CDK
@@ -212,7 +212,7 @@ async function subscribeTelemetryApi() {
       'Lambda-Extension-Identifier': extensionId,
     },
     body: JSON.stringify({
-      schemaVersion: '2022-07-01',
+      schemaVersion: '2025-01-29',
       destination: {
         protocol: 'HTTP',
         URI: `http://sandbox.localdomain:${port}`,
@@ -279,63 +279,75 @@ main().catch(console.error);
 
 ## Building an Internal Extension
 
-Internal extensions run within the runtime process. They're simpler - just a Lambda Layer that gets loaded before your handler.
+Internal extensions run within the runtime process. They're usually packaged as Lambda Layers and activated with a runtime preload setting. For Node.js, you can set `NODE_OPTIONS` to load a module before your handler module.
 
-This internal extension adds request tracing to every invocation:
+This CommonJS internal extension adds request tracing to every invocation:
 
 ```javascript
 // layers/tracing/wrapper.js
-// This runs before the handler on every invocation
+// Set NODE_OPTIONS="--require /opt/tracing/wrapper.js"
+
+const Module = require('module');
+const path = require('path');
 
 const originalHandler = process.env._HANDLER;
 const [handlerModule, handlerFunction] = originalHandler.split('.');
+const handlerFile = require.resolve(path.join(process.env.LAMBDA_TASK_ROOT, handlerModule));
+const originalLoad = Module._load;
 
-// Override the handler
-process.env._HANDLER = 'wrapper.handler';
+Module._load = function patchedLoad(request, parent, isMain) {
+  const exported = originalLoad.apply(this, arguments);
+  const resolved = Module._resolveFilename(request, parent, isMain);
 
-let userHandler;
+  if (
+    resolved === handlerFile &&
+    typeof exported[handlerFunction] === 'function' &&
+    !exported[handlerFunction].__tracingWrapped
+  ) {
+    const userHandler = exported[handlerFunction];
 
-exports.handler = async (event, context) => {
-  // Load the original handler lazily
-  if (!userHandler) {
-    const mod = require(`/var/task/${handlerModule}`);
-    userHandler = mod[handlerFunction];
+    const wrappedHandler = async (event, context) => {
+      const startTime = Date.now();
+      const traceId = `trace-${context.awsRequestId}`;
+
+      console.log(JSON.stringify({
+        type: 'trace_start',
+        traceId,
+        functionName: context.functionName,
+        requestId: context.awsRequestId,
+        timestamp: new Date().toISOString(),
+      }));
+
+      try {
+        const result = await userHandler(event, context);
+
+        console.log(JSON.stringify({
+          type: 'trace_end',
+          traceId,
+          durationMs: Date.now() - startTime,
+          status: 'success',
+        }));
+
+        return result;
+      } catch (error) {
+        console.log(JSON.stringify({
+          type: 'trace_end',
+          traceId,
+          durationMs: Date.now() - startTime,
+          status: 'error',
+          errorType: error.name,
+          errorMessage: error.message,
+        }));
+
+        throw error;
+      }
+    };
+
+    wrappedHandler.__tracingWrapped = true;
+    exported[handlerFunction] = wrappedHandler;
   }
 
-  const startTime = Date.now();
-  const traceId = `trace-${context.awsRequestId}`;
-
-  console.log(JSON.stringify({
-    type: 'trace_start',
-    traceId,
-    functionName: context.functionName,
-    requestId: context.awsRequestId,
-    timestamp: new Date().toISOString(),
-  }));
-
-  try {
-    const result = await userHandler(event, context);
-
-    console.log(JSON.stringify({
-      type: 'trace_end',
-      traceId,
-      durationMs: Date.now() - startTime,
-      status: 'success',
-    }));
-
-    return result;
-  } catch (error) {
-    console.log(JSON.stringify({
-      type: 'trace_end',
-      traceId,
-      durationMs: Date.now() - startTime,
-      status: 'error',
-      errorType: error.name,
-      errorMessage: error.message,
-    }));
-
-    throw error;
-  }
+  return exported;
 };
 ```
 
