@@ -51,7 +51,7 @@ This returns something like:
 
 ## Step 1: Set Up SSL on Your ALB
 
-Before pointing your domain to the ALB, make sure HTTPS is configured. Request a certificate:
+Before pointing your domain to the ALB, make sure HTTPS is configured. Request a certificate in the same AWS region as your ALB:
 
 ```bash
 # Request an SSL certificate for your domain
@@ -140,7 +140,7 @@ Create the alias record that points your domain to the ALB:
 }
 ```
 
-Notice the `dualstack.` prefix on the DNS name - this enables IPv6 support. Also, `EvaluateTargetHealth` is set to `true`, which means Route 53 will check the ALB's health and stop routing traffic to it if the ALB reports unhealthy targets.
+Notice the `dualstack.` prefix on the DNS name - this lets Route 53 return A or AAAA answers based on the address format requested by the client. For IPv6 to work, the ALB itself must use a dualstack IP address type and its VPC, subnets, route tables, security groups, and network ACLs must allow IPv6 traffic. Also, `EvaluateTargetHealth` is set to `true`, which means Route 53 evaluates the ALB using its target group health checks and can route to a healthy alternative when your routing policy has one.
 
 ```bash
 # Apply the alias records
@@ -151,7 +151,7 @@ aws route53 change-resource-record-sets \
 
 ## Step 3: Add Route 53 Health Checks (Optional but Recommended)
 
-While `EvaluateTargetHealth` handles basic health checking, you can set up explicit Route 53 health checks for more control:
+While `EvaluateTargetHealth` uses the ALB's target group health checks, you can set up explicit Route 53 health checks for application-level monitoring or for records that need their own health check:
 
 ```bash
 # Create a Route 53 health check for your ALB endpoint
@@ -229,11 +229,11 @@ If you're running ALBs in multiple regions for high availability, you can use Ro
 }
 ```
 
-This automatically fails over to the secondary ALB in us-west-2 if the primary in us-east-1 becomes unhealthy.
+This automatically fails over to the secondary ALB in us-west-2 if the primary in us-east-1 becomes unhealthy and the secondary is healthy. If all matching records are unhealthy, Route 53 can fail open and still return records.
 
 ## Troubleshooting
 
-**Domain resolves but connection times out**: Check your ALB's security group. It needs to allow inbound traffic on ports 80 and 443 from `0.0.0.0/0`.
+**Domain resolves but connection times out**: Check your ALB's security group. It needs to allow inbound traffic on ports 80 and 443 from `0.0.0.0/0`, and from `::/0` if you're serving IPv6 traffic.
 
 **SSL certificate error in browser**: Verify the certificate covers the exact domain you're using. A cert for `example.com` won't work for `www.example.com` unless you included it as a SAN or used a wildcard.
 
