@@ -18,7 +18,7 @@ VPC Flow Logs record metadata about IP traffic flowing through your VPC. Each fl
 
 You can create flow logs at three levels:
 
-- **VPC level** - captures all traffic in the entire VPC
+- **VPC level** - captures traffic for monitored network interfaces in the VPC
 - **Subnet level** - captures traffic for all interfaces in a subnet
 - **Network interface level** - captures traffic for a specific ENI
 
@@ -45,7 +45,6 @@ graph TD
 Before creating flow logs that publish to CloudWatch Logs, you need an IAM role that grants the necessary permissions.
 
 ```json
-// IAM trust policy - allows VPC Flow Logs service to assume this role
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -63,7 +62,6 @@ Before creating flow logs that publish to CloudWatch Logs, you need an IAM role 
 Attach a policy that allows writing to CloudWatch Logs.
 
 ```json
-// IAM policy granting permissions to create and write to CloudWatch log groups
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -98,7 +96,7 @@ aws ec2 create-flow-logs \
   --max-aggregation-interval 60
 ```
 
-The `--max-aggregation-interval 60` flag sets the capture window to 60 seconds (the minimum). The default is 600 seconds, but for performance monitoring you want the finer granularity.
+The `--max-aggregation-interval 60` flag sets the capture window to 60 seconds (the minimum). The default is 600 seconds, but for performance monitoring you want the finer granularity. For Nitro-based instances, the aggregation interval is always 60 seconds or less regardless of the value you specify.
 
 ### Step 3: Use a Custom Log Format
 
@@ -124,7 +122,7 @@ The `tcp-flags` field is particularly valuable. It lets you identify SYN floods,
 This CloudWatch Logs Insights query finds the top sources of rejected traffic, which often points to misconfigured security groups or NACLs.
 
 ```sql
--- Find top 10 source IPs with the most rejected connections
+# Find top 10 source IPs with the most rejected connections
 filter action = "REJECT"
 | stats count(*) as rejectedCount by srcAddr
 | sort rejectedCount desc
@@ -136,7 +134,7 @@ filter action = "REJECT"
 Identify connections that are consuming the most bandwidth in your VPC.
 
 ```sql
--- Find connections transferring the most data in the last hour
+# Find connections transferring the most data in the selected time range
 filter logStatus = "OK"
 | stats sum(bytes) as totalBytes by srcAddr, dstAddr, dstPort
 | sort totalBytes desc
@@ -145,11 +143,12 @@ filter logStatus = "OK"
 
 ### Spotting TCP Connection Issues
 
-Using the TCP flags field, you can find connections that are failing to complete the three-way handshake.
+Using the TCP flags field, you can start investigating connections that may be failing to complete the three-way handshake. If you publish a custom format that includes `tcp-flags` to CloudWatch Logs, parse the custom field first.
 
 ```sql
--- Find SYN packets without corresponding SYN-ACK (potential connectivity issues)
-filter tcpFlags = 2
+# Find sources with many SYN packets (potential connectivity issues)
+parse @message "* * * * * * * * * * * * * * * * *" as version, accountId, interfaceId, srcAddr, dstAddr, srcPort, dstPort, protocol, packets, bytes, startTime, endTime, action, logStatus, tcpFlags, trafficPath, flowDirection
+| filter tcpFlags = "2"
 | stats count(*) as synCount by srcAddr, dstAddr, dstPort
 | sort synCount desc
 | limit 10
@@ -165,7 +164,7 @@ For cost-effective long-term storage, publish flow logs to S3 and query them wit
 
 ```sql
 -- Create an Athena table to query flow logs stored in S3
-CREATE EXTERNAL TABLE vpc_flow_logs (
+CREATE EXTERNAL TABLE IF NOT EXISTS vpc_flow_logs (
   version int,
   account_id string,
   interface_id string,
@@ -179,14 +178,19 @@ CREATE EXTERNAL TABLE vpc_flow_logs (
   start bigint,
   `end` bigint,
   action string,
-  log_status string
+  log_status string,
+  tcp_flags int,
+  traffic_path int,
+  flow_direction string
 )
-PARTITIONED BY (dt string)
+PARTITIONED BY (`date` date)
 ROW FORMAT DELIMITED
 FIELDS TERMINATED BY ' '
 LOCATION 's3://my-flow-logs-bucket/AWSLogs/123456789012/vpcflowlogs/us-east-1/'
 TBLPROPERTIES ("skip.header.line.count"="1");
 ```
+
+After creating the table, add date partitions for your log paths or use partition projection before running queries.
 
 ### Query for Network Performance Patterns
 
@@ -197,7 +201,7 @@ SELECT dstport,
        AVG(bytes) as avg_bytes,
        SUM(bytes) as total_bytes
 FROM vpc_flow_logs
-WHERE dt >= date_format(date_add('day', -7, now()), '%Y/%m/%d')
+WHERE `date` >= current_date - interval '7' day
   AND action = 'ACCEPT'
 GROUP BY dstport
 ORDER BY total_bytes DESC
@@ -213,7 +217,7 @@ You can create metric filters and alarms to get notified when network anomalies 
 aws logs put-metric-filter \
   --log-group-name /aws/vpc/flow-logs \
   --filter-name RejectedSSH \
-  --filter-pattern '[version, account, eni, source, destination, srcport, destport="22", protocol, packets, bytes, windowstart, windowend, action="REJECT", flowlogstatus]' \
+  --filter-pattern '[version, account, eni, source, destination, srcport, destport="22", protocol="6", packets, bytes, windowstart, windowend, action="REJECT", flowlogstatus]' \
   --metric-transformations \
     metricName=RejectedSSHCount,metricNamespace=VPCFlowLogs,metricValue=1
 ```
