@@ -140,10 +140,12 @@ resource "aws_db_instance" "databases" {
     if config.enabled
   }
 
-  identifier     = each.key
-  engine         = each.value.engine
-  instance_class = each.value.instance_class
-  allocated_storage = 20
+  identifier                  = each.key
+  engine                      = each.value.engine
+  instance_class              = each.value.instance_class
+  allocated_storage           = 20
+  username                    = "dbadmin"
+  manage_master_user_password = true
 
   tags = {
     Name = each.key
@@ -328,7 +330,7 @@ locals {
     storage        = 20
   })
 
-  # Use coalesce() to pick the first non-null value
+  # Use coalesce() to pick the first non-null, non-empty value
   alarm_topic = coalesce(
     var.custom_alarm_topic_arn,
     try(module.monitoring[0].alarm_topic_arn, null),
@@ -339,7 +341,7 @@ locals {
 
 ## Practical Example: Multi-Environment VPC
 
-Here's a complete example that ties everything together - a VPC module that adapts to the environment:
+Here's a larger example that ties everything together - a VPC module that adapts to the environment:
 
 ```hcl
 locals {
