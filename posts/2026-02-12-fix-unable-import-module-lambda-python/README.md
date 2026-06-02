@@ -95,11 +95,11 @@ my-package/
 
 Handler setting: `handlers.user_handler.handle`
 
-Make sure every directory in the path has an `__init__.py` file.
+For regular Python packages, make sure every directory in the path has an `__init__.py` file. Python 3 also supports namespace packages without `__init__.py`, but using regular packages avoids surprises during Lambda imports.
 
 ## Problem 2: Missing Third-Party Dependencies
 
-Lambda's Python runtime includes `boto3`, `botocore`, `urllib3`, and a few other standard libraries. Anything else - `requests`, `pymysql`, `pydantic`, `pillow` - must be included in your deployment package.
+Lambda's Python runtime includes the Python standard library plus the AWS SDK for Python (`boto3`) and its dependencies, such as `botocore` and `urllib3`. Anything else - `requests`, `pymysql`, `pydantic`, `pillow` - must be included in your deployment package.
 
 ### Package Dependencies with Your Code
 
@@ -244,19 +244,20 @@ Here's a quick script to verify your deployment package is correct:
 FUNCTION_ZIP="function.zip"
 HANDLER="lambda_function.lambda_handler"
 
-# Extract the module name from the handler
-MODULE=$(echo $HANDLER | cut -d. -f1)
-echo "Looking for module: $MODULE"
+# Extract the module path from the handler
+MODULE_PATH="${HANDLER%.*}"
+MODULE_FILE="${MODULE_PATH//./\/}.py"
+echo "Looking for module file: $MODULE_FILE"
 
 # Check if the file exists in the zip
 echo "=== Files in zip ==="
 unzip -l $FUNCTION_ZIP | grep ".py"
 
-# Check if the handler file is at the root
-if unzip -l $FUNCTION_ZIP | grep -q "^.*${MODULE}.py$"; then
-  echo "PASS: ${MODULE}.py found at root"
+# Check if the handler file is at the expected path
+if unzip -Z1 "$FUNCTION_ZIP" | grep -Fxq "$MODULE_FILE"; then
+  echo "PASS: ${MODULE_FILE} found at expected path"
 else
-  echo "FAIL: ${MODULE}.py not found at root level"
+  echo "FAIL: ${MODULE_FILE} not found at expected path"
 fi
 
 # Check for common dependencies
