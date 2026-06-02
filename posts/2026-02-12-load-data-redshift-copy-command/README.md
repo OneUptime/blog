@@ -62,7 +62,7 @@ IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftLoadRole'
 FORMAT AS PARQUET;
 ```
 
-Parquet files carry their own schema, so you don't need to specify column mappings, date formats, or delimiters. Much simpler.
+Parquet files carry their own schema, so you don't need to specify date formats or delimiters. Redshift still loads values into the target table's columns in the same order as the columns appear in the Parquet files, and the column counts must match.
 
 ### JSON Files
 
@@ -221,7 +221,7 @@ A good rule of thumb: create at least as many files as there are slices in your 
 
 ### Use Columnar Formats
 
-Parquet and ORC are much faster than CSV for large loads because Redshift can read only the columns it needs:
+Parquet and ORC are much faster than CSV for many large loads because their columnar layout and built-in compression make them efficient for Redshift to scan:
 
 ```sql
 -- Parquet loads are typically 2-5x faster than CSV
@@ -282,6 +282,8 @@ ANALYZE sales.orders;
 Trigger a COPY command automatically when new files land in S3:
 
 ```python
+from urllib.parse import unquote_plus
+
 import boto3
 
 redshift_data = boto3.client("redshift-data")
@@ -290,29 +292,22 @@ redshift_data = boto3.client("redshift-data")
 def lambda_handler(event, context):
     """Triggered by S3 event when new data files arrive."""
     bucket = event["Records"][0]["s3"]["bucket"]["name"]
-    key = event["Records"][0]["s3"]["object"]["key"]
+    key = unquote_plus(event["Records"][0]["s3"]["object"]["key"])
 
-    # Build the COPY command
-    sql = f"""
-    BEGIN;
-
+    copy_sql = f"""
     COPY sales.orders
-    FROM 's3://{bucket}/{key}'
+    FROM 's3://{bucket}/{key.replace("'", "''")}'
     IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftLoadRole'
     CSV
     IGNOREHEADER 1
     GZIP;
-
-    ANALYZE sales.orders;
-
-    COMMIT;
     """
 
-    # Execute using Redshift Data API
-    response = redshift_data.execute_statement(
+    # Execute using Redshift Data API. Batch execution runs the statements in one transaction.
+    response = redshift_data.batch_execute_statement(
         WorkgroupName="analytics-workgroup",
         Database="analytics_db",
-        Sql=sql,
+        Sqls=[copy_sql, "ANALYZE sales.orders;"],
     )
 
     print(f"Started load: {response['Id']}")
@@ -326,16 +321,16 @@ Check load status and performance:
 ```sql
 -- Check recent COPY operations
 SELECT
-    query,
-    TRIM(filename) AS filename,
-    lines_scanned,
-    lines_loaded,
-    bytes_scanned,
-    DATEDIFF(second, starttime, endtime) AS duration_seconds
-FROM stl_load_commits lc
-JOIN stl_query q ON lc.query = q.query
-WHERE q.starttime > DATEADD(hour, -24, GETDATE())
-ORDER BY q.starttime DESC
+    query_id,
+    table_name,
+    data_source,
+    loaded_rows,
+    loaded_bytes,
+    file_bytes_scanned,
+    duration / 1000000.0 AS duration_seconds
+FROM sys_load_history
+WHERE start_time > DATEADD(hour, -24, GETDATE())
+ORDER BY start_time DESC
 LIMIT 20;
 
 -- Check for currently running loads
