@@ -37,7 +37,7 @@ ssh -i bastion-key.pem -L 9200:vpc-my-domain.us-east-1.es.amazonaws.com:443 ec2-
 # Then access Dashboards at https://localhost:9200/_dashboards
 ```
 
-For Cognito-based access (recommended for teams), configure it during domain setup.
+For Cognito-based access (recommended for teams), configure it during or after domain setup.
 
 ```bash
 aws opensearch update-domain-config \
@@ -105,9 +105,9 @@ Save your commonly used searches for quick access later.
 
 Let's build the most useful visualizations for a monitoring dashboard.
 
-### Error Rate Over Time (Line Chart)
+### Error Count Over Time (Line Chart)
 
-Create a line chart showing the error rate per service.
+Create a line chart showing the error count per service.
 
 1. Go to **Visualize > Create visualization > Line**
 2. Select your index pattern
@@ -118,12 +118,12 @@ Create a line chart showing the error rate per service.
 
 The equivalent can be done through the Vega visualization for more control.
 
-This Vega spec creates a custom error rate chart with better formatting.
+This Vega spec creates a custom error count chart with better formatting.
 
 ```json
 {
   "$schema": "https://vega.github.io/schema/vega-lite/v5.json",
-  "title": "Error Rate by Service",
+  "title": "Error Count by Service",
   "data": {
     "url": {
       "index": "app-logs-*",
@@ -223,7 +223,7 @@ A good monitoring dashboard layout:
 |   (Big Number)    |  (Big Number)     |  Time (Big Number)|
 +-------------------+-------------------+-------------------+
 |                                                           |
-|              Error Rate Over Time (Line Chart)            |
+|              Error Count Over Time (Line Chart)           |
 |                                                           |
 +-------------------+-------------------+-------------------+
 |                   |                                       |
@@ -251,13 +251,13 @@ NOT environment: "staging" AND NOT environment: "dev"
 service: "api-gateway" AND level: "ERROR"
 
 # Slow requests
-response_time_ms: [1000 TO *]
+response_time_ms >= 1000
 
 # 5xx errors
-status_code: [500 TO 599]
+status_code >= 500 AND status_code <= 599
 
 # Failed health checks
-service: "health-check" AND status_code: [400 TO 599]
+service: "health-check" AND status_code >= 400 AND status_code <= 599
 ```
 
 ## Alerting
@@ -266,7 +266,7 @@ OpenSearch Dashboards includes an alerting plugin. Set up monitors that trigger 
 
 Create a monitor using the Alerting API.
 
-This creates an alerting monitor that fires when the error rate exceeds a threshold.
+This creates an alerting monitor that fires when the error count exceeds a threshold.
 
 ```bash
 curl -XPOST "https://vpc-my-domain.us-east-1.es.amazonaws.com/_plugins/_alerting/monitors" \
@@ -274,7 +274,7 @@ curl -XPOST "https://vpc-my-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
   -u admin:Admin\$ecure123! \
   -d '{
     "type": "monitor",
-    "name": "High Error Rate",
+    "name": "High Error Count",
     "monitor_type": "query_level_monitor",
     "enabled": true,
     "schedule": {
@@ -303,25 +303,23 @@ curl -XPOST "https://vpc-my-domain.us-east-1.es.amazonaws.com/_plugins/_alerting
     ],
     "triggers": [
       {
-        "query_level_trigger": {
-          "name": "Error spike",
-          "severity": "1",
-          "condition": {
-            "script": {
-              "source": "ctx.results[0].hits.total.value > 100",
-              "lang": "painless"
+        "name": "Error spike",
+        "severity": "1",
+        "condition": {
+          "script": {
+            "source": "ctx.results[0].hits.total.value > 100",
+            "lang": "painless"
+          }
+        },
+        "actions": [
+          {
+            "name": "Notify team",
+            "destination_id": "slack-destination-id",
+            "message_template": {
+              "source": "High error count detected: {{ctx.results.0.hits.total.value}} errors in the last 5 minutes."
             }
-          },
-          "actions": [
-            {
-              "name": "Notify team",
-              "destination_id": "slack-destination-id",
-              "message_template": {
-                "source": "High error rate detected: {{ctx.results.0.hits.total.value}} errors in the last 5 minutes."
-              }
-            }
-          ]
-        }
+          }
+        ]
       }
     ]
   }'
