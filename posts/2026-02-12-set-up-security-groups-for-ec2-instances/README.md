@@ -22,7 +22,7 @@ A few key things to understand upfront:
 
 **All rules are evaluated together.** Unlike network ACLs (which process rules in order), security groups evaluate all rules and allow traffic if any rule matches.
 
-**Security groups are per-VPC.** A security group belongs to a specific VPC and can only be attached to instances in that VPC.
+**Security groups are VPC-scoped.** A security group is created for a specific VPC and can be attached to resources in that VPC. You can also associate some security groups with additional VPCs in the same Region using Security Group VPC Associations.
 
 **Multiple security groups can be combined.** An instance can have up to 5 security groups. The rules from all attached groups are merged together.
 
@@ -40,7 +40,7 @@ A few key things to understand upfront:
 ### Via the AWS CLI
 
 ```bash
-# Create a security group in the default VPC
+# Create a security group in the specified VPC
 
 aws ec2 create-security-group \
     --group-name web-server-sg \
@@ -234,7 +234,7 @@ Tag them with Environment, Service, and Team tags for filtering and cost trackin
 
 AWS has default limits you should know:
 
-- 2,500 security groups per VPC
+- 2,500 security groups per Region
 - 60 inbound and 60 outbound rules per security group
 - 5 security groups per network interface
 
