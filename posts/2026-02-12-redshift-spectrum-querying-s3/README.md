@@ -14,7 +14,7 @@ The beauty of this approach is that you keep hot data in Redshift for fast queri
 
 ## How Spectrum Works
 
-When you run a query that touches an external table, Redshift spins up independent Spectrum workers that read your S3 data, apply filters and aggregations, and send the reduced results back to your Redshift cluster. The heavy lifting happens outside your cluster, so Spectrum queries don't compete with your regular Redshift workload for compute resources.
+When you run a query that touches an external table, Redshift uses independent Spectrum workers that read your S3 data, apply filters and aggregations, and send the reduced results back to your Redshift cluster. Much of the scanning work happens outside your cluster, though the query still uses Redshift resources for planning, joins, and final processing.
 
 ```mermaid
 graph LR
@@ -162,13 +162,14 @@ ALTER TABLE data_lake.clickstream
 ADD PARTITION (year=2026, month=1, day=16)
 LOCATION 's3://my-data-lake/clickstream/year=2026/month=01/day=16/';
 
--- Or use MSCK to auto-discover partitions (works if S3 paths follow Hive naming)
-MSCK REPAIR TABLE data_lake.clickstream;
+-- Or run MSCK in Athena to auto-discover partitions (works if S3 paths follow Hive naming)
+-- In Athena, select the analytics_lake database first, then run:
+MSCK REPAIR TABLE clickstream;
 ```
 
 ## Querying External Tables
 
-Once defined, external tables work just like regular Redshift tables.
+Once defined, external tables can be queried much like regular Redshift tables.
 
 ```sql
 -- Query external data with standard SQL
@@ -215,7 +216,8 @@ CREATE VIEW unified_orders AS
   FROM data_lake.orders_archive
   WHERE year < EXTRACT(year FROM DATEADD(month, -3, CURRENT_DATE))
      OR (year = EXTRACT(year FROM DATEADD(month, -3, CURRENT_DATE))
-         AND month < EXTRACT(month FROM DATEADD(month, -3, CURRENT_DATE)));
+         AND month < EXTRACT(month FROM DATEADD(month, -3, CURRENT_DATE)))
+WITH NO SCHEMA BINDING;
 ```
 
 ## Performance Optimization
@@ -226,11 +228,11 @@ Here are the most impactful things you can do for Spectrum query performance.
 
 **Partition aggressively.** The more specific your partition filters, the less data Spectrum reads.
 
-**Right-size your files.** Aim for files between 128 MB and 512 MB each. Too many small files create overhead. Too few large files limit parallelism.
+**Right-size your files.** Aim for files in the tens or hundreds of megabytes, and keep them roughly the same size. AWS recommends 64 MB to 1 GB. Too many small files create overhead. Too few large files limit parallelism.
 
-```bash
+```python
 # Use AWS Glue or Spark to compact small files into optimal sizes
-# This PySpark snippet merges small Parquet files into ~256MB files
+# Adjust the partition count to target the file size you want
 from pyspark.sql import SparkSession
 
 spark = SparkSession.builder.getOrCreate()
@@ -253,7 +255,7 @@ WHERE year = 2026 AND month = 2;
 
 ## Cost Considerations
 
-Spectrum charges $5 per TB of data scanned. With Parquet and partitioning, you can dramatically reduce what gets scanned.
+For provisioned Redshift clusters, Spectrum charges $5 per TB of data scanned in US East (N. Virginia). Redshift Serverless includes external S3 queries in RPU-hour billing instead of billing them separately as Spectrum scans. With Parquet and partitioning, you can dramatically reduce what gets scanned.
 
 For example, if your clickstream table is 10 TB total but you only query one month (300 GB) and only need 3 columns out of 15, the actual scan might be around 60 GB, costing about $0.30 per query.
 
