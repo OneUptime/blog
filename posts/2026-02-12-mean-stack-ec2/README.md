@@ -42,7 +42,7 @@ Install Node.js with nvm:
 
 ```bash
 # Install nvm
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
 
 # Load nvm into current session
 export NVM_DIR="$HOME/.nvm"
@@ -71,7 +71,7 @@ Add the MongoDB repository and install:
 
 ```bash
 # Create the MongoDB repo file
-sudo cat > /etc/yum.repos.d/mongodb-org-7.0.repo << 'EOF'
+sudo tee /etc/yum.repos.d/mongodb-org-7.0.repo > /dev/null << 'EOF'
 [mongodb-org-7.0]
 name=MongoDB Repository
 baseurl=https://repo.mongodb.org/yum/amazon/2023/mongodb-org/7.0/x86_64/
@@ -122,7 +122,7 @@ Enable authentication in the MongoDB config:
 
 ```bash
 # Edit MongoDB configuration
-sudo cat > /etc/mongod.conf << 'EOF'
+sudo tee /etc/mongod.conf > /dev/null << 'EOF'
 # mongod.conf
 
 storage:
@@ -276,7 +276,7 @@ const path = require('path');
 app.use(express.static(path.join(__dirname, '../frontend/dist/frontend/browser')));
 
 // Catch-all route for Angular routing (add after API routes)
-app.get('*', (req, res) => {
+app.get('/{*splat}', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/frontend/browser/index.html'));
 });
 ```
@@ -302,7 +302,8 @@ pm2 status
 # View logs
 pm2 logs myapp
 
-# Enable cluster mode for better performance (uses all CPU cores)
+# Enable cluster mode for better performance instead (uses all CPU cores)
+pm2 delete myapp
 pm2 start server.js --name myapp -i max
 ```
 
@@ -340,7 +341,7 @@ Install and configure nginx:
 sudo yum install -y nginx
 
 # Create the nginx configuration
-sudo cat > /etc/nginx/conf.d/myapp.conf << 'EOF'
+sudo tee /etc/nginx/conf.d/myapp.conf > /dev/null << 'EOF'
 server {
     listen 80;
     server_name myapp.example.com;
