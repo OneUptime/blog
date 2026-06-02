@@ -33,14 +33,14 @@ Firehose sends batches of records to your Lambda function. The function returns 
 
 ## Creating the Lambda Transformation Function
 
-Here's a Lambda function that transforms raw event data - it enriches records with geo information, normalizes field names, and filters out test events.
+Here's a Lambda function that transforms raw event data - it enriches records with processing metadata, normalizes field names, and filters out test events.
 
 This Lambda function processes Firehose records, performing enrichment, normalization, and filtering.
 
 ```python
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 
 def handler(event, context):
     output_records = []
@@ -62,18 +62,20 @@ def handler(event, context):
                 continue
 
             # Transform: normalize field names
+            processed_at = datetime.now(timezone.utc)
+
             transformed = {
                 'event_id': data.get('eventId', data.get('event_id', '')),
                 'user_id': data.get('userId', data.get('user_id', '')),
                 'event_type': data.get('eventType', data.get('event_type', '')),
-                'timestamp': data.get('timestamp', int(datetime.utcnow().timestamp())),
+                'timestamp': data.get('timestamp', int(processed_at.timestamp())),
                 'page_url': data.get('page', data.get('pageUrl', data.get('page_url', ''))),
                 'user_agent': data.get('userAgent', data.get('user_agent', '')),
                 'ip_address': data.get('ip', data.get('ipAddress', ''))
             }
 
             # Enrich: add processing metadata
-            transformed['processed_at'] = datetime.utcnow().isoformat()
+            transformed['processed_at'] = processed_at.isoformat()
             transformed['source'] = 'firehose-transform'
 
             # Enrich: categorize event type
@@ -133,7 +135,7 @@ aws lambda create-function \
   --function-name firehose-transform \
   --runtime python3.12 \
   --handler lambda_function.handler \
-  --role arn:aws:iam::123456789:role/LambdaFirehoseRole \
+  --role arn:aws:iam::123456789012:role/LambdaFirehoseRole \
   --zip-file fileb://function.zip \
   --timeout 300 \
   --memory-size 256
@@ -152,7 +154,7 @@ aws firehose create-delivery-stream \
   --delivery-stream-name transformed-events-to-s3 \
   --delivery-stream-type DirectPut \
   --extended-s3-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseS3Role",
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseS3Role",
     "BucketARN": "arn:aws:s3:::my-data-lake",
     "Prefix": "processed/events/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/",
     "ErrorOutputPrefix": "errors/events/!{firehose:error-output-type}/",
@@ -169,7 +171,7 @@ aws firehose create-delivery-stream \
           "Parameters": [
             {
               "ParameterName": "LambdaArn",
-              "ParameterValue": "arn:aws:lambda:us-east-1:123456789:function:firehose-transform"
+              "ParameterValue": "arn:aws:lambda:us-east-1:123456789012:function:firehose-transform"
             },
             {
               "ParameterName": "BufferSizeInMBs",
@@ -320,7 +322,7 @@ def handler(event, context):
 
 There are some limits you need to be aware of:
 
-1. **Lambda payload size** - Firehose sends up to 6 MB per Lambda invocation. If your records are large, the batch will be smaller.
+1. **Lambda payload size** - Lambda synchronous invocation has a 6 MB request and response payload limit, and Firehose's Lambda buffer size hint ranges from 0.2 MB to 3 MB. If your records are large, the batch will be smaller.
 2. **Lambda timeout** - Maximum 5 minutes. If your transformation involves slow external calls, you could hit this.
 3. **Response size** - Your Lambda response must not exceed 6 MB. Be careful with enrichment that significantly increases record size.
 4. **Record ID matching** - Every record in the response must have the same recordId as in the request. Missing or mismatched IDs cause delivery failures.
@@ -340,7 +342,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 10 \
   --comparison-operator GreaterThanThreshold \
   --dimensions Name=FunctionName,Value=firehose-transform \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 Also monitor the `ExecuteProcessing.Duration` and `ExecuteProcessing.Success` metrics on the Firehose delivery stream to see how the transformation is performing.
