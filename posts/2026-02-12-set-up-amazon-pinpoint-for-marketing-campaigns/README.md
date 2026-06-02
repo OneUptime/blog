@@ -8,9 +8,9 @@ Description: A complete walkthrough of setting up Amazon Pinpoint for multi-chan
 
 ---
 
-Amazon Pinpoint is AWS's marketing and analytics platform. Unlike SES, which is purely about sending email, Pinpoint handles the full lifecycle - audience segmentation, campaign scheduling, A/B testing, and analytics across email, SMS, push notifications, and voice channels. If you need to move beyond one-off sends and start running actual marketing campaigns, Pinpoint is where you go.
+Amazon Pinpoint is AWS's marketing and analytics platform. Unlike SES, which is purely about sending email, Pinpoint handles the full lifecycle - audience segmentation, campaign scheduling, A/B testing, and analytics across email, SMS, push notifications, and voice channels. As of May 20, 2025, Amazon Pinpoint is no longer accepting new customers, and AWS will end support for Pinpoint engagement features on October 30, 2026. If you're an existing Pinpoint customer and need to move beyond one-off sends and start running actual marketing campaigns before migrating, Pinpoint is where you go.
 
-Let's set it up from scratch.
+Let's set it up from scratch in an existing Pinpoint account.
 
 ## Creating a Pinpoint Project
 
@@ -45,11 +45,12 @@ aws pinpoint update-email-channel \
   --email-channel-request '{
     "Enabled": true,
     "FromAddress": "marketing@yourdomain.com",
-    "Identity": "arn:aws:ses:us-east-1:123456789:identity/yourdomain.com"
+    "Identity": "arn:aws:ses:us-east-1:123456789:identity/yourdomain.com",
+    "OrchestrationSendingRoleArn": "arn:aws:iam::123456789:role/PinpointEmailOrchestrationRole"
   }'
 ```
 
-The identity ARN should point to your verified SES domain or email address. If you haven't set up SES yet, do that first - Pinpoint relies on SES for actual email delivery.
+The identity ARN should point to your verified SES domain or email address, and the orchestration sending role should allow Pinpoint to send email through SES on your behalf. If you haven't set up SES yet, do that first - Pinpoint relies on SES for actual email delivery.
 
 ## Enabling SMS Channel
 
@@ -63,8 +64,8 @@ aws pinpoint update-sms-channel \
     "Enabled": true
   }'
 
-# Request a dedicated long code or short code through the console
-# or use the phone number management API
+# Request an origination phone number or short code through
+# AWS End User Messaging SMS and Voice v2
 ```
 
 For a deeper dive into SMS, see our post on [using Pinpoint for SMS campaigns](https://oneuptime.com/blog/post/2026-02-12-use-pinpoint-for-sms-campaigns/view).
@@ -189,7 +190,7 @@ segment_id = create_segment(APP_ID, 'Premium DevOps Users', {
 Now for the main event - creating and scheduling a campaign.
 
 ```python
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def create_campaign(app_id, name, segment_id, subject, html_body, text_body,
                     schedule_time=None):
@@ -198,8 +199,7 @@ def create_campaign(app_id, name, segment_id, subject, html_body, text_body,
     # Build the schedule
     if schedule_time:
         schedule = {
-            'StartTime': schedule_time.strftime('%Y-%m-%dT%H:%M:%S'),
-            'Timezone': 'UTC'
+            'StartTime': schedule_time.isoformat()
         }
     else:
         # Send immediately
@@ -229,7 +229,8 @@ def create_campaign(app_id, name, segment_id, subject, html_body, text_body,
     return campaign_id
 
 # Create a campaign scheduled for next week
-next_monday = datetime.utcnow() + timedelta(days=(7 - datetime.utcnow().weekday()) % 7)
+now = datetime.now(timezone.utc)
+next_monday = now + timedelta(days=7 - now.weekday())
 next_monday = next_monday.replace(hour=14, minute=0, second=0)  # 2 PM UTC
 
 create_campaign(
@@ -320,4 +321,4 @@ def get_campaign_results(app_id, campaign_id):
 
 ## Summary
 
-Pinpoint gives you a lot more than raw email sending. The audience management, segmentation, scheduling, and A/B testing features make it a genuine marketing platform built on top of AWS infrastructure. It takes more setup than SES alone, but if you're running real marketing campaigns, the investment is worth it. Start with a small segment, test your campaigns, and scale up as you learn what works for your audience.
+Pinpoint gives existing customers a lot more than raw email sending. The audience management, segmentation, scheduling, and A/B testing features make it a genuine marketing platform built on top of AWS infrastructure. It takes more setup than SES alone, but if you're maintaining Pinpoint campaigns during the support window, start with a small segment, test your campaigns, and scale up as you learn what works for your audience.
