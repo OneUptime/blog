@@ -19,7 +19,7 @@ MediaPackage is a video packaging and origination service. It sits between your 
 - Receive a single encoded video stream
 - Package it into multiple streaming formats (HLS, DASH, MSS, CMAF)
 - Apply DRM encryption (Widevine, FairPlay, PlayReady)
-- Insert SCTE-35 ad markers for server-side ad insertion
+- Pass through and expose SCTE-35 ad markers for server-side ad insertion
 - Enable time-shifted viewing (DVR, catch-up TV, start-over)
 - Handle failover between redundant inputs
 
@@ -147,11 +147,11 @@ aws mediapackage create-origin-endpoint \
 ### CMAF Endpoint (Common Media Application Format)
 
 ```bash
-# Create a CMAF origin endpoint (works with both HLS and DASH players)
+# Create a CMAF origin endpoint (HLS with CMAF/fMP4 segments)
 aws mediapackage create-origin-endpoint \
   --channel-id "my-live-channel" \
   --id "my-live-channel-cmaf" \
-  --description "CMAF output for universal compatibility" \
+  --description "CMAF HLS output for compatible players" \
   --manifest-name "index" \
   --cmaf-package '{
     "SegmentDurationSeconds": 6,
@@ -288,6 +288,12 @@ Set up a CloudFront distribution to deliver your packaged video globally:
 # CloudFormation template for CloudFront + MediaPackage
 AWSTemplateFormatVersion: '2010-09-09'
 
+Parameters:
+  CDNIdentifierValue:
+    Type: String
+    NoEcho: true
+    Description: Static 8-128 character value also stored in Secrets Manager for MediaPackage CDN authorization.
+
 Resources:
   VideoDistribution:
     Type: AWS::CloudFront::Distribution
@@ -304,7 +310,7 @@ Resources:
                 - TLSv1.2
             OriginCustomHeaders:
               - HeaderName: X-MediaPackage-CDNIdentifier
-                HeaderValue: !Ref CDNSecret
+                HeaderValue: !Ref CDNIdentifierValue
 
         DefaultCacheBehavior:
           TargetOriginId: MediaPackageOrigin
@@ -323,11 +329,8 @@ Resources:
   CDNSecret:
     Type: AWS::SecretsManager::Secret
     Properties:
-      Name: mediapackage-cdn-secret
-      GenerateSecretString:
-        SecretStringTemplate: '{}'
-        GenerateStringKey: identifier
-        PasswordLength: 32
+      Name: MediaPackage/cdn-auth-my-live-channel
+      SecretString: !Sub '{"MediaPackageCDNIdentifier":"${CDNIdentifierValue}"}'
 ```
 
 ## Step 6: Configure Access Control
@@ -339,7 +342,7 @@ Restrict who can access your video streams using CDN authorization:
 aws mediapackage update-origin-endpoint \
   --id "my-live-channel-hls" \
   --authorization '{
-    "CdnIdentifierSecret": "arn:aws:secretsmanager:us-east-1:123456789012:secret:mediapackage-cdn-secret",
+    "CdnIdentifierSecret": "arn:aws:secretsmanager:us-east-1:123456789012:secret:MediaPackage/cdn-auth-my-live-channel",
     "SecretsRoleArn": "arn:aws:iam::123456789012:role/MediaPackageSecretsRole"
   }'
 ```
@@ -355,13 +358,13 @@ Monitor your MediaPackage channels with CloudWatch:
 # IngressBytes - Amount of data received
 # EgressBytes - Amount of data served
 # IngressResponseTime - Latency of ingest
-# 4xxErrors, 5xxErrors - Error rates
+# EgressRequestCount with StatusCodeRange=4xx or 5xx - Error counts
 
 aws cloudwatch put-metric-alarm \
   --alarm-name "mediapackage-5xx-errors" \
-  --metric-name "5xxErrors" \
+  --metric-name "EgressRequestCount" \
   --namespace "AWS/MediaPackage" \
-  --dimensions Name=Channel,Value=my-live-channel \
+  --dimensions Name=Channel,Value=my-live-channel Name=StatusCodeRange,Value=5xx \
   --statistic Sum \
   --period 300 \
   --evaluation-periods 2 \
@@ -376,7 +379,7 @@ aws cloudwatch put-metric-alarm \
 
 2. **Enable startover/DVR windows.** Set `startoverWindowSeconds` to allow viewers to rewind live streams. 24 hours (86400 seconds) is a common setting.
 
-3. **Use CMAF when possible.** CMAF provides a single packaging format that works with both HLS and DASH players, reducing the number of origin endpoints you need.
+3. **Use CMAF when possible.** CMAF uses fragmented MP4 segments for compatible HLS players. Keep a separate DASH endpoint when you need DASH manifests.
 
 4. **Put CloudFront in front.** Never expose MediaPackage endpoints directly to viewers. CloudFront provides caching, edge delivery, and an additional layer of access control.
 
