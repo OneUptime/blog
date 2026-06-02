@@ -8,7 +8,7 @@ Description: Master the aws s3 sync command to keep local directories and S3 buc
 
 ---
 
-The `aws s3 sync` command is one of the most useful tools in the AWS CLI. Unlike `aws s3 cp`, which blindly copies everything every time, sync is smart - it compares source and destination, and only transfers files that are new or changed. This makes it perfect for backups, deployments, data pipelines, and keeping directories mirrored.
+The `aws s3 sync` command is one of the most useful tools in the AWS CLI. Unlike `aws s3 cp`, which blindly copies everything every time, sync is smart - it compares source and destination by size and modified time, and only transfers files that appear to be new or changed. This makes it perfect for backups, deployments, data pipelines, and keeping directories mirrored.
 
 Let's dig into how sync works and all the ways you can use it.
 
@@ -26,7 +26,7 @@ aws s3 sync ./my-website/ s3://my-bucket/website/
 # What sync does:
 # - Uploads files that exist locally but not in S3
 # - Uploads files that are newer locally than in S3
-# - Skips files that are identical (same size and timestamp)
+# - Skips files with the same size when the local file is not newer
 # - Does NOT delete S3 files that don't exist locally (unless you add --delete)
 ```
 
@@ -107,8 +107,8 @@ You can change this behavior:
 # Compare by size only (ignore timestamps)
 aws s3 sync ./data/ s3://my-bucket/data/ --size-only
 
-# Compare by exact timestamps (more precise, but slower)
-aws s3 sync ./data/ s3://my-bucket/data/ --exact-timestamps
+# Require exact timestamp matches for same-sized S3-to-local downloads
+aws s3 sync s3://my-bucket/data/ ./data/ --exact-timestamps
 ```
 
 The `--size-only` flag is useful when timestamps are unreliable (like after extracting archives). The `--exact-timestamps` flag only matters for S3-to-local syncs, where S3 timestamps have second-level precision.
@@ -153,11 +153,12 @@ aws configure set default.s3.multipart_chunksize 16MB
 aws configure set default.s3.max_bandwidth 50MB/s
 ```
 
-You can also pass these as environment variables for one-off commands:
+For one-off commands, use a temporary profile or configuration file:
 
 ```bash
-# Set concurrency for a single command
-AWS_MAX_CONCURRENT_REQUESTS=30 aws s3 sync ./data/ s3://my-bucket/data/
+# Set concurrency for a single command through a temporary config file
+AWS_CONFIG_FILE=/tmp/aws-s3-sync-config aws configure set default.s3.max_concurrent_requests 30
+AWS_CONFIG_FILE=/tmp/aws-s3-sync-config aws s3 sync ./data/ s3://my-bucket/data/
 ```
 
 ## Automating Sync with Cron
@@ -222,7 +223,7 @@ aws s3 sync "$BUILD_DIR" "s3://$BUCKET/" \
 
 echo "Syncing assets (long cache, content-hashed filenames)..."
 aws s3 sync "$BUILD_DIR" "s3://$BUCKET/" \
-    --exclude "*.html" \
+    --exclude "*" \
     --include "*.js" --include "*.css" \
     --include "*.jpg" --include "*.png" --include "*.svg" \
     --cache-control "max-age=31536000,immutable" \
