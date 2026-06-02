@@ -28,7 +28,6 @@ This command creates a single-instance ActiveMQ broker suitable for development 
 aws mq create-broker \
   --broker-name my-activemq-broker \
   --engine-type ACTIVEMQ \
-  --engine-version "5.17.6" \
   --host-instance-type mq.m5.large \
   --deployment-mode SINGLE_INSTANCE \
   --publicly-accessible \
@@ -37,7 +36,7 @@ aws mq create-broker \
 
 A few things to note:
 
-- **Engine version**: Check the AWS docs for the latest supported ActiveMQ version. As of writing, 5.17.x is well supported.
+- **Engine version**: If you omit `--engine-version`, Amazon MQ uses the latest available version for ActiveMQ. You can also check the AWS docs or run `aws mq describe-broker-instance-options --engine-type ACTIVEMQ --host-instance-type mq.m5.large` to see the currently supported versions.
 - **Instance type**: `mq.m5.large` is a solid starting point. For dev/test, you can use `mq.t3.micro` to save money.
 - **Deployment mode**: `SINGLE_INSTANCE` is fine for development. For production, use `ACTIVE_STANDBY_MULTI_AZ`.
 - **Publicly accessible**: Set this to `false` for production. We're using `true` here for easier initial testing.
@@ -166,7 +165,6 @@ This Python script connects to the broker using STOMP and sends a message.
 
 ```python
 import stomp
-import ssl
 
 conn = stomp.Connection(
     host_and_ports=[("b-xxxx-xxxx.mq.us-east-1.amazonaws.com", 61614)]
@@ -174,8 +172,7 @@ conn = stomp.Connection(
 
 # Enable SSL
 conn.set_ssl(
-    for_hosts=[("b-xxxx-xxxx.mq.us-east-1.amazonaws.com", 61614)],
-    ssl_version=ssl.PROTOCOL_TLSv1_2
+    for_hosts=[("b-xxxx-xxxx.mq.us-east-1.amazonaws.com", 61614)]
 )
 
 conn.connect("admin", "MyStr0ngP@ss!", wait=True)
@@ -193,7 +190,6 @@ This listener class handles incoming messages from the queue.
 
 ```python
 import stomp
-import ssl
 import time
 
 class OrderListener(stomp.ConnectionListener):
@@ -204,12 +200,11 @@ conn = stomp.Connection(
     host_and_ports=[("b-xxxx-xxxx.mq.us-east-1.amazonaws.com", 61614)]
 )
 conn.set_ssl(
-    for_hosts=[("b-xxxx-xxxx.mq.us-east-1.amazonaws.com", 61614)],
-    ssl_version=ssl.PROTOCOL_TLSv1_2
+    for_hosts=[("b-xxxx-xxxx.mq.us-east-1.amazonaws.com", 61614)]
 )
 conn.set_listener("", OrderListener())
 conn.connect("admin", "MyStr0ngP@ss!", wait=True)
-conn.subscribe(destination="/queue/orders", id=1, ack="client-individual")
+conn.subscribe(destination="/queue/orders", id=1, ack="auto")
 
 # Keep the consumer running
 while True:
@@ -224,7 +219,6 @@ For production workloads, you want a multi-AZ deployment. Change the deployment 
 aws mq create-broker \
   --broker-name prod-activemq-broker \
   --engine-type ACTIVEMQ \
-  --engine-version "5.17.6" \
   --host-instance-type mq.m5.large \
   --deployment-mode ACTIVE_STANDBY_MULTI_AZ \
   --no-publicly-accessible \
@@ -233,7 +227,7 @@ aws mq create-broker \
   --users '[{"username":"admin","password":"Pr0dP@ssw0rd!","consoleAccess":true,"groups":["admins"]}]'
 ```
 
-With `ACTIVE_STANDBY_MULTI_AZ`, AWS runs two broker instances across different Availability Zones. If one goes down, the standby takes over automatically. Your connection URL stays the same since it uses a failover transport.
+With `ACTIVE_STANDBY_MULTI_AZ`, AWS runs two broker instances across different Availability Zones. If one goes down, the standby takes over automatically. Amazon MQ provides two wire-level endpoints for each protocol, and your application should use the ActiveMQ failover transport with both endpoints so it can reconnect to whichever broker is active.
 
 ## Monitoring Your Broker
 
@@ -250,9 +244,9 @@ For a deeper dive into monitoring messaging infrastructure, check out our post o
 
 **Forgetting to configure VPC access**: If your broker isn't publicly accessible (and it shouldn't be in production), make sure your application's VPC can reach the broker's VPC. You might need VPC peering or a transit gateway.
 
-**Using weak passwords**: Amazon MQ requires passwords of at least 12 characters with mixed case, numbers, and special characters. Don't skimp on this.
+**Using weak passwords**: Amazon MQ requires passwords of at least 12 characters with at least 4 unique characters, and passwords can't contain commas, colons, or equal signs. Don't skimp on this.
 
-**Not setting up encryption at rest**: Enable KMS encryption when creating your broker. It's a one-time setting that you can't change later.
+**Not choosing your encryption key intentionally**: Amazon MQ always encrypts broker data at rest. If you need to use an AWS managed KMS key or a customer managed KMS key instead of the default Amazon MQ owned key, choose it when creating the broker.
 
 **Ignoring connection pooling**: Creating a new JMS connection for every message is expensive. Use connection pooling in production. The `PooledConnectionFactory` in ActiveMQ handles this nicely.
 
