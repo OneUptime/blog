@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Storage, Replication
 
-Description: Master S3 replication rule filtering to selectively replicate objects based on prefixes, tags, and object size with practical configuration examples.
+Description: Master S3 replication rule filtering to selectively replicate objects based on prefixes and tags with practical configuration examples.
 
 ---
 
-S3 replication doesn't have to be all-or-nothing. With replication rule filters, you can precisely control which objects get replicated based on their key prefix, tags, or size. This lets you set up targeted replication - like replicating only production data, only objects tagged for compliance, or only files above a certain size.
+S3 replication doesn't have to be all-or-nothing. With replication rule filters, you can precisely control which objects get replicated based on their key prefix or tags. This lets you set up targeted replication - like replicating only production data or only objects tagged for compliance.
 
 Let's explore all the filtering options and how to combine them effectively.
 
@@ -72,7 +72,7 @@ aws s3api put-bucket-replication \
                     "Bucket": "arn:aws:s3:::compliance-archive-bucket"
                 },
                 "DeleteMarkerReplication": {
-                    "Status": "Enabled"
+                    "Status": "Disabled"
                 }
             }
         ]
@@ -84,7 +84,10 @@ Now when you upload objects, tag the ones that need replication:
 ```bash
 # This object will be replicated
 
-aws s3 cp report.pdf s3://my-source-bucket/reports/annual-report.pdf \
+aws s3api put-object \
+    --bucket my-source-bucket \
+    --key reports/annual-report.pdf \
+    --body report.pdf \
     --tagging "compliance=required"
 
 # This object will NOT be replicated (no matching tag)
@@ -122,7 +125,7 @@ aws s3api put-bucket-replication \
                     "Bucket": "arn:aws:s3:::finance-backup-bucket"
                 },
                 "DeleteMarkerReplication": {
-                    "Status": "Enabled"
+                    "Status": "Disabled"
                 }
             }
         ]
@@ -165,7 +168,7 @@ aws s3api put-bucket-replication \
                     "Bucket": "arn:aws:s3:::secure-backup-bucket"
                 },
                 "DeleteMarkerReplication": {
-                    "Status": "Enabled"
+                    "Status": "Disabled"
                 }
             }
         ]
@@ -234,7 +237,7 @@ aws s3api put-bucket-replication \
     }'
 ```
 
-Each rule has a unique priority. When an object matches multiple rules, the rule with the highest priority (lowest number) wins.
+Each rule has a priority. Amazon S3 attempts to replicate objects according to all matching replication rules. If two or more matching rules target the same destination bucket, the rule with the higher priority value takes precedence.
 
 ## Rule Priority
 
@@ -242,23 +245,23 @@ Priority matters when rules overlap. Consider this scenario:
 
 ```bash
 # Rule 1 (Priority 1): Prefix "data/" -> bucket-a
-# Rule 2 (Priority 2): Prefix "data/reports/" -> bucket-b
+# Rule 2 (Priority 2): Prefix "data/reports/" -> bucket-a with STANDARD_IA storage class
 ```
 
-An object at `data/reports/q1.pdf` matches both rules. It will be replicated to `bucket-a` because Rule 1 has higher priority (lower number).
+An object at `data/reports/q1.pdf` matches both rules. Because both rules target the same destination bucket, the matching rule with the higher priority value takes precedence.
 
-If you want `data/reports/` to go to bucket-b and everything else under `data/` to bucket-a, set bucket-b as priority 1:
+If you want the more specific `data/reports/` rule to take precedence over the broader `data/` rule for the same destination, give the specific rule the higher priority value:
 
 ```bash
-# Rule 1 (Priority 1): Prefix "data/reports/" -> bucket-b  (checked first)
-# Rule 2 (Priority 2): Prefix "data/" -> bucket-a  (fallback)
+# Rule 1 (Priority 2): Prefix "data/reports/" -> bucket-a with STANDARD_IA storage class
+# Rule 2 (Priority 1): Prefix "data/" -> bucket-a
 ```
 
-## Replicating Only Large Files
+## Replicating Large Files by Tag
 
-You can filter by object size to replicate only objects above or below a certain size.
+S3 replication rule filters don't support object size conditions like `ObjectSizeGreaterThan` or `ObjectSizeLessThan`. Those size filters are used by S3 Lifecycle rules, not replication rules. If you need to replicate only large objects, tag those objects at upload time and filter replication on that tag.
 
-Replicate only objects larger than 1 MB:
+Replicate objects tagged as large files:
 
 ```bash
 aws s3api put-bucket-replication \
@@ -271,27 +274,35 @@ aws s3api put-bucket-replication \
                 "Status": "Enabled",
                 "Priority": 1,
                 "Filter": {
-                    "And": {
-                        "Prefix": "",
-                        "ObjectSizeGreaterThan": 1048576
+                    "Tag": {
+                        "Key": "file-size-class",
+                        "Value": "large"
                     }
                 },
                 "Destination": {
                     "Bucket": "arn:aws:s3:::large-files-backup"
                 },
                 "DeleteMarkerReplication": {
-                    "Status": "Enabled"
+                    "Status": "Disabled"
                 }
             }
         ]
     }'
 ```
 
-You can also use `ObjectSizeLessThan` to replicate only small objects, or combine both for a size range.
+Apply the tag when uploading objects that meet your own size threshold:
+
+```bash
+aws s3api put-object \
+    --bucket my-source-bucket \
+    --key videos/export.mp4 \
+    --body export.mp4 \
+    --tagging "file-size-class=large"
+```
 
 ## Controlling Delete Marker Replication
 
-Each rule can independently control whether delete markers are replicated.
+Each non-tag-based rule can independently control whether delete markers are replicated. Delete marker replication isn't supported for tag-based replication rules, so those rules must set `DeleteMarkerReplication` to `Disabled`.
 
 ```bash
 # With DeleteMarkerReplication enabled:
@@ -340,7 +351,8 @@ aws s3api head-object \
 aws s3api list-objects-v2 \
     --bucket my-source-bucket \
     --prefix production/ \
-    --query "Contents[].Key" | while read KEY; do
+    --query "Contents[].Key" \
+    --output text | tr '\t' '\n' | while read KEY; do
     STATUS=$(aws s3api head-object \
         --bucket my-source-bucket \
         --key "$KEY" \
