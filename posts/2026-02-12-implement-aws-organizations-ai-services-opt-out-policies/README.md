@@ -41,7 +41,7 @@ Even if your organization does not have strict regulatory requirements, there ar
 ## Prerequisites
 
 - AWS Organizations with all features enabled
-- AI services opt-out policy type enabled in Organizations
+- Permission to enable and manage AI services opt-out policies in Organizations
 - Management account access or delegated administrator access
 
 ## Step 1: Enable AI Services Opt-Out Policies
@@ -78,6 +78,7 @@ The simplest approach is to opt out of all AI services at once. Here is the poli
     "default": {
       "@@operators_allowed_for_child_policies": ["@@none"],
       "opt_out_policy": {
+        "@@operators_allowed_for_child_policies": ["@@none"],
         "@@assign": "optOut"
       }
     }
@@ -157,7 +158,7 @@ This opts out of all services by default but explicitly opts in for Amazon Rekog
 
 ## Selective Opt-Out: Per-OU Configuration
 
-You might want different policies for different OUs. For example, sandbox accounts could stay opted in while production accounts are opted out:
+You might want different policies for different OUs. For example, sandbox accounts could stay opted in while production accounts are opted out. Do this instead of attaching a fully locked policy at the organization root. If the root policy uses `@@operators_allowed_for_child_policies: @@none`, child OU policies cannot opt back in.
 
 ```bash
 # Create a strict policy for production
@@ -171,6 +172,7 @@ aws organizations create-policy \
       "default": {
         "@@operators_allowed_for_child_policies": ["@@none"],
         "opt_out_policy": {
+          "@@operators_allowed_for_child_policies": ["@@none"],
           "@@assign": "optOut"
         }
       }
@@ -247,6 +249,8 @@ Resources:
             "@@operators_allowed_for_child_policies":
               - "@@none"
             opt_out_policy:
+              "@@operators_allowed_for_child_policies":
+                - "@@none"
               "@@assign": optOut
 
 Parameters:
@@ -267,7 +271,7 @@ aws configservice put-organization-config-rule \
   --organization-custom-rule-metadata '{
     "LambdaFunctionArn": "arn:aws:lambda:us-east-1:123456789012:function:check-ai-opt-out",
     "OrganizationConfigRuleTriggerTypes": ["ScheduledNotification"],
-    "MaximumExecutionFrequency": "TwelveHours"
+    "MaximumExecutionFrequency": "Twelve_Hours"
   }'
 ```
 
@@ -299,13 +303,13 @@ No. There is no additional cost for opting out, and no discount for opting in.
 Amazon Bedrock has its own data handling policies. The AI services opt-out policy applies to the traditional AI services listed earlier, not to Bedrock foundation model usage.
 
 **Can individual accounts override the policy?**
-Only if your policy allows it. Using `@@operators_allowed_for_child_policies: @@none` prevents any overrides.
+Only if your policy allows it. Using `@@operators_allowed_for_child_policies: @@none` at the relevant levels, including under `opt_out_policy`, prevents overrides.
 
 ## Best Practices
 
 1. **Apply at the root level.** Unless you have a specific reason not to, apply the opt-out to the entire organization. Consistency is easier to audit.
 
-2. **Lock it down.** Use `@@operators_allowed_for_child_policies: @@none` to prevent teams from opting back in without central approval.
+2. **Lock it down.** Use `@@operators_allowed_for_child_policies: @@none` at the relevant levels, including under `opt_out_policy`, to prevent teams from opting back in without central approval.
 
 3. **Document your decision.** Record why you opted out (or in) as part of your compliance documentation.
 
