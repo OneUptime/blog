@@ -72,7 +72,7 @@ aws network-firewall create-rule-group \
   }'
 ```
 
-This rule group does three things: drops all TCP/UDP traffic from a known-bad CIDR (priority 1), passes internal VPC-to-VPC traffic without stateful inspection (priority 2), and passes all ICMP/ping traffic (priority 10). Everything else hits the default action, which should be `aws:forward_to_sfe`.
+This rule group does three things: drops all TCP/UDP traffic from a known-bad CIDR (priority 1), passes internal VPC-to-VPC traffic without stateful inspection (priority 2), and passes all ICMP/ping traffic (priority 10). Everything else hits the firewall policy's stateless default action, which should be `aws:forward_to_sfe`.
 
 ### When to Use Stateless Rules
 
@@ -110,6 +110,9 @@ aws network-firewall create-rule-group \
         "TargetTypes": ["HTTP_HOST", "TLS_SNI"],
         "GeneratedRulesType": "ALLOWLIST"
       }
+    },
+    "StatefulRuleOptions": {
+      "RuleOrder": "STRICT_ORDER"
     }
   }'
 ```
@@ -160,6 +163,9 @@ aws network-firewall create-rule-group \
           ]
         }
       ]
+    },
+    "StatefulRuleOptions": {
+      "RuleOrder": "STRICT_ORDER"
     }
   }'
 ```
@@ -189,21 +195,18 @@ Each rule group has a capacity that you set at creation time and can't change la
 
 For stateless rules, each rule uses capacity based on the number of match conditions. A simple rule with one source CIDR and one protocol uses about 1 unit.
 
-For stateful rules:
-- Domain list rules use capacity equal to the number of domain names
-- 5-tuple rules use 1 capacity unit per rule
-- Suricata rules use 1 capacity unit per rule
+For stateful rules, estimate capacity as the number of individual rules you expect in the rule group. For generated domain lists, use a dry run or check consumed capacity after creation to confirm the exact sizing.
 
 Plan ahead and set capacity higher than you currently need, since you can't increase it later without recreating the rule group.
 
 ## Rule Evaluation Order for Stateful Rules
 
-By default, stateful rules follow Suricata's strict evaluation order. But you can change this to use action-order evaluation, where pass rules are evaluated before drop/alert rules.
+By default, stateful rules use Suricata's action-order evaluation, where pass rules are evaluated before drop, reject, and alert rules. You can change this to use strict-order evaluation, where you control rule group order with priorities.
 
 ```bash
-# Create a firewall policy with action-order evaluation
+# Create a firewall policy with strict-order evaluation
 aws network-firewall create-firewall-policy \
-  --firewall-policy-name "action-order-policy" \
+  --firewall-policy-name "strict-order-policy" \
   --firewall-policy '{
     "StatelessDefaultActions": ["aws:forward_to_sfe"],
     "StatelessFragmentDefaultActions": ["aws:forward_to_sfe"],
@@ -224,11 +227,11 @@ aws network-firewall create-firewall-policy \
   }'
 ```
 
-With `STRICT_ORDER`, rule groups are evaluated in priority order, and within each group, rules are evaluated by their SID. With `DEFAULT_ACTION_ORDER`, pass rules get priority regardless of rule group order.
+With `STRICT_ORDER`, rule groups are evaluated in priority order, and within each group, rules are processed in the order they're defined. With `DEFAULT_ACTION_ORDER`, pass rules get priority over drop, reject, and alert rules.
 
 ## Monitoring Rule Hits
 
-Enable alert logging to see which rules are being triggered.
+Enable alert logging to see which rules are being triggered. You can also use CloudWatch metrics for aggregate packet counts, such as dropped packets.
 
 ```bash
 # Check Network Firewall CloudWatch metrics
