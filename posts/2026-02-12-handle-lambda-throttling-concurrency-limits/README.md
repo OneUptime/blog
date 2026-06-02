@@ -20,7 +20,7 @@ Throttling kicks in when concurrent executions exceed available capacity. There 
 
 **Reserved concurrency limit**: If a function has reserved concurrency of 100, the 101st concurrent invocation is throttled.
 
-**Burst limit**: Even within your concurrency limit, Lambda can only scale up at a certain rate. In most regions, the burst limit is 3,000 instances immediately, then 500 additional instances per minute.
+**Scaling rate**: Even within your concurrency limit, Lambda can only scale up at a certain rate. In each region, each function can scale by up to 1,000 additional execution environments every 10 seconds.
 
 ## Detecting Throttling
 
@@ -35,7 +35,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name Throttles \
   --dimensions Name=FunctionName,Value=my-function \
-  --start-time $(date -u -v-1d +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
   --statistics Sum \
@@ -66,7 +66,7 @@ aws cloudwatch put-metric-alarm \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name Throttles \
-  --start-time $(date -u -v-1d +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
   --statistics Sum \
@@ -77,17 +77,17 @@ aws cloudwatch get-metric-statistics \
 
 The behavior when throttled depends on how the function was invoked:
 
-### Synchronous Invocations (API Gateway, SDK)
+### Synchronous Invocations (SDK, Function URLs, API Gateway)
 
-The caller gets a `TooManyRequestsException` (429) immediately. No automatic retry happens. The caller is responsible for retrying.
+For direct Lambda API calls and function URLs, the caller gets a `TooManyRequestsException` (429) immediately. No automatic Lambda retry happens. The caller is responsible for retrying. API Gateway can also return 429 for API Gateway throttling; when the Lambda integration itself is throttled, handle the resulting 5xx integration response or map the integration error explicitly.
 
 ### Asynchronous Invocations (S3, SNS, EventBridge)
 
-Lambda retries automatically. The event goes into an internal queue and Lambda retries twice with delays between attempts. If all retries fail, the event either goes to a dead-letter queue (if configured) or is discarded.
+Lambda retries automatically. The event goes into an internal queue. For function errors, Lambda retries twice with delays between attempts. For throttling errors and system errors, Lambda returns the event to the queue and retries for up to 6 hours by default with exponential backoff. If all processing attempts fail or the event expires, the event either goes to a dead-letter queue or failure destination (if configured) or is discarded.
 
-### Stream-Based Invocations (SQS, Kinesis, DynamoDB Streams)
+### Event Source Mappings (SQS, Kinesis, DynamoDB Streams)
 
-Lambda retries until the data expires. For SQS, the message becomes visible again after the visibility timeout. For Kinesis and DynamoDB Streams, Lambda retries the entire batch until it succeeds.
+Lambda retries according to the event source mapping behavior. For SQS, messages from a failed batch become visible again after the visibility timeout, and throttled invocations are retried with backoff while the message is invisible. For Kinesis and DynamoDB Streams, Lambda retries the batch until it succeeds, the records expire, or the event source mapping's retry and maximum record age settings are reached.
 
 ## Handling Synchronous Throttling
 
@@ -128,6 +128,7 @@ For SDK invocations, the AWS SDK has built-in retry logic, but you should config
 ```python
 # Python SDK with retry configuration
 import boto3
+import json
 from botocore.config import Config
 
 # Configure aggressive retries for Lambda invocations
@@ -150,7 +151,7 @@ The `adaptive` retry mode is specifically designed for throttling scenarios. It 
 
 ## Handling Asynchronous Throttling
 
-For async invocations, configure a dead-letter queue and a destination for failed events:
+For async invocations, configure a dead-letter queue or a destination for failed events:
 
 ```bash
 # Set up an SQS dead-letter queue for failed async invocations
@@ -224,10 +225,12 @@ graph LR
 The API immediately acknowledges the request by putting it in SQS. Lambda processes messages from SQS at whatever rate it can handle. If Lambda is throttled, messages stay in the queue and are processed later.
 
 ```python
-# API function - puts message in SQS (fast, never throttled)
+# API function - puts message in SQS (fast, keeps processor throttling from dropping work)
 import json
 import boto3
+import os
 import uuid
+from datetime import datetime, timezone
 
 sqs = boto3.client('sqs')
 QUEUE_URL = os.environ['QUEUE_URL']
@@ -243,7 +246,7 @@ def api_handler(event, context):
         MessageBody=json.dumps({
             'id': message_id,
             'data': body,
-            'timestamp': datetime.utcnow().isoformat()
+            'timestamp': datetime.now(timezone.utc).isoformat()
         })
     )
 
@@ -258,6 +261,9 @@ def api_handler(event, context):
 
 ```python
 # Processor function - processes at controlled rate
+import json
+
+
 def processor_handler(event, context):
     for record in event['Records']:
         message = json.loads(record['body'])
@@ -347,15 +353,15 @@ For more on this, see our guide on [configuring Lambda reserved concurrency](htt
 Faster functions free up concurrency slots sooner. A function that takes 100ms instead of 1000ms can handle 10x the throughput with the same concurrency limit.
 
 ```bash
-# Check average duration
+# Check average and maximum duration
 aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name Duration \
   --dimensions Name=FunctionName,Value=my-function \
-  --start-time $(date -u -v-1d +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
-  --statistics Average p99 \
+  --statistics Average Maximum \
   --output table
 ```
 
@@ -385,7 +391,7 @@ aws cloudwatch put-dashboard \
         "properties": {
           "metrics": [
             ["AWS/Lambda", "Throttles", "FunctionName", "my-function"],
-            ["AWS/Lambda", "ConcurrentExecutions", "FunctionName", "my-function"],
+            ["AWS/Lambda", "ConcurrentExecutions", "FunctionName", "my-function", { "stat": "Maximum" }],
             ["AWS/Lambda", "Invocations", "FunctionName", "my-function"]
           ],
           "period": 60,
