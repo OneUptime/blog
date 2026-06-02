@@ -14,7 +14,7 @@ SageMaker Experiments solves this by automatically logging everything about your
 
 ## How Experiments Are Organized
 
-SageMaker Experiments uses a three-level hierarchy:
+SageMaker Experiments uses a three-level hierarchy. In the SageMaker Studio UI, trials are shown as run groups, and trial components are shown as runs:
 
 - **Experiment** - The top-level container for a project or research question (e.g., "fraud detection model improvements")
 - **Run** - A single training attempt within an experiment (e.g., "XGBoost with depth=8 and lr=0.05")
@@ -284,17 +284,24 @@ if auc_col:
 Remove experiments and runs you no longer need.
 
 ```python
-# Delete specific runs
-from sagemaker.experiments.run import Run
+# Delete runs and run groups
+trials_response = client.list_trials(ExperimentName=experiment_name)
 
-# List and delete runs
-experiment_runs = client.list_trial_components(
-    ExperimentName=experiment_name
-)
+for trial in trials_response.get('TrialSummaries', []):
+    trial_name = trial['TrialName']
+    trial_components = client.list_trial_components(TrialName=trial_name)
 
-for tc in experiment_runs.get('TrialComponentSummaries', []):
-    client.delete_trial_component(TrialComponentName=tc['TrialComponentName'])
-    print(f"Deleted run: {tc['TrialComponentName']}")
+    for tc in trial_components.get('TrialComponentSummaries', []):
+        tc_name = tc['TrialComponentName']
+        client.disassociate_trial_component(
+            TrialComponentName=tc_name,
+            TrialName=trial_name
+        )
+        client.delete_trial_component(TrialComponentName=tc_name)
+        print(f"Deleted run: {tc_name}")
+
+    client.delete_trial(TrialName=trial_name)
+    print(f"Deleted run group: {trial_name}")
 
 # Delete the experiment itself
 client.delete_experiment(ExperimentName=experiment_name)
