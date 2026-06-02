@@ -8,15 +8,15 @@ Description: Learn how to enable and analyze Route 53 DNS query logs for trouble
 
 ---
 
-When DNS resolution goes sideways, you need to know what's happening at the query level. Route 53 query logging captures every DNS query that hits your hosted zones or resolver endpoints, giving you the raw data to troubleshoot failures, detect anomalies, and understand traffic patterns. Let's set it up and dig into how to actually use the logs.
+When DNS resolution goes sideways, you need to know what's happening at the query level. Route 53 query logging captures DNS queries that hit your public hosted zones or Route 53 Resolver, giving you the raw data to troubleshoot failures, detect anomalies, and understand traffic patterns. Let's set it up and dig into how to actually use the logs.
 
 ## Two Types of Query Logging
 
 Route 53 has two separate logging features, and they cover different things:
 
-1. **DNS Query Logging** - Logs queries to your public and private hosted zones. Shows which domains are being queried, from where, and what responses were returned.
+1. **DNS Query Logging** - Logs queries to your public hosted zones. Shows which domains are being queried, which resolver sent the query, and what responses were returned.
 
-2. **Resolver Query Logging** - Logs queries that pass through Route 53 Resolver in your VPC. This captures all DNS queries from your VPC resources, not just ones for your hosted zones.
+2. **Resolver Query Logging** - Logs queries that pass through Route 53 Resolver in your VPC. This captures DNS queries from your VPC resources, not just ones for your hosted zones, although repeat queries answered from the Resolver cache aren't logged.
 
 For most diagnostic work, you'll want both.
 
@@ -73,7 +73,7 @@ aws route53 create-query-logging-config \
 
 ## Setting Up Resolver Query Logging
 
-This captures all DNS queries from your VPC, regardless of whether they hit your hosted zones:
+This captures DNS queries from your VPC, regardless of whether they hit your hosted zones:
 
 ```bash
 # Create a log group for resolver query logs
@@ -84,7 +84,7 @@ aws logs create-log-group \
 # Create the resolver query log configuration
 aws route53resolver create-resolver-query-log-config \
   --name "vpc-dns-queries" \
-  --destination-arn "arn:aws:logs:us-east-1:123456789012:log-group:/aws/route53resolver/vpc-queries" \
+  --destination-arn "arn:aws:logs:us-east-1:123456789012:log-group:/aws/route53resolver/vpc-queries:*" \
   --creator-request-id "qlog-$(date +%s)"
 ```
 
@@ -112,15 +112,15 @@ aws route53resolver create-resolver-query-log-config \
 DNS query logs include these fields:
 
 ```text
-version account_id region hosted_zone_id query_name query_type response_code
-protocol edge_location resolver_ip edns_client_subnet query_timestamp
+version query_timestamp hosted_zone_id query_name query_type response_code
+protocol edge_location resolver_ip edns_client_subnet
 ```
 
 Here's a real example log line:
 
 ```text
-1.0 123456789012 us-east-1 Z1234567890 www.example.com A NOERROR UDP
-IAD89-C1 10.0.1.2 - 2026-02-12T10:30:45Z
+1.0 2026-02-12T10:30:45.000Z Z1234567890 www.example.com A NOERROR UDP
+IAD89-C1 10.0.1.2 -
 ```
 
 Resolver query logs are in JSON format and include more detail:
@@ -129,12 +129,11 @@ Resolver query logs are in JSON format and include more detail:
 {
   "srcaddr": "10.0.1.50",
   "srcport": "54321",
-  "qdcount": 1,
-  "opcode": "Query",
-  "qname": "api.example.com.",
-  "qclass": "IN",
-  "qtype": "A",
+  "query_name": "api.example.com.",
+  "query_class": "IN",
+  "query_type": "A",
   "rcode": "NOERROR",
+  "transport": "UDP",
   "answers": [
     {
       "Rdata": "10.0.5.20",
@@ -145,7 +144,7 @@ Resolver query logs are in JSON format and include more detail:
   "srcids": {
     "instance": "i-0abc123def456"
   },
-  "timestamp": "2026-02-12T10:30:45Z",
+  "query_timestamp": "2026-02-12T10:30:45Z",
   "version": "1.1",
   "account_id": "123456789012",
   "region": "us-east-1",
@@ -153,7 +152,7 @@ Resolver query logs are in JSON format and include more detail:
 }
 ```
 
-The `srcids` field is particularly useful - it tells you which EC2 instance made the query.
+The `srcids` field is particularly useful - when available, it tells you which EC2 instance made the query.
 
 ## Querying Logs for Diagnostics
 
@@ -163,7 +162,7 @@ Find all failed DNS queries (NXDOMAIN means the domain doesn't exist, SERVFAIL m
 
 ```text
 # Find failed DNS queries in the last hour
-fields @timestamp, qname, qtype, rcode, srcaddr
+fields @timestamp, query_name, query_type, rcode, srcaddr
 | filter rcode != "NOERROR"
 | sort @timestamp desc
 | limit 100
@@ -173,8 +172,8 @@ Identify the top queried domains:
 
 ```text
 # Top 20 most queried domain names
-fields qname
-| stats count(*) as query_count by qname
+fields query_name
+| stats count(*) as query_count by query_name
 | sort query_count desc
 | limit 20
 ```
@@ -183,7 +182,7 @@ Find queries from a specific instance:
 
 ```text
 # All DNS queries from a specific EC2 instance
-fields @timestamp, qname, qtype, rcode
+fields @timestamp, query_name, query_type, rcode
 | filter srcids.instance = "i-0abc123def456"
 | sort @timestamp desc
 | limit 50
@@ -202,7 +201,7 @@ Find potential DNS tunneling (unusually long domain names):
 
 ```text
 # Find queries with suspiciously long domain names
-fields @timestamp, qname, srcaddr, strlen(qname) as name_length
+fields @timestamp, query_name, srcaddr, strlen(query_name) as name_length
 | filter name_length > 100
 | sort name_length desc
 | limit 50
@@ -253,8 +252,8 @@ aws logs put-metric-filter \
 Check the resolver logs for the specific hostname:
 
 ```text
-fields @timestamp, qname, rcode, answers.0.Rdata, srcids.instance
-| filter qname like /mydb.internal/
+fields @timestamp, query_name, rcode, answers.0.Rdata, srcids.instance
+| filter query_name like /mydb.internal/
 | sort @timestamp desc
 | limit 20
 ```
@@ -266,7 +265,7 @@ If you see NXDOMAIN, the record doesn't exist in your private hosted zone. If yo
 Look for patterns in query timing:
 
 ```text
-fields @timestamp, qname, rcode, srcaddr
+fields @timestamp, query_name, rcode, srcaddr
 | filter rcode = "SERVFAIL" or rcode = "REFUSED"
 | stats count(*) as failures by bin(1m), srcaddr
 | sort failures desc
@@ -279,9 +278,9 @@ This might reveal that a specific source is generating too many queries and hitt
 Find out what external domains your VPC resources are querying:
 
 ```text
-fields qname, srcids.instance
-| filter qname not like /\.internal$/ and qname not like /amazonaws\.com$/
-| stats count(*) as queries by qname
+fields query_name, srcids.instance
+| filter query_name not like /\.internal$/ and query_name not like /amazonaws\.com$/
+| stats count(*) as queries by query_name
 | sort queries desc
 | limit 50
 ```
@@ -292,9 +291,8 @@ DNS query logs can generate a lot of data. A moderately busy VPC might produce g
 
 - Set appropriate retention periods (7-30 days for troubleshooting)
 - Use S3 instead of CloudWatch Logs for long-term storage (much cheaper)
-- Apply log group filters to only capture specific record types or response codes if you don't need everything
-- Consider sampling if volume is extremely high
+- Filter or aggregate the data after delivery if you only need specific record types or response codes
 
 ## Summary
 
-Route 53 query logging is essential for DNS troubleshooting and security monitoring. Set up both hosted zone logging and resolver query logging for complete visibility. Use CloudWatch Logs Insights for ad-hoc analysis and metric filters with alarms for proactive monitoring. The logs tell you exactly what's being queried, by whom, and what response they got - which is usually all you need to diagnose DNS issues quickly.
+Route 53 query logging is essential for DNS troubleshooting and security monitoring. Set up both hosted zone logging and resolver query logging for broad visibility. Use CloudWatch Logs Insights for ad-hoc analysis and metric filters with alarms for proactive monitoring. The logs tell you exactly what's being queried, by whom, and what response they got - which is usually all you need to diagnose DNS issues quickly.
