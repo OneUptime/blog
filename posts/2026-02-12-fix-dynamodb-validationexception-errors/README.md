@@ -133,10 +133,10 @@ A common gotcha is defining expression attribute names or values that you don't 
 DynamoDB batch operations have strict limits. `BatchWriteItem` can handle up to 25 items per call, and `BatchGetItem` can retrieve up to 100 items. Exceed those limits and you'll get a `ValidationException`.
 
 ```python
-# This will fail if items contains more than 25 entries
+# This will fail if write_requests contains more than 25 entries
 response = client.batch_write_item(
     RequestItems={
-        'MyTable': items  # Must be 25 or fewer
+        'MyTable': write_requests  # Must be 25 or fewer PutRequest/DeleteRequest objects
     }
 )
 ```
@@ -145,9 +145,9 @@ The solution is to chunk your requests:
 
 ```python
 # Break large batches into chunks of 25
-def batch_write_items(table_name, items, chunk_size=25):
-    for i in range(0, len(items), chunk_size):
-        chunk = items[i:i + chunk_size]
+def batch_write_items(table_name, write_requests, chunk_size=25):
+    for i in range(0, len(write_requests), chunk_size):
+        chunk = write_requests[i:i + chunk_size]
         client.batch_write_item(
             RequestItems={
                 table_name: chunk
@@ -163,7 +163,6 @@ Check the size before writing:
 
 ```python
 import json
-import sys
 
 # Check item size before writing
 item = {
@@ -172,8 +171,8 @@ item = {
 }
 
 # Rough size estimate
-item_size = sys.getsizeof(json.dumps(item))
-if item_size > 400000:  # 400 KB limit
+item_size = len(json.dumps(item).encode('utf-8'))
+if item_size > 400 * 1024:  # 400 KB limit
     print(f"Item too large: {item_size} bytes")
     # Consider storing in S3 and keeping a reference
 ```
@@ -209,10 +208,12 @@ response = table.query(
 When you get a `ValidationException`, the error message usually gives you a hint. Here's how to extract it properly:
 
 ```python
+from botocore.exceptions import ClientError
+
 # Catch and inspect the full error
 try:
     response = table.put_item(Item=my_item)
-except client.exceptions.ClientError as e:
+except ClientError as e:
     error_code = e.response['Error']['Code']
     error_message = e.response['Error']['Message']
     print(f"Error: {error_code}")
