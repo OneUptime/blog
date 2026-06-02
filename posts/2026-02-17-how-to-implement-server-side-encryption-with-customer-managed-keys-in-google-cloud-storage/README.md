@@ -18,8 +18,8 @@ When you set a CMEK on a Cloud Storage bucket:
 
 1. Objects uploaded to the bucket are encrypted using your Cloud KMS key
 2. When someone reads an object, GCS decrypts it using your key
-3. If you disable or destroy the key, the objects become inaccessible
-4. Key usage is logged in Cloud Audit Logs
+3. If you disable or destroy the key version, the encrypted object data becomes unreadable
+4. Key usage can be tracked in Cloud KMS audit logs
 
 ```mermaid
 graph LR
@@ -217,14 +217,14 @@ gcloud kms keys versions enable 1 \
   --keyring=my-storage-keyring \
   --location=us-central1
 
-# Schedule a key version for destruction (24-hour waiting period)
+# Schedule a key version for destruction
 gcloud kms keys versions destroy 1 \
   --key=my-storage-key \
   --keyring=my-storage-keyring \
   --location=us-central1
 ```
 
-Warning: destroying a key version permanently makes all objects encrypted with that version unreadable. There is no recovery.
+Warning: destroying a key version permanently makes all objects encrypted with that version unreadable after the configured scheduled destruction period ends. Cloud KMS uses a 30-day default scheduled destruction period, with a minimum of 24 hours for most keys. There is no recovery after destruction completes.
 
 ## Terraform Configuration
 
@@ -269,14 +269,14 @@ resource "google_storage_bucket" "encrypted_bucket" {
 
 ## Important Considerations
 
-**Key location matters.** The KMS key must be in the same location as the bucket, or in a location that covers the bucket's location. A key in `us-central1` works for a bucket in `us-central1` or `US`, but not for a bucket in `europe-west1`.
+**Key location matters.** The KMS key ring must be in the same location as the bucket data. A key in `us-central1` works for a bucket in `us-central1`, but a bucket in the `US` multi-region needs a key ring in `US`, and a predefined dual-region bucket such as `NAM4` needs a key ring in `NAM4`.
 
-**Performance impact is minimal.** CMEK adds a small amount of latency for the KMS call, but it is typically negligible for most workloads.
+**Performance impact is minimal.** CMEK is typically transparent for most workloads, but listing CMEK-encrypted objects can require additional metadata requests to retrieve hashes.
 
 **Cost.** Cloud KMS charges per key version per month and per cryptographic operation. For high-volume buckets, the KMS costs are worth factoring into your budget.
 
-**Audit logging.** Every use of the key is logged in Cloud Audit Logs, giving you a complete trail of who accessed encrypted data and when.
+**Audit logging.** Cloud KMS lets you view audit logs for key activity. Enable Data Access audit logs if you need logs for encrypt and decrypt operations, and remember that CMEK operations are performed by the Cloud Storage service agent rather than the individual end user.
 
 **CMEK and lifecycle rules work together.** Objects encrypted with CMEK can still be transitioned between storage classes or deleted by lifecycle rules.
 
-CMEK gives you the control that compliance teams and security auditors want, while keeping the developer experience straightforward. The encryption is transparent to your applications, and you gain the ability to revoke access to data instantly by disabling the key.
+CMEK gives you the control that compliance teams and security auditors want, while keeping the developer experience straightforward. The encryption is transparent to your applications, and you gain the ability to make encrypted object data unreadable by disabling the key version.
