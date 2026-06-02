@@ -8,7 +8,7 @@ Description: Learn how to use the terraform-aws-modules/rds module to deploy pro
 
 ---
 
-Setting up RDS properly involves a surprising amount of configuration - subnet groups, parameter groups, option groups, security groups, encryption, backups, monitoring, and multi-AZ failover. The `terraform-aws-modules/rds/aws` module handles all of this in a single, well-structured module call.
+Setting up RDS properly involves a surprising amount of configuration - subnet groups, parameter groups, option groups, security groups, encryption, backups, monitoring, and multi-AZ failover. The `terraform-aws-modules/rds/aws` module handles the RDS resources in a single, well-structured module call and lets you attach the security groups you create for database access.
 
 This guide shows you how to use the module for common database scenarios, from a simple development instance to a production-grade multi-AZ deployment.
 
@@ -25,9 +25,9 @@ module "db" {
 
   # Engine configuration
   engine               = "postgres"
-  engine_version       = "16.2"
+  engine_version       = "16.13"
   family               = "postgres16"     # For parameter group
-  major_engine_version = "16"             # For option group
+  major_engine_version = "16"             # Used by option groups for engines that support them
   instance_class       = "db.t3.medium"
 
   # Storage
@@ -107,12 +107,12 @@ module "db_production" {
   identifier = "production-db"
 
   engine               = "postgres"
-  engine_version       = "16.2"
+  engine_version       = "16.13"
   family               = "postgres16"
   major_engine_version = "16"
   instance_class       = "db.r6g.large"  # Memory-optimized for production
 
-  # Storage - provisioned IOPS for consistent performance
+  # Storage - gp3 general-purpose SSD with baseline IOPS
   allocated_storage     = 100
   max_allocated_storage = 500
   storage_type          = "gp3"
@@ -123,7 +123,13 @@ module "db_production" {
   # Database settings
   db_name  = "appdb"
   username = "dbadmin"
+  password = var.production_db_password
   port     = 5432
+
+  # Required if this instance will be used as a read replica source.
+  # RDS does not support creating read replicas from a source instance
+  # that manages master credentials in Secrets Manager, except for SQL Server.
+  manage_master_user_password = false
 
   # High availability
   multi_az = true
@@ -217,7 +223,7 @@ module "mysql_db" {
   identifier = "my-mysql-db"
 
   engine               = "mysql"
-  engine_version       = "8.0.35"
+  engine_version       = "8.0.46"
   family               = "mysql8.0"
   major_engine_version = "8.0"
   instance_class       = "db.t3.medium"
@@ -278,13 +284,13 @@ module "db_replica" {
   replicate_source_db = module.db_production.db_instance_identifier
 
   engine               = "postgres"
-  engine_version       = "16.2"
+  engine_version       = "16.13"
   family               = "postgres16"
   major_engine_version = "16"
   instance_class       = "db.r6g.large"
 
-  # Replicas don't need their own subnet group or credentials
-  # (inherited from primary)
+  # Replicas inherit credentials from the primary. For same-region replicas,
+  # the subnet group is inherited from the source instance.
   port = 5432
 
   multi_az            = false  # Replica doesn't need multi-AZ
