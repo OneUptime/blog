@@ -180,7 +180,7 @@ cat > /tmp/secrets-policy.json << 'EOF'
       "Action": [
         "secretsmanager:GetSecretValue"
       ],
-      "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-*"
+      "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:my-secret-??????"
     }
   ]
 }
@@ -192,7 +192,7 @@ aws iam put-role-policy \
   --policy-document file:///tmp/secrets-policy.json
 ```
 
-Note the wildcard at the end of the secret ARN. Secrets Manager appends a random suffix to secret ARNs, so you need the wildcard to match.
+Note the six `?` wildcards at the end of the secret ARN. Secrets Manager appends six random characters to secret ARNs, so you need those wildcards to match the suffix without accidentally matching other secrets.
 
 ## The Trust Policy
 
@@ -257,7 +257,10 @@ If your Lambda is in a VPC, it needs additional permissions to create network in
       "Action": [
         "ec2:CreateNetworkInterface",
         "ec2:DescribeNetworkInterfaces",
-        "ec2:DeleteNetworkInterface"
+        "ec2:DescribeSubnets",
+        "ec2:DeleteNetworkInterface",
+        "ec2:AssignPrivateIpAddresses",
+        "ec2:UnassignPrivateIpAddresses"
       ],
       "Resource": "*"
     }
