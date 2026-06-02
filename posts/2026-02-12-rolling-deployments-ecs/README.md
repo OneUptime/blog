@@ -109,9 +109,9 @@ The right settings depend on your service's characteristics:
 - You'll briefly have fewer tasks, but you never exceed current capacity.
 
 **For single-task services (desired count = 1):**
-- `minimumHealthyPercent = 0`, `maximumPercent = 200`
+- `minimumHealthyPercent = 0`, `maximumPercent = 100` if you cannot run two copies at once.
 - There will be brief downtime as the old task stops and the new one starts.
-- If you can't tolerate any downtime, increase desired count to at least 2.
+- If you can't tolerate any downtime, either allow overlap with `minimumHealthyPercent = 100`, `maximumPercent = 200`, or increase desired count to at least 2.
 
 ```hcl
 # Single task service - brief downtime during deploy
@@ -190,7 +190,7 @@ resource "aws_lb_target_group" "app" {
     matcher             = "200"  # Only 200 is healthy
   }
 
-  # How long to wait before starting health checks on new targets
+  # How long deregistering targets stay in draining state
   deregistration_delay = 30
 
   stickiness {
@@ -200,7 +200,7 @@ resource "aws_lb_target_group" "app" {
 }
 ```
 
-**Tip**: A new task must pass `healthy_threshold` checks (2) at `interval` seconds each (15). So a task takes at minimum 30 seconds to become healthy. Factor this into your deployment time estimates.
+**Tip**: A newly registered target only needs to pass one initial load balancer health check before it can be considered healthy. The `healthy_threshold` value applies when an unhealthy target needs consecutive successful checks to become healthy again. Factor the health check interval, application startup time, and any retries into your deployment time estimates.
 
 ## Container Health Checks
 
@@ -263,11 +263,11 @@ resource "aws_cloudwatch_event_target" "sns" {
 }
 ```
 
-## Deployment Timeouts
+## Health Check Grace Period and Failed Deployments
 
-ECS services have a deployment timeout. If a deployment can't reach a steady state within this window, it will either keep trying or trigger a rollback (if you have the circuit breaker enabled - see our post on [deployment circuit breakers](https://oneuptime.com/blog/post/2026-02-12-deployment-circuit-breaker-ecs/view)).
+ECS doesn't expose a simple deployment timeout controlled by the service health check grace period. If a deployment can't reach a steady state, it will keep trying unless failure detection is enabled. With the circuit breaker enabled, ECS can mark the deployment as failed and trigger a rollback (see our post on [deployment circuit breakers](https://oneuptime.com/blog/post/2026-02-12-deployment-circuit-breaker-ecs/view)).
 
-The default timeout is controlled by the health check grace period.
+The health check grace period controls how long ECS ignores unhealthy Elastic Load Balancing, VPC Lattice, and container health checks after a task first starts.
 
 ```hcl
 resource "aws_ecs_service" "app" {
