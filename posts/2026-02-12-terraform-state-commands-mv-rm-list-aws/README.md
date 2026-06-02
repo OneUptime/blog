@@ -203,7 +203,7 @@ When you need to switch provider namespaces (like during the Terraform 0.13 upgr
 
 ```bash
 # Replace provider in state
-terraform state replace-provider hashicorp/aws registry.terraform.io/hashicorp/aws
+terraform state replace-provider registry.terraform.io/-/aws registry.terraform.io/hashicorp/aws
 ```
 
 ## Practical Workflow: Refactoring a Flat Config into Modules
@@ -212,10 +212,21 @@ Here's a real-world workflow for refactoring AWS resources into modules. Say you
 
 ```hcl
 # Before: everything in root
-resource "aws_vpc" "main" { ... }
-resource "aws_subnet" "public" { ... }
-resource "aws_db_instance" "main" { ... }
-resource "aws_instance" "web" { ... }
+resource "aws_vpc" "main" {
+  # ...
+}
+
+resource "aws_subnet" "public" {
+  # ...
+}
+
+resource "aws_db_instance" "main" {
+  # ...
+}
+
+resource "aws_instance" "web" {
+  # ...
+}
 ```
 
 And you want to reorganize into modules:
