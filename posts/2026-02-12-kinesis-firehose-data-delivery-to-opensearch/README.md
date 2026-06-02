@@ -24,9 +24,9 @@ This creates a Firehose delivery stream that delivers data to OpenSearch with da
 aws firehose create-delivery-stream \
   --delivery-stream-name logs-to-opensearch \
   --delivery-stream-type DirectPut \
-  --amazon-opensearch-service-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseOpenSearchRole",
-    "DomainARN": "arn:aws:es:us-east-1:123456789:domain/my-search-domain",
+  --amazonopensearchservice-destination-configuration '{
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseOpenSearchRole",
+    "DomainARN": "arn:aws:es:us-east-1:123456789012:domain/my-search-domain",
     "IndexName": "app-logs",
     "IndexRotationPeriod": "OneDay",
     "TypeName": "_doc",
@@ -39,7 +39,7 @@ aws firehose create-delivery-stream \
     },
     "S3BackupMode": "FailedDocumentsOnly",
     "S3Configuration": {
-      "RoleARN": "arn:aws:iam::123456789:role/FirehoseOpenSearchRole",
+      "RoleARN": "arn:aws:iam::123456789012:role/FirehoseOpenSearchRole",
       "BucketARN": "arn:aws:s3:::my-firehose-backup",
       "Prefix": "opensearch-failed/app-logs/",
       "BufferingHints": {
@@ -68,6 +68,8 @@ The Firehose role needs access to the OpenSearch domain, S3, and CloudWatch.
 
 This IAM policy provides the permissions Firehose needs for OpenSearch delivery.
 
+The IAM role must also trust the Firehose service principal (`firehose.amazonaws.com`) so Firehose can assume it.
+
 ```json
 {
   "Version": "2012-10-17",
@@ -83,8 +85,8 @@ This IAM policy provides the permissions Firehose needs for OpenSearch delivery.
         "es:ESHttpGet"
       ],
       "Resource": [
-        "arn:aws:es:us-east-1:123456789:domain/my-search-domain",
-        "arn:aws:es:us-east-1:123456789:domain/my-search-domain/*"
+        "arn:aws:es:us-east-1:123456789012:domain/my-search-domain",
+        "arn:aws:es:us-east-1:123456789012:domain/my-search-domain/*"
       ]
     },
     {
@@ -123,10 +125,10 @@ You also need to configure the OpenSearch domain's access policy to allow the Fi
     {
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::123456789:role/FirehoseOpenSearchRole"
+        "AWS": "arn:aws:iam::123456789012:role/FirehoseOpenSearchRole"
       },
       "Action": "es:*",
-      "Resource": "arn:aws:es:us-east-1:123456789:domain/my-search-domain/*"
+      "Resource": "arn:aws:es:us-east-1:123456789012:domain/my-search-domain/*"
     }
   ]
 }
@@ -154,7 +156,7 @@ curl -XPUT "https://my-search-domain.us-east-1.es.amazonaws.com/_index_template/
       },
       "mappings": {
         "properties": {
-          "timestamp": {"type": "date", "format": "epoch_millis||iso8601"},
+          "timestamp": {"type": "date", "format": "strict_date_optional_time||epoch_millis"},
           "level": {"type": "keyword"},
           "service": {"type": "keyword"},
           "message": {"type": "text"},
@@ -242,9 +244,9 @@ If your OpenSearch domain is in a VPC (which it should be for production), you n
 aws firehose create-delivery-stream \
   --delivery-stream-name vpc-logs-to-opensearch \
   --delivery-stream-type DirectPut \
-  --amazon-opensearch-service-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseOpenSearchRole",
-    "DomainARN": "arn:aws:es:us-east-1:123456789:domain/my-vpc-domain",
+  --amazonopensearchservice-destination-configuration '{
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseOpenSearchRole",
+    "DomainARN": "arn:aws:es:us-east-1:123456789012:domain/my-vpc-domain",
     "IndexName": "app-logs",
     "IndexRotationPeriod": "OneDay",
     "BufferingHints": {
@@ -253,18 +255,35 @@ aws firehose create-delivery-stream \
     },
     "VpcConfiguration": {
       "SubnetIds": ["subnet-abc123", "subnet-def456"],
-      "SecurityGroupIds": ["sg-opensearch-access"],
-      "RoleARN": "arn:aws:iam::123456789:role/FirehoseOpenSearchRole"
+      "SecurityGroupIds": ["sg-0123456789abcdef0"],
+      "RoleARN": "arn:aws:iam::123456789012:role/FirehoseOpenSearchRole"
     },
     "S3Configuration": {
-      "RoleARN": "arn:aws:iam::123456789:role/FirehoseOpenSearchRole",
+      "RoleARN": "arn:aws:iam::123456789012:role/FirehoseOpenSearchRole",
       "BucketARN": "arn:aws:s3:::my-firehose-backup",
       "Prefix": "opensearch-failed/"
     }
   }'
 ```
 
-The security group for Firehose must allow outbound traffic to the OpenSearch domain on port 443.
+The security group for Firehose must allow outbound traffic to the OpenSearch domain on port 443, and the OpenSearch domain's security group must allow inbound HTTPS traffic from the Firehose security group. The Firehose role also needs EC2 permissions to create and manage network interfaces in the VPC:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": [
+    "ec2:DescribeVpcs",
+    "ec2:DescribeVpcAttribute",
+    "ec2:DescribeSubnets",
+    "ec2:DescribeSecurityGroups",
+    "ec2:DescribeNetworkInterfaces",
+    "ec2:CreateNetworkInterface",
+    "ec2:CreateNetworkInterfacePermission",
+    "ec2:DeleteNetworkInterface"
+  ],
+  "Resource": "*"
+}
+```
 
 ## Index Lifecycle Management
 
@@ -347,7 +366,7 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator LessThanThreshold \
   --evaluation-periods 3 \
   --dimensions Name=DeliveryStreamName,Value=logs-to-opensearch \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 Also monitor the OpenSearch domain itself:
