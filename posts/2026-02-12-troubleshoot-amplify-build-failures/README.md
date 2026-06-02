@@ -37,7 +37,7 @@ Each phase runs in a Docker container. The container has a specific Node.js vers
 
 ### Fix: Node.js Version Mismatch
 
-The most common dependency failure. Your local machine runs Node 20, but Amplify defaults to Node 16.
+The most common dependency failure. Your local machine runs one Node.js version, but Amplify uses a different default or branch-configured version.
 
 ```yaml
 # amplify.yml - Specify the Node.js version
@@ -48,8 +48,7 @@ frontend:
     preBuild:
       commands:
         # Set the Node.js version before installing dependencies
-        - nvm install 18
-        - nvm use 18
+        - nvm use 20
         - node --version
         - npm ci
     build:
@@ -60,7 +59,7 @@ frontend:
 Alternatively, use the `_LIVE_UPDATES` environment variable:
 
 ```json
-[{"pkg":"node","type":"nvm","version":"18"}]
+[{"pkg":"node","type":"nvm","version":"20"}]
 ```
 
 Set this in the Amplify console under Environment Variables.
@@ -100,16 +99,17 @@ Set `NPM_TOKEN` as an environment variable in the Amplify console.
 
 ### Fix: Out of Memory
 
-This is extremely common with large React/Next.js applications. The default Amplify build container has limited memory.
+This is extremely common with large React/Next.js applications. Amplify build instances have finite memory, and Node.js has its own heap limit.
 
 ```yaml
 build:
   commands:
     # Increase Node.js memory limit
-    - NODE_OPTIONS=--max-old-space-size=4096 npm run build
+    - export NODE_OPTIONS='--max-old-space-size=4096'
+    - npm run build
 ```
 
-If that is still not enough, increase the build compute type in the Amplify console. Under "Build settings," change the compute type from "Standard" to "Large."
+If that is still not enough, increase the build instance type in the Amplify console. Under "Build settings," change the instance type from "Standard" to "Large" or "XLarge."
 
 ### Fix: Missing Environment Variables
 
@@ -165,11 +165,11 @@ const SomeComponent = dynamic(() => import('browser-only-library'), {
 
 ### Fix: Increase Build Timeout
 
-The default timeout is 30 minutes. For large apps, increase it:
+The default timeout is 30 minutes. For large apps, increase it with the `_BUILD_TIMEOUT` environment variable. The minimum is 5 minutes and the maximum is 120 minutes:
 
 1. Go to the Amplify console
-2. Navigate to "Build settings"
-3. Set the build timeout to 60 or 120 minutes
+2. Navigate to "Hosting" and then "Environment variables"
+3. Add `_BUILD_TIMEOUT` with a value such as `60` or `120`
 
 ### Fix: Optimize Build Speed
 
@@ -213,7 +213,7 @@ Remove unused dependencies, use dynamic imports for large libraries, and conside
 
 ### Fix: Artifact Size Limit
 
-Amplify has limits on deployment artifact size. For SSR apps, the Lambda deployment package cannot exceed 50MB.
+Amplify has limits on deployment artifact size. For SSR apps, the maximum build output size is 220 MB.
 
 ```bash
 # Check your build output size locally
@@ -222,9 +222,9 @@ du -sh .next/standalone/
 ```
 
 To reduce size:
-- Remove dev dependencies from the Lambda function
-- Use external modules that are provided by the Lambda runtime
-- Exclude large files from the deployment
+- Remove unused dependencies and large files from the deployment
+- Inspect large runtime dependencies in `node_modules`
+- Delete binaries that are referenced by build-time tools but are not required at runtime
 
 ### Fix: Incorrect Artifact Configuration
 
@@ -277,20 +277,13 @@ The Amplify console shows a summarized log by default. Click "Download" to get t
 
 ### Reproduce Locally
 
-Amplify publishes the Docker images used for builds. Run your build in the same environment:
+Reproduce the build locally with the same Node.js version and build commands:
 
 ```bash
-# Pull the Amplify build image
-docker pull public.ecr.aws/aws-amplify/amplify-linux2:latest
+# Use the same Node.js version as Amplify
+nvm use 20
 
-# Run your build locally in the same container
-docker run -it \
-  -v $(pwd):/app \
-  -w /app \
-  public.ecr.aws/aws-amplify/amplify-linux2:latest \
-  /bin/bash
-
-# Inside the container, run your build commands
+# Run your build commands
 npm ci
 npm run build
 ```
