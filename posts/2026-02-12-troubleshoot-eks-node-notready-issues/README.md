@@ -14,7 +14,7 @@ This guide walks through a systematic approach to diagnosing and fixing NotReady
 
 ## Understanding Node Conditions
 
-Kubernetes tracks several conditions for each node. When any of these go bad, the node can transition to NotReady:
+Kubernetes tracks several conditions for each node. `Ready` is the condition that directly indicates whether the node can accept pods, while pressure and network conditions point to common causes:
 
 ```bash
 # Check all node conditions
@@ -63,10 +63,12 @@ INSTANCE_ID=$(kubectl get node ip-10-0-1-100.ec2.internal -o jsonpath='{.spec.pr
 
 # Check instance status
 aws ec2 describe-instance-status --instance-ids $INSTANCE_ID \
+  --include-all-instances \
   --query "InstanceStatuses[0].{InstanceStatus:InstanceStatus.Status,SystemStatus:SystemStatus.Status,State:InstanceState.Name}"
 
 # Check for scheduled events (maintenance, retirement)
 aws ec2 describe-instance-status --instance-ids $INSTANCE_ID \
+  --include-all-instances \
   --query "InstanceStatuses[0].Events"
 ```
 
@@ -97,7 +99,7 @@ ps aux | grep kubelet
 ```
 
 Common kubelet issues:
-- **OOMKilled** - the kubelet process ran out of memory
+- **OOM kills** - the Linux OOM killer terminated the kubelet or other critical node processes
 - **Certificate errors** - the kubelet's client certificate expired
 - **API server connectivity** - can't reach the EKS API endpoint
 
@@ -119,8 +121,8 @@ Disk pressure is one of the most common causes of NotReady:
 # Check disk usage on the node
 df -h
 
-# Check specifically the root and container storage
-df -h / /var/lib/docker /var/lib/containerd
+# Check specifically the root and containerd storage
+df -h / /var/lib/containerd
 
 # Check inode usage (running out of inodes causes similar symptoms)
 df -i
@@ -158,7 +160,7 @@ Network issues prevent the kubelet from communicating with the API server:
 
 ```bash
 # Test connectivity to the EKS API endpoint
-curl -k https://CLUSTER_API_ENDPOINT/healthz
+curl -vk https://CLUSTER_API_ENDPOINT/healthz
 
 # Check if the VPC CNI plugin is healthy
 kubectl get pods -n kube-system -l k8s-app=aws-node -o wide
@@ -170,8 +172,11 @@ sudo iptables -t nat -L | head -30
 For DNS issues:
 
 ```bash
-# Test DNS resolution from the node
-nslookup kubernetes.default.svc.cluster.local
+# Test DNS resolution of the EKS API hostname from the node
+nslookup CLUSTER_API_HOSTNAME
+
+# Test in-cluster DNS resolution from a pod
+kubectl run dns-test --rm -it --image=busybox:1.36 --restart=Never -- nslookup kubernetes.default.svc.cluster.local
 
 # Check CoreDNS pods
 kubectl get pods -n kube-system -l k8s-app=kube-dns
@@ -181,7 +186,7 @@ For [DNS resolution troubleshooting](https://oneuptime.com/blog/post/2026-02-12-
 
 ## Step 6: Check the Container Runtime
 
-EKS uses containerd as its container runtime. If containerd fails, pods can't run and the node goes NotReady:
+Current EKS optimized Linux AMIs use containerd as their container runtime. If containerd fails, pods can't run and the node goes NotReady:
 
 ```bash
 # Check containerd status
@@ -220,7 +225,7 @@ The node alternates between Ready and NotReady. This usually indicates:
 kubectl get events --field-selector involvedObject.name=ip-10-0-1-100.ec2.internal --sort-by='.lastTimestamp'
 ```
 
-Increase the node-status-update-frequency in severe cases:
+Check the node-status-update-frequency before considering kubelet heartbeat tuning:
 
 ```bash
 # On the node, check kubelet args
