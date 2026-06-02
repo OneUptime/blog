@@ -68,6 +68,8 @@ aws s3api put-bucket-versioning \
   --versioning-configuration Status=Enabled
 ```
 
+If Amazon S3 generates the manifest for you, the manifest output bucket must be in the same AWS Region as the source bucket.
+
 ## Creating a Batch Replication Job
 
 The easiest way to create a batch replication job is through the AWS CLI.
@@ -82,7 +84,7 @@ aws s3control create-job \
   --manifest-generator '{
     "S3JobManifestGenerator": {
       "ExpectedBucketOwner": "123456789012",
-      "SourceS3BucketArn": "arn:aws:s3:::source-bucket",
+      "SourceBucket": "arn:aws:s3:::source-bucket",
       "EnableManifestOutput": true,
       "ManifestOutputLocation": {
         "ExpectedManifestBucketOwner": "123456789012",
@@ -98,6 +100,7 @@ aws s3control create-job \
         "ObjectReplicationStatuses": [
           "NONE",
           "FAILED",
+          "COMPLETED",
           "REPLICA"
         ]
       }
@@ -122,6 +125,7 @@ Let's break down the key parts:
 - **ObjectReplicationStatuses**: Filter for which objects to include:
   - `NONE` - Objects that were never replicated
   - `FAILED` - Objects that failed to replicate
+  - `COMPLETED` - Objects that were already replicated, useful when backfilling a new destination
   - `REPLICA` - Objects that are themselves replicas (for cascading replication)
 
 ## Filtering What Gets Replicated
@@ -138,7 +142,7 @@ aws s3control create-job \
   --manifest-generator '{
     "S3JobManifestGenerator": {
       "ExpectedBucketOwner": "123456789012",
-      "SourceS3BucketArn": "arn:aws:s3:::source-bucket",
+      "SourceBucket": "arn:aws:s3:::source-bucket",
       "EnableManifestOutput": true,
       "ManifestOutputLocation": {
         "ExpectedManifestBucketOwner": "123456789012",
@@ -283,7 +287,7 @@ aws s3control create-job \
   --manifest-generator '{
     "S3JobManifestGenerator": {
       "ExpectedBucketOwner": "123456789012",
-      "SourceS3BucketArn": "arn:aws:s3:::source-bucket",
+      "SourceBucket": "arn:aws:s3:::source-bucket",
       "EnableManifestOutput": true,
       "ManifestOutputLocation": {
         "ExpectedManifestBucketOwner": "123456789012",
