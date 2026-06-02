@@ -14,7 +14,7 @@ This guide covers how to write IoT Core policies from simple to advanced, includ
 
 ## IoT Core Policy Basics
 
-An IoT Core policy is a JSON document similar to IAM policies, but with IoT-specific actions and resources. Policies are attached to certificates (not things), and a device's permissions are the union of all policies attached to its certificate.
+An IoT Core policy is a JSON document similar to IAM policies, but with IoT-specific actions and resources. For certificate-authenticated devices, policies are commonly attached to certificates; AWS IoT Core policies can also be attached to Amazon Cognito identities and thing groups, but not directly to individual things. Effective permissions follow IAM-style evaluation: access is denied by default, an explicit allow grants access, and an explicit deny overrides any allow.
 
 The four IoT actions you control are:
 
@@ -34,22 +34,22 @@ Here is a basic policy that lets a device connect and communicate on its own top
     {
       "Effect": "Allow",
       "Action": "iot:Connect",
-      "Resource": "arn:aws:iot:us-east-1:123456789:client/sensor-001"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/sensor-001"
     },
     {
       "Effect": "Allow",
       "Action": "iot:Publish",
-      "Resource": "arn:aws:iot:us-east-1:123456789:topic/devices/sensor-001/telemetry"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:topic/devices/sensor-001/telemetry"
     },
     {
       "Effect": "Allow",
       "Action": "iot:Subscribe",
-      "Resource": "arn:aws:iot:us-east-1:123456789:topicfilter/devices/sensor-001/commands"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:topicfilter/devices/sensor-001/commands"
     },
     {
       "Effect": "Allow",
       "Action": "iot:Receive",
-      "Resource": "arn:aws:iot:us-east-1:123456789:topic/devices/sensor-001/commands"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:topic/devices/sensor-001/commands"
     }
   ]
 }
@@ -67,7 +67,7 @@ aws iot create-policy \
 # Attach it to the device's certificate
 aws iot attach-policy \
   --policy-name "Sensor001Policy" \
-  --target "arn:aws:iot:us-east-1:123456789:cert/abc123..."
+  --target "arn:aws:iot:us-east-1:123456789012:cert/abc123..."
 ```
 
 ## Understanding Subscribe vs Receive
@@ -93,7 +93,7 @@ Hardcoding device names in policies does not scale. Policy variables let you wri
 
 ### Thing Name Variable
 
-The most useful variable is `${iot:Connection.Thing.ThingName}`, which resolves to the name of the thing associated with the connecting certificate.
+The most useful variable is `${iot:Connection.Thing.ThingName}`, which resolves to the name of the thing associated with the connecting certificate. For registered devices, add an `iot:Connection.Thing.IsAttached` condition to the `iot:Connect` statement so only certificates attached to a thing can use the policy.
 
 ```json
 {
@@ -102,30 +102,35 @@ The most useful variable is `${iot:Connection.Thing.ThingName}`, which resolves 
     {
       "Effect": "Allow",
       "Action": "iot:Connect",
-      "Resource": "arn:aws:iot:us-east-1:123456789:client/${iot:Connection.Thing.ThingName}"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}",
+      "Condition": {
+        "Bool": {
+          "iot:Connection.Thing.IsAttached": "true"
+        }
+      }
     },
     {
       "Effect": "Allow",
       "Action": "iot:Publish",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topic/devices/${iot:Connection.Thing.ThingName}/telemetry",
-        "arn:aws:iot:us-east-1:123456789:topic/devices/${iot:Connection.Thing.ThingName}/status"
+        "arn:aws:iot:us-east-1:123456789012:topic/devices/${iot:Connection.Thing.ThingName}/telemetry",
+        "arn:aws:iot:us-east-1:123456789012:topic/devices/${iot:Connection.Thing.ThingName}/status"
       ]
     },
     {
       "Effect": "Allow",
       "Action": "iot:Subscribe",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topicfilter/devices/${iot:Connection.Thing.ThingName}/commands/*",
-        "arn:aws:iot:us-east-1:123456789:topicfilter/devices/${iot:Connection.Thing.ThingName}/config"
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/devices/${iot:Connection.Thing.ThingName}/commands/*",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/devices/${iot:Connection.Thing.ThingName}/config"
       ]
     },
     {
       "Effect": "Allow",
       "Action": "iot:Receive",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topic/devices/${iot:Connection.Thing.ThingName}/commands/*",
-        "arn:aws:iot:us-east-1:123456789:topic/devices/${iot:Connection.Thing.ThingName}/config"
+        "arn:aws:iot:us-east-1:123456789012:topic/devices/${iot:Connection.Thing.ThingName}/commands/*",
+        "arn:aws:iot:us-east-1:123456789012:topic/devices/${iot:Connection.Thing.ThingName}/config"
       ]
     }
   ]
@@ -136,13 +141,13 @@ This single policy, when attached to any device's certificate, automatically sco
 
 ### Client ID Variable
 
-If you do not use thing names as client IDs, you can use the client ID variable instead.
+If you do not use thing names in your topic namespace, you can use the client ID variable for topic permissions. Do not rely on `${iot:ClientId}` by itself for `iot:Connect`, because AWS does not recommend using that variable as the `Connect` resource; restrict the client IDs that can connect separately.
 
 ```json
 {
   "Effect": "Allow",
-  "Action": "iot:Connect",
-  "Resource": "arn:aws:iot:us-east-1:123456789:client/${iot:ClientId}"
+  "Action": "iot:Publish",
+  "Resource": "arn:aws:iot:us-east-1:123456789012:topic/devices/${iot:ClientId}/telemetry"
 }
 ```
 
@@ -154,7 +159,7 @@ For scenarios where you want to scope based on the certificate itself:
 {
   "Effect": "Allow",
   "Action": "iot:Publish",
-  "Resource": "arn:aws:iot:us-east-1:123456789:topic/certs/${iot:Certificate.Subject.CommonName}/*"
+  "Resource": "arn:aws:iot:us-east-1:123456789012:topic/certs/${iot:Certificate.Subject.CommonName}/*"
 }
 ```
 
@@ -171,12 +176,17 @@ A device that only sends data upstream.
     {
       "Effect": "Allow",
       "Action": "iot:Connect",
-      "Resource": "*"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}",
+      "Condition": {
+        "Bool": {
+          "iot:Connection.Thing.IsAttached": "true"
+        }
+      }
     },
     {
       "Effect": "Allow",
       "Action": "iot:Publish",
-      "Resource": "arn:aws:iot:us-east-1:123456789:topic/telemetry/${iot:Connection.Thing.ThingName}"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:topic/telemetry/${iot:Connection.Thing.ThingName}"
     }
   ]
 }
@@ -193,30 +203,46 @@ A device that sends telemetry and receives commands.
     {
       "Effect": "Allow",
       "Action": "iot:Connect",
-      "Resource": "arn:aws:iot:us-east-1:123456789:client/${iot:Connection.Thing.ThingName}"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}",
+      "Condition": {
+        "Bool": {
+          "iot:Connection.Thing.IsAttached": "true"
+        }
+      }
     },
     {
       "Effect": "Allow",
       "Action": "iot:Publish",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topic/dt/${iot:Connection.Thing.ThingName}/*",
-        "arn:aws:iot:us-east-1:123456789:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/*"
+        "arn:aws:iot:us-east-1:123456789012:topic/dt/${iot:Connection.Thing.ThingName}/*",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update"
       ]
     },
     {
       "Effect": "Allow",
       "Action": "iot:Subscribe",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topicfilter/cmd/${iot:Connection.Thing.ThingName}/*",
-        "arn:aws:iot:us-east-1:123456789:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/*"
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/cmd/${iot:Connection.Thing.ThingName}/*",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/delta",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/documents"
       ]
     },
     {
       "Effect": "Allow",
       "Action": "iot:Receive",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topic/cmd/${iot:Connection.Thing.ThingName}/*",
-        "arn:aws:iot:us-east-1:123456789:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/*"
+        "arn:aws:iot:us-east-1:123456789012:topic/cmd/${iot:Connection.Thing.ThingName}/*",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/delta",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/documents"
       ]
     }
   ]
@@ -234,24 +260,43 @@ Allow a device to use Thing Shadows for state synchronization.
     {
       "Effect": "Allow",
       "Action": "iot:Connect",
-      "Resource": "*"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}",
+      "Condition": {
+        "Bool": {
+          "iot:Connection.Thing.IsAttached": "true"
+        }
+      }
     },
     {
       "Effect": "Allow",
-      "Action": ["iot:Publish", "iot:Receive"],
+      "Action": "iot:Publish",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get",
-        "arn:aws:iot:us-east-1:123456789:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/*",
-        "arn:aws:iot:us-east-1:123456789:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update",
-        "arn:aws:iot:us-east-1:123456789:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/*"
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update"
       ]
     },
     {
       "Effect": "Allow",
       "Action": "iot:Subscribe",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/*",
-        "arn:aws:iot:us-east-1:123456789:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/*"
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/delta",
+        "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/documents"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iot:Receive",
+      "Resource": [
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/get/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/accepted",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/rejected",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/delta",
+        "arn:aws:iot:us-east-1:123456789012:topic/$aws/things/${iot:Connection.Thing.ThingName}/shadow/update/documents"
       ]
     }
   ]
@@ -269,14 +314,19 @@ Allow devices in a group to publish to a shared topic while maintaining individu
     {
       "Effect": "Allow",
       "Action": "iot:Connect",
-      "Resource": "*"
+      "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}",
+      "Condition": {
+        "Bool": {
+          "iot:Connection.Thing.IsAttached": "true"
+        }
+      }
     },
     {
       "Effect": "Allow",
       "Action": "iot:Publish",
       "Resource": [
-        "arn:aws:iot:us-east-1:123456789:topic/devices/${iot:Connection.Thing.ThingName}/*",
-        "arn:aws:iot:us-east-1:123456789:topic/groups/warehouse-a/alerts"
+        "arn:aws:iot:us-east-1:123456789012:topic/devices/${iot:Connection.Thing.ThingName}/*",
+        "arn:aws:iot:us-east-1:123456789012:topic/groups/warehouse-a/alerts"
       ]
     }
   ]
@@ -312,9 +362,9 @@ Before deploying a policy to production devices, test it.
 aws iot test-authorization \
   --auth-infos '[{
     "actionType": "PUBLISH",
-    "resources": ["arn:aws:iot:us-east-1:123456789:topic/devices/sensor-042/telemetry"]
+    "resources": ["arn:aws:iot:us-east-1:123456789012:topic/devices/sensor-042/telemetry"]
   }]' \
-  --principal "arn:aws:iot:us-east-1:123456789:cert/abc123..."
+  --principal "arn:aws:iot:us-east-1:123456789012:cert/abc123..."
 ```
 
 ## Wrapping Up
