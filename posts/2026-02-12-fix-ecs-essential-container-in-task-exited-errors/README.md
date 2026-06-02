@@ -172,7 +172,7 @@ If the Docker entrypoint or command is wrong, the container exits immediately:
             "name": "app",
             "image": "my-app:latest",
             "entryPoint": ["/bin/sh", "-c"],
-            "command": ["node", "server.js"]
+            "command": ["node server.js"]
         }
     ]
 }
@@ -182,7 +182,7 @@ Test the same command locally:
 
 ```bash
 # Test the container locally with the same entrypoint
-docker run --rm my-app:latest node server.js
+docker run --rm --entrypoint /bin/sh my-app:latest -c "node server.js"
 ```
 
 ### Health Check Failures
@@ -206,7 +206,7 @@ If you've configured a health check, the container might be killed because it fa
 }
 ```
 
-The `startPeriod` gives your container time to start up before health checks begin failing. If your app takes 30 seconds to start, set `startPeriod` to at least 60 seconds.
+The `startPeriod` gives your container time to start up before failed health checks count against the retry limit. If your app takes 30 seconds to start, set `startPeriod` to at least 60 seconds.
 
 ### Image Pull Issues
 
