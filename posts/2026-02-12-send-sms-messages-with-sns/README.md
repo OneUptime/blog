@@ -16,6 +16,8 @@ But SMS through SNS has some important details around costs, sender IDs, regulat
 
 The simplest possible SMS send.
 
+New Amazon SNS SMS accounts start in the SMS sandbox, so your first sends can only go to verified destination numbers. Some destination countries also require an origination identity before delivery works.
+
 ```bash
 # Send an SMS directly to a phone number
 
@@ -60,7 +62,7 @@ def send_sms(phone_number, message, transactional=True, sender_id=None):
 
     Args:
         phone_number: E.164 format, e.g., +12025551234
-        message: The text message (max 160 chars for single SMS)
+        message: The text message (160 GSM-7 chars or 70 UCS-2 chars per SMS part)
         transactional: True for OTPs/alerts, False for marketing
         sender_id: Optional sender ID (not supported in all countries)
     """
@@ -120,7 +122,7 @@ sns.set_sms_attributes(
         'MonthlySpendLimit': '100',
         # Default sender ID (supported in some countries)
         'DefaultSenderID': 'MyApp',
-        # S3 bucket for delivery status logs
+        # Percentage of successful SMS deliveries to log in CloudWatch Logs
         'DeliveryStatusSuccessSamplingRate': '100',
     }
 )
@@ -291,10 +293,11 @@ from datetime import datetime, timedelta
 
 cloudwatch = boto3.client('cloudwatch')
 
-def get_sms_stats(days=7):
+def get_sms_stats(phone_number, days=7):
     """Get SMS delivery statistics for the last N days."""
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(days=days)
+    dimensions = [{'Name': 'PhoneNumber', 'Value': phone_number}]
 
     metrics = {
         'NumberOfMessagesPublished': 'Messages Sent',
@@ -304,19 +307,23 @@ def get_sms_stats(days=7):
     }
 
     for metric_name, label in metrics.items():
-        response = cloudwatch.get_metric_statistics(
-            Namespace='AWS/SNS',
-            MetricName=metric_name,
-            StartTime=start_time,
-            EndTime=end_time,
-            Period=86400,  # Daily
-            Statistics=['Sum'],
-        )
+        params = {
+            'Namespace': 'AWS/SNS',
+            'MetricName': metric_name,
+            'StartTime': start_time,
+            'EndTime': end_time,
+            'Period': 86400,  # Daily
+            'Statistics': ['Sum'],
+        }
+        if metric_name != 'SMSMonthToDateSpentUSD':
+            params['Dimensions'] = dimensions
+
+        response = cloudwatch.get_metric_statistics(**params)
 
         total = sum(dp['Sum'] for dp in response['Datapoints'])
         print(f'{label}: {total}')
 
-get_sms_stats()
+get_sms_stats('+12025551234')
 ```
 
 ## Cost Management
