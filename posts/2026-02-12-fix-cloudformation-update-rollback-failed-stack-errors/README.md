@@ -8,7 +8,7 @@ Description: Step-by-step guide to recovering from the dreaded CloudFormation UP
 
 ---
 
-`UPDATE_ROLLBACK_FAILED` is probably the worst state a CloudFormation stack can be in. It means your stack update failed, CloudFormation tried to roll back to the previous state, and the rollback itself also failed. Your stack is now stuck and you can't update it, delete it, or really do anything with it through normal operations.
+`UPDATE_ROLLBACK_FAILED` is probably the worst state a CloudFormation stack can be in. It means your stack update failed, CloudFormation tried to roll back to the previous state, and the rollback itself also failed. Your stack is now stuck and you can't update it through normal operations. You can either continue the rollback or delete the stack.
 
 Don't panic. There's a way out.
 
@@ -139,13 +139,13 @@ At this point, the stack is usable again. You can make new updates or delete the
 
 ## Handling Skipped Resources
 
-If you skipped resources during the rollback, those resources are now out of CloudFormation's control. You have a few options:
+If you skipped resources during the rollback, CloudFormation marks those resources as `UPDATE_COMPLETE`, but their actual state can be inconsistent with the stack template. Before running another update, bring the stack and the real resources back into sync. You have a few options:
 
-1. Import them back using `resource import`
-2. Delete them manually and remove them from the template
-3. Leave them as-is and manage them outside CloudFormation
+1. Manually adjust the resource so it matches the template again
+2. Update the template so it matches the actual resource state
+3. Remove the resource from the template and manage it outside CloudFormation
 
-Here's how to import a resource back:
+If you later need to bring an unmanaged resource into a new or existing stack, use resource import. The template used for import must include the resource, and each imported resource must have a `DeletionPolicy`:
 
 ```bash
 # Create an import change set
@@ -168,16 +168,24 @@ In rare cases, `continue-update-rollback` keeps failing no matter what you skip.
 
 1. Contact AWS Support - they have internal tools that can help
 2. Create a new stack and migrate your resources to it
-3. If you don't need the resources, try deleting the stack with `--retain-resources` to release CloudFormation's hold
+3. Delete the stack if you don't need to keep it
 
 ```bash
-# Delete the stack but keep the actual resources
+# Delete the stack
+aws cloudformation delete-stack \
+    --stack-name my-stuck-stack
+```
+
+If the delete later fails and the stack enters `DELETE_FAILED`, you can retry deletion with `--retain-resources` for the logical IDs that CloudFormation couldn't delete:
+
+```bash
+# Retry deletion but retain specific failed resources
 aws cloudformation delete-stack \
     --stack-name my-stuck-stack \
     --retain-resources MyDatabase MyBucket
 ```
 
-This deletes the CloudFormation stack record but leaves the actual AWS resources intact. You can then create a new stack and import those resources.
+This deletes the CloudFormation stack record but leaves the specified retained resources intact. You can then create a new stack and import those resources if their resource types support import.
 
 ## Prevention
 
