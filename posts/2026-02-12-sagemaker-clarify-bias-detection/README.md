@@ -113,6 +113,12 @@ for facet_name, facet_data in facets.items():
         value = metric['value']
         description = metric.get('description', '')
 
+        if not isinstance(value, (int, float)):
+            print(f"  {name}: {value}")
+            if description:
+                print(f"    {description}")
+            continue
+
         # Flag concerning values
         flag = ''
         if name == 'DPL' and abs(value) > 0.1:
@@ -195,19 +201,22 @@ Interpret the SHAP results.
 # Read explainability results
 result = s3.get_object(
     Bucket=bucket,
-    Key='clarify-output/pre-training/explanations_shap/out.csv'
+    Key='clarify-output/pre-training/analysis.json'
 )
-
-import pandas as pd
-from io import StringIO
-
-shap_df = pd.read_csv(StringIO(result['Body'].read().decode()))
+analysis = json.loads(result['Body'].read().decode())
+kernel_shap = analysis.get('explanations', {}).get('kernel_shap', {})
 
 # Show global feature importance
 print("Global Feature Importance (SHAP):")
-feature_importance = shap_df.abs().mean().sort_values(ascending=False)
-for feature, importance in feature_importance.items():
-    print(f"  {feature}: {importance:.4f}")
+for label, shap_results in kernel_shap.items():
+    print(f"\nTarget: {label}")
+    feature_importance = shap_results.get('global_shap_values', {})
+    for feature, importance in sorted(
+        feature_importance.items(),
+        key=lambda item: abs(item[1]),
+        reverse=True
+    ):
+        print(f"  {feature}: {importance:.4f}")
 ```
 
 ## Monitoring Bias in Production
@@ -215,7 +224,7 @@ for feature, importance in feature_importance.items():
 Bias can change over time as the population or data distribution shifts. Use Clarify's monitoring capabilities alongside [SageMaker Model Monitor](https://oneuptime.com/blog/post/2026-02-12-sagemaker-model-monitor-drift-detection/view) to continuously check for bias drift.
 
 ```python
-from sagemaker.model_monitor import ModelBiasMonitor
+from sagemaker.model_monitor import EndpointInput, ModelBiasMonitor
 
 # Create a bias monitor
 bias_monitor = ModelBiasMonitor(
@@ -240,11 +249,18 @@ from sagemaker.model_monitor import CronExpressionGenerator
 
 bias_monitor.create_monitoring_schedule(
     monitor_schedule_name='loan-model-bias-monitor',
-    endpoint_input='loan-approval-endpoint',
+    endpoint_input=EndpointInput(
+        endpoint_name='loan-approval-endpoint',
+        destination='/opt/ml/processing/input/endpoint',
+        start_time_offset='-PT1H',
+        end_time_offset='-PT0H',
+        probability_threshold_attribute=0.5
+    ),
     output_s3_uri=f's3://{bucket}/bias-monitoring/',
     ground_truth_input=f's3://{bucket}/ground-truth/',
     schedule_cron_expression=CronExpressionGenerator.daily(),
-    analysis_config=bias_config
+    constraints=bias_monitor.suggested_constraints(),
+    analysis_config=None
 )
 ```
 
@@ -269,18 +285,20 @@ Finding bias is step one. Here's what to do about it:
 
 ```python
 # Example: integrate bias checks into your SageMaker Pipeline
-from sagemaker.workflow.conditions import ConditionLessThanOrEqualTo
+from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo
 from sagemaker.workflow.condition_step import ConditionStep
+from sagemaker.workflow.functions import JsonGet
 
 # Only approve the model if disparate impact is within acceptable range
 # DI close to 1.0 means equal treatment
-bias_condition = ConditionLessThanOrEqualTo(
+# Assumes the BiasAnalysis step writes a scalar summary field from analysis.json
+bias_condition = ConditionGreaterThanOrEqualTo(
     left=JsonGet(
         step_name='BiasAnalysis',
         property_file=bias_report,
-        json_path='post_training_bias_metrics.facets.gender.metrics.DI'
+        json_path='post_training_bias.disparate_impact'
     ),
-    right=0.2  # Maximum allowed deviation from perfect parity
+    right=0.8  # Common minimum acceptable DI threshold
 )
 
 bias_gate = ConditionStep(
@@ -321,11 +339,11 @@ for facet_name, facet_data in full_report['pre_training_bias_metrics']['facets']
     dpl = next((m for m in metrics if m['name'] == 'DPL'), None)
     ci = next((m for m in metrics if m['name'] == 'CI'), None)
 
-    if dpl:
+    if dpl and isinstance(dpl['value'], (int, float)):
         status = 'PASS' if abs(dpl['value']) < 0.1 else 'REVIEW NEEDED'
         print(f"Difference in Proportions: {dpl['value']:.4f} [{status}]")
 
-    if ci:
+    if ci and isinstance(ci['value'], (int, float)):
         status = 'PASS' if abs(ci['value']) < 0.3 else 'REVIEW NEEDED'
         print(f"Class Imbalance: {ci['value']:.4f} [{status}]")
 ```
