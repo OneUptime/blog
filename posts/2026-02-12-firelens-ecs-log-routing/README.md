@@ -8,13 +8,13 @@ Description: Learn how to use FireLens with Fluent Bit to route ECS container lo
 
 ---
 
-CloudWatch Logs is the default logging destination for ECS tasks, and it works fine for basic use cases. But once you need to send logs to multiple destinations, filter them, transform them, or route them to third-party services, you'll want something more flexible. That's where FireLens comes in.
+CloudWatch Logs with the `awslogs` log driver is a common logging destination for ECS tasks, and it works fine for basic use cases. But once you need to send logs to multiple destinations, filter them, transform them, or route them to third-party services, you'll want something more flexible. That's where FireLens comes in.
 
-FireLens is an ECS-native log routing layer that uses either Fluent Bit or Fluentd as a sidecar container. It intercepts your application's stdout/stderr output and routes it wherever you need - CloudWatch, S3, Elasticsearch, Datadog, Splunk, or any destination supported by Fluent Bit plugins.
+FireLens is an ECS-native log routing layer that uses either Fluent Bit or Fluentd as a sidecar container. It receives your application's stdout/stderr output and routes it wherever you need - CloudWatch, S3, Elasticsearch, Datadog, Splunk, or any destination supported by your chosen log router's plugins.
 
 ## How FireLens Works
 
-Instead of using the `awslogs` log driver to send logs directly to CloudWatch, FireLens injects a Fluent Bit sidecar container into your task. Your application container's log driver is set to `awsfirelens`, which sends all stdout/stderr to the Fluent Bit container. Fluent Bit then processes and forwards the logs based on your configuration.
+Instead of using the `awslogs` log driver to send logs directly to CloudWatch, you define a Fluent Bit sidecar container with a FireLens configuration in your task. Your application container's log driver is set to `awsfirelens`, which sends all stdout/stderr to the Fluent Bit container. Fluent Bit then processes and forwards the logs based on your configuration.
 
 ```mermaid
 graph LR
@@ -86,7 +86,7 @@ Notice two things: the log router container uses `awslogs` for its own logs (so 
 
 The real power of FireLens is routing logs to multiple places simultaneously. You do this with a custom Fluent Bit config file.
 
-First, create the config file and store it in your image or in S3.
+First, create the config file and store it in your log router image. Tasks hosted on Fargate only support FireLens custom config files from a file path; S3 config files are only supported for EC2-hosted ECS tasks. Keep the CloudWatch `awsfirelens` options from the application container, and use the extra config file for the additional routes.
 
 ```ini
 # custom-fluent-bit.conf
@@ -97,36 +97,30 @@ First, create the config file and store it in your image or in S3.
     Log_Level     info
     Parsers_File  parsers.conf
 
-# Send all logs to CloudWatch
-[OUTPUT]
-    Name              cloudwatch_logs
-    Match             *
-    region            us-east-1
-    log_group_name    /ecs/web-app
-    log_stream_prefix app-
-    auto_create_group true
+[FILTER]
+    Name              rewrite_tag
+    Match             app-firelens*
+    Rule              $log .*ERROR.* error.$TAG true
 
 # Also send error logs to a separate log group
 [OUTPUT]
     Name              cloudwatch_logs
-    Match             *
+    Match             error.*
     region            us-east-1
     log_group_name    /ecs/web-app-errors
     log_stream_prefix error-
     auto_create_group true
     log_key           log
-    # Only forward logs containing "ERROR"
-    Regex             log ERROR
 
 # Archive all logs to S3
 [OUTPUT]
     Name              s3
-    Match             *
+    Match             app-firelens*
     region            us-east-1
     bucket            my-logs-bucket
     total_file_size   50M
     upload_timeout    60s
-    s3_key_format     /logs/%Y/%m/%d/$TAG/%H-%M-%S
+    s3_key_format     /logs/%Y/%m/%d/$TAG/%H-%M-%S-$UUID
 ```
 
 Reference this config in the FireLens container definition.
@@ -134,13 +128,13 @@ Reference this config in the FireLens container definition.
 ```json
 {
   "name": "log-router",
-  "image": "public.ecr.aws/aws-observability/aws-for-fluent-bit:stable",
+  "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/aws-for-fluent-bit-custom:latest",
   "essential": true,
   "firelensConfiguration": {
     "type": "fluentbit",
     "options": {
-      "config-file-type": "s3",
-      "config-file-value": "arn:aws:s3:::my-config-bucket/fluent-bit/custom-fluent-bit.conf"
+      "config-file-type": "file",
+      "config-file-value": "/fluent-bit/custom-fluent-bit.conf"
     }
   }
 }
@@ -165,14 +159,14 @@ resource "aws_ecs_task_definition" "app" {
     # Fluent Bit sidecar
     {
       name      = "log-router"
-      image     = "public.ecr.aws/aws-observability/aws-for-fluent-bit:stable"
+      image     = "${var.fluent_bit_repo_url}:${var.fluent_bit_image_tag}"
       essential = true
 
       firelensConfiguration = {
         type = "fluentbit"
         options = {
-          "config-file-type"  = "s3"
-          "config-file-value" = "arn:aws:s3:::${aws_s3_bucket.config.id}/fluent-bit.conf"
+          "config-file-type"  = "file"
+          "config-file-value" = "/fluent-bit/custom-fluent-bit.conf"
         }
       }
 
@@ -247,27 +241,8 @@ resource "aws_iam_role_policy" "firelens_logging" {
   })
 }
 
-# Execution role needs S3 access for the config file
-resource "aws_iam_role_policy" "config_access" {
-  name = "firelens-config-access"
-  role = aws_iam_role.execution.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetObject"]
-        Resource = "arn:aws:s3:::${aws_s3_bucket.config.id}/fluent-bit.conf"
-      },
-      {
-        Effect   = "Allow"
-        Action   = ["s3:GetBucketLocation"]
-        Resource = "arn:aws:s3:::${aws_s3_bucket.config.id}"
-      }
-    ]
-  })
-}
+# If you use an S3-hosted config file for an EC2-hosted ECS task, the execution role
+# also needs s3:GetObject access to that config file.
 ```
 
 ## Sending to Third-Party Services
@@ -354,6 +329,6 @@ With JSON logs and the parser filter, Fluent Bit can route based on log level or
 
 **High memory usage**: Fluent Bit buffers logs in memory by default. If your app produces a lot of logs, increase the `memoryReservation` for the sidecar and consider enabling filesystem buffering.
 
-**Config file not loading**: Make sure the execution role has S3 access for the config file, and that the S3 path is correct.
+**Config file not loading**: For Fargate tasks, make sure the config file exists at the path in your log router image. For EC2-hosted tasks using an S3 config file, make sure the execution role has S3 access and that the S3 path is correct.
 
 FireLens adds a bit of complexity to your task definitions, but the flexibility it provides for log routing is worth it. Instead of being locked into CloudWatch, you can send logs anywhere and apply filters and transformations along the way. For monitoring the health of your logging pipeline itself, take a look at our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
