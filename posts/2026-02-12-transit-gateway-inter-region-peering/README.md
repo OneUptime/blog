@@ -74,7 +74,7 @@ aws ec2 create-transit-gateway \
   --tag-specifications 'ResourceType=transit-gateway,Tags=[{Key=Name,Value=eu-west-tgw}]'
 ```
 
-Important: each transit gateway needs a unique ASN. The default is 64512, so use different values for each region.
+Important: AWS recommends using a unique ASN for each transit gateway in a multi-region deployment. The default is 64512, so use different values for each region.
 
 ## Step 2: Attach VPCs to Their Local Transit Gateway
 
@@ -329,7 +329,7 @@ const packetLossAlarm = new cloudwatch.Alarm(this, 'TGWPacketLoss', {
     namespace: 'AWS/TransitGateway',
     metricName: 'PacketDropCountNoRoute',
     dimensionsMap: {
-      TransitGateway: transitGateway.ref,
+      TransitGateway: this.transitGateway.ref,
     },
     statistic: 'Sum',
     period: cdk.Duration.minutes(5),
