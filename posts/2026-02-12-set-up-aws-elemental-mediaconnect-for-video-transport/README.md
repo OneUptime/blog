@@ -20,7 +20,7 @@ Key capabilities:
 
 - **Reliable transport** - Built-in error correction and redundancy
 - **Protocol support** - SRT, Zixi, RIST, RTP, and RTP-FEC
-- **Encryption** - AES-128 and AES-256 static key encryption
+- **Encryption** - AES-128, AES-192, and AES-256 encryption, plus SRT password encryption
 - **Entitlements** - Share video feeds with other AWS accounts securely
 - **Flow monitoring** - Real-time health metrics and alerting
 - **Multi-output** - One input can feed multiple outputs simultaneously
@@ -86,8 +86,8 @@ aws mediaconnect create-flow \
     "Protocol": "srt-caller",
     "Description": "Remote venue live feed",
     "StreamId": "venue-main",
-    "SenderIpAddress": "203.0.113.50",
-    "SenderControlPort": 5000
+    "SourceListenerAddress": "203.0.113.50",
+    "SourceListenerPort": 5000
   }'
 ```
 
@@ -160,7 +160,7 @@ aws mediaconnect add-flow-outputs \
       "Description": "Feed to external broadcast partner",
       "Destination": "203.0.113.100",
       "Port": 5000,
-      "SmoothingLatency": 2000
+      "MinLatency": 2000
     }
   ]'
 ```
@@ -184,8 +184,7 @@ aws mediaconnect create-flow \
     "FailoverMode": "FAILOVER",
     "SourcePriority": {
       "PrimarySource": "primary-source"
-    },
-    "RecoveryWindow": 200
+    }
   }'
 
 # Add the backup source
@@ -208,10 +207,10 @@ When the primary source fails, MediaConnect automatically switches to the backup
 For sensitive content, encrypt the video in transit:
 
 ```bash
-# Create a Secrets Manager secret for the encryption key
+# Create a Secrets Manager secret for the SRT password
 aws secretsmanager create-secret \
-  --name "mediaconnect-encryption-key" \
-  --secret-string '{"key": "your-32-character-encryption-key!"}'
+  --name "mediaconnect-srt-password" \
+  --secret-string "Your-SRT-Passphrase-123"
 
 # Create a flow with encrypted source
 aws mediaconnect create-flow \
@@ -223,8 +222,9 @@ aws mediaconnect create-flow \
     "WhitelistCidr": "0.0.0.0/0",
     "Decryption": {
       "Algorithm": "aes256",
+      "KeyType": "srt-password",
       "RoleArn": "arn:aws:iam::123456789012:role/MediaConnectEncryptionRole",
-      "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:mediaconnect-encryption-key"
+      "SecretArn": "arn:aws:secretsmanager:us-east-1:123456789012:secret:mediaconnect-srt-password"
     }
   }'
 ```
@@ -401,7 +401,18 @@ Resources:
       SourceFailoverConfig:
         State: ENABLED
         FailoverMode: FAILOVER
-        RecoveryWindow: 200
+        SourcePriority:
+          PrimarySource: primary-source
+
+  BackupSource:
+    Type: AWS::MediaConnect::FlowSource
+    Properties:
+      FlowArn: !Ref StudioFeed
+      Name: backup-source
+      Description: Backup studio source
+      Protocol: srt-listener
+      IngestPort: 5001
+      WhitelistCidr: !Ref SourceCidr
 
   MediaLiveOutput:
     Type: AWS::MediaConnect::FlowOutput
