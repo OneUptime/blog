@@ -134,12 +134,12 @@ def lambda_handler(event, context):
             {'Name': 'instance-state-name', 'Values': ['running']}
         ]
 
-    response = ec2.describe_instances(Filters=filters)
-
     instance_ids = []
-    for reservation in response['Reservations']:
-        for instance in reservation['Instances']:
-            instance_ids.append(instance['InstanceId'])
+    paginator = ec2.get_paginator('describe_instances')
+    for page in paginator.paginate(Filters=filters):
+        for reservation in page['Reservations']:
+            for instance in reservation['Instances']:
+                instance_ids.append(instance['InstanceId'])
 
     if not instance_ids:
         print(f'No instances to {action}')
@@ -182,16 +182,16 @@ aws lambda create-function \
 
 Now create the cron schedules. EventBridge cron expressions use UTC, so adjust for your timezone.
 
-Create rules for business hours (8 AM - 6 PM US Eastern):
+Create rules for business hours (8 AM - 6 PM Eastern Standard Time). During daylight saving time, adjust the UTC hours or use EventBridge Scheduler with the `America/New_York` time zone:
 
 ```bash
-# Rule to START instances at 8 AM Eastern (1 PM UTC)
+# Rule to START instances at 8 AM Eastern Standard Time (1 PM UTC)
 aws events put-rule \
   --name ec2-start-business-hours \
   --schedule-expression "cron(0 13 ? * MON-FRI *)" \
   --description "Start scheduled EC2 instances on weekday mornings"
 
-# Rule to STOP instances at 6 PM Eastern (11 PM UTC)
+# Rule to STOP instances at 6 PM Eastern Standard Time (11 PM UTC)
 aws events put-rule \
   --name ec2-stop-business-hours \
   --schedule-expression "cron(0 23 ? * MON-FRI *)" \
@@ -248,6 +248,7 @@ Test the Lambda function manually before relying on the schedule:
 # Test stopping instances
 aws lambda invoke \
   --function-name ec2-scheduler \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"action": "stop"}' \
   response.json
 cat response.json
@@ -255,6 +256,7 @@ cat response.json
 # Test starting instances
 aws lambda invoke \
   --function-name ec2-scheduler \
+  --cli-binary-format raw-in-base64-out \
   --payload '{"action": "start"}' \
   response.json
 cat response.json
@@ -262,7 +264,7 @@ cat response.json
 
 ## Terraform Version
 
-If you prefer infrastructure as code, here's the complete setup in Terraform:
+If you prefer infrastructure as code, here are the Lambda and EventBridge resources in Terraform:
 
 ```hcl
 # Lambda function
@@ -294,6 +296,14 @@ resource "aws_cloudwatch_event_target" "stop" {
   input = jsonencode({ action = "stop" })
 }
 
+resource "aws_lambda_permission" "allow_eventbridge_stop" {
+  statement_id  = "AllowExecutionFromEventBridgeStop"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.stop.arn
+}
+
 # EventBridge rule - Start at 8 AM
 resource "aws_cloudwatch_event_rule" "start" {
   name                = "ec2-start-business-hours"
@@ -304,6 +314,14 @@ resource "aws_cloudwatch_event_target" "start" {
   rule  = aws_cloudwatch_event_rule.start.name
   arn   = aws_lambda_function.scheduler.arn
   input = jsonencode({ action = "start" })
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_start" {
+  statement_id  = "AllowExecutionFromEventBridgeStart"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.scheduler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.start.arn
 }
 ```
 
