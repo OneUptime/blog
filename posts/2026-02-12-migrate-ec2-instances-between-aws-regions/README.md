@@ -145,7 +145,7 @@ aws ec2 wait instance-running --instance-ids $NEW_INSTANCE --region eu-west-1
 
 ## Migrating Multiple Volumes
 
-If your instance has additional EBS volumes, you need to migrate them separately:
+Additional EBS volumes that are attached when you create the AMI are included in the AMI's block device mapping and are launched automatically from copied snapshots. If you excluded a volume from the AMI, want to move it separately, or need a fresher cutover snapshot, migrate it separately:
 
 ```bash
 # List all volumes attached to the source instance
