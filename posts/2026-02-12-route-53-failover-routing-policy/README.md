@@ -8,13 +8,13 @@ Description: A practical guide to configuring Route 53 failover routing for high
 
 ---
 
-Failover routing in Route 53 gives you active-passive failover at the DNS level. You designate one endpoint as primary and another as secondary. Route 53 monitors the primary with a health check, and if it fails, DNS queries automatically get answered with the secondary endpoint. When the primary recovers, traffic shifts back.
+Failover routing in Route 53 gives you active-passive failover at the DNS level. You designate one endpoint as primary and another as secondary. Route 53 monitors the primary with a health check or alias target health evaluation, and if it fails, DNS queries automatically get answered with the secondary endpoint. When the primary recovers, traffic shifts back.
 
 It's one of the simplest ways to add high availability to your application without touching your application code. And for disaster recovery scenarios where you have a standby environment in another region, failover routing is the mechanism that makes the switch happen.
 
 ## How Failover Routing Works
 
-You create two records: one with `Failover: PRIMARY` and one with `Failover: SECONDARY`. The primary record must have a health check. When the health check is healthy, Route 53 returns the primary record. When it's unhealthy, Route 53 returns the secondary.
+You create two records: one with `Failover: PRIMARY` and one with `Failover: SECONDARY`. Route 53 needs a health signal for the primary, either from an associated health check or, for alias records to supported AWS resources such as load balancers, from `EvaluateTargetHealth`. When the primary is healthy, Route 53 returns the primary record. When it's unhealthy, Route 53 returns the secondary.
 
 ```mermaid
 graph TD
@@ -27,7 +27,7 @@ graph TD
 
 ## Setting Up Active-Passive Failover
 
-First, create a health check for the primary endpoint.
+First, create a health check for the primary endpoint. If you're using an alias record to an AWS resource that supports `EvaluateTargetHealth`, you can rely on that instead. If you configure both a health check and `EvaluateTargetHealth`, both must evaluate as healthy for Route 53 to treat the alias record as healthy.
 
 ```bash
 # Create a health check for the primary endpoint
@@ -36,7 +36,7 @@ aws route53 create-health-check \
   --caller-reference "primary-health-$(date +%s)" \
   --health-check-config '{
     "Type": "HTTPS",
-    "FullyQualifiedDomainName": "primary-alb.us-east-1.elb.amazonaws.com",
+    "FullyQualifiedDomainName": "primary-alb-1234567890.us-east-1.elb.amazonaws.com",
     "Port": 443,
     "ResourcePath": "/health",
     "RequestInterval": 10,
@@ -45,7 +45,7 @@ aws route53 create-health-check \
   }'
 ```
 
-With `RequestInterval` of 10 seconds and `FailureThreshold` of 3, Route 53 detects a failure within 30 seconds. The actual DNS failover happens almost immediately after the health check transitions to unhealthy.
+With `RequestInterval` of 10 seconds and `FailureThreshold` of 3, Route 53 changes status after about three consecutive failed checks. In practice, expect roughly 30 seconds plus DNS propagation and resolver caching time.
 
 Now create the failover records.
 
@@ -64,7 +64,7 @@ aws route53 change-resource-record-sets \
         "HealthCheckId": "primary-health-check-id",
         "AliasTarget": {
           "HostedZoneId": "Z35SXDOTRQ7X7K",
-          "DNSName": "primary-alb.us-east-1.elb.amazonaws.com",
+          "DNSName": "dualstack.primary-alb-1234567890.us-east-1.elb.amazonaws.com",
           "EvaluateTargetHealth": true
         }
       }
@@ -84,7 +84,7 @@ aws route53 change-resource-record-sets \
         "Failover": "SECONDARY",
         "AliasTarget": {
           "HostedZoneId": "Z1H1FL5HABSF5",
-          "DNSName": "secondary-alb.us-west-2.elb.amazonaws.com",
+          "DNSName": "dualstack.secondary-alb-1234567890.us-west-2.elb.amazonaws.com",
           "EvaluateTargetHealth": true
         }
       }
@@ -104,7 +104,7 @@ aws route53 create-health-check \
   --caller-reference "secondary-health-$(date +%s)" \
   --health-check-config '{
     "Type": "HTTPS",
-    "FullyQualifiedDomainName": "secondary-alb.us-west-2.elb.amazonaws.com",
+    "FullyQualifiedDomainName": "secondary-alb-1234567890.us-west-2.elb.amazonaws.com",
     "Port": 443,
     "ResourcePath": "/health",
     "RequestInterval": 10,
@@ -125,7 +125,7 @@ aws route53 change-resource-record-sets \
         "HealthCheckId": "secondary-health-check-id",
         "AliasTarget": {
           "HostedZoneId": "Z1H1FL5HABSF5",
-          "DNSName": "secondary-alb.us-west-2.elb.amazonaws.com",
+          "DNSName": "dualstack.secondary-alb-1234567890.us-west-2.elb.amazonaws.com",
           "EvaluateTargetHealth": true
         }
       }
@@ -135,18 +135,20 @@ aws route53 change-resource-record-sets \
 
 ## Failover to a Static S3 Website
 
-A common disaster recovery pattern is failing over to a static "sorry, we're down" page hosted on S3. This works even if your entire compute infrastructure is offline.
+A common disaster recovery pattern is failing over to a static "sorry, we're down" page hosted on S3. This works even if your entire compute infrastructure is offline. S3 website endpoints don't support HTTPS, so put CloudFront in front of the bucket if the failover site must serve HTTPS on your custom domain.
 
 ```bash
-# Create an S3 bucket configured as a static website
-aws s3 mb s3://app-failover-example-com
+# Create an S3 bucket configured as a static website.
+# For a Route 53 alias to an S3 website endpoint, the bucket name must
+# match the DNS record name.
+aws s3 mb s3://app.example.com --region us-east-1
 
 # Upload a maintenance page
-aws s3 cp maintenance.html s3://app-failover-example-com/index.html \
+aws s3 cp maintenance.html s3://app.example.com/index.html \
   --content-type text/html
 
 # Enable static website hosting
-aws s3 website s3://app-failover-example-com \
+aws s3 website s3://app.example.com \
   --index-document index.html
 
 # Create the secondary failover record pointing to S3
@@ -270,10 +272,10 @@ Always test your failover path before you need it. The worst time to discover yo
 The total failover time depends on several factors:
 - Health check interval (10 or 30 seconds)
 - Failure threshold (1-10 checks)
-- DNS TTL on the record
+- DNS TTL on the record or alias target
 - Client-side DNS caching
 
-With a 10-second interval and threshold of 3, the health check declares failure in about 30 seconds. If your DNS TTL is 60 seconds, some clients may continue hitting the old endpoint for up to 90 seconds total. Keep TTLs low on failover records - 60 seconds is a good target.
+With a 10-second interval and threshold of 3, the health check declares failure after about three failed checks. If your DNS TTL is 60 seconds, some clients may continue hitting the old endpoint for up to roughly 90 seconds total. Keep TTLs low on non-alias failover records - 60 seconds is a good target. For alias records that point to AWS resources, Route 53 uses the TTL of the alias target instead of a TTL that you set on the record.
 
 For monitoring your failover health checks and getting alerted when failovers happen, consider setting up CloudWatch alarms or using a monitoring tool like OneUptime that can track both the health check status and the actual user experience during the transition.
 
