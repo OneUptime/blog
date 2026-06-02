@@ -10,7 +10,7 @@ Description: Set up remote Terraform state storage with S3 and DynamoDB locking 
 
 Terraform state is the single most important file in your infrastructure setup. It maps your configuration to real-world resources. Lose it and Terraform doesn't know what exists. Corrupt it and deployments break in unpredictable ways. Using local state works for solo experiments, but the moment you're working with a team, you need remote state with locking.
 
-The standard approach on AWS is S3 for storage and DynamoDB for locking. Let's set it up properly.
+The standard approach on AWS is S3 for storage. Current Terraform versions can use an S3 lockfile for locking; DynamoDB-based locking is still supported for compatibility, but is deprecated and will be removed in a future Terraform minor version. Let's set it up properly.
 
 ## Why Remote State Matters
 
@@ -24,13 +24,13 @@ Local state (`terraform.tfstate`) is a file on your disk. That creates several p
 Remote state with S3 solves all of these:
 
 - S3 gives you durable, versioned storage
-- DynamoDB provides locking to prevent concurrent operations
+- S3 lockfiles provide locking to prevent concurrent operations
 - IAM controls who can access the state
 - Encryption protects sensitive data at rest
 
 ## The Chicken-and-Egg Problem
 
-There's an inherent bootstrap problem: you need AWS resources (S3 bucket, DynamoDB table) to store Terraform state, but you'd normally use Terraform to create AWS resources. The standard solution is to create the backend resources first, either manually or with a separate Terraform configuration that uses local state.
+There's an inherent bootstrap problem: you need AWS resources (an S3 bucket, and optionally a DynamoDB table for legacy locking) to store Terraform state, but you'd normally use Terraform to create AWS resources. The standard solution is to create the backend resources first, either manually or with a separate Terraform configuration that uses local state.
 
 ## Creating the Backend Resources
 
@@ -92,7 +92,7 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
+# DynamoDB table for legacy state locking
 resource "aws_dynamodb_table" "terraform_locks" {
   name         = "terraform-state-locks"
   billing_mode = "PAY_PER_REQUEST"
@@ -140,8 +140,11 @@ terraform {
     bucket         = "my-company-terraform-state"
     key            = "prod/networking/terraform.tfstate" # Unique path per project
     region         = "us-east-1"
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
     encrypt        = true
+
+    # Deprecated: only use this if you need DynamoDB locking for older Terraform versions.
+    # dynamodb_table = "terraform-state-locks"
   }
 
   required_providers {
@@ -172,7 +175,7 @@ Terraform copies your local state to S3 and starts using it remotely. The local 
 
 ## State Locking in Action
 
-When you run `terraform plan` or `terraform apply`, Terraform acquires a lock in DynamoDB. This prevents anyone else from modifying the state simultaneously.
+When you run `terraform plan` or `terraform apply`, Terraform acquires a lock before working with state. With `use_lockfile = true`, Terraform writes a `.tflock` object beside the state file in S3. If you use the deprecated `dynamodb_table` setting, Terraform uses the DynamoDB table instead. Either way, the lock prevents anyone else from modifying the state simultaneously.
 
 ```bash
 # You'll see this during operations:
@@ -277,19 +280,35 @@ resource "aws_iam_policy" "terraform_state_access" {
       {
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
           "s3:ListBucket",
         ]
+        Resource = aws_s3_bucket.terraform_state.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+        ]
         Resource = [
-          aws_s3_bucket.terraform_state.arn,
           "${aws_s3_bucket.terraform_state.arn}/*",
         ]
       },
       {
         Effect = "Allow"
         Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+        ]
+        Resource = [
+          "${aws_s3_bucket.terraform_state.arn}/*.tflock",
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:DescribeTable",
           "dynamodb:GetItem",
           "dynamodb:PutItem",
           "dynamodb:DeleteItem",
@@ -303,6 +322,6 @@ resource "aws_iam_policy" "terraform_state_access" {
 
 ## Wrapping Up
 
-Remote state with S3 and DynamoDB is table stakes for team-based Terraform workflows. Set it up before you write your first real resource, organize your state files logically, and lock down access with IAM. The bucket versioning will save you when someone inevitably corrupts the state, and the DynamoDB locking will prevent the corruption in the first place.
+Remote state with S3 locking is table stakes for team-based Terraform workflows. Set it up before you write your first real resource, organize your state files logically, and lock down access with IAM. The bucket versioning will save you when someone inevitably corrupts the state, and state locking will prevent the corruption in the first place.
 
 For managing authentication to this backend, see our guide on [configuring AWS provider authentication](https://oneuptime.com/blog/post/2026-02-12-configure-aws-provider-authentication-in-terraform/view). And if you're using Terragrunt, check out how it [simplifies backend configuration](https://oneuptime.com/blog/post/2026-02-12-terragrunt-for-dry-terraform-aws-configurations/view).
