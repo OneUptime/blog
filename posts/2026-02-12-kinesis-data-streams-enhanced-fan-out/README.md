@@ -21,7 +21,7 @@ Here's the difference at a glance:
 | Throughput per shard | 2 MB/s shared across all consumers | 2 MB/s dedicated per consumer |
 | Delivery model | Pull (GetRecords API) | Push (SubscribeToShard API) |
 | Latency | ~200ms average | ~70ms average |
-| Max consumers | 5 per shard recommended | 20 per stream |
+| Consumer/API limits | Shared 5 GetRecords calls/sec per shard | 20 registered consumers per stream for provisioned and On-demand Standard, 50 per stream for On-demand Advantage |
 | Cost | Included in stream cost | Additional per-consumer, per-shard hour charge |
 
 ## Registering an Enhanced Fan-Out Consumer
@@ -71,6 +71,12 @@ The Kinesis Client Library (KCL) version 2.x supports enhanced fan-out natively.
 import software.amazon.kinesis.processor.ShardRecordProcessorFactory;
 import software.amazon.kinesis.common.ConfigsBuilder;
 import software.amazon.kinesis.coordinator.Scheduler;
+import software.amazon.kinesis.retrieval.fanout.FanOutConfig;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.cloudwatch.CloudWatchAsyncClient;
+import software.amazon.awssdk.services.dynamodb.DynamoDbAsyncClient;
+import software.amazon.awssdk.services.kinesis.KinesisAsyncClient;
+import java.util.UUID;
 
 public class EnhancedFanOutApp {
     public static void main(String[] args) {
@@ -128,6 +134,15 @@ The record processor implementation stays the same whether you use standard or e
 
 ```java
 // Record processor - same code for standard or enhanced fan-out
+import software.amazon.kinesis.lifecycle.events.InitializationInput;
+import software.amazon.kinesis.lifecycle.events.LeaseLostInput;
+import software.amazon.kinesis.lifecycle.events.ProcessRecordsInput;
+import software.amazon.kinesis.lifecycle.events.ShardEndedInput;
+import software.amazon.kinesis.lifecycle.events.ShutdownRequestedInput;
+import software.amazon.kinesis.processor.ShardRecordProcessor;
+import software.amazon.kinesis.retrieval.KinesisClientRecord;
+import java.nio.charset.StandardCharsets;
+
 public class OrderProcessor implements ShardRecordProcessor {
 
     @Override
@@ -194,42 +209,40 @@ consumer_response = kinesis.describe_stream_consumer(
 )
 consumer_arn = consumer_response['ConsumerDescription']['ConsumerARN']
 
-# List shards in the stream
-stream_response = kinesis.list_shards(
-    StreamName='orders-stream'
-)
+paginator = kinesis.get_paginator('list_shards')
 
-for shard in stream_response['Shards']:
-    shard_id = shard['ShardId']
+for page in paginator.paginate(StreamName='orders-stream'):
+    for shard in page['Shards']:
+        shard_id = shard['ShardId']
 
-    # Subscribe to a shard with enhanced fan-out
-    # This returns an event stream with records pushed to you
-    response = kinesis.subscribe_to_shard(
-        ConsumerARN=consumer_arn,
-        ShardId=shard_id,
-        StartingPosition={
-            'Type': 'LATEST'
-        }
-    )
+        # Subscribe to a shard with enhanced fan-out
+        # This returns an event stream with records pushed to you
+        response = kinesis.subscribe_to_shard(
+            ConsumerARN=consumer_arn,
+            ShardId=shard_id,
+            StartingPosition={
+                'Type': 'LATEST'
+            }
+        )
 
-    # Process the event stream
-    event_stream = response['EventStream']
-    for event in event_stream:
-        if 'SubscribeToShardEvent' in event:
-            records = event['SubscribeToShardEvent']['Records']
-            for record in records:
-                data = json.loads(record['Data'])
-                print(f"Received: {data}")
+        # Process the event stream
+        event_stream = response['EventStream']
+        for event in event_stream:
+            if 'SubscribeToShardEvent' in event:
+                records = event['SubscribeToShardEvent']['Records']
+                for record in records:
+                    data = json.loads(record['Data'])
+                    print(f"Received: {data}")
 ```
 
-Note that `SubscribeToShard` connections last 5 minutes before you need to resubscribe. In production, you'll want to handle this reconnection logic or use the KCL which handles it for you.
+Note that `SubscribeToShard` connections last 5 minutes before you need to resubscribe. In production, you'll want to handle this reconnection logic and run each shard subscription in its own worker, or use the KCL which handles it for you.
 
 ## Lambda with Enhanced Fan-Out
 
 AWS Lambda supports enhanced fan-out as an event source. This is probably the simplest way to use it:
 
 ```bash
-# Create a Lambda event source mapping with enhanced fan-out
+# Create a standard Lambda event source mapping
 aws lambda create-event-source-mapping \
     --function-name "order-processor-function" \
     --event-source-arn "arn:aws:kinesis:us-east-1:123456789012:stream/orders-stream" \
