@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Elastic Beanstalk, Custom Platforms, DevOps
 
-Description: Guide to building and using custom platforms in AWS Elastic Beanstalk with Packer, including custom AMIs, platform scripts, and builder configuration.
+Description: Legacy guide to building and using custom platforms in AWS Elastic Beanstalk with Packer, including custom AMIs, platform scripts, and builder configuration.
 
 ---
 
-The managed platforms in Elastic Beanstalk cover most use cases - Python, Java, Node.js, Docker, and others. But sometimes you need something they don't offer. Maybe you're running a language that doesn't have a managed platform, or you need specific system packages baked into the AMI, or your compliance requirements demand a hardened base image.
+The managed platforms in Elastic Beanstalk cover most use cases - Python, Java, Node.js, Docker, and others. But sometimes you need something they don't offer. Maybe you're maintaining a legacy environment for a language that doesn't have a managed platform, or you need specific system packages baked into the AMI, or your compliance requirements demand a hardened base image.
 
-That's where custom platforms come in. You define exactly what goes on the machine - the operating system, runtime, web server, and deployment scripts - and Elastic Beanstalk builds an AMI from your specification. It's more work upfront, but it gives you complete control.
+That's where custom platforms used to come in. Custom platforms are now a retired Elastic Beanstalk feature, so Docker or a custom AMI on a managed platform is the better fit for new work. If you're maintaining an existing custom platform, you define exactly what goes on the machine - the operating system, runtime, web server, and deployment scripts - and Elastic Beanstalk builds an AMI from your specification. It's more work upfront, but it gives you complete control.
 
 ## How Custom Platforms Work
 
@@ -39,8 +39,7 @@ Here's the directory layout for a custom platform.
 ```text
 my-custom-platform/
 ├── platform.yaml
-├── packer/
-│   └── custom_platform.json
+├── custom_platform.json
 ├── builder/
 │   ├── setup.sh
 │   └── builder.sh
@@ -49,6 +48,7 @@ my-custom-platform/
     ├── start.sh
     ├── stop.sh
     ├── healthcheck.sh
+    ├── myapp.service
     └── predeploy.sh
 ```
 
@@ -63,16 +63,16 @@ version: "1.0"
 
 provisioner:
   type: packer
-  template: packer/custom_platform.json
-  flavor: amazon-linux-2023
+  template: custom_platform.json
+  flavor: ubuntu1604
 
 metadata:
   maintainer: "your-team@example.com"
   description: "Custom platform with Rust runtime and Nginx"
-  operating_system_name: "Amazon Linux 2023"
-  operating_system_version: "2023"
+  operating_system_name: "Ubuntu"
+  operating_system_version: "16.04"
   programming_language_name: "Rust"
-  programming_language_version: "1.75"
+  programming_language_version: "stable"
   framework_name: "Actix Web"
   framework_version: "4"
 ```
@@ -84,7 +84,7 @@ The Packer template defines how to build the AMI. It specifies the base AMI, pro
 ```json
 {
     "variables": {
-        "platform_version": "{{env `PLATFORM_VERSION`}}",
+        "platform_version": "{{env `AWS_EB_PLATFORM_VERSION`}}",
         "region": "us-east-1"
     },
     "builders": [
@@ -93,15 +93,15 @@ The Packer template defines how to build the AMI. It specifies the base AMI, pro
             "region": "{{user `region`}}",
             "source_ami_filter": {
                 "filters": {
-                    "name": "al2023-ami-*-x86_64",
+                    "name": "ubuntu/images/*ubuntu-xenial-16.04-amd64-server-*",
                     "virtualization-type": "hvm",
                     "root-device-type": "ebs"
                 },
-                "owners": ["amazon"],
+                "owners": ["099720109477"],
                 "most_recent": true
             },
-            "instance_type": "t3.medium",
-            "ssh_username": "ec2-user",
+            "instance_type": "t2.micro",
+            "ssh_username": "ubuntu",
             "ami_name": "custom-eb-platform-{{timestamp}}"
         }
     ],
@@ -132,14 +132,16 @@ The setup script installs the base dependencies your platform needs. This runs o
 set -e
 
 echo "=== Installing base packages ==="
-sudo dnf update -y
-sudo dnf install -y \
-    gcc \
-    openssl-devel \
+sudo apt-get update
+sudo apt-get upgrade -y
+sudo apt-get install -y \
+    build-essential \
+    libssl-dev \
     nginx \
     python3 \
     python3-pip \
     awscli \
+    curl \
     jq
 
 echo "=== Installing Rust toolchain ==="
@@ -154,8 +156,8 @@ echo "=== Creating application directories ==="
 sudo mkdir -p /var/app/current
 sudo mkdir -p /var/app/staging
 sudo mkdir -p /var/log/app
-sudo chown -R ec2-user:ec2-user /var/app
-sudo chown -R ec2-user:ec2-user /var/log/app
+sudo chown -R ubuntu:ubuntu /var/app
+sudo chown -R ubuntu:ubuntu /var/log/app
 
 echo "=== Setup complete ==="
 ```
@@ -173,20 +175,23 @@ echo "=== Installing deployment scripts ==="
 
 # Copy scripts to their final locations
 sudo mkdir -p /opt/elasticbeanstalk/hooks/appdeploy/pre
+sudo mkdir -p /opt/elasticbeanstalk/hooks/appdeploy/enact
 sudo mkdir -p /opt/elasticbeanstalk/hooks/appdeploy/post
 sudo mkdir -p /opt/elasticbeanstalk/hooks/configdeploy/pre
+sudo mkdir -p /opt/elasticbeanstalk/hooks/configdeploy/enact
 sudo mkdir -p /opt/elasticbeanstalk/hooks/configdeploy/post
 sudo mkdir -p /opt/elasticbeanstalk/hooks/restartappserver/pre
+sudo mkdir -p /opt/elasticbeanstalk/hooks/restartappserver/enact
 sudo mkdir -p /opt/elasticbeanstalk/hooks/restartappserver/post
 
 # Install the deployment scripts
 sudo cp /tmp/scripts/predeploy.sh /opt/elasticbeanstalk/hooks/appdeploy/pre/01_predeploy.sh
-sudo cp /tmp/scripts/deploy.sh /opt/elasticbeanstalk/hooks/appdeploy/post/01_deploy.sh
+sudo cp /tmp/scripts/deploy.sh /opt/elasticbeanstalk/hooks/appdeploy/enact/01_deploy.sh
 sudo cp /tmp/scripts/start.sh /opt/elasticbeanstalk/hooks/restartappserver/post/01_start.sh
 
 # Make all scripts executable
 sudo chmod +x /opt/elasticbeanstalk/hooks/appdeploy/pre/*.sh
-sudo chmod +x /opt/elasticbeanstalk/hooks/appdeploy/post/*.sh
+sudo chmod +x /opt/elasticbeanstalk/hooks/appdeploy/enact/*.sh
 sudo chmod +x /opt/elasticbeanstalk/hooks/restartappserver/post/*.sh
 
 echo "=== Builder complete ==="
@@ -255,7 +260,6 @@ echo "=== Application started ==="
 ```bash
 #!/bin/bash
 # scripts/healthcheck.sh - Check application health
-#!/bin/bash
 
 RESPONSE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health)
 
@@ -280,12 +284,12 @@ After=network.target
 
 [Service]
 Type=simple
-User=ec2-user
+User=ubuntu
 WorkingDirectory=/var/app/current
 ExecStart=/var/app/current/target/release/myapp
 Restart=always
 RestartSec=5
-EnvironmentFile=/opt/elasticbeanstalk/deployment/env
+EnvironmentFile=-/opt/elasticbeanstalk/deployment/env
 
 [Install]
 WantedBy=multi-user.target
@@ -305,8 +309,11 @@ sudo systemctl enable myapp
 With everything in place, create the platform.
 
 ```bash
+# Initialize the platform workspace
+eb platform init my-custom-platform
+
 # Create the custom platform
-eb platform create my-custom-platform --version 1.0.0
+eb platform create 1.0.0
 
 # List available platform versions
 eb platform list
@@ -323,10 +330,10 @@ Once the platform is built, create an environment that uses it.
 
 ```bash
 # Create an environment using the custom platform
-eb create production --platform "my-custom-platform" --instance-type t3.medium
+eb create production -p "my-custom-platform" --instance-type t3.medium
 
 # Or specify the platform ARN directly
-eb create production --platform "arn:aws:elasticbeanstalk:us-east-1:123456789:platform/my-custom-platform/1.0.0"
+eb create production -p "arn:aws:elasticbeanstalk:us-east-1:123456789012:platform/my-custom-platform" --version 1.0.0
 ```
 
 ## Updating the Platform
@@ -335,17 +342,17 @@ When you need to update system packages or the runtime version, create a new pla
 
 ```bash
 # Create a new version
-eb platform create my-custom-platform --version 1.1.0
+eb platform create 1.1.0
 
-# Update existing environments to use the new version
-eb upgrade --platform "arn:aws:elasticbeanstalk:us-east-1:123456789:platform/my-custom-platform/1.1.0"
+# Update existing environments to the latest version of their current platform
+eb upgrade production
 ```
 
 ## When to Use Custom Platforms vs Docker
 
-Custom platforms and Docker both solve the "I need a custom runtime" problem, but they take different approaches:
+Legacy custom platforms and Docker both solve the "I need a custom runtime" problem, but they take different approaches:
 
-**Choose custom platforms when:**
+**Maintain a custom platform when:**
 - You need to control the entire OS stack
 - Compliance requires specific AMI hardening
 - You want native performance without container overhead
@@ -357,8 +364,8 @@ Custom platforms and Docker both solve the "I need a custom runtime" problem, bu
 - Development/production parity matters most
 - You don't need OS-level customization
 
-For most teams, Docker on Elastic Beanstalk is simpler. Check out our guide on [deploying Docker apps with Elastic Beanstalk](https://oneuptime.com/blog/post/2026-02-12-deploy-docker-app-with-elastic-beanstalk/view) if that's a better fit.
+For most teams, Docker on Elastic Beanstalk is simpler and is the better choice for new applications. Check out our guide on [deploying Docker apps with Elastic Beanstalk](https://oneuptime.com/blog/post/2026-02-12-deploy-docker-app-with-elastic-beanstalk/view) if that's a better fit.
 
 ## Wrapping Up
 
-Custom platforms are the escape hatch when managed platforms don't fit. They require more upfront work - writing Packer templates, deployment scripts, and maintaining the AMI - but they give you total control. If you're running a language without managed support, need a hardened AMI for compliance, or have specific system-level requirements, custom platforms are the way to go.
+Custom platforms were the escape hatch when managed platforms didn't fit. They require more upfront work - writing Packer templates, deployment scripts, and maintaining the AMI - but they give you total control. If you're maintaining a legacy custom platform for a language without managed support, a hardened AMI for compliance, or specific system-level requirements, this workflow shows the pieces involved.
