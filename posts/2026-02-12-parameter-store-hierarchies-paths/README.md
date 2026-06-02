@@ -10,7 +10,7 @@ Description: Learn how to organize AWS Systems Manager Parameter Store parameter
 
 When you've got five parameters, organization doesn't matter. When you've got five hundred, it's everything. AWS Systems Manager Parameter Store supports hierarchical paths that let you organize parameters like a filesystem. This is the difference between a configuration system that scales and one that becomes an unmanageable mess.
 
-Paths in Parameter Store work exactly like directory paths. A parameter named `/myapp/production/database/host` has four levels. You can query all parameters under `/myapp/production` or just those under `/myapp/production/database`. Combined with IAM policies scoped to paths, you get a powerful system for managing configuration across multiple applications and environments.
+Paths in Parameter Store work like directory paths. A parameter named `/myapp/production/database/host` has four slash-delimited components, with `/myapp/production/database` as its hierarchy path. You can query all parameters under `/myapp/production` or just those under `/myapp/production/database`. Combined with IAM policies scoped to paths, you get a powerful system for managing configuration across multiple applications and environments.
 
 ## Naming Convention
 
@@ -78,9 +78,9 @@ aws ssm put-parameter \
   --value "redis://prod-redis.abc123.ng.0001.use1.cache.amazonaws.com:6379"
 
 aws ssm put-parameter \
-  --name "/myapp/production/features/new-checkout" \
+  --name "/myapp/production/settings/max-retries" \
   --type String \
-  --value "true"
+  --value "3"
 
 # Same structure for staging
 aws ssm put-parameter \
@@ -117,7 +117,7 @@ aws ssm get-parameters-by-path \
   --recursive \
   --with-decryption
 
-# Get all config for all apps (be careful with this one)
+# Get all config for myapp (be careful with this one)
 aws ssm get-parameters-by-path \
   --path "/myapp" \
   --recursive \
@@ -196,8 +196,8 @@ db_password = config.get('database/password')
 db_config = config.get_section('database')
 # {'host': '...', 'port': '5432', 'name': '...', 'password': '...'}
 
-# Get feature flags
-new_checkout = config.get('features/new-checkout', 'false') == 'true'
+# Get application settings
+max_retries = int(config.get('settings/max-retries', '3'))
 ```
 
 ## IAM Policies Scoped to Paths
@@ -215,7 +215,7 @@ One of the best features of hierarchical parameters is path-based IAM access con
         "ssm:GetParameters",
         "ssm:GetParametersByPath"
       ],
-      "Resource": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/*"
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/*"
     }
   ]
 }
@@ -231,7 +231,7 @@ For a multi-app setup, give each app access only to its path:
       "Sid": "OrdersApiAccess",
       "Effect": "Allow",
       "Action": ["ssm:GetParameter*"],
-      "Resource": "arn:aws:ssm:us-east-1:123456789:parameter/orders-api/production/*",
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/orders-api/production/*",
       "Condition": {
         "StringEquals": {
           "aws:PrincipalTag/Application": "orders-api"
@@ -252,22 +252,22 @@ Separate read and write access:
       "Sid": "ReadAllEnvironments",
       "Effect": "Allow",
       "Action": ["ssm:GetParameter", "ssm:GetParameters", "ssm:GetParametersByPath"],
-      "Resource": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/*"
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/*"
     },
     {
       "Sid": "WriteOnlyNonProduction",
       "Effect": "Allow",
       "Action": ["ssm:PutParameter", "ssm:DeleteParameter"],
       "Resource": [
-        "arn:aws:ssm:us-east-1:123456789:parameter/myapp/staging/*",
-        "arn:aws:ssm:us-east-1:123456789:parameter/myapp/development/*"
+        "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/staging/*",
+        "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/development/*"
       ]
     },
     {
       "Sid": "DenyWriteProduction",
       "Effect": "Deny",
       "Action": ["ssm:PutParameter", "ssm:DeleteParameter"],
-      "Resource": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/*"
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/*"
     }
   ]
 }
