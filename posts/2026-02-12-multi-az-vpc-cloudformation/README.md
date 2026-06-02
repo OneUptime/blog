@@ -349,11 +349,11 @@ Resources:
 
   DefaultPrivateRoute2:
     Type: AWS::EC2::Route
-    Condition: CreateMultipleNatGateways
+    Condition: CreateNatGateways
     Properties:
       RouteTableId: !Ref PrivateRouteTable2
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway2
+      NatGatewayId: !If [CreateMultipleNatGateways, !Ref NatGateway2, !Ref NatGateway1]
 
   PrivateSubnet2RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -371,11 +371,11 @@ Resources:
 
   DefaultPrivateRoute3:
     Type: AWS::EC2::Route
-    Condition: CreateMultipleNatGateways
+    Condition: CreateNatGateways
     Properties:
       RouteTableId: !Ref PrivateRouteTable3
       DestinationCidrBlock: 0.0.0.0/0
-      NatGatewayId: !Ref NatGateway3
+      NatGatewayId: !If [CreateMultipleNatGateways, !Ref NatGateway3, !Ref NatGateway1]
 
   PrivateSubnet3RouteTableAssociation:
     Type: AWS::EC2::SubnetRouteTableAssociation
@@ -407,6 +407,7 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - logs:CreateLogGroup
                   - logs:CreateLogStream
                   - logs:PutLogEvents
                   - logs:DescribeLogGroups
@@ -513,7 +514,7 @@ Resources:
 
 ## Cost Breakdown
 
-NAT gateways are the main cost driver:
+NAT gateways are the main cost driver. In regions priced at $0.045/hour, before data processing and data transfer charges:
 
 - 3 NAT gateways: ~$97/month ($0.045/hour each)
 - 1 NAT gateway: ~$32/month
