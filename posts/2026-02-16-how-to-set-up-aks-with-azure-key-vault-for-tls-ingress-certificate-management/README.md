@@ -28,8 +28,8 @@ The Secrets Store CSI driver polls Key Vault at a configurable interval and upda
 
 ## Prerequisites
 
-- An AKS cluster running Kubernetes 1.24 or later
-- Azure CLI with the aks-preview extension
+- An AKS cluster running a supported Kubernetes version
+- Azure CLI installed and signed in
 - An Azure Key Vault instance
 - A TLS certificate (you can use a self-signed cert for testing or import one from a CA)
 - An ingress controller installed (NGINX Ingress Controller works well for this)
@@ -47,9 +47,10 @@ az aks enable-addons \
   --name myAKSCluster
 
 # Enable auto-rotation of secrets (polls Key Vault every 2 minutes by default)
-az aks update \
+az aks addon update \
   --resource-group myResourceGroup \
   --name myAKSCluster \
+  --addon azure-keyvault-secrets-provider \
   --enable-secret-rotation \
   --rotation-poll-interval 2m
 ```
@@ -73,7 +74,8 @@ If you do not already have a Key Vault, create one. Then import or generate a TL
 az keyvault create \
   --resource-group myResourceGroup \
   --name myAKSKeyVault \
-  --location eastus
+  --location eastus \
+  --enable-rbac-authorization true
 
 # Option A: Import an existing PFX certificate
 az keyvault certificate import \
@@ -100,20 +102,28 @@ IDENTITY_CLIENT_ID=$(az aks show \
   --name myAKSCluster \
   --query addonProfiles.azureKeyvaultSecretsProvider.identity.clientId -o tsv)
 
+# Get the managed identity object ID for role assignments
+IDENTITY_OBJECT_ID=$(az aks show \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --query addonProfiles.azureKeyvaultSecretsProvider.identity.objectId -o tsv)
+
 # Get the Key Vault resource ID
 KEYVAULT_ID=$(az keyvault show \
   --name myAKSKeyVault \
   --query id -o tsv)
 
-# Grant the managed identity access to read secrets and certificates
+# Grant the managed identity access to read the certificate secret
 az role assignment create \
-  --assignee $IDENTITY_CLIENT_ID \
+  --assignee-object-id $IDENTITY_OBJECT_ID \
+  --assignee-principal-type ServicePrincipal \
   --role "Key Vault Secrets User" \
   --scope $KEYVAULT_ID
 
-# If using RBAC model, also grant certificate read access
+# If you use objectType: cert, also grant certificate read access
 az role assignment create \
-  --assignee $IDENTITY_CLIENT_ID \
+  --assignee-object-id $IDENTITY_OBJECT_ID \
+  --assignee-principal-type ServicePrincipal \
   --role "Key Vault Certificate User" \
   --scope $KEYVAULT_ID
 ```
@@ -124,7 +134,7 @@ If your Key Vault uses access policies instead of RBAC:
 # Set access policy for the managed identity
 az keyvault set-policy \
   --name myAKSKeyVault \
-  --spn $IDENTITY_CLIENT_ID \
+  --object-id $IDENTITY_OBJECT_ID \
   --secret-permissions get \
   --certificate-permissions get
 ```
@@ -204,7 +214,7 @@ spec:
       containers:
       - name: cert-sync
         image: mcr.microsoft.com/cbl-mariner/busybox:2.0
-        command: ["sleep", "infinity"]
+        command: ["sleep", "10000"]
         volumeMounts:
         - name: secrets-store
           mountPath: "/mnt/secrets-store"
