@@ -8,7 +8,7 @@ Description: A practical guide to managing container images in Amazon ECR, cover
 
 ---
 
-Amazon Elastic Container Registry (ECR) is where your ECS container images live. It's a fully managed Docker registry that integrates tightly with ECS - no credential management needed when pulling images from ECR within the same account. But there's more to ECR than just pushing and pulling images. Good image management practices around tagging, lifecycle policies, and security scanning can save you money and prevent production incidents.
+Amazon Elastic Container Registry (ECR) is where your ECS container images live. It's a fully managed Docker registry that integrates tightly with ECS - no Docker credential management needed when the ECS agent or task execution role has permission to pull from ECR. But there's more to ECR than just pushing and pulling images. Good image management practices around tagging, lifecycle policies, and security scanning can save you money and prevent production incidents.
 
 Let's cover everything from basic setup to the operational patterns that matter at scale.
 
@@ -17,29 +17,41 @@ Let's cover everything from basic setup to the operational patterns that matter 
 Each ECR repository stores images for a single application or service. You'll typically have one repository per microservice.
 
 ```bash
-# Create a repository
+# Configure registry-level scan on push for repositories
 
+aws ecr put-registry-scanning-configuration \
+  --scan-type BASIC \
+  --rules '[{"repositoryFilters":[{"filter":"*","filterType":"WILDCARD"}],"scanFrequency":"SCAN_ON_PUSH"}]'
+
+# Create a repository
 aws ecr create-repository \
   --repository-name my-web-app \
-  --image-scanning-configuration scanOnPush=true \
   --encryption-configuration encryptionType=AES256
 
 # Create with KMS encryption
 aws ecr create-repository \
   --repository-name my-web-app \
-  --image-scanning-configuration scanOnPush=true \
-  --encryption-configuration encryptionType=KMS,kmsKey=arn:aws:kms:us-east-1:123456789:key/abc-123
+  --encryption-configuration encryptionType=KMS,kmsKey=arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab
 ```
 
 In Terraform:
 
 ```hcl
+resource "aws_ecr_registry_scanning_configuration" "scan_on_push" {
+  scan_type = "BASIC"
+
+  rule {
+    scan_frequency = "SCAN_ON_PUSH"
+
+    repository_filter {
+      filter      = "*"
+      filter_type = "WILDCARD"
+    }
+  }
+}
+
 resource "aws_ecr_repository" "web_app" {
   name = "my-web-app"
-
-  image_scanning_configuration {
-    scan_on_push = true
-  }
 
   encryption_configuration {
     encryption_type = "AES256"
@@ -69,16 +81,16 @@ How you tag images directly affects your deployment workflow and debugging abili
 # Tag with git SHA
 GIT_SHA=$(git rev-parse --short HEAD)
 docker build -t my-web-app:${GIT_SHA} .
-docker tag my-web-app:${GIT_SHA} 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${GIT_SHA}
+docker tag my-web-app:${GIT_SHA} 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${GIT_SHA}
 ```
 
 **Semantic version tags** - Good for versioned releases.
 
 ```bash
-docker tag my-web-app:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:v1.2.3
+docker tag my-web-app:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:v1.2.3
 ```
 
-**Environment tags** - Tag images with the environment they're deployed to.
+**Environment tags** - Tag images with the environment they're deployed to. Use these only for tags that are allowed to move, such as in a mutable repository or with a tag mutability exclusion.
 
 ```bash
 # After validating in staging, tag for production
@@ -100,14 +112,12 @@ GIT_SHA=$(git rev-parse --short HEAD)
 VERSION="v1.2.3"
 
 docker build -t my-web-app .
-docker tag my-web-app 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${GIT_SHA}
-docker tag my-web-app 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${VERSION}
-docker tag my-web-app 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:latest
+docker tag my-web-app 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${GIT_SHA}
+docker tag my-web-app 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${VERSION}
 
 # Push all tags
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${GIT_SHA}
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${VERSION}
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:latest
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${GIT_SHA}
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:${VERSION}
 ```
 
 ## Why You Should Avoid the Latest Tag in Production
@@ -115,9 +125,9 @@ docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:latest
 Using the `latest` tag in ECS task definitions is tempting but dangerous:
 
 1. You can't tell which version is running by looking at the task definition
-2. Different tasks might pull different images if `latest` changes mid-deployment
+2. New deployments can resolve `latest` to a different digest than you expected if the tag moved
 3. Rollbacks are hard - what was the previous `latest`?
-4. Image caching can mask updates (ECS might use a cached image)
+4. For ECS services with software version consistency, pushing a new `latest` image alone doesn't update the running service - you still need a new deployment
 
 Always use a specific tag (git SHA or version number) in your task definitions.
 
@@ -126,7 +136,7 @@ Always use a specific tag (git SHA or version number) in your task definitions.
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:abc123f"
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:abc123f"
     }
   ]
 }
@@ -189,7 +199,7 @@ docker buildx create --name multiarch --use
 # Build and push for both architectures
 docker buildx build \
   --platform linux/amd64,linux/arm64 \
-  --tag 123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:v1.2.3 \
+  --tag 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:v1.2.3 \
   --push .
 ```
 
@@ -223,11 +233,20 @@ resource "aws_ecr_repository" "services" {
 
   name = "services/${each.value}"
 
-  image_scanning_configuration {
-    scan_on_push = true
-  }
-
   image_tag_mutability = "IMMUTABLE"
+}
+
+resource "aws_ecr_registry_scanning_configuration" "scan_on_push" {
+  scan_type = "BASIC"
+
+  rule {
+    scan_frequency = "SCAN_ON_PUSH"
+
+    repository_filter {
+      filter      = "services/*"
+      filter_type = "WILDCARD"
+    }
+  }
 }
 
 # Apply the same lifecycle policy to all repos
@@ -271,7 +290,7 @@ resource "aws_ecr_lifecycle_policy" "services" {
 
 ## Integrating with ECS
 
-When ECS pulls images from ECR in the same account and region, it uses the execution role for authentication. No extra configuration needed.
+When ECS on Fargate pulls images from ECR, it uses the task execution role for authentication. ECS on EC2 uses the container instance role unless you configure task execution role features that require otherwise.
 
 ```hcl
 # Task definition pointing to ECR
