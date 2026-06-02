@@ -4,11 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Data Analytics, Cost Optimization
 
-Description: Use S3 Select to run SQL queries directly on CSV, JSON, and Parquet files stored in S3, retrieving only the data you need without downloading entire objects.
+Description: For existing S3 Select customers, use S3 Select to run SQL queries directly on CSV, JSON, and Parquet files stored in S3, retrieving only the data you need without downloading entire objects.
 
 ---
 
-Here's a common scenario: you have a 5 GB CSV file in S3 and you only need 50 rows that match a specific condition. Without S3 Select, you'd download all 5 GB, then filter locally. That's slow, expensive (data transfer costs), and wastes bandwidth. S3 Select lets you push the filtering down to S3 itself - you send a SQL query, S3 scans the file, and returns only the matching data.
+Here's a common scenario: you have a 5 GB CSV file in S3 and you only need 50 rows that match a specific condition. Without S3 Select, you'd download all 5 GB, then filter locally. That's slow, expensive (data transfer costs), and wastes bandwidth. For existing S3 Select customers, S3 Select lets you push the filtering down to S3 itself - you send a SQL query, S3 scans the file, and returns only the matching data.
+
+Note that Amazon S3 Select is no longer available to new customers. Existing customers can continue using it as usual.
 
 For large files where you only need a subset of the data, S3 Select can reduce data transfer by 80-99% and speed up your queries dramatically.
 
@@ -19,7 +21,7 @@ S3 Select runs a simple SQL query on a single object stored in S3. It supports t
 - **JSON** (documents or JSON Lines format)
 - **Apache Parquet** (columnar format)
 
-The SQL support is basic - you get SELECT, WHERE, and LIMIT. No JOINs, no GROUP BY, no subqueries. Think of it as a filter, not a full query engine. If you need more, look at Athena.
+The SQL support is basic - S3 Select supports only the SELECT SQL command, with SELECT list, FROM, WHERE, and LIMIT clauses. No JOINs, no GROUP BY, no subqueries. Think of it as a filter, not a full query engine. If you need more, look at Athena.
 
 ## Querying CSV Files
 
@@ -124,11 +126,11 @@ aws s3api select-object-content \
     /tmp/large-transactions.csv
 ```
 
-Parquet queries are typically the fastest because Parquet's columnar structure allows S3 Select to skip columns you don't need and use built-in statistics to skip row groups that can't match your WHERE clause.
+Parquet queries are typically the fastest because Parquet's columnar structure allows S3 Select to retrieve specific columns instead of reading every column in the file.
 
 ## Querying Compressed Files
 
-S3 Select can query GZIP and BZIP2 compressed files directly.
+S3 Select can query GZIP and BZIP2 compressed CSV and JSON files directly. For Parquet, S3 Select supports columnar compression using GZIP or Snappy, but not whole-object compression.
 
 Query a gzipped CSV file:
 
@@ -224,13 +226,15 @@ def query_json(bucket, key, sql):
         }
     )
 
-    records = []
+    chunks = []
     for event in response['Payload']:
         if 'Records' in event:
-            payload = event['Records']['Payload'].decode('utf-8')
-            for line in payload.strip().split('\n'):
-                if line:
-                    records.append(json.loads(line))
+            chunks.append(event['Records']['Payload'].decode('utf-8'))
+
+    records = []
+    for line in ''.join(chunks).splitlines():
+        if line:
+            records.append(json.loads(line))
 
     return records
 
@@ -283,16 +287,16 @@ SELECT COUNT(*) FROM s3object s WHERE s.status = 'active'
 
 ## Cost and Performance
 
-S3 Select pricing is based on data scanned and data returned:
-- **$0.002 per GB scanned**
+S3 Select pricing is based on data scanned and data returned, and rates vary by Region and storage class. For example, in US East (N. Virginia) for S3 Standard:
+- **$0.008 per GB scanned**
 - **$0.0007 per GB returned**
 
 Compare this to downloading the entire file:
 - A 5 GB CSV where you need 50 MB of results
-- Without S3 Select: $0.045 in data transfer (5 GB at $0.09/GB)
-- With S3 Select: $0.01 in scan cost + $0.000035 in return cost
+- Without S3 Select: $0.045 in public internet data transfer after any free tier (5 GB at $0.09/GB)
+- With S3 Select: $0.04 in scan cost + $0.000035 in return cost
 
-That's 4.5x cheaper, plus the query is dramatically faster since you're not waiting for 5 GB to download.
+That's slightly cheaper in this example, plus the query can be dramatically faster since you're not waiting for 5 GB to download. For highly selective queries against larger objects, the data transfer savings can be much more significant.
 
 ## Limitations
 
@@ -300,7 +304,8 @@ S3 Select has some constraints to keep in mind:
 
 - Single object only - you can't query across multiple files
 - Simple SQL - no JOINs, GROUP BY, ORDER BY, or subqueries
-- 256 MB maximum input for CSV/JSON, 1 GB for Parquet
+- Objects can be up to 5 TB, but the maximum length of a record in the input or result is 1 MB
+- Parquet has additional limits, including a 512 MB maximum uncompressed row group size and no Parquet output format
 - No updates - read-only queries
 - Aggregate functions return a single row
 
@@ -309,6 +314,7 @@ If you need to query across multiple objects or need more complex SQL, use Amazo
 ## When to Use S3 Select
 
 S3 Select is the right tool when:
+- You're an existing S3 Select customer
 - You need to filter a single large file and retrieve a small subset
 - You want to reduce data transfer costs
 - Your query is simple (WHERE + LIMIT)
