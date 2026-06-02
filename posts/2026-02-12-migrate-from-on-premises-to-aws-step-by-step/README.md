@@ -12,7 +12,7 @@ Migrating from on-premises to AWS is a multi-phase project that touches every pa
 
 ## The Migration Framework
 
-AWS defines a six-phase migration framework:
+AWS commonly defines a three-phase migration framework, and this guide adds a post-migration operate-and-optimize phase:
 
 ```mermaid
 graph LR
@@ -235,14 +235,17 @@ for task in response['ReplicationTasks']:
     print(f"\nTask: {task_id}")
     print(f"  Status: {status}")
     print(f"  Full Load: {stats.get('FullLoadProgressPercent', 0)}%")
-    print(f"  CDC Latency: {stats.get('CDCLatency', 'N/A')}s")
+    print(f"  Tables Loaded: {stats.get('TablesLoaded', 0)}")
+    print(f"  Tables Errored: {stats.get('TablesErrored', 0)}")
 ```
+
+For CDC latency, monitor the DMS CloudWatch metrics `CDCLatencySource` and `CDCLatencyTarget`.
 
 ### Cutover Checklist
 
 For each application cutover:
 
-- [ ] Replication is current (zero lag for servers, zero CDC latency for databases)
+- [ ] Replication is current (zero lag for servers, acceptable CDC latency for databases)
 - [ ] Test instances validated successfully
 - [ ] DNS changes prepared
 - [ ] Load balancer configuration ready
@@ -273,7 +276,7 @@ cloudwatch.put_metric_alarm(
     Period=300,
     Statistic='Average',
     Threshold=85.0,
-    AlarmActions=['arn:aws:sns:us-east-1:123456789:ops-alerts'],
+    AlarmActions=['arn:aws:sns:us-east-1:123456789012:ops-alerts'],
     Dimensions=[
         {'Name': 'InstanceId', 'Value': 'i-migrated-webserver'}
     ]
