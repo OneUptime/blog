@@ -34,14 +34,14 @@ Let your workloads run for at least 2 weeks on AWS before right-sizing. You need
 # Use AWS Compute Optimizer to get recommendations
 
 aws compute-optimizer get-ec2-instance-recommendations \
-    --filters 'name=Finding,values=OVER_PROVISIONED' \
+    --filters 'name=Finding,values=Overprovisioned' \
     --query 'instanceRecommendations[].{
         InstanceId: instanceArn,
         Current: currentInstanceType,
         Recommended: recommendationOptions[0].instanceType,
-        CPUMax: utilizationMetrics[?name==`CPU_MAXIMUM`].value | [0],
-        MemMax: utilizationMetrics[?name==`MEMORY_MAXIMUM`].value | [0],
-        Savings: recommendationOptions[0].estimatedMonthlySavings.value
+        CPUMax: utilizationMetrics[?name==`Cpu`].value | [0],
+        MemMax: utilizationMetrics[?name==`Memory`].value | [0],
+        Savings: recommendationOptions[0].savingsOpportunity.estimatedMonthlySavings.value
     }' \
     --output table
 ```
@@ -54,7 +54,7 @@ from datetime import datetime, timedelta
 
 def get_instance_utilization(instance_id, days=14):
     """
-    Get CPU and network utilization for an EC2 instance
+    Get CPU utilization for an EC2 instance
     over the specified number of days.
     """
     cloudwatch = boto3.client('cloudwatch')
@@ -207,13 +207,12 @@ aws autoscaling put-scaling-policy \
     --auto-scaling-group-name app-tier-asg \
     --policy-name cpu-target-tracking \
     --policy-type TargetTrackingScaling \
+    --estimated-instance-warmup 300 \
     --target-tracking-configuration '{
         "PredefinedMetricSpecification": {
             "PredefinedMetricType": "ASGAverageCPUUtilization"
         },
-        "TargetValue": 60.0,
-        "ScaleInCooldown": 300,
-        "ScaleOutCooldown": 60
+        "TargetValue": 60.0
     }'
 ```
 
@@ -236,8 +235,10 @@ graph TD
 ```
 
 ```bash
-# Analyze Savings Plans recommendations
-aws cost-explorer get-savings-plans-purchase-recommendation \
+# Generate and analyze Savings Plans recommendations
+aws ce start-savings-plans-purchase-recommendation-generation
+
+aws ce get-savings-plans-purchase-recommendation \
     --savings-plans-type COMPUTE_SP \
     --term-in-years ONE_YEAR \
     --payment-option NO_UPFRONT \
@@ -292,7 +293,13 @@ aws ce create-anomaly-subscription \
         "SubscriptionName": "CostAlerts",
         "MonitorArnList": ["arn:aws:ce::123456789012:anomalymonitor/abc123"],
         "Subscribers": [{"Address": "team@example.com", "Type": "EMAIL"}],
-        "Threshold": 100,
+        "ThresholdExpression": {
+            "Dimensions": {
+                "Key": "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+                "MatchOptions": ["GREATER_THAN_OR_EQUAL"],
+                "Values": ["100"]
+            }
+        },
         "Frequency": "DAILY"
     }'
 ```
