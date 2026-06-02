@@ -21,7 +21,8 @@ Before you can fix circular dependencies, you need to understand how they form. 
 1. **Ref** and **Fn::GetAtt** - If Resource A uses `!Ref ResourceB`, then A depends on B
 2. **DependsOn** - Explicit dependency declarations
 3. **Fn::Sub** with resource references - Same as Ref
-4. **Condition dependencies** - When conditions reference other resources
+
+Conditions can control whether resources or properties are created, but conditions themselves can't reference resource logical IDs or attributes, so they don't create resource dependencies by themselves.
 
 The problem usually isn't that you intentionally created a cycle. It's that the implicit dependencies from `!Ref` and `!GetAtt` create a cycle you didn't expect.
 
@@ -61,7 +62,7 @@ Resources:
 
 Here, `AppSecurityGroup` references `LBSecurityGroup`, and `LBSecurityGroup` references `AppSecurityGroup`. Classic circular dependency.
 
-The fix is to break one of the inline rules out into a separate resource:
+The fix is to break the cross-referencing inline rules out into separate resources:
 
 ```yaml
 # Fixed: use separate SecurityGroupIngress/Egress resources
@@ -80,8 +81,11 @@ Resources:
           FromPort: 443
           ToPort: 443
           CidrIp: 0.0.0.0/0
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 127.0.0.1/32  # Suppress the default allow-all egress rule
 
-  # Break the cycle by making ingress a separate resource
+  # Break the cycle by making cross-referencing rules separate resources
   AppIngressFromLB:
     Type: AWS::EC2::SecurityGroupIngress
     Properties:
@@ -105,7 +109,7 @@ Now each security group is created first (with no cross-references), and the ing
 
 ## Lambda and IAM Role Cycles
 
-Another common pattern is when a Lambda function references an IAM role, and the IAM role's policy references the Lambda function (e.g., for resource-based policies):
+Another common pattern is when a Lambda function references an IAM role, and an identity-based policy attached to the IAM role references the Lambda function:
 
 ```yaml
 # Circular: Lambda needs the role, role policy references the Lambda
@@ -220,7 +224,7 @@ You can also manually trace dependencies by searching for all `!Ref` and `!GetAt
 
 ```bash
 # Find all resource references in a template
-grep -n '!Ref\|!GetAtt\|Fn::Ref\|Fn::GetAtt\|DependsOn' template.yaml
+grep -n '!Ref\|!GetAtt\|Ref:\|Fn::GetAtt\|DependsOn' template.yaml
 ```
 
 ## General Strategy for Breaking Cycles
