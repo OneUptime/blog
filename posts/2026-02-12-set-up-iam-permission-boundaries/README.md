@@ -8,13 +8,13 @@ Description: Learn how to use IAM permission boundaries to delegate IAM administ
 
 ---
 
-Permission boundaries solve a tricky problem in AWS: how do you let developers create their own IAM roles without giving them the ability to create roles more powerful than themselves? Without boundaries, a developer with `iam:CreateRole` permission can create a role with `AdministratorAccess` and escalate their own privileges.
+Permission boundaries solve a tricky problem in AWS: how do you let developers create their own IAM roles without giving them the ability to create roles more powerful than themselves? Without boundaries, a developer with permissions like `iam:CreateRole`, `iam:AttachRolePolicy`, and `iam:PassRole` can create a role with `AdministratorAccess` and escalate their own privileges.
 
-Permission boundaries set a ceiling on what any role or user can do, regardless of what policies are attached to them. Let's go through how they work, how to set them up, and the practical patterns you'll use.
+Permission boundaries set a ceiling on what identity-based policies can grant to a role or user, regardless of what identity policies are attached to them. Let's go through how they work, how to set them up, and the practical patterns you'll use.
 
 ## How Permission Boundaries Work
 
-A permission boundary is an IAM policy that you attach to a user or role as a "boundary." The effective permissions of that user or role become the intersection of their identity-based policies AND the permission boundary.
+A permission boundary is an IAM policy that you attach to a user or role as a "boundary." For permissions granted by identity-based policies, the effective permissions of that user or role become the intersection of their identity-based policies AND the permission boundary.
 
 ```mermaid
 graph TD
@@ -25,7 +25,7 @@ graph TD
 
 Even if a policy grants S3, EC2, RDS, and Lambda access, a permission boundary that only allows S3, EC2, and DynamoDB means the effective permissions are only S3 and EC2 (the overlap).
 
-This is different from a regular deny. A permission boundary doesn't explicitly deny actions - it simply doesn't include them, so they're implicitly denied.
+This is different from a regular deny. A permission boundary doesn't have to explicitly deny actions - if it doesn't include them, they're implicitly denied. You can still include explicit deny statements for actions that must never be allowed.
 
 ## Creating a Permission Boundary Policy
 
@@ -52,16 +52,39 @@ First, create the policy that will serve as the boundary:
             "Resource": "*"
         },
         {
-            "Sid": "AllowIAMForOwnRole",
+            "Sid": "AllowManageBoundedAppRoles",
             "Effect": "Allow",
             "Action": [
+                "iam:CreateRole",
                 "iam:GetRole",
                 "iam:GetRolePolicy",
                 "iam:ListRolePolicies",
                 "iam:ListAttachedRolePolicies",
-                "iam:PassRole"
+                "iam:AttachRolePolicy",
+                "iam:DetachRolePolicy",
+                "iam:PutRolePolicy",
+                "iam:DeleteRolePolicy"
             ],
-            "Resource": "arn:aws:iam::*:role/app-*"
+            "Resource": "arn:aws:iam::*:role/app-*",
+            "Condition": {
+                "ArnEquals": {
+                    "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/DeveloperBoundary"
+                }
+            }
+        },
+        {
+            "Sid": "AllowPassAppRoles",
+            "Effect": "Allow",
+            "Action": "iam:PassRole",
+            "Resource": "arn:aws:iam::*:role/app-*",
+            "Condition": {
+                "StringEquals": {
+                    "iam:PassedToService": [
+                        "lambda.amazonaws.com",
+                        "ec2.amazonaws.com"
+                    ]
+                }
+            }
         },
         {
             "Sid": "DenyBoundaryModification",
@@ -87,7 +110,7 @@ aws iam create-policy \
   --description "Permission boundary for developer-created roles"
 ```
 
-The `DenyBoundaryModification` statement is critical. Without it, a user could remove their own boundary and escalate privileges.
+The `DenyBoundaryModification` statement is critical. Without it, a user who otherwise has permission to delete permissions boundaries could remove their own boundary and escalate privileges.
 
 ## Attaching the Boundary to a User
 
@@ -98,7 +121,7 @@ aws iam put-user-permissions-boundary \
   --permissions-boundary arn:aws:iam::123456789012:policy/DeveloperBoundary
 ```
 
-Now, no matter what policies are attached to alice (or what policies she attaches to roles she creates), the effective permissions can never exceed what the DeveloperBoundary allows.
+Now, no matter what identity policies are attached to alice (or what policies she attaches to roles she creates), those identity-based permissions can never exceed what the DeveloperBoundary allows.
 
 ## Delegating Role Creation with Boundaries
 
@@ -114,7 +137,7 @@ The real power is in letting developers create their own IAM roles while requiri
             "Action": "iam:CreateRole",
             "Resource": "arn:aws:iam::123456789012:role/app-*",
             "Condition": {
-                "StringEquals": {
+                "ArnEquals": {
                     "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/DeveloperBoundary"
                 }
             }
@@ -128,7 +151,12 @@ The real power is in letting developers create their own IAM roles while requiri
                 "iam:PutRolePolicy",
                 "iam:DeleteRolePolicy"
             ],
-            "Resource": "arn:aws:iam::123456789012:role/app-*"
+            "Resource": "arn:aws:iam::123456789012:role/app-*",
+            "Condition": {
+                "ArnEquals": {
+                    "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/DeveloperBoundary"
+                }
+            }
         },
         {
             "Sid": "AllowPassRole",
@@ -147,13 +175,16 @@ The real power is in letting developers create their own IAM roles while requiri
         {
             "Sid": "DenyBoundaryRemoval",
             "Effect": "Deny",
-            "Action": [
-                "iam:DeleteRolePermissionsBoundary",
-                "iam:PutRolePermissionsBoundary"
-            ],
+            "Action": "iam:DeleteRolePermissionsBoundary",
+            "Resource": "arn:aws:iam::123456789012:role/app-*"
+        },
+        {
+            "Sid": "DenyBoundaryReplacement",
+            "Effect": "Deny",
+            "Action": "iam:PutRolePermissionsBoundary",
             "Resource": "arn:aws:iam::123456789012:role/app-*",
             "Condition": {
-                "StringNotEquals": {
+                "ArnNotEquals": {
                     "iam:PermissionsBoundary": "arn:aws:iam::123456789012:policy/DeveloperBoundary"
                 }
             }
@@ -177,7 +208,7 @@ Let me break down the key parts:
 - `AllowCreateRoleWithBoundary` - Developers can create roles, but ONLY if the DeveloperBoundary is attached. The role name must start with "app-".
 - `AllowAttachPoliciesWithBoundary` - Developers can attach any policy to their app roles. The boundary limits what actually takes effect.
 - `AllowPassRole` - Developers can pass their roles to Lambda and EC2 only.
-- `DenyBoundaryRemoval` - Prevents removing or changing the boundary on existing roles.
+- `DenyBoundaryRemoval` and `DenyBoundaryReplacement` - Prevent removing the boundary or changing it to a different policy on existing roles.
 - `DenyBoundaryPolicyModification` - Prevents modifying the boundary policy itself.
 
 ## How a Developer Uses This
@@ -229,6 +260,12 @@ aws iam attach-role-policy \
 ## Terraform Implementation
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
+locals {
+  developer_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/DeveloperBoundary"
+}
+
 # Create the permission boundary policy
 resource "aws_iam_policy" "developer_boundary" {
   name = "DeveloperBoundary"
@@ -249,6 +286,41 @@ resource "aws_iam_policy" "developer_boundary" {
           "cloudwatch:*"
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "AllowManageBoundedAppRoles"
+        Effect = "Allow"
+        Action = [
+          "iam:CreateRole",
+          "iam:GetRole",
+          "iam:GetRolePolicy",
+          "iam:ListRolePolicies",
+          "iam:ListAttachedRolePolicies",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy"
+        ]
+        Resource = "arn:aws:iam::*:role/app-*"
+        Condition = {
+          ArnEquals = {
+            "iam:PermissionsBoundary" = local.developer_boundary_arn
+          }
+        }
+      },
+      {
+        Sid      = "AllowPassAppRoles"
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = "arn:aws:iam::*:role/app-*"
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = [
+              "lambda.amazonaws.com",
+              "ec2.amazonaws.com"
+            ]
+          }
+        }
       },
       {
         Sid    = "DenyBoundaryModification"
@@ -282,8 +354,25 @@ resource "aws_iam_policy" "allow_create_bounded_roles" {
         Action   = "iam:CreateRole"
         Resource = "arn:aws:iam::*:role/app-*"
         Condition = {
-          StringEquals = {
-            "iam:PermissionsBoundary" = aws_iam_policy.developer_boundary.arn
+          ArnEquals = {
+            "iam:PermissionsBoundary" = local.developer_boundary_arn
+          }
+        }
+      },
+      {
+        Sid      = "DenyBoundaryRemoval"
+        Effect   = "Deny"
+        Action   = "iam:DeleteRolePermissionsBoundary"
+        Resource = "arn:aws:iam::*:role/app-*"
+      },
+      {
+        Sid      = "DenyBoundaryReplacement"
+        Effect   = "Deny"
+        Action   = "iam:PutRolePermissionsBoundary"
+        Resource = "arn:aws:iam::*:role/app-*"
+        Condition = {
+          ArnNotEquals = {
+            "iam:PermissionsBoundary" = local.developer_boundary_arn
           }
         }
       },
@@ -297,6 +386,11 @@ resource "aws_iam_policy" "allow_create_bounded_roles" {
           "iam:DeleteRolePolicy"
         ]
         Resource = "arn:aws:iam::*:role/app-*"
+        Condition = {
+          ArnEquals = {
+            "iam:PermissionsBoundary" = local.developer_boundary_arn
+          }
+        }
       }
     ]
   })
@@ -315,12 +409,12 @@ flowchart TD
     D -->|No| C
     D -->|Yes| E{Allow in permission boundary?}
     E -->|No| C
-    E -->|Yes| F{Allow in SCP?}
+    E -->|Yes| F{Allowed by SCPs, if any?}
     F -->|No| C
     F -->|Yes| G[ALLOW]
 ```
 
-The permission boundary acts as another gate. The request must be allowed by ALL of: identity policies, permission boundary, and SCPs (if using Organizations).
+The permission boundary acts as another gate. For identity-based access, the request must be allowed by ALL applicable guardrails: identity policies, the permission boundary, and SCPs if you're using AWS Organizations.
 
 ## Common Mistakes
 
