@@ -8,7 +8,7 @@ Description: Learn how to set up cross-region actions in AWS CodePipeline to dep
 
 ---
 
-If your application serves users globally, you probably deploy to multiple AWS regions. Managing separate pipelines for each region quickly becomes a maintenance headache. Cross-region CodePipeline actions let you deploy to any AWS region from a single pipeline, keeping your CI/CD workflow centralized while your infrastructure stays distributed.
+If your application serves users globally, you probably deploy to multiple AWS regions. Managing separate pipelines for each region quickly becomes a maintenance headache. Cross-region CodePipeline actions let you deploy to supported AWS Regions from a single pipeline, keeping your CI/CD workflow centralized while your infrastructure stays distributed.
 
 This guide covers configuring cross-region actions, setting up the required artifact buckets, handling cross-region deployments for ECS, Lambda, and CloudFormation, and managing the complexity that comes with multi-region deployments.
 
@@ -37,7 +37,7 @@ graph TD
 
 When a pipeline action runs in a different region than the pipeline itself, CodePipeline:
 
-1. Copies artifacts from the pipeline's artifact bucket to an artifact bucket in the target region
+1. Replicates the action's input artifacts from the pipeline's artifact bucket to an artifact bucket in the target region
 2. Executes the action in the target region
 3. Returns results back to the pipeline
 
@@ -46,7 +46,7 @@ This means you need an S3 artifact bucket in each region where you have actions.
 ## Prerequisites
 
 - A CodePipeline in your primary region
-- S3 artifact buckets in each target region
+- S3 artifact buckets in the pipeline region and each target region
 - Deployment targets (ECS services, Lambda functions, CloudFormation stacks) in each target region
 - IAM roles with cross-region permissions
 
@@ -137,153 +137,155 @@ Here is a complete pipeline with cross-region ECS deployments:
 
 ```bash
 # Create the multi-region pipeline
-aws codepipeline create-pipeline --pipeline file://pipeline.json
+aws codepipeline create-pipeline --cli-input-json file://pipeline.json
 ```
 
 ```json
 {
-  "name": "multi-region-service",
-  "pipelineType": "V2",
-  "executionMode": "QUEUED",
-  "roleArn": "arn:aws:iam::123456789012:role/CodePipelineServiceRole",
-  "artifactStores": {
-    "us-east-1": {
-      "type": "S3",
-      "location": "pipeline-artifacts-us-east-1-123456789012"
+  "pipeline": {
+    "name": "multi-region-service",
+    "pipelineType": "V2",
+    "executionMode": "QUEUED",
+    "roleArn": "arn:aws:iam::123456789012:role/CodePipelineServiceRole",
+    "artifactStores": {
+      "us-east-1": {
+        "type": "S3",
+        "location": "pipeline-artifacts-us-east-1-123456789012"
+      },
+      "eu-west-1": {
+        "type": "S3",
+        "location": "pipeline-artifacts-eu-west-1-123456789012"
+      },
+      "ap-southeast-1": {
+        "type": "S3",
+        "location": "pipeline-artifacts-ap-southeast-1-123456789012"
+      }
     },
-    "eu-west-1": {
-      "type": "S3",
-      "location": "pipeline-artifacts-eu-west-1-123456789012"
-    },
-    "ap-southeast-1": {
-      "type": "S3",
-      "location": "pipeline-artifacts-ap-southeast-1-123456789012"
-    }
-  },
-  "stages": [
-    {
-      "name": "Source",
-      "actions": [
-        {
-          "name": "Source",
-          "actionTypeId": {
-            "category": "Source",
-            "owner": "AWS",
-            "provider": "CodeStarSourceConnection",
-            "version": "1"
+    "stages": [
+      {
+        "name": "Source",
+        "actions": [
+          {
+            "name": "Source",
+            "actionTypeId": {
+              "category": "Source",
+              "owner": "AWS",
+              "provider": "CodeStarSourceConnection",
+              "version": "1"
+            },
+            "region": "us-east-1",
+            "configuration": {
+              "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc123",
+              "FullRepositoryId": "my-org/my-service",
+              "BranchName": "main"
+            },
+            "outputArtifacts": [{"name": "SourceOutput"}]
+          }
+        ]
+      },
+      {
+        "name": "Build",
+        "actions": [
+          {
+            "name": "Build",
+            "actionTypeId": {
+              "category": "Build",
+              "owner": "AWS",
+              "provider": "CodeBuild",
+              "version": "1"
+            },
+            "region": "us-east-1",
+            "configuration": {
+              "ProjectName": "my-service-build"
+            },
+            "inputArtifacts": [{"name": "SourceOutput"}],
+            "outputArtifacts": [{"name": "BuildOutput"}]
+          }
+        ]
+      },
+      {
+        "name": "DeployPrimary",
+        "actions": [
+          {
+            "name": "Deploy-US-East",
+            "actionTypeId": {
+              "category": "Deploy",
+              "owner": "AWS",
+              "provider": "ECS",
+              "version": "1"
+            },
+            "region": "us-east-1",
+            "configuration": {
+              "ClusterName": "production-us",
+              "ServiceName": "my-service",
+              "FileName": "imagedefinitions-us-east-1.json"
+            },
+            "inputArtifacts": [{"name": "BuildOutput"}],
+            "runOrder": 1
+          }
+        ]
+      },
+      {
+        "name": "ValidatePrimary",
+        "actions": [
+          {
+            "name": "Validate-US-East",
+            "actionTypeId": {
+              "category": "Build",
+              "owner": "AWS",
+              "provider": "CodeBuild",
+              "version": "1"
+            },
+            "region": "us-east-1",
+            "configuration": {
+              "ProjectName": "my-service-validation",
+              "EnvironmentVariables": "[{\"name\":\"TARGET_REGION\",\"value\":\"us-east-1\",\"type\":\"PLAINTEXT\"}]"
+            },
+            "inputArtifacts": [{"name": "SourceOutput"}]
+          }
+        ]
+      },
+      {
+        "name": "DeploySecondary",
+        "actions": [
+          {
+            "name": "Deploy-EU-West",
+            "actionTypeId": {
+              "category": "Deploy",
+              "owner": "AWS",
+              "provider": "ECS",
+              "version": "1"
+            },
+            "region": "eu-west-1",
+            "configuration": {
+              "ClusterName": "production-eu",
+              "ServiceName": "my-service",
+              "FileName": "imagedefinitions-eu-west-1.json"
+            },
+            "inputArtifacts": [{"name": "BuildOutput"}],
+            "runOrder": 1
           },
-          "region": "us-east-1",
-          "configuration": {
-            "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc123",
-            "FullRepositoryId": "my-org/my-service",
-            "BranchName": "main"
-          },
-          "outputArtifacts": [{"name": "SourceOutput"}]
-        }
-      ]
-    },
-    {
-      "name": "Build",
-      "actions": [
-        {
-          "name": "Build",
-          "actionTypeId": {
-            "category": "Build",
-            "owner": "AWS",
-            "provider": "CodeBuild",
-            "version": "1"
-          },
-          "region": "us-east-1",
-          "configuration": {
-            "ProjectName": "my-service-build"
-          },
-          "inputArtifacts": [{"name": "SourceOutput"}],
-          "outputArtifacts": [{"name": "BuildOutput"}]
-        }
-      ]
-    },
-    {
-      "name": "DeployPrimary",
-      "actions": [
-        {
-          "name": "Deploy-US-East",
-          "actionTypeId": {
-            "category": "Deploy",
-            "owner": "AWS",
-            "provider": "ECS",
-            "version": "1"
-          },
-          "region": "us-east-1",
-          "configuration": {
-            "ClusterName": "production-us",
-            "ServiceName": "my-service",
-            "FileName": "imagedefinitions.json"
-          },
-          "inputArtifacts": [{"name": "BuildOutput"}],
-          "runOrder": 1
-        }
-      ]
-    },
-    {
-      "name": "ValidatePrimary",
-      "actions": [
-        {
-          "name": "Validate-US-East",
-          "actionTypeId": {
-            "category": "Build",
-            "owner": "AWS",
-            "provider": "CodeBuild",
-            "version": "1"
-          },
-          "region": "us-east-1",
-          "configuration": {
-            "ProjectName": "my-service-validation",
-            "EnvironmentVariables": "[{\"name\":\"TARGET_REGION\",\"value\":\"us-east-1\",\"type\":\"PLAINTEXT\"}]"
-          },
-          "inputArtifacts": [{"name": "SourceOutput"}]
-        }
-      ]
-    },
-    {
-      "name": "DeploySecondary",
-      "actions": [
-        {
-          "name": "Deploy-EU-West",
-          "actionTypeId": {
-            "category": "Deploy",
-            "owner": "AWS",
-            "provider": "ECS",
-            "version": "1"
-          },
-          "region": "eu-west-1",
-          "configuration": {
-            "ClusterName": "production-eu",
-            "ServiceName": "my-service",
-            "FileName": "imagedefinitions.json"
-          },
-          "inputArtifacts": [{"name": "BuildOutput"}],
-          "runOrder": 1
-        },
-        {
-          "name": "Deploy-AP-Southeast",
-          "actionTypeId": {
-            "category": "Deploy",
-            "owner": "AWS",
-            "provider": "ECS",
-            "version": "1"
-          },
-          "region": "ap-southeast-1",
-          "configuration": {
-            "ClusterName": "production-ap",
-            "ServiceName": "my-service",
-            "FileName": "imagedefinitions.json"
-          },
-          "inputArtifacts": [{"name": "BuildOutput"}],
-          "runOrder": 1
-        }
-      ]
-    }
-  ]
+          {
+            "name": "Deploy-AP-Southeast",
+            "actionTypeId": {
+              "category": "Deploy",
+              "owner": "AWS",
+              "provider": "ECS",
+              "version": "1"
+            },
+            "region": "ap-southeast-1",
+            "configuration": {
+              "ClusterName": "production-ap",
+              "ServiceName": "my-service",
+              "FileName": "imagedefinitions-ap-southeast-1.json"
+            },
+            "inputArtifacts": [{"name": "BuildOutput"}],
+            "runOrder": 1
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
 
@@ -331,12 +333,17 @@ phases:
           docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${IMAGE_NAME}:${IMAGE_TAG}
         done
 
-      # Generate imagedefinitions.json for ECS
-      - printf '[{"name":"myapp","imageUri":"%s"}]' ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/${IMAGE_NAME}:${IMAGE_TAG} > imagedefinitions.json
+      # Generate region-specific image definition files for ECS
+      - |
+        for REGION in $TARGET_REGIONS; do
+          printf '[{"name":"myapp","imageUri":"%s"}]' \
+            ${AWS_ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${IMAGE_NAME}:${IMAGE_TAG} \
+            > imagedefinitions-${REGION}.json
+        done
 
 artifacts:
   files:
-    - imagedefinitions.json
+    - imagedefinitions-*.json
 ```
 
 A better approach is to use ECR replication rules:
@@ -368,7 +375,7 @@ aws ecr put-replication-configuration \
   }'
 ```
 
-With ECR replication, images pushed to us-east-1 are automatically replicated to the other regions.
+With ECR replication, images pushed to us-east-1 are automatically replicated to the other regions. You should still generate region-specific image definition files so each ECS deploy action references the ECR image URI in its own region, and validate that replication has completed before deploying to secondary regions.
 
 ## Step 5: Cross-Region CloudFormation Deployment
 
@@ -424,7 +431,9 @@ The pipeline service role needs permissions in all target regions:
     {
       "Effect": "Allow",
       "Action": [
+        "s3:GetBucketAcl",
         "s3:GetObject",
+        "s3:GetObjectVersion",
         "s3:PutObject",
         "s3:GetBucketLocation"
       ],
@@ -446,9 +455,23 @@ The pipeline service role needs permissions in all target regions:
       "Action": [
         "ecs:UpdateService",
         "ecs:DescribeServices",
+        "ecs:DescribeTaskDefinition",
         "ecs:RegisterTaskDefinition"
       ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::123456789012:role/*",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": [
+            "ecs.amazonaws.com",
+            "ecs-tasks.amazonaws.com"
+          ]
+        }
+      }
     },
     {
       "Effect": "Allow",
