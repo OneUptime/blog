@@ -47,7 +47,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name CPUUtilization \
   --dimensions Name=DBInstanceIdentifier,Value=my-database \
-  --start-time $(date -u -v-24H +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
   --statistics Average Maximum \
@@ -63,7 +63,7 @@ The actual resize is a single CLI command:
 aws rds modify-db-instance \
   --db-instance-identifier my-database \
   --db-instance-class db.r6g.xlarge \
-  --apply-immediately false
+  --no-apply-immediately
 ```
 
 Or if you need it done right now:
@@ -82,7 +82,7 @@ When you resize an RDS instance, here's the sequence:
 
 1. AWS provisions a new host with the target instance class
 2. Your database enters the "modifying" state
-3. Data is migrated to the new host
+3. RDS applies the instance class change
 4. The database restarts on the new hardware
 5. The endpoint stays the same - no connection string changes needed
 
@@ -90,9 +90,8 @@ For **Single-AZ instances**, there's downtime during the switch. Typically 5-15 
 
 For **Multi-AZ instances**, the process is smoother:
 1. The standby is upgraded first
-2. A failover occurs (20-30 seconds of downtime)
+2. A failover occurs (typically 60-120 seconds, though large transactions or recovery work can increase this)
 3. The old primary becomes the new standby and gets upgraded
-4. Another failover brings traffic back to the original AZ
 
 This is why running Multi-AZ for production databases is so important. The downtime drops from minutes to seconds.
 
@@ -103,7 +102,7 @@ This is why running Multi-AZ for production databases is so important. The downt
 If you're not already on Multi-AZ, enable it before resizing:
 
 ```bash
-# Enable Multi-AZ (this itself requires a brief outage for Single-AZ to Multi-AZ conversion)
+# Enable Multi-AZ (this should not cause downtime, but can temporarily affect performance)
 aws rds modify-db-instance \
   --db-instance-identifier my-database \
   --multi-az \
@@ -114,7 +113,7 @@ Wait for the modification to complete before proceeding with the resize.
 
 ### Schedule During Low-Traffic Windows
 
-If you're using `--apply-immediately false`, the resize happens during your maintenance window. Make sure that window is set to a low-traffic period:
+If you're using `--no-apply-immediately`, the resize happens during your maintenance window. Make sure that window is set to a low-traffic period:
 
 ```bash
 # Check your current maintenance window
@@ -172,7 +171,7 @@ aws rds modify-db-instance \
 Important limitations:
 - You can only **increase** storage, never decrease it
 - After a storage modification, you can't modify storage again for 6 hours
-- Storage modifications have zero downtime - they happen in the background
+- Allocated storage increases have zero downtime - they happen in the background
 
 ### Changing Storage Type
 
@@ -214,7 +213,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name CPUUtilization \
   --dimensions Name=DBInstanceIdentifier,Value=my-database \
-  --start-time $(date -u -v-2H +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
   --statistics Average
