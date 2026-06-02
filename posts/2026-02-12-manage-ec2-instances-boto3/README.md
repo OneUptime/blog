@@ -57,7 +57,6 @@ User data lets you pass a startup script that runs when the instance first boots
 
 ```python
 import boto3
-import base64
 
 ec2 = boto3.resource('ec2')
 
@@ -168,6 +167,9 @@ response = ec2_client.stop_instances(InstanceIds=instance_ids)
 for change in response['StoppingInstances']:
     print(f"{change['InstanceId']}: {change['PreviousState']['Name']} -> "
           f"{change['CurrentState']['Name']}")
+
+# Wait until all instances are stopped before starting them again
+ec2_client.get_waiter('instance_stopped').wait(InstanceIds=instance_ids)
 
 # Start multiple instances
 response = ec2_client.start_instances(InstanceIds=instance_ids)
