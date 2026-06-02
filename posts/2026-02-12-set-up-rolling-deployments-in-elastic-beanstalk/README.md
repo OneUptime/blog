@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Elastic Beanstalk, Deployment, Zero Downtime
 
-Description: Learn how to configure rolling deployments in AWS Elastic Beanstalk for zero-downtime updates, including rolling with additional batch, immutable, and blue-green strategies.
+Description: Learn how to configure rolling deployments in AWS Elastic Beanstalk for zero-downtime updates, including rolling with additional batch, immutable, and traffic-splitting strategies.
 
 ---
 
@@ -85,11 +85,6 @@ option_settings:
     BatchSizeType: Percentage
     BatchSize: 25
     Timeout: 600
-  aws:autoscaling:updatepolicy:rollingupdate:
-    RollingUpdateEnabled: true
-    MaxBatchSize: 2
-    MinInstancesInService: 4
-    PauseTime: PT5M
 ```
 
 The deployment flow looks like this:
@@ -125,7 +120,7 @@ The tradeoff is time and cost. Immutable deployments take longer (launching fres
 
 ## Traffic Splitting (Canary Deployments)
 
-Traffic splitting lets you test a new version with a small percentage of real traffic before going all-in. This is Elastic Beanstalk's version of canary deployments.
+Traffic splitting lets you test a new version with a small percentage of real traffic before going all-in. This is Elastic Beanstalk's version of canary deployments, and it requires an Application Load Balancer.
 
 ```yaml
 # .ebextensions/traffic-splitting.config - Canary deployment
@@ -138,7 +133,7 @@ option_settings:
     EvaluationTime: 10
 ```
 
-This sends 10% of traffic to the new version for 10 minutes. If the new instances stay healthy during that evaluation period, the deployment continues with a full rolling update. If they fail, the deployment is rolled back automatically.
+This sends 10% of traffic to the new version for 10 minutes. If the new instances stay healthy during that evaluation period, Elastic Beanstalk shifts all remaining traffic to the new instances, attaches them to the original Auto Scaling group, and terminates the old instances. If they fail, the deployment is rolled back automatically.
 
 Traffic splitting is ideal when you want to catch issues that only show up under real traffic - things like memory leaks, slow database queries, or edge cases that unit tests miss.
 
@@ -165,6 +160,7 @@ Your health check endpoint should verify that the application is genuinely ready
 ```python
 # health.py - Health check endpoint
 from flask import jsonify
+from sqlalchemy import text
 
 @app.route('/health')
 def health_check():
@@ -183,7 +179,7 @@ def health_check():
 
 def check_database():
     try:
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         return True
     except Exception:
         return False
@@ -234,7 +230,7 @@ When a deployment fails, you want to get back to the working version quickly.
 eb deploy --version previous-version-label
 
 # List available versions to roll back to
-eb appversion --list
+eb appversion
 
 # Delete a failed version
 eb appversion --delete failed-version-label
