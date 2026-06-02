@@ -34,20 +34,20 @@ graph TD
     G --> B
     H[Application Users] --> B
     H --> E
-    I[AWS Backint Agent] --> J[S3 Backup]
+    I[AWS Backint Agent] --> J[S3 or AWS Backup]
     A --> I
 ```
 
-Depending on your deployment choice, Launch Wizard creates:
+Depending on your deployment choice, Launch Wizard provisions and configures:
 
 - **SAP HANA database** instances (single node or HA with System Replication)
 - **SAP NetWeaver** application servers (ABAP or Java stack)
 - **ASCS/ERS** high availability clustering with Pacemaker
-- **VPC networking** with proper subnet layout
+- **VPC networking** in the VPC and subnets you provide
 - **EBS storage** optimized for HANA data and log volumes
-- **EFS** for shared filesystems (sapmnt, transport)
-- **AWS Backint Agent** for HANA backups to S3
-- **CloudWatch monitoring** with SAP-specific metrics
+- **EFS** for shared file systems such as transport directories and central services HA, where applicable
+- **AWS Backint Agent** for HANA backups to Amazon S3 or AWS Backup
+- **CloudWatch Logs** and integration points for SAP-specific monitoring
 
 ## Prerequisites
 
@@ -97,33 +97,33 @@ Launch Wizard walks through several configuration screens. Here are the key deci
 
 ### Instance Selection
 
-Launch Wizard recommends instances based on your HANA memory requirement:
+Launch Wizard recommends instances based on your HANA memory requirement. The exact recommendation changes as AWS and SAP certify new instances, but typical certified scale-up mappings look like this:
 
 ```text
-HANA Memory Requirement    Recommended Instance
-128 GB                     r6i.4xlarge
-256 GB                     r6i.8xlarge
-512 GB                     x2idn.16xlarge
-1 TB                       x2idn.24xlarge
-2 TB                       u-6tb1.56xlarge (High Memory)
-4 TB                       u-6tb1.112xlarge
-6 TB                       u-6tb1.metal
+HANA Memory Requirement    Example Certified Instance
+256 GiB                    r6i.8xlarge
+512 GiB                    r6i.16xlarge
+1 TiB                      x2idn.16xlarge
+1.5 TiB                    x2idn.24xlarge
+2 TiB                      x2idn.32xlarge
+4 TiB                      x2iedn.32xlarge
+6 TiB                      u-6tb1.56xlarge, u-6tb1.112xlarge, or u-6tb1.metal
 ```
 
-For production HANA workloads, the x2idn and High Memory (u-) instance families are certified by SAP.
+For production HANA workloads, use EC2 instance types certified by SAP for the target HANA size and confirm that they are available in your chosen Region and Availability Zone.
 
 ### Storage Configuration
 
 Launch Wizard configures EBS volumes following SAP guidelines:
 
 ```bash
-# Example storage layout for a 512 GB HANA instance:
-# /hana/data    - 512 GB io2, 10000 IOPS
-# /hana/log     - 128 GB io2, 10000 IOPS
+# Example storage layout for a 512 GiB HANA instance:
+# /hana/data    - 600 GiB gp3 or io2, about 7400 IOPS
+# /hana/log     - 300 GiB gp3 or io2, about 3000 IOPS
 # /hana/shared  - 512 GB gp3
 # /usr/sap      - 50 GB gp3
-# /sapmnt       - EFS filesystem (shared across nodes)
-# /backup       - 1 TB gp3 (or S3 via Backint)
+# /sapmnt       - EFS file system where applicable for shared SAP file systems
+# /backup       - Optional and workload-dependent, often S3 or AWS Backup via Backint
 ```
 
 ### High Availability Configuration
@@ -146,37 +146,68 @@ NetWeaver HA:
 
 ```bash
 # List available deployment types
-aws launchwizard list-workload-deployment-patterns \
-  --workload-name "SAP"
+aws launch-wizard list-workload-deployment-patterns \
+  --workload-name SAP \
+  --region us-east-1
 
-# Create the deployment
-aws launchwizard create-deployment \
-  --workload-name "SAP" \
-  --deployment-pattern-name "SAPHanaHA" \
-  --name "production-sap-hana" \
-  --specifications '{
-    "HANAMemory": "512",
-    "SID": "HDB",
-    "InstanceNumber": "00",
-    "MasterPassword": "SecurePassword123!",
-    "OperatingSystem": "SuSELinuxEnterpriseServer15SP4ForSAPApplications",
-    "KeyPairName": "sap-key",
-    "VPCCIDR": "10.0.0.0/16",
-    "HAEnabled": "true",
-    "BackupEnabled": "true"
-  }'
+# Create the deployment using the SapHanaHA pattern
+aws launch-wizard create-deployment \
+  --workload-name SAP \
+  --deployment-pattern-name SapHanaHA \
+  --name production-sap-hana \
+  --region us-east-1 \
+  --specifications file://hana-ha-specifications.json
+```
+
+The `hana-ha-specifications.json` file must use the Launch Wizard specification names for the selected pattern:
+
+```json
+{
+  "KeyPairName": "sap-key",
+  "VpcId": "vpc-0123456789abcdef0",
+  "AvailabilityZone1PrivateSubnet1Id": "subnet-11111111111111111",
+  "AvailabilityZone2PrivateSubnet1Id": "subnet-22222222222222222",
+  "Timezone": "UTC",
+  "EnableEbsVolumeEncryption": "Yes",
+  "EbsKmsKeyArn": "arn:aws:kms:us-east-1:111122223333:alias/aws/ebs",
+  "CreateSecurityGroup": "No",
+  "DatabaseSecurityGroupId": "sg-0123456789abcdef0",
+  "ApplicationSecurityGroupId": "sg-0123456789abcdef0",
+  "SapSysGroupId": "1001",
+  "DatabaseSystemId": "HDB",
+  "DatabaseInstanceNumber": "00",
+  "DatabasePassword": "SecurePwd123",
+  "InstallDatabaseSoftware": "Yes",
+  "DatabaseInstallationMediaS3Uri": "s3://my-sap-media/hana/",
+  "DatabaseOperatingSystem": "SuSE-Linux-15-SP4-For-SAP-HVM",
+  "DatabaseAmiId": "ami-0123456789abcdef0",
+  "DatabasePrimaryHostname": "hana-pri",
+  "DatabaseSecondaryHostname": "hana-sec",
+  "DatabaseInstanceType": "r6i.16xlarge",
+  "DatabaseLogVolumeType": "gp3",
+  "InstallAwsBackintAgent": "Yes",
+  "BackintSpecifications": "{\"backintBucketName\":\"my-hana-backups\",\"backintBucketFolder\":\"HDB\",\"backintBucketRegion\":\"us-east-1\",\"backintKmsKeyArn\":\"arn:aws:kms:us-east-1:111122223333:alias/aws/s3\",\"backintAgentVersion\":\"2.1.5\",\"backintContinueOnFailure\":\"No\",\"backintCreateEbsVolume\":\"No\"}",
+  "DatabaseVirtualIpAddress": "10.255.0.10",
+  "DatabasePrimarySiteName": "HAP",
+  "DatabaseSecondarySiteName": "HAS",
+  "DatabasePacemakerTag": "HDBPacemaker",
+  "DisableDeploymentRollback": "No",
+  "SaveDeploymentArtifacts": "No"
+}
 ```
 
 The deployment takes 2-4 hours depending on the configuration. Monitor progress:
 
 ```bash
 # Check deployment status
-aws launchwizard get-deployment \
-  --deployment-id "dep-sap-abc123"
+aws launch-wizard get-deployment \
+  --deployment-id "a1b2c3d4-5678-90ab-cdef-EXAMPLE11111" \
+  --region us-east-1
 
 # Watch deployment events
-aws launchwizard list-deployment-events \
-  --deployment-id "dep-sap-abc123"
+aws launch-wizard list-deployment-events \
+  --deployment-id "a1b2c3d4-5678-90ab-cdef-EXAMPLE11111" \
+  --region us-east-1
 ```
 
 ## Step 3: Post-Deployment Tasks
@@ -195,12 +226,12 @@ python /usr/sap/HDB/HDB00/exe/python_support/systemReplicationStatus.py
 
 ### Configure Backups
 
-Launch Wizard can set up the AWS Backint Agent for HANA backups to S3:
+Launch Wizard can set up the AWS Backint Agent for HANA backups to Amazon S3 or AWS Backup:
 
 ```bash
 # Verify Backint agent configuration
 # On the HANA server:
-cat /usr/sap/HDB/SYS/global/hdb/opt/hdbconfig/aws-backint-agent/aws-backint-agent-config.yaml
+cat /usr/sap/HDB/SYS/global/hdb/opt/hdbconfig/aws-backint-agent-config.yaml
 
 # Test a backup
 hdbsql -u SYSTEM -p <password> \
@@ -210,27 +241,20 @@ hdbsql -u SYSTEM -p <password> \
 ### Set Up Monitoring
 
 ```bash
-# Launch Wizard installs CloudWatch agent with SAP metrics
-# Key metrics to monitor:
+# Launch Wizard can send deployment and application logs to CloudWatch.
+# For SAP HANA metrics, configure CloudWatch Application Insights for SAP HANA.
+# Key metrics to monitor include:
 
 # HANA-specific metrics
-# - hana_cpu_usage
-# - hana_memory_usage
-# - hana_disk_usage
-# - hana_replication_status
+# - hanadb_cpu_usage_percent
+# - hanadb_current_allocation_limit_used_percent
+# - hanadb_disk_usage_highlevel_percent
+# - hanadb_hsr_replication_status
 
-# Create alarms for HANA memory usage
-aws cloudwatch put-metric-alarm \
-  --alarm-name "HANA-MemoryUsage-High" \
-  --namespace "SAP/HANA" \
-  --metric-name "MemoryUsedPercent" \
-  --dimensions '[{"Name": "SID", "Value": "HDB"}]' \
-  --statistic "Average" \
-  --period 300 \
-  --threshold 90 \
-  --comparison-operator "GreaterThanThreshold" \
-  --evaluation-periods 3 \
-  --alarm-actions "arn:aws:sns:us-east-1:123456789012:SAPAlerts"
+# Discover the exact namespace and dimensions before creating alarms
+aws cloudwatch list-metrics \
+  --metric-name hanadb_current_allocation_limit_used_percent \
+  --region us-east-1
 ```
 
 ### Install SAP Application
@@ -265,7 +289,7 @@ sapcontrol -nr 00 -function StartSystem ALL
 
 ### Scaling
 
-If your HANA memory needs grow, Launch Wizard supports modifying the deployment:
+If your HANA memory needs grow, plan an SAP HANA scale-up by resizing the EC2 instances and coordinating the change with your SAP Basis team:
 
 ```bash
 # To scale up the HANA instance:
@@ -309,4 +333,4 @@ SAP workloads on AWS can be expensive. Here are ways to optimize:
 
 ## Wrapping Up
 
-AWS Launch Wizard for SAP takes the most complex AWS workload deployment and makes it manageable. The automation covers everything from instance selection to HANA System Replication configuration to Pacemaker clustering. It follows both AWS and SAP best practices, which means your deployment is production-ready from day one. For SAP Basis teams new to AWS, Launch Wizard is the fastest path to a well-architected SAP landscape.
+AWS Launch Wizard for SAP takes the most complex AWS workload deployment and makes it manageable. The automation covers everything from instance selection to HANA System Replication configuration to Pacemaker clustering. It follows both AWS and SAP best practices, which gives you a strong foundation for a production-ready deployment. For SAP Basis teams new to AWS, Launch Wizard is the fastest path to a well-architected SAP landscape.
