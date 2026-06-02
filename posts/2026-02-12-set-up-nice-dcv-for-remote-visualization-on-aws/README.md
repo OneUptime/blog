@@ -8,15 +8,15 @@ Description: Step-by-step guide to setting up NICE DCV on AWS EC2 for high-perfo
 
 ---
 
-When you need to visualize large datasets, interact with 3D models, or use GPU-accelerated desktop applications remotely, traditional RDP or VNC just does not cut it. The frame rates are poor, latency is noticeable, and GPU rendering does not work properly through these protocols. NICE DCV is Amazon's high-performance remote display protocol, and it was designed specifically for this use case.
+When you need to visualize large datasets, interact with 3D models, or use GPU-accelerated desktop applications remotely, traditional RDP or VNC just does not cut it. The frame rates are poor, latency is noticeable, and GPU rendering does not work properly through these protocols. Amazon DCV, formerly NICE DCV, is Amazon's high-performance remote display protocol, and it was designed specifically for this use case.
 
-NICE DCV streams pixels from a GPU on the server to your browser or native client, with adaptive encoding that keeps the experience smooth even over modest internet connections. And on AWS, the NICE DCV server license is free.
+Amazon DCV, formerly NICE DCV, streams pixels from a GPU on the server to your browser or native client, with adaptive encoding that keeps the experience smooth even over modest internet connections. And on AWS, there is no additional charge for the Amazon DCV server on EC2.
 
 ## What Is NICE DCV?
 
-NICE DCV (Desktop Cloud Visualization) is a remote display protocol that streams a desktop environment from a server to a client. It supports:
+Amazon DCV (formerly NICE DCV, Desktop Cloud Visualization) is a remote display protocol that streams a desktop environment from a server to a client. It supports:
 
-- GPU-accelerated 3D rendering via OpenGL, Vulkan, and DirectX
+- GPU-accelerated 3D rendering via OpenGL and Vulkan on Linux, and DirectX on Windows
 - Up to 4K resolution at 60fps
 - USB device redirection
 - Multi-monitor support
@@ -27,14 +27,14 @@ It was originally developed for HPC visualization but works for any use case whe
 
 ## Step 1: Launch a GPU EC2 Instance
 
-NICE DCV works with or without a GPU, but for visualization workloads you want one.
+Amazon DCV works with or without a GPU, but for visualization workloads you want one.
 
 ```bash
-# Launch a GPU instance with the NICE DCV AMI
+# Launch a GPU instance with an Amazon DCV AMI
 
-# The Amazon Linux 2 with NICE DCV AMI has everything pre-installed
+# Replace the AMI ID with a Marketplace Amazon Linux 2 DCV AMI for your Region
 aws ec2 run-instances \
-  --image-id ami-0abc123dcv \
+  --image-id ami-0123456789abcdef0 \
   --instance-type g5.2xlarge \
   --key-name my-keypair \
   --subnet-id subnet-0abc123 \
@@ -48,7 +48,7 @@ If you do not want to use the pre-built AMI, you can install DCV on any EC2 inst
 
 ## Step 2: Install NICE DCV on Amazon Linux 2
 
-SSH into your instance and install the NICE DCV server.
+SSH into your instance and install the Amazon DCV server.
 
 ```bash
 # Install prerequisites
@@ -65,17 +65,18 @@ aws s3 cp --recursive s3://ec2-linux-nvidia-drivers/latest/ .
 chmod +x NVIDIA-Linux-x86_64*.run
 sudo ./NVIDIA-Linux-x86_64*.run --silent
 
-# Download and install NICE DCV server
+# Download and install Amazon DCV server
 sudo rpm --import https://d1uj6qtbmh3dt5.cloudfront.net/NICE-GPG-KEY
-wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-el7-x86_64.tgz
-tar -xvzf nice-dcv-el7-x86_64.tgz
-cd nice-dcv-*-el7-x86_64
+wget https://d1uj6qtbmh3dt5.cloudfront.net/nice-dcv-amzn2-x86_64.tgz
+tar -xvzf nice-dcv-amzn2-x86_64.tgz
+cd nice-dcv-*-amzn2-x86_64
 
 # Install the DCV server and supporting packages
 sudo yum install -y \
   nice-dcv-server-*.rpm \
   nice-dcv-web-viewer-*.rpm \
   nice-xdcv-*.rpm \
+  nice-dcv-gl-*.rpm \
   nice-dcv-gltest-*.rpm
 ```
 
@@ -93,12 +94,10 @@ Here is a good configuration for a visualization workstation:
 ```ini
 # /etc/dcv/dcv.conf
 [license]
-# On AWS, the license is automatic - no key needed
+# On EC2, the server automatically detects the EC2 license.
 
 [session-management]
-# Allow creating sessions
-create-session = true
-# Max number of concurrent sessions
+# Max number of concurrent clients per session
 max-concurrent-clients = 5
 
 [session-management/defaults]
@@ -108,8 +107,6 @@ permissions-file = ""
 [display]
 # Target frame rate (up to 60)
 target-fps = 60
-# Quality setting (affects bandwidth usage)
-quality = high
 
 [connectivity]
 # Port for HTTPS connections
@@ -120,8 +117,6 @@ idle-timeout = 120
 [security]
 # Authentication method
 authentication = system
-# Allow file upload/download
-enable-file-transfer = true
 ```
 
 ## Step 4: Start the DCV Server and Create a Session
@@ -131,14 +126,18 @@ enable-file-transfer = true
 sudo systemctl enable dcvserver
 sudo systemctl start dcvserver
 
-# Create a virtual session (console session uses the GPU)
-sudo dcv create-session --type console --owner ec2-user my-session
+# Set a password for the Linux user that will log in through DCV
+sudo passwd ec2-user
+
+# Create a console session (console sessions have direct GPU access)
+mkdir -p ~/dcv-storage
+sudo dcv create-session --type console --owner ec2-user --storage-root %home%/dcv-storage/ my-session
 
 # Verify the session is running
 dcv list-sessions
 ```
 
-For GPU-accelerated rendering, use `--type console`. This gives the session direct access to the GPU through X11.
+For GPU-accelerated rendering in a single-user workstation, use `--type console`. Console sessions have direct access to the GPU. Virtual sessions can also use GPU acceleration, but they require DCV GL configuration.
 
 ## Step 5: Configure Security Group
 
@@ -194,9 +193,9 @@ echo 'export PATH=/opt/paraview/bin:$PATH' >> ~/.bashrc
 
 ```bash
 # Install Blender
-sudo yum install -y snapd
-sudo systemctl enable --now snapd
-sudo snap install blender --classic
+wget https://download.blender.org/release/Blender4.5/blender-4.5.3-linux-x64.tar.xz
+tar -xJf blender-4.5.3-linux-x64.tar.xz
+sudo mv blender-4.5.3-linux-x64 /opt/blender
 ```
 
 ### MATLAB
@@ -204,8 +203,8 @@ sudo snap install blender --classic
 ```bash
 # Install MATLAB (requires license)
 # Download the installer to the instance
-chmod +x matlab_R2024b_glnxa64.zip
-unzip matlab_R2024b_glnxa64.zip
+unzip matlab_R2024b_glnxa64.zip -d ./matlab_R2024b_glnxa64
+cd ./matlab_R2024b_glnxa64
 sudo ./install -inputFile /tmp/installer_input.txt
 ```
 
@@ -225,7 +224,7 @@ Requires=dcvserver.service
 Type=oneshot
 RemainAfterExit=yes
 ExecStartPre=/bin/sleep 5
-ExecStart=/usr/bin/dcv create-session --type console --owner ec2-user my-session
+ExecStart=/usr/bin/dcv create-session --type console --owner ec2-user --storage-root %home%/dcv-storage/ my-session
 ExecStop=/usr/bin/dcv close-session my-session
 
 [Install]
@@ -241,12 +240,12 @@ For the best visualization experience:
 
 ```bash
 # Check GPU rendering is working
-dcvgldiag
+sudo dcvgldiag
 
 # This should show:
 # - NVIDIA driver: detected
 # - OpenGL renderer: NVIDIA GPU (not llvmpipe or Mesa)
-# - DCV GL: working
+# - No blocking DCV GL warnings or errors
 ```
 
 If `dcvgldiag` shows software rendering instead of GPU rendering, check that:
@@ -265,11 +264,11 @@ If `dcvgldiag` shows software rendering instead of GPU rendering, check that:
 ## Security Best Practices
 
 - Restrict the security group to specific IP ranges
-- Use a Network Load Balancer with TLS termination for multiple users
+- Use a VPN, bastion, or Amazon DCV Session Manager for larger multi-user deployments
 - Enable MFA through your identity provider
 - Set idle timeout to automatically disconnect inactive sessions
 - Use IAM roles for instance permissions instead of embedding credentials
 
 ## Wrapping Up
 
-NICE DCV gives you a production-quality remote desktop experience with full GPU acceleration, right from your browser. Whether you are running scientific visualization, CAD software, video editing, or any other GPU-hungry desktop application, DCV delivers the frame rates and responsiveness you need. The fact that the license is free on AWS makes it a clear choice over paid alternatives like Teradici or competing VDI solutions.
+Amazon DCV gives you a production-quality remote desktop experience with full GPU acceleration, right from your browser. Whether you are running scientific visualization, CAD software, video editing, or any other GPU-hungry desktop application, DCV delivers the frame rates and responsiveness you need. The fact that there is no additional charge for the DCV server on EC2 makes it a clear choice over paid alternatives like Teradici or competing VDI solutions.
