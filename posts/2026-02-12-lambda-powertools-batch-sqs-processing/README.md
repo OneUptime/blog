@@ -25,7 +25,7 @@ This installs the core Powertools library along with the batch processing extras
 ```bash
 # Install Lambda Powertools with all extras
 
-pip install aws-lambda-powertools[all]
+pip install "aws-lambda-powertools[all]"
 
 # Or just the batch processing module
 pip install aws-lambda-powertools
@@ -33,7 +33,7 @@ pip install aws-lambda-powertools
 
 ## Basic Batch Processing
 
-The simplest way to use batch processing is with the `batch_processor` decorator and the `BatchProcessor` class.
+The simplest way to use batch processing is with the `process_partial_response` helper and the `BatchProcessor` class.
 
 Here's a minimal example that processes SQS records one at a time:
 
@@ -41,12 +41,12 @@ Here's a minimal example that processes SQS records one at a time:
 from aws_lambda_powertools.utilities.batch import (
     BatchProcessor,
     EventType,
-    batch_processor,
+    process_partial_response,
 )
 from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSRecord
 
 # Create a processor instance for SQS events
-processor = BatchProcessor(event_type=EventType.SQS)
+processor = BatchProcessor(event_type=EventType.SQS, raise_on_entire_batch_failure=False)
 
 
 def record_handler(record: SQSRecord):
@@ -61,16 +61,20 @@ def record_handler(record: SQSRecord):
     process_order(order_id)
 
 
-@batch_processor(record_handler=record_handler, processor=processor)
 def lambda_handler(event, context):
-    return processor.response()
+    return process_partial_response(
+        event=event,
+        record_handler=record_handler,
+        processor=processor,
+        context=context,
+    )
 ```
 
 The key thing happening here: if `record_handler` raises an exception for one record, Powertools catches it internally and marks just that record as failed. The other records in the batch continue processing normally.
 
 ## How Partial Failures Work
 
-When you return `processor.response()`, it generates a response that tells SQS which specific message IDs failed. SQS then only retries those failed messages.
+When Powertools returns the partial batch response, it generates a response that tells SQS which specific message IDs failed. SQS then only retries those failed messages.
 
 For this to work, you need to enable partial batch responses on your event source mapping. Here's the CloudFormation for it:
 
@@ -90,7 +94,7 @@ Without `ReportBatchItemFailures`, SQS ignores the partial failure response and 
 
 ## Using the Context Manager Pattern
 
-If you prefer more control over the processing flow, use the context manager approach instead of the decorator.
+If you prefer more control over the processing flow, use the context manager approach instead of the helper.
 
 This pattern lets you add custom logic before and after batch processing:
 
@@ -101,7 +105,7 @@ from aws_lambda_powertools.utilities.batch import (
 )
 from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSRecord
 
-processor = BatchProcessor(event_type=EventType.SQS)
+processor = BatchProcessor(event_type=EventType.SQS, raise_on_entire_batch_failure=False)
 
 
 def record_handler(record: SQSRecord):
@@ -127,8 +131,8 @@ def lambda_handler(event, context):
     # You can inspect results before returning
     for message in processed_messages:
         status = message[0]  # "success" or "fail"
-        record = message[1]  # original record
-        result = message[2]  # return value or exception
+        result = message[1]  # return value or exception string
+        record = message[2]  # original record
 
         if status == "fail":
             print(f"Failed record: {record.message_id}, Error: {result}")
@@ -138,20 +142,20 @@ def lambda_handler(event, context):
 
 ## Processing with Pydantic Models
 
-For production systems, you probably want to validate your message payloads. Powertools integrates nicely with Pydantic for this.
+For production systems, you probably want to validate your message payloads. Powertools works nicely with Pydantic for this, as long as you install Pydantic directly or through the `aws-lambda-powertools[parser]` or `aws-lambda-powertools[all]` extra.
 
 This example validates each SQS message body against a Pydantic model before processing:
 
 ```python
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, field_validator
 from aws_lambda_powertools.utilities.batch import (
     BatchProcessor,
     EventType,
-    batch_processor,
+    process_partial_response,
 )
 from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSRecord
 
-processor = BatchProcessor(event_type=EventType.SQS)
+processor = BatchProcessor(event_type=EventType.SQS, raise_on_entire_batch_failure=False)
 
 
 class OrderEvent(BaseModel):
@@ -160,7 +164,8 @@ class OrderEvent(BaseModel):
     amount: float
     currency: str = "USD"
 
-    @validator("amount")
+    @field_validator("amount")
+    @classmethod
     def amount_must_be_positive(cls, v):
         if v <= 0:
             raise ValueError("Order amount must be positive")
@@ -180,9 +185,13 @@ def record_handler(record: SQSRecord):
     )
 
 
-@batch_processor(record_handler=record_handler, processor=processor)
 def lambda_handler(event, context):
-    return processor.response()
+    return process_partial_response(
+        event=event,
+        record_handler=record_handler,
+        processor=processor,
+        context=context,
+    )
 ```
 
 If a message doesn't match your schema, Pydantic raises a `ValidationError`, and Powertools marks just that message as failed.
@@ -196,12 +205,12 @@ Powertools handles this with the `SqsFifoPartialProcessor`:
 ```python
 from aws_lambda_powertools.utilities.batch import (
     SqsFifoPartialProcessor,
-    batch_processor,
+    process_partial_response,
 )
 from aws_lambda_powertools.utilities.data_classes.sqs_event import SQSRecord
 
 # Use the FIFO-specific processor
-processor = SqsFifoPartialProcessor()
+processor = SqsFifoPartialProcessor(skip_group_on_error=True)
 
 
 def record_handler(record: SQSRecord):
@@ -210,12 +219,16 @@ def record_handler(record: SQSRecord):
     process_event(payload)
 
 
-@batch_processor(record_handler=record_handler, processor=processor)
 def lambda_handler(event, context):
-    return processor.response()
+    return process_partial_response(
+        event=event,
+        record_handler=record_handler,
+        processor=processor,
+        context=context,
+    )
 ```
 
-When a record fails in a FIFO group, the processor stops processing subsequent records in that same group while continuing to process records from other groups. This preserves message ordering within each group.
+With `skip_group_on_error=True`, when a record fails in a FIFO group, the processor stops processing subsequent records in that same group while continuing to process records from other groups. This preserves message ordering within each group. Without that flag, `SqsFifoPartialProcessor` stops after the first failure and reports the failed record plus all remaining unprocessed records as failures.
 
 ## Error Handling and Dead Letter Queues
 
@@ -260,10 +273,10 @@ from aws_lambda_powertools.metrics import MetricUnit
 from aws_lambda_powertools.utilities.batch import (
     BatchProcessor,
     EventType,
-    batch_processor,
+    process_partial_response,
 )
 
-processor = BatchProcessor(event_type=EventType.SQS)
+processor = BatchProcessor(event_type=EventType.SQS, raise_on_entire_batch_failure=False)
 metrics = Metrics(namespace="OrderProcessing")
 
 
@@ -274,9 +287,13 @@ def record_handler(record):
 
 
 @metrics.log_metrics
-@batch_processor(record_handler=record_handler, processor=processor)
 def lambda_handler(event, context):
-    response = processor.response()
+    response = process_partial_response(
+        event=event,
+        record_handler=record_handler,
+        processor=processor,
+        context=context,
+    )
 
     # Track failure rate
     failed = len(response.get("batchItemFailures", []))
@@ -299,10 +316,10 @@ A few things to watch out for when using batch processing:
 
 3. **Timeout awareness** - If your Lambda times out mid-batch, all unprocessed records get retried. Set your function timeout high enough to handle the maximum batch size.
 
-4. **Visibility timeout** - Set your queue's visibility timeout to at least 6x your Lambda timeout. This prevents messages from becoming visible again while Lambda is still processing them.
+4. **Visibility timeout** - Set your queue's visibility timeout to at least 6x your Lambda timeout, plus any configured batch window. This prevents messages from becoming visible again while Lambda is still processing them.
 
 ## Wrapping Up
 
 Lambda Powertools Batch takes a real pain point - partial SQS batch failures - and solves it cleanly. You write a handler for a single record, and the library deals with tracking successes, failures, and generating the right response format. The FIFO support is a nice bonus if you need ordered processing.
 
-The pattern works the same whether you're processing orders, user events, or any other workload pulled from SQS. Start with the decorator approach for simple cases, switch to the context manager when you need more control, and always remember to enable `ReportBatchItemFailures` on your event source mapping.
+The pattern works the same whether you're processing orders, user events, or any other workload pulled from SQS. Start with the helper approach for simple cases, switch to the context manager when you need more control, and always remember to enable `ReportBatchItemFailures` on your event source mapping.
