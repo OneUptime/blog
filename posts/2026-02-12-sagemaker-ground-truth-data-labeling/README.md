@@ -19,7 +19,7 @@ Ground Truth orchestrates labeling jobs by distributing data to human annotators
 - **Amazon Mechanical Turk** - Crowdsourced labeling from the public workforce
 - **Private workforce** - Your own team of annotators
 - **Vendor workforce** - Professional labeling companies from the AWS Marketplace
-- **Automated labeling** - Active learning that progressively labels data without human involvement
+- **Automated labeling** - Active learning that machine-labels some data while sending uncertain items to humans
 
 ```mermaid
 graph TB
@@ -33,7 +33,7 @@ graph TB
     G --> H[Training Data in S3]
 ```
 
-The active learning piece is the real game-changer. As human annotators label a subset of your data, Ground Truth trains a model to label the rest automatically. It only sends ambiguous cases to humans, which can reduce labeling costs by up to 70%.
+The active learning piece is the real game-changer. Ground Truth starts by sending a sample of your data to human annotators, then uses those labels to train a model. As the model improves, high-confidence items can be labeled automatically while uncertain items continue going to humans, which can reduce labeling costs by up to 70%.
 
 ## Setting Up an Image Classification Labeling Job
 
@@ -93,18 +93,18 @@ sagemaker_client.create_labeling_job(
     RoleArn='arn:aws:iam::123456789012:role/SageMakerGroundTruthRole',
     LabelCategoryConfigS3Uri=f's3://{bucket}/configs/label-categories.json',
     HumanTaskConfig={
-        'WorkteamArn': 'arn:aws:sagemaker:us-east-1:123456789012:workteam/private-crowd/my-team',
+        'WorkteamArn': 'arn:aws:sagemaker:us-east-1:123456789012:workteam/private-crowd/image-labelers',
         'UiConfig': {
             'UiTemplateS3Uri': f's3://{bucket}/templates/image-classification.html'
         },
-        'PreHumanTaskLambdaArn': 'arn:aws:lambda:us-east-1:123456789012:function:PRE-ImageMultiClass',
+        'PreHumanTaskLambdaArn': 'arn:aws:lambda:us-east-1:432418664414:function:PRE-ImageMultiClass',
         'TaskTitle': 'Classify product images',
         'TaskDescription': 'Look at each image and select the correct product category',
         'NumberOfHumanWorkersPerDataObject': 3,  # 3 annotators per image
         'TaskTimeLimitInSeconds': 300,  # 5 minutes per task
         'AnnotationConsolidationConfig': {
             'AnnotationConsolidationLambdaArn':
-                'arn:aws:lambda:us-east-1:123456789012:function:ACS-ImageMultiClass'
+                'arn:aws:lambda:us-east-1:432418664414:function:ACS-ImageMultiClass'
         }
     }
 )
@@ -174,18 +174,19 @@ Ground Truth comes with built-in templates for common tasks, but you can create 
 
 <crowd-form>
     <crowd-image-classifier
-        name="category"
-        src="{{ task.input.source-ref | grant_read_access }}"
+        name="crowd-image-classifier"
+        src="{{ task.input.taskObject | grant_read_access }}"
         header="What type of product is shown in this image?"
-        categories="['Electronics', 'Clothing', 'Home', 'Books', 'Sports', 'Other']">
+        categories="{{ task.input.labels | to_json | escape }}">
 
         <full-instructions header="Product Classification Instructions">
             <p>Look at the image carefully and select the category that best describes the product.</p>
             <p><strong>Electronics:</strong> Phones, computers, TVs, headphones, etc.</p>
             <p><strong>Clothing:</strong> Shirts, pants, shoes, accessories, etc.</p>
-            <p><strong>Home:</strong> Furniture, kitchen items, decor, etc.</p>
+            <p><strong>Home & Garden:</strong> Furniture, kitchen items, decor, etc.</p>
             <p><strong>Books:</strong> Physical books, magazines, etc.</p>
             <p><strong>Sports:</strong> Exercise equipment, sports gear, etc.</p>
+            <p><strong>Toys:</strong> Games, puzzles, dolls, playsets, etc.</p>
             <p><strong>Other:</strong> Anything that doesn't fit the above categories.</p>
         </full-instructions>
 
@@ -267,23 +268,23 @@ sagemaker_client.create_labeling_job(
             'arn:aws:sagemaker:us-east-1:027400017018:labeling-job-algorithm-specification/image-classification'
     },
     HumanTaskConfig={
-        'WorkteamArn': 'arn:aws:sagemaker:us-east-1:123456789012:workteam/private-crowd/my-team',
+        'WorkteamArn': 'arn:aws:sagemaker:us-east-1:123456789012:workteam/private-crowd/image-labelers',
         'UiConfig': {
             'UiTemplateS3Uri': f's3://{bucket}/templates/image-classification.html'
         },
-        'PreHumanTaskLambdaArn': 'arn:aws:lambda:us-east-1:123456789012:function:PRE-ImageMultiClass',
+        'PreHumanTaskLambdaArn': 'arn:aws:lambda:us-east-1:432418664414:function:PRE-ImageMultiClass',
         'TaskTitle': 'Classify product images',
         'TaskDescription': 'Select the correct product category',
         'NumberOfHumanWorkersPerDataObject': 3,
         'TaskTimeLimitInSeconds': 300,
         'AnnotationConsolidationConfig': {
             'AnnotationConsolidationLambdaArn':
-                'arn:aws:lambda:us-east-1:123456789012:function:ACS-ImageMultiClass'
+                'arn:aws:lambda:us-east-1:432418664414:function:ACS-ImageMultiClass'
         },
         'MaxConcurrentTaskCount': 100
     },
     StoppingConditions={
-        'MaxHumanLabeledObjectCount': 500,       # Stop after labeling 500 items
+        'MaxHumanLabeledObjectCount': 500,       # Cap human labeling at 500 objects
         'MaxPercentageOfInputDatasetLabeled': 100 # Or when all items are labeled
     }
 )
@@ -324,7 +325,7 @@ labeled_data = []
 for line in manifest_lines:
     record = json.loads(line)
     source = record['source-ref']
-    label = record['product-category']
+    label = record['product-category-metadata']['class-name']
     confidence = record.get('product-category-metadata', {}).get('confidence', 0)
 
     labeled_data.append({
