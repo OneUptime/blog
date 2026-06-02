@@ -14,7 +14,7 @@ Aurora failovers are a normal part of database operations - they're a safety mec
 
 ## Understanding Aurora Failover
 
-When Aurora detects a problem with the writer instance, it promotes a reader to become the new writer. The old writer endpoint DNS record updates to point to the new writer. This whole process typically takes 15-30 seconds, but the actual application impact depends on how your application handles connections.
+When Aurora detects a problem with the writer instance, it promotes a reader to become the new writer. The cluster endpoint DNS record updates to point to the new writer. Service is typically restored in less than 60 seconds, and often less than 30 seconds, but the actual application impact depends on how your application handles connections.
 
 ```mermaid
 sequenceDiagram
@@ -61,14 +61,14 @@ aws rds describe-events \
   --output table
 ```
 
-Common event messages and what they mean:
+Common Aurora event messages and what they mean:
 
 | Event Message | Meaning |
 |---------------|---------|
-| "A new writer was promoted" | Failover completed |
+| "Completed failover to DB instance" | Failover completed |
 | "DB instance restarted" | Instance was restarted (possible cause of failover) |
-| "Recovery of the DB instance has started" | Instance crash recovery |
-| "Multi-AZ failover started" | Failover was initiated |
+| "Started same AZ failover to DB instance" | Failover was initiated in the same Availability Zone |
+| "Started cross AZ failover to DB instance" | Failover was initiated to another Availability Zone |
 | "DB instance shutdown" | Instance was intentionally stopped |
 
 ### Check CloudWatch Logs
@@ -79,7 +79,7 @@ If enhanced monitoring is enabled, check the OS-level metrics leading up to the 
 # Check enhanced monitoring data (requires Enhanced Monitoring enabled)
 aws logs filter-log-events \
   --log-group-name RDSOSMetrics \
-  --log-stream-name-prefix my-aurora-writer \
+  --log-stream-name-prefix db-ABCDEFGHIJKLMNOPQRSTUV \
   --start-time $(date -d '2 hours ago' +%s000) \
   --end-time $(date +%s000)
 ```
@@ -137,8 +137,8 @@ aws rds modify-db-instance \
   --apply-immediately
 
 # Also review these parameters that affect memory usage
-aws rds describe-db-cluster-parameters \
-  --db-cluster-parameter-group-name my-aurora-params \
+aws rds describe-db-parameters \
+  --db-parameter-group-name my-aurora-instance-params \
   --query 'Parameters[?ParameterName==`innodb_buffer_pool_size` || ParameterName==`max_connections` || ParameterName==`table_open_cache`].{Name:ParameterName,Value:ParameterValue}'
 ```
 
@@ -167,10 +167,10 @@ AND TIME > 10
 ORDER BY TIME DESC;
 ```
 
-Set up query-level monitoring:
+If Performance Schema is already enabled, set up query-level monitoring:
 
 ```sql
--- Enable the performance schema to track query statistics
+-- Enable statement instruments to track query statistics
 UPDATE performance_schema.setup_instruments
 SET ENABLED = 'YES', TIMED = 'YES'
 WHERE NAME LIKE 'statement/%';
@@ -191,7 +191,7 @@ LIMIT 20;
 
 While rare with Aurora's distributed storage, storage-level issues can trigger a failover.
 
-**Indicators:** DMLLatency or CommitLatency spiked before the failover. `VolumeBytesUsed` approaching limits.
+**Indicators:** DMLLatency or CommitLatency spiked before the failover. For Aurora MySQL, `AuroraVolumeBytesLeftTotal` approaching zero.
 
 ```bash
 # Check storage-related metrics
@@ -288,12 +288,22 @@ class ResilientConnection:
     def get_connection(self):
         for attempt in range(self.max_retries):
             try:
-                if self.connection is None or not self.connection.open:
+                if self.connection is not None and self.connection.open:
+                    try:
+                        # Test the connection before reusing it
+                        self.connection.ping(reconnect=False)
+                        return self.connection
+                    except pymysql.err.Error:
+                        try:
+                            self.connection.close()
+                        except pymysql.err.Error:
+                            pass
+                        self.connection = None
+
+                if self.connection is None:
                     self.connection = pymysql.connect(**self.config)
-                # Test the connection
-                self.connection.ping(reconnect=True)
                 return self.connection
-            except pymysql.OperationalError as e:
+            except pymysql.err.OperationalError as e:
                 wait = min(2 ** attempt, 30)
                 logger.warning(
                     f"Connection attempt {attempt + 1} failed: {e}. "
@@ -323,11 +333,15 @@ When Aurora fails over, the cluster endpoint DNS updates. If your application ca
 # In Python, the socket library doesn't cache by default
 # But if using a connection pool, ensure it validates connections:
 import pymysql
-pool = pymysql.connect(
+connection = pymysql.connect(
     host='my-cluster.cluster-abc123.us-east-1.rds.amazonaws.com',
-    # This forces a connection check before each use
-    ping=True
+    user='app_user',
+    password='secret',
+    database='app_db'
 )
+
+# Check a pooled connection before reusing it
+connection.ping(reconnect=False)
 ```
 
 ## Setting Up Failover Alerts
