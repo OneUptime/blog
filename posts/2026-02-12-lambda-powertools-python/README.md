@@ -36,12 +36,12 @@ Resources:
       Runtime: python3.12
       Handler: app.handler
       Layers:
-        - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:4
+        - !Sub arn:aws:lambda:${AWS::Region}:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:27
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: order-service
           POWERTOOLS_METRICS_NAMESPACE: MyApplication
-          LOG_LEVEL: INFO
+          POWERTOOLS_LOG_LEVEL: INFO
 ```
 
 ## Structured Logging
@@ -159,7 +159,7 @@ The Metrics utility lets you create custom CloudWatch metrics from your Lambda f
 
 ```python
 from aws_lambda_powertools import Logger, Metrics, Tracer
-from aws_lambda_powertools.metrics import MetricUnit
+from aws_lambda_powertools.metrics import MetricResolution, MetricUnit
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
 logger = Logger(service="order-service")
