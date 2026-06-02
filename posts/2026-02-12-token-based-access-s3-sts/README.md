@@ -196,7 +196,7 @@ The HTML form:
 
 ## Pattern 3: Federated Access with GetFederationToken
 
-For external users or applications that need broader but time-limited access. GetFederationToken creates temporary credentials with an inline policy.
+For external users or applications that need broader but time-limited access. GetFederationToken creates temporary credentials with an inline policy. Call it from a server-side broker using IAM user credentials that already have the permissions you want to delegate; the inline policy can only further restrict those permissions.
 
 This generates federated credentials that allow read access to a user's specific S3 prefix:
 
@@ -215,19 +215,18 @@ response = sts.get_federation_token(
         "Statement": [
             {
                 "Effect": "Allow",
-                "Action": [
-                    "s3:GetObject",
-                    "s3:ListBucket"
-                ],
-                "Resource": [
-                    "arn:aws:s3:::shared-data-bucket",
-                    "arn:aws:s3:::shared-data-bucket/users/user-123/*"
-                ],
+                "Action": "s3:ListBucket",
+                "Resource": "arn:aws:s3:::shared-data-bucket",
                 "Condition": {
                     "StringLike": {
                         "s3:prefix": ["users/user-123/*"]
                     }
                 }
+            },
+            {
+                "Effect": "Allow",
+                "Action": "s3:GetObject",
+                "Resource": "arn:aws:s3:::shared-data-bucket/users/user-123/*"
             }
         ]
     })
@@ -338,6 +337,8 @@ def handler(event, context):
         })
     }
 ```
+
+The role trust policy must allow both `sts:AssumeRole` and `sts:TagSession` for the Lambda execution role when you pass session tags.
 
 The role policy uses session tags to restrict each user to their own prefix:
 
