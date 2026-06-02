@@ -37,9 +37,11 @@ exports.handler = async () => {
 
 // Reusable validation function
 async function validateSuccessResponse(response) {
+  const responseBody = await readResponseBody(response);
+
   // Check status code
   if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(`Expected 2xx, got ${response.statusCode}: ${response.body}`);
+    throw new Error(`Expected 2xx, got ${response.statusCode}: ${responseBody}`);
   }
 
   // Check content type
@@ -51,13 +53,23 @@ async function validateSuccessResponse(response) {
   // Parse and validate body
   let body;
   try {
-    body = JSON.parse(response.body);
+    body = JSON.parse(responseBody);
   } catch (e) {
-    throw new Error(`Invalid JSON response: ${response.body.substring(0, 200)}`);
+    throw new Error(`Invalid JSON response: ${responseBody.substring(0, 200)}`);
   }
 
   log.info(`Health check response: ${JSON.stringify(body)}`);
   return true;
+}
+
+function readResponseBody(response) {
+  return new Promise((resolve) => {
+    let responseBody = '';
+    response.on('data', (chunk) => {
+      responseBody += chunk;
+    });
+    response.on('end', () => resolve(responseBody));
+  });
 }
 ```
 
@@ -70,14 +82,15 @@ Most APIs require authentication. Here are common patterns for canary scripts.
 ```javascript
 const synthetics = require('Synthetics');
 const log = require('SyntheticsLogger');
-const AWS = require('aws-sdk');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+
+const secretsManager = new SecretsManagerClient({});
 
 // Fetch API key from Secrets Manager (don't hardcode secrets)
 async function getApiKey() {
-  const secretsManager = new AWS.SecretsManager();
-  const secret = await secretsManager.getSecretValue({
+  const secret = await secretsManager.send(new GetSecretValueCommand({
     SecretId: 'canary/api-key',
-  }).promise();
+  }));
   return JSON.parse(secret.SecretString).apiKey;
 }
 
@@ -110,23 +123,29 @@ exports.handler = async () => {
 ```javascript
 const synthetics = require('Synthetics');
 const log = require('SyntheticsLogger');
-const AWS = require('aws-sdk');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+
+const secretsManager = new SecretsManagerClient({});
 
 let cachedToken = null;
 
 async function getCredentials() {
-  const secretsManager = new AWS.SecretsManager();
-  const secret = await secretsManager.getSecretValue({
+  const secret = await secretsManager.send(new GetSecretValueCommand({
     SecretId: 'canary/oauth-credentials',
-  }).promise();
+  }));
   return JSON.parse(secret.SecretString);
 }
 
 async function getAccessToken() {
   const creds = await getCredentials();
+  const requestBody = new URLSearchParams({
+    grant_type: 'client_credentials',
+    client_id: creds.clientId,
+    client_secret: creds.clientSecret,
+  }).toString();
 
   // Step 1: Get an access token
-  const tokenResponse = await synthetics.executeHttpStep('Get OAuth Token', {
+  await synthetics.executeHttpStep('Get OAuth Token', {
     hostname: 'auth.example.com',
     path: '/oauth/token',
     port: 443,
@@ -135,12 +154,13 @@ async function getAccessToken() {
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
     },
-    body: `grant_type=client_credentials&client_id=${creds.clientId}&client_secret=${creds.clientSecret}`,
+    body: requestBody,
   }, async (response) => {
+    const responseBody = await readResponseBody(response);
     if (response.statusCode !== 200) {
-      throw new Error(`Token request failed: ${response.statusCode} ${response.body}`);
+      throw new Error(`Token request failed: ${response.statusCode} ${responseBody}`);
     }
-    const body = JSON.parse(response.body);
+    const body = JSON.parse(responseBody);
     if (!body.access_token) {
       throw new Error('No access_token in response');
     }
@@ -166,16 +186,27 @@ exports.handler = async () => {
       'Accept': 'application/json',
     },
   }, async (response) => {
+    const responseBody = await readResponseBody(response);
     if (response.statusCode !== 200) {
       throw new Error(`Protected endpoint failed: ${response.statusCode}`);
     }
-    const body = JSON.parse(response.body);
+    const body = JSON.parse(responseBody);
     if (!body.accountId) {
       throw new Error('Missing accountId in profile response');
     }
     log.info(`Profile retrieved for account: ${body.accountId}`);
   });
 };
+
+function readResponseBody(response) {
+  return new Promise((resolve) => {
+    let responseBody = '';
+    response.on('data', (chunk) => {
+      responseBody += chunk;
+    });
+    response.on('end', () => resolve(responseBody));
+  });
+}
 ```
 
 ## Response Schema Validation
@@ -234,7 +265,8 @@ exports.handler = async () => {
       throw new Error(`Expected 200, got ${response.statusCode}`);
     }
 
-    const body = JSON.parse(response.body);
+    const responseBody = await readResponseBody(response);
+    const body = JSON.parse(responseBody);
 
     // Validate the response schema
     validateSchema(body, {
@@ -250,6 +282,16 @@ exports.handler = async () => {
     log.info(`Schema validation passed. ${body.orders.length} orders returned.`);
   });
 };
+
+function readResponseBody(response) {
+  return new Promise((resolve) => {
+    let responseBody = '';
+    response.on('data', (chunk) => {
+      responseBody += chunk;
+    });
+    response.on('end', () => resolve(responseBody));
+  });
+}
 ```
 
 ## Multi-Step API Workflow
@@ -273,7 +315,8 @@ exports.handler = async () => {
     headers: { 'Accept': 'application/json' },
   }, async (response) => {
     if (response.statusCode !== 200) throw new Error(`List products failed: ${response.statusCode}`);
-    const body = JSON.parse(response.body);
+    const responseBody = await readResponseBody(response);
+    const body = JSON.parse(responseBody);
     if (!body.products || body.products.length === 0) {
       throw new Error('No available products found');
     }
@@ -298,10 +341,11 @@ exports.handler = async () => {
       testMode: true,
     }),
   }, async (response) => {
+    const responseBody = await readResponseBody(response);
     if (response.statusCode !== 201) {
-      throw new Error(`Create order failed: ${response.statusCode} - ${response.body}`);
+      throw new Error(`Create order failed: ${response.statusCode} - ${responseBody}`);
     }
-    const body = JSON.parse(response.body);
+    const body = JSON.parse(responseBody);
     orderId = body.orderId;
     log.info(`Created test order: ${orderId}`);
   });
@@ -318,7 +362,8 @@ exports.handler = async () => {
     if (response.statusCode !== 200) {
       throw new Error(`Get order failed: ${response.statusCode}`);
     }
-    const body = JSON.parse(response.body);
+    const responseBody = await readResponseBody(response);
+    const body = JSON.parse(responseBody);
     if (body.orderId !== orderId) {
       throw new Error(`Order ID mismatch: ${body.orderId} vs ${orderId}`);
     }
@@ -344,6 +389,16 @@ exports.handler = async () => {
     }
   });
 };
+
+function readResponseBody(response) {
+  return new Promise((resolve) => {
+    let responseBody = '';
+    response.on('data', (chunk) => {
+      responseBody += chunk;
+    });
+    response.on('end', () => resolve(responseBody));
+  });
+}
 ```
 
 ## Performance Validation
@@ -397,11 +452,12 @@ exports.handler = async () => {
 If you prefer Python, CloudWatch Synthetics supports it too:
 
 ```python
-from aws_synthetics.selenium import synthetics_webdriver as syn_webdriver
 from aws_synthetics.common import synthetics_logger as logger
-import requests
 import json
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 def api_canary():
     base_url = "https://api.example.com"
@@ -409,27 +465,35 @@ def api_canary():
     # Step 1: Health check
     logger.info("Step 1: Health check")
     start = time.time()
-    response = requests.get(f"{base_url}/health", timeout=10)
+    response = http_get(f"{base_url}/health")
     latency = (time.time() - start) * 1000
 
-    assert response.status_code == 200, f"Health check failed: {response.status_code}"
-    body = response.json()
+    assert response["status"] == 200, f"Health check failed: {response['status']}"
+    body = json.loads(response["body"])
     assert body.get("status") == "healthy", f"Service unhealthy: {body}"
     logger.info(f"Health check passed in {latency:.0f}ms")
 
     # Step 2: API endpoint test
     logger.info("Step 2: Get products")
-    response = requests.get(
-        f"{base_url}/v1/products",
-        params={"limit": 5},
-        headers={"Accept": "application/json"},
-        timeout=10
-    )
-    assert response.status_code == 200, f"Products endpoint failed: {response.status_code}"
-    products = response.json()
+    query = urllib.parse.urlencode({"limit": 5})
+    response = http_get(f"{base_url}/v1/products?{query}", headers={"Accept": "application/json"})
+    assert response["status"] == 200, f"Products endpoint failed: {response['status']}"
+    products = json.loads(response["body"])
     assert "products" in products, "Missing products key in response"
     assert len(products["products"]) > 0, "No products returned"
     logger.info(f"Retrieved {len(products['products'])} products")
+
+def http_get(url, headers=None):
+    request = urllib.request.Request(url, headers=headers or {}, method="GET")
+    try:
+        response = urllib.request.urlopen(request, timeout=10)
+    except urllib.error.HTTPError as response:
+        pass
+    with response:
+        return {
+            "status": response.status,
+            "body": response.read().decode("utf-8"),
+        }
 
 def handler(event, context):
     api_canary()
@@ -449,7 +513,7 @@ A few things to keep in mind when writing API canaries:
 
 **Keep secrets in Secrets Manager**: Never hardcode API keys, tokens, or passwords in canary scripts. Use AWS Secrets Manager and fetch them at runtime.
 
-**Set appropriate timeouts**: The default timeout is 60 seconds. For API canaries testing multiple endpoints, you might need more time.
+**Set appropriate timeouts**: If you don't specify a timeout, CloudWatch Synthetics chooses one based on the canary's frequency. For API canaries testing multiple endpoints, configure enough time for all steps and keep the timeout at least 15 seconds to allow for Lambda cold starts and canary instrumentation startup.
 
 ## Wrapping Up
 
