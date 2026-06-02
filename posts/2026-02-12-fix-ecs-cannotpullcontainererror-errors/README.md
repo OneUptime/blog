@@ -66,7 +66,7 @@ aws ecr list-images \
 
 ## ECR Authentication Issues
 
-ECR authentication tokens expire every 12 hours. For EC2 launch type, the ECS agent handles this automatically - but it needs the right IAM permissions. For Fargate, authentication is handled transparently as long as IAM is correct.
+ECR authentication tokens expire every 12 hours. For EC2 launch type, the ECS agent handles this automatically - but the container instance IAM role needs the right IAM permissions. For Fargate, authentication is handled transparently as long as the task execution role is correct.
 
 For EC2 launch type, verify the ECS agent can authenticate:
 
@@ -142,6 +142,8 @@ aws ec2 describe-route-tables \
     --query 'RouteTables[0].Routes[?NatGatewayId!=null]'
 ```
 
+This filter only finds an explicit subnet route table association. If it returns nothing, also check the VPC's main route table because subnets can inherit it implicitly.
+
 If you're using VPC endpoints instead of NAT, you need these endpoints:
 
 ```yaml
@@ -179,7 +181,7 @@ Resources:
         - !Ref PrivateRouteTable
 ```
 
-You need all three: `ecr.api`, `ecr.dkr`, and `s3` (because ECR stores image layers in S3).
+For ECS tasks on EC2 and Fargate platform version `1.4.0` or later, you need all three: `ecr.api`, `ecr.dkr`, and `s3` (because ECR stores image layers in S3). Fargate platform version `1.3.0` or earlier only needs `ecr.dkr` and `s3`.
 
 ### Security Group Rules
 
@@ -251,7 +253,8 @@ Here's a quick checklist to work through:
 # 1. Does the image exist?
 aws ecr describe-images --repository-name my-app --image-ids imageTag=latest
 
-# 2. Does the task execution role have ECR permissions?
+# 2. Does the right ECS role have ECR permissions?
+# Fargate: task execution role. EC2 launch type: container instance role.
 aws iam get-role-policy --role-name ecsTaskExecutionRole --policy-name ECRAccess
 
 # 3. Can the subnet reach ECR?
@@ -266,4 +269,4 @@ For ongoing visibility into image pull failures and other ECS issues, set up [co
 
 ## Summary
 
-`CannotPullContainerError` breaks down to four categories: wrong image reference, authentication failure, network connectivity, or IAM permissions. Verify the image exists, check your task execution role has ECR permissions, ensure network connectivity to ECR (via NAT or VPC endpoints), and confirm security groups allow outbound HTTPS. Working through these systematically resolves the issue every time.
+`CannotPullContainerError` breaks down to four categories: wrong image reference, authentication failure, network connectivity, or IAM permissions. Verify the image exists, check that the right ECS role has ECR permissions, ensure network connectivity to ECR (via NAT or VPC endpoints), and confirm security groups allow outbound HTTPS. Working through these systematically resolves most cases.
