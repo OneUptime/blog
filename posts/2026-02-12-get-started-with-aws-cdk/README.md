@@ -8,7 +8,7 @@ Description: A complete beginner's guide to AWS CDK covering installation, core 
 
 ---
 
-AWS CDK (Cloud Development Kit) lets you define cloud infrastructure using programming languages you already know - TypeScript, Python, Java, C#, or Go. Instead of writing hundreds of lines of YAML or JSON for CloudFormation, you write actual code with loops, conditions, and abstractions. Then CDK synthesizes it into CloudFormation templates and deploys them.
+AWS CDK (Cloud Development Kit) lets you define cloud infrastructure using programming languages you already know - TypeScript, JavaScript, Python, Java, C#, or Go. Instead of writing hundreds of lines of YAML or JSON for CloudFormation, you write actual code with loops, conditions, and abstractions. Then CDK synthesizes it into CloudFormation templates and deploys them.
 
 If you've been writing CloudFormation templates by hand, CDK is going to feel like a massive upgrade. You get IDE autocomplete, type checking, unit testing, and the full power of a programming language. Let's get started.
 
@@ -17,7 +17,7 @@ If you've been writing CloudFormation templates by hand, CDK is going to feel li
 Before installing CDK, make sure you have these in place.
 
 ```bash
-# Check that Node.js is installed (CDK requires Node.js 14.x or later)
+# Check that Node.js is installed (CDK requires Node.js 22.x or later)
 
 node --version
 
@@ -71,7 +71,7 @@ graph TD
 
 ## Bootstrapping Your AWS Account
 
-Before your first deployment, you need to bootstrap your AWS account. This creates an S3 bucket and some IAM roles that CDK uses to deploy resources.
+Before your first deployment, you need to bootstrap your AWS environment. This creates resources such as an S3 bucket, an ECR repository, and IAM roles that CDK uses to deploy resources.
 
 ```bash
 # Bootstrap the default account and region
@@ -80,11 +80,11 @@ cdk bootstrap
 # Bootstrap a specific account and region
 cdk bootstrap aws://123456789012/us-east-1
 
-# Bootstrap with a custom qualifier (for multiple CDK deployments)
+# Bootstrap with a custom qualifier (your app must use the same qualifier)
 cdk bootstrap --qualifier myproject
 ```
 
-You only need to bootstrap once per account/region combination. After that, all CDK apps can deploy to that account.
+You only need to bootstrap once per account/region combination. After that, CDK apps that use the matching bootstrap configuration can deploy to that environment.
 
 ## Creating Your First CDK App
 
@@ -165,7 +165,7 @@ cdk destroy
 
 Let's walk through each step.
 
-**Synthesize** converts your code to CloudFormation JSON. You'll find the output in the `cdk.out` directory.
+**Synthesize** converts your code to CloudFormation templates. You'll find JSON templates in the `cdk.out` directory, and `cdk synth` prints YAML to your terminal by default.
 
 ```bash
 # Synthesize and view the generated template
@@ -198,7 +198,7 @@ cdk deploy MyFirstCdkAppStack
 
 There are several reasons teams are moving to CDK.
 
-**Smart defaults.** CDK L2 constructs set sensible defaults. An S3 bucket created with CDK automatically blocks public access by default. A Lambda function gets a properly scoped execution role without you writing any IAM policy.
+**Smart defaults.** CDK L2 constructs set sensible defaults. A new S3 bucket is private by default, and Amazon S3 applies its Block Public Access defaults unless you configure otherwise. A Lambda function gets a properly scoped execution role without you writing any IAM policy.
 
 **Composition.** You can create reusable constructs and share them across teams. Need a standard "API + Lambda + DynamoDB" pattern? Build it once as a construct and use it everywhere.
 
@@ -208,11 +208,14 @@ There are several reasons teams are moving to CDK.
 
 ```typescript
 // Creating multiple SQS queues with a loop - try doing this in YAML
+import * as sqs from 'aws-cdk-lib/aws-sqs';
+
 const queueNames = ['orders', 'payments', 'notifications', 'emails', 'analytics'];
+const environment = 'dev';
 
 for (const name of queueNames) {
   new sqs.Queue(this, `${name}Queue`, {
-    queueName: `${props.environment}-${name}`,
+    queueName: `${environment}-${name}`,
     retentionPeriod: cdk.Duration.days(14),
     visibilityTimeout: cdk.Duration.seconds(30),
   });
