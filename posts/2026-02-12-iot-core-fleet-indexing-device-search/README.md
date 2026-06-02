@@ -57,17 +57,15 @@ aws iot update-indexing-configuration \
     "thingConnectivityIndexingMode": "STATUS",
     "deviceDefenderIndexingMode": "VIOLATIONS",
     "namedShadowIndexingMode": "ON",
-    "managedFields": [
-      {"name": "registry.version", "type": "Number"},
+    "filter": {
+      "namedShadowNames": ["configuration"]
+    },
+    "customFields": [
+      {"name": "attributes.location", "type": "String"},
       {"name": "shadow.desired.firmware", "type": "String"},
       {"name": "shadow.reported.firmware", "type": "String"},
       {"name": "shadow.reported.battery_level", "type": "Number"},
       {"name": "shadow.reported.temperature", "type": "Number"}
-    ],
-    "customFields": [
-      {"name": "attributes.location", "type": "String"},
-      {"name": "attributes.device_type", "type": "String"},
-      {"name": "attributes.firmware_version", "type": "String"}
     ]
   }'
 ```
@@ -79,6 +77,8 @@ The indexing modes:
 - `OFF` - Disable indexing
 
 Enable `thingConnectivityIndexingMode: STATUS` to track which devices are online.
+
+When you enable named shadow indexing, specify the named shadows to include in the `filter.namedShadowNames` list. Custom fields are needed for aggregations on thing attributes or shadow fields that are not AWS managed fields.
 
 ## Step 2: Enable Thing Group Indexing
 
@@ -186,7 +186,7 @@ aws iot search-index \
 
 # Find devices connected in the last hour
 aws iot search-index \
-  --query-string "connectivity.timestamp>[$(date -u -d '1 hour ago' +%s)000]"
+  --query-string "connectivity.timestamp>$(date -u -d '1 hour ago' +%s)000"
 ```
 
 ## Step 5: Aggregate Queries
@@ -279,11 +279,11 @@ echo "=== IoT Fleet Dashboard ==="
 echo ""
 
 # Total device count
-TOTAL=$(aws iot get-cardinality --query-string "*" --query 'numberOfThings' --output text)
+TOTAL=$(aws iot get-cardinality --query-string "*" --query 'cardinality' --output text)
 echo "Total devices: $TOTAL"
 
 # Connected vs disconnected
-CONNECTED=$(aws iot get-cardinality --query-string "connectivity.connected:true" --query 'numberOfThings' --output text)
+CONNECTED=$(aws iot get-cardinality --query-string "connectivity.connected:true" --query 'cardinality' --output text)
 echo "Connected: $CONNECTED / $TOTAL"
 
 # Battery statistics
@@ -296,7 +296,7 @@ aws iot get-statistics \
   --output table
 
 # Low battery count
-LOW_BATT=$(aws iot get-cardinality --query-string "shadow.reported.battery_level<20" --query 'numberOfThings' --output text)
+LOW_BATT=$(aws iot get-cardinality --query-string "shadow.reported.battery_level<20" --query 'cardinality' --output text)
 echo "Low battery devices (<20%): $LOW_BATT"
 
 # Firmware distribution
@@ -314,15 +314,15 @@ aws iot get-buckets-aggregation \
 
 Fleet indexing has costs beyond the standard IoT Core pricing:
 
-- **Indexing**: Charged per thing-month (registry only is cheaper than registry+shadow)
+- **Indexing**: Charged by the number of fleet index updates
 - **Query**: Charged per query
 - **Aggregation**: Charged per aggregation query
 
 Limits to be aware of:
 
-- Maximum 100 custom fields in the index
+- The default maximum is 5 custom fields in the AWS things index, and this quota is adjustable
 - Query result pages limited to 500 things
-- Aggregation queries limited to 500 buckets
+- The maximum number of query terms per query is 12
 - Index updates have a propagation delay (typically seconds, but can be longer during high load)
 
 ## Wrapping Up
