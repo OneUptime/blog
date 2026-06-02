@@ -8,7 +8,7 @@ Description: Learn how to query RDS and Aurora databases directly from Redshift 
 
 ---
 
-Your transactional data lives in RDS or Aurora. Your analytics data lives in Redshift. When you need to join them, the traditional approach is building an ETL pipeline to copy data from RDS into Redshift. Federated queries skip that entirely. You write a single SQL query in Redshift that reads live data from your RDS or Aurora databases, joins it with your warehouse data, and returns the results. No data movement, no ETL maintenance.
+Your transactional data lives in RDS or Aurora. Your analytics data lives in Redshift. When you need to join them, the traditional approach is building an ETL pipeline to copy data from RDS into Redshift. Federated queries skip that separate copy step. You write a single SQL query in Redshift that reads live data from your RDS or Aurora databases, joins it with your warehouse data, and returns the results. No separate ETL copy, no ETL maintenance.
 
 ## How Federated Queries Work
 
@@ -61,13 +61,15 @@ aws ec2 authorize-security-group-ingress \
   --source-group sg-redshift-group
 ```
 
-Also enable enhanced VPC routing on your Redshift cluster if it's not already enabled:
+Enable enhanced VPC routing on your Redshift cluster if your routing requires it, such as cross-VPC connectivity:
 
 ```bash
 aws redshift modify-cluster \
   --cluster-identifier analytics-cluster \
   --enhanced-vpc-routing
 ```
+
+If enhanced VPC routing is enabled and your cluster cannot reach the public Secrets Manager endpoint, configure an interface VPC endpoint for Secrets Manager.
 
 ## Step 2: Store Database Credentials in Secrets Manager
 
@@ -102,11 +104,22 @@ Make sure the Redshift IAM role has permission to read these secrets:
     {
       "Effect": "Allow",
       "Action": [
-        "secretsmanager:GetSecretValue"
+        "secretsmanager:GetResourcePolicy",
+        "secretsmanager:GetSecretValue",
+        "secretsmanager:DescribeSecret",
+        "secretsmanager:ListSecretVersionIds"
       ],
       "Resource": [
         "arn:aws:secretsmanager:us-east-1:123456789012:secret:redshift/federated/*"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetRandomPassword",
+        "secretsmanager:ListSecrets"
+      ],
+      "Resource": "*"
     }
   ]
 }
@@ -304,14 +317,15 @@ Monitor how your federated queries perform:
 -- See federated query details
 SELECT
     query,
-    TRIM(querytxt) AS sql,
-    starttime,
-    endtime,
-    DATEDIFF(millisecond, starttime, endtime) AS duration_ms
-FROM stl_query
-WHERE querytxt LIKE '%rds_orders%'
-  AND starttime > DATEADD(hour, -24, GETDATE())
-ORDER BY starttime DESC
+    TRIM(sourcetype) AS source_type,
+    recordtime,
+    TRIM(querytext) AS remote_sql,
+    num_rows,
+    num_bytes,
+    duration / 1000 AS duration_ms
+FROM svl_federated_query
+WHERE recordtime > DATEADD(hour, -24, GETDATE())
+ORDER BY recordtime DESC
 LIMIT 20;
 
 -- Check external schema details
@@ -326,6 +340,11 @@ WHERE schemaname IN ('rds_orders', 'aurora_inventory');
 ## CloudFormation Setup
 
 ```yaml
+Parameters:
+  RDSPassword:
+    Type: String
+    NoEcho: true
+
 Resources:
   FederatedQueryRole:
     Type: AWS::IAM::Role
@@ -345,9 +364,17 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
+                  - secretsmanager:GetResourcePolicy
                   - secretsmanager:GetSecretValue
+                  - secretsmanager:DescribeSecret
+                  - secretsmanager:ListSecretVersionIds
                 Resource:
                   - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:redshift/federated/*"
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetRandomPassword
+                  - secretsmanager:ListSecrets
+                Resource: "*"
 
   RDSCredentials:
     Type: AWS::SecretsManager::Secret
@@ -364,7 +391,7 @@ Resources:
 
 A few things to keep in mind:
 - Federated queries are read-only - you can't INSERT, UPDATE, or DELETE in the remote database
-- Maximum of 10 external schemas per Redshift cluster by default (can be increased)
+- Amazon Redshift supports up to 9,900 schemas in each database per cluster
 - Large result sets from the remote database will be slow - filter aggressively
 - Not all PostgreSQL and MySQL data types map perfectly to Redshift types
 - Connection limits on your RDS instance apply - many concurrent federated queries can exhaust RDS connections
