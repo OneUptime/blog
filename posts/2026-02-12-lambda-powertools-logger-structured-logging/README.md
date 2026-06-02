@@ -28,7 +28,7 @@ logger = Logger(service="payment-service")
 # Then just use: logger = Logger()
 ```
 
-The logger produces JSON output that looks like this.
+When you use the context injection decorator shown below, the logger produces JSON output that looks like this.
 
 ```json
 {
@@ -46,11 +46,11 @@ The logger produces JSON output that looks like this.
 }
 ```
 
-Every log entry automatically includes the function name, memory size, request ID, and X-Ray trace ID. You don't have to remember to add these - they're always there.
+Every log entry automatically includes the standard fields like level, location, message, timestamp, and service. With `inject_lambda_context`, log entries also include the function name, memory size, request ID, and function ARN. The X-Ray trace ID is included when tracing is enabled.
 
 ## Injecting Lambda Context
 
-The `inject_lambda_context` decorator adds all Lambda context information to every log message in the invocation.
+The `inject_lambda_context` decorator adds key Lambda context information to every log message in the invocation.
 
 ```python
 from aws_lambda_powertools import Logger
@@ -155,7 +155,7 @@ logger = Logger(
 # This gives you detailed logs for troubleshooting without the cost
 sampled_logger = Logger(
     service="order-service",
-    sample_rate=0.1  # 10% of invocations will log at DEBUG level
+    sampling_rate=0.1  # 10% of invocations will log at DEBUG level
 )
 
 @sampled_logger.inject_lambda_context
@@ -232,7 +232,7 @@ fields @timestamp, service, message, level
 
 # Find slow invocations
 filter @type = "REPORT"
-| stats avg(@duration), max(@duration), p99(@duration) by function_name
+| stats avg(@duration), max(@duration), pct(@duration, 99) by function_name
 | sort max(@duration) desc
 
 # Find cold starts with their duration
