@@ -49,9 +49,9 @@ The connection has three parts:
 
 AWS offers two types of connections:
 
-**Dedicated Connection**: A physical port (1 Gbps, 10 Gbps, or 100 Gbps) exclusively for your use. You request it from AWS, and they provision a port at the Direct Connect location.
+**Dedicated Connection**: A physical port (1 Gbps, 10 Gbps, 100 Gbps, or 400 Gbps) exclusively for your use. You request it from AWS, and they provision a port at the Direct Connect location.
 
-**Hosted Connection**: A sub-rate connection (50 Mbps to 10 Gbps) provisioned by an AWS Partner. The partner already has a dedicated connection and carves out capacity for you. Faster to provision and cheaper for lower bandwidth needs.
+**Hosted Connection**: A sub-rate connection (50 Mbps to 25 Gbps) provisioned by an AWS Partner. The partner already has a dedicated connection and carves out capacity for you. Faster to provision and cheaper for lower bandwidth needs.
 
 ## Step 1: Request a Connection
 
@@ -86,7 +86,7 @@ aws directconnect describe-connections \
   --query 'connections[0].{State:connectionState,Bandwidth:bandwidth,Location:location}'
 ```
 
-States progress from `ordering` to `pending` to `available`.
+Dedicated connection states progress from `requested` to `pending` to `available`.
 
 ## Step 2: Create a Virtual Interface
 
@@ -229,12 +229,12 @@ Use BGP to handle failover between connections. Prefer one connection using LOCA
 
 Direct Connect pricing has several components:
 
-- **Port hours**: $0.30/hour for 1 Gbps (~$219/month)
-- **Data transfer out**: $0.02/GB (significantly cheaper than internet-based transfer at $0.09/GB)
+- **Port hours**: $0.30/hour for 1 Gbps outside Japan (~$219/month using AWS's 730-hour month)
+- **Data transfer out**: Region- and Direct Connect location-dependent; for example, $0.02/GB for traffic from a contiguous U.S. Region to a contiguous U.S. Direct Connect location
 - **Cross-connect fee**: Varies by colocation provider ($200-$500/month typical)
 
-The data transfer savings alone can justify Direct Connect. If you transfer 10 TB/month outbound:
-- Over internet: 10,000 GB x $0.09 = $900/month
+The data transfer savings alone can justify Direct Connect. If you transfer 10 TB/month outbound from a contiguous U.S. Region to a contiguous U.S. Direct Connect location:
+- Over internet: 10,000 GB x $0.09 = $900/month (using a typical first-tier internet data transfer rate)
 - Over Direct Connect: 10,000 GB x $0.02 = $200/month + $219 port = $419/month
 
 That's a savings of $481/month, and you get better performance too.
