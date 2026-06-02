@@ -109,8 +109,9 @@ aws osis create-pipeline \
   --min-units 1 \
   --max-units 4 \
   --pipeline-configuration-body file://basic-pipeline.yaml \
+  --pipeline-role-arn arn:aws:iam::123456789012:role/OSIPipelineRole \
   --log-publishing-options \
-    IsLoggingEnabled=true,CloudWatchLogDestination={LogGroup="/aws/osis/my-log-pipeline"}
+    IsLoggingEnabled=true,CloudWatchLogDestination={LogGroup="/aws/vendedlogs/OpenSearchService/my-log-pipeline"}
 ```
 
 ## Step 3: Add Processors for Data Transformation
@@ -133,24 +134,26 @@ apache-log-pipeline:
           log:
             - "%{COMMONAPACHELOG}"
     # Convert string fields to appropriate types
-    - convert_entry_type:
+    - convert_type:
         key: "response"
         type: "integer"
-    - convert_entry_type:
+    - convert_type:
         key: "bytes"
         type: "integer"
     # Add geo-IP information based on client IP
-    - geoip_enrichment:
-        source: "clientip"
-        target: "geo"
+    - geoip:
+        entries:
+          - source: "clientip"
+            target: "geo"
     # Drop health check noise from load balancers
     - drop_events:
         drop_when: '/request =~ "^GET /health"'
     # Add a timestamp from the log entry
     - date:
         match:
-          timestamp:
-            - "dd/MMM/yyyy:HH:mm:ss Z"
+          - key: "timestamp"
+            patterns:
+              - "dd/MMM/yyyy:HH:mm:ss Z"
         destination: "@timestamp"
   sink:
     - opensearch:
@@ -189,8 +192,9 @@ s3-log-pipeline:
             - "%{TIMESTAMP_ISO8601:timestamp} %{LOGLEVEL:level} %{GREEDYDATA:msg}"
     - date:
         match:
-          timestamp:
-            - "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
+          - key: "timestamp"
+            patterns:
+              - "yyyy-MM-dd'T'HH:mm:ss.SSS'Z'"
         destination: "@timestamp"
   sink:
     - opensearch:
@@ -205,8 +209,40 @@ s3-log-pipeline:
 You'll also need to set up the SQS queue and S3 event notification.
 
 ```bash
+# Add S3 and SQS read permissions to the pipeline role
+cat > osi-s3-source-permissions.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+    "Resource": "arn:aws:s3:::my-log-bucket"
+  }, {
+    "Effect": "Allow",
+    "Action": "s3:GetObject",
+    "Resource": "arn:aws:s3:::my-log-bucket/logs/*"
+  }, {
+    "Effect": "Allow",
+    "Action": ["sqs:DeleteMessage", "sqs:ReceiveMessage", "sqs:ChangeMessageVisibility"],
+    "Resource": "arn:aws:sqs:us-east-1:123456789012:s3-log-notifications"
+  }]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name OSIPipelineRole \
+  --policy-name OSIS3SourcePermissions \
+  --policy-document file://osi-s3-source-permissions.json
+
 # Create SQS queue for S3 notifications
 aws sqs create-queue --queue-name s3-log-notifications
+
+# Allow the S3 bucket to publish event notifications to the queue
+aws sqs set-queue-attributes \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/s3-log-notifications \
+  --attributes '{
+    "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"s3.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"arn:aws:sqs:us-east-1:123456789012:s3-log-notifications\",\"Condition\":{\"ArnLike\":{\"aws:SourceArn\":\"arn:aws:s3:::my-log-bucket\"},\"StringEquals\":{\"aws:SourceAccount\":\"123456789012\"}}}]}"
+  }'
 
 # Configure S3 bucket to send notifications to SQS
 aws s3api put-bucket-notification-configuration \
@@ -278,7 +314,7 @@ multi-route-pipeline:
 
 ## Scaling and Monitoring
 
-OSI pipelines auto-scale between your configured min and max units. Each Ingestion OCU (OpenSearch Compute Unit) provides roughly 1 vCPU and 4 GB of memory. Monitor your pipeline through CloudWatch.
+OSI pipelines auto-scale between your configured min and max units. Each Ingestion OCU (OpenSearch Compute Unit) provides roughly 2 vCPUs and 15 GiB of memory. Monitor your pipeline through CloudWatch.
 
 ```bash
 # Check pipeline status
@@ -288,7 +324,7 @@ aws osis get-pipeline --pipeline-name my-log-pipeline \
 # View CloudWatch metrics for the pipeline
 aws cloudwatch get-metric-statistics \
   --namespace "AWS/OSIS" \
-  --metric-name "recordsIn.count" \
+  --metric-name "log-pipeline.date.recordsIn.count" \
   --dimensions Name=PipelineName,Value=my-log-pipeline \
   --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
@@ -300,11 +336,12 @@ For production pipelines, make sure you've got alerting configured for pipeline 
 
 ## Sending Data to Your Pipeline
 
-Once the pipeline is running, send data to it using any HTTP client. The pipeline endpoint is provided after creation.
+Once the pipeline is running, send data to it using an HTTP client that signs requests with AWS Signature Version 4. The IAM principal that signs the request needs `osis:Ingest` permission for the pipeline. The pipeline endpoint is provided after creation.
 
 ```bash
 # Send a test log event to the pipeline
-curl -X POST "https://my-log-pipeline-abc123.us-east-1.osis.amazonaws.com/log/ingest" \
+awscurl --service osis --region us-east-1 \
+  -X POST "https://my-log-pipeline-abc123.us-east-1.osis.amazonaws.com/log/ingest" \
   -H "Content-Type: application/json" \
   -d '[
     {
