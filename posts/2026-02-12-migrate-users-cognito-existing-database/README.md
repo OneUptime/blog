@@ -154,7 +154,8 @@ async function handleForgotPassword(event) {
 Attach the trigger to your user pool:
 
 ```bash
-# Set the user migration Lambda trigger
+# Set the user migration Lambda trigger.
+# Include your existing user pool settings in this update so they aren't reset to defaults.
 
 aws cognito-idp update-user-pool \
     --user-pool-id us-east-1_XXXXXXXXX \
@@ -203,9 +204,9 @@ async function verifyPassword(password, storedHash, hashFormat) {
             const [iterations, salt, hash] = storedHash.split(':');
             return new Promise((resolve, reject) => {
                 crypto.pbkdf2(
-                    password, salt, parseInt(iterations), 64, 'sha512',
+                    password, salt, parseInt(iterations, 10), 64, 'sha512',
                     (err, derivedKey) => {
-                        if (err) reject(err);
+                        if (err) return reject(err);
                         resolve(derivedKey.toString('hex') === hash);
                     }
                 );
@@ -225,11 +226,13 @@ For scenarios where you can't use lazy migration (maybe you're decommissioning t
 Prepare the CSV file in Cognito's required format:
 
 ```csv
-cognito:username,email,email_verified,name,custom:legacy_id,cognito:mfa_enabled
-user1@example.com,user1@example.com,true,John Doe,1001,false
-user2@example.com,user2@example.com,true,Jane Smith,1002,false
-user3@example.com,user3@example.com,true,Bob Wilson,1003,false
+cognito:username,name,given_name,family_name,middle_name,nickname,preferred_username,profile,picture,website,email,email_verified,gender,birthdate,zoneinfo,locale,phone_number,phone_number_verified,address,updated_at,cognito:mfa_enabled,custom:legacy_id
+user1@example.com,John Doe,,,,,,,,,user1@example.com,true,,,,,,,,,false,1001
+user2@example.com,Jane Smith,,,,,,,,,user2@example.com,true,,,,,,,,,false,1002
+user3@example.com,Bob Wilson,,,,,,,,,user3@example.com,true,,,,,,,,,false,1003
 ```
+
+Download the CSV header for your user pool with `aws cognito-idp get-csv-header --user-pool-id us-east-1_XXXXXXXXX` and use that exact header, including any custom attributes you've configured.
 
 Here's a script to generate the CSV from your database:
 
@@ -249,11 +252,19 @@ async function generateImportCSV() {
         'SELECT id, email, name FROM users WHERE active = 1'
     );
 
-    // CSV header must match Cognito's expected format
-    const header = 'cognito:username,email,email_verified,name,custom:legacy_id,cognito:mfa_enabled';
-    const rows = users.map(user =>
-        `${user.email},${user.email},true,${user.name.replace(/,/g, '')},${user.id},false`
-    );
+    // CSV header must match the template from get-csv-header for your user pool
+    const header = 'cognito:username,name,given_name,family_name,middle_name,nickname,preferred_username,profile,picture,website,email,email_verified,gender,birthdate,zoneinfo,locale,phone_number,phone_number_verified,address,updated_at,cognito:mfa_enabled,custom:legacy_id';
+    const escapeCsvValue = value => String(value || '').replace(/,/g, '\\,');
+    const rows = users.map(user => [
+        user.email,
+        escapeCsvValue(user.name),
+        '', '', '', '', '', '', '', '',
+        user.email,
+        'true',
+        '', '', '', '', '', '', '', '',
+        'false',
+        user.id
+    ].join(','));
 
     const csv = [header, ...rows].join('\n');
     fs.writeFileSync('cognito-import.csv', csv);
@@ -282,9 +293,9 @@ UPLOAD_URL=$(aws cognito-idp describe-user-import-job \
     --query 'UserImportJob.PreSignedUrl' --output text)
 
 # Upload the CSV
-curl -X PUT "$UPLOAD_URL" \
-    -H "Content-Type: text/csv" \
-    --data-binary @cognito-import.csv
+curl -v -T "cognito-import.csv" \
+    -H "x-amz-server-side-encryption:aws:kms" \
+    "$UPLOAD_URL"
 
 # Start the import job
 aws cognito-idp start-user-import-job \
