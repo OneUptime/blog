@@ -21,8 +21,11 @@ Before you do anything else, pull the logs. Most deployment problems are immedia
 
 eb logs
 
-# Get full logs (downloaded as a zip)
+# Get full logs (saved under .elasticbeanstalk/logs)
 eb logs --all
+
+# Get full logs compressed as a zip
+eb logs --zip
 
 # Stream logs in real-time during deployment
 eb logs --stream
@@ -35,7 +38,7 @@ The most useful log files are:
 - `/var/log/eb-engine.log` - Deployment engine logs (start here)
 - `/var/log/web.stdout.log` - Your application's stdout output
 - `/var/log/nginx/error.log` - Nginx reverse proxy errors
-- `/var/log/eb-hooks/` - Hook script output
+- `/var/log/eb-activity.log` - Deployment activity logs on older Amazon Linux AMI (AL1) platforms
 
 ## Health Check Failures
 
@@ -62,13 +65,13 @@ port = int(os.environ.get('PORT', 5000))
 app.run(host='0.0.0.0', port=port)
 ```
 
-**Health check path returns non-200**: The default health check hits `/`. If your root path redirects or returns a non-200 status, the check fails.
+**Health check path returns non-200**: For load-balanced web environments using HTTP health checks, the default process health check path is `/`. If your root path redirects or returns a non-200 status, the check fails.
 
 ```yaml
 # .ebextensions/healthcheck.config - Point health check to a dedicated endpoint
 option_settings:
-  aws:elasticbeanstalk:application:
-    Application Healthcheck URL: /health
+  aws:elasticbeanstalk:environment:process:default:
+    HealthCheckPath: /health
 ```
 
 **Application crashes on startup**: The app starts, crashes immediately, and isn't running when the health check arrives. Check `web.stdout.log` for the crash reason.
@@ -144,10 +147,11 @@ when calling the GetObject operation
 Make sure the instance profile has the right policies. You can check what role the instances are using.
 
 ```bash
-# Check the instance profile
-aws elasticbeanstalk describe-environment-resources \
+# Check the instance profile configured for the environment
+aws elasticbeanstalk describe-configuration-settings \
+    --application-name my-app \
     --environment-name production \
-    --query "EnvironmentResources.Instances"
+    --query "ConfigurationSettings[0].OptionSettings[?Namespace=='aws:autoscaling:launchconfiguration' && OptionName=='IamInstanceProfile'].Value"
 
 # Check the IAM role's policies
 aws iam list-attached-role-policies \
@@ -194,13 +198,13 @@ option_settings:
     RootVolumeSize: 30
 ```
 
-Clean up old deployment artifacts.
+Clean up dependency caches.
 
 ```yaml
-# .ebextensions/cleanup.config - Clean up old versions on deploy
+# .ebextensions/cleanup.config - Clean up dependency caches on deploy
 container_commands:
   01_cleanup:
-    command: "sudo rm -rf /var/app/ondeck/node_modules/.cache"
+    command: "if [ -d /var/app/staging/node_modules/.cache ]; then rm -rf /var/app/staging/node_modules/.cache; fi"
 ```
 
 ## Docker-Specific Failures
@@ -219,6 +223,7 @@ Make sure the instance role has ECR access.
 {
     "Effect": "Allow",
     "Action": [
+        "ecr:BatchCheckLayerAvailability",
         "ecr:GetDownloadUrlForLayer",
         "ecr:BatchGetImage",
         "ecr:GetAuthorizationToken"
@@ -232,7 +237,7 @@ Make sure the instance role has ECR access.
 ```bash
 # SSH in and check Docker build output
 eb ssh
-sudo cat /var/log/eb-activity.log
+sudo cat /var/log/eb-engine.log
 ```
 
 Common causes: missing files in the build context (check your `.dockerignore`), multi-stage builds referencing stages that don't exist, and `COPY` commands for files that aren't in the deployment package.
@@ -246,12 +251,12 @@ Custom scripts in `.platform/hooks/` can fail and block the deployment.
 ```bash
 # Check hook execution logs
 eb ssh
-sudo cat /var/log/eb-hooks.log
+sudo grep -A 50 -i "hook" /var/log/eb-engine.log
 ```
 
 ### Common Issues
 
-**Missing execute permission**: Scripts must be executable.
+**Missing execute permission**: Scripts must be executable. On Amazon Linux 2 and Amazon Linux 2023 platform versions released on or after April 29, 2022, Elastic Beanstalk grants execute permissions automatically.
 
 ```bash
 # Make all hooks executable before deploying
@@ -259,7 +264,7 @@ chmod +x .platform/hooks/predeploy/*.sh
 chmod +x .platform/hooks/postdeploy/*.sh
 ```
 
-**Wrong line endings**: If you develop on Windows, your scripts might have CRLF line endings that Linux can't execute.
+**Wrong line endings**: If you develop on Windows, your scripts might have CRLF line endings that Linux can't execute on older platform versions. On platforms released on or after December 29, 2022, Elastic Beanstalk converts CRLF line endings automatically.
 
 ```bash
 # Convert to Unix line endings
@@ -326,6 +331,8 @@ eb create production --cfg my-backup
 ```
 
 This gives you a completely fresh environment with your saved configuration. It's the last resort, but sometimes it's faster than debugging a deeply broken state.
+
+Before terminating, make sure environment properties, secrets, and any external data are backed up separately.
 
 ## Prevention
 
