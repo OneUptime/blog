@@ -137,7 +137,7 @@ estimator.fit({
 
 ## Modifying Your Training Script for Debugger
 
-To emit custom tensors from your training script, use the `smdebug` library. This is pre-installed in SageMaker's framework containers.
+To emit custom tensors from your training script, use the `smdebug` library. This is pre-installed in SageMaker's framework containers. The example below assumes you have already created `train_loader` and `val_loader` from your datasets.
 
 ```python
 # train.py - Training script with Debugger hooks
@@ -232,7 +232,9 @@ for rule_eval in description.get('DebugRuleEvaluationStatuses', []):
 Debugger can also profile your training instance to identify hardware bottlenecks. This is incredibly useful for optimizing training costs.
 
 ```python
-from sagemaker.debugger import ProfilerConfig, FrameworkProfile
+from sagemaker.debugger import ProfilerConfig, FrameworkProfile, ProfilerRule
+
+# FrameworkProfile is supported for PyTorch versions earlier than 2.0
 
 # Configure system and framework profiling
 profiler_config = ProfilerConfig(
@@ -247,22 +249,22 @@ profiler_config = ProfilerConfig(
 # Profiling rules
 profiling_rules = [
     # Detect if GPU utilization is low
-    Rule.sagemaker(
-        rule_configs.low_gpu_utilization(),
+    ProfilerRule.sagemaker(
+        rule_configs.LowGPUUtilization(),
         rule_parameters={
-            'threshold': 70,  # Alert if GPU utilization < 70%
+            'threshold_p95': 70,  # Alert if 95th percentile GPU utilization < 70%
             'patience': 5
         }
     ),
 
     # Detect CPU bottlenecks
-    Rule.sagemaker(rule_configs.cpu_bottleneck()),
+    ProfilerRule.sagemaker(rule_configs.CPUBottleneck()),
 
     # Detect I/O bottlenecks
-    Rule.sagemaker(rule_configs.io_bottleneck()),
+    ProfilerRule.sagemaker(rule_configs.IOBottleneck()),
 
     # Overall training performance recommendations
-    Rule.sagemaker(rule_configs.overallsystem_usage())
+    ProfilerRule.sagemaker(rule_configs.OverallSystemUsage())
 ]
 
 # Create estimator with profiling enabled
@@ -272,8 +274,8 @@ profiled_estimator = PyTorch(
     role=role,
     instance_count=1,
     instance_type='ml.p3.2xlarge',
-    framework_version='2.0',
-    py_version='py310',
+    framework_version='1.12.0',
+    py_version='py37',
     profiler_config=profiler_config,
     rules=profiling_rules,
     hyperparameters={
