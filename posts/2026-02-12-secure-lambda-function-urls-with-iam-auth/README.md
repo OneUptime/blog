@@ -10,7 +10,7 @@ Description: Learn how to secure AWS Lambda Function URLs using IAM authenticati
 
 Lambda Function URLs with `NONE` auth type are open to the internet. Anyone with the URL can invoke your function. That's fine for public webhooks, but for internal services, admin endpoints, or service-to-service communication, you need to lock things down.
 
-IAM authentication for Function URLs uses AWS SigV4 (Signature Version 4) to verify that the caller has the right IAM permissions. Only principals with the `lambda:InvokeFunctionUrl` permission can make successful requests. Let's set it up and see how to call these secured endpoints from different contexts.
+IAM authentication for Function URLs uses AWS SigV4 (Signature Version 4) to verify that the caller has the right IAM permissions. Principals need both `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` permissions to make successful requests. Let's set it up and see how to call these secured endpoints from different contexts.
 
 ## Creating a Function URL with IAM Auth
 
@@ -24,16 +24,23 @@ aws lambda create-function-url-config \
   --auth-type AWS_IAM
 ```
 
-Unlike the `NONE` auth type, you don't need to add a public permission. Instead, you grant specific IAM principals access:
+Unlike the `NONE` auth type, you don't need to add a public permission. Instead, you grant specific IAM principals access. When you use the function's resource-based policy, add both Function URL and function invocation permissions:
 
 ```bash
-# Grant a specific IAM role permission to invoke the function
+# Grant a specific IAM role permission to invoke the Function URL
 aws lambda add-permission \
   --function-name my-secure-api \
-  --statement-id AllowServiceRole \
+  --statement-id AllowServiceRoleUrl \
   --action lambda:InvokeFunctionUrl \
   --principal arn:aws:iam::123456789012:role/calling-service-role \
   --function-url-auth-type AWS_IAM
+
+aws lambda add-permission \
+  --function-name my-secure-api \
+  --statement-id AllowServiceRoleInvoke \
+  --action lambda:InvokeFunction \
+  --principal arn:aws:iam::123456789012:role/calling-service-role \
+  --invoked-via-function-url
 ```
 
 Using CloudFormation:
@@ -70,14 +77,22 @@ Resources:
       TargetFunctionArn: !Ref SecureFunction
       AuthType: AWS_IAM
 
-  # Permission for a specific role to invoke
-  InvokePermission:
+  # Permissions for a specific role to invoke through the Function URL
+  InvokeUrlPermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref SecureFunction
       Action: lambda:InvokeFunctionUrl
       Principal: !GetAtt CallerRole.Arn
       FunctionUrlAuthType: AWS_IAM
+
+  InvokeFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref SecureFunction
+      Action: lambda:InvokeFunction
+      Principal: !GetAtt CallerRole.Arn
+      InvokedViaFunctionUrl: true
 ```
 
 ## How SigV4 Authentication Works
@@ -87,11 +102,11 @@ When you make a request to an IAM-authenticated Function URL, you need to sign t
 ```mermaid
 sequenceDiagram
     participant Client
-    participant AWS STS
+    participant AWS Credentials
     participant Function URL
 
-    Client->>AWS STS: Get temporary credentials
-    AWS STS-->>Client: Access key, secret key, session token
+    Client->>AWS Credentials: Resolve AWS credentials
+    AWS Credentials-->>Client: Access key, secret key, session token
     Client->>Client: Sign request with SigV4
     Client->>Function URL: Send signed HTTP request
     Function URL->>Function URL: Verify signature
@@ -105,10 +120,10 @@ The most common use case is service-to-service calls. Here's how to call an IAM-
 
 ```javascript
 // Call an IAM-authenticated Function URL from another Lambda
-const { SignatureV4 } = require('@aws-sdk/signature-v4');
+const { SignatureV4 } = require('@smithy/signature-v4');
 const { Sha256 } = require('@aws-crypto/sha256-js');
 const { defaultProvider } = require('@aws-sdk/credential-provider-node');
-const { HttpRequest } = require('@aws-sdk/protocol-http');
+const { HttpRequest } = require('@smithy/protocol-http');
 
 const FUNCTION_URL = 'https://abc123xyz.lambda-url.us-east-1.on.aws';
 
@@ -160,7 +175,7 @@ exports.handler = async (event) => {
 
 ## Calling from Python
 
-Here's the Python equivalent using the `requests` library with `aws-requests-auth`:
+Here's the Python equivalent using `requests` with botocore's SigV4 signer:
 
 ```python
 # Call an IAM-authenticated Function URL from Python
@@ -235,7 +250,7 @@ awscurl --service lambda \
 
 ## IAM Policy for Callers
 
-The calling service's IAM role needs explicit permission to invoke the Function URL:
+The calling service's IAM role needs explicit permission to invoke the Function URL and the function:
 
 ```json
 {
@@ -243,7 +258,10 @@ The calling service's IAM role needs explicit permission to invoke the Function 
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": "lambda:InvokeFunctionUrl",
+      "Action": [
+        "lambda:InvokeFunctionUrl",
+        "lambda:InvokeFunction"
+      ],
       "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-secure-api"
     }
   ]
@@ -265,6 +283,16 @@ You can also restrict by condition keys:
           "lambda:FunctionUrlAuthType": "AWS_IAM"
         }
       }
+    },
+    {
+      "Effect": "Allow",
+      "Action": "lambda:InvokeFunction",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-secure-api",
+      "Condition": {
+        "Bool": {
+          "lambda:InvokedViaFunctionUrl": "true"
+        }
+      }
     }
   ]
 }
@@ -278,13 +306,20 @@ You can allow Lambda functions in other AWS accounts to call your Function URL:
 # Grant cross-account access
 aws lambda add-permission \
   --function-name my-secure-api \
-  --statement-id CrossAccountAccess \
+  --statement-id CrossAccountUrlAccess \
   --action lambda:InvokeFunctionUrl \
   --principal arn:aws:iam::987654321098:role/cross-account-caller \
   --function-url-auth-type AWS_IAM
+
+aws lambda add-permission \
+  --function-name my-secure-api \
+  --statement-id CrossAccountInvokeAccess \
+  --action lambda:InvokeFunction \
+  --principal arn:aws:iam::987654321098:role/cross-account-caller \
+  --invoked-via-function-url
 ```
 
-The calling account's role also needs the `lambda:InvokeFunctionUrl` permission on your function's ARN.
+The calling account's role also needs the `lambda:InvokeFunctionUrl` and `lambda:InvokeFunction` permissions on your function's ARN.
 
 ## Accessing Caller Identity
 
@@ -318,7 +353,7 @@ exports.handler = async (event) => {
 
 ## Combining with Resource-Based Policies
 
-For fine-grained access control, you can use both resource-based policies on the Lambda function and identity-based policies on the caller. Both must allow the action for the request to succeed.
+For fine-grained access control, you can use both resource-based policies on the Lambda function and identity-based policies on the caller. For cross-account access, both the caller's identity-based policy and the function's resource-based policy must allow the request to succeed.
 
 This lets you implement a defense-in-depth approach where changes to either policy alone can't accidentally open access.
 
