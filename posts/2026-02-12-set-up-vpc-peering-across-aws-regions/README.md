@@ -173,7 +173,7 @@ aws ec2 modify-vpc-peering-connection-options \
   --region eu-west-1
 ```
 
-With DNS resolution enabled, private hostnames in one region resolve to private IPs when queried from the peered region. This is particularly useful for RDS endpoints.
+With DNS resolution enabled, public IPv4 DNS hostnames for EC2 instances in one VPC resolve to private IPv4 addresses when queried from the peered VPC. For service-specific endpoints like RDS, verify the service's DNS behavior or use Route 53 private hosted zones or Resolver forwarding as needed.
 
 ## Latency Considerations
 
@@ -194,11 +194,11 @@ This latency is consistent and lower than routing over the public internet, but 
 Cross-region data transfer is more expensive than same-region:
 
 ```text
-Same-region peering:   $0.01/GB (each direction)
-Cross-region peering:  $0.02/GB (varies by region pair)
+Same-region peering:   Free within the same Availability Zone; cross-AZ traffic is charged in each direction
+Cross-region peering:  Standard inter-region data transfer rates, which vary by region pair
 ```
 
-For high-volume data replication, these costs add up. A 1 TB daily replication job would cost roughly $600/month in cross-region transfer fees. Plan accordingly and compress data where possible.
+For high-volume data replication, these costs add up. A 1 TB daily replication job between regions billed at $0.02/GB would cost roughly $600/month in cross-region transfer fees. Plan accordingly and compress data where possible.
 
 ## CloudFormation for Cross-Region Peering
 
@@ -207,6 +207,10 @@ CloudFormation stacks are region-specific, so you need a stack in each region. H
 ```yaml
 # requester-stack.yaml - Deploy in us-east-1
 Parameters:
+  LocalVpcId:
+    Type: String
+  PrivateRouteTableId:
+    Type: String
   PeerRegion:
     Type: String
     Default: eu-west-1
@@ -220,7 +224,7 @@ Resources:
   CrossRegionPeering:
     Type: AWS::EC2::VPCPeeringConnection
     Properties:
-      VpcId: !Ref LocalVPC
+      VpcId: !Ref LocalVpcId
       PeerVpcId: !Ref PeerVpcId
       PeerRegion: !Ref PeerRegion
       Tags:
@@ -230,7 +234,7 @@ Resources:
   RouteToRemoteRegion:
     Type: AWS::EC2::Route
     Properties:
-      RouteTableId: !Ref PrivateRouteTable
+      RouteTableId: !Ref PrivateRouteTableId
       DestinationCidrBlock: !Ref PeerVpcCidr
       VpcPeeringConnectionId: !Ref CrossRegionPeering
 
@@ -239,11 +243,11 @@ Outputs:
     Value: !Ref CrossRegionPeering
 ```
 
-The accepter stack in eu-west-1 would accept the connection and create the return routes. Since CloudFormation can't natively accept cross-region peering, you'll typically use a Lambda-backed custom resource for the acceptance step.
+The accepter stack in eu-west-1 would create the return routes. For same-account peering, CloudFormation accepts the request automatically. For cross-account peering, add `PeerOwnerId` and `PeerRoleArn`, or use a Lambda-backed custom resource or manual acceptance step.
 
 ## Monitoring Cross-Region Peering
 
-Set up CloudWatch metrics to track peering health:
+Check the peering connection status and use VPC Flow Logs to monitor traffic:
 
 ```bash
 # Check peering connection status
