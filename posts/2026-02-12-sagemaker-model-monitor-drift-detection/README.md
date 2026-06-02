@@ -17,11 +17,11 @@ SageMaker Model Monitor continuously watches your deployed models for signs of t
 There are several ways a deployed model can go sideways:
 
 - **Data drift** - The statistical properties of input features change over time. Maybe a "typical" transaction amount has shifted upward.
-- **Concept drift** - The relationship between features and the target changes. What used to predict fraud no longer does.
+- **Concept drift** - The relationship between features and the target changes. What used to predict fraud no longer does. Model quality monitoring can surface this once you provide ground truth labels.
 - **Model quality drift** - Prediction accuracy drops, even if the data looks similar.
 - **Bias drift** - The model's fairness characteristics change over time.
 
-Model Monitor helps you catch all of these before they impact your users.
+Model Monitor helps you catch many of these signals before they impact your users.
 
 ```mermaid
 graph TB
@@ -56,7 +56,7 @@ data_capture_config = DataCaptureConfig(
     enable_capture=True,
     sampling_percentage=100,  # Capture all requests (reduce for high-traffic endpoints)
     destination_s3_uri=f's3://{bucket}/model-monitor/data-capture',
-    capture_options=['Input', 'Output'],  # Capture both request and response
+    capture_options=['REQUEST', 'RESPONSE'],  # Capture both request and response
     csv_content_types=['text/csv'],
     json_content_types=['application/json']
 )
@@ -188,7 +188,8 @@ model_quality_monitor.suggest_baseline(
     output_s3_uri=f's3://{bucket}/model-monitor/model-quality-baseline/',
     ground_truth_attribute='label',
     inference_attribute='prediction',
-    probability_attribute='probability'
+    probability_attribute='probability',
+    wait=True
 )
 ```
 
@@ -201,13 +202,18 @@ model_quality_monitor.create_monitoring_schedule(
     monitor_schedule_name='fraud-model-quality',
     endpoint_input=EndpointInput(
         endpoint_name='fraud-detection-monitored',
-        destination='/opt/ml/processing/input/endpoint'
+        destination='/opt/ml/processing/input/endpoint',
+        inference_attribute='prediction',
+        probability_attribute='probability',
+        start_time_offset='-P2D',
+        end_time_offset='-P1D'
     ),
     ground_truth_input=f's3://{bucket}/ground-truth/',
     output_s3_uri=f's3://{bucket}/model-monitor/quality-reports/',
     problem_type='BinaryClassification',
     schedule_cron_expression=CronExpressionGenerator.daily(),
-    constraints=model_quality_monitor.suggested_constraints()
+    constraints=model_quality_monitor.suggested_constraints(),
+    enable_cloudwatch_metrics=True
 )
 ```
 
@@ -220,7 +226,8 @@ import json
 import time
 
 # Upload ground truth labels
-# Each record matches a captured inference by its inference_id
+# Each record matches a captured inference by eventId, or by the inferenceId
+# that the caller supplied when invoking the endpoint.
 ground_truth_records = [
     {
         'groundTruthData': {
@@ -264,8 +271,8 @@ After a monitoring job runs, check the results for any violations.
 executions = monitor.list_executions()
 
 for execution in executions[:5]:
-    print(f"Execution: {execution.processing_job_name}")
-    print(f"  Status: {execution.processing_job['ProcessingJobStatus']}")
+    print(f"Execution: {execution.job_name}")
+    print(f"  Status: {execution.describe()['ProcessingJobStatus']}")
 
     # Check for constraint violations
     violations = execution.constraint_violations()
@@ -282,24 +289,24 @@ for execution in executions[:5]:
 
 ## Setting Up Alerts
 
-When Model Monitor detects a violation, it publishes metrics to CloudWatch. Set up alerts to get notified.
+When CloudWatch metrics are enabled, Model Monitor publishes feature-level metrics to CloudWatch. Set up alerts to get notified.
 
 ```python
 cloudwatch = boto3.client('cloudwatch')
 
-# Create an alarm for data quality violations
+# Create an alarm for baseline drift on a specific feature
 cloudwatch.put_metric_alarm(
     AlarmName='fraud-model-data-drift-alarm',
-    AlarmDescription='Alert when data drift is detected in the fraud model',
-    MetricName='data_quality_constraint_violations',
-    Namespace='aws/sagemaker/Endpoints/data-metrics',
+    AlarmDescription='Alert when transaction_amount drifts from the fraud model baseline',
+    MetricName='feature_baseline_drift_transaction_amount',
+    Namespace='/aws/sagemaker/Endpoints/data-metric',
     Dimensions=[
         {
-            'Name': 'Endpoint',
+            'Name': 'EndpointName',
             'Value': 'fraud-detection-monitored'
         },
         {
-            'Name': 'MonitoringSchedule',
+            'Name': 'ScheduleName',
             'Value': 'fraud-model-data-quality'
         }
     ],
@@ -328,7 +335,7 @@ When drift is detected, you have several options:
 ```python
 # Update the baseline if drift is expected and acceptable
 monitor.update_monitoring_schedule(
-    schedule_name='fraud-model-data-quality',
+    endpoint_input='fraud-detection-monitored',
     statistics=f's3://{bucket}/model-monitor/new-baseline/statistics.json',
     constraints=f's3://{bucket}/model-monitor/new-baseline/constraints.json'
 )
