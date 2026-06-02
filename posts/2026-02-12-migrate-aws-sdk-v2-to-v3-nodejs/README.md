@@ -12,9 +12,9 @@ Migrating from AWS SDK v2 to v3 isn't just a package update - it's a fundamental
 
 ## Why Migrate?
 
-The v2 SDK still works, but there are real reasons to move:
+Existing v2 SDK applications can still run, but v2 reached end-of-support on September 8, 2025 and no longer receives updates or releases. There are real reasons to move:
 
-- **Bundle size.** V2 imports the entire SDK (~70 MB). V3 lets you import only what you need.
+- **Bundle size.** V2 uses a large monolithic package. V3 lets you import only what you need.
 - **Tree shaking.** V3's modular design works with modern bundlers.
 - **Lambda cold starts.** Smaller bundles mean faster cold starts.
 - **TypeScript support.** V3 is built in TypeScript with full type coverage.
@@ -97,7 +97,7 @@ const data = await s3.send(new GetObjectCommand({
     Bucket: 'my-bucket',
     Key: 'file.txt'
 }));
-// Body is a ReadableStream in v3 - you need to consume it
+// Body is a stream-like object in v3 - you need to consume it
 const body = await data.Body.transformToString();
 ```
 
@@ -142,6 +142,7 @@ const url = s3.getSignedUrl('getObject', {
 });
 
 // v3
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 const url = await getSignedUrl(s3, new GetObjectCommand({
     Bucket: 'my-bucket',
@@ -245,8 +246,8 @@ do {
 } while (lastKey);
 
 // v3 - built-in paginators
-import { paginateScan } from '@aws-sdk/client-dynamodb';
-const paginator = paginateScan({ client: dynamodb }, { TableName: 'my-table' });
+import { paginateScan } from '@aws-sdk/lib-dynamodb';
+const paginator = paginateScan({ client: docClient }, { TableName: 'my-table' });
 const items = [];
 for await (const page of paginator) {
     items.push(...(page.Items || []));
@@ -305,7 +306,7 @@ You don't have to migrate everything at once. V2 and v3 can coexist in the same 
 ```javascript
 // Both can run side by side during migration
 const AWS = require('aws-sdk');  // v2 for services not yet migrated
-import { S3Client } from '@aws-sdk/client-s3';  // v3 for migrated services
+const { S3Client } = require('@aws-sdk/client-s3');  // v3 for migrated services
 
 // Migrate one service at a time
 const s3v3 = new S3Client({});  // migrated
@@ -333,7 +334,7 @@ The codemod handles basic transformations but may need manual review for complex
 
 - **Write tests before migrating.** Make sure your existing code has test coverage so you can verify the migration.
 - **Migrate one service at a time.** Don't try to do everything at once.
-- **Watch for stream behavior changes.** S3 response bodies changed from Buffers to ReadableStreams.
+- **Watch for stream behavior changes.** S3 response bodies changed from Buffers to stream-like objects.
 - **Check bundle size improvements.** Measure the actual impact on your Lambda deployment package.
 - **Update error handling.** Error structure changed, so audit your catch blocks.
 
