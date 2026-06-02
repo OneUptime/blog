@@ -57,7 +57,7 @@ Set up the OIDC provider in AWS first.
 
 resource "aws_iam_openid_connect_provider" "gitlab" {
   url             = "https://gitlab.com"
-  client_id_list  = ["https://gitlab.com"]
+  client_id_list  = ["sts.amazonaws.com"]
   thumbprint_list = ["b3dd7606d2b5a8b4a13771dbecc9ee1cecafa38a"]
 }
 
@@ -74,11 +74,12 @@ resource "aws_iam_role" "gitlab_terraform" {
       Action = "sts:AssumeRoleWithWebIdentity"
       Condition = {
         StringEquals = {
-          "gitlab.com:aud" = "https://gitlab.com"
+          "gitlab.com:aud" = "sts.amazonaws.com"
         }
         StringLike = {
-          # Restrict to your specific project
-          "gitlab.com:sub" = "project_path:mygroup/infrastructure:ref_type:branch:ref:main"
+          # Restrict to your specific project branches.
+          # Tighten this further for production, for example with separate roles.
+          "gitlab.com:sub" = "project_path:mygroup/infrastructure:ref_type:branch:ref:*"
         }
       }
     }]
@@ -126,18 +127,19 @@ variables:
 .aws_auth:
   id_tokens:
     GITLAB_OIDC_TOKEN:
-      aud: https://gitlab.com
+      aud: sts.amazonaws.com
   before_script:
+    - apk add --no-cache aws-cli  # Install AWS CLI for OIDC
     - |
       # Get AWS credentials via OIDC
-      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" \
-        $(aws sts assume-role-with-web-identity \
+      aws_sts_output=$(aws sts assume-role-with-web-identity \
         --role-arn ${AWS_ROLE_ARN} \
         --role-session-name "gitlab-ci-${CI_JOB_ID}" \
         --web-identity-token ${GITLAB_OIDC_TOKEN} \
         --duration-seconds 3600 \
         --query 'Credentials.[AccessKeyId,SecretAccessKey,SessionToken]' \
-        --output text))
+        --output text)
+      export $(printf "AWS_ACCESS_KEY_ID=%s AWS_SECRET_ACCESS_KEY=%s AWS_SESSION_TOKEN=%s" ${aws_sts_output})
 
 # ============================================================
 # VALIDATE STAGE
@@ -159,11 +161,10 @@ validate:
 # ============================================================
 
 plan:dev:
+  extends: .aws_auth
   stage: plan
   variables:
     AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/GitLabTerraformRole"
-  before_script:
-    - apk add --no-cache aws-cli  # Install AWS CLI for OIDC
   script:
     - cd environments/dev
     - terraform init
@@ -179,11 +180,10 @@ plan:dev:
     - if: $CI_COMMIT_BRANCH == "main"
 
 plan:production:
+  extends: .aws_auth
   stage: plan
   variables:
     AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/GitLabTerraformRole"
-  before_script:
-    - apk add --no-cache aws-cli
   script:
     - cd environments/production
     - terraform init
@@ -203,6 +203,7 @@ plan:production:
 # ============================================================
 
 apply:dev:
+  extends: .aws_auth
   stage: apply
   variables:
     AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/GitLabTerraformRole"
@@ -219,6 +220,7 @@ apply:dev:
       when: on_success
 
 apply:production:
+  extends: .aws_auth
   stage: apply
   variables:
     AWS_ROLE_ARN: "arn:aws:iam::123456789012:role/GitLabTerraformRole"
@@ -252,7 +254,7 @@ The `environment` keyword connects the job to GitLab's environment tracking. You
 
 ## Protecting Environments
 
-In GitLab, go to Settings > CI/CD > Environments and configure protection rules.
+In GitLab, go to Settings > CI/CD > Protected environments and configure protection rules.
 
 For production:
 - Set "Required approval" to 1 or more
@@ -297,17 +299,18 @@ GitLab can display Terraform plan output directly in the merge request widget.
 ```yaml
 plan:dev:
   stage: plan
+  before_script:
+    - apk --no-cache add jq
   script:
     - cd environments/dev
     - terraform init
     - terraform plan -out=dev.tfplan
-    - terraform show -json dev.tfplan > dev.plan.json
+    - terraform show -json dev.tfplan | jq -r '([.resource_changes[]?.change.actions?] | flatten) | {"create": (map(select(. == "create")) | length), "update": (map(select(. == "update")) | length), "delete": (map(select(. == "delete")) | length)}' > dev.plan.json
   artifacts:
     paths:
       - environments/dev/dev.tfplan
     reports:
-      terraform:
-        - environments/dev/dev.plan.json
+      terraform: environments/dev/dev.plan.json
 ```
 
 The `reports.terraform` artifact makes the plan visible in the MR UI.
