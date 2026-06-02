@@ -63,7 +63,7 @@ A VPC is probably safe to delete if it has no running instances, no active NAT g
 for vpc in $(aws ec2 describe-vpcs --query 'Vpcs[*].VpcId' --output text); do
   count=$(aws ec2 describe-instances \
     --filters Name=vpc-id,Values=$vpc \
-    --query 'length(Reservations[*].Instances[*])' \
+    --query 'length(Reservations[].Instances[])' \
     --output text)
   name=$(aws ec2 describe-vpcs --vpc-ids $vpc \
     --query 'Vpcs[0].Tags[?Key==`Name`].Value|[0]' --output text)
@@ -79,14 +79,28 @@ You can't just delete a VPC - you need to remove its dependent resources first. 
 VPC_ID="vpc-0abc123def456"
 
 # 1. Delete NAT Gateways
-for nat in $(aws ec2 describe-nat-gateways \
+nat_gateways=$(aws ec2 describe-nat-gateways \
   --filter Name=vpc-id,Values=$VPC_ID \
-  --query 'NatGateways[*].NatGatewayId' --output text); do
+  --query 'NatGateways[*].NatGatewayId' --output text)
+for nat in $nat_gateways; do
   echo "Deleting NAT Gateway: $nat"
   aws ec2 delete-nat-gateway --nat-gateway-id $nat
 done
 
-# 2. Detach and delete Internet Gateways
+if [ -n "$nat_gateways" ]; then
+  echo "Waiting for NAT Gateways to be deleted..."
+  aws ec2 wait nat-gateway-deleted --nat-gateway-ids $nat_gateways
+fi
+
+# 2. Delete VPC endpoints
+for vpce in $(aws ec2 describe-vpc-endpoints \
+  --filters Name=vpc-id,Values=$VPC_ID \
+  --query 'VpcEndpoints[*].VpcEndpointId' --output text); do
+  echo "Deleting VPC endpoint: $vpce"
+  aws ec2 delete-vpc-endpoints --vpc-endpoint-ids $vpce
+done
+
+# 3. Detach and delete Internet Gateways
 for igw in $(aws ec2 describe-internet-gateways \
   --filters Name=attachment.vpc-id,Values=$VPC_ID \
   --query 'InternetGateways[*].InternetGatewayId' --output text); do
@@ -95,7 +109,7 @@ for igw in $(aws ec2 describe-internet-gateways \
   aws ec2 delete-internet-gateway --internet-gateway-id $igw
 done
 
-# 3. Delete subnets
+# 4. Delete subnets
 for subnet in $(aws ec2 describe-subnets \
   --filters Name=vpc-id,Values=$VPC_ID \
   --query 'Subnets[*].SubnetId' --output text); do
@@ -103,7 +117,7 @@ for subnet in $(aws ec2 describe-subnets \
   aws ec2 delete-subnet --subnet-id $subnet
 done
 
-# 4. Delete route tables (except the main one)
+# 5. Delete route tables (except the main one)
 for rt in $(aws ec2 describe-route-tables \
   --filters Name=vpc-id,Values=$VPC_ID \
   --query 'RouteTables[?Associations[0].Main!=`true`].RouteTableId' --output text); do
@@ -111,20 +125,12 @@ for rt in $(aws ec2 describe-route-tables \
   aws ec2 delete-route-table --route-table-id $rt
 done
 
-# 5. Delete security groups (except default)
+# 6. Delete security groups (except default)
 for sg in $(aws ec2 describe-security-groups \
   --filters Name=vpc-id,Values=$VPC_ID \
   --query 'SecurityGroups[?GroupName!=`default`].GroupId' --output text); do
   echo "Deleting security group: $sg"
   aws ec2 delete-security-group --group-id $sg
-done
-
-# 6. Delete VPC endpoints
-for vpce in $(aws ec2 describe-vpc-endpoints \
-  --filters Name=vpc-id,Values=$VPC_ID \
-  --query 'VpcEndpoints[*].VpcEndpointId' --output text); do
-  echo "Deleting VPC endpoint: $vpce"
-  aws ec2 delete-vpc-endpoints --vpc-endpoint-ids $vpce
 done
 
 # 7. Finally, delete the VPC
@@ -159,7 +165,7 @@ Quota increases for VPCs are usually approved quickly - often within minutes. AW
 ### Check the Status of Your Request
 
 ```bash
-# List pending quota requests
+# List quota requests for this quota
 aws service-quotas list-requested-service-quota-change-history-by-quota \
   --service-code vpc \
   --quota-code L-F678F1CE \
@@ -189,7 +195,7 @@ Instead of multiple VPCs in one account, use separate AWS accounts for each envi
 
 ### Don't Delete the Default VPC
 
-Every region comes with a default VPC. Some AWS services require it, and some console wizards assume it exists. If you delete it, you can recreate it:
+Every region comes with a default VPC. Some launch workflows and console wizards assume it exists. If you delete it, you can recreate it:
 
 ```bash
 # Recreate the default VPC (if you deleted it)
@@ -203,8 +209,7 @@ If a VPC has peering connections, you'll need to delete those before removing th
 ```bash
 # Check for peering connections
 aws ec2 describe-vpc-peering-connections \
-  --filters Name=requester-vpc-info.vpc-id,Values=$VPC_ID \
-  --query 'VpcPeeringConnections[*].VpcPeeringConnectionId'
+  --query "VpcPeeringConnections[?RequesterVpcInfo.VpcId=='$VPC_ID' || AccepterVpcInfo.VpcId=='$VPC_ID'].VpcPeeringConnectionId"
 ```
 
 ### CloudFormation Stacks
@@ -214,7 +219,8 @@ Some VPCs are managed by CloudFormation. If you delete them manually, the stack 
 ```bash
 # Check if any CloudFormation stacks reference this VPC
 aws cloudformation describe-stack-resources \
-  --query "StackResources[?ResourceType=='AWS::EC2::VPC' && PhysicalResourceId=='$VPC_ID']"
+  --physical-resource-id "$VPC_ID" \
+  --query "StackResources[?ResourceType=='AWS::EC2::VPC']"
 ```
 
 If it's a CloudFormation-managed VPC, delete the stack instead.
