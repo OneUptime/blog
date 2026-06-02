@@ -8,7 +8,7 @@ Description: Learn how to use AWS Spot Fleet to request capacity across multiple
 
 ---
 
-A single Spot Instance request is fine for quick experiments, but for real workloads you need something more robust. That's where Spot Fleet comes in. Spot Fleet lets you request a target capacity across multiple instance types, Availability Zones, and Spot pools in a single API call. It handles the allocation, diversification, and replacement of instances automatically.
+A single Spot Instance request is fine for quick experiments, but for real workloads you need something more robust. That's where Spot Fleet comes in. Spot Fleet lets you request a target capacity across multiple instance types, Availability Zones, and Spot pools in a single API call. It handles the allocation and diversification automatically, and can replace instances when configured as a `maintain` fleet.
 
 Think of Spot Fleet as a smart orchestrator that spreads your Spot requests across the broadest possible set of capacity pools, dramatically reducing the chance of widespread interruption.
 
@@ -16,9 +16,9 @@ Think of Spot Fleet as a smart orchestrator that spreads your Spot requests acro
 
 Before we dive in, let's address the obvious question: should you use Spot Fleet or an Auto Scaling group with mixed instance types?
 
-For most new projects, AWS recommends Auto Scaling groups with mixed instance policies. They integrate better with load balancers, support lifecycle hooks, and work with instance refresh. However, Spot Fleet still has its place - it's simpler for batch workloads, supports the `lowestPrice` allocation strategy with instance weighting, and can request a target capacity in terms of vCPUs or memory rather than instance count.
+For most new projects, AWS recommends Auto Scaling groups with mixed instance policies, and AWS now describes Spot Fleet as a legacy API with no planned investment. Auto Scaling groups integrate better with load balancers, support lifecycle hooks, and work with instance refresh. If you need a fleet-style API and manage the instance lifecycle yourself, use EC2 Fleet for new work. Spot Fleet is mostly useful for existing deployments or when you specifically need Spot Fleet console support.
 
-Use Spot Fleet when you're running batch or stateless workers. Use ASG with mixed instances when you need load balancer integration and lifecycle management.
+Use Spot Fleet when you're maintaining an existing Spot Fleet setup for batch or stateless workers. Use ASG with mixed instances when you need load balancer integration and lifecycle management.
 
 ## Creating a Basic Spot Fleet Request
 
@@ -33,7 +33,6 @@ aws ec2 request-spot-fleet \
   --spot-fleet-request-config '{
     "IamFleetRole": "arn:aws:iam::123456789012:role/aws-ec2-spot-fleet-role",
     "TargetCapacity": 20,
-    "SpotPrice": "0.10",
     "TerminateInstancesWithExpiration": true,
     "Type": "maintain",
     "AllocationStrategy": "capacityOptimized",
@@ -78,13 +77,13 @@ The `Type: "maintain"` setting means the fleet will automatically replace interr
 
 The allocation strategy determines how Spot Fleet distributes instances across the pools you've defined. This choice has a major impact on both cost and interruption rates.
 
-**capacityOptimized** - Launches from the pools with the most available capacity. Best for minimizing interruptions. This is what AWS recommends for most workloads.
+**capacityOptimized** - Launches from the pools with the most available capacity. Best for minimizing interruptions.
 
 **lowestPrice** - Launches from the cheapest pool. Maximizes savings but concentrates instances, increasing interruption risk.
 
 **diversified** - Spreads instances evenly across all pools. Good middle ground between cost and availability.
 
-**priceCapacityOptimized** - Newer strategy that considers both price and capacity. Picks pools that are both cheap and have good availability.
+**priceCapacityOptimized** - Recommended strategy that considers both price and capacity. Picks pools that have good availability and the lowest price among those pools.
 
 Here's how they compare:
 
@@ -101,7 +100,7 @@ graph LR
     E --> I[Best of price + capacity]
 ```
 
-For production workloads, stick with `capacityOptimized` or `priceCapacityOptimized`.
+For production workloads, use `priceCapacityOptimized` when it is available, or `capacityOptimized` when you want to optimize primarily for capacity availability.
 
 ## Using Launch Templates with Spot Fleet
 
@@ -138,7 +137,7 @@ This Spot Fleet configuration uses a Launch Template with multiple overrides for
 }
 ```
 
-Each override creates a separate capacity pool. With 5 instance types across 2 subnets, you get 10 pools. The fleet picks from these based on your allocation strategy.
+Each instance type and Availability Zone combination creates a separate capacity pool. With 5 instance types across 2 subnets in different Availability Zones, you get 10 pools. The fleet picks from these based on your allocation strategy.
 
 ## Instance Weighting
 
@@ -205,7 +204,7 @@ aws ec2 describe-spot-fleet-instances \
 # View fleet history
 aws ec2 describe-spot-fleet-request-history \
   --spot-fleet-request-id sfr-12345678-1234-1234-1234-123456789012 \
-  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
 ```
 
 ## Terraform Example
@@ -215,7 +214,6 @@ Here's a complete Terraform setup for a Spot Fleet:
 ```hcl
 resource "aws_spot_fleet_request" "workers" {
   iam_fleet_role                      = aws_iam_role.spot_fleet.arn
-  spot_price                          = "0.10"
   target_capacity                     = 20
   allocation_strategy                 = "capacityOptimized"
   terminate_instances_with_expiration = true
@@ -287,4 +285,4 @@ aws ec2 cancel-spot-fleet-requests \
 
 ## Summary
 
-Spot Fleet is a powerful tool for running diversified Spot capacity at scale. By spreading requests across many instance types and AZs, you minimize the impact of interruptions while maximizing your savings. Use the `capacityOptimized` allocation strategy, include at least 6-10 instance types, and spread across all available AZs. For workloads that need load balancer integration and advanced lifecycle management, consider using [Auto Scaling groups with mixed instances](https://oneuptime.com/blog/post/2026-02-12-mix-on-demand-spot-instances-auto-scaling-groups/view) instead.
+Spot Fleet can run diversified Spot capacity at scale, but it is a legacy API and AWS recommends EC2 Auto Scaling or EC2 Fleet for new deployments. By spreading requests across many instance types and AZs, you minimize the impact of interruptions while maximizing your savings. Use the `priceCapacityOptimized` allocation strategy when it is available, include at least 6-10 instance types, and spread across all available AZs. For workloads that need load balancer integration and advanced lifecycle management, consider using [Auto Scaling groups with mixed instances](https://oneuptime.com/blog/post/2026-02-12-mix-on-demand-spot-instances-auto-scaling-groups/view) instead.
