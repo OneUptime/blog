@@ -29,37 +29,14 @@ graph LR
 
 ## Prerequisites
 
-Before setting up Batch, you need a few things in place. First, create the IAM roles that Batch needs.
+Before setting up Batch, you need a few things in place. First, make sure the IAM roles that Batch needs exist.
 
-The Batch service role lets Batch manage EC2 instances on your behalf.
+AWS Batch uses a service-linked role to manage EC2 instances and other resources on your behalf. Batch can create this role automatically when you create a managed compute environment, or you can create it ahead of time.
 
 ```bash
-# Create the trust policy for the Batch service role
-
-cat > /tmp/batch-trust-policy.json << 'EOF'
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "batch.amazonaws.com"
-      },
-      "Action": "sts:AssumeRole"
-    }
-  ]
-}
-EOF
-
-# Create the service role
-aws iam create-role \
-  --role-name AWSBatchServiceRole \
-  --assume-role-policy-document file:///tmp/batch-trust-policy.json
-
-# Attach the managed policy
-aws iam attach-role-policy \
-  --role-name AWSBatchServiceRole \
-  --policy-arn arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole
+# Optional: create the AWS Batch service-linked role explicitly
+aws iam create-service-linked-role \
+  --aws-service-name batch.amazonaws.com
 ```
 
 Next, create an instance role for the EC2 instances that will run your jobs.
@@ -110,7 +87,7 @@ aws batch create-compute-environment \
   --compute-environment-name hpc-compute-env \
   --type MANAGED \
   --state ENABLED \
-  --service-role arn:aws:iam::123456789012:role/AWSBatchServiceRole \
+  --service-role arn:aws:iam::123456789012:role/aws-service-role/batch.amazonaws.com/AWSServiceRoleForBatch \
   --compute-resources '{
     "type": "EC2",
     "allocationStrategy": "BEST_FIT_PROGRESSIVE",
@@ -130,8 +107,8 @@ aws batch create-compute-environment \
 
 Key settings explained:
 - `minvCpus: 0` means Batch scales down to zero when there are no jobs
-- `maxvCpus: 256` limits total compute capacity
-- `BEST_FIT_PROGRESSIVE` picks the best instance type for each job's requirements
+- `maxvCpus: 256` limits total compute capacity, though Batch can exceed it by up to one instance with this allocation strategy
+- `BEST_FIT_PROGRESSIVE` picks additional instance types that are large enough for queued jobs, preferring lower-cost vCPUs
 - Multiple instance types give Batch flexibility to find capacity
 
 ## Creating a Job Queue
@@ -177,8 +154,10 @@ aws batch register-job-definition \
   --type container \
   --container-properties '{
     "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-hpc-app:latest",
-    "vcpus": 4,
-    "memory": 8192,
+    "resourceRequirements": [
+      {"type": "VCPU", "value": "4"},
+      {"type": "MEMORY", "value": "8192"}
+    ],
     "command": ["python3", "/app/run_simulation.py"],
     "environment": [
       {"name": "SIMULATION_TYPE", "value": "monte-carlo"},
@@ -216,7 +195,7 @@ RUN pip install numpy scipy pandas boto3
 WORKDIR /app
 COPY run_simulation.py .
 
-ENTRYPOINT ["python3", "run_simulation.py"]
+CMD ["python3", "run_simulation.py"]
 ```
 
 And the simulation script that reads parameters from environment variables and writes results to S3.
@@ -311,9 +290,14 @@ aws batch describe-jobs \
   --query 'jobs[0].{Status: status, StartedAt: startedAt, StatusReason: statusReason}'
 
 # Check CloudWatch logs for a job
+LOG_STREAM=$(aws batch describe-jobs \
+  --jobs job-id-here \
+  --query 'jobs[0].container.logStreamName' \
+  --output text)
+
 aws logs get-log-events \
   --log-group-name /aws/batch/hpc-simulation \
-  --log-stream-name "batch/hpc-simulation/job-id-here"
+  --log-stream-name "$LOG_STREAM"
 ```
 
 ## Troubleshooting Checklist
