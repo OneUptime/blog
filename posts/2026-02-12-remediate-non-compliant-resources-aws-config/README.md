@@ -10,18 +10,18 @@ Description: Learn how to set up automatic and manual remediation actions for no
 
 Finding non-compliant resources is only half the battle. You've got [AWS Config rules](https://oneuptime.com/blog/post/2026-02-12-aws-config-managed-rules-security/view) flagging security groups with open SSH, unencrypted S3 buckets, and IAM users without MFA. Great. But if nobody does anything about those findings, you've just built an expensive compliance report that nobody reads.
 
-AWS Config remediation actions let you fix non-compliant resources automatically - or with a single click for manual review. You can use AWS-provided SSM automation documents or write your own Lambda-backed remediation logic. Let's walk through both approaches.
+AWS Config remediation actions let you fix non-compliant resources automatically - or with a single click for manual review. You can use AWS-provided SSM automation documents, including documents that invoke your own Lambda-backed remediation logic. Let's walk through both approaches.
 
 ## How Remediation Works
 
-When a Config rule evaluates a resource as non-compliant, a remediation action can be triggered. The action runs an SSM Automation document or a Lambda function that fixes the issue.
+When a Config rule evaluates a resource as non-compliant, a remediation action can be triggered. The action runs an SSM Automation document that fixes the issue or invokes custom logic such as a Lambda function.
 
 ```mermaid
 graph LR
     A[Config Rule] --> B{Compliant?}
     B -->|Yes| C[No Action]
     B -->|No| D[Remediation Action]
-    D --> E[SSM Document / Lambda]
+    D --> E[SSM Automation Document]
     E --> F[Fix Resource]
     F --> G[Re-evaluate]
 ```
@@ -69,6 +69,11 @@ aws configservice put-remediation-configurations \
         "StaticValue": {
           "Values": ["AES256"]
         }
+      },
+      "AutomationAssumeRole": {
+        "StaticValue": {
+          "Values": ["arn:aws:iam::111111111111:role/ConfigRemediationRole"]
+        }
       }
     },
     "Automatic": false,
@@ -80,22 +85,28 @@ aws configservice put-remediation-configurations \
 The key parameters here:
 - `RESOURCE_ID` is dynamically replaced with the actual bucket name when the action runs
 - `Automatic: false` means you have to trigger it manually
+- `AutomationAssumeRole` is the IAM role Systems Manager Automation assumes to make the change
 - The SSM document `AWS-EnableS3BucketEncryption` is maintained by AWS
 
 ## Setting Up Automatic Remediation
 
-For resources where you're confident auto-fixing is safe, set `Automatic` to `true`. Here's an example that automatically closes default security groups that have any rules added to them.
+For resources where you're confident auto-fixing is safe, set `Automatic` to `true`. Here's an example that automatically disables public SSH and RDP ingress rules on security groups flagged by a rule such as `restricted-ssh`.
 
 ```bash
 aws configservice put-remediation-configurations \
   --remediation-configurations '[{
-    "ConfigRuleName": "vpc-default-security-group-closed",
+    "ConfigRuleName": "restricted-ssh",
     "TargetType": "SSM_DOCUMENT",
     "TargetId": "AWS-DisablePublicAccessForSecurityGroup",
     "Parameters": {
       "GroupId": {
         "ResourceValue": {
           "Value": "RESOURCE_ID"
+        }
+      },
+      "AutomationAssumeRole": {
+        "StaticValue": {
+          "Values": ["arn:aws:iam::111111111111:role/ConfigRemediationRole"]
         }
       }
     },
@@ -105,7 +116,7 @@ aws configservice put-remediation-configurations \
   }]'
 ```
 
-With automatic remediation, the remediation action runs every time Config evaluates the resource as non-compliant. If the remediation fails, it retries up to `MaximumAutomaticAttempts` times.
+With automatic remediation, AWS Config starts remediation for resources evaluated as non-compliant. If remediation fails `MaximumAutomaticAttempts` times within `RetryAttemptSeconds`, AWS Config adds a remediation exception for that resource.
 
 ## Common AWS-Provided SSM Documents
 
@@ -114,11 +125,11 @@ AWS provides a bunch of pre-built SSM automation documents for remediation. Here
 | SSM Document | What It Does |
 |---|---|
 | `AWS-EnableS3BucketEncryption` | Enables server-side encryption on an S3 bucket |
-| `AWS-DisablePublicAccessForSecurityGroup` | Removes public access rules from a security group |
-| `AWS-EnableCloudTrail` | Enables CloudTrail logging |
-| `AWS-EnableEbsEncryptionByDefault` | Enables default EBS encryption |
+| `AWS-DisablePublicAccessForSecurityGroup` | Disables public SSH and RDP ingress rules on a security group |
+| `AWS-EnableCloudTrail` | Creates a CloudTrail trail and configures logging to S3 |
+| `AWSConfigRemediation-EnableEbsEncryptionByDefault` | Enables default EBS encryption |
 | `AWS-ConfigureS3BucketLogging` | Enables access logging on an S3 bucket |
-| `AWS-EnableCLBAccessLogging` | Enables access logging on a Classic Load Balancer |
+| `AWS-EnableCLBAccessLogs` | Enables access logging on a Classic Load Balancer |
 | `AWS-PublishSNSNotification` | Sends a notification (useful for alerting instead of auto-fix) |
 
 ## Custom Remediation with Lambda
@@ -139,7 +150,7 @@ def handler(event, context):
     rule_name = event.get('ConfigRuleName', 'unknown')
 
     # Determine the right API to tag based on resource type
-    if resource_type == 'AWS::EC2::Instance':
+    if resource_type in ('AWS::EC2::Instance', 'AWS::EC2::Volume'):
         ec2 = boto3.client('ec2')
         ec2.create_tags(
             Resources=[resource_id],
@@ -274,6 +285,11 @@ resource "aws_config_remediation_configuration" "s3_encryption" {
   parameter {
     name         = "SSEAlgorithm"
     static_value = "AES256"
+  }
+
+  parameter {
+    name         = "AutomationAssumeRole"
+    static_value = "arn:aws:iam::111111111111:role/ConfigRemediationRole"
   }
 
   maximum_automatic_attempts = 3
