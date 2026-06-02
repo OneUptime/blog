@@ -31,7 +31,7 @@ When you promote a replica, RDS performs these steps:
 1. **Stops replication** from the primary
 2. **Reboots the replica** to clear read-only mode
 3. **Makes it writable** - it becomes an independent instance
-4. **Creates a new endpoint** (actually keeps the same endpoint)
+4. **Keeps the replica endpoint** - the existing replica endpoint now points to the standalone instance
 
 After promotion, the instance is completely independent. It no longer receives updates from the original primary. Any writes to the old primary won't appear on the promoted instance, and vice versa.
 
@@ -58,7 +58,7 @@ aws rds promote-read-replica \
   --db-instance-identifier my-db-replica-1
 ```
 
-You can also configure backup settings during promotion, since replicas don't have independent backups.
+You can also configure backup settings during promotion. Backups on read replicas are engine- and version-specific, so this is a good time to set the retention period and backup window for the promoted standalone instance.
 
 This command promotes the replica and enables daily automated backups.
 
@@ -76,7 +76,7 @@ The promotion process typically takes a few minutes. Here's what to expect:
 1. You issue the promote command
 2. Instance status changes to "modifying"
 3. RDS stops replication
-4. Instance reboots (brief downtime, usually under a minute)
+4. Instance reboots and drops existing connections
 5. Instance status changes to "available"
 6. The instance is now standalone and writable
 
@@ -114,7 +114,7 @@ After promoting a replica, there are several things to configure:
 
 ### 1. Enable Backups
 
-Replicas don't have their own automated backups. After promotion, set up backups.
+If backups weren't enabled on the replica, or if the promoted instance needs different backup settings, set up automated backups.
 
 ```bash
 aws rds modify-db-instance \
@@ -231,14 +231,14 @@ For details on cross-region replicas, check out [creating cross-region RDS read 
 
 For MySQL replicas, promotion includes some additional steps:
 
-- Binary logging might not be enabled on the replica. After promotion, enable it if you plan to create replicas from this instance.
+- Binary logging is controlled by automated backups. After promotion, set a positive backup retention period if you plan to create replicas from this instance or need point-in-time recovery.
 - The `read_only` parameter is automatically set to `false` after promotion.
 - GTID-based replication settings are maintained.
 
-This enables binary logging on the promoted MySQL instance.
+This sets a row-based binary logging format on the promoted MySQL instance. Binary logging itself is enabled by the positive backup retention period configured during promotion or afterward.
 
 ```bash
-# Create a parameter group with binary logging enabled
+# Create a parameter group with the desired binary logging format
 aws rds create-db-parameter-group \
   --db-parameter-group-name promoted-mysql-params \
   --db-parameter-group-family mysql8.0 \
@@ -246,7 +246,7 @@ aws rds create-db-parameter-group \
 
 aws rds modify-db-parameter-group \
   --db-parameter-group-name promoted-mysql-params \
-  --parameters "ParameterName=binlog_format,ParameterValue=ROW,ApplyMethod=pending-reboot"
+  --parameters "ParameterName=binlog_format,ParameterValue=ROW,ApplyMethod=immediate"
 
 # Apply to the promoted instance
 aws rds modify-db-instance \
@@ -259,9 +259,9 @@ aws rds modify-db-instance \
 
 For PostgreSQL replicas:
 - The WAL receiver process stops after promotion
-- The instance performs crash recovery for any in-flight WAL records
-- `hot_standby` mode is disabled and the instance runs in normal mode
-- Replication slots (if any) from the old primary are not carried over
+- The instance stops receiving write-ahead log (WAL) files from the source DB instance
+- The instance is no longer read-only and becomes a writable DB instance
+- For PostgreSQL 14.1 and higher, downstream cascading replicas continue receiving WAL from the promoted instance automatically
 
 ## Rollback Options
 
