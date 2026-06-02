@@ -96,9 +96,11 @@ aws iam put-role-policy \
           "s3:AbortMultipartUpload",
           "s3:DeleteObject",
           "s3:GetObject",
+          "s3:GetObjectVersion",
           "s3:ListMultipartUploadParts",
           "s3:PutObject",
           "s3:GetObjectTagging",
+          "s3:GetObjectVersionTagging",
           "s3:PutObjectTagging"
         ],
         "Resource": "arn:aws:s3:::my-onprem-migration/*"
@@ -107,13 +109,15 @@ aws iam put-role-policy \
   }'
 ```
 
+If the bucket uses a customer managed KMS key, make sure the key policy allows this DataSync role to use the key for `kms:Encrypt`, `kms:Decrypt`, `kms:ReEncrypt*`, `kms:GenerateDataKey*`, and `kms:DescribeKey`.
+
 ## Step 3: Deploy and Activate the Agent
 
 If you haven't already deployed a DataSync agent, do so now. For detailed agent deployment steps, check our [DataSync setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-datasync-data-transfer/view).
 
 ```bash
 # Activate the agent (after deploying the VM)
-curl -s "http://AGENT_IP/?activationRegion=us-east-1&redirect_type=TEXT"
+curl -s "http://AGENT_IP/?gatewayType=SYNC&activationRegion=us-east-1&no_redirect"
 
 aws datasync create-agent \
   --activation-key "YOUR-ACTIVATION-KEY" \
@@ -196,7 +200,7 @@ aws datasync create-task \
     "ObjectTags": "PRESERVE"
   }' \
   --includes '[
-    {"FilterType": "SIMPLE_PATTERN", "Value": "*.pdf|*.xlsx|*.docx|*.csv"}
+    {"FilterType": "SIMPLE_PATTERN", "Value": "/reports*|/exports*|/shared/finance*"}
   ]' \
   --excludes '[
     {"FilterType": "SIMPLE_PATTERN", "Value": "*.tmp|*.bak|~$*|Thumbs.db"}
@@ -204,9 +208,9 @@ aws datasync create-task \
   --cloud-watch-log-group-arn "arn:aws:logs:us-east-1:123456789012:log-group:/aws/datasync:*"
 ```
 
-The filters use simple glob patterns. Includes and excludes work together - only files matching the includes AND not matching the excludes get transferred. If you don't specify includes, everything is included by default.
+The filters use simple patterns separated by pipes. Includes and excludes work together - only paths matching the includes AND not matching the excludes get transferred. If you don't specify includes, everything is included by default. For include filters, put `*` only at the end of a pattern, such as `/reports*`; extension-style include patterns like `*.pdf` aren't supported.
 
-Setting `ObjectTags` to PRESERVE stores file metadata (permissions, timestamps) as S3 object tags, which is useful if you ever need to restore files back to a file system.
+When transferring from NFS to S3, DataSync can store file metadata such as timestamps, UID/GID, and POSIX permissions as S3 user metadata, which is useful if you ever need to restore files back to a file system. The `ObjectTags` option applies to object tags when transferring between object storage systems.
 
 ## Step 7: Execute the Transfer
 
@@ -244,10 +248,10 @@ aws datasync describe-task-execution \
   --task-execution-arn "$EXEC_ARN" \
   --query '{
     Status: Status,
-    FilesTransferred: Result.TransferredFiles,
-    BytesTransferred: Result.TransferredBytes,
-    FilesVerified: Result.VerifiedFiles,
-    PrepareStatus: Result.PrepareDuration,
+    FilesTransferred: FilesTransferred,
+    BytesTransferred: BytesTransferred,
+    FilesVerified: FilesVerified,
+    PrepareStatus: Result.PrepareStatus,
     TransferDuration: Result.TransferDuration,
     VerifyDuration: Result.VerifyDuration
   }'
@@ -286,11 +290,13 @@ aws datasync create-location-nfs \
 4. **Schedule transfers during off-hours** when network bandwidth is available:
 
 ```bash
-# Set up EventBridge schedule for nightly transfers
-aws events put-rule \
-  --name "NightlySync-Finance" \
-  --schedule-expression "cron(0 22 * * ? *)" \
-  --state ENABLED
+# Set the DataSync task schedule for nightly transfers
+aws datasync update-task \
+  --task-arn "arn:aws:datasync:us-east-1:123456789012:task/task-0123456789abcdef0" \
+  --schedule '{
+    "ScheduleExpression": "cron(0 22 * * ? *)",
+    "Status": "ENABLED"
+  }'
 ```
 
 ## Cost Considerations
