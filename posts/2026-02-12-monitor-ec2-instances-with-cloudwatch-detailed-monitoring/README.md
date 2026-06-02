@@ -8,7 +8,7 @@ Description: Enable and use CloudWatch detailed monitoring on EC2 instances to g
 
 ---
 
-By default, EC2 instances send metrics to CloudWatch every 5 minutes. That might sound fine until you're trying to debug a CPU spike that lasted 90 seconds and completely disappeared between data points. Detailed monitoring drops the interval to 1 minute, giving you the resolution you actually need to catch performance problems.
+By default, EC2 instances send most metrics to CloudWatch every 5 minutes. That might sound fine until you're trying to debug a CPU spike that lasted 90 seconds and completely disappeared between data points. Detailed monitoring drops the interval for supported metrics to 1 minute, giving you the resolution you actually need to catch performance problems.
 
 ## Basic vs Detailed Monitoring
 
@@ -17,11 +17,11 @@ Here's what changes when you switch from basic to detailed:
 | Aspect | Basic Monitoring | Detailed Monitoring |
 |--------|-----------------|-------------------|
 | Metric interval | 5 minutes | 1 minute |
-| Cost | Free | ~$3.50/month per instance |
-| Available metrics | Standard EC2 set | Same metrics, finer granularity |
+| Cost | Free | Charged per metric sent to CloudWatch |
+| Available metrics | Standard EC2 set | Supported metrics at finer granularity |
 | Alarm evaluation | 5-minute periods | 1-minute periods |
 
-The metrics themselves don't change - you still get CPU utilization, network in/out, disk read/write ops, and status checks. What changes is how often those data points are collected.
+The core metrics themselves don't change - you still get CPU utilization, network in/out, disk read/write ops for instance store volumes, and status checks. What changes is how often the supported data points are collected. Status check metrics are already available at 1-minute periods with basic monitoring.
 
 ## Enabling Detailed Monitoring
 
@@ -113,29 +113,27 @@ resource "aws_autoscaling_group" "app" {
 
 ## Available EC2 Metrics
 
-With detailed monitoring enabled, these metrics arrive every minute:
+With detailed monitoring enabled, these commonly used EC2 metrics are available at 1-minute periods:
 
-**CPU metrics:**
+**CPU metric:**
 - `CPUUtilization` - Percentage of allocated EC2 compute units in use
-- `CPUCreditBalance` - (T instances only) Available CPU credits
-- `CPUCreditUsage` - (T instances only) Credits consumed
 
-**Disk metrics:**
-- `DiskReadOps` - Completed read operations
-- `DiskWriteOps` - Completed write operations
-- `DiskReadBytes` - Bytes read
-- `DiskWriteBytes` - Bytes written
+**Instance store disk metrics:**
+- `DiskReadOps` - Completed read operations from instance store volumes
+- `DiskWriteOps` - Completed write operations to instance store volumes
+- `DiskReadBytes` - Bytes read from instance store volumes
+- `DiskWriteBytes` - Bytes written to instance store volumes
 
 **Network metrics:**
 - `NetworkIn` - Bytes received
 - `NetworkOut` - Bytes sent
-- `NetworkPacketsIn` - Packets received
-- `NetworkPacketsOut` - Packets sent
 
 **Status checks:**
 - `StatusCheckFailed` - Either check failed
 - `StatusCheckFailed_Instance` - Instance check failed
 - `StatusCheckFailed_System` - System check failed
+
+CPU credit metrics such as `CPUCreditBalance` and `CPUCreditUsage` are available at 5-minute frequency only, and packet count metrics such as `NetworkPacketsIn` and `NetworkPacketsOut` are available for basic monitoring at 5-minute periods.
 
 ## Querying Metrics with the CLI
 
@@ -237,7 +235,7 @@ For these, you need to install and configure the CloudWatch agent. Check out [in
 
 ## Cost Considerations
 
-Detailed monitoring costs approximately $3.50 per instance per month. For a fleet of 100 instances, that's $350/month. Whether it's worth it depends on your needs:
+Detailed monitoring is charged per metric that Amazon EC2 sends to CloudWatch. AWS's pricing example assumes 7 metrics per instance at $0.30 per metric per month, which works out to about $2.10 per instance per month in that example. For a fleet of 100 instances, that would be about $210/month before any regional differences or volume pricing tiers. Whether it's worth it depends on your needs:
 
 **Worth it when:**
 - You have latency-sensitive applications
@@ -295,4 +293,4 @@ aws cloudwatch put-dashboard \
 
 For alerts and incident management on top of your CloudWatch data, consider setting up [CloudWatch alarms for CPU and memory](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) to get notified before issues impact your users.
 
-Detailed monitoring is one of those simple toggles that makes a real difference in your ability to understand and react to what's happening on your instances. For production workloads, the $3.50/month per instance is almost always worth the visibility you get in return.
+Detailed monitoring is one of those simple toggles that makes a real difference in your ability to understand and react to what's happening on your instances. For production workloads, the additional per-metric cost is often worth the visibility you get in return.
