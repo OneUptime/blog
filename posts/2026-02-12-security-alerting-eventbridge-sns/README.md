@@ -29,7 +29,7 @@ graph LR
     F --> J[Incident Response Lambda]
 ```
 
-AWS services emit events to EventBridge automatically. You write rules that match specific event patterns, and EventBridge forwards matching events to your SNS topics. From there, SNS fans out to whatever notification channels you've configured.
+AWS services emit events to EventBridge automatically. For CloudTrail-based events such as API calls and console sign-ins, make sure you have an active CloudTrail trail logging the relevant management or data events. You write rules that match specific event patterns, and EventBridge forwards matching events to your SNS topics. From there, SNS fans out to whatever notification channels you've configured.
 
 ## Setting Up the SNS Topic
 
@@ -53,6 +53,21 @@ aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:security-alerts \
   --protocol email \
   --notification-endpoint on-call@company.com
+
+# Allow EventBridge to publish to the SNS topic
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:security-alerts \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Sid": "AllowEventBridgePublish",
+      "Effect": "Allow",
+      "Principal": {"Service": "events.amazonaws.com"},
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:security-alerts"
+    }]
+  }'
 ```
 
 Don't forget to confirm the subscriptions - AWS sends a confirmation email that someone needs to click.
@@ -93,7 +108,7 @@ aws events put-rule \
       }
     }
   }' \
-  --state ENABLED
+  --state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS
 
 # Add SNS as the target
 aws events put-targets \
@@ -125,13 +140,19 @@ aws events put-rule \
   --name detect-unauthorized-api \
   --description "Alert on unauthorized API call attempts" \
   --event-pattern '{
-    "source": ["aws.cloudtrail"],
     "detail-type": ["AWS API Call via CloudTrail"],
     "detail": {
       "errorCode": ["AccessDenied", "UnauthorizedAccess", "Client.UnauthorizedAccess"]
     }
   }' \
-  --state ENABLED
+  --state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS
+
+aws events put-targets \
+  --rule detect-unauthorized-api \
+  --targets '[{
+    "Id": "SecurityAlertsSNS",
+    "Arn": "arn:aws:sns:us-east-1:123456789012:security-alerts"
+  }]'
 ```
 
 ### Security Group Changes
@@ -157,7 +178,14 @@ aws events put-rule \
       ]
     }
   }' \
-  --state ENABLED
+  --state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS
+
+aws events put-targets \
+  --rule detect-sg-changes \
+  --targets '[{
+    "Id": "SecurityAlertsSNS",
+    "Arn": "arn:aws:sns:us-east-1:123456789012:security-alerts"
+  }]'
 ```
 
 ### GuardDuty Findings
@@ -177,6 +205,13 @@ aws events put-rule \
     }
   }' \
   --state ENABLED
+
+aws events put-targets \
+  --rule detect-guardduty-high \
+  --targets '[{
+    "Id": "SecurityAlertsSNS",
+    "Arn": "arn:aws:sns:us-east-1:123456789012:security-alerts"
+  }]'
 ```
 
 The numeric matcher here is powerful - it filters to only findings with severity 7 or above, which are the high and critical ones.
@@ -194,6 +229,14 @@ import os
 SLACK_WEBHOOK = os.environ['SLACK_WEBHOOK_URL']
 
 def handler(event, context):
+    # SNS subscriptions wrap the original EventBridge message in Records[].Sns.Message
+    if 'Records' in event:
+        message = event['Records'][0]['Sns']['Message']
+        try:
+            event = json.loads(message)
+        except json.JSONDecodeError:
+            event = {'detail-type': 'Security Alert', 'detail': {'message': message}}
+
     # Determine severity based on source
     source = event.get('source', 'unknown')
     severity = 'WARNING'
@@ -240,7 +283,7 @@ Subscribe the Lambda to your SNS topic, and every security alert will pop up in 
 
 ## CloudFormation Template for the Full Stack
 
-Here's a complete CloudFormation template that sets up everything we've discussed:
+Here's a CloudFormation template that sets up the core EventBridge-to-SNS alerting pieces:
 
 ```yaml
 # security-alerting-stack.yaml
@@ -267,6 +310,7 @@ Resources:
       Topics:
         - !Ref SecurityAlertsTopic
       PolicyDocument:
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -278,6 +322,7 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: detect-root-login
+      State: ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS
       Description: Detect root account console sign-in
       EventPattern:
         source:
@@ -296,6 +341,7 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Name: detect-sg-changes
+      State: ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS
       EventPattern:
         source:
           - aws.ec2
@@ -305,8 +351,45 @@ Resources:
           eventName:
             - AuthorizeSecurityGroupIngress
             - AuthorizeSecurityGroupEgress
+            - RevokeSecurityGroupIngress
+            - RevokeSecurityGroupEgress
             - CreateSecurityGroup
             - DeleteSecurityGroup
+      Targets:
+        - Id: SecurityAlerts
+          Arn: !Ref SecurityAlertsTopic
+
+  UnauthorizedApiRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: detect-unauthorized-api
+      State: ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS
+      EventPattern:
+        detail-type:
+          - AWS API Call via CloudTrail
+        detail:
+          errorCode:
+            - AccessDenied
+            - UnauthorizedAccess
+            - Client.UnauthorizedAccess
+      Targets:
+        - Id: SecurityAlerts
+          Arn: !Ref SecurityAlertsTopic
+
+  GuardDutyHighRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: detect-guardduty-high
+      EventPattern:
+        source:
+          - aws.guardduty
+        detail-type:
+          - GuardDuty Finding
+        detail:
+          severity:
+            - numeric:
+                - ">="
+                - 7
       Targets:
         - Id: SecurityAlerts
           Arn: !Ref SecurityAlertsTopic
