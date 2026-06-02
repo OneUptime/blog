@@ -17,11 +17,11 @@ This pattern works well when you need sub-second processing of streaming data bu
 Lambda uses an Event Source Mapping to poll your Kinesis stream. The Lambda service maintains a shard iterator for each shard in the stream and polls for new records. When records are available, Lambda invokes your function with a batch.
 
 Key characteristics:
-- One Lambda invocation per shard (by default)
-- Records within a shard are processed in order
+- One concurrent Lambda invocation per shard (by default)
+- Records within a shard are processed in order by default
 - You can increase parallelism with the `parallelizationFactor` setting
-- Failed batches block the shard until resolved (unless you configure error handling)
-- Lambda reads at up to 2 MB/sec per shard or up to 5 read transactions/sec per shard
+- Failed batches can block progress for the affected shard until resolved (unless you configure error handling)
+- With standard iterators, Lambda shares the 2 MB/sec per shard or 5 read transactions/sec per shard read quota
 
 ## Setting Up with AWS CDK
 
@@ -31,6 +31,7 @@ This CDK stack creates a Kinesis stream with a Lambda consumer and error handlin
 
 ```typescript
 import * as cdk from 'aws-cdk-lib';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as kinesis from 'aws-cdk-lib/aws-kinesis';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as eventsources from 'aws-cdk-lib/aws-lambda-event-sources';
@@ -54,6 +55,12 @@ export class KinesisLambdaStack extends cdk.Stack {
       retentionPeriod: cdk.Duration.days(14),
     });
 
+    const outputTable = new dynamodb.Table(this, 'ClickAggregates', {
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
     // Lambda processor
     const processor = new lambda.Function(this, 'StreamProcessor', {
       runtime: lambda.Runtime.NODEJS_20_X,
@@ -62,7 +69,7 @@ export class KinesisLambdaStack extends cdk.Stack {
       timeout: cdk.Duration.minutes(1),
       memorySize: 512,
       environment: {
-        OUTPUT_TABLE: 'click-aggregates',
+        OUTPUT_TABLE: outputTable.tableName,
       },
     });
 
@@ -83,6 +90,7 @@ export class KinesisLambdaStack extends cdk.Stack {
 
     // Grant read access to the stream
     clickstream.grantRead(processor);
+    outputTable.grantWriteData(processor);
   }
 }
 ```
@@ -215,19 +223,24 @@ By default, Lambda processes one batch per shard at a time. With 4 shards, you g
 - 4 shards x 4 parallelization = 16 concurrent invocations
 - 4 shards x 10 parallelization = 40 concurrent invocations
 
-Higher parallelization means faster processing but potentially out-of-order records within a shard. Use it when ordering within a shard isn't critical.
+Higher parallelization means faster processing. Lambda still preserves ordering for records with the same partition key, but it can process multiple partition keys from the same shard concurrently.
 
 ### Enhanced Fan-Out
 
 Standard consumers share the 2 MB/sec read throughput per shard. Enhanced Fan-Out gives each consumer its own dedicated 2 MB/sec throughput via HTTP/2 push.
 
 ```typescript
-const consumer = new kinesis.CfnStreamConsumer(this, 'LambdaConsumer', {
-  consumerName: 'lambda-processor',
-  streamArn: clickstream.streamArn,
+const consumer = new kinesis.StreamConsumer(this, 'LambdaConsumer', {
+  streamConsumerName: 'lambda-processor',
+  stream: clickstream,
 });
 
-// Use the consumer ARN in your event source mapping
+processor.addEventSource(
+  new eventsources.KinesisConsumerEventSource(consumer, {
+    startingPosition: lambda.StartingPosition.LATEST,
+    batchSize: 500,
+  })
+);
 ```
 
 ## Kinesis vs. DynamoDB Streams vs. SQS
@@ -237,9 +250,9 @@ Choosing the right event source depends on your use case:
 | Feature | Kinesis | DynamoDB Streams | SQS |
 |---------|---------|-----------------|-----|
 | Ordering | Per shard (partition key) | Per partition key | FIFO only |
-| Retention | 24h - 365 days | 24 hours | 4 - 14 days |
+| Retention | 24h - 365 days | 24 hours | 1 min - 14 days |
 | Throughput | 1 MB/sec/shard write, 2 MB/sec/shard read | Tied to table capacity | Nearly unlimited |
-| Multiple consumers | Yes (enhanced fan-out) | Yes (up to 2) | No (single consumer) |
+| Multiple consumers | Yes (enhanced fan-out) | Yes (up to 2) | Competing consumers |
 | Data source | Any producer | DynamoDB table changes | Any producer |
 
 Use Kinesis for high-throughput streaming from external sources. Use DynamoDB Streams for change data capture. Use SQS for work queues. For DynamoDB Stream triggers, see our post on [triggering Lambda from DynamoDB Streams](https://oneuptime.com/blog/post/2026-02-12-trigger-lambda-dynamodb-streams/view).
