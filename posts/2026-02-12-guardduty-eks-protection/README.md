@@ -10,7 +10,7 @@ Description: Enable and configure GuardDuty EKS Protection to detect threats in 
 
 Running Kubernetes on EKS gives you a lot of power, but it also opens up a whole new attack surface. Compromised pods, privilege escalation, crypto miners running in containers, unauthorized API calls - the list of things that can go wrong in a Kubernetes cluster is long. GuardDuty EKS Protection extends AWS's threat detection into your clusters, giving you visibility into both the Kubernetes API layer and the runtime behavior of your containers.
 
-There are actually two distinct features here: EKS Audit Log Monitoring (which watches Kubernetes API activity) and EKS Runtime Monitoring (which watches what's happening inside your containers). Let's set up both.
+There are actually two distinct layers here: EKS Audit Log Monitoring (which watches Kubernetes API activity) and Runtime Monitoring (which watches what's happening inside your containers, including EKS workloads). Let's set up both.
 
 ## EKS Audit Log Monitoring
 
@@ -39,19 +39,17 @@ aws guardduty update-detector \
 
 ### Enabling via Terraform
 
-This Terraform block enables GuardDuty with EKS audit log monitoring:
+These Terraform blocks enable GuardDuty with EKS audit log monitoring:
 
 ```hcl
 resource "aws_guardduty_detector" "main" {
   enable = true
+}
 
-  datasources {
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-  }
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
 }
 ```
 
@@ -61,7 +59,7 @@ Runtime Monitoring goes deeper. It deploys a security agent (as a DaemonSet or m
 
 ### Enabling Runtime Monitoring
 
-This enables both EKS Runtime Monitoring and the automated agent management:
+This enables Runtime Monitoring and automated EKS agent management:
 
 ```bash
 # Enable EKS Runtime Monitoring with automated agent
@@ -69,7 +67,7 @@ aws guardduty update-detector \
   --detector-id abc123def456 \
   --features '[
     {
-      "Name": "EKS_RUNTIME_MONITORING",
+      "Name": "RUNTIME_MONITORING",
       "Status": "ENABLED",
       "AdditionalConfiguration": [
         {
@@ -81,7 +79,7 @@ aws guardduty update-detector \
   ]'
 ```
 
-When `EKS_ADDON_MANAGEMENT` is enabled, GuardDuty automatically installs and manages the security agent as an EKS add-on. If you prefer to manage it yourself, set that to `DISABLED` and deploy the agent manually.
+When `EKS_ADDON_MANAGEMENT` is enabled, GuardDuty automatically installs and manages the security agent as an EKS add-on. If you prefer to manage it yourself, set that to `DISABLED` and deploy the agent manually. AWS still supports `EKS_RUNTIME_MONITORING` for EKS-only runtime coverage, but recommends using `RUNTIME_MONITORING`.
 
 ### Manual Agent Deployment
 
@@ -93,8 +91,7 @@ This installs the GuardDuty runtime monitoring agent on your EKS cluster:
 # Create the GuardDuty agent add-on
 aws eks create-addon \
   --cluster-name my-cluster \
-  --addon-name aws-guardduty-agent \
-  --addon-version v1.5.0-eksbuild.1
+  --addon-name aws-guardduty-agent
 ```
 
 Check that the agent pods are running:
@@ -123,7 +120,7 @@ aws guardduty update-detector \
   --detector-id abc123def456 \
   --features '[
     {
-      "Name": "EKS_RUNTIME_MONITORING",
+      "Name": "RUNTIME_MONITORING",
       "Status": "ENABLED",
       "AdditionalConfiguration": [
         {
@@ -135,6 +132,8 @@ aws guardduty update-detector \
   ]'
 ```
 
+Use `GuardDutyManaged=false` instead for clusters you want to exclude when GuardDuty is otherwise managing the agent across all EKS clusters in the account.
+
 ## Understanding EKS Findings
 
 GuardDuty generates specific finding types for EKS. Here are the categories you'll encounter.
@@ -145,11 +144,11 @@ GuardDuty generates specific finding types for EKS. Here are the categories you'
 - `Persistence:Kubernetes/ContainerWithSensitiveMount` - Container with sensitive host path mounted
 - `CredentialAccess:Kubernetes/MaliciousIPCaller.Custom` - API call from IP on your threat list
 
-**Runtime findings** (prefix `Runtime:`):
-- `Runtime:Container/CryptoMiner` - Cryptomining activity detected in container
-- `Runtime:Container/ReverseShell` - Reverse shell detected
-- `Runtime:Container/SuspiciousTool` - Suspicious tool execution in container
-- `Runtime:Container/MaliciousFileExecuted` - Known malicious file executed
+**Runtime findings** (prefix contains `:Runtime/`):
+- `Impact:Runtime/CryptoMinerExecuted` - Cryptomining activity detected in container
+- `Execution:Runtime/ReverseShell` - Reverse shell detected
+- `Execution:Runtime/SuspiciousTool` - Suspicious tool execution in container
+- `Execution:Runtime/MaliciousFileExecuted` - Known malicious file executed
 
 ## Listing and Filtering Findings
 
@@ -164,8 +163,8 @@ aws guardduty list-findings \
       "type": {
         "Eq": [
           "PrivilegeEscalation:Kubernetes/PrivilegedContainer",
-          "Runtime:Container/CryptoMiner",
-          "Runtime:Container/ReverseShell"
+          "Impact:Runtime/CryptoMinerExecuted",
+          "Execution:Runtime/ReverseShell"
         ]
       }
     }
@@ -185,25 +184,27 @@ aws guardduty get-findings \
 
 When a threat is detected in a container, you usually want to act fast. Here's an EventBridge rule and Lambda function for automated response.
 
-This EventBridge pattern catches runtime container threats:
+This EventBridge pattern catches Runtime Monitoring findings:
 
 ```json
 {
   "source": ["aws.guardduty"],
   "detail-type": ["GuardDuty Finding"],
   "detail": {
-    "type": [{
-      "prefix": "Runtime:Container/"
-    }]
+    "resource": {
+      "resourceType": ["EKSCluster"]
+    },
+    "service": {
+      "featureName": ["RuntimeMonitoring"]
+    }
   }
 }
 ```
 
-This Lambda function kills the offending pod when a runtime threat is detected:
+This Lambda function publishes an alert when a runtime threat is detected:
 
 ```python
 import boto3
-import subprocess
 import json
 
 def handler(event, context):
@@ -211,18 +212,14 @@ def handler(event, context):
     finding_type = finding['type']
     severity = finding['severity']
 
-    # Only auto-remediate high severity findings
+    # Only alert on high severity findings
     if severity < 7:
         print(f"Finding {finding_type} severity {severity} - alerting only")
         return
 
-    # Extract cluster and pod details
+    # Extract cluster details
     eks_details = finding['resource']['eksClusterDetails']
     cluster_name = eks_details['name']
-
-    # Get container details from the finding
-    runtime_details = finding.get('service', {}).get('runtimeDetails', {})
-    context_details = runtime_details.get('context', {})
 
     print(f"High severity finding: {finding_type} in cluster {cluster_name}")
 
@@ -295,7 +292,7 @@ aws guardduty update-organization-configuration \
       "AutoEnable": "ALL"
     },
     {
-      "Name": "EKS_RUNTIME_MONITORING",
+      "Name": "RUNTIME_MONITORING",
       "AutoEnable": "ALL",
       "AdditionalConfiguration": [
         {
