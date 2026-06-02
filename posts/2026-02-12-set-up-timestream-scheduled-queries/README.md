@@ -30,9 +30,9 @@ A scheduled query consists of:
 
 ## Prerequisites
 
-### Create a Target Table
+### Create Target Tables
 
-The target table holds the pre-computed results.
+The target tables hold the pre-computed results.
 
 ```bash
 # Create a table for pre-computed hourly metrics
@@ -41,6 +41,26 @@ The target table holds the pre-computed results.
 aws timestream-write create-table \
   --database-name iot_data \
   --table-name hourly_metrics \
+  --retention-properties '{
+    "MemoryStoreRetentionPeriodInHours": 72,
+    "MagneticStoreRetentionPeriodInDays": 730
+  }' \
+  --magnetic-store-write-properties '{"EnableMagneticStoreWrites": true}'
+
+# Create a table for rolling 24-hour statistics
+aws timestream-write create-table \
+  --database-name iot_data \
+  --table-name rolling_stats \
+  --retention-properties '{
+    "MemoryStoreRetentionPeriodInHours": 72,
+    "MagneticStoreRetentionPeriodInDays": 730
+  }' \
+  --magnetic-store-write-properties '{"EnableMagneticStoreWrites": true}'
+
+# Create a table for anomaly detection results
+aws timestream-write create-table \
+  --database-name iot_data \
+  --table-name anomalies \
   --retention-properties '{
     "MemoryStoreRetentionPeriodInHours": 72,
     "MagneticStoreRetentionPeriodInDays": 730
@@ -59,6 +79,13 @@ aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:timestream-scheduled-query-notifications \
   --protocol email \
   --notification-endpoint ops-team@example.com
+```
+
+### Create an S3 Bucket for Error Reports
+
+```bash
+# Create an S3 bucket for scheduled query error reports
+aws s3api create-bucket --bucket my-timestream-errors
 ```
 
 ### Create an IAM Role
@@ -90,7 +117,8 @@ aws iam put-role-policy \
         "Action": [
           "timestream:WriteRecords",
           "timestream:DescribeEndpoints",
-          "timestream:Select"
+          "timestream:Select",
+          "timestream:SelectValues"
         ],
         "Resource": "*"
       },
@@ -351,9 +379,14 @@ aws timestream-query execute-scheduled-query \
 
 ### Update a Scheduled Query
 
-You cannot modify a scheduled query in place. Delete and recreate it.
+You can enable or disable a scheduled query in place. To change the query text, schedule, target, notification configuration, or error report configuration, delete and recreate it.
 
 ```bash
+# Disable a scheduled query
+aws timestream-query update-scheduled-query \
+  --scheduled-query-arn arn:aws:timestream:us-east-1:123456789012:scheduled-query/hourly-device-metrics \
+  --state DISABLED
+
 # Delete a scheduled query
 aws timestream-query delete-scheduled-query \
   --scheduled-query-arn arn:aws:timestream:us-east-1:123456789012:scheduled-query/hourly-device-metrics
