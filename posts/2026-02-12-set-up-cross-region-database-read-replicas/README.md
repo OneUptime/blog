@@ -56,10 +56,12 @@ Standard RDS supports cross-region read replicas for MySQL, MariaDB, PostgreSQL,
 aws rds create-db-instance-read-replica \
   --db-instance-identifier my-eu-replica \
   --source-db-instance-identifier arn:aws:rds:us-east-1:123456789012:db:my-primary-db \
+  --source-region us-east-1 \
   --db-instance-class db.r6g.large \
   --region eu-west-1 \
   --availability-zone eu-west-1a \
   --storage-type gp3 \
+  --iops 3000 \
   --kms-key-id arn:aws:kms:eu-west-1:123456789012:key/KEY_ID
 ```
 
@@ -74,13 +76,16 @@ A few important notes:
 
 ```bash
 # Check replication lag on the cross-region replica
-aws rds describe-db-instances \
-  --db-instance-identifier my-eu-replica \
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/RDS \
+  --metric-name ReplicaLag \
+  --dimensions Name=DBInstanceIdentifier,Value=my-eu-replica \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
+  --period 60 \
+  --statistics Average Maximum \
   --region eu-west-1 \
-  --query 'DBInstances[0].{
-    Status: DBInstanceStatus,
-    ReplicaLag: StatusInfos[?Normal==`false`].Message
-  }'
+  --query 'Datapoints[*].{Time:Timestamp,Average:Average,Maximum:Maximum}'
 ```
 
 You can also monitor `ReplicaLag` through CloudWatch. Set up an alarm if lag exceeds your tolerance:
@@ -109,8 +114,8 @@ Aurora Global Database is purpose-built for cross-region deployments. It uses de
 
 - Typical replication lag under 1 second (compared to seconds or minutes with RDS)
 - Storage-based replication that does not impact database performance
-- Managed failover with RPO of 1 second and RTO under 1 minute
-- Up to 5 secondary regions
+- Managed switchover with no data loss, and managed failover for disaster recovery
+- Up to 10 secondary regions
 
 ### Setting Up Aurora Global Database
 
@@ -155,8 +160,8 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name AuroraGlobalDBReplicationLag \
   --dimensions Name=DBClusterIdentifier,Value=my-aurora-eu \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 60 \
   --statistics Average Maximum \
   --region eu-west-1
@@ -252,14 +257,14 @@ This breaks the replication link permanently. After promotion, the former replic
 Aurora Global Database supports managed failover:
 
 ```bash
-# Initiate planned failover to the secondary region
-aws rds failover-global-cluster \
+# Initiate a planned switchover to the secondary region
+aws rds switchover-global-cluster \
   --global-cluster-identifier my-global-db \
   --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789012:cluster:my-aurora-eu \
   --region us-east-1
 ```
 
-Planned failover has zero data loss. For unplanned failover (primary region down), use `switchover-global-cluster` which has RPO of typically under 1 second.
+Planned switchover has zero data loss. For unplanned failover (primary region down), use `failover-global-cluster` from the target secondary region with `--allow-data-loss`. The RPO is typically a non-zero value measured in seconds and depends on replication lag at the time of the failure.
 
 ## Cost Considerations
 
