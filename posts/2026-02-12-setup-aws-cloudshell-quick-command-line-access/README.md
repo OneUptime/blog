@@ -12,12 +12,12 @@ AWS CloudShell is a browser-based shell that gives you instant access to the AWS
 
 ## What You Get with CloudShell
 
-CloudShell provides a full Linux environment running Amazon Linux 2 with these tools pre-installed:
+CloudShell provides a full Linux environment running Amazon Linux 2023 with these tools pre-installed:
 
 - AWS CLI v2
 - Python 3, Node.js, and other runtimes
 - git, make, pip, npm
-- 1 GB of persistent storage in your home directory
+- 1 GB of persistent storage in your home directory per AWS Region
 - The credentials of your currently logged-in AWS console user
 
 That last point is important - CloudShell automatically uses your console session credentials. No access keys needed.
@@ -40,7 +40,7 @@ You'll see the same IAM identity you used to log into the console. The region de
 
 ## Persistent Storage
 
-CloudShell gives you 1 GB of persistent storage in your home directory. Files you save there survive between sessions. But anything outside your home directory (like installed system packages) gets reset when the environment recycles, which happens after about 20 minutes of inactivity.
+CloudShell gives you 1 GB of persistent storage in your home directory per AWS Region. Files you save there survive between sessions. But anything outside your home directory (like installed system packages) gets reset when the environment recycles, which happens after 20-30 minutes of inactivity.
 
 Save important scripts and configs in your home directory.
 
@@ -80,7 +80,7 @@ alias functions='aws lambda list-functions --query "Functions[].FunctionName" --
 alias stacks='aws cloudformation list-stacks --stack-status-filter CREATE_COMPLETE UPDATE_COMPLETE --query "StackSummaries[].StackName" --output table'
 
 # Better prompt with region awareness
-export PS1='\[\e[32m\]\u@cloudshell\[\e[0m\] [\[\e[33m\]$AWS_DEFAULT_REGION\[\e[0m\]] \w\$ '
+export PS1='\[\e[32m\]\u@cloudshell\[\e[0m\] [\[\e[33m\]$AWS_REGION\[\e[0m\]] \w\$ '
 
 # Default output format
 export AWS_DEFAULT_OUTPUT=table
@@ -97,8 +97,9 @@ You can install tools in your home directory to make them persistent. System-wid
 Install tools to your home directory for persistence.
 
 ```bash
-# Install jq for JSON processing (persists in home directory)
-curl -L https://github.com/jqlang/jq/releases/download/jq-1.7/jq-linux-amd64 -o ~/bin/jq
+# Install a newer jq for JSON processing (persists in home directory)
+mkdir -p ~/bin
+curl -L https://github.com/jqlang/jq/releases/download/jq-1.8.1/jq-linux-amd64 -o ~/bin/jq
 chmod +x ~/bin/jq
 
 # Make sure ~/bin is in your PATH
@@ -119,10 +120,10 @@ CloudShell defaults to the region selected in your console. Switch regions easil
 
 ```bash
 # Check current region
-echo $AWS_DEFAULT_REGION
+echo $AWS_REGION
 
 # Switch region for the current session
-export AWS_DEFAULT_REGION=eu-west-1
+export AWS_REGION=eu-west-1
 
 # Or use the --region flag for individual commands
 aws s3 ls --region eu-west-1
@@ -177,20 +178,20 @@ CloudShell inherits your console permissions, so it can do anything your IAM ide
 
 - Don't store long-term credentials in CloudShell - it already has temporary credentials from your session
 - Files in your home directory are encrypted at rest
-- CloudShell sessions timeout after 20 minutes of inactivity
-- Each AWS account gets its own isolated CloudShell environment
+- CloudShell sessions timeout after 20-30 minutes of inactivity
+- Each user gets an isolated CloudShell environment per AWS Region
 - Network access is outbound only - you can reach the internet but nothing can connect inbound to CloudShell
 
 ## Limitations
 
 CloudShell has some constraints worth knowing about:
 
-- 1 GB persistent storage (home directory only)
-- Sessions time out after 20 minutes of inactivity
+- 1 GB persistent storage per AWS Region (home directory only)
+- Sessions time out after 20-30 minutes of inactivity
 - Maximum session duration of 12 hours
 - No inbound network connections
 - Available in most but not all AWS regions
-- Can't run Docker containers
+- Docker has limited space and isn't available in AWS GovCloud (US) Regions
 - Limited to the compute resources AWS allocates (not configurable)
 
 ## CloudShell vs. Local CLI
@@ -203,7 +204,7 @@ Use CloudShell when:
 
 Use local CLI when:
 - You're doing heavy development or scripting
-- You need Docker or other tools not available in CloudShell
+- You need more Docker space or other tools not available in CloudShell
 - You need more than 1 GB of storage
 - You need persistent system-level customizations
 
