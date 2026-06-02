@@ -52,8 +52,9 @@ phases:
     commands:
       - echo "Packaging Lambda function..."
       # Install only production dependencies for the deployment package
-      - npm ci --production
+      - npm ci --omit=dev
       - zip -r function.zip src/ node_modules/ package.json
+      - aws cloudformation package --template-file template.yml --s3-bucket "$DEPLOYMENT_BUCKET" --output-template-file packaged-template.yml
       - echo "Package size: $(du -sh function.zip | cut -f1)"
 
   post_build:
@@ -62,8 +63,7 @@ phases:
 
 artifacts:
   files:
-    - function.zip
-    - template.yml
+    - packaged-template.yml
   discard-paths: yes
 
 cache:
@@ -86,10 +86,6 @@ Parameters:
     Type: String
     AllowedValues: [staging, production]
     Default: staging
-  CodeS3Bucket:
-    Type: String
-  CodeS3Key:
-    Type: String
 
 Globals:
   Function:
@@ -103,9 +99,7 @@ Resources:
     Properties:
       FunctionName: !Sub "my-api-${Environment}"
       Handler: src/handler.handler
-      CodeUri:
-        Bucket: !Ref CodeS3Bucket
-        Key: !Ref CodeS3Key
+      CodeUri: function.zip
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
@@ -171,6 +165,9 @@ Resources:
         Type: LINUX_CONTAINER
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/amazonlinux2-x86_64-standard:5.0
+        EnvironmentVariables:
+          - Name: DEPLOYMENT_BUCKET
+            Value: !Ref ArtifactBucket
       Source:
         Type: CODEPIPELINE
         BuildSpec: buildspec.yml
@@ -193,14 +190,14 @@ Resources:
             - Name: SourceAction
               ActionTypeId:
                 Category: Source
-                Owner: ThirdParty
-                Provider: GitHub
+                Owner: AWS
+                Provider: CodeStarSourceConnection
                 Version: "1"
               Configuration:
-                Owner: your-org
-                Repo: your-lambda-repo
-                Branch: main
-                OAuthToken: !Sub "{{resolve:secretsmanager:github-token}}"
+                ConnectionArn: arn:aws:codeconnections:us-east-1:123456789012:connection/your-connection-id
+                FullRepositoryId: your-org/your-lambda-repo
+                BranchName: main
+                OutputArtifactFormat: CODE_ZIP
               OutputArtifacts:
                 - Name: SourceOutput
 
@@ -232,13 +229,11 @@ Resources:
               Configuration:
                 ActionMode: CREATE_UPDATE
                 StackName: lambda-staging
-                TemplatePath: BuildOutput::template.yml
+                TemplatePath: BuildOutput::packaged-template.yml
                 Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
                 ParameterOverrides: |
                   {
-                    "Environment": "staging",
-                    "CodeS3Bucket": { "Fn::GetArtifactAtt": ["BuildOutput", "BucketName"] },
-                    "CodeS3Key": { "Fn::GetArtifactAtt": ["BuildOutput", "ObjectKey"] }
+                    "Environment": "staging"
                   }
                 RoleArn: !GetAtt CloudFormationRole.Arn
               InputArtifacts:
@@ -269,13 +264,11 @@ Resources:
               Configuration:
                 ActionMode: CREATE_UPDATE
                 StackName: lambda-production
-                TemplatePath: BuildOutput::template.yml
+                TemplatePath: BuildOutput::packaged-template.yml
                 Capabilities: CAPABILITY_IAM,CAPABILITY_AUTO_EXPAND
                 ParameterOverrides: |
                   {
-                    "Environment": "production",
-                    "CodeS3Bucket": { "Fn::GetArtifactAtt": ["BuildOutput", "BucketName"] },
-                    "CodeS3Key": { "Fn::GetArtifactAtt": ["BuildOutput", "ObjectKey"] }
+                    "Environment": "production"
                   }
                 RoleArn: !GetAtt CloudFormationRole.Arn
               InputArtifacts:
@@ -325,6 +318,10 @@ PipelineRole:
               Resource: !GetAtt BuildProject.Arn
             - Effect: Allow
               Action:
+                - codeconnections:UseConnection
+              Resource: arn:aws:codeconnections:us-east-1:123456789012:connection/your-connection-id
+            - Effect: Allow
+              Action:
                 - cloudformation:*
               Resource: "*"
             - Effect: Allow
@@ -359,6 +356,33 @@ CodeBuildRole:
               Action:
                 - s3:GetObject
                 - s3:PutObject
+              Resource: !Sub "${ArtifactBucket.Arn}/*"
+
+# IAM role for CloudFormation deployments
+CloudFormationRole:
+  Type: AWS::IAM::Role
+  Properties:
+    AssumeRolePolicyDocument:
+      Statement:
+        - Effect: Allow
+          Principal:
+            Service: cloudformation.amazonaws.com
+          Action: sts:AssumeRole
+    Policies:
+      - PolicyName: CloudFormationDeployPolicy
+        PolicyDocument:
+          Statement:
+            - Effect: Allow
+              Action:
+                - lambda:*
+                - iam:*
+                - codedeploy:*
+                - cloudwatch:*
+                - logs:*
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - s3:GetObject
               Resource: !Sub "${ArtifactBucket.Arn}/*"
 ```
 
@@ -401,7 +425,7 @@ phases:
 
 ## Monitoring Pipeline Executions
 
-Set up CloudWatch Events to track pipeline state changes:
+Set up Amazon EventBridge to track pipeline state changes:
 
 ```yaml
 # Alert on pipeline failures
