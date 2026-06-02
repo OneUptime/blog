@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Route 53, DNS, Debugging
 
-Description: Troubleshoot and fix Route 53 HostedZone not found errors caused by wrong zone IDs, deleted zones, private zone configurations, and cross-account access issues.
+Description: Troubleshoot and fix Route 53 HostedZone not found errors caused by wrong zone IDs, deleted zones, DNS resolution issues in private zones, and cross-account access issues.
 
 ---
 
-The "HostedZone not found" error from Route 53 means the API can't locate the hosted zone you're referencing. It could be a wrong zone ID, a zone in a different account, a private zone visibility issue, or a zone that was deleted. Let's track it down.
+The "HostedZone not found" error from Route 53 means the API can't locate the hosted zone you're referencing. It could be a wrong zone ID, a zone in a different account, or a zone that was deleted. If the zone exists but records don't resolve, a private zone VPC association issue can look similar from the application side. Let's track it down.
 
 ## Verify the Hosted Zone ID
 
@@ -22,17 +22,14 @@ aws route53 list-hosted-zones \
     --output table
 ```
 
-Route 53 zone IDs come with a `/hostedzone/` prefix in some contexts but not others. Make sure you're using the right format:
+Route 53 zone IDs can appear with a `/hostedzone/` prefix in list responses, but CLI and infrastructure-as-code fields generally expect just the hosted zone ID. Make sure you're using the right format:
 
 ```bash
 # The API returns IDs like /hostedzone/Z1234567890ABC
-# But some API calls want just Z1234567890ABC
+# Strip the prefix when passing the ID to commands and templates
 
 # This works
 aws route53 get-hosted-zone --id Z1234567890ABC
-
-# This also works
-aws route53 get-hosted-zone --id /hostedzone/Z1234567890ABC
 ```
 
 In CloudFormation or Terraform, be consistent:
@@ -79,7 +76,7 @@ aws sts assume-role \
 
 ## Private Hosted Zones
 
-Private hosted zones are only visible to VPCs that are associated with them. If you're trying to resolve records in a private zone from outside the associated VPCs, it won't work.
+Private hosted zones resolve only for VPCs that are associated with them. If you're trying to resolve records in a private zone from outside the associated VPCs, it won't work.
 
 ```bash
 # Check if a zone is private and which VPCs it's associated with
@@ -163,7 +160,7 @@ aws route53 list-hosted-zones-by-name \
     --query 'HostedZones[?Name==`example.com.`].{Id:Id,Private:Config.PrivateZone}'
 ```
 
-If you have multiple zones, you might be referencing the wrong one's ID. The active one is whichever has its name servers set at the registrar (for public zones) or is associated with your VPC (for private zones).
+If you have multiple zones, you might be referencing the wrong one's ID. The active public zone is whichever has its name servers set at the registrar. For private zones, Route 53 Resolver uses the private zone associated with the VPC where the query originates.
 
 ## CloudFormation and Terraform References
 
@@ -218,7 +215,6 @@ Make sure your IAM identity has the right permissions for Route 53:
             "Effect": "Allow",
             "Action": [
                 "route53:GetHostedZone",
-                "route53:ListHostedZones",
                 "route53:ChangeResourceRecordSets",
                 "route53:ListResourceRecordSets"
             ],
@@ -242,4 +238,4 @@ For monitoring DNS configuration changes and catching issues early, set up [infr
 
 ## Summary
 
-"HostedZone not found" usually means the zone ID is wrong, you're in the wrong account, the zone was deleted, or it's a private zone not visible to your VPC. List your hosted zones to find the correct ID, verify your account, check CloudTrail for deletions, and ensure private zones are associated with the right VPCs. Use data source lookups in IaC instead of hardcoding zone IDs.
+"HostedZone not found" usually means the zone ID is wrong, you're in the wrong account, or the zone was deleted. List your hosted zones to find the correct ID, verify your account, check CloudTrail for deletions, and ensure private zones are associated with the right VPCs when you're debugging DNS resolution. Use data source lookups in IaC instead of hardcoding zone IDs.
