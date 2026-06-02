@@ -40,7 +40,7 @@ On macOS with Homebrew:
 ```bash
 # Install macFUSE first, then s3fs
 brew install --cask macfuse
-brew install s3fs
+brew install gromgit/fuse/s3fs-mac
 ```
 
 ## Configure Credentials
@@ -97,7 +97,7 @@ To persist the mount across reboots, add an entry to `/etc/fstab`.
 
 ```bash
 # Add this line to /etc/fstab
-s3fs#my-bucket /mnt/s3-data fuse _netdev,allow_other,passwd_file=/home/ubuntu/.passwd-s3fs,url=https://s3.us-east-1.amazonaws.com,use_path_request_style 0 0
+my-bucket /mnt/s3-data fuse.s3fs _netdev,allow_other,passwd_file=/home/ubuntu/.passwd-s3fs,url=https://s3.us-east-1.amazonaws.com,use_path_request_style 0 0
 ```
 
 The `_netdev` option tells the system this mount depends on networking, so it waits for network connectivity before mounting.
@@ -117,7 +117,7 @@ df -h /mnt/s3-data
 
 ## Mounting a Specific Prefix
 
-If you only need access to a specific prefix (folder) in the bucket, use the `-o` option.
+If you only need access to a specific prefix (folder) in the bucket, include the prefix in the bucket argument.
 
 ```bash
 # Mount only the 'data/2024/' prefix
@@ -237,10 +237,10 @@ Common issues:
 S3fs has real limitations that you need to understand before depending on it.
 
 1. **No atomic renames** - Renaming a file copies it to a new key and deletes the old one. This breaks applications that rely on atomic file renames (like many databases).
-2. **Eventual consistency for listings** - After uploading a file, it might not appear in directory listings immediately.
-3. **No file locking** - POSIX file locks don't work. If multiple processes write to the same file, you'll get data corruption.
+2. **S3fs metadata caching can look stale** - AWS S3 now has strong consistency for reads and listings, but s3fs caches metadata, so separate clients or tools may not see each other's changes until the cache expires.
+3. **No coordination between clients** - s3fs doesn't provide distributed locking. If multiple processes or mounts write to the same file, you'll get data corruption.
 4. **Performance** - Every file operation is an HTTP request. Latency is measured in milliseconds, not microseconds.
-5. **No hard links or symbolic links** - S3 doesn't support them.
+5. **No hard links** - s3fs supports symlinks, but S3 itself doesn't have native POSIX hard links.
 
 ## When to Use s3fs vs Alternatives
 
