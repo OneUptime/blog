@@ -10,18 +10,18 @@ Description: A complete guide to setting up and using Amazon CloudWatch Containe
 
 Running containers on ECS without proper monitoring is flying blind. You might know that your service is responding to requests, but do you know how much CPU headroom you have? Whether a specific task is leaking memory? If your cluster is about to hit its resource limits?
 
-CloudWatch Container Insights answers all of these questions. It collects, aggregates, and visualizes metrics at the cluster, service, task, and container level. Let's set it up and look at what it can tell you.
+CloudWatch Container Insights with enhanced observability answers all of these questions. It collects, aggregates, and visualizes metrics at the cluster, service, task, and container level. Let's set it up and look at what it can tell you.
 
 ## What Container Insights Gives You
 
-Out of the box, Container Insights provides:
+With enhanced observability, Container Insights provides:
 
 - **Cluster-level metrics** - CPU utilization, memory utilization, network I/O, task counts
 - **Service-level metrics** - Running task count, desired task count, CPU and memory per service
 - **Task-level metrics** - Per-task CPU, memory, network, and storage metrics
 - **Container-level metrics** - Individual container resource usage within a task
 
-This is significantly more granular than the default ECS metrics in CloudWatch, which only give you service-level CPU and memory utilization. With Container Insights, you can drill down to see which specific container in a multi-container task is consuming resources.
+This is significantly more granular than the default ECS metrics in CloudWatch, which provide service-level CPU and memory utilization for ECS services. With Container Insights enhanced observability, you can drill down to see which specific container in a multi-container task is consuming resources.
 
 ## Enabling Container Insights on Your Cluster
 
@@ -32,7 +32,7 @@ For new clusters, you can enable Container Insights at creation time:
 
 aws ecs create-cluster \
   --cluster-name production-cluster \
-  --settings "name=containerInsights,value=enabled"
+  --settings "name=containerInsights,value=enhanced"
 ```
 
 For existing clusters, you can update the setting:
@@ -41,10 +41,10 @@ For existing clusters, you can update the setting:
 # Enable Container Insights on an existing cluster
 aws ecs update-cluster-settings \
   --cluster production-cluster \
-  --settings "name=containerInsights,value=enabled"
+  --settings "name=containerInsights,value=enhanced"
 ```
 
-That's it for Fargate. If you're running EC2 launch type, you'll also need the CloudWatch agent installed on your EC2 instances, but for Fargate, ECS handles everything automatically.
+That's it for Fargate. If you're running the EC2 launch type, launch the instances with an AMI that includes Amazon ECS agent version 1.29 or later. You only need the CloudWatch agent if you also want to collect EC2 instance-level metrics.
 
 ## Verifying It's Working
 
@@ -101,7 +101,7 @@ A task that consistently uses 90%+ of its reserved memory is a ticking time bomb
 
 - **NetworkRxBytes** - Bytes received
 - **NetworkTxBytes** - Bytes transmitted
-- **NetworkRxPackets** / **NetworkTxPackets** - Packet counts
+- **NetworkRxPackets** / **NetworkTxPackets** - Packet counts available in the performance logs
 
 Network metrics are great for spotting unusual traffic patterns. A sudden spike in received bytes might indicate a traffic surge or a DDoS attempt.
 
@@ -122,46 +122,7 @@ The CloudWatch console has a built-in Container Insights dashboard, but you can 
   "Type": "AWS::CloudWatch::Dashboard",
   "Properties": {
     "DashboardName": "ECS-Production-Overview",
-    "DashboardBody": {
-      "widgets": [
-        {
-          "type": "metric",
-          "properties": {
-            "metrics": [
-              ["ECS/ContainerInsights", "CpuUtilized", "ClusterName", "production-cluster", {"stat": "Average"}],
-              ["ECS/ContainerInsights", "CpuReserved", "ClusterName", "production-cluster", {"stat": "Average"}]
-            ],
-            "title": "Cluster CPU Utilization",
-            "period": 300,
-            "view": "timeSeries"
-          }
-        },
-        {
-          "type": "metric",
-          "properties": {
-            "metrics": [
-              ["ECS/ContainerInsights", "MemoryUtilized", "ClusterName", "production-cluster", {"stat": "Average"}],
-              ["ECS/ContainerInsights", "MemoryReserved", "ClusterName", "production-cluster", {"stat": "Average"}]
-            ],
-            "title": "Cluster Memory Utilization",
-            "period": 300,
-            "view": "timeSeries"
-          }
-        },
-        {
-          "type": "metric",
-          "properties": {
-            "metrics": [
-              ["ECS/ContainerInsights", "RunningTaskCount", "ClusterName", "production-cluster", {"stat": "Average"}],
-              ["ECS/ContainerInsights", "PendingTaskCount", "ClusterName", "production-cluster", {"stat": "Average"}]
-            ],
-            "title": "Task Counts",
-            "period": 60,
-            "view": "timeSeries"
-          }
-        }
-      ]
-    }
+    "DashboardBody": "{\"widgets\":[{\"type\":\"metric\",\"properties\":{\"metrics\":[[\"ECS/ContainerInsights\",\"CpuUtilized\",\"ClusterName\",\"production-cluster\",{\"stat\":\"Average\"}],[\"ECS/ContainerInsights\",\"CpuReserved\",\"ClusterName\",\"production-cluster\",{\"stat\":\"Average\"}]],\"title\":\"Cluster CPU Utilization\",\"period\":300,\"view\":\"timeSeries\"}},{\"type\":\"metric\",\"properties\":{\"metrics\":[[\"ECS/ContainerInsights\",\"MemoryUtilized\",\"ClusterName\",\"production-cluster\",{\"stat\":\"Average\"}],[\"ECS/ContainerInsights\",\"MemoryReserved\",\"ClusterName\",\"production-cluster\",{\"stat\":\"Average\"}]],\"title\":\"Cluster Memory Utilization\",\"period\":300,\"view\":\"timeSeries\"}},{\"type\":\"metric\",\"properties\":{\"metrics\":[[\"ECS/ContainerInsights\",\"RunningTaskCount\",\"ServiceName\",\"backend-api\",\"ClusterName\",\"production-cluster\",{\"stat\":\"Average\"}],[\"ECS/ContainerInsights\",\"PendingTaskCount\",\"ServiceName\",\"backend-api\",\"ClusterName\",\"production-cluster\",{\"stat\":\"Average\"}]],\"title\":\"Task Counts\",\"period\":60,\"view\":\"timeSeries\"}}]}"
   }
 }
 ```
@@ -171,7 +132,8 @@ The CloudWatch console has a built-in Container Insights dashboard, but you can 
 Dashboards are great for visual monitoring, but you need alarms for automated alerting. Here are the most important ones:
 
 ```bash
-# Alert when CPU utilization exceeds 80% for 5 minutes
+# Alert when CPU usage exceeds 410 CPU units for 5 minutes
+# For a service reserving 512 CPU units, that is about 80% of reserved CPU.
 aws cloudwatch put-metric-alarm \
   --alarm-name "ECS-HighCPU-BackendAPI" \
   --namespace "ECS/ContainerInsights" \
@@ -184,7 +146,8 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 1 \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-alerts"
 
-# Alert when memory is above 85% of reserved
+# Alert when memory usage exceeds 870 MiB
+# For a service reserving 1024 MiB, that is about 85% of reserved memory.
 aws cloudwatch put-metric-alarm \
   --alarm-name "ECS-HighMemory-BackendAPI" \
   --namespace "ECS/ContainerInsights" \
@@ -209,7 +172,7 @@ This is invaluable for right-sizing. You might discover that your Envoy sidecar 
 To query container-level metrics, use CloudWatch Logs Insights on the `/aws/ecs/containerinsights/{cluster-name}/performance` log group:
 
 ```sql
--- Find the top 10 containers by memory usage
+# Find the top 10 containers by memory usage
 fields @timestamp, TaskId, ContainerName, CpuUtilized, MemoryUtilized
 | filter Type = "Container"
 | sort MemoryUtilized desc
@@ -217,11 +180,11 @@ fields @timestamp, TaskId, ContainerName, CpuUtilized, MemoryUtilized
 ```
 
 ```sql
--- Track memory growth over time for a specific service
+# Track memory growth over time for a specific service
 fields @timestamp, MemoryUtilized, MemoryReserved
 | filter Type = "Task" and ServiceName = "backend-api"
-| stats avg(MemoryUtilized) as avg_mem by bin(5m)
-| sort @timestamp asc
+| stats avg(MemoryUtilized) as avg_mem by bin(5m) as time
+| sort time asc
 ```
 
 ## Performance Log Groups
@@ -245,6 +208,6 @@ To manage costs:
 
 ## Wrapping Up
 
-Container Insights transforms ECS monitoring from guesswork to data-driven decision making. You get visibility into every layer - from the cluster down to individual containers - without installing agents or modifying your applications.
+Container Insights transforms ECS monitoring from guesswork to data-driven decision making. You get visibility into every layer - from the cluster down to individual containers - without installing application-side agents or modifying your applications.
 
 Enable it on your production clusters, build dashboards for the key metrics, set up alarms for critical thresholds, and use Logs Insights queries for deep investigations. Your future self will thank you when you're troubleshooting an incident at 3 AM and you can actually see what's happening inside your containers.
