@@ -41,6 +41,7 @@ aws rds create-db-instance \
   --master-username admin \
   --master-user-password "$DB_PASSWORD" \
   --allocated-storage 100 \
+  --database-insights-mode standard \
   --enable-performance-insights \
   --performance-insights-retention-period 7
 ```
@@ -51,12 +52,15 @@ For an existing instance:
 # Enable Performance Insights on an existing RDS instance
 aws rds modify-db-instance \
   --db-instance-identifier my-existing-db \
+  --database-insights-mode standard \
   --enable-performance-insights \
   --performance-insights-retention-period 7 \
   --apply-immediately
 ```
 
-The `--performance-insights-retention-period` can be set to 7 (free tier) or 731 days (paid - about $0.06/vCPU/month). The 7-day retention is plenty for most troubleshooting scenarios, but the longer retention is useful if you need to compare performance over time.
+The `--performance-insights-retention-period` can be set to 7 (included by default), a monthly value from 31 to 713 days, or 731 days (paid). The 7-day retention is plenty for most troubleshooting scenarios, but the longer retention is useful if you need to compare performance over time.
+
+AWS has announced that after June 30, 2026, the Performance Insights console experience, flexible retention periods, and associated pricing will no longer be supported. The Performance Insights API continues to exist, and AWS recommends moving instances that use paid Performance Insights retention to the Advanced mode of CloudWatch Database Insights before that date.
 
 ## Understanding the Dashboard
 
@@ -116,7 +120,7 @@ You can pull Performance Insights data through the API for custom dashboards or 
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 pi_client = boto3.client('pi')
 
@@ -128,7 +132,7 @@ instance = rds.describe_db_instances(
 resource_id = instance['DbiResourceId']
 
 # Query database load for the last hour, broken down by wait events
-end_time = datetime.utcnow()
+end_time = datetime.now(timezone.utc)
 start_time = end_time - timedelta(hours=1)
 
 response = pi_client.get_resource_metrics(
@@ -149,8 +153,11 @@ response = pi_client.get_resource_metrics(
 )
 
 # Print the top wait events
-for key in response['MetricList'][0]['KeyList']:
-    print(f"Wait event: {key['Dimensions']['db.wait_event']}")
+for metric in response['MetricList']:
+    dimensions = metric['Key']['Dimensions']
+    wait_event = dimensions.get('db.wait_event.name', 'N/A')
+    latest_value = metric['DataPoints'][-1]['Value'] if metric['DataPoints'] else 0
+    print(f"Wait event: {wait_event}, load: {latest_value}")
 ```
 
 To get the top SQL statements:
@@ -174,10 +181,13 @@ response = pi_client.get_resource_metrics(
     PeriodInSeconds=300
 )
 
-for key in response['MetricList'][0]['KeyList']:
-    sql_id = key['Dimensions'].get('db.sql.id', 'N/A')
-    statement = key['Dimensions'].get('db.sql.statement', 'N/A')
+for metric in response['MetricList']:
+    dimensions = metric['Key']['Dimensions']
+    sql_id = dimensions.get('db.sql.id', 'N/A')
+    statement = dimensions.get('db.sql.statement', 'N/A')
+    latest_value = metric['DataPoints'][-1]['Value'] if metric['DataPoints'] else 0
     print(f"SQL ID: {sql_id}")
+    print(f"Load: {latest_value}")
     print(f"Statement: {statement[:100]}...")
     print("---")
 ```
