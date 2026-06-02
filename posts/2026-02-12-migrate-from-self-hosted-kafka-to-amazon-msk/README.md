@@ -22,7 +22,7 @@ MSK provides:
 - Encryption at rest and in transit by default
 - Multi-AZ deployment for high availability
 
-The key benefit is that MSK runs standard Apache Kafka. Your existing client applications work without code changes - you only update the bootstrap server addresses.
+The key benefit is that MSK runs standard Apache Kafka. Your existing client applications usually work with the same Kafka client libraries; in many cases you only update the bootstrap server addresses and client security settings.
 
 ## Planning the Migration
 
@@ -141,7 +141,7 @@ print(f"MSK cluster creating: {cluster_arn}")
 
 ### Custom Configuration
 
-Match your self-hosted Kafka configuration:
+Match your self-hosted Kafka configuration. Create this configuration before cluster creation if you want to attach it through `ConfigurationInfo`:
 
 ```python
 # Create custom MSK configuration
@@ -212,8 +212,8 @@ sync.topic.configs.enabled = true
 sync.topic.acls.enabled = false
 
 # Consumer offset sync
-emit.consumer.offsets.enabled = true
-emit.consumer.offsets.interval.seconds = 10
+sync.group.offsets.enabled = true
+sync.group.offsets.interval.seconds = 10
 
 # Heartbeat and checkpoint
 emit.heartbeats.enabled = true
@@ -237,12 +237,8 @@ connect-mirror-maker.sh mm2.properties
 ## Step 5: Monitor Replication
 
 ```bash
-# Check replication lag
-kafka-consumer-groups.sh \
-  --bootstrap-server b-1.migrated-kafka.abc123.c2.kafka.us-east-1.amazonaws.com:9094 \
-  --command-config client.properties \
-  --describe \
-  --group mm2-source-target
+# Watch MirrorMaker 2 JMX or Prometheus metrics such as record-age-ms,
+# replication-latency-ms, and checkpoint-latency-ms for the source->target flow.
 
 # Verify topic data on MSK
 kafka-topics.sh \
@@ -252,11 +248,11 @@ kafka-topics.sh \
   --topic your-topic
 ```
 
-Wait until replication lag is consistently zero before proceeding.
+Wait until replication latency and record age are consistently low, and verify that checkpoint latency is stable, before proceeding.
 
 ## Step 6: Switch Consumers
 
-Switch consumers first because they are idempotent (reading the same message twice is safe, but missing a message is not).
+Switch consumers first in controlled batches after MirrorMaker 2 has synchronized translated offsets. Reprocessing may still happen during a cutover, so make sure your consumers can tolerate duplicates or pause them while switching.
 
 ```python
 # Update consumer configuration to point to MSK
@@ -278,7 +274,7 @@ consumer = KafkaConsumer(
 )
 ```
 
-MirrorMaker 2's checkpoint feature translates consumer offsets, so consumers can pick up from where they left off on the MSK cluster.
+MirrorMaker 2's checkpoint feature translates consumer offsets, and `sync.group.offsets.enabled=true` writes those translated offsets to the target cluster as long as that consumer group is not active on the target. That lets consumers pick up from the corresponding position on MSK.
 
 ## Step 7: Switch Producers
 
@@ -286,6 +282,8 @@ After consumers are stable on MSK, switch producers:
 
 ```python
 # Update producer configuration to point to MSK
+import json
+
 from kafka import KafkaProducer
 
 producer = KafkaProducer(
@@ -311,14 +309,14 @@ Once all producers and consumers are on MSK and running stable:
 After migration, take advantage of MSK-specific features:
 
 ```python
-# Enable MSK Serverless for burst workloads
-# Or configure auto-scaling for storage
+# Use MSK Serverless for new bursty workloads, or scale storage on a
+# provisioned MSK cluster.
 msk.update_broker_storage(
     ClusterArn=cluster_arn,
     CurrentVersion='K1234567890',
     TargetBrokerEBSVolumeInfo=[
         {
-            'KafkaBrokerNodeId': '1',
+            'KafkaBrokerNodeId': 'All',
             'ProvisionedThroughput': {
                 'Enabled': True,
                 'VolumeThroughput': 250
