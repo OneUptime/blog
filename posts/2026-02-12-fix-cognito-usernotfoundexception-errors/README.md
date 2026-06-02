@@ -47,7 +47,7 @@ aws cognito-idp list-users \
 
 ## Cause 2: Case Sensitivity Issues
 
-This is a sneaky one. By default, Cognito usernames are case-sensitive. If someone signed up as "TestUser" and tries to log in as "testuser", Cognito treats them as different users.
+This is a sneaky one. User pools that you create with the AWS CLI or API are case-sensitive unless you set `CaseSensitive=false`. User pools that you create in the console are case-insensitive by default. In a case-sensitive pool, if someone signed up as "TestUser" and tries to log in as "testuser", Cognito treats them as different users.
 
 Starting with newer user pools, you can configure case insensitivity during pool creation, but you can't change it after the fact.
 
@@ -58,10 +58,10 @@ aws cognito-idp create-user-pool \
   --username-configuration CaseSensitive=false
 ```
 
-If you already have a pool with case-sensitive usernames, you'll need to handle it in your application layer. Normalize usernames to lowercase before sending them to Cognito.
+If you already have a pool with case-sensitive usernames, you'll need to handle it in your application layer. Normalize usernames consistently at sign-up and sign-in, or look up and use the exact stored username for existing mixed-case accounts.
 
 ```javascript
-// Always normalize the username to lowercase before calling Cognito
+// Use this only if your app has standardized on lowercase usernames
 async function signIn(username, password) {
   const normalizedUsername = username.toLowerCase().trim();
 
@@ -80,9 +80,9 @@ async function signIn(username, password) {
 
 ## Cause 3: Using Email as Username with Aliases
 
-Cognito has two modes for handling email as a sign-in identifier: username aliases and email as the username attribute. The behavior differs significantly.
+Cognito has two modes for handling email as a sign-in identifier: username aliases and email as a username attribute. The behavior differs significantly.
 
-When you use **aliases** (email or phone as alias), the actual username is a UUID like `a1b2c3d4-e5f6-7890-abcd-ef1234567890`. The user can sign in with their email, but if your code passes the email to admin APIs (which expect the actual username), you'll get `UserNotFoundException`.
+When you use **aliases** (email or phone as alias), the user still has a separate, fixed username. The user can sign in with their email, and APIs like `AdminGetUser` can accept alias attributes, but `ListUsers` filters are different: if you filter by `username`, you must use the actual username, not the email alias. To search by email, filter on the `email` attribute.
 
 To find the actual username from an email when using aliases:
 
@@ -94,9 +94,9 @@ aws cognito-idp list-users \
   --query 'Users[0].Username'
 ```
 
-Then use that UUID-style username with admin APIs.
+Then use that returned username when you need the actual Cognito username.
 
-When you use **email as the username** (configured at pool creation), the email address IS the username and you should pass it directly. Make sure you're using the right mode for your pool.
+When you use **email as a username attribute** (configured at pool creation with `UsernameAttributes`), users pass their email address in the `Username` parameter for sign-up and sign-in, but Cognito stores the user's `username` value as a UUID with the same value as the `sub` claim. You can use the email address in most APIs, but not as a `username` filter in `ListUsers`. Make sure you're using the right mode for your pool.
 
 ## Cause 4: User Pool Migration Trigger Not Configured
 
@@ -146,6 +146,8 @@ exports.handler = async (event) => {
 ```
 
 Attach this Lambda to your user pool.
+
+When you update a user pool, include the rest of the pool configuration that you want to preserve. `update-user-pool` can reset omitted settings to their defaults.
 
 ```bash
 # Set the user migration Lambda trigger on the user pool
