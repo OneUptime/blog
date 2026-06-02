@@ -41,7 +41,7 @@ The management account creates a backup policy JSON document and attaches it to 
 - AWS Organizations with all features enabled
 - Backup policies enabled as a policy type in Organizations
 - AWS Backup service enabled in your target regions
-- IAM roles for AWS Backup in member accounts (can be provisioned via the policy)
+- IAM roles for AWS Backup in member accounts (provisioned separately with StackSets or a similar mechanism)
 
 ## Step 1: Enable Backup Policies in Organizations
 
@@ -91,7 +91,7 @@ The backup policy is a JSON document that defines backup plans, rules, resource 
           },
           "lifecycle": {
             "delete_after_days": {
-              "@@assign": "35"
+              "@@assign": "97"
             },
             "move_to_cold_storage_after_days": {
               "@@assign": "7"
@@ -115,7 +115,7 @@ The backup policy is a JSON document that defines backup plans, rules, resource 
         "tags": {
           "BackupRequired": {
             "iam_role_arn": {
-              "@@assign": "arn:aws:iam::$account:role/OrgBackupRole"
+              "@@assign": "arn:aws:iam::$account:role/AWSBackupOrgRole"
             },
             "tag_key": {
               "@@assign": "BackupPolicy"
@@ -155,7 +155,7 @@ Key elements in this policy:
 - **@@assign** - Sets a value that child OUs or accounts inherit
 - **$account** - A variable that resolves to the member account ID
 - **schedule_expression** - Cron expression for when backups run (daily at 5 AM UTC here)
-- **lifecycle** - How long to keep backups and when to move to cold storage
+- **lifecycle** - How long to keep backups and when to move to cold storage (backups moved to cold storage must stay there for at least 90 days)
 - **copy_actions** - Cross-region backup copies for disaster recovery
 - **selections/tags** - Resources tagged with `BackupPolicy: daily` get backed up
 
@@ -191,7 +191,7 @@ aws organizations attach-policy \
 
 ## Step 4: Set Up the Backup IAM Role in Member Accounts
 
-The backup policy references an IAM role (`OrgBackupRole`) that needs to exist in each member account. Deploy this role using CloudFormation StackSets or CfCT:
+The backup policy references an IAM role (`AWSBackupOrgRole`) that needs to exist in each member account. Deploy this role using CloudFormation StackSets or CfCT:
 
 ```yaml
 # CloudFormation template for the backup IAM role
@@ -199,10 +199,10 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: IAM role for organization backup policy
 
 Resources:
-  OrgBackupRole:
+  AWSBackupOrgRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: OrgBackupRole
+      RoleName: AWSBackupOrgRole
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -220,7 +220,7 @@ Deploy this across all accounts:
 ```bash
 # Create a StackSet to deploy the backup role
 aws cloudformation create-stack-set \
-  --stack-set-name OrgBackupRole \
+  --stack-set-name AWSBackupOrgRole \
   --template-body file://backup-role.yaml \
   --permission-model SERVICE_MANAGED \
   --auto-deployment Enabled=true,RetainStacksOnAccountRemoval=false \
@@ -228,7 +228,7 @@ aws cloudformation create-stack-set \
 
 # Deploy to all accounts in the organization
 aws cloudformation create-stack-instances \
-  --stack-set-name OrgBackupRole \
+  --stack-set-name AWSBackupOrgRole \
   --deployment-targets OrganizationalUnitIds=r-xxxx \
   --regions us-east-1
 ```
@@ -278,6 +278,8 @@ Resources:
               Service: backup.amazonaws.com
             Action:
               - kms:Decrypt
+              - kms:DescribeKey
+              - kms:CreateGrant
               - kms:GenerateDataKey
             Resource: '*'
 ```
@@ -313,6 +315,7 @@ aws organizations describe-effective-policy \
 # List backup jobs across accounts (from the management account)
 aws backup list-backup-jobs \
   --by-state COMPLETED \
+  --by-account-id '*' \
   --by-created-after 2026-02-01
 ```
 
