@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, GuardDuty, RDS, Database Security, Threat Detection
 
-Description: Enable GuardDuty RDS Protection to monitor login activity on your Amazon Aurora databases and detect suspicious access patterns.
+Description: Enable GuardDuty RDS Protection to monitor login activity on supported Amazon Aurora and Amazon RDS databases and detect suspicious access patterns.
 
 ---
 
 Databases are crown jewels. They hold your customer data, financial records, and business-critical information. Despite that, most teams don't have great visibility into who's actually logging into their databases and from where. CloudTrail tracks API calls to RDS (like creating or modifying instances), but it doesn't see the actual database login activity. That's where GuardDuty RDS Protection comes in.
 
-RDS Protection monitors login attempts to your Amazon Aurora databases - both successful and failed - and uses machine learning to detect anomalous access patterns. Think brute force attacks, logins from unusual locations, and access from known malicious IPs.
+RDS Protection monitors login attempts to supported Amazon Aurora and Amazon RDS databases - both successful and failed - and uses machine learning to detect anomalous access patterns. Think brute force attacks, logins from unusual locations, and access from known malicious IPs.
 
 ## What Gets Monitored
 
-GuardDuty RDS Protection currently supports Amazon Aurora (both MySQL-compatible and PostgreSQL-compatible editions). It monitors RDS login activity, which includes:
+GuardDuty RDS Protection currently supports Amazon Aurora (both MySQL-compatible and PostgreSQL-compatible editions), Amazon RDS for PostgreSQL, and Aurora PostgreSQL Limitless Database on supported engine versions. It monitors RDS login activity, which includes:
 
 - Successful and failed login attempts
 - The source IP of login attempts
@@ -33,7 +33,10 @@ Here are the specific finding types RDS Protection generates:
 - **CredentialAccess:RDS/MaliciousIPCaller.SuccessfulLogin** - Successful login from a known malicious IP
 - **CredentialAccess:RDS/MaliciousIPCaller.FailedLogin** - Failed login attempts from a known malicious IP
 - **CredentialAccess:RDS/AnomalousBehavior.SuccessfulBruteForce** - Successful login after a series of failed attempts from the same source
-- **Discovery:RDS/MaliciousIPCaller** - RDS discovery API calls from a suspicious source
+- **Discovery:RDS/MaliciousIPCaller** - Probing of an RDS database from a known malicious IP address, with no authentication attempt
+- **CredentialAccess:RDS/TorIPCaller.SuccessfulLogin** - Successful login from a Tor exit node IP address
+- **CredentialAccess:RDS/TorIPCaller.FailedLogin** - Failed login attempts from a Tor exit node IP address
+- **Discovery:RDS/TorIPCaller** - Probing of an RDS database from a Tor exit node IP address, with no authentication attempt
 
 ## Enabling RDS Protection
 
@@ -68,11 +71,6 @@ This creates a GuardDuty detector with RDS Protection enabled:
 ```hcl
 resource "aws_guardduty_detector" "main" {
   enable = true
-
-  datasources {
-    # Note: RDS protection might be under a feature flag
-    # depending on your Terraform AWS provider version
-  }
 }
 
 # For newer provider versions, use the feature resource
@@ -127,7 +125,12 @@ aws guardduty list-findings \
           "CredentialAccess:RDS/AnomalousBehavior.SuccessfulLogin",
           "CredentialAccess:RDS/AnomalousBehavior.FailedLogin",
           "CredentialAccess:RDS/MaliciousIPCaller.SuccessfulLogin",
-          "CredentialAccess:RDS/AnomalousBehavior.SuccessfulBruteForce"
+          "CredentialAccess:RDS/MaliciousIPCaller.FailedLogin",
+          "CredentialAccess:RDS/AnomalousBehavior.SuccessfulBruteForce",
+          "Discovery:RDS/MaliciousIPCaller",
+          "CredentialAccess:RDS/TorIPCaller.SuccessfulLogin",
+          "CredentialAccess:RDS/TorIPCaller.FailedLogin",
+          "Discovery:RDS/TorIPCaller"
         ]
       }
     }
@@ -269,6 +272,7 @@ Enable RDS Protection across your entire organization from the delegated admin a
 ```bash
 aws guardduty update-organization-configuration \
   --detector-id abc123def456 \
+  --auto-enable-organization-members ALL \
   --features '[
     {
       "Name": "RDS_LOGIN_EVENTS",
@@ -277,7 +281,7 @@ aws guardduty update-organization-configuration \
   ]'
 ```
 
-This ensures all new accounts automatically get RDS Protection enabled.
+This ensures existing member accounts and new accounts automatically get RDS Protection enabled.
 
 ## Complementary Security Measures
 
@@ -298,9 +302,9 @@ RDS Protection pricing is based on the volume of RDS login events analyzed. For 
 ```bash
 aws guardduty get-usage-statistics \
   --detector-id abc123def456 \
-  --usage-statistic-type SUM_BY_DATA_SOURCE \
+  --usage-statistic-type SUM_BY_FEATURES \
   --usage-criteria '{
-    "DataSources": ["RDS_LOGIN_EVENTS"]
+    "Features": ["RDS_LOGIN_EVENTS"]
   }'
 ```
 
