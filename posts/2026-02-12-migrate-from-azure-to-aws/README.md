@@ -45,7 +45,7 @@ az vm list --show-details --output table
 
 # List all databases
 az sql server list --output table
-az sql db list --server YOUR_SERVER --output table
+az sql db list --resource-group myRG --server YOUR_SERVER --output table
 
 # List storage accounts
 az storage account list --output table
@@ -103,8 +103,8 @@ for az, cidr in [('us-east-1a', '10.1.1.0/24'), ('us-east-1b', '10.1.2.0/24')]:
 During migration, you need connectivity between Azure and AWS. Use a site-to-site VPN:
 
 ```python
-# Create VPN gateway in AWS for Azure connectivity
-ec2.create_vpn_gateway(
+# Create and attach the AWS virtual private gateway
+vpn_gateway = ec2.create_vpn_gateway(
     Type='ipsec.1',
     TagSpecifications=[
         {
@@ -114,8 +114,24 @@ ec2.create_vpn_gateway(
     ]
 )
 
-# On the Azure side, create a VPN Gateway and configure the connection
-# to the AWS VPN gateway's public IP
+vpn_gateway_id = vpn_gateway['VpnGateway']['VpnGatewayId']
+ec2.attach_vpn_gateway(VpcId=vpc_id, VpnGatewayId=vpn_gateway_id)
+
+# Create a customer gateway that represents the Azure VPN Gateway public IP
+customer_gateway = ec2.create_customer_gateway(
+    Type='ipsec.1',
+    PublicIp='203.0.113.10',  # Replace with the Azure VPN Gateway public IP
+    BgpAsn=65000
+)
+
+ec2.create_vpn_connection(
+    Type='ipsec.1',
+    CustomerGatewayId=customer_gateway['CustomerGateway']['CustomerGatewayId'],
+    VpnGatewayId=vpn_gateway_id
+)
+
+# On the Azure side, configure the VPN connection using the tunnel
+# information returned by create_vpn_connection.
 ```
 
 ## Phase 3: Migrate Compute
@@ -166,7 +182,7 @@ print(f"Import task: {import_task_id}")
 
 **Option B: Use AWS Application Migration Service (Less downtime)**
 
-Install the MGN agent on your Azure VMs and replicate to AWS, just like migrating from on-premises. See our [MGN migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-vms-to-aws-with-aws-application-migration-service-mgn/view) for details.
+Install the MGN agent on supported Azure VMs and replicate to AWS, just like migrating from on-premises. For Linux VMs, verify that the kernel is supported; Azure-specific kernels may need to be replaced with a standard supported kernel before replication. See our [MGN migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-vms-to-aws-with-aws-application-migration-service-mgn/view) for details.
 
 ### Azure App Service to AWS
 
@@ -180,10 +196,10 @@ For App Service applications, the approach depends on the application type:
 
 ### Azure SQL Database to RDS
 
-Use DMS for database migration. See our detailed [DMS migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view).
+Use DMS for database migration. For Azure SQL Database, DMS supports full-load migrations but not change data capture (CDC), so plan your cutover accordingly. See our detailed [DMS migration guide](https://oneuptime.com/blog/post/2026-02-12-migrate-databases-to-aws-with-dms/view).
 
 ```python
-# Create DMS task for Azure SQL to RDS
+# Create DMS endpoints for Azure SQL to RDS
 import boto3
 import json
 
@@ -193,7 +209,7 @@ dms = boto3.client('dms')
 dms.create_endpoint(
     EndpointIdentifier='source-azure-sql',
     EndpointType='source',
-    EngineName='sqlserver',
+    EngineName='azuredb',
     ServerName='your-server.database.windows.net',
     Port=1433,
     DatabaseName='your-database',
@@ -218,7 +234,7 @@ dms.create_endpoint(
 
 ### Cosmos DB to DynamoDB
 
-Cosmos DB to DynamoDB migration requires data transformation since the data models differ. Use a custom migration script or AWS Data Pipeline:
+Cosmos DB to DynamoDB migration requires data transformation since the data models differ. Use a custom migration script or a current ETL service such as AWS Glue:
 
 ```python
 # Export Cosmos DB data and transform for DynamoDB
@@ -236,13 +252,10 @@ with table.batch_writer() as batch:
     for doc in documents:
         # Transform Cosmos DB document to DynamoDB item
         item = {
-            'id': doc['id'],
-            # Map Cosmos DB fields to DynamoDB attributes
-            # Remove Cosmos DB metadata fields
+            key: value
+            for key, value in doc.items()
+            if key not in ['_rid', '_self', '_etag', '_attachments', '_ts']
         }
-        # Remove Cosmos DB system properties
-        for key in ['_rid', '_self', '_etag', '_attachments', '_ts']:
-            item.pop(key, None)
 
         batch.put_item(Item=item)
 ```
@@ -285,9 +298,10 @@ Migrate DNS zones from Azure DNS to Route 53:
 
 ```bash
 # Export Azure DNS zone
-az network dns zone export --resource-group myRG --name example.com --output json > dns-export.json
+az network dns zone export --resource-group myRG --name example.com --file-name example.com.zone
 
-# Import into Route 53 (manual mapping or scripted)
+# Import the zone file in the Route 53 console, or convert it to a
+# ChangeResourceRecordSets JSON change batch for the AWS CLI.
 ```
 
 ## Monitoring During Migration
