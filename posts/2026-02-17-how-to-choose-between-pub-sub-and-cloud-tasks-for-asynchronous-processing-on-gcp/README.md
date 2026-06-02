@@ -14,7 +14,7 @@ Pub/Sub and Cloud Tasks both handle asynchronous processing on Google Cloud, but
 
 **Pub/Sub** is a messaging system. A publisher sends a message to a topic, and every subscription on that topic gets a copy. The publisher does not know or care who receives the message. This is fan-out, event-driven communication.
 
-**Cloud Tasks** is a task queue. Your code creates a task (an HTTP request to be made later), and Cloud Tasks delivers that request to a specific target exactly once. The creator controls the target, the schedule, and the rate. This is explicit, directed work dispatch.
+**Cloud Tasks** is a task queue. Your code creates a task (an HTTP request to be made later), and Cloud Tasks delivers that request to a specific target at least once. The creator controls the target, the schedule, and the rate. This is explicit, directed work dispatch.
 
 Think of it this way: Pub/Sub is like announcing something on a loudspeaker (anyone listening will hear it), while Cloud Tasks is like handing a specific envelope to a specific person and confirming they received it.
 
@@ -23,14 +23,14 @@ Think of it this way: Pub/Sub is like announcing something on a loudspeaker (any
 | Feature | Pub/Sub | Cloud Tasks |
 |---------|---------|-------------|
 | Delivery model | Fan-out (one-to-many) | Point-to-point (one-to-one) |
-| Deduplication | At-least-once (exactly-once available) | At-least-once with deduplication |
-| Rate limiting | No built-in rate control | Yes, configurable rate and concurrency |
+| Deduplication | At-least-once (exactly-once delivery available) | Task creation deduplication |
+| Rate limiting | Pull clients can implement flow control | Yes, configurable rate and concurrency |
 | Delayed delivery | No native delay | Yes, schedule tasks up to 30 days ahead |
-| Message ordering | Optional ordering keys | FIFO within a queue |
+| Message ordering | Optional ordering keys | No guaranteed execution order |
 | Target specification | Subscriber decides | Creator specifies target |
 | Max message size | 10 MB | 1 MB (HTTP) / 1 MB (App Engine) |
 | Retention | Up to 31 days | Up to 31 days |
-| Dead lettering | Yes | Yes |
+| Dead lettering | Yes | No native dead-letter queue |
 | Push delivery | Yes (HTTP push) | Yes (HTTP target) |
 | Pull delivery | Yes | No |
 
@@ -178,12 +178,12 @@ When work needs to happen at a specific future time:
 
 ```python
 # Schedule a task for future execution
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from google.protobuf import timestamp_pb2
 
 # Schedule a reminder email 24 hours from now
 schedule_time = timestamp_pb2.Timestamp()
-schedule_time.FromDatetime(datetime.utcnow() + timedelta(hours=24))
+schedule_time.FromDatetime(datetime.now(timezone.utc) + timedelta(hours=24))
 
 task = tasks_v2.Task(
     http_request=tasks_v2.HttpRequest(
@@ -206,7 +206,7 @@ client.create_task(parent=queue_path, task=task)
 When you need to ensure a specific endpoint processes a specific piece of work:
 
 ```python
-# Dispatch work to a specific worker with guaranteed delivery
+# Dispatch work to a specific worker with at-least-once delivery
 # The task creator controls exactly where and when this runs
 
 def process_large_upload(file_id, user_id):
@@ -236,7 +236,7 @@ def process_large_upload(file_id, user_id):
 
 ### Mistake 1: Using Pub/Sub When You Need Rate Limiting
 
-Pub/Sub push subscriptions deliver messages as fast as possible. If your handler calls a rate-limited external API, you will burn through the limit instantly. Use Cloud Tasks with a rate-limited queue instead.
+Pub/Sub push subscriptions can scale delivery quickly and do not provide the same explicit per-queue dispatch rate controls as Cloud Tasks. If your handler calls a rate-limited external API, you can burn through the limit quickly. Use Cloud Tasks with a rate-limited queue instead.
 
 ### Mistake 2: Using Cloud Tasks for Fan-Out
 
