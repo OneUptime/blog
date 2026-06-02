@@ -10,7 +10,7 @@ Description: Learn how to use Lambda Powertools Parameters utility to fetch, cac
 
 Every Lambda function needs configuration - database endpoints, API keys, feature flags, connection strings. Hardcoding these in environment variables is quick but inflexible. Fetching them from SSM Parameter Store or Secrets Manager on every invocation is correct but slow and expensive. Lambda Powertools Parameters solves this by giving you a clean API for fetching configuration with built-in caching.
 
-The Parameters utility supports SSM Parameter Store, Secrets Manager, DynamoDB, and AppConfig. It handles caching, automatic refresh, and even transforms (like decrypting or JSON parsing) transparently.
+The Parameters utility supports SSM Parameter Store, Secrets Manager, DynamoDB, and AppConfig. It handles caching, refresh after cache expiry, and transforms (like JSON parsing or base64 decoding) transparently.
 
 ## Why Not Just Use Environment Variables?
 
@@ -29,7 +29,7 @@ from aws_lambda_powertools import Logger
 logger = Logger(service="order-service")
 
 def handler(event, context):
-    # Fetch a single parameter (cached for 5 seconds by default)
+    # Fetch a single parameter (cached for 5 minutes by default)
     api_endpoint = get_parameter("/myapp/production/api-endpoint")
     feature_flag = get_parameter("/myapp/production/enable-new-checkout")
 
@@ -44,7 +44,7 @@ def handler(event, context):
         return process_with_legacy_checkout(event, api_endpoint)
 ```
 
-The parameter value is cached in memory. For the next 5 seconds, subsequent calls to `get_parameter` with the same name return the cached value without making an API call. This is important because SSM has API rate limits, and fetching on every invocation would both slow down your function and risk throttling.
+The parameter value is cached in memory. For the next 5 minutes, subsequent calls to `get_parameter` with the same name return the cached value without making an API call. This is important because SSM has API rate limits, and fetching on every invocation would both slow down your function and risk throttling.
 
 ## Fetching Multiple Parameters
 
@@ -86,7 +86,7 @@ import json
 logger = Logger()
 
 def handler(event, context):
-    # Fetch a secret (cached for 5 seconds by default)
+    # Fetch a secret (cached for 5 minutes by default)
     db_secret = get_secret("production/database/credentials")
 
     # If the secret is a JSON string, parse it
@@ -107,7 +107,7 @@ def handler(event, context):
 
 ## Transform Parameters
 
-Powertools can automatically transform parameter values - parsing JSON, decoding base64, or decrypting SecureStrings.
+Powertools can automatically transform parameter values by parsing JSON or decoding base64. SecureString parameters are decrypted by passing `decrypt=True`.
 
 ```python
 from aws_lambda_powertools.utilities.parameters import (
@@ -151,7 +151,7 @@ def handler(event, context):
 
 ## Custom Cache Duration
 
-The default cache duration is 5 seconds. For parameters that change infrequently, increase it to reduce API calls and improve performance.
+The default cache duration is 5 minutes. For parameters that change frequently, lower it so updates take effect sooner. For parameters that change infrequently, increase it to reduce API calls and improve performance.
 
 ```python
 from aws_lambda_powertools.utilities.parameters import get_parameter, get_secret
@@ -264,7 +264,7 @@ def handler(event, context):
         max_age=60
     )
 
-    # Get all configuration under a path
+    # Get all configuration items with the same partition key
     all_config = ddb_provider.get_multiple(
         "global",
         transform="json"
