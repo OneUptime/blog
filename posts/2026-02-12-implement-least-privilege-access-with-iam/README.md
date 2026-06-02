@@ -57,7 +57,7 @@ The most practical approach is to start with broader permissions and systematica
 ```bash
 # Generate an IAM policy based on actual CloudTrail activity
 
-aws accessanalyzer generate-policy \
+aws accessanalyzer start-policy-generation \
   --policy-generation-details '{"principalArn": "arn:aws:iam::123456789012:role/MyAppRole"}' \
   --cloud-trail-details '{
     "trails": [{
@@ -69,9 +69,12 @@ aws accessanalyzer generate-policy \
     "startTime": "2026-01-01T00:00:00Z",
     "endTime": "2026-02-01T00:00:00Z"
   }'
+
+# After the job succeeds, retrieve the generated policy using the returned jobId
+aws accessanalyzer get-generated-policy --job-id <job-id>
 ```
 
-This generates a policy based on what the role actually did over the specified period. The generated policy is your new, tightened baseline.
+This starts a policy generation job based on what the role actually did over the specified period. The generated policy is your new, tightened baseline.
 
 **Step 3:** Replace the broad policy with the generated one, adding a small buffer for actions that might not have occurred during the observation period.
 
@@ -194,7 +197,7 @@ Several tools can help generate least-privilege policies:
 
 **IAM Access Analyzer policy generation** (shown above) uses CloudTrail data.
 
-**CloudTrail Lake** lets you query API activity with SQL:
+**CloudTrail Lake** lets existing CloudTrail Lake customers query API activity with SQL:
 
 ```sql
 -- Find all S3 actions performed by a specific role in the last 30 days
@@ -202,7 +205,7 @@ SELECT
     eventName,
     COUNT(*) as count,
     element_at(requestParameters, 'bucketName') as bucket
-FROM cloudtrail_logs
+FROM event_data_store_ID
 WHERE userIdentity.arn LIKE '%role/MyAppRole%'
 AND eventSource = 's3.amazonaws.com'
 AND eventTime > date_add('day', -30, now())
@@ -249,7 +252,7 @@ aws iam generate-credential-report
 aws iam get-credential-report --output text --query Content | base64 -d > credential-report.csv
 
 # Find unused permissions with Access Analyzer
-aws accessanalyzer list-findings --analyzer-arn $ANALYZER_ARN
+aws accessanalyzer list-findings-v2 --analyzer-arn $UNUSED_ACCESS_ANALYZER_ARN
 ```
 
 Set up regular reviews:
