@@ -93,10 +93,10 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-You can also have ACM create the records for you if you missed it during the initial request.
+In the ACM console, you can use **Create records in Route 53** when the button is available. You can't programmatically ask ACM to create the Route 53 records for you, but you can retrieve the records with the AWS CLI and create them with Route 53.
 
 ```bash
-# Let ACM automatically create Route 53 validation records
+# Print the ACM validation records to create in Route 53
 aws acm describe-certificate \
   --certificate-arn arn:aws:acm:us-east-1:123456789012:certificate/abc123 \
   --query 'Certificate.DomainValidationOptions[].ResourceRecord' \
@@ -112,7 +112,7 @@ Certificate Authority Authorization (CAA) records specify which certificate auth
 dig example.com CAA +short
 ```
 
-If you see CAA records that don't include `amazon.com` or `amazontrust.com`, you need to add them.
+If you see CAA records that don't include at least one Amazon CA value such as `amazon.com`, `amazontrust.com`, `awstrust.com`, or `amazonaws.com`, you need to add one.
 
 ```bash
 # Add a CAA record allowing Amazon to issue certificates
@@ -128,7 +128,9 @@ aws route53 change-resource-record-sets \
           "TTL": 300,
           "ResourceRecords": [
             {"Value": "0 issue \"amazon.com\""},
-            {"Value": "0 issue \"amazontrust.com\""}
+            {"Value": "0 issue \"amazontrust.com\""},
+            {"Value": "0 issue \"awstrust.com\""},
+            {"Value": "0 issue \"amazonaws.com\""}
           ]
         }
       }
@@ -140,9 +142,9 @@ If you have no CAA records at all, you're fine - that means any CA can issue cer
 
 ## Step 5: Wildcard Certificate Domains
 
-If you requested a wildcard certificate (like `*.example.com`), you still need the validation record for the base domain. ACM requires one validation record per unique domain in the certificate.
+If you requested a wildcard certificate (like `*.example.com`), ACM creates the validation CNAME under the base domain, such as `_abc123.example.com`. ACM requires the validation records shown in `DomainValidationOptions`; wildcard names and their base domains often share the same validation record.
 
-For a certificate covering both `example.com` and `*.example.com`, you might need only one CNAME record (they often share the same validation record), but check the `DomainValidationOptions` to be sure.
+For a certificate covering both `example.com` and `*.example.com`, you might need only one CNAME record, but check the `DomainValidationOptions` to be sure. Also remember that `*.example.com` protects subdomains like `www.example.com`, not the bare domain `example.com`.
 
 ```bash
 # Check all domains and their validation status on the certificate
@@ -182,7 +184,7 @@ aws acm wait certificate-validated \
   --certificate-arn arn:aws:acm:us-east-1:123456789012:certificate/abc123
 ```
 
-This command blocks until the certificate is validated or it times out.
+This command blocks until the certificate is validated or the AWS CLI waiter times out. The waiter polls every 60 seconds and exits with an error after several failed checks, so rerun it later if validation is still pending.
 
 ## When All Else Fails
 
@@ -209,10 +211,10 @@ aws acm request-certificate \
 1. Verify the CNAME record matches exactly what ACM expects
 2. Check that the CNAME resolves with `dig`
 3. Look for CAA record conflicts
-4. For wildcard certs, ensure base domain validation is also covered
+4. For wildcard certs, check the validation record ACM generated and whether the bare domain is also included
 5. For multi-domain certs, verify all domains have records
 6. For CloudFront, confirm the cert is in us-east-1
 7. Wait at least 30 minutes after DNS changes
 8. If stuck for 72+ hours, delete and recreate
 
-Getting SSL certificates working is a prerequisite for any production service. Once you're past this hurdle, make sure you also set up [monitoring to track certificate expiration](https://oneuptime.com/blog/post/2026-02-12-fix-kms-accessdeniedexception-errors/view) so you don't get caught off guard by renewal failures.
+Getting SSL certificates working is a prerequisite for any production service. Once you're past this hurdle, make sure you also set up [monitoring to track certificate expiration](https://oneuptime.com/blog/post/2025-09-23-ssl-certificate-monitoring-with-oneuptime/view) so you don't get caught off guard by renewal failures.
