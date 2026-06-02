@@ -22,8 +22,7 @@ graph LR
     B --> C[Evaluation Step]
     C --> D{Quality Check}
     D -->|Pass| E[Register Model]
-    D -->|Fail| F[Stop Pipeline]
-    E --> G[Deploy Step]
+    D -->|Fail| F[Skip Registration]
 ```
 
 Each step runs on its own managed infrastructure. If a step fails, the pipeline stops and you can see exactly where things went wrong.
@@ -37,15 +36,15 @@ Start by importing what you need and setting up parameters.
 ```python
 import sagemaker
 from sagemaker.workflow.pipeline import Pipeline
-from sagemaker.workflow.parameters import ParameterString, ParameterFloat, ParameterInteger
+from sagemaker.workflow.pipeline_context import PipelineSession
+from sagemaker.workflow.parameters import ParameterString, ParameterFloat
 from sagemaker.workflow.steps import ProcessingStep, TrainingStep
-from sagemaker.workflow.step_collections import RegisterModel
 from sagemaker.workflow.conditions import ConditionGreaterThanOrEqualTo
 from sagemaker.workflow.condition_step import ConditionStep
 from sagemaker.workflow.functions import JsonGet
 from sagemaker.workflow.properties import PropertyFile
 
-session = sagemaker.Session()
+session = PipelineSession()
 role = sagemaker.get_execution_role()
 bucket = session.default_bucket()
 region = session.boto_region_name
@@ -82,7 +81,7 @@ from sagemaker.sklearn.processing import SKLearnProcessor
 from sagemaker.processing import ProcessingInput, ProcessingOutput
 
 sklearn_processor = SKLearnProcessor(
-    framework_version='1.2-1',
+    framework_version='1.4-2',
     role=role,
     instance_type='ml.m5.xlarge',
     instance_count=1,
@@ -131,7 +130,7 @@ from sagemaker.estimator import Estimator
 xgb_image = image_uris.retrieve(
     framework='xgboost',
     region=region,
-    version='1.7-1'
+    version='3.0-5'
 )
 
 xgb_estimator = Estimator(
@@ -185,7 +184,7 @@ evaluation_report = PropertyFile(
 )
 
 evaluation_processor = SKLearnProcessor(
-    framework_version='1.2-1',
+    framework_version='1.4-2',
     role=role,
     instance_type='ml.m5.large',
     instance_count=1,
@@ -225,6 +224,8 @@ Only register the model if it meets our quality threshold.
 
 ```python
 from sagemaker.model_metrics import MetricsSource, ModelMetrics
+from sagemaker.model import Model
+from sagemaker.workflow.model_step import ModelStep
 
 # Define model metrics for the registry
 model_metrics = ModelMetrics(
@@ -234,11 +235,15 @@ model_metrics = ModelMetrics(
     )
 )
 
-# Register the model in SageMaker Model Registry
-register_step = RegisterModel(
-    name='RegisterModel',
-    estimator=xgb_estimator,
+trained_model = Model(
+    image_uri=xgb_image,
     model_data=training_step.properties.ModelArtifacts.S3ModelArtifacts,
+    role=role,
+    sagemaker_session=session
+)
+
+# Register the model in SageMaker Model Registry
+register_model_args = trained_model.register(
     content_types=['text/csv'],
     response_types=['text/csv'],
     inference_instances=['ml.m5.large', 'ml.m5.xlarge'],
@@ -246,6 +251,11 @@ register_step = RegisterModel(
     model_package_group_name='classification-models',
     approval_status=model_approval_status,
     model_metrics=model_metrics
+)
+
+register_step = ModelStep(
+    name='RegisterModel',
+    step_args=register_model_args
 )
 
 # Create a condition: only register if AUC >= threshold
