@@ -18,7 +18,7 @@ A cold start happens when Lambda needs to create a new execution environment. Th
 
 - The function is invoked for the first time
 - All existing environments are busy handling other requests
-- Lambda has recycled old environments (typically after 5-15 minutes of inactivity)
+- Lambda has recycled old environments after a period of inactivity
 - You've deployed new code
 
 The cold start process has several phases:
@@ -52,8 +52,10 @@ find . -type d -name "*.dist-info" -exec rm -rf {} + 2>/dev/null
 find . -type d -name "tests" -exec rm -rf {} + 2>/dev/null
 find . -name "*.pyc" -delete
 
-# Don't include boto3 - it's already in the Lambda runtime
-pip install -r requirements.txt -t . --no-deps boto3 botocore
+# Don't include boto3/botocore unless you need to pin a specific version -
+# the Python managed runtime already includes the AWS SDK
+grep -vE '^(boto3|botocore)([<=>]|$)' requirements.txt > requirements-lambda.txt
+pip install -r requirements-lambda.txt -t .
 ```
 
 For Node.js, use tree-shaking with esbuild:
@@ -141,16 +143,16 @@ Different runtimes have dramatically different cold start times. From fastest to
 
 | Runtime | Typical Cold Start |
 |---------|-------------------|
+| Go (provided.al2023) | 50-100 ms |
 | Python 3.12 | 150-300 ms |
 | Node.js 20.x | 150-300 ms |
-| Go (provided.al2023) | 50-100 ms |
 | .NET 8 (native AOT) | 200-400 ms |
 | Ruby 3.3 | 200-400 ms |
 | Java 21 | 800-3000 ms |
 | .NET 8 (standard) | 500-1500 ms |
 | Java 21 (with Spring) | 3000-10000 ms |
 
-If cold starts are critical and you have flexibility on runtime, Python and Node.js give the best cold start performance out of the box. Go is the fastest overall if you're comfortable with the language.
+If cold starts are critical and you have flexibility on runtime, Python and Node.js give strong cold start performance out of the box. Go is often faster overall if you're comfortable with the language.
 
 ## Technique 5: Use ARM64 Architecture
 
@@ -172,8 +174,8 @@ Database connections are one of the slowest parts of cold start initialization. 
 For RDS, use RDS Proxy:
 
 ```python
-import boto3
 import os
+import json
 
 # RDS Proxy handles connection pooling - connect to proxy endpoint
 import pymysql
@@ -197,9 +199,9 @@ def lambda_handler(event, context):
     return {'statusCode': 200, 'body': json.dumps(result)}
 ```
 
-## Technique 7: Use Lambda SnapStart (Java)
+## Technique 7: Use Lambda SnapStart
 
-For Java functions, SnapStart dramatically reduces cold starts by taking a snapshot of the initialized execution environment. See our detailed guide on [Lambda SnapStart for Java](https://oneuptime.com/blog/post/2026-02-12-lambda-snapstart-java-functions/view).
+For supported Java, Python, and .NET functions, SnapStart dramatically reduces cold starts by taking a snapshot of the initialized execution environment. See our detailed guide on [Lambda SnapStart for Java](https://oneuptime.com/blog/post/2026-02-12-lambda-snapstart-java-functions/view).
 
 ## Technique 8: Use Provisioned Concurrency
 
@@ -239,7 +241,7 @@ def lambda_handler(event, context):
             lambda_client.invoke(
                 FunctionName=func_name,
                 InvocationType='Event',  # Async
-                Payload=json.dumps({'__warmup': True})
+                Payload=json.dumps({'__warmup': True}).encode('utf-8')
             )
         except Exception as e:
             print(f"Failed to warm {func_name}: {e}")
@@ -258,6 +260,14 @@ aws events put-rule \
 aws events put-targets \
   --rule "warm-lambda-functions" \
   --targets "Id=1,Arn=arn:aws:lambda:us-east-1:123456789012:function:warmer"
+
+# Allow EventBridge to invoke the warmer function
+aws lambda add-permission \
+  --function-name warmer \
+  --statement-id warm-lambda-functions-eventbridge \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/warm-lambda-functions
 ```
 
 In your actual functions, add a short-circuit for warmup invocations:
@@ -274,18 +284,18 @@ def lambda_handler(event, context):
 
 This approach only keeps one environment warm per function. If you need multiple concurrent warm environments, you need provisioned concurrency.
 
-## Technique 10: Reduce Memory for Faster Downloads
+## Technique 10: Tune Memory for Faster Initialization
 
-This might seem counterintuitive, but smaller memory allocations download code faster because Lambda optimizes for the resource profile. However, once the code is downloaded, initialization is slower with less CPU. The net effect depends on your specific function.
+This might seem counterintuitive, but higher memory settings can reduce cold start time because Lambda allocates CPU power in proportion to memory. More CPU can make runtime startup, imports, decompression, and initialization faster. The net effect depends on your specific function and cost target.
 
-Test both extremes and measure total cold start time, not just init duration.
+Test a range of memory settings and measure total cold start time, not just init duration.
 
 ## Measuring Cold Starts
 
 Track cold start frequency and duration with CloudWatch:
 
 ```bash
-# Count cold starts vs warm starts
+# Count cold starts from Lambda REPORT log entries
 aws logs filter-log-events \
   --log-group-name "/aws/lambda/my-function" \
   --filter-pattern "Init Duration" \
@@ -293,24 +303,18 @@ aws logs filter-log-events \
   --query "events | length(@)"
 ```
 
-Create a CloudWatch metric for cold start duration:
+Create an application marker for cold start occurrences:
 
 ```python
 # Add to your function to track cold start metrics
-import os
-import time
-
-# This runs during cold start
 _cold_start = True
-_init_time = time.time()
 
 
 def lambda_handler(event, context):
     global _cold_start
 
     if _cold_start:
-        init_duration = (time.time() - _init_time) * 1000
-        print(f"COLD_START init_duration={init_duration:.2f}ms")
+        print(f"COLD_START request_id={context.aws_request_id}")
         _cold_start = False
 
     # Rest of your function
@@ -318,6 +322,6 @@ def lambda_handler(event, context):
 
 ## Wrapping Up
 
-Cold starts are a fact of life with Lambda, but they don't have to be a problem. Most functions can achieve sub-300ms cold starts with basic optimizations: small packages, efficient initialization, and the right runtime. For the functions where even that isn't enough, provisioned concurrency and SnapStart eliminate cold starts entirely.
+Cold starts are a fact of life with Lambda, but they don't have to be a problem. Many functions can achieve sub-300ms cold starts with basic optimizations: small packages, efficient initialization, and the right runtime. For the functions where even that isn't enough, provisioned concurrency can avoid cold starts for configured concurrency, and SnapStart can reduce startup latency for supported runtimes.
 
 Start with the free techniques (smaller packages, lazy imports, connection reuse) and only reach for provisioned concurrency when you've exhausted the easy wins.
