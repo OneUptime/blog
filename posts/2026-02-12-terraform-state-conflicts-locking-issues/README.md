@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Terraform, DevOps, Infrastructure as Code
 
-Description: Practical guide to resolving Terraform state conflicts, lock errors, and corruption issues, including S3 backend configuration, DynamoDB locking, and recovery procedures.
+Description: Practical guide to resolving Terraform state conflicts, lock errors, and corruption issues, including S3 backend configuration, state locking, and recovery procedures.
 
 ---
 
@@ -16,23 +16,23 @@ This post covers how to prevent these problems, and more importantly, how to fix
 
 The first step to avoiding state problems is using a remote backend with locking. If you're using local state files, stop. Today.
 
-Here's the recommended setup using S3 for state storage and DynamoDB for locking:
+Here's the recommended setup using S3 for state storage and S3 lockfiles for locking:
 
 ```hcl
-# backend.tf - Remote state with S3 and DynamoDB locking
+# backend.tf - Remote state with S3 locking
 
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "production/infrastructure/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    bucket       = "mycompany-terraform-state"
+    key          = "production/infrastructure/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
 
-Now create the backend infrastructure (you'll need to bootstrap this with a local state first, then migrate):
+Now create the backend infrastructure (you'll need to bootstrap this with a local state first, then migrate). If you are maintaining an older Terraform setup that still uses DynamoDB locking, note that `dynamodb_table` is deprecated for the S3 backend; use `use_lockfile` for new configurations.
 
 ```hcl
 # State bucket
@@ -67,8 +67,12 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
+```
 
-# DynamoDB table for state locking
+For legacy S3 backends that still use deprecated DynamoDB locking, the lock table must have a `LockID` partition key with a string type:
+
+```hcl
+# Legacy DynamoDB table for deprecated state locking
 resource "aws_dynamodb_table" "terraform_lock" {
   name         = "terraform-state-lock"
   billing_mode = "PAY_PER_REQUEST"
@@ -100,7 +104,7 @@ Error: Error acquiring the state lock
 Error message: ConditionalCheckFailedException: The conditional request failed
 Lock Info:
   ID:        a1b2c3d4-e5f6-7890-abcd-ef1234567890
-  Path:      mycompany-terraform-state/production/terraform.tfstate
+  Path:      mycompany-terraform-state/production/infrastructure/terraform.tfstate
   Operation: OperationTypeApply
   Who:       user@hostname
   Version:   1.7.0
@@ -120,18 +124,25 @@ terraform force-unlock a1b2c3d4-e5f6-7890-abcd-ef1234567890
 
 You'll be prompted to confirm. Only do this if you're absolutely sure no other process is running. Force-unlocking while another process is writing state will corrupt it.
 
-You can also manually delete the lock from DynamoDB if needed:
+If your backend uses S3 lockfiles, you can also manually delete the lockfile if needed:
+
+```bash
+# Delete the S3 lockfile (only if orphaned!)
+aws s3 rm s3://mycompany-terraform-state/production/infrastructure/terraform.tfstate.tflock
+```
+
+If your backend still uses deprecated DynamoDB locking, you can manually delete the lock from DynamoDB if needed:
 
 ```bash
 # Check what's in the lock table
 aws dynamodb get-item \
   --table-name terraform-state-lock \
-  --key '{"LockID": {"S": "mycompany-terraform-state/production/terraform.tfstate"}}'
+  --key '{"LockID": {"S": "mycompany-terraform-state/production/infrastructure/terraform.tfstate"}}'
 
 # Delete the lock entry (only if orphaned!)
 aws dynamodb delete-item \
   --table-name terraform-state-lock \
-  --key '{"LockID": {"S": "mycompany-terraform-state/production/terraform.tfstate"}}'
+  --key '{"LockID": {"S": "mycompany-terraform-state/production/infrastructure/terraform.tfstate"}}'
 ```
 
 ## State Conflicts
@@ -237,9 +248,10 @@ Don't put all your infrastructure in one state file. Split by environment, servi
 # Each environment has its own state
 terraform {
   backend "s3" {
-    bucket = "mycompany-terraform-state"
-    key    = "production/networking/terraform.tfstate"  # Unique per config
-    region = "us-east-1"
+    bucket       = "mycompany-terraform-state"
+    key          = "production/networking/terraform.tfstate"  # Unique per config
+    region       = "us-east-1"
+    use_lockfile = true
   }
 }
 ```
@@ -271,4 +283,4 @@ When refactoring, use `moved` blocks instead of `terraform state mv`. Moved bloc
 
 ## Wrapping Up
 
-State management is the unglamorous but critical part of Terraform. Set up S3 versioning and DynamoDB locking from day one. Use CI/CD to serialize operations. Split state files by environment and service. And when things do go wrong - because they will - approach recovery methodically. Check the lock, check the state, refresh from reality, and only force-unlock or manually edit state as a last resort. The worst thing you can do is panic and start making random changes.
+State management is the unglamorous but critical part of Terraform. Set up S3 versioning and state locking from day one. Use CI/CD to serialize operations. Split state files by environment and service. And when things do go wrong - because they will - approach recovery methodically. Check the lock, check the state, refresh from reality, and only force-unlock or manually edit state as a last resort. The worst thing you can do is panic and start making random changes.
