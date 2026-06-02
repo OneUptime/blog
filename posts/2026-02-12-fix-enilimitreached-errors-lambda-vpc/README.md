@@ -24,11 +24,13 @@ First, see how many ENIs you're using and what the limit is.
 # Count the total ENIs in your account for the region
 
 aws ec2 describe-network-interfaces \
+  --include-managed-resources \
   --query 'length(NetworkInterfaces)'
 
 # See ENIs created by Lambda specifically
 aws ec2 describe-network-interfaces \
-  --filters "Name=description,Values='AWS Lambda VPC ENI*'" \
+  --include-managed-resources \
+  --filters "Name=interface-type,Values=lambda" \
   --query 'length(NetworkInterfaces)'
 
 # Check your current ENI limit
@@ -38,7 +40,7 @@ aws service-quotas get-service-quota \
   --query 'Quota.Value'
 ```
 
-The default limit is 5,000 per region for most accounts. If you're close to or at this limit, you have a few options.
+The default quota is 5,000 network interfaces per Region for most accounts, and AWS enforces this quota per Availability Zone. If you're close to or at this limit, you have a few options.
 
 ## Solution 1: Request a Limit Increase
 
@@ -52,11 +54,11 @@ aws service-quotas request-service-quota-increase \
   --desired-value 10000
 ```
 
-This gets approved automatically in most cases and takes effect within a few minutes.
+Approval and timing vary by account, Region, and requested value, so request the increase before you need the extra capacity.
 
 ## Solution 2: Clean Up Unused ENIs
 
-Sometimes ENIs get orphaned - they were created by Lambda or other services but never cleaned up. These "available" ENIs are using your quota for nothing.
+Sometimes ENIs get orphaned - they were created manually or by a service but never cleaned up. These "available" ENIs are using your quota for nothing.
 
 ```bash
 # Find ENIs in "available" state (not attached to anything)
@@ -65,7 +67,7 @@ aws ec2 describe-network-interfaces \
   --query 'NetworkInterfaces[].{Id: NetworkInterfaceId, Description: Description, SubnetId: SubnetId}'
 ```
 
-You can safely delete ENIs in "available" status.
+For ENIs that you created directly and that are no longer needed, you can delete ENIs in "available" status.
 
 ```bash
 # Delete an orphaned ENI
@@ -73,25 +75,22 @@ aws ec2 delete-network-interface \
   --network-interface-id eni-0abc123def456
 ```
 
-To clean up all orphaned Lambda ENIs at once, use a script.
+Lambda-managed ENIs are different. Lambda deletes them when you remove the VPC configuration, delete the function or function version that uses them, or delete the event source mapping that uses them. If Lambda can't delete an unused ENI because the execution role was deleted first, then you can manually delete that specific unused ENI after confirming nothing still depends on it.
 
 ```bash
-# Find and delete all orphaned Lambda ENIs
-for eni in $(aws ec2 describe-network-interfaces \
+# Find available Lambda-managed ENIs for investigation
+aws ec2 describe-network-interfaces \
+  --include-managed-resources \
   --filters "Name=status,Values=available" \
-             "Name=description,Values=AWS Lambda VPC ENI*" \
-  --query 'NetworkInterfaces[].NetworkInterfaceId' \
-  --output text); do
-  echo "Deleting $eni"
-  aws ec2 delete-network-interface --network-interface-id "$eni"
-done
+            "Name=interface-type,Values=lambda" \
+  --query 'NetworkInterfaces[].{Id: NetworkInterfaceId, Description: Description, SubnetId: SubnetId}'
 ```
 
 ## Solution 3: Verify You're Using Hyperplane ENIs
 
-The newer Hyperplane ENI model dramatically reduces the number of ENIs Lambda needs. Instead of one per concurrent execution, Lambda creates a shared ENI per unique security group and subnet combination.
+The newer Hyperplane ENI model dramatically reduces the number of ENIs Lambda needs. Instead of one per concurrent execution, Lambda creates shared ENIs for subnet and security group combinations.
 
-To check if your Lambda function is using the new model, look at the function's VPC configuration.
+Hyperplane ENIs are the default for Lambda VPC networking now. To see which subnet and security group combinations a function uses, look at the function's VPC configuration.
 
 ```bash
 # Check the VPC configuration of your Lambda function
@@ -100,10 +99,10 @@ aws lambda get-function-configuration \
   --query '{SubnetIds: VpcConfig.SubnetIds, SecurityGroupIds: VpcConfig.SecurityGroupIds}'
 ```
 
-Hyperplane ENIs are the default for all Lambda functions now. If you have very old functions that were created before 2019 and never updated, try updating the function's VPC configuration (even if you're setting it to the same values).
+If you change these combinations, Lambda creates or reuses the corresponding Hyperplane ENIs. Updating a function's VPC configuration can take several minutes while Lambda prepares the ENI.
 
 ```bash
-# Re-apply VPC config to ensure Hyperplane ENIs are used
+# Update the VPC config if you need to change subnet or security group combinations
 aws lambda update-function-configuration \
   --function-name my-function \
   --vpc-config SubnetIds=subnet-abc123,subnet-def456,SecurityGroupIds=sg-abc123
@@ -111,7 +110,7 @@ aws lambda update-function-configuration \
 
 ## Solution 4: Optimize Subnet and Security Group Combinations
 
-With Hyperplane ENIs, Lambda creates one ENI per unique combination of security group(s) and subnet. If you have 10 Lambda functions, each with a different security group, each in 3 subnets, that's 30 ENIs minimum.
+With Hyperplane ENIs, Lambda creates ENIs for unique combinations of security group(s) and subnet. If you have 10 Lambda functions, each with a different security group, each in 3 subnets, that can create 30 ENI combinations before Lambda adds any extra ENIs for high connection volume.
 
 Reduce this by standardizing security groups across functions that have similar networking needs.
 
@@ -125,7 +124,7 @@ If multiple functions use the same subnets but different security groups, consid
 
 ## Solution 5: Reduce the Number of Subnets
 
-Each subnet in a Lambda function's VPC config gets its own ENI. If you've configured your function with 6 subnets but only need 2-3 for high availability, remove the extras.
+Each subnet and security group combination in a Lambda function's VPC config can require ENI capacity. If you've configured your function with 6 subnets but only need 2-3 for high availability, remove the extras.
 
 ```bash
 # Update Lambda to use fewer subnets
@@ -151,7 +150,7 @@ This gives you a picture of which services are consuming the most ENIs. You migh
 
 ## Monitoring ENI Usage
 
-Set up a CloudWatch alarm so you know before you hit the limit.
+Set up a scheduled monitor so you know before you hit the limit.
 
 ```python
 import boto3
@@ -161,9 +160,11 @@ def lambda_handler(event, context):
     ec2 = boto3.client('ec2')
     quotas = boto3.client('service-quotas')
 
-    # Get current ENI count
-    enis = ec2.describe_network_interfaces()
-    current_count = len(enis['NetworkInterfaces'])
+    # Get current ENI count across all pages
+    paginator = ec2.get_paginator('describe_network_interfaces')
+    current_count = 0
+    for page in paginator.paginate(IncludeManagedResources=True):
+        current_count += len(page['NetworkInterfaces'])
 
     # Get the limit
     quota = quotas.get_service_quota(
