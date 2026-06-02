@@ -68,7 +68,7 @@ glue.create_workflow(
 ### Schedule Trigger (Start of the Pipeline)
 
 ```python
-# Create the starting trigger - runs daily at 6 AM
+# Create the starting trigger - runs daily at 6 AM UTC
 glue.create_trigger(
     Name='daily-6am-start',
     WorkflowName='daily-etl-pipeline',
@@ -217,6 +217,7 @@ Workflow run properties let you pass data between jobs in the pipeline:
 ```python
 # In Job 1: Set a workflow run property
 import sys
+import boto3
 from awsglue.utils import getResolvedOptions
 
 args = getResolvedOptions(sys.argv, ['JOB_NAME', 'WORKFLOW_NAME', 'WORKFLOW_RUN_ID'])
@@ -236,6 +237,10 @@ glue.put_workflow_run_properties(
 
 ```python
 # In Job 2: Read properties from a previous step
+import sys
+import boto3
+from awsglue.utils import getResolvedOptions
+
 args = getResolvedOptions(sys.argv, ['JOB_NAME', 'WORKFLOW_NAME', 'WORKFLOW_RUN_ID'])
 
 glue = boto3.client('glue')
@@ -346,12 +351,11 @@ glue.create_job(
 
 ### Notification on Failure
 
-Add a notification job that checks the workflow status:
+Add a Lambda function that checks the workflow status:
 
 ```python
 # Simple notification Lambda that checks workflow status
 import boto3
-import json
 
 def lambda_handler(event, context):
     glue = boto3.client('glue')
@@ -380,11 +384,12 @@ def lambda_handler(event, context):
 
 ### EventBridge Integration
 
-Use EventBridge (CloudWatch Events) to react to workflow state changes:
+Use EventBridge (CloudWatch Events) to react to Glue job failures:
 
 ```python
 # EventBridge rule for workflow failures
 import boto3
+import json
 
 events = boto3.client('events')
 
