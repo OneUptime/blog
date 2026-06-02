@@ -16,7 +16,7 @@ Let's find and fix this waste systematically.
 
 ## Idle EC2 Instances
 
-An idle EC2 instance is one that's running but doing no useful work. The most reliable indicator is low CPU utilization over an extended period.
+An idle EC2 instance is one that's running but doing no useful work. A common first indicator is low CPU utilization over an extended period, ideally checked alongside network and disk activity.
 
 ```bash
 # Find EC2 instances with average CPU below 5% over the past 14 days
@@ -122,10 +122,10 @@ find_idle_instances()
 
 ## Unattached EBS Volumes
 
-Volumes in "available" state aren't attached to any instance. They're almost always safe to delete (after snapshotting as a precaution).
+Volumes in "available" state aren't attached to any instance. They're good deletion candidates after you confirm they are no longer needed and snapshot them as a precaution.
 
 ```bash
-# Find unattached volumes with their size and estimated monthly cost
+# Find unattached volumes with their size, type, creation time, and Availability Zone
 aws ec2 describe-volumes \
   --filters Name=status,Values=available \
   --query "Volumes[].{
@@ -142,7 +142,7 @@ For a deeper dive on cleaning these up, see our guide on [reducing EBS costs by 
 
 ## Unused Elastic Load Balancers
 
-Load balancers cost $16-$22/month just for existing, plus per-hour charges. Ones with no targets or no traffic are pure waste.
+Load balancers often cost roughly $16-$22/month in hourly charges before LCU or NLCU usage charges. Ones with no targets or no traffic are pure waste.
 
 ```python
 import boto3
@@ -178,8 +178,8 @@ def find_unused_load_balancers():
                 has_healthy_targets = True
                 break
 
-        # Check request count (for ALBs)
-        metric_name = 'RequestCount' if lb_type == 'application' else 'ActiveFlowCount'
+        # Check traffic
+        metric_name = 'RequestCount' if lb_type == 'application' else 'ProcessedBytes'
         dimension_name = 'LoadBalancer'
         dimension_value = '/'.join(lb_arn.split('/')[-3:])
 
@@ -218,7 +218,7 @@ find_unused_load_balancers()
 
 ## Unused Elastic IPs
 
-Unattached Elastic IPs cost $3.60/month each:
+Unattached Elastic IPs are billed as idle public IPv4 addresses. At $0.005/hour, that is about $3.60/month each for a 30-day month:
 
 ```bash
 # Find all unattached Elastic IPs
@@ -280,7 +280,7 @@ find_idle_rds()
 
 ## Unused NAT Gateways
 
-NAT Gateways with no traffic are costing $32/month each:
+NAT Gateways with no traffic are costing about $32/month each in common US regions:
 
 ```bash
 # Check NAT Gateway traffic over the past 7 days
@@ -301,7 +301,7 @@ for nat_id in $(aws ec2 describe-nat-gateways \
     --output text)
 
   if [ "$bytes" = "None" ] || [ "$bytes" = "0.0" ]; then
-    echo "UNUSED NAT Gateway: $nat_id - zero traffic in 7 days (\$32/mo)"
+    echo "UNUSED NAT Gateway: $nat_id - zero traffic in 7 days (~\$32/mo)"
   fi
 done
 ```
@@ -339,7 +339,7 @@ def find_stale_snapshots(retention_days=90):
             total_size += snap['VolumeSize']
 
     print(f"Found {len(stale)} stale snapshots ({total_size}GB)")
-    print(f"Estimated monthly cost: ${total_size * 0.05:.2f}")
+    print(f"Rough upper-bound monthly cost estimate: ${total_size * 0.05:.2f}")
 
     return stale
 
@@ -348,17 +348,15 @@ find_stale_snapshots()
 
 ## All-in-One Audit Script
 
-Here's a comprehensive script that checks everything:
+Here's a script that checks several high-confidence cleanup candidates:
 
 ```python
 import boto3
 from datetime import datetime, timedelta
 
 def full_idle_resource_audit():
-    """Comprehensive audit of all idle/unused AWS resources"""
+    """Basic audit of high-confidence idle/unused AWS resources"""
     ec2 = boto3.client('ec2')
-    rds = boto3.client('rds')
-    elbv2 = boto3.client('elbv2')
 
     total_monthly_waste = 0
 
@@ -380,14 +378,23 @@ def full_idle_resource_audit():
     print(f"Unattached Elastic IPs: {len(unattached_eips)} (est. ${eip_cost:.2f}/mo)")
     total_monthly_waste += eip_cost
 
-    # Old snapshots (over 90 days)
-    cutoff = datetime.now().strftime('%Y-%m-%dT%H:%M:%S')
+    # Old snapshots (over 90 days) that are not backing AMIs
+    images = ec2.describe_images(Owners=['self'])
+    ami_snapshot_ids = set()
+    for image in images['Images']:
+        for bdm in image.get('BlockDeviceMappings', []):
+            snapshot_id = bdm.get('Ebs', {}).get('SnapshotId')
+            if snapshot_id:
+                ami_snapshot_ids.add(snapshot_id)
+
     snapshots = ec2.describe_snapshots(OwnerIds=['self'])['Snapshots']
     old_snaps = [s for s in snapshots
-                 if s['StartTime'].replace(tzinfo=None) < datetime.utcnow() - timedelta(days=90)]
+                 if s['StartTime'].replace(tzinfo=None) < datetime.utcnow() - timedelta(days=90)
+                 and s['SnapshotId'] not in ami_snapshot_ids]
     snap_size = sum(s['VolumeSize'] for s in old_snaps)
     snap_cost = snap_size * 0.05
-    print(f"Snapshots older than 90 days: {len(old_snaps)} ({snap_size}GB, est. ${snap_cost:.2f}/mo)")
+    print(f"Snapshots older than 90 days not used by AMIs: {len(old_snaps)} "
+          f"({snap_size}GB, rough upper-bound est. ${snap_cost:.2f}/mo)")
     total_monthly_waste += snap_cost
 
     print(f"\n{'='*60}")
