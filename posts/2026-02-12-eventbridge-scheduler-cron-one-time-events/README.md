@@ -8,7 +8,7 @@ Description: Learn how to use Amazon EventBridge Scheduler to create recurring c
 
 ---
 
-If you've been using CloudWatch Events or EventBridge rules for scheduling, EventBridge Scheduler is the upgrade you didn't know you needed. It supports millions of schedules per account (compared to 300 rules per bus), flexible time zones, one-time schedules that clean themselves up, and universal targets that work with over 270 AWS services.
+If you've been using CloudWatch Events or EventBridge rules for scheduling, EventBridge Scheduler is the upgrade you didn't know you needed. It supports millions of schedules per Region (compared to 300 rules per bus in most Regions), flexible time zones, one-time schedules that can clean themselves up, and universal targets that work with over 270 AWS services.
 
 Let's look at how to use it for both recurring jobs and one-time future events.
 
@@ -18,13 +18,13 @@ EventBridge rules have scheduling capability, but Scheduler is purpose-built for
 
 | Feature | EventBridge Rules | EventBridge Scheduler |
 |---------|------------------|----------------------|
-| Max schedules | 300 per bus | Millions per account |
+| Max schedules | 300 per bus in most Regions | Millions per Region |
 | One-time schedules | Not supported | Supported |
 | Time zone support | UTC only | All time zones |
 | Flexible time windows | No | Yes |
 | Auto-delete after execution | No | Yes |
 | Universal targets | Limited | 270+ services |
-| Dead letter queue | No | Yes |
+| Dead letter queue | Yes | Yes |
 
 For anything beyond basic cron jobs, Scheduler is the way to go.
 
@@ -32,7 +32,7 @@ For anything beyond basic cron jobs, Scheduler is the way to go.
 
 Let's start with a classic use case - running a cleanup job every night.
 
-This creates a schedule that runs at midnight EST every day:
+This creates a schedule that runs at midnight Eastern time every day:
 
 ```bash
 aws scheduler create-schedule \
@@ -41,8 +41,8 @@ aws scheduler create-schedule \
   --schedule-expression-timezone "America/New_York" \
   --flexible-time-window '{"Mode": "OFF"}' \
   --target '{
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:cleanup",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole",
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:cleanup",
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole",
     "Input": "{\"action\": \"cleanup\", \"retentionDays\": 30}"
   }'
 ```
@@ -88,8 +88,8 @@ aws scheduler create-schedule \
   --schedule-expression "rate(5 minutes)" \
   --flexible-time-window '{"Mode": "OFF"}' \
   --target '{
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:health-check",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:health-check",
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole"
   }'
 ```
 
@@ -109,8 +109,8 @@ aws scheduler create-schedule \
   --flexible-time-window '{"Mode": "OFF"}' \
   --action-after-completion DELETE \
   --target '{
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:send-reminder",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole",
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:send-reminder",
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole",
     "Input": "{\"orderId\": \"12345\", \"message\": \"Your trial expires tomorrow\"}"
   }'
 ```
@@ -174,10 +174,10 @@ aws scheduler create-schedule \
   --name daily-report \
   --schedule-expression "cron(0 9 * * ? *)" \
   --schedule-expression-timezone "America/New_York" \
-  --flexible-time-window '{"Mode": "FLEXIBLE", "MaximumWindowInSeconds": 900}' \
+  --flexible-time-window '{"Mode": "FLEXIBLE", "MaximumWindowInMinutes": 15}' \
   --target '{
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:generate-report",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:generate-report",
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole"
   }'
 ```
 
@@ -202,8 +202,8 @@ aws scheduler create-schedule \
   --flexible-time-window '{"Mode": "OFF"}' \
   --action-after-completion DELETE \
   --target '{
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:send-followup",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:send-followup",
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole"
   }'
 ```
 
@@ -221,10 +221,10 @@ aws scheduler create-schedule \
   --schedule-expression "rate(1 hour)" \
   --flexible-time-window '{"Mode": "OFF"}' \
   --target '{
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:critical-process",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole",
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:critical-process",
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole",
     "DeadLetterConfig": {
-      "Arn": "arn:aws:sqs:us-east-1:123456789:scheduler-dlq"
+      "Arn": "arn:aws:sqs:us-east-1:123456789012:scheduler-dlq"
     },
     "RetryPolicy": {
       "MaximumEventAgeInSeconds": 3600,
@@ -237,7 +237,7 @@ The retry policy tells Scheduler to retry up to 3 times within 1 hour before sen
 
 ## Universal Targets
 
-Scheduler can invoke over 270 AWS service APIs directly. This means you don't always need a Lambda function as the target.
+Scheduler can invoke over 6,000 API operations across over 270 AWS services directly. This means you don't always need a Lambda function as the target.
 
 This schedule starts a Step Functions execution directly:
 
@@ -246,11 +246,11 @@ aws scheduler create-schedule \
   --name weekly-etl \
   --schedule-expression "cron(0 2 ? * MON *)" \
   --schedule-expression-timezone "UTC" \
-  --flexible-time-window '{"Mode": "FLEXIBLE", "MaximumWindowInSeconds": 1800}' \
+  --flexible-time-window '{"Mode": "FLEXIBLE", "MaximumWindowInMinutes": 30}' \
   --target '{
     "Arn": "arn:aws:scheduler:::aws-sdk:sfn:startExecution",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole",
-    "Input": "{\"StateMachineArn\": \"arn:aws:states:us-east-1:123456789:stateMachine:ETLPipeline\", \"Input\": \"{\\\"week\\\": \\\"current\\\"}\"}"
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole",
+    "Input": "{\"StateMachineArn\": \"arn:aws:states:us-east-1:123456789012:stateMachine:ETLPipeline\", \"Input\": \"{\\\"week\\\": \\\"current\\\"}\"}"
   }'
 ```
 
@@ -264,8 +264,8 @@ aws scheduler create-schedule \
   --flexible-time-window '{"Mode": "OFF"}' \
   --target '{
     "Arn": "arn:aws:scheduler:::aws-sdk:sqs:sendMessage",
-    "RoleArn": "arn:aws:iam::123456789:role/SchedulerRole",
-    "Input": "{\"QueueUrl\": \"https://sqs.us-east-1.amazonaws.com/123456789/tasks\", \"MessageBody\": \"{\\\"task\\\": \\\"daily-digest\\\"}\"}"
+    "RoleArn": "arn:aws:iam::123456789012:role/SchedulerRole",
+    "Input": "{\"QueueUrl\": \"https://sqs.us-east-1.amazonaws.com/123456789012/tasks\", \"MessageBody\": \"{\\\"task\\\": \\\"daily-digest\\\"}\"}"
   }'
 ```
 
@@ -296,7 +296,7 @@ exports.handler = async (event) => {
     GroupName: 'trial-schedules',
     ScheduleExpression: `at(${reminderDate.toISOString().split('.')[0]})`,
     ScheduleExpressionTimezone: 'UTC',
-    FlexibleTimeWindow: { Mode: 'FLEXIBLE', MaximumWindowInSeconds: 3600 },
+    FlexibleTimeWindow: { Mode: 'FLEXIBLE', MaximumWindowInMinutes: 60 },
     ActionAfterCompletion: 'DELETE',
     Target: {
       Arn: process.env.NOTIFICATION_FUNCTION_ARN,
