@@ -8,7 +8,7 @@ Description: Step-by-step instructions for registering S3 locations and other da
 
 ---
 
-AWS Lake Formation sits on top of your data lake and controls who can access what. But before it can do anything, you need to register your data sources with it. Registration tells Lake Formation "this S3 location contains data you should manage" and from that point on, Lake Formation handles the permissions instead of raw IAM and S3 bucket policies.
+AWS Lake Formation sits on top of your data lake and controls who can access what. But before it can do anything, you need to register your data sources with it. Registration tells Lake Formation "this S3 location contains data you should manage" and from that point on, integrated services like Athena and Glue can use Lake Formation permissions instead of relying only on raw IAM and S3 bucket policies.
 
 This is a critical step that's easy to get wrong. If you skip it or misconfigure it, your Glue tables will still use IAM-based access instead of Lake Formation permissions, which defeats the whole purpose.
 
@@ -16,7 +16,7 @@ This is a critical step that's easy to get wrong. If you skip it or misconfigure
 
 When you register an S3 location with Lake Formation, you're telling it to manage access to data stored at that path. Lake Formation uses a service-linked role (or a custom role you specify) to vend temporary credentials to services like Athena and Glue when they need to read data from that location.
 
-Without registration, access to your data is controlled entirely by IAM policies and S3 bucket policies. With registration, Lake Formation intercepts data access requests and checks its own permission model first.
+Without registration, access to your data is controlled entirely by IAM policies and S3 bucket policies. With registration, Lake Formation checks its own permission model when integrated AWS services request access to the registered data. It does not block direct S3 API or console access if IAM or S3 bucket policies still allow that access.
 
 ## Prerequisites
 
@@ -96,7 +96,7 @@ Now you can register the S3 path:
 aws lakeformation register-resource \
     --resource-arn "arn:aws:s3:::my-data-lake-bucket/data/" \
     --role-arn "arn:aws:iam::123456789012:role/LakeFormationDataAccessRole" \
-    --use-service-linked-role false
+    --no-use-service-linked-role
 ```
 
 If you want to use the Lake Formation service-linked role instead of a custom role:
@@ -106,7 +106,7 @@ If you want to use the Lake Formation service-linked role instead of a custom ro
 # Simpler setup but less control over the IAM permissions
 aws lakeformation register-resource \
     --resource-arn "arn:aws:s3:::my-data-lake-bucket/data/" \
-    --use-service-linked-role true
+    --use-service-linked-role
 ```
 
 The service-linked role approach is simpler, but the custom role gives you more control over exactly which S3 paths the role can access.
@@ -145,7 +145,7 @@ aws lakeformation describe-resource \
     --resource-arn "arn:aws:s3:::my-data-lake-bucket/data/"
 ```
 
-The output shows the resource ARN, the role being used, and whether the resource is active.
+The output shows the resource ARN, the role being used, and the verification status for that role.
 
 ## Creating a Database Over Registered Data
 
@@ -175,6 +175,16 @@ aws lakeformation grant-permissions \
     --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/AnalyticsRole"}' \
     --resource '{"Database": {"Name": "sales_analytics"}}' \
     --permissions '["DESCRIBE"]'
+
+aws lakeformation grant-permissions \
+    --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/AnalyticsRole"}' \
+    --resource '{
+        "Table": {
+            "DatabaseName": "sales_analytics",
+            "TableWildcard": {}
+        }
+    }' \
+    --permissions '["SELECT", "DESCRIBE"]'
 ```
 
 ## Handling Existing Tables
@@ -247,7 +257,7 @@ Resources:
 
 **"Access Denied" even after granting permissions** - Almost always caused by not revoking `IAM_ALLOWED_PRINCIPALS` grants or not registering the S3 location.
 
-**Tables show up in Glue but not in Lake Formation** - The S3 location for those tables isn't registered. Register the parent path and the tables will appear in the Lake Formation permission model.
+**Tables show up in Glue but Lake Formation doesn't control the underlying data** - The S3 location for those tables isn't registered. Register the parent path so Lake Formation can manage access to the data those tables point to.
 
 **Cross-account access doesn't work** - You need to register the S3 location in the account that owns the data, then share the tables through Lake Formation's cross-account sharing. The consumer account doesn't register the S3 location.
 
