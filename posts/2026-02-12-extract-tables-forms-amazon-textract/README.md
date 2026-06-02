@@ -28,7 +28,7 @@ graph TD
     G --> I[WORD]
 ```
 
-Every block has an ID, and blocks reference each other through relationships. A TABLE block has CHILD relationships pointing to CELL blocks. Each CELL has CHILD relationships pointing to WORD blocks. The trick is traversing these relationships to reconstruct the data.
+Every block has an ID, and blocks reference each other through relationships. A TABLE block has CHILD relationships pointing to CELL blocks, and can also have MERGED_CELL relationships for cells that span multiple rows or columns. Each CELL has CHILD relationships pointing to WORD blocks. The trick is traversing these relationships to reconstruct the data.
 
 ## A Robust Table Extractor
 
@@ -77,17 +77,13 @@ class TextractTableExtractor:
                         text = self._get_text(cell)
                         confidence = cell['Confidence']
 
-                        # Handle merged cells
-                        row_span = cell.get('RowSpan', 1)
-                        col_span = cell.get('ColumnSpan', 1)
-
                         cells[(row, col)] = {
                             'text': text,
                             'confidence': confidence,
-                            'row_span': row_span,
-                            'col_span': col_span,
                             'is_header': 'COLUMN_HEADER' in cell.get('EntityTypes', [])
                         }
+
+        self._apply_merged_cells(table_block, cells)
 
         # Build the 2D array
         table = []
@@ -100,6 +96,43 @@ class TextractTableExtractor:
 
         return table
 
+    def _apply_merged_cells(self, table_block, cells):
+        """Copy MERGED_CELL text into each CELL covered by the merged region."""
+        for rel in table_block.get('Relationships', []):
+            if rel['Type'] == 'MERGED_CELL':
+                for merged_id in rel['Ids']:
+                    merged = self.blocks[merged_id]
+                    if merged['BlockType'] != 'MERGED_CELL':
+                        continue
+
+                    text = self._get_merged_cell_text(merged)
+                    for child_rel in merged.get('Relationships', []):
+                        if child_rel['Type'] != 'CHILD':
+                            continue
+                        for cell_id in child_rel['Ids']:
+                            cell = self.blocks[cell_id]
+                            if cell['BlockType'] != 'CELL':
+                                continue
+                            pos = (cell['RowIndex'], cell['ColumnIndex'])
+                            cells.setdefault(pos, {
+                                'text': '',
+                                'confidence': cell.get('Confidence', 0)
+                            })
+                            cells[pos]['text'] = text
+
+    def _get_merged_cell_text(self, merged_cell):
+        """Get text from the child CELL blocks in a MERGED_CELL block."""
+        parts = []
+        for rel in merged_cell.get('Relationships', []):
+            if rel['Type'] == 'CHILD':
+                for cell_id in rel['Ids']:
+                    cell = self.blocks[cell_id]
+                    if cell['BlockType'] == 'CELL':
+                        text = self._get_text(cell)
+                        if text:
+                            parts.append(text)
+        return ' '.join(parts)
+
     def _get_text(self, block):
         """Get text content from a block by following CHILD relationships."""
         words = []
@@ -111,6 +144,8 @@ class TextractTableExtractor:
                         words.append(child['Text'])
                     elif child['BlockType'] == 'SELECTION_ELEMENT':
                         words.append('[X]' if child['SelectionStatus'] == 'SELECTED' else '[ ]')
+                    elif child['BlockType'] in ('TABLE_TITLE', 'TABLE_FOOTER'):
+                        words.append(self._get_text(child))
         return ' '.join(words)
 
     def get_tables_as_dicts(self):
@@ -138,7 +173,7 @@ class TextractTableExtractor:
 # Usage
 
 def extract_tables_from_document(bucket, key):
-    """Extract all tables from a document."""
+    """Extract all tables from a single-page document."""
     response = textract.analyze_document(
         Document={'S3Object': {'Bucket': bucket, 'Name': key}},
         FeatureTypes=['TABLES']
@@ -230,7 +265,7 @@ class TextractFormExtractor:
 
 # Usage
 def extract_forms_from_document(bucket, key):
-    """Extract form fields from a document."""
+    """Extract form fields from a single-page document."""
     response = textract.analyze_document(
         Document={'S3Object': {'Bucket': bucket, 'Name': key}},
         FeatureTypes=['FORMS']
@@ -271,7 +306,7 @@ def extract_tables_multipage(bucket, key):
     # Wait for completion
     while True:
         result = textract.get_document_analysis(JobId=job_id)
-        if result['JobStatus'] == 'SUCCEEDED':
+        if result['JobStatus'] in ('SUCCEEDED', 'PARTIAL_SUCCESS'):
             break
         elif result['JobStatus'] == 'FAILED':
             return None
