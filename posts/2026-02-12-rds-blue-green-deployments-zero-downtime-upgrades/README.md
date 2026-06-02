@@ -10,7 +10,7 @@ Description: Use Amazon RDS Blue/Green Deployments to perform database engine up
 
 Major database upgrades traditionally mean scheduling a maintenance window, warning users about downtime, and hoping everything goes smoothly. With RDS Blue/Green Deployments, you can test your changes on a live copy of the database and then switch over in seconds. If something goes wrong, you still have the original environment running.
 
-Blue/Green Deployments create a staging environment (green) that stays in sync with your production environment (blue) through logical replication. You can make changes to the green environment - upgrade the engine version, change parameters, modify the schema - and then switchover when you're ready.
+Blue/Green Deployments create a staging environment (green) that stays in sync with your production environment (blue) through managed replication. The replication method depends on the engine and upgrade type. You can make changes to the green environment - upgrade the engine version, change parameters, modify the schema where supported - and then switchover when you're ready.
 
 ## How Blue/Green Deployments Work
 
@@ -19,34 +19,36 @@ The process follows this flow:
 ```mermaid
 graph TD
     A[Create Blue/Green Deployment] --> B[Green environment created]
-    B --> C[Logical replication keeps green in sync]
+    B --> C[Managed replication keeps green in sync]
     C --> D[Make changes to green environment]
     D --> E[Test green environment]
     E --> F{Tests pass?}
     F -->|Yes| G[Switchover: Green becomes production]
     F -->|No| H[Delete green environment]
-    G --> I[Old blue available for rollback]
+    G --> I[Old blue retained after switchover]
 ```
 
 During the switchover:
 1. RDS stops writes to the blue environment
 2. Replication catches up completely
 3. RDS renames the blue and green instances (swapping endpoints)
-4. Your application automatically connects to the new green environment via the same endpoint
+4. RDS allows connections again, and your application reconnects to the new green environment via the same endpoint
 5. Typical switchover downtime is under 1 minute
 
 ## Supported Configurations
 
 Blue/Green Deployments work with:
 - RDS MySQL 5.7 and 8.0
+- RDS MySQL 8.4
 - RDS MariaDB 10.2 and higher
-- RDS PostgreSQL (added in 2024)
+- RDS PostgreSQL 11.1 and higher
 - Aurora MySQL
 - Aurora PostgreSQL
 
 The source instance must have:
 - Automated backups enabled
-- Binary logging enabled (for MySQL/MariaDB) or logical replication configured (for PostgreSQL)
+- For PostgreSQL blue/green deployments that use logical replication, `rds.logical_replication` enabled in a custom parameter group and enough replication worker capacity
+- For Aurora MySQL, binary logging enabled in a custom DB cluster parameter group
 
 ## Creating a Blue/Green Deployment
 
@@ -121,11 +123,13 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name ReplicaLag \
   --dimensions Name=DBInstanceIdentifier,Value=my-production-db-green-abc123 \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
   --statistics Average
 ```
+
+For RDS for PostgreSQL, use the replication metric that matches the replication method. Logical replication uses `OldestReplicationSlotLag` on the blue environment; physical replication is monitored through PostgreSQL replication status.
 
 ## Testing the Green Environment
 
@@ -141,12 +145,12 @@ aws rds describe-db-instances \
 Run your test suite against it:
 
 ```python
-import psycopg2
+import pymysql
 
 # Connect to the green environment for testing
-green_conn = psycopg2.connect(
+green_conn = pymysql.connect(
     host='my-production-db-green-abc123.xyz.us-east-1.rds.amazonaws.com',
-    dbname='myapp',
+    database='myapp',
     user='admin',
     password='password'
 )
@@ -191,9 +195,9 @@ During the switchover:
 1. Writes to the blue (source) instance are blocked
 2. Replication catches up to zero lag
 3. The database endpoints are swapped
-4. Your application reconnects automatically (same endpoint, now pointing to the upgraded database)
+4. Your application reconnects through the same endpoint, now pointing to the upgraded database
 
-The actual downtime is typically under 1 minute. Most of that is DNS propagation and connection re-establishment.
+The actual downtime is typically under 1 minute, but it can be longer depending on workload and replication lag. Existing connections are dropped during switchover, so most applications need retry logic to reconnect. DNS caching can also add delay if clients cache the RDS endpoint longer than the default RDS DNS TTL.
 
 ## After the Switchover
 
@@ -222,7 +226,7 @@ Check [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-
 
 If you discover issues after the switchover, the old blue environment is still available. You can't automatically switch back, but you can:
 
-1. Point your application to the old blue instance endpoint temporarily
+1. Point your application to the old blue instance endpoint temporarily, after making it writable if you need to send writes to it
 2. Or create another Blue/Green deployment to switch back
 
 The old blue environment remains for as long as you keep it. Delete it once you're confident the upgrade is stable:
@@ -230,12 +234,11 @@ The old blue environment remains for as long as you keep it. Delete it once you'
 ```bash
 # Delete the Blue/Green deployment (keeps the instances, just removes the deployment metadata)
 aws rds delete-blue-green-deployment \
-  --blue-green-deployment-identifier my-db-upgrade \
-  --delete-target false
+  --blue-green-deployment-identifier my-db-upgrade
 
 # Once you're sure everything is fine, delete the old blue instance
 aws rds delete-db-instance \
-  --db-instance-identifier my-production-db-old-blue-abc123 \
+  --db-instance-identifier my-production-db-old1 \
   --skip-final-snapshot
 ```
 
@@ -257,7 +260,7 @@ aws rds create-blue-green-deployment \
 - **Storage**: The green environment uses additional storage (it's a full copy). Make sure your account limits can accommodate this.
 - **Cost**: You're running two sets of instances during the deployment. Plan for the extra cost during the testing period.
 - **Replication lag**: High write volumes can cause the green environment to fall behind. Monitor lag before attempting a switchover.
-- **Schema changes**: You can make schema changes on the green environment, but be careful - changes to tables that affect replication (like adding NOT NULL columns without defaults) can break replication.
+- **Schema changes**: You can make schema changes on the green environment where writes to green are supported, but be careful - changes to tables that affect replication (like adding NOT NULL columns without defaults) can break replication. RDS for PostgreSQL blue/green deployments that use physical replication keep the green environment read-only, so schema changes on green aren't supported in that mode.
 - **Maximum duration**: AWS doesn't enforce a maximum, but long-running deployments consume resources. Plan to switchover or delete within a reasonable timeframe.
 
 Blue/Green Deployments turn database upgrades from a nerve-wracking maintenance event into a controlled, tested process. The extra cost of running two environments for a few hours is nothing compared to the confidence of knowing your upgrade works before it touches production.
