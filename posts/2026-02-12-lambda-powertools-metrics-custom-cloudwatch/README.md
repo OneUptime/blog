@@ -10,7 +10,7 @@ Description: Learn how to create custom CloudWatch metrics from Lambda functions
 
 CloudWatch provides default Lambda metrics - invocation count, duration, error count, throttles. But these tell you about your Lambda function, not about your business. How many orders were processed? What's the average cart value? How many payments failed? These are the metrics that actually matter, and Lambda Powertools Metrics makes it easy to create them without the overhead of direct CloudWatch API calls.
 
-Powertools Metrics uses the Embedded Metric Format (EMF), which means your metrics are published as structured log entries that CloudWatch automatically converts to metrics. No PutMetricData API calls, no extra latency, no additional cost beyond log ingestion.
+Powertools Metrics uses the Embedded Metric Format (EMF), which means your metrics are published as structured log entries that CloudWatch automatically converts to metrics. No PutMetricData API calls, no extra latency from synchronous metric API calls, and no PutMetricData request charges. The custom metrics and CloudWatch Logs ingestion still count toward CloudWatch pricing.
 
 ## How EMF Works
 
@@ -23,7 +23,7 @@ graph LR
     C --> D[Dashboards & Alarms]
 ```
 
-Your Lambda function writes a specially formatted JSON log entry. CloudWatch Logs recognizes the EMF format and automatically creates metrics from it. This is faster and cheaper than calling the PutMetricData API directly.
+Your Lambda function writes a specially formatted JSON log entry. CloudWatch Logs recognizes the EMF format and automatically creates metrics from it. This avoids direct PutMetricData calls and their request charges.
 
 ## Basic Setup
 
@@ -39,6 +39,8 @@ metrics = Metrics(namespace="OrderService", service="order-processor")
 
 @metrics.log_metrics(capture_cold_start_metric=True)
 def handler(event, context):
+    metrics.add_dimension(name="Environment", value="production")
+
     # Add a metric
     metrics.add_metric(name="OrderReceived", unit=MetricUnit.Count, value=1)
 
@@ -46,13 +48,13 @@ def handler(event, context):
     total = process_order(event)
 
     # Add more metrics
-    metrics.add_metric(name="OrderValue", unit=MetricUnit.Count, value=total)
+    metrics.add_metric(name="OrderValue", unit=MetricUnit.NoUnit, value=total)
     metrics.add_metric(name="ItemCount", unit=MetricUnit.Count, value=len(event.get("items", [])))
 
     return {"statusCode": 200}
 ```
 
-The `@metrics.log_metrics` decorator ensures all metrics are flushed at the end of the invocation. Without it, metrics would be lost. The `capture_cold_start_metric=True` flag automatically tracks cold starts.
+The `@metrics.log_metrics` decorator ensures all metrics are flushed at the end of the invocation. Without it, you would need to call `metrics.flush_metrics()` manually. The `capture_cold_start_metric=True` flag automatically tracks cold starts.
 
 ## Dimensions
 
@@ -68,18 +70,18 @@ metrics = Metrics(namespace="OrderService", service="order-processor")
 def handler(event, context):
     order = event
 
-    # Default dimensions (apply to all metrics in this invocation)
+    # Dimensions for this metric set (apply to all metrics in this invocation)
     metrics.add_dimension(name="Environment", value="production")
     metrics.add_dimension(name="Region", value="us-east-1")
+    payment_method = order.get("payment_method", "unknown")
+    metrics.add_dimension(name="PaymentMethod", value=payment_method)
 
     # Business metrics with dimensions
     metrics.add_metric(name="OrderProcessed", unit=MetricUnit.Count, value=1)
 
     # Different metrics for different payment methods
-    payment_method = order.get("payment_method", "unknown")
-    metrics.add_dimension(name="PaymentMethod", value=payment_method)
     metrics.add_metric(name="PaymentProcessed", unit=MetricUnit.Count, value=1)
-    metrics.add_metric(name="PaymentAmount", unit=MetricUnit.Count, value=order["total"])
+    metrics.add_metric(name="PaymentAmount", unit=MetricUnit.NoUnit, value=order["total"])
 
     return {"statusCode": 200}
 ```
@@ -140,6 +142,7 @@ metrics = Metrics(namespace="OrderService", service="order-processor")
 
 @metrics.log_metrics
 def handler(event, context):
+    metrics.add_dimension(name="Environment", value="production")
     start = time.time()
 
     result = process_order(event)
@@ -194,6 +197,7 @@ resource "aws_cloudwatch_metric_alarm" "payment_failures" {
       stat        = "Sum"
       dimensions = {
         Environment = "production"
+        service     = "order-processor"
       }
     }
   }
@@ -207,6 +211,7 @@ resource "aws_cloudwatch_metric_alarm" "payment_failures" {
       stat        = "Sum"
       dimensions = {
         Environment = "production"
+        service     = "order-processor"
       }
     }
   }
@@ -222,12 +227,13 @@ resource "aws_cloudwatch_metric_alarm" "high_latency" {
   metric_name         = "ProcessingLatency"
   namespace           = "OrderService"
   period              = 300
-  statistic           = "p99"
+  extended_statistic  = "p99"
   threshold           = 5000  # 5 seconds
   alarm_actions       = [aws_sns_topic.alerts.arn]
 
   dimensions = {
     Environment = "production"
+    service     = "order-processor"
   }
 }
 ```
@@ -250,13 +256,14 @@ def create_order_dashboard():
                 "properties": {
                     "title": "Orders Per Minute",
                     "metrics": [
-                        ["OrderService", "OrderProcessed", "Environment", "production",
+                        ["OrderService", "OrderProcessed", "Environment", "production", "service", "order-processor",
                          {"stat": "Sum", "period": 60}],
-                        ["OrderService", "OrderFailed", "Environment", "production",
+                        ["OrderService", "OrderFailed", "Environment", "production", "service", "order-processor",
                          {"stat": "Sum", "period": 60, "color": "#d62728"}]
                     ],
                     "view": "timeSeries",
                     "stacked": False,
+                    "region": "us-east-1",
                     "period": 60
                 },
                 "width": 12,
@@ -267,12 +274,13 @@ def create_order_dashboard():
                 "properties": {
                     "title": "Payment Methods Distribution",
                     "metrics": [
-                        ["OrderService", "PaymentByMethod", "PaymentMethod", "credit_card"],
-                        ["...", "debit_card"],
-                        ["...", "paypal"],
-                        ["...", "apple_pay"]
+                        ["OrderService", "PaymentByMethod", "PaymentMethod", "credit_card", "Currency", "USD"],
+                        [".", ".", ".", "debit_card", ".", "."],
+                        [".", ".", ".", "paypal", ".", "."],
+                        [".", ".", ".", "apple_pay", ".", "."]
                     ],
                     "view": "pie",
+                    "region": "us-east-1",
                     "period": 3600
                 },
                 "width": 6,
@@ -283,12 +291,13 @@ def create_order_dashboard():
                 "properties": {
                     "title": "Processing Latency (p50, p90, p99)",
                     "metrics": [
-                        ["OrderService", "ProcessingLatency", "Environment", "production",
+                        ["OrderService", "ProcessingLatency", "Environment", "production", "service", "order-processor",
                          {"stat": "p50", "label": "p50"}],
-                        ["...", {"stat": "p90", "label": "p90"}],
-                        ["...", {"stat": "p99", "label": "p99", "color": "#d62728"}]
+                        [".", ".", ".", ".", ".", ".", {"stat": "p90", "label": "p90"}],
+                        [".", ".", ".", ".", ".", ".", {"stat": "p99", "label": "p99", "color": "#d62728"}]
                     ],
                     "view": "timeSeries",
+                    "region": "us-east-1",
                     "period": 300
                 },
                 "width": 12,
@@ -299,10 +308,11 @@ def create_order_dashboard():
                 "properties": {
                     "title": "Average Order Value",
                     "metrics": [
-                        ["OrderService", "OrderValue", "Environment", "production",
+                        ["OrderService", "OrderValue", "Environment", "production", "service", "order-processor",
                          {"stat": "Average", "period": 3600}]
                     ],
-                    "view": "singleValue"
+                    "view": "singleValue",
+                    "region": "us-east-1"
                 },
                 "width": 6,
                 "height": 3
@@ -312,10 +322,11 @@ def create_order_dashboard():
                 "properties": {
                     "title": "Cold Starts",
                     "metrics": [
-                        ["OrderService", "ColdStart", "service", "order-processor",
+                        ["OrderService", "ColdStart", "function_name", "order-processor", "service", "order-processor",
                          {"stat": "Sum", "period": 300}]
                     ],
-                    "view": "timeSeries"
+                    "view": "timeSeries",
+                    "region": "us-east-1"
                 },
                 "width": 6,
                 "height": 3
@@ -354,7 +365,7 @@ def handler(event, context):
 
     # DO: Batch related values into fewer metrics
     metrics.add_metric(name="OrderProcessed", unit=MetricUnit.Count, value=1)
-    metrics.add_metric(name="OrderValue", unit=MetricUnit.Count, value=event["total"])
+    metrics.add_metric(name="OrderValue", unit=MetricUnit.NoUnit, value=event["total"])
 
     # DON'T: Create separate metrics for each item type
     # for item in event["items"]:
@@ -365,6 +376,6 @@ def handler(event, context):
 
 ## Summary
 
-Lambda Powertools Metrics gives you custom CloudWatch metrics with zero API call overhead. The EMF approach means your metrics are published through CloudWatch Logs, which is both faster and cheaper than direct PutMetricData calls. Use dimensions thoughtfully to avoid metric explosion, and build dashboards and alarms on the metrics that matter to your business.
+Lambda Powertools Metrics gives you custom CloudWatch metrics with zero PutMetricData API call overhead. The EMF approach means your metrics are published through CloudWatch Logs, which avoids direct PutMetricData calls while still creating CloudWatch custom metrics. Use dimensions thoughtfully to avoid metric explosion, and build dashboards and alarms on the metrics that matter to your business.
 
 For the complete observability picture, combine metrics with [structured logging](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-logger-structured-logging/view) and [distributed tracing](https://oneuptime.com/blog/post/2026-02-12-lambda-powertools-tracer-xray-integration/view).
