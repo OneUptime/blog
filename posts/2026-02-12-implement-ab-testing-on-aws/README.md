@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, A/B Testing, CloudFront, Lambda, Evidently
 
-Description: Learn how to implement A/B testing on AWS using CloudWatch Evidently, Lambda@Edge, and CloudFront to run experiments and measure impact on user behavior.
+Description: Learn how to implement A/B testing on AWS using Lambda@Edge, CloudFront, and historical CloudWatch Evidently examples to run experiments and measure impact on user behavior.
 
 ---
 
-You've got a new feature, a redesigned landing page, or a different pricing strategy. How do you know if it'll actually work? You don't guess - you test. A/B testing lets you show different versions to different users and measure which one performs better. AWS has native tools for this, and you can also build your own with Lambda@Edge and CloudFront.
+You've got a new feature, a redesigned landing page, or a different pricing strategy. How do you know if it'll actually work? You don't guess - you test. A/B testing lets you show different versions to different users and measure which one performs better. AWS has building blocks for this, and you can build your own with Lambda@Edge and CloudFront.
 
 Let's look at both approaches.
 
 ## Option 1: CloudWatch Evidently
 
-AWS CloudWatch Evidently is a managed A/B testing service. It handles traffic splitting, metric collection, and statistical analysis.
+AWS CloudWatch Evidently was a managed A/B testing service. It handled traffic splitting, metric collection, and statistical analysis, but AWS discontinued CloudWatch Evidently on October 17, 2025. For new feature-flag launches, AWS recommends AWS AppConfig; for A/B experiments, pair AppConfig's split features with your analytics or data warehouse. The Evidently examples below are historical and will not work for new AWS implementations.
 
 ### Setting Up a Feature Flag and Experiment
 
@@ -78,7 +78,18 @@ async function setupExperiment() {
         treatment: 50000, // 50%
       },
     },
-    treatmentNames: ['control', 'treatment'],
+    treatments: [
+      {
+        name: 'control',
+        feature: 'checkout-flow',
+        variation: 'control',
+      },
+      {
+        name: 'treatment',
+        feature: 'checkout-flow',
+        variation: 'treatment',
+      },
+    ],
   }));
 
   // Step 4: Start the experiment
@@ -115,6 +126,13 @@ exports.handler = async (event) => {
     feature: 'checkout-flow',
     entityId: userId,
   }));
+
+  if (!variation || !value) {
+    return {
+      statusCode: 503,
+      body: JSON.stringify({ error: 'No variation was assigned' }),
+    };
+  }
 
   console.log(`User ${userId} assigned to variation: ${variation}`);
 
@@ -219,7 +237,7 @@ const { CloudWatchClient, PutMetricDataCommand } = require('@aws-sdk/client-clou
 
 const cwClient = new CloudWatchClient({});
 
-async function trackExperimentEvent(experimentName, group, eventType, value = 1) {
+async function trackExperimentEvent(experimentName, group, eventType, value = 1, unit = 'Count') {
   await cwClient.send(new PutMetricDataCommand({
     Namespace: 'ABTesting',
     MetricData: [
@@ -230,7 +248,7 @@ async function trackExperimentEvent(experimentName, group, eventType, value = 1)
           { Name: 'Group', Value: group },
         ],
         Value: value,
-        Unit: 'Count',
+        Unit: unit,
         Timestamp: new Date(),
       },
     ],
@@ -240,12 +258,12 @@ async function trackExperimentEvent(experimentName, group, eventType, value = 1)
 // Usage in your application
 await trackExperimentEvent('checkout-flow', 'treatment', 'page_view');
 await trackExperimentEvent('checkout-flow', 'treatment', 'conversion');
-await trackExperimentEvent('checkout-flow', 'treatment', 'revenue', 49.99);
+await trackExperimentEvent('checkout-flow', 'treatment', 'revenue', 49.99, 'None');
 ```
 
 ## Statistical Significance
 
-Don't call an experiment too early. You need enough data to be confident the difference isn't random noise. Evidently handles this automatically, but if you're doing it yourself, here's a simple significance check.
+Don't call an experiment too early. You need enough data to be confident the difference isn't random noise. Managed experiment tools can handle this automatically, but if you're doing it yourself, here's a simple significance check.
 
 ```javascript
 // Simple statistical significance calculator
@@ -296,4 +314,4 @@ For monitoring the health of your experimentation infrastructure, see our guide 
 
 ## Summary
 
-A/B testing on AWS can be done with CloudWatch Evidently for a managed experience, or with Lambda@Edge and CloudFront for full control. The managed route gets you up and running faster with built-in statistical analysis. The custom route gives you more flexibility but more responsibility. Either way, make sure you're collecting clean data and letting tests run long enough to reach statistical significance.
+A/B testing on AWS can be done with Lambda@Edge and CloudFront for full control, or with feature flags in AWS AppConfig plus your analytics stack for experiment measurement. CloudWatch Evidently used to provide a managed route with built-in statistical analysis, but it is no longer available. The custom route gives you more flexibility but more responsibility. Either way, make sure you're collecting clean data and letting tests run long enough to reach statistical significance.
