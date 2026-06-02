@@ -32,7 +32,7 @@ It means AWS received your request but couldn't validate the credentials. This i
 
 ## Cause 1: Expired Temporary Credentials
 
-If you're using temporary credentials (from STS, SSO, or assume-role), they expire. STS tokens typically last 1 hour by default, though some can last up to 12 hours.
+If you're using temporary credentials (from STS, SSO, or assume-role), they expire. AssumeRole credentials last 1 hour by default and can last up to 12 hours depending on the role configuration. GetSessionToken credentials can last up to 36 hours for IAM users, but only up to 1 hour when requested with root account credentials.
 
 Check if your credentials are temporary.
 
@@ -53,12 +53,12 @@ aws sso login --profile your-profile
 
 # For assumed roles, re-assume the role
 aws sts assume-role \
-  --role-arn arn:aws:iam::123456789:role/your-role \
+  --role-arn arn:aws:iam::123456789012:role/your-role \
   --role-session-name my-session
 
 # For MFA-based sessions
 aws sts get-session-token \
-  --serial-number arn:aws:iam::123456789:mfa/your-device \
+  --serial-number arn:aws:iam::123456789012:mfa/your-device \
   --token-code 123456
 ```
 
@@ -118,7 +118,7 @@ aws configure
 
 ## Cause 4: Wrong Region for the Service
 
-Some services are region-specific, and using the wrong region can cause token validation failures. STS in particular can be tricky.
+Some services are region-specific, and using the wrong region can cause authentication or endpoint errors. STS in particular can be tricky if you're mixing global and regional endpoints or working with opt-in Regions.
 
 ```bash
 # Check your configured region
@@ -128,14 +128,13 @@ aws configure get region
 aws s3 ls --region us-east-1
 ```
 
-If you're using STS regional endpoints, the token might only be valid in the region where it was issued.
+AWS recommends using regional STS endpoints when possible. Session tokens from regional STS endpoints are valid in all AWS Regions. Tokens from the global STS endpoint can be limited to Regions enabled by default, depending on your account's global endpoint token compatibility setting.
 
 ```python
-# This can cause issues if the STS endpoint region doesn't match
 import boto3
 
-# Use the global STS endpoint for broader compatibility
-sts = boto3.client('sts', region_name='us-east-1')
+# Use the regional STS endpoint for the Region your application is configured for
+sts = boto3.client('sts', region_name='us-west-2')
 ```
 
 ## Cause 5: Conflicting Credential Sources
@@ -182,17 +181,17 @@ sudo sntp -sS pool.ntp.org
 
 This is especially common in virtual machines and Docker containers that have been suspended and resumed.
 
-## Cause 7: Using Account Root Credentials with STS
+## Cause 7: Using Root Credentials or Root-Based Sessions
 
-If you're using root account credentials and trying to call STS, some operations will fail. Root credentials don't work with all STS operations.
+If you're using root account credentials, switch to an IAM user or role. Root access keys are strongly discouraged, and temporary credentials created from root account credentials have root permissions. Those root-based GetSessionToken credentials are limited to 1 hour and can't call most STS operations.
 
 ```bash
 # Check if you're using root credentials
 aws sts get-caller-identity
 
 # If the ARN shows "root", switch to an IAM user or role
-# Root: arn:aws:iam::123456789:root
-# IAM user: arn:aws:iam::123456789:user/username
+# Root: arn:aws:iam::123456789012:root
+# IAM user: arn:aws:iam::123456789012:user/username
 ```
 
 ## Cause 8: AWS SDK Credential Caching
@@ -200,17 +199,17 @@ aws sts get-caller-identity
 Some AWS SDKs cache credentials. If a credential was valid when cached but has since been rotated or revoked, the cached version will fail.
 
 ```python
-# In Python, force a credential refresh
+# In Python, create a fresh session so Boto3 re-runs credential resolution
 import boto3
 
 session = boto3.Session()
 credentials = session.get_credentials()
-credentials = credentials.get_frozen_credentials()
 
 # Or create a fresh session
 session = boto3.Session(
     aws_access_key_id='NEW_KEY',
-    aws_secret_access_key='NEW_SECRET'
+    aws_secret_access_key='NEW_SECRET',
+    aws_session_token='NEW_SESSION_TOKEN'  # Include this for temporary credentials
 )
 ```
 
