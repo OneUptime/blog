@@ -50,8 +50,8 @@ Your application should expect and handle connection failures. The key principle
 
 Configure your connection pool to validate connections before using them:
 
-```java
-// application.properties for HikariCP (Spring Boot default)
+```properties
+# application.properties for HikariCP (Spring Boot default)
 
 # Validate connections before giving them to the application
 
@@ -159,6 +159,7 @@ Even with the best connection pool settings, transient failures happen. Add retr
 ```python
 import time
 from functools import wraps
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError, DisconnectionError
 
 def retry_on_connection_error(max_retries=3, delay=1, backoff=2):
@@ -190,6 +191,8 @@ def get_user(user_id):
         )
         return result.fetchone()
 ```
+
+Use retry logic only for idempotent operations or operations that are safe to run again. Retrying a write after the connection drops can duplicate work if the database already committed it.
 
 In Node.js:
 
@@ -239,6 +242,11 @@ aws rds create-db-proxy \
   }]' \
   --role-arn arn:aws:iam::123456789012:role/rds-proxy-role \
   --vpc-subnet-ids subnet-0abc123 subnet-0def456
+
+# Register the RDS instance as a proxy target
+aws rds register-db-proxy-targets \
+  --db-proxy-name my-proxy \
+  --db-instance-identifiers my-database
 
 # Point your application to the proxy endpoint instead of RDS
 aws rds describe-db-proxies \
