@@ -27,7 +27,7 @@ graph LR
 Key differences from a VPN:
 - Users access specific applications, not the entire network
 - Every request is evaluated against policy
-- No client software required (browser-based)
+- No VPN client required for browser-based applications
 - Device security posture can be checked
 - Access is logged and auditable
 
@@ -77,12 +77,15 @@ aws ec2 create-verified-access-trust-provider \
     --trust-provider-type device \
     --device-trust-provider-type crowdstrike \
     --device-options '{
-        "TenantId": "your-crowdstrike-tenant-id"
+        "TenantId": "your-crowdstrike-tenant-id",
+        "PublicSigningKeyUrl": "https://your-crowdstrike-public-signing-key-url"
     }' \
     --policy-reference-name "crowdstrike" \
     --description "CrowdStrike Device Trust" \
     --tag-specifications 'ResourceType=verified-access-trust-provider,Tags=[{Key=Name,Value=crowdstrike-device}]'
 ```
+
+When you use device trust context, users also need the required browser extension or native messaging host for the device trust provider so Verified Access can collect device trust data.
 
 ## Step 2: Create the Verified Access Instance
 
@@ -136,7 +139,7 @@ when {
 permit(principal, action, resource)
 when {
     context.okta.groups.contains("engineering") &&
-    context.crowdstrike.overall_assessment == "meets_requirements"
+    context.crowdstrike.assessment.overall > 50
 };
 
 // Allow specific users with MFA verified
@@ -149,7 +152,7 @@ when {
 // Deny access from high-risk devices explicitly
 forbid(principal, action, resource)
 when {
-    context.crowdstrike.overall_assessment == "does_not_meet_requirements"
+    context.crowdstrike.assessment.overall <= 50
 };
 ```
 
@@ -160,7 +163,7 @@ Each application gets its own endpoint. You can point endpoints at ALBs, NLBs, o
 ```bash
 # Create an endpoint for an internal web application behind an ALB
 aws ec2 create-verified-access-endpoint \
-    --verified-access-group-id vag-0123456789abcdef0 \
+    --verified-access-group-id vagr-0123456789abcdef0 \
     --endpoint-type load-balancer \
     --attachment-type vpc \
     --domain-certificate-arn arn:aws:acm:us-east-1:123456789012:certificate/abc123 \
@@ -186,7 +189,7 @@ After creating the endpoint, you get a Verified Access domain. Create a CNAME re
 aws ec2 describe-verified-access-endpoints \
     --verified-access-endpoint-ids vae-0123456789abcdef0 \
     --query 'VerifiedAccessEndpoints[0].EndpointDomain'
-# Returns something like: internal-app.abc123.va.us-east-1.amazonaws.com
+# Returns something like: internal-app.edge-1a2b3c4d5e6f7g.vai-1a2b3c4d5e6f7g.prod.verified-access.us-east-1.amazonaws.com
 
 # Create DNS record in Route 53
 aws route53 change-resource-record-sets \
@@ -199,7 +202,7 @@ aws route53 change-resource-record-sets \
                 "Type": "CNAME",
                 "TTL": 300,
                 "ResourceRecords": [{
-                    "Value": "internal-app.abc123.va.us-east-1.amazonaws.com"
+                    "Value": "internal-app.edge-1a2b3c4d5e6f7g.vai-1a2b3c4d5e6f7g.prod.verified-access.us-east-1.amazonaws.com"
                 }]
             }
         }]
