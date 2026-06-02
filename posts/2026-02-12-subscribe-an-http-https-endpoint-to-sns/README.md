@@ -48,7 +48,7 @@ Your endpoint needs to handle three types of SNS requests:
 2. **Notification** - actual message delivery
 3. **UnsubscribeConfirmation** - confirming an unsubscribe
 
-Here's a complete Express.js endpoint that handles all three.
+Here's an Express.js endpoint that handles all three.
 
 ```javascript
 const express = require('express');
@@ -70,7 +70,7 @@ app.post('/webhooks/sns', async (req, res) => {
   }
 
   // Always verify the message signature first
-  if (!verifySnsSignature(message)) {
+  if (!(await verifySnsSignature(message))) {
     console.error('Invalid SNS signature - rejecting message');
     return res.status(403).send('Invalid signature');
   }
@@ -145,8 +145,7 @@ app.listen(3000, () => {
 This is critical for security. Without signature verification, anyone can send fake SNS messages to your endpoint.
 
 ```javascript
-const https = require('https');
-const crypto = require('crypto');
+const certificateCache = new Map();
 
 // Fields included in the signature, in order, by message type
 const NOTIFICATION_FIELDS = [
@@ -159,46 +158,102 @@ const SUBSCRIPTION_FIELDS = [
   'Token', 'TopicArn', 'Type'
 ];
 
-function verifySnsSignature(message) {
-  // Only accept signatures from SNS
-  const certUrl = message.SigningCertURL || message.SigningCertUrl;
-
-  // Verify the certificate URL is from AWS
-  if (!certUrl || !certUrl.startsWith('https://sns.')) {
+function isValidSigningCertUrl(certUrl) {
+  try {
+    const url = new URL(certUrl);
+    return url.protocol === 'https:' &&
+      /^sns\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$/.test(url.hostname) &&
+      url.pathname.startsWith('/SimpleNotificationService-') &&
+      url.pathname.endsWith('.pem');
+  } catch {
     return false;
   }
+}
 
-  // In production, download and cache the certificate
-  // Then verify the signature against the signing string
+async function downloadCertificate(certUrl) {
+  if (certificateCache.has(certUrl)) {
+    return certificateCache.get(certUrl);
+  }
+
+  const certificate = await new Promise((resolve, reject) => {
+    https.get(certUrl, (response) => {
+      if (response.statusCode !== 200) {
+        response.resume();
+        reject(new Error(`Certificate download failed: ${response.statusCode}`));
+        return;
+      }
+
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk) => {
+        body += chunk;
+      });
+      response.on('end', () => resolve(body));
+    }).on('error', reject);
+  });
+
+  certificateCache.set(certUrl, certificate);
+  return certificate;
+}
+
+function buildStringToSign(message) {
   const signingFields = message.Type === 'Notification'
     ? NOTIFICATION_FIELDS
     : SUBSCRIPTION_FIELDS;
 
-  // Build the string to sign
-  let stringToSign = '';
-  for (const field of signingFields) {
-    if (message[field] !== undefined) {
-      stringToSign += `${field}\n${message[field]}\n`;
-    }
+  return signingFields
+    .filter((field) => message[field] !== undefined)
+    .map((field) => `${field}\n${message[field]}`)
+    .join('\n');
+}
+
+async function verifySnsSignature(message) {
+  const certUrl = message.SigningCertURL;
+
+  if (!isValidSigningCertUrl(certUrl) || !message.Signature) {
+    return false;
   }
 
-  // For a complete implementation, you would:
-  // 1. Download the certificate from SigningCertURL
-  // 2. Extract the public key
-  // 3. Verify the signature using crypto.createVerify()
+  try {
+    const certificate = await downloadCertificate(certUrl);
+    const algorithm = message.SignatureVersion === '2' ? 'RSA-SHA256' : 'RSA-SHA1';
+    const verifier = crypto.createVerify(algorithm);
+    verifier.update(buildStringToSign(message), 'utf8');
+    verifier.end();
 
-  return true; // Simplified - implement full verification for production
+    return verifier.verify(certificate, message.Signature, 'base64');
+  } catch {
+    return false;
+  }
 }
 ```
 
 For a Python Flask endpoint.
 
 ```python
+import base64
 import json
+import re
+from urllib.parse import urlparse
+
 import requests
-from flask import Flask, request, jsonify
+from cryptography import x509
+from cryptography.hazmat.primitives.asymmetric import padding
+from cryptography.hazmat.primitives import hashes
+from flask import Flask, request
 
 app = Flask(__name__)
+certificate_cache = {}
+
+NOTIFICATION_FIELDS = [
+    'Message', 'MessageId', 'Subject', 'Timestamp',
+    'TopicArn', 'Type',
+]
+
+SUBSCRIPTION_FIELDS = [
+    'Message', 'MessageId', 'SubscribeURL', 'Timestamp',
+    'Token', 'TopicArn', 'Type',
+]
 
 @app.route('/webhooks/sns', methods=['POST'])
 def sns_webhook():
@@ -210,6 +265,9 @@ def sns_webhook():
         return 'Invalid JSON', 400
 
     message_type = request.headers.get('x-amz-sns-message-type')
+
+    if not verify_sns_signature(message):
+        return 'Invalid signature', 403
 
     if message_type == 'SubscriptionConfirmation':
         # Confirm the subscription by visiting the URL
@@ -243,13 +301,66 @@ def process_notification(payload):
     """Your business logic here."""
     print(f'Processing: {payload}')
 
+def is_valid_signing_cert_url(cert_url):
+    """Only trust regional SNS certificate URLs."""
+    try:
+        parsed = urlparse(cert_url)
+    except TypeError:
+        return False
+
+    return (
+        parsed.scheme == 'https'
+        and re.match(r'^sns\.[a-z0-9-]+\.amazonaws\.com(\.cn)?$', parsed.netloc)
+        and parsed.path.startswith('/SimpleNotificationService-')
+        and parsed.path.endswith('.pem')
+    )
+
+def get_certificate(cert_url):
+    """Download and cache the SNS signing certificate."""
+    if cert_url not in certificate_cache:
+        response = requests.get(cert_url, timeout=5)
+        response.raise_for_status()
+        certificate_cache[cert_url] = x509.load_pem_x509_certificate(response.content)
+
+    return certificate_cache[cert_url]
+
+def build_string_to_sign(message):
+    """Build the canonical SNS string without a trailing newline."""
+    fields = NOTIFICATION_FIELDS if message.get('Type') == 'Notification' else SUBSCRIPTION_FIELDS
+    parts = []
+    for field in fields:
+        if field in message:
+            parts.append(f'{field}\n{message[field]}')
+
+    return '\n'.join(parts)
+
+def verify_sns_signature(message):
+    """Verify the SNS message signature."""
+    cert_url = message.get('SigningCertURL')
+    signature = message.get('Signature')
+    if not is_valid_signing_cert_url(cert_url) or not signature:
+        return False
+
+    try:
+        certificate = get_certificate(cert_url)
+        hash_algorithm = hashes.SHA256() if message.get('SignatureVersion') == '2' else hashes.SHA1()
+        certificate.public_key().verify(
+            base64.b64decode(signature),
+            build_string_to_sign(message).encode('utf-8'),
+            padding.PKCS1v15(),
+            hash_algorithm,
+        )
+        return True
+    except Exception:
+        return False
+
 if __name__ == '__main__':
     app.run(port=3000)
 ```
 
 ## Delivery Retry Policies
 
-SNS retries failed HTTP deliveries based on a configurable retry policy. The default policy includes multiple phases with increasing backoff.
+SNS retries failed HTTP deliveries based on a configurable retry policy. A delivery policy can include multiple phases with increasing backoff.
 
 ```bash
 # Set a custom delivery policy for HTTP subscriptions
@@ -285,7 +396,7 @@ topic.addSubscription(
     'https://api.example.com/webhooks/sns',
     {
       protocol: sns.SubscriptionProtocol.HTTPS,
-      rawMessageDelivery: true,  // Skip the SNS envelope
+      rawMessageDelivery: false,  // Keep the SNS envelope for signature verification
       filterPolicy: {
         event_type: sns.SubscriptionFilter.stringFilter({
           allowlist: ['order_created', 'order_shipped'],
