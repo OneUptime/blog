@@ -18,7 +18,7 @@ AWS offers three RI classes:
 
 **Standard RIs** offer the deepest discounts (up to 72%) but are the least flexible. You can't change the instance family. You can sell unused Standard RIs on the RI Marketplace.
 
-**Convertible RIs** offer slightly lower discounts (up to 54%) but let you exchange them for different instance types, OS, or tenancy. You can't sell these on the marketplace.
+**Convertible RIs** offer slightly lower discounts (up to 66%) but let you exchange them for different instance types, OS, or tenancy. You can't sell these on the marketplace.
 
 **Scheduled RIs** (being phased out) were for recurring time windows. AWS is no longer offering new Scheduled RIs.
 
@@ -32,44 +32,42 @@ This script identifies instances that have been running steadily and are good RI
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from collections import defaultdict
 
-cloudwatch = boto3.client("cloudwatch")
 ec2 = boto3.client("ec2")
 
 def find_ri_candidates(min_running_days=30):
     """Find instances that have been running consistently and are RI candidates."""
-    instances = ec2.describe_instances(
-        Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
-    )
-
     candidates = defaultdict(lambda: {"count": 0, "instances": []})
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
+    region = ec2.meta.region_name
+    paginator = ec2.get_paginator("describe_instances")
 
-    for reservation in instances["Reservations"]:
-        for inst in reservation["Instances"]:
-            launch_time = inst["LaunchTime"].replace(tzinfo=None)
-            running_days = (now - launch_time).days
+    for page in paginator.paginate(
+        Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
+    ):
+        for reservation in page["Reservations"]:
+            for inst in reservation["Instances"]:
+                launch_time = inst["LaunchTime"]
+                running_days = (now - launch_time).days
 
-            if running_days < min_running_days:
-                continue
+                if running_days < min_running_days:
+                    continue
 
-            instance_type = inst["InstanceType"]
-            az = inst["Placement"]["AvailabilityZone"]
-            region = az[:-1]
-            platform = inst.get("Platform", "Linux/UNIX")
+                instance_type = inst["InstanceType"]
+                platform = "Windows" if inst.get("Platform") == "windows" else "Linux/UNIX"
 
-            key = f"{instance_type}|{region}|{platform}"
-            candidates[key]["count"] += 1
-            candidates[key]["instances"].append({
-                "id": inst["InstanceId"],
-                "days_running": running_days,
-                "name": next(
-                    (t["Value"] for t in inst.get("Tags", []) if t["Key"] == "Name"),
-                    "N/A"
-                )
-            })
+                key = f"{instance_type}|{region}|{platform}"
+                candidates[key]["count"] += 1
+                candidates[key]["instances"].append({
+                    "id": inst["InstanceId"],
+                    "days_running": running_days,
+                    "name": next(
+                        (t["Value"] for t in inst.get("Tags", []) if t["Key"] == "Name"),
+                        "N/A"
+                    )
+                })
 
     # Sort by count (most common instance types first)
     sorted_candidates = sorted(
@@ -122,9 +120,9 @@ def check_ri_coverage():
         print(f"{ri_id:<25} {instance_type:<15} {count:>5} {end:<12}")
 
     # Check coverage via Cost Explorer
-    from datetime import datetime, timedelta
-    end_date = datetime.utcnow().strftime("%Y-%m-%d")
-    start_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
+    from datetime import datetime, timedelta, timezone
+    end_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    start_date = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%d")
 
     coverage = ce.get_reservation_coverage(
         TimePeriod={"Start": start_date, "End": end_date},
@@ -237,12 +235,15 @@ aws ec2 modify-reserved-instances \
 Convertible RIs can be exchanged for different instance types. The new RI must have equal or greater value.
 
 ```bash
-# Exchange a Convertible RI
+# First, find the target Convertible RI offering ID, then confirm the quote
+aws ec2 get-reserved-instances-exchange-quote \
+  --reserved-instance-ids ri-xxxxxxxx \
+  --target-configurations OfferingId=target-offering-id
+
+# Accept the exchange quote
 aws ec2 accept-reserved-instances-exchange-quote \
   --reserved-instance-ids ri-xxxxxxxx \
-  --target-configurations '[
-    {"InstanceType": "c5.xlarge", "InstanceCount": 2}
-  ]'
+  --target-configurations OfferingId=target-offering-id
 ```
 
 ### Monitoring Expiration
@@ -251,7 +252,7 @@ Set up alerts before your RIs expire so you can decide whether to renew.
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 ec2 = boto3.client("ec2")
 sns = boto3.client("sns")
@@ -262,13 +263,14 @@ def check_expiring_ris(days_ahead=30):
         Filters=[{"Name": "state", "Values": ["active"]}]
     )
 
-    threshold = datetime.utcnow() + timedelta(days=days_ahead)
+    now = datetime.now(timezone.utc)
+    threshold = now + timedelta(days=days_ahead)
     expiring = []
 
     for ri in ris["ReservedInstances"]:
-        end_date = ri["End"].replace(tzinfo=None)
+        end_date = ri["End"]
         if end_date < threshold:
-            days_left = (end_date - datetime.utcnow()).days
+            days_left = (end_date - now).days
             expiring.append({
                 "id": ri["ReservedInstancesId"],
                 "type": ri["InstanceType"],
@@ -318,7 +320,8 @@ aws ec2 create-reserved-instances-listing \
   --instance-count 2 \
   --price-schedules '[
     {"Term": 6, "Price": 500.00, "CurrencyCode": "USD"}
-  ]'
+  ]' \
+  --client-token "$(uuidgen)"
 ```
 
 Note that you need to register as a seller first, and the sale isn't guaranteed - it depends on buyer demand.
