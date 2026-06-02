@@ -16,15 +16,15 @@ CloudWatch dashboard sharing solves part of this problem. It lets you share a da
 
 CloudWatch gives you three ways to share dashboards:
 
-1. **Share with specific IAM users/roles in other accounts** - standard cross-account access
+1. **Share with specific users by email address** - users sign in with a username and password
 2. **Share publicly with a link** - anyone with the URL can view it (no AWS credentials needed)
-3. **Share with SSO users** - for organizations using AWS SSO / IAM Identity Center
+3. **Share all dashboards with an SSO provider** - for organizations using a third-party SAML SSO provider integrated through Amazon Cognito
 
 Each approach has different security implications. Let's walk through them.
 
-## Option 1: Cross-Account IAM Sharing
+## Option 1: Cross-Account IAM Access
 
-This is the most secure option. You create an IAM role in the dashboard account that users from other accounts can assume. Here's how to set it up.
+This isn't CloudWatch's built-in dashboard sharing feature, but it is the most direct option for AWS users who already have access to another account. You create an IAM role in the dashboard account that users from other accounts can assume. Here's how to set it up.
 
 First, create the trust policy in the account that owns the dashboard (Account A):
 
@@ -92,7 +92,9 @@ aws sts assume-role \
   --external-id dashboard-viewer
 ```
 
-This works, but it requires everyone to have AWS CLI access or be able to switch roles in the console. For non-technical stakeholders, the next option is usually better.
+This works, but it requires everyone to have AWS credentials and a way to assume the role. For non-technical stakeholders, the next option is usually better.
+
+If you want CloudWatch's built-in username/password sharing instead, use the console flow: open the dashboard, choose **Actions**, **Share dashboard**, then choose **Share your dashboard and require a username and password**. You can invite up to five email addresses, and each invited user receives credentials for the shared dashboard.
 
 ## Option 2: Public Link Sharing
 
@@ -105,45 +107,23 @@ Here's how to enable it through the console:
 3. Choose "Share your dashboard publicly."
 4. CloudWatch will set up a Cognito user pool and create a shareable URL.
 
-Behind the scenes, CloudWatch creates an Amazon Cognito user pool, sets up a CloudFront distribution, and generates a URL like `https://d-1234567890.execute-api.us-east-1.amazonaws.com/dashboard/my-app-production`.
+Behind the scenes, CloudWatch creates Amazon Cognito and IAM resources in the US East (N. Virginia) Region and generates a shareable URL. AWS doesn't provide a CloudWatch API or AWS CLI command to enable dashboard sharing directly, so use the console sharing flow and avoid modifying the Cognito or IAM resources that CloudWatch creates.
 
-You can also set this up programmatically:
-
-```bash
-# Enable dashboard sharing (creates Cognito resources)
-aws cloudwatch enable-dashboard-sharing \
-  --dashboard-name my-app-production
-```
-
-To protect the shared dashboard with a simple username/password:
-
-```bash
-# Add a user who can access the shared dashboard
-aws cognito-idp admin-create-user \
-  --user-pool-id us-east-1_XXXXXXXXX \
-  --username viewer@example.com \
-  --temporary-password TempPass123! \
-  --user-attributes Name=email,Value=viewer@example.com
-```
+To protect the shared dashboard with a simple username/password, use the specific-user sharing option described above instead of public link sharing.
 
 ## Option 3: SSO Integration
 
-If your organization uses AWS IAM Identity Center (formerly AWS SSO), you can share dashboards with SSO users. This is the best option for organizations that already have SSO configured.
+If your organization uses a third-party SSO provider that supports SAML, you can share all CloudWatch dashboards in the account with users from that provider. This is the best option for organizations that already have SAML SSO configured.
 
-The setup involves creating a CloudWatch dashboard sharing configuration that references your SSO identity provider:
+The setup involves integrating the SAML identity provider with the Amazon Cognito user pool that CloudWatch uses for dashboard sharing:
 
-```bash
-# Configure SSO-based sharing for dashboards
-aws cloudwatch put-dashboard-sharing-configuration \
-  --dashboard-name my-app-production \
-  --sharing-configuration '{
-    "SSOEnabled": true,
-    "IdentityProviderArn": "arn:aws:sso:::instance/ssoins-1234567890abcdef",
-    "AllowedGroups": ["MonitoringTeam", "Engineering"]
-  }'
-```
+1. Open the CloudWatch console.
+2. In the navigation pane, choose **Settings**.
+3. In the **Dashboard sharing** section, choose **Configure**.
+4. Choose **Manage SSO providers**.
+5. In the Cognito console, add your SAML identity provider to the `CloudWatchDashboardSharing` user pool.
 
-Users who belong to the specified SSO groups can then access the dashboard through their SSO portal without needing any additional credentials.
+Users who belong to the SSO provider can then access the shared dashboards without separate CloudWatch dashboard passwords.
 
 ## Aggregating Metrics from Multiple Accounts
 
@@ -201,13 +181,13 @@ Once cross-account access is configured, referencing metrics from other accounts
 
 When sharing dashboards, keep these things in mind:
 
-**Principle of least privilege.** If you're using IAM cross-account roles, only grant `cloudwatch:Get*` and `cloudwatch:List*` permissions. Don't give write access.
+**Principle of least privilege.** If you're using IAM cross-account roles, grant only the read permissions needed to view the dashboards and their widgets, such as `cloudwatch:GetDashboard`, `cloudwatch:ListDashboards`, `cloudwatch:GetMetricData`, `cloudwatch:ListMetrics`, and `cloudwatch:DescribeAlarms`. Don't give write access.
 
-**Rotate public link credentials.** If you use the public link sharing option, treat the URL like a secret. Rotate the Cognito credentials periodically.
+**Treat public links like secrets.** If you use the public link sharing option, anyone with the URL can view the dashboard. Stop sharing and create a new link if the URL is exposed more widely than intended. If you use username/password sharing, manage the invited users through the CloudWatch sharing configuration.
 
-**Audit access.** Enable CloudTrail logging in the monitoring account so you can see who's accessing the dashboards and when.
+**Audit access.** Enable CloudTrail logging in the monitoring account so you can review dashboard and sharing configuration changes. For public dashboard links, don't rely on CloudTrail to identify individual anonymous viewers.
 
-**Be careful with log widgets.** If your shared dashboard includes log query widgets, remember that log data might contain sensitive information. The viewer can see whatever the log query returns.
+**Be careful with log widgets.** By default, CloudWatch Logs Insights widgets are not visible to people you share a dashboard with. If you update the sharing role to allow log widgets, remember that log data might contain sensitive information. The viewer can see whatever the log query returns.
 
 **Use separate dashboards for different audiences.** Don't share an operational dashboard full of detailed metrics with business stakeholders. Create a simplified dashboard that shows the metrics they care about.
 
