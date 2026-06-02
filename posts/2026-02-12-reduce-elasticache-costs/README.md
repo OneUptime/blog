@@ -81,7 +81,7 @@ For stable production workloads, 1-year All Upfront reservations are typically t
 
 ## Use Data Tiering with r6gd Nodes
 
-ElastiCache for Redis supports data tiering on r6gd node types. These nodes combine memory with local SSD storage, automatically moving less-frequently accessed data to SSD while keeping hot data in memory.
+ElastiCache for Redis supports data tiering on r6gd node types. These nodes combine memory with local SSD storage, automatically moving least-recently used data to SSD while keeping hot data in memory.
 
 The r6gd nodes are about 60% cheaper per GB of total capacity compared to r6g nodes. If your dataset is large but only a portion is actively accessed, this can be a game-changer.
 
@@ -98,7 +98,7 @@ aws elasticache create-replication-group \
   --cache-parameter-group-name default.redis7
 ```
 
-Data tiering works best when your access patterns follow the 80/20 rule - 80% of requests hit 20% of your data. Redis automatically manages what goes where based on access frequency.
+Data tiering works best when your access patterns follow the 80/20 rule - 80% of requests hit 20% of your data. Redis automatically manages what goes where based on recent access.
 
 ## Optimize Your Cache Strategy
 
@@ -226,6 +226,7 @@ Dev and staging caches don't need to run 24/7. While ElastiCache doesn't support
 
 ```python
 import boto3
+from datetime import datetime, timezone
 
 elasticache = boto3.client('elasticache')
 
@@ -233,9 +234,10 @@ def stop_dev_cache(event, context):
     """Delete dev cache cluster at end of business day"""
     try:
         # Create a final snapshot before deleting
+        snapshot_name = f"dev-cache-nightly-backup-{datetime.now(timezone.utc):%Y%m%d%H%M%S}"
         elasticache.delete_replication_group(
             ReplicationGroupId='dev-cache',
-            FinalSnapshotIdentifier=f'dev-cache-nightly-backup'
+            FinalSnapshotIdentifier=snapshot_name
         )
         print("Dev cache deletion initiated")
     except Exception as e:
@@ -244,13 +246,22 @@ def stop_dev_cache(event, context):
 def start_dev_cache(event, context):
     """Recreate dev cache from snapshot at start of business day"""
     try:
+        snapshots = elasticache.describe_snapshots(
+            ReplicationGroupId='dev-cache',
+            SnapshotSource='manual'
+        )['Snapshots']
+        latest_snapshot = max(
+            snapshots,
+            key=lambda snapshot: snapshot['NodeSnapshots'][0]['SnapshotCreateTime']
+        )
+
         elasticache.create_replication_group(
             ReplicationGroupId='dev-cache',
             ReplicationGroupDescription='Dev cache',
             CacheNodeType='cache.r6g.large',
             Engine='redis',
             NumCacheClusters=1,
-            SnapshotName='dev-cache-nightly-backup'
+            SnapshotName=latest_snapshot['SnapshotName']
         )
         print("Dev cache creation initiated")
     except Exception as e:
