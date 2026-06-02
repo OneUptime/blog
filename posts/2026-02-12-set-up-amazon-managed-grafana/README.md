@@ -29,27 +29,29 @@ If you do not have IAM Identity Center set up yet, you will need to enable it fi
 You can create a workspace through the console or CLI.
 
 ```bash
-# Create a Managed Grafana workspace
+# Create a Managed Grafana workspace.
+# This assumes you have already created the IAM role shown in Step 2.
 
 aws grafana create-workspace \
   --account-access-type CURRENT_ACCOUNT \
   --authentication-providers AWS_SSO \
-  --permission-type SERVICE_MANAGED \
+  --permission-type CUSTOMER_MANAGED \
   --workspace-name "production-monitoring" \
   --workspace-description "Central monitoring dashboard for production services" \
-  --workspace-data-sources CLOUDWATCH PROMETHEUS XRAY \
+  --workspace-notification-destinations SNS \
   --workspace-role-arn arn:aws:iam::123456789012:role/GrafanaWorkspaceRole
 ```
 
 Key parameters:
 
 - **authentication-providers**: AWS_SSO is the recommended option. You can also use SAML for third-party identity providers.
-- **permission-type**: SERVICE_MANAGED lets Grafana create the IAM roles it needs automatically. CUSTOMER_MANAGED gives you more control.
-- **workspace-data-sources**: Pre-authorize which data sources the workspace can access.
+- **permission-type**: Use CUSTOMER_MANAGED when creating workspaces with the AWS CLI, API, or CloudFormation. SERVICE_MANAGED is available when you create a workspace in the Amazon Managed Grafana console.
+- **workspace-role-arn**: The IAM role that grants Grafana access to AWS data sources and notification channels.
+- **workspace-notification-destinations**: Pre-authorize AWS notification channels, such as SNS, when you want to use them for alerting.
 
 ## Step 2: Create the IAM Role for Grafana
 
-Grafana needs an IAM role to access your AWS data sources. If you chose SERVICE_MANAGED permissions, some of this is handled automatically. For more control, create a custom role.
+Grafana needs an IAM role to access your AWS data sources. When you create a workspace with the AWS CLI, create a customer-managed role first and pass its ARN to `create-workspace`.
 
 ```json
 {
@@ -65,6 +67,16 @@ Grafana needs an IAM role to access your AWS data sources. If you chose SERVICE_
         "cloudwatch:GetMetricData",
         "cloudwatch:GetInsightRuleReport",
         "cloudwatch:GetMetricStatistics"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeTags",
+        "ec2:DescribeInstances",
+        "ec2:DescribeRegions",
+        "tag:GetResources"
       ],
       "Resource": "*"
     },
@@ -104,6 +116,13 @@ Grafana needs an IAM role to access your AWS data sources. If you chose SERVICE_
         "aps:GetMetricMetadata"
       ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "sns:Publish"
+      ],
+      "Resource": "arn:aws:sns:*:123456789012:grafana*"
     }
   ]
 }
@@ -193,7 +212,7 @@ The first thing to do in your new workspace is add data sources. Managed Grafana
 
 In the Grafana UI:
 
-1. Navigate to **Configuration > Data Sources > Add data source**
+1. Navigate to **Connections > Data Sources > Add data source** (or **Configuration > Data Sources** in older Grafana versions)
 2. Select **Amazon CloudWatch**
 3. Set the default region
 4. Authentication should be automatic if your workspace IAM role has the right permissions
@@ -202,16 +221,22 @@ In the Grafana UI:
 You can also configure data sources via the Grafana API.
 
 ```bash
-# Get the Grafana API key first
-aws grafana create-workspace-api-key \
+# Create a service account for Grafana HTTP API calls
+aws grafana create-workspace-service-account \
   --workspace-id g-abc123def456 \
-  --key-name "setup-key" \
-  --key-role ADMIN \
+  --name "setup-service-account" \
+  --grafana-role ADMIN
+
+# Create a service account token
+aws grafana create-workspace-service-account-token \
+  --workspace-id g-abc123def456 \
+  --service-account-id SERVICE_ACCOUNT_ID \
+  --name "setup-token" \
   --seconds-to-live 3600
 
-# Use the API key to add a data source via Grafana HTTP API
+# Use the service account token to add a data source via Grafana HTTP API
 curl -X POST \
-  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Authorization: Bearer YOUR_SERVICE_ACCOUNT_TOKEN" \
   -H "Content-Type: application/json" \
   "https://g-abc123def456.grafana-workspace.us-east-1.amazonaws.com/api/datasources" \
   -d '{
@@ -259,7 +284,7 @@ Managed Grafana supports alerting through Grafana's built-in alerting system. Yo
 
 1. Navigate to **Alerting > Alert rules > New alert rule**
 2. Define the query and condition (e.g., Lambda Errors > 10 in 5 minutes)
-3. Set up a notification channel (SNS topic, Slack webhook, etc.)
+3. Set up a contact point (SNS topic, Slack webhook, etc.)
 4. Configure the evaluation interval and pending period
 
 ```bash
