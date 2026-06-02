@@ -34,10 +34,9 @@ Parameters:
     Type: AWS::SSM::Parameter::Value<String>
     Default: /myapp/production/database/port
 
-  # Reference a specific version of a parameter
-  ApiKeyVersion:
+  ApiKey:
     Type: AWS::SSM::Parameter::Value<String>
-    Default: /myapp/production/api-key:3
+    Default: /myapp/production/api-key
 
   # For AMI IDs - uses the special AWS parameter type
   LatestAmiId:
@@ -125,6 +124,7 @@ Resources:
     Properties:
       DBInstanceClass: db.t3.medium
       Engine: postgres
+      AllocatedStorage: '20'
       # Resolve plain string parameters
       MasterUsername: !Sub '{{resolve:ssm:/myapp/production/database/admin-user}}'
       # Resolve SecureString parameters (decrypted automatically)
@@ -171,8 +171,8 @@ Dynamic references have some restrictions:
 
 - `ssm-secure` references only work in specific resource properties (like `AWS::RDS::DBInstance` MasterUserPassword)
 - You can't use `ssm-secure` references in resource conditions or outputs
-- Each template can have up to 200 dynamic references
-- The resolved values are not visible in the CloudFormation console or API (for security)
+- Each template can have up to 60 dynamic references
+- SecureString resolved values are not visible in the CloudFormation console or API
 
 ## Combining Both Approaches
 
@@ -201,6 +201,8 @@ Resources:
     Properties:
       DBInstanceClass: db.t3.medium
       Engine: postgres
+      AllocatedStorage: '20'
+      MasterUsername: !Sub '{{resolve:ssm:/myapp/${Environment}/database/username}}'
       # Dynamic reference for the secret password
       MasterUserPassword: !Sub '{{resolve:ssm-secure:/myapp/${Environment}/database/password}}'
       VPCSecurityGroups:
@@ -270,7 +272,7 @@ Parameters:
   # Latest EKS AMI for a specific Kubernetes version
   EksAmi:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
-    Default: /aws/service/eks/optimized-ami/1.28/amazon-linux-2/recommended/image_id
+    Default: /aws/service/eks/optimized-ami/1.35/amazon-linux-2023/x86_64/standard/recommended/image_id
 ```
 
 ```bash
@@ -294,6 +296,6 @@ aws cloudformation update-stack \
     ParameterKey=DatabasePort,UsePreviousValue=true
 ```
 
-For dynamic references, you can force resolution by making a no-op change to the template.
+For dynamic references, trigger a stack update that modifies the resource containing the dynamic reference so CloudFormation fetches the current parameter value.
 
 For monitoring your infrastructure and applications after configuration changes, [OneUptime](https://oneuptime.com) can track the impact of parameter changes on application behavior. Also see our guide on [Parameter Store hierarchies](https://oneuptime.com/blog/post/2026-02-12-parameter-store-hierarchies-paths/view) for organizing your parameters effectively.
