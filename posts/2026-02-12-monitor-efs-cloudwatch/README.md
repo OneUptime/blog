@@ -24,7 +24,7 @@ EFS publishes several CloudWatch metrics. Here are the ones that actually matter
 | DataReadIOBytes | Bytes read per period | Read throughput |
 | DataWriteIOBytes | Bytes written per period | Write throughput |
 | MetadataIOBytes | Bytes for metadata operations | High values suggest lots of small file operations |
-| ClientConnections | Number of active NFS connections | Client count per mount target |
+| ClientConnections | Number of active NFS connections | Client count for the file system |
 | StorageBytes | Total data stored by storage class | Track storage growth and IA effectiveness |
 
 ## Setting Up Essential Alarms
@@ -89,7 +89,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-warning"
 ```
 
-If this alarm fires consistently, it's time to consider Max I/O performance mode. See our post on [EFS performance modes](https://oneuptime.com/blog/post/2026-02-12-efs-performance-modes-general-purpose-max-io/view) for guidance.
+If this alarm fires consistently, review whether General Purpose still fits your workload. Max I/O can support highly parallel workloads, but it has higher per-operation latency, is not supported for One Zone file systems or Elastic throughput, and performance mode cannot be changed after the file system is created. See our post on [EFS performance modes](https://oneuptime.com/blog/post/2026-02-12-efs-performance-modes-general-purpose-max-io/view) for guidance.
 
 ### Client Connection Alarm
 
@@ -140,7 +140,7 @@ aws cloudwatch put-dashboard \
         "type": "metric",
         "x": 12, "y": 0, "width": 12, "height": 6,
         "properties": {
-          "title": "Burst Credit Balance (GB)",
+          "title": "Burst Credit Balance (bytes)",
           "metrics": [
             ["AWS/EFS", "BurstCreditBalance", "FileSystemId", "fs-0abc123def456789", {"stat": "Average", "period": 300}]
           ],
@@ -181,7 +181,7 @@ aws cloudwatch put-dashboard \
         "type": "metric",
         "x": 0, "y": 12, "width": 12, "height": 6,
         "properties": {
-          "title": "Storage by Class (GB)",
+          "title": "Storage by Class (bytes)",
           "metrics": [
             ["AWS/EFS", "StorageBytes", "FileSystemId", "fs-0abc123def456789", "StorageClass", "Standard", {"stat": "Average", "period": 86400}],
             ["AWS/EFS", "StorageBytes", "FileSystemId", "fs-0abc123def456789", "StorageClass", "IA", {"stat": "Average", "period": 86400}]
@@ -268,9 +268,17 @@ def efs_health_report(file_system_id, region='us-east-1'):
                 Period=3600,
                 Statistics=[stat]
             )
-            if result['Datapoints']:
-                value = result['Datapoints'][0][stat]
-                if 'Bytes' in metric_name and metric_name != 'PercentIOLimit':
+            datapoints = result['Datapoints']
+            if datapoints:
+                values = [point[stat] for point in datapoints]
+                if stat == 'Sum':
+                    value = sum(values)
+                elif stat == 'Maximum':
+                    value = max(values)
+                else:
+                    value = sum(values) / len(values)
+
+                if 'Bytes' in metric_name or metric_name == 'BurstCreditBalance':
                     print(f"  {label}: {value / (1024**3):.2f} GB")
                 elif metric_name == 'PercentIOLimit':
                     print(f"  {label}: {value:.1f}%")
