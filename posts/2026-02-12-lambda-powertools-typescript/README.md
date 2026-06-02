@@ -36,15 +36,15 @@ Resources:
   OrderFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Handler: dist/handler.handler
       Layers:
-        - !Sub arn:aws:lambda:${AWS::Region}:094274105915:layer:AWSLambdaPowertoolsTypeScriptV2:22
+        - '{{resolve:ssm:/aws/service/powertools/typescript/generic/all/latest}}'
       Environment:
         Variables:
           POWERTOOLS_SERVICE_NAME: order-service
           POWERTOOLS_METRICS_NAMESPACE: OrderApplication
-          LOG_LEVEL: INFO
+          POWERTOOLS_LOG_LEVEL: INFO
       Tracing: Active
 ```
 
@@ -132,13 +132,15 @@ export const handler = async (event: OrderEvent, context: Context) => {
   // Create a subsegment for the entire handler
   const segment = tracer.getSegment();
   const handlerSegment = segment?.addNewSubsegment('## handler');
-  tracer.setSegment(handlerSegment!);
+  if (handlerSegment) {
+    tracer.setSegment(handlerSegment);
+  }
 
   try {
     tracer.putAnnotation('orderId', event.orderId);
 
-    const order = await getOrder(event.orderId);
-    const total = calculateTotal(order);
+    const order = await orderService.getOrder(event.orderId);
+    const total = await orderService.calculateTotal(order);
 
     tracer.putMetadata('orderTotal', total);
 
@@ -148,7 +150,9 @@ export const handler = async (event: OrderEvent, context: Context) => {
     throw error;
   } finally {
     handlerSegment?.close();
-    tracer.setSegment(segment!);
+    if (segment) {
+      tracer.setSegment(segment);
+    }
   }
 };
 
@@ -166,12 +170,19 @@ class OrderService {
   }
 
   @tracer.captureMethod()
-  calculateTotal(order: Order): number {
+  async calculateTotal(order: Order): Promise<number> {
     return order.items.reduce(
       (sum, item) => sum + item.price * item.quantity,
       0
     );
   }
+}
+
+const orderService = new OrderService();
+
+interface Order {
+  orderId: string;
+  items: Array<{ productId: string; quantity: number; price: number }>;
 }
 ```
 
@@ -192,7 +203,7 @@ const metrics = new Metrics({
 });
 
 export const handler = async (event: OrderEvent, context: Context) => {
-  // Metrics are automatically flushed after the handler completes
+  // Metrics are buffered until you publish them or use middleware/decorators
   metrics.addMetric('OrderReceived', MetricUnit.Count, 1);
 
   const startTime = Date.now();
@@ -208,7 +219,7 @@ export const handler = async (event: OrderEvent, context: Context) => {
     const duration = Date.now() - startTime;
     metrics.addMetric('ProcessingDuration', MetricUnit.Milliseconds, duration);
 
-    // Add a dimension for this specific metric
+    // Add a dimension for the aggregate metrics in this EMF object
     metrics.addDimension('OrderType', result.type);
 
     return { statusCode: 200, body: JSON.stringify(result) };
@@ -274,11 +285,16 @@ The Middy middleware approach is cleaner than decorator-based approaches because
 Fetch configuration from SSM Parameter Store and Secrets Manager with built-in caching.
 
 ```typescript
-import { getParameter, getSecret } from '@aws-lambda-powertools/parameters/ssm';
+import { getParameter } from '@aws-lambda-powertools/parameters/ssm';
 import { getSecret as getSecretValue } from '@aws-lambda-powertools/parameters/secrets';
 import { Logger } from '@aws-lambda-powertools/logger';
 
 const logger = new Logger({ serviceName: 'order-service' });
+
+interface DbCredentials {
+  host: string;
+  password: string;
+}
 
 // Parameters are cached automatically (default 5 seconds)
 export const handler = async (event: any) => {
@@ -289,7 +305,7 @@ export const handler = async (event: any) => {
   const dbCredentials = await getSecretValue('production/db-credentials', {
     transform: 'json',
     maxAge: 300, // Cache for 5 minutes
-  });
+  }) as DbCredentials;
 
   logger.info('Config loaded', { apiEndpoint });
 
