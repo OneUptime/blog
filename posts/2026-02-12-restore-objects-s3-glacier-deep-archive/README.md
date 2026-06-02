@@ -20,7 +20,7 @@ Each Glacier storage class offers different retrieval speeds at different prices
 |------|------|------------|
 | Expedited | 1-5 minutes | $0.03 |
 | Standard | 3-5 hours | $0.01 |
-| Bulk | 5-12 hours | $0.0025 |
+| Bulk | 5-12 hours | Free |
 
 ### Glacier Deep Archive
 
@@ -129,8 +129,7 @@ When you need to restore a batch of objects, scripting is the way to go.
 
 ```python
 import boto3
-import time
-from datetime import datetime
+from botocore.exceptions import ClientError
 
 s3 = boto3.client('s3')
 
@@ -183,7 +182,7 @@ def restore_objects(bucket, prefix, days, tier):
                 )
                 restore_count += 1
                 print(f"Restore initiated: {key}")
-            except s3.exceptions.ClientError as e:
+            except ClientError as e:
                 if 'RestoreAlreadyInProgress' in str(e):
                     print(f"Restore already in progress: {key}")
                 else:
@@ -248,7 +247,7 @@ Instead of polling, you can use S3 event notifications to trigger a Lambda funct
 
 ```python
 import boto3
-import json
+from urllib.parse import unquote_plus
 
 def lambda_handler(event, context):
     """
@@ -257,7 +256,7 @@ def lambda_handler(event, context):
     """
     for record in event['Records']:
         bucket = record['s3']['bucket']['name']
-        key = record['s3']['object']['key']
+        key = unquote_plus(record['s3']['object']['key'])
 
         print(f"Restore completed: s3://{bucket}/{key}")
 
@@ -281,7 +280,7 @@ def lambda_handler(event, context):
         print(f"Copied to s3://my-active-bucket/restored/{key}")
 ```
 
-Set up the event notification on the bucket.
+After granting S3 permission to invoke the Lambda function, set up the event notification on the bucket.
 
 ```bash
 aws s3api put-bucket-notification-configuration \
