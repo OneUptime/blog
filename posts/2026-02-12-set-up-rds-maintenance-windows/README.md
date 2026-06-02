@@ -22,12 +22,12 @@ RDS maintenance can include:
 - **Minor version upgrades**: If you have auto minor version upgrade enabled
 - **Certificate rotations**: SSL/TLS certificate updates
 
-Not all maintenance requires downtime. Some patches can be applied without a restart. But when a restart is needed, here's what happens:
+Not all maintenance requires downtime. Some patches can be applied without a restart. But when downtime is needed, here's what happens:
 
-- **Single-AZ**: The instance restarts. Expect 5-10 minutes of downtime.
-- **Multi-AZ**: The standby gets patched first, then a failover occurs (20-30 seconds of downtime), then the old primary gets patched.
+- **Single-AZ**: The instance can be unavailable while the update is applied. OS updates typically take about 10 minutes.
+- **Multi-AZ**: For OS patches, the standby gets patched first, then a failover occurs (typically less than a minute), then the old primary gets patched. For DB engine upgrades, both primary and standby instances can be unavailable until the upgrade completes.
 
-This is one of the strongest arguments for running Multi-AZ in production. The maintenance downtime drops from minutes to seconds.
+This is one of the strongest arguments for running Multi-AZ in production. The impact of OS maintenance drops from minutes to a brief failover.
 
 ## Checking Your Current Maintenance Window
 
@@ -53,7 +53,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name DatabaseConnections \
   --dimensions Name=DBInstanceIdentifier,Value=my-database \
-  --start-time $(date -u -v-7d +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '7 days ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
   --statistics Average \
@@ -62,9 +62,9 @@ aws cloudwatch get-metric-statistics \
 
 **Team availability**: Don't schedule maintenance at 3 AM if nobody is awake to handle issues. Early morning during business days might be better if you have an on-call team.
 
-**Backup window**: The maintenance window shouldn't overlap with the backup window. RDS won't start maintenance during a backup.
+**Backup window**: The maintenance window shouldn't overlap with the backup window. RDS won't let you configure overlapping backup and maintenance windows.
 
-**Minimum 30 minutes**: The maintenance window must be at least 30 minutes long. I'd recommend at least 60 minutes to give AWS enough time to complete operations.
+**Minimum 30 minutes**: The maintenance window must be at least 30 minutes long. I'd recommend at least 60 minutes to give AWS enough room to start operations.
 
 ## Setting the Maintenance Window
 
@@ -205,7 +205,7 @@ aws rds modify-db-instance \
 
 Here's a checklist to minimize the impact of maintenance:
 
-1. **Use Multi-AZ**: Reduces downtime from minutes to seconds
+1. **Use Multi-AZ**: Reduces the impact of OS maintenance to a brief failover
 2. **Set an appropriate window**: Pick your lowest-traffic period
 3. **Enable event notifications**: Know when maintenance is happening
 4. **Implement connection retry logic**: Your application should handle brief disconnections gracefully
