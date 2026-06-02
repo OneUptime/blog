@@ -27,7 +27,7 @@ aws cloudformation describe-stack-events \
 
 This shows you which specific resource failed and why. That's your starting point.
 
-If the stack has already rolled back and been deleted (which happens with the default rollback behavior), you won't be able to see the events. To prevent this, disable rollback on failure during development:
+With the default rollback behavior, CloudFormation rolls back the resources and leaves the stack in `ROLLBACK_COMPLETE`, so you can still inspect the stack events. If the stack was deleted, you need the stack's unique ID to list its old events. During development, you can also disable rollback on failure so the failed resources stay around for inspection:
 
 ```bash
 # Deploy with rollback disabled so you can inspect failures
@@ -89,8 +89,8 @@ aws service-quotas get-service-quota \
 Common limits that catch people:
 - 5 VPCs per region (default)
 - 5 Elastic IPs per region
-- 200 CloudFormation stacks per region
-- 500 security groups per VPC
+- 2,000 CloudFormation stacks per account per region
+- 2,500 VPC security groups per region
 
 Request an increase through the Service Quotas console or CLI:
 
@@ -119,12 +119,12 @@ Common template issues include:
 Wrong resource property types:
 
 ```yaml
-# Wrong - Timeout expects an integer, not a string
+# Wrong - Timeout expects an integer from 1 to 900 seconds
 Resources:
   MyFunction:
     Type: AWS::Lambda::Function
     Properties:
-      Timeout: "30"  # Should be 30 (no quotes)
+      Timeout: thirty  # Should be an integer, like 30
 ```
 
 Missing required properties:
@@ -137,6 +137,7 @@ Resources:
     Properties:
       FunctionName: my-function
       Handler: index.handler
+      Role: arn:aws:iam::123456789012:role/lambda-execution-role
       Code:
         ZipFile: |
           def handler(event, context):
