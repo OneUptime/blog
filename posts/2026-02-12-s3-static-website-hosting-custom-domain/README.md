@@ -229,6 +229,24 @@ import boto3
 import json
 import time
 
+LEGACY_DASH_ENDPOINT_REGIONS = {
+    'us-east-1',
+    'us-west-1',
+    'us-west-2',
+    'ap-southeast-1',
+    'ap-southeast-2',
+    'ap-northeast-1',
+    'eu-west-1',
+    'sa-east-1',
+    'us-gov-west-1',
+}
+
+def s3_website_endpoint_host(region):
+    if region in LEGACY_DASH_ENDPOINT_REGIONS:
+        return f's3-website-{region}.amazonaws.com'
+
+    return f's3-website.{region}.amazonaws.com'
+
 def setup_custom_domain(domain, region='us-east-1'):
     """
     Set up S3 static website hosting with a custom domain.
@@ -304,7 +322,7 @@ def setup_custom_domain(domain, region='us-east-1'):
         }
     )
 
-    endpoint = f'http://{domain}.s3-website-{region}.amazonaws.com'
+    endpoint = f'http://{domain}.{s3_website_endpoint_host(region)}'
     print(f"\nSetup complete!")
     print(f"S3 endpoint: {endpoint}")
     print(f"\nNext steps:")
