@@ -68,20 +68,9 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-# DynamoDB table for state locking
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
 ```
 
-The DynamoDB table prevents concurrent modifications. Without it, you're asking for trouble.
+Terraform's S3 backend can use a lock file in the same bucket to prevent concurrent modifications. Without locking, you're asking for trouble.
 
 ## Recovery Method 1: Restore from S3 Version History
 
@@ -119,9 +108,8 @@ cat restored_state.json | python3 -c "import sys,json; d=json.load(sys.stdin); p
 If the state looks good, push it back:
 
 ```bash
-# Upload the restored state file
-aws s3 cp restored_state.json \
-  s3://mycompany-terraform-state/env/production/terraform.tfstate
+# Push the restored state file back through Terraform
+terraform state push -force restored_state.json
 
 # Verify by running a plan
 terraform plan
@@ -148,13 +136,13 @@ If you're sure no other process is running:
 terraform force-unlock a1b2c3d4-e5f6-7890-abcd-ef1234567890
 ```
 
-Double-check by looking at the DynamoDB table directly:
+Double-check by looking for the S3 lock file directly:
 
 ```bash
-# Check if there's still a lock in DynamoDB
-aws dynamodb get-item \
-  --table-name terraform-state-locks \
-  --key '{"LockID": {"S": "mycompany-terraform-state/env/production/terraform.tfstate"}}'
+# Check if the S3 lock file still exists
+aws s3api head-object \
+  --bucket mycompany-terraform-state \
+  --key env/production/terraform.tfstate.tflock
 ```
 
 ## Recovery Method 3: Reconstruct State from AWS
@@ -179,8 +167,8 @@ Then import each resource into your Terraform configuration:
 ```bash
 # Import resources one by one
 terraform import aws_vpc.main vpc-abc123
-terraform import aws_subnet.public[0] subnet-abc123
-terraform import aws_subnet.public[1] subnet-def456
+terraform import 'aws_subnet.public[0]' subnet-abc123
+terraform import 'aws_subnet.public[1]' subnet-def456
 terraform import aws_instance.web i-0abc123def456
 terraform import aws_db_instance.main mydb-instance
 terraform import aws_s3_bucket.data my-data-bucket
@@ -188,7 +176,7 @@ terraform import aws_s3_bucket.data my-data-bucket
 
 After importing, run `terraform plan` and work through any differences between the imported state and your configuration. This is tedious but thorough.
 
-## Recovery Method 4: State Surgery with jq
+## Recovery Method 4: State Surgery with JSON Manipulation
 
 If the state file has a specific structural issue (like a duplicate resource entry), you can fix it with JSON manipulation:
 
@@ -244,19 +232,21 @@ This keeps 90 days of state versions. Old versions move to Glacier after 30 days
 
 ## Prevention: State Locking
 
-Make sure locking is working. Here's the backend configuration that uses both S3 and DynamoDB:
+Make sure locking is working. Here's the backend configuration that uses S3 state locking:
 
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "mycompany-terraform-state"
-    key            = "env/production/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    bucket       = "mycompany-terraform-state"
+    key          = "env/production/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
+
+If you're maintaining an older setup, you may still see `dynamodb_table = "terraform-state-locks"` here. DynamoDB-based locking is deprecated in current Terraform, so use S3 lock files for new backends.
 
 ## Prevention: CI/CD Pipeline Safety
 
@@ -283,4 +273,4 @@ steps:
 
 ## Summary
 
-State corruption is recoverable if you've prepared. S3 versioning is your first line of defense - it gives you point-in-time recovery with minimal effort. DynamoDB locking prevents the most common cause of corruption (concurrent access). And if everything else fails, you can reconstruct state from AWS using `terraform import`. The key is preparation: enable versioning before you need it, back up your state regularly, and always use locking.
+State corruption is recoverable if you've prepared. S3 versioning is your first line of defense - it gives you point-in-time recovery with minimal effort. S3 state locking prevents the most common cause of corruption (concurrent access). And if everything else fails, you can reconstruct state from AWS using `terraform import`. The key is preparation: enable versioning before you need it, back up your state regularly, and always use locking.
