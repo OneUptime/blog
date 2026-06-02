@@ -70,20 +70,22 @@ CDK detects circular dependencies between constructs and refuses to synthesize.
 # Fix: Break the cycle by using a different reference pattern
 ```
 
-Here's a common circular dependency and its fix.
+Here's a pattern people often suspect is circular, and how to handle the real cross-stack version of it.
 
 ```typescript
-// PROBLEM: Security group A references B, B references A
+// Security group A references B, B references A
 const sgA = new ec2.SecurityGroup(this, 'SgA', { vpc });
 const sgB = new ec2.SecurityGroup(this, 'SgB', { vpc });
 sgA.addIngressRule(sgB, ec2.Port.tcp(5432));
 sgB.addIngressRule(sgA, ec2.Port.tcp(3000));
-// This won't cause a circular dep in CDK, but similar patterns with
-// cross-stack references can.
+// This won't cause a circular dependency in one stack. Similar patterns
+// with cross-stack references can.
 
-// FIX: Use connections instead, or put both in the same stack
-sgA.connections.allowFrom(sgB, ec2.Port.tcp(5432));
-sgB.connections.allowFrom(sgA, ec2.Port.tcp(3000));
+// FIX: Keep the groups and rules in the same stack when you can. For
+// cross-stack security group rules, use the remoteRule argument to parent
+// the rule in the other stack when needed.
+sgA.addIngressRule(sgB, ec2.Port.tcp(5432));
+sgB.addIngressRule(sgA, ec2.Port.tcp(3000), 'App traffic', true);
 ```
 
 ## Phase 2: Asset Publishing Failures
@@ -107,7 +109,7 @@ If your stack includes Docker assets (like Fargate tasks), CDK builds them local
 # Error: docker build failed with exit code 1
 
 # Fix: Check your Dockerfile locally first
-docker build -t test ./path/to/dockerfile
+docker build -t test -f ./path/to/Dockerfile ./path/to
 
 # Common causes:
 # - Missing files in .dockerignore
@@ -236,11 +238,16 @@ The most common delete failure. CloudFormation won't delete a bucket that has ob
 # Empty the bucket first, then retry the stack deletion
 aws s3 rm s3://my-bucket-name --recursive
 
-# For versioned buckets, you also need to delete versions
+# For versioned buckets, you also need to delete versions and delete markers
 aws s3api list-object-versions --bucket my-bucket-name \
   --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
-  --output json > delete.json
-aws s3api delete-objects --bucket my-bucket-name --delete file://delete.json
+  --output json > versions.json
+aws s3api delete-objects --bucket my-bucket-name --delete file://versions.json
+
+aws s3api list-object-versions --bucket my-bucket-name \
+  --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
+  --output json > delete-markers.json
+aws s3api delete-objects --bucket my-bucket-name --delete file://delete-markers.json
 ```
 
 In CDK, you can prevent this by enabling auto-deletion.
