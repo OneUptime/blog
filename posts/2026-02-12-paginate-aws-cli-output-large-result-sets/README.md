@@ -8,7 +8,7 @@ Description: Learn how to handle paginated AWS CLI output to retrieve complete r
 
 ---
 
-You run `aws s3api list-objects-v2 --bucket my-bucket` expecting to see all your files, but you only get 1000. Where are the rest? They're on the next page. Most AWS APIs return paginated results, capping responses at a maximum number of items per call. If you don't handle pagination, you're working with incomplete data.
+You call an AWS API expecting to see all your files, but you only get 1000. Where are the rest? They're on the next page. Most AWS APIs return paginated results, capping responses at a maximum number of items per call. If you don't handle pagination, you're working with incomplete data.
 
 The AWS CLI has built-in pagination handling for most commands, but understanding how it works - and when you need to manage it yourself - is important for reliable automation.
 
@@ -22,11 +22,11 @@ sequenceDiagram
     participant AWS API
 
     CLI->>AWS API: List objects (page 1)
-    AWS API-->>CLI: 1000 items + NextToken="abc"
-    CLI->>AWS API: List objects (NextToken="abc")
-    AWS API-->>CLI: 1000 items + NextToken="def"
-    CLI->>AWS API: List objects (NextToken="def")
-    AWS API-->>CLI: 500 items (no NextToken)
+    AWS API-->>CLI: 1000 items + pagination token="abc"
+    CLI->>AWS API: List objects (pagination token="abc")
+    AWS API-->>CLI: 1000 items + pagination token="def"
+    CLI->>AWS API: List objects (pagination token="def")
+    AWS API-->>CLI: 500 items (no pagination token)
     Note over CLI: All 2500 items received
 ```
 
@@ -64,7 +64,7 @@ aws s3api list-objects-v2 \
 
 # Smaller page sizes help with:
 # - Avoiding API throttling
-# - Reducing memory usage for very large result sets
+# - Reducing the size of each service response
 # - Working around timeout issues
 ```
 
@@ -79,7 +79,7 @@ aws s3api list-objects-v2 \
   --max-items 10 \
   --query "Contents[].{Key:Key, Size:Size}"
 
-# Get the first 50 EC2 instances
+# Get the first 50 EC2 reservations
 aws ec2 describe-instances \
   --max-items 50 \
   --query "Reservations[].Instances[].InstanceId"
@@ -117,7 +117,7 @@ aws ec2 describe-instances \
   --query "Reservations[].Instances[].InstanceId"
 ```
 
-With `--no-paginate`, you get whatever the API returns in a single call, including any NextToken in the response.
+With `--no-paginate`, you get whatever the API returns in a single call, including any service pagination token in the response.
 
 ## Manual Pagination in Scripts
 
@@ -256,11 +256,12 @@ print(f"\nTotal: {total_instances} instances")
 
 ### 1. JMESPath Queries and Pagination
 
-When using `--query` with automatic pagination, the query runs on the aggregated result of all pages. This is usually what you want, but it means the entire result set is held in memory.
+When using `--query` with automatic pagination and JSON, YAML, or YAML stream output, the query runs on the aggregated result of all pages. This is usually what you want, but it means the entire result set is held in memory. With `--output text`, the AWS CLI runs the query once per page instead.
 
 ```bash
 # This works - query is applied AFTER all pages are collected
 aws ec2 describe-instances \
+  --output json \
   --query "length(Reservations[].Instances[])"
 
 # For very large result sets, this might use a lot of memory
