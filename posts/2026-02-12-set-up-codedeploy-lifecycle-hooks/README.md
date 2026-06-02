@@ -10,17 +10,17 @@ Description: Learn how to set up AWS CodeDeploy lifecycle hooks to run custom sc
 
 Deploying code to production is not just about copying files. You need to stop services gracefully, run database migrations, validate the new deployment, warm up caches, register with load balancers, and a dozen other things that happen before, during, and after the actual file copy. AWS CodeDeploy lifecycle hooks give you specific points in the deployment process where you can run custom scripts to handle all of this.
 
-This guide covers all the lifecycle hooks available for EC2/on-premises and ECS deployments, how to configure them in your AppSpec file, and practical examples for common deployment tasks.
+This guide covers the lifecycle hooks available for EC2/on-premises and ECS deployments, how to configure them in your AppSpec file, and practical examples for common deployment tasks.
 
 ## What Are Lifecycle Hooks?
 
-Lifecycle hooks are pre-defined stages in the CodeDeploy deployment process where you can execute custom scripts. Think of them as callbacks that fire at specific points during deployment. If a hook script fails (returns a non-zero exit code), the deployment stops and rolls back.
+Lifecycle hooks are pre-defined stages in the CodeDeploy deployment process where you can execute custom scripts. Think of them as callbacks that fire at specific points during deployment. If a hook script fails (returns a non-zero exit code), the deployment stops and can roll back if rollback is configured for the deployment group.
 
 The available hooks differ based on your deployment type (EC2/on-premises vs. ECS vs. Lambda).
 
 ## EC2/On-Premises Deployment Lifecycle
 
-For EC2 and on-premises deployments, here is the complete lifecycle:
+For a basic EC2 or on-premises in-place deployment, here is the lifecycle:
 
 ```mermaid
 graph TD
@@ -44,6 +44,8 @@ Gray boxes are CodeDeploy-managed steps. The others are your hooks.
 | AfterInstall | After files are copied | Set permissions, run migrations, configure files |
 | ApplicationStart | After AfterInstall | Start services, warm up caches |
 | ValidateService | After ApplicationStart | Health checks, smoke tests |
+
+If the deployment group is configured with a load balancer, CodeDeploy also supports `BeforeBlockTraffic`, `AfterBlockTraffic`, `BeforeAllowTraffic`, and `AfterAllowTraffic` lifecycle hooks around the traffic-blocking and traffic-allowing events.
 
 ## Prerequisites
 
@@ -86,7 +88,7 @@ hooks:
   ApplicationStop:
     - location: scripts/stop-application.sh
       timeout: 120
-      runas: appuser
+      runas: root
 
   BeforeInstall:
     - location: scripts/before-install.sh
@@ -101,12 +103,12 @@ hooks:
   ApplicationStart:
     - location: scripts/start-application.sh
       timeout: 120
-      runas: appuser
+      runas: root
 
   ValidateService:
     - location: scripts/validate-service.sh
       timeout: 120
-      runas: appuser
+      runas: root
 ```
 
 ## Step 2: Write the Hook Scripts
@@ -131,14 +133,15 @@ if systemctl is-active --quiet $SERVICE_NAME; then
     echo "$(date) - Deregistering from load balancer..." >> $LOG_FILE
 
     INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-    TARGET_GROUP_ARN=$(aws elbv2 describe-target-health \
-        --query "TargetHealthDescriptions[?Target.Id=='$INSTANCE_ID'].TargetGroupArn" \
+    TARGET_GROUP_ARN=$(aws ssm get-parameter \
+        --name "/myapp/target-group-arn" \
+        --query "Parameter.Value" \
         --output text 2>/dev/null || true)
 
     if [ -n "$TARGET_GROUP_ARN" ]; then
         aws elbv2 deregister-targets \
-            --target-group-arn $TARGET_GROUP_ARN \
-            --targets Id=$INSTANCE_ID
+            --target-group-arn "$TARGET_GROUP_ARN" \
+            --targets Id="$INSTANCE_ID"
 
         # Wait for connections to drain (max 30 seconds)
         echo "$(date) - Waiting for connections to drain..." >> $LOG_FILE
@@ -173,7 +176,7 @@ if [ -d "/opt/myapp" ]; then
     cp -r /opt/myapp $BACKUP_DIR
 
     # Keep only the last 3 backups
-    ls -dt /opt/myapp-backup-* | tail -n +4 | xargs rm -rf
+    ls -dt /opt/myapp-backup-* 2>/dev/null | tail -n +4 | xargs -r rm -rf
 fi
 
 # Install system dependencies
@@ -185,9 +188,14 @@ mkdir -p /opt/myapp/logs
 mkdir -p /opt/myapp/tmp
 mkdir -p /opt/myapp/data
 
-# Create application user if it does not exist
+# Create application group and user if they do not exist
+if ! getent group "appgroup" >/dev/null; then
+    groupadd -r appgroup
+    echo "$(date) - Created appgroup" >> $LOG_FILE
+fi
+
 if ! id "appuser" &>/dev/null; then
-    useradd -r -s /sbin/nologin appuser
+    useradd -r -g appgroup -s /sbin/nologin appuser
     echo "$(date) - Created appuser" >> $LOG_FILE
 fi
 
@@ -229,7 +237,9 @@ fi
 # Set ownership and permissions
 chown -R appuser:appgroup /opt/myapp
 chmod -R 755 /opt/myapp
-chmod 600 /opt/myapp/config/active.json
+if [ -f /opt/myapp/config/active.json ]; then
+    chmod 600 /opt/myapp/config/active.json
+fi
 
 # Set up log rotation
 cat > /etc/logrotate.d/myapp << 'LOGROTATE'
@@ -260,10 +270,10 @@ LOG_FILE="/var/log/codedeploy/start-application.log"
 echo "$(date) - Starting $SERVICE_NAME..." >> $LOG_FILE
 
 # Reload systemd to pick up any service file changes
-sudo systemctl daemon-reload
+systemctl daemon-reload
 
 # Start the service
-sudo systemctl start $SERVICE_NAME
+systemctl start $SERVICE_NAME
 
 # Wait for the service to be fully started
 MAX_RETRIES=30
@@ -345,8 +355,8 @@ TARGET_GROUP_ARN=$(aws ssm get-parameter \
 
 if [ -n "$TARGET_GROUP_ARN" ]; then
     aws elbv2 register-targets \
-        --target-group-arn $TARGET_GROUP_ARN \
-        --targets Id=$INSTANCE_ID
+        --target-group-arn "$TARGET_GROUP_ARN" \
+        --targets Id="$INSTANCE_ID"
     echo "$(date) - Registered with load balancer" >> $LOG_FILE
 fi
 
@@ -359,7 +369,7 @@ For ECS deployments (Blue/Green), the lifecycle is different:
 
 ```mermaid
 graph TD
-    A[BeforeInstall] --> B[Install - Route to Green]
+    A[BeforeInstall] --> B[Install - Create Green Task Set]
     B --> C[AfterInstall]
     C --> D[AllowTestTraffic]
     D --> E[AfterAllowTestTraffic]
@@ -425,7 +435,7 @@ def handler(event, context):
     except Exception as e:
         print(f"Validation failed: {str(e)}")
 
-        # Report failure - this triggers a rollback
+        # Report failure. If rollback is configured, this can trigger a rollback.
         codedeploy.put_lifecycle_event_hook_execution_status(
             deploymentId=deployment_id,
             lifecycleEventHookExecutionId=lifecycle_event_hook_execution_id,
@@ -443,9 +453,9 @@ def handler(event, context):
 
 4. **Validate before and after.** The ValidateService hook is your last chance to catch issues before the deployment is marked successful. Make it thorough.
 
-5. **Handle the first deployment.** Your ApplicationStop script should handle the case where the application is not yet installed. Check for existing services before trying to stop them.
+5. **Handle the first deployment.** CodeDeploy does not run `ApplicationStop` on the very first deployment to an instance, and later runs should still handle the case where the application is not installed. Check for existing services before trying to stop them.
 
-6. **Use exit codes properly.** Exit 0 for success, non-zero for failure. A failed hook triggers a rollback, which is exactly what you want when something goes wrong.
+6. **Use exit codes properly.** Exit 0 for success, non-zero for failure. A failed hook marks the deployment failed, and can trigger a rollback when rollback is configured.
 
 ## Wrapping Up
 
