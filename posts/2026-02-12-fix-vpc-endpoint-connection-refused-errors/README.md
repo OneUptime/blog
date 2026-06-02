@@ -12,16 +12,16 @@ VPC Endpoints let you privately connect to AWS services without going through th
 
 ## Types of VPC Endpoints
 
-There are two types, and the troubleshooting differs:
+For AWS service access, the two endpoint types you'll troubleshoot most often are:
 
 1. **Gateway Endpoints** - for S3 and DynamoDB only. These modify route tables.
-2. **Interface Endpoints** - for everything else. These create ENIs in your subnets.
+2. **Interface Endpoints** - for AWS services that support AWS PrivateLink. These create ENIs in your subnets.
 
 Most connection refused errors come from Interface Endpoints, so we'll focus there.
 
 ## Cause 1: Security Group Blocking Traffic
 
-Interface Endpoints have security groups, and this is the most common cause of "connection refused." The endpoint's security group needs to allow inbound traffic on the service port (usually 443) from your instances.
+Interface Endpoints have security groups, and this is the most common cause of endpoint connection failures. The endpoint's security group needs to allow inbound traffic on the service port (usually 443) from your instances. If this traffic is blocked, you'll usually see a timeout rather than a refused connection.
 
 Check the endpoint's security group.
 
@@ -103,7 +103,7 @@ aws ec2 modify-vpc-endpoint \
 
 ## Cause 3: Endpoint Not in the Right Subnets
 
-Interface Endpoints create ENIs in the subnets you specify. If your instance is in a subnet where the endpoint doesn't have an ENI, DNS might resolve to an endpoint in a different AZ, and cross-AZ connectivity issues can occur.
+Interface Endpoints create ENIs in the subnets you specify. You can configure one subnet per Availability Zone. If the endpoint doesn't have an ENI in the same AZ as your instance, DNS might resolve to an endpoint in a different AZ, and cross-AZ connectivity or availability issues can occur.
 
 Check which subnets the endpoint is configured for.
 
@@ -114,7 +114,7 @@ aws ec2 describe-vpc-endpoints \
   --query 'VpcEndpoints[].SubnetIds'
 ```
 
-Make sure you've included the subnets where your instances run. Add missing subnets.
+Make sure you've included a subnet in each Availability Zone where your instances run. You don't need to add every subnet, but you should add at least one endpoint subnet per AZ that needs local endpoint access.
 
 ```bash
 # Add a subnet to the VPC endpoint
@@ -196,7 +196,7 @@ aws ec2 modify-vpc-endpoint \
 
 ## Cause 6: Network ACLs
 
-NACLs on the subnets where your endpoint ENIs live can block traffic. Make sure they allow inbound on port 443 and outbound on ephemeral ports.
+NACLs on the subnets where your instances and endpoint ENIs live can block traffic. For HTTPS, the instance subnet needs outbound 443 and inbound ephemeral ports for return traffic. The endpoint subnet needs inbound 443 and outbound ephemeral ports.
 
 ```bash
 # Check NACLs for the endpoint's subnet
