@@ -19,10 +19,10 @@ Terraform Cloud replaces several things you'd otherwise manage yourself:
 - **Remote state storage** - No need for S3 buckets and DynamoDB tables
 - **State locking** - Built-in, no configuration needed
 - **Remote execution** - Runs Terraform on HashiCorp's infrastructure
-- **VCS integration** - Automatic plan on PR, apply on merge
+- **VCS integration** - Speculative plans on PRs, standard runs on merge
 - **Policy enforcement** - Sentinel policies for governance
 - **Team management** - Granular access control
-- **Cost estimation** - Shows expected cost changes before apply
+- **Cost estimation** - Can show expected cost changes before apply
 - **Private registry** - Share modules within your organization
 
 The free tier supports up to 500 resources, which is enough for small to medium setups.
@@ -64,7 +64,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -89,7 +89,7 @@ terraform apply
 
 ### VCS-Driven Workspace
 
-For a VCS-driven workflow (automatic plan on PR, apply on merge), configure the workspace in the Terraform Cloud UI or via the API.
+For a VCS-driven workflow (speculative plans on PRs, standard runs when commits are merged to the workspace branch), configure the workspace in the Terraform Cloud UI or via the API.
 
 ```bash
 # Create a workspace connected to your VCS repo
@@ -122,10 +122,14 @@ Set up the OIDC provider in AWS.
 
 ```hcl
 # One-time setup in your AWS account
+data "tls_certificate" "tfc" {
+  url = "https://app.terraform.io"
+}
+
 resource "aws_iam_openid_connect_provider" "tfc" {
   url             = "https://app.terraform.io"
   client_id_list  = ["aws.workload.identity"]
-  thumbprint_list = ["9e99a48a9960b14926bb7f3b02e22da2b0ab7280"]
+  thumbprint_list = [data.tls_certificate.tfc.certificates[0].sha1_fingerprint]
 }
 
 resource "aws_iam_role" "tfc_role" {
@@ -224,19 +228,25 @@ Configure run triggers in the workspace settings. When the networking workspace 
 
 Sentinel is Terraform Cloud's policy-as-code framework. Use it to enforce organizational standards.
 
-```python
-# Ensure all S3 buckets have encryption enabled
+```sentinel
+# Ensure S3 bucket encryption configuration resources set an algorithm
 import "tfplan/v2" as tfplan
 
-s3_buckets = filter tfplan.resource_changes as _, rc {
-  rc.type is "aws_s3_bucket" and
+encryption_configs = filter tfplan.resource_changes as _, rc {
+  rc.type is "aws_s3_bucket_server_side_encryption_configuration" and
   rc.mode is "managed" and
   (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
 
 encryption_check = rule {
-  all s3_buckets as _, bucket {
-    bucket.change.after.server_side_encryption_configuration is not null
+  all encryption_configs as _, config {
+    length(config.change.after.rule) > 0 and
+    all config.change.after.rule as _, encryption_rule {
+      length(encryption_rule.apply_server_side_encryption_by_default) > 0 and
+      all encryption_rule.apply_server_side_encryption_by_default as _, default_encryption {
+        default_encryption.sse_algorithm in ["AES256", "aws:kms", "aws:kms:dsse"]
+      }
+    }
   }
 }
 
@@ -245,18 +255,21 @@ main = rule {
 }
 ```
 
-```python
-# Prevent resources from being created without required tags
+```sentinel
+# Prevent taggable resources from being created without required tags
 import "tfplan/v2" as tfplan
 
 required_tags = ["Environment", "Team", "ManagedBy"]
 
-tagged_resources = filter tfplan.resource_changes as _, rc {
-  rc.change.after.tags is not null
+taggable_resources = filter tfplan.resource_changes as _, rc {
+  rc.mode is "managed" and
+  (rc.change.actions contains "create" or rc.change.actions contains "update") and
+  rc.change.after contains "tags"
 }
 
 tag_check = rule {
-  all tagged_resources as _, resource {
+  all taggable_resources as _, resource {
+    resource.change.after.tags is not null and
     all required_tags as tag {
       resource.change.after.tags contains tag
     }
@@ -270,9 +283,9 @@ main = rule {
 
 ## Cost Estimation
 
-Terraform Cloud shows estimated cost changes for every plan. When you modify an RDS instance from `db.t3.medium` to `db.r6g.large`, you'll see the estimated monthly cost difference before applying.
+Terraform Cloud can show estimated cost changes for every plan. When you modify an RDS instance from `db.t3.medium` to `db.r6g.large`, you'll see the estimated monthly cost difference before applying if cost estimation is enabled.
 
-This is enabled by default for paid plans and requires no configuration.
+Cost estimation is disabled by default. Enable it from the organization's Settings > Cost Estimation page.
 
 ## Team Access Control
 
