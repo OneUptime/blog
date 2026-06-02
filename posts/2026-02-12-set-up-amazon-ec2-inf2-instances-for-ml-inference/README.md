@@ -8,7 +8,7 @@ Description: Complete guide to setting up Amazon EC2 Inf2 instances with AWS Inf
 
 ---
 
-If you are serving ML models in production and your GPU bill is getting out of hand, EC2 Inf2 instances deserve a serious look. Powered by AWS Inferentia2 chips, Inf2 instances are purpose-built for ML inference and deliver up to 4x higher throughput and up to 10x lower cost-per-inference compared to GPU-based instances for many model architectures.
+If you are serving ML models in production and your GPU bill is getting out of hand, EC2 Inf2 instances deserve a serious look. Powered by AWS Inferentia2 chips, Inf2 instances are purpose-built for ML inference and deliver up to 4x higher throughput and up to 10x lower latency compared to first-generation Inf1 instances.
 
 The trade-off is that you need to compile your model using the AWS Neuron SDK, which adds a step to your deployment pipeline. But for models that are well-supported (transformers, CNNs, standard architectures), the compilation is straightforward and the cost savings are significant.
 
@@ -27,9 +27,14 @@ Each Inferentia2 chip has 2 NeuronCores-v2. The larger instances connect chips w
 
 ```bash
 # Launch an Inf2 instance with the Deep Learning AMI
+AMI_ID=$(aws ec2 describe-images \
+  --owners amazon \
+  --filters "Name=name,Values=Deep Learning AMI Neuron PyTorch 2.9 (Ubuntu 24.04)*" \
+  --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
+  --output text)
 
 aws ec2 run-instances \
-  --image-id ami-0abc123-deep-learning \
+  --image-id "$AMI_ID" \
   --instance-type inf2.xlarge \
   --count 1 \
   --key-name my-key \
@@ -38,13 +43,14 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=inf2-inference}]'
 ```
 
-Use the AWS Deep Learning AMI (Neuron), which comes with the Neuron SDK pre-installed. This saves you from manually installing drivers and the compiler.
+Use an AWS Deep Learning AMI for Neuron, such as the current Neuron PyTorch DLAMI, which comes with Neuron components pre-installed. This saves you from manually installing drivers and the compiler.
 
 ## Step 2: Verify the Neuron Setup
 
 ```bash
 # SSH into the instance
-ssh -i my-key.pem ec2-user@<instance-ip>
+# Use ubuntu@<instance-ip> for Ubuntu DLAMIs, or ec2-user@<instance-ip> for Amazon Linux AMIs
+ssh -i my-key.pem ubuntu@<instance-ip>
 
 # Check Neuron devices are visible
 neuron-ls
@@ -62,25 +68,30 @@ neuron-top
 If you are not using the pre-built AMI, install the SDK manually.
 
 ```bash
-# Configure the Neuron repository
-sudo tee /etc/yum.repos.d/neuron.repo > /dev/null << EOF
-[neuron]
-name=Neuron YUM Repository
-baseurl=https://yum.repos.neuron.amazonaws.com
-enabled=1
-gpgcheck=1
-gpgkey=https://yum.repos.neuron.amazonaws.com/GPG-PUB-KEY-AMAZON-AWS-NEURON.PUB
+# Configure the Neuron repository on Ubuntu 24.04
+. /etc/os-release
+sudo tee /etc/apt/sources.list.d/neuron.list > /dev/null << EOF
+deb https://apt.repos.neuron.amazonaws.com ${VERSION_CODENAME} main
 EOF
+wget -qO - https://apt.repos.neuron.amazonaws.com/GPG-PUB-KEY-AMAZON-AWS-NEURON.PUB | sudo apt-key add -
+sudo apt-get update -y
 
-# Install Neuron driver and tools
-sudo yum install -y aws-neuronx-dkms aws-neuronx-tools
+# Install Neuron driver, runtime, and tools
+sudo apt-get install -y linux-headers-$(uname -r) git
+sudo apt-get install -y aws-neuronx-dkms=2.* aws-neuronx-collectives=2.* aws-neuronx-runtime-lib=2.* aws-neuronx-tools=2.*
+export PATH=/opt/aws/neuron/bin:$PATH
 
 # Create a Python virtual environment for Neuron
-python3 -m venv ~/neuron_env
+sudo apt-get install -y python3.12-venv g++
+python3.12 -m venv ~/neuron_env
 source ~/neuron_env/bin/activate
+python -m pip install -U pip
+
+# Point pip at the Neuron package repository
+python -m pip config set global.extra-index-url https://pip.repos.neuron.amazonaws.com
 
 # Install PyTorch Neuron (torch-neuronx)
-pip install torch-neuronx neuronx-cc transformers
+python -m pip install neuronx-cc==2.* torch-neuronx==2.9.* torchvision transformers
 ```
 
 ## Step 4: Compile a Model for Inferentia2
@@ -93,10 +104,10 @@ import torch
 import torch_neuronx
 from transformers import AutoTokenizer, AutoModelForSequenceClassification
 
-# Load the model
-model_name = "bert-base-uncased"
+# Load a BERT model fine-tuned for sentiment classification
+model_name = "textattack/bert-base-uncased-SST-2"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForSequenceClassification.from_pretrained(model_name, num_labels=2)
+model = AutoModelForSequenceClassification.from_pretrained(model_name, torchscript=True)
 model.eval()
 
 # Create example inputs for tracing
@@ -113,7 +124,7 @@ example_input = tokenizer(
 print("Compiling model for Inferentia2...")
 neuron_model = torch_neuronx.trace(
     model,
-    (example_input['input_ids'], example_input['attention_mask']),
+    (example_input['input_ids'], example_input['attention_mask'], example_input['token_type_ids']),
     compiler_args=['--auto-cast', 'all', '--auto-cast-type', 'bf16']
 )
 
@@ -127,7 +138,7 @@ print("Model compiled and saved!")
 python compile_bert.py
 ```
 
-The `--auto-cast bf16` flag tells the compiler to use BF16 precision, which is well-suited for inference and runs efficiently on Inferentia2.
+The `--auto-cast all --auto-cast-type bf16` flags tell the compiler to cast FP32 operations to BF16 for higher performance. This can reduce precision, so validate model accuracy after compilation.
 
 ## Step 5: Run Inference
 
@@ -140,7 +151,7 @@ import time
 
 # Load the compiled model
 model = torch.jit.load("bert_neuron.pt")
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = AutoTokenizer.from_pretrained("textattack/bert-base-uncased-SST-2")
 
 # Warm up the model
 dummy_input = tokenizer(
@@ -150,7 +161,7 @@ dummy_input = tokenizer(
     padding="max_length",
     truncation=True
 )
-_ = model(dummy_input['input_ids'], dummy_input['attention_mask'])
+_ = model(dummy_input['input_ids'], dummy_input['attention_mask'], dummy_input['token_type_ids'])
 
 # Run inference
 texts = [
@@ -171,10 +182,11 @@ for text in texts:
 
     start = time.time()
     with torch.no_grad():
-        output = model(inputs['input_ids'], inputs['attention_mask'])
+        output = model(inputs['input_ids'], inputs['attention_mask'], inputs['token_type_ids'])
 
     latency = (time.time() - start) * 1000
-    prediction = torch.argmax(output[0], dim=1).item()
+    logits = output[0]
+    prediction = torch.argmax(logits, dim=1).item()
     label = "Positive" if prediction == 1 else "Negative"
     print(f"{text[:50]:50s} -> {label} ({latency:.1f}ms)")
 ```
@@ -196,7 +208,7 @@ app = FastAPI()
 
 # Load model and tokenizer at startup
 model = torch.jit.load("bert_neuron.pt")
-tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
+tokenizer = AutoTokenizer.from_pretrained("textattack/bert-base-uncased-SST-2")
 
 class PredictionRequest(BaseModel):
     text: str
@@ -216,9 +228,10 @@ async def predict(request: PredictionRequest):
     )
 
     with torch.no_grad():
-        output = model(inputs['input_ids'], inputs['attention_mask'])
+        output = model(inputs['input_ids'], inputs['attention_mask'], inputs['token_type_ids'])
 
-    probabilities = torch.softmax(output[0], dim=1)
+    logits = output[0]
+    probabilities = torch.softmax(logits, dim=1)
     prediction = torch.argmax(probabilities, dim=1).item()
     confidence = probabilities[0][prediction].item()
 
@@ -239,10 +252,13 @@ if __name__ == "__main__":
 
 For larger models like LLaMA or GPT variants, use the `transformers-neuronx` library which handles model parallelism across multiple NeuronCores.
 
+```bash
+pip install transformers-neuronx --extra-index-url=https://pip.repos.neuron.amazonaws.com
+```
+
 ```python
 # compile_llm.py
 from transformers_neuronx import LlamaForSampling
-from transformers import AutoTokenizer
 
 # Compile LLaMA for Inf2
 # This distributes the model across available NeuronCores
@@ -269,7 +285,7 @@ model.save("llama2_7b_neuron/")
 | inf2.xlarge (Inferentia2) | $0.76 | ~5,000 | $0.04 |
 | Savings | 25% less | 2x more | 64% less |
 
-The exact numbers depend on your model and batch size, but Inf2 consistently delivers better price-performance for inference workloads.
+The exact numbers depend on your model, region, batch size, and concurrency. Benchmark your workload before committing to an instance family.
 
 ## Limitations to Know
 
@@ -278,8 +294,8 @@ The exact numbers depend on your model and batch size, but Inf2 consistently del
 - Dynamic input shapes require separate compilations for each shape, or you need to pad to a fixed size.
 - Debugging compiled models is harder than GPU debugging.
 
-For models that do not work well on Inferentia2, consider [AWS Inferentia (first generation)](https://oneuptime.com/blog/post/2026-02-12-use-aws-inferentia-instances-for-ml-inference/view) for simpler models, or stick with GPU instances.
+For models that do not work well on Inferentia2, consider GPU instances or other AWS inference options. [AWS Inferentia (first generation)](https://oneuptime.com/blog/post/2026-02-12-use-aws-inferentia-instances-for-ml-inference/view) is still useful for some simpler supported models, but it uses the older Neuron stack.
 
 ## Wrapping Up
 
-EC2 Inf2 instances are the most cost-effective way to serve ML models on AWS, as long as your model compiles successfully with the Neuron SDK. For standard transformer models, CNNs, and most common architectures, the compilation process is smooth and the performance gains are substantial. If inference costs are a significant part of your ML spend, Inf2 should be at the top of your evaluation list.
+EC2 Inf2 instances can be a cost-effective way to serve ML models on AWS, as long as your model compiles successfully with the Neuron SDK. For standard transformer models, CNNs, and most common architectures, the compilation process is smooth and the performance gains can be substantial. If inference costs are a significant part of your ML spend, Inf2 should be at the top of your evaluation list.
