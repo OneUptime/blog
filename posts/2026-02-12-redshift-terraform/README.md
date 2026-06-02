@@ -41,7 +41,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.0"
+      version = "~> 5.54"
     }
   }
 
@@ -121,6 +121,11 @@ variable "allowed_cidr_blocks" {
   description = "CIDR blocks allowed to connect to Redshift"
   type        = list(string)
   default     = ["10.0.0.0/16"]
+}
+
+variable "sns_topic_arn" {
+  description = "SNS topic ARN for CloudWatch alarm notifications"
+  type        = string
 }
 ```
 
@@ -273,19 +278,19 @@ resource "aws_redshift_parameter_group" "main" {
 
   # Enable short query acceleration
   parameter {
-    name  = "enable_short_query_acceleration"
-    value = "true"
-  }
-
-  # Set the maximum time for short query acceleration
-  parameter {
-    name  = "max_short_query_queue_time"
-    value = "5000"
+    name  = "wlm_json_configuration"
+    value = jsonencode([{ short_query_queue = true, max_execution_time = 0 }])
   }
 
   # Enable result caching for repeated queries
   parameter {
     name  = "enable_result_cache_for_session"
+    value = "true"
+  }
+
+  # Include user activity logs in audit logging
+  parameter {
+    name  = "enable_user_activity_logging"
     value = "true"
   }
 
@@ -322,13 +327,6 @@ resource "aws_redshift_cluster" "main" {
   preferred_maintenance_window     = "sun:03:00-sun:04:00"
   automated_snapshot_retention_period = 7
 
-  # Logging
-  logging {
-    enable               = true
-    bucket_name          = aws_s3_bucket.redshift_logs.id
-    s3_key_prefix        = "redshift-logs/"
-  }
-
   tags = {
     Name        = var.cluster_identifier
     Environment = var.environment
@@ -358,6 +356,41 @@ resource "aws_s3_bucket" "redshift_logs" {
   tags = {
     Environment = var.environment
   }
+}
+
+resource "aws_s3_bucket_policy" "redshift_logs" {
+  bucket = aws_s3_bucket.redshift_logs.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "redshift.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.redshift_logs.arn
+      },
+      {
+        Effect = "Allow"
+        Principal = {
+          Service = "redshift.amazonaws.com"
+        }
+        Action   = "s3:PutObject"
+        Resource = "${aws_s3_bucket.redshift_logs.arn}/*"
+      }
+    ]
+  })
+}
+
+resource "aws_redshift_logging" "main" {
+  cluster_identifier   = aws_redshift_cluster.main.id
+  log_destination_type = "s3"
+  bucket_name          = aws_s3_bucket.redshift_logs.id
+  s3_key_prefix        = "redshift-logs/"
+
+  depends_on = [aws_s3_bucket_policy.redshift_logs]
 }
 ```
 
@@ -478,6 +511,7 @@ number_of_nodes = 4
 master_password = "use-a-secrets-manager-reference-here"
 vpc_cidr        = "10.0.0.0/16"
 allowed_cidr_blocks = ["10.0.0.0/16", "172.16.0.0/12"]
+sns_topic_arn   = "arn:aws:sns:us-east-1:123456789012:redshift-alerts"
 ```
 
 For the password, consider using AWS Secrets Manager with a Terraform data source instead of putting it in a tfvars file.
