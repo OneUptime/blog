@@ -67,21 +67,23 @@ const { randomUUID } = require('crypto');
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
+const tableName = process.env.TABLE_NAME || 'Items';
 
 exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
+    const now = new Date().toISOString();
 
     const item = {
-      id: randomUUID(),
       ...body,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      id: randomUUID(),
+      createdAt: now,
+      updatedAt: now
     };
 
     // Write the item to DynamoDB
     await docClient.send(new PutCommand({
-      TableName: 'Items',
+      TableName: tableName,
       Item: item
     }));
 
@@ -111,6 +113,7 @@ const { DynamoDBDocumentClient, GetCommand } = require('@aws-sdk/lib-dynamodb');
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
+const tableName = process.env.TABLE_NAME || 'Items';
 
 exports.handler = async (event) => {
   try {
@@ -118,7 +121,7 @@ exports.handler = async (event) => {
 
     // Fetch the item from DynamoDB by primary key
     const result = await docClient.send(new GetCommand({
-      TableName: 'Items',
+      TableName: tableName,
       Key: { id }
     }));
 
@@ -155,6 +158,7 @@ const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
+const tableName = process.env.TABLE_NAME || 'Items';
 
 exports.handler = async (event) => {
   try {
@@ -166,21 +170,25 @@ exports.handler = async (event) => {
     const expressionValues = {};
     const expressionNames = {};
 
-    Object.keys(body).forEach((key, index) => {
-      updateExpressions.push(`#field${index} = :val${index}`);
-      expressionValues[`:val${index}`] = body[key];
-      expressionNames[`#field${index}`] = key;
-    });
+    Object.keys(body)
+      .filter((key) => !['id', 'createdAt', 'updatedAt'].includes(key))
+      .forEach((key, index) => {
+        updateExpressions.push(`#field${index} = :val${index}`);
+        expressionValues[`:val${index}`] = body[key];
+        expressionNames[`#field${index}`] = key;
+      });
 
     // Always update the timestamp
     updateExpressions.push('#updatedAt = :updatedAt');
     expressionValues[':updatedAt'] = new Date().toISOString();
     expressionNames['#updatedAt'] = 'updatedAt';
+    expressionNames['#id'] = 'id';
 
     const result = await docClient.send(new UpdateCommand({
-      TableName: 'Items',
+      TableName: tableName,
       Key: { id },
       UpdateExpression: `SET ${updateExpressions.join(', ')}`,
+      ConditionExpression: 'attribute_exists(#id)',
       ExpressionAttributeValues: expressionValues,
       ExpressionAttributeNames: expressionNames,
       ReturnValues: 'ALL_NEW'
@@ -192,6 +200,13 @@ exports.handler = async (event) => {
       body: JSON.stringify(result.Attributes)
     };
   } catch (error) {
+    if (error.name === 'ConditionalCheckFailedException') {
+      return {
+        statusCode: 404,
+        body: JSON.stringify({ message: 'Item not found' })
+      };
+    }
+
     console.error('Update failed:', error);
     return {
       statusCode: 500,
@@ -212,6 +227,7 @@ const { DynamoDBDocumentClient, DeleteCommand } = require('@aws-sdk/lib-dynamodb
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
+const tableName = process.env.TABLE_NAME || 'Items';
 
 exports.handler = async (event) => {
   try {
@@ -219,7 +235,7 @@ exports.handler = async (event) => {
 
     // Delete and return the old item for confirmation
     const result = await docClient.send(new DeleteCommand({
-      TableName: 'Items',
+      TableName: tableName,
       Key: { id },
       ReturnValues: 'ALL_OLD'
     }));
@@ -260,7 +276,7 @@ Transform: AWS::Serverless-2016-10-31
 
 Globals:
   Function:
-    Runtime: nodejs20.x
+    Runtime: nodejs22.x
     Timeout: 10
     Environment:
       Variables:
@@ -272,6 +288,9 @@ Resources:
     Properties:
       Handler: create.handler
       CodeUri: ./src
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Items
       Events:
         CreateItem:
           Type: Api
@@ -284,6 +303,9 @@ Resources:
     Properties:
       Handler: read.handler
       CodeUri: ./src
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Items
       Events:
         ReadItem:
           Type: Api
@@ -296,6 +318,9 @@ Resources:
     Properties:
       Handler: update.handler
       CodeUri: ./src
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Items
       Events:
         UpdateItem:
           Type: Api
@@ -308,6 +333,9 @@ Resources:
     Properties:
       Handler: delete.handler
       CodeUri: ./src
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: Items
       Events:
         DeleteItem:
           Type: Api
