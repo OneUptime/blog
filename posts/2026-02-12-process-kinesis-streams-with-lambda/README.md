@@ -21,7 +21,7 @@ This creates an event source mapping that processes records from the stream in b
 ```bash
 aws lambda create-event-source-mapping \
   --function-name process-user-events \
-  --event-source-arn arn:aws:kinesis:us-east-1:123456789:stream/user-events \
+  --event-source-arn arn:aws:kinesis:us-east-1:123456789012:stream/user-events \
   --starting-position LATEST \
   --batch-size 100 \
   --maximum-batching-window-in-seconds 5 \
@@ -31,15 +31,15 @@ aws lambda create-event-source-mapping \
   --maximum-record-age-in-seconds 86400 \
   --destination-config '{
     "OnFailure": {
-      "Destination": "arn:aws:sqs:us-east-1:123456789:kinesis-dlq"
+      "Destination": "arn:aws:sqs:us-east-1:123456789012:kinesis-dlq"
     }
   }'
 ```
 
 Let's break down what each parameter does:
 
-- **starting-position**: LATEST (newest records) or TRIM_HORIZON (oldest available)
-- **batch-size**: Max number of records per invocation (up to 10,000)
+- **starting-position**: LATEST (newest records), TRIM_HORIZON (oldest available), or AT_TIMESTAMP
+- **batch-size**: Max number of records per invocation (up to 10,000, subject to the 6 MB synchronous invocation payload limit)
 - **maximum-batching-window-in-seconds**: Wait up to N seconds to fill the batch
 - **parallelization-factor**: Number of concurrent Lambda invocations per shard (1-10)
 - **bisect-batch-on-function-error**: Splits the batch in half on error to isolate the bad record
@@ -56,7 +56,7 @@ This Python Lambda function processes Kinesis records and handles individual rec
 import json
 import base64
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('processed-events')
@@ -102,13 +102,13 @@ def process_event(data, sequence_number):
         'userId': data['userId'],
         'eventType': data['eventType'],
         'timestamp': data['timestamp'],
-        'processedAt': datetime.utcnow().isoformat()
+        'processedAt': datetime.now(timezone.utc).isoformat()
     })
 ```
 
 ## Partial Batch Response
 
-Instead of failing the entire batch when one record fails, you can report which specific records failed. Lambda will only retry those records.
+Instead of failing the entire batch when one record fails, you can report which specific records failed. For Kinesis streams, Lambda checkpoints at the lowest failed sequence number and retries from that record onward.
 
 This Lambda function uses partial batch response to report individual record failures.
 
@@ -160,7 +160,7 @@ aws lambda update-event-source-mapping \
   --parallelization-factor 5
 ```
 
-With a parallelization factor of 5 and 4 shards, you'll have up to 20 concurrent Lambda invocations. But be careful - records from the same shard are still delivered in order within a batch, but batches may be processed out of order when parallelization is greater than 1.
+With a parallelization factor of 5 and 4 shards, you'll have up to 20 concurrent Lambda invocations. But be careful - Lambda still ensures in-order processing at the partition-key level, but multiple partition keys from the same shard can be processed concurrently when parallelization is greater than 1.
 
 ## Tumbling Windows for Aggregation
 
@@ -232,7 +232,8 @@ def handler(event, context):
           f"deaggregated to {len(user_records)} user records")
 
     for record in user_records:
-        data = json.loads(record['kinesis']['data'])
+        payload = base64.b64decode(record['kinesis']['data'])
+        data = json.loads(payload)
         process_event(data)
 ```
 
@@ -278,8 +279,8 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name IteratorAge \
   --dimensions Name=FunctionName,Value=process-user-events \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
+  --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 300 \
   --statistics Maximum
 ```
@@ -292,7 +293,7 @@ If iterator age is growing, your Lambda can't keep up. Increase the parallelizat
 
 2. **Watch your Lambda concurrency.** Each shard multiplied by the parallelization factor uses one concurrent execution. Make sure you haven't set a function-level concurrency limit that's too low.
 
-3. **Set a reasonable maximum-record-age.** Without it, Lambda will keep retrying old records forever when it can't process them.
+3. **Set a reasonable maximum-record-age.** Without it, Lambda will keep retrying old records until the records expire from the stream when it can't process them.
 
 4. **Use batch item failures.** The old pattern of failing the entire batch and retrying everything is wasteful. Report individual failures instead.
 
