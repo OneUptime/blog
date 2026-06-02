@@ -52,10 +52,8 @@ Here is a reusable canary that monitors multiple API endpoints with configurable
 
 ```javascript
 // api-monitor.js - Comprehensive API monitoring canary
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
-const https = require('https');
-const http = require('http');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 // Configuration - customize per deployment via environment variables
 const BASE_URL = process.env.BASE_URL || 'https://api.example.com';
@@ -179,12 +177,17 @@ async function checkEndpoint(endpoint) {
 
   if (endpoint.body) {
     requestOptions.headers['Content-Length'] = Buffer.byteLength(endpoint.body);
+    requestOptions.body = endpoint.body;
   }
+
+  const startTime = Date.now();
 
   await synthetics.executeHttpStep(
     endpoint.name,
     requestOptions,
-    (response, responseBody) => {
+    async (response) => {
+      const responseBody = await readResponseBody(response);
+
       // Check status code
       if (response.statusCode !== endpoint.expectedStatus) {
         throw new Error(
@@ -199,17 +202,40 @@ async function checkEndpoint(endpoint) {
       }
 
       // Validate response body if configured
-      if (endpoint.validateBody && responseBody) {
+      if (endpoint.validateBody) {
         endpoint.validateBody(responseBody);
+      }
+
+      // Check latency
+      const durationMs = Date.now() - startTime;
+      if (durationMs > LATENCY_THRESHOLD_MS) {
+        throw new Error(
+          `Response took ${durationMs}ms, threshold is ${LATENCY_THRESHOLD_MS}ms`
+        );
       }
 
       // Check security headers
       checkSecurityHeaders(response, endpoint.name);
 
-      log.info(`PASSED: ${endpoint.name} (${response.statusCode})`);
-    },
-    endpoint.body  // Request body for POST/PUT requests
+      log.info(`PASSED: ${endpoint.name} (${response.statusCode}, ${durationMs}ms)`);
+    }
   );
+}
+
+function readResponseBody(response) {
+  return new Promise((resolve, reject) => {
+    let responseBody = '';
+
+    response.on('data', (chunk) => {
+      responseBody += chunk;
+    });
+
+    response.on('end', () => {
+      resolve(responseBody);
+    });
+
+    response.on('error', reject);
+  });
 }
 
 function checkSecurityHeaders(response, endpointName) {
@@ -253,7 +279,7 @@ aws synthetics create-canary \
   --artifact-s3-location "s3://canary-artifacts-us-east-1/api-monitor/" \
   --execution-role-arn arn:aws:iam::123456789012:role/canary-role \
   --schedule '{"Expression": "rate(5 minutes)"}' \
-  --runtime-version syn-nodejs-puppeteer-6.1 \
+  --runtime-version syn-nodejs-puppeteer-15.1 \
   --code '{"S3Bucket": "canary-artifacts-us-east-1", "S3Key": "api-monitor.zip", "Handler": "api-monitor.handler"}'
 
 # Deploy canary in eu-west-1
@@ -263,7 +289,7 @@ aws synthetics create-canary \
   --artifact-s3-location "s3://canary-artifacts-eu-west-1/api-monitor/" \
   --execution-role-arn arn:aws:iam::123456789012:role/canary-role \
   --schedule '{"Expression": "rate(5 minutes)"}' \
-  --runtime-version syn-nodejs-puppeteer-6.1 \
+  --runtime-version syn-nodejs-puppeteer-15.1 \
   --code '{"S3Bucket": "canary-artifacts-eu-west-1", "S3Key": "api-monitor.zip", "Handler": "api-monitor.handler"}'
 
 # Deploy canary in ap-southeast-1
@@ -273,7 +299,7 @@ aws synthetics create-canary \
   --artifact-s3-location "s3://canary-artifacts-ap-southeast-1/api-monitor/" \
   --execution-role-arn arn:aws:iam::123456789012:role/canary-role \
   --schedule '{"Expression": "rate(5 minutes)"}' \
-  --runtime-version syn-nodejs-puppeteer-6.1 \
+  --runtime-version syn-nodejs-puppeteer-15.1 \
   --code '{"S3Bucket": "canary-artifacts-ap-southeast-1", "S3Key": "api-monitor.zip", "Handler": "api-monitor.handler"}'
 ```
 
@@ -285,8 +311,7 @@ Create a dedicated canary that checks SSL certificate expiration.
 
 ```javascript
 // ssl-canary.js - Monitor SSL certificate expiration
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const log = require('@aws/synthetics-logger');
 const tls = require('tls');
 
 const DOMAINS = [
@@ -393,12 +418,36 @@ For more advanced dashboards, consider using [Amazon Managed Grafana](https://on
 Set up alerts for different failure scenarios.
 
 ```bash
-# Alert on any canary failure (critical)
+# Alert on canary failure in each region (critical)
 aws cloudwatch put-metric-alarm \
-  --alarm-name api-monitor-any-failure \
+  --alarm-name api-monitor-us-east-failure \
   --namespace CloudWatchSynthetics \
   --metric-name SuccessPercent \
   --dimensions Name=CanaryName,Value=api-monitor-us-east \
+  --statistic Average \
+  --period 300 \
+  --threshold 100 \
+  --comparison-operator LessThanThreshold \
+  --evaluation-periods 1 \
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:critical-alerts
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name api-monitor-eu-west-failure \
+  --namespace CloudWatchSynthetics \
+  --metric-name SuccessPercent \
+  --dimensions Name=CanaryName,Value=api-monitor-eu-west \
+  --statistic Average \
+  --period 300 \
+  --threshold 100 \
+  --comparison-operator LessThanThreshold \
+  --evaluation-periods 1 \
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:critical-alerts
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name api-monitor-ap-southeast-failure \
+  --namespace CloudWatchSynthetics \
+  --metric-name SuccessPercent \
+  --dimensions Name=CanaryName,Value=api-monitor-ap-southeast \
   --statistic Average \
   --period 300 \
   --threshold 100 \
@@ -412,7 +461,7 @@ aws cloudwatch put-metric-alarm \
   --namespace CloudWatchSynthetics \
   --metric-name Duration \
   --dimensions Name=CanaryName,Value=api-monitor-us-east \
-  --statistic p90 \
+  --extended-statistic p90 \
   --period 300 \
   --threshold 5000 \
   --comparison-operator GreaterThanThreshold \
@@ -430,13 +479,13 @@ The composite alarm is key. A single region failing might be a regional issue. A
 
 ## Cost Management
 
-Canary costs come from three sources: Lambda invocations, S3 storage for artifacts, and CloudWatch metrics.
+Canary costs come from Synthetics canary runs, Lambda invocations, CloudWatch Logs, S3 storage for artifacts, and CloudWatch custom metrics.
 
-| Canary Frequency | Monthly Lambda Invocations | Approximate Cost |
-|-----------------|--------------------------|-----------------|
-| Every 1 minute | 43,200 | ~$0.50 Lambda + S3 |
-| Every 5 minutes | 8,640 | ~$0.10 Lambda + S3 |
-| Every 10 minutes | 4,320 | ~$0.05 Lambda + S3 |
+| Canary Frequency | Monthly Canary Runs | Approximate Synthetics Run Cost |
+|-----------------|---------------------|---------------------------------|
+| Every 1 minute | 43,200 | ~$51.84 + Lambda, logs, S3, and metrics |
+| Every 5 minutes | 8,640 | ~$10.37 + Lambda, logs, S3, and metrics |
+| Every 10 minutes | 4,320 | ~$5.18 + Lambda, logs, S3, and metrics |
 
 For most API monitoring, 5-minute intervals provide a good balance between detection speed and cost. Reserve 1-minute intervals for your most critical endpoints.
 
