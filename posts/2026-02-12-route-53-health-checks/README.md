@@ -18,7 +18,7 @@ Route 53 supports three types of health checks:
 
 1. **Endpoint health checks** - Route 53 sends requests to your endpoint and checks the response
 2. **Calculated health checks** - Combine the results of multiple child health checks
-3. **CloudWatch alarm health checks** - Base the health status on a CloudWatch alarm's state
+3. **CloudWatch alarm health checks** - Base the health status on the same CloudWatch metric stream and threshold that a CloudWatch alarm uses
 
 ## Creating an Endpoint Health Check
 
@@ -90,26 +90,26 @@ aws route53 create-health-check \
   }'
 ```
 
-When using IPAddress, Route 53 connects directly to that IP. When using FullyQualifiedDomainName, Route 53 resolves it first and connects to the resulting IP(s).
+When using IPAddress, Route 53 connects directly to that IP. When using FullyQualifiedDomainName, Route 53 resolves it first and connects to an IPv4 address returned by DNS.
 
 ## TCP Health Checks
 
 For services that don't speak HTTP, TCP health checks verify that a TCP connection can be established.
 
 ```bash
-# Create a TCP health check for a database port
+# Create a TCP health check for a public service port
 aws route53 create-health-check \
   --caller-reference "db-tcp-health-$(date +%s)" \
   --health-check-config '{
     "Type": "TCP",
-    "IPAddress": "10.0.2.50",
+    "IPAddress": "52.1.2.50",
     "Port": 5432,
     "RequestInterval": 30,
     "FailureThreshold": 3
   }'
 ```
 
-TCP checks are useful for databases, Redis instances, and other non-HTTP services.
+TCP checks are useful for publicly reachable databases, Redis instances, and other non-HTTP services.
 
 ## Calculated Health Checks
 
@@ -140,7 +140,7 @@ With `HealthThreshold: 2` and 3 children, the calculated check is healthy as lon
 
 ## CloudWatch Alarm Health Checks
 
-Instead of Route 53 actively probing your endpoint, you can base health on a CloudWatch alarm. This is useful when you want health to depend on metrics like CPU utilization, error rates, or custom application metrics.
+Instead of Route 53 actively probing your endpoint, you can base health on the metric stream and threshold configured for a CloudWatch alarm. Route 53 doesn't wait for the CloudWatch alarm itself to enter the ALARM state. This is useful when you want health to depend on metrics like CPU utilization, error rates, or custom application metrics.
 
 ```bash
 # Create a health check based on a CloudWatch alarm
@@ -165,6 +165,7 @@ Route 53 integrates with CloudWatch for health check monitoring.
 ```bash
 # Create a CloudWatch alarm that triggers when a health check fails
 aws cloudwatch put-metric-alarm \
+  --region us-east-1 \
   --alarm-name "route53-health-check-failed" \
   --metric-name HealthCheckStatus \
   --namespace AWS/Route53 \
@@ -250,13 +251,15 @@ Your /health endpoint should check the things that actually matter for the appli
 
 ```python
 # Example health check endpoint (Python/Flask)
+from sqlalchemy import text
+
 @app.route('/health')
 def health_check():
     checks = {}
 
     # Check database connectivity
     try:
-        db.session.execute('SELECT 1')
+        db.session.execute(text('SELECT 1'))
         checks['database'] = 'healthy'
     except Exception:
         checks['database'] = 'unhealthy'
@@ -284,6 +287,6 @@ Don't make health checks too sensitive (checking every dependency can cause casc
 
 Route 53 health checks originate from AWS IP ranges, so your security groups and NACLs must allow this traffic. AWS publishes the health checker IP ranges - you can find them in the AWS IP ranges JSON file and filter for the ROUTE53_HEALTHCHECKS service.
 
-Health check costs are $0.50/month for basic checks and $0.75/month for HTTPS with string matching. Calculated health checks are $1.00/month. These costs are trivial compared to the downtime costs they prevent.
+Health check pricing depends on whether the target is an AWS endpoint or a non-AWS endpoint and on optional features. AWS provides up to 50 health checks for eligible AWS endpoints at no additional cost; after that, AWS endpoints start at $0.50/month for basic checks, including calculated and metric-based checks, and non-AWS endpoints start at $0.75/month. Optional features such as HTTPS, string matching, fast request intervals, and latency measurement add separate per-feature charges. These costs are trivial compared to the downtime costs they prevent.
 
 For comprehensive endpoint monitoring beyond DNS health checks, including response time tracking and detailed alerting, consider pairing Route 53 health checks with a dedicated monitoring solution like OneUptime. Route 53 health checks tell you if an endpoint is up or down - monitoring tools tell you the full picture of how it's performing.
