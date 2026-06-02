@@ -8,9 +8,9 @@ Description: Step-by-step guide to publishing your AWS CDK constructs to Constru
 
 ---
 
-If you've built a CDK construct that solves a real problem, why not share it with the community? AWS Construct Hub is the central registry for CDK constructs, and publishing there makes your construct discoverable to thousands of CDK developers. The best part is that your TypeScript construct automatically becomes available in Python, Java, C#, and Go - thanks to jsii.
+If you've built a CDK construct that solves a real problem, why not share it with the community? AWS Construct Hub is the central registry for CDK constructs, and publishing there makes your construct discoverable to thousands of CDK developers. The best part is that your TypeScript construct can be packaged for Python, Java, C#, and Go - thanks to jsii.
 
-The process involves a few steps: setting up jsii for cross-language compilation, structuring your project correctly, writing good documentation, and publishing to npm (which Construct Hub indexes automatically).
+The process involves a few steps: setting up jsii for cross-language compilation, structuring your project correctly, writing good documentation, and publishing a valid public npm package (which Construct Hub indexes automatically).
 
 ## Setting Up the Project with jsii
 
@@ -43,6 +43,7 @@ Using Projen is the recommended way, but you can also set it up manually. Here's
   },
   "keywords": [
     "aws",
+    "aws-cdk",
     "cdk",
     "aurora",
     "monitoring",
@@ -65,6 +66,10 @@ Using Projen is the recommended way, but you can also set it up manually. Here's
       "dotnet": {
         "namespace": "Example.Cdk.AuroraMonitoring",
         "packageId": "Example.Cdk.AuroraMonitoring"
+      },
+      "go": {
+        "moduleName": "github.com/your-org/cdk-aurora-monitoring",
+        "packageName": "cdkauroramonitoring"
       }
     },
     "tsc": {
@@ -80,8 +85,10 @@ Using Projen is the recommended way, but you can also set it up manually. Here's
     "aws-cdk-lib": "^2.100.0",
     "constructs": "^10.0.0",
     "jsii": "^5.3.0",
+    "jsii-diff": "^1.133.0",
     "jsii-pacmak": "^1.93.0",
-    "jsii-rosetta": "^5.3.0"
+    "jsii-rosetta": "^5.3.0",
+    "jest": "^29.7.0"
   },
   "scripts": {
     "build": "jsii",
@@ -158,7 +165,7 @@ export interface AuroraMonitoringProps {
 
   /**
    * Prefix for alarm names.
-   * @default - cluster identifier
+   * @default "Aurora"
    */
   readonly alarmNamePrefix?: string;
 }
@@ -285,22 +292,22 @@ export interface MyProps {
   readonly name: string;
 }
 
-// DON'T: Use type aliases
-// export type MyProps = { name: string }  // Won't work with jsii
+// AVOID: Exporting type aliases for your public API
+// export type MyProps = { name: string }  // De-sugared in non-TypeScript languages
 
 // DO: Use readonly properties in interfaces
 export interface Config {
   readonly value: string;
 }
 
-// DON'T: Use Record, Pick, Omit, or other utility types
+// DON'T: Use Pick, Omit, or custom generic utility types
 // export interface Config extends Pick<Other, 'field'> {}  // Won't work
 
 // DO: Export classes and interfaces explicitly
 export class MyConstruct extends Construct {}
 
-// DON'T: Use default exports
-// export default class MyConstruct {}  // Won't work with jsii
+// DON'T: Use default exports for your public construct API
+// export default class MyConstruct {}
 ```
 
 ## Building and Packaging
@@ -322,7 +329,7 @@ The `jsii-pacmak` command generates packages in the `dist` directory for each co
 
 ## Publishing
 
-Publishing to npm makes your construct automatically appear on Construct Hub within a few hours:
+Publishing a public, JSII-compatible npm package with a supported open-source license and a CDK keyword such as `aws-cdk` makes your construct appear on Construct Hub automatically, usually in about 30 minutes:
 
 ```bash
 # Build everything first
@@ -332,7 +339,7 @@ npx jsii && npx jsii-pacmak
 npm publish
 
 # Publish Python package to PyPI
-twine upload dist/python/*.tar.gz
+twine upload dist/python/*
 
 # Publish Java package to Maven Central
 # (requires additional Maven configuration)
