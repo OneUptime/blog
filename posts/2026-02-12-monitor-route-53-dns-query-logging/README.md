@@ -96,12 +96,23 @@ Resolver query logging captures DNS queries from within your VPCs.
 ### Step 1: Create the Query Log Config
 
 ```bash
+# Create a log group in the same region as the VPCs you want to log
+aws logs create-log-group \
+    --log-group-name /aws/route53resolver/vpc-dns \
+    --region us-east-1
+
+aws logs put-retention-policy \
+    --log-group-name /aws/route53resolver/vpc-dns \
+    --retention-in-days 30 \
+    --region us-east-1
+
 # Create resolver query log config sending to CloudWatch Logs
 aws route53resolver create-resolver-query-log-config \
     --name vpc-dns-query-logs \
-    --destination-arn "arn:aws:logs:us-east-1:123456789012:log-group:/aws/route53resolver/vpc-dns" \
+    --destination-arn "arn:aws:logs:us-east-1:123456789012:log-group:/aws/route53resolver/vpc-dns:*" \
     --creator-request-id "$(date +%s)" \
-    --tags 'Key=Environment,Value=production'
+    --tags 'Key=Environment,Value=production' \
+    --region us-east-1
 ```
 
 You can also send logs to S3 for long-term storage and analysis:
@@ -111,7 +122,8 @@ You can also send logs to S3 for long-term storage and analysis:
 aws route53resolver create-resolver-query-log-config \
     --name vpc-dns-query-logs-s3 \
     --destination-arn "arn:aws:s3:::my-dns-query-logs" \
-    --creator-request-id "$(date +%s)"
+    --creator-request-id "$(date +%s)" \
+    --region us-east-1
 ```
 
 ### Step 2: Associate with VPCs
@@ -120,11 +132,13 @@ aws route53resolver create-resolver-query-log-config \
 # Associate the query log config with your VPCs
 aws route53resolver associate-resolver-query-log-config \
     --resolver-query-log-config-id rqlc-0123456789abcdef0 \
-    --resource-id vpc-production
+    --resource-id vpc-0abc1234def567890 \
+    --region us-east-1
 
 aws route53resolver associate-resolver-query-log-config \
     --resolver-query-log-config-id rqlc-0123456789abcdef0 \
-    --resource-id vpc-development
+    --resource-id vpc-0123456789abcdef0 \
+    --region us-east-1
 ```
 
 ## Understanding the Log Format
@@ -132,8 +146,7 @@ aws route53resolver associate-resolver-query-log-config \
 ### Public Query Logs
 
 ```text
-1.0 2026-02-12T10:30:00Z Z1234567890 example.com A NOERROR UDP
-    192.0.2.1 -
+1.0 2026-02-12T10:30:00Z Z1234567890 example.com A NOERROR UDP DFW3 192.0.2.1 -
 ```
 
 Fields:
@@ -144,6 +157,7 @@ Fields:
 - Query type (A, AAAA, CNAME, MX, etc.)
 - Response code
 - Protocol (UDP/TCP)
+- Route 53 edge location
 - Source IP of the resolver
 - EDNS client subnet (if present)
 
@@ -154,7 +168,7 @@ Fields:
     "version": "1.100000",
     "account_id": "123456789012",
     "region": "us-east-1",
-    "vpc_id": "vpc-production",
+    "vpc_id": "vpc-0abc1234def567890",
     "query_timestamp": "2026-02-12T10:30:00Z",
     "query_name": "api.external-service.com.",
     "query_type": "A",
@@ -182,7 +196,7 @@ Resolver logs are much richer - they include the source instance ID, the actual 
 
 ### CloudWatch Insights Queries
 
-Use CloudWatch Logs Insights to analyze your DNS data.
+Use CloudWatch Logs Insights to analyze Resolver query logs in CloudWatch.
 
 ```text
 # Top 20 most queried domain names
@@ -322,7 +336,8 @@ aws logs put-metric-filter \
     --filter-name txt-query-count \
     --filter-pattern '{ $.query_type = "TXT" }' \
     --metric-transformations \
-        metricName=DNSTXTQueryCount,metricNamespace=CustomDNS,metricValue=1
+        metricName=DNSTXTQueryCount,metricNamespace=CustomDNS,metricValue=1 \
+    --region us-east-1
 
 # Alert on unusual TXT query volume
 aws cloudwatch put-metric-alarm \
