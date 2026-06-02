@@ -95,6 +95,9 @@ aws elbv2 create-listener \
 aws elbv2 register-targets \
   --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/firewall-targets/def456 \
   --targets Id=i-firewall01 Id=i-firewall02 Id=i-firewall03
+
+# Make sure the appliance security groups allow inbound and outbound UDP 6081
+# and allow the health check port you configured above.
 ```
 
 ## Creating the GWLB Endpoint Service
@@ -112,6 +115,11 @@ aws ec2 create-vpc-endpoint-service-configuration \
 
 # Note the service name from the output - it looks like:
 # com.amazonaws.vpce.us-east-1.vpce-svc-0123456789abcdef0
+
+# If the endpoint will be created from another AWS account, allow that account
+aws ec2 modify-vpc-endpoint-service-permissions \
+  --service-id vpce-svc-0123456789abcdef0 \
+  --add-allowed-principals arn:aws:iam::111122223333:root
 ```
 
 ## Creating GWLB Endpoints in the Application VPC
@@ -163,7 +171,7 @@ aws ec2 create-route \
 
 ## CloudFormation Template
 
-Here's the full CloudFormation setup:
+Here's the core CloudFormation setup:
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
@@ -234,40 +242,35 @@ Outputs:
 
 ## Appliance Configuration
 
-Your appliance instances need to support GENEVE encapsulation. Most commercial firewall vendors (Palo Alto, Fortinet, Check Point) have AMIs that support GWLB natively. For open-source solutions, you can use tools like `geneve-proxy` or configure Linux's native GENEVE support.
+Your appliance instances need to support GENEVE encapsulation and the GWLB GENEVE metadata. Most commercial firewall vendors (Palo Alto, Fortinet, Check Point) have AMIs that support GWLB natively. For open-source solutions, use software that explicitly supports AWS GWLB's GENEVE TLV handling.
 
-Example iptables-based appliance setup on Linux:
+Minimal Linux host preparation for a custom appliance:
 
 ```bash
 #!/bin/bash
-# Basic Linux appliance setup for GWLB
+# Basic host setup for a GWLB-compatible appliance process
 
 # Enable IP forwarding
 echo 1 > /proc/sys/net/ipv4/ip_forward
 
-# Create GENEVE tunnel interface
-ip link add geneve0 type geneve id 0 remote 0.0.0.0 dstport 6081
-ip link set geneve0 up
-
-# Simple passthrough (inspect-and-forward)
-# Replace with your actual inspection logic
-iptables -t mangle -A PREROUTING -i geneve0 -j ACCEPT
-iptables -t mangle -A POSTROUTING -o geneve0 -j ACCEPT
+# Allow GENEVE traffic from the GWLB and the HTTP health check
+iptables -A INPUT -p udp --dport 6081 -j ACCEPT
+iptables -A INPUT -p tcp --dport 80 -j ACCEPT
 
 # Health check endpoint
 python3 -m http.server 80 &
 ```
 
-In a real deployment, you'd replace the simple iptables rules with actual inspection logic - Suricata for IDS, iptables with advanced rules for firewalling, or a commercial appliance's built-in inspection engine.
+In a real deployment, the appliance process must decapsulate the GWLB GENEVE packets, preserve the GWLB metadata needed for the return path, run the inspection logic, and send the inspected packets back to the GWLB. Use a commercial appliance's built-in inspection engine or tested GWLB-compatible software for that path.
 
 ## Flow Stickiness
 
-GWLB maintains flow stickiness using 5-tuple hashing (source IP, destination IP, source port, destination port, protocol). This means all packets belonging to the same flow go to the same appliance instance. This is critical for stateful appliances like firewalls that need to see both directions of a connection.
+GWLB maintains flow stickiness using 5-tuple hashing by default (source IP, destination IP, source port, destination port, protocol). You can configure 3-tuple or 2-tuple stickiness on the target group, but 5-tuple stickiness is the default and is required when AWS Transit Gateway appliance mode is enabled. This means all packets belonging to the same flow go to the same appliance instance. This is critical for stateful appliances like firewalls that need to see both directions of a connection.
 
 You can verify flow distribution:
 
 ```bash
-# Check target group health and active flow count
+# Check target group health
 aws elbv2 describe-target-health \
   --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/firewall-targets/def456
 ```
@@ -290,7 +293,7 @@ Watch these CloudWatch metrics for GWLB health:
 
 - **HealthyHostCount / UnhealthyHostCount**: Track appliance availability
 - **ProcessedBytes**: Total traffic processed
-- **NewFlowCount**: New connections per second
+- **NewFlowCount**: New flows established during the selected period
 - **ActiveFlowCount**: Current active connections
 
 Set up alarms for unhealthy hosts - if an appliance goes down and you're running at capacity, you could start dropping traffic.
