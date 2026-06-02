@@ -78,13 +78,17 @@ Usage is straightforward.
 ```javascript
 const { sendEmail } = require('./ses-client');
 
-// Send a simple email
-await sendEmail(
-  'user@example.com',
-  'Welcome to our platform',
-  'Thanks for signing up! We are glad to have you.',
-  '<h1>Welcome!</h1><p>Thanks for signing up! We are glad to have you.</p>'
-);
+async function main() {
+  // Send a simple email
+  await sendEmail(
+    'user@example.com',
+    'Welcome to our platform',
+    'Thanks for signing up! We are glad to have you.',
+    '<h1>Welcome!</h1><p>Thanks for signing up! We are glad to have you.</p>'
+  );
+}
+
+main().catch(console.error);
 ```
 
 ## Building an Email Service Class
@@ -94,7 +98,6 @@ For production use, you'll want something more structured with error handling, r
 ```javascript
 // email-service.js
 const { SESClient, SendEmailCommand, SendTemplatedEmailCommand } = require('@aws-sdk/client-ses');
-const { SESv2Client, SendEmailCommand: SendEmailV2Command } = require('@aws-sdk/client-sesv2');
 
 class EmailService {
   constructor(config = {}) {
@@ -103,12 +106,8 @@ class EmailService {
       maxAttempts: config.maxRetries || 3
     });
 
-    this.sesV2Client = new SESv2Client({
-      region: config.region || process.env.AWS_REGION || 'us-east-1'
-    });
-
     this.defaultFrom = config.fromAddress || process.env.SES_FROM_ADDRESS;
-    this.configurationSet = config.configurationSet || 'production-email-monitoring';
+    this.configurationSet = config.configurationSet || process.env.SES_CONFIGURATION_SET;
   }
 
   async sendSimpleEmail({ to, cc, bcc, subject, text, html, replyTo, tags }) {
@@ -120,8 +119,7 @@ class EmailService {
       Message: {
         Subject: { Data: subject, Charset: 'UTF-8' },
         Body: {}
-      },
-      ConfigurationSetName: this.configurationSet
+      }
     };
 
     if (text) params.Message.Body.Text = { Data: text, Charset: 'UTF-8' };
@@ -129,6 +127,7 @@ class EmailService {
     if (cc) params.Destination.CcAddresses = this._toArray(cc);
     if (bcc) params.Destination.BccAddresses = this._toArray(bcc);
     if (replyTo) params.ReplyToAddresses = this._toArray(replyTo);
+    if (this.configurationSet) params.ConfigurationSetName = this.configurationSet;
 
     // Add message tags for tracking
     if (tags) {
@@ -151,9 +150,10 @@ class EmailService {
         ToAddresses: this._toArray(to)
       },
       Template: templateName,
-      TemplateData: JSON.stringify(templateData),
-      ConfigurationSetName: this.configurationSet
+      TemplateData: JSON.stringify(templateData)
     };
+
+    if (this.configurationSet) params.ConfigurationSetName = this.configurationSet;
 
     if (tags) {
       params.Tags = Object.entries(tags).map(([Name, Value]) => ({ Name, Value }));
@@ -185,13 +185,14 @@ class EmailService {
       case 'MessageRejected':
         console.error('Email rejected by SES:', error.message);
         break;
-      case 'MailFromDomainNotVerifiedException':
+      case 'MailFromDomainNotVerified':
         console.error('Sending domain not verified:', error.message);
         break;
+      case 'Throttling':
       case 'ThrottlingException':
         console.error('Rate limited by SES - consider adding a delay');
         break;
-      case 'AccountSendingPausedException':
+      case 'AccountSendingPaused':
         console.error('SES sending is paused - check your reputation');
         break;
       default:
@@ -207,7 +208,7 @@ module.exports = EmailService;
 
 ## Sending Emails with Attachments
 
-For attachments, you need to build a raw MIME message. The `nodemailer` package makes this much easier than doing it by hand.
+For attachments with the SES v1 API, you need to build a raw MIME message. SES v2 can also send attachments through the `SendEmail` API, and the `nodemailer` package makes attachments easy through its SES transport.
 
 ```bash
 npm install nodemailer
@@ -215,16 +216,16 @@ npm install nodemailer
 
 ```javascript
 // email-service-attachments.js
-const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
+const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 const nodemailer = require('nodemailer');
 
 // Create a nodemailer transport backed by SES
-const sesClient = new SESClient({ region: 'us-east-1' });
+const sesClient = new SESv2Client({ region: 'us-east-1' });
 
 const transporter = nodemailer.createTransport({
   SES: {
-    ses: sesClient,
-    aws: { SendRawEmailCommand }
+    sesClient,
+    SendEmailCommand
   }
 });
 
@@ -248,16 +249,20 @@ async function sendEmailWithAttachment(to, subject, htmlBody, attachments) {
 // Example usage
 const fs = require('fs');
 
-await sendEmailWithAttachment(
-  'user@example.com',
-  'Your Invoice',
-  '<p>Please find your invoice attached.</p>',
-  [{
-    filename: 'invoice-2026-02.pdf',
-    content: fs.readFileSync('/path/to/invoice.pdf'),
-    contentType: 'application/pdf'
-  }]
-);
+async function main() {
+  await sendEmailWithAttachment(
+    'user@example.com',
+    'Your Invoice',
+    '<p>Please find your invoice attached.</p>',
+    [{
+      filename: 'invoice-2026-02.pdf',
+      content: fs.readFileSync('/path/to/invoice.pdf'),
+      contentType: 'application/pdf'
+    }]
+  );
+}
+
+main().catch(console.error);
 ```
 
 ## Template Management
@@ -294,22 +299,26 @@ async function createOrUpdateTemplate(name, subject, html, text) {
   }
 }
 
-// Create a welcome email template
-await createOrUpdateTemplate(
-  'welcome-email',
-  'Welcome, {{name}}!',
-  `<html>
-    <body>
-      <h1>Welcome, {{name}}!</h1>
-      <p>Thanks for creating an account. Here is what you can do next:</p>
-      <ul>
-        <li><a href="{{dashboard_url}}">Visit your dashboard</a></li>
-        <li><a href="{{docs_url}}">Read the documentation</a></li>
-      </ul>
-    </body>
-  </html>`,
-  'Welcome, {{name}}! Visit your dashboard at {{dashboard_url}}'
-);
+async function main() {
+  // Create a welcome email template
+  await createOrUpdateTemplate(
+    'welcome-email',
+    'Welcome, {{name}}!',
+    `<html>
+      <body>
+        <h1>Welcome, {{name}}!</h1>
+        <p>Thanks for creating an account. Here is what you can do next:</p>
+        <ul>
+          <li><a href="{{dashboard_url}}">Visit your dashboard</a></li>
+          <li><a href="{{docs_url}}">Read the documentation</a></li>
+        </ul>
+      </body>
+    </html>`,
+    'Welcome, {{name}}! Visit your dashboard at {{dashboard_url}}'
+  );
+}
+
+main().catch(console.error);
 ```
 
 ## Rate Limiting with a Queue
