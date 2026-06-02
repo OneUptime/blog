@@ -27,13 +27,16 @@ These loops don't just waste compute. They can generate thousands of invocations
 
 ## What Lambda's Detection Does
 
-AWS Lambda automatically detects recursive loops involving SQS, SNS, and Lambda itself. When it detects that a function has been invoked recursively 16 times in a chain, it stops the loop by dropping the event.
+AWS Lambda automatically detects recursive loops involving SQS, S3, SNS, and Lambda itself. When it detects that a function has been invoked recursively approximately 16 times in a chain, it stops the loop by dropping the event.
 
 The detection works by tracking a special header that gets passed through the chain. Each invocation increments a counter, and when it hits the threshold, Lambda breaks the cycle.
+
+For loops that include SQS, S3, or SNS, your function must write the event back to the supported service using a supported AWS SDK version so that the metadata is propagated.
 
 Here's what it covers:
 
 - Lambda -> SQS -> Lambda (same or different function)
+- Lambda -> S3 -> Lambda (same or different function)
 - Lambda -> SNS -> Lambda (same or different function)
 - Lambda -> Lambda (direct invocation chains)
 
@@ -46,12 +49,11 @@ View the current setting for your function:
 ```bash
 # Check if recursive loop detection is enabled
 
-aws lambda get-function-recursive-config \
+aws lambda get-function-recursion-config \
   --function-name my-function
 
 # The response shows the detection status
 # {
-#     "Arn": "arn:aws:lambda:us-east-1:123456789012:function:my-function",
 #     "RecursiveLoop": "Terminate"
 # }
 ```
@@ -68,12 +70,12 @@ Update the recursive loop handling for a function:
 
 ```bash
 # Set to Terminate (recommended - stops recursive loops)
-aws lambda put-function-recursive-config \
+aws lambda put-function-recursion-config \
   --function-name my-function \
   --recursive-loop Terminate
 
 # Set to Allow (only if you intentionally use recursion)
-aws lambda put-function-recursive-config \
+aws lambda put-function-recursion-config \
   --function-name my-function \
   --recursive-loop Allow
 ```
@@ -88,6 +90,7 @@ Resources:
       FunctionName: my-safe-function
       Runtime: python3.12
       Handler: index.handler
+      Role: arn:aws:iam::123456789012:role/lambda-execution-role
       Code:
         S3Bucket: my-bucket
         S3Key: function.zip
@@ -96,9 +99,8 @@ Resources:
 
 ## What Detection Doesn't Cover
 
-Here's the important part: Lambda's built-in detection only covers SQS, SNS, and Lambda-to-Lambda invocation chains. It does NOT detect recursion through:
+Here's the important part: Lambda's built-in detection only covers SQS, S3, SNS, and Lambda-to-Lambda invocation chains. It does NOT detect recursion through:
 
-- S3 event notifications
 - DynamoDB Streams
 - EventBridge
 - Kinesis
@@ -110,7 +112,7 @@ For these services, you need to build your own protection.
 
 ## Protecting Against S3 Recursive Loops
 
-S3-triggered recursion is the most common case that detection doesn't cover. Here are several strategies.
+S3-triggered recursion is one of the most common cases. Even though Lambda can detect supported S3 recursive loops, you should still design the loop out of your architecture. Here are several strategies.
 
 The simplest fix is to use separate buckets for input and output:
 
@@ -276,7 +278,7 @@ This acts as a circuit breaker. Even if a loop starts, it can't scale beyond 10 
 
 ## EventBridge Dead Letter Queues
 
-For event-driven architectures using EventBridge, set up dead letter queues to catch events that are dropped by recursion detection:
+For event-driven architectures using EventBridge, set up dead letter queues to catch events that EventBridge can't deliver to a target after retrying. This does not catch Lambda recursion detection for EventBridge loops, because Lambda's detection doesn't cover EventBridge:
 
 ```yaml
 Resources:
@@ -285,6 +287,23 @@ Resources:
     Properties:
       QueueName: recursion-dlq
       MessageRetentionPeriod: 1209600  # 14 days
+
+  RecursionDLQPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref RecursionDLQ
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt RecursionDLQ.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt MyEventRule.Arn
 
   MyEventRule:
     Type: AWS::Events::Rule
@@ -296,6 +315,14 @@ Resources:
           Id: MyTarget
           DeadLetterConfig:
             Arn: !GetAtt RecursionDLQ.Arn
+
+  PermissionForEventsToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MyFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt MyEventRule.Arn
 ```
 
 ## Testing for Recursive Patterns
@@ -313,4 +340,4 @@ For monitoring recursive invocation patterns and setting up proper alerting, che
 
 ## Wrapping Up
 
-Lambda's recursive invocation detection is a solid safety net, but it's not comprehensive. It catches loops through SQS, SNS, and direct Lambda invocations, which covers many common patterns. For S3, DynamoDB Streams, EventBridge, and other triggers, you need your own protections. Use separate buckets or prefixes, set concurrency limits, add CloudWatch alarms, and audit your event flows for circular paths. A few minutes of prevention is worth hours of debugging - and thousands of dollars in unexpected charges.
+Lambda's recursive invocation detection is a solid safety net, but it's not comprehensive. It catches loops through SQS, S3, SNS, and direct Lambda invocations, which covers many common patterns. For DynamoDB Streams, EventBridge, and other triggers, you need your own protections. Use separate buckets or prefixes, set concurrency limits, add CloudWatch alarms, and audit your event flows for circular paths. A few minutes of prevention is worth hours of debugging - and thousands of dollars in unexpected charges.
