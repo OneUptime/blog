@@ -25,7 +25,7 @@ Set up an SNS topic that notifies your team whenever code is pushed to main.
 
 aws sns create-topic --name codecommit-notifications
 
-# Subscribe your team's Slack webhook or email
+# Subscribe your team's email
 aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:codecommit-notifications \
   --protocol email \
@@ -94,6 +94,7 @@ def lambda_handler(event, context):
                 print(f"Message: {message}")
 
                 # Get the list of changed files
+                changed_files = []
                 if commit.get('parents'):
                     diff = codecommit.get_differences(
                         repositoryName=repo_name,
@@ -179,6 +180,41 @@ An empty `branches` array means the trigger fires for all branches.
 Notification rules cover a broader set of events: pull requests created, comments added, approvals given, branches created or deleted.
 
 ```bash
+# Allow AWS CodeStar Notifications to publish to the existing SNS topic
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:codecommit-notifications \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2008-10-17",
+    "Id": "__default_policy_ID",
+    "Statement": [
+      {
+        "Sid": "__default_statement_ID",
+        "Effect": "Allow",
+        "Principal": {"AWS": "*"},
+        "Action": [
+          "SNS:GetTopicAttributes",
+          "SNS:SetTopicAttributes",
+          "SNS:AddPermission",
+          "SNS:RemovePermission",
+          "SNS:DeleteTopic",
+          "SNS:Subscribe",
+          "SNS:ListSubscriptionsByTopic",
+          "SNS:Publish"
+        ],
+        "Resource": "arn:aws:sns:us-east-1:123456789012:codecommit-notifications",
+        "Condition": {"StringEquals": {"AWS:SourceOwner": "123456789012"}}
+      },
+      {
+        "Sid": "AWSCodeStarNotifications_publish",
+        "Effect": "Allow",
+        "Principal": {"Service": ["codestar-notifications.amazonaws.com"]},
+        "Action": "SNS:Publish",
+        "Resource": "arn:aws:sns:us-east-1:123456789012:codecommit-notifications"
+      }
+    ]
+  }'
+
 # Create a notification rule for pull request events
 aws codestar-notifications create-notification-rule \
   --name my-app-pr-notifications \
@@ -253,7 +289,7 @@ def lambda_handler(event, context):
         else:
             # Generic notification
             slack_message = {
-                'text': f"*CodeCommit Event: {detail_type}*\nRepository: {repo}\n```{json.dumps(detail, indent=2)[:500]}```"
+                'text': f"*CodeCommit Event: {detail_type}*\nRepository: {repo}\n{json.dumps(detail, indent=2)[:500]}"
             }
 
         # Send to Slack
@@ -271,6 +307,8 @@ Subscribe this Lambda to your SNS topic.
 
 ```bash
 # Deploy the Slack notifier Lambda
+zip slack_notifier.zip slack_notifier.py
+
 aws lambda create-function \
   --function-name codecommit-slack-notifier \
   --runtime python3.12 \
@@ -278,6 +316,14 @@ aws lambda create-function \
   --role arn:aws:iam::123456789012:role/LambdaSNSRole \
   --zip-file fileb://slack_notifier.zip \
   --environment '{"Variables": {"SLACK_WEBHOOK_URL": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"}}'
+
+# Grant SNS permission to invoke the Slack notifier Lambda
+aws lambda add-permission \
+  --function-name codecommit-slack-notifier \
+  --statement-id sns-codecommit-notifications \
+  --action lambda:InvokeFunction \
+  --principal sns.amazonaws.com \
+  --source-arn arn:aws:sns:us-east-1:123456789012:codecommit-notifications
 
 # Subscribe Lambda to the SNS topic
 aws sns subscribe \
