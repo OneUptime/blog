@@ -292,7 +292,9 @@ def rotate_db_password(param_name, db_connection):
     new_password = ''.join(secrets.choice(alphabet) for _ in range(32))
 
     # Update the database password first
-    db_connection.execute(f"ALTER USER myapp SET PASSWORD = %s", (new_password,))
+    with db_connection.cursor() as cursor:
+        cursor.execute("ALTER USER myapp WITH PASSWORD %s", (new_password,))
+    db_connection.commit()
 
     # Then update Parameter Store
     ssm.put_parameter(
@@ -327,15 +329,15 @@ Inject secrets into ECS containers without exposing them in task definition plai
 {
   "containerDefinitions": [{
     "name": "myapp",
-    "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/myapp:latest",
+    "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/myapp:latest",
     "secrets": [
       {
         "name": "DB_PASSWORD",
-        "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/db-password"
+        "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/db-password"
       },
       {
         "name": "API_KEY",
-        "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/stripe-api-key"
+        "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/stripe-api-key"
       }
     ]
   }]
@@ -347,9 +349,11 @@ The task execution role needs:
 {
   "Effect": "Allow",
   "Action": ["ssm:GetParameters"],
-  "Resource": "arn:aws:ssm:us-east-1:123456789:parameter/myapp/production/*"
+  "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/*"
 }
 ```
+
+If the parameters use a customer-managed KMS key, the task execution role also needs `kms:Decrypt` on that key.
 
 ## Best Practices
 
