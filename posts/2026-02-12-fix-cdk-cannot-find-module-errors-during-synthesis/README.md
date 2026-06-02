@@ -73,7 +73,7 @@ import * as appsync from '@aws-cdk/aws-appsync-alpha';
 
 ## TypeScript Compilation Not Running
 
-CDK projects in TypeScript need to be compiled to JavaScript before `cdk synth` can work. If you're not compiling, or the compilation has errors, Node.js can't find the modules.
+CDK projects in TypeScript need a working way to execute TypeScript at synthesis time. If your `cdk.json` points to compiled JavaScript, you need to compile before `cdk synth`. If the compiled files are missing or out of date, Node.js can't find the modules.
 
 ```bash
 # Check if there are compiled files
@@ -94,7 +94,7 @@ If you're using `ts-node` (which many CDK projects do by default), compilation h
 }
 ```
 
-If `ts-node` is being used but the module error persists, it's likely a TypeScript configuration issue, not a compilation issue.
+If `ts-node` is being used but the module error persists, it's likely a TypeScript configuration or import path issue, not a missing compile step.
 
 ## tsconfig.json Issues
 
@@ -113,19 +113,19 @@ Your TypeScript configuration can cause module resolution failures:
         "noImplicitThis": true,
         "alwaysStrict": true,
         "moduleResolution": "node",
-        "outDir": "./cdk.out",
+        "outDir": "./dist",
         "rootDir": ".",
         "typeRoots": ["./node_modules/@types"]
     },
     "include": ["bin/**/*.ts", "lib/**/*.ts"],
-    "exclude": ["node_modules", "cdk.out"]
+    "exclude": ["node_modules", "cdk.out", "dist"]
 }
 ```
 
 Key settings:
-- **moduleResolution**: Must be `"node"` (not `"bundler"` or `"node16"` for standard CDK projects)
+- **moduleResolution**: `"node"` is typical for standard CommonJS CDK projects. Use `"node16"` or `"nodenext"` only if your project is configured for Node.js ESM with matching `module` settings. `"bundler"` is for code that a bundler will resolve, not a CDK app executed directly by Node.js.
 - **include**: Must cover all your source directories
-- **outDir**: If set, make sure `cdk.json` points to the compiled output, not the source
+- **outDir**: If set, don't use `cdk.out`; CDK uses that directory for synthesized cloud assemblies. Make sure `cdk.json` points to the compiled output, not the source.
 
 ## node_modules Issues
 
@@ -173,7 +173,7 @@ export class MyStack extends cdk.Stack {
 If file A imports from file B, and file B imports from file A, Node.js can sometimes return an empty module object:
 
 ```typescript
-// This can cause "Cannot find module" or "X is not a constructor" errors
+// This usually causes incomplete exports or "X is not a constructor" errors
 // Break the cycle by restructuring your code
 
 // Option 1: Move shared types to a separate file
