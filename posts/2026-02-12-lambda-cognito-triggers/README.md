@@ -45,12 +45,19 @@ This CDK stack creates a User Pool with pre-sign-up validation and post-confirma
 ```typescript
 import * as cdk from 'aws-cdk-lib';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
 export class CognitoTriggersStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    const userProfiles = new dynamodb.Table(this, 'UserProfiles', {
+      tableName: 'user-profiles',
+      partitionKey: { name: 'userId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
 
     // Pre sign-up trigger - validate and auto-confirm
     const preSignUpFn = new lambda.Function(this, 'PreSignUp', {
@@ -65,9 +72,9 @@ export class CognitoTriggersStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda/post-confirmation'),
-      timeout: cdk.Duration.seconds(10),
+      timeout: cdk.Duration.seconds(5),
       environment: {
-        USERS_TABLE: 'user-profiles',
+        USERS_TABLE: userProfiles.tableName,
       },
     });
 
@@ -77,6 +84,9 @@ export class CognitoTriggersStack extends cdk.Stack {
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda/pre-token'),
       timeout: cdk.Duration.seconds(5),
+      environment: {
+        USERS_TABLE: userProfiles.tableName,
+      },
     });
 
     // Custom message trigger - personalize emails
@@ -90,6 +100,7 @@ export class CognitoTriggersStack extends cdk.Stack {
     // Create the User Pool with triggers
     const userPool = new cognito.UserPool(this, 'AppUserPool', {
       userPoolName: 'my-app-users',
+      featurePlan: cognito.FeaturePlan.ESSENTIALS,
       selfSignUpEnabled: true,
       signInAliases: { email: true },
       autoVerify: { email: true },
@@ -100,10 +111,13 @@ export class CognitoTriggersStack extends cdk.Stack {
       lambdaTriggers: {
         preSignUp: preSignUpFn,
         postConfirmation: postConfirmFn,
-        preTokenGeneration: preTokenFn,
         customMessage: customMessageFn,
       },
     });
+
+    userProfiles.grantWriteData(postConfirmFn);
+    userProfiles.grantReadData(preTokenFn);
+    userPool.addTrigger(cognito.UserPoolOperation.PRE_TOKEN_GENERATION_CONFIG, preTokenFn, cognito.LambdaVersion.V2_0);
 
     // Create an app client
     userPool.addClient('WebAppClient', {
@@ -219,21 +233,28 @@ exports.handler = async (event) => {
 
   // Look up user profile for additional claims
   const result = await dynamodb.send(new GetItemCommand({
-    TableName: 'user-profiles',
+    TableName: process.env.USERS_TABLE,
     Key: { userId: { S: userId } },
   }));
 
   const profile = result.Item;
 
   if (profile) {
-    // Add custom claims to the ID token
-    event.response.claimsOverrideDetails = {
-      claimsToAddOrOverride: {
-        'custom:tier': profile.tier?.S || 'free',
-        'custom:orgId': profile.orgId?.S || '',
+    // Add custom claims to the ID and access tokens
+    const claims = {
+      'custom:tier': profile.tier?.S || 'free',
+      'custom:orgId': profile.orgId?.S || '',
+    };
+
+    event.response.claimsAndScopeOverrideDetails = {
+      idTokenGeneration: {
+        claimsToAddOrOverride: claims,
+        // You can also suppress claims
+        claimsToSuppress: ['email_verified'],
       },
-      // You can also suppress claims
-      claimsToSuppress: ['email_verified'],
+      accessTokenGeneration: {
+        claimsToAddOrOverride: claims,
+      },
       // Add groups
       groupOverrideDetails: {
         groupsToOverride: profile.tier?.S === 'enterprise' ? ['admin', 'enterprise'] : ['users'],
@@ -332,8 +353,10 @@ exports.defineChallenge = async (event) => {
 };
 
 // Create auth challenge - generate the OTP
+const { randomInt } = require('node:crypto');
+
 exports.createChallenge = async (event) => {
-  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otp = randomInt(100000, 1000000).toString();
 
   // Store OTP (in production, use a secure store with TTL)
   event.response.privateChallengeParameters = { otp };
