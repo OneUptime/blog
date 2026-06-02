@@ -58,7 +58,7 @@ aws budgets create-budget \
         },
         {
           "SubscriptionType": "SNS",
-          "Address": "arn:aws:sns:us-east-1:123456789:budget-alerts"
+          "Address": "arn:aws:sns:us-east-1:123456789012:budget-alerts"
         }
       ]
     },
@@ -106,6 +106,37 @@ Set separate budgets for services that tend to spike unexpectedly.
 This Terraform configuration creates budgets for your most expensive services.
 
 ```hcl
+resource "aws_sns_topic" "budget_alerts" {
+  name = "budget-alerts"
+}
+
+resource "aws_sns_topic_policy" "budget_alerts" {
+  arn = aws_sns_topic.budget_alerts.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "AWSBudgetsSNSPublishingPermissions"
+        Effect = "Allow"
+        Principal = {
+          Service = "budgets.amazonaws.com"
+        }
+        Action   = "SNS:Publish"
+        Resource = aws_sns_topic.budget_alerts.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceAccount" = "123456789012"
+          }
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:budgets::123456789012:*"
+          }
+        }
+      }
+    ]
+  })
+}
+
 resource "aws_budgets_budget" "ec2" {
   name         = "ec2-monthly"
   budget_type  = "COST"
@@ -134,6 +165,8 @@ resource "aws_budgets_budget" "ec2" {
     subscriber_email_addresses = ["team@example.com"]
     subscriber_sns_topic_arns = [aws_sns_topic.budget_alerts.arn]
   }
+
+  depends_on = [aws_sns_topic_policy.budget_alerts]
 }
 
 resource "aws_budgets_budget" "rds" {
@@ -256,13 +289,8 @@ resource "aws_budgets_budget" "ec2_hours" {
   time_unit    = "MONTHLY"
 
   cost_filter {
-    name   = "Service"
-    values = ["Amazon Elastic Compute Cloud - Compute"]
-  }
-
-  cost_filter {
-    name   = "UsageType"
-    values = ["BoxUsage"]
+    name   = "UsageTypeGroup"
+    values = ["EC2: Running Hours"]
   }
 
   notification {
