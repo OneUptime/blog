@@ -8,7 +8,7 @@ Description: Complete guide to setting up Multi-AZ deployments on AWS for databa
 
 ---
 
-An Availability Zone (AZ) is essentially a separate data center within an AWS region. They're physically isolated from each other with independent power, cooling, and networking, but connected through low-latency links. When you deploy to a single AZ and it has problems, your application goes down. Multi-AZ deployments eliminate this single point of failure.
+An Availability Zone (AZ) is one or more discrete data centers within an AWS region. They're physically isolated from each other with independent power, cooling, and networking, but connected through low-latency links. When you deploy to a single AZ and it has problems, your application goes down. Multi-AZ deployments eliminate this single point of failure.
 
 Here's how to set up Multi-AZ for every layer of your stack.
 
@@ -51,13 +51,13 @@ export class MultiAzStack extends cdk.Stack {
           cidrMask: 24, // 254 IPs per AZ
         },
       ],
-      natGateways: 2, // NAT Gateways in 2 AZs for redundancy
+      natGateways: 3, // NAT Gateways in each AZ for redundancy
     });
   }
 }
 ```
 
-Notice we're deploying 2 NAT Gateways instead of 1. A single NAT Gateway is a single point of failure - if its AZ goes down, your private subnets lose internet access.
+Notice we're deploying a NAT Gateway in each AZ instead of 1. A single NAT Gateway is a single point of failure - if its AZ goes down, private subnets in other AZs that share it lose internet access.
 
 ## Compute: Multi-AZ Auto Scaling Groups
 
@@ -70,9 +70,9 @@ const asg = new autoscaling.AutoScalingGroup(this, 'AppASG', {
   vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
   instanceType: ec2.InstanceType.of(ec2.InstanceClass.T3, ec2.InstanceSize.MEDIUM),
   machineImage: ec2.MachineImage.latestAmazonLinux2023(),
-  minCapacity: 3,  // At least 1 per AZ
+  minCapacity: 5,  // Enough capacity to tolerate one AZ going down
   maxCapacity: 12,
-  desiredCapacity: 3,
+  desiredCapacity: 6,
   healthCheck: autoscaling.HealthCheck.elb({
     grace: cdk.Duration.minutes(5),
   }),
@@ -85,8 +85,8 @@ const alb = new elbv2.ApplicationLoadBalancer(this, 'ALB', {
   crossZoneEnabled: true, // Distribute evenly across AZs
 });
 
-const listener = alb.addListener('Listener', { port: 443 });
-listener.addTargets('AppTarget', {
+const listener = alb.addListener('Listener', { port: 80 });
+const targetGroup = listener.addTargets('AppTarget', {
   port: 80,
   targets: [asg],
   healthCheck: {
@@ -102,7 +102,7 @@ listener.addTargets('AppTarget', {
 
 When one AZ has problems and instances terminate, the ASG automatically launches replacements in healthy AZs. Once the problematic AZ recovers, the ASG rebalances.
 
-Set a minimum capacity that can handle your traffic even with one AZ down. If you normally need 3 instances and run 3 AZs, your minimum should be 4 (so losing one AZ still leaves enough capacity).
+Set a minimum capacity that can handle your traffic even with one AZ down. If you normally need 3 instances and run 3 AZs, your minimum should be 5 or 6 (so losing the AZ with the most instances still leaves enough capacity).
 
 ## Database: RDS Multi-AZ
 
@@ -151,12 +151,19 @@ const auroraCluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
   engine: rds.DatabaseClusterEngine.auroraPostgres({
     version: rds.AuroraPostgresEngineVersion.VER_15_4,
   }),
-  instances: 3,
-  instanceProps: {
-    vpc,
-    vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
+  writer: rds.ClusterInstance.provisioned('writer', {
     instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
-  },
+  }),
+  readers: [
+    rds.ClusterInstance.provisioned('reader1', {
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
+    }),
+    rds.ClusterInstance.provisioned('reader2', {
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
+    }),
+  ],
+  vpc,
+  vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
   backup: { retention: cdk.Duration.days(14) },
   deletionProtection: true,
   storageEncrypted: true,
@@ -181,8 +188,7 @@ const redis = new elasticache.CfnReplicationGroup(this, 'RedisCluster', {
   engine: 'redis',
   engineVersion: '7.0',
   cacheNodeType: 'cache.r6g.large',
-  numNodeGroups: 1,
-  replicasPerNodeGroup: 2,  // 1 primary + 2 replicas across AZs
+  numCacheClusters: 3, // 1 primary + 2 replicas across AZs
   automaticFailoverEnabled: true,
   multiAzEnabled: true,
   atRestEncryptionEnabled: true,
@@ -200,20 +206,21 @@ const redis = new elasticache.CfnReplicationGroup(this, 'RedisCluster', {
 
 SQS and SNS are inherently Multi-AZ - messages are automatically replicated across AZs. You don't need to do anything special.
 
-But if you're running self-managed message brokers like RabbitMQ on Amazon MQ, enable Multi-AZ.
+But if you're running managed message brokers like RabbitMQ on Amazon MQ, enable Multi-AZ.
 
 ```typescript
-// Amazon MQ broker in active/standby Multi-AZ
+// Amazon MQ for RabbitMQ broker in cluster Multi-AZ
 const broker = new amazonmq.CfnBroker(this, 'MessageBroker', {
   brokerName: 'app-broker',
-  deploymentMode: 'ACTIVE_STANDBY_MULTI_AZ',
+  deploymentMode: 'CLUSTER_MULTI_AZ',
   engineType: 'RABBITMQ',
-  engineVersion: '3.11',
+  engineVersion: '3.13',
   hostInstanceType: 'mq.m5.large',
   publiclyAccessible: false,
   subnetIds: [
     vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds[0],
     vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds[1],
+    vpc.selectSubnets({ subnetType: ec2.SubnetType.PRIVATE_ISOLATED }).subnetIds[2],
   ],
 });
 ```
@@ -267,7 +274,7 @@ new cloudwatch.Alarm(this, 'AZ-A-HealthyHosts', {
     dimensionsMap: {
       TargetGroup: targetGroup.targetGroupFullName,
       LoadBalancer: alb.loadBalancerFullName,
-      AvailabilityZone: `${cdk.Aws.REGION}a`,
+      AvailabilityZone: cdk.Fn.select(0, vpc.availabilityZones),
     },
   }),
   threshold: 1,
