@@ -16,7 +16,7 @@ Step Functions gives you two powerful mechanisms for handling failures: Retry (t
 
 Before we configure retries, let's understand what errors look like in Step Functions. There are several built-in error types.
 
-`States.ALL` matches any error. `States.TaskFailed` means the Lambda function threw an exception. `States.Timeout` fires when a state exceeds its timeout. `States.Permissions` indicates an IAM problem. You can also define custom error names by throwing errors with specific names in your Lambda functions.
+`States.ALL` matches any known error when it appears alone and last in a Retry or Catch list, though it does not catch terminal errors like `States.Runtime` or `States.DataLimitExceeded` through the wildcard. `States.TaskFailed` means a Task state failed during execution and, in Retry or Catch rules, acts as a wildcard for task failures except `States.Timeout`. `States.Timeout` fires when a task or execution exceeds its timeout. `States.Permissions` indicates an IAM problem. You can also define custom error names by throwing errors with specific names in your Lambda functions, as long as they do not start with the reserved `States.` prefix.
 
 ```mermaid
 graph TD
@@ -60,7 +60,7 @@ This configuration retries transient failures with exponential backoff:
 
 Let's break down what happens with that first retry configuration. The initial retry waits 2 seconds. The second retry waits 4 seconds (2 x backoff rate of 2). The third waits 8 seconds. The fourth waits 16 seconds. The fifth waits 32 seconds. After 5 attempts, if it still fails, the retry is exhausted.
 
-For timeout errors, we use a flat 10-second interval with only 2 attempts - if a Lambda times out twice, the problem probably isn't going away on its own.
+For timeout errors, we use a flat 10-second interval with only 2 retry attempts - if a Lambda times out repeatedly, the problem probably isn't going away on its own.
 
 ## Retry Order Matters
 
@@ -98,7 +98,7 @@ This shows the correct ordering with specific errors first:
 }
 ```
 
-Rate limit errors get patient retries (30 seconds, scaling up). Connection and timeout errors get moderate retries. Everything else gets a quick 2-shot attempt.
+Rate limit errors get patient retries (30 seconds, scaling up). Connection and timeout errors get moderate retries. Everything else gets two quick retry attempts.
 
 ## Configuring Catch Blocks
 
@@ -336,9 +336,26 @@ The key pattern here is compensation. When `ChargeCustomer` fails, we release th
 
 ## Jitter for Retries
 
-Step Functions doesn't have built-in jitter, but you can add it in your Lambda functions for retries against external services.
+Step Functions supports built-in jitter for Retry policies with `JitterStrategy`. Set it to `"FULL"` to randomize each retry interval and avoid thundering herd problems when many executions retry at the same time.
 
-This adds jitter to avoid thundering herd problems:
+This adds jitter to the retry intervals in the state machine:
+
+```json
+{
+  "Retry": [
+    {
+      "ErrorEquals": ["ServiceUnavailableError", "ThrottlingError"],
+      "IntervalSeconds": 2,
+      "MaxAttempts": 5,
+      "BackoffRate": 2.0,
+      "MaxDelaySeconds": 30,
+      "JitterStrategy": "FULL"
+    }
+  ]
+}
+```
+
+If you also retry inside a Lambda function for calls to external services, add jitter there too:
 
 ```javascript
 // Helper to add random jitter to wait times
