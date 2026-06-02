@@ -77,7 +77,7 @@ Vertical scaling means changing the node type to a bigger or smaller instance. T
 ### Cluster Mode Disabled
 
 ```bash
-# Scale up the node type (causes a brief outage during failover)
+# Scale up the node type (online scaling with minimal interruption on supported versions)
 aws elasticache modify-replication-group \
   --replication-group-id my-redis-cluster \
   --cache-node-type cache.r6g.xlarge \
@@ -87,7 +87,7 @@ aws elasticache modify-replication-group \
 What happens during a vertical scale:
 1. ElastiCache creates new nodes with the new instance type
 2. Data is synced to the new nodes
-3. A failover occurs (brief outage, typically under 30 seconds with Multi-AZ)
+3. DNS and node roles are updated, with only a brief interruption possible on supported Redis OSS versions
 4. Old nodes are terminated
 
 ### Cluster Mode Enabled
@@ -173,12 +173,12 @@ aws elasticache modify-replication-group-shard-configuration \
 
 ElastiCache redistributes the hash slots across the new shard configuration. This happens online - your cluster stays available during the resharding operation.
 
-### Resharding with Specific Slot Distribution
+### Resharding with Specific Availability Zone Placement
 
-For more control over how data is distributed:
+For more control over where shard nodes are placed:
 
 ```bash
-# Add shards with specific slot distribution
+# Add shards with specific preferred Availability Zones
 aws elasticache modify-replication-group-shard-configuration \
   --replication-group-id my-redis-cluster \
   --node-group-count 4 \
@@ -232,6 +232,7 @@ resource "aws_elasticache_replication_group" "redis" {
   node_type      = var.redis_node_type
 
   # Cluster mode configuration
+  parameter_group_name   = "default.redis7.cluster.on"
   num_node_groups         = var.redis_num_shards
   replicas_per_node_group = var.redis_replicas_per_shard
 
