@@ -69,8 +69,6 @@ post = s3.generate_presigned_post(
         ['content-length-range', 1024, 10485760],
         # Content type must start with image/
         ['starts-with', '$Content-Type', 'image/'],
-        # Key must start with this prefix
-        ['starts-with', '$key', 'uploads/user-42/'],
         # Require the metadata field
         {'x-amz-meta-uploaded-by': 'user-42'},
     ],
@@ -124,8 +122,6 @@ def get_upload_credentials():
         },
         Conditions=[
             ['content-length-range', 1, MAX_FILE_SIZE],
-            ['starts-with', '$Content-Type', ''],
-            ['starts-with', '$key', f'uploads/{user_id}/'],
             {'x-amz-meta-user-id': user_id},
         ],
         ExpiresIn=600  # 10 minutes
@@ -228,15 +224,17 @@ sequenceDiagram
 Since the browser uploads directly to S3, you need CORS configured on the bucket.
 
 ```json
-[
-    {
-        "AllowedHeaders": ["*"],
-        "AllowedMethods": ["POST"],
-        "AllowedOrigins": ["https://your-app.com"],
-        "ExposeHeaders": ["ETag"],
-        "MaxAgeSeconds": 3600
-    }
-]
+{
+    "CORSRules": [
+        {
+            "AllowedHeaders": ["*"],
+            "AllowedMethods": ["POST"],
+            "AllowedOrigins": ["https://your-app.com"],
+            "ExposeHeaders": ["ETag"],
+            "MaxAgeSeconds": 3600
+        }
+    ]
+}
 ```
 
 Apply the CORS configuration.
