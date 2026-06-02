@@ -14,11 +14,11 @@ ElastiCache Redis supports both automatic daily snapshots and manual snapshots. 
 
 ## How ElastiCache Redis Backups Work
 
-ElastiCache creates Redis RDB snapshots. These are point-in-time captures of the entire dataset serialized to a file. The backup process forks the Redis process, so there's a brief spike in memory usage during the backup (Redis needs to copy-on-write while the child process dumps the data).
+ElastiCache creates Redis RDB snapshots. These are point-in-time captures of the entire dataset serialized to a file. For node-based clusters, backups use a background save process, so there can be some performance impact depending on available reserved memory.
 
 ```mermaid
 graph LR
-    A[Redis Primary] -->|Fork Process| B[Backup Process]
+    A[Redis Primary] -->|Background Save| B[Backup Process]
     B -->|Create RDB File| C[Snapshot Storage]
     C -->|Optional| D[Export to S3]
     C -->|Restore| E[New Redis Cluster]
@@ -103,7 +103,7 @@ aws elasticache create-snapshot \
 # Check snapshot status
 aws elasticache describe-snapshots \
   --snapshot-name my-manual-snapshot-20260212 \
-  --query 'Snapshots[0].{Name:SnapshotName,Status:SnapshotStatus,NodeSize:CacheNodeType,DataSize:NodeSnapshots[0].SnapshotCreateTime}'
+  --query 'Snapshots[0].{Name:SnapshotName,Status:SnapshotStatus,NodeSize:CacheNodeType,Created:NodeSnapshots[0].SnapshotCreateTime}'
 ```
 
 ## Listing and Managing Snapshots
@@ -138,7 +138,7 @@ Create an S3 bucket and configure the bucket policy:
 # Create the S3 bucket for Redis snapshots
 aws s3 mb s3://my-redis-snapshots --region us-east-1
 
-# Add the bucket policy allowing ElastiCache to write
+# Add the bucket policy allowing ElastiCache to export snapshots
 aws s3api put-bucket-policy \
   --bucket my-redis-snapshots \
   --policy '{
@@ -148,14 +148,15 @@ aws s3api put-bucket-policy \
         "Sid": "AllowElastiCacheExport",
         "Effect": "Allow",
         "Principal": {
-          "Service": "elasticache.amazonaws.com"
+          "Service": "us-east-1.elasticache-snapshot.amazonaws.com"
         },
         "Action": [
           "s3:PutObject",
           "s3:GetObject",
           "s3:ListBucket",
           "s3:GetBucketAcl",
-          "s3:PutObjectAcl"
+          "s3:ListMultipartUploadParts",
+          "s3:ListBucketMultipartUploads"
         ],
         "Resource": [
           "arn:aws:s3:::my-redis-snapshots",
@@ -175,6 +176,8 @@ aws elasticache copy-snapshot \
   --target-snapshot-name my-snapshot-s3-export \
   --target-bucket my-redis-snapshots
 ```
+
+ElastiCache adds an instance identifier and `.rdb` to the exported object name. For example, a single-shard export named `my-snapshot-s3-export` might create `my-snapshot-s3-export-0001.rdb` in the bucket.
 
 ## Restoring from a Backup
 
@@ -207,7 +210,7 @@ If you've previously exported a snapshot to S3:
 aws elasticache create-replication-group \
   --replication-group-id my-redis-from-s3 \
   --replication-group-description "Restored from S3 snapshot" \
-  --snapshot-arns arn:aws:s3:::my-redis-snapshots/my-snapshot-s3-export.rdb \
+  --snapshot-arns arn:aws:s3:::my-redis-snapshots/my-snapshot-s3-export-0001.rdb \
   --cache-node-type cache.r6g.large \
   --num-cache-clusters 2 \
   --cache-subnet-group-name my-cache-subnet-group \
@@ -220,7 +223,7 @@ Here's a Lambda function that creates weekly manual snapshots and cleans up old 
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def lambda_handler(event, context):
     """
@@ -231,7 +234,7 @@ def lambda_handler(event, context):
     retention_days = 30
 
     # Create a new manual snapshot
-    timestamp = datetime.now().strftime('%Y%m%d-%H%M')
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d-%H%M')
     snapshot_name = f"weekly-{cluster_id}-{timestamp}"
 
     print(f"Creating snapshot: {snapshot_name}")
@@ -241,33 +244,35 @@ def lambda_handler(event, context):
     )
 
     # Clean up old manual snapshots
-    cutoff = datetime.now() - timedelta(days=retention_days)
-    snapshots = elasticache.describe_snapshots(
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    paginator = elasticache.get_paginator('describe_snapshots')
+    pages = paginator.paginate(
         ReplicationGroupId=cluster_id,
-        SnapshotSource='manual'
-    )['Snapshots']
+        SnapshotSource='user'
+    )
 
-    for snap in snapshots:
-        if snap['SnapshotName'].startswith('weekly-'):
-            # Check if any node snapshot is older than cutoff
-            for node_snap in snap.get('NodeSnapshots', []):
-                create_time = node_snap.get('SnapshotCreateTime')
-                if create_time and create_time.replace(tzinfo=None) < cutoff:
-                    print(f"Deleting old snapshot: {snap['SnapshotName']}")
-                    try:
-                        elasticache.delete_snapshot(
-                            SnapshotName=snap['SnapshotName']
-                        )
-                    except Exception as e:
-                        print(f"Error deleting {snap['SnapshotName']}: {e}")
-                    break
+    for page in pages:
+        for snap in page['Snapshots']:
+            if snap['SnapshotName'].startswith('weekly-'):
+                # Check if any node snapshot is older than cutoff
+                for node_snap in snap.get('NodeSnapshots', []):
+                    create_time = node_snap.get('SnapshotCreateTime')
+                    if create_time and create_time < cutoff:
+                        print(f"Deleting old snapshot: {snap['SnapshotName']}")
+                        try:
+                            elasticache.delete_snapshot(
+                                SnapshotName=snap['SnapshotName']
+                            )
+                        except Exception as e:
+                            print(f"Error deleting {snap['SnapshotName']}: {e}")
+                        break
 
     return {'statusCode': 200, 'body': f'Created {snapshot_name}'}
 ```
 
 ## Backup Performance Impact
 
-The backup process forks the Redis process, which requires additional memory due to copy-on-write. The rule of thumb: you need at least 25% free memory beyond your dataset size to handle the backup fork without issues.
+For node-based clusters, backups use a background save process and can require reserved memory to avoid paging. The rule of thumb: reserve 25% of a node type's `maxmemory` value with the `reserved-memory-percent` parameter.
 
 Here's how to check memory headroom:
 
@@ -283,14 +288,14 @@ aws cloudwatch get-metric-statistics \
   --statistics Maximum
 ```
 
-If memory usage is consistently above 75%, you should scale up before enabling backups. Otherwise, the backup fork might fail or cause an OOM condition.
+If memory usage is consistently above 75%, you should scale up or adjust reserved memory before enabling backups. Otherwise, backups can fail or cause memory pressure.
 
 ## Backup Strategy Recommendations
 
 - **Automatic snapshots**: Keep 7 days minimum for operational recovery
 - **Manual snapshots**: Create before deployments, schema changes, or data migrations
 - **S3 exports**: Keep monthly exports for long-term archival and cross-region DR
-- **Snapshot window**: Schedule during your lowest-traffic period to minimize the performance impact of the fork
+- **Snapshot window**: Schedule during your lowest-traffic period to minimize backup performance impact
 
 For comprehensive monitoring of your ElastiCache setup including backup health, check out the guide on [monitoring ElastiCache with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-elasticache-with-cloudwatch/view).
 
