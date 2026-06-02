@@ -12,7 +12,7 @@ Sometimes your workflow needs to wait. Maybe you're sending a follow-up email 24
 
 ## How the Wait State Works
 
-The Wait state pauses the execution for a specified amount of time or until a specific timestamp. During this pause, you're not consuming any compute resources. Step Functions handles the scheduling internally. You pay for one state transition, not for the waiting time.
+The Wait state pauses the execution for a specified amount of time or until a specific timestamp. During this pause, you're not consuming any compute resources. Step Functions handles the scheduling internally. In Standard workflows, you pay for state transitions, not for the waiting time.
 
 This is a huge advantage over other approaches like sleeping inside a Lambda function (which would time out after 15 minutes anyway) or using SQS delay queues (which max out at 15 minutes).
 
@@ -89,13 +89,13 @@ exports.handler = async (event) => {
   const followUpTime = new Date(signUpDate);
   followUpTime.setHours(followUpTime.getHours() + followUpDelayHours);
 
-  // Adjust for business hours (9 AM - 5 PM ET)
+  // Adjust for business hours (9 AM - 5 PM EST)
   const hour = followUpTime.getUTCHours() - 5; // EST offset
   if (hour < 9) {
-    followUpTime.setUTCHours(14); // Set to 9 AM ET
+    followUpTime.setUTCHours(14, 0, 0, 0); // Set to 9 AM EST
   } else if (hour >= 17) {
-    followUpTime.setDate(followUpTime.getDate() + 1);
-    followUpTime.setUTCHours(14); // Next day 9 AM ET
+    followUpTime.setUTCDate(followUpTime.getUTCDate() + 1);
+    followUpTime.setUTCHours(14, 0, 0, 0); // Next day 9 AM EST
   }
 
   return {
@@ -205,8 +205,7 @@ This workflow increases the wait time with each poll attempt:
   "CalculateWaitTime": {
     "Type": "Pass",
     "Parameters": {
-      "waitTime.$": "States.MathAdd(States.MathMultiply($.pollCount, 10), 10)",
-      "maxWait": 300
+      "waitTime.$": "States.MathAdd($.pollCount, 10)"
     },
     "ResultPath": "$.waitConfig",
     "Next": "DynamicWait"
@@ -324,7 +323,7 @@ This workflow runs for about 4 days total. With Standard workflows, that's no pr
 
 ## Costs During Waits
 
-A common question: do you pay while the workflow is waiting? No. You pay per state transition, not per second of execution time. A workflow that waits 30 days costs the same as one that waits 30 seconds - one state transition in, one state transition out.
+A common question: do you pay while the workflow is waiting? In Standard workflows, you pay per state transition, not per second of execution time. A Standard workflow that waits 30 days costs the same as one that waits 30 seconds - the Wait state transition plus the next state transition. Express workflows are different: they are billed by request count and execution duration, and they can only wait up to 5 minutes.
 
 ## Monitoring Long-Running Workflows
 
