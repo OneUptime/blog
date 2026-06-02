@@ -12,11 +12,11 @@ S3 bucket access goes way beyond just "allow" or "deny." With IAM policies, you 
 
 ## Understanding S3 Policy Evaluation
 
-Before writing policies, it's worth understanding how AWS evaluates them. When a request hits S3, AWS checks multiple policies in a specific order:
+Before writing policies, it's worth understanding how AWS evaluates them. When a request hits S3, AWS evaluates all applicable policies:
 
 1. Is there an explicit deny? If yes, request denied.
-2. Is there an explicit allow? If yes, check for any applicable SCPs (Service Control Policies).
-3. If neither, implicit deny.
+2. Is the action explicitly allowed by the applicable identity-based or resource-based policies, and also allowed by any applicable SCPs (Service Control Policies), RCPs (Resource Control Policies), permissions boundaries, or session policies? If yes, request allowed.
+3. If there is no applicable allow, implicit deny.
 
 This matters because a deny in any policy trumps an allow anywhere else. Keep this in mind as we build out our policies.
 
@@ -179,7 +179,7 @@ For buckets containing sensitive data, you can require multi-factor authenticati
       ]
     },
     {
-      "Sid": "RequireMFAForWrites",
+      "Sid": "AllowWritesWithMFA",
       "Effect": "Allow",
       "Action": [
         "s3:PutObject",
@@ -189,6 +189,20 @@ For buckets containing sensitive data, you can require multi-factor authenticati
       "Condition": {
         "Bool": {
           "aws:MultiFactorAuthPresent": "true"
+        }
+      }
+    },
+    {
+      "Sid": "DenyWritesWithoutMFA",
+      "Effect": "Deny",
+      "Action": [
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::sensitive-bucket/*",
+      "Condition": {
+        "BoolIfExists": {
+          "aws:MultiFactorAuthPresent": "false"
         }
       }
     }
@@ -213,10 +227,10 @@ Sometimes you need to grant temporary access. Instead of remembering to revoke i
       "Resource": "arn:aws:s3:::project-data/*",
       "Condition": {
         "DateLessThan": {
-          "aws:CurrentTime": "2026-03-31T23:59:59Z"
+          "aws:CurrentTime": "2026-12-31T23:59:59Z"
         },
         "DateGreaterThan": {
-          "aws:CurrentTime": "2026-02-01T00:00:00Z"
+          "aws:CurrentTime": "2026-06-01T00:00:00Z"
         }
       }
     }
@@ -228,28 +242,20 @@ This approach is great for contractor access or temporary projects. The access a
 
 ## Restricting Object Size
 
-You can prevent users from uploading excessively large files. This is useful for controlling storage costs and preventing abuse.
+For browser-based uploads, you can prevent users from uploading excessively large files with an S3 POST policy. This is useful for controlling storage costs and preventing abuse.
 
 ```json
 {
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "LimitUploadSize",
-      "Effect": "Deny",
-      "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::upload-bucket/*",
-      "Condition": {
-        "NumericGreaterThan": {
-          "s3:content-length-range": "104857600"
-        }
-      }
-    }
+  "expiration": "2026-12-31T23:59:59Z",
+  "conditions": [
+    { "bucket": "upload-bucket" },
+    ["starts-with", "$key", "uploads/"],
+    ["content-length-range", 0, 104857600]
   ]
 }
 ```
 
-This denies uploads larger than 100MB (104857600 bytes).
+This allows browser uploads up to 100MB (104857600 bytes). `content-length-range` is a POST policy condition, not an IAM condition key.
 
 ## Enforcing Encryption
 
@@ -289,7 +295,7 @@ You need both conditions - one catches requests with the wrong encryption type, 
 
 ## VPC Endpoint Restrictions
 
-If your data should only be accessed from within your VPC (not over the internet), use a VPC endpoint condition.
+If your data should only be accessed from within your VPC (not over the internet), use a VPC endpoint condition in a bucket policy.
 
 ```json
 {
@@ -298,6 +304,7 @@ If your data should only be accessed from within your VPC (not over the internet
     {
       "Sid": "DenyAccessOutsideVPC",
       "Effect": "Deny",
+      "Principal": "*",
       "Action": "s3:*",
       "Resource": [
         "arn:aws:s3:::internal-data",
@@ -305,7 +312,7 @@ If your data should only be accessed from within your VPC (not over the internet
       ],
       "Condition": {
         "StringNotEquals": {
-          "aws:sourceVpce": "vpce-abc123def"
+          "aws:SourceVpce": "vpce-abc123def"
         }
       }
     }
