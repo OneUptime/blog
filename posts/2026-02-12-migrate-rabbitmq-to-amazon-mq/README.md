@@ -93,7 +93,7 @@ aws mq create-broker \
   --no-publicly-accessible \
   --subnet-ids subnet-aaa111 subnet-bbb222 subnet-ccc333 \
   --security-groups sg-xxx123 \
-  --users '[{"username":"admin","password":"Pr0dR@bb1tP@ss!","consoleAccess":true}]'
+  --users Username=admin,Password='Pr0dR@bb1tP@ss!'
 ```
 
 Wait for the broker to reach `RUNNING` state.
@@ -124,7 +124,7 @@ with open("/tmp/rabbit-definitions.json") as f:
     definitions = json.load(f)
 
 # Remove users and permissions - you'll manage these separately
-# Amazon MQ has its own user management
+# Create users and permissions separately on the target broker
 definitions.pop("users", None)
 definitions.pop("permissions", None)
 definitions.pop("topic_permissions", None)
@@ -137,7 +137,7 @@ response = requests.post(
     verify=True
 )
 
-if response.status_code == 200:
+if response.status_code in (200, 201, 204):
     print("Definitions imported successfully")
 else:
     print(f"Import failed: {response.status_code}")
@@ -161,7 +161,7 @@ Amazon MQ doesn't support everything a self-managed RabbitMQ does. Here are the 
 
 **Policies**: You'll need to recreate your policies. The definitions import handles most of this, but double-check.
 
-This creates a ha-policy equivalent on the new broker (Amazon MQ handles HA differently, but policies for TTL, max-length etc. still apply).
+This creates a policy on the new broker. Amazon MQ handles HA differently, but policies for TTL, max-length, and similar queue settings still apply.
 
 ```bash
 # Set a policy for message TTL on a queue pattern
@@ -171,18 +171,25 @@ curl -u admin:Pr0dR@bb1tP@ss! -X PUT \
   -d '{
     "pattern": "^temp\\.",
     "definition": {"message-ttl": 3600000},
+    "priority": 0,
     "apply-to": "queues"
   }'
 ```
 
-**Users and Permissions**: Amazon MQ manages users through the AWS API, not the RabbitMQ management interface. Create users with the AWS CLI.
+**Users and Permissions**: Amazon MQ creates the initial RabbitMQ administrator when you provision the broker. Create additional RabbitMQ users through the RabbitMQ web console or management API.
 
 ```bash
-aws mq create-user \
-  --broker-id <broker-id> \
-  --username app-user \
-  --password "AppUs3rP@ssw0rd!" \
-  --no-console-access
+# Create an application user
+curl -u admin:Pr0dR@bb1tP@ss! -X PUT \
+  "https://b-xxxx-xxxx.mq.us-east-1.amazonaws.com/api/users/app-user" \
+  -H "Content-Type: application/json" \
+  -d '{"password":"AppUs3rP@ssw0rd!","tags":""}'
+
+# Grant permissions on the default vhost
+curl -u admin:Pr0dR@bb1tP@ss! -X PUT \
+  "https://b-xxxx-xxxx.mq.us-east-1.amazonaws.com/api/permissions/%2f/app-user" \
+  -H "Content-Type: application/json" \
+  -d '{"configure":".*","write":".*","read":".*"}'
 ```
 
 ## Update Your Application Configuration
@@ -242,21 +249,28 @@ graph LR
 
 ### Option 2: Federation Bridge
 
-Use the RabbitMQ Federation plugin to bridge your old and new brokers. Messages published to the old broker get forwarded to Amazon MQ automatically.
+Use the RabbitMQ Federation plugin to bridge your old and new brokers. Configure Amazon MQ as the downstream broker with your old broker as the upstream. Messages published to the old broker can then be pulled into Amazon MQ during the migration window.
 
 ```bash
-# On your old RabbitMQ, set up an upstream pointing to Amazon MQ
-rabbitmqctl set_parameter federation-upstream amazon-mq \
-  '{"uri":"amqps://app-user:AppUs3rP@ssw0rd!@b-xxxx-xxxx.mq.us-east-1.amazonaws.com:5671"}'
+# On Amazon MQ, set up an upstream pointing to your old RabbitMQ broker
+curl -u admin:Pr0dR@bb1tP@ss! -X PUT \
+  "https://b-xxxx-xxxx.mq.us-east-1.amazonaws.com/api/parameters/federation-upstream/%2f/old-rabbitmq" \
+  -H "Content-Type: application/json" \
+  -d '{"value":{"uri":"amqp://app-user:OldRabb1tPass!@rabbitmq.internal.example.com:5672"}}'
 
-# Create a policy to federate specific exchanges
-rabbitmqctl set_policy federate-orders \
-  "^orders$" \
-  '{"federation-upstream":"amazon-mq"}' \
-  --apply-to exchanges
+# Create a policy on Amazon MQ to federate specific exchanges
+curl -u admin:Pr0dR@bb1tP@ss! -X PUT \
+  "https://b-xxxx-xxxx.mq.us-east-1.amazonaws.com/api/policies/%2f/federate-orders" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "pattern": "^orders$",
+    "definition": {"federation-upstream": "old-rabbitmq"},
+    "priority": 0,
+    "apply-to": "exchanges"
+  }'
 ```
 
-The federation approach gives you a smoother transition since both brokers stay in sync during the migration window.
+The federation approach gives you a smoother transition by moving matching message flow between brokers during the migration window.
 
 ## Validate and Monitor
 
