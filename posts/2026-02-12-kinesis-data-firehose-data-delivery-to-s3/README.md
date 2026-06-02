@@ -23,7 +23,7 @@ aws firehose create-delivery-stream \
   --delivery-stream-name user-events-to-s3 \
   --delivery-stream-type DirectPut \
   --s3-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseToS3Role",
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseToS3Role",
     "BucketARN": "arn:aws:s3:::my-data-lake",
     "Prefix": "raw/user-events/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/",
     "ErrorOutputPrefix": "errors/user-events/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/",
@@ -77,7 +77,10 @@ This IAM policy grants Firehose the minimum permissions needed for S3 delivery.
         "logs:PutLogEvents",
         "logs:CreateLogStream"
       ],
-      "Resource": "arn:aws:logs:*:*:log-group:/aws/firehose/*"
+      "Resource": [
+        "arn:aws:logs:*:*:log-group:/aws/firehose/*",
+        "arn:aws:logs:*:*:log-group:/aws/firehose/*:log-stream:*"
+      ]
     }
   ]
 }
@@ -132,7 +135,7 @@ def send_events(delivery_stream, events):
 
         if response['FailedPutCount'] > 0:
             print(f"Failed to deliver {response['FailedPutCount']} records")
-            # Retry failed records
+            # Log failed records for retry handling
             for idx, result in enumerate(response['RequestResponses']):
                 if 'ErrorCode' in result:
                     print(f"Error: {result['ErrorCode']} - {result['ErrorMessage']}")
@@ -162,11 +165,11 @@ aws firehose create-delivery-stream \
   --delivery-stream-name kinesis-to-s3 \
   --delivery-stream-type KinesisStreamAsSource \
   --kinesis-stream-source-configuration '{
-    "KinesisStreamARN": "arn:aws:kinesis:us-east-1:123456789:stream/user-events",
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseKinesisRole"
+    "KinesisStreamARN": "arn:aws:kinesis:us-east-1:123456789012:stream/user-events",
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseKinesisRole"
   }' \
   --s3-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseToS3Role",
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseToS3Role",
     "BucketARN": "arn:aws:s3:::my-data-lake",
     "Prefix": "raw/user-events/",
     "BufferingHints": {
@@ -188,9 +191,10 @@ aws firehose create-delivery-stream \
   --delivery-stream-name events-parquet-to-s3 \
   --delivery-stream-type DirectPut \
   --extended-s3-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseToS3Role",
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseToS3Role",
     "BucketARN": "arn:aws:s3:::my-data-lake",
     "Prefix": "processed/events/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/",
+    "ErrorOutputPrefix": "errors/events/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/",
     "BufferingHints": {
       "SizeInMBs": 128,
       "IntervalInSeconds": 900
@@ -198,7 +202,7 @@ aws firehose create-delivery-stream \
     "DataFormatConversionConfiguration": {
       "Enabled": true,
       "SchemaConfiguration": {
-        "RoleARN": "arn:aws:iam::123456789:role/FirehoseGlueRole",
+        "RoleARN": "arn:aws:iam::123456789012:role/FirehoseGlueRole",
         "DatabaseName": "analytics",
         "TableName": "user_events",
         "Region": "us-east-1"
@@ -254,10 +258,10 @@ aws firehose create-delivery-stream \
   --delivery-stream-name dynamically-partitioned-events \
   --delivery-stream-type DirectPut \
   --extended-s3-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseToS3Role",
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseToS3Role",
     "BucketARN": "arn:aws:s3:::my-data-lake",
     "Prefix": "events/event_type=!{partitionKeyFromQuery:eventType}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/",
-    "ErrorOutputPrefix": "errors/",
+    "ErrorOutputPrefix": "errors/events/!{firehose:error-output-type}/",
     "BufferingHints": {
       "SizeInMBs": 64,
       "IntervalInSeconds": 60
@@ -307,7 +311,7 @@ Keep an eye on these CloudWatch metrics:
 - **IncomingBytes/IncomingRecords** - Data flowing in
 - **DeliveryToS3.Bytes/Records** - Data delivered to S3
 - **DeliveryToS3.DataFreshness** - Oldest record not yet delivered (latency indicator)
-- **DeliveryToS3.Success** - Successful delivery count
+- **DeliveryToS3.Success** - Successful S3 PUT commands
 
 ```bash
 aws cloudwatch put-metric-alarm \
@@ -319,7 +323,7 @@ aws cloudwatch put-metric-alarm \
   --threshold 900 \
   --comparison-operator GreaterThanThreshold \
   --dimensions Name=DeliveryStreamName,Value=user-events-to-s3 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 If DeliveryToS3.DataFreshness is consistently high, check if your S3 bucket has any issues or if the Firehose role has correct permissions. For more on building streaming pipelines, see our guide on [configuring Kinesis Data Streams](https://oneuptime.com/blog/post/2026-02-12-configure-amazon-kinesis-data-streams/view).
