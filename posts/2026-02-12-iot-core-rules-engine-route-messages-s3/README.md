@@ -101,7 +101,8 @@ cat > iot-s3-policy.json << 'EOF'
     {
       "Effect": "Allow",
       "Action": [
-        "s3:PutObject"
+        "s3:PutObject",
+        "s3:PutObjectAcl"
       ],
       "Resource": "arn:aws:s3:::my-iot-data-lake/*"
     }
@@ -130,10 +131,11 @@ aws iot create-topic-rule \
     "sql": "SELECT *, topic() as mqtt_topic, timestamp() as received_at FROM '\''devices/+/telemetry'\''",
     "description": "Route device telemetry to S3 for long-term storage",
     "ruleDisabled": false,
+    "awsIotSqlVersion": "2016-03-23",
     "actions": [
       {
         "s3": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleS3Role",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleS3Role",
           "bucketName": "my-iot-data-lake",
           "key": "raw/telemetry/${topic(2)}/${parse_time(\"yyyy/MM/dd/HH\", timestamp())}/${timestamp()}-${newuuid()}.json",
           "cannedAcl": "bucket-owner-full-control"
@@ -142,7 +144,7 @@ aws iot create-topic-rule \
     ],
     "errorAction": {
       "s3": {
-        "roleArn": "arn:aws:iam::123456789:role/IoTRuleS3Role",
+        "roleArn": "arn:aws:iam::123456789012:role/IoTRuleS3Role",
         "bucketName": "my-iot-data-lake",
         "key": "errors/${parse_time(\"yyyy/MM/dd\", timestamp())}/${timestamp()}-${newuuid()}.json"
       }
@@ -156,7 +158,7 @@ The S3 key uses IoT SQL functions to create a well-organized path:
 raw/telemetry/{device_id}/{year}/{month}/{day}/{hour}/{timestamp}-{uuid}.json
 ```
 
-For example: `raw/telemetry/sensor-042/2026/02/12/14/1739366400-abc123.json`
+For example: `raw/telemetry/sensor-042/2026/02/12/14/1770904800000-a1b2c3d4-e5f6-7890-abcd-ef1234567890.json`
 
 This partitioning scheme is critical for query performance with Athena.
 
@@ -172,10 +174,11 @@ aws iot create-topic-rule \
     "sql": "SELECT device_id, temperature, humidity, timestamp() as server_time, topic(2) as source_device FROM '\''devices/+/telemetry'\'' WHERE temperature > 30",
     "description": "Store only high-temperature readings",
     "ruleDisabled": false,
+    "awsIotSqlVersion": "2016-03-23",
     "actions": [
       {
         "s3": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleS3Role",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleS3Role",
           "bucketName": "my-iot-data-lake",
           "key": "alerts/high-temp/${topic(2)}/${parse_time(\"yyyy/MM/dd\", timestamp())}/${timestamp()}.json"
         }
@@ -186,19 +189,20 @@ aws iot create-topic-rule \
 
 ### Batch Multiple Devices to Partitioned Paths
 
-For efficient analytics, partition by both device type and time.
+For efficient analytics, partition by both device ID and time.
 
 ```bash
-# Route different device types to different prefixes
+# Route different devices to different prefixes
 aws iot create-topic-rule \
   --rule-name RouteSensorsByType \
   --topic-rule-payload '{
     "sql": "SELECT * FROM '\''devices/+/telemetry'\''",
     "ruleDisabled": false,
+    "awsIotSqlVersion": "2016-03-23",
     "actions": [
       {
         "s3": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleS3Role",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleS3Role",
           "bucketName": "my-iot-data-lake",
           "key": "data/device=${topic(2)}/year=${parse_time(\"yyyy\", timestamp())}/month=${parse_time(\"MM\", timestamp())}/day=${parse_time(\"dd\", timestamp())}/${timestamp()}-${newuuid()}.json"
         }
@@ -239,7 +243,9 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: s3:PutObject
+                Action:
+                  - s3:PutObject
+                  - s3:PutObjectAcl
                 Resource: !Sub '${IoTDataBucket.Arn}/*'
 
   TelemetryRule:
@@ -250,6 +256,7 @@ Resources:
         Sql: >-
           SELECT *, topic() as mqtt_topic, timestamp() as received_at
           FROM 'devices/+/telemetry'
+        AwsIotSqlVersion: '2016-03-23'
         Actions:
           - S3:
               RoleArn: !GetAtt IoTRuleRole.Arn
@@ -291,19 +298,18 @@ LOCATION 's3://my-iot-data-lake/data/'
 TBLPROPERTIES (
   'projection.enabled' = 'true',
   'projection.device.type' = 'injected',
-  'projection.year.type' = 'date',
-  'projection.year.range' = '2024,NOW',
-  'projection.year.format' = 'yyyy',
-  'projection.month.type' = 'date',
-  'projection.month.range' = '2024/01,NOW',
-  'projection.month.format' = 'yyyy/MM',
-  'projection.day.type' = 'date',
-  'projection.day.range' = '2024/01/01,NOW',
-  'projection.day.format' = 'yyyy/MM/dd',
+  'projection.year.type' = 'integer',
+  'projection.year.range' = '2024,2035',
+  'projection.month.type' = 'integer',
+  'projection.month.range' = '1,12',
+  'projection.month.digits' = '2',
+  'projection.day.type' = 'integer',
+  'projection.day.range' = '1,31',
+  'projection.day.digits' = '2',
   'storage.location.template' = 's3://my-iot-data-lake/data/device=${device}/year=${year}/month=${month}/day=${day}/'
 );
 
--- Query average temperature by device for today
+-- Query average temperature by device for a specific day
 SELECT device_id, AVG(temperature) as avg_temp, COUNT(*) as readings
 FROM iot_telemetry
 WHERE year = '2026' AND month = '02' AND day = '12'
@@ -318,7 +324,7 @@ Useful functions for S3 key generation:
 | Function | Description | Example Output |
 |----------|-------------|----------------|
 | `topic()` | Full topic string | `devices/sensor-042/telemetry` |
-| `topic(n)` | Nth topic level (0-indexed) | `sensor-042` |
+| `topic(n)` | Nth topic level (1-indexed) | `sensor-042` |
 | `timestamp()` | Current epoch ms | `1739366400000` |
 | `parse_time(fmt, ts)` | Format a timestamp | `2026/02/12` |
 | `newuuid()` | Generate a UUID | `a1b2c3d4-...` |
@@ -326,7 +332,7 @@ Useful functions for S3 key generation:
 
 ## Handling Large Message Volumes
 
-For high-throughput scenarios (thousands of messages per second), individual S3 objects per message can create too many small files. Consider using Kinesis Data Firehose as an intermediary to batch messages.
+For high-throughput scenarios (thousands of messages per second), individual S3 objects per message can create too many small files. Consider using Amazon Data Firehose as an intermediary to batch messages.
 
 ```bash
 # Alternative: Route to Firehose, which batches to S3
@@ -337,10 +343,9 @@ aws iot create-topic-rule \
     "actions": [
       {
         "firehose": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleFirehoseRole",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleFirehoseRole",
           "deliveryStreamName": "iot-telemetry-stream",
-          "separator": "\n",
-          "batchMode": true
+          "separator": "\n"
         }
       }
     ]
@@ -351,6 +356,6 @@ Firehose buffers messages and writes them to S3 in larger batches (configurable 
 
 ## Wrapping Up
 
-Routing IoT messages to S3 through the Rules Engine gives you a serverless, scalable data pipeline for IoT telemetry. The key is getting the S3 key partitioning right from the start - use time-based and device-based partitions that align with how you plan to query the data. For high-volume deployments, add Kinesis Data Firehose as a batching layer to avoid creating millions of tiny S3 objects.
+Routing IoT messages to S3 through the Rules Engine gives you a serverless, scalable data pipeline for IoT telemetry. The key is getting the S3 key partitioning right from the start - use time-based and device-based partitions that align with how you plan to query the data. For high-volume deployments, add Amazon Data Firehose as a batching layer to avoid creating millions of tiny S3 objects.
 
 For routing to other destinations, see our guides on [routing messages to DynamoDB](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-dynamodb/view) and [routing messages to Lambda](https://oneuptime.com/blog/post/2026-02-12-iot-core-rules-engine-route-messages-lambda/view).
