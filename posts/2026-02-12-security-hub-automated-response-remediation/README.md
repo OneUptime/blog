@@ -34,17 +34,17 @@ There are two approaches: fully automatic (every finding triggers a fix) and sem
 
 AWS provides a pre-built solution called "Automated Security Response on AWS" that covers many common remediations. It's deployed via CloudFormation and handles findings from CIS Benchmarks, NIST, PCI DSS, and AWS Foundational Security Best Practices.
 
-Deploy it using the provided CloudFormation template:
+Deploy the admin stack using the provided CloudFormation template, then follow the solution guide to deploy the member roles and member stacks in the accounts you want to remediate:
 
 ```bash
-# Deploy the solution stack
+# Deploy the admin stack
 
 aws cloudformation create-stack \
-  --stack-name automated-security-response \
-  --template-url https://s3.amazonaws.com/solutions-reference/aws-security-hub-automated-response-and-remediation/latest/aws-sharr-deploy.template \
+  --stack-name automated-security-response-admin \
+  --template-url https://s3.amazonaws.com/solutions-reference/automated-security-response-on-aws/latest/automated-security-response-admin.template \
   --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND \
   --parameters \
-    ParameterKey=LogLevel,ParameterValue=info
+    ParameterKey=ShouldDeployWebUI,ParameterValue=no
 ```
 
 This deploys Step Functions workflows, Lambda functions, and EventBridge rules that handle dozens of common remediation scenarios.
@@ -170,7 +170,16 @@ def handler(event, context):
                     ]
 
                     if open_ranges or open_v6:
-                        rules_to_remove.append(perm)
+                        rule = {'IpProtocol': perm['IpProtocol']}
+                        if 'FromPort' in perm:
+                            rule['FromPort'] = from_port
+                        if 'ToPort' in perm:
+                            rule['ToPort'] = to_port
+                        if open_ranges:
+                            rule['IpRanges'] = open_ranges
+                        if open_v6:
+                            rule['Ipv6Ranges'] = open_v6
+                        rules_to_remove.append(rule)
                         break
 
         if rules_to_remove:
@@ -269,6 +278,14 @@ aws events put-targets \
     "Id": "s3-encryption-lambda",
     "Arn": "arn:aws:lambda:us-east-1:111111111111:function:remediate-s3-encryption"
   }]'
+
+# Allow EventBridge to invoke the Lambda function
+aws lambda add-permission \
+  --function-name remediate-s3-encryption \
+  --statement-id remediate-s3-encryption-eventbridge \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:111111111111:rule/remediate-s3-encryption
 ```
 
 ## Creating Custom Actions
@@ -293,9 +310,7 @@ aws events put-rule \
   --event-pattern '{
     "source": ["aws.securityhub"],
     "detail-type": ["Security Hub Findings - Custom Action"],
-    "detail": {
-      "actionName": ["RemediateSecurityGroup"]
-    }
+    "resources": ["arn:aws:securityhub:us-east-1:111111111111:action/custom/RemediateSG"]
   }'
 ```
 
@@ -307,11 +322,14 @@ This runs an SSM automation to enable S3 bucket logging:
 
 ```bash
 aws ssm start-automation-execution \
-  --document-name "AWS-EnableS3BucketLogging" \
+  --document-name "AWS-ConfigureS3BucketLogging" \
   --parameters '{
     "BucketName": ["my-bucket"],
     "TargetBucket": ["my-logging-bucket"],
-    "TargetPrefix": ["s3-access-logs/"]
+    "TargetPrefix": ["s3-access-logs/"],
+    "GranteeType": ["Group"],
+    "GranteeUri": ["http://acs.amazonaws.com/groups/s3/LogDelivery"],
+    "GrantedPermission": ["WRITE"]
   }'
 ```
 
