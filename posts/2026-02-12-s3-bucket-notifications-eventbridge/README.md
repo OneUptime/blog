@@ -17,7 +17,7 @@ With EventBridge, S3 events become first-class events that you can route to over
 The old way (S3 notification configuration to Lambda/SNS/SQS) still works, but EventBridge gives you:
 
 - **Advanced filtering**: Filter on any field in the event, not just prefix/suffix
-- **Multiple targets**: Send one event to many destinations without fan-out logic
+- **Multiple targets**: Send one event to up to five targets per rule without fan-out logic
 - **Archive and replay**: Store events and replay them for debugging or reprocessing
 - **Cross-account routing**: Send events to other AWS accounts natively
 - **Schema discovery**: Auto-detect event structures
@@ -96,6 +96,18 @@ aws events put-targets \
   ]'
 ```
 
+Allow EventBridge to invoke the Lambda function.
+
+```bash
+# Add Lambda resource permission for the EventBridge rule
+aws lambda add-permission \
+  --statement-id InvokeFromEventBridgeS3ObjectCreated \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --function-name arn:aws:lambda:us-east-1:123456789012:function/process-s3-upload \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/s3-object-created
+```
+
 You can add multiple targets to a single rule. Each target gets a copy of the event.
 
 ```bash
@@ -135,7 +147,7 @@ Match only objects in a specific prefix with a specific file extension.
     },
     "object": {
       "key": [{
-        "prefix": "uploads/images/"
+        "wildcard": "uploads/images/*.jpg"
       }]
     }
   }
@@ -180,6 +192,7 @@ Match deletion events for a specific bucket.
 
 EventBridge receives these S3 event types:
 
+- **Async Copy Completion** - Asynchronous copy operation completed
 - **Object Created** - New object uploaded (PUT, POST, COPY, multipart upload)
 - **Object Deleted** - Object deleted (includes delete markers for versioned buckets)
 - **Object Restore Initiated** - Glacier restore started
@@ -189,6 +202,7 @@ EventBridge receives these S3 event types:
 - **Object Tags Deleted** - Tags removed from an object
 - **Object ACL Updated** - Object ACL changed
 - **Object Storage Class Changed** - Lifecycle transition
+- **Object Access Tier Changed** - Intelligent-Tiering access tier transition
 
 ## Event Structure
 
@@ -203,6 +217,9 @@ Understanding the event structure helps you write better filters and process eve
   "account": "123456789012",
   "time": "2026-02-12T10:30:00Z",
   "region": "us-east-1",
+  "resources": [
+    "arn:aws:s3:::my-data-bucket"
+  ],
   "detail": {
     "version": "0",
     "bucket": {
@@ -231,7 +248,7 @@ One of EventBridge's killer features is archiving events for replay. This is inv
 # Create an archive for S3 events
 aws events create-archive \
   --archive-name s3-events-archive \
-  --source-arn arn:aws:events:us-east-1:123456789012:event-bus/default \
+  --event-source-arn arn:aws:events:us-east-1:123456789012:event-bus/default \
   --event-pattern '{
     "source": ["aws.s3"],
     "detail-type": ["Object Created"]
@@ -246,7 +263,7 @@ Replay archived events for a specific time window.
 # Replay events from a specific time range
 aws events start-replay \
   --replay-name reprocess-uploads \
-  --event-source-arn arn:aws:events:us-east-1:123456789012:event-bus/default \
+  --event-source-arn arn:aws:events:us-east-1:123456789012:archive/s3-events-archive \
   --destination '{
     "Arn": "arn:aws:events:us-east-1:123456789012:event-bus/default"
   }' \
@@ -327,6 +344,6 @@ For production event pipelines, set up comprehensive monitoring with [OneUptime]
 1. **Event delivery is at least once** - Your targets should be idempotent because you might receive duplicate events.
 2. **No ordering guarantee** - Events may arrive out of order. Use the sequencer field if order matters.
 3. **Latency** - EventBridge adds a few seconds of latency compared to direct S3 notifications. For most use cases this doesn't matter.
-4. **Cost** - EventBridge charges per event published. High-volume buckets can generate significant costs. Filter aggressively.
+4. **Cost** - S3 service-event ingestion to the default event bus is free, but archive, replay, cross-account delivery, and target services can add cost. Filter aggressively.
 
 For more on building event-driven S3 architectures, check out our guide on [configuring S3 bucket metrics in CloudWatch](https://oneuptime.com/blog/post/2026-02-12-s3-bucket-metrics-cloudwatch/view).
