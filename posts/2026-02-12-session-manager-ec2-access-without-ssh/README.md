@@ -8,7 +8,7 @@ Description: Learn how to use AWS Systems Manager Session Manager to access EC2 
 
 ---
 
-Session Manager is one of those AWS features that should be the default for EC2 access, but many teams still haven't adopted it. It gives you shell access to your instances without SSH keys, without opening port 22, without bastion hosts, and with full session logging to S3 or CloudWatch.
+Session Manager is one of those AWS features that should be the default for EC2 access, but many teams still haven't adopted it. It gives you shell access to your instances without SSH keys, without opening port 22, without bastion hosts, and with session logging to S3 or CloudWatch.
 
 If you're still using traditional SSH for instance access in production, this post will show you why and how to make the switch.
 
@@ -19,7 +19,7 @@ The security benefits alone make Session Manager worth it:
 - **No open inbound ports** - Your security groups don't need port 22 open. Zero inbound rules.
 - **No SSH keys to manage** - Access is controlled entirely through IAM.
 - **No bastion hosts** - Connect to private instances directly.
-- **Full audit trail** - Every command typed in a session can be logged.
+- **Full audit trail** - Commands and output in standard shell sessions can be logged.
 - **Centralized access control** - IAM policies determine who can connect to what.
 - **Browser and CLI access** - Works from the AWS Console or your terminal.
 
@@ -38,9 +38,10 @@ No VPN, no bastion, no public IP needed. The SSM agent on the instance communica
 
 To use Session Manager, your instances need:
 
-1. **SSM Agent installed** - Pre-installed on Amazon Linux 2, Amazon Linux 2023, Ubuntu 20.04+, and Windows Server 2016+
+1. **SSM Agent installed** - Pre-installed on many AWS-provided AMIs, including Amazon Linux 2, Amazon Linux 2023, Ubuntu 20.04+, and Windows Server 2016+
 2. **IAM instance profile** with SSM permissions
-3. **Outbound internet access** or a VPC endpoint for Systems Manager
+3. **Outbound internet access** or VPC endpoints for Systems Manager
+4. **Session Manager plugin** on your local machine if you connect from the AWS CLI
 
 ## Setting Up the IAM Instance Profile
 
@@ -185,11 +186,21 @@ Control who can start sessions and to which instances:
     },
     {
       "Effect": "Allow",
+      "Action": "ssm:StartSession",
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:document/SSM-SessionManagerRunShell"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ssmmessages:OpenDataChannel",
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
+    },
+    {
+      "Effect": "Allow",
       "Action": [
         "ssm:TerminateSession",
         "ssm:ResumeSession"
       ],
-      "Resource": "arn:aws:ssm:*:*:session/${aws:username}-*"
+      "Resource": "arn:aws:ssm:*:*:session/${aws:userid}-*"
     }
   ]
 }
@@ -199,13 +210,16 @@ This policy lets users start sessions only on instances tagged `Environment=deve
 
 ## Enabling Session Logging
 
-One of Session Manager's best features is the ability to log every keystroke. Configure logging to S3 and/or CloudWatch Logs.
+One of Session Manager's best features is the ability to log commands and output from standard shell sessions. Configure logging to S3 and/or CloudWatch Logs.
 
 This command configures Session Manager preferences with full logging:
 
 ```bash
 # Create S3 bucket for session logs
 aws s3 mb s3://my-session-logs-bucket
+
+# Create CloudWatch Logs log group for session logs
+aws logs create-log-group --log-group-name /aws/ssm/sessions
 
 # Configure Session Manager preferences
 aws ssm update-document \
@@ -218,23 +232,24 @@ aws ssm update-document \
     "inputs": {
       "s3BucketName": "my-session-logs-bucket",
       "s3KeyPrefix": "session-logs",
-      "s3EncryptionEnabled": true,
+      "s3EncryptionEnabled": false,
       "cloudWatchLogGroupName": "/aws/ssm/sessions",
-      "cloudWatchEncryptionEnabled": true,
+      "cloudWatchEncryptionEnabled": false,
+      "cloudWatchStreamingEnabled": true,
       "idleSessionTimeout": "20",
       "maxSessionDuration": "120",
       "kmsKeyId": "",
-      "runAsEnabled": true,
-      "runAsDefaultUser": "ec2-user",
+      "runAsEnabled": false,
+      "runAsDefaultUser": "",
       "shellProfile": {
-        "linux": "/bin/bash",
+        "linux": "",
         "windows": ""
       }
     }
   }'
 ```
 
-Now every session is recorded. You can review exactly what happened during any session, which is invaluable for incident investigation and compliance.
+Now every standard shell session is recorded. You can review exactly what happened during any session, which is invaluable for incident investigation and compliance. If your instances use VPC endpoints without NAT, add S3 and/or CloudWatch Logs endpoints for log delivery. If you want S3, CloudWatch Logs, Run As, or KMS encryption, make sure the instance role and destinations have the required permissions and encryption settings before turning those options on.
 
 ## Port Forwarding Through Session Manager
 
@@ -250,7 +265,7 @@ aws ssm start-session \
 
 Now `localhost:8080` on your machine is tunneled to port 8080 on the instance. This works for databases, web UIs, and any other service.
 
-You can also forward to remote hosts through the instance:
+You can also forward to remote hosts through the instance. This requires SSM Agent version 3.1.1374.0 or later on the managed instance:
 
 ```bash
 # Forward to an RDS instance through EC2
@@ -345,4 +360,4 @@ If an instance doesn't show up, check that the IAM role is attached, the agent i
 
 ## Summary
 
-Session Manager should be your default method for accessing EC2 instances. It eliminates SSH keys, open ports, bastion hosts, and VPNs while adding full session logging and IAM-based access control. Set up VPC endpoints for private instances, configure session logging for compliance, and use port forwarding to replace bastion-based tunneling. For more access options, see our guide on [EC2 Instance Connect for browser-based SSH](https://oneuptime.com/blog/post/2026-02-12-ec2-instance-connect-browser-based-ssh/view) when you specifically need SSH protocol access.
+Session Manager should be your default method for accessing EC2 instances. It eliminates SSH keys, open ports, bastion hosts, and VPNs while adding session logging and IAM-based access control. Set up VPC endpoints for private instances, configure session logging for compliance, and use port forwarding to replace bastion-based tunneling. For more access options, see our guide on [EC2 Instance Connect for browser-based SSH](https://oneuptime.com/blog/post/2026-02-12-ec2-instance-connect-browser-based-ssh/view) when you specifically need SSH protocol access.
