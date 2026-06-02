@@ -19,8 +19,7 @@ sequenceDiagram
     participant S3 as Amazon S3
 
     React->>API: Request presigned URL
-    API->>S3: Generate presigned URL
-    S3-->>API: Return signed URL
+    API->>API: Sign S3 request
     API-->>React: Return signed URL
     React->>S3: Upload file directly
     S3-->>React: 200 OK
@@ -85,9 +84,16 @@ app.get('/api/download-url/:key', async (req, res) => {
   try {
     const key = decodeURIComponent(req.params.key);
 
+    const filename = typeof req.query.filename === 'string'
+      ? req.query.filename.replace(/["\\]/g, '')
+      : undefined;
+
     const command = new GetObjectCommand({
       Bucket: BUCKET,
       Key: key,
+      ...(filename ? {
+        ResponseContentDisposition: `attachment; filename="${filename}"`,
+      } : {}),
     });
 
     // URL expires in 1 hour
@@ -265,14 +271,23 @@ function DragDropUpload({ onUploadComplete }) {
       }),
     });
 
+    if (!res.ok) {
+      const data = await res.json();
+      throw new Error(data.error || 'Failed to get upload URL');
+    }
+
     const { url, key } = await res.json();
 
     // Upload to S3
-    await fetch(url, {
+    const uploadRes = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': file.type },
       body: file,
     });
+
+    if (!uploadRes.ok) {
+      throw new Error(`Upload failed with status ${uploadRes.status}`);
+    }
 
     return { key, filename: file.name, size: file.size };
   };
@@ -329,6 +344,8 @@ A component that fetches a presigned download URL and triggers a download.
 
 ```jsx
 // FileDownload.jsx - Download files using presigned URLs
+import { useState } from 'react';
+
 function FileDownload({ fileKey, filename }) {
   const [downloading, setDownloading] = useState(false);
 
@@ -337,9 +354,13 @@ function FileDownload({ fileKey, filename }) {
 
     try {
       // Get presigned download URL from backend
+      const params = new URLSearchParams({ filename });
       const res = await fetch(
-        `http://localhost:3001/api/download-url/${encodeURIComponent(fileKey)}`
+        `http://localhost:3001/api/download-url/${encodeURIComponent(fileKey)}?${params}`
       );
+      if (!res.ok) {
+        throw new Error(`Failed to get download URL: ${res.status}`);
+      }
       const { url } = await res.json();
 
       // Trigger browser download
@@ -362,6 +383,8 @@ function FileDownload({ fileKey, filename }) {
     </button>
   );
 }
+
+export default FileDownload;
 ```
 
 ## Security Considerations
@@ -370,16 +393,23 @@ A few things to keep in mind.
 
 **Validate file types on the backend.** Don't trust the content type from the client. Validate it before generating the presigned URL.
 
-**Set upload size limits.** Use S3 conditions in the presigned URL to enforce maximum file size.
+**Set upload size limits.** For strict browser-enforced size limits, use a presigned POST with a `content-length-range` condition. With a presigned PUT URL, validate `file.size` before signing and check or delete oversized objects after upload.
 
 ```javascript
-// Add content length condition to presigned URL
-const command = new PutObjectCommand({
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+
+// Add a content-length-range condition to a presigned POST
+const { url, fields } = await createPresignedPost(s3, {
   Bucket: BUCKET,
   Key: key,
-  ContentType: contentType,
-  // This header restricts the maximum upload size
-  ContentLength: maxSize,
+  Conditions: [
+    ['content-length-range', 0, maxSize],
+    ['eq', '$Content-Type', contentType],
+  ],
+  Fields: {
+    'Content-Type': contentType,
+  },
+  Expires: 900,
 });
 ```
 
