@@ -16,9 +16,9 @@ Let's set up auto scaling for the most common scenarios: EC2 instances behind a 
 
 The classic setup is an Auto Scaling Group (ASG) of EC2 instances behind an Application Load Balancer.
 
-### Launch Template
+### Auto Scaling Group
 
-Start with a launch template that defines what your instances look like.
+Start with an Auto Scaling Group definition that describes what your instances look like.
 
 ```typescript
 // CDK stack for EC2 auto scaling
@@ -26,9 +26,11 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as autoscaling from 'aws-cdk-lib/aws-autoscaling';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import { Construct } from 'constructs';
 
 export class AutoScalingStack extends cdk.Stack {
-  constructor(scope: cdk.App, id: string) {
+  constructor(scope: Construct, id: string) {
     super(scope, id);
 
     const vpc = new ec2.Vpc(this, 'AppVpc', {
@@ -44,9 +46,11 @@ export class AutoScalingStack extends cdk.Stack {
       minCapacity: 2,
       maxCapacity: 20,
       desiredCapacity: 2,
-      healthCheck: autoscaling.HealthCheck.elb({
-        grace: cdk.Duration.minutes(5),
+      healthChecks: autoscaling.HealthChecks.withAdditionalChecks({
+        gracePeriod: cdk.Duration.minutes(5),
+        additionalTypes: [autoscaling.AdditionalHealthCheckType.ELB],
       }),
+      groupMetrics: [autoscaling.GroupMetrics.all()],
       updatePolicy: autoscaling.UpdatePolicy.rollingUpdate({
         maxBatchSize: 2,
         minInstancesInService: 1,
@@ -135,11 +139,13 @@ asg.scaleOnMetric('QueueDepthScaling', {
 // Scheduled scaling: scale up for business hours
 asg.scaleOnSchedule('ScaleUpMorning', {
   schedule: autoscaling.Schedule.cron({ hour: '8', minute: '0' }),
+  timeZone: 'America/New_York',
   minCapacity: 5,
 });
 
 asg.scaleOnSchedule('ScaleDownEvening', {
   schedule: autoscaling.Schedule.cron({ hour: '20', minute: '0' }),
+  timeZone: 'America/New_York',
   minCapacity: 2,
 });
 ```
@@ -201,8 +207,6 @@ For workloads with predictable patterns, predictive scaling uses ML to forecast 
 
 ```typescript
 // Enable predictive scaling on an ASG
-const cfnAsg = asg.node.defaultChild as autoscaling.CfnAutoScalingGroup;
-
 new autoscaling.CfnScalingPolicy(this, 'PredictiveScaling', {
   autoScalingGroupName: asg.autoScalingGroupName,
   policyType: 'PredictiveScaling',
