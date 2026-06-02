@@ -14,10 +14,10 @@ This guide walks through installing the controller, creating Ingress resources, 
 
 ## How It Works
 
-The AWS Load Balancer Controller runs as a Kubernetes deployment in your cluster. When you create an Ingress resource with the right annotations, the controller provisions an ALB, configures target groups, sets up listeners, and registers your pod IPs as targets. It supports two traffic modes:
+The AWS Load Balancer Controller runs as a Kubernetes deployment in your cluster. When you create an Ingress resource with the right IngressClass and annotations, the controller provisions an ALB, configures target groups, sets up listeners, and registers either nodes or pod IPs as targets depending on the target type. It supports two traffic modes:
 
 - **Instance mode** - routes traffic to NodePort services (traditional approach)
-- **IP mode** - routes traffic directly to pod IPs using VPC networking (recommended, lower latency)
+- **IP mode** - routes traffic directly to pod IPs using VPC networking (required for Fargate and useful when you want pod IPs as ALB targets)
 
 ```mermaid
 flowchart LR
@@ -60,12 +60,12 @@ Download the IAM policy for the controller:
 
 ```bash
 # Download the IAM policy document for the AWS Load Balancer Controller
-curl -o iam-policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.7.1/docs/install/iam_policy.json
+curl -o iam_policy.json https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.14.1/docs/install/iam_policy.json
 
 # Create the IAM policy
 aws iam create-policy \
   --policy-name AWSLoadBalancerControllerIAMPolicy \
-  --policy-document file://iam-policy.json
+  --policy-document file://iam_policy.json
 ```
 
 Create the service account with IRSA:
@@ -94,7 +94,8 @@ helm install aws-load-balancer-controller eks/aws-load-balancer-controller \
   -n kube-system \
   --set clusterName=my-cluster \
   --set serviceAccount.create=false \
-  --set serviceAccount.name=aws-load-balancer-controller
+  --set serviceAccount.name=aws-load-balancer-controller \
+  --version 1.14.0
 ```
 
 Verify the controller is running:
@@ -156,11 +157,11 @@ metadata:
   name: sample-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
 spec:
+  ingressClassName: alb
   rules:
     - http:
         paths:
@@ -198,13 +199,13 @@ metadata:
   name: sample-ingress
   namespace: default
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS": 443}]'
     alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-west-2:123456789012:certificate/abc-123
     alb.ingress.kubernetes.io/ssl-redirect: "443"
 spec:
+  ingressClassName: alb
   rules:
     - host: app.example.com
       http:
@@ -231,10 +232,10 @@ kind: Ingress
 metadata:
   name: multi-service-ingress
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
 spec:
+  ingressClassName: alb
   rules:
     - host: app.example.com
       http:
@@ -276,7 +277,7 @@ You can attach an AWS WAF WebACL to your ALB for additional security:
 ```yaml
 # Attach WAF to ALB
 annotations:
-  alb.ingress.kubernetes.io/waf-acl-id: "web-acl-id-here"
+  alb.ingress.kubernetes.io/wafv2-acl-arn: arn:aws:wafv2:us-west-2:123456789012:regional/webacl/example-web-acl/abc12345-6789-0123-4567-89abcdef0123
 ```
 
 ## Troubleshooting
@@ -288,8 +289,8 @@ If your ALB isn't being created, check the controller logs:
 kubectl logs -n kube-system -l app.kubernetes.io/name=aws-load-balancer-controller --tail=100
 ```
 
-Common issues include missing subnet tags, incorrect IAM permissions, and using the wrong ingress class annotation. The logs are generally quite descriptive about what went wrong.
+Common issues include missing subnet tags, incorrect IAM permissions, and using the wrong IngressClass setting. The logs are generally quite descriptive about what went wrong.
 
 If the ALB is created but targets show unhealthy, verify your pods are running and the health check path returns a 200 response. Also make sure the security groups allow traffic from the ALB to your pods.
 
-The ALB Ingress Controller handles most of the heavy lifting for getting traffic into your EKS cluster. Combined with [External DNS](https://oneuptime.com/blog/post/2026-02-12-set-up-external-dns-on-eks-with-route-53/view) for automatic DNS management, it creates a fully automated path from domain name to pod.
+The AWS Load Balancer Controller handles most of the heavy lifting for getting traffic into your EKS cluster. Combined with [External DNS](https://oneuptime.com/blog/post/2026-02-12-set-up-external-dns-on-eks-with-route-53/view) for automatic DNS management, it creates a fully automated path from domain name to pod.
