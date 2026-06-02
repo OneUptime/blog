@@ -66,9 +66,10 @@ app.get('/files/:key', async (req, res) => {
     const metadata = await s3.send(headCommand);
 
     // Set response headers
+    const filename = key.split('/').pop().replace(/["\r\n]/g, '_');
     res.setHeader('Content-Type', metadata.ContentType || 'application/octet-stream');
     res.setHeader('Content-Length', metadata.ContentLength);
-    res.setHeader('Content-Disposition', `attachment; filename="${key.split('/').pop()}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
     // Stream the file body
     const getCommand = new GetObjectCommand({
@@ -79,7 +80,7 @@ app.get('/files/:key', async (req, res) => {
 
     await pipeline(response.Body, res);
   } catch (error) {
-    if (error.name === 'NoSuchKey') {
+    if (error.name === 'NoSuchKey' || error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
       res.status(404).json({ error: 'File not found' });
     } else {
       console.error('Stream error:', error);
@@ -111,15 +112,51 @@ app.get('/stream/:key', async (req, res) => {
     });
     const metadata = await s3.send(headCommand);
     const fileSize = metadata.ContentLength;
+    const contentType = metadata.ContentType || 'application/octet-stream';
+
+    if (fileSize == null) {
+      throw new Error('Missing S3 object content length');
+    }
 
     // Parse range header
     const range = req.headers.range;
 
     if (range) {
-      // Handle range request
-      const parts = range.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      // Handle a single range request
+      const match = /^bytes=(\d*)-(\d*)$/.exec(range);
+
+      if (!match || (!match[1] && !match[2])) {
+        res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+        res.end();
+        return;
+      }
+
+      let start;
+      let end;
+
+      if (!match[1]) {
+        const suffixLength = Number(match[2]);
+        if (!Number.isSafeInteger(suffixLength) || suffixLength <= 0) {
+          res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+          res.end();
+          return;
+        }
+
+        start = Math.max(fileSize - suffixLength, 0);
+        end = fileSize - 1;
+      } else {
+        start = Number(match[1]);
+        end = match[2] ? Number(match[2]) : fileSize - 1;
+
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= fileSize) {
+          res.writeHead(416, { 'Content-Range': `bytes */${fileSize}` });
+          res.end();
+          return;
+        }
+
+        end = Math.min(end, fileSize - 1);
+      }
+
       const chunkSize = end - start + 1;
 
       const getCommand = new GetObjectCommand({
@@ -133,7 +170,7 @@ app.get('/stream/:key', async (req, res) => {
         'Content-Range': `bytes ${start}-${end}/${fileSize}`,
         'Accept-Ranges': 'bytes',
         'Content-Length': chunkSize,
-        'Content-Type': metadata.ContentType,
+        'Content-Type': contentType,
       });
 
       await pipeline(response.Body, res);
@@ -147,16 +184,20 @@ app.get('/stream/:key', async (req, res) => {
 
       res.writeHead(200, {
         'Content-Length': fileSize,
-        'Content-Type': metadata.ContentType,
+        'Content-Type': contentType,
         'Accept-Ranges': 'bytes',
       });
 
       await pipeline(response.Body, res);
     }
   } catch (error) {
-    console.error('Stream error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Stream failed' });
+    if (error.name === 'NoSuchKey' || error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+      res.status(404).json({ error: 'File not found' });
+    } else {
+      console.error('Stream error:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Stream failed' });
+      }
     }
   }
 });
@@ -171,11 +212,9 @@ Stream a gzipped CSV from S3 and process it line by line.
 ```javascript
 import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
 import { createGunzip } from 'zlib';
-import { pipeline, Transform } from 'stream';
-import { promisify } from 'util';
+import { pipeline } from 'stream/promises';
 import readline from 'readline';
 
-const pipelineAsync = promisify(pipeline);
 const s3 = new S3Client({ region: 'us-east-1' });
 
 async function processGzippedCSV(bucket, key) {
@@ -185,32 +224,34 @@ async function processGzippedCSV(bucket, key) {
   // Decompress the gzip stream
   const gunzip = createGunzip();
 
-  // Create a line reader
-  const rl = readline.createInterface({
-    input: response.Body.pipe(gunzip),
-    crlfDelay: Infinity,
-  });
-
   let lineCount = 0;
 
-  for await (const line of rl) {
-    lineCount++;
+  await pipeline(response.Body, gunzip, async function (source) {
+    // Create a line reader
+    const rl = readline.createInterface({
+      input: source,
+      crlfDelay: Infinity,
+    });
 
-    // Parse CSV line (simplified - use a proper CSV parser in production)
-    const fields = line.split(',');
+    for await (const line of rl) {
+      lineCount++;
 
-    // Process each row
-    if (lineCount === 1) {
-      console.log('Headers:', fields);
-    } else {
-      // Do something with the data
-      // e.g., insert into database, transform, aggregate
+      // Parse CSV line (simplified - use a proper CSV parser in production)
+      const fields = line.split(',');
+
+      // Process each row
+      if (lineCount === 1) {
+        console.log('Headers:', fields);
+      } else {
+        // Do something with the data
+        // e.g., insert into database, transform, aggregate
+      }
+
+      if (lineCount % 100000 === 0) {
+        console.log(`Processed ${lineCount} lines...`);
+      }
     }
-
-    if (lineCount % 100000 === 0) {
-      console.log(`Processed ${lineCount} lines...`);
-    }
-  }
+  });
 
   console.log(`Total lines processed: ${lineCount}`);
 }
@@ -274,6 +315,7 @@ You can also stream data to S3 - useful for generating files on the fly.
 ```javascript
 import { S3Client } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
+import { once } from 'events';
 import { PassThrough } from 'stream';
 
 const s3 = new S3Client({ region: 'us-east-1' });
@@ -293,10 +335,16 @@ async function streamUpload(bucket, key) {
     },
   });
 
+  async function writeLine(line) {
+    if (!passThrough.write(line)) {
+      await once(passThrough, 'drain');
+    }
+  }
+
   // Write data to the stream
-  passThrough.write('id,name,email\n');
+  await writeLine('id,name,email\n');
   for (let i = 0; i < 1000000; i++) {
-    passThrough.write(`${i},user${i},user${i}@example.com\n`);
+    await writeLine(`${i},user${i},user${i}@example.com\n`);
   }
   passThrough.end();
 
