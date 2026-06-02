@@ -177,8 +177,7 @@ The `dynamodb:LeadingKeys` condition restricts operations to items where the par
         "dynamodb:PutItem",
         "dynamodb:UpdateItem",
         "dynamodb:DeleteItem",
-        "dynamodb:Query",
-        "dynamodb:Scan"
+        "dynamodb:Query"
       ],
       "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/TenantData",
       "Condition": {
@@ -219,7 +218,7 @@ You can also restrict which attributes (columns) a user can see:
             "Title"
           ]
         },
-        "StringEqualsIfExists": {
+        "StringEquals": {
           "dynamodb:Select": "SPECIFIC_ATTRIBUTES"
         }
       }
@@ -228,7 +227,7 @@ You can also restrict which attributes (columns) a user can see:
 }
 ```
 
-This allows reading the table but only the specified attributes. Sensitive fields like `Salary`, `SSN`, or `HomeAddress` are excluded. The `dynamodb:Select` condition ensures the user must use a `ProjectionExpression` - they can't do `SELECT *`.
+This allows reading the table but only the specified attributes. Sensitive fields like `Salary`, `SSN`, or `HomeAddress` are excluded. The `dynamodb:Select` condition ensures the user must request specific projected attributes - they can't request all attributes.
 
 ## DynamoDB Streams Access
 
@@ -244,10 +243,15 @@ For applications that process DynamoDB Streams (like event-driven architectures)
       "Action": [
         "dynamodb:DescribeStream",
         "dynamodb:GetRecords",
-        "dynamodb:GetShardIterator",
-        "dynamodb:ListStreams"
+        "dynamodb:GetShardIterator"
       ],
       "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/Orders/stream/*"
+    },
+    {
+      "Sid": "AllowListStreams",
+      "Effect": "Allow",
+      "Action": "dynamodb:ListStreams",
+      "Resource": "*"
     }
   ]
 }
