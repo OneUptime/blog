@@ -8,7 +8,7 @@ Description: A complete guide to setting up AWS Cost and Usage Reports for detai
 
 ---
 
-Cost Explorer gives you a good overview, but if you need granular, line-item billing data, you need Cost and Usage Reports (CUR). CUR delivers your complete billing data to an S3 bucket in CSV or Parquet format, updated multiple times per day. Every API call, every data transfer byte, every EC2 hour is accounted for in the report. It's the most detailed view of your AWS spending that exists.
+Cost Explorer gives you a good overview, but if you need granular, line-item billing data, you need Cost and Usage Reports (CUR). CUR delivers your complete billing data to an S3 bucket in CSV or Parquet format, updated multiple times per day. Chargeable API requests, data transfer usage, and EC2 hours appear as line items in the report. It's the most detailed view of your AWS spending that exists.
 
 The tradeoff is complexity. CUR files are large and dense. But once you set them up with Athena or QuickSight, the analysis possibilities are endless.
 
@@ -68,6 +68,7 @@ Now create the report definition.
 
 ```bash
 aws cur put-report-definition \
+  --region us-east-1 \
   --report-definition '{
     "ReportName": "monthly-cur",
     "TimeUnit": "HOURLY",
@@ -96,6 +97,12 @@ Key configuration choices:
 Here's the complete Terraform setup for CUR with all the necessary permissions.
 
 ```hcl
+provider "aws" {
+  region = "us-east-1"
+}
+
+data "aws_caller_identity" "current" {}
+
 resource "aws_s3_bucket" "cur" {
   bucket = "my-company-cur-reports"
 }
@@ -116,6 +123,7 @@ resource "aws_s3_bucket_policy" "cur" {
         Condition = {
           StringEquals = {
             "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+            "aws:SourceArn"     = "arn:aws:cur:us-east-1:${data.aws_caller_identity.current.account_id}:definition/*"
           }
         }
       },
@@ -129,6 +137,7 @@ resource "aws_s3_bucket_policy" "cur" {
         Condition = {
           StringEquals = {
             "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+            "aws:SourceArn"     = "arn:aws:cur:us-east-1:${data.aws_caller_identity.current.account_id}:definition/*"
           }
         }
       }
@@ -142,6 +151,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "cur" {
   rule {
     id     = "archive-old-reports"
     status = "Enabled"
+
+    filter {
+      prefix = "cur/"
+    }
 
     transition {
       days          = 90
@@ -179,15 +192,14 @@ s3://my-company-cur-reports/
   cur/
     monthly-cur/
       20260201-20260301/
-        monthly-cur-00001.snappy.parquet
-        monthly-cur-00002.snappy.parquet
+        monthly-cur.parquet
         monthly-cur-Manifest.json
         cost_and_usage_data_status/
         crawler-cfn.yml
         monthly-cur-create-table.sql
 ```
 
-The report is split into multiple Parquet files for parallel processing. The manifest file lists all the data files for the period.
+Large reports can be split into multiple Parquet files for parallel processing. The manifest file lists all the data files for the period.
 
 ## Key Columns in CUR
 
