@@ -234,9 +234,14 @@ SELECT 'products', COUNT(*) FROM products
 UNION ALL
 SELECT 'order_items', COUNT(*) FROM order_items;
 
--- Checksum comparison for critical tables
+-- PostgreSQL checksum comparison for critical tables
 SELECT MD5(STRING_AGG(
-    CONCAT(id::text, customer_id::text, total::text, status),
+    ARRAY_TO_STRING(ARRAY[
+        COALESCE(id::text, '<NULL>'),
+        COALESCE(customer_id::text, '<NULL>'),
+        COALESCE(total::text, '<NULL>'),
+        COALESCE(status::text, '<NULL>')
+    ], '|'),
     ',' ORDER BY id
 )) as orders_checksum
 FROM orders;
