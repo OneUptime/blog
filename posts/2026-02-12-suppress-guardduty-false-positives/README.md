@@ -14,7 +14,7 @@ You've got two main tools for dealing with this: suppression rules (also called 
 
 ## Suppression Rules vs. Trusted IP Lists
 
-**Trusted IP lists** tell GuardDuty to skip threat detection entirely for specific IP addresses. Any traffic from those IPs won't generate findings at all. Use these for your own infrastructure IPs - office networks, VPN endpoints, corporate proxies.
+**Trusted IP lists** tell GuardDuty to skip threat detection for specific IPv4 addresses in CloudTrail and VPC Flow Logs findings. They don't apply to Route 53 Resolver DNS query log findings, and GuardDuty lists apply only to traffic destined for publicly routable IP addresses and domains. Use these for your own public infrastructure IPs - office egress addresses, VPN endpoints, corporate proxies.
 
 **Suppression rules** (archive rules) don't prevent findings from being generated. Instead, they automatically archive findings that match specific criteria. The findings still exist and can be viewed, but they're hidden from the active findings list and won't trigger EventBridge notifications. Use these for everything else.
 
@@ -27,11 +27,10 @@ Create a text file with your trusted IPs, one per line, and upload it to S3.
 ```bash
 # Create the trusted IPs file
 
-# Each line should be an IP address or CIDR range
+# Each line should be an IPv4 address or CIDR range
 # Example content:
 # 203.0.113.10
 # 198.51.100.0/24
-# 10.0.0.0/8
 
 # Upload to S3
 aws s3 cp trusted-ips.txt s3://my-security-bucket/guardduty/trusted-ips.txt
@@ -225,7 +224,7 @@ resource "aws_guardduty_filter" "dev_low_severity" {
     }
     criterion {
       field      = "severity"
-      less_than  = ["4"]
+      less_than  = "4"
     }
   }
 }
