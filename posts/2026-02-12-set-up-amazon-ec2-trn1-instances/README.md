@@ -8,7 +8,7 @@ Description: A practical guide to launching and configuring Amazon EC2 Trn1 inst
 
 ---
 
-Amazon EC2 Trn1 instances are built on AWS Trainium, a custom chip designed for deep learning training. They offer a cost-effective alternative to GPU-based training instances, with prices that can be 30-50% lower than comparable GPU instances. Setting up Trn1 instances correctly requires some specific steps that differ from the typical GPU instance workflow.
+Amazon EC2 Trn1 instances are built on AWS Trainium, a custom chip designed for deep learning training. They offer a cost-effective alternative to GPU-based training instances, with up to 50% cost-to-train savings over comparable GPU instances. Setting up Trn1 instances correctly requires some specific steps that differ from the typical GPU instance workflow.
 
 This guide walks through the complete setup process, from instance launch to running your first training workload.
 
@@ -27,18 +27,22 @@ The trn1.2xlarge is good for development, testing, and training smaller models. 
 Trn1 instances require specific service quotas. Check and request increases before trying to launch.
 
 ```bash
-# Check your Trn1 vCPU quota (quota code for trn1)
+# Find and check your On-Demand Trn vCPU quota
+TRN_ONDEMAND_QUOTA_CODE=$(aws service-quotas list-service-quotas \
+  --service-code ec2 \
+  --query "Quotas[?QuotaName=='Running On-Demand Trn instances'].QuotaCode | [0]" \
+  --output text)
 
 aws service-quotas get-service-quota \
   --service-code ec2 \
-  --quota-code L-6B0D517C \
+  --quota-code "$TRN_ONDEMAND_QUOTA_CODE" \
   --query 'Quota.Value'
 
 # If you need more, request an increase
 # For one trn1.32xlarge, you need 128 vCPUs
 aws service-quotas request-service-quota-increase \
   --service-code ec2 \
-  --quota-code L-6B0D517C \
+  --quota-code "$TRN_ONDEMAND_QUOTA_CODE" \
   --desired-value 512
 ```
 
@@ -47,21 +51,20 @@ aws service-quotas request-service-quota-increase \
 The easiest path is using the AWS Deep Learning AMI with Neuron support, which comes with drivers, the Neuron SDK, and popular frameworks pre-configured.
 
 ```bash
-# Find the latest Neuron Deep Learning AMI
-aws ec2 describe-images \
-  --owners amazon \
-  --filters "Name=name,Values=*Deep Learning AMI*Neuron*" \
-  --query 'Images | sort_by(@, &CreationDate) | [-1].{ImageId:ImageId,Name:Name}' \
-  --output table
+# Find the latest Neuron PyTorch Deep Learning AMI image ID
+aws ssm get-parameter \
+  --name /aws/service/neuron/dlami/pytorch-2.9/ubuntu-24.04/latest/image_id \
+  --query 'Parameter.Value' \
+  --output text
 ```
 
 ## Step 3: Configure Networking
 
-For the trn1.32xlarge, you want EFA networking enabled for multi-chip and multi-node communication.
+For the trn1.32xlarge, you want EFA networking enabled for multi-node communication.
 
 ```bash
 # Create a security group that allows all traffic within the group
-# This is required for NeuronCore-to-NeuronCore communication
+# This is required for EFA traffic between distributed training nodes
 TRN1_SG=$(aws ec2 create-security-group \
   --group-name trn1-training-sg \
   --description "Security group for Trn1 training instances" \
@@ -84,22 +87,31 @@ aws ec2 authorize-security-group-ingress \
 
 ## Step 4: Launch the Instance
 
+Create the placement group first if you plan to run multi-node training:
+
+```bash
+aws ec2 create-placement-group \
+  --group-name training-cluster-pg \
+  --strategy cluster
+```
+
 ```bash
 # Launch a trn1.32xlarge with EFA
 aws ec2 run-instances \
-  --image-id ami-0abc123-neuron-dlami \
+  --image-id resolve:ssm:/aws/service/neuron/dlami/pytorch-2.9/ubuntu-24.04/latest/image_id \
   --instance-type trn1.32xlarge \
   --count 1 \
   --key-name my-training-key \
   --placement "GroupName=training-cluster-pg" \
-  --network-interfaces '[
-    {
-      "DeviceIndex": 0,
-      "SubnetId": "subnet-0abc123",
-      "Groups": ["'$TRN1_SG'"],
-      "InterfaceType": "efa"
-    }
-  ]' \
+  --network-interfaces \
+    "NetworkCardIndex=0,DeviceIndex=0,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
+    "NetworkCardIndex=1,DeviceIndex=1,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
+    "NetworkCardIndex=2,DeviceIndex=1,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
+    "NetworkCardIndex=3,DeviceIndex=1,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
+    "NetworkCardIndex=4,DeviceIndex=1,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
+    "NetworkCardIndex=5,DeviceIndex=1,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
+    "NetworkCardIndex=6,DeviceIndex=1,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
+    "NetworkCardIndex=7,DeviceIndex=1,Groups=$TRN1_SG,SubnetId=subnet-0abc123,InterfaceType=efa" \
   --block-device-mappings '[
     {
       "DeviceName": "/dev/xvda",
@@ -115,32 +127,27 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=trn1-training-node}]'
 ```
 
-Create the placement group first if you plan to run multi-node training:
-
-```bash
-aws ec2 create-placement-group \
-  --group-name training-cluster-pg \
-  --strategy cluster
-```
+Multi-interface instances are not automatically assigned a public IPv4 address. If you need SSH access from the internet, associate an Elastic IP address with the network interface that has `DeviceIndex=0`.
 
 ## Step 5: Initial Instance Setup
 
 ```bash
 # SSH into the instance
-ssh -i my-training-key.pem ec2-user@<instance-ip>
+ssh -i my-training-key.pem ubuntu@<instance-ip>
 
 # Verify Trainium devices are present
-neuron-ls
+neuron-ls --topology
 
 # Expected output for trn1.32xlarge:
-# +--------+--------+--------+---------------+
-# | DEVICE | NC     | MEMORY | ADDRESS       |
-# +--------+--------+--------+---------------+
-# | 0      | 0,1    | 32 GB  | 0000:10:1c.0  |
-# | 1      | 2,3    | 32 GB  | 0000:10:1d.0  |
-# | ...    | ...    | ...    | ...           |
-# | 15     | 30,31  | 32 GB  | 0000:a0:1d.0  |
-# +--------+--------+--------+---------------+
+# +--------+--------+--------+---------------+---------------+
+# | NEURON | NEURON | NEURON |   CONNECTED   |      PCI      |
+# | DEVICE | CORES  | MEMORY |    DEVICES    |      BDF      |
+# +--------+--------+--------+---------------+---------------+
+# | 0      | 2      | 32 GB  | 12, 3, 4, 1   | 0000:10:1c.0  |
+# | 1      | 2      | 32 GB  | 13, 0, 5, 2   | 0000:10:1d.0  |
+# | ...    | ...    | ...    | ...           | ...           |
+# | 15     | 2      | 32 GB  | 11, 12, 14, 3 | 0000:a0:1d.0  |
+# +--------+--------+--------+---------------+---------------+
 
 # Check the Neuron runtime
 neuron-top
@@ -156,15 +163,16 @@ If you are using the Deep Learning AMI, most things are pre-installed. Activate 
 
 ```bash
 # Activate the PyTorch Neuron environment
-source /opt/aws_neuron_venv_pytorch/bin/activate
+source /opt/aws_neuronx_venv_pytorch_2_9/bin/activate
 
 # Verify PyTorch with Neuron support
 python3 -c "
 import torch
-import torch_xla
+import torch_neuronx
 import torch_xla.core.xla_model as xm
 
 print(f'PyTorch version: {torch.__version__}')
+print(f'torch-neuronx version: {torch_neuronx.__version__}')
 print(f'XLA device: {xm.xla_device()}')
 print('Neuron SDK is ready for training!')
 "
@@ -188,7 +196,7 @@ sudo mdadm --create /dev/md0 --level=0 --raid-devices=4 \
 sudo mkfs.xfs /dev/md0
 sudo mkdir /data
 sudo mount /dev/md0 /data
-sudo chown ec2-user:ec2-user /data
+sudo chown ubuntu:ubuntu /data
 
 # This gives you ~8 TB of fast local storage
 echo "Local storage ready: $(df -h /data | tail -1 | awk '{print $2}')"
@@ -229,6 +237,7 @@ for step in range(100):
     loss = criterion(output, y)
     loss.backward()
     xm.optimizer_step(optimizer)
+    xm.mark_step()
 
     if step % 10 == 0:
         print(f"Step {step}, Loss: {loss.item():.4f}")
@@ -246,20 +255,13 @@ python3 test_training.py
 For training across multiple Trn1 instances, you need proper networking and coordination.
 
 ```bash
-# Create a hostfile listing all nodes
-cat > hostfile << EOF
-10.0.1.10 slots=32
-10.0.1.11 slots=32
-10.0.1.12 slots=32
-10.0.1.13 slots=32
-EOF
-
 # Set environment variables for distributed training
 export NEURON_RT_ROOT_COMM_ID=10.0.1.10:29500
 export FI_PROVIDER=efa
 export FI_EFA_USE_DEVICE_RDMA=1
 
 # Launch training across 4 nodes (128 NeuronCores total)
+# Run this on each node with the matching --node_rank value
 torchrun \
   --nproc_per_node=32 \
   --nnodes=4 \
