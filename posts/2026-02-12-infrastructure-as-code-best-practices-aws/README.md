@@ -50,7 +50,7 @@ Each environment uses the same modules with different variables. When you fix a 
 
 ## Remote State Management
 
-Never store Terraform state locally. Use an S3 backend with DynamoDB locking.
+Never store Terraform state locally. Use an S3 backend with S3 state locking.
 
 This configuration sets up secure remote state storage.
 
@@ -64,12 +64,12 @@ terraform {
     region         = "us-east-1"
     encrypt        = true
     kms_key_id     = "arn:aws:kms:us-east-1:123456789012:key/abc-123"
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 ```
 
-The S3 bucket and DynamoDB table should be created separately - ideally with their own CloudFormation stack.
+The S3 bucket should be created separately - ideally with its own CloudFormation stack.
 
 ```yaml
 # state-backend.yaml - Bootstrap CloudFormation template
@@ -93,27 +93,13 @@ Resources:
         BlockPublicPolicy: true
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
-
-  LockTable:
-    Type: AWS::DynamoDB::Table
-    Properties:
-      TableName: terraform-state-lock
-      BillingMode: PAY_PER_REQUEST
-      AttributeDefinitions:
-        - AttributeName: LockID
-          AttributeType: S
-      KeySchema:
-        - AttributeName: LockID
-          KeyType: HASH
-      PointInTimeRecoverySpecification:
-        PointInTimeRecoveryEnabled: true
 ```
 
 ## Writing Reusable Modules
 
 Good modules are the foundation of maintainable IaC. They should be focused, configurable, and well-documented.
 
-Here's a networking module that creates a production-ready VPC.
+Here's a networking module that creates a basic VPC and subnet layout.
 
 ```hcl
 # modules/networking/variables.tf
@@ -156,7 +142,7 @@ resource "aws_vpc" "main" {
   }
 }
 
-# Create public and private subnets in each AZ
+# Create separate subnet groups in each AZ
 resource "aws_subnet" "public" {
   count             = length(var.availability_zones)
   vpc_id            = aws_vpc.main.id
@@ -282,7 +268,7 @@ func TestVPCModule(t *testing.T) {
     terraformOptions := terraform.WithDefaultRetryableErrors(t, &terraform.Options{
         TerraformDir: "../modules/networking",
         Vars: map[string]interface{}{
-            "environment":        "test",
+            "environment":        "dev",
             "vpc_cidr":          "10.99.0.0/16",
             "availability_zones": []string{"us-east-1a", "us-east-1b"},
         },
