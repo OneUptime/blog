@@ -117,7 +117,7 @@ done
 
 ## Step 4: Update Security Groups
 
-Routes get the packets to the right VPC, but security groups decide whether they're allowed in. You can reference security groups across peered VPCs using the VPC ID prefix:
+Routes get the packets to the right VPC, but security groups decide whether they're allowed in. For peered VPCs in the same Region, you can reference security groups across peered VPCs by security group ID. If the peer VPC is in another account, include the source security group's account owner:
 
 ```bash
 # Allow traffic from VPC-A's app security group to VPC-B's database
@@ -129,7 +129,7 @@ aws ec2 authorize-security-group-ingress \
   --group-owner 123456789012
 ```
 
-Or use CIDR-based rules if cross-referencing security groups is too complex:
+Or use CIDR-based rules if cross-referencing security groups is too complex, or if the peering connection is across Regions:
 
 ```bash
 # Allow PostgreSQL from VPC-A's private subnet CIDR
@@ -142,7 +142,7 @@ aws ec2 authorize-security-group-ingress \
 
 ## Step 5: Update DNS Resolution
 
-By default, DNS queries from one VPC won't resolve private DNS names in the other VPC. Enable DNS resolution for the peering connection:
+By default, public DNS hostnames for EC2 instances in a peer VPC resolve to public IP addresses. Enable DNS resolution for the peering connection if you want those public DNS hostnames to resolve to private IP addresses across the peering connection:
 
 ```bash
 # Enable DNS resolution from VPC-A to VPC-B
@@ -156,7 +156,7 @@ aws ec2 modify-vpc-peering-connection-options \
   --accepter-peering-connection-options '{"AllowDnsResolutionFromRemoteVpc":true}'
 ```
 
-Now resources in VPC-A can resolve RDS endpoints and other private DNS names in VPC-B.
+Now resources in VPC-A can use public EC2 DNS hostnames for instances in VPC-B and still connect over private IP addresses.
 
 ## CloudFormation Template
 
@@ -220,7 +220,7 @@ When peering doesn't work, check these things in order:
 2. **Route tables**: Both VPCs must have routes pointing to the peering connection
 3. **Security groups**: Must allow the specific traffic
 4. **NACLs**: Must allow both inbound and outbound in both directions
-5. **CIDR overlap**: Overlapping CIDRs cause silent routing failures
+5. **CIDR overlap**: Overlapping CIDRs cause peering requests to fail
 
 ```bash
 # Quick diagnostic: check peering status and routes
