@@ -41,10 +41,9 @@ Amazon Cognito simplifies web identity federation by acting as a broker between 
 
 aws cognito-identity create-identity-pool \
   --identity-pool-name MyAppUsers \
-  --allow-unauthenticated-identities false \
+  --no-allow-unauthenticated-identities \
   --supported-login-providers \
-    "accounts.google.com=YOUR_GOOGLE_CLIENT_ID" \
-    "graph.facebook.com=YOUR_FACEBOOK_APP_ID"
+    accounts.google.com=YOUR_GOOGLE_CLIENT_ID,graph.facebook.com=YOUR_FACEBOOK_APP_ID
 ```
 
 ### Creating the IAM Role for Cognito
@@ -135,15 +134,14 @@ Here's how a JavaScript application uses Cognito for federation:
 
 ```javascript
 // Initialize the Cognito credentials provider
-import { CognitoIdentityClient } from "@aws-sdk/client-cognito-identity";
-import { fromCognitoIdentityPool } from "@aws-sdk/credential-provider-cognito-identity";
+import { fromCognitoIdentityPool } from "@aws-sdk/credential-providers";
 import { S3Client, GetObjectCommand } from "@aws-sdk/client-s3";
 
 // After user signs in with Google and you have the token
 const s3Client = new S3Client({
   region: "us-east-1",
   credentials: fromCognitoIdentityPool({
-    client: new CognitoIdentityClient({ region: "us-east-1" }),
+    clientConfig: { region: "us-east-1" },
     identityPoolId: "us-east-1:a1b2c3d4-e5f6-7890-abcd-example",
     logins: {
       "accounts.google.com": googleIdToken,
@@ -169,11 +167,10 @@ If you don't want to use Cognito, you can federate directly with OIDC providers.
 ### Create an OIDC Provider in IAM
 
 ```bash
-# Register Google as an OIDC provider
+# Register your custom OIDC provider
 aws iam create-open-id-connect-provider \
-  --url https://accounts.google.com \
-  --client-id-list YOUR_GOOGLE_CLIENT_ID \
-  --thumbprint-list "your-provider-thumbprint"
+  --url https://idp.example.com \
+  --client-id-list YOUR_OIDC_CLIENT_ID
 ```
 
 ### Create the Trust Policy
@@ -185,12 +182,15 @@ aws iam create-open-id-connect-provider \
         {
             "Effect": "Allow",
             "Principal": {
-                "Federated": "arn:aws:iam::123456789012:oidc-provider/accounts.google.com"
+                "Federated": "arn:aws:iam::123456789012:oidc-provider/idp.example.com"
             },
             "Action": "sts:AssumeRoleWithWebIdentity",
             "Condition": {
                 "StringEquals": {
-                    "accounts.google.com:aud": "YOUR_GOOGLE_CLIENT_ID"
+                    "idp.example.com:aud": "YOUR_OIDC_CLIENT_ID"
+                },
+                "StringLike": {
+                    "idp.example.com:sub": "user/*"
                 }
             }
         }
@@ -206,12 +206,12 @@ import { STSClient, AssumeRoleWithWebIdentityCommand } from "@aws-sdk/client-sts
 
 const stsClient = new STSClient({ region: "us-east-1" });
 
-// Exchange the Google ID token for AWS credentials
+// Exchange the OIDC ID token for AWS credentials
 const response = await stsClient.send(
   new AssumeRoleWithWebIdentityCommand({
-    RoleArn: "arn:aws:iam::123456789012:role/GoogleFederatedRole",
+    RoleArn: "arn:aws:iam::123456789012:role/OIDCFederatedRole",
     RoleSessionName: "web-app-session",
-    WebIdentityToken: googleIdToken,
+    WebIdentityToken: oidcIdToken,
     DurationSeconds: 3600,
   })
 );
@@ -261,7 +261,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsRole
           aws-region: us-east-1
@@ -278,7 +278,6 @@ No access keys stored in GitHub secrets. The OIDC token is generated fresh for e
 resource "aws_iam_openid_connect_provider" "github" {
   url             = "https://token.actions.githubusercontent.com"
   client_id_list  = ["sts.amazonaws.com"]
-  thumbprint_list = ["6938fd4d98bab03faadb97b34396831e3780aea1"]
 }
 
 # Create the role for GitHub Actions
