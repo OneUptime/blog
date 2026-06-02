@@ -16,10 +16,10 @@ IAM database authentication lets you skip all of that. Instead of a password, yo
 
 When a client connects to RDS with IAM authentication:
 
-1. The client calls the RDS API to generate an authentication token
+1. The client uses the AWS CLI or an AWS SDK to generate a signed authentication token
 2. The token is valid for 15 minutes and acts as a temporary password
 3. The client connects to the database using the token as the password
-4. RDS validates the token against IAM before allowing the connection
+4. RDS validates the signed token and the `rds-db:connect` permission before allowing the connection
 5. The connection remains open even after the token expires (only new connections need new tokens)
 
 ```mermaid
@@ -27,22 +27,24 @@ sequenceDiagram
     participant App as Application
     participant IAM as AWS IAM
     participant RDS as RDS Instance
-    App->>IAM: Generate auth token (using IAM credentials)
-    IAM-->>App: Return authentication token (15 min TTL)
+    App->>App: Generate signed auth token (using IAM credentials)
     App->>RDS: Connect with username + token as password
-    RDS->>IAM: Validate token
-    IAM-->>RDS: Token valid
+    RDS->>IAM: Validate signature and rds-db:connect permission
+    IAM-->>RDS: Connection authorized
     RDS-->>App: Connection established
 ```
 
 ## Prerequisites
 
 IAM authentication works with:
-- MySQL 5.6+ and MariaDB 10.6+ on RDS
-- PostgreSQL 10+ on RDS
-- Aurora MySQL and Aurora PostgreSQL
+- Supported RDS for MySQL versions (currently MySQL 5.7, 8.0, and 8.4)
+- Supported RDS for MariaDB versions in supported Regions (currently MariaDB 10.11, 11.4, and 11.8 in many Regions)
+- Supported RDS for PostgreSQL versions (currently PostgreSQL 10 through 18)
+- Supported Aurora MySQL and Aurora PostgreSQL versions
 
-The instance must also not exceed the connection limit for IAM auth, which is 256 connections per second. For most applications this is fine, but very high-connection-rate workloads should use connection pooling.
+Version and Region availability can change, so check the AWS support matrix for your engine before enabling IAM authentication.
+
+The instance must also stay below the connection rate AWS recommends for IAM auth, which is fewer than 200 new IAM-authenticated connections per second. For most applications this is fine, but very high-connection-rate workloads should use connection pooling or RDS Proxy.
 
 ## Step 1: Enable IAM Authentication on the RDS Instance
 
@@ -65,7 +67,6 @@ aws rds create-db-instance \
   --db-instance-identifier my-database \
   --db-instance-class db.r6g.large \
   --engine postgres \
-  --engine-version 16.2 \
   --master-username admin \
   --master-user-password "$DB_PASSWORD" \
   --allocated-storage 100 \
@@ -103,7 +104,7 @@ FLUSH PRIVILEGES;
 
 ## Step 3: Create an IAM Policy
 
-Create a policy that allows generating authentication tokens for your database:
+Create a policy that allows the IAM identity to connect as your database user:
 
 ```json
 {
@@ -122,7 +123,7 @@ Create a policy that allows generating authentication tokens for your database:
 }
 ```
 
-The resource ARN format is `arn:aws:rds-db:REGION:ACCOUNT:dbuser:DBI-RESOURCE-ID/DB-USERNAME`.
+The resource ARN format for an RDS DB instance is `arn:aws:rds-db:REGION:ACCOUNT:dbuser:DBI-RESOURCE-ID/DB-USERNAME`. For Aurora clusters, use the cluster resource ID instead of the DB instance resource ID.
 
 Find your DBI resource ID:
 
@@ -212,12 +213,12 @@ print(cursor.fetchone())
 ### Node.js (MySQL)
 
 ```javascript
-const AWS = require('aws-sdk');
+const { Signer } = require('@aws-sdk/rds-signer');
 const mysql = require('mysql2/promise');
 const fs = require('fs');
 
 async function getConnection() {
-  const signer = new AWS.RDS.Signer({
+  const signer = new Signer({
     region: 'us-east-1',
     hostname: 'my-database.abc123.us-east-1.rds.amazonaws.com',
     port: 3306,
@@ -225,12 +226,7 @@ async function getConnection() {
   });
 
   // Generate the authentication token
-  const token = await new Promise((resolve, reject) => {
-    signer.getAuthToken({}, (err, token) => {
-      if (err) reject(err);
-      else resolve(token);
-    });
-  });
+  const token = await signer.getAuthToken();
 
   // Connect using the token
   const connection = await mysql.createConnection({
@@ -241,7 +237,8 @@ async function getConnection() {
     database: 'myapp',
     ssl: {
       ca: fs.readFileSync('/path/to/global-bundle.pem')
-    }
+    },
+    enableCleartextPlugin: true
   });
 
   return connection;
@@ -323,10 +320,10 @@ def provide_token(dialect, conn_rec, cargs, cparams):
 
 ## Limitations to Know About
 
-- **Connection rate limit**: IAM auth is limited to 256 new connections per second. Use connection pooling if this is a concern.
-- **Token size**: The token is about 2KB, which might be too large for some connection libraries with small password field limits.
+- **Connection rate limit**: AWS recommends IAM auth for applications that create fewer than 200 new IAM-authenticated connections per second. Use connection pooling or RDS Proxy if this is a concern.
+- **Token size**: The token is generally at least about 1KB and can be larger, which might be too large for some connection libraries with small password field limits.
 - **SSL required**: IAM authentication requires SSL/TLS connections. Make sure your application uses SSL. See our guide on [enabling RDS encryption in transit](https://oneuptime.com/blog/post/2026-02-12-enable-rds-encryption-in-transit-ssl-tls/view).
-- **Not for superuser**: The master user account can't use IAM authentication. It always uses password authentication.
+- **Avoid using the master user**: Use a separate least-privilege database user for application access. For PostgreSQL, if the `rds_iam` role is granted to a user, including the master user, IAM authentication takes precedence over password authentication for that user.
 
 ## When to Use IAM Authentication
 
@@ -338,6 +335,6 @@ IAM authentication is great for:
 It's less suitable for:
 - Very high connection rate applications (>200 connections/second) without connection pooling
 - Tools or scripts that don't support custom authentication workflows
-- The initial database setup (master user always uses a password)
+- The initial database setup, where you still need a password-authenticated administrative user to create IAM-enabled database users
 
 IAM database authentication is a security win with relatively low implementation effort. If you're already using IAM roles for your application services, extending that to database access is a natural next step.
