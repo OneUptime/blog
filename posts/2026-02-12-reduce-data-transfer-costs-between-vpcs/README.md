@@ -8,7 +8,7 @@ Description: Learn how to minimize inter-VPC data transfer costs using Transit G
 
 ---
 
-Inter-VPC data transfer costs are one of the most overlooked items on AWS bills. When two VPCs talk to each other, whether through VPC peering, Transit Gateway, or PrivateLink, you pay for every gigabyte that crosses the boundary. The rates vary by method and whether the VPCs are in the same or different availability zones, but the charges add up fast when you have microservices spread across multiple VPCs.
+Inter-VPC data transfer costs are one of the most overlooked items on AWS bills. When two VPCs talk to each other, whether through VPC peering, Transit Gateway, or PrivateLink, you usually pay for every gigabyte that crosses the boundary. The rates vary by method and whether the VPCs are in the same or different availability zones, but the charges add up fast when you have microservices spread across multiple VPCs.
 
 Let's look at the pricing differences and the best strategies to minimize these costs.
 
@@ -20,7 +20,7 @@ The cost depends on how the VPCs are connected and where they are:
 |---|---|---|---|
 | VPC Peering | Free | $0.01/GB each direction | $0.02/GB each direction |
 | Transit Gateway | $0.02/GB | $0.02/GB | $0.02/GB + peering attachment |
-| PrivateLink | $0.01/GB + $0.01/hr per AZ | $0.01/GB + $0.01/hr per AZ | Not supported |
+| PrivateLink | $0.01/GB + $0.01/hr per AZ | $0.01/GB + $0.01/hr per AZ | $0.01/GB + endpoint hours + inter-region transfer |
 
 The critical takeaway: same-AZ VPC peering is free. Everything else has a cost.
 
@@ -88,34 +88,34 @@ For application-level AZ awareness, you can use instance metadata:
 ```python
 import requests
 
-def get_current_az():
-    """Get the current instance's availability zone"""
+def get_current_az_id():
+    """Get the current instance's availability zone ID"""
     token = requests.put(
         'http://169.254.169.254/latest/api/token',
         headers={'X-aws-ec2-metadata-token-ttl-seconds': '21600'}
     ).text
 
-    az = requests.get(
-        'http://169.254.169.254/latest/meta-data/placement/availability-zone',
+    az_id = requests.get(
+        'http://169.254.169.254/latest/meta-data/placement/availability-zone-id',
         headers={'X-aws-ec2-metadata-token': token}
     ).text
 
-    return az
+    return az_id
 
-def choose_target_endpoint(endpoints_by_az):
+def choose_target_endpoint(endpoints_by_az_id):
     """Route to the same-AZ endpoint to avoid cross-AZ charges"""
-    current_az = get_current_az()
+    current_az_id = get_current_az_id()
 
     # Prefer same-AZ endpoint, fall back to any available
-    if current_az in endpoints_by_az:
-        return endpoints_by_az[current_az]
+    if current_az_id in endpoints_by_az_id:
+        return endpoints_by_az_id[current_az_id]
 
-    return list(endpoints_by_az.values())[0]
+    return list(endpoints_by_az_id.values())[0]
 ```
 
 ## Use PrivateLink for Service-to-Service Communication
 
-When one VPC provides a service consumed by multiple other VPCs, PrivateLink can be more efficient than VPC peering. It exposes only specific services rather than entire VPC CIDR ranges, and the per-GB cost is competitive at $0.01/GB.
+When one VPC provides a service consumed by multiple other VPCs, PrivateLink can be more efficient than VPC peering. It exposes only specific services rather than entire VPC CIDR ranges, and the per-GB cost is competitive at $0.01/GB. Cross-region PrivateLink is supported for supported endpoint services, but standard cross-region data transfer rates apply in addition to PrivateLink processing and hourly charges.
 
 Create a Network Load Balancer in the provider VPC and expose it through PrivateLink:
 
@@ -200,6 +200,7 @@ def receive_data():
 import redis
 import hashlib
 import json
+import requests
 
 local_cache = redis.Redis(host='local-redis.cache.amazonaws.com')
 
