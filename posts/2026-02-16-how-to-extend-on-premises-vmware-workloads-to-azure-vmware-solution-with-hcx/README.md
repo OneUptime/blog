@@ -46,11 +46,11 @@ The key components are:
 - On-premises vSphere 6.5 or later with vCenter Server.
 - On-premises network with sufficient bandwidth to AVS (minimum 100 Mbps recommended).
 - Network ports opened for HCX communication (443, 4500, 8123, 9443 among others).
-- A /26 or larger CIDR block for HCX appliance management IPs.
+- IP pools for the HCX management, vMotion, replication, and uplink network profiles.
 
 ## Step 1: Enable HCX in Azure VMware Solution
 
-HCX Advanced is included with AVS at no extra charge. Enable it through the Azure portal or CLI.
+HCX Enterprise is included with AVS at no extra charge. Enable it through the Azure portal or CLI.
 
 ```bash
 # Enable HCX on your Azure VMware Solution private cloud
@@ -58,7 +58,7 @@ HCX Advanced is included with AVS at no extra charge. Enable it through the Azur
 az vmware addon hcx create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
-  --offer "VMware MaaS Cloud Provider"
+  --offer "VMware MaaS Cloud Provider (Enterprise)"
 ```
 
 This deploys the HCX Cloud Manager in your AVS private cloud. Deployment takes about 30 minutes.
@@ -71,7 +71,7 @@ az vmware hcx-enterprise-site create \
   --resource-group myResourceGroup \
   --private-cloud myAVSPrivateCloud \
   --name "OnPremisesSite" \
-  --query "activationKey" \
+  --query "properties.activationKey" \
   --output tsv
 ```
 
@@ -130,6 +130,7 @@ Network profiles define the IP pools and networks that HCX appliances use. You n
 
 - **Management** - For appliance management traffic.
 - **vMotion** - For live migration traffic.
+- **Replication** - For bulk migration and replication traffic.
 - **Uplink** - For external connectivity.
 
 ```text
@@ -142,7 +143,10 @@ In HCX Manager:
 3. Create vMotion profile:
    - Network: Your vMotion VLAN/portgroup
    - IP Pool: Reserve 2-3 IPs
-4. Create Uplink profile:
+4. Create Replication profile:
+   - Network: Your replication VLAN/portgroup
+   - IP Pool: Reserve 2-3 IPs
+5. Create Uplink profile:
    - Network: Your uplink/WAN VLAN
    - IP Pool: Reserve 2-3 IPs
 ```
@@ -174,14 +178,7 @@ The service mesh deploys the actual appliance pairs that handle traffic between 
    - **WAN Optimization** - For bandwidth efficiency.
 5. Review the configuration and click Create.
 
-Appliance deployment takes 15-20 minutes. The service mesh creates matched pairs of appliances on both sides, connected through encrypted tunnels.
-
-```bash
-# Verify the service mesh status using the AVS CLI
-az vmware workload-network list \
-  --resource-group myResourceGroup \
-  --private-cloud myAVSPrivateCloud
-```
+Appliance deployment takes 15-20 minutes. The service mesh creates matched pairs of appliances on both sides, connected through encrypted tunnels. Verify the service mesh health from Interconnect > Appliances in the HCX interface; the interconnect tunnel status should show as up.
 
 ## Step 8: Extend On-Premises Networks
 
@@ -189,10 +186,9 @@ Network extension stretches your on-premises L2 network segments to AVS, allowin
 
 1. Go to Services > Network Extension.
 2. Click "Create a Network Extension."
-3. Select the on-premises network (port group) to extend.
-4. Choose the destination NSX-T segment in AVS.
-5. Set the gateway IP (usually the same as on-premises).
-6. Click Submit.
+3. Select the on-premises networks you want to extend.
+4. Enter the on-premises gateway IP for each network.
+5. Click Submit.
 
 The extension creates a tunnel that makes the remote network segment appear as a local extension of your on-premises network. VMs migrated to AVS continue to use their existing IPs and can communicate with on-premises resources without any routing changes.
 
@@ -216,63 +212,43 @@ To perform a migration through the vSphere client:
 6. For bulk migration, set the switchover schedule (immediate or scheduled).
 7. Click Validate and then Go.
 
-For scripted batch migration, use the HCX REST API.
+For scripted batch migration, use the VMware PowerCLI HCX module.
 
-```python
-# Python script to trigger bulk migration via HCX REST API
-import requests
-import json
+```powershell
+# PowerCLI script to trigger bulk migration through HCX
+$credential = Get-Credential
+Connect-HCXServer -Server "hcx-manager-ip" -Credential $credential
 
-hcx_url = "https://hcx-manager-ip:9443"
-headers = {
-    "Content-Type": "application/json",
-    "Accept": "application/json"
+$source = Get-HCXSite -Source -Name "OnPremisesSite"
+$destination = Get-HCXSite -Destination -Name "AVS"
+
+$sourceNetwork = Get-HCXNetwork -Site $source -Name "VM Network"
+$destinationNetwork = Get-HCXNetwork -Site $destination -Name "workload-segment-1"
+$networkMapping = New-HCXNetworkMapping `
+  -SourceNetwork $sourceNetwork `
+  -DestinationNetwork $destinationNetwork
+
+$datastore = Get-HCXDatastore -Site $destination -Name "vsanDatastore"
+$container = Get-HCXContainer -Type ComputeContainer -Site $destination -Name "AVS-Cluster"
+$scheduleStart = Get-Date "2026-02-16T22:00:00Z"
+$scheduleEnd = $scheduleStart.AddHours(1)
+
+foreach ($vmName in @("web-server-01", "web-server-02")) {
+  $vm = Get-HCXVM -Site $source -Name $vmName
+  $migration = New-HCXMigration `
+    -SourceSite $source `
+    -DestinationSite $destination `
+    -VM $vm `
+    -NetworkMapping $networkMapping `
+    -TargetDatastore $datastore `
+    -TargetComputeContainer $container `
+    -ScheduleStartTime $scheduleStart `
+    -ScheduleEndTime $scheduleEnd `
+    -MigrationType Bulk
+
+  Test-HCXMigration -Migration $migration
+  Start-HCXMigration -Migration $migration
 }
-
-# Authenticate and get a session token
-auth_response = requests.post(
-    f"{hcx_url}/hybridity/api/sessions",
-    headers=headers,
-    json={"username": "admin", "password": "your-password"},
-    verify=False
-)
-token = auth_response.headers.get("x-hm-authorization")
-headers["x-hm-authorization"] = token
-
-# Define the migration request for a batch of VMs
-migration_payload = {
-    "items": [
-        {
-            "entityName": "web-server-01",
-            "srcComputeContainerName": "OnPrem-Cluster",
-            "tgtComputeContainerName": "AVS-Cluster",
-            "tgtDatastoreName": "vsanDatastore",
-            "tgtNetworkName": "workload-segment-1",
-            "migrationType": "bulk",
-            "scheduleStartTime": "2026-02-16T22:00:00Z"
-        },
-        {
-            "entityName": "web-server-02",
-            "srcComputeContainerName": "OnPrem-Cluster",
-            "tgtComputeContainerName": "AVS-Cluster",
-            "tgtDatastoreName": "vsanDatastore",
-            "tgtNetworkName": "workload-segment-1",
-            "migrationType": "bulk",
-            "scheduleStartTime": "2026-02-16T22:00:00Z"
-        }
-    ]
-}
-
-# Submit the migration request
-response = requests.post(
-    f"{hcx_url}/hybridity/api/migrations",
-    headers=headers,
-    json=migration_payload,
-    verify=False
-)
-
-print(f"Migration submitted: {response.status_code}")
-print(json.dumps(response.json(), indent=2))
 ```
 
 ## Monitoring Migration Progress
@@ -287,4 +263,4 @@ Key metrics to monitor:
 
 ## Summary
 
-HCX makes VMware migration to Azure VMware Solution practical for production environments. The network extension capability is the real differentiator because it eliminates the need to re-IP VMs or reconfigure dependent services. The workflow is deploy HCX, pair the sites, create the service mesh, extend networks, and migrate. For large environments with hundreds of VMs, the bulk migration with scheduled switchover keeps the disruption minimal while the HCX REST API enables scripted batch operations.
+HCX makes VMware migration to Azure VMware Solution practical for production environments. The network extension capability is the real differentiator because it eliminates the need to re-IP VMs or reconfigure dependent services. The workflow is deploy HCX, pair the sites, create the service mesh, extend networks, and migrate. For large environments with hundreds of VMs, the bulk migration with scheduled switchover keeps the disruption minimal while VMware PowerCLI enables scripted batch operations.
