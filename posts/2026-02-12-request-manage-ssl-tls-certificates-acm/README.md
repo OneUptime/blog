@@ -8,7 +8,7 @@ Description: Learn how to request, validate, and manage SSL/TLS certificates wit
 
 ---
 
-SSL/TLS certificates are one of those things that seem simple until something goes wrong - like your certificate expiring on a Friday evening. AWS Certificate Manager (ACM) eliminates most of that pain by providing free certificates that automatically renew. No more calendar reminders, no more scrambling to buy and install certificates manually.
+SSL/TLS certificates are one of those things that seem simple until something goes wrong - like your certificate expiring on a Friday evening. AWS Certificate Manager (ACM) eliminates most of that pain by providing managed certificates that automatically renew. No more calendar reminders, no more scrambling to buy and install certificates manually.
 
 This guide covers requesting certificates, choosing between DNS and email validation, working with wildcard certificates, and managing certificate lifecycle.
 
@@ -16,10 +16,10 @@ This guide covers requesting certificates, choosing between DNS and email valida
 
 ACM provides free public SSL/TLS certificates for use with AWS services like CloudFront, ALB, API Gateway, and Elastic Beanstalk. There are a few things to understand upfront:
 
-- **Public certificates are free** - no charge for certificates used with integrated AWS services
-- **Private certificates cost money** - ACM Private CA charges $400/month per CA
-- **You can't download ACM certificates** - they're tied to AWS services. If you need a certificate for an on-premise server, use a different CA
-- **Automatic renewal** for DNS-validated certificates as long as the CNAME record is in place
+- **Public certificates for integrated AWS services are free** - exportable public certificates have separate pricing
+- **Private certificates cost money** - AWS Private CA charges $400/month per general-purpose CA, plus certificate and OCSP usage charges
+- **Standard ACM public certificates aren't downloadable** - they're tied to AWS services. If you need a certificate for an on-premise server, request an exportable public certificate or use a different CA
+- **Automatic renewal** for DNS-validated certificates as long as the certificate is in use and the CNAME record is in place
 - **Regional** - certificates are regional except for CloudFront, which requires certificates in us-east-1
 
 ## Requesting a Certificate
@@ -120,7 +120,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-Validation usually completes within 5-30 minutes after the DNS record propagates.
+Validation usually completes within 30 minutes after the DNS record propagates.
 
 ## Terraform Configuration
 
@@ -191,7 +191,7 @@ Someone needs to click the approval link in the email. The downside of email val
 
 ## Certificate Renewal
 
-DNS-validated certificates renew automatically 60 days before expiration. ACM handles this entirely - no action needed on your part, as long as the CNAME validation record is still in DNS.
+DNS-validated public certificates renew automatically 45 days before expiration. ACM handles this entirely - no action needed on your part, as long as the certificate is in use and the CNAME validation record is still in DNS.
 
 Email-validated certificates require manual approval for renewal. ACM sends renewal emails 45 days before expiration.
 
@@ -245,7 +245,7 @@ You can't delete a certificate that's in use by an AWS service. Detach it first.
 
 ## Key Algorithm Selection
 
-ACM supports RSA 2048 (default) and ECDSA P-256. ECDSA certificates are smaller and provide better performance for TLS handshakes.
+ACM public certificates support RSA 2048 (default), ECDSA P-256, and ECDSA P-384. ECDSA certificates are smaller and provide better performance for TLS handshakes.
 
 ```bash
 # Request an ECDSA certificate
