@@ -8,13 +8,13 @@ Description: A complete walkthrough for hosting a static website on Amazon S3, f
 
 ---
 
-Static websites don't need servers. They're just HTML, CSS, JavaScript, and maybe some images. S3 can serve all of that directly, and it's ridiculously cheap compared to running an EC2 instance or a container just to serve static files. You get built-in scalability (S3 handles any amount of traffic), high durability (99.999999999%), and you only pay for storage and bandwidth.
+Static websites don't need servers. They're just HTML, CSS, JavaScript, and maybe some images. S3 can serve all of that directly, and it's ridiculously cheap compared to running an EC2 instance or a container just to serve static files. You get built-in scalability (S3 scales automatically for high request rates), high durability (99.999999999%), and you only pay for storage, requests, and bandwidth.
 
 Let's set one up from scratch.
 
 ## Step 1: Create a Bucket
 
-The bucket name should match your domain name if you plan to use a custom domain later. For now, any name works.
+The bucket name should match your domain name if you plan to use a custom domain later. For now, any globally unique, DNS-compatible bucket name works.
 
 ```bash
 # Create the bucket
@@ -238,7 +238,7 @@ aws s3api put-bucket-website \
 
 ## Automating Deployment
 
-Here's a deployment script that handles content types and cache invalidation.
+Here's a deployment script that handles content types and cache headers.
 
 ```bash
 #!/bin/bash
@@ -263,10 +263,12 @@ aws s3 sync "$SOURCE_DIR" "s3://$BUCKET" \
   --cache-control "no-cache" \
   --content-type "text/html"
 
-# Upload service worker with no cache
-aws s3 cp "$SOURCE_DIR/service-worker.js" "s3://$BUCKET/service-worker.js" \
-  --cache-control "no-cache" \
-  --content-type "application/javascript"
+# Upload service worker with no cache if one exists
+if [ -f "$SOURCE_DIR/service-worker.js" ]; then
+  aws s3 cp "$SOURCE_DIR/service-worker.js" "s3://$BUCKET/service-worker.js" \
+    --cache-control "no-cache" \
+    --content-type "application/javascript"
+fi
 
 echo "Deployment complete!"
 echo "Site URL: http://$BUCKET.s3-website-us-east-1.amazonaws.com"
@@ -352,9 +354,9 @@ For a typical static website with 10GB of content and 100,000 visitors per month
 
 - **Storage**: 10GB x $0.023/GB = $0.23/month
 - **Requests**: ~500,000 GET requests x $0.0004/1000 = $0.20/month
-- **Data Transfer**: ~50GB x $0.09/GB = $4.50/month
+- **Data Transfer**: ~50GB is covered by AWS's first 100GB/month internet data transfer allowance in eligible regions; otherwise, 50GB x $0.09/GB = $4.50/month
 
-Total: roughly $5/month. Compare that to running an EC2 instance at $10-50/month minimum.
+Total: roughly $0.43/month if your transfer is covered by the 100GB/month allowance, or about $5/month otherwise. Compare that to running an EC2 instance at $10-50/month minimum.
 
 ## Limitations
 
@@ -362,7 +364,7 @@ S3 static hosting has some limitations to be aware of:
 
 - No HTTPS on the S3 endpoint (use CloudFront for SSL)
 - No server-side processing (it's static only)
-- No custom headers (use CloudFront for that)
+- No arbitrary response headers at the website endpoint (object metadata can set standard headers like `Content-Type` and `Cache-Control`; use CloudFront for security headers and other custom responses)
 - URL rewriting is limited to routing rules
 - No gzip compression from S3 directly (pre-compress or use CloudFront)
 
