@@ -26,15 +26,7 @@ Each OpsItem can include:
 
 ## Enabling OpsCenter
 
-OpsCenter is part of Systems Manager and doesn't cost anything extra - you just need to enable it. Here's how via the CLI:
-
-```bash
-# Enable OpsCenter (Explorer needs to be set up first)
-
-aws ssm update-service-setting \
-  --setting-id "arn:aws:ssm:us-east-1:123456789012:servicesetting/ssm/opsitem/EC2" \
-  --setting-value "Enabled"
-```
+OpsCenter is part of Systems Manager and is priced on a pay-per-use model for OpsItems and OpsCenter API calls. You just need to enable it through the integrated setup experience.
 
 In the console, go to Systems Manager, then OpsCenter in the left sidebar. If it's your first time, you'll be walked through a setup wizard that also configures Explorer (OpsCenter's reporting dashboard).
 
@@ -65,7 +57,25 @@ The severity scale runs from 1 (critical) to 4 (low). Priority is a separate num
 
 The real power is automatic creation. You can configure CloudWatch alarms to create OpsItems when they trigger, giving you a centralized view of all active issues.
 
-First, create an EventBridge rule that catches CloudWatch alarm state changes:
+The most direct way is to add an OpsCenter action to the alarm. The OpsItem action ARN includes the severity you want to assign:
+
+```bash
+aws cloudwatch put-metric-alarm \
+  --alarm-name "high-cpu-web-prod" \
+  --alarm-description "Alarm when CPU exceeds 70 percent" \
+  --metric-name CPUUtilization \
+  --namespace AWS/EC2 \
+  --statistic Average \
+  --period 300 \
+  --threshold 70 \
+  --comparison-operator GreaterThanThreshold \
+  --dimensions "Name=InstanceId,Value=i-0abc123" \
+  --evaluation-periods 2 \
+  --alarm-actions "arn:aws:ssm:us-east-1:123456789012:opsitem:2#CATEGORY=Performance" \
+  --unit Percent
+```
+
+Alternatively, create an EventBridge rule that catches CloudWatch alarm state changes:
 
 ```json
 {
@@ -98,7 +108,7 @@ aws events put-targets \
   --rule "cloudwatch-alarm-to-opsitem" \
   --targets '[{
     "Id": "create-opsitem",
-    "Arn": "arn:aws:ssm:us-east-1:123456789012:opsitem",
+    "Arn": "arn:aws:ssm:us-east-1:123456789012:opsitem:2",
     "RoleArn": "arn:aws:iam::123456789012:role/EventBridgeSSMRole",
     "InputTransformer": {
       "InputPathsMap": {
@@ -113,9 +123,9 @@ aws events put-targets \
 
 ## Automatic OpsItems from AWS Config
 
-AWS Config can also create OpsItems when resources fall out of compliance. This is great for catching security issues like unencrypted volumes or open security groups.
+AWS Config compliance changes can also be routed through EventBridge to create OpsItems when resources fall out of compliance. This is great for catching security issues like unencrypted volumes or open security groups.
 
-Enable this in Config rules by adding the `ssm:ops-item` remediation action, or configure it via EventBridge:
+Configure it via EventBridge:
 
 ```bash
 # EventBridge rule for Config compliance changes
@@ -130,6 +140,22 @@ aws events put-rule \
       }
     }
   }'
+
+aws events put-targets \
+  --rule "config-noncompliant-to-opsitem" \
+  --targets '[{
+    "Id": "create-opsitem",
+    "Arn": "arn:aws:ssm:us-east-1:123456789012:opsitem:2#CATEGORY=Security",
+    "RoleArn": "arn:aws:iam::123456789012:role/EventBridgeSSMRole",
+    "InputTransformer": {
+      "InputPathsMap": {
+        "rule": "$.detail.configRuleName",
+        "resource": "$.detail.resourceId",
+        "resourceType": "$.detail.resourceType"
+      },
+      "InputTemplate": "{\"title\": \"Config non-compliance: <rule>\", \"description\": \"Resource <resourceType>/<resource> is NON_COMPLIANT with Config rule <rule>.\", \"source\": \"AWS Config\", \"severity\": \"2\", \"category\": \"Security\"}"
+    }
+  }]'
 ```
 
 ## Managing OpsItems
@@ -188,8 +214,8 @@ One of the best features of OpsCenter is the ability to link Automation runbooks
 aws ssm update-ops-item \
   --ops-item-id "oi-abc123def456" \
   --operational-data '{
-    "RunbookName": {
-      "Value": "Restart-EC2-Instance",
+    "/aws/automations": {
+      "Value": "[{\"automationId\": \"AWS-RestartEC2Instance\", \"automationType\": \"AWS::SSM::Automation\"}]",
       "Type": "SearchableString"
     }
   }' \
@@ -202,22 +228,23 @@ For a deeper dive on building automation runbooks that pair well with OpsCenter,
 
 ## Using OpsCenter with Explorer
 
-OpsCenter Explorer gives you dashboards and reports across all your OpsItems. You can see trends like:
+Systems Manager Explorer gives you dashboards and reports across all your OpsItems. You can see trends like:
 
 - How many OpsItems were created this week vs last week
 - Average time to resolution
 - Which sources generate the most issues
 - Breakdown by severity
 
-Enable Explorer through the console setup wizard, or via CLI:
+Enable Explorer through the console setup wizard. Once it's set up, you can query OpsItem summary data via CLI:
 
 ```bash
 # Get the current Explorer configuration
 aws ssm get-ops-summary \
   --filters '[{"Key": "AWS:OpsItem.Status", "Values": ["Open"], "Type": "Equal"}]' \
   --aggregators '[{
-    "AggregatorType": "Count",
-    "AttributeName": "AWS:OpsItem.Severity",
+    "AggregatorType": "count",
+    "TypeName": "AWS:OpsItem",
+    "AttributeName": "Severity",
     "Values": {}
   }]'
 ```
@@ -243,7 +270,7 @@ aws ssm create-ops-item \
   }'
 ```
 
-If another OpsItem comes in with the same dedup string and the previous one is still open, OpsCenter won't create a duplicate. Instead, it adds the information to the existing OpsItem.
+If another OpsItem comes in with the same dedup string and the previous one is still open or in progress, OpsCenter won't create a duplicate.
 
 ## Setting Up Notifications
 
