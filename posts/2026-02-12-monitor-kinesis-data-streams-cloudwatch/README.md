@@ -16,7 +16,7 @@ This guide covers the metrics that actually matter, how to set up useful alarms,
 
 Kinesis publishes two levels of metrics to CloudWatch:
 
-- **Basic (stream-level)** - Free, enabled by default, 5-minute granularity
+- **Basic (stream-level)** - Free, enabled by default, 1-minute granularity
 - **Enhanced (shard-level)** - Additional cost, 1-minute granularity, opt-in
 
 For production workloads, enhanced metrics are worth the cost. Enable them:
@@ -89,7 +89,7 @@ aws cloudwatch put-metric-alarm \
 
 ```bash
 # CRITICAL: Alert when consumer lag exceeds 1 hour
-# At this point you might hit the retention limit
+# If this keeps growing, you can eventually hit the retention limit
 aws cloudwatch put-metric-alarm \
     --alarm-name "kinesis-orders-critical-lag" \
     --alarm-description "Consumer lag exceeding 1 hour - risk of data loss" \
@@ -257,7 +257,7 @@ aws cloudwatch put-dashboard \
 
 ## Automating Responses
 
-You can combine CloudWatch alarms with Lambda for automated remediation. For example, auto-scaling shards when throttling is detected:
+You can combine CloudWatch alarms with Lambda for automated remediation. For example, auto-scaling shards for provisioned streams when throttling is detected:
 
 ```python
 # Lambda function triggered by CloudWatch alarm for auto-scaling shards
