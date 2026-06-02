@@ -30,7 +30,7 @@ You've got two options for manifests.
 
 **Option A: Use an S3 Inventory report** (best for large-scale operations). If you already have S3 Inventory configured, you can point your batch job directly at the inventory manifest. See our post on [using S3 Inventory to audit objects at scale](https://oneuptime.com/blog/post/2026-02-12-s3-inventory-audit-objects-at-scale/view) for setup instructions.
 
-**Option B: Create a CSV manifest** (best for targeted operations). The CSV format is simple - just bucket name and object key per line.
+**Option B: Create a CSV manifest** (best for targeted operations). The CSV format is simple - just bucket name and URL-encoded object key per line.
 
 ```csv
 my-source-bucket,logs/2025/01/access.log
@@ -79,9 +79,13 @@ And the permissions policy - adjust based on your specific operation.
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
-        "s3:GetObjectVersion"
+        "s3:GetObjectVersion",
+        "s3:GetBucketLocation"
       ],
-      "Resource": "arn:aws:s3:::my-batch-manifests/*"
+      "Resource": [
+        "arn:aws:s3:::my-batch-manifests",
+        "arn:aws:s3:::my-batch-manifests/*"
+      ]
     },
     {
       "Sid": "PerformBatchOperations",
@@ -97,8 +101,14 @@ And the permissions policy - adjust based on your specific operation.
     {
       "Sid": "WriteReport",
       "Effect": "Allow",
-      "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::my-batch-reports/*"
+      "Action": [
+        "s3:PutObject",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-batch-reports",
+        "arn:aws:s3:::my-batch-reports/*"
+      ]
     }
   ]
 }
@@ -182,10 +192,11 @@ aws s3control update-job-status \
 
 ## Example: Copy Objects Cross-Region
 
-Here's how to create a batch job that copies objects to another region.
+Here's how to create a batch job that copies objects to another region. For copy operations, create the job in the same AWS Region as the destination bucket.
 
 ```bash
 aws s3control create-job \
+  --region eu-west-1 \
   --account-id 123456789012 \
   --operation '{
     "S3PutObjectCopy": {
@@ -224,9 +235,9 @@ Here's a Lambda function that generates thumbnails for images.
 
 ```python
 import boto3
-import json
 from PIL import Image
 import io
+from urllib import parse
 
 s3 = boto3.client('s3')
 
@@ -243,8 +254,8 @@ def lambda_handler(event, context):
 
     for task in event['tasks']:
         task_id = task['taskId']
-        bucket = task['s3BucketArn'].split(':::')[1]
-        key = task['s3Key']
+        bucket = task['s3BucketArn'].split(':')[-1]
+        key = parse.unquote_plus(task['s3Key'], encoding='utf-8')
 
         try:
             # Download the original image
@@ -289,7 +300,7 @@ def lambda_handler(event, context):
     }
 ```
 
-Create the batch job to invoke this Lambda.
+Create the batch job to invoke this Lambda. Make sure the Batch Operations role also has `lambda:InvokeFunction` permission for the function.
 
 ```bash
 aws s3control create-job \
