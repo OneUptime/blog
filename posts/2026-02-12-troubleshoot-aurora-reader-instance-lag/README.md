@@ -8,7 +8,7 @@ Description: Practical troubleshooting guide for Aurora reader instance lag, cov
 
 ---
 
-Aurora's sub-millisecond replication lag is one of its biggest selling points. So when you check your monitoring and see lag creeping up to seconds or even minutes, something's definitely wrong. The good news is that Aurora replication lag has a relatively small set of root causes, and they're all diagnosable.
+Aurora's usually low replication lag is one of its biggest selling points. AWS says Aurora Replica lag is typically much less than 100 milliseconds, so when you check your monitoring and see lag creeping up to seconds or even minutes, something's definitely wrong. The good news is that Aurora replication lag has a relatively small set of root causes, and they're all diagnosable.
 
 Let's walk through how to identify what's causing the lag and how to fix it.
 
@@ -33,12 +33,12 @@ Start by measuring the current lag across all reader instances.
 Using CloudWatch:
 
 ```bash
-# Check replica lag for all reader instances
+# Check aggregate replica lag for reader instances
 
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name AuroraReplicaLag \
-  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster \
+  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster Name=Role,Value=READER \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
@@ -51,17 +51,17 @@ You can also check from within the database. For Aurora MySQL:
 ```sql
 -- Check replication lag from inside Aurora MySQL
 SELECT
-    server_id,
-    session_id,
-    last_update_timestamp,
-    replica_lag_in_msec,
+    SERVER_ID as server_id,
+    SESSION_ID as session_id,
+    LAST_UPDATE_TIMESTAMP as last_update_timestamp,
+    REPLICA_LAG_IN_MILLISECONDS as replica_lag_in_msec,
     CASE
-        WHEN replica_lag_in_msec < 20 THEN 'GOOD'
-        WHEN replica_lag_in_msec < 100 THEN 'ACCEPTABLE'
-        WHEN replica_lag_in_msec < 1000 THEN 'ELEVATED'
+        WHEN REPLICA_LAG_IN_MILLISECONDS < 20 THEN 'GOOD'
+        WHEN REPLICA_LAG_IN_MILLISECONDS < 100 THEN 'ACCEPTABLE'
+        WHEN REPLICA_LAG_IN_MILLISECONDS < 1000 THEN 'ELEVATED'
         ELSE 'CRITICAL'
     END as status
-FROM mysql.ro_replica_status;
+FROM information_schema.replica_host_status;
 ```
 
 For Aurora PostgreSQL:
@@ -236,7 +236,7 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 100 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster \
+  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster Name=Role,Value=READER \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:db-alerts
 
@@ -250,7 +250,7 @@ aws cloudwatch put-metric-alarm \
   --period 60 \
   --threshold 1000 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster \
+  --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster Name=Role,Value=READER \
   --evaluation-periods 2 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:db-alerts-critical
 ```
@@ -271,6 +271,12 @@ def diagnose_lag(cluster_id, region='us-east-1'):
     now = datetime.now(timezone.utc)
     start = now - timedelta(hours=1)
 
+    cluster = rds.describe_db_clusters(DBClusterIdentifier=cluster_id)['DBClusters'][0]
+    writer_status = {
+        member['DBInstanceIdentifier']: member['IsClusterWriter']
+        for member in cluster['DBClusterMembers']
+    }
+
     # Get all instances in the cluster
     instances = rds.describe_db_instances(
         Filters=[{'Name': 'db-cluster-id', 'Values': [cluster_id]}]
@@ -278,7 +284,7 @@ def diagnose_lag(cluster_id, region='us-east-1'):
 
     for inst in instances:
         inst_id = inst['DBInstanceIdentifier']
-        is_writer = inst.get('DBInstanceRole', '') == 'writer'
+        is_writer = writer_status.get(inst_id, False)
         role = 'WRITER' if is_writer else 'READER'
 
         print(f"\n{'='*60}")
@@ -288,10 +294,13 @@ def diagnose_lag(cluster_id, region='us-east-1'):
         metrics = {
             'CPUUtilization': '%',
             'FreeableMemory': 'bytes',
-            'AuroraReplicaLag': 'ms',
             'DatabaseConnections': 'count',
             'BufferCacheHitRatio': '%'
         }
+        if is_writer:
+            metrics['AuroraReplicaLagMaximum'] = 'ms'
+        else:
+            metrics['AuroraReplicaLag'] = 'ms'
 
         for metric, unit in metrics.items():
             try:
