@@ -8,7 +8,7 @@ Description: Practical security group configurations for common AWS architecture
 
 ---
 
-Security groups are the primary firewall for AWS resources. Every EC2 instance, RDS database, Lambda function in a VPC, and load balancer has at least one security group controlling what traffic gets in and out. Getting the rules right is fundamental to AWS security, but most tutorials only show basic examples. Let's look at real-world configurations for architectures you'll actually build.
+Security groups are the primary firewall for AWS resources. EC2 instances, RDS databases, Lambda functions in a VPC, Application Load Balancers, and Network Load Balancers with associated security groups use security groups to control what traffic gets in and out. Getting the rules right is fundamental to AWS security, but most tutorials only show basic examples. Let's look at real-world configurations for architectures you'll actually build.
 
 ## Security Group Fundamentals
 
@@ -17,7 +17,7 @@ A few things to remember before we start:
 - Security groups are **stateful** - if you allow inbound traffic, the response is automatically allowed outbound
 - Rules are **allow-only** - you can't create deny rules
 - **All rules are evaluated** - there's no rule ordering like NACLs
-- The **default rule** denies all inbound traffic and allows all outbound traffic
+- New security groups have **no inbound rules** and a default rule that allows all outbound traffic
 - You can reference other security groups as sources or destinations
 
 That last point is the most powerful feature. Instead of hardcoding IP addresses, you can say "allow traffic from any instance in security group X." This makes your rules dynamic and self-maintaining.
@@ -174,11 +174,11 @@ aws ec2 authorize-security-group-ingress \
   --protocol tcp --port 8080 --source-group $SVC_C_SG
 ```
 
-This creates an explicit service mesh at the network level. Service B can't call Service C unless you add that rule.
+This creates an explicit allow list at the network level. Service B can't call Service C unless you add that rule.
 
 ## Architecture 4: ECS with Service Discovery
 
-For ECS services running on Fargate, each service still needs its own security group. But the port mapping is dynamic:
+For ECS services running on Fargate, each service can have its own security group. Fargate tasks use `awsvpc` networking, so allow the container port that the ALB target group registers:
 
 ```bash
 # ECS service security group
@@ -188,22 +188,22 @@ ECS_SG=$(aws ec2 create-security-group \
   --vpc-id vpc-abc123 \
   --query "GroupId" --output text)
 
-# Allow ALB to reach any ephemeral port (Fargate uses dynamic port mapping)
+# Allow ALB to reach the registered container port
 aws ec2 authorize-security-group-ingress \
   --group-id $ECS_SG \
   --protocol tcp \
-  --port 0-65535 \
+  --port 8080 \
   --source-group $ALB_SG
 
 # Allow service-to-service communication within ECS
 aws ec2 authorize-security-group-ingress \
   --group-id $ECS_SG \
   --protocol tcp \
-  --port 0-65535 \
+  --port 8080 \
   --source-group $ECS_SG
 ```
 
-That second rule allows any ECS task in this security group to talk to any other task in the same group. If you need stricter isolation, create separate security groups per service.
+That second rule allows any ECS task in this security group to talk to any other task in the same group on port 8080. If you need stricter isolation, create separate security groups per service.
 
 ## Architecture 5: Bastion Host Pattern
 
