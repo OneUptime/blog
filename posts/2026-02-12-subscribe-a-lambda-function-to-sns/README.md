@@ -36,7 +36,7 @@ aws sns subscribe \
   --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:process-orders
 ```
 
-But wait - this alone isn't enough. SNS needs permission to invoke your Lambda function. Without this, messages will fail silently.
+But wait - this alone isn't enough. SNS needs permission to invoke your Lambda function. Without this, SNS can't deliver messages to the function, so configure delivery logging or a subscription DLQ if you want failed deliveries captured.
 
 ```bash
 # Grant SNS permission to invoke the Lambda function
@@ -196,7 +196,7 @@ orderTopic.addSubscription(
         allowlist: ['order_created', 'order_updated'],
       }),
     },
-    // Send failed invocations to the DLQ
+    // Send failed deliveries from SNS to the DLQ
     deadLetterQueue: dlq,
   })
 );
@@ -244,12 +244,21 @@ sns.subscribe(
 
 ## Error Handling and Dead Letter Queues
 
-When your Lambda function throws an error, SNS retries the invocation. By default, it retries up to 3 times. After exhausting retries, the message is lost unless you've configured a dead letter queue (DLQ).
+There are two retry paths to understand. If SNS can't deliver the message to Lambda, SNS uses its delivery retry policy for AWS managed endpoints and can retry for up to 100,015 delivery attempts over 23 days. After exhausting those delivery retries, SNS discards the message unless you've configured a subscription dead letter queue (DLQ).
+
+If Lambda accepts the asynchronous invocation but your function code throws an error, Lambda handles the retries. By default, Lambda retries a failed asynchronous invocation two more times, for a total of three processing attempts. To retain events that fail all Lambda processing attempts, configure a Lambda on-failure destination or a Lambda function DLQ.
 
 ```bash
 # Set up a DLQ for the subscription
 # First, create an SQS queue for failed messages
 aws sqs create-queue --queue-name order-processor-dlq
+
+# Give SNS permission to send failed deliveries to the queue
+aws sqs set-queue-attributes \
+  --queue-url https://sqs.us-east-1.amazonaws.com/123456789012/order-processor-dlq \
+  --attributes '{
+    "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Principal\":{\"Service\":\"sns.amazonaws.com\"},\"Action\":\"sqs:SendMessage\",\"Resource\":\"arn:aws:sqs:us-east-1:123456789012:order-processor-dlq\",\"Condition\":{\"ArnEquals\":{\"aws:SourceArn\":\"arn:aws:sns:us-east-1:123456789012:order-notifications\"}}}]}"
+  }'
 
 # Then set the redrive policy on the subscription
 aws sns set-subscription-attributes \
@@ -279,8 +288,8 @@ def handler(event, context):
             failed_records.append(record['Sns']['MessageId'])
 
     if failed_records:
-        # Raise an error so SNS retries for the failed messages
-        # Note: SNS will retry ALL messages in the batch, not just failed ones
+        # Raise an error so Lambda retries the asynchronous invocation
+        # Note: Lambda retries the entire invocation event, not just failed records
         raise Exception(f'Failed to process {len(failed_records)} messages')
 
 def process_message(message):
@@ -326,6 +335,6 @@ test_event = {
 handler(test_event, None)
 ```
 
-Lambda-to-SNS subscriptions are the backbone of serverless event-driven systems on AWS. Combine them with message filtering to build efficient pub/sub patterns, and always configure a DLQ so you don't lose messages when things go wrong.
+Lambda-to-SNS subscriptions are the backbone of serverless event-driven systems on AWS. Combine them with message filtering to build efficient pub/sub patterns, and configure both subscription-level DLQs for delivery failures and Lambda failure destinations or DLQs for function processing failures.
 
 For other subscription types, check out [subscribing SQS queues for fan-out](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-sqs-queue-to-sns/view) and [subscribing HTTP endpoints](https://oneuptime.com/blog/post/2026-02-12-subscribe-an-http-https-endpoint-to-sns/view).
