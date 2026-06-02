@@ -79,7 +79,7 @@ aws events put-targets \
   --rule order-created-rule \
   --targets '[{
     "Id": "send-confirmation-email",
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:send-confirmation"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:send-confirmation"
   }]'
 ```
 
@@ -91,7 +91,7 @@ aws lambda add-permission \
   --statement-id eventbridge-invoke \
   --action lambda:InvokeFunction \
   --principal events.amazonaws.com \
-  --source-arn arn:aws:events:us-east-1:123456789:rule/order-created-rule
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/order-created-rule
 ```
 
 ## Event Pattern Matching
@@ -180,16 +180,16 @@ aws events put-targets \
   --targets '[
     {
       "Id": "send-email",
-      "Arn": "arn:aws:lambda:us-east-1:123456789:function:send-confirmation"
+      "Arn": "arn:aws:lambda:us-east-1:123456789012:function:send-confirmation"
     },
     {
       "Id": "update-analytics",
-      "Arn": "arn:aws:sqs:us-east-1:123456789:analytics-queue"
+      "Arn": "arn:aws:sqs:us-east-1:123456789012:analytics-queue"
     },
     {
       "Id": "start-fulfillment",
-      "Arn": "arn:aws:states:us-east-1:123456789:stateMachine:FulfillOrder",
-      "RoleArn": "arn:aws:iam::123456789:role/EventBridgeStepFunctionsRole"
+      "Arn": "arn:aws:states:us-east-1:123456789012:stateMachine:FulfillOrder",
+      "RoleArn": "arn:aws:iam::123456789012:role/EventBridgeStepFunctionsRole"
     }
   ]'
 ```
@@ -207,7 +207,7 @@ aws events put-targets \
   --rule order-created-rule \
   --targets '[{
     "Id": "send-email",
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:send-email",
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:send-email",
     "InputTransformer": {
       "InputPathsMap": {
         "orderId": "$.detail.orderId",
@@ -258,6 +258,7 @@ Resources:
   OrderFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: src/createOrder/
       Handler: createOrder.handler
       Runtime: nodejs20.x
       Policies:
@@ -268,6 +269,7 @@ Resources:
   EmailFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: src/sendEmail/
       Handler: sendEmail.handler
       Runtime: nodejs20.x
       Events:
@@ -284,6 +286,7 @@ Resources:
   HighValueFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: src/highValueAlert/
       Handler: highValueAlert.handler
       Runtime: nodejs20.x
       Events:
@@ -316,8 +319,13 @@ aws events test-event-pattern \
     "detail": { "total": [{ "numeric": [">=", 1000] }] }
   }' \
   --event '{
+    "id": "1",
+    "account": "123456789012",
     "source": "orders.service",
     "detail-type": "OrderCreated",
+    "time": "2026-02-12T12:00:00Z",
+    "region": "us-east-1",
+    "resources": [],
     "detail": { "orderId": "123", "total": 1500 }
   }'
 ```
