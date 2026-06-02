@@ -8,13 +8,13 @@ Description: Practical strategies to reduce Amazon EMR costs by up to 70% using 
 
 ---
 
-EMR clusters can get expensive fast. A 20-node cluster of m5.2xlarge instances runs about $7.68 per hour on-demand. That's $184 per day or $5,500 per month - and that's before you factor in S3 storage and data transfer. Spot Instances can cut that compute cost by 60-70%, but you need to use them correctly or you'll end up with failing jobs and frustrated engineers.
+EMR clusters can get expensive fast. A 20-node cluster of m5.2xlarge instances runs about $7.68 per hour on-demand in us-east-1 for EC2 compute alone. That's $184 per day or $5,500 per month - and that's before you factor in EMR service charges, EBS, S3 storage, and data transfer. Spot Instances can cut that compute cost by 60-70%, but you need to use them correctly or you'll end up with failing jobs and frustrated engineers.
 
 Here's how to do it right.
 
 ## Understanding Spot Instances on EMR
 
-Spot Instances let you bid on unused EC2 capacity at a steep discount. The catch is that AWS can reclaim them with a 2-minute warning when demand for that capacity increases. On EMR, this means your executors can disappear mid-job.
+Spot Instances let you request unused EC2 capacity at a steep discount. The catch is that AWS can reclaim them with a 2-minute warning when demand for that capacity increases. On EMR, this means your executors can disappear mid-job.
 
 The key is knowing which nodes can tolerate interruptions and which can't:
 
@@ -108,7 +108,7 @@ aws emr create-cluster \
         "SpotSpecification": {
           "TimeoutDurationMinutes": 15,
           "TimeoutAction": "SWITCH_TO_ON_DEMAND",
-          "AllocationStrategy": "capacity-optimized"
+          "AllocationStrategy": "price-capacity-optimized"
         }
       }
     }
@@ -118,13 +118,13 @@ aws emr create-cluster \
   --log-uri s3://my-emr-logs/clusters/
 ```
 
-The `capacity-optimized` allocation strategy is important. It picks instance types from pools with the most available capacity, reducing the chance of interruptions.
+The `price-capacity-optimized` allocation strategy is important. It picks Spot capacity pools based on both available capacity and price, reducing the chance of interruptions while still controlling cost.
 
 ## Handling Spot Interruptions in Spark
 
 Even with good instance diversification, Spot interruptions will happen. Configure Spark to handle them gracefully.
 
-These Spark settings enable external shuffle service and retry mechanisms that help survive executor losses.
+These Spark settings enable shuffle preservation, decommissioning, and retry mechanisms that help survive executor losses.
 
 ```bash
 aws emr create-cluster \
@@ -165,8 +165,8 @@ aws emr create-cluster \
 
 The key settings here:
 
-- `spark.decommission.enabled` - Lets Spark migrate data off a node before it's terminated
-- `spark.shuffle.service.enabled` - Keeps shuffle data available even when executors are lost
+- `spark.decommission.enabled` - Lets Spark start decommissioning executors before they're terminated
+- `spark.shuffle.service.enabled` - Preserves shuffle files when executors exit, as long as the node running the shuffle service is still available
 - `spark.task.maxFailures` - Allows tasks to be retried multiple times before failing the job
 - `spark.speculation` - Launches backup copies of slow tasks to reduce the impact of stragglers
 
@@ -200,7 +200,7 @@ Let's look at real numbers. For a 20-node cluster running 12 hours per day:
 |---|---|---|---|
 | All On-Demand (m5.2xlarge) | $7.68 | $92 | $2,760 |
 | Core On-Demand + Task Spot (70% discount) | $3.46 | $41 | $1,240 |
-| Instance Fleet with capacity-optimized | $2.88 | $35 | $1,040 |
+| Instance Fleet with price-capacity-optimized | $2.88 | $35 | $1,040 |
 
 That's a 62% savings just by using Spot for task nodes with instance fleets.
 
@@ -211,7 +211,7 @@ After running production EMR clusters on Spot for years, here's what I've learne
 1. **Never use Spot for master nodes.** Period. The savings aren't worth the risk.
 2. **Core nodes should be On-Demand** unless you're using EMRFS (S3) exclusively for storage instead of HDFS.
 3. **Diversify instance types.** Use at least 5-7 different instance types in your task fleet.
-4. **Use capacity-optimized allocation.** It's better than lowest-price for stability.
+4. **Use price-capacity-optimized allocation.** It's better than lowest-price for balancing stability and cost on current EMR releases.
 5. **Enable node decommissioning.** It gives Spark time to migrate data before a node disappears.
 6. **Use EMRFS instead of HDFS** for data you can't afford to lose. S3 doesn't care about Spot interruptions.
 7. **Set timeout actions.** Use SWITCH_TO_ON_DEMAND so your cluster doesn't get stuck waiting for Spot capacity that isn't available.
