@@ -14,7 +14,7 @@ This guide walks through the full migration from a self-managed Elasticsearch de
 
 ## Before You Start: Compatibility Check
 
-OpenSearch is a fork of Elasticsearch 7.10.2, so if you're running Elasticsearch 7.x or below, you're in a good position. If you're on Elasticsearch 8.x, some adjustments will be necessary since the APIs diverged after the fork.
+OpenSearch is a fork of Elasticsearch 7.10.2, so if you're running Elasticsearch 6.x or 7.x, you can usually migrate with snapshots to a compatible OpenSearch 1.x domain. If you're on Elasticsearch 8.x, snapshot restore to OpenSearch isn't supported directly because the APIs and snapshot formats diverged after the fork.
 
 Check your current Elasticsearch version first.
 
@@ -39,16 +39,20 @@ Start by provisioning an OpenSearch domain in AWS. You can do this through the c
 # Create an OpenSearch domain with reasonable defaults
 aws opensearch create-domain \
   --domain-name my-search-cluster \
-  --engine-version OpenSearch_2.11 \
+  --engine-version OpenSearch_1.3 \
   --cluster-config \
     InstanceType=r6g.large.search,InstanceCount=3,DedicatedMasterEnabled=true,DedicatedMasterType=r6g.large.search,DedicatedMasterCount=3 \
   --ebs-options EBSEnabled=true,VolumeType=gp3,VolumeSize=100 \
+  --node-to-node-encryption-options Enabled=true \
+  --encryption-at-rest-options Enabled=true \
+  --domain-endpoint-options EnforceHTTPS=true,TLSSecurityPolicy=Policy-Min-TLS-1-2-2019-07 \
+  --advanced-security-options Enabled=true,InternalUserDatabaseEnabled=true,MasterUserOptions='{MasterUserName=master_user,MasterUserPassword=Master_Password1!}' \
   --access-policies '{
     "Version": "2012-10-17",
     "Statement": [{
       "Effect": "Allow",
       "Principal": {"AWS": "arn:aws:iam::123456789012:root"},
-      "Action": "es:*",
+      "Action": "es:ESHttp*",
       "Resource": "arn:aws:es:us-east-1:123456789012:domain/my-search-cluster/*"
     }]
   }'
@@ -78,7 +82,9 @@ cat > snapshot-policy.json << 'EOF'
   "Version": "2012-10-17",
   "Statement": [{
     "Action": [
-      "s3:ListBucket"
+      "s3:ListBucket",
+      "s3:GetBucketLocation",
+      "s3:ListBucketMultipartUploads"
     ],
     "Effect": "Allow",
     "Resource": "arn:aws:s3:::my-es-migration-snapshots"
@@ -86,7 +92,9 @@ cat > snapshot-policy.json << 'EOF'
     "Action": [
       "s3:GetObject",
       "s3:PutObject",
-      "s3:DeleteObject"
+      "s3:DeleteObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListMultipartUploadParts"
     ],
     "Effect": "Allow",
     "Resource": "arn:aws:s3:::my-es-migration-snapshots/*"
@@ -95,7 +103,9 @@ cat > snapshot-policy.json << 'EOF'
 EOF
 ```
 
-Now register the snapshot repository on your source Elasticsearch cluster. You'll need the `repository-s3` plugin installed.
+Attach that policy to `arn:aws:iam::123456789012:role/SnapshotRole`, configure the role trust policy so `es.amazonaws.com` can assume it, and make sure the IAM identity that registers the repository has `iam:PassRole` for that role.
+
+Now register the snapshot repository on your source Elasticsearch cluster. You'll need the `repository-s3` plugin installed on every node, and the source cluster needs S3 credentials configured through its default S3 client, such as an EC2 instance role or the Elasticsearch keystore.
 
 ```bash
 # Register S3 repository on source Elasticsearch
@@ -104,8 +114,7 @@ curl -X PUT "http://localhost:9200/_snapshot/migration_repo" \
   "type": "s3",
   "settings": {
     "bucket": "my-es-migration-snapshots",
-    "region": "us-east-1",
-    "role_arn": "arn:aws:iam::123456789012:role/SnapshotRole"
+    "client": "default"
   }
 }'
 ```
@@ -131,7 +140,7 @@ For large clusters, snapshots can take hours. The `include_global_state: false` 
 
 ## Step 4: Register the Repository in OpenSearch
 
-Now register the same S3 bucket as a snapshot repository in your OpenSearch domain. This requires signing requests with AWS credentials.
+Now register the same S3 bucket as a snapshot repository in your OpenSearch domain. This requires signing requests with AWS credentials. If you enabled fine-grained access control, map the IAM role or user that signs this request to the `manage_snapshots` role in OpenSearch Dashboards first.
 
 ```python
 # register_repo.py - Register snapshot repo in OpenSearch
@@ -158,7 +167,8 @@ payload = {
     "settings": {
         "bucket": "my-es-migration-snapshots",
         "region": "us-east-1",
-        "role_arn": "arn:aws:iam::123456789012:role/SnapshotRole"
+        "role_arn": "arn:aws:iam::123456789012:role/SnapshotRole",
+        "readonly": True
     }
 }
 
@@ -178,6 +188,7 @@ With the repository registered, restore your snapshot into OpenSearch.
 ```bash
 # Restore the snapshot in OpenSearch
 curl -X POST "https://my-search-cluster.us-east-1.es.amazonaws.com/_snapshot/migration_repo/migration_snapshot_1/_restore" \
+  -u 'master_user:Master_Password1!' \
   -H 'Content-Type: application/json' -d '{
   "indices": "my-app-logs-*,my-app-data-*",
   "ignore_unavailable": true,
@@ -185,7 +196,7 @@ curl -X POST "https://my-search-cluster.us-east-1.es.amazonaws.com/_snapshot/mig
 }'
 
 # Check restore progress
-curl -s "https://my-search-cluster.us-east-1.es.amazonaws.com/_cat/recovery?v&active_only=true"
+curl -s -u 'master_user:Master_Password1!' "https://my-search-cluster.us-east-1.es.amazonaws.com/_cat/recovery?v&active_only=true"
 ```
 
 ## Step 6: Update Your Application Clients
@@ -240,15 +251,17 @@ const client = new Client({
   }
 });
 
-// Search API remains the same
-const result = await client.search({
-  index: 'my-app-data-*',
-  body: {
-    query: {
-      match: { title: 'migration guide' }
+(async () => {
+  // Search API remains the same
+  const result = await client.search({
+    index: 'my-app-data-*',
+    body: {
+      query: {
+        match: { title: 'migration guide' }
+      }
     }
-  }
-});
+  });
+})();
 ```
 
 ## Handling Index Templates
@@ -262,6 +275,7 @@ curl -s "http://localhost:9200/_index_template/*" | jq '.' > templates.json
 # You may need to adjust templates for OpenSearch compatibility
 # Then apply them to OpenSearch
 curl -X PUT "https://my-search-cluster.us-east-1.es.amazonaws.com/_index_template/my_template" \
+  -u 'master_user:Master_Password1!' \
   -H 'Content-Type: application/json' -d @template_fixed.json
 ```
 
@@ -271,10 +285,10 @@ Once migration is complete, you'll want to keep a close eye on cluster health. O
 
 ```bash
 # Quick health check
-curl -s "https://my-search-cluster.us-east-1.es.amazonaws.com/_cluster/health" | jq '.'
+curl -s -u 'master_user:Master_Password1!' "https://my-search-cluster.us-east-1.es.amazonaws.com/_cluster/health" | jq '.'
 
 # Check shard allocation
-curl -s "https://my-search-cluster.us-east-1.es.amazonaws.com/_cat/shards?v&h=index,shard,prirep,state,docs,store,node"
+curl -s -u 'master_user:Master_Password1!' "https://my-search-cluster.us-east-1.es.amazonaws.com/_cat/shards?v&h=index,shard,prirep,state,docs,store,node"
 ```
 
 ## Common Pitfalls
