@@ -61,7 +61,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Install dependencies
@@ -91,12 +91,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       # Install production dependencies only
       - name: Install production dependencies
-        run: npm ci --production
+        run: npm ci --omit=dev
 
       # Configure AWS credentials using OIDC (recommended over access keys)
       - name: Configure AWS credentials
@@ -150,8 +150,7 @@ First, create the OIDC identity provider in AWS:
 # Create the GitHub OIDC provider in your AWS account
 aws iam create-open-id-connect-provider \
   --url https://token.actions.githubusercontent.com \
-  --client-id-list sts.amazonaws.com \
-  --thumbprint-list 6938fd4d98bab03faadb97b34396831e3780aea1
+  --client-id-list sts.amazonaws.com
 ```
 
 Then create an IAM role for GitHub Actions:
@@ -192,10 +191,14 @@ The role needs permission to update the Lambda function:
         "lambda:UpdateFunctionConfiguration",
         "lambda:PublishVersion",
         "lambda:GetFunction",
+        "lambda:GetAlias",
         "lambda:InvokeFunction",
         "lambda:UpdateAlias"
       ],
-      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:my-api-handler"
+      "Resource": [
+        "arn:aws:lambda:us-east-1:123456789012:function:my-api-handler",
+        "arn:aws:lambda:us-east-1:123456789012:function:my-api-handler:*"
+      ]
     }
   ]
 }
@@ -213,6 +216,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -220,7 +227,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
       - run: npm ci
       - run: npm test
@@ -233,9 +240,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
-      - run: npm ci --production
+      - run: npm ci --omit=dev
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -262,14 +269,14 @@ jobs:
   deploy-production:
     needs: deploy-staging
     runs-on: ubuntu-latest
-    environment: production  # Requires manual approval in GitHub
+    environment: production  # Can require manual approval if required reviewers are configured
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
-      - run: npm ci --production
+      - run: npm ci --omit=dev
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
