@@ -14,29 +14,27 @@ Aurora Limitless Database breaks through these limits by distributing your data 
 
 ## How Aurora Limitless Works
 
-Aurora Limitless introduces two new concepts: shard groups and table types.
+Aurora Limitless introduces two new concepts: DB shard groups and table types.
 
 ```mermaid
 graph TD
-    A[Application] --> B[Aurora Limitless Router]
-    B --> C[Shard Group 1]
-    B --> D[Shard Group 2]
-    B --> E[Shard Group 3]
+    A[Application] --> B[DB Cluster Endpoint]
+    B --> C[Aurora Limitless Router]
 
-    subgraph "Each Shard Group"
-        F[Writer Instance]
-        G[Reader Instance]
-        F --> G
+    subgraph "DB Shard Group"
+        C --> D[Shard 1]
+        C --> E[Shard 2]
+        C --> F[Shard 3]
     end
 ```
 
-**Shard groups** are sets of Aurora instances that each hold a portion of your data. The router layer distributes queries to the right shard group based on the shard key.
+**DB shard groups** are containers for the Aurora Limitless routers and shards. Routers accept SQL connections and distribute queries to the right shard based on the shard key.
 
 **Table types** determine how data is distributed:
 
-- **Sharded tables** - data is horizontally partitioned across shard groups based on a shard key column
-- **Reference tables** - data is replicated to all shard groups (good for lookup tables)
-- **Standard tables** - remain on the router (not distributed)
+- **Sharded tables** - data is horizontally partitioned across shards based on a shard key column
+- **Reference tables** - data is replicated to all shards (good for lookup tables)
+- **Standard tables** - stored on a system-chosen shard (not distributed)
 
 ## Prerequisites
 
@@ -45,6 +43,7 @@ Aurora Limitless is available for Aurora PostgreSQL-Compatible Edition. You need
 - Aurora PostgreSQL 16.4-limitless or later
 - A supported AWS Region
 - Appropriate IAM permissions
+- Performance Insights, Enhanced Monitoring, and PostgreSQL log exports enabled for the cluster
 
 ## Step 1: Create a Limitless-Enabled DB Cluster
 
@@ -54,19 +53,23 @@ Aurora Limitless is available for Aurora PostgreSQL-Compatible Edition. You need
 aws rds create-db-cluster \
   --db-cluster-identifier my-limitless-cluster \
   --engine aurora-postgresql \
-  --engine-version 16.4-limitless \
+  --engine-version 16.6-limitless \
   --master-username admin \
   --master-user-password 'YourStr0ngP@ss!' \
   --storage-type aurora-iopt1 \
-  --serverless-v2-scaling-configuration MinCapacity=2,MaxCapacity=64 \
-  --cluster-scalability-type limitless
+  --cluster-scalability-type limitless \
+  --enable-performance-insights \
+  --performance-insights-retention-period 31 \
+  --monitoring-interval 5 \
+  --monitoring-role-arn arn:aws:iam::123456789012:role/EMrole \
+  --enable-cloudwatch-logs-exports postgresql
 ```
 
 The `--cluster-scalability-type limitless` flag is what enables Limitless mode.
 
 ## Step 2: Create DB Shard Groups
 
-Shard groups define how many shards your data is split across.
+Shard groups define the capacity range and contain the routers and shards that your data is split across.
 
 ```bash
 # Create a shard group with initial capacity
@@ -79,17 +82,14 @@ aws rds create-db-shard-group \
 
 The `compute-redundancy` parameter controls how many standby instances each shard has. Set it to 1 for high availability.
 
-## Step 3: Create the Router Instance
+## Step 3: Use the Cluster Endpoint
 
-The router is the entry point for your application.
+The DB shard group contains the routers and shards. Individual routers and shards are not visible as DB instances in your AWS account. Use the cluster endpoint to connect your application.
 
 ```bash
-# Create a Serverless v2 instance as the router
-aws rds create-db-instance \
-  --db-instance-identifier my-limitless-router \
-  --db-cluster-identifier my-limitless-cluster \
-  --db-instance-class db.serverless \
-  --engine aurora-postgresql
+# Find the Limitless cluster endpoint
+aws rds describe-db-shard-groups \
+  --db-shard-group-identifier my-shard-group
 ```
 
 ## Step 4: Define Your Table Distribution
@@ -98,10 +98,14 @@ Once the cluster is running, connect to it and set up your tables.
 
 ### Create a Sharded Table
 
-Sharded tables have their rows distributed across shard groups based on a shard key.
+Sharded tables have their rows distributed across shards based on a shard key.
 
 ```sql
 -- Create a sharded table with customer_id as the shard key
+BEGIN;
+SET LOCAL rds_aurora.limitless_create_table_mode='sharded';
+SET LOCAL rds_aurora.limitless_create_table_shard_key='{"customer_id"}';
+
 CREATE TABLE orders (
     order_id BIGINT GENERATED ALWAYS AS IDENTITY,
     customer_id BIGINT NOT NULL,
@@ -110,13 +114,12 @@ CREATE TABLE orders (
     status VARCHAR(20) NOT NULL DEFAULT 'pending',
     items JSONB,
     PRIMARY KEY (order_id, customer_id)
-) USING aurora_limitless;
+);
 
--- Set the shard key
-ALTER TABLE orders SET SHARD KEY (customer_id);
+COMMIT;
 ```
 
-The shard key determines which shard group stores each row. Choose a column with high cardinality and that your queries frequently filter on.
+The shard key determines which shard stores each row. Choose a column with high cardinality and that your queries frequently filter on.
 
 ### Create Collocated Tables
 
@@ -124,6 +127,11 @@ Tables that share the same shard key are stored together on the same shard, maki
 
 ```sql
 -- Order items collocated with orders by customer_id
+BEGIN;
+SET LOCAL rds_aurora.limitless_create_table_mode='sharded';
+SET LOCAL rds_aurora.limitless_create_table_shard_key='{"customer_id"}';
+SET LOCAL rds_aurora.limitless_create_table_collocate_with='orders';
+
 CREATE TABLE order_items (
     item_id BIGINT GENERATED ALWAYS AS IDENTITY,
     order_id BIGINT NOT NULL,
@@ -132,9 +140,9 @@ CREATE TABLE order_items (
     quantity INT NOT NULL,
     unit_price DECIMAL(10,2) NOT NULL,
     PRIMARY KEY (item_id, customer_id)
-) USING aurora_limitless;
+);
 
-ALTER TABLE order_items SET SHARD KEY (customer_id);
+COMMIT;
 
 -- Joins between orders and order_items are efficient because
 -- rows with the same customer_id are on the same shard
@@ -146,23 +154,26 @@ Small, frequently-joined tables should be reference tables. They are replicated 
 
 ```sql
 -- Product catalog replicated to all shards for fast local joins
+BEGIN;
+SET LOCAL rds_aurora.limitless_create_table_mode='reference';
+
 CREATE TABLE products (
     product_id BIGINT PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     category VARCHAR(100),
     price DECIMAL(10,2) NOT NULL,
     description TEXT
-) USING aurora_limitless;
+);
 
-ALTER TABLE products SET TABLE TYPE TO reference;
+COMMIT;
 ```
 
 ### Standard Tables
 
-Tables that do not need to be distributed stay on the router.
+Tables that do not need to be distributed stay standard.
 
 ```sql
--- Configuration table stays on the router - small and rarely joined
+-- Configuration table stays standard - small and rarely joined
 CREATE TABLE app_config (
     config_key VARCHAR(100) PRIMARY KEY,
     config_value TEXT,
@@ -186,7 +197,7 @@ ORDER BY o.order_date DESC;
 
 Because `orders` and `order_items` are collocated on the same shard key, and `products` is a reference table available on every shard, this entire query runs on a single shard with no cross-shard coordination.
 
-Cross-shard queries work too, but they are slower because they require coordination between shard groups.
+Cross-shard queries work too, but they are slower because they require coordination between shards.
 
 ```sql
 -- This runs across all shards because there is no customer_id filter
@@ -214,12 +225,12 @@ Key metrics to watch:
 # Monitor distributed query performance
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
-  --metric-name LimitlessQueryLatency \
-  --dimensions Name=DBClusterIdentifier,Value=my-limitless-cluster \
+  --metric-name DBShardGroupACUUtilization \
+  --dimensions Name=DBShardGroupIdentifier,Value=my-shard-group \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Average,p99
+  --statistics Average,Maximum
 ```
 
 ### Query Distribution Insights
@@ -227,11 +238,11 @@ aws cloudwatch get-metric-statistics \
 Check how queries are being distributed across shards.
 
 ```sql
--- View query routing statistics
-SELECT * FROM rds_aurora.limitless_stat_activity;
+-- View Limitless table types and distribution keys
+SELECT * FROM rds_aurora.limitless_tables;
 
--- Check shard distribution
-SELECT * FROM rds_aurora.limitless_shard_map;
+-- Check collocation distribution across shards
+SELECT * FROM rds_aurora.limitless_table_collocation_distributions;
 ```
 
 ## Choosing the Right Shard Key
@@ -266,7 +277,7 @@ aws rds modify-db-shard-group \
   --max-acu 256
 ```
 
-Aurora Limitless automatically rebalances data as shards are added or removed.
+Changing the capacity range does not change the number of routers or shards. Aurora can split shards automatically when system-initiated shard splitting is enabled, or you can split a shard manually with the `rds_aurora.limitless_split_shard` function.
 
 ## Summary
 
