@@ -294,7 +294,7 @@ aws ses test-render-template \
   --region us-east-1
 ```
 
-This returns the rendered HTML and text without sending anything. It's also great for catching missing variable errors before they affect real customers.
+This returns the complete rendered MIME message without sending anything. It's also great for catching missing variable errors before they affect real customers.
 
 ## Template Conditionals and Loops
 
