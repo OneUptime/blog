@@ -86,7 +86,7 @@ resource "aws_s3_object" "index" {
 
 ## Setting Up Origin Access Control
 
-Origin Access Control (OAC) replaced the older Origin Access Identity (OAI). It's more secure and supports additional features like SSE-KMS.
+Origin Access Control (OAC) is the newer approach AWS recommends over the older Origin Access Identity (OAI). It's more secure and supports additional features like SSE-KMS.
 
 This OAC configuration tells CloudFront to sign requests when fetching from S3.
 
@@ -105,7 +105,7 @@ resource "aws_cloudfront_origin_access_control" "website" {
 
 Now for the main event. This is where we define caching behaviors, the default root object, and how CloudFront talks to S3.
 
-This distribution serves content from S3 with a 24-hour default cache TTL and redirects HTTP to HTTPS.
+This distribution serves content from S3 with AWS's managed CachingOptimized cache policy, which has a 24-hour default cache TTL, and redirects HTTP to HTTPS.
 
 ```hcl
 resource "aws_cloudfront_distribution" "website" {
@@ -125,17 +125,10 @@ resource "aws_cloudfront_distribution" "website" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "S3-website"
 
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
+    # AWS managed CachingOptimized policy
+    cache_policy_id = "658327ea-f89d-4fab-a63d-7e88639e58f6"
 
     viewer_protocol_policy = "redirect-to-https"
-    min_ttl                = 0
-    default_ttl            = 86400
-    max_ttl                = 31536000
     compress               = true
   }
 
@@ -205,7 +198,7 @@ resource "aws_s3_bucket_policy" "website" {
 
 If you want to use your own domain instead of the default `d1234.cloudfront.net` URL, you'll need an ACM certificate.
 
-This creates an ACM certificate and validates it via DNS.
+This requests an ACM certificate and outputs the DNS records you'll need to create for validation.
 
 ```hcl
 # acm.tf
@@ -315,7 +308,7 @@ There are a few things that trip people up when working with CloudFront and Terr
 1. **ACM certificates must be in us-east-1** for CloudFront, regardless of where your other resources live.
 2. **OAI vs OAC** - AWS recommends OAC for new distributions. If you're following older tutorials, they might use OAI.
 3. **Distribution updates are slow** - Any change to a CloudFront distribution triggers a global deployment that takes several minutes.
-4. **Don't forget compression** - Setting `compress = true` in your cache behavior enables automatic gzip/br compression, which significantly reduces transfer sizes.
+4. **Don't forget compression** - Setting `compress = true` enables automatic compression for supported objects; use cache policies to enable Brotli support.
 
 ## Monitoring Your Distribution
 
