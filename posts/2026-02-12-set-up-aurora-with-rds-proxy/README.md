@@ -17,7 +17,7 @@ It's especially valuable for serverless architectures, applications with bursty 
 RDS Proxy maintains a pool of established connections to your Aurora database. When your application connects, it gets assigned a connection from the pool instead of opening a new one directly to Aurora. This means:
 
 - Hundreds of application connections can share a handful of database connections
-- Connections survive Lambda cold starts and function recycling
+- Database connections in the proxy pool can be reused across Lambda cold starts and function recycling
 - Failover is faster because the proxy handles reconnection
 - You're protected against connection storms
 
@@ -47,8 +47,8 @@ graph LR
     L4 --> PP
     EC --> PP
     PP --> W
-    PP --> R1
-    PP --> R2
+    PP -. read-only proxy endpoint .-> R1
+    PP -. read-only proxy endpoint .-> R2
 ```
 
 ## Prerequisites
@@ -163,6 +163,8 @@ aws rds create-db-proxy \
 
 The `--require-tls` flag enforces encrypted connections between your application and the proxy. I'd recommend always enabling this.
 
+The default proxy endpoint is read/write and routes to the Aurora writer. To send read traffic to Aurora Replicas, create a separate read-only proxy endpoint.
+
 ## Step 4: Register the Target (Aurora Cluster)
 
 Associate the proxy with your Aurora cluster:
@@ -197,7 +199,7 @@ connection = pymysql.connect(
     password='YourSecurePassword123',
     database='mydb',
     port=3306,
-    ssl={'ssl': True}  # Required when TLS is enforced
+    ssl_verify_identity=True  # Required when TLS is enforced
 )
 
 cursor = connection.cursor()
@@ -223,7 +225,7 @@ def get_connection():
             password='YourSecurePassword123',
             database='mydb',
             port=3306,
-            ssl={'ssl': True},
+            ssl_verify_identity=True,
             connect_timeout=5,
             read_timeout=10
         )
@@ -332,7 +334,8 @@ Key metrics to watch:
 - **ClientConnections** - Active client connections to the proxy
 - **DatabaseConnections** - Active connections from proxy to Aurora
 - **ClientConnectionsSetupSucceeded** - Successful new connections
-- **QueryDatabaseResponseLatency** - Latency added by the proxy
+- **QueryResponseLatency** - Time between the proxy receiving a query and responding to it
+- **QueryDatabaseResponseLatency** - Time the database took to respond to the query
 
 ## Session Pinning Gotchas
 
@@ -350,8 +353,8 @@ You can reduce unnecessary pinning with the session pinning filter:
 -- This causes pinning (sets a session variable)
 SET SESSION wait_timeout = 300;
 
--- If you must set variables, use the EXCLUDE_VARIABLE_SETS pinning filter
--- (configured in the proxy target group settings)
+-- If you must set variables, use the EXCLUDE_VARIABLE_SETS pinning filter only
+-- when those SET statements are safe to ignore for session pinning
 ```
 
 ## Wrapping Up
