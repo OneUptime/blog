@@ -31,7 +31,7 @@ sequenceDiagram
     Edge->>User: New version
 ```
 
-Invalidations typically complete in under 2 minutes, but can take up to 10-15 minutes for global propagation.
+CloudFront forwards invalidation requests to edge locations within a few seconds, and each edge location starts processing the invalidation immediately. The invalidation status changes to `Completed` when processing has finished.
 
 ## Basic Invalidation with the CLI
 
@@ -129,7 +129,7 @@ The first 1,000 invalidation paths per month are free. After that, it's $0.005 p
 However, there's a catch - you can only have 3,000 paths in progress at once (or 15 wildcard invalidations). If you're hitting that limit, you're probably invalidating too often and should rethink your caching strategy.
 
 ```bash
-# Count invalidation paths used this month (rough check)
+# Count invalidation batches for the distribution (rough check)
 aws cloudfront list-invalidations \
   --distribution-id E1234567890 \
   --query 'InvalidationList.Items | length(@)'
@@ -152,21 +152,21 @@ echo "Deploying to S3..."
 aws s3 sync "$BUILD_DIR" "s3://$S3_BUCKET" \
   --delete \
   --cache-control "public, max-age=31536000" \
-  --exclude "index.html" \
+  --exclude "*.html" \
   --exclude "*.json"
 
 # Upload HTML and JSON with short cache
 aws s3 sync "$BUILD_DIR" "s3://$S3_BUCKET" \
   --cache-control "public, max-age=60" \
-  --include "index.html" \
-  --include "*.json" \
-  --exclude "*"
+  --exclude "*" \
+  --include "*.html" \
+  --include "*.json"
 
-# Invalidate CloudFront cache for HTML and JSON files
+# Invalidate CloudFront cache
 echo "Invalidating CloudFront cache..."
 INVALIDATION_ID=$(aws cloudfront create-invalidation \
   --distribution-id "$DISTRIBUTION_ID" \
-  --paths "/index.html" "/manifest.json" "/*.html" \
+  --paths "/*" \
   --query 'Invalidation.Id' \
   --output text)
 
@@ -244,7 +244,7 @@ Since HTML files reference versioned assets, a 60-second cache on HTML means use
 
 ### Use ETags
 
-If your origin supports ETags, CloudFront can do conditional requests to check if content has changed. This is automatic for S3 origins. When the ETag matches, the edge serves the cached version; when it doesn't, it fetches the new version.
+If your origin supports ETags, CloudFront can do conditional requests after an object has expired from the edge cache. This is automatic for S3 origins. If the origin confirms that the object has not changed, CloudFront can keep using the cached version; if it has changed, CloudFront fetches the new version.
 
 ## Invalidation for Specific Query Strings
 
