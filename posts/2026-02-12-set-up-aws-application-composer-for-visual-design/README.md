@@ -1,25 +1,26 @@
-# How to Set Up AWS Application Composer for Visual Design
+# How to Set Up AWS Infrastructure Composer for Visual Design
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Application Composer, Serverless, Visual Design, CloudFormation, SAM
+Tags: AWS, Infrastructure Composer, Serverless, Visual Design, CloudFormation, SAM
 
-Description: Use AWS Application Composer to visually design and build serverless applications by dragging and dropping AWS resources on an interactive canvas.
+Description: Use AWS Infrastructure Composer to visually design and build serverless applications by dragging and dropping AWS resources on an interactive canvas.
 
 ---
 
-Writing CloudFormation or SAM templates by hand is tedious. You need to remember resource type names, property schemas, cross-resource references, and IAM permission patterns. Miss one property and your deployment fails with a cryptic error. AWS Application Composer takes a different approach - it gives you a visual canvas where you drag and drop AWS resources, connect them together, and it generates the correct infrastructure-as-code template behind the scenes.
+Writing CloudFormation or SAM templates by hand is tedious. You need to remember resource type names, property schemas, cross-resource references, and IAM permission patterns. Miss one property and your deployment fails with a cryptic error. AWS Infrastructure Composer, formerly AWS Application Composer, takes a different approach - it gives you a visual canvas where you drag and drop AWS resources, connect them together, and it generates the correct infrastructure-as-code template behind the scenes.
 
-Application Composer is not just a diagram tool. It is a bidirectional editor. You can design on the canvas and see the template update in real time, or edit the template directly and watch the canvas reflect your changes. This makes it genuinely useful for both visual thinkers and YAML warriors.
+Infrastructure Composer is not just a diagram tool. It is a bidirectional editor. You can design on the canvas and see the template update in real time, or edit the template directly and watch the canvas reflect your changes. This makes it genuinely useful for both visual thinkers and YAML warriors.
 
-## Accessing Application Composer
+## Accessing Infrastructure Composer
 
-Application Composer is available in two places:
+Infrastructure Composer is available in three places:
 
-1. **AWS Console** - navigate to Application Composer in the AWS Console
-2. **VS Code** - install the AWS Toolkit extension, which includes Application Composer
+1. **Infrastructure Composer console** - navigate to Infrastructure Composer in the AWS Console
+2. **VS Code** - install the AWS Toolkit extension, which includes Infrastructure Composer
+3. **CloudFormation console mode** - visualize templates from the CloudFormation console workflow
 
-The VS Code integration is particularly powerful because it works with your local files and integrates with your existing development workflow.
+The AWS Toolkit for VS Code integration is particularly powerful because it works with your local files and integrates with your existing development workflow.
 
 ### VS Code Setup
 
@@ -29,16 +30,16 @@ The VS Code integration is particularly powerful because it works with your loca
 code --install-extension amazonwebservices.aws-toolkit-vscode
 
 # Open a SAM template file and use the
-# "Open with Application Composer" command
+# "Open with Infrastructure Composer" button or command
 ```
 
 ## Building Your First Application
 
-Let us build a serverless API with Application Composer. The goal is a REST API that creates and retrieves items from a DynamoDB table, with an SQS queue for async processing.
+Let us build a serverless API with Infrastructure Composer. The goal is a REST API that creates and retrieves items from a DynamoDB table, with an SQS queue for async processing.
 
 ### Step 1: Start a New Project
 
-In the Application Composer canvas:
+In the Infrastructure Composer canvas:
 
 1. Start with a blank canvas or a starter template
 2. The canvas shows a grid where you can place resources
@@ -82,7 +83,7 @@ Click and drag connections between resources. When you connect:
 - Lambda to SQS: grants send message permissions
 - SQS to Lambda: creates an event source mapping
 
-Application Composer automatically generates the IAM policies needed for each connection. This is one of its biggest time-savers.
+Infrastructure Composer automatically generates the IAM policies needed for supported connections. This is one of its biggest time-savers.
 
 ### Step 4: Configure Properties
 
@@ -117,10 +118,10 @@ Click on each resource to configure its properties:
 
 ## The Generated Template
 
-As you design on the canvas, Application Composer generates a SAM template in real time. Here is what the template looks like for our design:
+As you design on the canvas, Infrastructure Composer generates a SAM template in real time. Here is what the template looks like for our design:
 
 ```yaml
-# template.yaml - generated by Application Composer
+# template.yaml - generated by Infrastructure Composer
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: Item management API with async processing
@@ -224,11 +225,11 @@ Outputs:
     Value: !Sub 'https://${ItemsApi}.execute-api.${AWS::Region}.amazonaws.com/prod'
 ```
 
-Notice how Application Composer automatically chose the right SAM policy templates (DynamoDBCrudPolicy, SQSSendMessagePolicy, DynamoDBReadPolicy) based on the connections you drew. This is much less error-prone than writing IAM policies by hand.
+Notice how Infrastructure Composer automatically chose the right SAM policy templates (DynamoDBCrudPolicy, SQSSendMessagePolicy, DynamoDBReadPolicy) based on the connections you drew. This is much less error-prone than writing IAM policies by hand.
 
 ## Writing the Function Code
 
-Application Composer creates placeholder function code. Fill in the actual logic:
+If Infrastructure Composer saves starter function code for your project, replace the placeholder logic with your actual implementation:
 
 ```python
 # src/create_item/create_item.py
@@ -264,7 +265,10 @@ def handler(event, context):
 
     return {
         'statusCode': 201,
-        'headers': {'Content-Type': 'application/json'},
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
         'body': json.dumps(item)
     }
 ```
@@ -287,19 +291,26 @@ def handler(event, context):
     if 'Item' not in response:
         return {
             'statusCode': 404,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             'body': json.dumps({'error': 'Item not found'})
         }
 
     return {
         'statusCode': 200,
-        'headers': {'Content-Type': 'application/json'},
+        'headers': {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+        },
         'body': json.dumps(response['Item'])
     }
 ```
 
 ## Deploying the Application
 
-Since Application Composer generates standard SAM templates, deploy with the SAM CLI:
+Since Infrastructure Composer generates standard SAM templates, deploy with the SAM CLI:
 
 ```bash
 # Build the application
@@ -326,25 +337,25 @@ The bidirectional editing is a killer feature. If you prefer YAML, edit the temp
       TopicName: !Sub '${AWS::StackName}-notifications'
 ```
 
-Save the file, and the SNS Topic appears on the canvas. You can then drag a connection from a Lambda function to it, and Application Composer adds the publish permissions.
+Save the file, and the SNS Topic appears on the canvas. You can then drag a connection from a Lambda function to it, and Infrastructure Composer adds the publish permissions.
 
 ## Importing Existing Templates
 
-If you have an existing SAM or CloudFormation template, open it with Application Composer and it will render the visual representation:
+If you have an existing SAM or CloudFormation template, open it with Infrastructure Composer and it will render the visual representation:
 
 ```bash
 # In VS Code, right-click your template.yaml
-# Select "Open with Application Composer"
+# Select "Open with App Composer"
 
 # Or from the command palette:
-# "Application Composer: Open Template"
+# Search for "AWS Infrastructure Composer"
 ```
 
 This is excellent for understanding complex existing templates. Seeing the architecture visually makes it much easier to understand resource relationships and data flow.
 
 ## Team Collaboration
 
-Since Application Composer works with standard SAM/CloudFormation template files, collaboration works through your normal version control workflow:
+Since Infrastructure Composer works with standard SAM/CloudFormation template files, collaboration works through your normal version control workflow:
 
 ```bash
 # The template.yaml is just a regular file in your repo
@@ -353,18 +364,18 @@ git commit -m "Add SQS queue for async processing"
 git push
 ```
 
-Team members can open the same template in their own Application Composer instances to visualize and modify the architecture.
+Team members can open the same template in their own Infrastructure Composer instances to visualize and modify the architecture.
 
 ## Tips for Effective Use
 
 **Start visual, refine in code.** Use the canvas to lay out your architecture and connections. Then switch to the template editor for fine-tuning specific properties.
 
-**Use groups to organize.** Application Composer lets you create visual groups on the canvas. Use them to separate concerns (API layer, processing layer, storage layer).
+**Use groups to organize.** Infrastructure Composer lets you create visual groups on the canvas. Use them to separate concerns (API layer, processing layer, storage layer).
 
-**Check the generated IAM policies.** Application Composer generates least-privilege policies based on connections, but review them to make sure they match your security requirements.
+**Check the generated IAM policies.** Infrastructure Composer generates scoped policies based on supported connections, but review them to make sure they match your security requirements.
 
-**Combine with SAM Accelerate** for fast iteration. Use `sam sync --watch` to deploy changes automatically as you design in Application Composer.
+**Combine with SAM Accelerate** for fast iteration. Use `sam sync --watch` to deploy changes automatically as you design in Infrastructure Composer.
 
 ## Wrapping Up
 
-AWS Application Composer brings visual infrastructure design to the serverless development workflow without sacrificing the precision of infrastructure-as-code. The bidirectional editing means you are never locked into one mode of working. It is particularly valuable for designing new applications where you want to think architecturally first, and for understanding existing templates that have grown complex over time. Since it generates standard SAM templates, there is zero vendor lock-in to the tool itself.
+AWS Infrastructure Composer brings visual infrastructure design to the serverless development workflow without sacrificing the precision of infrastructure-as-code. The bidirectional editing means you are never locked into one mode of working. It is particularly valuable for designing new applications where you want to think architecturally first, and for understanding existing templates that have grown complex over time. Since it generates standard SAM templates, there is zero vendor lock-in to the tool itself.
