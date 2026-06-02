@@ -36,26 +36,26 @@ For a specific failed execution:
 # Get the execution details including the failure reason
 aws codepipeline get-pipeline-execution \
   --pipeline-name my-app-pipeline \
-  --pipeline-execution-id abc-123-def
+  --pipeline-execution-id 11111111-2222-3333-4444-555555555555
 
 # Get action execution details to see exactly which action failed
 aws codepipeline list-action-executions \
   --pipeline-name my-app-pipeline \
-  --filter pipelineExecutionId=abc-123-def
+  --filter pipelineExecutionId=11111111-2222-3333-4444-555555555555
 ```
 
 ## Source Stage Failures
 
-### CodeStar Connection Issues
+### CodeConnections Issues
 
-The most common source stage failure is a broken or expired CodeStar Connection.
+The most common source stage failure is a broken or expired CodeConnections connection.
 
 **Symptoms:** Source action fails with "Could not access the GitHub repository" or "Connection is not available."
 
 **Fix:**
 ```bash
 # Check connection status
-aws codestar-connections list-connections \
+aws codeconnections list-connections \
   --query 'Connections[*].{Name:ConnectionName,Status:ConnectionStatus}'
 ```
 
@@ -82,7 +82,7 @@ aws codepipeline get-pipeline \
 
 **Symptoms:** "Repository not found" or 403 errors.
 
-**Fix:** The CodeStar Connection might not have access to the specific repository. Go to your GitHub settings and verify the AWS Connector app has access to the repo.
+**Fix:** The CodeConnections connection might not have access to the specific repository. Go to your GitHub settings and verify the AWS Connector app has access to the repo.
 
 ## Build Stage Failures
 
@@ -94,7 +94,7 @@ Most build failures come from the build itself - tests failing, dependencies not
 # Get the build ID from the action execution
 BUILD_ID=$(aws codepipeline list-action-executions \
   --pipeline-name my-app-pipeline \
-  --filter pipelineExecutionId=abc-123-def \
+  --filter pipelineExecutionId=11111111-2222-3333-4444-555555555555 \
   --query 'actionExecutionDetails[?stageName==`Build`].output.executionResult.externalExecutionId' \
   --output text)
 
@@ -153,7 +153,7 @@ For CodeDeploy deployment failures, check the deployment status:
 # Get the deployment ID from the action execution
 DEPLOYMENT_ID=$(aws codepipeline list-action-executions \
   --pipeline-name my-app-pipeline \
-  --filter pipelineExecutionId=abc-123-def \
+  --filter pipelineExecutionId=11111111-2222-3333-4444-555555555555 \
   --query 'actionExecutionDetails[?stageName==`Deploy`].output.executionResult.externalExecutionId' \
   --output text)
 
@@ -219,7 +219,7 @@ Approvals time out after 7 days by default. If your pipeline keeps timing out:
 aws iam simulate-principal-policy \
   --policy-source-arn arn:aws:iam::123456789012:user/developer \
   --action-names codepipeline:PutApprovalResult \
-  --resource-arns "arn:aws:codepipeline:us-east-1:123456789:my-app-pipeline/*"
+  --resource-arns "arn:aws:codepipeline:us-east-1:123456789012:my-app-pipeline/*/*"
 ```
 
 ## IAM Issues (The Usual Suspect)
@@ -235,7 +235,7 @@ PIPELINE_ROLE=$(aws codepipeline get-pipeline \
 echo "Pipeline role: $PIPELINE_ROLE"
 
 # List attached policies
-ROLE_NAME=$(echo $PIPELINE_ROLE | cut -d'/' -f2)
+ROLE_NAME=$(echo $PIPELINE_ROLE | sed 's|.*/||')
 aws iam list-attached-role-policies --role-name $ROLE_NAME
 aws iam list-role-policies --role-name $ROLE_NAME
 ```
@@ -272,7 +272,7 @@ When something breaks, work through this:
 aws codepipeline retry-stage-execution \
   --pipeline-name my-app-pipeline \
   --stage-name Deploy \
-  --pipeline-execution-id abc-123-def \
+  --pipeline-execution-id 11111111-2222-3333-4444-555555555555 \
   --retry-mode FAILED_ACTIONS
 ```
 
