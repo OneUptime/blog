@@ -23,7 +23,7 @@ flowchart LR
     F[Google Groups] -.->|Manual or Custom Sync| D
 ```
 
-One thing to know upfront: Google Workspace's SCIM support for AWS is more limited than what you get with Okta or Azure AD. Google supports SAML perfectly, but automatic group provisioning requires some extra work. We'll cover the workarounds.
+One thing to know upfront: Google Workspace's SCIM support for AWS is more limited than what you get with Okta or Azure AD. Google supports SAML and automatic user provisioning, but automatic group provisioning requires some extra work. We'll cover the workarounds.
 
 ## Prerequisites
 
@@ -31,13 +31,13 @@ One thing to know upfront: Google Workspace's SCIM support for AWS is more limit
 - Google Workspace Super Admin access
 - Google Workspace Business, Enterprise, or Education edition
 
-## Step 1: Create a Custom SAML Application in Google Workspace
+## Step 1: Create the AWS SAML Application in Google Workspace
 
 1. Go to the Google Admin Console (admin.google.com)
 2. Navigate to Apps > Web and mobile apps
-3. Click "Add app" > "Add custom SAML app"
-4. Enter a name: "AWS IAM Identity Center"
-5. Optionally upload a logo
+3. Click "Add app" > "Search for apps"
+4. Search for "Amazon Web Services"
+5. Select "Amazon Web Services (SAML)"
 
 On the Google IdP information page, download the **IdP metadata** (XML file). You'll need this for IAM Identity Center. Also note:
 - SSO URL
@@ -68,9 +68,8 @@ Add attribute mappings:
 ```text
 Google Directory Attribute     -> App Attribute
 ----------------------------------------------
-Basic Information: First name -> firstName
-Basic Information: Last name  -> lastName
-Basic Information: Primary email -> email
+Basic Information: Primary email -> https://aws.amazon.com/SAML/Attributes/RoleSessionName
+Any Google Directory attribute  -> https://aws.amazon.com/SAML/Attributes/Role
 ```
 
 ## Step 4: Enable the Application for Users
@@ -94,7 +93,28 @@ If it doesn't work, common issues include:
 
 ## Step 6: Set Up User Provisioning
 
-This is where Google Workspace gets tricky. Unlike Okta and Azure AD, Google doesn't have a native SCIM integration with IAM Identity Center through the admin console. You have a few options:
+Google Workspace supports automatic user provisioning for the Amazon Web Services app through SCIM. Group provisioning is still not automatic, so you'll handle groups separately in the next step.
+
+In IAM Identity Center:
+
+1. Go to Settings
+2. In the Automatic provisioning section, click "Enable"
+3. Copy the **SCIM endpoint**
+4. Click "Show token" and copy the access token
+
+Back in Google Admin Console:
+
+1. Go to Apps > Web and mobile apps > Amazon Web Services
+2. In the "Autoprovisioning" section, click "Configure autoprovisioning"
+3. Paste the IAM Identity Center access token
+4. Paste the SCIM endpoint URL
+5. Verify that all mandatory IAM Identity Center attributes are mapped
+6. Configure the provisioning scope and deprovisioning behavior
+7. Turn autoprovisioning on
+
+Provisioning can take up to 24 hours, though it usually completes within minutes. You can verify the sync in IAM Identity Center by going to Users and checking that Google Workspace users were created.
+
+If you can't use Google Workspace autoprovisioning, you have a few fallback options:
 
 ### Option A: Manual User Creation
 
@@ -116,9 +136,9 @@ aws identitystore create-user \
 
 The username must match the Google Workspace email exactly for SAML to work.
 
-### Option B: Automated Sync with a Lambda Function
+### Option B: Custom Sync with a Lambda Function
 
-For larger teams, build a Lambda function that syncs users from Google Workspace to Identity Center:
+For larger teams that need a custom workflow, build a Lambda function that syncs users from Google Workspace to Identity Center:
 
 ```python
 import boto3
@@ -289,15 +309,15 @@ When someone leaves:
 
 1. Suspend or delete their Google Workspace account
 2. Their SAML authentication immediately stops working
-3. Remove or deactivate them in Identity Center (if not using automated sync)
+3. Remove or deactivate them in Identity Center (if not using Google Workspace autoprovisioning)
 
 ```bash
-# Deactivate the user in Identity Center
+# Delete the user in Identity Center
 # First find the user ID
-USER_ID=$(aws identitystore list-users \
+USER_ID=$(aws identitystore get-user-id \
   --identity-store-id "$IDENTITY_STORE_ID" \
-  --filters '[{"AttributePath": "UserName", "AttributeValue": "departed@company.com"}]' \
-  --query 'Users[0].UserId' --output text)
+  --alternate-identifier '{"UniqueAttribute": {"AttributePath": "userName", "AttributeValue": "departed@company.com"}}' \
+  --query 'UserId' --output text)
 
 # Delete the user
 aws identitystore delete-user \
@@ -305,4 +325,4 @@ aws identitystore delete-user \
   --user-id "$USER_ID"
 ```
 
-The Google Workspace integration isn't as polished as Okta or Azure AD when it comes to automatic provisioning, but for teams already invested in the Google ecosystem, it's a practical choice. The SAML authentication works flawlessly, and the user sync gap can be bridged with a simple Lambda function.
+The Google Workspace integration isn't as polished as Okta or Azure AD when it comes to group provisioning, but for teams already invested in the Google ecosystem, it's a practical choice. The SAML authentication works well, user provisioning is supported through SCIM, and the group sync gap can be bridged with manual groups or a tool like SSOSYNC.
