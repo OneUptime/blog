@@ -49,6 +49,9 @@ def handler(event, context):
     compressed = base64.b64decode(event['awslogs']['data'])
     payload = json.loads(gzip.decompress(compressed))
 
+    if payload.get('messageType') == 'CONTROL_MESSAGE':
+        return {'statusCode': 200}
+
     log_group = payload['logGroup']
     log_stream = payload['logStream']
     log_events = payload['logEvents']
@@ -120,6 +123,10 @@ exports.handler = async (event) => {
   const decompressed = zlib.gunzipSync(payload);
   const logData = JSON.parse(decompressed.toString());
 
+  if (logData.messageType === 'CONTROL_MESSAGE') {
+    return { statusCode: 200 };
+  }
+
   const { logGroup, logStream, logEvents } = logData;
   console.log(`Received ${logEvents.length} events from ${logGroup}`);
 
@@ -189,7 +196,7 @@ import base64
 import gzip
 import os
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 sns = boto3.client('sns')
 
@@ -198,14 +205,18 @@ def handler(event, context):
     compressed = base64.b64decode(event['awslogs']['data'])
     payload = json.loads(gzip.decompress(compressed))
 
+    if payload.get('messageType') == 'CONTROL_MESSAGE':
+        return {'statusCode': 200}
+
     errors = []
     for log_event in payload['logEvents']:
         try:
             parsed = json.loads(log_event['message'])
             if parsed.get('level') == 'ERROR':
                 errors.append({
-                    'timestamp': datetime.utcfromtimestamp(
-                        log_event['timestamp'] / 1000
+                    'timestamp': datetime.fromtimestamp(
+                        log_event['timestamp'] / 1000,
+                        tz=timezone.utc
                     ).isoformat(),
                     'service': parsed.get('service', 'unknown'),
                     'message': parsed.get('msg', parsed.get('message', 'No message')),
@@ -248,7 +259,7 @@ import base64
 import gzip
 import boto3
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 firehose = boto3.client('firehose')
@@ -258,6 +269,9 @@ def handler(event, context):
     """Enrich logs with user data and forward to Firehose."""
     compressed = base64.b64decode(event['awslogs']['data'])
     payload = json.loads(gzip.decompress(compressed))
+
+    if payload.get('messageType') == 'CONTROL_MESSAGE':
+        return {'statusCode': 200}
 
     enriched_records = []
 
@@ -279,7 +293,7 @@ def handler(event, context):
 
         # Add metadata
         parsed['_logGroup'] = payload['logGroup']
-        parsed['_processedAt'] = datetime.utcnow().isoformat()
+        parsed['_processedAt'] = datetime.now(timezone.utc).isoformat()
 
         enriched_records.append({
             'Data': json.dumps(parsed).encode('utf-8') + b'\n'
@@ -302,14 +316,36 @@ def handler(event, context):
 
 Each log group can have up to 2 subscription filters. If you need more destinations, have your Lambda function fan out to multiple targets.
 
-Also, CloudWatch Logs subscription filters have a throughput limit. If your log group produces more than 10,000 events per second, events may be dropped. For very high-volume log groups, consider using a Kinesis Data Stream as an intermediate buffer.
+Also, CloudWatch Logs subscription delivery depends on the capacity of the destination. If the destination is throttled or cannot keep up, delivery can lag or fail. For very high-volume log groups, monitor the `DeliveryThrottling` metric and consider using a Kinesis Data Stream as an intermediate buffer.
 
 ## CloudFormation Setup
 
-Here's the full infrastructure as code:
+Here's a CloudFormation setup for an existing log group:
 
 ```yaml
+Parameters:
+  SlackWebhookUrl:
+    Type: String
+    NoEcho: true
+  CodeBucket:
+    Type: String
+  CodeKey:
+    Type: String
+
 Resources:
+  LogProcessorRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
   LogProcessorFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -319,6 +355,9 @@ Resources:
       Timeout: 60
       MemorySize: 256
       Role: !GetAtt LogProcessorRole.Arn
+      Code:
+        S3Bucket: !Ref CodeBucket
+        S3Key: !Ref CodeKey
       Environment:
         Variables:
           SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
@@ -330,6 +369,7 @@ Resources:
       Action: lambda:InvokeFunction
       Principal: logs.amazonaws.com
       SourceArn: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/myapp/production/api:*'
+      SourceAccount: !Ref AWS::AccountId
 
   ErrorSubscriptionFilter:
     Type: AWS::Logs::SubscriptionFilter
