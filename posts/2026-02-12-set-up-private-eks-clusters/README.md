@@ -18,7 +18,7 @@ A fully private EKS cluster has three characteristics:
 
 1. **Private API endpoint** - the Kubernetes API is only reachable from within the VPC (no public endpoint)
 2. **Private nodes** - worker nodes run in private subnets with no public IP addresses
-3. **No internet gateway dependency** - nodes access the internet through NAT gateways or not at all
+3. **No public internet path** - nodes either access external services through NAT gateways, or in a fully private cluster, use VPC endpoints with no outbound internet access
 
 You can also run a semi-private setup where the API endpoint is public but restricted to specific CIDRs. That's simpler and works for many teams. See our [endpoint access configuration guide](https://oneuptime.com/blog/post/2026-02-12-configure-eks-control-plane-endpoint-access/view) for details on the different options.
 
@@ -55,7 +55,7 @@ flowchart TB
 
 ## Step 1: Create the VPC
 
-Create a VPC with both public and private subnets. The public subnets are for NAT gateways and load balancers. The private subnets are for your nodes.
+For a private-with-NAT design, create a VPC with both public and private subnets. The public subnets are for NAT gateways and internet-facing load balancers. The private subnets are for your nodes. For a fully private eksctl cluster with no outbound internet access, use `privateCluster.enabled: true` and let eksctl create private subnets and the required VPC endpoints.
 
 ```yaml
 # eksctl-private-cluster.yaml - Private cluster configuration
@@ -66,15 +66,10 @@ kind: ClusterConfig
 metadata:
   name: private-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.35"
 
 vpc:
   cidr: "10.0.0.0/16"
-  nat:
-    gateway: HighlyAvailable
-  clusterEndpoints:
-    publicAccess: false
-    privateAccess: true
 
 privateCluster:
   enabled: true
@@ -109,21 +104,21 @@ When you set `privateCluster.enabled: true`, eksctl automatically creates VPC en
 
 If you're setting up the VPC manually (not through eksctl), you need to create VPC endpoints so your nodes can reach AWS services without going through the internet.
 
-Required endpoints:
+Common endpoints:
 
 ```bash
-# Create interface VPC endpoints for EKS-required services
+# Create interface VPC endpoints for common EKS-required services
 VPC_ID="vpc-0abc123"
-SUBNET_IDS="subnet-0abc123,subnet-0def456"
-SG_ID="sg-0abc123"
+SUBNET_IDS=("subnet-0abc123" "subnet-0def456")
+ENDPOINT_SG="sg-0abc123"
 
 # ECR API endpoint
 aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --service-name com.amazonaws.us-west-2.ecr.api \
   --vpc-endpoint-type Interface \
-  --subnet-ids $SUBNET_IDS \
-  --security-group-ids $SG_ID \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
   --private-dns-enabled
 
 # ECR Docker endpoint
@@ -131,8 +126,8 @@ aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --service-name com.amazonaws.us-west-2.ecr.dkr \
   --vpc-endpoint-type Interface \
-  --subnet-ids $SUBNET_IDS \
-  --security-group-ids $SG_ID \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
   --private-dns-enabled
 
 # S3 Gateway endpoint (for ECR image layers)
@@ -147,8 +142,8 @@ aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --service-name com.amazonaws.us-west-2.sts \
   --vpc-endpoint-type Interface \
-  --subnet-ids $SUBNET_IDS \
-  --security-group-ids $SG_ID \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
   --private-dns-enabled
 
 # EC2 endpoint (for node provisioning)
@@ -156,8 +151,8 @@ aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --service-name com.amazonaws.us-west-2.ec2 \
   --vpc-endpoint-type Interface \
-  --subnet-ids $SUBNET_IDS \
-  --security-group-ids $SG_ID \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
   --private-dns-enabled
 
 # CloudWatch Logs endpoint
@@ -165,8 +160,8 @@ aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --service-name com.amazonaws.us-west-2.logs \
   --vpc-endpoint-type Interface \
-  --subnet-ids $SUBNET_IDS \
-  --security-group-ids $SG_ID \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
   --private-dns-enabled
 
 # Elastic Load Balancing endpoint
@@ -174,17 +169,44 @@ aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --service-name com.amazonaws.us-west-2.elasticloadbalancing \
   --vpc-endpoint-type Interface \
-  --subnet-ids $SUBNET_IDS \
-  --security-group-ids $SG_ID \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
+  --private-dns-enabled
+
+# Amazon EKS endpoint (for EKS management API calls from inside the VPC)
+aws ec2 create-vpc-endpoint \
+  --vpc-id $VPC_ID \
+  --service-name com.amazonaws.us-west-2.eks \
+  --vpc-endpoint-type Interface \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
+  --private-dns-enabled
+
+# EKS Auth endpoint (required for EKS Pod Identity)
+aws ec2 create-vpc-endpoint \
+  --vpc-id $VPC_ID \
+  --service-name com.amazonaws.us-west-2.eks-auth \
+  --vpc-endpoint-type Interface \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
+  --private-dns-enabled
+
+# Auto Scaling endpoint (required for Cluster Autoscaler)
+aws ec2 create-vpc-endpoint \
+  --vpc-id $VPC_ID \
+  --service-name com.amazonaws.us-west-2.autoscaling \
+  --vpc-endpoint-type Interface \
+  --subnet-ids "${SUBNET_IDS[@]}" \
+  --security-group-ids $ENDPOINT_SG \
   --private-dns-enabled
 ```
 
 ## Step 3: Configure Security Groups for Endpoints
 
-The VPC endpoint security group needs to allow HTTPS traffic from your nodes:
+The VPC endpoint security group needs to exist before you create the endpoints, and it needs to allow HTTPS traffic from your nodes. If you don't already have one, run this before creating the endpoints in Step 2:
 
 ```bash
-# Create security group for VPC endpoints
+# Create security group for VPC endpoints if you don't already have one
 ENDPOINT_SG=$(aws ec2 create-security-group \
   --group-name vpc-endpoint-sg \
   --description "Security group for VPC endpoints" \
@@ -261,10 +283,11 @@ docker push 123456789012.dkr.ecr.us-west-2.amazonaws.com/nginx:1.25
 # Create a pull-through cache rule for Docker Hub
 aws ecr create-pull-through-cache-rule \
   --ecr-repository-prefix docker-hub \
-  --upstream-registry-url registry-1.docker.io
+  --upstream-registry-url registry-1.docker.io \
+  --credential-arn arn:aws:secretsmanager:us-west-2:123456789012:secret:ecr-pullthroughcache/docker-hub
 ```
 
-Then reference images as `123456789012.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/nginx:1.25`.
+Then reference images as `123456789012.dkr.ecr.us-west-2.amazonaws.com/docker-hub/library/nginx:1.25`. For the first pull of an image through a pull-through cache rule, ECR needs internet access to the upstream registry; subsequent pulls can come from the cached image in your private ECR registry.
 
 ## NAT Gateway vs. Fully Private
 
