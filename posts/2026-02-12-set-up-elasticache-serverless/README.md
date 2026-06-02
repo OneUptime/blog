@@ -83,6 +83,7 @@ aws elasticache describe-serverless-caches \
 
 ```python
 # Connect to ElastiCache Serverless Redis
+import json
 import redis
 
 # ElastiCache Serverless requires TLS
@@ -179,7 +180,7 @@ aws elasticache modify-serverless-cache \
   }'
 ```
 
-If your workload exceeds these limits, ElastiCache will throttle requests rather than scale beyond the limit. Monitor for throttling and increase limits if needed.
+If your workload exceeds the ECPU/second limit, ElastiCache will throttle requests rather than scale beyond the limit. If cache data storage hits its maximum, ElastiCache evicts data with a TTL using LRU logic, and write requests receive an out-of-memory error if there is no evictable data. Monitor for throttling and storage pressure, then increase limits if needed.
 
 ## Monitoring
 
@@ -229,7 +230,7 @@ aws cloudwatch put-metric-alarm \
 aws cloudwatch put-metric-alarm \
   --alarm-name serverless-cache-throttled \
   --namespace AWS/ElastiCache \
-  --metric-name ThrottledRequests \
+  --metric-name ThrottledCmds \
   --dimensions Name=ServerlessCacheName,Value=my-app-cache \
   --statistic Sum \
   --period 60 \
