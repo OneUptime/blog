@@ -77,7 +77,7 @@ cd build && zip -r ../deployment.zip . && cd ..
 
 ### Option 2: Use manylinux Wheels
 
-Many Python packages publish pre-compiled wheels for Linux. Force pip to use them:
+Many Python packages publish pre-compiled wheels for Linux. For an x86_64 Lambda function, force pip to use them:
 
 ```bash
 # Install Linux-compatible wheels
@@ -90,7 +90,7 @@ pip install \
   -r requirements.txt
 ```
 
-This downloads pre-compiled Linux binaries even if you're on macOS. It works for most popular packages but not all.
+This downloads pre-compiled Linux binaries even if you're on macOS. It works for most popular packages but not all. For an arm64 Lambda function, use `manylinux2014_aarch64` instead.
 
 ### Option 3: Use Lambda Layers
 
@@ -152,18 +152,17 @@ The `--production` flag skips devDependencies like test frameworks and linters, 
 
 ## Reducing Package Size
 
-Lambda has a 50 MB zipped / 250 MB unzipped limit for deployment packages. Large dependencies can eat through this fast. Here are strategies to keep packages small:
+Lambda has a 50 MB zipped limit for direct uploads and a 250 MB unzipped limit for deployment packages. Large dependencies can eat through this fast. Here are strategies to keep packages small:
 
 ### Strip Unnecessary Files
 
 ```bash
-# After pip install, remove test files, docs, and cache
+# After pip install, remove test files and cache
 cd build
 find . -type d -name "tests" -exec rm -rf {} + 2>/dev/null
 find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null
 find . -name "*.pyc" -delete
 find . -name "*.pyo" -delete
-find . -name "*.dist-info" -type d -exec rm -rf {} + 2>/dev/null
 
 # Create the zip
 zip -r ../deployment.zip .
@@ -238,7 +237,7 @@ make deploy
 
 ## Container Image Deployment
 
-If your dependencies exceed the 250 MB limit, use a container image instead. Lambda supports Docker images up to 10 GB.
+If your dependencies exceed the 250 MB limit, use a container image instead. Lambda supports container images up to 10 GB uncompressed.
 
 Create a Dockerfile:
 
@@ -267,8 +266,8 @@ aws ecr create-repository --repository-name my-lambda-function
 aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
-# Build the image
-docker build -t my-lambda-function .
+# Build the image for an x86_64 Lambda function
+docker buildx build --platform linux/amd64 --provenance=false --load -t my-lambda-function .
 
 # Tag for ECR
 docker tag my-lambda-function:latest \
@@ -277,7 +276,7 @@ docker tag my-lambda-function:latest \
 # Push to ECR
 docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-lambda-function:latest
 
-# Create or update the Lambda function
+# Create the Lambda function
 aws lambda create-function \
   --function-name my-function \
   --package-type Image \
