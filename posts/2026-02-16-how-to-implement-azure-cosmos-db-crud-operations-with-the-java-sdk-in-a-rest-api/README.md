@@ -57,7 +57,7 @@ Add the Cosmos DB Java SDK to your `pom.xml`.
 <dependency>
     <groupId>com.azure</groupId>
     <artifactId>azure-cosmos</artifactId>
-    <version>4.53.0</version>
+    <version>4.80.0</version>
 </dependency>
 ```
 
@@ -351,7 +351,7 @@ server:
 
 The partition key is the most important design decision you make with Cosmos DB. In our case, we use `category` as the partition key. This means:
 
-- All products in the same category are stored together on the same physical partition
+- All products in the same category are in the same logical partition, which Azure Cosmos DB maps to a physical partition
 - Queries that filter by category are fast because they target a single partition
 - Cross-partition queries (like listing all products) fan out to all partitions and cost more RUs
 
