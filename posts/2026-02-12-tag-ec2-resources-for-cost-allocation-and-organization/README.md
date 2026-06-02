@@ -146,14 +146,34 @@ For stricter enforcement, use an SCP that prevents launching instances without r
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "RequireTagsOnEC2",
+      "Sid": "RequireEnvironmentTagOnEC2",
       "Effect": "Deny",
       "Action": "ec2:RunInstances",
       "Resource": "arn:aws:ec2:*:*:instance/*",
       "Condition": {
         "Null": {
-          "aws:RequestTag/Environment": "true",
-          "aws:RequestTag/Team": "true",
+          "aws:RequestTag/Environment": "true"
+        }
+      }
+    },
+    {
+      "Sid": "RequireTeamTagOnEC2",
+      "Effect": "Deny",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:*:*:instance/*",
+      "Condition": {
+        "Null": {
+          "aws:RequestTag/Team": "true"
+        }
+      }
+    },
+    {
+      "Sid": "RequireCostCenterTagOnEC2",
+      "Effect": "Deny",
+      "Action": "ec2:RunInstances",
+      "Resource": "arn:aws:ec2:*:*:instance/*",
+      "Condition": {
+        "Null": {
           "aws:RequestTag/CostCenter": "true"
         }
       }
@@ -244,12 +264,13 @@ fi
 **Target Systems Manager patching by tag:**
 
 ```bash
-# Create a patch baseline for production instances
+# Create a maintenance window for production patching
 aws ssm create-maintenance-window \
   --name "prod-patching" \
   --schedule "cron(0 2 ? * SAT *)" \
   --duration 4 \
-  --cutoff 1
+  --cutoff 1 \
+  --no-allow-unassociated-targets
 
 # Register targets by tag
 aws ssm register-target-with-maintenance-window \
