@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Launch Wizard, SQL Server, Database, Window, High Availability
+Tags: AWS, Launch Wizard, SQL Server, Database, Windows, High Availability
 
 Description: Use AWS Launch Wizard to deploy production-ready SQL Server environments on EC2 with high availability, best practices, and automated configuration.
 
@@ -20,31 +20,29 @@ Here is the architecture that Launch Wizard creates for a highly available SQL S
 graph TD
     subgraph VPC
         subgraph AZ1[Availability Zone 1]
-            A[SQL Server Primary Node]
+            A[SQL Server Primary / WSFC Node 1]
             B[Active Directory DC1]
-            C[Windows Server Failover Cluster Node 1]
         end
         subgraph AZ2[Availability Zone 2]
-            D[SQL Server Secondary Node]
+            D[SQL Server Secondary / WSFC Node 2]
             E[Active Directory DC2]
-            F[Windows Server Failover Cluster Node 2]
         end
         subgraph AZ3[Availability Zone 3 - Optional]
-            G[File Share Witness / Third Node]
+            G[Additional SQL Cluster Node]
         end
     end
     A <-->|Always On AG| D
     B <-->|AD Replication| E
-    C <-->|WSFC| F
+    A <-->|WSFC| D
     H[Application Tier] --> A
     H --> D
 ```
 
 The deployment includes:
 
-- **VPC** with public and private subnets across multiple AZs
+- **VPC** with public and private subnets across two AZs, with an optional third AZ for additional SQL cluster nodes
 - **Active Directory** domain controllers for Windows authentication
-- **SQL Server instances** with Always On Availability Groups
+- **SQL Server instances** with Always On Availability Groups, or Basic Availability Groups for Standard edition
 - **Windows Server Failover Clustering** for automatic failover
 - **Security groups** with least-privilege rules
 - **EBS volumes** optimized for database workloads
@@ -64,12 +62,12 @@ Decide on your licensing model:
 
 # Option 2: Bring Your Own License (BYOL)
 # You need SQL Server media and a valid license key
-# Upload the media to S3
+# Upload the ISO to a folder in an S3 bucket prefixed with LaunchWizard-
 aws s3 cp SQLServer2022-x64-ENU.iso \
-  s3://my-sql-media/SQLServer2022-x64-ENU.iso
+  s3://LaunchWizard-sql-media/sql-media/SQLServer2022-x64-ENU.iso
 ```
 
-For BYOL, you will need to use Dedicated Hosts or Dedicated Instances to comply with Microsoft licensing. For managing these licenses, see our guide on [using AWS License Manager with EC2 and RDS](https://oneuptime.com/blog/post/2026-02-12-use-aws-license-manager-with-ec2-and-rds/view).
+For BYOL with Launch Wizard, use Dedicated Hosts to leverage your existing SQL Server licenses. For managing these licenses, see our guide on [using AWS License Manager with EC2 and RDS](https://oneuptime.com/blog/post/2026-02-12-use-aws-license-manager-with-ec2-and-rds/view).
 
 ### Key Pair
 
@@ -87,10 +85,14 @@ chmod 400 sql-server-key.pem
 Launch Wizard needs permissions to create resources on your behalf:
 
 ```bash
-# The Launch Wizard service-linked role is created automatically
-# But you need an EC2 instance profile for the SQL Server instances
+# The user or role running Launch Wizard needs AmazonLaunchWizardFullAccessV2
+aws iam attach-user-policy \
+  --user-name "deployment-admin" \
+  --policy-arn "arn:aws:iam::aws:policy/AmazonLaunchWizardFullAccessV2"
+
+# Launch Wizard can create this role automatically, but you can also create it ahead of time
 aws iam create-role \
-  --role-name "LaunchWizard-SQLServer-Role" \
+  --role-name "AmazonEC2RoleForLaunchWizard" \
   --assume-role-policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -105,8 +107,19 @@ aws iam create-role \
   }'
 
 aws iam attach-role-policy \
-  --role-name "LaunchWizard-SQLServer-Role" \
+  --role-name "AmazonEC2RoleForLaunchWizard" \
   --policy-arn "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
+
+aws iam attach-role-policy \
+  --role-name "AmazonEC2RoleForLaunchWizard" \
+  --policy-arn "arn:aws:iam::aws:policy/AmazonEC2RolePolicyForLaunchWizard"
+
+aws iam create-instance-profile \
+  --instance-profile-name "AmazonEC2RoleForLaunchWizard"
+
+aws iam add-role-to-instance-profile \
+  --instance-profile-name "AmazonEC2RoleForLaunchWizard" \
+  --role-name "AmazonEC2RoleForLaunchWizard"
 ```
 
 ## Step 2: Run the Launch Wizard
@@ -120,8 +133,8 @@ Launch Wizard is primarily a console-based experience, but you can also configur
 - High availability with Always On (production)
 
 **SQL Server version and edition:**
-- SQL Server 2019 or 2022
-- Standard, Enterprise, or Developer edition
+- SQL Server 2019, 2022, or 2025
+- Standard, Enterprise, or Developer edition, depending on the SQL Server version and deployment pattern
 
 **Instance sizing** - Launch Wizard recommends instance types based on your inputs:
 
@@ -167,14 +180,14 @@ Launch Wizard deployments can take 2-3 hours for a full HA setup. Monitor progre
 
 ```bash
 # List Launch Wizard deployments
-aws launchwizard list-deployments
+aws launch-wizard list-deployments
 
 # Get deployment details
-aws launchwizard get-deployment \
+aws launch-wizard get-deployment \
   --deployment-id "dep-abc123"
 
 # Check deployment events
-aws launchwizard list-deployment-events \
+aws launch-wizard list-deployment-events \
   --deployment-id "dep-abc123"
 ```
 
@@ -193,9 +206,14 @@ Once the deployment is complete, there are a few things to configure:
 ### Connect to the Instances
 
 ```bash
-# Get the instance details
+# Get the Launch Wizard resource group, then list the instance details
+RESOURCE_GROUP=$(aws launch-wizard get-deployment \
+  --deployment-id "dep-abc123" \
+  --query "deployment.resourceGroup" \
+  --output text)
+
 aws ec2 describe-instances \
-  --filters "Name=tag:aws:launchwizard:deployment-id,Values=dep-abc123" \
+  --filters "Name=tag:LaunchWizardResourceGroupID,Values=${RESOURCE_GROUP}" \
   --query "Reservations[*].Instances[*].[InstanceId,PrivateIpAddress,Tags[?Key=='Name'].Value|[0]]" \
   --output table
 ```
@@ -248,7 +266,7 @@ aws s3api create-bucket \
   --region us-east-1
 
 # The SQL Server instances can use their IAM role to write to S3
-# Configure SQL Server backup to S3 using the S3 backup extension
+# SQL Server 2022 can back up to S3-compatible object storage using BACKUP TO URL
 ```
 
 ## Step 5: Set Up Monitoring
@@ -256,7 +274,7 @@ aws s3api create-bucket \
 Monitor your SQL Server deployment:
 
 ```bash
-# CloudWatch agent is pre-installed by Launch Wizard
+# If you enable Application Insights, Launch Wizard configures relevant CloudWatch metrics, logs, and alarms
 # Key metrics to watch:
 # - CPU Utilization
 # - Memory Available MBytes
@@ -281,10 +299,10 @@ aws cloudwatch put-metric-alarm \
 
 ```bash
 # List all Launch Wizard deployments
-aws launchwizard list-deployments
+aws launch-wizard list-deployments
 
-# Delete a deployment (this terminates all resources)
-aws launchwizard delete-deployment \
+# Delete a deployment (shared resources are not deleted)
+aws launch-wizard delete-deployment \
   --deployment-id "dep-abc123"
 ```
 
@@ -293,7 +311,7 @@ aws launchwizard delete-deployment \
 **Use Launch Wizard for SQL Server when:**
 - You need full OS-level access for custom configurations
 - You have BYOL SQL Server Enterprise licenses
-- You need features not supported by RDS (linked servers, CLR assemblies, FILESTREAM)
+- You need features not supported or only partially supported by RDS, such as FILESTREAM or custom OS-level components
 - Compliance requires specific OS hardening
 - You need SQL Server Agent jobs with complex scheduling
 
