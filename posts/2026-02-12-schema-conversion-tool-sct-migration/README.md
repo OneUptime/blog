@@ -24,7 +24,7 @@ SCT handles conversions between many database engine pairs. The most common migr
 - Teradata to Amazon Redshift
 - Netezza to Amazon Redshift
 
-For each migration, SCT converts:
+Depending on the source and target engines, SCT converts or flags action items for:
 - Table definitions (columns, data types, constraints)
 - Views
 - Stored procedures and functions
@@ -55,23 +55,62 @@ After installing SCT, configure the JDBC drivers in the Global Settings before c
 
 Once SCT is installed, here's the workflow. First, create a new project and connect to your source database.
 
-The SCT GUI walks you through this, but you can also script it using the SCT CLI for automation.
+The SCT GUI walks you through this, but you can also script it using the SCT CLI for automation. SCT CLI scripts use the `.scts` extension, single-quoted parameter values, and a `/` line to terminate each command.
 
-```bash
+```text
 # SCT CLI - create a new project and run assessment
-# Save this as a command file (sct-commands.txt)
-CreateProject /projectName:"oracle-to-postgres" /projectFolder:"/migrations/oracle-to-pg"
-ConnectSourceDatabase /databaseType:ORACLE /serverName:"oracle-source.example.com" /port:1521 /userName:"migration_user" /password:"OraclePass!" /sid:"ORCL"
-ConnectTargetDatabase /databaseType:AURORA_POSTGRESQL /serverName:"target-aurora.cluster-xxx.us-east-1.rds.amazonaws.com" /port:5432 /userName:"postgres" /password:"PostgresPass!" /database:"myapp"
+# Save this as a command file (sct-commands.scts)
+SetGlobalSettings
+-save: 'true'
+-settings: '{"oracle_driver_file": "/drivers/ojdbc11.jar", "postgresql_driver_file": "/drivers/postgresql-42.7.1.jar"}'
+/
+
+CreateProject
+-name: 'oracle-to-postgres'
+-directory: '/migrations/oracle-to-pg'
+/
+
+AddSource
+-name: 'SOURCE_ORACLE'
+-vendor: 'ORACLE'
+-connectionType: 'BASIC_SERVICE_NAME'
+-host: 'oracle-source.example.com'
+-port: '1521'
+-serviceName: 'ORCL'
+-user: 'migration_user'
+-password: 'OraclePass!'
+/
+
+AddTarget
+-name: 'TARGET_POSTGRES'
+-vendor: 'AURORA_POSTGRESQL'
+-host: 'target-aurora.cluster-xxx.us-east-1.rds.amazonaws.com'
+-port: '5432'
+-database: 'myapp'
+-user: 'postgres'
+-password: 'PostgresPass!'
+/
+
+AddServerMapping
+-sourceTreePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+-targetTreePath: 'Servers.TARGET_POSTGRES'
+/
 ```
 
 ## Running the Assessment Report
 
 Before converting anything, run an assessment. This tells you what percentage of your schema can be converted automatically and what needs manual work.
 
-```bash
+```text
 # Generate an assessment report via SCT CLI
-CreateMigrationAssessmentReport /sourceDatabase:"ORCL" /targetDatabase:"myapp" /reportFormat:PDF /reportFile:"/migrations/assessment-report.pdf"
+CreateReport
+-treePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+/
+
+SaveReportPDF
+-treePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+-file: '/migrations/assessment-report.pdf'
+/
 ```
 
 The assessment report categorizes every schema object into one of these categories:
@@ -96,9 +135,11 @@ Tables and views typically convert well. Stored procedures are where the most ma
 
 After reviewing the assessment, convert the schema.
 
-```bash
+```text
 # Convert the source schema to target-compatible SQL
-ConvertSchema /sourceDatabase:"ORCL" /sourceSchema:"APP_SCHEMA"
+Convert
+-treePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+/
 ```
 
 SCT generates the equivalent DDL for your target database. Here's an example of what it does with Oracle-specific constructs.
@@ -150,7 +191,7 @@ SCT converts this to PostgreSQL:
 CREATE TABLE employees (
     employee_id INTEGER GENERATED ALWAYS AS IDENTITY,
     name VARCHAR(200) NOT NULL,
-    hire_date DATE DEFAULT CURRENT_DATE,
+    hire_date TIMESTAMP(0) DEFAULT CURRENT_TIMESTAMP,
     salary NUMERIC(10,2),
     department_id INTEGER,
     status VARCHAR(20) DEFAULT 'ACTIVE',
@@ -187,7 +228,7 @@ END;
 $$;
 ```
 
-Notice how SCT mapped `NUMBER` to `INTEGER`/`NUMERIC`, `VARCHAR2` to `VARCHAR`, `SYSDATE` to `CURRENT_DATE`, `DBMS_OUTPUT.PUT_LINE` to `RAISE NOTICE`, and `RAISE_APPLICATION_ERROR` to `RAISE EXCEPTION`.
+Notice how SCT mapped `NUMBER` to `INTEGER`/`NUMERIC`, `VARCHAR2` to `VARCHAR`, Oracle `DATE` to PostgreSQL `TIMESTAMP(0)`, `SYSDATE` to `CURRENT_TIMESTAMP`, `DBMS_OUTPUT.PUT_LINE` to `RAISE NOTICE`, and `RAISE_APPLICATION_ERROR` to `RAISE EXCEPTION`.
 
 ## Handling Manual Conversions
 
@@ -219,22 +260,27 @@ WITH RECURSIVE org_chart AS (
 SELECT * FROM org_chart;
 ```
 
-**Oracle packages** don't have a direct PostgreSQL equivalent. SCT breaks them into individual functions and procedures in a schema that mirrors the package name.
+**Oracle packages** don't have a direct PostgreSQL equivalent. SCT converts package procedures and functions into PostgreSQL functions or procedures, but package-level state and references often need manual review.
 
 ## Applying the Converted Schema
 
 Once you're satisfied with the conversion, apply it to the target database.
 
-```bash
+```text
 # Apply the converted schema to the target database
-ApplyToTarget /targetDatabase:"myapp" /targetSchema:"app_schema"
+ApplyToTarget
+-treePath: 'Servers.TARGET_POSTGRES.Schemas.app_schema'
+/
 ```
 
 Or save it as a SQL script for review and manual application.
 
-```bash
+```text
 # Save converted DDL to a file for review
-SaveAsSQL /outputFile:"/migrations/converted-schema.sql"
+SaveTargetSQL
+-treePath: 'Servers.TARGET_POSTGRES.Schemas.app_schema'
+-file: '/migrations/converted-schema.sql'
+/
 ```
 
 ## Integrating with DMS
@@ -254,6 +300,8 @@ graph TD
 
 SCT handles the structure. DMS handles the data. Together they cover the full migration.
 
+AWS now recommends DMS Schema Conversion for supported OLTP schema conversions. SCT is still useful when you need the desktop tool, SCT-specific features, or conversion coverage that DMS Schema Conversion doesn't provide.
+
 ## Automation with SCT CLI
 
 For large migrations or CI/CD pipelines, script the entire SCT workflow.
@@ -262,17 +310,68 @@ For large migrations or CI/CD pipelines, script the entire SCT workflow.
 #!/bin/bash
 # Automated schema conversion pipeline
 
-SCT_CLI="/opt/aws-schema-conversion-tool/bin/sct-cli"
+SCT_BATCH="/opt/aws-schema-conversion-tool/lib/app/RunSCTBatch.sh"
+SCT_SCRIPT="/tmp/migration/automated-migration.scts"
 
-# Run the full conversion pipeline
-$SCT_CLI << EOF
-CreateProject /projectName:"automated-migration" /projectFolder:"/tmp/migration"
-ConnectSourceDatabase /databaseType:ORACLE /serverName:"$SOURCE_HOST" /port:1521 /userName:"$SOURCE_USER" /password:"$SOURCE_PASS" /sid:"ORCL"
-ConnectTargetDatabase /databaseType:AURORA_POSTGRESQL /serverName:"$TARGET_HOST" /port:5432 /userName:"$TARGET_USER" /password:"$TARGET_PASS" /database:"myapp"
-CreateMigrationAssessmentReport /reportFormat:PDF /reportFile:"/tmp/migration/report.pdf"
-ConvertSchema /sourceSchema:"APP_SCHEMA"
-SaveAsSQL /outputFile:"/tmp/migration/converted.sql"
+mkdir -p /tmp/migration
+
+cat > "$SCT_SCRIPT" << EOF
+SetGlobalSettings
+-save: 'true'
+-settings: '{"oracle_driver_file": "/drivers/ojdbc11.jar", "postgresql_driver_file": "/drivers/postgresql-42.7.1.jar"}'
+/
+
+CreateProject
+-name: 'automated-migration'
+-directory: '/tmp/migration'
+/
+
+AddSource
+-name: 'SOURCE_ORACLE'
+-vendor: 'ORACLE'
+-connectionType: 'BASIC_SERVICE_NAME'
+-host: '$SOURCE_HOST'
+-port: '1521'
+-serviceName: 'ORCL'
+-user: '$SOURCE_USER'
+-password: '$SOURCE_PASS'
+/
+
+AddTarget
+-name: 'TARGET_POSTGRES'
+-vendor: 'AURORA_POSTGRESQL'
+-host: '$TARGET_HOST'
+-port: '5432'
+-database: 'myapp'
+-user: '$TARGET_USER'
+-password: '$TARGET_PASS'
+/
+
+AddServerMapping
+-sourceTreePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+-targetTreePath: 'Servers.TARGET_POSTGRES'
+/
+
+CreateReport
+-treePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+/
+
+SaveReportPDF
+-treePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+-file: '/tmp/migration/report.pdf'
+/
+
+Convert
+-treePath: 'Servers.SOURCE_ORACLE.Schemas.APP_SCHEMA'
+/
+
+SaveTargetSQL
+-treePath: 'Servers.TARGET_POSTGRES.Schemas.app_schema'
+-file: '/tmp/migration/converted.sql'
+/
 EOF
+
+"$SCT_BATCH" --pathtoscts "$SCT_SCRIPT"
 
 echo "Schema conversion complete. Review /tmp/migration/converted.sql"
 ```
