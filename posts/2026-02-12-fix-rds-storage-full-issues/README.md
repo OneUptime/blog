@@ -40,7 +40,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name FreeStorageSpace \
   --dimensions Name=DBInstanceIdentifier,Value=my-database \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
   --period 300 \
   --statistics Average \
@@ -62,7 +62,7 @@ aws rds modify-db-instance \
 Important notes:
 - You can only increase storage, never decrease it
 - The modification takes effect immediately but may take time to complete
-- You can't modify storage again for 6 hours after an increase
+- You can't modify storage again for 6 hours after an increase, or until storage optimization completes, whichever is longer
 - There's a minimum increase of 10% of the current allocation
 
 Check the modification progress:
@@ -135,12 +135,12 @@ SHOW VARIABLES LIKE '%log%';
 SELECT
   schemaname,
   tablename,
-  pg_size_pretty(pg_total_relation_size(schemaname || '.' || tablename)) AS total_size,
-  pg_size_pretty(pg_relation_size(schemaname || '.' || tablename)) AS data_size,
-  pg_size_pretty(pg_indexes_size(schemaname || '.' || tablename::regclass)) AS index_size
+  pg_size_pretty(pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS total_size,
+  pg_size_pretty(pg_relation_size(format('%I.%I', schemaname, tablename)::regclass)) AS data_size,
+  pg_size_pretty(pg_indexes_size(format('%I.%I', schemaname, tablename)::regclass)) AS index_size
 FROM pg_tables
 WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
-ORDER BY pg_total_relation_size(schemaname || '.' || tablename) DESC
+ORDER BY pg_total_relation_size(format('%I.%I', schemaname, tablename)::regclass) DESC
 LIMIT 20;
 
 -- Check for bloated tables (dead tuples)
@@ -153,8 +153,9 @@ FROM pg_stat_user_tables
 ORDER BY n_dead_tup DESC
 LIMIT 20;
 
--- Check WAL segment usage
-SELECT pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), '0/0')) AS wal_size;
+-- Check WAL files on disk
+SELECT pg_size_pretty(SUM(size)) AS wal_size
+FROM pg_ls_waldir();
 ```
 
 ## Common Storage Consumers
@@ -169,7 +170,7 @@ For MySQL, reduce binary log retention:
 -- Check current retention (in hours)
 CALL mysql.rds_show_configuration;
 
--- Set binary log retention to 24 hours (default is NULL = as long as possible)
+-- Set binary log retention to 24 hours (default NULL means RDS doesn't retain binlogs)
 CALL mysql.rds_set_configuration('binlog retention hours', 24);
 ```
 
@@ -230,11 +231,11 @@ VACUUM FULL my_large_table;
 OPTIMIZE TABLE my_large_table;
 ```
 
-Note: `VACUUM FULL` and `OPTIMIZE TABLE` lock the table during operation. Run them during maintenance windows.
+Note: `VACUUM FULL` takes an exclusive table lock. `OPTIMIZE TABLE` uses online DDL for regular InnoDB tables, but it can still take brief exclusive locks or lock longer for some table types. Run them during maintenance windows.
 
-### 5. Snapshots and Backups Taking Space
+### 5. Snapshots and Backups Taking Backup Storage
 
-RDS automated backups don't consume instance storage, but manual snapshots and certain log types do. Clean up old snapshots:
+RDS automated backups and manual snapshots don't consume instance storage; they're stored separately as backup storage. Clean up old manual snapshots to reduce backup storage costs:
 
 ```bash
 # List manual snapshots
