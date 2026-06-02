@@ -10,7 +10,9 @@ Description: Learn how to set up Amazon Timestream to store and query IoT sensor
 
 IoT devices generate a relentless stream of time-stamped data. Temperature readings every second, GPS coordinates every five seconds, machine vibration data at 100 Hz. Traditional relational databases were not designed for this kind of write-heavy, append-only workload where you primarily query by time range.
 
-Amazon Timestream is a purpose-built time series database for exactly this use case. It automatically manages the data lifecycle - keeping recent data in a fast in-memory store and moving older data to cheaper magnetic storage. It scales to handle trillions of data points and provides built-in time series functions for analysis.
+Amazon Timestream for LiveAnalytics is a purpose-built time series database for exactly this use case. It automatically manages the data lifecycle - keeping recent data in a fast in-memory store and moving older data to cheaper magnetic storage. It scales to handle trillions of data points and provides built-in time series functions for analysis.
+
+Note: AWS closed new customer access to Amazon Timestream for LiveAnalytics effective June 20, 2025. Existing customers with active payer accounts can continue using it. New AWS customers should evaluate Amazon Timestream for InfluxDB for similar time series workloads.
 
 ## How Timestream Works
 
@@ -126,7 +128,7 @@ For IoT workloads, batch writes are essential for throughput and cost efficiency
 def write_batch(readings):
     """
     Write a batch of sensor readings.
-    Each reading is a dict with device_id, location, temperature, humidity, battery.
+    Each reading is a dict with device_id, location, temperature, humidity, battery_level.
     """
     records = []
     current_time = str(int(time.time() * 1000))
@@ -200,7 +202,8 @@ aws iam put-role-policy \
 aws iot create-topic-rule \
   --rule-name SensorToTimestream \
   --topic-rule-payload '{
-    "sql": "SELECT * FROM '\''sensors/+/data'\''",
+    "sql": "SELECT temperature, humidity, battery_level FROM '\''sensors/+/data'\''",
+    "awsIotSqlVersion": "2015-10-08",
     "actions": [{
       "timestream": {
         "roleArn": "arn:aws:iam::123456789012:role/IoTTimestreamRole",
@@ -217,6 +220,8 @@ aws iot create-topic-rule \
 
 Now when IoT devices publish to topics matching `sensors/+/data`, the data flows directly into Timestream.
 
+The IoT Core Timestream rule action writes each selected payload attribute as a separate Timestream measure record. The query examples below match the multi-measure SDK schema from Step 3; for direct IoT Core rule ingestion, query `measure_name` and `measure_value::*`, or route messages through Lambda and the SDK to keep the same multi-measure schema.
+
 ## Step 5: Querying Data
 
 Timestream uses SQL with built-in time series functions.
@@ -231,6 +236,7 @@ SELECT device_id, location,
        MAX_BY(battery_level, time) AS latest_battery
 FROM iot_sensor_data.sensor_readings
 WHERE time > ago(1h)
+  AND measure_name = 'sensor_metrics'
 GROUP BY device_id, location
 ORDER BY device_id
 ```
@@ -261,6 +267,7 @@ WITH device_stats AS (
            STDDEV(temperature) AS stddev_temp
     FROM iot_sensor_data.sensor_readings
     WHERE time > ago(7d)
+      AND measure_name = 'sensor_metrics'
     GROUP BY device_id
 )
 SELECT r.device_id, r.time, r.temperature,
@@ -269,6 +276,8 @@ SELECT r.device_id, r.time, r.temperature,
 FROM iot_sensor_data.sensor_readings r
 JOIN device_stats s ON r.device_id = s.device_id
 WHERE r.time > ago(1h)
+  AND r.measure_name = 'sensor_metrics'
+  AND s.stddev_temp > 0
   AND ABS(r.temperature - s.avg_temp) > 2 * s.stddev_temp
 ORDER BY z_score DESC
 ```
@@ -280,9 +289,10 @@ ORDER BY z_score DESC
 SELECT device_id, location,
        MAX_BY(battery_level, time) AS current_battery,
        MIN_BY(battery_level, time) AS battery_24h_ago,
-       MAX_BY(battery_level, time) - MIN_BY(battery_level, time) AS drain_rate
+       MIN_BY(battery_level, time) - MAX_BY(battery_level, time) AS drain_rate
 FROM iot_sensor_data.sensor_readings
 WHERE time > ago(24h)
+  AND measure_name = 'sensor_metrics'
 GROUP BY device_id, location
 HAVING MAX_BY(battery_level, time) < 20
 ORDER BY drain_rate DESC
@@ -309,7 +319,9 @@ def run_query(query_string):
 hot_devices = run_query("""
     SELECT device_id, location, MAX(temperature) AS max_temp
     FROM iot_sensor_data.sensor_readings
-    WHERE time > ago(1h) AND temperature > 40
+    WHERE time > ago(1h)
+      AND measure_name = 'sensor_metrics'
+      AND temperature > 40
     GROUP BY device_id, location
     ORDER BY max_temp DESC
 """)
@@ -321,8 +333,8 @@ hot_devices = run_query("""
 # Monitor write throughput
 aws cloudwatch get-metric-statistics \
   --namespace AWS/Timestream \
-  --metric-name SuccessfulRequestCount \
-  --dimensions Name=DatabaseName,Value=iot_sensor_data Name=TableName,Value=sensor_readings Name=Operation,Value=WriteRecords \
+  --metric-name NumberOfRecords \
+  --dimensions Name=Operation,Value=WriteRecords \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
