@@ -8,11 +8,11 @@ Description: Learn how to connect third-party SaaS applications to your AWS arch
 
 ---
 
-One of the most powerful things about EventBridge is that it doesn't just work with AWS services. It can receive events from dozens of SaaS partners like Shopify, Zendesk, Twilio, Auth0, Datadog, and others. It can also send events to any HTTP endpoint using API destinations. This turns EventBridge into a bridge between your SaaS tools and your AWS infrastructure.
+One of the most powerful things about EventBridge is that it doesn't just work with AWS services. It can receive events from dozens of SaaS partners like Shopify, Zendesk, Twilio, Auth0, Datadog, and others. It can also send events to HTTPS endpoints using API destinations. This turns EventBridge into a bridge between your SaaS tools and your AWS infrastructure.
 
 ## Two Ways to Integrate SaaS
 
-There are two main approaches. Partner event sources let SaaS providers push events directly into your EventBridge bus. API destinations let you send events from EventBridge to any external HTTP API.
+There are two main approaches. Partner event sources let SaaS providers push events directly into your EventBridge bus. API destinations let you send events from EventBridge to external HTTPS APIs.
 
 ```mermaid
 graph LR
@@ -48,7 +48,7 @@ aws events list-event-sources
 
 # Create an event bus from the partner event source
 aws events create-event-bus \
-  --name shopify-events \
+  --name aws.partner/shopify.com/store-12345/orders \
   --event-source-name aws.partner/shopify.com/store-12345/orders
 ```
 
@@ -63,9 +63,9 @@ This rule matches Shopify order events:
 ```bash
 aws events put-rule \
   --name shopify-new-orders \
-  --event-bus-name shopify-events \
+  --event-bus-name aws.partner/shopify.com/store-12345/orders \
   --event-pattern '{
-    "source": ["aws.partner/shopify.com"],
+    "source": [{ "prefix": "aws.partner/shopify.com" }],
     "detail-type": ["orders/create"]
   }' \
   --description "Process new Shopify orders"
@@ -111,7 +111,7 @@ async function createInternalOrder(order) {
 
 ## API Destinations for Outbound Events
 
-API destinations let you send events to any HTTP endpoint. This is how you integrate with services that don't have partner event sources, or when you want to push events outbound.
+API destinations let you send events to HTTPS endpoints. This is how you integrate with services that don't have partner event sources, or when you want to push events outbound.
 
 First, create a connection with authentication credentials:
 
@@ -133,7 +133,7 @@ Then create the API destination:
 ```bash
 aws events create-api-destination \
   --name slack-notifications \
-  --connection-arn arn:aws:events:us-east-1:123456789:connection/slack-connection \
+  --connection-arn arn:aws:events:us-east-1:123456789012:connection/slack-connection/abcdef \
   --invocation-endpoint "https://slack.com/api/chat.postMessage" \
   --http-method POST \
   --invocation-rate-limit-per-second 10
@@ -146,8 +146,8 @@ aws events put-targets \
   --rule high-value-order \
   --targets '[{
     "Id": "slack-alert",
-    "Arn": "arn:aws:events:us-east-1:123456789:api-destination/slack-notifications",
-    "RoleArn": "arn:aws:iam::123456789:role/EventBridgeApiDestRole",
+    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-notifications/abcdef",
+    "RoleArn": "arn:aws:iam::123456789012:role/EventBridgeApiDestRole",
     "InputTransformer": {
       "InputPathsMap": {
         "orderId": "$.detail.orderId",
@@ -324,7 +324,7 @@ Resources:
       AuthParameters:
         ApiKeyAuthParameters:
           ApiKeyName: Authorization
-          ApiKeyValue: !Sub "Bearer {{resolve:secretsmanager:slack-token}}"
+          ApiKeyValue: !Sub "Bearer {{resolve:secretsmanager:slack-token:SecretString}}"
 
   SlackDestination:
     Type: AWS::Events::ApiDestination
@@ -340,8 +340,52 @@ Resources:
       Handler: processTicket.handler
       Runtime: nodejs20.x
 
+  PermissionForEventsToInvokeTicketProcessor:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TicketProcessorFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ZendeskTicketRule.Arn
+
+  ApiDestRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: InvokeSlackDestination
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: events:InvokeApiDestination
+                Resource: !GetAtt SlackDestination.Arn
+
   AnalyticsQueue:
     Type: AWS::SQS::Queue
+
+  AnalyticsQueuePolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref AnalyticsQueue
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sqs:SendMessage
+            Resource: !GetAtt AnalyticsQueue.Arn
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !GetAtt AnalyticsRule.Arn
 ```
 
 ## Rate Limiting and Error Handling
@@ -355,10 +399,10 @@ aws events put-targets \
   --rule slack-alert-rule \
   --targets '[{
     "Id": "slack",
-    "Arn": "arn:aws:events:us-east-1:123456789:api-destination/slack-notifications",
-    "RoleArn": "arn:aws:iam::123456789:role/ApiDestRole",
+    "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/slack-notifications/abcdef",
+    "RoleArn": "arn:aws:iam::123456789012:role/ApiDestRole",
     "DeadLetterConfig": {
-      "Arn": "arn:aws:sqs:us-east-1:123456789:failed-notifications"
+      "Arn": "arn:aws:sqs:us-east-1:123456789012:failed-notifications"
     },
     "RetryPolicy": {
       "MaximumRetryAttempts": 5,
