@@ -14,12 +14,12 @@ Let's walk through what distribution keys and sort keys actually do, how to pick
 
 ## What Are Distribution Keys?
 
-When you load data into a Redshift table, the rows get spread across the cluster's compute nodes. The distribution key (DISTKEY) determines which node each row lands on. The goal is to distribute data evenly across all nodes while also minimizing the amount of data that needs to move between nodes during joins.
+When you load data into a Redshift table, the rows get spread across the cluster's compute node slices. The distribution key (DISTKEY) determines which slice each row lands on. The goal is to distribute data evenly across all slices while also minimizing the amount of data that needs to move between nodes during joins.
 
 Redshift supports four distribution styles:
 
-- **KEY** - Rows with the same distribution key value land on the same node
-- **EVEN** - Rows are distributed round-robin across all nodes
+- **KEY** - Rows with the same distribution key value land on the same slice
+- **EVEN** - Rows are distributed round-robin across all slices
 - **ALL** - A full copy of the table is placed on every node
 - **AUTO** - Redshift picks the distribution style based on the table size
 
@@ -27,7 +27,7 @@ Here's how you set a distribution key when creating a table:
 
 ```sql
 -- Create a sales table with customer_id as the distribution key
--- This ensures all rows for a given customer are on the same node
+-- This ensures all rows for a given customer are on the same slice
 CREATE TABLE sales (
     sale_id BIGINT IDENTITY(1,1),
     customer_id INTEGER NOT NULL,
@@ -42,7 +42,7 @@ DISTKEY (customer_id);
 
 ## Choosing the Right Distribution Key
 
-The ideal distribution key should satisfy two goals: even data distribution and colocation of join partners. If you frequently join your `sales` table to a `customers` table on `customer_id`, then making `customer_id` the distribution key on both tables means those joins happen locally on each node without any network shuffling.
+The ideal distribution key should satisfy two goals: even data distribution and colocation of join partners. If you frequently join your `sales` table to a `customers` table on `customer_id`, then making `customer_id` the distribution key on both tables means those joins happen locally on each slice without any network shuffling.
 
 You can check how evenly your data is distributed by querying the system tables:
 
@@ -52,11 +52,11 @@ You can check how evenly your data is distributed by querying the system tables:
 SELECT
     trim(name) AS tablename,
     slice,
-    num_values AS row_count,
-    minvalue,
-    maxvalue
+    SUM(num_values) AS row_count
 FROM svv_diskusage
 WHERE name = 'sales'
+  AND col = 0
+GROUP BY trim(name), slice
 ORDER BY slice;
 ```
 
@@ -72,15 +72,15 @@ FROM svv_table_info
 WHERE "table" = 'sales';
 ```
 
-If the skew ratio is significantly above 1.0, your distribution key has too many rows landing on the same node. You'll want to pick a different column with higher cardinality.
+If the skew ratio is significantly above 1.0, your distribution key has too many rows landing on the same slice. You'll want to pick a different column with higher cardinality.
 
 ## When to Use DISTSTYLE ALL
 
 Small dimension tables that you join frequently are great candidates for `DISTSTYLE ALL`. Since the entire table lives on every node, joins with these tables never require data movement.
 
 ```sql
--- Small lookup table replicated to all nodes
--- Perfect for dimension tables under a few million rows
+-- Small, slow-moving lookup table replicated to all nodes
+-- Useful when redistribution cost is higher than the extra storage and maintenance cost
 CREATE TABLE product_categories (
     category_id INTEGER PRIMARY KEY,
     category_name VARCHAR(100),
@@ -93,7 +93,7 @@ The tradeoff is that every `INSERT`, `UPDATE`, or `DELETE` has to happen on all 
 
 ## Understanding Sort Keys
 
-Sort keys determine the physical order of rows on disk within each node. Redshift stores data in 1MB blocks, and each block records the minimum and maximum values of the sort key columns. When your query filters on the sort key, Redshift can skip entire blocks that don't contain matching data. This is called zone map filtering, and it's one of Redshift's biggest performance advantages.
+Sort keys determine the physical order of rows on disk within each slice. Redshift stores data in 1MB blocks, and each block records the minimum and maximum values of the sort key columns. When your query filters on the sort key, Redshift can skip entire blocks that don't contain matching data. This is called zone map filtering, and it's one of Redshift's biggest performance advantages.
 
 There are two types of sort keys:
 
@@ -168,13 +168,13 @@ VACUUM FULL sales;
 
 ## Common Mistakes to Avoid
 
-**Mistake 1: Using a low-cardinality column as DISTKEY.** If you distribute on a column with only 5 distinct values and you have 10 nodes, some nodes will be idle. Always check the cardinality before choosing a distribution key.
+**Mistake 1: Using a low-cardinality column as DISTKEY.** If you distribute on a column with only 5 distinct values and you have 10 slices, some slices will be idle. Always check the cardinality before choosing a distribution key.
 
 **Mistake 2: Not matching distribution keys on join tables.** If `sales` is distributed on `customer_id` but `orders` is distributed on `order_id`, joining them on `customer_id` forces a redistribution. Match the distribution key to your most common join column.
 
-**Mistake 3: Using interleaved sort keys on tables with frequent loads.** Each batch of new data requires a `VACUUM REINDEX` to maintain interleaved sort order, which is expensive. Stick with compound sort keys for tables with regular data loads.
+**Mistake 3: Using interleaved sort keys on tables with frequent loads.** Interleaved sort keys add overhead to loading and vacuuming, and `VACUUM REINDEX` takes much longer than a regular vacuum when you need to reanalyze interleaved sort key distribution. Stick with compound sort keys for tables with regular data loads.
 
-**Mistake 4: Forgetting to vacuum.** Redshift doesn't automatically re-sort new data inserted after the initial load. Regular vacuuming is essential to maintain sort key effectiveness.
+**Mistake 4: Forgetting about sort maintenance.** Redshift automatically sorts table data in the background, which reduces the need to run `VACUUM` manually. If you need data fully sorted after a large load, though, you can still run `VACUUM` to maintain sort key effectiveness.
 
 ## A Practical Strategy
 
