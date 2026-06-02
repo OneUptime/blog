@@ -14,10 +14,10 @@ A Lightsail load balancer distributes incoming traffic across multiple instances
 
 A Lightsail load balancer includes:
 - HTTP and HTTPS load balancing
-- Free SSL/TLS certificate (one per load balancer)
+- Free SSL/TLS certificates for use with the load balancer
 - Health checks to route traffic only to healthy instances
 - Session stickiness (optional)
-- Support for up to 5 target instances
+- Support for multiple target instances, up to your Lightsail account instance quota
 
 ## Creating the Load Balancer
 
@@ -33,7 +33,7 @@ aws lightsail create-load-balancer \
   --tags key=Environment,value=production
 ```
 
-The `instance-port` is where your application runs on the target instances. The load balancer listens on port 80 (HTTP) and 443 (HTTPS) by default and forwards to the instance port.
+The `instance-port` is where your application runs on the target instances. The load balancer listens on port 80 (HTTP) by default. After you add and validate a certificate, it can also listen on port 443 (HTTPS) and forward to the instance port.
 
 Check the status.
 
