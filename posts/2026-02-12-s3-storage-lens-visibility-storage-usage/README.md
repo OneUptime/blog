@@ -14,9 +14,9 @@ If you've got dozens of AWS accounts and hundreds of S3 buckets, figuring out wh
 
 Storage Lens comes in two tiers:
 
-**Free metrics** (default): 28+ usage metrics updated daily with 14 days of history. Covers object counts, storage bytes, request counts by type, and byte downloads/uploads.
+**Free metrics** (default): 62 unique and derived metrics updated daily with 14 days of history. Covers storage usage, object counts, cost optimization, data protection, access management, performance, and events metrics at the bucket level.
 
-**Advanced metrics** (paid): 35+ additional metrics with 15 months of history. Adds activity metrics, detailed status codes, data protection metrics, and the ability to export to S3 for custom analysis. You also get contextual recommendations.
+**Advanced metrics** (paid): 35+ additional metrics with 15 months of history. Adds activity metrics, detailed status codes, advanced cost optimization, advanced data protection, advanced performance metrics, prefix-level insights, CloudWatch publishing, and contextual recommendations. Metrics export to S3 is available for both free and advanced metrics.
 
 The data is aggregated at multiple levels: organization, account, region, bucket, and even prefix level.
 
@@ -40,8 +40,7 @@ aws s3control put-storage-lens-configuration \
       }
     },
     "Include": {
-      "Regions": ["us-east-1", "us-west-2", "eu-west-1"],
-      "Buckets": []
+      "Regions": ["us-east-1", "us-west-2", "eu-west-1"]
     },
     "IsEnabled": true,
     "DataExport": {
@@ -84,6 +83,9 @@ aws s3control put-storage-lens-configuration \
         "AdvancedDataProtectionMetrics": {
           "IsEnabled": true
         },
+        "AdvancedPerformanceMetrics": {
+          "IsEnabled": true
+        },
         "PrefixLevel": {
           "StorageMetrics": {
             "IsEnabled": true,
@@ -106,6 +108,9 @@ aws s3control put-storage-lens-configuration \
       },
       "AdvancedDataProtectionMetrics": {
         "IsEnabled": true
+      },
+      "AdvancedPerformanceMetrics": {
+        "IsEnabled": true
       }
     },
     "IsEnabled": true
@@ -114,10 +119,14 @@ aws s3control put-storage-lens-configuration \
 
 ## Step 3: Set Up Organization-Level Visibility
 
-If you're using AWS Organizations, you can create a dashboard that spans all accounts. This needs to be set up from the management account or a delegated administrator.
+If you're using AWS Organizations, you can create a dashboard that spans all accounts. First enable trusted access for S3 Storage Lens, then create the dashboard from the management account or a delegated administrator.
 
 ```bash
-# Enable Storage Lens for the organization
+# Enable trusted access for S3 Storage Lens
+aws organizations enable-aws-service-access \
+  --service-principal storage-lens.s3.amazonaws.com
+
+# Create a Storage Lens dashboard for the organization
 aws s3control put-storage-lens-configuration \
   --account-id 111111111111 \
   --config-id org-wide-dashboard \
@@ -131,7 +140,7 @@ aws s3control put-storage-lens-configuration \
       }
     },
     "AwsOrg": {
-      "Arn": "arn:aws:organizations::111111111111:organization/o-abc123"
+      "Arn": "arn:aws:organizations::111111111111:organization/o-abc123def4"
     },
     "IsEnabled": true
   }'
@@ -147,7 +156,7 @@ Here's what the most useful metrics tell you and what to do about them.
 |--------|-------------------|--------|
 | Total storage bytes | How much you're storing | Set lifecycle policies to reduce |
 | Object count | Total number of objects | Look for small objects that could be combined |
-| Average object size | Size distribution | Objects under 128KB don't benefit from multipart |
+| Average object size | Size distribution | Objects under 128KB are not monitored by S3 Intelligent-Tiering and are billed at the Frequent Access tier |
 | Current version bytes | Storage for latest versions | Compare with total to see version overhead |
 | Noncurrent version bytes | Old version storage | Set noncurrent version expiration |
 
@@ -169,16 +178,21 @@ Create an Athena table for the exported data.
 
 ```sql
 CREATE EXTERNAL TABLE storage_lens_data (
+  version_number string,
+  configuration_id string,
   report_date string,
-  account_id string,
-  region string,
+  aws_account_number string,
+  aws_region string,
+  storage_class string,
+  record_type string,
+  record_value string,
   bucket_name string,
   metric_name string,
-  metric_value double
+  metric_value bigint
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.OpenCSVSerde'
 STORED AS TEXTFILE
-LOCATION 's3://my-storage-lens-exports/storage-lens-data/'
+LOCATION 's3://my-storage-lens-exports/storage-lens-data/StorageLens/123456789012/my-storage-dashboard/V_1/reports/'
 TBLPROPERTIES ('skip.header.line.count'='1');
 ```
 
