@@ -157,7 +157,7 @@ Fargate allows up to 10 tasks per `run-task` call. If you need more, make multip
 
 ## Waiting for Task Completion
 
-The CLI doesn't have a built-in wait command for tasks, but you can script it.
+The CLI includes a `tasks-stopped` waiter, so you can script a task run and wait for it to finish.
 
 ```bash
 #!/bin/bash
@@ -222,7 +222,7 @@ ecs = boto3.client('ecs', region_name='us-east-1')
 # Run the task
 response = ecs.run_task(
     cluster='my-first-cluster',
-    taskDefinition='db-migration:latest',
+    taskDefinition='db-migration',
     launchType='FARGATE',
     networkConfiguration={
         'awsvpcConfiguration': {
@@ -292,13 +292,13 @@ aws logs tail /ecs/web-app --since 1h --format short
 
 ## Common Issues
 
-**Task stuck in PROVISIONING** - Usually means Fargate is waiting for capacity. This is rare but can happen during regional capacity constraints.
+**Task stuck in PROVISIONING or PENDING** - Usually means ECS is still allocating networking or waiting for available capacity. This is rare but can happen during regional capacity constraints.
 
 **Task stops immediately with no logs** - The image probably failed to pull. Check that the ECR repository exists, the image tag is correct, and the execution role has ECR pull permissions.
 
 **Exit code 137** - Your container was killed by the OOM killer. Increase the memory allocation in your task definition.
 
-**Exit code 1 with "CannotPullContainerError"** - Network issue. Make sure your subnets can reach ECR (either through a public IP, NAT gateway, or VPC endpoint).
+**CannotPullContainerError** - Network, image, or permission issue. Make sure the image exists, the execution role can pull it, and your subnets can reach ECR (either through a public IP, NAT gateway, or VPC endpoint).
 
 ## Wrapping Up
 
