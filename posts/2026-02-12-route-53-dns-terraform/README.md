@@ -44,6 +44,10 @@ resource "aws_route53_zone" "internal" {
     vpc_id = aws_vpc.main.id
   }
 
+  lifecycle {
+    ignore_changes = [vpc]
+  }
+
   tags = {
     Environment = "production"
   }
@@ -300,7 +304,7 @@ resource "aws_route53_record" "secondary_failover" {
 
 ### Latency-Based Routing
 
-Route users to the nearest region:
+Route users to the lowest-latency region:
 
 ```hcl
 resource "aws_route53_record" "us_east" {
@@ -479,7 +483,7 @@ terraform import 'aws_route53_record.web' Z1234567890_example.com_A
 terraform import 'aws_route53_record.primary' Z1234567890_app.example.com_A_primary
 ```
 
-The import ID format is `{zone_id}_{name}_{type}_{set_identifier}`.
+The import ID format is `{zone_id}_{name}_{type}`, with `{set_identifier}` appended for routing-policy records.
 
 ## Best Practices
 
@@ -489,7 +493,7 @@ The import ID format is `{zone_id}_{name}_{type}_{set_identifier}`.
 
 3. **Version control everything** - Your DNS configuration is critical infrastructure. Treat it like code.
 
-4. **Use remote state** - Store Terraform state in S3 with DynamoDB locking so multiple team members can safely make changes.
+4. **Use remote state** - Store Terraform state in S3 with `use_lockfile = true` so multiple team members can safely make changes.
 
 5. **Plan before apply** - Always run `terraform plan` and review DNS changes carefully. A wrong DNS change can take your entire site offline.
 
