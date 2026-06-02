@@ -180,7 +180,7 @@ await client.send(new PublishCommand({
 
 ## FIFO Topics
 
-When message ordering matters, use FIFO topics. They guarantee first-in-first-out delivery and exactly-once processing.
+When message ordering matters, use FIFO topics. With FIFO SQS queues as subscribers, they provide first-in-first-out delivery and deduplication.
 
 ```typescript
 // FIFO topic for ordered message delivery
@@ -190,7 +190,7 @@ const fifoTopic = new sns.Topic(this, 'OrderFifoTopic', {
   contentBasedDeduplication: true,
 });
 
-// FIFO topics can only have FIFO queue subscriptions
+// Use FIFO queues when subscribers need strict ordering and deduplication
 const fifoQueue = new sqs.Queue(this, 'OrderFifoQueue', {
   queueName: 'order-processing.fifo',
   fifo: true,
@@ -202,7 +202,7 @@ fifoTopic.addSubscription(
 );
 ```
 
-Remember: FIFO topic names must end with `.fifo`, and they can only have FIFO SQS queues as subscribers. You can't mix standard and FIFO resources.
+Remember: FIFO topic names must end with `.fifo`. SNS FIFO topics can deliver to both FIFO and standard SQS queues, but only FIFO queues preserve strict ordering and deduplication end to end. They can't directly deliver to email, SMS, HTTP(S), or Lambda endpoints; use an SQS queue in front of Lambda when you need that pattern.
 
 ## Encryption and Access Policies
 
@@ -244,6 +244,8 @@ secureTopic.addToResourcePolicy(new iam.PolicyStatement({
   },
 }));
 ```
+
+For customer-managed KMS keys, make sure publishers also have the required KMS permissions, such as `kms:GenerateDataKey` and `kms:Decrypt`, for the key.
 
 ## Dead Letter Queues for Subscriptions
 
