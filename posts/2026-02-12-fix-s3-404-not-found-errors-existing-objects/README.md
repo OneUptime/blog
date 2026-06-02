@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Troubleshooting, Cloud Storage
 
-Description: Debug and fix S3 404 Not Found errors when objects definitely exist, covering eventual consistency, key naming, versioning, and replication issues.
+Description: Debug and fix S3 404 Not Found errors when objects definitely exist, covering key naming, versioning, permissions, and replication issues.
 
 ---
 
@@ -60,7 +60,7 @@ print(f"https://my-bucket.s3.amazonaws.com/{encoded_key}")
 
 ## Cause 2: Wrong Region
 
-S3 buckets exist in a specific region, and while most modern requests are automatically routed correctly, some older-style URLs and SDKs don't handle this well.
+S3 buckets exist in a specific region, and while most modern requests are automatically routed correctly, some older-style URLs and SDKs don't handle this well. A wrong endpoint usually shows up as a redirect or a 400 error, but it can look like a missing object if a client or proxy doesn't handle the redirect correctly.
 
 ```bash
 # Check which region your bucket is in
@@ -72,7 +72,7 @@ If the output says `null`, the bucket is in `us-east-1`. Otherwise it shows the 
 Make sure your requests target the correct region:
 
 ```bash
-# Wrong - using global endpoint might not work for non-us-east-1 buckets
+# Risky - using the legacy global endpoint might not work for non-us-east-1 buckets
 curl https://my-bucket.s3.amazonaws.com/my-file.txt
 
 # Correct - use the region-specific endpoint
@@ -128,7 +128,7 @@ If status is `PENDING`, just wait. If it's `FAILED`, check the replication confi
 
 ## Cause 5: Requester Pays Bucket
 
-If the bucket is configured as Requester Pays and you don't include the proper header, you'll get a 403 or 404.
+If the bucket is configured as Requester Pays and you don't include the proper header, you'll get a 403 Access Denied error.
 
 ```bash
 # Check if the bucket uses requester pays
@@ -144,18 +144,18 @@ aws s3api get-object \
 
 ## Cause 6: Bucket Policy Masking as 404
 
-Here's a tricky one. If you don't have `s3:ListBucket` permission on the bucket, S3 returns a 404 instead of 403 when an object doesn't exist (or when you don't have permission to it). This is a security feature - AWS doesn't want to reveal whether objects exist to unauthorized users.
+Here's a tricky one. If you don't have `s3:ListBucket` permission on the bucket, S3 returns a 403 instead of 404 when an object doesn't exist. If you do have `s3:ListBucket`, a missing object returns 404. This is a security feature - AWS doesn't want to reveal whether objects exist to unauthorized users.
 
-So your "404" might actually be a permissions issue in disguise. Check if you have the right permissions:
+So if you expected a 404 but got 403, or if you're comparing results between different credentials, check whether your permissions differ:
 
 ```bash
 # Test if you can list the bucket
 aws s3api list-objects-v2 --bucket my-bucket --max-keys 1
 
-# If this fails with Access Denied, the 404 is actually a permissions issue
+# If this fails with Access Denied, you can't rely on ListBucket-based 404 behavior
 ```
 
-If listing fails, the fix is to add `s3:ListBucket` to your IAM policy. See our guide on [fixing S3 403 Access Denied errors](https://oneuptime.com/blog/post/2026-02-12-fix-s3-403-access-denied-errors/view) for more details.
+If listing fails and your workflow needs to distinguish missing objects from inaccessible objects, the fix is to add `s3:ListBucket` to your IAM policy. See our guide on [fixing S3 403 Access Denied errors](https://oneuptime.com/blog/post/2026-02-12-fix-s3-403-access-denied-errors/view) for more details.
 
 ## Cause 7: Static Website Hosting Configuration
 
