@@ -8,7 +8,7 @@ Description: A systematic guide to diagnosing and resolving DNS resolution issue
 
 ---
 
-DNS problems in Kubernetes are frustrating because they manifest as all kinds of seemingly unrelated failures. Services can't reach each other, pods can't pull images, external API calls time out, health checks fail. The root cause often comes down to DNS, but it doesn't always look that way at first glance.
+DNS problems in Kubernetes are frustrating because they manifest as all kinds of seemingly unrelated failures. Services can't reach each other, image pulls fail, external API calls time out, health checks fail. The root cause often comes down to DNS, but it doesn't always look that way at first glance.
 
 On EKS, DNS resolution involves multiple layers: CoreDNS for cluster-internal names, the VPC DNS resolver for AWS resources, and upstream resolvers for the public internet. Issues at any layer can break your applications. This guide covers how to systematically diagnose and fix DNS problems.
 
@@ -21,13 +21,13 @@ flowchart TD
     Pod[Pod] -->|query: my-svc.default.svc.cluster.local| CoreDNS
     Pod -->|query: rds.amazonaws.com| CoreDNS
     CoreDNS -->|cluster domain| K8S[Kubernetes API]
-    CoreDNS -->|external domain| VPC[VPC DNS Resolver 10.0.0.2]
+    CoreDNS -->|external domain| VPC[VPC DNS Resolver VPC CIDR + 2]
     VPC --> Internet[Public DNS / Route 53]
 ```
 
 1. Pod sends DNS query to CoreDNS (at the ClusterIP, typically 10.100.0.10)
 2. CoreDNS resolves cluster-internal names (services, pods) using the Kubernetes API
-3. CoreDNS forwards external queries to the VPC DNS resolver (the .2 address of your VPC CIDR)
+3. CoreDNS forwards external queries to the VPC DNS resolver (the primary VPC CIDR plus two, such as 10.0.0.2 for a 10.0.0.0/16 VPC)
 4. VPC resolver handles Route 53 private/public zones and upstream resolution
 
 ## Step 1: Identify the Symptom
@@ -91,11 +91,11 @@ Check that the CoreDNS Service has endpoints:
 # Check the kube-dns service
 kubectl get svc kube-dns -n kube-system
 
-# Verify endpoints exist
-kubectl get endpoints kube-dns -n kube-system
+# Verify EndpointSlices exist
+kubectl get endpointslice -n kube-system -l kubernetes.io/service-name=kube-dns
 ```
 
-If endpoints are empty, CoreDNS pods aren't ready or the selector doesn't match.
+If the EndpointSlices have no ready addresses, CoreDNS pods aren't ready or the selector doesn't match.
 
 ## Step 4: Check the CoreDNS ConfigMap
 
@@ -214,10 +214,10 @@ kubectl top pods -n kube-system -l k8s-app=kube-dns
 kubectl scale deployment coredns -n kube-system --replicas=5
 ```
 
-For automatic scaling, enable the CoreDNS Horizontal Pod Autoscaler:
+For automatic scaling, create a CoreDNS Horizontal Pod Autoscaler:
 
 ```yaml
-# coredns-hpa.yaml - Auto-scale CoreDNS based on cluster size
+# coredns-hpa.yaml - Auto-scale CoreDNS based on CPU utilization
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -243,7 +243,15 @@ Also consider using NodeLocal DNSCache, which runs a DNS cache on every node and
 
 ```bash
 # Install NodeLocal DNSCache
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+curl -O https://raw.githubusercontent.com/kubernetes/kubernetes/master/cluster/addons/dns/nodelocaldns/nodelocaldns.yaml
+
+kubedns=$(kubectl get svc kube-dns -n kube-system -o jsonpath='{.spec.clusterIP}')
+domain=cluster.local
+localdns=169.254.20.10
+
+sed -i "s/__PILLAR__LOCAL__DNS__/$localdns/g; s/__PILLAR__DNS__DOMAIN__/$domain/g; s/__PILLAR__DNS__SERVER__/$kubedns/g" nodelocaldns.yaml
+
+kubectl create -f nodelocaldns.yaml
 ```
 
 ## Step 9: Common Fixes
