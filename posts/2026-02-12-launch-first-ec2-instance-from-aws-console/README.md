@@ -16,7 +16,7 @@ This guide walks through launching your first EC2 instance from scratch. We'll c
 
 Before you start, make sure you have:
 
-- An AWS account (free tier works fine for this)
+- An AWS account (AWS Free Tier or sign-up credits work fine for this)
 - A web browser
 - Basic understanding of what a virtual machine is
 
@@ -46,7 +46,7 @@ All three have free tier eligible options. Look for the "Free tier eligible" lab
 
 ### Choose an Instance Type
 
-The instance type determines how much CPU, memory, and network bandwidth your server gets. For learning and testing, pick **t2.micro** or **t3.micro** - both are free tier eligible and give you 1 vCPU and 1 GB of memory.
+The instance type determines how much CPU, memory, and network bandwidth your server gets. For learning and testing, pick an instance type marked **Free tier eligible**. For accounts created before July 15, 2025 and still within their 12-month Free Tier period, this is usually **t2.micro** or **t3.micro** in regions where t2.micro isn't available. Both t2.micro and t3.micro give you 1 vCPU and 1 GB of memory.
 
 Here's a quick look at the instance naming convention:
 
@@ -92,9 +92,9 @@ Don't set the source to "0.0.0.0/0" (anywhere) for SSH. Restrict it to "My IP" t
 
 ### Configure Storage
 
-The default 8 GB gp3 root volume is enough for testing. Free tier includes up to 30 GB of EBS storage, so you can bump it up if needed.
+The default root volume size depends on the AMI you choose. Amazon Linux 2023 commonly starts with an 8 GB gp3 root volume, while Windows AMIs usually need a larger root volume. Free tier eligible EBS volume types include gp3, so you can bump the size up if needed and stay within the free tier limits shown in your account.
 
-Leave the volume type as gp3 - it's the newest general purpose SSD type and offers solid baseline performance.
+Leave the volume type as gp3 when it's selected - it's the newest general purpose SSD type and offers solid baseline performance.
 
 ### Advanced Details (Optional)
 
@@ -119,7 +119,7 @@ Click on your instance, then click the "Connect" button at the top. You have sev
 
 ### EC2 Instance Connect (Easiest)
 
-This opens a browser-based terminal. No local setup required. Just click "Connect" and you're in.
+For supported Linux AMIs, this opens a browser-based terminal. No local SSH client setup is required, but your instance still needs the EC2 Instance Connect prerequisites, including the right IAM permissions and network access to SSH. Just click "Connect" and you're in.
 
 ### SSH from Your Terminal
 
@@ -154,7 +154,8 @@ free -h
 df -h
 
 # See the instance's metadata (useful for automation)
-curl http://169.254.169.254/latest/meta-data/instance-type
+TOKEN=$(curl -sX PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-type
 ```
 
 ## Common Issues and Fixes
@@ -169,13 +170,13 @@ curl http://169.254.169.254/latest/meta-data/instance-type
 
 ## Cleaning Up
 
-EC2 instances cost money when they're running, even on free tier (after the first 750 hours per month). When you're done experimenting:
+EC2 instances can cost money when they're running, depending on your account's Free Tier or credit status, and attached resources such as EBS volumes and public IPv4 addresses can also incur charges. When you're done experimenting:
 
 1. Select your instance in the console
 2. Click "Instance state" > "Terminate instance"
 3. Confirm the termination
 
-Stopping an instance keeps the EBS volume (which still incurs charges), while terminating removes everything. For a test instance, termination is the cleanest option.
+Stopping an instance keeps the EBS volume (which still incurs charges), while terminating deletes the root EBS volume by default unless you changed its delete-on-termination setting. For a test instance, termination is the cleanest option.
 
 For more on managing instance lifecycle, see our guide on [stopping, starting, and terminating EC2 instances](https://oneuptime.com/blog/post/2026-02-12-stop-start-and-terminate-ec2-instances/view).
 
