@@ -10,13 +10,13 @@ Description: A comprehensive guide to configuring Route 53 weighted routing for 
 
 Weighted routing in Route 53 lets you control what percentage of DNS queries go to each endpoint. You assign a relative weight to each record, and Route 53 distributes responses proportionally. If record A has weight 70 and record B has weight 30, roughly 70% of DNS responses will return record A's value and 30% will return record B's.
 
-This is incredibly useful for canary deployments, gradual migrations, blue-green deployments, and A/B testing. Instead of switching all traffic at once, you can shift it gradually and roll back instantly if something goes wrong.
+This is incredibly useful for canary deployments, gradual migrations, blue-green deployments, and A/B testing. Instead of switching all traffic at once, you can shift it gradually and roll back quickly if something goes wrong, subject to normal DNS caching.
 
 ## How Weighted Routing Works
 
 You create multiple records with the same name and type but different set identifiers and weights. Route 53 returns a single record per query, selected based on the weight distribution.
 
-The weight doesn't have to add up to 100 - Route 53 calculates the percentage based on the total weight. If you have weights of 3 and 1, the first gets 75% and the second gets 25%. Setting a weight to 0 stops traffic to that record entirely.
+The weight doesn't have to add up to 100 - Route 53 calculates the percentage based on the total weight. If you have weights of 3 and 1, the first gets 75% and the second gets 25%. Setting a weight to 0 stops normal traffic to that record unless all records in the group have weight 0 or Route 53 is considering zero-weight records because of health check status.
 
 ## Basic Weighted Routing Setup
 
@@ -63,7 +63,7 @@ The `SetIdentifier` must be unique for each record with the same name and type. 
 
 ## Canary Deployments
 
-One of the best use cases for weighted routing is canary deployments. Deploy your new version behind a separate ALB or target group, and gradually shift traffic to it.
+One of the best use cases for weighted routing is canary deployments. Deploy your new version behind a separate DNS-addressable endpoint, such as a separate ALB, and gradually shift traffic to it.
 
 ```bash
 # Production ALB (95% of traffic)
@@ -107,11 +107,11 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-If the canary looks good, gradually increase its weight: 5 -> 10 -> 25 -> 50 -> 100. If something goes wrong, set the canary weight to 0 for an instant rollback.
+If the canary looks good, gradually increase its weight: 5 -> 10 -> 25 -> 50 -> 100. If something goes wrong, set the canary weight to 0 for a quick rollback, keeping DNS caching in mind.
 
 ## Adding Health Checks
 
-Weighted routing becomes much more useful when combined with health checks. If an endpoint fails its health check, Route 53 stops returning it and redistributes its share of traffic to the remaining healthy endpoints.
+Weighted routing becomes much more useful when combined with health checks. If health checks are configured consistently for the weighted record group and one endpoint fails its health check, Route 53 stops returning it and redistributes its share of traffic to the remaining healthy endpoints.
 
 ```bash
 # Create a health check for endpoint A
@@ -149,7 +149,7 @@ For more details on setting up health checks, see https://oneuptime.com/blog/pos
 
 ## Sending All Traffic to One Endpoint
 
-Setting a weight to 0 is different from removing the record. A weight of 0 means Route 53 never returns that record - unless all other records also have weight 0, in which case Route 53 treats them all equally and returns them all.
+Setting a weight to 0 is different from removing the record. A weight of 0 means Route 53 doesn't normally return that record - unless all records in the weighted group have weight 0, in which case Route 53 routes to all resources with equal probability. Health checks can also cause Route 53 to consider zero-weight records if all nonzero-weight records are unhealthy.
 
 ```bash
 # Send all traffic to production by setting canary weight to 0
@@ -211,20 +211,6 @@ resource "aws_route53_record" "api_canary" {
     name                   = aws_lb.canary.dns_name
     zone_id                = aws_lb.canary.zone_id
     evaluate_target_health = true
-  }
-}
-
-# Health check for production
-resource "aws_route53_health_check" "production" {
-  fqdn              = aws_lb.production.dns_name
-  port               = 443
-  type               = "HTTPS"
-  resource_path      = "/health"
-  request_interval   = 10
-  failure_threshold  = 3
-
-  tags = {
-    Name = "production-health-check"
   }
 }
 ```
