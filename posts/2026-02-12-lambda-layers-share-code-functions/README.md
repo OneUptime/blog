@@ -12,7 +12,7 @@ When you have 20 Lambda functions and they all use the same version of requests,
 
 ## How Layers Work
 
-When Lambda runs your function, it extracts the layer contents into the `/opt` directory. Your function code can then import from `/opt` like it's a normal Python or Node.js module path. Lambda automatically adds `/opt/python` (for Python) or `/opt/nodejs` (for Node.js) to the module search path.
+When Lambda runs your function, it extracts the layer contents into the `/opt` directory. Your function code can then import from the runtime-specific paths under `/opt` like they're normal module paths. Lambda automatically adds `/opt/python` and `/opt/python/lib/python3.x/site-packages` for Python, and Node.js uses paths such as `/opt/nodejs/node_modules` and `/opt/nodejs/node22/node_modules`.
 
 You can attach up to 5 layers to a single function. The total unzipped size of the function code plus all layers can't exceed 250 MB.
 
@@ -68,7 +68,7 @@ echo "Layer ARN: $LAYER_ARN"
 
 ## Creating a Node.js Layer
 
-For Node.js, the directory structure uses `nodejs/`:
+For Node.js, dependencies must be under `nodejs/node_modules/`:
 
 ```bash
 # Create the layer structure
@@ -87,7 +87,7 @@ cd layer && zip -r ../node-libs-layer.zip . && cd ..
 aws lambda publish-layer-version \
   --layer-name common-node-libs \
   --description "Common Node.js libraries: axios, lodash, dayjs" \
-  --compatible-runtimes nodejs18.x nodejs20.x \
+  --compatible-runtimes nodejs22.x nodejs24.x \
   --zip-file fileb://node-libs-layer.zip
 ```
 
@@ -313,7 +313,7 @@ AWS and third parties publish public layers you can use directly. Some popular o
 # Attach the AWS Lambda Powertools layer (Python)
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:51"
+  --layers "arn:aws:lambda:us-east-1:017000801446:layer:AWSLambdaPowertoolsPythonV3-python312-x86_64:33"
 ```
 
 ## SAM Template with Layers
