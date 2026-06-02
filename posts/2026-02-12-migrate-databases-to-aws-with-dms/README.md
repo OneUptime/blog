@@ -41,11 +41,9 @@ response = dms.create_replication_instance(
     ReplicationInstanceIdentifier='prod-migration-instance',
     ReplicationInstanceClass='dms.r5.xlarge',
     AllocatedStorage=100,  # GB for buffering
-    VpcSecurityGroupIds=['sg-dms-replication'],
-    AvailabilityZone='us-east-1a',
+    VpcSecurityGroupIds=['sg-0123456789abcdef0'],
     ReplicationSubnetGroupIdentifier='dms-subnet-group',
     MultiAZ=True,  # For production migrations
-    EngineVersion='3.5.2',
     PubliclyAccessible=False,
     Tags=[
         {'Key': 'Project', 'Value': 'DatabaseMigration'},
@@ -53,7 +51,8 @@ response = dms.create_replication_instance(
     ]
 )
 
-print(f"Replication instance creating: {response['ReplicationInstance']['ReplicationInstanceArn']}")
+replication_instance_arn = response['ReplicationInstance']['ReplicationInstanceArn']
+print(f"Replication instance creating: {replication_instance_arn}")
 ```
 
 Size recommendations:
@@ -69,13 +68,12 @@ Endpoints define the connection to your source and target databases.
 
 ```python
 # Create source endpoint for on-premises MySQL
-dms.create_endpoint(
+source_endpoint = dms.create_endpoint(
     EndpointIdentifier='source-mysql-prod',
     EndpointType='source',
     EngineName='mysql',
     ServerName='mysql-prod.internal.company.com',
     Port=3306,
-    DatabaseName='production_db',
     Username='dms_user',
     Password='SecurePassword123!',
     SslMode='require',
@@ -83,23 +81,26 @@ dms.create_endpoint(
         {'Key': 'Migration', 'Value': 'prod-mysql-to-aurora'}
     ]
 )
+
+source_endpoint_arn = source_endpoint['Endpoint']['EndpointArn']
 ```
 
 ### Target Endpoint (Amazon Aurora MySQL)
 
 ```python
 # Create target endpoint for Aurora MySQL
-dms.create_endpoint(
+target_endpoint = dms.create_endpoint(
     EndpointIdentifier='target-aurora-prod',
     EndpointType='target',
     EngineName='aurora',
     ServerName='prod-cluster.cluster-abc123.us-east-1.rds.amazonaws.com',
     Port=3306,
-    DatabaseName='production_db',
     Username='admin',
     Password='SecurePassword456!',
     SslMode='require'
 )
+
+target_endpoint_arn = target_endpoint['Endpoint']['EndpointArn']
 ```
 
 ### Testing Endpoint Connections
@@ -112,18 +113,17 @@ import boto3
 import time
 
 dms = boto3.client('dms')
-replication_instance_arn = 'arn:aws:dms:us-east-1:123456789:rep:prod-migration-instance'
 
 # Test source
 dms.test_connection(
     ReplicationInstanceArn=replication_instance_arn,
-    EndpointArn='arn:aws:dms:us-east-1:123456789:endpoint:source-mysql-prod'
+    EndpointArn=source_endpoint_arn
 )
 
 # Test target
 dms.test_connection(
     ReplicationInstanceArn=replication_instance_arn,
-    EndpointArn='arn:aws:dms:us-east-1:123456789:endpoint:target-aurora-prod'
+    EndpointArn=target_endpoint_arn
 )
 
 # Check connection test status
@@ -133,8 +133,8 @@ connections = dms.describe_connections(
         {
             'Name': 'endpoint-arn',
             'Values': [
-                'arn:aws:dms:us-east-1:123456789:endpoint:source-mysql-prod',
-                'arn:aws:dms:us-east-1:123456789:endpoint:target-aurora-prod'
+                source_endpoint_arn,
+                target_endpoint_arn
             ]
         }
     ]
@@ -151,10 +151,12 @@ The migration task defines what to migrate and how.
 
 ```python
 # Create a migration task with full load and CDC
-dms.create_replication_task(
+import json
+
+task = dms.create_replication_task(
     ReplicationTaskIdentifier='mysql-to-aurora-prod',
-    SourceEndpointArn='arn:aws:dms:us-east-1:123456789:endpoint:source-mysql-prod',
-    TargetEndpointArn='arn:aws:dms:us-east-1:123456789:endpoint:target-aurora-prod',
+    SourceEndpointArn=source_endpoint_arn,
+    TargetEndpointArn=target_endpoint_arn,
     ReplicationInstanceArn=replication_instance_arn,
     MigrationType='full-load-and-cdc',  # Full load then continuous replication
     TableMappings=json.dumps({
@@ -209,6 +211,8 @@ dms.create_replication_task(
         }
     })
 )
+
+task_arn = task['ReplicationTask']['ReplicationTaskArn']
 ```
 
 ## Starting and Monitoring the Migration
@@ -219,7 +223,6 @@ import boto3
 import time
 
 dms = boto3.client('dms')
-task_arn = 'arn:aws:dms:us-east-1:123456789:task:mysql-to-aurora-prod'
 
 # Start the task
 dms.start_replication_task(
@@ -244,10 +247,13 @@ while True:
     print(f"  Tables errored: {stats.get('TablesErrored', 0)}")
     print(f"  Full load %: {stats.get('FullLoadProgressPercent', 0)}%")
 
-    if status in ['running', 'stopped', 'failed']:
-        if stats.get('FullLoadProgressPercent', 0) == 100:
-            print("Full load complete, CDC is active")
-            break
+    if status == 'failed':
+        print("Migration task failed")
+        break
+
+    if status == 'running' and stats.get('FullLoadProgressPercent', 0) == 100:
+        print("Full load complete, CDC is active")
+        break
 
     time.sleep(60)
 ```
@@ -309,7 +315,7 @@ The cutover is the critical moment when you switch applications from the source 
 6. **Start applications** pointing to the new database
 7. **Monitor closely** for the first 24-48 hours
 
-Keep the DMS task running and the source database available for a rollback period. If something goes wrong, you can reverse the replication direction.
+Keep the DMS task running and the source database available for a rollback period. If something goes wrong, you may be able to create a separate task in the reverse direction, provided both databases and CDC prerequisites support that path.
 
 ## Monitoring Your Migrated Database
 
