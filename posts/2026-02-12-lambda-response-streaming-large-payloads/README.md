@@ -8,7 +8,7 @@ Description: Learn how to use AWS Lambda response streaming to send large payloa
 
 ---
 
-Lambda's traditional request-response model has a hard 6MB limit on response payloads. If you need to send more than that, you're stuck - or at least you were until response streaming came along. With streaming, your function can send data incrementally as it generates it, pushing the limit up to 20MB and dramatically reducing time-to-first-byte for large responses.
+Lambda's traditional request-response model has a hard 6MB limit on response payloads. If you need to send more than that, you're stuck - or at least you were until response streaming came along. With streaming, your function can send data incrementally as it generates it, pushing the limit up to 200MB and dramatically reducing time-to-first-byte for large responses.
 
 ## What Response Streaming Actually Does
 
@@ -18,7 +18,7 @@ This matters for several use cases: serving large files, generating reports, str
 
 ## Setting Up a Streaming Function
 
-Response streaming requires the Node.js runtime and a function URL. It doesn't work through API Gateway - that's a key limitation to understand upfront.
+Response streaming requires the Node.js managed runtime, a custom runtime, or the Lambda Web Adapter. You can invoke streamed responses through a function URL, the `InvokeWithResponseStream` API, or a properly configured API Gateway Lambda proxy integration.
 
 Here's the basic structure of a streaming Lambda function:
 
@@ -62,12 +62,26 @@ This CloudFormation template creates a streaming function with a public URL:
 
 ```yaml
 Resources:
+  StreamingFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
   StreamingFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: my-streaming-function
       Runtime: nodejs20.x
       Handler: index.handler
+      Role: !GetAtt StreamingFunctionRole.Arn
       Code:
         S3Bucket: my-deployment-bucket
         S3Key: streaming-function.zip
@@ -78,16 +92,24 @@ Resources:
     Type: AWS::Lambda::Url
     Properties:
       TargetFunctionArn: !Ref StreamingFunction
-      AuthType: AWS_IAM  # Or NONE for public access
+      AuthType: NONE  # Use AWS_IAM if you want IAM authentication
       InvokeMode: RESPONSE_STREAM  # This enables streaming
 
-  FunctionUrlPermission:
+  FunctionUrlInvokePermission:
     Type: AWS::Lambda::Permission
     Properties:
       FunctionName: !Ref StreamingFunction
       Action: lambda:InvokeFunctionUrl
       Principal: "*"
       FunctionUrlAuthType: NONE
+
+  FunctionInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref StreamingFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
 ```
 
 The critical setting is `InvokeMode: RESPONSE_STREAM`. Without it, the function URL operates in buffered mode and you won't get streaming behavior.
@@ -103,6 +125,11 @@ import { DynamoDBClient, ScanCommand } from "@aws-sdk/client-dynamodb";
 import { unmarshall } from "@aws-sdk/util-dynamodb";
 
 const dynamodb = new DynamoDBClient({});
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
 
 export const handler = awslambda.streamifyResponse(
   async (event, responseStream, context) => {
@@ -133,11 +160,12 @@ export const handler = awslambda.streamifyResponse(
       );
 
       // Stream each row as we get it
-      for (const item of result.Items) {
+      for (const item of result.Items ?? []) {
         const user = unmarshall(item);
-        responseStream.write(
-          `${user.id},${user.name},${user.email},${user.created_at},${user.status}\n`
-        );
+        const row = [user.id, user.name, user.email, user.created_at, user.status]
+          .map(csvEscape)
+          .join(",");
+        responseStream.write(`${row}\n`);
         rowCount++;
       }
 
@@ -282,11 +310,11 @@ export const handler = awslambda.streamifyResponse(
 
 Before you go all-in on response streaming, understand the constraints:
 
-- **Function URLs only** - API Gateway and ALB don't support streaming responses. You need a Lambda function URL.
-- **Node.js only** - As of now, response streaming is only available for the Node.js managed runtime and custom runtimes.
-- **20MB soft limit** - Streaming pushes the response limit from 6MB to 20MB. You can request a quota increase.
+- **Invocation path matters** - Function URLs, the `InvokeWithResponseStream` API, and API Gateway Lambda proxy integrations can stream responses when configured for response streaming. ALB doesn't support Lambda response streaming.
+- **Runtime support** - Lambda supports response streaming on Node.js managed runtimes. For other languages, use a custom runtime or the Lambda Web Adapter.
+- **200MB limit** - Streaming pushes the response limit from 6MB to 200MB.
 - **Cost** - You're billed for the duration the stream is open, not just compute time. Long-running streams cost more.
-- **No API Gateway features** - Since you're using function URLs, you lose API Gateway features like throttling, WAF, and usage plans.
+- **Gateway configuration** - If you use function URLs directly, you don't get API Gateway features like throttling, WAF, and usage plans. If you need those features, configure API Gateway's Lambda proxy response streaming instead.
 
 ## Consuming Streamed Responses
 
@@ -315,4 +343,4 @@ async function consumeStream(url) {
 
 ## Wrapping Up
 
-Response streaming unlocks patterns that simply weren't possible with Lambda before. The time-to-first-byte improvement alone makes it worth considering for any function that generates large responses. Just keep in mind the function URL requirement - if you need API Gateway features, you'll need to put CloudFront in front of the function URL or find a different approach. For monitoring the performance of your streaming functions, check out how to [set up Lambda monitoring](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view).
+Response streaming unlocks patterns that simply weren't possible with Lambda before. The time-to-first-byte improvement alone makes it worth considering for any function that generates large responses. Just keep in mind the invocation requirements - if you need API Gateway features, configure API Gateway's Lambda proxy response streaming or put CloudFront in front of the function URL. For monitoring the performance of your streaming functions, check out how to [set up Lambda monitoring](https://oneuptime.com/blog/post/2026-02-12-logging-monitoring-best-practices-aws/view).
