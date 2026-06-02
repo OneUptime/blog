@@ -119,7 +119,7 @@ aws s3control put-access-point-policy \
         "Version": "2012-10-17",
         "Statement": [
             {
-                "Sid": "DataTeamReadWrite",
+                "Sid": "DataTeamObjectReadWrite",
                 "Effect": "Allow",
                 "Principal": {
                     "AWS": "arn:aws:iam::123456789012:role/DataTeamRole"
@@ -127,13 +127,27 @@ aws s3control put-access-point-policy \
                 "Action": [
                     "s3:GetObject",
                     "s3:PutObject",
-                    "s3:DeleteObject",
+                    "s3:DeleteObject"
+                ],
+                "Resource": "arn:aws:s3:us-east-1:123456789012:accesspoint/data-team-rw/object/data-team/*"
+            },
+            {
+                "Sid": "DataTeamListPrefix",
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws:iam::123456789012:role/DataTeamRole"
+                },
+                "Action": [
                     "s3:ListBucket"
                 ],
-                "Resource": [
-                    "arn:aws:s3:us-east-1:123456789012:accesspoint/data-team-rw",
-                    "arn:aws:s3:us-east-1:123456789012:accesspoint/data-team-rw/object/data-team/*"
-                ]
+                "Resource": "arn:aws:s3:us-east-1:123456789012:accesspoint/data-team-rw",
+                "Condition": {
+                    "StringLike": {
+                        "s3:prefix": [
+                            "data-team/*"
+                        ]
+                    }
+                }
             }
         ]
     }'
@@ -205,19 +219,33 @@ aws s3control put-access-point-policy \
         "Version": "2012-10-17",
         "Statement": [
             {
-                "Sid": "PartnerRead",
+                "Sid": "PartnerObjectRead",
                 "Effect": "Allow",
                 "Principal": {
                     "AWS": "arn:aws:iam::999888777666:root"
                 },
                 "Action": [
-                    "s3:GetObject",
+                    "s3:GetObject"
+                ],
+                "Resource": "arn:aws:s3:us-east-1:123456789012:accesspoint/partner-access/object/shared-data/*"
+            },
+            {
+                "Sid": "PartnerListSharedData",
+                "Effect": "Allow",
+                "Principal": {
+                    "AWS": "arn:aws:iam::999888777666:root"
+                },
+                "Action": [
                     "s3:ListBucket"
                 ],
-                "Resource": [
-                    "arn:aws:s3:us-east-1:123456789012:accesspoint/partner-access",
-                    "arn:aws:s3:us-east-1:123456789012:accesspoint/partner-access/object/shared-data/*"
-                ]
+                "Resource": "arn:aws:s3:us-east-1:123456789012:accesspoint/partner-access",
+                "Condition": {
+                    "StringLike": {
+                        "s3:prefix": [
+                            "shared-data/*"
+                        ]
+                    }
+                }
             }
         ]
     }'
@@ -243,7 +271,7 @@ The partner account also needs to update their IAM policies to allow access thro
 
 ## Delegating Access Control with Bucket Policy
 
-For access points to work, the bucket policy must delegate access control to the access points. This is done with a simple bucket policy.
+Permissions in an access point policy are effective only if the underlying bucket also allows the same access. Delegating access control from the bucket to access points is the recommended way to do that.
 
 Delegate bucket access control to access points:
 
@@ -295,7 +323,7 @@ aws ec2 create-vpc-endpoint \
     --route-table-ids rtb-0abc123
 ```
 
-With a VPC-restricted access point, even if someone has valid credentials and the correct access point policy allows them, they can only access data from within the specified VPC. Requests from outside the VPC are rejected.
+With a VPC-restricted access point, even if someone has valid credentials and the correct access point policy allows them, they can only access data from within the specified VPC. Requests from outside the VPC are rejected. If your VPC endpoint uses a restrictive endpoint policy, it must allow access to both the access point and the underlying bucket.
 
 ## Managing Access Points
 
