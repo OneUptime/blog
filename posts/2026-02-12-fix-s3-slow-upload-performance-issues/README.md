@@ -23,7 +23,7 @@ Before jumping to solutions, let's understand what's likely causing the bottlene
 
 ## Fix 1: Use Multipart Uploads for Large Files
 
-For files over 100 MB, multipart upload is essential. It splits the file into parts, uploads them in parallel, and reassembles them on S3's side. The AWS CLI and SDKs handle this automatically if configured properly.
+For files over 100 MB, multipart upload is strongly recommended. It splits the file into parts, uploads them in parallel, and reassembles them on S3's side. The AWS CLI and SDKs handle this automatically if configured properly.
 
 The AWS CLI's `s3 cp` command uses multipart by default for files over 8 MB:
 
@@ -42,7 +42,11 @@ For very large files (10+ GB), increase the chunk size so you don't hit the 10,0
 
 ```bash
 # For a 100GB file, use 64MB chunks (1,600 parts)
-aws s3 cp huge-file.tar.gz s3://my-bucket/huge-file.tar.gz \
+aws configure set default.s3.multipart_chunksize 64MB
+aws s3 cp huge-file.tar.gz s3://my-bucket/huge-file.tar.gz
+
+# If you're streaming more than 50GB from stdin, also provide the expected size
+aws s3 cp - s3://my-bucket/huge-stream.tar.gz \
   --expected-size 107374182400
 ```
 
@@ -89,11 +93,12 @@ In Python:
 
 ```python
 import boto3
+from botocore.config import Config
 
 # Create an S3 client configured for transfer acceleration
 s3 = boto3.client(
     's3',
-    config=boto3.session.Config(
+    config=Config(
         s3={'use_accelerate_endpoint': True}
     )
 )
@@ -104,8 +109,8 @@ s3.upload_file('large-file.zip', 'my-bucket', 'large-file.zip')
 You can test whether acceleration actually helps with the speed comparison tool:
 
 ```bash
-# Check acceleration speed from your location
-curl -s https://s3-accelerate-speedtest.s3-accelerate.amazonaws.com/en/accelerate-speed-comparsion.html
+# Open this URL in your browser, replacing the region and bucket name
+# https://s3-accelerate-speedtest.s3-accelerate.amazonaws.com/en/accelerate-speed-comparsion.html?region=us-east-1&origBucketName=my-bucket
 ```
 
 Transfer Acceleration costs a bit extra per GB, so make sure it's actually providing a benefit before leaving it on.
@@ -181,7 +186,7 @@ Here's a guideline:
 
 ## Fix 5: Use the Right Storage Class
 
-If you're uploading data that doesn't need immediate access, using the right storage class can improve upload throughput by reducing the backend processing S3 needs to do:
+If you're uploading data with unknown or changing access patterns, using the right storage class can reduce storage cost without changing your upload workflow. It usually won't fix raw upload throughput, but setting it during upload avoids a later copy or lifecycle transition:
 
 ```bash
 # Upload directly to Intelligent-Tiering
@@ -211,12 +216,12 @@ If you're on an EC2 instance, check if you're hitting network bandwidth limits f
 # Check your instance's network performance class
 aws ec2 describe-instance-types \
   --instance-types m5.xlarge \
-  --query 'InstanceTypes[0].NetworkInfo.{Bandwidth:NetworkPerformance,MaxBandwidth:NetworkInfo.MaximumNetworkBandwidth}'
+  --query 'InstanceTypes[0].NetworkInfo.NetworkPerformance'
 ```
 
 ## Fix 7: Use VPC Endpoints for EC2-to-S3 Transfers
 
-If you're uploading from EC2, a VPC Gateway Endpoint for S3 keeps traffic on AWS's internal network instead of going through the public internet. This is free and usually faster.
+If you're uploading from EC2, a VPC Gateway Endpoint for S3 lets instances in your VPC reach S3 without an internet gateway or NAT device. This is free and can simplify routing and avoid NAT data processing charges.
 
 ```bash
 # Create a VPC endpoint for S3
