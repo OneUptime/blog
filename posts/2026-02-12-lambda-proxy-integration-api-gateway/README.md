@@ -56,7 +56,7 @@ You get everything: headers, query parameters, path parameters, the body, and re
 
 ## The Required Response Format
 
-Your Lambda function must return a response in this exact format. API Gateway won't know what to do with anything else.
+Your Lambda function must return a response in API Gateway's proxy response format. The minimal response usually looks like this, with optional fields like `isBase64Encoded` and `multiValueHeaders` added when needed.
 
 This response object tells API Gateway to return a 200 status with JSON body and CORS headers:
 
@@ -67,7 +67,8 @@ This response object tells API Gateway to return a 200 status with JSON body and
     "Content-Type": "application/json",
     "Access-Control-Allow-Origin": "*"
   },
-  "body": "{\"orderId\":\"12345\",\"status\":\"active\"}"
+  "body": "{\"orderId\":\"12345\",\"status\":\"active\"}",
+  "isBase64Encoded": false
 }
 ```
 
@@ -102,6 +103,9 @@ exports.handler = async (event) => {
         const createPayload = JSON.parse(body || '{}');
         result = await createOrder(createPayload);
         return formatResponse(201, result);
+
+      case 'OPTIONS':
+        return formatResponse(204, null);
 
       case 'PUT':
         const updatePayload = JSON.parse(body || '{}');
@@ -141,7 +145,7 @@ function formatResponse(statusCode, body) {
       'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,OPTIONS',
       'Access-Control-Allow-Headers': 'Content-Type,Authorization',
     },
-    body: body ? JSON.stringify(body) : '',
+    body: body == null ? '' : JSON.stringify(body),
   };
 }
 ```
@@ -193,6 +197,9 @@ export class OrdersApiStack extends cdk.Stack {
     orders.addMethod('POST', new apigateway.LambdaIntegration(ordersHandler, {
       proxy: true,
     }));
+    orders.addMethod('OPTIONS', new apigateway.LambdaIntegration(ordersHandler, {
+      proxy: true,
+    }));
 
     // Create /orders/{orderId} resource
     const singleOrder = orders.addResource('{orderId}');
@@ -203,6 +210,9 @@ export class OrdersApiStack extends cdk.Stack {
       proxy: true,
     }));
     singleOrder.addMethod('DELETE', new apigateway.LambdaIntegration(ordersHandler, {
+      proxy: true,
+    }));
+    singleOrder.addMethod('OPTIONS', new apigateway.LambdaIntegration(ordersHandler, {
       proxy: true,
     }));
 
@@ -245,6 +255,11 @@ Resources:
           Properties:
             Path: /orders
             Method: post
+        OptionsOrders:
+          Type: Api
+          Properties:
+            Path: /orders
+            Method: options
         GetOrder:
           Type: Api
           Properties:
@@ -260,6 +275,11 @@ Resources:
           Properties:
             Path: /orders/{orderId}
             Method: delete
+        OptionsOrder:
+          Type: Api
+          Properties:
+            Path: /orders/{orderId}
+            Method: options
 ```
 
 SAM uses Lambda proxy integration by default for API events. You don't even have to configure it.
@@ -286,7 +306,7 @@ if (event.isBase64Encoded) {
 }
 ```
 
-When returning binary data, set `isBase64Encoded: true` in your response and base64-encode the body.
+When returning binary data, set `isBase64Encoded: true` in your response, base64-encode the body, and return a `Content-Type` header that matches one of your configured binary media types. For browser clients where you can't control the first value in the `Accept` header, configure `*/*` as a binary media type.
 
 ## Common Gotchas
 
@@ -300,7 +320,7 @@ When returning binary data, set `isBase64Encoded: true` in your response and bas
 
 ## Performance Considerations
 
-Proxy integration has slightly less overhead than custom integration because API Gateway doesn't need to process mapping templates. The difference is small - a few milliseconds at most - but in latency-sensitive APIs, every bit counts.
+Proxy integration avoids API Gateway request and response mapping templates, so it simplifies the integration path. The latency difference is usually small compared with Lambda execution time, so measure your own API before treating the integration type as a performance optimization.
 
 For cold start optimization, keep your handler lean. The proxy integration event is larger than a custom-mapped event, but parsing it is negligible compared to typical cold start times. Focus your optimization efforts on the function initialization code instead.
 
