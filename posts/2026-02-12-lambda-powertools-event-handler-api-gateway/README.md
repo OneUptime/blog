@@ -18,7 +18,7 @@ The Event Handler gives you decorators for each HTTP method, just like Flask or 
 
 ```python
 from aws_lambda_powertools import Logger, Tracer
-from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+from aws_lambda_powertools.event_handler import APIGatewayRestResolver, Response
 from aws_lambda_powertools.utilities.typing import LambdaContext
 
 logger = Logger(service="order-api")
@@ -52,7 +52,7 @@ def get_order(order_id: str):
         return Response(
             status_code=404,
             content_type="application/json",
-            body=json.dumps({"error": "Order not found"})
+            body={"error": "Order not found"}
         )
 
     return order
@@ -69,7 +69,7 @@ def create_order():
         return Response(
             status_code=400,
             content_type="application/json",
-            body=json.dumps({"error": "customer_id and items are required"})
+            body={"error": "customer_id and items are required"}
         )
 
     order = save_order(body)
@@ -88,7 +88,7 @@ def update_order(order_id: str):
 def delete_order(order_id: str):
     """DELETE /orders/{order_id} - Cancel an order."""
     cancel_order(order_id)
-    return {"message": f"Order {order_id} cancelled"}, 204
+    return Response(status_code=204)
 
 
 # Lambda handler
@@ -133,7 +133,7 @@ def create_order():
 # The preflight OPTIONS request is handled automatically
 ```
 
-For multiple origins, you can use a custom origin resolver.
+For multiple origins, pass additional allowed origins with `extra_origins`.
 
 ```python
 from aws_lambda_powertools.event_handler import (
@@ -149,6 +149,7 @@ ALLOWED_ORIGINS = [
 
 cors_config = CORSConfig(
     allow_origin=ALLOWED_ORIGINS[0],  # Default origin
+    extra_origins=ALLOWED_ORIGINS[1:],
     allow_headers=["Content-Type", "Authorization"],
     max_age=3600
 )
@@ -157,10 +158,7 @@ app = APIGatewayRestResolver(cors=cors_config)
 
 @app.get("/orders")
 def list_orders():
-    # Dynamically set the origin based on the request
-    origin = app.current_event.get_header_value("origin", default_value="")
-    if origin in ALLOWED_ORIGINS:
-        app.append_context({"_cors_origin": origin})
+    # CORS headers are added when the request Origin matches an allowed origin
     return {"orders": []}
 ```
 
@@ -169,7 +167,7 @@ def list_orders():
 Event Handler provides structured exception handling that maps to proper HTTP responses.
 
 ```python
-from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+from aws_lambda_powertools.event_handler import APIGatewayRestResolver, Response
 from aws_lambda_powertools.event_handler.exceptions import (
     BadRequestError,
     NotFoundError,
@@ -190,7 +188,7 @@ def handle_value_error(ex: ValueError):
     return Response(
         status_code=400,
         content_type="application/json",
-        body=json.dumps({"error": str(ex)})
+        body={"error": str(ex)}
     )
 
 @app.exception_handler(PermissionError)
@@ -199,7 +197,7 @@ def handle_permission_error(ex: PermissionError):
     return Response(
         status_code=403,
         content_type="application/json",
-        body=json.dumps({"error": "Permission denied"})
+        body={"error": "Permission denied"}
     )
 
 @app.get("/orders/<order_id>")
@@ -238,7 +236,7 @@ def create_order():
 Add cross-cutting concerns using middleware.
 
 ```python
-from aws_lambda_powertools.event_handler import APIGatewayRestResolver
+from aws_lambda_powertools.event_handler import APIGatewayRestResolver, Response
 from aws_lambda_powertools.event_handler.middlewares import BaseMiddlewareHandler, NextMiddleware
 from aws_lambda_powertools import Logger, Metrics
 from aws_lambda_powertools.metrics import MetricUnit
@@ -260,7 +258,7 @@ class TimingMiddleware(BaseMiddlewareHandler):
             "duration_ms": round(duration_ms, 2),
             "path": app.current_event.path,
             "method": app.current_event.http_method,
-            "status_code": response.get("statusCode", 200)
+            "status_code": response.status_code
         })
 
         metrics.add_metric(name="RequestDuration", unit=MetricUnit.Milliseconds, value=duration_ms)
@@ -278,23 +276,23 @@ class AuthMiddleware(BaseMiddlewareHandler):
             return next_middleware(app)
 
         # Check for authorization header
-        auth_header = app.current_event.get_header_value("Authorization")
+        auth_header = app.current_event.headers.get("Authorization")
         if not auth_header:
             return Response(
                 status_code=401,
                 content_type="application/json",
-                body=json.dumps({"error": "Authorization header required"})
+                body={"error": "Authorization header required"}
             )
 
         # Verify the token
         try:
             user = verify_token(auth_header)
-            app.append_context({"user": user})
+            app.append_context(user=user)
         except Exception:
             return Response(
                 status_code=401,
                 content_type="application/json",
-                body=json.dumps({"error": "Invalid token"})
+                body={"error": "Invalid token"}
             )
 
         return next_middleware(app)
@@ -337,36 +335,19 @@ def list_orders():
 
 ## Response Compression
 
-Enable response compression to reduce payload sizes and Lambda costs.
+Enable response compression to reduce payload sizes and data transfer.
 
 ```python
-from aws_lambda_powertools.event_handler import APIGatewayRestResolver, Response
+from aws_lambda_powertools.event_handler import APIGatewayRestResolver
 
 app = APIGatewayRestResolver()
 
-@app.get("/orders")
+@app.get("/orders", compress=True)
 def list_orders():
     orders = fetch_all_orders()  # Might be a large response
 
-    # Check if client accepts gzip
-    accept_encoding = app.current_event.get_header_value(
-        "Accept-Encoding", default_value=""
-    )
-
-    if "gzip" in accept_encoding:
-        import gzip
-        import json
-
-        body = json.dumps({"orders": orders}).encode()
-        compressed = gzip.compress(body)
-
-        return Response(
-            status_code=200,
-            content_type="application/json",
-            body=base64.b64encode(compressed).decode(),
-            headers={"Content-Encoding": "gzip"}
-        )
-
+    # Powertools compresses and base64-encodes the response when the client
+    # sends an Accept-Encoding header that supports gzip.
     return {"orders": orders}
 ```
 
