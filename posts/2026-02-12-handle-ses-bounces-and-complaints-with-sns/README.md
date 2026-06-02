@@ -47,19 +47,19 @@ aws ses get-identity-notification-attributes \
 aws ses set-identity-notification-topic \
   --identity yourdomain.com \
   --notification-type Bounce \
-  --sns-topic arn:aws:sns:us-east-1:123456789:ses-bounces
+  --sns-topic arn:aws:sns:us-east-1:123456789012:ses-bounces
 
 # Set up complaint notifications
 aws ses set-identity-notification-topic \
   --identity yourdomain.com \
   --notification-type Complaint \
-  --sns-topic arn:aws:sns:us-east-1:123456789:ses-complaints
+  --sns-topic arn:aws:sns:us-east-1:123456789012:ses-complaints
 
 # Set up delivery notifications (optional but useful)
 aws ses set-identity-notification-topic \
   --identity yourdomain.com \
   --notification-type Delivery \
-  --sns-topic arn:aws:sns:us-east-1:123456789:ses-deliveries
+  --sns-topic arn:aws:sns:us-east-1:123456789012:ses-deliveries
 ```
 
 By default, SES also sends bounce and complaint notifications via email to the address in the Return-Path header. Once you've confirmed SNS is working, you can disable the email notifications.
@@ -81,6 +81,7 @@ Here's a Lambda function that handles both bounces and complaints.
 import json
 import boto3
 import logging
+import time
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -162,20 +163,26 @@ def record_soft_bounce(email):
         suppress_email(email, 'repeated_soft_bounce')
 ```
 
-You'll also need to import the `time` module at the top. Now subscribe this Lambda to your SNS topics.
+Now subscribe this Lambda to your SNS topics.
 
 ```bash
 # Subscribe Lambda to bounce topic
 aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:ses-bounces \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:ses-bounces \
   --protocol lambda \
-  --notification-endpoint arn:aws:lambda:us-east-1:123456789:function:ses-bounce-handler
+  --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:ses-bounce-handler
 
 # Subscribe Lambda to complaint topic
 aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:ses-complaints \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:ses-complaints \
   --protocol lambda \
-  --notification-endpoint arn:aws:lambda:us-east-1:123456789:function:ses-bounce-handler
+  --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:ses-bounce-handler
+
+# Subscribe Lambda to delivery topic (if you enabled delivery notifications)
+aws sns subscribe \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:ses-deliveries \
+  --protocol lambda \
+  --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:ses-bounce-handler
 ```
 
 Don't forget to give SNS permission to invoke your Lambda.
@@ -186,7 +193,21 @@ aws lambda add-permission \
   --statement-id sns-bounce-invoke \
   --action lambda:InvokeFunction \
   --principal sns.amazonaws.com \
-  --source-arn arn:aws:sns:us-east-1:123456789:ses-bounces
+  --source-arn arn:aws:sns:us-east-1:123456789012:ses-bounces
+
+aws lambda add-permission \
+  --function-name ses-bounce-handler \
+  --statement-id sns-complaint-invoke \
+  --action lambda:InvokeFunction \
+  --principal sns.amazonaws.com \
+  --source-arn arn:aws:sns:us-east-1:123456789012:ses-complaints
+
+aws lambda add-permission \
+  --function-name ses-bounce-handler \
+  --statement-id sns-delivery-invoke \
+  --action lambda:InvokeFunction \
+  --principal sns.amazonaws.com \
+  --source-arn arn:aws:sns:us-east-1:123456789012:ses-deliveries
 ```
 
 ## Checking the Suppression List Before Sending
@@ -210,7 +231,7 @@ clean_recipients = [
 
 ## Using the SES Account-Level Suppression List
 
-SES also has a built-in account-level suppression list. When enabled, SES automatically stops sending to addresses that have previously bounced or complained - before you even make the API call.
+SES also has a built-in account-level suppression list. When enabled, SES accepts messages to matching suppressed addresses but doesn't attempt delivery to them.
 
 ```bash
 # Enable the account-level suppression list
