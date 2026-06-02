@@ -14,7 +14,7 @@ Most of the time, this is a stale lock from a crashed or interrupted Terraform p
 
 ## Understanding the Lock
 
-When using a remote backend like S3 with DynamoDB locking, Terraform creates a lock entry in a DynamoDB table before making changes. The lock contains information about who created it and when:
+When using a remote backend like S3 with the older DynamoDB locking mechanism, Terraform creates a lock entry in a DynamoDB table before making changes. DynamoDB-based locking is deprecated in current Terraform releases, but many existing backends still use it. The lock contains information about who created it and when:
 
 ```bash
 # Check the lock in DynamoDB
@@ -111,7 +111,7 @@ jobs:
         continue-on-error: true
 
       - name: Cleanup lock on failure
-        if: failure() && steps.apply.outcome == 'failure'
+        if: steps.apply.outcome == 'failure'
         run: |
           # Only unlock if the error was a lock issue during apply
           # Be very careful with automatic unlocking
@@ -156,7 +156,8 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "terraform.tfstate"
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"  # Must match the actual table name
+    dynamodb_table = "terraform-locks"  # Deprecated; must match the actual table name
+    use_lockfile   = true               # Preferred S3 lockfile-based locking
     encrypt        = true
   }
 }
@@ -229,7 +230,8 @@ terraform {
     bucket         = "my-terraform-state"
     key            = "networking/terraform.tfstate"  # Component-specific path
     region         = "us-east-1"
-    dynamodb_table = "terraform-locks"
+    dynamodb_table = "terraform-locks"  # Deprecated
+    use_lockfile   = true
   }
 }
 ```
