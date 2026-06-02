@@ -12,7 +12,7 @@ Securing your API with OAuth 2.0 doesn't have to mean running your own authoriza
 
 ## The Architecture
 
-Here's how the pieces fit together. Cognito acts as the OAuth 2.0 authorization server. Clients authenticate with Cognito to get tokens, then pass those tokens to API Gateway. API Gateway validates the token against Cognito and forwards the request to your Lambda backend if the token checks out.
+Here's how the pieces fit together. Cognito acts as the OAuth 2.0 authorization server. Clients authenticate with Cognito to get tokens, then pass those tokens to API Gateway. API Gateway validates the token signature and claims against the Cognito user pool issuer and forwards the request to your Lambda backend if the token checks out.
 
 ```mermaid
 sequenceDiagram
@@ -23,9 +23,8 @@ sequenceDiagram
 
     Client->>Cognito: Authenticate (username/password or OAuth flow)
     Cognito-->>Client: ID Token + Access Token + Refresh Token
-    Client->>API Gateway: API Request + Access Token
-    API Gateway->>Cognito: Validate Token
-    Cognito-->>API Gateway: Token Valid
+    Client->>API Gateway: API Request + ID or Access Token
+    API Gateway->>API Gateway: Validate token signature and claims
     API Gateway->>Lambda: Forward Request
     Lambda-->>API Gateway: Response
     API Gateway-->>Client: API Response
@@ -76,7 +75,7 @@ Create an app client with OAuth 2.0 settings:
 aws cognito-idp create-user-pool-client \
   --user-pool-id us-east-1_ABC123 \
   --client-name "my-api-client" \
-  --generate-secret \
+  --no-generate-secret \
   --allowed-o-auth-flows "code" "implicit" \
   --allowed-o-auth-scopes "openid" "email" "profile" \
   --allowed-o-auth-flows-user-pool-client \
@@ -107,7 +106,7 @@ aws cognito-idp create-user-pool-domain \
 For a custom domain:
 
 ```bash
-# Use your own domain (requires ACM certificate)
+# Use your own domain (requires an ACM certificate in us-east-1)
 aws cognito-idp create-user-pool-domain \
   --user-pool-id us-east-1_ABC123 \
   --domain "auth.yourcompany.com" \
@@ -136,10 +135,22 @@ aws cognito-idp create-resource-server \
 aws cognito-idp update-user-pool-client \
   --user-pool-id us-east-1_ABC123 \
   --client-id abc123clientid \
+  --client-name "my-api-client" \
+  --allowed-o-auth-flows "code" "implicit" \
+  --allowed-o-auth-flows-user-pool-client \
   --allowed-o-auth-scopes \
     "openid" \
+    "email" \
+    "profile" \
     "https://api.yourcompany.com/read" \
-    "https://api.yourcompany.com/write"
+    "https://api.yourcompany.com/write" \
+  --callback-urls "https://myapp.com/callback" \
+  --logout-urls "https://myapp.com/logout" \
+  --supported-identity-providers "COGNITO" \
+  --explicit-auth-flows \
+    "ALLOW_USER_PASSWORD_AUTH" \
+    "ALLOW_REFRESH_TOKEN_AUTH" \
+    "ALLOW_USER_SRP_AUTH"
 ```
 
 ## Step 5: Create the Cognito Authorizer in API Gateway
@@ -238,8 +249,14 @@ Resources:
       AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
         - https://myapp.com/callback
+      LogoutURLs:
+        - https://myapp.com/logout
       SupportedIdentityProviders:
         - COGNITO
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
 
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
@@ -251,6 +268,35 @@ Resources:
     Type: AWS::ApiGateway::RestApi
     Properties:
       Name: my-secured-api
+
+  FunctionExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  MyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Runtime: python3.12
+      Handler: index.lambda_handler
+      Role: !GetAtt FunctionExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+
+          def lambda_handler(event, context):
+              return {
+                  "statusCode": 200,
+                  "body": json.dumps({"message": "Hello from Lambda"})
+              }
 
   CognitoAuthorizer:
     Type: AWS::ApiGateway::Authorizer
@@ -274,13 +320,28 @@ Resources:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
         Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${MyFunction.Arn}/invocations"
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref MyFunction
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${ApiGateway}/*/GET/"
+
+  ApiDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiMethod
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: prod
 ```
 
 ## Client-Side Authentication Flow
 
 Here's how a client application authenticates and calls your API.
 
-This Python example shows the full flow from login to API call:
+This Python example shows the full flow from login to a REST API method that reads user identity claims:
 
 ```python
 import boto3
@@ -303,10 +364,10 @@ id_token = auth_response["AuthenticationResult"]["IdToken"]
 access_token = auth_response["AuthenticationResult"]["AccessToken"]
 refresh_token = auth_response["AuthenticationResult"]["RefreshToken"]
 
-# Step 2: Call the API with the token
+# Step 2: Call the API with the ID token
 api_url = "https://api.yourcompany.com/resources"
 headers = {
-    "Authorization": f"Bearer {access_token}",
+    "Authorization": id_token,
     "Content-Type": "application/json",
 }
 
@@ -354,6 +415,9 @@ def lambda_handler(event, context):
 Access tokens expire (default is 1 hour). Use the refresh token to get new access tokens without re-authenticating:
 
 ```python
+import boto3
+
+
 def refresh_access_token(refresh_token, client_id):
     """Get a new access token using the refresh token."""
     cognito = boto3.client("cognito-idp")
