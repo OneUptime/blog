@@ -8,7 +8,7 @@ Description: Troubleshoot and resolve DynamoDB ResourceNotFoundException errors 
 
 ---
 
-Nothing kills a deployment faster than a `ResourceNotFoundException` from DynamoDB. You know the table exists - you just created it - but DynamoDB insists it can't find it. This error means DynamoDB looked for a resource (table, index, backup, or stream) and came up empty. Let's figure out why.
+Nothing kills a deployment faster than a `ResourceNotFoundException` from DynamoDB. You know the table exists - you just created it - but DynamoDB insists it can't find it. This error means DynamoDB looked for a resource (table, index, or stream) and came up empty. Let's figure out why.
 
 ## The Usual Suspects
 
@@ -184,7 +184,7 @@ aws cloudtrail lookup-events \
 
 ## Backup and Stream Errors
 
-`ResourceNotFoundException` also appears when you reference a backup or stream ARN that doesn't exist:
+`ResourceNotFoundException` also appears when you reference a stream ARN that doesn't exist. For DynamoDB backups, the equivalent missing-resource error is `BackupNotFoundException`. To verify backup ARNs, list the backups for the table:
 
 ```python
 # List existing backups for a table
@@ -216,7 +216,7 @@ if not table_exists('Orders'):
     raise RuntimeError("Orders table not found. Check region and table name.")
 ```
 
-Setting up monitoring for these errors is just as important. You don't want to discover a missing table from user complaints. CloudWatch metrics on `UserErrors` for your DynamoDB tables, combined with [proper alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view), will help you catch issues before they affect users.
+Setting up monitoring for these errors is just as important. You don't want to discover a missing table from user complaints. The DynamoDB CloudWatch `UserErrors` metric, combined with [proper alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view), will help you catch issues before they affect users.
 
 ## Summary
 
