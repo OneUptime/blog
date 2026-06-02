@@ -123,19 +123,14 @@ For application-level indexing, use the opensearch-py client.
 This Python script indexes documents into OpenSearch with proper authentication.
 
 ```python
-from opensearchpy import OpenSearch, RequestsHttpConnection
-from requests_aws4auth import AWS4Auth
+from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 import boto3
 
 # AWS authentication
+region = 'us-east-1'
+service = 'es'
 credentials = boto3.Session().get_credentials()
-awsauth = AWS4Auth(
-    credentials.access_key,
-    credentials.secret_key,
-    'us-east-1',
-    'es',
-    session_token=credentials.token
-)
+awsauth = AWSV4SignerAuth(credentials, region, service)
 
 # Create the client
 client = OpenSearch(
@@ -262,17 +257,15 @@ This pipeline reads data from S3, transforms it, and indexes it into OpenSearch 
 ```python
 import boto3
 import json
-from opensearchpy import OpenSearch, helpers, RequestsHttpConnection
-from requests_aws4auth import AWS4Auth
+from opensearchpy import OpenSearch, helpers, RequestsHttpConnection, AWSV4SignerAuth
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import gzip
 
 def create_client():
+    region = 'us-east-1'
+    service = 'es'
     credentials = boto3.Session().get_credentials()
-    awsauth = AWS4Auth(
-        credentials.access_key, credentials.secret_key,
-        'us-east-1', 'es', session_token=credentials.token
-    )
+    awsauth = AWSV4SignerAuth(credentials, region, service)
     return OpenSearch(
         hosts=[{'host': 'vpc-my-domain.us-east-1.es.amazonaws.com', 'port': 443}],
         http_auth=awsauth,
@@ -354,7 +347,7 @@ When indexing large volumes, tune these settings to maximize throughput.
 This temporarily adjusts index settings for faster bulk indexing.
 
 ```bash
-# Before bulk indexing: reduce refresh interval and replica count
+# Before bulk indexing: increase refresh interval and reduce replica count
 curl -XPUT "https://vpc-my-domain.us-east-1.es.amazonaws.com/app-logs/_settings" \
   -H "Content-Type: application/json" \
   -u admin:Admin\$ecure123! \
