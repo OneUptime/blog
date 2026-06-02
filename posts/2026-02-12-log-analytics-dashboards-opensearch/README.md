@@ -17,7 +17,7 @@ This guide walks through creating useful log analytics dashboards from scratch, 
 Before building any visualizations, you need an index pattern that tells Dashboards which indexes to query:
 
 1. Open OpenSearch Dashboards
-2. Go to Stack Management > Index Patterns
+2. Go to Management > Dashboards Management > Index patterns
 3. Create a pattern like `logs-*` to match all your log indexes
 4. Select `timestamp` (or whatever your time field is) as the time field
 
@@ -35,7 +35,7 @@ Let's build the visualizations that make up a solid log analytics dashboard.
 
 This is probably the most important visualization. It shows you at a glance whether errors are trending up or down.
 
-Create a line chart with this query in the Discover or Visualize section. You can build it through the UI, but here's the underlying aggregation for reference:
+Create a line chart in the Visualize section. You can build it through the UI, but here's the underlying aggregation for reference:
 
 ```json
 {
@@ -63,13 +63,13 @@ Create a line chart with this query in the Discover or Visualize section. You ca
             "aggs": {
                 "total_logs": {
                     "value_count": {
-                        "field": "level"
+                        "field": "level.keyword"
                     }
                 },
                 "error_count": {
                     "filter": {
                         "term": {
-                            "level": "ERROR"
+                            "level.keyword": "ERROR"
                         }
                     }
                 },
@@ -90,7 +90,7 @@ Create a line chart with this query in the Discover or Visualize section. You ca
 
 In the Dashboards UI, create a TSVB (Time Series Visual Builder) panel:
 - Set the index pattern to `logs-*`
-- Add a metric with "Filter Ratio" - numerator is `level:ERROR`, denominator is `*`
+- Add a metric with "Filter Ratio" - numerator is `level.keyword:ERROR`, denominator is `*`
 - Set the interval to 5 minutes
 
 ### Top Error Messages
@@ -103,7 +103,7 @@ A data table showing the most frequent error messages helps you prioritize what 
     "query": {
         "bool": {
             "filter": [
-                {"term": {"level": "ERROR"}},
+                {"term": {"level.keyword": "ERROR"}},
                 {"range": {"timestamp": {"gte": "now-24h"}}}
             ]
         }
@@ -123,7 +123,7 @@ A data table showing the most frequent error messages helps you prioritize what 
                     "max": {"field": "timestamp"}
                 },
                 "affected_services": {
-                    "cardinality": {"field": "service"}
+                    "cardinality": {"field": "service.keyword"}
                 }
             }
         }
@@ -135,7 +135,7 @@ Build this in the UI as a Data Table visualization with these buckets:
 - Split rows by Terms on `message.keyword`, top 20
 - Add sub-metric: Min of `timestamp` (first seen)
 - Add sub-metric: Max of `timestamp` (last seen)
-- Add sub-metric: Unique Count of `service`
+- Add sub-metric: Unique Count of `service.keyword`
 
 ### Log Volume by Service
 
@@ -158,7 +158,7 @@ A stacked area chart showing log volume per service makes it easy to spot which 
             "aggs": {
                 "by_service": {
                     "terms": {
-                        "field": "service",
+                        "field": "service.keyword",
                         "size": 10
                     }
                 }
@@ -255,13 +255,13 @@ Create saved queries for common investigations so your team doesn't have to reme
 ```text
 # High error rate from a specific service
 
-level:ERROR AND service:"payment-api" AND response_time_ms:>5000
+level:ERROR AND service:"payment-api" AND response_time_ms > 5000
 
 # Failed authentication attempts
 level:WARN AND message:"authentication failed" AND source_ip:*
 
 # Slow database queries
-service:"db-proxy" AND response_time_ms:>1000 AND query_type:"SELECT"
+service:"db-proxy" AND response_time_ms > 1000 AND query_type:"SELECT"
 
 # Out of memory events
 message:"OutOfMemoryError" OR message:"OOM" OR message:"Cannot allocate memory"
@@ -279,7 +279,7 @@ You can mark deployments and incidents on your dashboards using annotations. Thi
     "query": {
         "bool": {
             "filter": [
-                {"term": {"event_type": "deployment"}},
+                {"term": {"event_type.keyword": "deployment"}},
                 {"range": {"timestamp": {"gte": "now-7d"}}}
             ]
         }
