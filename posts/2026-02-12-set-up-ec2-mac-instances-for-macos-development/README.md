@@ -8,16 +8,19 @@ Description: Step-by-step guide to setting up EC2 Mac instances for macOS and iO
 
 ---
 
-Running macOS in the cloud used to mean either hacking together a Hackintosh (violating Apple's EULA) or paying premium prices to niche providers. EC2 Mac instances changed that. They're real Mac minis running in AWS data centers, available on-demand, and they integrate with all the AWS services you already use. If you're building iOS or macOS apps and need cloud-based CI/CD, this is the way to go.
+Running macOS in the cloud used to mean either hacking together a Hackintosh (violating Apple's EULA) or paying premium prices to niche providers. EC2 Mac instances changed that. They're physical Apple Mac hardware running in AWS data centers, available as On-Demand Dedicated Hosts, and they integrate with all the AWS services you already use. If you're building iOS or macOS apps and need cloud-based CI/CD, this is the way to go.
 
 ## What Are EC2 Mac Instances?
 
-EC2 Mac instances are powered by physical Mac mini hardware. AWS racks them in their data centers and exposes them as EC2 instances. You get two options:
+EC2 Mac instances are powered by physical Apple Mac hardware. AWS racks them in their data centers and exposes them as EC2 instances. You get several options:
 
 - **mac1.metal**: Intel-based Mac mini (x86_64)
 - **mac2.metal**: Apple Silicon M1 Mac mini (arm64)
+- **mac2-m1ultra.metal**: Apple Silicon M1 Ultra Mac Studio (arm64)
 - **mac2-m2.metal**: Apple Silicon M2 Mac mini (arm64)
 - **mac2-m2pro.metal**: Apple Silicon M2 Pro Mac mini (arm64)
+- **mac-m4.metal**: Apple Silicon M4 Mac mini (arm64)
+- **mac-m4pro.metal**: Apple Silicon M4 Pro Mac mini (arm64)
 
 These are bare-metal instances - there's no virtualization layer. You get the full hardware, which is important because macOS doesn't support running in a VM on non-Apple hardware (and Apple's license terms require physical Apple hardware).
 
@@ -28,7 +31,7 @@ Here's the first thing that catches people off guard: Mac instances require a De
 Let's allocate one:
 
 ```bash
-# Allocate a Dedicated Host for Mac instances (M2 Apple Silicon)
+# Allocate a Dedicated Host for Mac instances (M1 Apple Silicon)
 
 aws ec2 allocate-hosts \
   --instance-type mac2.metal \
@@ -51,9 +54,15 @@ aws ec2 describe-hosts \
   --query 'Hosts[?State==`available`].{HostId:HostId,AZ:AvailabilityZone}' \
   --output table
 
+# Look up the latest macOS Sonoma AMI for Apple Silicon in this Region
+IMAGE_ID=$(aws ssm get-parameter \
+  --name /aws/service/ec2-macos/sonoma/arm64_mac/latest/image_id \
+  --query 'Parameter.Value' \
+  --output text)
+
 # Launch a macOS Sonoma instance on the dedicated host
 aws ec2 run-instances \
-  --image-id ami-0abc123macos14 \
+  --image-id "$IMAGE_ID" \
   --instance-type mac2.metal \
   --key-name my-mac-key \
   --security-group-ids sg-abc123 \
@@ -86,13 +95,12 @@ ssh -i my-mac-key.pem ec2-user@<instance-public-ip>
 For GUI access (you'll need this for some Xcode tasks), set up VNC:
 
 ```bash
-# On the Mac instance, enable screen sharing
-sudo /System/Library/CoreServices/RemoteManagement/ARDAgent.app/Contents/Resources/kickstart \
-  -activate -configure -access -on \
-  -restart -agent -privs -all
+# Set a password for VNC/ARD login
+sudo passwd ec2-user
 
-# Set a password for VNC
-sudo /usr/bin/dscl . -passwd /Users/ec2-user <your-vnc-password>
+# Enable and start macOS Screen Sharing
+sudo launchctl enable system/com.apple.screensharing
+sudo launchctl load -w /System/Library/LaunchDaemons/com.apple.screensharing.plist
 ```
 
 Then create an SSH tunnel and connect with a VNC client:
@@ -109,7 +117,7 @@ ssh -i my-mac-key.pem -L 5900:localhost:5900 ec2-user@<instance-public-ip>
 Xcode is the biggest setup task. You can install it from the command line:
 
 ```bash
-# Install Xcode Command Line Tools (lightweight, good for CLI builds)
+# Install Xcode Command Line Tools (lightweight, good for tools like clang and git)
 xcode-select --install
 
 # For full Xcode, download from Apple Developer portal
@@ -120,10 +128,10 @@ xcode-select --install
 brew install xcodesorg/made/xcodes
 
 # Install a specific Xcode version
-xcodes install 15.4
+xcodes install 15.4.0
 
 # Set the active Xcode version
-sudo xcode-select -s /Applications/Xcode-15.4.app
+sudo xcode-select -s /Applications/Xcode-15.4.0.app/Contents/Developer
 
 # Accept the license
 sudo xcodebuild -license accept
@@ -179,7 +187,7 @@ mkdir ~/actions-runner && cd ~/actions-runner
 
 # Download the runner (check for latest version)
 curl -o actions-runner.tar.gz -L \
-  https://github.com/actions/runner/releases/download/v2.319.0/actions-runner-osx-arm64-2.319.0.tar.gz
+  https://github.com/actions/runner/releases/download/v2.334.0/actions-runner-osx-arm64-2.334.0.tar.gz
 tar xzf actions-runner.tar.gz
 
 # Configure the runner
@@ -207,11 +215,11 @@ aws ec2 create-image \
   --no-reboot
 ```
 
-The `--no-reboot` flag creates the AMI without stopping the instance, but be aware that the image may not be fully consistent. For production AMIs, let the instance stop.
+The `--no-reboot` flag creates the AMI without shutting down and rebooting the instance, but be aware that the image may not be fully consistent. For production AMIs, omit `--no-reboot` and let Amazon EC2 reboot the instance during image creation.
 
 ## Cost Optimization
 
-Mac instances aren't cheap. An mac2.metal host costs about $6.50/hr, which is roughly $4,700/month. Here are strategies to manage costs:
+Mac instances aren't cheap. Pricing varies by Region and Mac instance type, and the Dedicated Host is the unit of billing. Check the EC2 Dedicated Hosts pricing page or AWS Pricing Calculator for the current hourly rate. Here are strategies to manage costs:
 
 **Use Savings Plans**: 1-year and 3-year commitments give significant discounts.
 
@@ -270,13 +278,13 @@ mkdir -p /Volumes/BuildStorage
 
 ## Monitoring Your Mac Instances
 
-Since Mac instances are bare-metal, some CloudWatch metrics work differently. The default metrics (CPU, network, disk) are available, but for memory monitoring you'll need the CloudWatch agent.
+Since Mac instances are bare-metal, some CloudWatch metrics work differently. The default metrics (CPU, network, disk I/O) are available, but for memory monitoring you'll need the CloudWatch agent.
 
 For a full monitoring setup, check out [installing and configuring the CloudWatch agent on EC2](https://oneuptime.com/blog/post/2026-02-12-install-and-configure-the-cloudwatch-agent-on-ec2/view).
 
 ## Common Issues
 
-**Host stuck in "pending"**: Mac hosts can take 10-15 minutes to become available. Be patient.
+**Host or instance stuck in "pending"**: Mac instance readiness can take roughly 6-20 minutes after launch, depending on the AMI, EBS volume size, and bootstrap scripts. Be patient.
 
 **Can't release the host**: Remember the 24-hour minimum. You can't release a Mac host until 24 hours after allocation.
 
