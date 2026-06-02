@@ -51,17 +51,17 @@ VPC_ID=$(aws ec2 create-vpc \
   --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=my-app-vpc}]' \
   --query 'Vpc.VpcId' --output text)
 
-# Enable DNS hostnames (required for RDS endpoints)
-aws ec2 modify-vpc-attribute \
-  --vpc-id $VPC_ID \
-  --enable-dns-hostnames '{"Value": true}'
-
+# Enable DNS support and hostnames
 aws ec2 modify-vpc-attribute \
   --vpc-id $VPC_ID \
   --enable-dns-support '{"Value": true}'
+
+aws ec2 modify-vpc-attribute \
+  --vpc-id $VPC_ID \
+  --enable-dns-hostnames '{"Value": true}'
 ```
 
-DNS hostnames and DNS support must be enabled for RDS. RDS uses DNS names for endpoints, and they need to resolve within the VPC.
+DNS support should be enabled so resources in the VPC can resolve the RDS endpoint with the Amazon-provided DNS resolver. DNS hostnames are also useful to keep enabled, and AWS requires both DNS hostnames and DNS resolution if you ever make an RDS instance publicly accessible.
 
 ## Step 2: Create Private Subnets
 
@@ -278,6 +278,23 @@ aws ec2 create-network-acl-entry \
   --cidr-block 10.0.1.0/24 \
   --rule-action allow \
   --egress
+
+# Associate the NACL with the database subnets
+SUBNET_A_NACL_ASSOC=$(aws ec2 describe-network-acls \
+  --filters Name=association.subnet-id,Values=$PRIVATE_SUBNET_A \
+  --query 'NetworkAcls[0].Associations[0].NetworkAclAssociationId' --output text)
+
+SUBNET_B_NACL_ASSOC=$(aws ec2 describe-network-acls \
+  --filters Name=association.subnet-id,Values=$PRIVATE_SUBNET_B \
+  --query 'NetworkAcls[0].Associations[0].NetworkAclAssociationId' --output text)
+
+aws ec2 replace-network-acl-association \
+  --association-id $SUBNET_A_NACL_ASSOC \
+  --network-acl-id $DB_NACL
+
+aws ec2 replace-network-acl-association \
+  --association-id $SUBNET_B_NACL_ASSOC \
+  --network-acl-id $DB_NACL
 ```
 
 ## Terraform Version
