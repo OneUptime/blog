@@ -30,7 +30,7 @@ flowchart TD
     H --> J[CloudWatch Alarms / EventBridge]
 ```
 
-Internet Monitor analyzes traffic flowing through AWS services (CloudFront, WorkSpaces, etc.) and correlates it with global internet health data. It does not require any agents or instrumentation on your side. You tell it which AWS resources to monitor, and it starts tracking availability and performance.
+Internet Monitor analyzes traffic flowing through AWS services (CloudFront, VPCs, Network Load Balancers, WorkSpaces, etc.) and correlates it with global internet health data. It does not require any agents or instrumentation on your side. You tell it which AWS resources to monitor, and it starts tracking availability and performance.
 
 ## Step 1: Create an Internet Monitor
 
@@ -56,7 +56,7 @@ aws internetmonitor create-monitor \
 
 Key configuration:
 
-- **resources**: The AWS resources that serve your application's traffic. CloudFront distributions and VPCs are the most common.
+- **resources**: The AWS resources that serve your application's traffic. CloudFront distributions, VPCs, and Network Load Balancers are common for web applications.
 - **max-city-networks-to-monitor**: Maximum number of city-network (city + ISP) combinations to monitor. Higher values give more granular insights but cost more.
 - **traffic-percentage-to-monitor**: What percentage of traffic to analyze. 100% gives full visibility.
 
@@ -66,6 +66,7 @@ Internet Monitor can track traffic for:
 
 - **CloudFront distributions**: Monitors the internet paths from users to CloudFront edge locations
 - **VPCs**: Monitors internet paths from users to your VPC (for applications behind ALB/NLB)
+- **Network Load Balancers**: Monitors internet paths from users to internet-facing NLBs
 - **WorkSpaces directories**: Monitors paths to WorkSpaces virtual desktops
 
 For a typical web application, you would monitor both your CloudFront distribution (for static content and CDN-served pages) and your VPC (for API traffic that goes directly to your load balancer).
@@ -160,10 +161,7 @@ aws events put-rule \
   --name internet-monitor-alerts \
   --event-pattern '{
     "source": ["aws.internetmonitor"],
-    "detail-type": ["Internet Monitor Health Event Created"],
-    "detail": {
-      "MonitorName": ["production-app"]
-    }
+    "detail-type": ["Health Event Created"]
   }'
 
 # Add an SNS target for notifications
@@ -190,7 +188,7 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 99 \
   --comparison-operator LessThanThreshold \
-  --evaluation-periods 2 \
+  --evaluation-periods 5 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 
 # Alarm when performance score drops
@@ -203,7 +201,7 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 95 \
   --comparison-operator LessThanThreshold \
-  --evaluation-periods 3 \
+  --evaluation-periods 5 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 ```
 
@@ -247,7 +245,7 @@ aws cloudwatch put-dashboard \
         "properties": {
           "title": "Traffic by Location",
           "metrics": [
-            ["AWS/InternetMonitor", "TrafficMonitoredBytesIn", "MonitorName", "production-app"]
+            ["AWS/InternetMonitor", "BytesInMonitored", "MonitorName", "production-app"]
           ],
           "period": 3600,
           "stat": "Sum"
@@ -261,9 +259,9 @@ aws cloudwatch put-dashboard \
 
 Internet Monitor data is not just for alerting. It helps you make architectural decisions.
 
-### Choosing CloudFront Edge Locations
+### Choosing CloudFront or Regional Routing
 
-If Internet Monitor shows consistently poor performance from certain regions, you can adjust your CloudFront cache behavior or origin configuration to improve it.
+If Internet Monitor shows consistently poor performance from certain regions, you can evaluate whether routing through CloudFront or serving traffic from a different AWS Region would improve latency.
 
 ### Identifying ISP-Specific Issues
 
@@ -283,38 +281,46 @@ Internet Monitor stores measurement logs in S3 (if configured). You can query th
 ```sql
 -- Create an Athena table for Internet Monitor logs
 CREATE EXTERNAL TABLE internet_monitor_logs (
-  timestamp string,
-  monitor_name string,
-  city string,
-  subdivision string,
-  country string,
-  as_name string,
-  as_number int,
-  availability_score double,
-  performance_score double,
-  bytes_in bigint,
-  bytes_out bigint
+  version INT,
+  timestamp INT,
+  clientlocation STRING,
+  servicelocation STRING,
+  percentageoftotaltraffic DOUBLE,
+  bytesin INT,
+  bytesout INT,
+  clientconnectioncount INT,
+  internethealth STRING,
+  trafficinsights STRING
 )
-ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
-LOCATION 's3://internet-monitor-logs/production-app/'
+PARTITIONED BY (year STRING, month STRING, day STRING)
+ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
+LOCATION 's3://internet-monitor-logs/production-app/AWSLogs/123456789012/internetmonitor/us-east-1/'
+TBLPROPERTIES ('skip.header.line.count' = '1');
 ```
 
 ```sql
--- Find the top 10 city-ISP combinations with lowest availability
-SELECT city, as_name, country,
-       AVG(availability_score) as avg_availability,
-       SUM(bytes_in) as total_bytes
+-- Find the top 10 city-ISP combinations with the highest availability impact
+SELECT json_extract_scalar(clientlocation, '$.city') as city,
+       json_extract_scalar(clientlocation, '$.networkname') as network_name,
+       json_extract_scalar(clientlocation, '$.country') as country,
+       SUM(CAST(json_extract_scalar(
+         internethealth,
+         '$.availability.percentageoftotaltrafficimpacted'
+       ) AS double)) as percentage_of_total_traffic_impacted,
+       SUM(bytesin) as total_bytes
 FROM internet_monitor_logs
-WHERE timestamp > date_add('day', -7, current_timestamp)
-GROUP BY city, as_name, country
-HAVING SUM(bytes_in) > 1000000
-ORDER BY avg_availability ASC
-LIMIT 10
+WHERE year = '2026' AND month = '02' AND day >= '05'
+GROUP BY json_extract_scalar(clientlocation, '$.city'),
+         json_extract_scalar(clientlocation, '$.networkname'),
+         json_extract_scalar(clientlocation, '$.country')
+HAVING SUM(bytesin) > 1000000
+ORDER BY percentage_of_total_traffic_impacted DESC
+LIMIT 10;
 ```
 
 ## Cost Considerations
 
-Internet Monitor pricing is based on the number of city-networks monitored per month. The first 100 city-networks are included at a base price. Additional city-networks cost extra.
+Internet Monitor pricing includes a per monitored resource fee and a per city-network fee. The first 100 city-networks across all monitors in an account are included. Additional city-networks cost extra.
 
 For most applications, 100 city-networks cover the vast majority of your traffic. Increase the limit only if you have a truly global user base and need granular insights for long-tail locations.
 
