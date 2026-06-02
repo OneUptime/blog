@@ -37,6 +37,14 @@ aws ec2 describe-route-tables \
   --query 'RouteTables[].Routes[]'
 ```
 
+If the command returns nothing, the subnet might be implicitly associated with the VPC's main route table. In that case, find the main route table for the VPC and check its routes.
+
+```bash
+aws ec2 describe-route-tables \
+  --filters "Name=vpc-id,Values=vpc-0abc123def456" "Name=association.main,Values=true" \
+  --query 'RouteTables[].Routes[]'
+```
+
 You should see a route like:
 
 ```text
@@ -62,6 +70,8 @@ aws ec2 describe-route-tables \
   --query 'RouteTables[].Routes[]'
 ```
 
+If the public subnet uses the main route table implicitly, use the main route table lookup shown above instead.
+
 You need:
 
 ```text
@@ -85,6 +95,8 @@ aws ec2 describe-route-tables \
   --filters "Name=association.subnet-id,Values=subnet-xyz789" \
   --query 'RouteTables[].Routes[?GatewayId!=`null` && starts_with(GatewayId, `igw-`)]'
 ```
+
+If the subnet uses the main route table implicitly, use the main route table lookup shown earlier.
 
 If there's no IGW route, your NAT Gateway is in a private subnet. You'll need to create a new NAT Gateway in the correct public subnet.
 
@@ -159,7 +171,7 @@ By default, security groups allow all outbound traffic. But if someone restricte
 
 ## Cause 6: NAT Gateway Bandwidth and Connection Limits
 
-A single NAT Gateway supports up to 45 Gbps of bandwidth and about 55,000 simultaneous connections to a single destination. If you're hitting these limits, connections will start failing or timing out.
+A single NAT Gateway supports 5 Gbps of bandwidth and automatically scales up to 100 Gbps. Each IPv4 address on the NAT Gateway supports about 55,000 simultaneous connections to each unique destination. If you're hitting these limits, connections will start failing or timing out.
 
 Check CloudWatch metrics for your NAT Gateway.
 
@@ -179,10 +191,11 @@ If `ErrorPortAllocation` is non-zero, you're running out of ports. Solutions inc
 - Split traffic across multiple NAT Gateways
 - Reduce the number of connections from your instances
 - Use separate NAT Gateways in different AZs
+- Add secondary IPv4 addresses to the NAT Gateway
 
 ## Cause 7: Elastic IP Issues
 
-Each NAT Gateway requires an Elastic IP. If the EIP was released or is in an unexpected state, the NAT Gateway won't function properly.
+Each public NAT Gateway requires an Elastic IP. If the EIP association is missing or in an unexpected state, the NAT Gateway won't function properly.
 
 ```bash
 # Check the Elastic IP associated with the NAT Gateway
