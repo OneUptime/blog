@@ -12,7 +12,7 @@ You have an internal TCP/UDP load balancer in Google Cloud. Your backend VMs are
 
 ## How Internal Load Balancer Health Checks Work
 
-Before diving into the fix, it helps to understand how health checks work for internal load balancers. Unlike external load balancers that probe from Google Front End (GFE) servers, internal load balancer health checks come from dedicated IP ranges within Google's infrastructure. Specifically, the probes come from the ranges `35.191.0.0/16` and `130.211.0.0/22`.
+Before diving into the fix, it helps to understand how health checks work for internal passthrough Network Load Balancers. Health check probes come from dedicated IP ranges within Google's infrastructure. Specifically, for IPv4 backends, the probes come from the ranges `35.191.0.0/16` and `130.211.0.0/22`.
 
 This means your firewall rules and instance-level configurations need to allow traffic from these ranges. If they do not, health checks will fail even though your application is perfectly healthy.
 
@@ -66,7 +66,7 @@ Make sure:
 
 ## Step 3: Check That the Application Binds to the Correct Interface
 
-This one catches a lot of people. If your application binds to `127.0.0.1` (localhost only), it will not accept connections from the health check probes even if the firewall allows them. The probes arrive on the VM's network interface, not on the loopback interface.
+This one catches a lot of people. If your application binds to `127.0.0.1` (localhost only), it will not accept connections from the health check probes even if the firewall allows them. For internal passthrough Network Load Balancers, the probes are sent to the load balancer's forwarding rule IP address, not to the loopback interface.
 
 SSH into the instance and check what address the application is bound to:
 
@@ -103,20 +103,18 @@ gcloud compute instances describe your-instance \
 
 Compare the tags on the instance with the target tags on your firewall rule. They need to match exactly.
 
-## Step 6: Internal Load Balancer IP Forwarding
+## Step 6: Internal Load Balancer Local Route
 
-For internal TCP/UDP load balancers, the VMs receive traffic with a destination IP that is the load balancer's IP, not the VM's own IP. By default, VMs drop packets that are not addressed to them. You need to either enable IP forwarding on the instance or make sure the application handles this correctly.
+For internal passthrough Network Load Balancers, the VMs receive traffic with a destination IP that is the load balancer's forwarding rule IP address, not the VM's own IP. On VMs created from Google Cloud images, the Google Cloud guest environment installs a local route for the load balancer's IP address so the VM can accept that traffic. If the guest environment is missing, disabled, or unable to reach the metadata server, packets to the load balancer IP can be dropped.
 
-If you are using a load balancer with backend instances (not managed instance groups), enable IP forwarding:
+Check that the local route exists on the backend VM:
 
 ```bash
-# Check if IP forwarding is enabled on the instance
-gcloud compute instances describe your-instance \
-    --zone=us-central1-a \
-    --format="json(canIpForward)"
+# Check for a local route to the load balancer forwarding rule IP
+ip route show table local | grep your-load-balancer-ip
 ```
 
-Note that you cannot change IP forwarding on a running instance. You need to stop it first, or better yet, set it when creating the instance.
+If the route is missing, verify that the Google Cloud guest environment is running and that the VM can reach the metadata server.
 
 ## Step 7: Check Connection Draining and Session Affinity Settings
 
