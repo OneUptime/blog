@@ -125,7 +125,7 @@ Store command output in S3 for later review:
 aws ssm send-command \
   --targets "Key=tag:Environment,Values=production" \
   --document-name "AWS-RunShellScript" \
-  --parameters 'commands=["df -h","free -m","netstat -tlnp"]' \
+  --parameters 'commands=["df -h","free -m","ss -tlnp"]' \
   --output-s3-bucket-name "my-ssm-output-bucket" \
   --output-s3-key-prefix "run-command-output" \
   --comment "System health check with S3 logging"
@@ -200,7 +200,8 @@ aws ssm send-command \
   --parameters '{
     "commands": [
       "#!/bin/bash",
-      "INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)",
+      "TOKEN=$(curl -s -X PUT \"http://169.254.169.254/latest/api/token\" -H \"X-aws-ec2-metadata-token-ttl-seconds: 21600\")",
+      "INSTANCE_ID=$(curl -s -H \"X-aws-ec2-metadata-token: $TOKEN\" http://169.254.169.254/latest/meta-data/instance-id)",
       "TIMESTAMP=$(date +%Y%m%d-%H%M%S)",
       "# Package the last 1000 lines of application logs",
       "tail -1000 /var/log/myapp/application.log | gzip > /tmp/logs-${INSTANCE_ID}-${TIMESTAMP}.gz",
@@ -246,11 +247,11 @@ aws ssm send-command \
   --targets "Key=tag:Environment,Values=production" \
   --document-name "AWS-UpdateSSMAgent"
 
-# Install or update the CloudWatch agent
+# Configure and start the CloudWatch agent
 aws ssm send-command \
   --targets "Key=tag:Environment,Values=production" \
   --document-name "AmazonCloudWatch-ManageAgent" \
-  --parameters '{"action":["configure"],"mode":["ec2"],"optionalConfigurationSource":["ssm"],"optionalConfigurationLocation":["/cloudwatch-agent/config"]}'
+  --parameters '{"action":["configure"],"mode":["ec2"],"optionalConfigurationSource":["ssm"],"optionalConfigurationLocation":["/cloudwatch-agent/config"],"optionalRestart":["yes"]}'
 
 # Run a PowerShell script on Windows instances
 aws ssm send-command \
