@@ -30,24 +30,23 @@ graph TD
     C --> C3[Connect.Throttle]
     D --> D1[PublishIn.Success]
     D --> D2[Subscribe.Success]
-    E --> E1[RuleMessageThrottled]
+    E --> E1[RuleExecutionThrottled]
     E --> E2[TopicMatch]
     F --> F1[GetThingShadow.Accepted]
     F --> F2[UpdateThingShadow.Accepted]
 ```
 
-**Connection metrics** tell you how many devices are connecting, disconnecting, and whether they are being throttled or hitting auth errors. A sudden spike in `Connect.AuthError` might mean certificates are expiring across a batch of devices.
+**Connection metrics** tell you how many devices are connecting and whether connection requests are being throttled or hitting authorization errors. A sudden spike in `Connect.AuthError` might mean certificates are expiring across a batch of devices.
 
 **Message broker metrics** show publish and subscribe activity. `PublishIn.Success` and `PublishOut.Success` give you throughput numbers. If `PublishIn.Success` drops suddenly, devices might be going offline.
 
-**Rule metrics** track your IoT rules engine activity. `TopicMatch` tells you how many messages matched each rule, and `RuleMessageThrottled` warns you if you are hitting throughput limits.
+**Rule metrics** track your IoT rules engine activity. `TopicMatch` tells you how many messages matched each rule, and `RuleExecutionThrottled` warns you if you are hitting throughput limits.
 
 ## Setting Up a CloudWatch Dashboard for IoT
 
 A well-designed dashboard gives you a single-pane view of your fleet health. Here is how to create one using the AWS CLI:
 
 ```json
-// dashboard-body.json - IoT fleet monitoring dashboard layout
 {
   "widgets": [
     {
@@ -59,9 +58,9 @@ A well-designed dashboard gives you a single-pane view of your fleet health. Her
       "properties": {
         "title": "Device Connections",
         "metrics": [
-          ["AWS/IoT", "Connect.Success", {"stat": "Sum", "period": 300}],
-          ["AWS/IoT", "Connect.AuthError", {"stat": "Sum", "period": 300}],
-          ["AWS/IoT", "Connect.Throttle", {"stat": "Sum", "period": 300}]
+          ["AWS/IoT", "Connect.Success", "Protocol", "MQTT", {"stat": "Sum", "period": 300}],
+          ["AWS/IoT", "Connect.AuthError", "Protocol", "MQTT", {"stat": "Sum", "period": 300}],
+          ["AWS/IoT", "Connect.Throttle", "Protocol", "MQTT", {"stat": "Sum", "period": 300}]
         ],
         "view": "timeSeries",
         "region": "us-east-1",
@@ -77,8 +76,8 @@ A well-designed dashboard gives you a single-pane view of your fleet health. Her
       "properties": {
         "title": "Message Throughput",
         "metrics": [
-          ["AWS/IoT", "PublishIn.Success", {"stat": "Sum", "period": 60}],
-          ["AWS/IoT", "PublishOut.Success", {"stat": "Sum", "period": 60}]
+          ["AWS/IoT", "PublishIn.Success", "Protocol", "MQTT", {"stat": "Sum", "period": 60}],
+          ["AWS/IoT", "PublishOut.Success", "Protocol", "MQTT", {"stat": "Sum", "period": 60}]
         ],
         "view": "timeSeries",
         "region": "us-east-1",
@@ -94,9 +93,9 @@ A well-designed dashboard gives you a single-pane view of your fleet health. Her
       "properties": {
         "title": "Rules Engine Activity",
         "metrics": [
-          ["AWS/IoT", "TopicMatch", {"stat": "Sum", "period": 300}],
-          ["AWS/IoT", "RuleMessageThrottled", {"stat": "Sum", "period": 300}],
-          ["AWS/IoT", "RuleNotFound", {"stat": "Sum", "period": 300}]
+          ["AWS/IoT", "TopicMatch", "RuleName", "YourRuleName", {"stat": "Sum", "period": 300}],
+          ["AWS/IoT", "RuleExecutionThrottled", "RuleName", "YourRuleName", {"stat": "Sum", "period": 300}],
+          ["AWS/IoT", "RuleNotFound", "RuleName", "YourRuleName", {"stat": "Sum", "period": 300}]
         ],
         "view": "timeSeries",
         "region": "us-east-1",
@@ -184,27 +183,32 @@ def lambda_handler(event, context):
 If your IoT devices connect through a gateway, you can install the CloudWatch agent on the gateway to collect system-level metrics and forward them. This works well for edge devices running Linux.
 
 ```json
-// cloudwatch-agent-config.json - gateway device agent configuration
 {
   "metrics": {
     "namespace": "IoT/GatewayMetrics",
     "metrics_collected": {
       "cpu": {
-        "measurement": ["cpu_usage_idle", "cpu_usage_system"],
-        "metrics_collection_interval": 60
+        "measurement": ["usage_idle", "usage_system"],
+        "metrics_collection_interval": 60,
+        "append_dimensions": {
+          "GatewayId": "gateway-001"
+        }
       },
       "mem": {
-        "measurement": ["mem_used_percent"],
-        "metrics_collection_interval": 60
+        "measurement": ["used_percent"],
+        "metrics_collection_interval": 60,
+        "append_dimensions": {
+          "GatewayId": "gateway-001"
+        }
       },
       "disk": {
-        "measurement": ["disk_used_percent"],
+        "measurement": ["used_percent"],
         "metrics_collection_interval": 300,
-        "resources": ["/"]
+        "resources": ["/"],
+        "append_dimensions": {
+          "GatewayId": "gateway-001"
+        }
       }
-    },
-    "append_dimensions": {
-      "GatewayId": "${GATEWAY_ID}"
     }
   }
 }
@@ -221,6 +225,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "Too many IoT connection authentication errors" \
   --namespace "AWS/IoT" \
   --metric-name "Connect.AuthError" \
+  --dimensions Name=Protocol,Value=MQTT \
   --statistic "Sum" \
   --period 300 \
   --threshold 50 \
@@ -234,6 +239,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "IoT message throughput dropped below expected level" \
   --namespace "AWS/IoT" \
   --metric-name "PublishIn.Success" \
+  --dimensions Name=Protocol,Value=MQTT \
   --statistic "Sum" \
   --period 300 \
   --threshold 100 \
@@ -247,7 +253,8 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "IoT-RulesThrottled" \
   --alarm-description "IoT rules engine throttling detected" \
   --namespace "AWS/IoT" \
-  --metric-name "RuleMessageThrottled" \
+  --metric-name "RuleExecutionThrottled" \
+  --dimensions Name=RuleName,Value=YourRuleName \
   --statistic "Sum" \
   --period 60 \
   --threshold 10 \
@@ -270,7 +277,6 @@ aws iot set-v2-logging-options \
 Then use CloudWatch Logs Insights to query these logs:
 
 ```text
-# Find all connection failures in the last hour
 fields @timestamp, clientId, @message
 | filter eventType = "Connect" and status = "Failure"
 | sort @timestamp desc
@@ -278,7 +284,6 @@ fields @timestamp, clientId, @message
 ```
 
 ```text
-# Find devices that disconnected unexpectedly
 fields @timestamp, clientId, disconnectReason
 | filter eventType = "Disconnect" and disconnectReason != "CLIENT_INITIATED_DISCONNECT"
 | stats count() by clientId
@@ -290,31 +295,41 @@ fields @timestamp, clientId, disconnectReason
 
 One of the trickiest monitoring challenges in IoT is detecting when a device has gone silent. CloudWatch alone does not track individual device presence, but you can build it.
 
-Create a Lambda function that runs on a schedule and checks the IoT Device Registry for devices that have not been seen recently:
+Create a Lambda function that runs on a schedule and checks device shadows for a `lastSeen` timestamp that each device updates when it reports:
 
 ```python
 # check_offline_devices.py - detect devices that stopped reporting
 import boto3
-from datetime import datetime, timedelta
+import json
+from datetime import datetime, timedelta, timezone
 
 iot = boto3.client('iot')
 cloudwatch = boto3.client('cloudwatch')
+endpoint = iot.describe_endpoint(endpointType='iot:Data-ATS')['endpointAddress']
+iot_data = boto3.client('iot-data', endpoint_url=f'https://{endpoint}')
 
 def lambda_handler(event, context):
     """Check for devices that haven't reported recently."""
     offline_count = 0
-    threshold = datetime.utcnow() - timedelta(minutes=30)
+    threshold = datetime.now(timezone.utc) - timedelta(minutes=30)
 
     paginator = iot.get_paginator('list_things')
     for page in paginator.paginate():
         for thing in page['things']:
-            # Check the last connection time from device shadow or registry
+            # Devices should write state.reported.lastSeen in ISO 8601 format.
             try:
-                shadow = boto3.client('iot-data').get_thing_shadow(
+                response = iot_data.get_thing_shadow(
                     thingName=thing['thingName']
                 )
-                # Parse shadow for last report timestamp
-                # Increment offline_count if stale
+                shadow = json.loads(response['payload'].read())
+                last_seen = shadow.get('state', {}).get('reported', {}).get('lastSeen')
+                if not last_seen:
+                    offline_count += 1
+                    continue
+
+                last_seen_time = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+                if last_seen_time < threshold:
+                    offline_count += 1
             except Exception:
                 offline_count += 1
 
