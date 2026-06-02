@@ -85,7 +85,6 @@ Before creating WorkSpaces, register the directory.
 aws workspaces register-workspace-directory \
     --directory-id d-abc123 \
     --subnet-ids subnet-111 subnet-222 \
-    --enable-work-docs \
     --enable-self-service \
     --tenancy SHARED
 ```
@@ -210,7 +209,7 @@ WorkSpaces offers two running modes that significantly affect cost:
 
 **AlwaysOn**: The WorkSpace runs 24/7. You pay a fixed monthly rate. Best for users who work 8+ hours per day.
 
-**AutoStop**: The WorkSpace automatically stops after a period of inactivity and restarts when the user reconnects. You pay an hourly rate. Best for part-time or occasional users.
+**AutoStop**: The WorkSpace automatically stops after the user disconnects and the configured timeout elapses, then restarts when the user reconnects. You pay an hourly rate plus a monthly infrastructure fee. Best for part-time or occasional users.
 
 ```bash
 # Switch a WorkSpace to AlwaysOn
@@ -227,11 +226,11 @@ aws workspaces modify-workspace-properties \
     }'
 ```
 
-The break-even point is roughly 80 hours per month. If a user exceeds that, AlwaysOn is cheaper.
+The break-even point is often roughly 80 hours per month, but it varies by Region, bundle, operating system, and volume sizes. Check the WorkSpaces pricing page for your configuration before standardizing on a running mode.
 
 ## Network Configuration
 
-WorkSpaces need outbound internet access for updates and the streaming protocol. Configure your VPC accordingly.
+WorkSpaces need outbound internet access for operating system updates and user internet access. Configure your VPC accordingly.
 
 ```bash
 # Create a NAT Gateway for internet access (if WorkSpaces are in private subnets)
@@ -246,12 +245,12 @@ aws ec2 create-route \
     --nat-gateway-id nat-abc123
 ```
 
-WorkSpaces also need access to specific AWS endpoints. If you're using security groups, allow outbound traffic on these ports:
+WorkSpaces clients also need access to specific AWS endpoints. On client networks and endpoint firewalls, allow outbound traffic on these ports:
 
-- TCP 443 (HTTPS) - Management and registration
+- TCP/UDP 443 (HTTPS) - Updates, registration, authentication, and DCV desktop traffic fallback
 - TCP/UDP 4172 (PCoIP) - Desktop streaming protocol
-- TCP/UDP 4195 (WSP) - WorkSpaces Streaming Protocol
-- UDP 4172 - PCoIP streaming gateway
+- TCP/UDP 4195 (DCV, formerly WSP) - Desktop streaming protocol and health checks
+- UDP 53 (DNS) - Name resolution, if the client depends on DNS servers
 
 ## IP Access Control Groups
 
