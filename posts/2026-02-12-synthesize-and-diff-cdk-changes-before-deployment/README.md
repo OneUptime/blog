@@ -22,7 +22,7 @@ The `synth` command converts your CDK code into a CloudFormation template. It ru
 cdk synth
 ```
 
-This outputs the template to stdout and saves it to the `cdk.out` directory. For a simple stack, the output might look something like this.
+This saves the cloud assembly to the `cdk.out` directory. If your app has a single stack, or you provide a single stack as an argument, CDK also outputs that stack's CloudFormation template to stdout. For a simple stack, the output might look something like this.
 
 ```yaml
 Resources:
@@ -102,10 +102,10 @@ The most important thing to watch for in diffs is resource replacement. Some pro
 
 Resource replacements are dangerous because:
 
-- Databases lose their data
-- S3 buckets lose their contents
+- Databases may be replaced with new empty instances, even if the old data is retained or snapshotted
+- S3 buckets may be retained, orphaned, or deleted depending on removal policies
 - Load balancers get new DNS names
-- Security groups disconnect from instances
+- Security groups can be detached and recreated, disrupting references or traffic
 
 Here's an example of a dangerous diff.
 
@@ -128,8 +128,8 @@ cdk diff MyStack
 # Diff all stacks
 cdk diff --all
 
-# Diff with more detail
-cdk diff --no-change-set  # Faster, but slightly less accurate
+# Use a faster template-only diff
+cdk diff --method=template  # Faster, but less accurate for replacement detection
 ```
 
 ## Saving Diffs for Review
@@ -198,7 +198,7 @@ jobs:
           script: |
             const fs = require('fs');
             const diff = fs.readFileSync('diff-output.txt', 'utf8');
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
