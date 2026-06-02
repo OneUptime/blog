@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EC2, GitLab, CI/CD, DevOps
 
-Description: Learn how to install and configure GitLab Runner on EC2 for running CI/CD pipelines with Docker, shell, and autoscaling executors.
+Description: Learn how to install and configure GitLab Runner on EC2 for running CI/CD pipelines with Docker and shell executors.
 
 ---
 
 If your team uses GitLab for source control, you'll want your own GitLab Runners for CI/CD. While GitLab.com provides shared runners, they have limited minutes, queue times can be unpredictable, and you can't customize the build environment. Self-hosted runners on EC2 give you full control over capacity, performance, and cost.
 
-Let's set up a GitLab Runner on EC2, starting with the basics and working up to autoscaling configurations.
+Let's set up a GitLab Runner on EC2, starting with the basics and working up to Docker image builds.
 
 ## Instance Sizing
 
@@ -69,12 +69,12 @@ sudo systemctl enable docker
 sudo usermod -aG docker gitlab-runner
 
 # Verify Docker works for the gitlab-runner user
-sudo -u gitlab-runner docker info
+sudo -u gitlab-runner -H docker info
 ```
 
 ## Registering the Runner
 
-To register a runner, you need a registration token from your GitLab instance. Find it in:
+To register a runner, create a runner in GitLab and copy its runner authentication token. Set the runner tags, "run untagged jobs", and locked/protected settings when you create the runner in GitLab:
 - **Instance-wide**: Admin Area > CI/CD > Runners
 - **Group-level**: Group > Settings > CI/CD > Runners
 - **Project-level**: Project > Settings > CI/CD > Runners
@@ -86,13 +86,10 @@ Register the runner with Docker executor:
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --token "YOUR_REGISTRATION_TOKEN" \
+  --token "YOUR_RUNNER_AUTHENTICATION_TOKEN" \
   --executor "docker" \
   --docker-image "alpine:latest" \
-  --description "ec2-docker-runner" \
-  --tag-list "docker,aws,ec2" \
-  --run-untagged="true" \
-  --locked="false"
+  --description "ec2-docker-runner"
 ```
 
 Verify the registration:
@@ -281,25 +278,34 @@ volumes = ["/var/run/docker.sock:/var/run/docker.sock"]
 # In .gitlab-ci.yml
 build_image:
   stage: build
-  image: docker:latest
+  image: docker:24.0.5-cli
   script:
-    - docker build -t myapp:${CI_COMMIT_SHA} .
-    - docker push myapp:${CI_COMMIT_SHA}
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - docker build -t "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA}" .
+    - docker push "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA}"
 ```
 
 Option 2 - Docker-in-Docker (more isolated but slower):
 
+```toml
+# In config.toml, Docker-in-Docker requires privileged mode and the cert volume:
+privileged = true
+volumes = ["/certs/client", "/cache"]
+```
+
 ```yaml
 build_image:
   stage: build
-  image: docker:latest
+  image: docker:24.0.5-cli
   services:
-    - docker:dind
+    - docker:24.0.5-dind
   variables:
-    DOCKER_HOST: tcp://docker:2376
     DOCKER_TLS_CERTDIR: "/certs"
   script:
-    - docker build -t myapp:${CI_COMMIT_SHA} .
+    - docker info
+    - echo "$CI_REGISTRY_PASSWORD" | docker login "$CI_REGISTRY" -u "$CI_REGISTRY_USER" --password-stdin
+    - docker build -t "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA}" .
+    - docker push "$CI_REGISTRY_IMAGE:${CI_COMMIT_SHA}"
 ```
 
 ## Monitoring Runner Health
@@ -346,11 +352,9 @@ You can register multiple runners on the same EC2 instance with different config
 sudo gitlab-runner register \
   --non-interactive \
   --url "https://gitlab.com/" \
-  --token "YOUR_TOKEN" \
+  --token "YOUR_RUNNER_AUTHENTICATION_TOKEN" \
   --executor "shell" \
-  --description "ec2-shell-runner" \
-  --tag-list "shell,aws" \
-  --run-untagged="false"
+  --description "ec2-shell-runner"
 ```
 
 ## Security Considerations
