@@ -14,7 +14,7 @@ This is essential for global applications, disaster recovery across regions, and
 
 ## How Multi-Region Keys Work
 
-A multi-region key consists of a primary key in one region and replica keys in other regions. All replicas share the same key material (same key ID prefix), meaning data encrypted by the primary can be decrypted by any replica, and vice versa.
+A multi-region key consists of a primary key in one region and replica keys in other regions. All replicas share the same key material and key ID, meaning data encrypted by the primary can be decrypted by any replica, and vice versa.
 
 Despite sharing key material, each replica is an independent KMS key with its own ARN, key policy, grants, and aliases. You manage access separately in each region.
 
@@ -68,6 +68,7 @@ Now replicate the key to the regions where you need it. Each replica gets its ow
 ```bash
 # Replicate to EU
 aws kms replicate-key \
+  --region us-east-1 \
   --key-id "mrk-1234abcd12ab34cd56ef1234567890ab" \
   --replica-region eu-west-1 \
   --description "Multi-region replica for EU workloads" \
@@ -78,12 +79,14 @@ aws kms replicate-key \
 
 # Replicate to Asia Pacific
 aws kms replicate-key \
+  --region us-east-1 \
   --key-id "mrk-1234abcd12ab34cd56ef1234567890ab" \
   --replica-region ap-southeast-1 \
   --description "Multi-region replica for APAC workloads"
 
 # Replicate to US West for DR
 aws kms replicate-key \
+  --region us-east-1 \
   --key-id "mrk-1234abcd12ab34cd56ef1234567890ab" \
   --replica-region us-west-2 \
   --description "Multi-region replica for DR"
@@ -121,6 +124,10 @@ provider "aws" {
 provider "aws" {
   alias  = "apac"
   region = "ap-southeast-1"
+}
+
+data "aws_caller_identity" "current" {
+  provider = aws.primary
 }
 
 # Primary multi-region key
@@ -259,13 +266,13 @@ plaintext = decrypt_in_eu(ciphertext)
 print(plaintext)  # "Sensitive customer data"
 ```
 
-Note: You need to pass the KeyId when decrypting with multi-region keys. For single-region keys, KMS can figure out which key to use from the ciphertext metadata. For multi-region keys, you need to specify which replica to use.
+Note: Passing the KeyId when decrypting with symmetric multi-region keys is a best practice, not a requirement. KMS can read the key ID from the ciphertext metadata, but specifying the local replica ensures KMS uses the key you intended.
 
 ## Disaster Recovery Scenario
 
 Multi-region keys are critical for DR. If your primary region goes down, you can decrypt data in your DR region without any key migration.
 
-Here's a pattern for S3 cross-region replication with encryption.
+Here are the default bucket encryption settings for an S3 cross-region replication setup.
 
 ```hcl
 # Source bucket with multi-region key encryption
@@ -295,7 +302,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "destination" {
 }
 ```
 
-When S3 replicates objects, it decrypts with the source key and re-encrypts with the destination key. Since both are multi-region replicas of the same key, this is seamless.
+For SSE-KMS encrypted objects, the S3 replication rule must still opt in to KMS-encrypted object replication, specify the destination replica key ARN, and grant the replication role the required KMS permissions. Amazon S3 treats multi-region KMS keys as regional keys for replication, so it doesn't use the multi-region features automatically.
 
 ## Key Rotation with Multi-Region Keys
 
@@ -331,7 +338,7 @@ This converts the US key to a replica and the EU key to the primary. The key mat
 
 Multi-region keys cost more than single-region keys. Each replica incurs the same monthly fee as a primary key ($1/month per key). API calls are billed in the region where they're made at standard KMS rates.
 
-There's a default limit of 10 replicas per primary key. For most architectures, that's more than enough.
+You can create multiple replicas of a primary key, but only one related multi-region key can exist in each region. Standard KMS key quotas apply to each primary and replica key.
 
 ## When Not to Use Multi-Region Keys
 
