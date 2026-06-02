@@ -42,13 +42,13 @@ Runtime choice has a massive impact on cold start times. Here's a rough comparis
 | Runtime | Typical Cold Start | Notes |
 |---------|-------------------|-------|
 | Python 3.x | 100-300ms | Great cold start performance |
-| Node.js 20.x | 100-300ms | Comparable to Python |
-| Go | 50-100ms | Fastest cold starts |
+| Node.js 22.x | 100-300ms | Comparable to Python |
+| Go (provided.al2023) | 50-100ms | Fast cold starts with a custom runtime |
 | Java 21 | 500ms-3s+ | Worst cold starts (JVM startup) |
 | .NET 8 | 200-500ms | Better with Native AOT |
 | Rust (custom runtime) | 10-50ms | Near-zero cold starts |
 
-If cold starts are a top priority and you have flexibility on runtime, Go or Rust will give you the best results.
+If cold starts are a top priority and you have flexibility on runtime, compiled languages like Go or Rust will usually give you the best results.
 
 ### Java-Specific: Use SnapStart
 
@@ -84,10 +84,10 @@ aws lambda get-function \
 pip install boto3 requests pandas numpy scipy
 
 # Better: Only install what the function actually uses
-pip install requests  # boto3 is already included in Lambda runtime
+pip install requests  # boto3 is included in Lambda's Python runtime
 ```
 
-Key tip: `boto3` is already included in the Lambda Python runtime. Don't include it in your package unless you need a specific version.
+Key tip: `boto3` is already included in the Lambda Python runtime. For the smallest package, you can rely on that runtime-included SDK if its version works for you. If you need dependency control or want to avoid runtime SDK version changes affecting your function, package `boto3` and its dependencies yourself.
 
 ```bash
 # Create a minimal package
@@ -106,17 +106,17 @@ Use a bundler like esbuild to create a minimal package:
 npm install --save-dev esbuild
 
 # Bundle your function with tree-shaking
-npx esbuild index.js --bundle --platform=node --target=node20 \
+npx esbuild index.js --bundle --platform=node --target=node22 \
   --outfile=dist/index.js --minify --external:@aws-sdk/*
 ```
 
-The `--external:@aws-sdk/*` flag excludes the AWS SDK v3, which is already in the Lambda Node.js runtime.
+The `--external:@aws-sdk/*` flag excludes the AWS SDK v3, which is already in the Lambda Node.js runtime. For maximum dependency control, remove that flag and bundle the specific SDK clients your function uses.
 
 ## Fix 3: Use Lambda Layers Wisely
 
 Layers can help organize your code, but they don't necessarily speed up cold starts. The total size of your function code plus all layers still matters.
 
-However, layers can help if you use them to share dependencies across functions, because AWS can cache layers independently.
+However, layers can help if you use them to share dependencies across functions and keep dependency packaging consistent.
 
 ```bash
 # Create a layer with your dependencies
