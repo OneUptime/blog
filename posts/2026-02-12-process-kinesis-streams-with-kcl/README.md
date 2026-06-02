@@ -67,6 +67,7 @@ public class EventRecordProcessor implements ShardRecordProcessor {
 
     private String shardId;
     private long recordsProcessed = 0;
+    private long recordsSinceLastCheckpoint = 0;
     private Instant lastCheckpointTime = Instant.now();
 
     @Override
@@ -83,6 +84,7 @@ public class EventRecordProcessor implements ShardRecordProcessor {
                 String data = StandardCharsets.UTF_8.decode(record.data()).toString();
                 processEvent(data, record.sequenceNumber());
                 recordsProcessed++;
+                recordsSinceLastCheckpoint++;
             } catch (Exception e) {
                 System.err.println("Error processing record: " + e.getMessage());
                 // Decide: skip the record or throw to stop processing
@@ -94,6 +96,7 @@ public class EventRecordProcessor implements ShardRecordProcessor {
             try {
                 processRecordsInput.checkpointer().checkpoint();
                 lastCheckpointTime = Instant.now();
+                recordsSinceLastCheckpoint = 0;
                 System.out.println("Checkpointed shard " + shardId +
                     " after " + recordsProcessed + " records");
             } catch (Exception e) {
@@ -104,8 +107,9 @@ public class EventRecordProcessor implements ShardRecordProcessor {
 
     private boolean shouldCheckpoint() {
         // Checkpoint every 100 records or every 60 seconds
-        return recordsProcessed % 100 == 0 ||
-            Instant.now().isAfter(lastCheckpointTime.plusSeconds(60));
+        return recordsSinceLastCheckpoint >= 100 ||
+            (recordsSinceLastCheckpoint > 0 &&
+                Instant.now().isAfter(lastCheckpointTime.plusSeconds(60)));
     }
 
     private void processEvent(String data, String sequenceNumber) {
@@ -268,7 +272,8 @@ This Python consumer implements basic KCL-like behavior with checkpointing to Dy
 import boto3
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
+from threading import Thread
 
 kinesis = boto3.client('kinesis', region_name='us-east-1')
 dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
@@ -287,7 +292,7 @@ def save_checkpoint(shard_id, sequence_number):
     checkpoint_table.put_item(Item={
         'shardId': shard_id,
         'sequenceNumber': sequence_number,
-        'updatedAt': datetime.utcnow().isoformat()
+        'updatedAt': datetime.now(timezone.utc).isoformat()
     })
 
 def process_shard(stream_name, shard_id):
@@ -335,12 +340,25 @@ def process_shard(stream_name, shard_id):
 def process_event(data):
     print(f"Processing event: {data}")
 
+def list_open_shards(stream_name):
+    paginator = kinesis.get_paginator('list_shards')
+    for page in paginator.paginate(StreamName=stream_name):
+        for shard in page['Shards']:
+            sequence_range = shard.get('SequenceNumberRange', {})
+            if 'EndingSequenceNumber' not in sequence_range:
+                yield shard
+
 # Main loop
 
 stream_name = 'user-events'
-shards = kinesis.list_shards(StreamName=stream_name)
-for shard in shards['Shards']:
-    process_shard(stream_name, shard['ShardId'])
+threads = []
+for shard in list_open_shards(stream_name):
+    thread = Thread(target=process_shard, args=(stream_name, shard['ShardId']))
+    thread.start()
+    threads.append(thread)
+
+for thread in threads:
+    thread.join()
 ```
 
 ## Monitoring KCL Applications
@@ -348,9 +366,9 @@ for shard in shards['Shards']:
 KCL publishes metrics to CloudWatch automatically. The important ones:
 
 - **RecordProcessor.processRecords.Time** - Processing duration
-- **RecordProcessor.processRecords.Count** - Records processed per invocation
-- **MillisBehindLatest** - Consumer lag (equivalent to iterator age)
-- **LeasesHeld** - Number of shards this worker owns
+- **RecordsProcessed** - Records processed per invocation
+- **MillisBehindLatest** - Time the current iterator is behind the latest record in the shard
+- **CurrentLeases** - Number of shard leases this worker owns
 
 The DynamoDB lease table also gives you visibility into shard assignments. Check it to see which worker owns which shard.
 
