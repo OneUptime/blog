@@ -290,7 +290,7 @@ if response['UnprocessedKeys']:
 Here are things that'll keep your DynamoDB queries fast and cheap:
 
 - **Design your keys for your access patterns.** If you always query by user ID and date range, make those your partition and sort keys.
-- **Use projection expressions** to avoid transferring attributes you don't need.
+- **Use projection expressions** to avoid transferring attributes you don't need, but remember they don't reduce read capacity usage.
 - **Prefer Query over Scan.** A scan reads the entire table and charges you for it.
 - **Use GSIs wisely.** They duplicate data, which costs storage and write capacity.
 - **Watch for hot partitions.** If one partition key gets way more traffic than others, you'll hit throughput limits.
