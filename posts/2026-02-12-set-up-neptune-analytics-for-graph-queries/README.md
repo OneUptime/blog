@@ -38,27 +38,27 @@ Use **Neptune Analytics** for:
 
 ### Step 1: Create the Graph
 
-Neptune Analytics graphs are standalone resources. You specify the memory size based on your data volume.
+Neptune Analytics graphs are standalone resources. You specify the number of memory-optimized Neptune Capacity Units (m-NCUs) based on your data volume.
 
 ```bash
-# Create a Neptune Analytics graph with 128 GB of memory
+# Create a Neptune Analytics graph with 128 m-NCUs
 
 aws neptune-graph create-graph \
   --graph-name fraud-detection-graph \
   --provisioned-memory 128 \
   --public-connectivity \
   --vector-search-configuration dimension=256 \
-  --tags Key=Environment,Value=production
+  --tags Environment=production
 ```
 
-The `provisioned-memory` parameter determines how much data you can load. As a rough guide, you need about 4x the raw data size in memory.
+The `provisioned-memory` parameter determines the m-NCUs allocated to the graph. Each m-NCU has roughly 1 GiB of memory capacity plus associated compute and networking.
 
 ### Step 2: Wait for the Graph to Be Available
 
 ```bash
 # Check the graph status
 aws neptune-graph get-graph \
-  --graph-identifier g-abc123def456 \
+  --graph-identifier g-abc123def4 \
   --query '{Status:status,Endpoint:endpoint}'
 ```
 
@@ -82,11 +82,11 @@ a2,Account,ACC-002,0.0
 
 Edge file (edges.csv):
 ```text
-~id,~source,~target,~label,amount:Double,timestamp:String
-e1,p1,a1,OWNS,,2026-01-01
-e2,p2,a2,OWNS,,2026-01-15
-e3,a1,a2,TRANSFERRED,5000.00,2026-02-01
-e4,a2,a1,TRANSFERRED,4950.00,2026-02-02
+~from,~to,~label,amount:Double,timestamp:String
+p1,a1,OWNS,,2026-01-01
+p2,a2,OWNS,,2026-01-15
+a1,a2,TRANSFERRED,5000.00,2026-02-01
+a2,a1,TRANSFERRED,4950.00,2026-02-02
 ```
 
 Load the data.
@@ -94,7 +94,7 @@ Load the data.
 ```bash
 # Start a data import from S3
 aws neptune-graph start-import-task \
-  --graph-identifier g-abc123def456 \
+  --graph-identifier g-abc123def4 \
   --source "s3://my-graph-data/fraud-detection/" \
   --role-arn arn:aws:iam::123456789012:role/NeptuneAnalyticsLoadRole \
   --format CSV
@@ -105,12 +105,14 @@ aws neptune-graph start-import-task \
 If you already have data in Neptune Database, you can load it directly.
 
 ```bash
-# Import data from an existing Neptune Database cluster
-aws neptune-graph start-import-task \
-  --graph-identifier g-abc123def456 \
-  --source "arn:aws:neptune:us-east-1:123456789012:cluster:my-neptune-cluster" \
+# Create a new graph by importing data from an existing Neptune Database cluster
+aws neptune-graph create-graph-using-import-task \
+  --graph-name fraud-detection-graph \
+  --source "arn:aws:rds:us-east-1:123456789012:cluster:my-neptune-cluster" \
   --role-arn arn:aws:iam::123456789012:role/NeptuneAnalyticsLoadRole \
-  --format NEPTUNE_DATABASE
+  --min-provisioned-memory 128 \
+  --max-provisioned-memory 256 \
+  --import-options '{"neptune":{"s3ExportPath":"s3://my-graph-data/neptune-export/","s3ExportKmsKeyId":"arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012"}}'
 ```
 
 ## Running Graph Queries
@@ -122,9 +124,10 @@ Neptune Analytics supports openCypher for querying.
 ```bash
 # Query the graph using openCypher via the CLI
 aws neptune-graph execute-query \
-  --graph-identifier g-abc123def456 \
-  --query-string "MATCH (p:Person)-[:OWNS]->(a:Account) RETURN p.name, a.~id AS account" \
-  --language OPEN_CYPHER
+  --graph-identifier g-abc123def4 \
+  --query-string "MATCH (p:Person)-[:OWNS]->(a:Account) RETURN p.name AS owner, a.`~id` AS account" \
+  --language open_cypher \
+  /dev/stdout
 ```
 
 ### Finding Suspicious Transaction Patterns
@@ -133,7 +136,7 @@ aws neptune-graph execute-query \
 // Find circular money transfers (potential money laundering)
 MATCH path = (a1:Account)-[:TRANSFERRED]->(a2:Account)-[:TRANSFERRED]->(a3:Account)-[:TRANSFERRED]->(a1)
 WHERE a1 <> a2 AND a2 <> a3
-RETURN [n IN nodes(path) | n.~id] AS accounts,
+RETURN [n IN nodes(path) | n.`~id`] AS accounts,
        [r IN relationships(path) | r.amount] AS amounts
 ORDER BY reduce(total = 0, r IN relationships(path) | total + r.amount) DESC
 LIMIT 20
@@ -148,7 +151,7 @@ Find the most connected nodes in your graph.
 MATCH (a:Account)-[t:TRANSFERRED]-()
 WITH a, count(t) as degree
 WHERE degree > 10
-RETURN a.~id AS account, degree
+RETURN a.`~id` AS account, degree
 ORDER BY degree DESC
 LIMIT 50
 ```
@@ -164,19 +167,20 @@ Find the most important nodes in your graph.
 ```bash
 # Run PageRank algorithm
 aws neptune-graph execute-query \
-  --graph-identifier g-abc123def456 \
+  --graph-identifier g-abc123def4 \
   --query-string "
+    MATCH (node:Account)
     CALL neptune.algo.pageRank(
-      {edgeLabels: ['TRANSFERRED'], maxIterations: 20, dampingFactor: 0.85}
+      node,
+      {edgeLabels: ['TRANSFERRED'], numOfIterations: 20, dampingFactor: 0.85}
     )
-    YIELD node, score
-    WITH node, score
-    WHERE labels(node) = ['Account']
-    RETURN node.~id AS account, score
-    ORDER BY score DESC
+    YIELD rank
+    RETURN node.`~id` AS account, rank AS score
+    ORDER BY rank DESC
     LIMIT 20
   " \
-  --language OPEN_CYPHER
+  --language open_cypher \
+  /dev/stdout
 ```
 
 ### Community Detection
@@ -185,11 +189,13 @@ Find clusters of closely connected nodes.
 
 ```cypher
 // Detect communities of connected accounts
-CALL neptune.algo.community(
-  {edgeLabels: ['TRANSFERRED'], maxIterations: 10}
+MATCH (node:Account)
+CALL neptune.algo.louvain(
+  node,
+  {edgeLabels: ['TRANSFERRED'], vertexLabels: ['Account'], maxIterations: 10}
 )
-YIELD node, community
-WITH community, collect(node.~id) AS members, count(*) AS size
+YIELD community
+WITH community, collect(node.`~id`) AS members, count(*) AS size
 WHERE size > 3
 RETURN community, members, size
 ORDER BY size DESC
@@ -202,10 +208,14 @@ Find the shortest connection between two nodes.
 
 ```cypher
 // Find the shortest path between two accounts
-MATCH (source:Account {~id: 'ACC-001'}), (target:Account {~id: 'ACC-999'})
-CALL neptune.algo.shortestPath(source, target, {edgeLabels: ['TRANSFERRED']})
-YIELD path, distance
-RETURN [n IN nodes(path) | n.~id] AS accounts, distance
+MATCH (source:Account {name: 'ACC-001'}), (target:Account {name: 'ACC-999'})
+CALL neptune.algo.sssp.bellmanFord.path(
+  source,
+  target,
+  {edgeLabels: ['TRANSFERRED'], edgeWeightProperty: 'amount', edgeWeightType: 'double'}
+)
+YIELD vertexPath, distance
+RETURN [n IN vertexPath | n.`~id`] AS accounts, distance
 ```
 
 ## Using Neptune Analytics with Python
@@ -230,18 +240,18 @@ def run_query(graph_id, query):
     return result['results']
 
 # Find high-risk accounts
-results = run_query('g-abc123def456', """
+results = run_query('g-abc123def4', """
     MATCH (p:Person)-[:OWNS]->(a:Account)
     WHERE p.risk_score > 0.7
     MATCH (a)-[t:TRANSFERRED]->()
     WITH p, a, sum(t.amount) AS total_transferred
     WHERE total_transferred > 10000
-    RETURN p.name, a.~id AS account, total_transferred
+    RETURN p.name AS person, a.`~id` AS account, total_transferred
     ORDER BY total_transferred DESC
 """)
 
 for row in results:
-    print(f"{row['p.name']} ({row['account']}): ${row['total_transferred']:,.2f}")
+    print(f"{row['person']} ({row['account']}): ${row['total_transferred']:,.2f}")
 ```
 
 ## Vector Search
@@ -250,36 +260,38 @@ Neptune Analytics includes vector search capabilities for similarity queries.
 
 ```cypher
 // Find accounts with similar transaction patterns using vector embeddings
-CALL neptune.algo.vectors.topKByNode(
-  {node: account1, k: 10, concurrency: 4}
+MATCH (account:Account {name: 'ACC-001'})
+CALL neptune.algo.vectors.topK.byNode(
+  account,
+  {topK: 10, concurrency: 1}
 )
 YIELD node, score
-RETURN node.~id AS similar_account, score
+RETURN node.`~id` AS similar_account, score
 ORDER BY score DESC
 ```
 
 ## Monitoring
 
 ```bash
-# Monitor query performance
+# Monitor openCypher request throughput
 aws cloudwatch get-metric-statistics \
-  --namespace AWS/NeptuneGraph \
-  --metric-name QueryLatency \
-  --dimensions Name=GraphId,Value=g-abc123def456 \
+  --namespace AWS/Neptune \
+  --metric-name NumOpenCypherRequestsPerSec \
+  --dimensions Name=GraphIdentifier,Value=g-abc123def4 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Average,p99
+  --statistics Average Maximum
 
-# Monitor memory utilization
+# Monitor graph storage usage
 aws cloudwatch get-metric-statistics \
-  --namespace AWS/NeptuneGraph \
-  --metric-name MemoryUtilization \
-  --dimensions Name=GraphId,Value=g-abc123def456 \
+  --namespace AWS/Neptune \
+  --metric-name GraphStorageUsagePercent \
+  --dimensions Name=GraphIdentifier,Value=g-abc123def4 \
   --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
-  --statistics Average,Maximum
+  --statistics Average Maximum
 ```
 
 ## Summary
