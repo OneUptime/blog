@@ -34,7 +34,7 @@ event = {
 
 response = kinesis.put_record(
     StreamName='user-events',
-    Data=json.dumps(event),
+    Data=json.dumps(event).encode('utf-8'),
     PartitionKey=event['userId']
 )
 
@@ -62,7 +62,7 @@ def put_records_batch(stream_name, records):
 
     for record in records:
         kinesis_records.append({
-            'Data': json.dumps(record),
+            'Data': json.dumps(record).encode('utf-8'),
             'PartitionKey': record['userId']
         })
 
@@ -134,68 +134,79 @@ The KPL is a Java/C++ native library. Here's how to use it in Java.
 This Java example sets up a KPL producer with aggregation and collection enabled.
 
 ```java
-import com.amazonaws.services.kinesis.producer.KinesisProducer;
-import com.amazonaws.services.kinesis.producer.KinesisProducerConfiguration;
-import com.amazonaws.services.kinesis.producer.UserRecordResult;
+import software.amazon.kinesis.producer.KinesisProducer;
+import software.amazon.kinesis.producer.KinesisProducerConfiguration;
+import software.amazon.kinesis.producer.UserRecordResult;
 import com.google.common.util.concurrent.FutureCallback;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
-// Configure the KPL
-KinesisProducerConfiguration config = new KinesisProducerConfiguration()
-    .setRegion("us-east-1")
-    .setMaxConnections(24)
-    .setRequestTimeout(60000)
-    .setRecordMaxBufferedTime(100)  // Max time to buffer before sending (ms)
-    .setAggregationEnabled(true)
-    .setAggregationMaxCount(100)    // Max records per aggregated record
-    .setCollectionMaxCount(500);    // Max records per PutRecords call
+public class KinesisProducerExample {
+    public static void main(String[] args) {
+        // Configure the KPL
+        KinesisProducerConfiguration config = new KinesisProducerConfiguration()
+            .setRegion("us-east-1")
+            .setMaxConnections(24)
+            .setRequestTimeout(60000)
+            .setRecordMaxBufferedTime(100)  // Max time to buffer before sending (ms)
+            .setAggregationEnabled(true)
+            .setAggregationMaxCount(100)    // Max records per aggregated record
+            .setCollectionMaxCount(500);    // Max records per PutRecords call
 
-KinesisProducer producer = new KinesisProducer(config);
+        KinesisProducer producer = new KinesisProducer(config);
+        ExecutorService executor = Executors.newCachedThreadPool();
 
-// Send records asynchronously
-for (int i = 0; i < 100000; i++) {
-    String data = String.format(
-        "{\"userId\":\"user-%d\",\"event\":\"pageview\",\"ts\":%d}",
-        i % 1000, System.currentTimeMillis()
-    );
+        try {
+            // Send records asynchronously
+            for (int i = 0; i < 100000; i++) {
+                String data = String.format(
+                    "{\"userId\":\"user-%d\",\"event\":\"pageview\",\"ts\":%d}",
+                    i % 1000, System.currentTimeMillis()
+                );
 
-    ByteBuffer payload = ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
-    String partitionKey = "user-" + (i % 1000);
+                ByteBuffer payload = ByteBuffer.wrap(data.getBytes(StandardCharsets.UTF_8));
+                String partitionKey = "user-" + (i % 1000);
 
-    ListenableFuture<UserRecordResult> future = producer.addUserRecord(
-        "user-events",
-        partitionKey,
-        payload
-    );
+                ListenableFuture<UserRecordResult> future = producer.addUserRecord(
+                    "user-events",
+                    partitionKey,
+                    payload
+                );
 
-    // Add callback for success/failure handling
-    Futures.addCallback(future, new FutureCallback<UserRecordResult>() {
-        @Override
-        public void onSuccess(UserRecordResult result) {
-            // Record was successfully sent
+                // Add callback for success/failure handling
+                Futures.addCallback(future, new FutureCallback<UserRecordResult>() {
+                    @Override
+                    public void onSuccess(UserRecordResult result) {
+                        // Record was successfully sent
+                    }
+
+                    @Override
+                    public void onFailure(Throwable t) {
+                        System.err.println("Failed to send record: " + t.getMessage());
+                    }
+                }, executor);
+            }
+
+            // Flush remaining records before shutdown
+            producer.flushSync();
+        } finally {
+            producer.destroy();
+            executor.shutdown();
         }
-
-        @Override
-        public void onFailure(Throwable t) {
-            System.err.println("Failed to send record: " + t.getMessage());
-        }
-    }, executor);
+    }
 }
-
-// Flush remaining records before shutdown
-producer.flushSync();
-producer.destroy();
 ```
 
-The KPL can handle millions of records per second. The `RecordMaxBufferedTime` parameter controls the trade-off between latency and throughput - lower values mean lower latency but more API calls.
+With enough stream capacity, the KPL can handle very high record volumes. The `RecordMaxBufferedTime` parameter controls the trade-off between latency and throughput - lower values mean lower latency but more API calls.
 
 ## Using KPL from Python
 
-If you're working in Python, you can still use the KPL through the `aws-kinesis-agg` library for aggregation, then send the aggregated records via the standard SDK.
+If you're working in Python, you can use the KPL-compatible aggregation format through the `aws-kinesis-agg` library, then send the aggregated records via the standard SDK.
 
 This Python example uses the aws-kinesis-agg library to aggregate records before sending.
 
@@ -229,10 +240,7 @@ for i in range(10000):
         "timestamp": int(time.time())
     })
 
-    aggregator.add_user_record(
-        partition_key=f"user-{i % 500}",
-        data=event.encode('utf-8')
-    )
+    aggregator.add_user_record(f"user-{i % 500}", event.encode('utf-8'))
 
 # Flush any remaining records
 remaining = aggregator.clear_and_get()
@@ -291,7 +299,7 @@ Your choice of partition key affects data distribution across shards. Poor choic
 Bad partition keys:
 - Constants (everything goes to one shard)
 - Low-cardinality values like country code
-- Timestamps (sequential, so they hash to the same shard range)
+- Coarse timestamps (many records share the same key during the same time window)
 
 Good partition keys:
 - User IDs
@@ -339,6 +347,6 @@ If you're consistently getting throttled, it's time to add more shards or switch
 2. **Enable KPL aggregation** for high-throughput producers. It can pack hundreds of logical records into a single Kinesis record.
 3. **Buffer on the client side.** Collect records for a short period before sending. The KPL does this automatically.
 4. **Monitor IncomingBytes and IncomingRecords** per shard to detect hot shards early.
-5. **Size your records appropriately.** The max record size is 1 MB, but smaller records mean better throughput per shard.
+5. **Size your records appropriately.** Kinesis Data Streams supports records up to 10 MiB when the stream's maximum record size is configured for it, but smaller records mean better throughput per shard.
 
 Getting data into Kinesis efficiently is mostly about batching, retry logic, and partition key selection. Start with `PutRecords` for moderate throughput, upgrade to KPL when you need serious volume, and always handle partial failures.
