@@ -51,18 +51,52 @@ VPC_ID=$(aws ec2 create-vpc \
   --cidr-block 10.0.0.0/16 \
   --query 'Vpc.VpcId' --output text)
 
-aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support
-aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support '{"Value":true}'
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames '{"Value":true}'
 
 # Create public subnets in three AZs (for the load balancer)
 PUB_SUB_1=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.1.0/24 --availability-zone us-east-1a --query 'Subnet.SubnetId' --output text)
 PUB_SUB_2=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.2.0/24 --availability-zone us-east-1b --query 'Subnet.SubnetId' --output text)
 PUB_SUB_3=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.3.0/24 --availability-zone us-east-1c --query 'Subnet.SubnetId' --output text)
 
+IGW_ID=$(aws ec2 create-internet-gateway --query 'InternetGateway.InternetGatewayId' --output text)
+aws ec2 attach-internet-gateway --vpc-id $VPC_ID --internet-gateway-id $IGW_ID
+
+PUB_RT=$(aws ec2 create-route-table --vpc-id $VPC_ID --query 'RouteTable.RouteTableId' --output text)
+aws ec2 create-route --route-table-id $PUB_RT --destination-cidr-block 0.0.0.0/0 --gateway-id $IGW_ID
+aws ec2 associate-route-table --route-table-id $PUB_RT --subnet-id $PUB_SUB_1
+aws ec2 associate-route-table --route-table-id $PUB_RT --subnet-id $PUB_SUB_2
+aws ec2 associate-route-table --route-table-id $PUB_RT --subnet-id $PUB_SUB_3
+
 # Create private subnets in three AZs (for the EC2 instances)
 PRIV_SUB_1=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.11.0/24 --availability-zone us-east-1a --query 'Subnet.SubnetId' --output text)
 PRIV_SUB_2=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.12.0/24 --availability-zone us-east-1b --query 'Subnet.SubnetId' --output text)
 PRIV_SUB_3=$(aws ec2 create-subnet --vpc-id $VPC_ID --cidr-block 10.0.13.0/24 --availability-zone us-east-1c --query 'Subnet.SubnetId' --output text)
+
+# Create one NAT gateway per AZ so private instances can bootstrap without a single-AZ dependency
+EIP_1=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
+EIP_2=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
+EIP_3=$(aws ec2 allocate-address --domain vpc --query 'AllocationId' --output text)
+NAT_1=$(aws ec2 create-nat-gateway --subnet-id $PUB_SUB_1 --allocation-id $EIP_1 --query 'NatGateway.NatGatewayId' --output text)
+NAT_2=$(aws ec2 create-nat-gateway --subnet-id $PUB_SUB_2 --allocation-id $EIP_2 --query 'NatGateway.NatGatewayId' --output text)
+NAT_3=$(aws ec2 create-nat-gateway --subnet-id $PUB_SUB_3 --allocation-id $EIP_3 --query 'NatGateway.NatGatewayId' --output text)
+aws ec2 wait nat-gateway-available --nat-gateway-ids $NAT_1 $NAT_2 $NAT_3
+
+PRIV_RT_1=$(aws ec2 create-route-table --vpc-id $VPC_ID --query 'RouteTable.RouteTableId' --output text)
+PRIV_RT_2=$(aws ec2 create-route-table --vpc-id $VPC_ID --query 'RouteTable.RouteTableId' --output text)
+PRIV_RT_3=$(aws ec2 create-route-table --vpc-id $VPC_ID --query 'RouteTable.RouteTableId' --output text)
+aws ec2 create-route --route-table-id $PRIV_RT_1 --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT_1
+aws ec2 create-route --route-table-id $PRIV_RT_2 --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT_2
+aws ec2 create-route --route-table-id $PRIV_RT_3 --destination-cidr-block 0.0.0.0/0 --nat-gateway-id $NAT_3
+aws ec2 associate-route-table --route-table-id $PRIV_RT_1 --subnet-id $PRIV_SUB_1
+aws ec2 associate-route-table --route-table-id $PRIV_RT_2 --subnet-id $PRIV_SUB_2
+aws ec2 associate-route-table --route-table-id $PRIV_RT_3 --subnet-id $PRIV_SUB_3
+
+# Create security groups for the ALB and instances
+ALB_SG=$(aws ec2 create-security-group --group-name app-alb-sg --description "ALB HTTP access" --vpc-id $VPC_ID --query 'GroupId' --output text)
+APP_SG=$(aws ec2 create-security-group --group-name app-instance-sg --description "App access from ALB" --vpc-id $VPC_ID --query 'GroupId' --output text)
+aws ec2 authorize-security-group-ingress --group-id $ALB_SG --protocol tcp --port 80 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $APP_SG --protocol tcp --port 80 --source-group $ALB_SG
 ```
 
 ## Application Load Balancer
@@ -74,7 +108,7 @@ The ALB is the entry point for traffic. It automatically performs health checks 
 ALB_ARN=$(aws elbv2 create-load-balancer \
   --name "app-alb" \
   --subnets $PUB_SUB_1 $PUB_SUB_2 $PUB_SUB_3 \
-  --security-groups sg-alb123 \
+  --security-groups $ALB_SG \
   --scheme internet-facing \
   --type application \
   --query 'LoadBalancers[0].LoadBalancerArn' --output text)
@@ -111,7 +145,7 @@ aws ec2 create-launch-template \
   --launch-template-data '{
     "ImageId": "ami-0abc123",
     "InstanceType": "m5.large",
-    "SecurityGroupIds": ["sg-app123"],
+    "SecurityGroupIds": ["'$APP_SG'"],
     "UserData": "'$(base64 -w0 <<'EOF'
 #!/bin/bash
 yum install -y httpd
@@ -145,7 +179,7 @@ aws autoscaling create-auto-scaling-group \
   --default-cooldown 300
 ```
 
-Setting `min-size` to 3 ensures at least one instance per AZ. The ASG's default AZ rebalancing tries to distribute instances evenly.
+Setting `min-size` to 3 gives the group enough capacity to place at least one instance per AZ. The ASG's default AZ rebalancing tries to distribute instances evenly, but placement can still be affected by temporary AZ capacity or health issues.
 
 ## Terraform Configuration
 
@@ -161,6 +195,10 @@ resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
+}
+
+resource "aws_internet_gateway" "main" {
+  vpc_id = aws_vpc.main.id
 }
 
 # Create subnets in each AZ
@@ -181,6 +219,90 @@ resource "aws_subnet" "private" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = { Name = "private-${data.aws_availability_zones.available.names[count.index]}" }
+}
+
+resource "aws_route_table" "public" {
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.main.id
+  }
+}
+
+resource "aws_route_table_association" "public" {
+  count          = 3
+  subnet_id      = aws_subnet.public[count.index].id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_eip" "nat" {
+  count  = 3
+  domain = "vpc"
+}
+
+resource "aws_nat_gateway" "nat" {
+  count         = 3
+  allocation_id = aws_eip.nat[count.index].id
+  subnet_id     = aws_subnet.public[count.index].id
+
+  depends_on = [aws_internet_gateway.main]
+}
+
+resource "aws_route_table" "private" {
+  count  = 3
+  vpc_id = aws_vpc.main.id
+
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat[count.index].id
+  }
+}
+
+resource "aws_route_table_association" "private" {
+  count          = 3
+  subnet_id      = aws_subnet.private[count.index].id
+  route_table_id = aws_route_table.private[count.index].id
+}
+
+resource "aws_security_group" "alb" {
+  name        = "app-alb-sg"
+  description = "ALB HTTP access"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "app" {
+  name        = "app-instance-sg"
+  description = "App access from ALB"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
 
 # Application Load Balancer
@@ -228,6 +350,13 @@ resource "aws_launch_template" "app" {
   name_prefix   = "app-"
   image_id      = "ami-0abc123"
   instance_type = "m5.large"
+  user_data     = base64encode(<<-EOF
+#!/bin/bash
+yum install -y httpd
+systemctl start httpd
+echo "healthy" > /var/www/html/health
+  EOF
+  )
 
   vpc_security_group_ids = [aws_security_group.app.id]
 
@@ -259,7 +388,7 @@ resource "aws_autoscaling_group" "app" {
     version = "$Latest"
   }
 
-  # Spread instances evenly across AZs
+  # Wait for initial instances to become healthy in the target group
   min_elb_capacity = 3
 }
 
