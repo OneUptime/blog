@@ -113,6 +113,10 @@ def handler(event, context):
     log_stream = payload['logStream']
     log_events = payload['logEvents']
 
+    if payload.get('messageType') == 'CONTROL_MESSAGE':
+        print('Received CloudWatch Logs control message')
+        return {'statusCode': 200}
+
     # Generate today's index name (daily rotation)
     today = datetime.datetime.utcnow().strftime('%Y.%m.%d')
     index_name = f"cwl-{today}"
@@ -175,9 +179,10 @@ With the Lambda function ready, create the subscription filter:
 aws lambda add-permission \
   --function-name "cloudwatch-to-opensearch" \
   --statement-id "cloudwatch-logs-invoke" \
-  --principal "logs.us-east-1.amazonaws.com" \
+  --principal "logs.amazonaws.com" \
   --action "lambda:InvokeFunction" \
-  --source-arn "arn:aws:logs:us-east-1:123456789012:log-group:/myapp/production/api:*"
+  --source-arn "arn:aws:logs:us-east-1:123456789012:log-group:/myapp/production/api:*" \
+  --source-account "123456789012"
 
 # Create the subscription filter
 aws logs put-subscription-filter \
@@ -225,7 +230,7 @@ curl -XPUT "https://search-log-analytics-abc123.us-east-1.es.amazonaws.com/_inde
 
 ## Index Lifecycle Management
 
-You don't want to keep indices growing forever. Set up an ISM (Index State Management) policy to roll over and delete old indices:
+You don't want to keep indices growing forever. Set up an ISM (Index State Management) policy to transition and delete old indices:
 
 ```json
 {
@@ -270,6 +275,14 @@ For multiple log groups, create a subscription filter for each one. You can use 
 for log_group in "/myapp/production/api" "/myapp/production/worker" "/aws/lambda/order-processor"; do
   filter_name=$(echo "$log_group" | tr '/' '-' | sed 's/^-//')
 
+  aws lambda add-permission \
+    --function-name "cloudwatch-to-opensearch" \
+    --statement-id "cloudwatch-logs-${filter_name}" \
+    --principal "logs.amazonaws.com" \
+    --action "lambda:InvokeFunction" \
+    --source-arn "arn:aws:logs:us-east-1:123456789012:log-group:${log_group}:*" \
+    --source-account "123456789012"
+
   aws logs put-subscription-filter \
     --log-group-name "$log_group" \
     --filter-name "opensearch-${filter_name}" \
@@ -287,7 +300,7 @@ Keep an eye on the Lambda function's own metrics to make sure the pipeline is he
 - **Errors**: If the Lambda fails, logs aren't getting indexed.
 - **Duration**: If the function takes too long, increase the timeout or memory.
 - **Throttles**: If you're hitting concurrency limits, request a limit increase.
-- **Iterator age**: In the CloudWatch subscription metrics, check how far behind the streaming is.
+- **DeliveryErrors and DeliveryThrottling**: In the CloudWatch Logs subscription metrics, check whether delivery to Lambda is failing or being throttled.
 
 You can set up alarms on these metrics to get notified of pipeline issues. See our [CloudWatch dashboards guide](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-dashboards-application-monitoring/view) for creating a pipeline health dashboard.
 
