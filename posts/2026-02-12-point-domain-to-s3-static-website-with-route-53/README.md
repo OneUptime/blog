@@ -43,6 +43,18 @@ aws s3 website s3://example.com \
   --error-document error.html
 ```
 
+Disable S3 Block Public Access for this bucket so the public website bucket policy can take effect:
+
+```bash
+# Allow this website bucket to use a public-read bucket policy
+aws s3api put-public-access-block \
+  --bucket example.com \
+  --public-access-block-configuration \
+  BlockPublicAcls=false,IgnorePublicAcls=false,BlockPublicPolicy=false,RestrictPublicBuckets=false
+```
+
+If your account or organization has account-level Block Public Access enabled, you must allow this exception there too, or use CloudFront with a private S3 REST origin instead of the S3 website endpoint.
+
 Set the bucket policy to allow public reads:
 
 ```json
@@ -87,8 +99,13 @@ Create a second bucket for the www subdomain that redirects to the primary:
 aws s3 mb s3://www.example.com --region us-east-1
 
 # Configure it to redirect all requests to the main domain
-aws s3 website s3://www.example.com \
-  --redirect-all-requests-to example.com
+aws s3api put-bucket-website \
+  --bucket www.example.com \
+  --website-configuration '{
+    "RedirectAllRequestsTo": {
+      "HostName": "example.com"
+    }
+  }'
 ```
 
 This bucket stays empty - it just handles the redirect.
@@ -218,15 +235,15 @@ Validate the certificate by adding the CNAME record that ACM provides to your Ro
   "DefaultCacheBehavior": {
     "TargetOriginId": "S3-example.com",
     "ViewerProtocolPolicy": "redirect-to-https",
-    "AllowedMethods": ["GET", "HEAD"],
-    "CachedMethods": ["GET", "HEAD"],
-    "ForwardedValues": {
-      "QueryString": false,
-      "Cookies": {"Forward": "none"}
+    "AllowedMethods": {
+      "Quantity": 2,
+      "Items": ["GET", "HEAD"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
     },
-    "MinTTL": 0,
-    "DefaultTTL": 86400,
-    "MaxTTL": 31536000
+    "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
   },
   "ViewerCertificate": {
     "ACMCertificateArn": "arn:aws:acm:us-east-1:123456789:certificate/abc-123",
