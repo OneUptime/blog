@@ -69,11 +69,16 @@ def check_critical_quotas():
 
     checks = []
 
-    # EC2: Running instances
+    # EC2: Running On-Demand Standard quota is measured in vCPUs
     instances = ec2.describe_instances(
         Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
     )
-    running_count = sum(len(r['Instances']) for r in instances['Reservations'])
+    running_vcpus = sum(
+        i.get('CpuOptions', {}).get('CoreCount', 1) *
+        i.get('CpuOptions', {}).get('ThreadsPerCore', 1)
+        for r in instances['Reservations']
+        for i in r['Instances']
+    )
 
     # Get the quota for running on-demand instances
     try:
@@ -84,10 +89,10 @@ def check_critical_quotas():
         limit = quota['Quota']['Value']
         checks.append({
             'service': 'EC2',
-            'quota': 'Running On-Demand Instances',
-            'used': running_count,
+            'quota': 'Running On-Demand Standard vCPUs',
+            'used': running_vcpus,
             'limit': int(limit),
-            'pct': (running_count / limit * 100) if limit > 0 else 0
+            'pct': (running_vcpus / limit * 100) if limit > 0 else 0
         })
     except Exception as e:
         print(f"Could not check EC2 quota: {e}")
@@ -108,16 +113,21 @@ def check_critical_quotas():
     except Exception:
         pass
 
-    # EBS Volumes
+    # EBS gp3 storage
     volumes = ec2.describe_volumes()
-    vol_count = len(volumes['Volumes'])
-    checks.append({
-        'service': 'EBS',
-        'quota': 'Volumes',
-        'used': vol_count,
-        'limit': 10000,  # Default
-        'pct': vol_count / 10000 * 100
-    })
+    gp3_tib = sum(v['Size'] for v in volumes['Volumes'] if v['VolumeType'] == 'gp3') / 1024
+    try:
+        quota = sq.get_service_quota(ServiceCode='ebs', QuotaCode='L-7A658B76')
+        limit = quota['Quota']['Value']
+        checks.append({
+            'service': 'EBS',
+            'quota': 'gp3 storage (TiB)',
+            'used': round(gp3_tib, 2),
+            'limit': int(limit),
+            'pct': (gp3_tib / limit * 100) if limit > 0 else 0
+        })
+    except Exception:
+        pass
 
     # Elastic IPs
     addresses = ec2.describe_addresses()
@@ -135,20 +145,22 @@ def check_critical_quotas():
     except Exception:
         pass
 
-    # Security Groups per VPC
-    for vpc in vpcs['Vpcs']:
-        sgs = ec2.describe_security_groups(
-            Filters=[{'Name': 'vpc-id', 'Values': [vpc['VpcId']]}]
-        )
+    # VPC security groups per Region
+    try:
+        sgs = ec2.describe_security_groups()
         sg_count = len(sgs['SecurityGroups'])
-        if sg_count > 400:  # Only flag if approaching default limit of 500
+        quota = sq.get_service_quota(ServiceCode='vpc', QuotaCode='L-E79EC296')
+        limit = quota['Quota']['Value']
+        if sg_count > limit * 0.8:
             checks.append({
                 'service': 'VPC',
-                'quota': f"Security Groups in {vpc['VpcId']}",
+                'quota': 'Security Groups per Region',
                 'used': sg_count,
-                'limit': 500,
-                'pct': sg_count / 500 * 100
+                'limit': int(limit),
+                'pct': sg_count / limit * 100
             })
+    except Exception:
+        pass
 
     # Print report
     print(f"\n{'Service':<10} {'Quota':<40} {'Used':<8} {'Limit':<8} {'Usage %'}")
@@ -166,7 +178,7 @@ check_critical_quotas()
 AWS Service Quotas integrates with CloudWatch. You can create alarms that trigger when usage approaches a limit:
 
 ```bash
-# Create a CloudWatch alarm for Lambda concurrent executions
+# Create a CloudWatch alarm for Lambda account concurrency
 # First, get the quota value
 LAMBDA_QUOTA=$(aws service-quotas get-service-quota \
   --service-code lambda \
@@ -179,8 +191,8 @@ THRESHOLD=$(echo "$LAMBDA_QUOTA * 0.8" | bc)
 
 # Create the alarm
 aws cloudwatch put-metric-alarm \
-  --alarm-name "Lambda-ConcurrentExecutions-80pct" \
-  --metric-name ConcurrentExecutions \
+  --alarm-name "Lambda-ClaimedAccountConcurrency-80pct" \
+  --metric-name ClaimedAccountConcurrency \
   --namespace AWS/Lambda \
   --statistic Maximum \
   --period 300 \
@@ -188,18 +200,17 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:quota-alerts \
-  --alarm-description "Lambda concurrent executions at 80% of quota"
+  --alarm-description "Lambda claimed account concurrency at 80% of quota"
 ```
 
-For quotas that have CloudWatch integration via Service Quotas:
+To request a quota increase from the CLI:
 
 ```bash
-# Create a quota usage alarm directly through Service Quotas
-aws service-quotas put-service-quota-increase-request-into-template \
+# Request a Lambda concurrent executions quota increase
+aws service-quotas request-service-quota-increase \
   --service-code lambda \
   --quota-code L-B99A9384 \
-  --desired-value 2000 \
-  --aws-region us-east-1
+  --desired-value 2000
 ```
 
 ## Automated Quota Monitoring Lambda
@@ -208,9 +219,11 @@ Set up a Lambda function that runs daily and reports on quotas approaching their
 
 ```python
 import boto3
+from datetime import datetime, timedelta, timezone
 
 sq = boto3.client('service-quotas')
 sns = boto3.client('sns')
+cw = boto3.client('cloudwatch')
 ALERT_TOPIC = 'arn:aws:sns:us-east-1:123456789012:quota-alerts'
 
 # Critical services to monitor
@@ -221,6 +234,8 @@ WARNING_THRESHOLD = 80  # Alert at 80% usage
 
 def lambda_handler(event, context):
     warnings = []
+    end_time = datetime.now(timezone.utc)
+    start_time = end_time - timedelta(days=1)
 
     for service_code in SERVICES:
         try:
@@ -231,8 +246,8 @@ def lambda_handler(event, context):
                     if quota.get('UsageMetric'):
                         try:
                             # Get current usage from CloudWatch
-                            cw = boto3.client('cloudwatch')
                             metric = quota['UsageMetric']
+                            statistic = metric.get('MetricStatisticRecommendation', 'Maximum')
 
                             response = cw.get_metric_statistics(
                                 Namespace=metric['MetricNamespace'],
@@ -241,14 +256,15 @@ def lambda_handler(event, context):
                                     {'Name': k, 'Value': v}
                                     for k, v in metric.get('MetricDimensions', {}).items()
                                 ],
-                                StartTime='2026-02-11T00:00:00Z',
-                                EndTime='2026-02-12T23:59:59Z',
+                                StartTime=start_time,
+                                EndTime=end_time,
                                 Period=86400,
-                                Statistics=[metric.get('MetricStatisticRecommendation', 'Maximum')]
+                                Statistics=[statistic]
                             )
 
                             if response['Datapoints']:
-                                usage = response['Datapoints'][-1].get('Maximum', 0)
+                                latest = max(response['Datapoints'], key=lambda x: x['Timestamp'])
+                                usage = latest.get(statistic, 0)
                                 limit = quota['Value']
 
                                 if limit > 0:
@@ -284,14 +300,14 @@ Here are the quotas that most commonly cause problems:
 
 | Service | Quota | Default Limit | Why It Matters |
 |---|---|---|---|
-| EC2 | Running On-Demand Instances (per type) | Varies | Blocks scaling and launches |
+| EC2 | Running On-Demand Standard vCPUs | Varies | Blocks scaling and launches |
 | VPC | VPCs per region | 5 | Blocks new environment creation |
 | VPC | Subnets per VPC | 200 | Blocks network expansion |
-| EBS | Volumes per region | 10,000 | Blocks instance launches |
+| EBS | gp3 storage per region | 50 TiB | Blocks volume creation |
 | Lambda | Concurrent executions | 1,000 | Throttles entire application |
 | RDS | DB instances | 40 | Blocks database creation |
 | ECS | Tasks per service | 5,000 | Limits scaling |
-| S3 | Buckets per account | 100 | Blocks new bucket creation |
+| S3 | General purpose buckets per account | 10,000 | Blocks new bucket creation |
 | IAM | Roles per account | 1,000 | Blocks deployments |
 | CloudFormation | Stacks per region | 2,000 | Blocks IaC deployments |
 
@@ -300,6 +316,8 @@ Here are the quotas that most commonly cause problems:
 Don't wait for quotas to become a problem. Build quota checks into your deployment pipeline:
 
 ```python
+import boto3
+
 def pre_deployment_quota_check(required_resources):
     """Check quotas before deploying new resources"""
     ec2 = boto3.client('ec2')
@@ -307,14 +325,16 @@ def pre_deployment_quota_check(required_resources):
 
     issues = []
 
-    # Check EC2 instance quota
-    if 'ec2_instances' in required_resources:
-        needed = required_resources['ec2_instances']
+    # Check EC2 vCPU quota
+    if 'ec2_vcpus' in required_resources:
+        needed = required_resources['ec2_vcpus']
         current = sum(
-            len(r['Instances'])
+            i.get('CpuOptions', {}).get('CoreCount', 1) *
+            i.get('CpuOptions', {}).get('ThreadsPerCore', 1)
             for r in ec2.describe_instances(
                 Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
             )['Reservations']
+            for i in r['Instances']
         )
         quota = sq.get_service_quota(
             ServiceCode='ec2', QuotaCode='L-1216C47A'
@@ -322,19 +342,26 @@ def pre_deployment_quota_check(required_resources):
 
         if current + needed > quota:
             issues.append(
-                f"EC2: Need {needed} instances but only "
+                f"EC2: Need {needed} vCPUs but only "
                 f"{int(quota) - current} available (quota: {int(quota)}, used: {current})"
             )
 
-    # Check EBS volume quota
-    if 'ebs_volumes' in required_resources:
-        needed = required_resources['ebs_volumes']
-        current = len(ec2.describe_volumes()['Volumes'])
-        available = 10000 - current
+    # Check EBS gp3 storage quota
+    if 'ebs_gp3_gib' in required_resources:
+        needed = required_resources['ebs_gp3_gib']
+        current = sum(
+            v['Size'] for v in ec2.describe_volumes()['Volumes']
+            if v['VolumeType'] == 'gp3'
+        )
+        quota_tib = sq.get_service_quota(
+            ServiceCode='ebs', QuotaCode='L-7A658B76'
+        )['Quota']['Value']
+        quota_gib = int(quota_tib * 1024)
+        available = quota_gib - current
 
         if needed > available:
             issues.append(
-                f"EBS: Need {needed} volumes but only {available} available"
+                f"EBS: Need {needed} GiB of gp3 storage but only {available} GiB available"
             )
 
     if issues:
@@ -349,8 +376,8 @@ def pre_deployment_quota_check(required_resources):
 
 # Example usage
 pre_deployment_quota_check({
-    'ec2_instances': 20,
-    'ebs_volumes': 50
+    'ec2_vcpus': 40,
+    'ebs_gp3_gib': 500
 })
 ```
 
