@@ -97,29 +97,35 @@ aws iam put-role-policy \
 
 ## Step 2: Cross-Account Setup
 
-If your source and destination are in different AWS accounts, you need additional bucket policies. On the source bucket (Account A), add a policy allowing the DataSync role from Account B:
+If your source and destination are in different AWS accounts, you need additional bucket policies. For a transfer from Account A to Account B, create the DataSync role in Account A and add a policy on the destination bucket in Account B allowing that role to write:
 
 ```bash
-# Run this in Account A - add bucket policy to source bucket
+# Run this in Account B - add bucket policy to destination bucket
 aws s3api put-bucket-policy \
-  --bucket source-bucket \
+  --bucket destination-bucket \
   --policy '{
     "Version": "2012-10-17",
     "Statement": [{
       "Sid": "AllowDataSyncCrossAccount",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::ACCOUNT_B_ID:role/DataSyncS3ToS3Role"
+        "AWS": "arn:aws:iam::ACCOUNT_A_ID:role/DataSyncS3ToS3Role"
       },
       "Action": [
         "s3:GetBucketLocation",
         "s3:ListBucket",
+        "s3:ListBucketMultipartUploads",
+        "s3:AbortMultipartUpload",
+        "s3:DeleteObject",
         "s3:GetObject",
-        "s3:GetObjectTagging"
+        "s3:ListMultipartUploadParts",
+        "s3:PutObject",
+        "s3:GetObjectTagging",
+        "s3:PutObjectTagging"
       ],
       "Resource": [
-        "arn:aws:s3:::source-bucket",
-        "arn:aws:s3:::source-bucket/*"
+        "arn:aws:s3:::destination-bucket",
+        "arn:aws:s3:::destination-bucket/*"
       ]
     }]
   }'
@@ -134,7 +140,7 @@ Set up both S3 locations in DataSync:
 aws datasync create-location-s3 \
   --s3-bucket-arn "arn:aws:s3:::source-bucket" \
   --s3-storage-class "STANDARD" \
-  --subdirectory "/data/2025" \
+  --subdirectory "data/2025" \
   --s3-config '{
     "BucketAccessRoleArn": "arn:aws:iam::123456789012:role/DataSyncS3ToS3Role"
   }'
@@ -143,7 +149,7 @@ aws datasync create-location-s3 \
 aws datasync create-location-s3 \
   --s3-bucket-arn "arn:aws:s3:::destination-bucket" \
   --s3-storage-class "INTELLIGENT_TIERING" \
-  --subdirectory "/migrated/2025" \
+  --subdirectory "migrated/2025" \
   --s3-config '{
     "BucketAccessRoleArn": "arn:aws:iam::123456789012:role/DataSyncS3ToS3Role"
   }'
@@ -156,7 +162,6 @@ Available storage classes:
 - `STANDARD_IA`
 - `ONEZONE_IA`
 - `INTELLIGENT_TIERING`
-- `GLACIER_INSTANT_RETRIEVAL`
 - `GLACIER`
 - `DEEP_ARCHIVE`
 
@@ -248,45 +253,13 @@ done
 Set up a recurring schedule for ongoing sync:
 
 ```bash
-# Create an EventBridge rule for weekly transfers
-aws events put-rule \
-  --name "WeeklyS3Sync" \
-  --schedule-expression "cron(0 3 ? * SUN *)" \
-  --state ENABLED \
-  --description "Weekly S3-to-S3 sync via DataSync"
-
-# Create the IAM role for EventBridge to invoke DataSync
-aws iam create-role \
-  --role-name EventBridgeDataSyncRole \
-  --assume-role-policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Principal": {"Service": "events.amazonaws.com"},
-      "Action": "sts:AssumeRole"
-    }]
+# Add a weekly schedule to the DataSync task
+aws datasync update-task \
+  --task-arn "arn:aws:datasync:us-east-1:123456789012:task/task-0123456789abcdef0" \
+  --schedule '{
+    "ScheduleExpression": "cron(0 3 ? * SUN *)",
+    "Status": "ENABLED"
   }'
-
-aws iam put-role-policy \
-  --role-name EventBridgeDataSyncRole \
-  --policy-name InvokeDataSync \
-  --policy-document '{
-    "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Action": "datasync:StartTaskExecution",
-      "Resource": "arn:aws:datasync:us-east-1:123456789012:task/task-0123456789abcdef0"
-    }]
-  }'
-
-# Add the DataSync task as the EventBridge target
-aws events put-targets \
-  --rule "WeeklyS3Sync" \
-  --targets '[{
-    "Id": "datasync-weekly",
-    "Arn": "arn:aws:datasync:us-east-1:123456789012:task/task-0123456789abcdef0",
-    "RoleArn": "arn:aws:iam::123456789012:role/EventBridgeDataSyncRole"
-  }]'
 ```
 
 ## Cross-Region Considerations
@@ -298,11 +271,18 @@ When transferring between S3 buckets in different regions, keep in mind:
 - **Location**: Create the DataSync task in the same region as the destination bucket for best performance.
 
 ```bash
-# Create the task in the destination region
-# Source location can reference a bucket in another region
+# Create the source location in the source bucket's region
+aws datasync create-location-s3 \
+  --region us-east-1 \
+  --s3-bucket-arn "arn:aws:s3:::source-bucket-east" \
+  --s3-config '{
+    "BucketAccessRoleArn": "arn:aws:iam::123456789012:role/DataSyncS3ToS3Role"
+  }'
+
+# Create the destination location and task in the destination bucket's region
 aws datasync create-location-s3 \
   --region us-west-2 \
-  --s3-bucket-arn "arn:aws:s3:::source-bucket-east" \
+  --s3-bucket-arn "arn:aws:s3:::destination-bucket-west" \
   --s3-config '{
     "BucketAccessRoleArn": "arn:aws:iam::123456789012:role/DataSyncS3ToS3Role"
   }'
