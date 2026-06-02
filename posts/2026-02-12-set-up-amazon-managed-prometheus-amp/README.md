@@ -25,7 +25,7 @@ flowchart LR
     F[Prometheus on EKS] -->|Remote Write| B
 ```
 
-AMP does not scrape your metrics directly. Instead, you run a Prometheus server (or the AWS Distro for OpenTelemetry, or Grafana Agent) that scrapes your targets and then remote-writes the metrics to AMP. AMP stores them and makes them queryable via PromQL.
+AMP does not scrape your metrics directly. Instead, you run a Prometheus server (or the AWS Distro for OpenTelemetry, or Grafana Alloy) that scrapes your targets and then remote-writes the metrics to AMP. AMP stores them and makes them queryable via PromQL.
 
 ## Step 1: Create an AMP Workspace
 
@@ -52,9 +52,9 @@ aws amp describe-workspace \
   --workspace-id ws-abc123-def456
 
 # Output includes:
-# prometheusEndpoint: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/
-# The remote write URL is: {prometheusEndpoint}api/v1/remote_write
-# The query URL is: {prometheusEndpoint}api/v1/query
+# prometheusEndpoint: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/api/v1/
+# The remote write URL is: {prometheusEndpoint}remote_write
+# The query URL is: {prometheusEndpoint}query
 ```
 
 ## Step 2: Configure IAM for Metric Ingestion
@@ -152,6 +152,7 @@ exporters:
 
 extensions:
   sigv4auth:
+    service: aps
     region: us-east-1
 
 service:
@@ -164,25 +165,30 @@ service:
 
 Deploy ADOT as a DaemonSet or sidecar in your EKS cluster.
 
-### Option C: Grafana Agent
+### Option C: Grafana Alloy
 
-Grafana Agent is another lightweight option designed specifically for remote writing to Prometheus-compatible backends.
+Grafana Alloy is another lightweight option designed for collecting metrics and remote writing to Prometheus-compatible backends.
 
-```yaml
-# grafana-agent.yaml
-metrics:
-  global:
-    scrape_interval: 15s
-    remote_write:
-      - url: https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/api/v1/remote_write
-        sigv4:
-          region: us-east-1
-  configs:
-    - name: default
-      scrape_configs:
-        - job_name: 'kubernetes-pods'
-          kubernetes_sd_configs:
-            - role: pod
+```hcl
+# config.alloy
+discovery.kubernetes "pods" {
+  role = "pod"
+}
+
+prometheus.scrape "kubernetes_pods" {
+  targets    = discovery.kubernetes.pods.targets
+  forward_to = [prometheus.remote_write.amp.receiver]
+}
+
+prometheus.remote_write "amp" {
+  endpoint {
+    url = "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/api/v1/remote_write"
+
+    sigv4 {
+      region = "us-east-1"
+    }
+  }
+}
 ```
 
 ## Step 4: Deploy to EKS with Helm
@@ -232,11 +238,7 @@ You can also verify through Managed Grafana. Connect Grafana to AMP (see [connec
 Recording rules pre-compute frequently used or expensive queries.
 
 ```bash
-# Create a rule group namespace
-aws amp create-rule-groups-namespace \
-  --workspace-id ws-abc123-def456 \
-  --name "aggregation-rules" \
-  --data "$(cat <<'EOF'
+cat > aggregation-rules.yaml <<'EOF'
 groups:
   - name: cpu_aggregations
     interval: 60s
@@ -247,7 +249,12 @@ groups:
       - record: namespace:container_cpu_usage:sum_rate5m
         expr: sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace)
 EOF
-)"
+
+# Create a rule group namespace
+aws amp create-rule-groups-namespace \
+  --workspace-id ws-abc123-def456 \
+  --name "aggregation-rules" \
+  --data fileb://aggregation-rules.yaml
 ```
 
 ### Set Up Alerting Rules
@@ -256,20 +263,20 @@ Define alert rules that AMP evaluates continuously. See our dedicated guide on [
 
 ## Step 7: Configure Metric Retention
 
-AMP stores metrics for 150 days by default. This is not currently configurable per workspace - all AMP workspaces have the same retention period.
+AMP stores metrics for 150 days by default. You can configure the workspace retention period up to 1095 days.
 
 If you need longer retention, consider:
 - Archiving metrics to S3 periodically
 - Using CloudWatch for long-term metric storage
-- Setting up a separate workspace for long-term aggregated metrics
+- Setting the workspace retention period with `aws amp update-workspace-configuration`
 
 ## Cost Considerations
 
 AMP pricing is based on:
 
 - **Metric samples ingested**: Per 10 million samples
-- **Metric samples stored**: Per 10 million samples stored per month
-- **Metric samples queried**: Per 10 million samples scanned per query
+- **Metric samples and metadata stored**: Based on GB-month of storage
+- **Query samples processed**: Based on the number of samples processed by PromQL queries
 
 To optimize costs:
 
