@@ -124,7 +124,7 @@ if __name__ == "__main__":
 Spark supports two deploy modes:
 
 - **Client mode** - The driver runs on the master node. Good for interactive sessions and debugging. You see output in real-time.
-- **Cluster mode** - The driver runs on one of the worker nodes. Better for production jobs because the driver doesn't depend on your SSH session staying alive.
+- **Cluster mode** - The driver runs inside the YARN ApplicationMaster on the cluster. Better for production jobs because the driver doesn't depend on your SSH session staying alive.
 
 Always use cluster mode for production jobs. If you're debugging, use client mode through a spark-shell session.
 
@@ -225,15 +225,15 @@ EMR has a special S3 committer that avoids the rename problem with regular HDFS 
 ```python
 spark = SparkSession.builder \
     .appName("Fast Writes") \
+    .config("spark.sql.parquet.fs.optimized.committer.optimization-enabled", "true") \
     .config("spark.sql.parquet.output.committer.class",
             "com.amazon.emr.committer.EmrOptimizedSparkSqlParquetOutputCommitter") \
-    .config("spark.sql.hive.convertInsertingPartitionedTable", "false") \
     .getOrCreate()
 ```
 
 ## Monitoring Spark Jobs
 
-EMR exposes the Spark UI on port 18080 of the master node. To access it, set up an SSH tunnel.
+EMR exposes the Spark History Server on port 18080 of the master node. To access it, set up an SSH tunnel.
 
 ```bash
 # Create SSH tunnel to access Spark History Server
