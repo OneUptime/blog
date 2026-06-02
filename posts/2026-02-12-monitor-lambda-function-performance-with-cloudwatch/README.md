@@ -20,13 +20,13 @@ Lambda automatically sends these metrics to CloudWatch - no configuration needed
 |---|---|
 | Invocations | Number of times the function was called |
 | Errors | Number of invocations that resulted in an error |
-| Duration | Execution time in milliseconds |
+| Duration | Handler execution time in milliseconds |
 | Throttles | Invocations that were throttled due to concurrency limits |
 | ConcurrentExecutions | Number of function instances running simultaneously |
 | UnreservedConcurrentExecutions | Concurrent executions using the unreserved pool |
 | IteratorAge | (Streams) Age of the last record processed |
 
-These metrics are available at both the function level and alias/version level.
+Function metrics can be viewed by function name, alias, version, executed version, or event source mapping where those dimensions apply. `UnreservedConcurrentExecutions` is a regional concurrency metric.
 
 ## Essential CloudWatch Alarms
 
@@ -40,7 +40,7 @@ Resources:
   ErrorAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${FunctionName}-errors"
+      AlarmName: !Sub "${MyFunction}-errors"
       AlarmDescription: Lambda function error rate is too high
       MetricName: Errors
       Namespace: AWS/Lambda
@@ -62,7 +62,7 @@ Resources:
   ThrottleAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${FunctionName}-throttles"
+      AlarmName: !Sub "${MyFunction}-throttles"
       AlarmDescription: Lambda function is being throttled
       MetricName: Throttles
       Namespace: AWS/Lambda
@@ -81,7 +81,7 @@ Resources:
   LatencyAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: !Sub "${FunctionName}-high-latency"
+      AlarmName: !Sub "${MyFunction}-high-latency"
       AlarmDescription: Lambda function p99 latency is too high
       MetricName: Duration
       Namespace: AWS/Lambda
@@ -239,16 +239,14 @@ filter @type = "REPORT"
 | limit 20
 ```
 
-Calculate error rate:
+Find error log entries:
 
 ```text
-# Calculate error rate over time
-filter @type = "REPORT"
-| stats
-    count(*) as total,
-    sum(strcontains(@message, 'ERROR')) as errors,
-    (sum(strcontains(@message, 'ERROR')) / count(*)) * 100 as errorRate
-  by bin(5m)
+# Find recent error log entries
+filter @message like /ERROR/
+| fields @timestamp, @requestId, @message
+| sort @timestamp desc
+| limit 20
 ```
 
 Analyze memory usage:
@@ -256,7 +254,7 @@ Analyze memory usage:
 ```text
 # Find functions using most of their allocated memory
 filter @type = "REPORT"
-| fields @maxMemoryUsed / 1000000 as memUsedMB, @memorySize as memAllocated
+| fields @maxMemoryUsed as memUsedMB, @memorySize as memAllocated
 | fields (memUsedMB / memAllocated) * 100 as memoryUtilization
 | filter memoryUtilization > 80
 | sort memoryUtilization desc
@@ -322,11 +320,12 @@ filter level = "INFO" and message = "Request completed"
 Lambda costs are based on invocations, duration, and memory. Track them:
 
 ```text
-# Estimate Lambda cost from REPORT logs
+# Track Lambda usage inputs from REPORT logs
 filter @type = "REPORT"
 | stats
     count(*) as invocations,
     sum(@billedDuration) / 1000 as totalBilledSeconds,
+    sum((@memorySize / 1024) * (@billedDuration / 1000)) as totalGBSeconds,
     avg(@memorySize) as avgMemoryMB
   by bin(1h)
 ```
