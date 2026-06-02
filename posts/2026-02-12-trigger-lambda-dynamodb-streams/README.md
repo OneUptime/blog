@@ -8,7 +8,7 @@ Description: Learn how to set up DynamoDB Streams to trigger Lambda functions fo
 
 ---
 
-DynamoDB Streams capture every change to your table - inserts, updates, and deletes - in an ordered, time-stamped sequence. Hook a Lambda function to that stream, and you've got real-time change data capture. Every time a row changes, your function fires with the old and new values. It's the foundation for building reactive systems, maintaining materialized views, syncing data across services, and triggering workflows based on data changes.
+DynamoDB Streams capture every change to your table - inserts, updates, and deletes - in an ordered, time-stamped sequence. Hook a Lambda function to that stream, and you've got real-time change data capture. As rows change, Lambda invokes your function with stream records; with `NEW_AND_OLD_IMAGES`, those records include the old and new values. It's the foundation for building reactive systems, maintaining materialized views, syncing data across services, and triggering workflows based on data changes.
 
 Let's set it up from scratch and cover the patterns that work well in production.
 
@@ -54,7 +54,7 @@ export class DynamoStreamStack extends cdk.Stack {
 
     // Create the stream processor Lambda
     const streamProcessor = new lambda.Function(this, 'StreamProcessor', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda/stream-processor'),
       timeout: cdk.Duration.minutes(1),
@@ -86,7 +86,7 @@ Let's break down those event source configuration options:
 - `batchSize: 100` - Lambda receives up to 100 records per invocation.
 - `maxBatchingWindow: 5 seconds` - Lambda waits up to 5 seconds to fill the batch before invoking.
 - `bisectBatchOnError: true` - if a batch fails, Lambda splits it in half and retries each half. This helps isolate the problematic record.
-- `reportBatchItemFailures: true` - lets your function report which specific records failed, so Lambda only retries those.
+- `reportBatchItemFailures: true` - lets your function report which specific records failed, so Lambda can checkpoint the successful records before the first failure.
 - `parallelizationFactor: 2` - process up to 2 batches from the same shard concurrently.
 
 ## Writing the Stream Processor
@@ -165,7 +165,7 @@ async function handleOrderDeletion(order) {
 }
 ```
 
-The `batchItemFailures` response is critical. When `reportBatchItemFailures` is enabled, returning a list of failed sequence numbers tells Lambda to only retry those specific records. Without this, a single failure causes the entire batch to be retried.
+The `batchItemFailures` response is critical. When `reportBatchItemFailures` is enabled, returning failed sequence numbers tells Lambda to checkpoint at the lowest failed sequence number, so it retries from that record instead of retrying the entire batch. Without this, a single failure causes the entire batch to be retried.
 
 ## The DynamoDB Stream Record Format
 
@@ -253,13 +253,13 @@ async function syncToSearch(eventName, newImage, oldImage) {
 
 ## Error Handling and Retry Behavior
 
-DynamoDB Streams are ordered per partition key. If a record fails and you don't use `reportBatchItemFailures`, Lambda retries the entire batch - and it blocks newer records on that shard until the batch succeeds or reaches the retry limit. This can cause a backlog.
+DynamoDB Streams preserve the order of changes for each item. If a record fails and you don't use `reportBatchItemFailures`, Lambda retries the entire batch - and it blocks newer records on that shard until the batch succeeds or reaches the retry limit. This can cause a backlog.
 
 To prevent this:
 
-1. Enable `reportBatchItemFailures` to only retry failed records
+1. Enable `reportBatchItemFailures` to checkpoint successful records before the first failure
 2. Enable `bisectBatchOnError` to isolate problematic records
-3. Configure `maxRetryAttempts` and set up a [destination for failures](https://oneuptime.com/blog/post/2026-02-12-lambda-destinations-asynchronous-invocation/view)
+3. Configure `retryAttempts` and set up an [on-failure destination for discarded records](https://docs.aws.amazon.com/lambda/latest/dg/services-dynamodb-errors.html)
 4. Make your processing idempotent - records may be delivered more than once
 
 ## Monitoring Stream Processing
