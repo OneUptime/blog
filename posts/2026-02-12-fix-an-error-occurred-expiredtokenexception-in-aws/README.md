@@ -41,7 +41,7 @@ If you're using `aws sts assume-role` and the session expired, just re-assume th
 # Re-assume the role
 
 aws sts assume-role \
-  --role-arn arn:aws:iam::123456789:role/my-role \
+  --role-arn arn:aws:iam::123456789012:role/my-role \
   --role-session-name my-session \
   --duration-seconds 3600
 
@@ -57,7 +57,8 @@ Or better yet, configure the CLI to automatically assume the role.
 ```ini
 # ~/.aws/config
 [profile my-role-profile]
-role_arn = arn:aws:iam::123456789:role/my-role
+role_arn = arn:aws:iam::123456789012:role/my-role
+role_session_name = my-session
 source_profile = default
 duration_seconds = 3600
 ```
@@ -90,7 +91,7 @@ If you're using MFA to get temporary credentials, the session has expired and yo
 ```bash
 # Get a new session with your current MFA code
 aws sts get-session-token \
-  --serial-number arn:aws:iam::123456789:mfa/your-device \
+  --serial-number arn:aws:iam::123456789012:mfa/your-device \
   --token-code 123456 \
   --duration-seconds 43200  # 12 hours
 
@@ -107,6 +108,7 @@ If your application is using temporary credentials, it needs to handle refresh. 
 ```python
 import boto3
 from botocore.exceptions import ClientError
+from datetime import datetime, timezone, timedelta
 
 # Option 1: Use a role profile (automatic refresh)
 session = boto3.Session(profile_name='my-role-profile')
@@ -131,8 +133,17 @@ class CredentialManager:
         self.credentials = response['Credentials']
         print(f"Credentials refreshed, expire at {self.credentials['Expiration']}")
 
+    def is_expired(self):
+        """Refresh 5 minutes before actual expiration."""
+        if not self.credentials:
+            return True
+        expiration = self.credentials['Expiration']
+        return datetime.now(timezone.utc) > (expiration - timedelta(minutes=5))
+
     def get_client(self, service_name, region_name='us-east-1'):
         """Get a boto3 client with current credentials."""
+        if self.is_expired():
+            self.refresh_credentials()
         return boto3.client(
             service_name,
             region_name=region_name,
@@ -141,20 +152,8 @@ class CredentialManager:
             aws_session_token=self.credentials['SessionToken']
         )
 
-    def execute_with_refresh(self, func, *args, **kwargs):
-        """Execute a function, refreshing credentials if expired."""
-        try:
-            return func(*args, **kwargs)
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ExpiredTokenException':
-                print("Token expired, refreshing...")
-                self.refresh_credentials()
-                # Retry - the caller needs to recreate the client
-                return func(*args, **kwargs)
-            raise
-
 # Usage
-cred_manager = CredentialManager('arn:aws:iam::123456789:role/my-role')
+cred_manager = CredentialManager('arn:aws:iam::123456789012:role/my-role')
 s3 = cred_manager.get_client('s3')
 
 try:
@@ -222,7 +221,7 @@ class CredentialManager {
 }
 
 // Usage
-const manager = new CredentialManager('arn:aws:iam::123456789:role/my-role');
+const manager = new CredentialManager('arn:aws:iam::123456789012:role/my-role');
 
 async function listBuckets() {
   const s3 = await manager.getClient(S3Client, { region: 'us-east-1' });
@@ -233,7 +232,7 @@ async function listBuckets() {
 
 ## Fix for EC2 Instances
 
-EC2 instances with IAM roles should never get this error because the instance metadata service automatically refreshes credentials. If you are seeing it, something is overriding the automatic refresh.
+EC2 instances with IAM roles should not get this error when the AWS CLI or SDK credential provider chain is using instance metadata, because the instance metadata service automatically refreshes credentials. If you are seeing it, something is overriding the automatic refresh or the application is caching credentials that it read from instance metadata.
 
 ```bash
 # Check if environment variables are overriding instance credentials
@@ -245,8 +244,11 @@ unset AWS_ACCESS_KEY_ID
 unset AWS_SECRET_ACCESS_KEY
 unset AWS_SESSION_TOKEN
 
-# Verify instance metadata is working
-curl http://169.254.169.254/latest/meta-data/iam/security-credentials/
+# Verify instance metadata is working (IMDSv2)
+TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+curl -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/
 ```
 
 ## Increasing Token Duration
@@ -261,7 +263,7 @@ aws iam update-role \
 
 # Now you can request longer sessions
 aws sts assume-role \
-  --role-arn arn:aws:iam::123456789:role/my-role \
+  --role-arn arn:aws:iam::123456789012:role/my-role \
   --role-session-name my-session \
   --duration-seconds 43200
 ```
