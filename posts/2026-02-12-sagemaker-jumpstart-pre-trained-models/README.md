@@ -50,6 +50,8 @@ Let's deploy a text embedding model. This is useful for building search systems,
 
 ```python
 from sagemaker.jumpstart.model import JumpStartModel
+from sagemaker.serializers import JSONSerializer
+from sagemaker.deserializers import JSONDeserializer
 
 # Deploy a text embedding model
 model_id = 'huggingface-sentencesimilarity-all-MiniLM-L6-v2'
@@ -64,22 +66,19 @@ model = JumpStartModel(
 predictor = model.deploy(
     initial_instance_count=1,
     instance_type='ml.m5.xlarge',
-    endpoint_name='text-embeddings'
+    endpoint_name='text-embeddings',
+    serializer=JSONSerializer(),
+    deserializer=JSONDeserializer()
 )
 
 # Test it
-import json
+payload = [
+    'How do I reset my password?',
+    'I forgot my login credentials',
+    'What are the pricing plans?'
+]
 
-payload = {
-    'text_inputs': [
-        'How do I reset my password?',
-        'I forgot my login credentials',
-        'What are the pricing plans?'
-    ]
-}
-
-response = predictor.predict(payload)
-embeddings = response['embedding']
+embeddings = predictor.predict(payload)
 
 print(f"Generated {len(embeddings)} embeddings, each with {len(embeddings[0])} dimensions")
 ```
@@ -104,7 +103,8 @@ llm_model = JumpStartModel(
 predictor = llm_model.deploy(
     initial_instance_count=1,
     instance_type='ml.g5.2xlarge',
-    endpoint_name='llama-2-7b'
+    endpoint_name='llama-2-7b',
+    accept_eula=True
 )
 
 # Generate text
@@ -118,7 +118,7 @@ payload = {
 }
 
 response = predictor.predict(payload)
-print(response[0]['generated_text'])
+print(response[0]['generation'])
 ```
 
 ## Deploying an Image Classification Model
@@ -144,24 +144,24 @@ predictor = vision_model.deploy(
 )
 
 # Classify an image
-import boto3
+predictor.accept = 'application/json;verbose'
 
 # Read an image file
 with open('test_image.jpg', 'rb') as f:
     image_bytes = f.read()
 
 # Send to the endpoint
-runtime = boto3.client('sagemaker-runtime')
-response = runtime.invoke_endpoint(
-    EndpointName='image-classifier',
-    ContentType='application/x-image',
-    Body=image_bytes
+predictions = predictor.predict(
+    image_bytes,
+    {'ContentType': 'application/x-image', 'Accept': 'application/json;verbose'}
 )
+labels = predictions['labels']
+probabilities = predictions['probabilities']
 
-predictions = json.loads(response['Body'].read().decode())
 print("Top 5 predictions:")
-for label, score in sorted(predictions.items(), key=lambda x: x[1], reverse=True)[:5]:
-    print(f"  {label}: {score:.4f}")
+top_indices = sorted(range(len(probabilities)), key=lambda i: probabilities[i], reverse=True)[:5]
+for i in top_indices:
+    print(f"  {labels[i]}: {probabilities[i]:.4f}")
 ```
 
 ## Fine-Tuning a JumpStart Model
@@ -226,8 +226,9 @@ llm_estimator = JumpStartEstimator(
     instance_type='ml.g5.12xlarge',
     instance_count=1,
     sagemaker_session=session,
+    environment={'accept_eula': 'true'},
     hyperparameters={
-        'epochs': 3,
+        'epoch': 3,
         'learning_rate': 1e-5,
         'instruction_tuned': 'True',
         'max_input_length': 512
@@ -320,6 +321,8 @@ predictor.delete_endpoint()
 fine_tuned_predictor.delete_endpoint()
 
 # List and clean up any remaining endpoints
+import boto3
+
 client = boto3.client('sagemaker')
 response = client.list_endpoints(
     StatusEquals='InService',
