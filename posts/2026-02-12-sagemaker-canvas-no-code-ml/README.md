@@ -68,7 +68,7 @@ Canvas can pull data from several sources:
 - Connect to Redshift, Athena, or Snowflake
 - Use datasets shared by data engineers in SageMaker Studio
 
-For an S3 import through the API (useful for automation).
+To prepare data for an S3 import (useful for automation).
 
 ```python
 # Prepare data for Canvas - upload a clean CSV to S3
@@ -111,16 +111,16 @@ Building a model in Canvas follows these steps:
 1. **Select your dataset** - Click on your imported dataset
 2. **Choose the target column** - Pick what you want to predict (e.g., "churned")
 3. **Review columns** - Canvas shows which columns it will use as features. You can exclude columns that shouldn't be features (like customer_id)
-4. **Choose build type** - Quick Build (2-15 minutes, less accurate) or Standard Build (2-4 hours, more accurate)
+4. **Choose build type** - Quick Build (typically minutes, prioritizes speed) or Standard Build (longer, prioritizes accuracy)
 5. **Start the build** - Canvas trains multiple models and picks the best one
 
-Quick Build is great for initial exploration. Use it to validate that your data and problem setup make sense. Standard Build uses more compute and tries more algorithms - use it when you want the best possible model.
+Quick Build is great for initial exploration. Use it to validate that your data and problem setup make sense. Standard Build uses more compute and explores the modeling space more thoroughly - use it when you want the best possible model.
 
 ## Understanding Model Results
 
 After building, Canvas shows you a results page with:
 
-- **Overall accuracy** - How well the model performs
+- **Overall performance metric** - How well the model performs
 - **Feature importance** - Which columns matter most for predictions
 - **Confusion matrix** - For classification, shows correct vs incorrect predictions
 - **Advanced metrics** - Precision, recall, F1 score, AUC
@@ -181,25 +181,35 @@ model_name = best_candidate['CandidateName']
 print(f"Best model: {model_name}")
 print(f"Objective metric: {best_candidate['FinalAutoMLJobObjectiveMetric']['Value']:.4f}")
 
-# The model can be deployed using standard SageMaker deployment
-from sagemaker import Session
-from sagemaker.model import Model
-
-session = Session()
-
 # Canvas models use AutoML-generated containers
 inference_containers = best_candidate['InferenceContainers']
 
-model = Model(
-    containers=inference_containers,
-    role='arn:aws:iam::123456789012:role/SageMakerExecutionRole',
-    sagemaker_session=session
+endpoint_name = 'canvas-churn-predictor'
+endpoint_config_name = f'{endpoint_name}-config'
+role_arn = 'arn:aws:iam::123456789012:role/SageMakerExecutionRole'
+
+# Create the SageMaker model from the AutoML inference containers
+client.create_model(
+    ModelName=model_name,
+    ExecutionRoleArn=role_arn,
+    Containers=inference_containers
 )
 
-predictor = model.deploy(
-    initial_instance_count=1,
-    instance_type='ml.m5.large',
-    endpoint_name='canvas-churn-predictor'
+client.create_endpoint_config(
+    EndpointConfigName=endpoint_config_name,
+    ProductionVariants=[
+        {
+            'VariantName': 'AllTraffic',
+            'ModelName': model_name,
+            'InstanceType': 'ml.m5.large',
+            'InitialInstanceCount': 1
+        }
+    ]
+)
+
+client.create_endpoint(
+    EndpointName=endpoint_name,
+    EndpointConfigName=endpoint_config_name
 )
 ```
 
@@ -221,11 +231,11 @@ When should you use Canvas versus writing code?
 
 ## Setting Up Data Connections
 
-Canvas can connect to enterprise data sources for ongoing model development.
+Canvas can connect to enterprise data sources for ongoing model development. For AWS sources such as Athena, the user's execution role needs the required SageMaker Canvas and Athena permissions. For OAuth-based external sources such as Salesforce Data Cloud or Snowflake, you can configure identity provider settings at the domain level.
 
 ```python
-# Create an Athena connection for Canvas
-# This lets business users query data lakes directly
+# Configure OAuth for Salesforce Data Cloud in Canvas
+# Snowflake can be configured the same way with DataSourceName='Snowflake'
 
 import boto3
 
@@ -257,7 +267,9 @@ If you deploy a Canvas model to production, you should monitor it just like any 
 Canvas has its own pricing model. You pay for:
 
 - **Session charges** - Per-hour charge while Canvas is open
+- **Data processing charges** - For larger datasets and data preparation workloads
 - **Training charges** - Based on the size of your dataset and build type
+- **Prediction charges** - For custom model predictions and ready-to-use model usage
 - **Endpoint charges** - Standard SageMaker endpoint pricing if you deploy
 
 Quick Builds are cheaper than Standard Builds. Close your Canvas session when you're not actively using it to avoid session charges.
