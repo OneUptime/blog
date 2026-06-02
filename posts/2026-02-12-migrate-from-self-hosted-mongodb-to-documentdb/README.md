@@ -14,7 +14,7 @@ This guide covers how to migrate from self-hosted MongoDB to DocumentDB with min
 
 ## Understanding DocumentDB Compatibility
 
-DocumentDB implements the MongoDB 3.6, 4.0, and 5.0 wire protocol, but it is not a MongoDB fork. It has its own storage engine and some MongoDB features are not supported. Check these before migrating:
+DocumentDB implements MongoDB-compatible 3.6, 4.0, 5.0, and 8.0 APIs, but it is not a MongoDB fork. It has its own storage engine and some MongoDB features are not supported. Check these before migrating:
 
 **Supported:**
 - CRUD operations
@@ -26,9 +26,8 @@ DocumentDB implements the MongoDB 3.6, 4.0, and 5.0 wire protocol, but it is not
 **Not supported or different:**
 - $where operator
 - Map-reduce (use aggregation instead)
-- Full-text search (use OpenSearch instead)
+- Full-text search differences and limitations
 - Capped collections
-- GridFS
 - Some aggregation stages ($graphLookup with sharding, etc.)
 
 ```python
@@ -157,17 +156,16 @@ dms.create_endpoint(
     EndpointIdentifier='source-mongodb',
     EndpointType='source',
     EngineName='mongodb',
-    ServerName='mongodb-primary.internal.company.com',
-    Port=27017,
-    DatabaseName='your_database',
-    Username='dms_user',
-    Password='password',
     MongoDbSettings={
+        'Username': 'dms_user',
+        'Password': 'password',
+        'ServerName': 'mongodb-primary.internal.company.com',
+        'Port': 27017,
+        'DatabaseName': 'your_database',
         'AuthType': 'password',
         'AuthMechanism': 'scram_sha_1',
-        'NestingLevel': 'one',
+        'NestingLevel': 'none',
         'ExtractDocId': 'true',
-        'DocsToInvestigate': '1000',
         'AuthSource': 'admin'
     }
 )
@@ -177,11 +175,14 @@ dms.create_endpoint(
     EndpointIdentifier='target-docdb',
     EndpointType='target',
     EngineName='docdb',
-    ServerName='mongodb-migrated.cluster-abc123.us-east-1.docdb.amazonaws.com',
-    Port=27017,
-    DatabaseName='your_database',
-    Username='docdbadmin',
-    Password='SecurePassword123!'
+    DocDbSettings={
+        'Username': 'docdbadmin',
+        'Password': 'SecurePassword123!',
+        'ServerName': 'mongodb-migrated.cluster-abc123.us-east-1.docdb.amazonaws.com',
+        'Port': 27017,
+        'DatabaseName': 'your_database',
+        'NestingLevel': 'none'
+    }
 )
 
 # Create replication task
@@ -214,8 +215,7 @@ For maximum control, build a custom replication pipeline using MongoDB change st
 
 ```python
 # Custom replication using MongoDB change streams
-from pymongo import MongoClient
-import ssl
+from pymongo import MongoClient, ReplaceOne
 
 # Source MongoDB connection
 source = MongoClient('mongodb://admin:password@mongodb-primary:27017/')
@@ -230,7 +230,10 @@ target = MongoClient(
 )
 target_db = target['your_database']
 
-# Step 1: Initial full copy
+# Step 1: Open the change stream before the copy so writes during the copy are captured
+stream = source_db.watch()
+
+# Step 2: Initial full copy
 for coll_name in source_db.list_collection_names():
     print(f"Copying collection: {coll_name}")
     source_coll = source_db[coll_name]
@@ -238,17 +241,17 @@ for coll_name in source_db.list_collection_names():
 
     batch = []
     for doc in source_coll.find():
-        batch.append(doc)
+        batch.append(ReplaceOne({'_id': doc['_id']}, doc, upsert=True))
         if len(batch) >= 1000:
-            target_coll.insert_many(batch)
+            target_coll.bulk_write(batch, ordered=False)
             batch = []
 
     if batch:
-        target_coll.insert_many(batch)
+        target_coll.bulk_write(batch, ordered=False)
 
-# Step 2: Watch for changes and replicate
+# Step 3: Watch for changes and replicate
 print("Starting change stream replication...")
-with source_db.watch() as stream:
+with stream:
     for change in stream:
         operation = change['operationType']
         ns = change['ns']
@@ -256,11 +259,29 @@ with source_db.watch() as stream:
         target_coll = target_db[coll_name]
 
         if operation == 'insert':
-            target_coll.insert_one(change['fullDocument'])
+            target_coll.replace_one(
+                {'_id': change['documentKey']['_id']},
+                change['fullDocument'],
+                upsert=True
+            )
         elif operation == 'update':
+            update_description = change['updateDescription']
+            update_doc = {}
+            if update_description.get('updatedFields'):
+                update_doc['$set'] = update_description['updatedFields']
+            if update_description.get('removedFields'):
+                update_doc['$unset'] = {field: "" for field in update_description['removedFields']}
+            if not update_doc:
+                continue
             target_coll.update_one(
                 {'_id': change['documentKey']['_id']},
-                change['updateDescription']
+                update_doc
+            )
+        elif operation == 'replace':
+            target_coll.replace_one(
+                {'_id': change['documentKey']['_id']},
+                change['fullDocument'],
+                upsert=True
             )
         elif operation == 'delete':
             target_coll.delete_one({'_id': change['documentKey']['_id']})
