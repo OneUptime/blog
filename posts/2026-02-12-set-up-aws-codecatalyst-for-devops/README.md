@@ -10,6 +10,8 @@ Description: Learn how to set up AWS CodeCatalyst as a unified DevOps platform f
 
 AWS has a lot of individual developer tools - CodeCommit, CodeBuild, CodeDeploy, CodePipeline - but they have always felt like separate pieces that you had to wire together yourself. CodeCatalyst changes that. It is a unified DevOps service that brings source control, CI/CD, issue tracking, and development environments into a single platform. Think of it as AWS's answer to GitHub or GitLab, but with deeper integration into the AWS ecosystem.
 
+Note: Amazon CodeCatalyst is no longer open to new customers. Existing CodeCatalyst customers can continue using the service, so this guide is for teams that already have access.
+
 This guide walks through setting up a CodeCatalyst space, creating your first project, connecting it to your AWS accounts, and getting your team productive.
 
 ## What Is CodeCatalyst?
@@ -19,7 +21,7 @@ CodeCatalyst is a cloud-based development platform that provides:
 - **Source repositories** - Git-based repos hosted by AWS
 - **Workflows** - CI/CD pipelines defined as YAML
 - **Issues** - Lightweight issue tracking and project management
-- **Dev Environments** - Cloud-based IDEs (powered by AWS Cloud9 or JetBrains)
+- **Dev Environments** - Cloud-based IDEs (AWS Cloud9, Visual Studio Code, or JetBrains IDEs)
 - **Blueprints** - Project templates for common application types
 - **Team management** - Spaces and projects for organizing teams
 
@@ -29,6 +31,7 @@ It runs outside your AWS account (it has its own identity system) but connects t
 
 - An AWS account (for deployment targets)
 - An AWS Builder ID (free, separate from your AWS account)
+- Existing access to Amazon CodeCatalyst
 - A modern web browser
 
 ## Step 1: Create a CodeCatalyst Space
@@ -41,12 +44,11 @@ A space is the top-level organizational unit in CodeCatalyst. It contains projec
 4. Enter a space name (e.g., "my-company")
 5. Connect your AWS account for billing and deployments
 
-To connect your AWS account programmatically:
+After configuring the AWS CLI profile for CodeCatalyst and signing in with SSO, you can verify CLI access:
 
 ```bash
-# Verify the connection from your AWS account side
-
-aws codecatalyst list-spaces
+aws sso login --profile codecatalyst
+aws codecatalyst list-spaces --profile codecatalyst
 ```
 
 ## Step 2: Connect Your AWS Account
@@ -60,7 +62,7 @@ In the CodeCatalyst console:
 3. Click "Add AWS account"
 4. Follow the prompts to create the connection
 
-This creates a CloudFormation stack in your AWS account with the necessary IAM roles:
+This creates IAM roles in your AWS account that use the CodeCatalyst trust model:
 
 ```yaml
 # The connection creates roles similar to this
@@ -74,11 +76,13 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: codecatalyst.amazonaws.com
+              Service:
+                - codecatalyst.amazonaws.com
+                - codecatalyst-runner.amazonaws.com
             Action: sts:AssumeRole
             Condition:
-              StringEquals:
-                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: arn:aws:codecatalyst:::space/space-id/project/*
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AdministratorAccess
 ```
@@ -101,7 +105,7 @@ Or use the web console, which gives you the option to start from a blueprint (mo
 
 ## Step 4: Set Up a Source Repository
 
-Every project gets a source repository. You can create one from scratch or import from GitHub:
+Projects can use CodeCatalyst source repositories, or they can link to supported third-party repositories such as GitHub, Bitbucket, or GitLab:
 
 ```bash
 # Create a new source repository
@@ -154,7 +158,7 @@ Name: BuildAndDeploy
 SchemaVersion: "1.0"
 
 Triggers:
-  - Type: Push
+  - Type: PUSH
     Branches:
       - main
 
@@ -176,14 +180,12 @@ Actions:
             - "**/*"
 
   DeployToStaging:
-    Identifier: aws/cdk-deploy@v1
+    Identifier: aws/cdk-deploy@v2
     DependsOn:
       - Build
     Inputs:
       Sources:
         - WorkflowSource
-      Artifacts:
-        - BuildOutput
     Environment:
       Name: staging
       Connections:
@@ -206,9 +208,12 @@ Actions:
         - Run: npm run test:integration
 
   DeployToProduction:
-    Identifier: aws/cdk-deploy@v1
+    Identifier: aws/cdk-deploy@v2
     DependsOn:
       - IntegrationTests
+    Inputs:
+      Sources:
+        - WorkflowSource
     Environment:
       Name: production
       Connections:
@@ -224,20 +229,14 @@ For a deeper dive into workflows, check out our guide on [using CodeCatalyst Wor
 
 ## Step 6: Configure Environments
 
-Environments in CodeCatalyst represent deployment targets. Create them through the console or API:
+Environments in CodeCatalyst represent deployment targets. Create them through the console:
 
-```bash
-# Environments are configured in the CodeCatalyst console
-# They map to AWS accounts and regions
-
-# You can also define environment variables
-aws codecatalyst create-environment \
-  --space-name "my-company" \
-  --project-name "PaymentService" \
-  --name "staging" \
-  --environment-type NON_PRODUCTION \
-  --description "Staging environment for pre-production testing"
-```
+1. Go to your project
+2. Click CI/CD > Environments
+3. Click "Create environment"
+4. Enter a name such as "staging"
+5. Choose the environment type (Non-production or Production)
+6. Optionally associate an AWS account connection and default IAM role
 
 ## Step 7: Invite Team Members
 
@@ -269,7 +268,8 @@ graph TD
     I --> J[Staging AWS Account]
     I --> K[Production AWS Account]
     G --> L[Cloud9 IDE]
-    G --> M[JetBrains IDE]
+    G --> M[VS Code IDE]
+    G --> N[JetBrains IDE]
 ```
 
 ## Step 8: Set Up Dev Environments
@@ -281,8 +281,10 @@ CodeCatalyst Dev Environments give your team cloud-based IDEs:
 aws codecatalyst create-dev-environment \
   --space-name "my-company" \
   --project-name "PaymentService" \
+  --repositories repositoryName=payment-service,branchName=main \
+  --ides name=VSCode \
   --instance-type dev.standard1.small \
-  --persistent-storage-size-in-gib 16 \
+  --persistent-storage sizeInGiB=16 \
   --inactivity-timeout-minutes 30
 ```
 
@@ -294,7 +296,7 @@ For more on this topic, see our guide on [setting up CodeCatalyst Dev Environmen
 
 2. **Scope down IAM roles.** The default development role has admin access. Create production roles with only the permissions your workflows actually need.
 
-3. **Use environments for deployment gates.** Configure staging as NON_PRODUCTION and production as PRODUCTION. This adds appropriate guardrails.
+3. **Use environments to label deployment targets.** Configure staging as Non-production and production as Production so deployment actions are clearly marked in the UI.
 
 4. **Integrate existing GitHub repos.** If your code is on GitHub, you can connect GitHub repositories to CodeCatalyst projects rather than migrating everything.
 
