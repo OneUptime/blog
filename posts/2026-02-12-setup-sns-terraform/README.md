@@ -155,6 +155,10 @@ resource "aws_sqs_queue" "fulfillment_dlq" {
   name = "fulfillment-dlq"
 }
 
+resource "aws_sqs_queue" "sns_dlq" {
+  name = "order-events-sns-dlq"
+}
+
 resource "aws_sns_topic_subscription" "fulfillment" {
   topic_arn            = aws_sns_topic.order_events.arn
   protocol             = "sqs"
@@ -183,6 +187,26 @@ resource "aws_sqs_queue_policy" "fulfillment" {
       Principal = { Service = "sns.amazonaws.com" }
       Action    = "sqs:SendMessage"
       Resource  = aws_sqs_queue.fulfillment.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.order_events.arn
+        }
+      }
+    }]
+  })
+}
+
+# SQS policy to allow SNS to send failed deliveries to the subscription DLQ
+resource "aws_sqs_queue_policy" "sns_dlq" {
+  queue_url = aws_sqs_queue.sns_dlq.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "sns.amazonaws.com" }
+      Action    = "sqs:SendMessage"
+      Resource  = aws_sqs_queue.sns_dlq.arn
       Condition = {
         ArnEquals = {
           "aws:SourceArn" = aws_sns_topic.order_events.arn
@@ -249,7 +273,7 @@ resource "aws_sns_topic_subscription" "high_value_orders" {
 
 Control who can publish to and subscribe to your topic.
 
-This policy allows a specific AWS account to publish and specific services to subscribe.
+This policy allows a specific IAM role and CloudWatch alarms to publish, and the same AWS account to subscribe.
 
 ```hcl
 resource "aws_sns_topic_policy" "order_events" {
