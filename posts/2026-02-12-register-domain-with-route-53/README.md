@@ -20,11 +20,13 @@ Before registering, check if your desired domain is available.
 # Check if a domain is available
 
 aws route53domains check-domain-availability \
+  --region us-east-1 \
   --domain-name example.com
 
 # Check availability of multiple variations
 for domain in example.com example.io example.dev example.app; do
   result=$(aws route53domains check-domain-availability \
+    --region us-east-1 \
     --domain-name "$domain" \
     --query 'Availability' \
     --output text)
@@ -32,7 +34,7 @@ for domain in example.com example.io example.dev example.app; do
 done
 ```
 
-The response will be one of: AVAILABLE, UNAVAILABLE, DONT_KNOW (check the TLD registrar directly), or RESERVED.
+The response can be AVAILABLE, AVAILABLE_RESERVED, AVAILABLE_PREORDER, UNAVAILABLE, UNAVAILABLE_PREMIUM, UNAVAILABLE_RESTRICTED, RESERVED, DONT_KNOW, INVALID_NAME_FOR_TLD, or PENDING. You can register only domains marked AVAILABLE.
 
 ## Getting the Price
 
@@ -41,11 +43,12 @@ Domain prices vary by TLD. Check the price before registering.
 ```bash
 # Get registration and renewal prices
 aws route53domains list-prices \
+  --region us-east-1 \
   --tld com \
   --query 'Prices[0].{Registration:RegistrationPrice.Price,Renewal:RenewalPrice.Price,Transfer:TransferPrice.Price,Currency:RegistrationPrice.Currency}'
 ```
 
-As of this writing, .com domains cost about $13-14 per year through Route 53. Some TLDs like .io or .dev are more expensive. Compare with other registrars if price is a concern.
+Route 53 pricing changes over time, so use `list-prices` or the Route 53 pricing page for the current amount before you register. Some TLDs like .io or .dev are more expensive than .com. Compare with other registrars if price is a concern.
 
 ## Registering a Domain
 
@@ -54,6 +57,7 @@ Here's the registration command. You'll need to provide contact information for 
 ```bash
 # Register a domain
 aws route53domains register-domain \
+  --region us-east-1 \
   --domain-name example.com \
   --duration-in-years 1 \
   --auto-renew \
@@ -110,11 +114,13 @@ Registration typically completes within a few minutes for popular TLDs like .com
 ```bash
 # Check the status of a domain registration
 aws route53domains get-domain-detail \
+  --region us-east-1 \
   --domain-name example.com \
   --query '{Status:StatusList,AutoRenew:AutoRenew,Expiry:ExpirationDate,NameServers:Nameservers[*].Name}'
 
 # List all domains in your account
 aws route53domains list-domains \
+  --region us-east-1 \
   --query 'Domains[*].{Domain:DomainName,AutoRenew:AutoRenew,Expiry:Expiry}' \
   --output table
 ```
@@ -126,10 +132,12 @@ Always enable auto-renewal on production domains. Forgetting to renew a domain c
 ```bash
 # Enable auto-renewal
 aws route53domains enable-domain-auto-renew \
+  --region us-east-1 \
   --domain-name example.com
 
 # Disable auto-renewal (for domains you're sunsetting)
 aws route53domains disable-domain-auto-renew \
+  --region us-east-1 \
   --domain-name old-domain.com
 ```
 
@@ -140,10 +148,12 @@ Transfer lock prevents unauthorized domain transfers. It's enabled by default fo
 ```bash
 # Enable transfer lock
 aws route53domains enable-domain-transfer-lock \
+  --region us-east-1 \
   --domain-name example.com
 
 # Check if transfer lock is enabled
 aws route53domains get-domain-detail \
+  --region us-east-1 \
   --domain-name example.com \
   --query 'StatusList'
 ```
@@ -162,21 +172,24 @@ If you already have a domain at another registrar, you can transfer it to Route 
 
 # Step 3: Initiate the transfer
 aws route53domains transfer-domain \
+  --region us-east-1 \
   --domain-name example.com \
   --duration-in-years 1 \
   --auto-renew \
   --auth-code "YourAuthCodeHere" \
-  --admin-contact '{...}' \
-  --registrant-contact '{...}' \
-  --tech-contact '{...}' \
+  --admin-contact file://admin-contact.json \
+  --registrant-contact file://registrant-contact.json \
+  --tech-contact file://tech-contact.json \
   --privacy-protect-admin-contact \
   --privacy-protect-registrant-contact \
   --privacy-protect-tech-contact
 ```
 
+Use the same contact object format shown in the registration example for the contact JSON files.
+
 Domain transfers can take 5-7 days because the old registrar has a window to object. Some registrars process it faster if you approve the transfer through their confirmation email.
 
-Important: your domain continues to work normally during the transfer. There's no downtime. The name servers don't change until you explicitly update them.
+Important: your domain usually continues to work normally during the transfer if DNS remains active. If your current registrar also provides DNS, move DNS to Route 53 or another DNS provider before the transfer so the old registrar can't interrupt DNS service.
 
 ## Transferring Away from Route 53
 
@@ -185,10 +198,12 @@ If you want to move your domain to another registrar.
 ```bash
 # Disable transfer lock
 aws route53domains disable-domain-transfer-lock \
+  --region us-east-1 \
   --domain-name example.com
 
 # Get the authorization code
 aws route53domains retrieve-domain-auth-code \
+  --region us-east-1 \
   --domain-name example.com
 ```
 
@@ -201,6 +216,7 @@ If your company address or contact details change, update the domain's contact i
 ```bash
 # Update registrant contact
 aws route53domains update-domain-contact \
+  --region us-east-1 \
   --domain-name example.com \
   --registrant-contact '{
     "FirstName": "Jane",
@@ -227,17 +243,17 @@ resource "aws_route53domains_registered_domain" "main" {
   auto_renew  = true
 
   admin_contact {
-    first_name    = "Jane"
-    last_name     = "Doe"
-    contact_type  = "COMPANY"
-    organization  = "My Company Inc"
-    address_line_1 = "123 Main St"
-    city          = "San Francisco"
-    state         = "CA"
-    country_code  = "US"
-    zip_code      = "94105"
-    phone_number  = "+1.4155551234"
-    email         = "admin@mycompany.com"
+    first_name        = "Jane"
+    last_name         = "Doe"
+    contact_type      = "COMPANY"
+    organization_name = "My Company Inc"
+    address_line_1    = "123 Main St"
+    city              = "San Francisco"
+    state             = "CA"
+    country_code      = "US"
+    zip_code          = "94105"
+    phone_number      = "+1.4155551234"
+    email             = "admin@mycompany.com"
   }
 
   admin_privacy    = true
@@ -246,7 +262,7 @@ resource "aws_route53domains_registered_domain" "main" {
 }
 ```
 
-Note that Terraform can manage existing registered domains but the initial registration is usually better done through the AWS console or CLI. The Terraform resource is more useful for managing settings on domains you've already registered.
+Note that `aws_route53domains_registered_domain` adopts and manages domains that already exist in the AWS account. If you want Terraform to handle registration lifecycle, use `aws_route53domains_domain` instead.
 
 ## DNS Configuration After Registration
 
