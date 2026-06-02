@@ -52,7 +52,7 @@ const response = await docClient.send(new QueryCommand({
 }));
 
 console.log(`Found ${response.Count} orders`);
-for (const item of response.Items) {
+for (const item of response.Items || []) {
     console.log(`  Order: ${item.order_id} - $${item.total}`);
 }
 ```
@@ -73,7 +73,7 @@ const response = await docClient.send(new QueryCommand({
 }));
 
 // Orders between two dates
-const rangResponse = await docClient.send(new QueryCommand({
+const rangeResponse = await docClient.send(new QueryCommand({
     TableName: 'orders',
     KeyConditionExpression:
         'customer_id = :cid AND order_date BETWEEN :start AND :end',
@@ -84,14 +84,14 @@ const rangResponse = await docClient.send(new QueryCommand({
     }
 }));
 
-// Orders with a sort key prefix (useful for hierarchical keys)
+// Orders with a sort key prefix (useful for dates or hierarchical keys)
 const prefixResponse = await docClient.send(new QueryCommand({
     TableName: 'orders',
     KeyConditionExpression:
-        'customer_id = :cid AND begins_with(order_id, :prefix)',
+        'customer_id = :cid AND begins_with(order_date, :prefix)',
     ExpressionAttributeValues: {
         ':cid': 'cust-12345',
-        ':prefix': 'ORD-2026'
+        ':prefix': '2026-'
     }
 }));
 
@@ -104,7 +104,7 @@ const latestResponse = await docClient.send(new QueryCommand({
     Limit: 1
 }));
 
-const latestOrder = latestResponse.Items[0];
+const latestOrder = latestResponse.Items?.[0];
 ```
 
 ## Filter Expressions
@@ -116,9 +116,10 @@ Filter expressions narrow results after the query reads items from the table. Th
 const response = await docClient.send(new QueryCommand({
     TableName: 'orders',
     KeyConditionExpression: 'customer_id = :cid',
-    FilterExpression: '#status = :status AND total > :minTotal',
+    FilterExpression: '#status = :status AND #total > :minTotal',
     ExpressionAttributeNames: {
-        '#status': 'status'  // 'status' is a reserved word
+        '#status': 'status',  // 'status' is a reserved word
+        '#total': 'total'     // 'total' is also reserved
     },
     ExpressionAttributeValues: {
         ':cid': 'cust-12345',
@@ -159,8 +160,9 @@ Only retrieve the attributes you need to reduce data transfer.
 const response = await docClient.send(new QueryCommand({
     TableName: 'orders',
     KeyConditionExpression: 'customer_id = :cid',
-    ProjectionExpression: 'order_id, order_date, total, #s',
+    ProjectionExpression: 'order_id, order_date, #total, #s',
     ExpressionAttributeNames: {
+        '#total': 'total',
         '#s': 'status'
     },
     ExpressionAttributeValues: {
@@ -169,7 +171,7 @@ const response = await docClient.send(new QueryCommand({
 }));
 
 // Items only contain the projected attributes
-for (const item of response.Items) {
+for (const item of response.Items || []) {
     console.log(`${item.order_id}: $${item.total} (${item.status})`);
 }
 ```
@@ -192,10 +194,11 @@ async function queryAll(docClient, params) {
         }
 
         const response = await docClient.send(new QueryCommand(queryParams));
-        allItems.push(...response.Items);
+        const items = response.Items || [];
+        allItems.push(...items);
         lastEvaluatedKey = response.LastEvaluatedKey;
 
-        console.log(`Fetched ${response.Items.length} items ` +
+        console.log(`Fetched ${items.length} items ` +
             `(total: ${allItems.length})`);
     } while (lastEvaluatedKey);
 
@@ -276,7 +279,7 @@ const response = await client.send(new QueryCommand({
 }));
 
 // Manually unmarshall the results
-for (const item of response.Items) {
+for (const item of response.Items || []) {
     const parsed = unmarshall(item);
     console.log(parsed);
 }
@@ -301,7 +304,7 @@ const response = await docClient.send(new BatchGetCommand({
     }
 }));
 
-for (const item of response.Responses.orders) {
+for (const item of response.Responses?.orders || []) {
     console.log(`${item.customer_id}: ${item.order_id} - $${item.total}`);
 }
 
