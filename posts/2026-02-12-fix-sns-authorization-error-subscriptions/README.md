@@ -142,11 +142,11 @@ Here's the SQS queue policy for receiving messages from the SNS topic.
 }
 ```
 
-## Cause 4: KMS Encryption on the Topic
+## Cause 4: KMS Encryption on the Topic or Endpoint
 
-If your SNS topic uses server-side encryption with a KMS key, the subscriber needs `kms:Decrypt` and `kms:GenerateDataKey` permissions on that key. This one catches people off guard because the error message doesn't always mention KMS.
+If your SNS topic uses server-side encryption with a customer managed KMS key, KMS authorization issues usually affect the publisher or the AWS service publishing to the topic, not the subscriber. The publisher needs `kms:Decrypt` and `kms:GenerateDataKey` permissions on the topic's KMS key. This one catches people off guard because the error message doesn't always mention KMS.
 
-Add these KMS permissions to the subscriber's IAM policy.
+Add these KMS permissions to the publisher's IAM policy, or allow the publishing principal in the KMS key policy.
 
 ```json
 {
@@ -163,6 +163,8 @@ Add these KMS permissions to the subscriber's IAM policy.
   ]
 }
 ```
+
+If the receiving endpoint is an encrypted SQS queue, the queue's KMS key policy also needs to allow the Amazon SNS service principal to use `kms:Decrypt` and `kms:GenerateDataKey` so SNS can deliver messages.
 
 ## Cause 5: SCP or Permission Boundaries
 
