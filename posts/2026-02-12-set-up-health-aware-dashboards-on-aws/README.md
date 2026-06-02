@@ -33,7 +33,7 @@ When all three are on the same screen, your team can instantly tell whether an i
 ## Prerequisites
 
 - CloudWatch access with dashboard creation permissions
-- AWS Health API access (available in all accounts, full API requires Business or Enterprise Support)
+- AWS Health EventBridge events, plus AWS Health API access if you use Step 5 (the API requires Business Support, Enterprise On-Ramp, Enterprise Support, or AWS Unified Operations)
 - An application with CloudWatch metrics already flowing
 
 ## Step 1: Set Up AWS Health Event Forwarding
@@ -56,9 +56,8 @@ Now create a Lambda function that converts health events into CloudWatch custom 
 
 ```python
 # Lambda function to convert AWS Health events to CloudWatch metrics
-import json
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 
@@ -66,12 +65,13 @@ def handler(event, context):
     detail = event['detail']
     service = detail.get('service', 'unknown')
     event_type = detail.get('eventTypeCategory', 'unknown')
-    region = detail.get('affectedRegion', event.get('region', 'unknown'))
+    region = detail.get('eventRegion', event.get('region', 'unknown'))
     status = detail.get('statusCode', 'unknown')
 
     # Map event category to a numeric value for the metric
     category_values = {
         'issue': 3,           # Active service issue
+        'investigation': 3,   # AWS is investigating a possible issue
         'accountNotification': 1,  # Informational
         'scheduledChange': 2       # Planned maintenance
     }
@@ -91,7 +91,7 @@ def handler(event, context):
                 ],
                 'Value': metric_value,
                 'Unit': 'None',
-                'Timestamp': datetime.utcnow()
+                'Timestamp': datetime.now(timezone.utc)
             },
             {
                 'MetricName': 'ActiveHealthEvents',
@@ -100,7 +100,7 @@ def handler(event, context):
                 ],
                 'Value': 1 if status == 'open' else 0,
                 'Unit': 'Count',
-                'Timestamp': datetime.utcnow()
+                'Timestamp': datetime.now(timezone.utc)
             }
         ]
     )
@@ -117,6 +117,13 @@ aws events put-targets \
     "Id": "health-to-metrics",
     "Arn": "arn:aws:lambda:us-east-1:123456789012:function:health-event-to-metric"
   }]'
+
+aws lambda add-permission \
+  --function-name health-event-to-metric \
+  --statement-id allow-eventbridge-health-events \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/aws-health-events
 ```
 
 ## Step 2: Create Resource Health Metrics
@@ -147,16 +154,16 @@ elbv2 = boto3.client('elbv2')
 
 def handler(event, context):
     # Check EC2 instance statuses
-    response = ec2.describe_instance_status(
-        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
-    )
-
     impaired_count = 0
-    for status in response['InstanceStatuses']:
-        instance_status = status['InstanceStatus']['Status']
-        system_status = status['SystemStatus']['Status']
-        if instance_status != 'ok' or system_status != 'ok':
-            impaired_count += 1
+    paginator = ec2.get_paginator('describe_instance_status')
+    for page in paginator.paginate(
+        Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
+    ):
+        for status in page['InstanceStatuses']:
+            instance_status = status['InstanceStatus']['Status']
+            system_status = status['SystemStatus']['Status']
+            if instance_status != 'ok' or system_status != 'ok':
+                impaired_count += 1
 
     cloudwatch.put_metric_data(
         Namespace='Custom/ResourceHealth',
@@ -168,33 +175,34 @@ def handler(event, context):
     )
 
     # Check ALB target group health
-    target_groups = elbv2.describe_target_groups()
-    for tg in target_groups['TargetGroups']:
-        health = elbv2.describe_target_health(
-            TargetGroupArn=tg['TargetGroupArn']
-        )
-        healthy = sum(1 for t in health['TargetHealthDescriptions']
-                     if t['TargetHealth']['State'] == 'healthy')
-        unhealthy = sum(1 for t in health['TargetHealthDescriptions']
-                       if t['TargetHealth']['State'] == 'unhealthy')
+    tg_paginator = elbv2.get_paginator('describe_target_groups')
+    for page in tg_paginator.paginate():
+        for tg in page['TargetGroups']:
+            health = elbv2.describe_target_health(
+                TargetGroupArn=tg['TargetGroupArn']
+            )
+            healthy = sum(1 for t in health['TargetHealthDescriptions']
+                         if t['TargetHealth']['State'] == 'healthy')
+            unhealthy = sum(1 for t in health['TargetHealthDescriptions']
+                           if t['TargetHealth']['State'] == 'unhealthy')
 
-        cloudwatch.put_metric_data(
-            Namespace='Custom/ResourceHealth',
-            MetricData=[
-                {
-                    'MetricName': 'HealthyTargets',
-                    'Dimensions': [{'Name': 'TargetGroup', 'Value': tg['TargetGroupName']}],
-                    'Value': healthy,
-                    'Unit': 'Count'
-                },
-                {
-                    'MetricName': 'UnhealthyTargets',
-                    'Dimensions': [{'Name': 'TargetGroup', 'Value': tg['TargetGroupName']}],
-                    'Value': unhealthy,
-                    'Unit': 'Count'
-                }
-            ]
-        )
+            cloudwatch.put_metric_data(
+                Namespace='Custom/ResourceHealth',
+                MetricData=[
+                    {
+                        'MetricName': 'HealthyTargets',
+                        'Dimensions': [{'Name': 'TargetGroup', 'Value': tg['TargetGroupName']}],
+                        'Value': healthy,
+                        'Unit': 'Count'
+                    },
+                    {
+                        'MetricName': 'UnhealthyTargets',
+                        'Dimensions': [{'Name': 'TargetGroup', 'Value': tg['TargetGroupName']}],
+                        'Value': unhealthy,
+                        'Unit': 'Count'
+                    }
+                ]
+            )
 
     return {'statusCode': 200}
 ```
@@ -213,6 +221,13 @@ aws events put-targets \
     "Id": "resource-health-collector",
     "Arn": "arn:aws:lambda:us-east-1:123456789012:function:collect-resource-health"
   }]'
+
+aws lambda add-permission \
+  --function-name collect-resource-health \
+  --statement-id allow-eventbridge-resource-health \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/collect-resource-health
 ```
 
 ## Step 3: Build the Dashboard
@@ -220,7 +235,6 @@ aws events put-targets \
 Now put it all together in a CloudWatch dashboard. The dashboard has three sections: a health status banner at the top, application metrics in the middle, and resource health at the bottom.
 
 ```json
-// CloudWatch dashboard body for health-aware monitoring
 {
   "widgets": [
     {
@@ -329,7 +343,6 @@ aws cloudwatch put-dashboard \
 Consolidate all your CloudWatch alarms into a single widget for an at-a-glance view:
 
 ```json
-// Alarm status widget
 {
   "type": "alarm",
   "x": 0,
