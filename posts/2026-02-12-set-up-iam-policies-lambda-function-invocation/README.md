@@ -143,7 +143,7 @@ aws lambda add-permission \
   --source-arn "arn:aws:execute-api:us-east-1:123456789012:abc123/*/GET/users"
 ```
 
-The `source-arn` scopes the permission to a specific API, stage, method, and path. Without it, any API Gateway in the account could invoke your function.
+The `source-arn` scopes the permission to a specific API, stage, method, and path. Without it, other API Gateway resources could invoke your function, including resources in other accounts that configure API Gateway to call it.
 
 ### Allow S3 Events to Invoke
 
@@ -227,6 +227,8 @@ aws lambda add-permission \
 ```
 
 The caller in Account B then invokes it:
+
+The caller's IAM role or user also needs an identity-based policy that allows `lambda:InvokeFunction` on the function ARN.
 
 ```python
 import boto3
@@ -331,7 +333,7 @@ resource "aws_lambda_function" "processor" {
   function_name = "order-processor"
   role          = aws_iam_role.lambda_exec.arn
   handler       = "index.handler"
-  runtime       = "nodejs20.x"
+  runtime       = "nodejs24.x"
   filename      = "function.zip"
 }
 
