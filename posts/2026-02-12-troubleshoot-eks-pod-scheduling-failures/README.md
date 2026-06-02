@@ -39,7 +39,7 @@ Diagnose it:
 # Check resource allocation on all nodes
 kubectl describe nodes | grep -A 5 "Allocated resources"
 
-# Or get a summary of allocatable vs. requested resources
+# Or get a summary of current CPU and memory usage
 kubectl top nodes
 ```
 
@@ -195,8 +195,8 @@ topologySpreadConstraints:
 Each EC2 instance type has a maximum number of pods it can run, determined by the number of ENIs and IP addresses available.
 
 ```bash
-# Check max pods per node
-kubectl get nodes -o custom-columns=NAME:.metadata.name,CAPACITY:.status.capacity.pods,USED:.status.allocatable.pods
+# Check pod capacity per node
+kubectl get nodes -o custom-columns=NAME:.metadata.name,CAPACITY:.status.capacity.pods,ALLOCATABLE:.status.allocatable.pods
 ```
 
 For example, an m5.large supports 29 pods by default.
@@ -207,12 +207,13 @@ For example, an m5.large supports 29 pods by default.
 2. Enable prefix delegation to increase pod density:
 
 ```bash
-# Enable prefix delegation on the VPC CNI (increases max pods significantly)
+# Enable prefix delegation on the VPC CNI (increases available pod IPs)
 kubectl set env daemonset aws-node -n kube-system ENABLE_PREFIX_DELEGATION=true
 kubectl set env daemonset aws-node -n kube-system WARM_PREFIX_TARGET=1
 ```
 
-3. Scale up your node group
+3. Make sure the node group's kubelet `max-pods` setting reflects the prefix delegation limit, and replace existing nodes if needed
+4. Scale up your node group
 
 ## Unschedulable Nodes
 
