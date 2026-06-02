@@ -143,7 +143,7 @@ aws cloudfront create-distribution \
 Some notes on the configuration:
 
 - **ViewerProtocolPolicy: redirect-to-https** - Forces HTTPS for all visitors
-- **Compress: true** - Enables automatic gzip/brotli compression
+- **Compress: true** - Enables automatic compression; the managed CachingOptimized policy also enables Gzip and Brotli variants in the cache key
 - **PriceClass_100** - Uses only North American and European edge locations (cheapest). Use PriceClass_All for global.
 - **HttpVersion: http2and3** - Enables HTTP/2 and HTTP/3 for best performance
 - The **CachePolicyId** `658327ea-f89d-4fab-a63d-7e88639e58f6` is the AWS Managed-CachingOptimized policy
@@ -300,6 +300,7 @@ aws s3 sync "$BUILD_DIR" "s3://$BUCKET" \
   --exclude "*.html"
 
 # HTML files get shorter cache since they change more often
+# The managed CachingOptimized policy still enforces a 1-second minimum TTL.
 aws s3 sync "$BUILD_DIR" "s3://$BUCKET" \
   --exclude "*" --include "*.html" \
   --cache-control "max-age=0,no-cache,no-store,must-revalidate" \
@@ -324,7 +325,7 @@ echo "Deployment complete!"
 ## Performance Tips
 
 1. **Use long cache TTLs for static assets** and bust the cache with hashed filenames (e.g., `app.a1b2c3.js`)
-2. **Enable Brotli compression** - CloudFront compresses automatically when `Compress: true`
+2. **Enable Brotli compression** - CloudFront compresses automatically when `Compress: true` is used with a cache policy that enables Brotli, such as the managed CachingOptimized policy
 3. **Use HTTP/3** for faster connections on modern browsers
 4. **Set appropriate Price Class** - PriceClass_All for global audience, PriceClass_100 for US/EU only
 
