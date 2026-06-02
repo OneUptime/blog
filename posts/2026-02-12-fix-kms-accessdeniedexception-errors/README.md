@@ -8,16 +8,16 @@ Description: Diagnose and resolve AccessDeniedException errors when working with
 
 ---
 
-AWS KMS `AccessDeniedException` errors are frustrating because KMS uses a unique permission model that combines IAM policies with key policies. Unlike most AWS services where IAM policies alone determine access, KMS requires both sides to agree. Let's untangle how this works and fix the common scenarios where things break.
+AWS KMS `AccessDeniedException` errors are frustrating because KMS uses a unique permission model that combines key policies, IAM policies, and grants. Unlike most AWS services where IAM policies alone determine access, KMS always requires the key policy to allow access directly or delegate access control to IAM. Let's untangle how this works and fix the common scenarios where things break.
 
 ## How KMS Permissions Work
 
-KMS has a dual authorization model. Access to a KMS key requires:
+KMS has a layered authorization model. Access to a KMS key requires:
 
-1. The **key policy** must allow the action (or delegate to IAM)
-2. The **IAM policy** must allow the action
+1. The **key policy** must allow the action directly, delegate to IAM, or allow grants to be used
+2. If access is delegated through IAM, the **IAM policy** must allow the action
 
-If either one denies or doesn't allow the action, you get `AccessDeniedException`. This is the source of most confusion.
+An explicit deny in any applicable policy still wins. If there is no effective allow from the key policy, an IAM policy, or a grant, you get `AccessDeniedException`. This is the source of most confusion.
 
 ## Cause 1: Key Policy Doesn't Enable IAM Policies
 
@@ -149,7 +149,7 @@ Both pieces must be in place. Missing either one results in `AccessDeniedExcepti
 
 ## Cause 4: KMS Key Is Disabled or Pending Deletion
 
-A key that's been disabled or scheduled for deletion can't be used for cryptographic operations. Check the key status.
+A key that's been disabled or scheduled for deletion can't be used for cryptographic operations. This usually produces state-related errors such as `DisabledException` or `KMSInvalidStateException`, not `AccessDeniedException`, but it is worth checking before you spend more time on policies.
 
 ```bash
 # Check the current state of a KMS key
@@ -270,4 +270,4 @@ aws kms list-grants \
 7. Does the service need `kms:CreateGrant`?
 8. Check CloudTrail for the detailed error context.
 
-KMS access issues are always about the interplay between key policies and IAM policies. Once you understand that both must agree, the debugging process becomes systematic. For more AWS troubleshooting tips, take a look at our guide on [fixing ACM certificate validation issues](https://oneuptime.com/blog/post/2026-02-12-fix-acm-certificate-pending-validation-stuck/view).
+KMS access issues are usually about the interplay between key policies, IAM policies, and grants. Once you understand which policy path is supposed to allow the request, the debugging process becomes systematic. For more AWS troubleshooting tips, take a look at our guide on [fixing ACM certificate validation issues](https://oneuptime.com/blog/post/2026-02-12-fix-acm-certificate-pending-validation-stuck/view).
