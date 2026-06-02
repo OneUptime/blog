@@ -22,7 +22,7 @@ S3 Intelligent-Tiering has five access tiers:
 
 The first three tiers are automatic. The archive tiers are opt-in and configurable.
 
-When an object is accessed, it automatically moves back to Frequent Access. There are no retrieval fees for any tier - that's the big advantage over manually using Glacier.
+When an object in the low-latency tiers is accessed, it automatically moves back to Frequent Access. Objects in the optional Archive and Deep Archive tiers must be restored first, and then they move back to Frequent Access. There are no retrieval fees for standard or bulk retrievals - that's the big advantage over manually using Glacier.
 
 ## The Cost of Intelligent-Tiering
 
@@ -31,9 +31,9 @@ There's a monitoring fee of $0.0025 per 1,000 objects per month. For objects sma
 Let's do the math. If you have 10 million objects and 50% of them are cold:
 
 - **Monitoring cost**: 10M / 1000 x $0.0025 = $25/month
-- **Savings on cold data**: If 5M objects average 1MB each, that's 5TB moved from Standard ($0.023) to Infrequent ($0.0125) = $43.75/month saved
+- **Savings on cold data**: If 5M objects average 1MB each, that's about 5TB moved from Standard ($0.023) to Infrequent ($0.0125) = $52.50/month saved
 
-Net savings: $18.75/month. And that's just with the Infrequent tier. With Archive tiers enabled, the savings multiply.
+Net savings: $27.50/month. And that's just with the Infrequent tier. With Archive tiers enabled, the savings multiply.
 
 ## Step 1: Upload Objects to Intelligent-Tiering
 
@@ -47,7 +47,7 @@ aws s3 cp large-dataset.parquet \
   --storage-class INTELLIGENT_TIERING
 ```
 
-Or set it as the default for all uploads using a lifecycle rule.
+Or transition new uploads automatically using a lifecycle rule.
 
 ## Step 2: Set Up a Lifecycle Policy for Automatic Transition
 
@@ -167,11 +167,11 @@ flowchart TD
 
     C -->|Object accessed| B
     D -->|Object accessed| B
-    E -->|Object accessed\nRestore: 3-5 hours| B
-    F -->|Object accessed\nRestore: 12 hours| B
+    E -->|RestoreObject\nStandard: 3-5 hours| B
+    F -->|RestoreObject\nStandard: within 12 hours| B
 ```
 
-Note: Objects in Archive and Deep Archive tiers need to be restored before access (like Glacier), but there are no retrieval fees. The access automatically triggers the restore and moves the object back to Frequent Access.
+Note: Objects in Archive and Deep Archive tiers need to be restored before access (like Glacier), but there are no retrieval fees for standard or bulk retrievals. A `RestoreObject` request moves the object back to Frequent Access after the restore completes.
 
 ## Step 4: Monitor Tier Distribution
 
@@ -240,7 +240,7 @@ import boto3
 
 s3 = boto3.client('s3')
 
-# For smaller buckets, copy in place
+# For smaller buckets with objects under 5 GB, copy in place
 paginator = s3.get_paginator('list_objects_v2')
 pages = paginator.paginate(Bucket='my-data-bucket', Prefix='data/')
 
@@ -266,8 +266,8 @@ for page in pages:
 print(f"Migrated {migrated} objects to Intelligent-Tiering")
 ```
 
-For millions of objects, use [S3 Batch Operations](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view) instead.
+For millions of objects, or for objects over 5 GB that need multipart copy, use [S3 Batch Operations](https://oneuptime.com/blog/post/2026-02-12-s3-batch-operations-process-millions-objects/view) instead.
 
 ## Wrapping Up
 
-S3 Intelligent-Tiering is the "set it and forget it" approach to storage cost optimization. You pay a small monitoring fee per object, and AWS automatically moves your data to the cheapest tier based on actual access patterns. No retrieval fees when data moves back to Frequent Access means you never pay a penalty for incorrect tiering decisions. For most workloads with unpredictable access patterns, it's the best default choice.
+S3 Intelligent-Tiering is the "set it and forget it" approach to storage cost optimization. You pay a small monitoring fee per object, and AWS automatically moves your data to the cheapest tier based on actual access patterns. No standard or bulk retrieval fees when data moves back to Frequent Access means you never pay a penalty for incorrect tiering decisions. For most workloads with unpredictable access patterns, it's the best default choice.
