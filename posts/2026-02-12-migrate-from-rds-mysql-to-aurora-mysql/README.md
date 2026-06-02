@@ -36,7 +36,7 @@ graph TD
 
 ## Approach 1: Snapshot and Restore
 
-This is the simplest approach. You take a snapshot of your RDS MySQL instance and restore it as a new Aurora cluster. The downside is that your application has downtime while the snapshot is created and restored.
+This is the simplest approach. You take a snapshot of your RDS MySQL instance and restore it as a new Aurora cluster. The downside is that, to avoid losing writes made after the snapshot, your application needs to stop writes before the snapshot and stay read-only or offline until cutover.
 
 ### Step-by-Step
 
@@ -62,20 +62,12 @@ aws rds restore-db-cluster-from-snapshot \
   --db-cluster-identifier my-aurora-cluster \
   --snapshot-identifier mysql-to-aurora-snapshot \
   --engine aurora-mysql \
-  --engine-version 5.7.mysql_aurora.2.11.2 \
   --db-subnet-group-name my-subnet-group \
   --vpc-security-group-ids sg-abc123
 
-# Add a writer instance to the new Aurora cluster
-aws rds create-db-instance \
-  --db-instance-identifier my-aurora-writer \
-  --db-cluster-identifier my-aurora-cluster \
-  --db-instance-class db.r5.large \
-  --engine aurora-mysql
-
-# Wait for the instance to become available
-aws rds wait db-instance-available \
-  --db-instance-identifier my-aurora-writer
+# Wait for the cluster to become available
+aws rds wait db-cluster-available \
+  --db-cluster-identifier my-aurora-cluster
 ```
 
 After the Aurora cluster is ready, update your application's connection string and you're done.
@@ -97,7 +89,6 @@ This is the best approach for production databases. You create an Aurora Read Re
 aws rds create-db-cluster \
   --db-cluster-identifier my-aurora-migration \
   --engine aurora-mysql \
-  --engine-version 5.7.mysql_aurora.2.11.2 \
   --replication-source-identifier arn:aws:rds:us-east-1:123456789012:db:my-rds-mysql \
   --db-subnet-group-name my-subnet-group \
   --vpc-security-group-ids sg-abc123
@@ -246,8 +237,7 @@ aws dms create-endpoint \
   --server-name my-rds-mysql.abc123.us-east-1.rds.amazonaws.com \
   --port 3306 \
   --username admin \
-  --password YourPassword123 \
-  --database-name mydb
+  --password YourPassword123
 
 # Create target endpoint (Aurora MySQL)
 aws dms create-endpoint \
@@ -257,8 +247,7 @@ aws dms create-endpoint \
   --server-name my-aurora-cluster.cluster-abc123.us-east-1.rds.amazonaws.com \
   --port 3306 \
   --username admin \
-  --password YourPassword123 \
-  --database-name mydb
+  --password YourPassword123
 
 # Create the migration task with CDC for ongoing replication
 aws dms create-replication-task \
@@ -285,7 +274,7 @@ SELECT 'products', COUNT(*) FROM products;"
 
 # 2. Check Aurora-specific parameters
 aws rds describe-db-cluster-parameters \
-  --db-cluster-parameter-group-name default.aurora-mysql5.7 \
+  --db-cluster-parameter-group-name default.aurora-mysql8.0 \
   --query 'Parameters[?ParameterName==`innodb_buffer_pool_size`].{Name:ParameterName,Value:ParameterValue}'
 
 # 3. Add reader instances for read scaling
