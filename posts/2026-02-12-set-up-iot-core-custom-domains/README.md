@@ -24,13 +24,13 @@ graph TD
     A --> E[Custom CA Certificates]
     A --> F[DNS-Based Failover]
     C --> C1[Move between regions without firmware update]
-    D --> D1[Same domain across dev/staging/prod accounts]
+    D --> D1[Consistent subdomains across dev/staging/prod accounts]
     F --> F1[Route 53 health checks + failover]
 ```
 
 **Migration flexibility** is the big one. If your devices are hardcoded to connect to the default AWS endpoint and you need to move to a different account or region, you have to update every device. With a custom domain, you just update the DNS record.
 
-**Multi-account architecture** lets you use the same domain across environments. Your devices connect to `iot.yourcompany.com` and you use DNS to route dev devices to one account and production devices to another.
+**Multi-account architecture** lets you use consistent subdomains across environments. Your devices might connect to `dev.iot.yourcompany.com`, `staging.iot.yourcompany.com`, or `iot.yourcompany.com`, and you use DNS to route each hostname to the right account or region.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ ACM will give you DNS validation records to add. Once validated, note the certif
 
 ### Option B: Import your own certificate
 
-If your devices trust a specific CA (common in industrial IoT), import that CA's certificate:
+If your devices trust a specific CA (common in industrial IoT), import the server certificate signed by that CA:
 
 ```bash
 # Import your own server certificate
@@ -70,6 +70,8 @@ aws acm import-certificate \
   --certificate-chain fileb://ca-chain.pem \
   --region us-east-1
 ```
+
+If the server certificate is signed by a private CA or is self-signed, also request a public ACM certificate for the same custom domain to validate domain ownership. You will use that public certificate as the validation certificate when creating the domain configuration.
 
 ## Step 2: Create a Domain Configuration
 
@@ -87,14 +89,18 @@ aws iot create-domain-configuration \
   }'
 ```
 
+If you use a private CA or self-signed server certificate, add `--validation-certificate-arn` with the ARN of the public ACM certificate you created to validate domain ownership.
+
 A few notes on the parameters:
 
 - **service-type** can be `DATA` (for MQTT connections), `CREDENTIAL_PROVIDER` (for credential provider endpoints), or `JOBS` (for jobs endpoints). For most use cases, `DATA` is what you want.
 - **securityPolicy** controls which TLS versions and cipher suites are supported. Use the TLS 1.3 policy for new deployments unless your devices cannot support it.
 
+AWS IoT Core currently supports only the `DATA` service type for domain configurations.
+
 ## Step 3: Enable the Domain Configuration
 
-Domain configurations are created in a disabled state. Enable it:
+If the domain configuration is disabled, enable it:
 
 ```bash
 # Enable the domain configuration
@@ -105,15 +111,15 @@ aws iot update-domain-configuration \
 
 ## Step 4: Get the CNAME Target
 
-After creating the domain configuration, you need to find the target for your DNS CNAME record:
+After creating the domain configuration, you need to find the target for your DNS CNAME record. Use the AWS IoT data endpoint for your account and region:
 
 ```bash
-# Describe the domain configuration to get the CNAME target
-aws iot describe-domain-configuration \
-  --domain-configuration-name "CustomIoTDomain"
+# Get the AWS IoT data endpoint for the CNAME target
+aws iot describe-endpoint \
+  --endpoint-type iot:Data-ATS
 ```
 
-The response will include a `domainName` field with the target endpoint. It will look something like `d-abc123.iot.us-east-1.amazonaws.com`.
+The response will include an `endpointAddress` field with the target endpoint. It will look something like `a1b2c3d4e5f6g7-ats.iot.us-east-1.amazonaws.com`.
 
 ## Step 5: Configure DNS
 
@@ -133,7 +139,7 @@ aws route53 change-resource-record-sets \
           "TTL": 300,
           "ResourceRecords": [
             {
-              "Value": "d-abc123.iot.us-east-1.amazonaws.com"
+              "Value": "a1b2c3d4e5f6g7-ats.iot.us-east-1.amazonaws.com"
             }
           ]
         }
@@ -142,7 +148,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-If you are using Route 53, you can also use an Alias record instead of CNAME, which has better performance characteristics.
+AWS IoT Core documentation uses a CNAME record for customer managed domains. Route 53 alias records are only supported for selected AWS resources or other records in the same hosted zone.
 
 ## Step 6: Test the Connection
 
@@ -162,9 +168,10 @@ mosquitto_pub \
 
 # Or test with the AWS CLI
 aws iot-data publish \
-  --endpoint-url "https://iot.yourcompany.com:8443" \
+  --endpoint-url "https://iot.yourcompany.com" \
   --topic "test/custom-domain" \
-  --payload '{"test": "custom domain connection"}'
+  --payload '{"test": "custom domain connection"}' \
+  --cli-binary-format raw-in-base64-out
 ```
 
 ## Configuring an Authorizer with Custom Domains
@@ -194,7 +201,7 @@ aws route53 create-health-check \
   --health-check-config '{
     "Type": "TCP",
     "Port": 8883,
-    "FullyQualifiedDomainName": "d-abc123.iot.us-east-1.amazonaws.com",
+    "FullyQualifiedDomainName": "a1b2c3d4e5f6g7-ats.iot.us-east-1.amazonaws.com",
     "RequestInterval": 30,
     "FailureThreshold": 3
   }'
@@ -214,7 +221,7 @@ aws route53 change-resource-record-sets \
         "TTL": 60,
         "HealthCheckId": "health-check-id-here",
         "ResourceRecords": [{
-          "Value": "d-abc123.iot.us-east-1.amazonaws.com"
+          "Value": "a1b2c3d4e5f6g7-ats.iot.us-east-1.amazonaws.com"
         }]
       }
     }]
@@ -225,21 +232,16 @@ This pattern gives you high availability without any device-side changes. Device
 
 ## Certificate Rotation
 
-Server certificates expire, and you need to rotate them before they do. IoT Core supports up to four server certificates on a domain configuration, allowing you to add a new certificate before removing the old one.
+Server certificates expire, and you need to rotate them before they do. AWS IoT Core currently supports only one server certificate ARN on a domain configuration. If you use an ACM-issued certificate, ACM can renew it automatically and AWS IoT Core picks up the renewed certificate. If you imported the certificate, reimport the renewed certificate into ACM using the same certificate ARN.
 
 ```bash
-# Add a new certificate to the domain configuration
-aws iot update-domain-configuration \
-  --domain-configuration-name "CustomIoTDomain" \
-  --server-certificate-arns \
-    "arn:aws:acm:us-east-1:123456789012:certificate/new-cert-arn" \
-    "arn:aws:acm:us-east-1:123456789012:certificate/old-cert-arn"
-
-# After verifying the new certificate works, remove the old one
-aws iot update-domain-configuration \
-  --domain-configuration-name "CustomIoTDomain" \
-  --server-certificate-arns \
-    "arn:aws:acm:us-east-1:123456789012:certificate/new-cert-arn"
+# Reimport a renewed certificate into the existing ACM certificate ARN
+aws acm import-certificate \
+  --certificate-arn "arn:aws:acm:us-east-1:123456789012:certificate/abc123-def456" \
+  --certificate fileb://renewed-server-cert.pem \
+  --private-key fileb://renewed-server-key.pem \
+  --certificate-chain fileb://renewed-ca-chain.pem \
+  --region us-east-1
 ```
 
 Set up a CloudWatch alarm to warn you when certificates are approaching expiration. If you use ACM-issued certificates, ACM handles renewal automatically.
