@@ -81,11 +81,12 @@ export class DnsFailoverStack extends cdk.Stack {
 
 ### Health Check Types
 
-Route 53 supports three types of health checks:
+Route 53 supports four categories of health checks:
 
 1. **Endpoint checks** - Route 53 makes HTTP/HTTPS/TCP requests to your endpoint
 2. **Calculated checks** - Combine multiple health checks with AND/OR logic
 3. **CloudWatch alarm checks** - Base health on a CloudWatch alarm state
+4. **Routing control checks** - Base health on an Amazon Route 53 Application Recovery Controller routing control
 
 For a comprehensive health check, use a calculated check that combines an endpoint check with a CloudWatch alarm.
 
@@ -166,12 +167,12 @@ new route53.CfnRecordSet(this, 'SecondaryRecord', {
 
 ## Failover to a Static Site
 
-A common pattern is failing over to a static S3-hosted page when your application is down. This gives users a maintenance page instead of an error.
+A common pattern is failing over to a static S3-hosted page when your application is down. This gives users a maintenance page instead of an error. S3 website endpoints are HTTP-only, so use CloudFront in front of S3 if the failover page needs HTTPS.
 
 ```typescript
-// S3 bucket for failover static site
+// S3 bucket for failover static site. The bucket name must match the DNS name.
 const failoverBucket = new s3.Bucket(this, 'FailoverBucket', {
-  bucketName: 'app-failover.example.com',
+  bucketName: 'app.example.com',
   websiteIndexDocument: 'index.html',
   publicReadAccess: true,
 });
@@ -190,7 +191,7 @@ new route53.CfnRecordSet(this, 'FailoverRecord', {
   setIdentifier: 'failover',
   failover: 'SECONDARY',
   aliasTarget: {
-    dnsName: `s3-website-${cdk.Aws.REGION}.amazonaws.com`,
+    dnsName: 's3-website-us-east-1.amazonaws.com',
     hostedZoneId: 'Z3AQBSTGFYJSTF', // S3 website hosted zone ID for us-east-1
     evaluateTargetHealth: false,
   },
@@ -239,7 +240,7 @@ DNS TTL affects how quickly clients pick up the failover. Lower TTL means faster
 
 - **60 seconds** is a good balance for most applications
 - **30 seconds** for critical services where faster failover matters
-- Route 53 alias records have a fixed 60-second TTL
+- For Route 53 alias records that point to AWS resources, you can't set the TTL directly; Route 53 uses the target resource's default TTL
 
 Keep in mind that some clients and recursive resolvers don't respect TTL, so real-world failover might be slower than your TTL setting.
 
@@ -253,7 +254,7 @@ const alertTopic = new sns.Topic(this, 'HealthCheckAlerts');
 alertTopic.addSubscription(new snsSubscriptions.EmailSubscription('ops@example.com'));
 
 // CloudWatch alarm on health check status
-new cloudwatch.Alarm(this, 'PrimaryHealthAlarm', {
+const primaryHealthAlarm = new cloudwatch.Alarm(this, 'PrimaryHealthAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'AWS/Route53',
     metricName: 'HealthCheckStatus',
@@ -269,6 +270,8 @@ new cloudwatch.Alarm(this, 'PrimaryHealthAlarm', {
   alarmDescription: 'Primary endpoint health check failed',
   actionsEnabled: true,
 });
+
+primaryHealthAlarm.addAlarmAction(new cloudwatchActions.SnsAction(alertTopic));
 ```
 
 For a more comprehensive monitoring setup, check out [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view).
@@ -294,4 +297,4 @@ curl -X POST https://app-primary.example.com/admin/restore-health
 
 ## Summary
 
-DNS failover with Route 53 is your first line of defense against region-level failures. Set up health checks that accurately reflect your application's state, configure failover routing between primary and secondary endpoints, keep TTL values low for faster failover, and test the whole thing regularly. It's not a perfect solution - DNS caching means failover isn't instant - but combined with other techniques like [multi-region deployments](https://oneuptime.com/blog/post/2026-02-12-set-up-multi-region-deployments-for-disaster-recovery/view), it forms the foundation of a resilient architecture.
+DNS failover with Route 53 is your first line of defense against region-level failures. Set up health checks that accurately reflect your application's state, configure failover routing between primary and secondary endpoints, keep TTL values low where you can for faster failover, and test the whole thing regularly. It's not a perfect solution - DNS caching means failover isn't instant - but combined with other techniques like [multi-region deployments](https://oneuptime.com/blog/post/2026-02-12-set-up-multi-region-deployments-for-disaster-recovery/view), it forms the foundation of a resilient architecture.
