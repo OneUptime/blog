@@ -244,7 +244,7 @@ aws emr create-cluster \
 ```
 
 Make sure your subnet has:
-- A route to S3 (either through a NAT gateway or an S3 VPC endpoint)
+- A route to S3 (through an internet gateway, NAT gateway, or S3 VPC endpoint, depending on the subnet type)
 - DNS resolution enabled
 - Enough available IP addresses for all your nodes
 
@@ -256,6 +256,13 @@ This CloudFormation template defines an EMR cluster with all the essential confi
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  SubnetId:
+    Type: AWS::EC2::Subnet::Id
+  KeyPair:
+    Type: AWS::EC2::KeyPair::KeyName
+  LogBucket:
+    Type: String
 Resources:
   EMRCluster:
     Type: AWS::EMR::Cluster
@@ -312,7 +319,7 @@ aws emr create-cluster \
   --instance-count 3 \
   --use-default-roles \
   --auto-terminate \
-  --steps Type=Spark,Name="MySparkJob",ActionOnFailure=TERMINATE_CLUSTER,Args=[--deploy-mode,cluster,--class,com.example.Main,s3://my-jars/app.jar] \
+  --steps Type=CUSTOM_JAR,Name="MySparkJob",ActionOnFailure=TERMINATE_CLUSTER,Jar=command-runner.jar,Args=[spark-submit,--deploy-mode,cluster,--class,com.example.Main,s3://my-jars/app.jar] \
   --log-uri s3://my-emr-logs/clusters/
 ```
 
