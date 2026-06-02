@@ -32,7 +32,7 @@ The key insight is that SageMaker training jobs are ephemeral. SageMaker spins u
 
 ## Preparing Your Data
 
-SageMaker expects training data in S3. Let's prepare a dataset and upload it.
+SageMaker training jobs can read from S3, Amazon EFS, or FSx for Lustre. For a simple training job, S3 is the most common path, so let's prepare a dataset and upload it.
 
 ```python
 import pandas as pd
@@ -81,7 +81,7 @@ print(f"Validation data: {val_path}")
 
 ## Training with a Built-In Algorithm
 
-The fastest way to get started is with SageMaker's built-in algorithms. They're optimized for distributed training and don't require you to write any training code.
+The fastest way to get started is with SageMaker's built-in algorithms. They run in SageMaker-managed containers, and many support distributed training, so you don't have to write the algorithm code yourself.
 
 Let's use XGBoost, one of the most popular algorithms for tabular data.
 
@@ -98,7 +98,7 @@ region = session.boto_region_name
 xgb_image = image_uris.retrieve(
     framework='xgboost',
     region=region,
-    version='1.7-1'  # Use a recent stable version
+    version='1.7-1'  # Use a supported SageMaker XGBoost version
 )
 
 # Create an Estimator - this configures your training job
@@ -243,8 +243,8 @@ sklearn_estimator = SKLearn(
     role=role,
     instance_count=1,
     instance_type='ml.m5.xlarge',
-    framework_version='1.2-1',
-    py_version='py3',
+    framework_version='1.4-2',
+    py_version='py310',
     hyperparameters={
         'n-estimators': 200,
         'max-depth': 15,
@@ -263,7 +263,7 @@ sklearn_estimator.fit({
 
 ## Distributed Training
 
-When your dataset is large or your model is complex, you can distribute training across multiple instances. SageMaker handles the distributed computing setup for you.
+When your dataset is large or your model is complex, you can distribute training across multiple instances. SageMaker launches the distributed environment for you, but your training script still needs to use the framework's distributed APIs.
 
 ```python
 from sagemaker.pytorch import PyTorch
@@ -275,11 +275,11 @@ pytorch_estimator = PyTorch(
     role=role,
     instance_count=4,  # Train across 4 instances
     instance_type='ml.p3.2xlarge',  # GPU instances
-    framework_version='2.0',
+    framework_version='2.0.1',
     py_version='py310',
     distribution={
         'torch_distributed': {
-            'enabled': True  # Enables PyTorch's DistributedDataParallel
+            'enabled': True  # Launches the job with torchrun for DDP scripts
         }
     },
     hyperparameters={
