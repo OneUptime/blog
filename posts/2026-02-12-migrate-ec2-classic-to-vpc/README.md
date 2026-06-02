@@ -8,7 +8,7 @@ Description: A comprehensive guide to migrating EC2 instances and resources from
 
 ---
 
-EC2-Classic was the original networking mode for AWS, where instances ran on a flat shared network. AWS has been phasing it out for years, and accounts created after December 4, 2013 never had access to it. If you're still running resources in EC2-Classic, migration to VPC is not optional - it's a matter of when, not if.
+EC2-Classic was the original networking mode for AWS, where instances ran on a flat shared network. AWS retired EC2-Classic on August 15, 2022, and accounts created after December 4, 2013 never had access to it. If you still find legacy EC2-Classic dependencies in an old account or runbook, migration to VPC is not optional - it's urgent cleanup work.
 
 This guide walks through the entire migration process, from planning to execution to validation.
 
@@ -20,7 +20,7 @@ Before migrating, it's important to understand what changes between EC2-Classic 
 |---------|------------|-----|
 | Network isolation | Shared flat network | Isolated virtual network |
 | IP addressing | Public IPs change on stop/start | Private IPs persist, EIP available |
-| Security Groups | Instance-level only | Instance and subnet level (NACLs) |
+| Security Groups | Instance-level only | Instance/ENI level, with subnet-level NACLs |
 | Subnets | None | Full subnet control |
 | Internet access | Direct | Via Internet Gateway |
 | DNS | AWS-provided only | Customizable |
@@ -51,8 +51,7 @@ aws ec2 describe-instances \
 
 # Find Classic security groups
 aws ec2 describe-security-groups \
-  --filters "Name=vpc-id,Values=''" \
-  --query 'SecurityGroups[].{Name: GroupName, ID: GroupId, Description: Description}' \
+  --query 'SecurityGroups[?!VpcId].{Name: GroupName, ID: GroupId, Description: Description}' \
   --output table
 
 # Find Elastic IPs in Classic
@@ -71,7 +70,7 @@ Document every dependency:
 
 Design your VPC to accommodate all your Classic resources.
 
-Create a VPC with public and private subnets across multiple AZs:
+Create a VPC with public subnets across multiple AZs:
 
 ```bash
 # Create the VPC
@@ -81,8 +80,8 @@ VPC_ID=$(aws ec2 create-vpc \
   --output text)
 
 # Enable DNS
-aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support
-aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-support '{"Value":true}'
+aws ec2 modify-vpc-attribute --vpc-id $VPC_ID --enable-dns-hostnames '{"Value":true}'
 
 # Create Internet Gateway
 IGW_ID=$(aws ec2 create-internet-gateway \
@@ -91,6 +90,7 @@ IGW_ID=$(aws ec2 create-internet-gateway \
 aws ec2 attach-internet-gateway --vpc-id $VPC_ID --internet-gateway-id $IGW_ID
 
 # Create public subnets in each AZ
+PUBLIC_SUBNET_IDS=()
 for AZ in us-east-1a us-east-1b us-east-1c; do
   SUBNET_NUM=${AZ: -1}
   case $SUBNET_NUM in
@@ -99,11 +99,15 @@ for AZ in us-east-1a us-east-1b us-east-1c; do
     c) CIDR="10.0.3.0/24" ;;
   esac
 
-  aws ec2 create-subnet \
+  SUBNET_ID=$(aws ec2 create-subnet \
     --vpc-id $VPC_ID \
     --cidr-block $CIDR \
     --availability-zone $AZ \
-    --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=public-$AZ}]"
+    --tag-specifications "ResourceType=subnet,Tags=[{Key=Name,Value=public-$AZ}]" \
+    --query 'Subnet.SubnetId' \
+    --output text)
+
+  PUBLIC_SUBNET_IDS+=("$SUBNET_ID")
 done
 
 # Create route table with internet access
@@ -116,6 +120,13 @@ aws ec2 create-route \
   --route-table-id $RT_ID \
   --destination-cidr-block 0.0.0.0/0 \
   --gateway-id $IGW_ID
+
+# Associate the public subnets with the internet route table
+for SUBNET_ID in "${PUBLIC_SUBNET_IDS[@]}"; do
+  aws ec2 associate-route-table \
+    --route-table-id $RT_ID \
+    --subnet-id $SUBNET_ID
+done
 ```
 
 ## Recreating Security Groups
@@ -185,9 +196,9 @@ aws ec2 run-instances \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=my-server-vpc}]'
 ```
 
-### Strategy 2: ClassicLink (Interim Step)
+### Strategy 2: ClassicLink (Deprecated Historical Option)
 
-ClassicLink lets Classic instances communicate with VPC resources during a transition period. This is useful for gradual migrations.
+ClassicLink used to let Classic instances communicate with VPC resources during a transition period, but the API is deprecated and should not be part of a new migration plan. If you're reviewing older runbooks, you may still see commands like these:
 
 ```bash
 # Enable ClassicLink on the VPC
@@ -200,7 +211,7 @@ aws ec2 attach-classic-link-vpc \
   --groups $VPC_SG
 ```
 
-With ClassicLink, the Classic instance gets a VPC private IP and can communicate with VPC instances using VPC security group rules. This lets you migrate services one at a time while maintaining communication.
+With ClassicLink, the Classic instance could communicate with VPC instances over private IPv4 addresses using VPC security group rules. It did not move the instance into the VPC or assign it a private IP from the VPC subnet. For current migration work, use AMI-based replacement or application-level cutover instead of planning around ClassicLink.
 
 ## Migrating Elastic IPs
 
@@ -216,7 +227,7 @@ aws ec2 move-address-to-vpc --public-ip 203.0.113.25
 aws ec2 describe-addresses --public-ips 203.0.113.25
 ```
 
-Note: This operation is irreversible. Once an EIP is moved to VPC, it can't go back to Classic.
+Note: This operation is deprecated along with EC2-Classic. After the Elastic IP address is moved, it is no longer available for use in EC2-Classic; do not rely on moving it back.
 
 ## Migrating RDS Instances
 
@@ -310,4 +321,4 @@ For monitoring your newly migrated VPC infrastructure, check out our guide on [m
 
 ## Wrapping Up
 
-Migrating from EC2-Classic to VPC is a multi-step process that requires careful planning, but each individual step is straightforward. The AMI-based approach is the safest: snapshot the Classic instance, launch it in VPC, validate, then switch traffic. Use ClassicLink as a bridge during gradual migrations. And always validate thoroughly before decommissioning Classic resources. The end result is a more secure, more capable networking environment with full control over your IP space and routing.
+Migrating from EC2-Classic to VPC is a multi-step process that requires careful planning, but each individual step is straightforward. The AMI-based approach is the safest: snapshot the Classic instance, launch it in VPC, validate, then switch traffic. Avoid planning around ClassicLink because it is deprecated. And always validate thoroughly before decommissioning Classic resources. The end result is a more secure, more capable networking environment with full control over your IP space and routing.
