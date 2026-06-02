@@ -10,7 +10,7 @@ Description: A guide to finding and cleaning up unused EBS volumes and snapshots
 
 Here's a scenario that plays out in nearly every AWS account: someone launches an EC2 instance for testing, terminates it a week later, and the EBS volume sticks around. Multiply that by a few dozen engineers over a couple of years, and you end up with hundreds of orphaned volumes and thousands of stale snapshots, all silently charging you every month.
 
-EBS volumes cost between $0.08/GB and $0.125/GB per month depending on the type. Snapshots cost $0.05/GB per month. A single forgotten 500GB gp3 volume costs $40/month. Ten of them cost $400/month. It adds up, and nobody notices because the charges blend into the overall storage line item.
+In many US regions, gp3 volumes cost $0.08/GB-month and gp2 volumes cost $0.10/GB-month, while provisioned IOPS and HDD volume classes vary. Standard snapshots are commonly $0.05/GB-month for the data stored. A single forgotten 500GB gp3 volume costs $40/month. Ten of them cost $400/month. It adds up, and nobody notices because the charges blend into the overall storage line item.
 
 Let's find and clean up this waste.
 
@@ -70,9 +70,11 @@ Snapshots accumulate even faster than volumes. Automated backup tools, AMI creat
 
 ```bash
 # Find snapshots older than 90 days owned by your account
+cutoff_date=$(date -u -d '90 days ago' +%Y-%m-%d)
+
 aws ec2 describe-snapshots \
   --owner-ids self \
-  --query "Snapshots[?StartTime<='2025-11-12T00:00:00'].{
+  --query "Snapshots[?StartTime<='${cutoff_date}'].{
     SnapshotId: SnapshotId,
     VolumeId: VolumeId,
     Size: VolumeSize,
@@ -82,10 +84,10 @@ aws ec2 describe-snapshots \
   --output table
 ```
 
-For a cost summary of snapshots:
+For a snapshot inventory summary:
 
 ```bash
-# Calculate total snapshot storage and cost
+# Count snapshots and estimate an upper bound for source volume size
 aws ec2 describe-snapshots \
   --owner-ids self \
   --query "length(Snapshots)" \
@@ -137,10 +139,12 @@ aws ec2 create-snapshot \
 # Delete a specific unattached volume
 aws ec2 delete-volume --volume-id vol-0a1b2c3d4e5f67890
 
-# Bulk delete all volumes tagged PendingDeletion and older than 14 days
+# Bulk delete volumes tagged PendingDeletion and reviewed more than 14 days ago
+cutoff_date=$(date -u -d '14 days ago' +%Y-%m-%d)
+
 for vol_id in $(aws ec2 describe-volumes \
   --filters Name=tag:ReviewStatus,Values=PendingDeletion Name=status,Values=available \
-  --query "Volumes[].VolumeId" \
+  --query "Volumes[?Tags[?Key=='ReviewDate' && Value<='${cutoff_date}']].VolumeId" \
   --output text); do
 
   aws ec2 delete-volume --volume-id $vol_id
@@ -231,6 +235,13 @@ aws events put-rule \
   --schedule-expression "rate(7 days)" \
   --description "Weekly scan for unused EBS volumes"
 
+aws lambda add-permission \
+  --function-name "arn:aws:lambda:us-east-1:123456789012:function:ebs-cleanup" \
+  --statement-id "weekly-ebs-cleanup-eventbridge" \
+  --action "lambda:InvokeFunction" \
+  --principal "events.amazonaws.com" \
+  --source-arn "arn:aws:events:us-east-1:123456789012:rule/weekly-ebs-cleanup"
+
 aws events put-targets \
   --rule weekly-ebs-cleanup \
   --targets "Id"="1","Arn"="arn:aws:lambda:us-east-1:123456789012:function:ebs-cleanup"
@@ -254,7 +265,7 @@ aws dlm create-lifecycle-policy \
       {
         "Name": "DailySnapshots",
         "CreateRule": {"Interval": 24, "IntervalUnit": "HOURS"},
-        "RetainRule": {"Count": 30},
+        "RetainRule": {"Interval": 30, "IntervalUnit": "DAYS"},
         "CopyTags": true
       }
     ]
@@ -264,10 +275,12 @@ aws dlm create-lifecycle-policy \
 For snapshots that aren't managed by DLM, clean them up manually:
 
 ```bash
-# Delete snapshots older than 90 days that match a specific pattern
+# Delete snapshots older than 90 days
+cutoff_date=$(date -u -d '90 days ago' +%Y-%m-%d)
+
 aws ec2 describe-snapshots \
   --owner-ids self \
-  --query "Snapshots[?StartTime<='2025-11-12T00:00:00'].SnapshotId" \
+  --query "Snapshots[?StartTime<='${cutoff_date}'].SnapshotId" \
   --output text | tr '\t' '\n' | while read snap_id; do
   echo "Deleting $snap_id"
   aws ec2 delete-snapshot --snapshot-id $snap_id
@@ -278,7 +291,7 @@ done
 
 Cleaning up is good, but preventing waste in the first place is better.
 
-**Set EC2 termination protection for EBS volumes.** By default, root volumes are deleted on instance termination, but additional volumes aren't. Fix this:
+**Set delete-on-termination for EBS volumes.** By default, root volumes are deleted on instance termination, but additional volumes often aren't. Fix this:
 
 ```bash
 # When launching an instance, set all volumes to delete on termination
