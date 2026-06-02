@@ -33,10 +33,10 @@ graph LR
     style G fill:#f9f,stroke:#333
 ```
 
-1. **Viewer Request** - after CloudFront receives the request from the client. Runs on every request.
+1. **Viewer Request** - after CloudFront receives the request from the client, before CloudFront checks the cache. Runs on viewer requests, except for cases like CloudFront's automatic HTTP-to-HTTPS redirects.
 2. **Origin Request** - before CloudFront forwards the request to your origin. Only runs on cache misses.
 3. **Origin Response** - after CloudFront receives the response from your origin. Only runs on cache misses.
-4. **Viewer Response** - before CloudFront returns the response to the client. Runs on every request.
+4. **Viewer Response** - before CloudFront returns the response to the client. Runs for cached and origin responses, but not for some generated responses such as origin 4xx/5xx errors, custom error pages, or CloudFront's automatic HTTP-to-HTTPS redirects.
 
 Choose your trigger point based on when you need to intervene and whether you want the function to run on every request or only on cache misses.
 
@@ -47,10 +47,10 @@ Lambda@Edge has stricter limits than regular Lambda:
 | Limit | Viewer Triggers | Origin Triggers |
 |-------|----------------|-----------------|
 | Memory | 128 MB | 128 MB - 10,240 MB |
-| Timeout | 5 seconds | 30 seconds |
-| Package size | 1 MB | 50 MB |
+| Timeout | 30 seconds | 30 seconds |
+| Package size | 50 MB compressed | 50 MB compressed |
 | Runtime | Node.js, Python | Node.js, Python |
-| Environment variables | Not supported | Not supported |
+| Custom environment variables | Not supported | Not supported |
 | VPC access | Not supported | Not supported |
 | Layers | Not supported | Not supported |
 
@@ -95,19 +95,15 @@ export class LambdaEdgeStack extends cdk.Stack {
     // CloudFront distribution with Lambda@Edge
     const distribution = new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
-        origin: new origins.S3Origin(websiteBucket),
+        origin: origins.S3BucketOrigin.withOriginAccessControl(websiteBucket),
         edgeLambdas: [
           {
-            functionAssociation: {
-              function: urlRewriter,
-              eventType: cloudfront.LambdaEdgeEventType.VIEWER_REQUEST,
-            },
+            functionVersion: urlRewriter.currentVersion,
+            eventType: cloudfront.LambdaEdgeEventType.VIEWER_REQUEST,
           },
           {
-            functionAssociation: {
-              function: securityHeaders,
-              eventType: cloudfront.LambdaEdgeEventType.VIEWER_RESPONSE,
-            },
+            functionVersion: securityHeaders.currentVersion,
+            eventType: cloudfront.LambdaEdgeEventType.VIEWER_RESPONSE,
           },
         ],
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
@@ -127,23 +123,24 @@ This function rewrites clean URLs to point to the correct files on the origin:
 // lambda/url-rewriter/index.js
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
-  const uri = request.uri;
-
-  // Handle SPA routing - serve index.html for non-file paths
-  if (!uri.includes('.') && uri !== '/') {
-    // Path like /about or /products/123 - serve index.html
-    request.uri = '/index.html';
-  }
-
-  // Add default file to directory paths
-  if (uri.endsWith('/')) {
-    request.uri += 'index.html';
-  }
 
   // Rewrite API versioning
   // /v2/users -> /api/v2/users
-  if (uri.startsWith('/v2/') || uri.startsWith('/v1/')) {
-    request.uri = '/api' + uri;
+  if (request.uri.startsWith('/v2/') || request.uri.startsWith('/v1/')) {
+    request.uri = '/api' + request.uri;
+    return request;
+  }
+
+  // Add default file to directory paths
+  if (request.uri.endsWith('/')) {
+    request.uri += 'index.html';
+    return request;
+  }
+
+  // Handle SPA routing - serve index.html for non-file paths
+  if (!request.uri.includes('.')) {
+    // Path like /about or /products/123 - serve index.html
+    request.uri = '/index.html';
   }
 
   return request;
@@ -168,8 +165,8 @@ exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
 
   // Skip auth for public paths
-  const publicPaths = ['/', '/login', '/public/'];
-  if (publicPaths.some(path => request.uri.startsWith(path))) {
+  const publicPaths = ['/', '/login'];
+  if (publicPaths.includes(request.uri) || request.uri.startsWith('/public/')) {
     return request;
   }
 
@@ -204,6 +201,39 @@ function unauthorizedResponse(message) {
     },
     body: JSON.stringify({ error: message }),
   };
+}
+
+function verifyJwt(token) {
+  const [encodedHeader, encodedPayload, signature] = token.split('.');
+  if (!encodedHeader || !encodedPayload || !signature) {
+    throw new Error('Malformed token');
+  }
+
+  const header = JSON.parse(Buffer.from(encodedHeader, 'base64url').toString('utf8'));
+  if (header.alg !== 'HS256') {
+    throw new Error('Unsupported algorithm');
+  }
+
+  const expectedSignature = crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(`${encodedHeader}.${encodedPayload}`)
+    .digest('base64url');
+
+  if (
+    !crypto.timingSafeEqual(
+      Buffer.from(signature),
+      Buffer.from(expectedSignature),
+    )
+  ) {
+    throw new Error('Invalid signature');
+  }
+
+  const payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+  if (payload.exp && Date.now() >= payload.exp * 1000) {
+    throw new Error('Token expired');
+  }
+
+  return payload;
 }
 ```
 
@@ -253,9 +283,9 @@ exports.handler = async (event) => {
 };
 ```
 
-## A/B Testing (Origin Request)
+## A/B Testing (Viewer Request)
 
-Route users to different origins based on cookies or random assignment.
+Route users to different content variants based on cookies or random assignment.
 
 This function implements A/B testing by routing requests to different S3 prefixes:
 
@@ -299,9 +329,9 @@ function getExperimentCookie(headers) {
 }
 ```
 
-## Geo-Based Routing (Viewer Request)
+## Geo-Based Routing (Origin Request)
 
-CloudFront adds geo headers that your Lambda@Edge function can use.
+CloudFront adds geo headers that origin-facing Lambda@Edge functions can use when you configure CloudFront to add them with a cache policy or origin request policy. These headers are not available to viewer request functions.
 
 This function redirects users based on their country:
 
@@ -332,9 +362,9 @@ exports.handler = async (event) => {
 
 ## Debugging Lambda@Edge
 
-Debugging is harder than regular Lambda because logs are distributed across regions. Lambda@Edge logs appear in CloudWatch Logs in the region of the edge location that served the request.
+Debugging is harder than regular Lambda because logs are distributed across regions. Lambda@Edge logs appear in CloudWatch Logs in the AWS Region where the function is invoked.
 
-To find your logs, check CloudWatch in the regions where your users are. Or use CloudWatch Logs Insights to query across regions:
+To find your logs, check CloudWatch in the regions where your users are, or use the AWS CLI to check likely regions:
 
 ```bash
 # Check which regions have logs
@@ -350,8 +380,8 @@ For centralized logging strategies, see our post on [debugging Lambda with Cloud
 
 CloudFront Functions are a lighter-weight alternative. Check our dedicated comparison post on [CloudFront Functions vs Lambda@Edge](https://oneuptime.com/blog/post/2026-02-12-cloudfront-functions-vs-lambda-edge/view) for a detailed breakdown of when to use which.
 
-The quick rule: use CloudFront Functions for simple, fast operations (header manipulation, URL rewrites, redirects) and Lambda@Edge for anything more complex (authentication, A/B testing, origin selection).
+The quick rule: use CloudFront Functions for simple, fast operations (header manipulation, URL rewrites, redirects, and lightweight authorization checks) and Lambda@Edge for anything more complex (authentication that needs libraries or network calls, A/B testing, origin selection).
 
 ## Wrapping Up
 
-Lambda@Edge puts your code at the network edge, right next to your users. It's perfect for authentication, URL rewriting, header manipulation, A/B testing, and geo-routing. The constraints are real - no environment variables, limited memory and timeout for viewer triggers, and distributed logging. But the latency reduction is significant, and for request-level customization, it's the right tool for the job.
+Lambda@Edge puts your code at the network edge, right next to your users. It's perfect for authentication, URL rewriting, header manipulation, A/B testing, and geo-routing. The constraints are real - no custom environment variables, limited memory for viewer triggers, and distributed logging. But the latency reduction is significant, and for request-level customization, it's the right tool for the job.
