@@ -12,6 +12,8 @@ Fraud detection is one of those problems that gets harder the more successful yo
 
 Amazon Fraud Detector is a managed machine learning service designed specifically for this. You provide historical data about legitimate and fraudulent events, it trains a model, and you get real-time predictions through an API. No ML expertise required - though understanding the concepts helps you get better results.
 
+As of November 7, 2025, Amazon Fraud Detector is no longer open to new customers. Existing customers can continue using the service, but new projects should evaluate alternatives such as Amazon SageMaker, AutoGluon, or AWS WAF.
+
 ## How Fraud Detector Works
 
 The workflow has four phases:
@@ -38,21 +40,20 @@ graph TD
 Start by defining what an event looks like. For a payment fraud detector, the event is a transaction.
 
 ```bash
-# Create event variables
+# Create the event type after creating the variables, entity type, and labels below
 
 aws frauddetector put-event-type \
     --name "online_transaction" \
     --event-variables '[
-        {"name": "ip_address"},
-        {"name": "email_address"},
-        {"name": "billing_address"},
-        {"name": "transaction_amount"},
-        {"name": "card_bin"},
-        {"name": "user_agent"},
-        {"name": "transaction_currency"}
+        "ip_address",
+        "email_address",
+        "transaction_amount",
+        "card_bin",
+        "user_agent"
     ]' \
-    --entity-types '[{"name": "customer"}]' \
-    --labels '[{"name": "legitimate"}, {"name": "fraudulent"}]'
+    --entity-types '["customer"]' \
+    --labels '["legitimate", "fraudulent"]' \
+    --event-ingestion "ENABLED"
 ```
 
 Before creating the event type, you need to create the variables, entity types, and labels.
@@ -85,14 +86,14 @@ aws frauddetector create-variable \
     --data-type "STRING" \
     --data-source "EVENT" \
     --default-value "unknown" \
-    --variable-type "CATEGORICAL"
+    --variable-type "CARD_BIN"
 
 aws frauddetector create-variable \
     --name "user_agent" \
     --data-type "STRING" \
     --data-source "EVENT" \
     --default-value "unknown" \
-    --variable-type "FREE_FORM_TEXT"
+    --variable-type "USERAGENT"
 
 # Create entity type
 aws frauddetector put-entity-type \
@@ -106,7 +107,7 @@ aws frauddetector put-label --name "fraudulent"
 
 ## Preparing Training Data
 
-Fraud Detector needs historical data with labels. The data should be a CSV file in S3 with at least 10,000 records and at least 500 fraud examples.
+Fraud Detector needs historical data with labels. The data should be a UTF-8 CSV file in S3. Amazon Fraud Detector requires at least 100 events with at least 50 fraud-labeled events, and recommends at least 10,000 total events with at least 400 fraud-labeled and 400 legitimate-labeled events for better model performance.
 
 ```csv
 EVENT_TIMESTAMP,ip_address,email_address,transaction_amount,card_bin,user_agent,EVENT_LABEL
@@ -254,7 +255,7 @@ aws frauddetector create-rule \
 You can also add rules based on event variables directly.
 
 ```bash
-# Rule: Block transactions over $10,000 regardless of score
+# Rule: Review transactions over $10,000 regardless of score
 aws frauddetector create-rule \
     --rule-id "block_large_transactions" \
     --detector-id "transaction_detector" \
@@ -307,10 +308,12 @@ fraud_detector = boto3.client('frauddetector', region_name='us-east-1')
 
 def check_transaction(transaction):
     """Check a transaction for fraud using Amazon Fraud Detector."""
+    event_id = str(uuid.uuid4())
+
     response = fraud_detector.get_event_prediction(
         detectorId='transaction_detector',
         detectorVersionId='1',
-        eventId=str(uuid.uuid4()),
+        eventId=event_id,
         eventTypeName='online_transaction',
         eventTimestamp=datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
         entities=[{
@@ -339,7 +342,7 @@ def check_transaction(transaction):
     return {
         'outcome': outcome,
         'score': score,
-        'event_id': response['eventId']
+        'event_id': event_id
     }
 
 # Example usage
@@ -369,29 +372,44 @@ Improve the model over time by sending feedback about actual fraud outcomes.
 
 ```python
 # feedback.py - Send fraud outcome feedback
-def send_fraud_feedback(event_id, event_timestamp, label):
+import boto3
+from datetime import datetime
+
+fraud_detector = boto3.client('frauddetector', region_name='us-east-1')
+
+def send_fraud_feedback(event_id, event_timestamp, event_variables, entity_id, label):
     """Send feedback to improve the model.
 
     Args:
         event_id: The event ID from the original prediction
         event_timestamp: When the event occurred
+        event_variables: The original event variables from the prediction
+        entity_id: The customer or entity ID from the original prediction
         label: 'fraudulent' or 'legitimate'
     """
     fraud_detector.send_event(
         eventId=event_id,
         eventTypeName='online_transaction',
         eventTimestamp=event_timestamp,
-        eventVariables={},  # Already stored from prediction
-        entities=[{'entityType': 'customer', 'entityId': 'cust-12345'}],
+        eventVariables=event_variables,
+        entities=[{'entityType': 'customer', 'entityId': entity_id}],
         assignedLabel=label,
         labelTimestamp=datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ')
     )
 
+event_variables = {
+    'ip_address': '203.0.113.50',
+    'email_address': 'customer@example.com',
+    'transaction_amount': '149.99',
+    'card_bin': '411111',
+    'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'
+}
+
 # When a chargeback comes in
-send_fraud_feedback('evt-abc123', '2026-02-12T10:30:00Z', 'fraudulent')
+send_fraud_feedback('evt-abc123', '2026-02-12T10:30:00Z', event_variables, 'cust-12345', 'fraudulent')
 
 # When manual review confirms legitimate
-send_fraud_feedback('evt-def456', '2026-02-12T11:00:00Z', 'legitimate')
+send_fraud_feedback('evt-def456', '2026-02-12T11:00:00Z', event_variables, 'cust-67890', 'legitimate')
 ```
 
 ## Monitoring and Tuning
@@ -400,16 +418,19 @@ Track your detector's performance over time.
 
 ```python
 # monitor.py - Monitor fraud detector performance
+import boto3
+from datetime import datetime, timedelta
+
 def get_detection_stats(detector_id, days=7):
     """Get detection statistics for the last N days."""
     # Query CloudWatch metrics
     cloudwatch = boto3.client('cloudwatch')
 
-    for metric_name in ['GetEventPrediction', 'SendEvent']:
+    for metric_name in ['GetEventPrediction', 'Prediction']:
         response = cloudwatch.get_metric_statistics(
             Namespace='AWS/FraudDetector',
             MetricName=metric_name,
-            Dimensions=[{'Name': 'DetectorId', 'Value': detector_id}],
+            Dimensions=[{'Name': 'DetectorID', 'Value': detector_id}],
             StartTime=datetime.utcnow() - timedelta(days=days),
             EndTime=datetime.utcnow(),
             Period=86400,
@@ -423,4 +444,4 @@ def get_detection_stats(detector_id, days=7):
 
 Amazon Fraud Detector removes the ML complexity from fraud detection. Define your events, provide historical data, train a model, and set up rules. The API returns predictions in milliseconds, making it suitable for real-time transaction screening.
 
-The key to good results is good training data. Make sure your labels are accurate, include enough fraud examples (at least 500), and send feedback about actual outcomes to improve the model over time. Start with conservative rules (more false positives, fewer false negatives) and tune the thresholds as you gain confidence in the model's predictions.
+The key to good results is good training data. Make sure your labels are accurate, include enough fraud examples (at least 400 recommended), and send feedback about actual outcomes to improve the model over time. Start with conservative rules (more false positives, fewer false negatives) and tune the thresholds as you gain confidence in the model's predictions.
