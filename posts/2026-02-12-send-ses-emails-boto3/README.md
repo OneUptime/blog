@@ -32,10 +32,10 @@ response = ses.get_identity_verification_attributes(
 status = response['VerificationAttributes'].get('sender@example.com', {})
 print(f"Status: {status.get('VerificationStatus', 'Not found')}")
 
-# List all verified identities
+# List all submitted email identities
 response = ses.list_identities(IdentityType='EmailAddress')
 for identity in response['Identities']:
-    print(f"Verified: {identity}")
+    print(f"Identity: {identity}")
 ```
 
 ## Sending a Simple Text Email
@@ -141,7 +141,6 @@ For attachments, you need to use `send_raw_email` and build a MIME message.
 
 ```python
 import boto3
-import email
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
@@ -154,16 +153,17 @@ msg['Subject'] = 'Invoice #12345'
 msg['From'] = 'billing@example.com'
 msg['To'] = 'customer@example.com'
 
-# Add text body
+# Add text and HTML alternatives
+msg_body = MIMEMultipart('alternative')
 text_part = MIMEText('Please find your invoice attached.', 'plain')
-msg.attach(text_part)
+msg_body.attach(text_part)
 
-# Add HTML body
 html_part = MIMEText(
     '<h2>Invoice #12345</h2><p>Please find your invoice attached.</p>',
     'html'
 )
-msg.attach(html_part)
+msg_body.attach(html_part)
+msg.attach(msg_body)
 
 # Add a PDF attachment
 with open('invoice.pdf', 'rb') as f:
@@ -276,14 +276,18 @@ response = ses.send_bulk_templated_email(
             'Destination': {'ToAddresses': ['alice@example.com']},
             'ReplacementTemplateData': json.dumps({
                 'name': 'Alice',
-                'username': 'alice42'
+                'company': 'Acme Corp',
+                'username': 'alice42',
+                'login_url': 'https://app.example.com/login'
             })
         },
         {
             'Destination': {'ToAddresses': ['bob@example.com']},
             'ReplacementTemplateData': json.dumps({
                 'name': 'Bob',
-                'username': 'bob99'
+                'company': 'Acme Corp',
+                'username': 'bob99',
+                'login_url': 'https://app.example.com/login'
             })
         }
     ]
@@ -326,11 +330,10 @@ for point in sorted(stats['SendDataPoints'],
 
 ## Production Email Sender
 
-Here's a production-ready class that handles common concerns like retries, rate limiting, and error tracking.
+Here's a production-minded class that handles common concerns like retries and error tracking.
 
 ```python
 import boto3
-import json
 import time
 import logging
 from botocore.exceptions import ClientError
@@ -340,7 +343,7 @@ logger = logging.getLogger(__name__)
 class EmailSender:
     def __init__(self, region='us-east-1'):
         self.ses = boto3.client('ses', region_name=region)
-        self.stats = {'sent': 0, 'failed': 0, 'bounced': 0}
+        self.stats = {'sent': 0, 'failed': 0}
 
     def send(self, to, subject, html_body, text_body=None,
              sender='noreply@example.com', reply_to=None, max_retries=3):
@@ -400,7 +403,7 @@ message_id = sender.send(
 
 - **Move out of SES sandbox** for production. In sandbox mode, you can only send to verified addresses.
 - **Set up bounce and complaint handling** using SNS topics. High bounce rates can get your SES account suspended.
-- **Use templates** for transactional emails. They're faster and ensure consistency.
+- **Use templates** for transactional emails. They reduce duplicated email layout code and ensure consistency.
 - **Monitor your send rates** and stay within your quota.
 - **Include unsubscribe links** in marketing emails to comply with regulations.
 - **Test with SES simulator addresses** before sending to real recipients.
