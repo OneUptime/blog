@@ -92,7 +92,7 @@ If the JSON is valid, these commands will pretty-print it. If it's invalid, they
 
 ## Common Cause 2: Wrong Version String
 
-The policy `Version` must be exactly `"2012-10-17"`. Any other value will cause an error:
+For new policies, use the current IAM policy language version, `"2012-10-17"`. Arbitrary values like `"2023-01-01"` or `"1.0"` will cause an error:
 
 ```json
 {
@@ -101,11 +101,11 @@ The policy `Version` must be exactly `"2012-10-17"`. Any other value will cause 
 }
 ```
 
-Not `"2023-01-01"`, not `"1.0"`, not anything else. The version string refers to the IAM policy language version, not the date you wrote the policy.
+AWS also recognizes the older `"2008-10-17"` policy language version, but don't use it for new or updated policies because newer policy features won't work. The version string refers to the IAM policy language version, not the date you wrote the policy.
 
 ## Common Cause 3: Missing Required Fields
 
-Every statement in a bucket policy must have these fields: `Effect`, `Principal`, `Action`, and `Resource`.
+Most bucket policy statements need these fields: `Effect`, `Principal`, `Action`, and `Resource`. IAM also supports alternatives like `NotPrincipal`, `NotAction`, and `NotResource`, but a basic allow or deny statement should include the standard fields.
 
 Missing any of them causes an error:
 
@@ -142,7 +142,7 @@ This is missing `Principal`. For bucket policies (unlike IAM policies), `Princip
 
 The `Principal` field has specific formatting requirements:
 
-```json
+```text
 // Valid principal formats:
 "Principal": "*"
 "Principal": {"AWS": "arn:aws:iam::123456789012:root"}
@@ -268,7 +268,7 @@ Conditions are where things get tricky. The nested structure is easy to mess up:
 ```
 
 Common condition mistakes:
-- Using `"false"` as a boolean instead of a string (it must be the string `"false"`, not the boolean `false`)
+- Using the wrong value type for the condition operator. AWS examples for the `Bool` operator use strings such as `"false"` and `"true"`.
 - Nesting conditions incorrectly
 - Using an invalid condition operator
 
@@ -292,10 +292,10 @@ When you hit a MalformedPolicy or MalformedXML error:
 
 1. Validate JSON syntax with `python3 -m json.tool` or `jq`
 2. Check `Version` is `"2012-10-17"`
-3. Every statement needs `Effect`, `Principal`, `Action`, `Resource`
-4. Principal format must be `"*"` or `{"AWS": "arn:..."}`
+3. Basic statements need `Effect`, `Principal`, `Action`, `Resource` (or the matching `Not*` alternatives)
+4. Principal format must be `"*"` or an object with a valid key like `AWS`, `Service`, or `CanonicalUser`
 5. Resource ARNs must have three colons before the bucket name
 6. Use `file://` to load policies from a file instead of inline
-7. Condition values should be strings (`"true"` not `true`)
+7. Condition values should match the condition operator's expected type
 
 For ongoing policy management, consider using infrastructure as code tools like Terraform or CloudFormation, which validate policies before applying them. And set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch policy-related access issues in production.
