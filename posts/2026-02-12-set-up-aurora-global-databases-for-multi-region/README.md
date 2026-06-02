@@ -19,7 +19,7 @@ A regular Aurora cluster with read replicas keeps everything in one region. Auro
 The key stats that matter:
 - Replication lag is typically under 1 second
 - Cross-region failover can happen in under 1 minute
-- You can have up to 5 secondary regions
+- You can have up to 10 secondary regions
 - Each secondary region can have up to 16 read replicas
 
 This is fundamentally different from traditional cross-region replication approaches that use logical replication or binlog shipping. Aurora Global Databases replicate at the storage level, which is why the lag is so low.
@@ -27,9 +27,9 @@ This is fundamentally different from traditional cross-region replication approa
 ## Prerequisites
 
 You'll need:
-- An Aurora cluster running MySQL 5.6.10a (or higher) or PostgreSQL 10.11 (or higher)
-- The cluster must use the `aurora` or `aurora-mysql` engine, or `aurora-postgresql`
-- The instance class should be `db.r4.large` or bigger (smaller instances aren't supported for global databases)
+- An Aurora cluster running an Aurora MySQL or Aurora PostgreSQL version that supports global databases in your chosen regions
+- The cluster must use the `aurora-mysql` or `aurora-postgresql` engine
+- The instance class should be memory-optimized, such as `db.r5.large` or higher
 - VPCs configured in each region you plan to use
 
 ## Creating a Global Database via the Console
@@ -88,9 +88,9 @@ aws rds create-db-instance \
 
 ## Terraform Setup
 
-Here's a complete Terraform configuration for a global database spanning two regions.
+Here's the core Terraform configuration for a global database spanning two regions.
 
-This sets up the global database, primary cluster, and secondary cluster:
+This sets up the global database, primary cluster, and secondary cluster. It assumes you define the subnet groups and `db_password` variable elsewhere in your Terraform configuration:
 
 ```hcl
 # Provider configurations for both regions
@@ -204,16 +204,16 @@ If you see lag consistently above 1 second, it usually means your write throughp
 
 ## Configuring Your Application
 
-Your application needs to know about the endpoints in both regions. The primary cluster endpoint handles writes, while the secondary cluster's reader endpoint handles local reads.
+Your application needs to know about the endpoints in both regions. The global writer endpoint handles writes and automatically follows the current primary cluster after a managed switchover or failover, while the secondary cluster's reader endpoint handles local reads.
 
 Here's a simple Python example showing region-aware connection logic:
 
 ```python
-import boto3
 import pymysql
 
 # Configuration for multi-region Aurora connections
-PRIMARY_ENDPOINT = "my-primary-cluster.cluster-abc123.us-east-1.rds.amazonaws.com"
+GLOBAL_WRITER_ENDPOINT = "my-global-db.global-abc123.global.rds.amazonaws.com"
+PRIMARY_READER_ENDPOINT = "my-primary-cluster.cluster-ro-abc123.us-east-1.rds.amazonaws.com"
 SECONDARY_ENDPOINT = "my-secondary-cluster.cluster-ro-xyz789.eu-west-1.rds.amazonaws.com"
 
 def get_read_connection(user_region="us-east-1"):
@@ -222,7 +222,7 @@ def get_read_connection(user_region="us-east-1"):
     if user_region.startswith("eu"):
         endpoint = SECONDARY_ENDPOINT
     else:
-        endpoint = PRIMARY_ENDPOINT
+        endpoint = PRIMARY_READER_ENDPOINT
 
     return pymysql.connect(
         host=endpoint,
@@ -234,9 +234,9 @@ def get_read_connection(user_region="us-east-1"):
     )
 
 def get_write_connection():
-    """Writes always go to the primary region."""
+    """Writes go through the global writer endpoint."""
     return pymysql.connect(
-        host=PRIMARY_ENDPOINT,
+        host=GLOBAL_WRITER_ENDPOINT,
         user="app_writer",
         password="secret",
         database="myapp",
