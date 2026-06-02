@@ -16,7 +16,7 @@ The setup takes about 30 minutes, and the benefits kick in immediately.
 
 Without consolidated billing, each AWS account is billed independently. That means each account hits volume pricing tiers separately. With consolidated billing, usage across all accounts is pooled together, which means you reach higher discount tiers faster.
 
-Here's a concrete example with S3 storage pricing:
+Here's a concrete example with S3 Standard storage pricing in US East (N. Virginia):
 
 - **First 50TB**: $0.023/GB
 - **Next 450TB**: $0.022/GB
@@ -146,27 +146,16 @@ Tags take 24 hours to appear in billing reports after activation.
 
 One of the biggest financial benefits of consolidated billing is RI and Savings Plans sharing. When one account purchases an RI, and it has no matching instance in that account, the discount automatically applies to matching instances in other accounts in the organization.
 
-This is enabled by default. You can verify or disable it:
-
-```bash
-# Check if RI sharing is enabled (it is by default)
-aws organizations describe-organization \
-  --query "Organization.AvailablePolicyTypes"
-
-# To disable RI sharing for a specific linked account (rare, but possible)
-# This is done through the billing console or API
-aws ce update-preferences \
-  --member-account-discount-visibility NONE
-```
+This is enabled by default. You can verify, activate, or deactivate it from the management account in the Billing and Cost Management console under **Billing preferences**. The setting is not exposed through `aws organizations describe-organization`.
 
 This means you can buy RIs in a central account and have them apply across the organization. No more wondering if each team bought the right reservations for their accounts.
 
 ## Step 7: Set Up Cross-Account Cost Visibility
 
-Give team leads and finance visibility into their account's spending:
+Give team leads and finance visibility into their account's spending. Enable Cost Explorer from the management account root user to enable it for all member accounts, then control member account access from Cost Management Preferences. Activate any cost allocation tags you want to use in reports:
 
 ```bash
-# Enable Cost Explorer for all member accounts
+# Activate a tag for Cost Explorer and billing reports
 aws ce update-cost-allocation-tags-status \
   --cost-allocation-tags-status '[{"TagKey": "CostCenter", "Status": "Active"}]'
 
@@ -186,7 +175,13 @@ aws ce create-anomaly-subscription \
     "Subscribers": [
       {"Address": "finance@example.com", "Type": "EMAIL"}
     ],
-    "Threshold": 100,
+    "ThresholdExpression": {
+      "Dimensions": {
+        "Key": "ANOMALY_TOTAL_IMPACT_ABSOLUTE",
+        "MatchOptions": ["GREATER_THAN_OR_EQUAL"],
+        "Values": ["100"]
+      }
+    },
     "Frequency": "DAILY"
   }'
 ```
@@ -213,7 +208,8 @@ aws budgets create-budget \
       "Notification": {
         "NotificationType": "FORECASTED",
         "ComparisonOperator": "GREATER_THAN",
-        "Threshold": 80
+        "Threshold": 80,
+        "ThresholdType": "PERCENTAGE"
       },
       "Subscribers": [
         {"SubscriptionType": "EMAIL", "Address": "dev-lead@example.com"}
@@ -223,7 +219,8 @@ aws budgets create-budget \
       "Notification": {
         "NotificationType": "ACTUAL",
         "ComparisonOperator": "GREATER_THAN",
-        "Threshold": 100
+        "Threshold": 100,
+        "ThresholdType": "PERCENTAGE"
       },
       "Subscribers": [
         {"SubscriptionType": "EMAIL", "Address": "dev-lead@example.com"},
@@ -251,6 +248,9 @@ aws cloudtrail create-trail \
   --is-organization-trail \
   --is-multi-region-trail \
   --enable-log-file-validation
+
+aws cloudtrail start-logging \
+  --name organization-trail
 ```
 
 ## What You Get
