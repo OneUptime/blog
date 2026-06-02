@@ -8,7 +8,7 @@ Description: Learn how to configure RDS automated backups and manual snapshots f
 
 ---
 
-Backups are your insurance policy against data loss. RDS provides two backup mechanisms: automated backups (daily snapshots plus transaction logs) and manual snapshots (on-demand copies you explicitly create). Together, they let you recover your database to any point in time within your retention window. Let's set them up properly.
+Backups are your insurance policy against data loss. RDS provides two backup mechanisms: automated backups (daily snapshots plus transaction logs) and manual snapshots (on-demand copies you explicitly create). Automated backups let you recover your database to any point in time within your retention window, while manual snapshots give you fixed restore points. Let's set them up properly.
 
 ## Automated Backups vs Manual Snapshots
 
@@ -19,7 +19,7 @@ Understanding the difference is important:
 - Include transaction logs uploaded every 5 minutes
 - Enable point-in-time recovery (PITR)
 - Retained for 1-35 days (you configure the retention period)
-- Deleted automatically when the RDS instance is deleted (unless you take a final snapshot)
+- Deleted automatically when the RDS instance is deleted, unless you choose to retain automated backups
 
 **Manual snapshots**:
 - Created on-demand by you
@@ -80,7 +80,7 @@ aws rds modify-db-instance \
 
 ### What Happens During Backups?
 
-For Multi-AZ deployments, the automated snapshot is taken from the standby instance, so there's no performance impact on the primary. For single-AZ deployments, you might see briefly elevated I/O latency during the snapshot.
+For Multi-AZ deployments using MariaDB, MySQL, Oracle, or PostgreSQL, the automated snapshot is taken from the standby instance, so I/O activity isn't suspended on the primary. For SQL Server, I/O activity is suspended briefly during backup for both Single-AZ and Multi-AZ deployments because the backup is taken from the primary. You might see elevated latency for a few minutes during backups.
 
 Transaction log backups happen every 5 minutes continuously, regardless of the backup window. These are lightweight and have minimal performance impact.
 
@@ -97,7 +97,7 @@ aws rds create-db-snapshot \
   --tags Key=Purpose,Value=pre-migration Key=CreatedBy,Value=team-backend
 ```
 
-Manual snapshots are full copies of your database. They're stored in S3 (managed by AWS - you don't see them in your S3 console) and persist until you delete them.
+Manual snapshots are restorable copies of your database. They're stored incrementally in S3 (managed by AWS - you don't see them in your S3 console) and persist until you delete them.
 
 ### Wait for Snapshot Completion
 
@@ -149,6 +149,7 @@ aws rds copy-db-snapshot \
   --source-db-snapshot-identifier arn:aws:rds:us-east-1:123456789012:snapshot:my-db-before-migration-2026-02-12 \
   --target-db-snapshot-identifier my-db-copy-eu \
   --region eu-west-1 \
+  --source-region us-east-1 \
   --kms-key-id arn:aws:kms:eu-west-1:123456789012:key/abc-123 \
   --copy-tags
 ```
@@ -177,13 +178,13 @@ This Python script manages manual snapshots with a configurable retention policy
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 rds = boto3.client('rds')
 
 def create_snapshot(instance_id):
     """Create a manual snapshot with a timestamp."""
-    timestamp = datetime.now().strftime('%Y-%m-%d-%H%M')
+    timestamp = datetime.now(timezone.utc).strftime('%Y-%m-%d-%H%M')
     snapshot_id = f"{instance_id}-manual-{timestamp}"
 
     print(f"Creating snapshot: {snapshot_id}")
@@ -192,14 +193,14 @@ def create_snapshot(instance_id):
         DBSnapshotIdentifier=snapshot_id,
         Tags=[
             {'Key': 'ManagedBy', 'Value': 'automated-script'},
-            {'Key': 'CreatedAt', 'Value': datetime.now().isoformat()}
+            {'Key': 'CreatedAt', 'Value': datetime.now(timezone.utc).isoformat()}
         ]
     )
     return snapshot_id
 
 def cleanup_old_snapshots(instance_id, retention_days=30):
     """Delete manual snapshots older than retention_days."""
-    cutoff = datetime.now(tz=None) - timedelta(days=retention_days)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
     # Get all manual snapshots for this instance
     paginator = rds.get_paginator('describe_db_snapshots')
@@ -217,7 +218,7 @@ def cleanup_old_snapshots(instance_id, retention_days=30):
             if tags.get('ManagedBy') != 'automated-script':
                 continue
 
-            create_time = snapshot['SnapshotCreateTime'].replace(tzinfo=None)
+            create_time = snapshot['SnapshotCreateTime']
             if create_time < cutoff:
                 print(f"Deleting old snapshot: {snapshot['DBSnapshotIdentifier']}")
                 rds.delete_db_snapshot(
@@ -232,7 +233,7 @@ cleanup_old_snapshots(instance, retention_days=30)
 
 ## Backup Encryption
 
-All automated backups and snapshots use the same encryption setting as the source instance. If your instance is encrypted, all backups are encrypted. If it's not encrypted, you can still create encrypted snapshots by copying them with a KMS key.
+All automated backups and snapshots use the same encryption setting as the source instance. If your instance is encrypted, all backups are encrypted. If it's not encrypted, you can't create an encrypted snapshot directly, but you can copy an unencrypted snapshot with a KMS key to create an encrypted copy.
 
 This copies an unencrypted snapshot to an encrypted one.
 
@@ -255,11 +256,11 @@ aws rds modify-db-snapshot-attribute \
   --values-to-add 987654321098
 ```
 
-If the snapshot is encrypted, you also need to share the KMS key with the target account.
+If the snapshot is encrypted, you also need to share the customer managed KMS key with the target account. Snapshots encrypted with the default AWS managed KMS key can't be shared directly; copy the snapshot with a customer managed key first.
 
 ## Backup Storage Costs
 
-- Backup storage up to the size of your provisioned database is free
+- Backup storage up to 100% of your total provisioned database storage in a Region is included for active DB instances
 - Storage beyond that costs $0.095 per GB-month in us-east-1
 - Manual snapshots count toward your storage usage
 - Cross-region copies incur data transfer charges
