@@ -8,7 +8,7 @@ Description: Learn how to reduce AWS data transfer costs by using VPC endpoints 
 
 ---
 
-Data transfer is often the most surprising line item on an AWS bill. You provision EC2 instances, size your databases, and estimate compute costs carefully, but then the data transfer charges show up and blow your budget. A significant portion of these charges come from traffic between your VPC and AWS services that routes through the internet or NAT gateways. VPC endpoints eliminate this by creating private connections from your VPC directly to AWS services, keeping traffic on the AWS backbone and reducing costs.
+Data transfer is often the most surprising line item on an AWS bill. You provision EC2 instances, size your databases, and estimate compute costs carefully, but then the data transfer charges show up and blow your budget. A significant portion of these charges come from traffic between your VPC and AWS services that routes through NAT gateways or public service endpoints. VPC endpoints reduce this by creating private connections from your VPC directly to AWS services, keeping traffic on the AWS backbone and avoiding NAT gateway data processing charges for supported services.
 
 This guide covers the types of VPC endpoints, how to set them up for common services, and how to calculate the cost savings.
 
@@ -18,20 +18,20 @@ Let us trace what happens when an EC2 instance in a private subnet calls S3:
 
 1. The request goes to the NAT gateway
 2. The NAT gateway forwards it to the internet gateway
-3. The traffic exits the VPC to the public internet
+3. The traffic leaves the VPC through the internet gateway, but for same-Region S3 traffic it stays on the AWS network
 4. It reaches the S3 public endpoint
 5. The response takes the reverse path
 
 Every step in this path has a cost:
 - NAT gateway processing: $0.045 per GB
 - NAT gateway hourly charge: $0.045 per hour
-- Data transfer out: $0.09 per GB (first 10 TB)
+- Standard data transfer charges may also apply for internet, cross-AZ, or cross-Region traffic
 
-For a workload that transfers 1 TB per month to S3, that is roughly $45 in NAT gateway data processing alone, plus the hourly charges. With a VPC endpoint, that same traffic costs $0 for gateway endpoints (S3, DynamoDB) or $0.01 per GB for interface endpoints.
+For a workload that transfers 1 TB per month to S3 in the same Region, that is roughly $45 in NAT gateway data processing alone, plus the hourly charge for the NAT gateway if you need it. With a VPC endpoint, that same traffic costs $0 for gateway endpoints (S3, DynamoDB) or $0.01 per GB for interface endpoints.
 
 ## Types of VPC Endpoints
 
-There are two types of VPC endpoints:
+For AWS service access in this guide, there are two VPC endpoint types you will use most often:
 
 ### Gateway Endpoints
 - Available for **S3** and **DynamoDB** only
@@ -43,7 +43,9 @@ There are two types of VPC endpoints:
 - Available for 100+ AWS services
 - Cost: ~$0.01 per GB processed + hourly charge per AZ (~$0.01/hour)
 - DNS-based (private DNS resolves service endpoints to private IPs)
-- Accessible from on-premises via VPN/Direct Connect and peered VPCs
+- Can be accessed from on-premises via VPN/Direct Connect or from peered VPCs when routing, security groups, and DNS are configured correctly
+
+AWS also has other VPC endpoint types, such as Gateway Load Balancer, resource, and service network endpoints, but those are for different connectivity patterns.
 
 ## Step 1: Create a Gateway Endpoint for S3
 
@@ -57,7 +59,7 @@ VPC_ID=$(aws ec2 describe-vpcs \
   --query 'Vpcs[0].VpcId' \
   --output text)
 
-# Get private subnet route tables
+# Get route tables for subnets that should use the endpoint
 ROUTE_TABLES=$(aws ec2 describe-route-tables \
   --filters "Name=vpc-id,Values=$VPC_ID" \
   --query 'RouteTables[?Associations[?SubnetId!=`null`]].RouteTableId' \
@@ -103,7 +105,7 @@ aws ec2 create-vpc-endpoint \
   --private-dns-enabled \
   --tag-specifications 'ResourceType=vpc-endpoint,Tags=[{Key=Name,Value=ecr-api-endpoint}]'
 
-# ECR also needs a docker endpoint for image layers
+# ECR also needs a Docker Registry endpoint; image layers are stored in S3
 aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
   --vpc-endpoint-type Interface \
@@ -205,13 +207,13 @@ graph LR
 
 | Component | Without Endpoint | With Gateway Endpoint | With Interface Endpoint |
 |-----------|-----------------|----------------------|------------------------|
-| NAT Gateway hourly | $0.045/hr | $0 | $0 |
+| NAT Gateway hourly | $0.045/hr if NAT is required | $0 if NAT can be removed | $0 if NAT can be removed |
 | NAT Gateway data | $0.045/GB | $0 | $0 |
 | Endpoint hourly | $0 | $0 | ~$0.01/hr per AZ |
 | Endpoint data | $0 | $0 | ~$0.01/GB |
-| **1 TB/month total** | **~$78** | **$0** | **~$17** |
+| **1 TB/month total (one AZ)** | **~$78** | **$0 if NAT can be removed** | **~$17 if NAT can be removed** |
 
-For S3 and DynamoDB, the savings are 100% because gateway endpoints are free. For other services, you save the NAT gateway data processing charge but pay a smaller per-GB fee on the interface endpoint.
+For S3 and DynamoDB, gateway endpoints are free, so you avoid NAT gateway data processing charges for that traffic. The actual savings depend on whether the NAT gateway is still needed for other destinations. For other services, you save the NAT gateway data processing charge but pay a smaller per-GB fee on the interface endpoint.
 
 ## CloudFormation Template
 
@@ -300,7 +302,7 @@ Resources:
 
 ## Best Practices
 
-1. **Always create S3 and DynamoDB gateway endpoints.** They are free. There is no reason not to have them in every VPC.
+1. **Create S3 and DynamoDB gateway endpoints where those services are used.** They are free, but test route changes and endpoint policies before rolling them out to production workloads.
 
 2. **Analyze NAT gateway traffic before creating interface endpoints.** Use VPC Flow Logs and Cost Explorer to identify which services generate the most NAT gateway traffic. Focus interface endpoints on those services.
 
@@ -312,4 +314,4 @@ Resources:
 
 ## Wrapping Up
 
-VPC endpoints are one of the easiest ways to reduce your AWS bill. Gateway endpoints for S3 and DynamoDB cost nothing and eliminate NAT gateway charges for those services entirely. Interface endpoints for other high-traffic services trade the expensive NAT gateway data processing fee for a much smaller per-GB charge. Start with the gateway endpoints, analyze your NAT gateway traffic patterns, and add interface endpoints for the services that generate the most data transfer. The savings add up quickly, especially at scale.
+VPC endpoints are one of the easiest ways to reduce your AWS bill. Gateway endpoints for S3 and DynamoDB cost nothing and eliminate NAT gateway data processing charges for those services. Interface endpoints for other high-traffic services trade the expensive NAT gateway data processing fee for a much smaller per-GB charge. Start with the gateway endpoints, analyze your NAT gateway traffic patterns, and add interface endpoints for the services that generate the most data transfer. The savings add up quickly, especially at scale.
