@@ -14,7 +14,7 @@ Lake Formation gives you four levels of access control: table-level, column-leve
 
 ## Table-Level Permissions
 
-Table-level permissions are the simplest form. You grant or deny access to entire tables within a database. If you've followed our [Lake Formation setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-lake-formation-for-data-lakes/view), you've already seen these.
+Table-level permissions are the simplest form. You grant or revoke access to entire tables within a database. If you've followed our [Lake Formation setup guide](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-lake-formation-for-data-lakes/view), you've already seen these.
 
 ```bash
 # Grant SELECT on a specific table
@@ -22,13 +22,13 @@ Table-level permissions are the simplest form. You grant or deny access to entir
 aws lakeformation grant-permissions \
   --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/AnalystRole"}' \
   --resource '{"Table": {"DatabaseName": "sales_db", "Name": "orders"}}' \
-  --permissions '["SELECT", "DESCRIBE"]'
+  --permissions "SELECT" "DESCRIBE"
 
 # Grant access to all tables in a database using wildcard
 aws lakeformation grant-permissions \
   --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/AnalystRole"}' \
   --resource '{"Table": {"DatabaseName": "sales_db", "TableWildcard": {}}}' \
-  --permissions '["SELECT"]'
+  --permissions "SELECT"
 ```
 
 ## Column-Level Permissions
@@ -48,7 +48,7 @@ aws lakeformation grant-permissions \
       "ColumnNames": ["customer_id", "name", "city", "state", "purchase_history"]
     }
   }' \
-  --permissions '["SELECT"]'
+  --permissions "SELECT"
 
 # Exclude-based: grant access to all columns except sensitive ones
 aws lakeformation grant-permissions \
@@ -62,7 +62,7 @@ aws lakeformation grant-permissions \
       }
     }
   }' \
-  --permissions '["SELECT"]'
+  --permissions "SELECT"
 ```
 
 The exclude-based approach is usually better for tables that get new columns frequently. New columns are automatically accessible unless you explicitly exclude them.
@@ -111,7 +111,7 @@ aws lakeformation grant-permissions \
       "Name": "us-customers-only"
     }
   }' \
-  --permissions '["SELECT"]'
+  --permissions "SELECT"
 ```
 
 ## Cell-Level Security
@@ -143,7 +143,7 @@ aws lakeformation grant-permissions \
       "Name": "us-non-pii"
     }
   }' \
-  --permissions '["SELECT"]'
+  --permissions "SELECT"
 ```
 
 When the US Marketing team queries the customers table through Athena, they'll only see the specified columns and only for US customers. Everything else is invisible.
@@ -158,15 +158,15 @@ The idea is simple: you tag your data resources (databases, tables, columns) and
 # Create LF-Tags
 aws lakeformation create-lf-tag \
   --tag-key "sensitivity" \
-  --tag-values '["public", "internal", "confidential", "restricted"]'
+  --tag-values "public" "internal" "confidential" "restricted"
 
 aws lakeformation create-lf-tag \
   --tag-key "domain" \
-  --tag-values '["sales", "marketing", "finance", "engineering"]'
+  --tag-values "sales" "marketing" "finance" "engineering"
 
 aws lakeformation create-lf-tag \
   --tag-key "region" \
-  --tag-values '["us", "eu", "apac"]'
+  --tag-values "us" "eu" "apac"
 ```
 
 Now assign tags to your resources.
@@ -212,7 +212,7 @@ aws lakeformation grant-permissions \
       ]
     }
   }' \
-  --permissions '["SELECT", "DESCRIBE"]'
+  --permissions "SELECT" "DESCRIBE"
 
 # Data stewards get full access to everything in their domain
 aws lakeformation grant-permissions \
@@ -225,11 +225,11 @@ aws lakeformation grant-permissions \
       ]
     }
   }' \
-  --permissions '["ALL"]' \
-  --permissions-with-grant-option '["ALL"]'
+  --permissions "ALL" \
+  --permissions-with-grant-option "ALL"
 ```
 
-The beauty of LF-TBAC is that when you add new tables and tag them appropriately, permissions are automatically inherited. No manual grant needed.
+The beauty of LF-TBAC is that when you add new tables and tag them appropriately, the existing tag-based grants apply automatically. No manual resource-level grant needed.
 
 ## Auditing Permissions
 
@@ -252,7 +252,7 @@ Here's what works well in production:
 - **Use LF-TBAC for new data lakes.** Named resource permissions (table-level, column-level) work but don't scale. Start with tags from day one.
 - **Establish a sensitivity classification early.** Four levels (public, internal, confidential, restricted) cover most use cases.
 - **Revoke the IAMAllowedPrincipals default.** If you don't, Lake Formation permissions can be bypassed entirely through IAM.
-- **Enable CloudTrail data events.** You'll want an audit trail of who queried what data and when.
+- **Enable CloudTrail for Lake Formation, Athena, and relevant data events.** You'll want an audit trail of who queried what data and when.
 - **Test permissions from the consumer's perspective.** Use `aws lakeformation list-permissions` to verify grants, and actually run queries as the target role to confirm behavior.
 
 Fine-grained access control turns your data lake from a data swamp into a governed, secure analytics platform. It takes some upfront effort to design your tag taxonomy and permission model, but it pays off quickly as your data lake grows.
