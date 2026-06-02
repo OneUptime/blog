@@ -29,6 +29,9 @@ Every Batch job should send its output to CloudWatch Logs. Configure this in the
 # Create the log group first
 
 aws logs create-log-group \
+  --log-group-name /aws/batch/jobs
+
+aws logs put-retention-policy \
   --log-group-name /aws/batch/jobs \
   --retention-in-days 30
 
@@ -53,7 +56,7 @@ aws batch register-job-definition \
   }'
 ```
 
-The log stream name will be: `my-app/<container-name>/<ecs-task-id>`
+The log stream name will be: `my-app/default/<ecs-task-id>`
 
 ## Step 2: Emit Custom Metrics from Job Code
 
@@ -144,6 +147,10 @@ aws events put-rule \
 # Send events to a CloudWatch log group for analysis
 aws logs create-log-group --log-group-name /aws/events/batch-jobs
 
+aws logs put-resource-policy \
+  --policy-name EventBridgeToCWLogsPolicy \
+  --policy-document '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Principal":{"Service":["events.amazonaws.com","delivery.logs.amazonaws.com"]},"Action":["logs:CreateLogStream","logs:PutLogEvents"],"Resource":"arn:aws:logs:us-east-1:123456789012:log-group:/aws/events/*:*"}]}'
+
 aws events put-targets \
   --rule batch-job-state-changes \
   --targets '[
@@ -165,6 +172,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "More than 10 Batch jobs failed in 1 hour" \
   --namespace BatchJobs \
   --metric-name JobErrors \
+  --dimensions Name=JobQueue,Value=data-pipeline-queue Name=JobDefinition,Value=my-data-processor \
   --statistic Sum \
   --period 3600 \
   --threshold 10 \
@@ -179,6 +187,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "Batch job taking longer than 2 hours" \
   --namespace BatchJobs \
   --metric-name JobDurationSeconds \
+  --dimensions Name=JobQueue,Value=data-pipeline-queue Name=JobDefinition,Value=my-data-processor \
   --statistic Maximum \
   --period 300 \
   --threshold 7200 \
@@ -192,6 +201,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "Record processing throughput below threshold" \
   --namespace BatchJobs \
   --metric-name RecordsProcessed \
+  --dimensions Name=JobQueue,Value=data-pipeline-queue Name=JobDefinition,Value=my-data-processor \
   --statistic Sum \
   --period 3600 \
   --threshold 1000 \
@@ -213,9 +223,9 @@ aws cloudwatch put-dashboard \
         "type": "metric",
         "x": 0, "y": 0, "width": 12, "height": 6,
         "properties": {
-          "title": "Job Completion Rate",
+          "title": "Records Processed",
           "metrics": [
-            ["BatchJobs", "TotalRecordsProcessed", "JobQueue", "data-pipeline-queue", {"stat": "Sum", "period": 3600}]
+            ["BatchJobs", "TotalRecordsProcessed", "JobQueue", "data-pipeline-queue", "JobDefinition", "my-data-processor", {"stat": "Sum", "period": 3600}]
           ],
           "view": "timeSeries"
         }
@@ -226,7 +236,7 @@ aws cloudwatch put-dashboard \
         "properties": {
           "title": "Job Errors",
           "metrics": [
-            ["BatchJobs", "JobErrors", "JobQueue", "data-pipeline-queue", {"stat": "Sum", "period": 300, "color": "#d62728"}]
+            ["BatchJobs", "JobErrors", "JobQueue", "data-pipeline-queue", "JobDefinition", "my-data-processor", {"stat": "Sum", "period": 300, "color": "#d62728"}]
           ],
           "view": "timeSeries"
         }
@@ -237,8 +247,8 @@ aws cloudwatch put-dashboard \
         "properties": {
           "title": "Job Duration",
           "metrics": [
-            ["BatchJobs", "JobDurationSeconds", "JobDefinition", "my-data-processor", {"stat": "Average", "period": 300}],
-            ["BatchJobs", "JobDurationSeconds", "JobDefinition", "my-data-processor", {"stat": "p99", "period": 300}]
+            ["BatchJobs", "JobDurationSeconds", "JobQueue", "data-pipeline-queue", "JobDefinition", "my-data-processor", {"stat": "Average", "period": 300}],
+            ["BatchJobs", "JobDurationSeconds", "JobQueue", "data-pipeline-queue", "JobDefinition", "my-data-processor", {"stat": "p99", "period": 300}]
           ],
           "view": "timeSeries"
         }
@@ -259,7 +269,7 @@ aws cloudwatch put-dashboard \
 
 ## Step 6: Log Insights Queries
 
-CloudWatch Log Insights lets you query across all your job logs.
+CloudWatch Logs Insights lets you query across all your job logs.
 
 ```text
 # Find all failed jobs in the last 24 hours
@@ -271,13 +281,14 @@ fields @timestamp, @message
 # Calculate job success rate
 filter @message like /Job complete/
 | stats count() as total,
-  sum(case when @message like /0 errors/ then 1 else 0 end) as succeeded
+  sum(case(@message like /0 errors/, 1, 0)) as succeeded
 | display total, succeeded, (succeeded * 100.0 / total) as success_rate
 
 # Find the slowest jobs
 filter @message like /Job complete.*records in/
-| parse @message "* records in *s" as records, duration
-| sort duration desc
+| parse @message "Job complete: * records in *s, * errors" as records, duration, errors
+| fields records, duration + 0 as duration_seconds, errors
+| sort duration_seconds desc
 | limit 20
 ```
 
@@ -342,6 +353,7 @@ Make your job logs machine-readable for better querying.
 
 ```python
 import json
+import os
 import sys
 from datetime import datetime
 
@@ -352,7 +364,7 @@ def log_structured(level, message, **kwargs):
         'level': level,
         'message': message,
         'job_id': os.environ.get('AWS_BATCH_JOB_ID'),
-        'job_name': os.environ.get('AWS_BATCH_JOB_NAME'),
+        'job_queue': os.environ.get('AWS_BATCH_JQ_NAME'),
         **kwargs
     }
     print(json.dumps(entry), flush=True)
