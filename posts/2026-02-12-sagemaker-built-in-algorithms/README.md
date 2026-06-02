@@ -17,7 +17,7 @@ Let's look at the most useful built-in algorithms and how to use them in practic
 There are three good reasons to reach for a built-in algorithm before writing custom code:
 
 1. **No training script needed** - You configure everything through hyperparameters. No code to debug.
-2. **Distributed training out of the box** - Most built-in algorithms support multi-instance training without any configuration changes.
+2. **Distributed training out of the box** - Many built-in algorithms support multi-instance training without writing custom distributed training code.
 3. **Optimized implementations** - These aren't just wrappers around open-source libraries. AWS has tuned them for performance on SageMaker infrastructure.
 
 The tradeoff is flexibility. If you need a very specific model architecture or training loop, you'll want to bring your own code. But for standard ML tasks, built-in algorithms are hard to beat for speed of iteration.
@@ -58,7 +58,7 @@ region = session.boto_region_name
 xgb_image = image_uris.retrieve(
     framework='xgboost',
     region=region,
-    version='1.7-1'
+    version='3.0-5'
 )
 
 # Configure the estimator
@@ -95,7 +95,7 @@ For regression, just change the objective to `reg:squarederror` and the eval_met
 
 ## Linear Learner
 
-Linear Learner is your go-to for when you want a fast, interpretable model. It supports linear regression, binary classification, and multiclass classification. Under the hood, it uses stochastic gradient descent with automatic tuning of the learning rate.
+Linear Learner is your go-to for when you want a fast, interpretable model. It supports linear regression, binary classification, and multiclass classification. Under the hood, it uses gradient-based optimizers with automatic settings for options like the optimizer and learning rate.
 
 ```python
 # Get the Linear Learner container
@@ -122,8 +122,8 @@ linear_learner.set_hyperparameters(
     epochs=15,                            # Number of passes through data
     num_models=32,                        # Trains multiple models in parallel
     loss='auto',                          # Automatically picks the right loss function
-    l1_regularization_weight=0.001,       # L1 regularization
-    learning_rate=0.01                    # SGD learning rate
+    l1=0.001,                             # L1 regularization
+    learning_rate=0.01                    # Optimizer learning rate
 )
 
 # Linear Learner uses RecordIO format for best performance
@@ -162,13 +162,13 @@ kmeans.set_hyperparameters(
     feature_dim=20,          # Number of features
     mini_batch_size=500,     # Mini-batch size
     init_method='kmeans++',  # Initialization method
-    max_iterations=100,      # Maximum iterations
-    tol=0.0001              # Convergence tolerance
+    local_lloyd_max_iter=100, # Maximum local Lloyd iterations
+    local_lloyd_tol=0.0001   # Local Lloyd convergence tolerance
 )
 
 # K-Means only needs a training channel (unsupervised)
 kmeans.fit({
-    'train': TrainingInput(f's3://{bucket}/data/train', content_type='text/csv')
+    'train': TrainingInput(f's3://{bucket}/data/train', content_type='text/csv;label_size=0')
 })
 ```
 
@@ -219,8 +219,8 @@ deepar.fit({
 DeepAR's data format is JSON Lines where each line represents one time series.
 
 ```json
-{"start": "2024-01-01 00:00:00", "target": [1.2, 3.4, 5.6, 7.8, 9.0, ...]}
-{"start": "2024-01-01 00:00:00", "target": [2.1, 4.3, 6.5, 8.7, 0.9, ...]}
+{"start": "2024-01-01 00:00:00", "target": [1.2, 3.4, 5.6, 7.8, 9.0]}
+{"start": "2024-01-01 00:00:00", "target": [2.1, 4.3, 6.5, 8.7, 0.9]}
 ```
 
 ## BlazingText for NLP
@@ -257,11 +257,12 @@ blazingtext.set_hyperparameters(
 )
 
 blazingtext.fit({
-    'train': TrainingInput(f's3://{bucket}/text/train', content_type='text/plain')
+    'train': TrainingInput(f's3://{bucket}/text/train', content_type='text/plain'),
+    'validation': TrainingInput(f's3://{bucket}/text/validation', content_type='text/plain')
 })
 ```
 
-BlazingText's supervised mode expects data in a specific format: each line has `__label__LABELNAME followed by the text`.
+BlazingText's supervised mode expects data in a specific format: each line has `__label__LABELNAME` followed by the text.
 
 ```text
 __label__positive This movie was fantastic and I loved every minute
@@ -296,7 +297,7 @@ rcf.set_hyperparameters(
 )
 
 rcf.fit({
-    'train': TrainingInput(f's3://{bucket}/data/train', content_type='text/csv')
+    'train': TrainingInput(f's3://{bucket}/data/train', content_type='text/csv;label_size=0')
 })
 ```
 
@@ -319,3 +320,5 @@ You can also use [SageMaker Automatic Model Tuning](https://oneuptime.com/blog/p
 ## Wrapping Up
 
 Built-in algorithms are the fastest path from data to model on SageMaker. They handle the training code, distributed computing, and infrastructure for you. Start with these when tackling a new problem, and only move to custom training scripts when you need something the built-in algorithms can't provide. The consistent API across all algorithms means switching between them is just a matter of changing the image URI and hyperparameters.
+
+Before using a built-in algorithm in production, check the SageMaker prebuilt image support policy. Some older built-in algorithm containers continue to be usable but no longer receive security patches.
