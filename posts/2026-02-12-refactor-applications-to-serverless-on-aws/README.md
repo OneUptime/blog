@@ -68,6 +68,8 @@ const express = require('express');
 const app = express();
 const db = require('./database');
 
+app.use(express.json());
+
 app.get('/api/users/:id', async (req, res) => {
   const user = await db.getUser(req.params.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
@@ -93,6 +95,7 @@ app.listen(3000);
 # Lambda function for user operations
 
 import json
+import uuid
 import boto3
 from datetime import datetime
 
@@ -198,6 +201,7 @@ Resources:
 
 ```python
 # Traditional worker process polling a queue
+import json
 import time
 import pika
 
@@ -236,7 +240,7 @@ def handler(event, context):
             }
         )
 
-    # SQS Lambda integration handles acknowledgment automatically
+    # SQS Lambda integration deletes messages automatically when the batch succeeds
     return {'statusCode': 200}
 ```
 
@@ -324,6 +328,7 @@ def upload_file():
 # Lambda triggered by S3 upload
 import boto3
 import json
+from datetime import datetime
 
 s3 = boto3.client('s3')
 textract = boto3.client('textract')
@@ -429,7 +434,7 @@ Other strategies:
 - Keep functions small and focused
 - Use lightweight runtimes (Python, Node.js start faster than Java)
 - Initialize SDK clients outside the handler
-- Use Lambda SnapStart for Java functions
+- Use Lambda SnapStart for supported Java, Python, or .NET functions
 
 ## Database Considerations
 
@@ -454,10 +459,10 @@ RDSProxy:
 
 ## Monitoring Serverless Applications
 
-Serverless applications distribute logic across many Lambda functions, making observability critical. Enable X-Ray tracing and structured logging:
+Serverless applications distribute logic across many Lambda functions, making observability critical. Enable active tracing on the Lambda function and use X-Ray instrumentation with structured logging:
 
 ```python
-# Enable X-Ray tracing in Lambda
+# Instrument AWS SDK calls for X-Ray after enabling active tracing on the function
 from aws_xray_sdk.core import xray_recorder
 from aws_xray_sdk.core import patch_all
 patch_all()
@@ -470,7 +475,7 @@ def handler(event, context):
     # Your logic here
 ```
 
-For comprehensive monitoring across your serverless functions, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-containerize-legacy-applications-for-aws/view) provides end-to-end observability that works across Lambda, API Gateway, and your other AWS services.
+For comprehensive monitoring across your serverless functions, [OneUptime](https://oneuptime.com) provides end-to-end observability that works across Lambda, API Gateway, and your other AWS services.
 
 ## Wrapping Up
 
