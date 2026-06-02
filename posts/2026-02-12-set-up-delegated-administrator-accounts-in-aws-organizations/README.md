@@ -47,7 +47,8 @@ Each service has its own registration process, but the pattern is similar across
 - AWS Organizations with all features enabled
 - Management account access
 - The member account that will become the delegated administrator must already exist in the organization
-- The target service must be enabled in the organization
+- Trusted access must be enabled for the target service when that service requires it
+- The target service must be enabled in the AWS Regions where you plan to manage it
 
 ## Step 1: Plan Your Delegated Administrator Strategy
 
@@ -74,6 +75,10 @@ Grouping related services into a single delegated administrator account keeps th
 Some services use the Organizations API directly for delegation:
 
 ```bash
+# Enable trusted access for the service, when required
+aws organizations enable-aws-service-access \
+  --service-principal config-multiaccountsetup.amazonaws.com
+
 # Register an account as a delegated administrator for a service
 
 aws organizations register-delegated-administrator \
@@ -118,6 +123,9 @@ aws securityhub update-organization-configuration \
 
 ```bash
 # Designate the security account as GuardDuty delegated admin
+aws organizations enable-aws-service-access \
+  --service-principal guardduty.amazonaws.com
+
 aws guardduty enable-organization-admin-account \
   --admin-account-id 222222222222
 
@@ -147,6 +155,10 @@ aws guardduty update-organization-configuration \
 ## Step 5: Set Up AWS Config Delegated Administrator
 
 ```bash
+# Enable trusted access for Config organization rules and conformance packs
+aws organizations enable-aws-service-access \
+  --service-principal config-multiaccountsetup.amazonaws.com
+
 # Register Config delegated administrator
 aws organizations register-delegated-administrator \
   --account-id 333333333333 \
@@ -167,13 +179,12 @@ aws configservice put-organization-config-rule \
 StackSets delegation is particularly useful for operations teams that need to deploy resources across all accounts:
 
 ```bash
+# Activate trusted access for StackSets
+aws cloudformation activate-organizations-access
+
 # Register as delegated admin for CloudFormation StackSets
 aws organizations register-delegated-administrator \
   --account-id 333333333333 \
-  --service-principal member.org.stacksets.cloudformation.amazonaws.com
-
-# Enable trusted access for StackSets
-aws organizations enable-aws-service-access \
   --service-principal member.org.stacksets.cloudformation.amazonaws.com
 ```
 
@@ -194,21 +205,18 @@ Note the `--call-as DELEGATED_ADMIN` flag. This is required when making StackSet
 ## Step 7: Set Up AWS Backup Delegated Administrator
 
 ```bash
+# Enable trusted access for AWS Backup
+aws organizations enable-aws-service-access \
+  --service-principal backup.amazonaws.com
+
 # Register Backup delegated administrator
 aws organizations register-delegated-administrator \
   --account-id 333333333333 \
   --service-principal backup.amazonaws.com
 
-# From the delegated admin, enable cross-account management
-aws backup update-region-settings \
-  --resource-type-management-preference '{
-    "EBS": true,
-    "EC2": true,
-    "RDS": true,
-    "Aurora": true,
-    "DynamoDB": true,
-    "S3": true
-  }'
+# From the management account, enable Backup cross-account management options
+aws backup update-global-settings \
+  --global-settings isCrossAccountBackupEnabled=true,isDelegatedAdministratorEnabled=true
 ```
 
 For more on backup policies, check out our guide on [implementing AWS Organizations backup policies](https://oneuptime.com/blog/post/2026-02-12-implement-aws-organizations-backup-policies/view).
@@ -234,12 +242,13 @@ Resources:
   SecurityHubDelegatedAdmin:
     Type: AWS::SecurityHub::DelegatedAdmin
     Properties:
-      DelegatedAdminAccountId: !Ref SecurityAccountId
+      AdminAccountId: !Ref SecurityAccountId
 
   GuardDutyDelegatedAdmin:
-    Type: AWS::GuardDuty::Detector
+    Type: Custom::GuardDutyDelegatedAdmin
     Properties:
-      Enable: true
+      ServiceToken: !GetAtt DelegatedAdminFunction.Arn
+      AccountId: !Ref SecurityAccountId
 
   # Use a Custom Resource for services without native CloudFormation support
   ConfigDelegatedAdmin:
@@ -262,18 +271,31 @@ Resources:
           import cfnresponse
 
           def handler(event, context):
-              client = boto3.client('organizations')
+              organizations = boto3.client('organizations')
+              guardduty = boto3.client('guardduty')
               try:
-                  if event['RequestType'] in ['Create', 'Update']:
-                      client.register_delegated_administrator(
-                          AccountId=event['ResourceProperties']['AccountId'],
-                          ServicePrincipal=event['ResourceProperties']['ServicePrincipal']
-                      )
-                  elif event['RequestType'] == 'Delete':
-                      client.deregister_delegated_administrator(
-                          AccountId=event['ResourceProperties']['AccountId'],
-                          ServicePrincipal=event['ResourceProperties']['ServicePrincipal']
-                      )
+                  props = event['ResourceProperties']
+                  account_id = props['AccountId']
+
+                  if event['ResourceType'] == 'Custom::GuardDutyDelegatedAdmin':
+                      if event['RequestType'] in ['Create', 'Update']:
+                          organizations.enable_aws_service_access(ServicePrincipal='guardduty.amazonaws.com')
+                          guardduty.enable_organization_admin_account(AdminAccountId=account_id)
+                      elif event['RequestType'] == 'Delete':
+                          guardduty.disable_organization_admin_account(AdminAccountId=account_id)
+                  else:
+                      service_principal = props['ServicePrincipal']
+                      if event['RequestType'] in ['Create', 'Update']:
+                          organizations.enable_aws_service_access(ServicePrincipal=service_principal)
+                          organizations.register_delegated_administrator(
+                              AccountId=account_id,
+                              ServicePrincipal=service_principal
+                          )
+                      elif event['RequestType'] == 'Delete':
+                          organizations.deregister_delegated_administrator(
+                              AccountId=account_id,
+                              ServicePrincipal=service_principal
+                          )
                   cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
               except Exception as e:
                   cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
@@ -299,6 +321,9 @@ Resources:
                 Action:
                   - organizations:RegisterDelegatedAdministrator
                   - organizations:DeregisterDelegatedAdministrator
+                  - organizations:EnableAWSServiceAccess
+                  - guardduty:EnableOrganizationAdminAccount
+                  - guardduty:DisableOrganizationAdminAccount
                 Resource: '*'
 ```
 
