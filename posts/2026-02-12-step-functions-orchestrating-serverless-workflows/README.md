@@ -195,21 +195,21 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       Handler: validateOrder.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       CodeUri: src/
 
   CheckInventoryFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: checkInventory.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       CodeUri: src/
 
   ProcessPaymentFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: processPayment.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       CodeUri: src/
 ```
 
@@ -246,7 +246,7 @@ exports.handler = async (event) => {
 
 ## Input and Output Processing
 
-Step Functions lets you filter and transform data between states using InputPath, OutputPath, and ResultPath.
+Step Functions lets you filter and transform data between states using InputPath, Parameters, OutputPath, and ResultPath.
 
 This state definition only passes relevant fields to the Lambda and merges the result back:
 
@@ -255,7 +255,10 @@ This state definition only passes relevant fields to the Lambda and merges the r
   "CheckInventory": {
     "Type": "Task",
     "Resource": "arn:aws:lambda:us-east-1:123456789:function:check-inventory",
-    "InputPath": "$.items",
+    "Parameters": {
+      "items.$": "$.items",
+      "orderId.$": "$.orderId"
+    },
     "ResultPath": "$.inventoryResult",
     "OutputPath": "$",
     "Next": "ProcessPayment"
@@ -263,7 +266,7 @@ This state definition only passes relevant fields to the Lambda and merges the r
 }
 ```
 
-`InputPath` selects what data the Lambda receives. `ResultPath` decides where to put the Lambda's output within the overall state. `OutputPath` filters what gets passed to the next state. These three fields give you fine-grained control over data flow without modifying your Lambda functions.
+`Parameters` selects what data the Lambda receives. `ResultPath` decides where to put the Lambda's output within the overall state. `OutputPath` filters what gets passed to the next state. These fields give you fine-grained control over data flow without modifying your Lambda functions.
 
 ## Monitoring Executions
 
