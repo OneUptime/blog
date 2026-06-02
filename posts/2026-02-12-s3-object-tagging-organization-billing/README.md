@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Cost Management, Tagging
 
-Description: Learn how to use S3 object tagging to organize data, control access, manage lifecycle policies, and allocate storage costs across teams and projects.
+Description: Learn how to use S3 object tagging to organize data, control access, manage lifecycle policies, and analyze storage usage across teams and projects.
 
 ---
 
-S3 object tags are key-value pairs you attach to individual objects. They might seem like a minor feature, but they unlock powerful capabilities for cost allocation, lifecycle management, access control, and data organization. Each object can have up to 10 tags, and once you start using them consistently, they'll change how you manage your S3 data.
+S3 object tags are key-value pairs you attach to individual objects. They might seem like a minor feature, but they unlock powerful capabilities for usage analysis, lifecycle management, access control, and data organization. Each object can have up to 10 tags, and once you start using them consistently, they'll change how you manage your S3 data.
 
 ## Why Object Tags Matter
 
@@ -16,7 +16,7 @@ Tags let you answer questions that prefixes alone can't:
 
 - "How much storage is Team Alpha using across all buckets?"
 - "Which objects are classified as PII and need special retention?"
-- "What's our S3 cost per project?"
+- "How much tagged storage is each project using?"
 - "Which objects should transition to Glacier after 90 days?"
 
 Prefixes give you folder-like organization. Tags give you metadata-based organization that cuts across the prefix hierarchy.
@@ -235,7 +235,7 @@ You can combine prefix and tag filters for even more specific rules.
 
 Control who can access objects based on their tags. This is called Attribute-Based Access Control (ABAC).
 
-Only allow users from the finance department to access objects tagged with `department=finance`.
+For example, allow users to read objects whose `department` object tag matches their `department` principal tag.
 
 ```json
 {
@@ -257,11 +257,11 @@ Only allow users from the finance department to access objects tagged with `depa
 
 This dynamically matches the object's department tag against the user's department tag. No need to maintain separate policies per team.
 
-## Cost Allocation with Tags
+## Cost Allocation with Bucket Tags
 
-S3 cost allocation tags let you break down your S3 bill by tag. This requires activating the tags in the Billing console.
+AWS cost allocation tags for S3 let you break down your S3 bill by bucket tag. Cost allocation tags don't apply to individual S3 object tags, so use bucket tags for Cost Explorer billing allocation and object tags for lifecycle, access control, and object-level usage analysis.
 
-First, make sure you're tagging objects consistently. Then activate the tag keys in AWS Cost Explorer.
+First, make sure you're tagging buckets consistently. Then activate the tag keys in AWS Billing and Cost Management.
 
 ```bash
 # You can activate cost allocation tags via the CLI
@@ -273,14 +273,26 @@ aws ce update-cost-allocation-tags-status \
   ]'
 ```
 
-After activation (it takes 24 hours to take effect), you can filter your S3 costs by these tags in Cost Explorer. This lets you answer questions like "How much is the marketing team spending on S3?" or "What's the storage cost for Project Phoenix?"
+After activation (it can take up to 24 hours for the tags to appear), you can filter your S3 costs by these bucket tags in Cost Explorer. This lets you answer questions like "How much is the marketing team's bucket spending on S3?" or "What's the storage cost for Project Phoenix's bucket?"
 
 ## S3 Storage Lens and Tags
 
-S3 Storage Lens can aggregate metrics by object tags, giving you visibility into how different tagged categories use storage.
+S3 Storage Lens groups can aggregate metrics by object tags, giving you visibility into how different tagged categories use storage.
 
 ```bash
-# Create a Storage Lens configuration with tag grouping
+# Create a Storage Lens group based on an object tag
+aws s3control create-storage-lens-group \
+  --account-id 123456789012 \
+  --storage-lens-group '{
+    "Name": "finance-objects",
+    "Filter": {
+      "MatchAnyTag": [
+        { "Key": "department", "Value": "finance" }
+      ]
+    }
+  }'
+
+# Include that Storage Lens group in a Storage Lens configuration
 aws s3control put-storage-lens-configuration \
   --account-id 123456789012 \
   --config-id tag-analysis \
@@ -289,9 +301,13 @@ aws s3control put-storage-lens-configuration \
     "IsEnabled": true,
     "AccountLevel": {
       "BucketLevel": {
-        "ActivityMetrics": { "IsEnabled": true },
-        "PrefixLevel": {
-          "StorageMetrics": { "IsEnabled": true }
+        "ActivityMetrics": { "IsEnabled": true }
+      },
+      "StorageLensGroupLevel": {
+        "SelectionCriteria": {
+          "Include": [
+            "arn:aws:s3:us-east-1:123456789012:storage-lens-group/finance-objects"
+          ]
         }
       }
     },
@@ -300,7 +316,7 @@ aws s3control put-storage-lens-configuration \
         "Format": "CSV",
         "OutputSchemaVersion": "V_1",
         "AccountId": "123456789012",
-        "Arn": "arn:aws:s3:::storage-lens-output"
+        "Arn": "arn:aws:s3:us-east-1:123456789012:bucket/storage-lens-output"
       }
     }
   }'
@@ -338,4 +354,4 @@ Enforce tagging by denying uploads without required tags.
 
 This denies any upload that doesn't include a `department` tag.
 
-For monitoring your tagging compliance and storage costs, integrate with [OneUptime](https://oneuptime.com) to build dashboards that track tagged vs untagged objects and cost breakdowns by tag. For more on optimizing S3 costs, see our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/2026-02-12-s3-storage-class-analysis-optimize-costs/view).
+For monitoring your tagging compliance and storage usage, integrate with [OneUptime](https://oneuptime.com) to build dashboards that track tagged vs untagged objects and usage breakdowns by tag. For more on optimizing S3 costs, see our guide on [S3 storage class analysis](https://oneuptime.com/blog/post/2026-02-12-s3-storage-class-analysis-optimize-costs/view).
