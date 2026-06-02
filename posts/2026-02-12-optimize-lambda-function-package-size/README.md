@@ -48,11 +48,11 @@ For Node.js:
 
 ```bash
 # Install only production dependencies for deployment
-npm ci --production
+npm ci --omit=dev
 
 # Or with npm prune after a full install
 npm ci
-npm prune --production
+npm prune --omit=dev
 ```
 
 For Python, maintain separate requirements files:
@@ -142,13 +142,13 @@ The trade-off is that you're tied to whatever SDK version the runtime ships. If 
 
 ## Strategy 4: Use Lambda Layers
 
-Move shared dependencies into Lambda Layers. The layer is downloaded once and cached, separate from your function code:
+Move shared dependencies into Lambda Layers. The layer is packaged and versioned separately from your function code, and Lambda loads its contents into `/opt` at runtime:
 
 ```bash
 # Create a layer with shared dependencies
 mkdir -p layer/nodejs
 cp package.json layer/nodejs/
-cd layer/nodejs && npm ci --production && cd ../..
+cd layer/nodejs && npm ci --omit=dev && cd ../..
 
 # Package the layer
 cd layer && zip -r ../my-deps-layer.zip nodejs/ && cd ..
@@ -203,13 +203,14 @@ The result is often a single JavaScript file under 1 MB, compared to a 50+ MB no
 
 ## Strategy 6: Optimize Native Dependencies
 
-Some packages include native binaries compiled for multiple platforms. You only need the Linux x64 build for Lambda:
+Some packages include native binaries compiled for multiple platforms. You only need the build that matches your Lambda runtime architecture, such as Linux x64:
 
 ```bash
 # Install Sharp only for the Lambda platform
-npm install --platform=linux --arch=x64 sharp
+npm install --os=linux --cpu=x64 --libc=glibc sharp
+# For arm64 functions, use --cpu=arm64 instead
 
-# For packages with optional dependencies for other platforms
+# For packages where optional dependencies are not needed at runtime
 npm install --omit=optional
 ```
 
@@ -274,7 +275,7 @@ aws lambda invoke --function-name my-function output.json
 aws logs filter-log-events \
   --log-group-name /aws/lambda/my-function \
   --filter-pattern "REPORT" \
-  --start-time $(date -v-5M +%s000) \
+  --start-time $(date -d '5 minutes ago' +%s000) \
   --query "events[].message" --output text | grep -o "Init Duration: [0-9.]*"
 ```
 
