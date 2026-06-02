@@ -109,8 +109,9 @@ print(f"Registered model version: {model_version_arn}")
 The more common approach is to register models automatically from a SageMaker Pipeline. This ensures every registered model has full lineage back to its training job.
 
 ```python
-from sagemaker.workflow.step_collections import RegisterModel
+from sagemaker.model import Model
 from sagemaker.model_metrics import MetricsSource, ModelMetrics
+from sagemaker.workflow.model_step import ModelStep
 
 # This goes inside your pipeline definition
 model_metrics = ModelMetrics(
@@ -120,10 +121,14 @@ model_metrics = ModelMetrics(
     )
 )
 
-register_step = RegisterModel(
-    name='RegisterFraudModel',
-    estimator=xgb_estimator,
+model = Model(
+    image_uri=xgb_image,
     model_data=training_step.properties.ModelArtifacts.S3ModelArtifacts,
+    role=role,
+    sagemaker_session=pipeline_session
+)
+
+register_args = model.register(
     content_types=['text/csv'],
     response_types=['text/csv'],
     inference_instances=['ml.m5.large', 'ml.m5.xlarge'],
@@ -131,6 +136,11 @@ register_step = RegisterModel(
     model_package_group_name='fraud-detection-models',
     approval_status='PendingManualApproval',
     model_metrics=model_metrics
+)
+
+register_step = ModelStep(
+    name='RegisterFraudModel',
+    step_args=register_args
 )
 ```
 
@@ -216,7 +226,7 @@ def compare_model_versions(group_name, version_1, version_2):
     import json
 
     for version in [version_1, version_2]:
-        details = client.describe_model_package(ModelPackageArn=version)
+        details = client.describe_model_package(ModelPackageName=version)
 
         # Get metrics from S3
         metrics_uri = details['ModelMetrics']['ModelQuality']['Statistics']['S3Uri']
@@ -257,6 +267,8 @@ Get notified when model package status changes - useful for triggering automated
 
 ```python
 # Create an EventBridge rule for model approval events
+import json
+
 events_client = boto3.client('events')
 
 events_client.put_rule(
