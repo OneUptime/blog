@@ -17,8 +17,8 @@ In this guide, we will walk through the full process of setting up an SSR applic
 Before Amplify supported SSR, developers who wanted to deploy a Next.js app on AWS had to cobble together Lambda@Edge, CloudFront, S3, and API Gateway manually. Amplify now handles all of that behind the scenes. When you deploy an SSR app, Amplify automatically provisions:
 
 - An Amazon CloudFront distribution for edge caching
-- AWS Lambda functions to handle server-side rendering
-- An S3 bucket for static assets
+- Amplify Hosting compute resources to handle server-side rendering
+- Static asset hosting
 - Automatic SSL certificate management
 
 This means you get a fully managed, globally distributed SSR deployment without touching CloudFormation or CDK directly.
@@ -28,11 +28,11 @@ This means you get a fully managed, globally distributed SSR deployment without 
 You need a few things before getting started:
 
 - An AWS account with admin permissions
-- Node.js 18 or later installed locally
+- Node.js 20 or later installed locally
 - A Next.js (or Nuxt.js) project in a Git repository
-- The Amplify CLI installed
+- The Amplify CLI installed, if you also manage an Amplify backend
 
-To install the Amplify CLI if you have not already:
+To install the Amplify CLI if you need it for backend resources:
 
 ```bash
 # Install the Amplify CLI globally
@@ -45,7 +45,7 @@ amplify configure
 
 ## Step 1: Prepare Your Next.js App
 
-Amplify SSR support works best with Next.js 13 and later. Make sure your app is set up correctly for SSR by checking your `next.config.js`:
+Amplify Hosting compute supports Next.js versions 12 through 15. Make sure your app is set up correctly for SSR by checking your `next.config.js`:
 
 ```javascript
 // next.config.js - Ensure output is NOT set to 'export'
@@ -86,6 +86,9 @@ frontend:
         - npm ci
     build:
       commands:
+        # Make selected Amplify environment variables available to Next.js
+        - env | grep -e API_BASE_URL -e APP_ENV >> .env.production
+        - env | grep -e NEXT_PUBLIC_ >> .env.production
         # Build the Next.js application
         - npm run build
   artifacts:
@@ -108,16 +111,18 @@ SSR apps often need server-side environment variables that differ from client-si
 
 ```text
 # Example environment variables for an SSR app
-DATABASE_URL=postgresql://user:pass@host:5432/db
+API_BASE_URL=https://api.example.com
 NEXT_PUBLIC_API_URL=https://api.example.com
-SESSION_SECRET=your-secret-key-here
+APP_ENV=production
 ```
 
-Variables prefixed with `NEXT_PUBLIC_` are available on both the server and the client. All other variables are only accessible in server-side code (API routes, getServerSideProps, Server Components).
+Variables prefixed with `NEXT_PUBLIC_` are bundled for browser code at build time. All other variables are intended for server-side code, but Next.js server components do not automatically receive Amplify console variables at runtime. Add the variables your app needs to `.env.production` during the build, as shown in the `amplify.yml` example above.
 
-## Step 5: Configure Compute Settings
+Avoid putting credentials, database passwords, or long-lived secrets in Amplify environment variables that are written into build artifacts. For AWS resources, use an SSR Compute IAM role. For other runtime secrets, fetch them from a managed secret store such as AWS Systems Manager Parameter Store or AWS Secrets Manager in server-side code.
 
-Amplify allows you to tune the compute resources for your SSR functions. In the Amplify console under "Hosting" then "Build settings," you can adjust:
+## Step 5: Confirm Compute Settings
+
+Amplify automatically detects a new Next.js SSR app in the console and deploys it using the Amplify Hosting compute service. If you create or update the app through an API or CLI workflow, make sure the platform is `WEB_COMPUTE`:
 
 ```json
 {
@@ -127,7 +132,7 @@ Amplify allows you to tune the compute resources for your SSR functions. In the 
 }
 ```
 
-The `WEB_COMPUTE` platform is what tells Amplify to provision Lambda functions for SSR rather than treating the app as purely static.
+The `WEB_COMPUTE` platform is what tells Amplify Hosting to deploy the app as a compute-backed SSR app rather than treating it as a purely static app.
 
 ## Architecture Overview
 
@@ -137,8 +142,8 @@ Here is how Amplify handles an SSR request flow:
 graph LR
     A[User Browser] --> B[CloudFront CDN]
     B --> C{Static Asset?}
-    C -->|Yes| D[S3 Bucket]
-    C -->|No| E[Lambda@Edge]
+    C -->|Yes| D[Static Assets]
+    C -->|No| E[Amplify Hosting Compute]
     E --> F[SSR Rendering]
     F --> G[Return HTML]
     D --> A
@@ -146,18 +151,18 @@ graph LR
     B --> A
 ```
 
-Static assets like CSS, JS bundles, and images are served directly from S3 through CloudFront. Dynamic SSR pages are routed to Lambda functions that render the HTML on-demand.
+Static assets like CSS, JS bundles, and images are served through CloudFront. Dynamic SSR pages are routed to Amplify Hosting compute resources that render the HTML on-demand.
 
 ## Step 6: Handle API Routes
 
-If your Next.js app includes API routes (files in `pages/api/` or the `app/api/` directory), Amplify automatically deploys them as Lambda functions. No special configuration is needed.
+If your Next.js app includes API routes (files in `pages/api/` or the `app/api/` directory), Amplify supports them as part of the SSR deployment. No special configuration is needed.
 
 ```typescript
-// app/api/users/route.ts - This becomes a Lambda function automatically
+// app/api/users/route.ts - This runs on the server
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  // This runs server-side in a Lambda function
+  // This runs server-side in Amplify Hosting compute
   const users = await fetchUsersFromDatabase();
   return NextResponse.json(users);
 }
@@ -181,17 +186,17 @@ Check that pages using `getServerSideProps` or Server Components render correctl
 
 **Build times out**: Amplify has a default build timeout of 30 minutes. If your app is large, increase this in the Amplify console under "Build settings." You can set it up to 120 minutes.
 
-**Lambda function size limits**: SSR Lambda functions have a 50MB deployment package limit. If your app exceeds this, check for unnecessary dependencies and use dynamic imports to split your code.
+**Build output size limits**: SSR apps on Amplify Hosting compute have a 220MB maximum build output size. If your app exceeds this, check for unnecessary runtime dependencies and remove large binaries that are not required by the server runtime after the build.
 
-**Environment variables not available**: Remember that environment variables set in the Amplify console are injected at build time. If you need runtime-only variables, use AWS Systems Manager Parameter Store and fetch them in your server-side code.
+**Environment variables not available**: Remember that Next.js server components do not automatically receive Amplify console variables at runtime. Write the variables you need to `.env.production` during the build, and use a managed secret store for runtime-only secrets.
 
-**Image optimization not working**: Make sure `images.unoptimized` is not set to `true` in your Next.js config. Amplify provisions a separate Lambda function for image optimization.
+**Image optimization not working**: Make sure `images.unoptimized` is not set to `true` in your Next.js config. Amplify provides built-in image optimization for SSR apps, and Next.js 13 or later apps do not need additional configuration for the default image optimizer.
 
 ## Monitoring Your SSR App
 
-Once deployed, you will want to monitor your SSR performance. Amplify integrates with CloudWatch, giving you access to Lambda invocation metrics, error rates, and duration. For a more thorough setup, check out our guide on [monitoring Amplify hosting with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-amplify-hosting-with-cloudwatch/view).
+Once deployed, you will want to monitor your SSR performance. Amplify can send SSR runtime logs to Amazon CloudWatch Logs when the app has the required IAM service role permissions. For a more thorough setup, check out our guide on [monitoring Amplify hosting with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-amplify-hosting-with-cloudwatch/view).
 
-You can also set up custom alarms for Lambda cold starts, which are the primary source of latency in SSR deployments. Cold starts typically add 200-500ms to the first request after an idle period.
+You can also monitor compute startup latency and SSR response times, which are common sources of latency in SSR deployments after idle periods or large server bundles.
 
 ## Performance Tips
 
@@ -207,4 +212,4 @@ A few things that will make your Amplify SSR deployment faster:
 
 ## Wrapping Up
 
-Amplify has matured into a solid platform for SSR applications. The managed infrastructure removes the headache of configuring Lambda@Edge, CloudFront, and S3 yourself, while still giving you the flexibility to customize build settings, environment variables, and compute resources. If you are building with Next.js or Nuxt.js and want to stay in the AWS ecosystem, Amplify is one of the simplest paths to production.
+Amplify has matured into a solid platform for SSR applications. The managed infrastructure removes the headache of configuring CloudFront, static hosting, and SSR compute yourself, while still giving you the flexibility to customize build settings, environment variables, and compute roles. If you are building with Next.js or Nuxt.js and want to stay in the AWS ecosystem, Amplify is one of the simplest paths to production.
