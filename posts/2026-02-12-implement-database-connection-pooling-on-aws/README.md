@@ -12,7 +12,7 @@ Every database connection costs resources. On the database side, each connection
 
 Connection pooling solves this by maintaining a pool of pre-established connections that are shared across requests. Instead of opening and closing connections constantly, your application borrows a connection from the pool, uses it, and returns it.
 
-On AWS, you have two main options: RDS Proxy (managed pooling) and application-level pooling. Let us explore both.
+On AWS, you have several options: RDS Proxy (managed pooling), application-level pooling, and external poolers such as PgBouncer. Let us explore them.
 
 ## The Connection Problem
 
@@ -65,7 +65,6 @@ aws secretsmanager create-secret \
 Create the IAM role that RDS Proxy uses to access the secret:
 
 ```json
-// IAM policy allowing RDS Proxy to read the database secret
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -152,14 +151,17 @@ def get_connection():
             sslmode='require',
             connect_timeout=5
         )
+        conn.autocommit = True
     return conn
 
 def lambda_handler(event, context):
     connection = get_connection()
     cursor = connection.cursor()
-    cursor.execute("SELECT * FROM users WHERE id = %s", (event['user_id'],))
-    result = cursor.fetchone()
-    cursor.close()
+    try:
+        cursor.execute("SELECT * FROM users WHERE id = %s", (event['user_id'],))
+        result = cursor.fetchone()
+    finally:
+        cursor.close()
     return {'user': result}
 ```
 
@@ -173,11 +175,16 @@ aws rds modify-db-proxy \
   --db-proxy-name my-db-proxy \
   --idle-client-timeout 1800 \
   --require-tls
+
+aws rds modify-db-proxy-target-group \
+  --db-proxy-name my-db-proxy \
+  --target-group-name default \
+  --connection-pool-config MaxConnectionsPercent=80,MaxIdleConnectionsPercent=40,ConnectionBorrowTimeout=120
 ```
 
 **ConnectionBorrowTimeout** (default 120s) - How long a client waits for a connection from the pool before getting an error. Increase this if you see timeout errors during traffic spikes.
 
-**IdleClientTimeout** (default 1800s) - How long an idle client connection stays open. Lower this for Lambda to free up connections faster.
+**IdleClientTimeout** (default 1800s) - How long an idle client connection stays open. Lower this for Lambda to close idle client connections faster; the underlying database connection can stay in the proxy pool for reuse.
 
 **MaxConnectionsPercent** (default 100) - What percentage of `max_connections` the proxy can use. Set this to 80-90% to leave headroom for direct admin connections.
 
@@ -300,7 +307,7 @@ A common mistake is making the pool too large. More connections does not mean mo
 Optimal pool size = (number of CPU cores * 2) + effective_spindle_count
 ```
 
-For cloud databases, the "spindle count" translates roughly to IOPS capacity. In practice, most applications perform well with 10-30 connections per application instance. Start small and increase only if you see connection wait times in your metrics.
+For cloud databases with SSD-backed storage, the old "spindle count" part of the formula is less direct; treat the formula as a starting point and tune from metrics. In practice, most applications perform well with 10-30 connections per application instance. Start small and increase only if you see connection wait times in your metrics.
 
 ## Monitoring Pool Health
 
@@ -311,7 +318,7 @@ Whatever pooling strategy you use, monitor these metrics:
 - **Wait time** - How long requests wait for a connection
 - **Connection errors** - Failed attempts to create or borrow connections
 
-For RDS Proxy, these metrics are available in CloudWatch under the `AWS/RDSProxy` namespace.
+For RDS Proxy, these metrics are available in CloudWatch under RDS, in the per-proxy metrics view.
 
 ## Wrapping Up
 
