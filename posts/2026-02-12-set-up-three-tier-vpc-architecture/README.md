@@ -315,7 +315,7 @@ Notice that the data tier route table has no default route. No `0.0.0.0/0` entry
 The security groups enforce tier-to-tier communication rules:
 
 ```yaml
-  # Web tier - accepts public traffic on 80 and 443
+  # Web tier - accepts public traffic on 443
   WebSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
