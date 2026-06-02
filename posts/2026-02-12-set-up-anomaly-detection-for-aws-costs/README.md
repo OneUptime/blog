@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
-Tags: AWS, Cost Management, Anomaly Detection, CloudWatch, Monitoring
+Tags: AWS, Cost Management, Anomaly Detection, SNS, Monitoring
 
 Description: Set up AWS Cost Anomaly Detection to automatically find unexpected spending spikes, with custom monitors, alert thresholds, and integration with SNS and Slack.
 
@@ -16,12 +16,13 @@ AWS Cost Anomaly Detection uses machine learning to establish a baseline of your
 
 The service learns your spending patterns over time - daily, weekly, seasonal variations. When actual spending deviates significantly from the expected pattern, it flags it as an anomaly. You define how you want to be notified and what threshold triggers an alert.
 
-It works across three dimensions:
+It works across four monitor dimensions:
 - Individual AWS services
 - Linked accounts (in an organization)
 - Cost allocation tags
+- Cost categories
 
-The ML model takes about 2 weeks to establish a baseline from your historical data.
+If you create a new monitor, it can take up to 24 hours to begin detecting new anomalies. For a new service subscription, AWS needs 10 days of historical service usage data before anomalies can be detected for that service.
 
 ## Setting Up Your First Monitor
 
@@ -46,33 +47,23 @@ aws ce create-anomaly-monitor \
   --anomaly-monitor '{
     "MonitorName": "AccountLevelMonitor",
     "MonitorType": "DIMENSIONAL",
-    "MonitorDimension": "SERVICE"
+    "MonitorDimension": "LINKED_ACCOUNT"
   }'
 ```
 
-For specific high-cost services, create targeted monitors using Cost Explorer expressions:
+For specific high-cost accounts, create targeted monitors using Cost Explorer expressions:
 
 ```bash
-# Create a custom monitor for just EC2 and RDS (your biggest cost drivers)
+# Create a custom monitor for specific linked accounts (your biggest cost drivers)
 aws ce create-anomaly-monitor \
   --anomaly-monitor '{
-    "MonitorName": "ComputeAndDatabaseMonitor",
+    "MonitorName": "HighCostAccountsMonitor",
     "MonitorType": "CUSTOM",
     "MonitorSpecification": {
-      "Or": [
-        {
-          "Dimensions": {
-            "Key": "SERVICE",
-            "Values": ["Amazon Elastic Compute Cloud - Compute"]
-          }
-        },
-        {
-          "Dimensions": {
-            "Key": "SERVICE",
-            "Values": ["Amazon Relational Database Service"]
-          }
-        }
-      ]
+      "Dimensions": {
+        "Key": "LINKED_ACCOUNT",
+        "Values": ["111122223333", "444455556666"]
+      }
     }
   }'
 ```
@@ -160,8 +151,8 @@ def lambda_handler(event, context):
         message = json.loads(record['Sns']['Message'])
 
         # Extract anomaly details
-        anomaly_id = message.get('anomalyId', 'unknown')
-        service = message.get('dimensionValue', 'Unknown service')
+        service = message.get('dimensionalValue', 'Unknown service')
+        details_link = message.get('anomalyDetailsLink', 'https://console.aws.amazon.com/cost-management/home#/anomaly-detection')
         impact = message.get('impact', {})
         total_impact = impact.get('totalImpact', 0)
         expected = impact.get('totalExpectedSpend', 0)
@@ -190,7 +181,7 @@ def lambda_handler(event, context):
                     "type": "section",
                     "text": {
                         "type": "mrkdwn",
-                        "text": f"<https://console.aws.amazon.com/cost-management/home#/anomaly-detection/monitor/{anomaly_id}|View in AWS Console>"
+                        "text": f"<{details_link}|View in AWS Console>"
                     }
                 }
             ]
