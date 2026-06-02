@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, ECS, Secrets Manager, Security, Container
 
-Description: Learn how to securely inject secrets from AWS Secrets Manager into your ECS containers as environment variables or through file-based access patterns.
+Description: Learn how to securely inject secrets from AWS Secrets Manager into your ECS containers as environment variables.
 
 ---
 
@@ -60,24 +60,24 @@ In your task definition, use the `secrets` property (not `environment`) to refer
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/web-app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/web-app:latest",
       "essential": true,
       "secrets": [
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/database/password-AbCdEf"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/database/password-AbCdEf"
         },
         {
           "name": "DB_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/database/credentials-AbCdEf:username::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/database/credentials-AbCdEf:username::"
         },
         {
           "name": "DB_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/database/credentials-AbCdEf:host::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/database/credentials-AbCdEf:host::"
         }
       ],
       "environment": [
@@ -108,15 +108,15 @@ Some common patterns:
   "secrets": [
     {
       "name": "DB_PASSWORD",
-      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:db-creds-AbCdEf:password::"
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:db-creds-AbCdEf:password::"
     },
     {
       "name": "DB_PASSWORD_PREVIOUS",
-      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:db-creds-AbCdEf:password:AWSPREVIOUS:"
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:db-creds-AbCdEf:password:AWSPREVIOUS:"
     },
     {
       "name": "FULL_SECRET_JSON",
-      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:db-creds-AbCdEf"
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:db-creds-AbCdEf"
     }
   ]
 }
@@ -143,7 +143,7 @@ resource "aws_iam_role_policy" "secrets_access" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = [
-          "arn:aws:secretsmanager:us-east-1:123456789:secret:production/*"
+          "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/*"
         ]
       }
     ]
@@ -303,7 +303,7 @@ You can also use SSM Parameter Store for less sensitive configuration. The synta
   "secrets": [
     {
       "name": "API_ENDPOINT",
-      "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/api-endpoint"
+      "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/production/api-endpoint"
     }
   ]
 }
