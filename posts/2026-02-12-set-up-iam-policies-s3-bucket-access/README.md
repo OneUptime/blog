@@ -48,7 +48,7 @@ The most common pattern - allow a user or role to read objects from a bucket:
 }
 ```
 
-Why two statements? `ListBucket` operates on the bucket resource, while `GetObject` operates on object resources. Mixing them in one statement with both ARNs doesn't work the way you'd expect.
+Why two statements? `ListBucket` operates on the bucket resource, while `GetObject` operates on object resources. You can combine both actions and both ARNs in one statement, but separating bucket-level and object-level actions makes the policy easier to read and avoids accidentally using the wrong ARN for an action.
 
 ## Read-Write Access
 
@@ -177,21 +177,16 @@ This is great for log shipping, data collection, and file drop-offs.
 
 ## Enforcing Encryption
 
-Require that all uploaded objects are encrypted:
+Require that all uploaded objects use KMS encryption. This deny statement belongs in a bucket policy because it applies to every principal that uploads to the bucket:
 
 ```json
 {
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "AllowObjectUpload",
-      "Effect": "Allow",
-      "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::secure-bucket/*"
-    },
-    {
       "Sid": "DenyUnencryptedUploads",
       "Effect": "Deny",
+      "Principal": "*",
       "Action": "s3:PutObject",
       "Resource": "arn:aws:s3:::secure-bucket/*",
       "Condition": {
@@ -204,11 +199,11 @@ Require that all uploaded objects are encrypted:
 }
 ```
 
-This allows uploads but only if they include KMS encryption. Unencrypted uploads are denied.
+This does not grant upload access by itself. It denies uploads unless the request includes KMS encryption, so you still need a separate IAM or bucket policy that allows `s3:PutObject`.
 
 ## Cross-Account S3 Access
 
-For sharing a bucket with another account, you can use either identity-based policies (with role assumption) or a bucket policy (resource-based). The bucket policy approach is simpler:
+For sharing a bucket with another account, you can use either identity-based policies (with role assumption) or a bucket policy (resource-based). For direct cross-account access, the bucket policy in the bucket owner's account must allow the external principal, and the external role also needs an identity-based policy that allows the same S3 actions. The bucket policy side looks like this:
 
 ```json
 {
@@ -314,7 +309,7 @@ aws iam simulate-principal-policy \
 
 ## Common Mistakes
 
-**Mixing bucket and object ARNs in one statement**: This is the number one S3 policy mistake. `ListBucket` needs the bucket ARN; `GetObject` needs the object ARN with `/*`.
+**Using the wrong ARN type for an action**: This is the number one S3 policy mistake. `ListBucket` needs the bucket ARN; `GetObject` needs the object ARN with `/*`.
 
 **Forgetting `s3:ListBucket`**: Without it, your application gets `Access Denied` when trying to list files, even though it can read individual files.
 
