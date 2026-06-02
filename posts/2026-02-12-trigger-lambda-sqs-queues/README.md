@@ -19,7 +19,7 @@ Lambda uses an Event Source Mapping to poll your SQS queue. The Lambda service h
 Key behaviors to understand:
 
 - Lambda uses long polling (20-second wait time) to check for messages
-- Messages are received in batches (configurable, up to 10 for standard queues, up to 10,000 for FIFO)
+- Messages are received in batches (configurable, up to 10,000 for standard queues, up to 10 for FIFO)
 - If your function succeeds, Lambda deletes the messages automatically
 - If your function fails, the messages become visible again after the visibility timeout expires
 - Lambda scales up to process messages faster when the queue depth grows
@@ -50,7 +50,7 @@ export class SqsTriggerStack extends cdk.Stack {
     // Main processing queue
     const processingQueue = new sqs.Queue(this, 'ProcessingQueue', {
       queueName: 'order-processing',
-      visibilityTimeout: cdk.Duration.seconds(90), // 6x your Lambda timeout
+      visibilityTimeout: cdk.Duration.seconds(95), // 6x your Lambda timeout, plus the batching window
       retentionPeriod: cdk.Duration.days(7),
       deadLetterQueue: {
         queue: dlq,
@@ -80,15 +80,15 @@ export class SqsTriggerStack extends cdk.Stack {
 }
 ```
 
-The `maxConcurrency` setting is important. Without it, Lambda can scale to thousands of concurrent executions when the queue fills up, which might overwhelm your downstream services. Set this based on what your database or API can handle.
+The `maxConcurrency` setting is important. Without it, Lambda can scale to more than a thousand concurrent executions when the queue fills up, which might overwhelm your downstream services. Set this based on what your database or API can handle.
 
 ## The Visibility Timeout Rule
 
-This one's critical: your queue's visibility timeout must be at least 6 times your Lambda function's timeout. Here's why:
+This one's critical: your Lambda function's timeout must be less than or equal to the queue's visibility timeout, and AWS recommends setting the queue's visibility timeout to at least 6 times your Lambda function's timeout plus the batching window. Here's why:
 
 When Lambda receives a batch of messages, the messages become invisible to other consumers for the visibility timeout period. If your Lambda function takes longer than the visibility timeout to process, the messages become visible again and another Lambda invocation picks them up. Now you have duplicate processing.
 
-The 6x recommendation accounts for Lambda's retry behavior and internal processing overhead.
+The 6x plus batching window recommendation accounts for Lambda's retry behavior and internal processing overhead.
 
 ## Writing the Lambda Handler
 
@@ -161,13 +161,12 @@ const fifoQueue = new sqs.Queue(this, 'OrderFifoQueue', {
 processor.addEventSource(
   new eventsources.SqsEventSource(fifoQueue, {
     batchSize: 10,
-    maxBatchingWindow: cdk.Duration.seconds(0), // no batching window for FIFO
     reportBatchItemFailures: true,
   })
 );
 ```
 
-With FIFO queues, Lambda processes messages in order per message group ID. If a message fails, it blocks subsequent messages in the same group until the failed message is resolved or moved to the DLQ. Messages in other groups continue to process normally.
+With FIFO queues, Lambda processes messages in order per message group ID. If a message fails, it blocks subsequent messages in the same group until the failed message is resolved or moved to the DLQ. Messages in other groups continue to process normally. When using partial batch responses with FIFO queues, stop processing after the first failure and return all failed and unprocessed messages in `batchItemFailures` to preserve ordering.
 
 ## Sending Messages to the Queue
 
@@ -221,10 +220,10 @@ async function enqueueOrders(orders) {
 Lambda scales up aggressively to drain your queue. Here's how it works:
 
 1. Lambda starts with 5 concurrent invocations
-2. It adds 60 more concurrent invocations per minute
+2. It adds up to 300 more concurrent invocations per minute
 3. It keeps scaling until the queue is drained or the concurrency limit is reached
 
-For standard queues, Lambda can scale to over 1,000 concurrent invocations. For FIFO queues, the maximum is equal to the number of active message groups.
+For standard queues, Lambda can scale to up to 1,250 concurrent invocations by default. For FIFO queues, the maximum is equal to the number of active message groups.
 
 If this scaling is too aggressive for your downstream services, use `maxConcurrency` on the event source mapping:
 
@@ -233,7 +232,7 @@ If this scaling is too aggressive for your downstream services, use `maxConcurre
 
 aws lambda update-event-source-mapping \
   --uuid abc-123-def-456 \
-  --scaling-config MaxConcurrency=10
+  --scaling-config MaximumConcurrency=10
 ```
 
 ## Monitoring SQS-Lambda Pipelines
@@ -242,7 +241,7 @@ Watch these metrics:
 
 - **ApproximateNumberOfMessagesVisible** - queue depth. If it's growing, you're not processing fast enough.
 - **ApproximateAgeOfOldestMessage** - how long messages are waiting. This is your processing latency.
-- **NumberOfMessagesSent to DLQ** - if messages are landing in the DLQ, something is consistently failing.
+- **ApproximateNumberOfMessagesVisible on the DLQ** - if messages are visible in the DLQ, something is consistently failing.
 - **Lambda ConcurrentExecutions** - how many workers are active.
 
 Set up alerts on all of these. A growing queue depth combined with stable concurrency usually means your Lambda function is hitting a bottleneck. For monitoring patterns, see [Lambda extensions for monitoring](https://oneuptime.com/blog/post/2026-02-12-lambda-extensions-monitoring/view).
