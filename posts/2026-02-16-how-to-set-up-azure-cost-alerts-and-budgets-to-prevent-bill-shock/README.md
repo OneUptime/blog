@@ -33,11 +33,10 @@ A budget tracks your spending against a target amount and sends alerts when you 
 az consumption budget create \
   --budget-name "Monthly-Production-Budget" \
   --amount 5000 \
-  --time-grain Monthly \
+  --time-grain monthly \
   --start-date 2026-02-01 \
   --end-date 2027-02-01 \
-  --resource-group-filter "" \
-  --category Cost
+  --category cost
 ```
 
 Through the Azure portal, you get more flexibility. Go to **Cost Management + Billing > Cost Management > Budgets > Add**.
@@ -65,7 +64,7 @@ Budget alerts fire when spending hits a percentage of the budget. I recommend se
 # Using the Azure REST API for more control
 az rest \
   --method PUT \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.Consumption/budgets/Monthly-Budget?api-version=2023-05-01" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.Consumption/budgets/Monthly-Budget?api-version=2024-08-01" \
   --body '{
     "properties": {
       "category": "Cost",
@@ -122,9 +121,9 @@ az monitor action-group create \
   --resource-group myResourceGroup \
   --name CostAlertActionGroup \
   --short-name CostAlert \
-  --email-receiver name=TeamLead email=lead@example.com \
-  --email-receiver name=Finance email=finance@example.com \
-  --webhook-receiver name=Slack uri="https://hooks.slack.com/services/xxx/yyy/zzz"
+  --action email TeamLead lead@example.com \
+  --action email Finance finance@example.com \
+  --action webhook Slack "https://hooks.slack.com/services/xxx/yyy/zzz"
 ```
 
 Link the action group to your budget alerts through the portal or API.
@@ -137,7 +136,7 @@ Budget alerts catch planned overspending, but anomaly alerts catch unexpected sp
 # Create a cost anomaly alert rule
 az rest \
   --method PUT \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.CostManagement/scheduledActions/DailyCostAnomaly?api-version=2023-08-01" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.CostManagement/scheduledActions/DailyCostAnomaly?api-version=2025-03-01" \
   --body '{
     "kind": "InsightAlert",
     "properties": {
@@ -173,7 +172,7 @@ For teams that manage their own resource groups, create budgets at the resource 
 az consumption budget create \
   --budget-name "TeamA-Monthly-Budget" \
   --amount 2000 \
-  --time-grain Monthly \
+  --time-grain monthly \
   --start-date 2026-02-01 \
   --end-date 2027-02-01 \
   --resource-group myTeamARG
@@ -185,7 +184,7 @@ This approach works well with a tagging strategy. You can also create budgets fi
 # Create a budget filtered by environment tag
 az rest \
   --method PUT \
-  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.Consumption/budgets/Dev-Environment-Budget?api-version=2023-05-01" \
+  --url "https://management.azure.com/subscriptions/<sub-id>/providers/Microsoft.Consumption/budgets/Dev-Environment-Budget?api-version=2024-08-01" \
   --body '{
     "properties": {
       "category": "Cost",
@@ -198,6 +197,7 @@ az rest \
       "filter": {
         "tags": {
           "name": "Environment",
+          "operator": "In",
           "values": ["dev", "development"]
         }
       },
@@ -246,9 +246,9 @@ az costmanagement export create \
   --storage-container "costexports" \
   --timeframe MonthToDate \
   --type ActualCost \
-  --schedule-recurrence Daily \
+  --recurrence Daily \
   --schedule-status Active \
-  --recurrence-period from="2026-02-16" to="2027-02-16"
+  --recurrence-period from="2026-02-16T00:00:00Z" to="2027-02-16T00:00:00Z"
 ```
 
 ## Step 8: Respond to Alerts
