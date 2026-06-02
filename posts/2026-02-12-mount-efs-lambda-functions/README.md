@@ -8,7 +8,7 @@ Description: Learn how to attach Amazon EFS file systems to AWS Lambda functions
 
 ---
 
-Lambda functions are stateless by nature. Each invocation starts fresh, and when it ends, any files you wrote to `/tmp` are gone (or might be reused if the execution environment is warm, but you can't rely on that). The `/tmp` directory also has a size limit - 10 GB as of recent updates, but that's still not enough for many use cases.
+Lambda functions are stateless by nature. Execution environments can be reused, so files you wrote to `/tmp` might still be there on a warm invocation, but you can't rely on that for durable storage. The `/tmp` directory also has a size limit - 10 GB as of recent updates, but that's still not enough for many use cases.
 
 EFS support for Lambda changes the game. You can mount an EFS file system on your Lambda function, giving it access to a virtually unlimited, persistent, shared file system. Multiple Lambda functions (or even Lambda alongside EC2 and Fargate) can read from and write to the same file system simultaneously.
 
@@ -28,7 +28,7 @@ Your Lambda function must be configured to run inside a VPC. That's because EFS 
 
 You'll need:
 
-1. A VPC with private subnets (Lambda functions in a VPC don't get public IPs by default)
+1. A VPC with private subnets (Lambda functions in a VPC don't get public IPs)
 2. An EFS file system with mount targets in those subnets
 3. Security groups that allow NFS traffic between Lambda and EFS
 4. NAT Gateway or VPC endpoints if your Lambda needs internet access or AWS service access
@@ -45,7 +45,7 @@ Create a security group for your Lambda function if you don't have one:
 LAMBDA_SG=$(aws ec2 create-security-group \
   --group-name "lambda-efs-sg" \
   --description "Security group for Lambda functions with EFS" \
-  --vpc-id "vpc-0abc123" \
+  --vpc-id "vpc-0abc123def4567890" \
   --query "GroupId" \
   --output text)
 
@@ -54,11 +54,11 @@ aws ec2 authorize-security-group-egress \
   --group-id "$LAMBDA_SG" \
   --protocol tcp \
   --port 2049 \
-  --source-group "sg-0efs-mount-target"
+  --source-group "sg-0def456abc7891234"
 
 # Update EFS mount target SG to allow inbound from Lambda
 aws ec2 authorize-security-group-ingress \
-  --group-id "sg-0efs-mount-target" \
+  --group-id "sg-0def456abc7891234" \
   --protocol tcp \
   --port 2049 \
   --source-group "$LAMBDA_SG"
@@ -95,7 +95,7 @@ aws lambda create-function \
   --handler "index.handler" \
   --role "arn:aws:iam::123456789012:role/lambda-efs-role" \
   --zip-file "fileb://function.zip" \
-  --vpc-config "SubnetIds=subnet-0aaa111,subnet-0bbb222,SecurityGroupIds=$LAMBDA_SG" \
+  --vpc-config "SubnetIds=subnet-0aaa111bbb222ccc3,subnet-0bbb222ccc333ddd4,SecurityGroupIds=$LAMBDA_SG" \
   --file-system-configs "[{\"Arn\":\"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/$AP_ID\",\"LocalMountPath\":\"/mnt/data\"}]" \
   --memory-size 1024 \
   --timeout 60
@@ -107,7 +107,7 @@ If you're updating an existing function:
 # Add EFS to an existing function
 aws lambda update-function-configuration \
   --function-name "file-processor" \
-  --vpc-config "SubnetIds=subnet-0aaa111,subnet-0bbb222,SecurityGroupIds=$LAMBDA_SG" \
+  --vpc-config "SubnetIds=subnet-0aaa111bbb222ccc3,subnet-0bbb222ccc333ddd4,SecurityGroupIds=$LAMBDA_SG" \
   --file-system-configs "[{\"Arn\":\"arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/$AP_ID\",\"LocalMountPath\":\"/mnt/data\"}]"
 ```
 
@@ -176,7 +176,7 @@ One of the best use cases is loading ML models. Here's a pattern for loading a l
 import os
 import json
 
-MODEL_PATH = '/mnt/models/sentiment-model'
+MODEL_PATH = '/mnt/data/models/sentiment-model'
 model = None
 
 def load_model():
@@ -230,7 +230,7 @@ The Lambda execution role needs permission to mount the EFS access point:
       "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-0abc123def456789",
       "Condition": {
         "StringEquals": {
-          "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0abc123"
+          "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0abc123def4567890"
         }
       }
     }
@@ -246,7 +246,10 @@ The role also needs VPC permissions (usually provided by the `AWSLambdaVPCAccess
   "Action": [
     "ec2:CreateNetworkInterface",
     "ec2:DescribeNetworkInterfaces",
-    "ec2:DeleteNetworkInterface"
+    "ec2:DescribeSubnets",
+    "ec2:DeleteNetworkInterface",
+    "ec2:AssignPrivateIpAddresses",
+    "ec2:UnassignPrivateIpAddresses"
   ],
   "Resource": "*"
 }
@@ -304,7 +307,7 @@ resource "aws_lambda_function" "processor" {
 
 ## Performance Tips
 
-**Cold start impact**: Adding EFS to a VPC-attached Lambda function adds a small amount to cold start time (usually 1-3 seconds for the EFS mount). Warm invocations are not affected.
+**Cold start impact**: Adding EFS to a VPC-attached Lambda function adds a small amount to cold start time. AWS says Lambda mounts EFS in a few hundred milliseconds, though total cold start duration still depends on your runtime, package size, and initialization code. Warm invocations are not affected.
 
 **Throughput**: Each Lambda function instance gets its own NFS connection. If you have many concurrent invocations, EFS throughput scales well. But watch your burst credits if you're on bursting throughput mode.
 
