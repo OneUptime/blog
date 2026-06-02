@@ -14,7 +14,7 @@ Terraform's `default_tags` feature, combined with validation and organizational 
 
 ## The default_tags Feature
 
-Terraform's AWS provider supports `default_tags` at the provider level. Every resource created by that provider automatically inherits these tags:
+Terraform's AWS provider supports `default_tags` at the provider level. Every taggable resource created by that provider automatically inherits these tags:
 
 ```hcl
 provider "aws" {
@@ -32,7 +32,7 @@ provider "aws" {
 }
 ```
 
-That's it. Every AWS resource created by this provider gets those five tags automatically. No more forgetting to add tags to individual resources.
+That's it. Every supported AWS resource created by this provider gets those five tags automatically. The main exception is `aws_autoscaling_group`, which needs tags configured on the resource itself. No more forgetting to add tags to individual taggable resources.
 
 ## Multiple Provider Configurations
 
@@ -166,9 +166,6 @@ Build tags dynamically based on your organization's standards:
 
 ```hcl
 locals {
-  # Timestamp for tracking when infra was last modified
-  deploy_timestamp = formatdate("YYYY-MM-DD", timestamp())
-
   # Required tags that every resource must have
   required_tags = {
     Environment  = var.environment
@@ -177,7 +174,7 @@ locals {
     CostCenter   = var.cost_center
     ManagedBy    = "terraform"
     Repository   = var.repository_name
-    LastDeployed = local.deploy_timestamp
+    LastDeployed = var.deployment_date
   }
 
   # Additional tags for production resources
@@ -267,7 +264,7 @@ resource "aws_organizations_policy_attachment" "tagging" {
 }
 ```
 
-Tag policies enforce that the tag key uses the exact casing you specify and that values match the allowed list. They don't prevent resource creation, but they do show up as non-compliant in AWS Config.
+Tag policies enforce that the tag key uses the exact casing you specify and that values match the allowed list. When you use `enforced_for`, AWS can prevent noncompliant tagging operations for supported resource types. Tag policies do not make missing tag keys noncompliant on untagged resources, so use AWS Config or SCPs when you need to detect or block resources without required tags.
 
 ## AWS Config Rule for Tag Compliance
 
@@ -294,10 +291,9 @@ resource "aws_config_config_rule" "required_tags" {
   scope {
     compliance_resource_types = [
       "AWS::EC2::Instance",
+      "AWS::EC2::Volume",
       "AWS::RDS::DBInstance",
       "AWS::S3::Bucket",
-      "AWS::Lambda::Function",
-      "AWS::ECS::Cluster",
     ]
   }
 }
@@ -314,7 +310,7 @@ output "instance_tags" {
 }
 ```
 
-There's a known gotcha: if you set a tag both in `default_tags` and on the resource with the same key, Terraform shows a perpetual diff in some versions. The fix is to not duplicate keys between default tags and resource tags.
+There's a known gotcha in AWS provider versions 3.38.0 through 4.67.0: if you set a tag both in `default_tags` and on the resource with the same key, Terraform can show a perpetual diff. The fix is to not duplicate keys between default tags and resource tags, or upgrade to AWS provider 5.0.0 or later.
 
 ## Tag-Based Cost Allocation
 
@@ -347,6 +343,6 @@ Activated cost allocation tags appear in AWS Cost Explorer and billing reports, 
 
 ## Summary
 
-Terraform's `default_tags` is the simplest and most effective way to enforce tagging standards. Set it once at the provider level, and every resource gets tagged automatically. Layer on variable validation for format enforcement, AWS tag policies for organizational governance, and AWS Config rules for compliance monitoring. The result is a tagging strategy that works without relying on developers remembering to add tags to every resource.
+Terraform's `default_tags` is the simplest and most effective way to enforce tagging standards. Set it once at the provider level, and supported resources get tagged automatically. Layer on variable validation for format enforcement, AWS tag policies for organizational governance, and AWS Config rules for compliance monitoring. The result is a tagging strategy that works without relying on developers remembering to add tags to every resource.
 
 For monitoring your AWS costs and resource utilization, check out our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
