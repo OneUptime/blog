@@ -47,18 +47,18 @@ Check what time range you can restore to.
 This command shows the earliest and latest restorable times for your instance.
 
 ```bash
-aws rds describe-db-instances \
+aws rds describe-db-instance-automated-backups \
   --db-instance-identifier my-production-db \
-  --query 'DBInstances[0].{
+  --query 'DBInstanceAutomatedBackups[0].{
     InstanceID: DBInstanceIdentifier,
-    EarliestRestore: LatestRestorableTime,
-    LatestRestore: LatestRestorableTime,
+    EarliestRestore: RestoreWindow.EarliestTime,
+    LatestRestore: RestoreWindow.LatestTime,
     BackupRetention: BackupRetentionPeriod,
     BackupWindow: PreferredBackupWindow
   }'
 ```
 
-Wait - both earliest and latest point to the same field? Let me be more precise.
+If you only need the latest restorable time, `describe-db-instances` also returns it directly.
 
 ```bash
 aws rds describe-db-instances \
@@ -156,8 +156,8 @@ Query the PostgreSQL log for the problematic statement.
 # Search CloudWatch Logs for the problematic query
 aws logs filter-log-events \
   --log-group-name /aws/rds/instance/my-production-db/postgresql \
-  --start-time 1707746400000 \
-  --end-time 1707750000000 \
+  --start-time 1770904800000 \
+  --end-time 1770908400000 \
   --filter-pattern "DELETE" \
   --query 'events[*].message'
 ```
@@ -194,11 +194,15 @@ def point_in_time_restore(source_id, target_id, restore_time, config):
     )['DBInstances'][0]
 
     latest_restorable = source['LatestRestorableTime']
+    if restore_time.tzinfo is None:
+        restore_time = restore_time.replace(tzinfo=timezone.utc)
+    else:
+        restore_time = restore_time.astimezone(timezone.utc)
+
     print(f"Latest restorable time: {latest_restorable}")
     print(f"Requested restore time: {restore_time.isoformat()}")
 
-    if restore_time > latest_restorable.replace(tzinfo=None):
-        # Use timezone-naive comparison
+    if restore_time > latest_restorable:
         print("Warning: Requested time might be after latest restorable time")
         print("Falling back to latest restorable time")
         use_latest = True
@@ -210,8 +214,6 @@ def point_in_time_restore(source_id, target_id, restore_time, config):
         'SourceDBInstanceIdentifier': source_id,
         'TargetDBInstanceIdentifier': target_id,
         'DBInstanceClass': config.get('instance_class', source['DBInstanceClass']),
-        'DBSubnetGroupName': config.get('subnet_group'),
-        'VpcSecurityGroupIds': config.get('security_groups', []),
         'MultiAZ': config.get('multi_az', False),
         'PubliclyAccessible': False,
         'CopyTagsToSnapshot': True,
@@ -221,6 +223,11 @@ def point_in_time_restore(source_id, target_id, restore_time, config):
             {'Key': 'SourceInstance', 'Value': source_id}
         ]
     }
+
+    if config.get('subnet_group'):
+        params['DBSubnetGroupName'] = config['subnet_group']
+    if config.get('security_groups'):
+        params['VpcSecurityGroupIds'] = config['security_groups']
 
     if use_latest:
         params['UseLatestRestorableTime'] = True
@@ -254,7 +261,7 @@ def point_in_time_restore(source_id, target_id, restore_time, config):
     return endpoint
 
 # Example: Restore to 5 minutes before the incident
-incident_time = datetime(2026, 2, 12, 14, 47, 31)
+incident_time = datetime(2026, 2, 12, 14, 47, 31, tzinfo=timezone.utc)
 restore_to = incident_time - timedelta(minutes=5)
 
 endpoint = point_in_time_restore(
