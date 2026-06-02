@@ -19,13 +19,13 @@ EBS volumes are great for single-pod workloads, but they have a limitation - an 
 - **ReadWriteMany (RWX)** access mode - multiple pods on multiple nodes can read and write simultaneously
 - **Elastic capacity** - no need to pre-provision storage size, it grows and shrinks automatically
 - **Cross-AZ** - accessible from any availability zone in the region
-- **Automatic backups** - integrates with AWS Backup
+- **Optional automatic backups** - integrates with AWS Backup
 
 ## Prerequisites
 
 Before setting up the EFS CSI driver, you need:
 
-- An EKS cluster running Kubernetes 1.23 or later
+- A supported EKS cluster version
 - An OIDC provider associated with your cluster (see our [IRSA guide](https://oneuptime.com/blog/post/2026-02-12-set-up-iam-roles-for-eks-service-accounts-irsa/view))
 - kubectl and Helm configured
 
@@ -72,17 +72,29 @@ FS_ID=$(aws efs create-file-system \
   --query "FileSystemId" --output text)
 
 echo "EFS File System ID: $FS_ID"
+
+# Wait until the file system is available before creating mount targets
+while [ "$(aws efs describe-file-systems \
+  --file-system-id $FS_ID \
+  --query "FileSystems[0].LifeCycleState" --output text)" != "available" ]; do
+  sleep 5
+done
 ```
 
-Create mount targets in each subnet where your nodes run:
+Create mount targets in one subnet per availability zone where your nodes run:
 
 ```bash
 # Get the subnet IDs used by your EKS cluster
 SUBNET_IDS=$(aws eks describe-cluster --name my-cluster \
   --query "cluster.resourcesVpcConfig.subnetIds" --output text)
 
-# Create a mount target in each subnet
-for SUBNET in $SUBNET_IDS; do
+# EFS allows one mount target per availability zone
+SELECTED_SUBNET_IDS=$(aws ec2 describe-subnets --subnet-ids $SUBNET_IDS \
+  --query "Subnets[*].[SubnetId,AvailabilityZone]" --output text | \
+  awk '!seen[$2]++ {print $1}')
+
+# Create a mount target in each selected subnet
+for SUBNET in $SELECTED_SUBNET_IDS; do
   aws efs create-mount-target \
     --file-system-id $FS_ID \
     --subnet-id $SUBNET \
@@ -134,7 +146,7 @@ kubectl get pods -n kube-system -l app=efs-csi-controller
 kubectl get pods -n kube-system -l app=efs-csi-node
 ```
 
-You should see a controller pod and a node pod on each worker node.
+You should see controller pods and a node pod on each worker node.
 
 ## Step 3: Create a StorageClass
 
