@@ -8,7 +8,7 @@ Description: Resolve the API Gateway execution failed due to configuration error
 
 ---
 
-You hit your API Gateway endpoint and get a 500 error with this in the execution logs:
+You hit your API Gateway endpoint and get a 500 or 502 error with this in the execution logs:
 
 ```text
 Execution failed due to configuration error: Invalid permissions on Lambda function
@@ -20,7 +20,7 @@ or
 Execution failed due to configuration error: Malformed Lambda proxy response
 ```
 
-This error means API Gateway can't properly communicate with its backend integration. The integration itself is misconfigured, not your application code. Let's work through the common configurations that cause this.
+This error means API Gateway can't properly use its backend integration. Some causes are integration misconfigurations, such as invalid Lambda permissions; others, such as a malformed Lambda proxy response, mean the Lambda function returned a response that does not match API Gateway's required proxy response format. Let's work through the common configurations that cause this.
 
 ## Cause 1: Missing Lambda Invoke Permission
 
@@ -162,7 +162,7 @@ aws apigateway get-integration \
 A common mapping template issue is invalid VTL (Velocity Template Language) syntax:
 
 ```json
-// BROKEN: Missing closing brace
+// BROKEN: Missing comma
 {
   "userId": "$input.params('id')"
   "action": "getUser"
@@ -221,12 +221,14 @@ If your integration URI contains `${stageVariables.functionName}` but the stage 
 aws apigateway update-stage \
   --rest-api-id abc123 \
   --stage-name prod \
-  --patch-operations '[{"op":"replace","path":"/variables/functionName","value":"my-function"}]'
+  --patch-operations '[{"op":"add","path":"/variables/functionName","value":"my-function"}]'
 ```
 
 ## Debugging with Execution Logs
 
 Enable detailed execution logging to see exactly what's failing:
+
+Make sure your API Gateway account has a CloudWatch Logs role configured for the Region before enabling execution logging.
 
 ```bash
 # Enable execution logging
@@ -259,6 +261,6 @@ aws logs filter-log-events \
 5. Check for stage variable references that don't exist
 6. For HTTP integrations, verify the backend URL and VPC Link status
 7. For non-proxy integrations, validate mapping templates
-8. Always redeploy after making changes
+8. Redeploy after changing REST API resources, methods, or integrations. Stage setting and stage variable updates take effect without redeploying.
 
 Monitor your API Gateway integrations with [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to catch configuration errors immediately after deployments. A configuration error that slips through can take down your entire API.
