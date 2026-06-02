@@ -96,14 +96,13 @@ curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_se
     -d '{
         "cluster_permissions": [
             "cluster_monitor",
-            "indices:admin/template/get",
-            "indices:admin/template/put"
+            "cluster_manage_index_templates"
         ],
         "index_permissions": [
             {
                 "index_patterns": ["logs-*"],
                 "allowed_actions": [
-                    "crud",
+                    "write",
                     "create_index"
                 ]
             }
@@ -155,7 +154,7 @@ curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_se
         "index_permissions": [
             {
                 "index_patterns": ["logs-*"],
-                "dls": "{\"bool\": {\"must\": [{\"match\": {\"region\": \"us-east-1\"}}]}}",
+                "dls": "{\"term\": {\"region.keyword\": \"us-east-1\"}}",
                 "allowed_actions": ["read", "search"]
             }
         ]
@@ -170,14 +169,14 @@ curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_se
         "index_permissions": [
             {
                 "index_patterns": ["logs-*"],
-                "dls": "{\"bool\": {\"must\": [{\"match\": {\"region\": \"eu-west-1\"}}]}}",
+                "dls": "{\"term\": {\"region.keyword\": \"eu-west-1\"}}",
                 "allowed_actions": ["read", "search"]
             }
         ]
     }'
 ```
 
-When a user in the `us_team_reader` role searches `logs-*`, they only see documents where `region` is `us-east-1`. The filter is applied transparently - the user doesn't even know other documents exist.
+When a user in the `us_team_reader` role searches `logs-*`, they only see documents where the keyword value of `region` is `us-east-1`. The filter is applied transparently - the user doesn't even know other documents exist. Use a `keyword` field or keyword subfield for exact DLS filters, especially for values that contain hyphens.
 
 ## Field-Level Security
 
@@ -193,14 +192,14 @@ curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_se
         "index_permissions": [
             {
                 "index_patterns": ["logs-*"],
-                "fls": ["~ip_address", "~user_id", "~session_token"],
+                "fls": ["~ip_address", "~user_id*", "~session_token*"],
                 "allowed_actions": ["read", "search"]
             }
         ]
     }'
 ```
 
-The tilde (`~`) prefix means "exclude this field." Users with this role will see all fields except `ip_address`, `user_id`, and `session_token`. Alternatively, you can use include mode (without tilde) to specify only the fields that should be visible.
+The tilde (`~`) prefix means "exclude this field." Users with this role will see all fields except `ip_address`, `user_id`, `user_id` subfields, `session_token`, and `session_token` subfields. Alternatively, you can use include mode (without tilde) to specify only the fields that should be visible.
 
 ## Field Masking
 
@@ -223,7 +222,7 @@ curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_se
     }'
 ```
 
-Masked fields appear as SHA-256 hashes. Users can still use them for aggregations (like counting unique masked values) but can't see the actual data.
+Masked fields appear as cryptographic hashes. In OpenSearch 2.11, the default masking algorithm is BLAKE2b, and you can specify a different JVM-supported algorithm per field if needed. Users can't see the actual data.
 
 ## Setting Up Tenant-Based Dashboards
 
@@ -261,11 +260,19 @@ curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_se
 
 ## Audit Logging
 
-Enable audit logging to track who accessed what:
+Enable audit logging to track who accessed what. In Amazon OpenSearch Service, first configure the domain to publish audit logs to CloudWatch Logs:
+
+```bash
+aws opensearch update-domain-config \
+    --domain-name "secure-search" \
+    --log-publishing-options "AUDIT_LOGS={CloudWatchLogsLogGroupArn=arn:aws:logs:us-east-1:123456789012:log-group:/aws/opensearch/domains/secure-search/audit-logs,Enabled=true}"
+```
+
+Then configure the audit categories with the Security REST API:
 
 ```bash
 # Enable audit logging for security events
-curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_plugins/_security/api/audit/config" \
+curl -XPUT "https://search-secure-search.us-east-1.es.amazonaws.com/_opendistro/_security/api/audit/config" \
     -u admin:YourStr0ngP@ssword! \
     -H "Content-Type: application/json" \
     -d '{
