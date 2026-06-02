@@ -16,7 +16,7 @@ The key is designing for interruption. If your application can handle instances 
 
 Spot pricing is dynamic. It fluctuates based on supply and demand for each instance type in each Availability Zone. But unlike the old Spot bidding model, the current model uses a simpler approach: you pay the current Spot price, and if it rises above your maximum (or capacity runs out), you get a 2-minute warning before termination.
 
-In practice, Spot interruption rates vary by instance type. Larger, older instance types tend to have higher interruption rates. Using multiple instance types across multiple AZs dramatically reduces your effective interruption rate.
+In practice, Spot interruption rates vary by instance type, Region, Availability Zone, and point-in-time capacity. Check the Spot Instance Advisor for current interruption frequency, and use multiple instance types across multiple AZs to dramatically reduce your effective interruption rate.
 
 ## Launching Your First Spot Instance
 
@@ -40,11 +40,11 @@ aws ec2 run-instances \
   --subnet-id subnet-abc123
 ```
 
-But for production use, you'll want a Spot Fleet or an Auto Scaling group with mixed instances. Let's cover both.
+But for production use, you'll want EC2 Fleet, a legacy Spot Fleet, or an Auto Scaling group with mixed instances. Let's cover the Spot Fleet pattern and mixed instance groups.
 
 ## Spot Fleet for Batch Workloads
 
-A Spot Fleet requests capacity across multiple instance types and AZs, maximizing your chance of getting and keeping capacity.
+A Spot Fleet requests capacity across multiple instance types and AZs, maximizing your chance of getting and keeping capacity. AWS now recommends EC2 Fleet or Auto Scaling groups over the legacy Spot Fleet APIs for new designs, but the diversification pattern is the same.
 
 This Terraform configuration creates a Spot Fleet for batch processing.
 
@@ -182,11 +182,22 @@ This script polls the instance metadata endpoint for interruption notices.
 import requests
 import subprocess
 import time
-import signal
 import sys
 
+TOKEN_URL = "http://169.254.169.254/latest/api/token"
 METADATA_URL = "http://169.254.169.254/latest/meta-data/spot/instance-action"
+INSTANCE_ID_URL = "http://169.254.169.254/latest/meta-data/instance-id"
 CHECK_INTERVAL = 5  # seconds
+
+def get_metadata_token():
+    """Get an IMDSv2 session token."""
+    resp = requests.put(
+        TOKEN_URL,
+        headers={"X-aws-ec2-metadata-token-ttl-seconds": "21600"},
+        timeout=2
+    )
+    resp.raise_for_status()
+    return resp.text
 
 def handle_interruption(action_data):
     """Gracefully handle Spot interruption."""
@@ -212,10 +223,13 @@ def handle_interruption(action_data):
 
 def get_instance_id():
     """Get this instance's ID from metadata."""
+    token = get_metadata_token()
     resp = requests.get(
-        "http://169.254.169.254/latest/meta-data/instance-id",
+        INSTANCE_ID_URL,
+        headers={"X-aws-ec2-metadata-token": token},
         timeout=2
     )
+    resp.raise_for_status()
     return resp.text
 
 def main():
@@ -223,7 +237,12 @@ def main():
 
     while True:
         try:
-            response = requests.get(METADATA_URL, timeout=2)
+            token = get_metadata_token()
+            response = requests.get(
+                METADATA_URL,
+                headers={"X-aws-ec2-metadata-token": token},
+                timeout=2
+            )
             if response.status_code == 200:
                 handle_interruption(response.json())
                 sys.exit(0)
@@ -236,7 +255,7 @@ if __name__ == "__main__":
     main()
 ```
 
-For containerized workloads, use the AWS Node Termination Handler with EKS, or handle the interruption signal in your ECS task.
+For containerized workloads, use the AWS Node Termination Handler with EKS, enable Spot Instance draining for EC2-backed ECS services, or handle the SIGTERM signal that Fargate Spot sends to running ECS tasks.
 
 ## Using EventBridge for Interruption Handling
 
@@ -257,6 +276,14 @@ resource "aws_cloudwatch_event_target" "spot_handler_lambda" {
   rule      = aws_cloudwatch_event_rule.spot_interruption.name
   target_id = "spot-handler"
   arn       = aws_lambda_function.spot_handler.arn
+}
+
+resource "aws_lambda_permission" "allow_eventbridge_spot" {
+  statement_id  = "AllowExecutionFromEventBridgeSpot"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.spot_handler.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.spot_interruption.arn
 }
 ```
 
