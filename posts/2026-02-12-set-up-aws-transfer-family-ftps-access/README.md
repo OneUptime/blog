@@ -76,7 +76,10 @@ Now create the Transfer Family server with FTPS protocol:
 aws transfer create-server \
   --protocols FTPS \
   --certificate "arn:aws:acm:us-east-1:123456789012:certificate/abc-123-def-456" \
-  --identity-provider-type SERVICE_MANAGED \
+  --identity-provider-type AWS_LAMBDA \
+  --identity-provider-details '{
+    "Function": "arn:aws:lambda:us-east-1:123456789012:function:TransferFamilyAuth"
+  }' \
   --endpoint-type VPC \
   --endpoint-details '{
     "SubnetIds": ["subnet-0abc1234", "subnet-0def5678"],
@@ -84,14 +87,16 @@ aws transfer create-server \
     "SecurityGroupIds": ["sg-0123456789abcdef0"]
   }' \
   --logging-role "arn:aws:iam::123456789012:role/TransferFamilyLoggingRole" \
-  --security-policy-name "TransferSecurityPolicy-2024-01"
+  --security-policy-name "TransferSecurityPolicy-2024-01" \
+  --tags Key=transfer:customHostname,Value=ftps.example.com Key=transfer:route53HostedZoneId,Value=Z1234567890
 ```
 
 A few important notes:
 
 - **FTPS requires a VPC endpoint** - public endpoints aren't supported for FTPS. This is actually fine because FTPS passive mode needs specific port ranges, which VPC security groups handle well.
-- **Security policy**: The `TransferSecurityPolicy-2024-01` enforces TLS 1.2+ and strong cipher suites. Use the latest available policy for best security.
+- **Security policy**: The `TransferSecurityPolicy-2024-01` is the default Transfer Family security policy and uses modern TLS cipher suites. Review the current security policy list if you need the newest or a FIPS-specific policy.
 - **Certificate**: Must be a valid certificate in ACM that matches your custom domain.
+- **Identity provider**: Service-managed users are for SFTP only. FTPS requires AWS Managed Microsoft AD, an AWS Lambda identity provider, or an API Gateway identity provider.
 
 ## Step 3: Configure Security Groups
 
@@ -175,13 +180,8 @@ aws iam put-role-policy \
     "Statement": [
       {
         "Effect": "Allow",
-        "Action": ["s3:ListBucket"],
-        "Resource": "arn:aws:s3:::ftps-transfer-bucket",
-        "Condition": {
-          "StringLike": {
-            "s3:prefix": ["${transfer:UserName}/*", "${transfer:UserName}"]
-          }
-        }
+        "Action": ["s3:ListBucket", "s3:GetBucketLocation"],
+        "Resource": "arn:aws:s3:::ftps-transfer-bucket"
       },
       {
         "Effect": "Allow",
@@ -190,35 +190,39 @@ aws iam put-role-policy \
           "s3:GetObject",
           "s3:DeleteObject"
         ],
-        "Resource": "arn:aws:s3:::ftps-transfer-bucket/${transfer:UserName}/*"
+        "Resource": "arn:aws:s3:::ftps-transfer-bucket/*"
       }
     ]
   }'
 ```
 
-The `${transfer:UserName}` variable is powerful - it automatically scopes each user to their own S3 prefix without needing a separate role per user.
+Use this IAM role with a session policy from your custom identity provider if you want to scope each user to their own S3 prefix without needing a separate role per user.
 
 ## Step 6: Create Users
 
-Add FTPS users with their credentials:
+For FTPS, user credentials come from AWS Managed Microsoft AD or your custom identity provider. With a Lambda identity provider, return the user's role, home directory, and an optional session policy after validating the username and password:
 
-```bash
-# Generate an SSH key pair (FTPS users can also use SSH keys with Transfer Family)
-ssh-keygen -t rsa -b 4096 -f ftps_user_key -N ""
-
-# Create the user
-aws transfer create-user \
-  --server-id s-0123456789abcdef0 \
-  --user-name "partner-globex" \
-  --role "arn:aws:iam::123456789012:role/FTPSUserRole" \
-  --home-directory-type LOGICAL \
-  --home-directory-mappings '[
-    {"Entry": "/", "Target": "/ftps-transfer-bucket/partner-globex"}
-  ]' \
-  --ssh-public-key-body "$(cat ftps_user_key.pub)"
+```json
+{
+  "Role": "arn:aws:iam::123456789012:role/FTPSUserRole",
+  "HomeDirectoryType": "LOGICAL",
+  "HomeDirectoryDetails": "[{\"Entry\":\"/\",\"Target\":\"/ftps-transfer-bucket/partner-globex\"}]",
+  "Policy": "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:ListBucket\"],\"Resource\":\"arn:aws:s3:::ftps-transfer-bucket\",\"Condition\":{\"StringLike\":{\"s3:prefix\":[\"partner-globex/*\",\"partner-globex\"]}}},{\"Effect\":\"Allow\",\"Action\":[\"s3:PutObject\",\"s3:GetObject\",\"s3:DeleteObject\"],\"Resource\":\"arn:aws:s3:::ftps-transfer-bucket/partner-globex/*\"}]}"
+}
 ```
 
-You can also use password authentication by setting up a custom identity provider (see our guide on [Transfer Family custom identity providers](https://oneuptime.com/blog/post/2026-02-12-configure-transfer-family-custom-identity-providers/view)).
+You can test the identity provider before connecting an FTPS client:
+
+```bash
+aws transfer test-identity-provider \
+  --server-id s-0123456789abcdef0 \
+  --user-name partner-globex \
+  --user-password 'correct-horse-battery-staple' \
+  --server-protocol FTPS \
+  --source-ip 203.0.113.10
+```
+
+See our guide on [Transfer Family custom identity providers](https://oneuptime.com/blog/post/2026-02-12-configure-transfer-family-custom-identity-providers/view) for a full Lambda/API Gateway setup.
 
 ## Step 7: Test the FTPS Connection
 
@@ -226,13 +230,12 @@ Test the connection using a command-line FTPS client:
 
 ```bash
 # Using lftp (supports FTPS)
-lftp -u partner-globex, ftps://ftps.example.com
+lftp -u partner-globex,correct-horse-battery-staple ftps://ftps.example.com
 
 # Or using curl for a quick test
-curl --ftp-ssl --user partner-globex: \
-  --key ftps_user_key \
+curl --ssl-reqd --user partner-globex:correct-horse-battery-staple \
   -T test-file.txt \
-  "ftps://ftps.example.com/test-file.txt"
+  "ftp://ftps.example.com/test-file.txt"
 ```
 
 For Windows clients, tools like WinSCP and FileZilla support FTPS natively.
@@ -263,7 +266,7 @@ aws transfer create-workflow \
         "DestinationFileLocation": {
           "S3FileLocation": {
             "Bucket": "processing-bucket",
-            "Key": "incoming/${transfer:UserName}/"
+            "Key": "incoming/${Transfer:UserName}/"
           }
         },
         "OverwriteExisting": "TRUE"
@@ -304,12 +307,19 @@ aws logs filter-log-events \
   --filter-pattern "OPEN" \
   --start-time $(date -d '1 hour ago' +%s000)
 
+# Create a metric from failed authentication log entries
+aws logs put-metric-filter \
+  --log-group-name "/aws/transfer/s-0123456789abcdef0" \
+  --filter-name "FTPSAuthFailures" \
+  --filter-pattern '{ $.activity-type = "AUTH_FAILURE" }' \
+  --metric-transformations \
+    metricName=AuthFailures,metricNamespace=TransferFamily/FTPS,metricValue=1
+
 # Set up CloudWatch alarm for failed authentications
 aws cloudwatch put-metric-alarm \
   --alarm-name "FTPS-FailedAuth" \
-  --namespace "AWS/Transfer" \
-  --metric-name "InvocationsFailed" \
-  --dimensions Name=ServerId,Value=s-0123456789abcdef0 \
+  --namespace "TransferFamily/FTPS" \
+  --metric-name "AuthFailures" \
   --statistic Sum \
   --period 300 \
   --threshold 10 \
