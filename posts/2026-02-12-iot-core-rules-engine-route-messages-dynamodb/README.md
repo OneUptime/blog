@@ -93,7 +93,10 @@ aws iam create-role \
   --role-name IoTRuleDynamoDBRole \
   --assume-role-policy-document file://iot-dynamodb-trust.json
 
-# Create the DynamoDB write policy
+aws logs create-log-group \
+  --log-group-name /iot/rules/errors
+
+# Create the DynamoDB write and error logging policy
 cat > iot-dynamodb-policy.json << 'EOF'
 {
   "Version": "2012-10-17",
@@ -105,9 +108,17 @@ cat > iot-dynamodb-policy.json << 'EOF'
         "dynamodb:UpdateItem"
       ],
       "Resource": [
-        "arn:aws:dynamodb:us-east-1:123456789:table/DeviceLatestState",
-        "arn:aws:dynamodb:us-east-1:123456789:table/DeviceTelemetry"
+        "arn:aws:dynamodb:us-east-1:123456789012:table/DeviceLatestState",
+        "arn:aws:dynamodb:us-east-1:123456789012:table/DeviceTelemetry"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/iot/rules/errors:*"
     }
   ]
 }
@@ -133,10 +144,11 @@ aws iot create-topic-rule \
     "sql": "SELECT topic(2) as device_id, temperature, humidity, battery_level, timestamp() as last_seen FROM '\''devices/+/telemetry'\''",
     "description": "Update the latest device state in DynamoDB",
     "ruleDisabled": false,
+    "awsIotSqlVersion": "2016-03-23",
     "actions": [
       {
         "dynamoDBv2": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleDynamoDBRole",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleDynamoDBRole",
           "putItem": {
             "tableName": "DeviceLatestState"
           }
@@ -145,7 +157,7 @@ aws iot create-topic-rule \
     ],
     "errorAction": {
       "cloudwatchLogs": {
-        "roleArn": "arn:aws:iam::123456789:role/IoTRuleDynamoDBRole",
+        "roleArn": "arn:aws:iam::123456789012:role/IoTRuleDynamoDBRole",
         "logGroupName": "/iot/rules/errors"
       }
     }
@@ -163,13 +175,14 @@ For the time-series table, include a timestamp sort key and a TTL value.
 aws iot create-topic-rule \
   --rule-name AppendTelemetryTimeSeries \
   --topic-rule-payload '{
-    "sql": "SELECT topic(2) as device_id, timestamp() as timestamp, temperature, humidity, battery_level, (timestamp() / 1000) + 2592000 as expiry_time FROM '\''devices/+/telemetry'\''",
+    "sql": "SELECT topic(2) as device_id, timestamp() as timestamp, temperature, humidity, battery_level, floor(timestamp() / 1000) + 2592000 as expiry_time FROM '\''devices/+/telemetry'\''",
     "description": "Append telemetry readings to time-series table",
     "ruleDisabled": false,
+    "awsIotSqlVersion": "2016-03-23",
     "actions": [
       {
         "dynamoDBv2": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleDynamoDBRole",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleDynamoDBRole",
           "putItem": {
             "tableName": "DeviceTelemetry"
           }
@@ -192,10 +205,11 @@ aws iot create-topic-rule \
   --topic-rule-payload '{
     "sql": "SELECT * FROM '\''devices/+/telemetry'\''",
     "ruleDisabled": false,
+    "awsIotSqlVersion": "2016-03-23",
     "actions": [
       {
         "dynamoDB": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleDynamoDBRole",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleDynamoDBRole",
           "tableName": "DeviceTelemetry",
           "hashKeyField": "device_id",
           "hashKeyValue": "${topic(2)}",
@@ -280,6 +294,7 @@ Resources:
         Sql: >-
           SELECT topic(2) as device_id, temperature, humidity,
           timestamp() as last_seen FROM 'devices/+/telemetry'
+        AwsIotSqlVersion: '2016-03-23'
         Actions:
           - DynamoDBv2:
               RoleArn: !GetAtt IoTRuleRole.Arn
@@ -334,16 +349,17 @@ aws iot create-topic-rule \
   --rule-name DualRouteRule \
   --topic-rule-payload '{
     "sql": "SELECT topic(2) as device_id, *, timestamp() as ts FROM '\''devices/+/telemetry'\''",
+    "awsIotSqlVersion": "2016-03-23",
     "actions": [
       {
         "dynamoDBv2": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleDynamoDBRole",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleDynamoDBRole",
           "putItem": {"tableName": "DeviceLatestState"}
         }
       },
       {
         "s3": {
-          "roleArn": "arn:aws:iam::123456789:role/IoTRuleS3Role",
+          "roleArn": "arn:aws:iam::123456789012:role/IoTRuleS3Role",
           "bucketName": "my-iot-data-lake",
           "key": "archive/${topic(2)}/${parse_time(\"yyyy/MM/dd\", timestamp())}/${timestamp()}.json"
         }
