@@ -118,7 +118,7 @@ from sagemaker.estimator import Estimator
 from sagemaker import image_uris
 
 # Get the XGBoost container image
-container = image_uris.retrieve('xgboost', session.boto_region_name, version='1.7-1')
+container = image_uris.retrieve('xgboost', session.boto_region_name, version='3.0-5')
 
 # Create the estimator
 xgb = Estimator(
@@ -244,7 +244,7 @@ sklearn_estimator = SKLearn(
     role=role,
     instance_count=1,
     instance_type='ml.m5.large',
-    framework_version='1.2-1',
+    framework_version='1.4-2',
     hyperparameters={
         'n-estimators': 200,
         'max-depth': 15
@@ -260,14 +260,16 @@ SageMaker can get expensive if you're not careful. Here are the key things to wa
 
 **Use the right instance types.** For experimentation, start with ml.t3.medium notebooks. For training, ml.m5.large is usually enough unless you're working with large datasets or deep learning.
 
-**Stop notebook instances when not in use.** A running ml.t3.medium costs $0.05/hour. That's $36/month if left running. Use auto-stop configuration:
+**Stop notebook instances when not in use.** A running ml.t3.medium costs about $0.05/hour in many US regions. That's about $36/month if left running continuously. Use an auto-stop lifecycle configuration:
 
 ```bash
-# Set up auto-stop lifecycle configuration
+# Set up auto-stop lifecycle configuration using AWS's auto-stop-idle sample
+curl -L -o on-start.sh \
+  https://raw.githubusercontent.com/aws-samples/amazon-sagemaker-notebook-instance-lifecycle-config-samples/master/scripts/auto-stop-idle/on-start.sh
+
 aws sagemaker create-notebook-instance-lifecycle-config \
   --notebook-instance-lifecycle-config-name auto-stop \
-  --on-start '[{"Content": ""}]' \
-  --on-create '[{"Content": ""}]'
+  --on-start Content="$(base64 -w 0 on-start.sh)"
 ```
 
 **Delete endpoints after testing.** Endpoints charge continuously. Use serverless inference for infrequent predictions:
@@ -281,7 +283,7 @@ serverless_config = ServerlessInferenceConfig(
     max_concurrency=5
 )
 
-predictor = model.deploy(
+predictor = xgb.deploy(
     serverless_inference_config=serverless_config
 )
 ```
