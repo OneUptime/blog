@@ -78,7 +78,7 @@ aws oam put-sink-policy \
       "Action": ["oam:CreateLink", "oam:UpdateLink"],
       "Resource": "*",
       "Condition": {
-        "ForAnyValue:StringEquals": {
+        "StringEquals": {
           "aws:PrincipalOrgID": "o-your-org-id"
         }
       }
@@ -155,14 +155,13 @@ With OAM links sharing log groups, you can run CloudWatch Logs Insights queries 
 # Query logs across all linked accounts
 # In the monitoring account:
 aws logs start-query \
-  --log-group-names '/aws/lambda/my-function' \
   --start-time $(date -d '1 hour ago' +%s) \
   --end-time $(date +%s) \
-  --query-string 'fields @timestamp, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 50' \
+  --query-string "SOURCE logGroups(namePrefix: ['/aws/lambda/my-function']) | fields @timestamp, @message | filter @message like /ERROR/ | sort @timestamp desc | limit 50" \
   --region us-east-1
 ```
 
-The query automatically searches across all linked accounts that have a matching log group. This is powerful for investigating issues that span multiple services in different accounts.
+The `SOURCE` command searches matching log groups across the monitoring account and all linked source accounts. This is powerful for investigating issues that span multiple services in different accounts.
 
 ## Step 4: Create Cross-Account Alarms
 
@@ -172,26 +171,37 @@ In the monitoring account, create alarms that reference metrics from source acco
 # Create an alarm on a metric from a source account
 aws cloudwatch put-metric-alarm \
   --alarm-name "prod-high-cpu" \
-  --metric-name "CPUUtilization" \
-  --namespace "AWS/EC2" \
-  --statistic "Average" \
-  --period 300 \
   --evaluation-periods 3 \
   --threshold 90 \
   --comparison-operator "GreaterThanThreshold" \
-  --dimensions Name=InstanceId,Value=i-abc123 \
   --alarm-actions "arn:aws:sns:us-east-1:999888777666:ops-alerts" \
-  --account-id "111111111111"
+  --metrics '[
+    {
+      "Id": "m1",
+      "MetricStat": {
+        "Metric": {
+          "Namespace": "AWS/EC2",
+          "MetricName": "CPUUtilization",
+          "Dimensions": [
+            {"Name": "InstanceId", "Value": "i-abc123"}
+          ]
+        },
+        "Period": 300,
+        "Stat": "Average"
+      },
+      "AccountId": "111111111111",
+      "ReturnData": true
+    }
+  ]'
 ```
 
-The `--account-id` parameter tells CloudWatch to evaluate the metric from the linked source account.
+The `AccountId` field in the metric query tells CloudWatch to evaluate the metric from the linked source account.
 
 ## Step 5: Build the Central Dashboard
 
 Create a comprehensive dashboard in the monitoring account that shows data from all accounts:
 
 ```json
-// Central monitoring dashboard
 {
   "widgets": [
     {
@@ -283,10 +293,9 @@ aws sns subscribe \
 
 ## Access Control
 
-Not everyone should see everything in the monitoring account. Use IAM policies to restrict access:
+Not everyone should be able to administer the monitoring account. Use IAM policies to grant read-only access to CloudWatch data and OAM metadata:
 
 ```json
-// IAM policy to allow viewing only production account metrics
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -295,18 +304,17 @@ Not everyone should see everything in the monitoring account. Use IAM policies t
       "Action": [
         "cloudwatch:GetMetricData",
         "cloudwatch:GetDashboard",
-        "cloudwatch:ListDashboards"
+        "cloudwatch:ListDashboards",
+        "oam:Get*",
+        "oam:List*"
       ],
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "cloudwatch:requestedAccountId": "111111111111"
-        }
-      }
+      "Resource": "*"
     }
   ]
 }
 ```
+
+For per-account visibility boundaries, use separate monitoring accounts or dashboards and control who can access them. CloudWatch IAM condition keys do not provide a source-account filter for `GetMetricData`.
 
 ## Troubleshooting
 
