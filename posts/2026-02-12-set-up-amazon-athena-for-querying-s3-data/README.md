@@ -56,7 +56,7 @@ Then configure Athena to use it:
 # Set the default query results location for Athena
 aws athena update-work-group \
   --work-group primary \
-  --configuration "ResultConfiguration={OutputLocation=s3://my-athena-query-results-123456/}"
+  --configuration-updates "ResultConfigurationUpdates={OutputLocation=s3://my-athena-query-results-123456/}"
 ```
 
 ## Creating a Database
@@ -124,7 +124,7 @@ LOCATION 's3://my-data-bucket/events/';
 Parquet is the recommended format for Athena because it's columnar, compressed, and fast:
 
 ```sql
--- Create a table for Parquet data with automatic schema detection
+-- Create a table for Parquet data
 CREATE EXTERNAL TABLE analytics.orders (
     order_id STRING,
     customer_id STRING,
@@ -268,8 +268,8 @@ For a deeper dive into keeping Athena costs down, check out our guide on [reduci
 
 Track your Athena usage with CloudWatch metrics:
 - `TotalExecutionTime` - How long queries take
-- `DataScannedInBytes` - How much data you're paying for
-- `ProcessedBytes` - Related to cost calculations
+- `ProcessedBytes` - How much data Athena scanned for DML queries
+- `EngineExecutionTime` - How long the query engine spent running the query
 
 These metrics help you identify expensive queries and optimization opportunities. For broader infrastructure monitoring, combining Athena with a platform like [OneUptime](https://oneuptime.com) gives you visibility into both your analytics pipeline and the applications that depend on it.
 
