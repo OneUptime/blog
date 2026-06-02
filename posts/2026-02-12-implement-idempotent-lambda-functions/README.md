@@ -8,7 +8,7 @@ Description: Learn how to make your AWS Lambda functions idempotent to handle re
 
 ---
 
-Lambda functions can be invoked more than once for the same event. SQS might deliver a message twice. Step Functions might retry a failed state. EventBridge might fire the same event again. API Gateway might resend a request due to a timeout. If your function charges a credit card, sends an email, or inserts a database record, running it twice for the same event is a real problem.
+Lambda functions can be invoked more than once for the same event. SQS might deliver a message twice. Step Functions might retry a failed state. EventBridge might retry delivery to a target. API clients might resend a request due to a timeout. If your function charges a credit card, sends an email, or inserts a database record, running it twice for the same event is a real problem.
 
 Idempotency means that running an operation multiple times produces the same result as running it once. Making your Lambda functions idempotent is not optional - it is a requirement for any production serverless application.
 
@@ -18,12 +18,12 @@ Different event sources have different delivery guarantees:
 
 | Event Source | Delivery Guarantee | Can Duplicate? |
 |---|---|---|
-| API Gateway | At-most-once | Rare, but timeout retries |
+| API Gateway | Synchronous request | Yes, if clients retry |
 | SQS | At-least-once | Yes |
 | SNS | At-least-once | Yes |
 | Kinesis | At-least-once | Yes |
 | DynamoDB Streams | At-least-once | Yes |
-| EventBridge | At-least-once | Yes |
+| EventBridge | Source-dependent delivery, target retries | Yes |
 | S3 Events | At-least-once | Yes |
 | Step Functions | Retry on failure | Yes, by design |
 
@@ -124,7 +124,8 @@ def idempotent(key_func):
                 return result
 
             except Exception as e:
-                # Clean up the in-progress record so retries can proceed
+                # Clean up the in-progress record so failed executions can retry.
+                # Any side effects completed before this failure must also be safe to retry.
                 idempotency_table.delete_item(
                     Key={'idempotencyKey': idempotency_key}
                 )
@@ -142,7 +143,7 @@ def idempotent(key_func):
 def handler(event, context):
     record = json.loads(event['Records'][0]['body'])
 
-    # This is safe to retry - will only execute once per messageId
+    # If the first invocation succeeds, later retries return the cached result
     charge_result = charge_credit_card(
         customer_id=record['customerId'],
         amount=record['amount'],
@@ -187,12 +188,18 @@ If you do not want to build the idempotency layer from scratch, AWS Lambda Power
 
 ```python
 # Idempotency with AWS Lambda Powertools - much simpler
+import json
+
 from aws_lambda_powertools.utilities.idempotency import (
     DynamoDBPersistenceLayer, idempotent
 )
 from aws_lambda_powertools.utilities.idempotency import IdempotencyConfig
 
-persistence_layer = DynamoDBPersistenceLayer(table_name='idempotency-store')
+persistence_layer = DynamoDBPersistenceLayer(
+    table_name='idempotency-store',
+    key_attr='idempotencyKey',
+    expiry_attr='ttl'
+)
 config = IdempotencyConfig(
     event_key_jmespath='Records[0].messageId',
     expires_after_seconds=3600
@@ -229,10 +236,13 @@ key_func = lambda event: event['headers'].get('Idempotency-Key', '')
 key_func = lambda event: f"{event['detail-type']}:{event['detail']['orderId']}"
 ```
 
-**S3 Events**: Use the object key and version ID.
+**S3 Events**: Use the object key, event name, sequencer, and version ID if versioning is enabled.
 
 ```python
-key_func = lambda event: f"{event['Records'][0]['s3']['object']['key']}:{event['Records'][0]['s3']['object']['sequencer']}"
+def s3_idempotency_key(event):
+    record = event['Records'][0]
+    obj = record['s3']['object']
+    return f"{record['eventName']}:{obj['key']}:{obj.get('versionId', '')}:{obj['sequencer']}"
 ```
 
 **DynamoDB Streams**: Use the event ID.
@@ -297,7 +307,7 @@ def handler(event, context):
     }
 ```
 
-Use SQS partial batch failure reporting so only failed messages get retried, not the entire batch.
+Use SQS partial batch failure reporting with `ReportBatchItemFailures` enabled on the event source mapping so only failed messages get retried, not the entire batch.
 
 ## Testing Idempotency
 
@@ -328,6 +338,6 @@ def test_idempotency():
 
 ## Wrapping Up
 
-Idempotency is a fundamental requirement for Lambda functions. Every event source can deliver duplicates, and your functions need to handle that gracefully. Use DynamoDB with conditional writes for the idempotency store, choose appropriate keys for each event source, and consider AWS Lambda Powertools to avoid reinventing the wheel.
+Idempotency is a fundamental requirement for Lambda functions. Many event sources and clients can produce duplicates, and your functions need to handle that gracefully. Use DynamoDB with conditional writes for the idempotency store, choose appropriate keys for each event source, and consider AWS Lambda Powertools to avoid reinventing the wheel.
 
 For a related pattern that protects against cascading failures, see our guide on [implementing the circuit breaker pattern with Lambda and DynamoDB](https://oneuptime.com/blog/post/2026-02-12-implement-circuit-breaker-pattern-with-lambda-and-dynamodb/view).
