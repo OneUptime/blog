@@ -234,6 +234,8 @@ sharedKey.addToResourcePolicy(new iam.PolicyStatement({
 
 The grant condition `kms:GrantIsForAWSResource` ensures that the cross-account party can only create grants for AWS services, not arbitrary principals. This is a security best practice.
 
+The external account still needs IAM policies that delegate these permissions to the users or roles that will use the key.
+
 ## Asymmetric Keys
 
 For use cases like digital signatures or asymmetric encryption:
@@ -287,8 +289,11 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 const decryptAlarm = new cloudwatch.Alarm(this, 'HighDecryptRate', {
   metric: new cloudwatch.Metric({
     namespace: 'AWS/KMS',
-    metricName: 'NumberOfDecryptAPICalls',
-    dimensionsMap: { KeyId: encryptionKey.keyId },
+    metricName: 'SuccessfulRequest',
+    dimensionsMap: {
+      KeyArn: encryptionKey.keyArn,
+      Operation: 'Decrypt',
+    },
     statistic: 'Sum',
     period: cdk.Duration.hours(1),
   }),
@@ -302,4 +307,4 @@ For more on encrypting secrets stored in Secrets Manager, check out our post on 
 
 ## Wrapping Up
 
-KMS keys with CDK give you full control over your encryption infrastructure while keeping it version-controlled and repeatable. The most important things: always enable key rotation, always set removal policy to RETAIN, use grant methods for permissions when possible, and separate admin and usage access. Customer managed keys cost $1/month each, so don't create one per resource - share keys across related resources within the same trust boundary.
+KMS keys with CDK give you full control over your encryption infrastructure while keeping it version-controlled and repeatable. The most important things: enable key rotation where supported, always set removal policy to RETAIN, use grant methods for permissions when possible, and separate admin and usage access. Customer managed keys have a monthly storage charge, and rotated key material can add charges for the first two rotations, so don't create one per resource - share keys across related resources within the same trust boundary.
