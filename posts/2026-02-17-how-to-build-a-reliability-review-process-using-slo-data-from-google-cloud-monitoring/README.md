@@ -49,50 +49,56 @@ def create_service_slos(project_id, service_name, service_id):
 
     # Create the service
     service = client.create_service(
-        parent=parent,
-        service=monitoring_v3.Service(
-            display_name=service_name,
-            custom=monitoring_v3.Service.Custom(),
-        ),
-        service_id=service_id,
+        request={
+            "parent": parent,
+            "service_id": service_id,
+            "service": monitoring_v3.Service(
+                display_name=service_name,
+                custom=monitoring_v3.Service.Custom(),
+            ),
+        }
     )
 
     # Availability SLO - 99.9% of requests succeed
     availability_slo = client.create_service_level_objective(
-        parent=service.name,
-        service_level_objective=monitoring_v3.ServiceLevelObjective(
-            display_name=f"{service_name} - Availability 99.9%",
-            goal=0.999,
-            rolling_period={"seconds": 30 * 24 * 3600},
-            service_level_indicator=monitoring_v3.ServiceLevelIndicator(
-                request_based=monitoring_v3.RequestBasedSli(
-                    good_total_ratio=monitoring_v3.TimeSeriesRatio(
-                        good_service_filter=f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_id}" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="2xx"',
-                        total_service_filter=f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_id}" AND metric.type="run.googleapis.com/request_count"',
+        request={
+            "parent": service.name,
+            "service_level_objective_id": f"{service_id}-availability",
+            "service_level_objective": monitoring_v3.ServiceLevelObjective(
+                display_name=f"{service_name} - Availability 99.9%",
+                goal=0.999,
+                rolling_period={"seconds": 30 * 24 * 3600},
+                service_level_indicator=monitoring_v3.ServiceLevelIndicator(
+                    request_based=monitoring_v3.RequestBasedSli(
+                        good_total_ratio=monitoring_v3.TimeSeriesRatio(
+                            good_service_filter=f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_id}" AND metric.type="run.googleapis.com/request_count" AND metric.labels.response_code_class="2xx"',
+                            total_service_filter=f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_id}" AND metric.type="run.googleapis.com/request_count"',
+                        ),
                     ),
                 ),
             ),
-        ),
-        service_level_objective_id=f"{service_id}-availability",
+        }
     )
 
     # Latency SLO - 95% of requests under 200ms
     latency_slo = client.create_service_level_objective(
-        parent=service.name,
-        service_level_objective=monitoring_v3.ServiceLevelObjective(
-            display_name=f"{service_name} - Latency P95 < 200ms",
-            goal=0.95,
-            rolling_period={"seconds": 30 * 24 * 3600},
-            service_level_indicator=monitoring_v3.ServiceLevelIndicator(
-                request_based=monitoring_v3.RequestBasedSli(
-                    distribution_cut=monitoring_v3.DistributionCut(
-                        distribution_filter=f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_id}" AND metric.type="run.googleapis.com/request_latencies"',
-                        range=monitoring_v3.Range(max=200),
+        request={
+            "parent": service.name,
+            "service_level_objective_id": f"{service_id}-latency",
+            "service_level_objective": monitoring_v3.ServiceLevelObjective(
+                display_name=f"{service_name} - Latency P95 < 200ms",
+                goal=0.95,
+                rolling_period={"seconds": 30 * 24 * 3600},
+                service_level_indicator=monitoring_v3.ServiceLevelIndicator(
+                    request_based=monitoring_v3.RequestBasedSli(
+                        distribution_cut=monitoring_v3.DistributionCut(
+                            distribution_filter=f'resource.type="cloud_run_revision" AND resource.labels.service_name="{service_id}" AND metric.type="run.googleapis.com/request_latencies"',
+                            range=monitoring_v3.Range(max=200),
+                        ),
                     ),
                 ),
             ),
-        ),
-        service_level_objective_id=f"{service_id}-latency",
+        }
     )
 
     return [availability_slo, latency_slo]
@@ -117,10 +123,11 @@ Create a report generator that pulls SLO data and formats it for the review meet
 ```python
 # review_report.py - Generate the reliability review report
 from google.cloud import monitoring_v3, bigquery
-from datetime import datetime, timedelta
-import json
+from datetime import datetime
+import time
 
 monitoring_client = monitoring_v3.ServiceMonitoringServiceClient()
+metric_client = monitoring_v3.MetricServiceClient()
 bq_client = bigquery.Client()
 
 def generate_reliability_report(project_id, services):
@@ -168,26 +175,63 @@ def generate_reliability_report(project_id, services):
 
 def calculate_error_budget(slo):
     """Calculate remaining error budget as a percentage."""
-    # In production, query the actual time series data
-    current_performance = get_slo_performance(slo.name)
-    total_budget = 1 - slo.goal
-    consumed = max(0, slo.goal - current_performance)
-    remaining_pct = ((total_budget - consumed) / total_budget) * 100
+    budget_fraction = get_slo_selector_value(slo.name, "select_slo_budget_fraction")
+    remaining_pct = budget_fraction * 100
     return round(remaining_pct, 1)
 
 
 def calculate_burn_rate(slo, days=7):
     """Calculate how fast the error budget is being consumed.
     A burn rate > 1 means the budget will be exhausted before the window ends."""
-    # Simplified calculation
-    # In production, compute from actual time series data
-    budget_consumed_pct = 100 - calculate_error_budget(slo)
-    days_in_window = 30
-    expected_consumption = (days / days_in_window) * 100
+    lookback_seconds = days * 24 * 60 * 60
+    return round(
+        get_slo_selector_value(
+            slo.name,
+            "select_slo_burn_rate",
+            lookback_period=f"{lookback_seconds}s",
+        ),
+        2,
+    )
 
-    if expected_consumption == 0:
-        return 0
-    return round(budget_consumed_pct / expected_consumption, 2)
+
+def get_slo_performance(slo_name):
+    """Fetch current SLO compliance from Cloud Monitoring."""
+    return get_slo_selector_value(slo_name, "select_slo_compliance")
+
+
+def get_slo_selector_value(slo_name, selector_name, lookback_period=None):
+    """Fetch the latest value for a Cloud Monitoring SLO time-series selector."""
+    project_id = slo_name.split("/")[1]
+    now = time.time()
+    seconds = int(now)
+    nanos = int((now - seconds) * 10**9)
+    interval = monitoring_v3.TimeInterval(
+        {
+            "end_time": {"seconds": seconds, "nanos": nanos},
+            "start_time": {"seconds": seconds - 3600, "nanos": nanos},
+        }
+    )
+    selector_args = f'"{slo_name}"'
+    if lookback_period:
+        selector_args += f', "{lookback_period}"'
+    results = metric_client.list_time_series(
+        request={
+            "name": f"projects/{project_id}",
+            "filter": f"{selector_name}({selector_args})",
+            "interval": interval,
+            "view": monitoring_v3.ListTimeSeriesRequest.TimeSeriesView.FULL,
+        }
+    )
+
+    for series in results:
+        for point in series.points:
+            return typed_value_to_float(point.value)
+    return 0.0
+
+
+def typed_value_to_float(value):
+    """Convert a Cloud Monitoring TypedValue into a float."""
+    return float(value.double_value)
 
 
 def get_recent_incidents(project_id, service_id):
@@ -303,6 +347,21 @@ import functions_framework
 from google.cloud import secretmanager
 import requests
 import json
+from datetime import datetime
+
+from format_report import format_report_text
+from review_report import bq_client, generate_reliability_report
+
+
+PROJECT_ID = "your-project-id"
+
+
+def get_secret(project_id, secret_id, version_id="latest"):
+    """Read a secret value from Secret Manager."""
+    client = secretmanager.SecretManagerServiceClient()
+    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+    response = client.access_secret_version(request={"name": name})
+    return response.payload.data.decode("UTF-8")
 
 @functions_framework.http
 def distribute_reliability_report(request):
@@ -316,11 +375,11 @@ def distribute_reliability_report(request):
     ]
 
     # Generate the report
-    report = generate_reliability_report("your-project-id", services)
+    report = generate_reliability_report(PROJECT_ID, services)
     formatted = format_report_text(report)
 
     # Send to Slack
-    slack_webhook = get_secret("slack-webhook-url")
+    slack_webhook = get_secret(PROJECT_ID, "slack-webhook-url")
     requests.post(slack_webhook, json={
         "text": f"Reliability Review Report is ready",
         "blocks": [
@@ -339,7 +398,7 @@ def distribute_reliability_report(request):
 
     # Store the full report in BigQuery for historical tracking
     bq_client.insert_rows_json(
-        "your-project.sre_metrics.reliability_reviews",
+        f"{PROJECT_ID}.sre_metrics.reliability_reviews",
         [{
             "review_date": datetime.utcnow().isoformat(),
             "report_json": json.dumps(report),
