@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, S3, Data Migration, Serverless
 
-Description: Learn how to import data from Amazon S3 into DynamoDB using the native import feature, AWS Data Pipeline, and custom Lambda-based solutions for bulk data loading.
+Description: Learn how to import data from Amazon S3 into DynamoDB using the native import feature, AWS Glue, and custom Lambda-based solutions for bulk data loading.
 
 ---
 
@@ -29,7 +29,7 @@ The import feature creates a brand-new table from the data in S3. You can't impo
 
 ### Setting Up the Import via AWS CLI
 
-Before running the import, make sure your data is in one of the supported formats: DynamoDB JSON, standard JSON, or CSV. Here's how to kick off an import using the CLI.
+Before running the import, make sure your data is in one of the supported formats: DynamoDB JSON, Amazon Ion, or CSV. Here's how to kick off an import using the CLI.
 
 ```bash
 # Start a DynamoDB import from S3
@@ -38,7 +38,7 @@ Before running the import, make sure your data is in one of the supported format
 aws dynamodb import-table \
   --s3-bucket-source S3Bucket=my-data-bucket,S3KeyPrefix=exports/users/ \
   --input-format CSV \
-  --input-format-options '{"Delimiter": ",", "HeaderList": ["user_id", "email", "name", "created_at"]}' \
+  --input-format-options '{"Csv": {"Delimiter": ","}}' \
   --table-creation-parameters '{
     "TableName": "Users",
     "KeySchema": [{"AttributeName": "user_id", "KeyType": "HASH"}],
@@ -76,6 +76,7 @@ Here's a Lambda function that reads a JSON file from S3 and batch-writes to Dyna
 
 ```python
 import json
+import urllib.parse
 import boto3
 
 # Initialize clients outside the handler for connection reuse
@@ -86,7 +87,10 @@ table = dynamodb.Table('Users')
 def handler(event, context):
     # Extract bucket and key from the S3 event notification
     bucket = event['Records'][0]['s3']['bucket']['name']
-    key = event['Records'][0]['s3']['object']['key']
+    key = urllib.parse.unquote_plus(
+        event['Records'][0]['s3']['object']['key'],
+        encoding='utf-8'
+    )
 
     # Download and parse the JSON file from S3
     response = s3_client.get_object(Bucket=bucket, Key=key)
@@ -108,7 +112,7 @@ The `batch_writer` is doing heavy lifting here. It automatically chunks your wri
 
 ### Handling Large Files with Chunked Processing
 
-For files larger than what Lambda can handle in a single invocation (remember the 15-minute timeout), you'll want to split the work. A Step Functions workflow can orchestrate multiple Lambda invocations.
+For files larger than what Lambda can handle in a single invocation (remember the 15-minute timeout), you'll want to split the work. A Step Functions workflow can orchestrate multiple Lambda invocations. When you split newline-delimited JSON by byte range, process only complete lines and pass the returned `next_byte` to the next invocation.
 
 ```python
 import json
@@ -122,23 +126,38 @@ def handler(event, context):
     key = event['key']
     start_byte = event.get('start_byte', 0)
     chunk_size = event.get('chunk_size', 50 * 1024 * 1024)  # 50MB chunks
+    read_ahead = event.get('read_ahead', 1024 * 1024)  # Extra bytes to finish the last line
 
-    # Read a specific byte range from S3
-    byte_range = f'bytes={start_byte}-{start_byte + chunk_size - 1}'
+    # Read a byte range from S3. start_byte should be 0 or the next_byte
+    # returned by the previous invocation so it starts on a line boundary.
+    byte_range = f'bytes={start_byte}-{start_byte + chunk_size + read_ahead - 1}'
     response = s3_client.get_object(
         Bucket=bucket,
         Key=key,
         Range=byte_range
     )
 
-    content = response['Body'].read().decode('utf-8')
+    content = response['Body'].read()
+    content_range = response.get('ContentRange', '')
+    total_size = int(content_range.rsplit('/', 1)[1]) if '/' in content_range else None
+    is_final_chunk = total_size is not None and start_byte + len(content) >= total_size
+    last_newline = content.rfind(b'\n')
+    if last_newline == -1:
+        if not is_final_chunk and len(content) >= chunk_size + read_ahead:
+            raise ValueError('No complete JSON line found; increase read_ahead or split the file')
+        complete_content = content
+        bytes_consumed = len(content)
+    else:
+        complete_content = content[:last_newline]
+        bytes_consumed = last_newline + 1
 
     # Parse lines (assuming newline-delimited JSON)
     table = dynamodb.Table(event['table_name'])
     items_written = 0
 
     with table.batch_writer() as batch:
-        for line in content.strip().split('\n'):
+        for raw_line in complete_content.splitlines():
+            line = raw_line.decode('utf-8').strip()
             if line:
                 item = json.loads(line)
                 batch.put_item(Item=item)
@@ -146,7 +165,7 @@ def handler(event, context):
 
     return {
         'items_written': items_written,
-        'next_byte': start_byte + chunk_size
+        'next_byte': start_byte + bytes_consumed
     }
 ```
 
@@ -197,11 +216,11 @@ glueContext.write_dynamic_frame_from_options(
 
 No matter which approach you use, there are a few things to keep in mind for performance and cost.
 
-**Provisioned capacity vs on-demand**: If you're doing a one-time bulk import, switch the table to on-demand billing mode first. This avoids throttling and you won't have to guess the right provisioned capacity. You can always switch back afterward.
+**Provisioned capacity vs on-demand**: If you're doing a one-time bulk import into an existing table, switching the table to on-demand billing mode first can reduce capacity planning and throttling risk. You can always switch back afterward.
 
 **The native import feature doesn't consume write capacity**: This is a big deal. The S3 import feature creates the table offline and doesn't use your WCU allocation at all. For large datasets, this can save significant money.
 
-**Compression matters**: The native import supports gzip-compressed files. Compressing your S3 data before importing reduces transfer time and storage costs.
+**Compression matters**: The native import supports gzip-compressed files. Compressing your S3 data before importing reduces transfer time and storage costs. When you import compressed files with the CLI, set `--input-compression-type GZIP`.
 
 ```bash
 # Compress your data files before uploading to S3
