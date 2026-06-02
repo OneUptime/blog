@@ -38,7 +38,7 @@ aws iam attach-role-policy \
 # Associate the role with your Redshift cluster
 aws redshift modify-cluster-iam-roles \
   --cluster-identifier analytics-warehouse \
-  --add-iam-roles arn:aws:iam::123456789:role/RedshiftS3ReadRole
+  --add-iam-roles arn:aws:iam::123456789012:role/RedshiftS3ReadRole
 ```
 
 ## Basic COPY Command
@@ -49,7 +49,7 @@ Here's the simplest form of COPY, loading a CSV file from S3.
 -- Load a CSV file into a Redshift table
 COPY orders
 FROM 's3://my-data-bucket/orders/orders.csv'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 IGNOREHEADER 1;
 ```
@@ -68,7 +68,7 @@ The most common format for simple data loads.
 -- CSV with custom delimiter and quote character
 COPY products
 FROM 's3://my-data-bucket/products/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 DELIMITER '|'
 QUOTE '"'
@@ -87,7 +87,7 @@ Good when your source data is already JSON, but slower than columnar formats.
 -- Load JSON data with a JSONPaths file for column mapping
 COPY events
 FROM 's3://my-data-bucket/events/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 JSON 's3://my-data-bucket/jsonpaths/events_paths.json';
 ```
 
@@ -111,14 +111,14 @@ The JSONPaths file maps JSON fields to table columns.
 The best format for large datasets. It's columnar, compressed, and self-describing.
 
 ```sql
--- Load Parquet files - no need to specify columns, they're in the file
+-- Load Parquet files - the file columns must match the target table columns
 COPY fact_sales
 FROM 's3://my-data-bucket/sales/year=2026/month=01/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 FORMAT AS PARQUET;
 ```
 
-Parquet is typically 2-4x faster to load than CSV because Redshift doesn't need to parse text.
+Parquet is typically 2-4x faster to load than CSV because Redshift doesn't need to parse text, but COPY still inserts values into the target table columns in the same order as the columns occur in the Parquet files.
 
 ## Compression
 
@@ -128,7 +128,7 @@ Always compress your files before uploading to S3. It reduces both storage costs
 -- Load GZIP-compressed CSV files
 COPY orders
 FROM 's3://my-data-bucket/orders/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 IGNOREHEADER 1
 GZIP;
@@ -136,7 +136,7 @@ GZIP;
 -- Load ZSTD-compressed files (better compression ratio than GZIP)
 COPY orders
 FROM 's3://my-data-bucket/orders/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 IGNOREHEADER 1
 ZSTD;
@@ -144,7 +144,7 @@ ZSTD;
 -- Load LZO-compressed files
 COPY orders
 FROM 's3://my-data-bucket/orders/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 IGNOREHEADER 1
 LZOP;
@@ -152,7 +152,7 @@ LZOP;
 
 ## Splitting Files for Parallel Loading
 
-This is the single biggest performance optimization you can make. Split your data into multiple files so each Redshift slice can load a file in parallel.
+This is especially important for compressed text files. Split your data into multiple files so each Redshift slice can load a file in parallel.
 
 The ideal number of files is a multiple of your cluster's total slice count. For a 2-node ra3.xlplus cluster, you have 4 slices, so split into 4, 8, or 16 files.
 
@@ -167,13 +167,13 @@ gzip orders_part_*.csv
 aws s3 cp . s3://my-data-bucket/orders/ --recursive --exclude "*" --include "orders_part_*.csv.gz"
 ```
 
-When you point COPY at a prefix (ending with `/` or without a file extension), it loads all matching files in parallel.
+When you point COPY at a prefix, it loads all objects whose keys begin with that prefix in parallel.
 
 ```sql
 -- Load all files matching the prefix in parallel
 COPY orders
 FROM 's3://my-data-bucket/orders/orders_part_'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 GZIP;
 ```
@@ -197,7 +197,7 @@ For precise control over which files to load, use a manifest.
 -- Load files specified in the manifest
 COPY orders
 FROM 's3://my-data-bucket/manifests/january_orders.manifest'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 GZIP
 MANIFEST;
@@ -213,7 +213,7 @@ By default, COPY fails on the first error. In production, you usually want to al
 -- Allow up to 100 errors before failing the entire load
 COPY orders
 FROM 's3://my-data-bucket/orders/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV
 IGNOREHEADER 1
 GZIP
@@ -229,10 +229,10 @@ FROM stl_load_errors
 ORDER BY starttime DESC
 LIMIT 20;
 
--- Get a summary of load results
-SELECT query, filename, lines_scanned, bytes_scanned, status
+-- Get a summary of load progress by file
+SELECT query, filename, lines_scanned, file_format, curtime
 FROM stl_load_commits
-ORDER BY starttime DESC
+ORDER BY curtime DESC
 LIMIT 10;
 ```
 
@@ -247,7 +247,7 @@ CREATE TEMP TABLE orders_staging (LIKE orders);
 -- Step 2: Load new data into staging
 COPY orders_staging
 FROM 's3://my-data-bucket/daily-orders/2026-02-12/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
 CSV GZIP IGNOREHEADER 1;
 
 -- Step 3: Delete existing rows that will be updated
@@ -274,13 +274,14 @@ For regular data loads, you can use a Lambda function triggered by S3 events.
 
 ```python
 # Lambda function that triggers a Redshift COPY when new files arrive in S3
-import boto3
+from urllib.parse import unquote_plus
+
 import redshift_connector
 
 def handler(event, context):
     # Get the S3 key from the event
     bucket = event['Records'][0]['s3']['bucket']['name']
-    key = event['Records'][0]['s3']['object']['key']
+    key = unquote_plus(event['Records'][0]['s3']['object']['key'])
     s3_path = f's3://{bucket}/{key}'
 
     # Connect to Redshift
@@ -298,7 +299,7 @@ def handler(event, context):
     copy_sql = f"""
         COPY orders
         FROM '{s3_path}'
-        IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3ReadRole'
+        IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3ReadRole'
         CSV GZIP IGNOREHEADER 1
         MAXERROR 50
     """
