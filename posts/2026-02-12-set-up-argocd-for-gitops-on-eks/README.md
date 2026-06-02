@@ -41,7 +41,7 @@ Create a namespace and install ArgoCD:
 kubectl create namespace argocd
 
 # Install ArgoCD
-kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+kubectl apply -n argocd --server-side --force-conflicts -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
 
 # Wait for all pods to be ready
 kubectl wait --for=condition=Ready pods --all -n argocd --timeout=300s
@@ -54,7 +54,7 @@ Verify everything is running:
 kubectl get pods -n argocd
 ```
 
-You should see the argocd-server, argocd-repo-server, argocd-application-controller, argocd-redis, and argocd-dex-server pods all running.
+You should see the argocd-server, argocd-repo-server, argocd-application-controller, argocd-redis, and argocd-dex-server pods running, along with other ArgoCD components included in the current install manifest.
 
 ## Step 2: Access the ArgoCD UI
 
@@ -251,7 +251,7 @@ Here's a quick setup with External Secrets:
 
 ```yaml
 # external-secret.yaml - Pull secrets from AWS Secrets Manager
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: my-app-secrets
@@ -277,12 +277,12 @@ ArgoCD exposes Prometheus metrics. If you've set up [Prometheus on EKS](https://
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
-  name: argocd-metrics
+  name: argocd-server-metrics
   namespace: monitoring
 spec:
   selector:
     matchLabels:
-      app.kubernetes.io/name: argocd-server
+      app.kubernetes.io/name: argocd-server-metrics
   endpoints:
     - port: metrics
   namespaceSelector:
