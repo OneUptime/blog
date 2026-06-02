@@ -79,7 +79,7 @@ const BUCKET = process.env.UPLOAD_BUCKET;
 exports.handler = async (event) => {
   try {
     const body = JSON.parse(event.body);
-    const { fileName, contentType } = body;
+    const { fileName, contentType, fileSize } = body;
 
     // Validate the content type to prevent abuse
     const allowedTypes = [
@@ -92,6 +92,16 @@ exports.handler = async (event) => {
         statusCode: 400,
         body: JSON.stringify({
           message: `Content type ${contentType} not allowed`
+        })
+      };
+    }
+
+    const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+    if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > MAX_FILE_SIZE) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({
+          message: 'File size must be between 1 byte and 50MB'
         })
       };
     }
@@ -148,7 +158,8 @@ async function uploadFile(file) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       fileName: file.name,
-      contentType: file.type
+      contentType: file.type,
+      fileSize: file.size
     })
   });
 
@@ -285,29 +296,22 @@ exports.initiateUpload = async (event) => {
 
 You probably don't want people uploading 50GB files to your bucket. There are a few layers where you can enforce limits.
 
-This bucket policy restricts maximum upload size at the S3 level:
+For presigned PUT URLs, enforce the limit before you sign the URL. The Lambda function above rejects requests larger than 50MB:
 
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "LimitFileSize",
-      "Effect": "Deny",
-      "Principal": "*",
-      "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::my-upload-bucket/*",
-      "Condition": {
-        "NumericGreaterThan": {
-          "s3:content-length-range": 52428800
-        }
-      }
-    }
-  ]
+```javascript
+const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
+
+if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > MAX_FILE_SIZE) {
+  return {
+    statusCode: 400,
+    body: JSON.stringify({
+      message: 'File size must be between 1 byte and 50MB'
+    })
+  };
 }
 ```
 
-That policy caps uploads at 50MB. Even if someone bypasses your client-side validation, S3 will reject the upload.
+That check caps signed uploads at 50MB. Even if someone bypasses your client-side validation, your API won't issue a presigned URL for an oversized file.
 
 ## Setting Up Lifecycle Rules
 
