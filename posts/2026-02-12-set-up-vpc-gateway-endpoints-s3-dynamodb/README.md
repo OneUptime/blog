@@ -8,9 +8,9 @@ Description: Create VPC gateway endpoints to access S3 and DynamoDB privately wi
 
 ---
 
-Every time a resource in your private subnet calls S3 or DynamoDB, the traffic goes through your NAT gateway. That means you're paying NAT gateway data processing fees for every S3 download, every DynamoDB query, every backup. For data-heavy workloads, this can add hundreds or thousands of dollars to your monthly bill.
+If a resource in your private subnet calls S3 or DynamoDB without a gateway endpoint, the traffic typically goes through your NAT gateway. That means you're paying NAT gateway data processing fees for every S3 download, every DynamoDB query, every backup. For data-heavy workloads, this can add hundreds or thousands of dollars to your monthly bill.
 
-VPC gateway endpoints fix this. They create a private route between your VPC and S3 or DynamoDB that stays entirely within the AWS network. No internet gateway, no NAT gateway, no data processing charges. And they're free.
+VPC gateway endpoints fix this. They create an AWS-managed route between your VPC and S3 or DynamoDB that does not require an internet gateway or NAT gateway. No NAT gateway data processing charges for that traffic. And gateway endpoints have no additional charge.
 
 ## What Are Gateway Endpoints?
 
@@ -272,7 +272,7 @@ Test from an EC2 instance in a private subnet:
 aws s3 ls s3://my-bucket/ --region us-east-1
 
 # Verify the traffic doesn't go through NAT by checking the route
-# The S3 IP should resolve to an address in the prefix list
+# The S3 IP should resolve to an address covered by the AWS-managed prefix list
 nslookup s3.us-east-1.amazonaws.com
 
 # Check CloudWatch NAT gateway metrics - S3 traffic should drop
