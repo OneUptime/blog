@@ -50,18 +50,18 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
+        uses: aws-actions/configure-aws-credentials@v6.1.0
         with:
           role-to-assume: arn:aws:iam::111111111111:role/terraform-ci
           aws-region: us-east-1
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.14.6
           terraform_wrapper: true  # Enables capturing output
 
       - name: Terraform Init
@@ -81,7 +81,7 @@ jobs:
         continue-on-error: true
 
       - name: Post Plan to PR
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -168,14 +168,16 @@ jobs:
     outputs:
       directories: ${{ steps.dirs.outputs.directories }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
       - name: Find changed directories
         id: dirs
         run: |
           # Find Terraform directories with changes
           dirs=$(git diff --name-only origin/main...HEAD | \
             grep '\.tf$' | \
-            xargs -I {} dirname {} | \
+            xargs -r -I {} dirname {} | \
             sort -u | \
             jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "directories=$dirs" >> $GITHUB_OUTPUT
@@ -190,10 +192,10 @@ jobs:
       fail-fast: false
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
 
       - name: Terraform Init
         run: terraform init -no-color
@@ -206,7 +208,7 @@ jobs:
 
 ## Storing Plan Files for Apply
 
-A nice pattern is saving the plan file as an artifact. When the PR merges, a separate workflow can apply that exact plan - no drift between plan and apply.
+A nice pattern for trusted internal PRs is saving the plan file as an artifact. When the PR merges, a separate workflow can apply that exact plan after verifying it was generated from the commit and state you intend to deploy - reducing drift between plan and apply.
 
 ```yaml
       - name: Terraform Plan
@@ -227,7 +229,7 @@ After the workflow is running, configure it as a required check in your reposito
 
 ## Handling Sensitive Output
 
-Terraform plans can contain sensitive values. To avoid leaking them in PR comments, use the `sensitive` flag in your outputs:
+Terraform plans can contain sensitive values. To avoid leaking sensitive output values in PR comments, use the `sensitive` flag in your outputs:
 
 ```hcl
 # Mark outputs as sensitive so they don't appear in plan
@@ -242,11 +244,15 @@ You can also filter the plan output in your workflow:
 ```yaml
       - name: Sanitize Plan Output
         id: sanitized
+        env:
+          PLAN_OUTPUT: ${{ steps.plan.outputs.stdout }}
         run: |
           # Remove lines that might contain secrets
-          plan_output=$(echo "${{ steps.plan.outputs.stdout }}" | \
-            sed '/password/d; /secret/d; /token/d')
-          echo "plan=$plan_output" >> $GITHUB_OUTPUT
+          {
+            echo 'plan<<EOF'
+            printf '%s\n' "$PLAN_OUTPUT" | sed '/[Pp]assword/d; /[Ss]ecret/d; /[Tt]oken/d'
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
 ```
 
 ## Cost Estimation
@@ -297,14 +303,12 @@ Besides PR comments, you might want Slack notifications for failed plans:
 ```yaml
       - name: Notify on Failure
         if: failure()
-        uses: slackapi/slack-github-action@v1
+        uses: slackapi/slack-github-action@v3.0.3
         with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
           payload: |
-            {
-              "text": "Terraform plan failed on PR #${{ github.event.pull_request.number }}"
-            }
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}
+            text: "Terraform plan failed on PR #${{ github.event.pull_request.number }}"
 ```
 
 ## Summary
