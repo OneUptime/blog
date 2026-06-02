@@ -70,7 +70,6 @@ aws s3 presign s3://my-iot-firmware/devices/sensor-hub/firmware-v2.1.0.bin \
 The job document is a JSON file that tells devices what to do. It gets delivered to each targeted device through MQTT. You can include S3 pre-signed URLs using placeholder variables that IoT Jobs resolves at delivery time.
 
 ```json
-// ota-job-document.json - instructions for the device-side update agent
 {
   "operation": "firmwareUpdate",
   "version": "2.1.0",
@@ -106,6 +105,10 @@ aws iot create-job \
   --document-source "https://s3.amazonaws.com/my-iot-firmware/jobs/ota-job-document.json" \
   --description "Firmware update to v2.1.0 - temperature calibration fixes" \
   --target-selection "SNAPSHOT" \
+  --presigned-url-config '{
+    "roleArn": "arn:aws:iam::123456789012:role/S3DownloadRole",
+    "expiresInSec": 3600
+  }' \
   --job-executions-rollout-config '{
     "maximumPerMinute": 10,
     "exponentialRate": {
@@ -138,6 +141,8 @@ aws iot create-job \
 ```
 
 There are several important configurations here:
+
+**Pre-signed URL config** tells IoT Jobs which IAM role to assume when generating S3 download URLs from the placeholders in the job document. The generated URLs can be valid for 60 to 3600 seconds.
 
 **Rollout config** starts by updating 5 devices per minute, then doubles the rate each time 50 devices succeed. This gradual ramp-up catches problems early before they affect the whole fleet.
 
