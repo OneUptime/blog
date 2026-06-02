@@ -28,10 +28,17 @@ The on-premises SQL Server connects to AWS through VPN or Direct Connect. DMS re
 
 ### Source SQL Server Requirements
 
-DMS uses SQL Server's transaction log for CDC. You need to configure your source database to support this.
+DMS uses SQL Server's transaction log for CDC. You need full backups configured, a Full or Bulk Logged recovery model, and either MS-Replication or MS-CDC enabled so SQL Server performs full transaction logging.
 
 ```sql
--- Enable MS-CDC on the source database (required for ongoing replication)
+-- Configure the source database for ongoing replication
+ALTER DATABASE myapp SET RECOVERY FULL;
+GO
+
+BACKUP DATABASE myapp TO DISK = 'D:\backups\myapp_full.bak';
+GO
+
+-- Enable MS-CDC on the source database when using the MS-CDC path
 USE myapp;
 GO
 
@@ -43,7 +50,7 @@ SELECT name, is_cdc_enabled FROM sys.databases WHERE name = 'myapp';
 GO
 ```
 
-Enable CDC on each table you want to replicate.
+AWS DMS uses SQL Server replication for self-managed source tables with primary keys, and MS-CDC for tables without primary keys. If you use MS-CDC, enable CDC on each table you want to replicate.
 
 ```sql
 -- Enable CDC on specific tables
@@ -114,23 +121,34 @@ GO
 
 -- Grant required permissions for full load
 GRANT SELECT ON SCHEMA::dbo TO dms_user;
+GRANT VIEW DEFINITION TO dms_user;
 GO
 
 -- Grant required permissions for CDC
 GRANT VIEW DATABASE STATE TO dms_user;
-EXEC sp_addrolemember 'db_datareader', 'dms_user';
+ALTER ROLE [db_datareader] ADD MEMBER [dms_user];
 GO
 
--- For MS-CDC
+USE master;
+GRANT VIEW SERVER STATE TO dms_user;
+ALTER SERVER ROLE [sysadmin] ADD MEMBER [dms_user];
+GO
+
+USE msdb;
+GRANT SELECT ON msdb.dbo.backupset TO dms_user;
+GRANT SELECT ON msdb.dbo.backupmediafamily TO dms_user;
+GRANT SELECT ON msdb.dbo.backupfile TO dms_user;
+GO
+
+-- For MS-CDC on the source database
 USE myapp;
-EXEC sys.sp_cdc_enable_db;
-EXEC sp_addrolemember 'db_owner', 'dms_user';
+ALTER ROLE [db_owner] ADD MEMBER [dms_user];
 GO
 ```
 
 ### Configure SQL Server Agent
 
-CDC depends on SQL Server Agent running. Verify it is active.
+MS-CDC uses SQL Server Agent capture and cleanup jobs. Verify that SQL Server Agent is active.
 
 ```sql
 -- Check SQL Server Agent status
@@ -148,14 +166,24 @@ aws rds create-db-instance \
   --engine-version 15.00.4355.3.v1 \
   --db-instance-class db.m5.xlarge \
   --master-username admin \
-  --master-user-password 'YourStr0ngP@ss!' \
+  --master-user-password 'YourStr0ngPass!' \
   --allocated-storage 200 \
   --storage-type gp3 \
+  --iops 3000 \
   --vpc-security-group-ids sg-0abc123 \
   --db-subnet-group-name my-db-subnet-group \
   --license-model license-included \
   --backup-retention-period 7 \
   --multi-az
+
+# Wait for the instance and create the target database
+aws rds wait db-instance-available \
+  --db-instance-identifier sqlserver-rds-target
+
+sqlcmd -S sqlserver-rds-target.xxxxx.us-east-1.rds.amazonaws.com \
+  -U admin \
+  -P 'YourStr0ngPass!' \
+  -Q "CREATE DATABASE [myapp];"
 ```
 
 ## Step 2: Create the DMS Replication Instance
@@ -186,10 +214,10 @@ aws dms create-endpoint \
   --username dms_user \
   --password 'DmsStr0ngP@ss!' \
   --database-name myapp \
-  --extra-connection-attributes "safeguardPolicy=RELY_ON_SQL_SERVER_REPLICATION_AGENT"
+  --microsoft-sql-server-settings '{"SafeguardPolicy":"rely-on-sql-server-replication-agent"}'
 ```
 
-The `safeguardPolicy` setting is important. By default, DMS tries to protect against log truncation, but when you manage the log yourself, `RELY_ON_SQL_SERVER_REPLICATION_AGENT` avoids potential conflicts.
+The `SafeguardPolicy` setting is important. The default `rely-on-sql-server-replication-agent` method prevents transaction log truncation by starting transactions in the database, and it is the method to use when Microsoft Replication is enabled.
 
 ### Target Endpoint (RDS SQL Server)
 
@@ -202,7 +230,7 @@ aws dms create-endpoint \
   --server-name sqlserver-rds-target.xxxxx.us-east-1.rds.amazonaws.com \
   --port 1433 \
   --username admin \
-  --password 'YourStr0ngP@ss!' \
+  --password 'YourStr0ngPass!' \
   --database-name myapp
 ```
 
@@ -274,7 +302,8 @@ aws dms create-replication-task \
     "TargetMetadata": {
       "SupportLobs": true,
       "LimitedSizeLobMode": true,
-      "LobMaxSize": 32768
+      "LobMaxSize": 32768,
+      "BatchApplyEnabled": true
     },
     "FullLoadSettings": {
       "TargetTablePrepMode": "DROP_AND_CREATE",
@@ -282,8 +311,6 @@ aws dms create-replication-task \
       "CommitRate": 10000
     },
     "ChangeProcessingTuning": {
-      "BatchApplyEnabled": true,
-      "BatchApplyPreserveTransaction": true,
       "BatchSplitSize": 0,
       "BatchApplyTimeoutMin": 1,
       "BatchApplyTimeoutMax": 30,
@@ -332,7 +359,7 @@ aws dms describe-table-statistics \
 aws cloudwatch get-metric-statistics \
   --namespace AWS/DMS \
   --metric-name CDCLatencySource \
-  --dimensions Name=ReplicationTaskIdentifier,Value=sqlserver-to-rds-task \
+  --dimensions Name=ReplicationInstanceIdentifier,Value=sqlserver-rds-migration Name=ReplicationTaskIdentifier,Value=sqlserver-to-rds-task \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
@@ -347,7 +374,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name dms-cdc-lag-high \
   --namespace AWS/DMS \
   --metric-name CDCLatencyTarget \
-  --dimensions Name=ReplicationTaskIdentifier,Value=sqlserver-to-rds-task \
+  --dimensions Name=ReplicationInstanceIdentifier,Value=sqlserver-rds-migration Name=ReplicationTaskIdentifier,Value=sqlserver-to-rds-task \
   --statistic Maximum \
   --period 300 \
   --threshold 300 \
@@ -360,7 +387,7 @@ aws cloudwatch put-metric-alarm \
 
 ### Recreate Indexes and Constraints
 
-DMS drops non-primary-key indexes during the full load for performance. Recreate them after the full load completes.
+DMS creates only the objects needed for the load and does not create secondary indexes or foreign keys on the target. Recreate them after the full load completes.
 
 ```sql
 -- Recreate indexes on the RDS target
@@ -426,17 +453,27 @@ If your source uses linked servers, set them up on RDS (or consider using [RDS C
 ### Enable DMS Validation
 
 ```bash
-# Enable data validation on the migration task
+# Stop the task, then enable data validation by modifying the task with the complete
+# task settings JSON plus the ValidationSettings block.
+aws dms stop-replication-task \
+  --replication-task-arn arn:aws:dms:us-east-1:123456789012:task:sqlserver-to-rds-task
+
 aws dms modify-replication-task \
   --replication-task-arn arn:aws:dms:us-east-1:123456789012:task:sqlserver-to-rds-task \
-  --replication-task-settings '{
+  --replication-task-settings file://task-settings-with-validation.json
+```
+
+Add this block to the existing task settings JSON.
+
+```json
+{
     "ValidationSettings": {
       "EnableValidation": true,
       "ThreadCount": 5,
       "ValidationPartialLobSize": 16384,
       "FailureMaxCount": 10000
     }
-  }'
+}
 ```
 
 ### Row Count Verification
@@ -459,12 +496,12 @@ def count_rows(connection_string, tables):
 tables = ['dbo.orders', 'dbo.customers', 'dbo.products', 'dbo.order_items']
 
 source_counts = count_rows(
-    'DRIVER={ODBC Driver 17 for SQL Server};SERVER=10.0.1.50;DATABASE=myapp;UID=dms_user;PWD=pass',
+    'DRIVER={ODBC Driver 17 for SQL Server};SERVER=10.0.1.50;DATABASE=myapp;UID=dms_user;PWD=DmsStr0ngP@ss!',
     tables
 )
 
 target_counts = count_rows(
-    'DRIVER={ODBC Driver 17 for SQL Server};SERVER=sqlserver-rds-target.xxxxx.rds.amazonaws.com;DATABASE=myapp;UID=admin;PWD=pass',
+    'DRIVER={ODBC Driver 17 for SQL Server};SERVER=sqlserver-rds-target.xxxxx.rds.amazonaws.com;DATABASE=myapp;UID=admin;PWD=YourStr0ngPass!',
     tables
 )
 
@@ -497,8 +534,8 @@ The downtime window is typically under 5 minutes for a well-planned cutover.
 - Ensure the DMS user has db_owner role in the source database
 
 **Transaction log growing:**
-- MS-CDC reads from the transaction log. If CDC falls behind, the log cannot be truncated.
-- Monitor log file size and consider adjusting the CDC capture job schedule.
+- MS-CDC marks transaction log entries as processed. If MS-CDC jobs fail or fall behind, the log can grow excessively.
+- Monitor log file size and consider adjusting the CDC capture job `maxtrans` and `maxscans` settings.
 
 **Large table causing timeout:**
 - Increase `CommitRate` in task settings
