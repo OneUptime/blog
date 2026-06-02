@@ -20,8 +20,8 @@ EC2 has many resource types, each with its own ARN format:
 Instance:        arn:aws:ec2:us-east-1:123456789012:instance/i-1234567890abcdef0
 Volume:          arn:aws:ec2:us-east-1:123456789012:volume/vol-1234567890abcdef0
 Security Group:  arn:aws:ec2:us-east-1:123456789012:security-group/sg-12345678
-AMI:             arn:aws:ec2:us-east-1:123456789012:image/ami-12345678
-Snapshot:        arn:aws:ec2:us-east-1:123456789012:snapshot/snap-12345678
+AMI:             arn:aws:ec2:us-east-1::image/ami-12345678
+Snapshot:        arn:aws:ec2:us-east-1::snapshot/snap-12345678
 Key Pair:        arn:aws:ec2:us-east-1:123456789012:key-pair/my-key
 Subnet:          arn:aws:ec2:us-east-1:123456789012:subnet/subnet-12345678
 VPC:             arn:aws:ec2:us-east-1:123456789012:vpc/vpc-12345678
@@ -178,6 +178,7 @@ Prevent users from launching expensive instance types. This is one of the best w
         "arn:aws:ec2:us-east-1:123456789012:network-interface/*",
         "arn:aws:ec2:us-east-1:123456789012:security-group/*",
         "arn:aws:ec2:us-east-1:123456789012:subnet/*",
+        "arn:aws:ec2:us-east-1:123456789012:key-pair/*",
         "arn:aws:ec2:us-east-1::image/*"
       ],
       "Condition": {
@@ -214,7 +215,7 @@ Prevent users from launching expensive instance types. This is one of the best w
 }
 ```
 
-Note that `RunInstances` requires permissions on multiple resource types - the instance, volume, network interface, security group, subnet, and AMI. Missing any of these causes the launch to fail.
+Note that `RunInstances` requires permissions on multiple resource types - the instance, AMI, and the resources used in the launch request, such as volumes, network interfaces, security groups, subnets, and key pairs. Missing any of these causes the launch to fail.
 
 ## Requiring Tags on Launch
 
@@ -234,6 +235,9 @@ Force users to tag instances when they create them:
           "aws:RequestTag/Environment": ["dev", "staging", "production"],
           "aws:RequestTag/Team": "${aws:PrincipalTag/Team}"
         },
+        "StringLike": {
+          "aws:RequestTag/Name": "*"
+        },
         "ForAllValues:StringEquals": {
           "aws:TagKeys": ["Environment", "Team", "Name"]
         }
@@ -248,6 +252,7 @@ Force users to tag instances when they create them:
         "arn:aws:ec2:us-east-1:123456789012:network-interface/*",
         "arn:aws:ec2:us-east-1:123456789012:security-group/*",
         "arn:aws:ec2:us-east-1:123456789012:subnet/*",
+        "arn:aws:ec2:us-east-1:123456789012:key-pair/*",
         "arn:aws:ec2:us-east-1::image/*"
       ]
     },
@@ -300,29 +305,12 @@ Restrict who can modify security groups:
           "ec2:ResourceTag/Team": "${aws:PrincipalTag/Team}"
         }
       }
-    },
-    {
-      "Sid": "DenyOpenToWorldSSH",
-      "Effect": "Deny",
-      "Action": "ec2:AuthorizeSecurityGroupIngress",
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": {
-          "ec2:IpProtocol": "tcp"
-        },
-        "NumericEquals": {
-          "ec2:FromPort": "22"
-        },
-        "ForAnyValue:IpAddressEquals": {
-          "ec2:Cidr": "0.0.0.0/0"
-        }
-      }
     }
   ]
 }
 ```
 
-The last statement prevents anyone from opening SSH (port 22) to the entire internet - a common security mistake.
+This policy restricts security group rule changes to security groups tagged for the caller's team. IAM condition keys can limit which security groups can be changed, but EC2 does not provide IAM condition keys for the requested rule's port and CIDR; use AWS Config, Security Hub, or preventive controls outside this identity policy to detect or block rules such as SSH (port 22) open to the entire internet.
 
 ## Restricting AMIs
 
@@ -336,7 +324,7 @@ Only allow launching from approved AMIs:
   "Resource": "arn:aws:ec2:us-east-1::image/*",
   "Condition": {
     "StringEquals": {
-      "ec2:ImageTag/Approved": "true"
+      "ec2:ResourceTag/Approved": "true"
     }
   }
 }
@@ -347,6 +335,8 @@ This ensures users can only launch from AMIs that have been tagged as approved b
 ## Terraform Example
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_iam_policy" "ec2_developer" {
   name        = "ec2-developer-access"
   description = "EC2 access for developers - dev/staging only"
