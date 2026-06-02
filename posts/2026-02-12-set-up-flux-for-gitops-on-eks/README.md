@@ -202,13 +202,27 @@ resources:
 ```
 
 ```yaml
+# apps/base/my-app/service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: my-app
+spec:
+  selector:
+    app: my-app
+  ports:
+    - port: 80
+      targetPort: 8080
+```
+
+```yaml
 # apps/production/kustomization.yaml
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - ../base/my-app
-patchesStrategicMerge:
-  - replica-patch.yaml
+patches:
+  - path: replica-patch.yaml
 ```
 
 ```yaml
@@ -294,6 +308,18 @@ flux events --watch
 
 Flux can automatically update image tags in your Git repository when new container images are pushed:
 
+```bash
+# Include the optional image automation controllers during bootstrap
+flux bootstrap github \
+  --components-extra=image-reflector-controller,image-automation-controller \
+  --owner=$GITHUB_USER \
+  --repository=fleet-infra \
+  --branch=main \
+  --path=clusters/my-cluster \
+  --read-write-key \
+  --personal
+```
+
 ```yaml
 # image-repo.yaml - Watch ECR for new images
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -304,6 +330,7 @@ metadata:
 spec:
   image: 123456789012.dkr.ecr.us-west-2.amazonaws.com/my-app
   interval: 5m
+  provider: aws
 ---
 # image-policy.yaml - Define which tags to follow
 apiVersion: image.toolkit.fluxcd.io/v1
@@ -328,13 +355,42 @@ containers:
     image: 123456789012.dkr.ecr.us-west-2.amazonaws.com/my-app:1.0.0 # {"$imagepolicy": "flux-system:my-app"}
 ```
 
+Create an ImageUpdateAutomation resource so Flux knows which Git repository to update:
+
+```yaml
+# image-update-automation.yaml - Commit image tag updates back to Git
+apiVersion: image.toolkit.fluxcd.io/v1
+kind: ImageUpdateAutomation
+metadata:
+  name: flux-system
+  namespace: flux-system
+spec:
+  interval: 30m
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  git:
+    checkout:
+      ref:
+        branch: main
+    commit:
+      author:
+        name: fluxcdbot
+        email: fluxcdbot@users.noreply.github.com
+    push:
+      branch: main
+  update:
+    path: ./clusters/my-cluster
+    strategy: Setters
+```
+
 ## Notifications
 
 Set up alerts for deployment events:
 
 ```yaml
 # notification.yaml - Send Flux alerts to Slack
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Alert
 metadata:
   name: slack-alerts
@@ -349,7 +405,7 @@ spec:
     - kind: HelmRelease
       name: '*'
 ---
-apiVersion: notification.toolkit.fluxcd.io/v1
+apiVersion: notification.toolkit.fluxcd.io/v1beta3
 kind: Provider
 metadata:
   name: slack
