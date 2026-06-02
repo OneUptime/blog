@@ -205,6 +205,22 @@ aws quicksight create-refresh-schedule \
 For datasets that are too large for full refreshes, you can use incremental refreshes with a lookback window.
 
 ```bash
+# Configure the incremental refresh lookback window
+aws quicksight put-data-set-refresh-properties \
+  --aws-account-id 123456789012 \
+  --data-set-id sales-overview \
+  --data-set-refresh-properties '{
+    "RefreshConfiguration": {
+      "IncrementalRefresh": {
+        "LookbackWindow": {
+          "ColumnName": "order_date",
+          "Size": 7,
+          "SizeUnit": "DAY"
+        }
+      }
+    }
+  }'
+
 # Create an incremental refresh schedule
 aws quicksight create-refresh-schedule \
   --aws-account-id 123456789012 \
@@ -254,11 +270,11 @@ Row-level security in QuickSight lets you control which rows each user or group 
 ```bash
 # Create an RLS dataset - a CSV or table that maps users to filter values
 cat > /tmp/rls_rules.csv << 'EOF'
-UserName,region
-jane-analyst,US-East
-bob-analyst,US-West
-analytics-team,US-East
-analytics-team,US-West
+UserName,GroupName,region
+jane-analyst,,US-East
+bob-analyst,,US-West
+,analytics-team,US-East
+,analytics-team,US-West
 EOF
 
 # Upload to S3
@@ -282,15 +298,15 @@ aws quicksight list-ingestions \
   --data-set-id sales-overview
 ```
 
-Each QuickSight author gets 10 GB of SPICE by default. You can purchase additional capacity in 1 GB increments.
+Each provisioned QuickSight Author includes 10 GB of SPICE. Administrators can purchase additional SPICE capacity for the selected AWS Region by entering the number of gigabytes to add.
 
 ## Cost Optimization Tips
 
-QuickSight's pricing is per-user, which is great for organizations with many occasional viewers. A few ways to keep costs down:
+QuickSight offers per-user pricing and capacity pricing for Reader sessions, which works well for organizations with many occasional viewers. A few ways to keep costs down:
 
-- **Use Reader sessions wisely.** Readers are charged per session (30-minute blocks), not monthly. If someone only checks a dashboard once a week, that's much cheaper than a full BI license.
+- **Use Reader sessions wisely.** With Enterprise Edition pay-per-session or capacity pricing, Reader sessions are based on 30-minute blocks. If someone only checks a dashboard once a week, that can be much cheaper than a full BI license.
 - **Import into SPICE when possible.** Direct query mode hits your source databases and can be slower. SPICE is faster and reduces load on production systems.
-- **Use calculated fields in SPICE.** Pre-compute aggregations during import rather than at query time.
+- **Use dataset calculated columns where possible.** Put reusable calculations in the dataset during import rather than recreating them in each analysis.
 - **Monitor SPICE refresh failures.** A failed refresh means stale data. Set up monitoring to catch failures quickly - tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) can alert you when refresh jobs fail.
 
 QuickSight isn't the flashiest BI tool, but it's deeply integrated with AWS and the pricing model works well for organizations where most users just need to view dashboards occasionally. Start with a single dashboard, prove the value, and expand from there.
