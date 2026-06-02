@@ -41,7 +41,7 @@ export class RateLimitStack extends cdk.Stack {
 }
 ```
 
-The rate limit uses the token bucket algorithm. The burst limit is the bucket size, and the rate limit is the refill rate. So with 1000 rate and 2000 burst, you can handle a short burst of 2000 requests but sustained traffic can't exceed 1000 per second.
+The rate limit uses the token bucket algorithm. The burst limit is the bucket size, and the rate limit is the refill rate. So with 1000 rate and 2000 burst, you can handle a short burst of 2000 requests, but sustained traffic should stay around 1000 per second. API Gateway throttles and quotas are best-effort targets, not guaranteed hard ceilings.
 
 ### Method-Level Throttling
 
@@ -58,12 +58,12 @@ const stage = new apigateway.Stage(this, 'ProdStage', {
   throttlingBurstLimit: 2000,
   methodOptions: {
     // Stricter limits on the login endpoint
-    'POST/auth/login': {
+    '/auth/login/POST': {
       throttlingRateLimit: 10,
       throttlingBurstLimit: 20,
     },
     // Higher limits for read-only endpoints
-    'GET/products': {
+    '/products/GET': {
       throttlingRateLimit: 5000,
       throttlingBurstLimit: 10000,
     },
@@ -139,8 +139,13 @@ const proKey = api.addApiKey('ProCustomerKey', {
   apiKeyName: 'pro-customer-001',
 });
 
+const enterpriseKey = api.addApiKey('EnterpriseCustomerKey', {
+  apiKeyName: 'enterprise-customer-001',
+});
+
 freePlan.addApiKey(freeKey);
 proPlan.addApiKey(proKey);
+enterprisePlan.addApiKey(enterpriseKey);
 
 // Associate usage plans with the API stage
 freePlan.addApiStage({ stage: api.deploymentStage });
@@ -150,7 +155,7 @@ enterprisePlan.addApiStage({ stage: api.deploymentStage });
 
 ## WAF Rate-Based Rules
 
-API Gateway throttling is per-API-key. WAF rate limiting is per-IP address. Use WAF when you need to rate limit by IP, protect against DDoS, or block specific patterns.
+API Gateway usage plan throttling is per-API-key, while stage and method throttling apply at the API stage or method level. WAF rate limiting can be per-IP address. Use WAF when you need to rate limit by IP, reduce application-layer abuse, or block specific patterns.
 
 ```typescript
 // WAF with rate-based rules
@@ -223,7 +228,7 @@ const webAcl = new wafv2.CfnWebACL(this, 'ApiWaf', {
             singleHeader: { name: 'user-agent' },
           },
           positionalConstraint: 'CONTAINS',
-          searchString: 'BadBot',
+          searchString: 'badbot',
           textTransformations: [{ priority: 0, type: 'LOWERCASE' }],
         },
       },
@@ -240,7 +245,7 @@ new wafv2.CfnWebACLAssociation(this, 'WafAssociation', {
 
 ## Custom Rate Limiting with Lambda
 
-For more sophisticated rate limiting (per user, per tenant, sliding windows), implement it in a Lambda authorizer.
+For more sophisticated rate limiting (per user, per tenant, sliding windows), implement it in a Lambda authorizer. Disable authorizer caching for this authorizer, or cached authorization results will skip the per-request counter updates.
 
 ```javascript
 // lambda/rate-limiter-authorizer.js
@@ -251,9 +256,9 @@ const RATE_LIMIT = 100;    // Requests per minute
 const WINDOW_SIZE = 60;     // Window in seconds
 
 exports.handler = async (event) => {
-  const apiKey = event.headers?.['x-api-key'];
+  const apiKey = event.headers?.['x-api-key'] || event.headers?.['X-API-Key'];
   const userId = event.requestContext?.authorizer?.claims?.sub;
-  const identifier = userId || apiKey || event.requestContext.identity.sourceIp;
+  const identifier = userId || apiKey || event.requestContext?.identity?.sourceIp;
 
   const now = Math.floor(Date.now() / 1000);
   const windowKey = `${identifier}:${Math.floor(now / WINDOW_SIZE)}`;
@@ -313,16 +318,20 @@ function generatePolicy(principalId, effect, resource) {
 Good APIs tell clients their rate limit status through response headers.
 
 ```javascript
-// Gateway response mapping for rate limit headers
-const integration = new apigateway.LambdaIntegration(handler, {
-  integrationResponses: [{
-    statusCode: '200',
-    responseParameters: {
-      'method.response.header.X-RateLimit-Limit': 'context.authorizer.X-RateLimit-Limit',
-      'method.response.header.X-RateLimit-Remaining': 'context.authorizer.X-RateLimit-Remaining',
+// Lambda proxy response using values from the authorizer context
+exports.handler = async (event) => {
+  const rateLimit = event.requestContext?.authorizer || {};
+
+  return {
+    statusCode: 200,
+    headers: {
+      'X-RateLimit-Limit': rateLimit['X-RateLimit-Limit'],
+      'X-RateLimit-Remaining': rateLimit['X-RateLimit-Remaining'],
+      'X-RateLimit-Reset': rateLimit['X-RateLimit-Reset'],
     },
-  }],
-});
+    body: JSON.stringify({ ok: true }),
+  };
+};
 ```
 
 ## Monitoring Rate Limiting
@@ -336,8 +345,9 @@ new cloudwatch.Alarm(this, 'RateLimitAlarm', {
     namespace: 'AWS/WAFV2',
     metricName: 'BlockedRequests',
     dimensionsMap: {
-      WebACL: 'api-waf',
-      Rule: 'RateLimitPerIP',
+      Region: cdk.Stack.of(this).region,
+      WebACL: 'api-waf-metrics',
+      Rule: 'rate-limit-per-ip',
     },
     period: cdk.Duration.minutes(5),
     statistic: 'Sum',
