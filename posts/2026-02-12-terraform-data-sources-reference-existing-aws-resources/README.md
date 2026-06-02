@@ -168,7 +168,7 @@ data "aws_availability_zones" "available" {
 # Use them in configurations
 locals {
   account_id = data.aws_caller_identity.current.account_id
-  region     = data.aws_region.current.name
+  region     = data.aws_region.current.id
   azs        = data.aws_availability_zones.available.names
 }
 
@@ -311,7 +311,7 @@ Use data sources instead of hardcoding IDs. Hardcoded IDs break when you deploy 
 
 Be specific with your filters. If multiple resources match your query, Terraform throws an error (for singular data sources). Use tags, names, and filters to narrow results down to exactly one match.
 
-Understand the plan-time vs apply-time distinction. Data source values are resolved during `terraform plan`, so they need to be queryable at that point. If a resource hasn't been created yet (because it's in the same configuration), you can't use a data source to find it.
+Understand the plan-time vs apply-time distinction. Terraform reads data sources during `terraform plan` when their arguments are known, but it can defer a read until apply if the data source depends on values that are not known until apply. If a resource is managed in the same configuration, it is usually better to reference that resource directly instead of using a data source to find it.
 
 ## Wrapping Up
 
