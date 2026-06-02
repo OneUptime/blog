@@ -14,7 +14,7 @@ The good news is that Athena cost optimization is straightforward. A few changes
 
 ## Understanding What You Pay For
 
-Athena pricing is simple: **$5 per TB of data scanned** by your queries. There's a minimum charge of 10 MB per query. You don't pay for failed queries, DDL statements (CREATE TABLE, ALTER TABLE), or cancelled queries.
+Athena pricing is simple: **$5 per TB of data scanned** by your queries. There's a minimum charge of 10 MB per query. You don't pay for failed queries or DDL statements (CREATE TABLE, ALTER TABLE). Cancelled queries are charged for the data scanned before cancellation.
 
 The cost equation is:
 
@@ -22,7 +22,7 @@ The cost equation is:
 Query cost = (Data scanned in bytes / 1,099,511,627,776) * $5
 ```
 
-So the only way to reduce costs is to reduce the amount of data your queries scan.
+For pay-per-query pricing, the main way to reduce costs is to reduce the amount of data your queries scan.
 
 ## Strategy 1: Use Columnar Formats
 
@@ -100,7 +100,7 @@ Compression reduces file sizes, which means less data scanned:
 | GZIP | 5-8x | Moderate |
 | ZSTD | 4-7x | Fast |
 
-Snappy is the default for Parquet and the best balance of compression ratio and query speed. For cold data that's rarely queried, GZIP or ZSTD gives better compression.
+Athena uses GZIP as the default write compression for Parquet in CTAS queries, but Snappy is often the best balance of compression ratio and query speed. For cold data that's rarely queried, GZIP or ZSTD gives better compression.
 
 ```sql
 -- Create a table with ZSTD compression for better compression ratio
@@ -138,14 +138,14 @@ On a 20-column Parquet table, selecting 3 columns scans roughly 15% of the data.
 When you're exploring data, always use LIMIT:
 
 ```sql
--- Cheap exploration - stops scanning once it has enough rows
+-- Cheap exploration - can reduce scanning for simple queries
 SELECT event_type, user_id, event_data
 FROM analytics.events
 WHERE dt = '2025-02-12'
 LIMIT 20;
 ```
 
-With Parquet and ORC, Athena can sometimes stop scanning early when a LIMIT is specified, though this isn't guaranteed.
+A `LIMIT` clause can reduce data scanned for simple exploratory queries, but it is not a substitute for partition filters and column selection.
 
 ## Strategy 6: Optimize File Sizes
 
@@ -182,11 +182,11 @@ aws athena create-work-group \
   }'
 ```
 
-Any query that tries to scan more than 10 GB in this workgroup gets automatically cancelled. This prevents a mistyped query from scanning your entire dataset.
+Any query that tries to scan more than 10 GB in this workgroup gets automatically cancelled. Cancelled queries are still charged for data scanned before cancellation, but this prevents a mistyped query from scanning your entire dataset.
 
 ## Strategy 8: Use Approximate Functions
 
-Approximate aggregation functions are faster and scan less data:
+Approximate aggregation functions can be faster and use less memory, but they usually do not reduce Athena scan charges because Athena still reads the referenced columns:
 
 ```sql
 -- Approximate distinct count - faster than exact, accurate within ~2.3%
@@ -224,7 +224,7 @@ for exec_id in executions['QueryExecutionIds'][:10]:
         print()
 ```
 
-You can also create materialized views with CTAS for frequently needed aggregations.
+You can also create summary tables with CTAS for frequently needed aggregations.
 
 ## Strategy 10: Monitor and Track Costs
 
