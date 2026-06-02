@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, PostgreSQL, Migration, Database
 
-Description: Step-by-step guide to migrating your self-managed PostgreSQL database to Amazon RDS using pg_dump, logical replication, and AWS DMS with minimal downtime.
+Description: Step-by-step guide to migrating your self-managed PostgreSQL database to Amazon RDS using pg_dump and logical replication with minimal downtime.
 
 ---
 
 If you're running PostgreSQL on your own servers or EC2 instances, migrating to RDS removes a huge chunk of operational work. No more handling OS patches, managing replication failover, or worrying about backup scripts. RDS handles all of that, and you get features like automated snapshots, Multi-AZ failover, and Performance Insights out of the box.
 
-The migration process for PostgreSQL is a bit different from MySQL. PostgreSQL has its own set of tools and replication mechanisms. Let's walk through the options and how to execute each one.
+The migration process for PostgreSQL is a bit different from MySQL. PostgreSQL has its own set of tools and replication mechanisms. Let's walk through two common options and how to execute each one.
 
 ## Migration Options
 
@@ -164,7 +164,7 @@ And update `pg_hba.conf` to allow the RDS instance to connect:
 
 ```text
 # Allow RDS to connect for replication
-host    replication    repl_user    10.0.0.0/8    md5
+host    myapp_production    repl_user    10.0.0.0/8    md5
 ```
 
 Restart PostgreSQL after these changes.
@@ -185,9 +185,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO repl_user;
 CREATE PUBLICATION my_migration FOR ALL TABLES;
 ```
 
-### Step 4: Do the Initial Data Load
+### Step 4: Load the Schema
 
-First, dump and restore the schema and data:
+First, dump and restore the schema. The subscription will copy the initial table data, then continue streaming changes.
 
 ```bash
 # Dump schema only
@@ -205,22 +205,6 @@ psql \
   --username=admin \
   --dbname=myapp_production \
   < /tmp/schema.sql
-
-# Dump and restore data
-pg_dump \
-  --host=source-postgres-server.example.com \
-  --username=admin \
-  --data-only \
-  --format=custom \
-  myapp_production > /tmp/data.pgdump
-
-pg_restore \
-  --host=my-postgres-rds.abc123.us-east-1.rds.amazonaws.com \
-  --username=admin \
-  --dbname=myapp_production \
-  --data-only \
-  --jobs=4 \
-  /tmp/data.pgdump
 ```
 
 ### Step 5: Create a Subscription on RDS
@@ -231,8 +215,7 @@ Connect to the RDS instance and create a subscription:
 -- On the RDS instance
 CREATE SUBSCRIPTION my_migration_sub
   CONNECTION 'host=source-postgres-server.example.com port=5432 dbname=myapp_production user=repl_user password=strong_password'
-  PUBLICATION my_migration
-  WITH (copy_data = false);  -- We already loaded the data
+  PUBLICATION my_migration;
 ```
 
 ### Step 6: Monitor Replication
@@ -245,7 +228,7 @@ SELECT * FROM pg_stat_replication;
 SELECT * FROM pg_stat_subscription;
 
 -- Check replication lag
-SELECT now() - confirmed_flush_lsn::text::pg_lsn AS replication_lag
+SELECT pg_size_pretty(pg_wal_lsn_diff(pg_current_wal_lsn(), confirmed_flush_lsn)) AS replication_lag_bytes
 FROM pg_replication_slots
 WHERE slot_name = 'my_migration_sub';
 ```
@@ -268,7 +251,6 @@ DROP SUBSCRIPTION my_migration_sub;
 ```sql
 -- On the source
 DROP PUBLICATION my_migration;
-SELECT pg_drop_replication_slot('my_migration_sub');
 ```
 
 5. Update your application connection string to point to RDS
