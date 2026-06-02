@@ -76,7 +76,7 @@ aws backup create-backup-vault \
 
 ## Step 3: Configure Vault Access Policy on DR Vault
 
-The DR vault needs a policy allowing cross-region copies:
+For cross-account copies, the DR vault needs a policy allowing the source account to copy into it. For same-account cross-region copies, your AWS Backup IAM role permissions are usually enough:
 
 ```bash
 # Set access policy on the DR vault
@@ -165,7 +165,7 @@ aws backup create-backup-selection \
   --backup-plan-id "plan-12345678" \
   --backup-selection '{
     "SelectionName": "AllProductionResources",
-    "IamRoleArn": "arn:aws:iam::123456789012:role/AWSBackupServiceRole",
+    "IamRoleArn": "arn:aws:iam::123456789012:role/service-role/AWSBackupDefaultServiceRole",
     "ListOfTags": [{
       "ConditionType": "STRINGEQUALS",
       "ConditionKey": "Environment",
@@ -248,7 +248,7 @@ Having backups in a DR region is only useful if you can actually restore from th
 aws backup start-restore-job \
   --region us-west-2 \
   --recovery-point-arn "arn:aws:backup:us-west-2:123456789012:recovery-point:rp-12345678" \
-  --iam-role-arn "arn:aws:iam::123456789012:role/AWSBackupServiceRole" \
+  --iam-role-arn "arn:aws:iam::123456789012:role/service-role/AWSBackupDefaultServiceRole" \
   --metadata '{
     "DBInstanceIdentifier": "dr-test-restore",
     "DBInstanceClass": "db.t3.medium",
@@ -282,7 +282,7 @@ To optimize costs:
   "DestinationBackupVaultArn": "arn:aws:backup:us-west-2:123456789012:backup-vault:production-dr",
   "Lifecycle": {
     "MoveToColdStorageAfterDays": 7,
-    "DeleteAfterDays": 90
+    "DeleteAfterDays": 97
   }
 }]
 ```
