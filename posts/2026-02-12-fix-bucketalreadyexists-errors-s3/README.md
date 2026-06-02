@@ -24,13 +24,15 @@ These are two different errors with different causes and different fixes. Let's 
 
 ## Understanding S3 Bucket Names
 
-Here's the key thing to understand: S3 bucket names are globally unique across all AWS accounts worldwide. That means if someone in Tokyo created a bucket called `my-data`, nobody else on the planet can create a bucket with that name. It doesn't matter what region you're in or what account you're using.
+Here's the key thing to understand: in the shared global namespace, S3 bucket names are unique across all AWS accounts and Regions within an AWS partition. That means if someone in another account created a bucket called `my-data` in the standard `aws` partition, you can't create a bucket with that same name in that partition. It doesn't matter what region you're in or what account you're using.
 
 This is because S3 bucket names become part of the DNS name. A bucket called `my-data` is accessible at `my-data.s3.amazonaws.com`, and DNS names must be unique.
 
+AWS also supports an account regional namespace for general purpose buckets. Those bucket names follow a specific suffix format that includes your AWS account ID, Region, and `-an`, and only your account can create names in that namespace.
+
 ## Fix 1: BucketAlreadyExists
 
-This error means someone else (in a different AWS account) already owns a bucket with that name. You simply can't use it.
+This error means the requested bucket name is not available in the namespace you're using. In the shared global namespace, that usually means another AWS account already owns a bucket with that name. You simply can't use it.
 
 ### Use a Naming Convention
 
@@ -96,11 +98,11 @@ Resources:
           Value: production
 ```
 
-When you omit the `BucketName` property, CloudFormation generates a name based on the stack name and resource logical ID. It's not the prettiest name, but it's guaranteed to be unique.
+When you omit the `BucketName` property, CloudFormation generates a unique ID and uses that ID for the bucket name. It's not the prettiest name, but it avoids hard-coding a bucket name that might already be taken.
 
 ## Fix 2: BucketAlreadyOwnedByYou
 
-This error means you already own a bucket with that name. This typically happens when:
+This error means you already own a bucket with that name. Amazon S3 returns it in AWS Regions except US East (N. Virginia), where re-creating an existing bucket that you already own returns `200 OK` for legacy compatibility. This typically happens when:
 
 1. Your code tries to create a bucket that already exists in your account
 2. A previous deployment created it and you're running the deployment again
@@ -114,34 +116,31 @@ The fix is to check if the bucket exists before trying to create it:
 import boto3
 from botocore.exceptions import ClientError
 
-s3 = boto3.client('s3')
-
 def create_bucket_if_not_exists(bucket_name, region='us-east-1'):
     """Create an S3 bucket only if it doesn't already exist."""
+    s3 = boto3.client('s3', region_name=region)
+
     try:
         s3.head_bucket(Bucket=bucket_name)
         print(f"Bucket {bucket_name} already exists, skipping creation")
         return True
     except ClientError as e:
-        error_code = int(e.response['Error']['Code'])
-        if error_code == 404:
+        status_code = e.response['ResponseMetadata']['HTTPStatusCode']
+        if status_code == 404:
             # Bucket doesn't exist, create it
             try:
-                if region == 'us-east-1':
-                    s3.create_bucket(Bucket=bucket_name)
-                else:
-                    s3.create_bucket(
-                        Bucket=bucket_name,
-                        CreateBucketConfiguration={
-                            'LocationConstraint': region
-                        }
-                    )
+                bucket_config = {}
+                if region != 'us-east-1':
+                    bucket_config['CreateBucketConfiguration'] = {
+                        'LocationConstraint': region
+                    }
+                s3.create_bucket(Bucket=bucket_name, **bucket_config)
                 print(f"Created bucket: {bucket_name}")
                 return True
             except ClientError as create_error:
                 print(f"Failed to create bucket: {create_error}")
                 return False
-        elif error_code == 403:
+        elif status_code == 403:
             # Bucket exists but is owned by someone else
             print(f"Bucket {bucket_name} exists in another account")
             return False
@@ -157,9 +156,9 @@ In Node.js, the pattern is similar:
 ```javascript
 const { S3Client, HeadBucketCommand, CreateBucketCommand } = require('@aws-sdk/client-s3');
 
-const s3 = new S3Client({ region: 'us-east-1' });
+async function createBucketIfNotExists(bucketName, region = 'us-east-1') {
+  const s3 = new S3Client({ region });
 
-async function createBucketIfNotExists(bucketName) {
   try {
     // Check if bucket exists
     await s3.send(new HeadBucketCommand({ Bucket: bucketName }));
@@ -169,7 +168,15 @@ async function createBucketIfNotExists(bucketName) {
     if (err.name === 'NotFound' || err.$metadata?.httpStatusCode === 404) {
       // Bucket doesn't exist, create it
       try {
-        await s3.send(new CreateBucketCommand({ Bucket: bucketName }));
+        const createParams = { Bucket: bucketName };
+
+        if (region !== 'us-east-1') {
+          createParams.CreateBucketConfiguration = {
+            LocationConstraint: region,
+          };
+        }
+
+        await s3.send(new CreateBucketCommand(createParams));
         console.log(`Created bucket: ${bucketName}`);
         return true;
       } catch (createErr) {
@@ -199,7 +206,7 @@ aws s3api create-bucket \
 
 ## Another Gotcha: Recently Deleted Buckets
 
-After you delete an S3 bucket, the name might not be immediately available for reuse. AWS can take some time (sometimes up to 24 hours) to fully release the name. If you delete and immediately try to recreate a bucket with the same name, you might get a `BucketAlreadyExists` error even though you just deleted it.
+After you delete an S3 bucket in the shared global namespace, the name might not be immediately available for reuse. AWS says some time might pass before you can reuse the name, and another AWS account might create a bucket with the same name before you can reuse it. If you delete and immediately try to recreate a bucket with the same name, you might get a `BucketAlreadyExists` error even though you just deleted it.
 
 ```bash
 # Delete a bucket
