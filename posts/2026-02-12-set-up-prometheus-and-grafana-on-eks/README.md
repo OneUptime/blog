@@ -34,7 +34,7 @@ You'll need:
 
 - An EKS cluster with at least 3 nodes (the monitoring stack needs resources)
 - kubectl and Helm 3 configured
-- Persistent storage available (EBS CSI driver installed)
+- Persistent storage available (EBS CSI driver installed with a `gp3` StorageClass)
 
 ## Step 1: Add the Helm Repository
 
@@ -72,9 +72,11 @@ prometheus:
           resources:
             requests:
               storage: 50Gi
-    # Scrape all pods with prometheus.io annotations
+    # Select ServiceMonitor, PodMonitor, and PrometheusRule resources
+    # created outside this Helm release
     podMonitorSelectorNilUsesHelmValues: false
     serviceMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
 
 grafana:
   adminPassword: "change-me-in-production"
@@ -173,7 +175,7 @@ These dashboards work out of the box. Browse them in Grafana under Dashboards > 
 
 ## Adding Custom Metrics
 
-To scrape metrics from your own applications, add Prometheus annotations to your pods:
+To scrape metrics from your own applications, expose a named metrics port on your pods and create a PodMonitor:
 
 ```yaml
 # deployment-with-metrics.yaml - Application with Prometheus scraping
@@ -190,19 +192,36 @@ spec:
     metadata:
       labels:
         app: my-app
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port: "8080"
-        prometheus.io/path: "/metrics"
     spec:
       containers:
         - name: my-app
           image: my-app:latest
           ports:
-            - containerPort: 8080
+            - name: http-metrics
+              containerPort: 8080
 ```
 
-Or use a ServiceMonitor for more control:
+```yaml
+# podmonitor.yaml - Define how Prometheus scrapes your pods
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: my-app-monitor
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: my-app
+  podMetricsEndpoints:
+    - port: http-metrics
+      interval: 30s
+      path: /metrics
+  namespaceSelector:
+    matchNames:
+      - default
+```
+
+Or use a ServiceMonitor if your application is exposed through a Service with the `app: my-app` label and a port named `http-metrics`:
 
 ```yaml
 # servicemonitor.yaml - Define how Prometheus scrapes your service
@@ -240,7 +259,7 @@ spec:
     - name: pod-alerts
       rules:
         - alert: PodCrashLooping
-          expr: rate(kube_pod_container_status_restarts_total[5m]) > 0.1
+          expr: increase(kube_pod_container_status_restarts_total[5m]) > 3
           for: 5m
           labels:
             severity: warning
