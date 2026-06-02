@@ -61,17 +61,24 @@ def validate_training_data(file_path):
                 errors.append(f"Line {line_num}: Invalid JSON")
                 continue
 
+            is_valid = True
+
             # Check required fields
             if 'prompt' not in data:
                 errors.append(f"Line {line_num}: Missing 'prompt' field")
-            elif len(data['prompt'].strip()) == 0:
+                is_valid = False
+            elif not isinstance(data['prompt'], str) or len(data['prompt'].strip()) == 0:
                 errors.append(f"Line {line_num}: Empty prompt")
+                is_valid = False
 
             if 'completion' not in data:
                 errors.append(f"Line {line_num}: Missing 'completion' field")
-            elif len(data['completion'].strip()) == 0:
+                is_valid = False
+            elif not isinstance(data['completion'], str) or len(data['completion'].strip()) == 0:
                 errors.append(f"Line {line_num}: Empty completion")
-            else:
+                is_valid = False
+
+            if is_valid:
                 valid_count += 1
 
     print(f"Valid examples: {valid_count}")
@@ -210,7 +217,7 @@ Fine-tuned models need provisioned throughput to be invoked. This is different f
 response = bedrock.create_provisioned_model_throughput(
     modelUnits=1,
     provisionedModelName='medical-summarization-prod',
-    modelId='arn:aws:bedrock:us-east-1:123456789012:custom-model/medical-summarization-model'
+    modelId='medical-summarization-model'
 )
 
 provisioned_arn = response['provisionedModelArn']
