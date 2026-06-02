@@ -58,7 +58,7 @@ PEERING_ID=$(aws ec2 create-vpc-peering-connection \
 echo "Peering request created: $PEERING_ID"
 ```
 
-The `--peer-owner-id` flag specifies the other account. The `--peer-region` flag is needed even if both VPCs are in the same region - it's good practice to always include it.
+The `--peer-owner-id` flag specifies the other account. The `--peer-region` flag is required when the peer VPC is in a different region; if both VPCs are in the same region, AWS defaults to the region where you make the request.
 
 The peering connection is now in `pending-acceptance` status.
 
@@ -150,7 +150,7 @@ aws ec2 authorize-security-group-ingress \
 
 ## Step 5: Enable DNS Resolution
 
-To resolve private DNS names across the peering connection, both sides need to enable it:
+To make public EC2 DNS hostnames resolve to private IP addresses across the peering connection, both sides need to enable DNS resolution. The peering connection must already be active, and both VPCs must have DNS hostnames and DNS resolution enabled:
 
 ```bash
 # Account A enables DNS resolution for this peering connection
@@ -166,7 +166,7 @@ aws ec2 modify-vpc-peering-connection-options \
 
 ## Automating with CloudFormation
 
-Since the peering involves two accounts, you'll need stacks in both. The requester stack creates the peering connection, and the accepter stack accepts it and creates routes.
+Since the peering involves two accounts, you'll need permissions in both. With CloudFormation, the accepter account can create an IAM role that the requester stack uses to create and accept the cross-account peering connection, and each side still needs routes.
 
 Requester stack (Account A):
 
@@ -178,6 +178,8 @@ Parameters:
   PeerVpcId:
     Type: String
   PeerVpcCidr:
+    Type: String
+  PeerRoleArn:
     Type: String
   LocalVpcId:
     Type: AWS::EC2::VPC::Id
@@ -191,6 +193,7 @@ Resources:
       VpcId: !Ref LocalVpcId
       PeerOwnerId: !Ref PeerAccountId
       PeerVpcId: !Ref PeerVpcId
+      PeerRoleArn: !Ref PeerRoleArn
       Tags:
         - Key: Name
           Value: cross-account-peering
@@ -208,11 +211,11 @@ Outputs:
     Description: Share this ID with the accepter account
 ```
 
-The accepter account needs to accept and add routes. You can use a Lambda-backed custom resource or handle acceptance manually, since CloudFormation doesn't natively support accepting cross-account peering.
+The accepter account needs to provide the peer role and add routes back to the requester VPC. If you do not use `PeerRoleArn`, handle acceptance manually or with a custom resource before creating dependent routes.
 
 ## Using AWS Organizations
 
-If both accounts are in the same AWS Organization, you can use resource sharing to simplify the process. But for VPC peering specifically, the workflow is the same - one side requests, the other accepts.
+If both accounts are in the same AWS Organization, the VPC peering workflow is the same - one side requests, the other accepts.
 
 Where Organizations helps is with automation. You can use a centralized pipeline that assumes roles in both accounts:
 
@@ -246,7 +249,8 @@ aws ec2 create-flow-logs \
   --resource-ids vpc-prod-aaa \
   --traffic-type ALL \
   --log-destination-type cloud-watch-logs \
-  --log-group-name /vpc/flow-logs/production
+  --log-group-name /vpc/flow-logs/production \
+  --deliver-logs-permission-arn arn:aws:iam::111111111111:role/publishFlowLogs
 ```
 
 ## When Peering Isn't Enough
