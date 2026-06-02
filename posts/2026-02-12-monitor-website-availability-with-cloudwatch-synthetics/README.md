@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudWatch, Synthetics, Website Monitoring, Availability, Uptime
 
-Description: Use CloudWatch Synthetics canaries to monitor website availability, track uptime, and detect visual and functional regressions proactively
+Description: Use CloudWatch Synthetics canaries to monitor website availability, track uptime, and detect visual and functional issues proactively
 
 ---
 
@@ -12,7 +12,7 @@ Website availability monitoring answers the simplest and most important question
 
 CloudWatch Synthetics provides automated website monitoring that goes beyond simple ping checks. Canaries can load your pages in a real browser, verify that key elements render correctly, check that forms work, and report exactly what broke when something goes wrong. Screenshots and HAR files give you visual proof of what happened.
 
-This guide covers setting up website availability monitoring from basic URL checks to sophisticated visual regression testing.
+This guide covers setting up website availability monitoring from basic URL checks to browser-based page and workflow checks.
 
 ## Availability Monitoring Strategy
 
@@ -40,8 +40,8 @@ The simplest and most essential canary - check if your website responds.
 
 ```javascript
 // heartbeat.js - Basic availability check
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const URLS = [
   'https://www.example.com',
@@ -89,7 +89,7 @@ aws synthetics create-canary \
   --artifact-s3-location "s3://canary-artifacts/heartbeat/" \
   --execution-role-arn arn:aws:iam::123456789012:role/canary-role \
   --schedule '{"Expression": "rate(1 minute)"}' \
-  --runtime-version syn-nodejs-puppeteer-6.1 \
+  --runtime-version syn-nodejs-puppeteer-15.1 \
   --code '{"S3Bucket": "canary-artifacts", "S3Key": "heartbeat.zip", "Handler": "heartbeat.handler"}' \
   --run-config '{"TimeoutInSeconds": 30, "MemoryInMBs": 960}'
 
@@ -102,8 +102,8 @@ A browser canary actually renders the page and can verify that content appears c
 
 ```javascript
 // page-load-canary.js - Verify pages load and render correctly
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const pages = [
   {
@@ -148,17 +148,32 @@ const pageLoadCanary = async function () {
 async function checkPage(page, config) {
   await synthetics.executeStep(config.name, async function () {
     const startTime = Date.now();
+    const consoleErrors = [];
+    const onPageError = (error) => {
+      consoleErrors.push(error.message);
+    };
 
-    // Navigate to the page
-    log.info(`Loading: ${config.url}`);
-    const response = await page.goto(config.url, {
-      waitUntil: 'networkidle2',
-      timeout: 30000,
-    });
+    page.on('pageerror', onPageError);
+
+    let response;
+    try {
+      // Navigate to the page
+      log.info(`Loading: ${config.url}`);
+      response = await page.goto(config.url, {
+        waitUntil: 'networkidle2',
+        timeout: 30000,
+      });
+    } finally {
+      page.off('pageerror', onPageError);
+    }
 
     const loadTime = Date.now() - startTime;
 
     // Check HTTP status
+    if (!response) {
+      throw new Error(`${config.name} did not return an HTTP response`);
+    }
+
     if (response.status() >= 400) {
       throw new Error(`${config.name} returned HTTP ${response.status()}`);
     }
@@ -190,11 +205,6 @@ async function checkPage(page, config) {
     }
 
     // Check for JavaScript errors on the page
-    const consoleErrors = [];
-    page.on('pageerror', (error) => {
-      consoleErrors.push(error.message);
-    });
-
     if (consoleErrors.length > 0) {
       log.warn(`${config.name}: ${consoleErrors.length} JS errors detected`);
       for (const error of consoleErrors) {
@@ -223,8 +233,8 @@ Beyond page loads, monitor the workflows that matter most to your business.
 
 ```javascript
 // signup-flow-canary.js - Monitor the signup process
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const signupFlowCanary = async function () {
   const page = await synthetics.getPage();
@@ -308,7 +318,7 @@ for REGION in "${REGIONS[@]}"; do
     --artifact-s3-location "s3://canary-artifacts-${REGION}/website/" \
     --execution-role-arn arn:aws:iam::123456789012:role/canary-role \
     --schedule '{"Expression": "rate(5 minutes)"}' \
-    --runtime-version syn-nodejs-puppeteer-6.1 \
+    --runtime-version syn-nodejs-puppeteer-15.1 \
     --code "{\"S3Bucket\": \"canary-artifacts-${REGION}\", \"S3Key\": \"page-load.zip\", \"Handler\": \"page-load-canary.handler\"}"
 
   aws synthetics start-canary --region $REGION --name "website-avail-${REGION}"
@@ -323,7 +333,7 @@ Use CloudWatch metrics to calculate your website's availability percentage.
 # Create a CloudWatch metric math expression for uptime
 # SuccessPercent metric from Synthetics gives you this directly
 
-# Create an alarm that tracks 99.9% uptime SLO over a month
+# Create an alarm that alerts if hourly success drops below 99.9%
 aws cloudwatch put-metric-alarm \
   --alarm-name website-slo-breach \
   --namespace CloudWatchSynthetics \
