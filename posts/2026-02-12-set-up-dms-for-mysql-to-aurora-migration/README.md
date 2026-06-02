@@ -31,7 +31,8 @@ Before starting, ensure:
 - Your source MySQL is version 5.6 or later
 - Binary logging is enabled on the source (`log_bin = ON`, `binlog_format = ROW`)
 - The DMS replication instance can reach both source and target
-- You have appropriate database credentials on both sides
+- You have appropriate database credentials on both sides, including `SELECT`, `REPLICATION CLIENT`, and `REPLICATION SLAVE` on the source for CDC
+- The Aurora MySQL target has `local_infile = 1` enabled so DMS can load data
 
 ### Verify Source MySQL Configuration
 
@@ -46,7 +47,10 @@ SHOW VARIABLES LIKE 'binlog_format';
 
 -- Check binlog retention
 SHOW VARIABLES LIKE 'binlog_expire_logs_seconds';
--- Should be at least 86400 (24 hours) to give DMS time to read changes
+-- For MySQL 8.0+, should be at least 86400 (24 hours) to give DMS time to read changes
+
+SHOW VARIABLES LIKE 'expire_logs_days';
+-- For MySQL 5.7 and earlier, should be at least 1 day
 ```
 
 If binary logging is not configured correctly, update your MySQL configuration.
@@ -59,7 +63,8 @@ server-id = 1
 log_bin = mysql-bin
 binlog_format = ROW
 binlog_row_image = FULL
-expire_logs_days = 3
+binlog_expire_logs_seconds = 259200
+# For MySQL 5.7 and earlier, use expire_logs_days = 3 instead.
 ```
 
 ## Step 1: Create the Target Aurora Cluster
@@ -69,11 +74,11 @@ expire_logs_days = 3
 aws rds create-db-cluster \
   --db-cluster-identifier mysql-to-aurora-target \
   --engine aurora-mysql \
-  --engine-version 8.0.mysql_aurora.3.07.0 \
+  --engine-version 8.0 \
   --master-username admin \
-  --master-user-password 'YourStr0ngP@ss!' \
+  --master-user-password 'YourStr0ngP4ss!' \
   --db-subnet-group-name my-db-subnet-group \
-  --vpc-security-group-ids sg-0abc123
+  --vpc-security-group-ids sg-0abc1234def567890
 
 # Create an instance in the cluster
 aws rds create-db-instance \
@@ -93,7 +98,7 @@ aws dms create-replication-instance \
   --replication-instance-identifier mysql-aurora-migration \
   --replication-instance-class dms.r5.large \
   --allocated-storage 100 \
-  --vpc-security-group-ids sg-0abc123 \
+  --vpc-security-group-ids sg-0abc1234def567890 \
   --replication-subnet-group-identifier my-dms-subnet-group \
   --multi-az \
   --publicly-accessible false \
@@ -118,9 +123,7 @@ aws dms create-endpoint \
   --server-name mysql-primary.example.com \
   --port 3306 \
   --username dms_user \
-  --password 'DmsUserP@ss!' \
-  --database-name myapp \
-  --extra-connection-attributes "initstmt=SET FOREIGN_KEY_CHECKS=0"
+  --password 'DmsUserP@ss!'
 ```
 
 ### Target Endpoint (Aurora)
@@ -134,12 +137,12 @@ aws dms create-endpoint \
   --server-name mysql-to-aurora-target.cluster-xxxxx.us-east-1.rds.amazonaws.com \
   --port 3306 \
   --username admin \
-  --password 'YourStr0ngP@ss!' \
-  --database-name myapp \
-  --extra-connection-attributes "parallelLoadThreads=8;initstmt=SET FOREIGN_KEY_CHECKS=0"
+  --password 'YourStr0ngP4ss!' \
+  --my-sql-settings '{"ParallelLoadThreads": 5}' \
+  --extra-connection-attributes "Initstmt=SET FOREIGN_KEY_CHECKS=0;"
 ```
 
-The `parallelLoadThreads` setting speeds up the full load phase by using multiple threads.
+The `ParallelLoadThreads` setting speeds up the full load phase by using multiple threads.
 
 ### Test the Connections
 
@@ -159,8 +162,9 @@ aws dms test-connection \
 
 Table mappings define what to migrate and any transformations to apply.
 
+Create a `table-mappings.json` file to migrate all tables from the `myapp` database.
+
 ```json
-// table-mappings.json - migrate all tables from the myapp database
 {
   "rules": [
     {
@@ -343,7 +347,7 @@ aws dms stop-replication-task \
 **Issue: CDC not capturing changes**
 - Verify binlog_format is ROW, not STATEMENT or MIXED
 - Check that binlog_row_image is FULL
-- Ensure the DMS user has REPLICATION SLAVE privileges
+- Ensure the DMS user has REPLICATION CLIENT and REPLICATION SLAVE privileges
 
 **Issue: Full load too slow**
 - Increase `MaxFullLoadSubTasks` to load more tables in parallel
