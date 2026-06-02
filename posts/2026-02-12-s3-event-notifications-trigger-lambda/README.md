@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, S3, Lambda, Serverless
 
-Description: Configure S3 event notifications to automatically trigger Lambda functions when objects are created, deleted, or modified in your S3 buckets.
+Description: Configure S3 event notifications to automatically trigger Lambda functions when objects are created, deleted, restored, tagged, or changed in your S3 buckets.
 
 ---
 
@@ -57,6 +57,11 @@ def lambda_handler(event, context):
         print(f"Key: {key}")
         print(f"Size: {size} bytes")
 
+        # Deletion events don't have an object to download
+        if event_name.startswith('ObjectRemoved:'):
+            handle_delete(bucket, key, event_name)
+            continue
+
         # Download and process the object
         response = s3.get_object(Bucket=bucket, Key=key)
         content = response['Body'].read()
@@ -87,9 +92,13 @@ def process_file(bucket, key, content):
 
     else:
         print(f"Unknown file type: {key}")
+
+def handle_delete(bucket, key, event_name):
+    """Handle object deletion events."""
+    print(f"Object deleted: s3://{bucket}/{key} ({event_name})")
 ```
 
-Package and deploy the Lambda function:
+Package the Lambda function. Run the `create-function` command after you create the IAM role in Step 2:
 
 ```bash
 # Create the deployment package
@@ -268,17 +277,31 @@ s3:ObjectRemoved:DeleteMarkerCreated - Delete marker (versioned)
 s3:ObjectRestore:*              - Glacier restore events
 s3:ObjectRestore:Post           - Restore initiated
 s3:ObjectRestore:Completed      - Restore completed
+s3:ObjectRestore:Delete         - Temporary restored copy expired
+
+s3:Replication:*                - Any replication event
+s3:Replication:OperationFailedReplication - Replication failed
+s3:Replication:OperationMissedThreshold - Replication exceeded threshold
+s3:Replication:OperationReplicatedAfterThreshold - Replicated after threshold
+s3:Replication:OperationNotTracked - Replication no longer tracked
+
+s3:LifecycleExpiration:*        - Any lifecycle expiration event
+s3:LifecycleExpiration:Delete   - Object deleted by lifecycle expiration
+s3:LifecycleExpiration:DeleteMarkerCreated - Delete marker created by lifecycle
+s3:LifecycleTransition          - Object transitioned by lifecycle
+s3:IntelligentTiering           - Object moved to archive access tier
 
 s3:ObjectTagging:*              - Tag changes
 s3:ObjectTagging:Put            - Tags added/modified
 s3:ObjectTagging:Delete         - Tags removed
+s3:ObjectAcl:Put                - Object ACL added/changed
 
 s3:ReducedRedundancyLostObject  - Object in RRS lost
 ```
 
 ## Real-World Example: Image Thumbnail Generator
 
-Here's a practical Lambda function that generates thumbnails when images are uploaded.
+Here's a practical Lambda function that generates thumbnails when images are uploaded. Package Pillow with the function or attach it as a Lambda layer, and add `s3:PutObject` permission for the thumbnail prefix.
 
 Create an image thumbnail generator:
 
@@ -313,6 +336,8 @@ def lambda_handler(event, context):
         # Create thumbnail
         image = Image.open(BytesIO(image_data))
         image.thumbnail(THUMBNAIL_SIZE)
+        if image.mode not in ('RGB', 'L'):
+            image = image.convert('RGB')
 
         # Save thumbnail to buffer
         buffer = BytesIO()
@@ -347,15 +372,20 @@ aws s3 cp /tmp/test.csv s3://my-bucket/uploads/test.csv
 # Check Lambda logs (wait a few seconds)
 aws logs tail /aws/lambda/s3-event-processor --since 5m
 
-# Check if the Lambda was invoked
-aws lambda get-function \
-    --function-name s3-event-processor \
-    --query "Configuration.LastModified"
+# Check recent Lambda invocations
+aws cloudwatch get-metric-statistics \
+    --namespace AWS/Lambda \
+    --metric-name Invocations \
+    --dimensions Name=FunctionName,Value=s3-event-processor \
+    --statistics Sum \
+    --period 300 \
+    --start-time "$(date -u -d '5 minutes ago' +%Y-%m-%dT%H:%M:%SZ)" \
+    --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 ```
 
 ## Error Handling and Retries
 
-S3 will retry failed Lambda invocations. If your function throws an error, S3 retries up to 2 more times. If all retries fail, the event is dropped (unless you configure a dead-letter queue).
+S3 invokes Lambda asynchronously. If your function throws an error, Lambda retries up to 2 more times. If all retries fail or the event expires, Lambda discards the event unless you configure a dead-letter queue or an on-failure destination.
 
 Configure error handling:
 
@@ -365,6 +395,8 @@ aws lambda update-function-configuration \
     --function-name s3-event-processor \
     --dead-letter-config TargetArn=arn:aws:sqs:us-east-1:123456789012:s3-events-dlq
 ```
+
+Make sure the Lambda execution role also has permission to send messages to the dead-letter queue, such as `sqs:SendMessage` for an SQS queue.
 
 For alternative notification targets like SQS and SNS, see our guide on [S3 event notifications to SQS and SNS](https://oneuptime.com/blog/post/2026-02-12-s3-event-notifications-sqs-sns/view).
 
