@@ -30,12 +30,12 @@ Deploy it from the AWS Solutions Library:
 aws cloudformation create-stack \
   --stack-name instance-scheduler \
   --template-url https://s3.amazonaws.com/solutions-reference/instance-scheduler-on-aws/latest/instance-scheduler-on-aws.template \
-  --capabilities CAPABILITY_IAM \
+  --capabilities CAPABILITY_NAMED_IAM \
   --parameters \
     ParameterKey=SchedulingActive,ParameterValue=Yes \
     ParameterKey=DefaultTimezone,ParameterValue=America/New_York \
     ParameterKey=Regions,ParameterValue=us-east-1 \
-    ParameterKey=ScheduleLambdaMemory,ParameterValue=128
+    ParameterKey=MemorySize,ParameterValue=128
 ```
 
 Then create a schedule and tag your instances:
@@ -43,16 +43,18 @@ Then create a schedule and tag your instances:
 ```bash
 # Create a business-hours schedule using the scheduler CLI
 # (After installing the scheduler CLI tool)
-scheduler-cli create-schedule \
-  --name business-hours \
-  --periods office-hours \
-  --timezone America/New_York
-
 scheduler-cli create-period \
   --name office-hours \
   --begintime 08:00 \
   --endtime 20:00 \
-  --weekdays mon-fri
+  --weekdays mon-fri \
+  --stack instance-scheduler
+
+scheduler-cli create-schedule \
+  --name business-hours \
+  --periods office-hours \
+  --timezone America/New_York \
+  --stack instance-scheduler
 ```
 
 Tag instances to assign them to the schedule:
@@ -75,13 +77,10 @@ If you want more control or don't want the overhead of the full Instance Schedul
 
 ```python
 import boto3
-from datetime import datetime
-import pytz
 
 ec2 = boto3.client('ec2')
 rds = boto3.client('rds')
 
-TIMEZONE = pytz.timezone('America/New_York')
 SCHEDULE_TAG = 'AutoSchedule'
 
 def start_resources(event, context):
@@ -109,6 +108,9 @@ def start_resources(event, context):
     rds_started = []
 
     for db in rds_instances['DBInstances']:
+        if db.get('Engine', '').startswith('aurora'):
+            continue
+
         tags = rds.list_tags_for_resource(
             ResourceName=db['DBInstanceArn']
         )['TagList']
@@ -150,6 +152,9 @@ def stop_resources(event, context):
     rds_stopped = []
 
     for db in rds_instances['DBInstances']:
+        if db.get('Engine', '').startswith('aurora'):
+            continue
+
         tags = rds.list_tags_for_resource(
             ResourceName=db['DBInstanceArn']
         )['TagList']
@@ -175,6 +180,13 @@ aws events put-rule \
   --schedule-expression "cron(0 13 ? * MON-FRI *)" \
   --description "Start non-prod resources at 8 AM ET"
 
+aws lambda add-permission \
+  --function-name arn:aws:lambda:us-east-1:123456789012:function:start-resources \
+  --statement-id start-non-prod-eventbridge \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/start-non-prod
+
 aws events put-targets \
   --rule start-non-prod \
   --targets "Id"="1","Arn"="arn:aws:lambda:us-east-1:123456789012:function:start-resources"
@@ -185,12 +197,19 @@ aws events put-rule \
   --schedule-expression "cron(0 1 ? * TUE-SAT *)" \
   --description "Stop non-prod resources at 8 PM ET"
 
+aws lambda add-permission \
+  --function-name arn:aws:lambda:us-east-1:123456789012:function:stop-resources \
+  --statement-id stop-non-prod-eventbridge \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/stop-non-prod
+
 aws events put-targets \
   --rule stop-non-prod \
   --targets "Id"="1","Arn"="arn:aws:lambda:us-east-1:123456789012:function:stop-resources"
 ```
 
-Note the cron expressions use UTC. 8 AM ET = 1 PM UTC (during EST) and 8 PM ET = 1 AM UTC the next day.
+Note the cron expressions use UTC. 8 AM ET = 1 PM UTC and 8 PM ET = 1 AM UTC the next day during EST. During daylight saving time, update the UTC hours or use EventBridge Scheduler with a time zone such as `America/New_York`.
 
 ## Scheduling ECS Services
 
@@ -256,7 +275,11 @@ def check_override_before_stopping(event, context):
             override_until = tags.get('ScheduleOverrideUntil', '')
             if override_until:
                 try:
-                    override_time = datetime.fromisoformat(override_until).replace(tzinfo=timezone.utc)
+                    override_time = datetime.fromisoformat(override_until.replace('Z', '+00:00'))
+                    if override_time.tzinfo is None:
+                        override_time = override_time.replace(tzinfo=timezone.utc)
+                    else:
+                        override_time = override_time.astimezone(timezone.utc)
                     if datetime.now(timezone.utc) < override_time:
                         skipped.append(instance['InstanceId'])
                         print(f"Skipping {instance['InstanceId']} - override until {override_until}")
