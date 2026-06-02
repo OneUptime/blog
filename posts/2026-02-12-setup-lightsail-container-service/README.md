@@ -38,11 +38,11 @@ Available power levels:
 | Power  | vCPU | RAM    | Monthly Price (per node) |
 |--------|------|--------|-------------------------|
 | nano   | 0.25 | 512MB  | $7                      |
-| micro  | 0.5  | 1GB    | $10                     |
-| small  | 1    | 2GB    | $25                     |
-| medium | 2    | 4GB    | $50                     |
-| large  | 4    | 8GB    | $100                    |
-| xlarge | 8    | 16GB   | $200                    |
+| micro  | 0.25 | 1GB    | $10                     |
+| small  | 0.5  | 1GB    | $15                     |
+| medium | 1    | 2GB    | $40                     |
+| large  | 2    | 4GB    | $80                     |
+| xlarge | 4    | 8GB    | $160                    |
 
 Check the service status.
 
@@ -56,6 +56,19 @@ aws lightsail get-container-services \
 ## Step 2: Prepare Your Docker Image
 
 Build a Docker image for your application. Here's a simple Node.js example.
+
+Create the package file.
+
+```json
+{
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
+```
 
 Create the application file.
 
@@ -85,13 +98,13 @@ app.listen(PORT, '0.0.0.0', () => {
 And the Dockerfile.
 
 ```dockerfile
-FROM node:18-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
 # Copy package files and install dependencies
 COPY package*.json ./
-RUN npm ci --production
+RUN npm install --omit=dev
 
 # Copy application code
 COPY app.js .
@@ -195,7 +208,7 @@ URL=$(aws lightsail get-container-services \
   --service-name my-app-service \
   --query 'containerServices[0].url' --output text)
 
-curl -s "https://$URL" | python3 -m json.tool
+curl -s "$URL" | python3 -m json.tool
 ```
 
 ## Step 6: Use a Custom Domain
@@ -225,7 +238,7 @@ aws lightsail update-container-service \
   }'
 ```
 
-Finally, create a CNAME record in your DNS pointing `app.example.com` to the Lightsail container service URL.
+Finally, create a CNAME record in your DNS pointing `app.example.com` to the Lightsail container service hostname, without the `https://` prefix.
 
 ## Scaling Your Service
 
@@ -315,7 +328,7 @@ aws lightsail create-container-service-deployment \
   }'
 ```
 
-Lightsail performs a rolling deployment, so there's no downtime during updates.
+Lightsail creates a new deployment version for the update. If the new deployment fails and a previous deployment is running, Lightsail keeps the previous deployment active.
 
 ## Troubleshooting Checklist
 
