@@ -36,7 +36,7 @@ Keep a minimal version of your environment running in the DR region - database r
 Run a scaled-down but fully functional copy in the DR region. During failover, scale it up to handle production traffic. Recovery in minutes.
 
 ### 4. Active-Active
-Run full production workloads in both regions simultaneously. Users are routed to the nearest region. No failover needed - if one region fails, the other absorbs the traffic. Near-zero recovery time.
+Run full production workloads in both regions simultaneously. Users are routed to the nearest healthy region. No cold start or database promotion is needed - if one region fails, the other absorbs the traffic. Near-zero recovery time.
 
 ## Setting Up Pilot Light
 
@@ -45,6 +45,7 @@ Pilot light is the sweet spot for most organizations - affordable but with reaso
 ```typescript
 // Primary region stack
 import * as cdk from 'aws-cdk-lib';
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 
@@ -57,11 +58,15 @@ export class PrimaryRegionStack extends cdk.Stack {
       engine: rds.DatabaseClusterEngine.auroraPostgres({
         version: rds.AuroraPostgresEngineVersion.VER_15_4,
       }),
-      instances: 2,
-      instanceProps: {
-        vpc: primaryVpc,
+      vpc: primaryVpc,
+      writer: rds.ClusterInstance.provisioned('writer', {
         instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
-      },
+      }),
+      readers: [
+        rds.ClusterInstance.provisioned('reader', {
+          instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
+        }),
+      ],
     });
 
     // S3 bucket with cross-region replication
@@ -80,17 +85,17 @@ export class DrRegionStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
     super(scope, id);
 
-    // Aurora read replica in DR region (automatically kept in sync)
-    const drCluster = new rds.DatabaseCluster(this, 'DrDB', {
-      engine: rds.DatabaseClusterEngine.auroraPostgres({
-        version: rds.AuroraPostgresEngineVersion.VER_15_4,
-      }),
-      instances: 1, // Minimal - scale up during failover
-      instanceProps: {
-        vpc: drVpc,
-        instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.MEDIUM),
-      },
-      // This cluster is a read replica of the primary
+    // Aurora Global Database secondary cluster in DR region
+    const drCluster = new rds.CfnDBCluster(this, 'DrDB', {
+      engine: 'aurora-postgresql',
+      globalClusterIdentifier: 'my-global-cluster',
+      dbSubnetGroupName: drSubnetGroup.ref,
+    });
+
+    new rds.CfnDBInstance(this, 'DrDBInstance', {
+      dbClusterIdentifier: drCluster.ref,
+      dbInstanceClass: 'db.r6g.medium',
+      engine: 'aurora-postgresql',
     });
 
     // S3 bucket as replication destination
@@ -105,15 +110,13 @@ export class DrRegionStack extends cdk.Stack {
 
 ### Aurora Global Database
 
-Aurora Global Database replicates data across regions with less than 1 second of replication lag.
+Aurora Global Database replicates data across regions with replication lag typically under 1 second.
 
 ```typescript
 // Aurora Global Database setup
 const globalCluster = new rds.CfnGlobalCluster(this, 'GlobalCluster', {
   globalClusterIdentifier: 'my-global-cluster',
-  sourceDbClusterIdentifier: primaryCluster.clusterIdentifier,
-  engine: 'aurora-postgresql',
-  engineVersion: '15.4',
+  sourceDbClusterIdentifier: primaryCluster.clusterArn,
 });
 ```
 
@@ -129,7 +132,9 @@ const table = new dynamodb.Table(this, 'GlobalTable', {
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
   replicationRegions: ['eu-west-1', 'ap-southeast-1'],
   // Point-in-time recovery for extra safety
-  pointInTimeRecovery: true,
+  pointInTimeRecoverySpecification: {
+    pointInTimeRecoveryEnabled: true,
+  },
 });
 ```
 
@@ -141,9 +146,32 @@ const replicationRole = new iam.Role(this, 'ReplicationRole', {
   assumedBy: new iam.ServicePrincipal('s3.amazonaws.com'),
 });
 
-// Grant permissions for replication
-primaryBucket.grantRead(replicationRole);
-drBucket.grantWrite(replicationRole);
+// Grant the replication-specific permissions S3 needs
+replicationRole.addToPolicy(new iam.PolicyStatement({
+  actions: [
+    's3:GetReplicationConfiguration',
+    's3:ListBucket',
+  ],
+  resources: [primaryBucket.bucketArn],
+}));
+
+replicationRole.addToPolicy(new iam.PolicyStatement({
+  actions: [
+    's3:GetObjectVersionForReplication',
+    's3:GetObjectVersionAcl',
+    's3:GetObjectVersionTagging',
+  ],
+  resources: [primaryBucket.arnForObjects('*')],
+}));
+
+replicationRole.addToPolicy(new iam.PolicyStatement({
+  actions: [
+    's3:ReplicateObject',
+    's3:ReplicateDelete',
+    's3:ReplicateTags',
+  ],
+  resources: [drBucket.arnForObjects('*')],
+}));
 
 // CRR rule (using L1 construct for full control)
 const cfnBucket = primaryBucket.node.defaultChild as s3.CfnBucket;
@@ -181,7 +209,6 @@ new route53.CfnRecordSet(this, 'PrimaryRecord', {
     hostedZoneId: primaryAlb.loadBalancerCanonicalHostedZoneId,
     evaluateTargetHealth: true,
   },
-  healthCheckId: primaryHealthCheck.attrHealthCheckId,
 });
 
 // DR region record
@@ -213,7 +240,9 @@ echo "Starting failover to DR region..."
 
 aws rds failover-global-cluster \
   --global-cluster-identifier my-global-cluster \
-  --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789:cluster:dr-cluster
+  --target-db-cluster-identifier arn:aws:rds:eu-west-1:123456789012:cluster:dr-cluster \
+  --allow-data-loss \
+  --region eu-west-1
 
 # Step 2: Scale up DR compute
 aws autoscaling update-auto-scaling-group \
@@ -224,7 +253,7 @@ aws autoscaling update-auto-scaling-group \
 
 # Step 3: Verify DR environment health
 aws elbv2 describe-target-health \
-  --target-group-arn arn:aws:elasticloadbalancing:eu-west-1:123456789:targetgroup/dr-tg \
+  --target-group-arn arn:aws:elasticloadbalancing:eu-west-1:123456789012:targetgroup/dr-tg/abcdef1234567890 \
   --region eu-west-1
 
 # Step 4: Update Route 53 if not automatic
