@@ -8,7 +8,7 @@ Description: A complete guide to setting up an AWS Network Load Balancer for EC2
 
 ---
 
-When your workload needs raw TCP/UDP performance, millions of requests per second, or ultra-low latency, an Application Load Balancer won't cut it. That's where the Network Load Balancer (NLB) comes in. Operating at Layer 4 (transport layer), the NLB can handle extreme traffic levels with latencies measured in microseconds, not milliseconds.
+When your workload needs raw TCP/UDP performance, millions of requests per second, or ultra-low latency, an Application Load Balancer won't cut it. That's where the Network Load Balancer (NLB) comes in. Operating at Layer 4 (transport layer), the NLB can handle extreme traffic levels with very low latency.
 
 Let's set up an NLB and understand when it's the right choice over an ALB.
 
@@ -16,7 +16,7 @@ Let's set up an NLB and understand when it's the right choice over an ALB.
 
 Choose an NLB when you need:
 
-- **Ultra-low latency** - Single-digit microsecond latencies
+- **Ultra-low latency** - Very low latency at Layer 4
 - **TCP/UDP/TLS traffic** - Non-HTTP protocols
 - **Millions of RPS** - Extreme throughput requirements
 - **Static IPs** - Fixed IP addresses for allowlisting
@@ -143,7 +143,7 @@ aws elbv2 create-listener \
   --load-balancer-arn $NLB_ARN \
   --protocol TLS \
   --port 443 \
-  --certificates CertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/abc123 \
+  --certificates CertificateArn=arn:aws:acm:us-west-2:123456789012:certificate/abc123 \
   --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
   --default-actions '[{
     "Type": "forward",
@@ -182,7 +182,7 @@ aws elbv2 describe-target-health \
 
 ## Client IP Preservation
 
-One of the NLB's advantages is that it can preserve the original client IP address. With TCP targets, client IP preservation is enabled by default.
+One of the NLB's advantages is that it can preserve the original client IP address. With TCP instance target groups, client IP preservation is enabled by default. For TCP or TLS IP target groups, it is disabled by default unless you enable it.
 
 Your backend servers see the real client IP - no need to parse X-Forwarded-For headers like with an ALB.
 
@@ -302,19 +302,19 @@ aws autoscaling create-auto-scaling-group \
 
 ## Security Group Considerations
 
-NLBs have an important difference from ALBs: for TCP targets with client IP preservation enabled, the target instances see the client's IP directly. This means your instance security group needs to allow traffic from client IPs, not the NLB's IP.
+NLBs can have security groups, but client IP preservation still affects what your targets see. If you associate a security group with the NLB when you create it, the recommended target security group rule is to allow traffic from the NLB security group:
 
 ```bash
 # Instance security group for NLB targets
-# Must allow traffic from clients directly
+# Allow traffic from the NLB security group
 aws ec2 authorize-security-group-ingress \
   --group-id $INSTANCE_SG \
   --protocol tcp --port 8080 \
-  --cidr 0.0.0.0/0 \
-  --description "NLB traffic (client IP preserved)"
+  --source-group $NLB_SG \
+  --description "NLB traffic"
 ```
 
-If you disable client IP preservation, traffic comes from the NLB's private IPs, and you can restrict the security group to the NLB's subnet CIDRs.
+If your NLB was created without a security group and client IP preservation is enabled, your target security group must allow traffic from the approved client IP ranges. If you disable client IP preservation, traffic comes from the NLB's private IPs, and you can restrict the security group to those addresses or the NLB's subnet CIDRs.
 
 ## Monitoring
 
@@ -330,4 +330,4 @@ For real-time monitoring of your NLB health and performance, including target he
 
 ## Summary
 
-The Network Load Balancer is the right choice when you need Layer 4 load balancing with extreme performance, static IPs, or client IP preservation. It handles millions of connections per second with microsecond latencies and supports TCP, UDP, and TLS protocols. Use it for non-HTTP workloads, high-throughput applications, and cases where you need fixed IP addresses. For HTTP workloads that need content-based routing, an [Application Load Balancer](https://oneuptime.com/blog/post/2026-02-12-application-load-balancer-alb-ec2/view) is the better fit.
+The Network Load Balancer is the right choice when you need Layer 4 load balancing with extreme performance, static IPs, or client IP preservation. It handles millions of connections per second with very low latency and supports TCP, UDP, and TLS protocols. Use it for non-HTTP workloads, high-throughput applications, and cases where you need fixed IP addresses. For HTTP workloads that need content-based routing, an [Application Load Balancer](https://oneuptime.com/blog/post/2026-02-12-application-load-balancer-alb-ec2/view) is the better fit.
