@@ -37,7 +37,7 @@ graph TD
 
 **Audit** checks your IoT configuration against security best practices. It looks at things like overly permissive policies, shared certificates, and logging configuration.
 
-**Detect** monitors the runtime behavior of your devices. It establishes baselines for metrics like message size, connection patterns, and data transfer, then alerts you when devices deviate from normal behavior.
+**Detect** monitors the runtime behavior of your devices. Rule-based profiles compare metrics like message size, connection patterns, and data transfer against thresholds you define. ML-based profiles learn normal behavior and alert you when devices deviate from those patterns.
 
 ## Part 1: Setting Up Audits
 
@@ -70,6 +70,24 @@ aws iam create-role \
 aws iam attach-role-policy \
   --role-name IoTDefenderAuditRole \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSIoTDeviceDefenderAudit
+
+cat > defender-sns-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:iot-security-alerts"
+    }
+  ]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name IoTDefenderAuditRole \
+  --policy-name IoTDefenderSnsPublish \
+  --policy-document file://defender-sns-policy.json
 ```
 
 ### Configure Audit Settings
@@ -79,11 +97,11 @@ Enable the audit checks you want to run.
 ```bash
 # Enable audit checks
 aws iot update-account-audit-configuration \
-  --role-arn "arn:aws:iam::123456789:role/IoTDefenderAuditRole" \
+  --role-arn "arn:aws:iam::123456789012:role/IoTDefenderAuditRole" \
   --audit-notification-target-configurations '{
     "SNS": {
-      "targetArn": "arn:aws:sns:us-east-1:123456789:iot-security-alerts",
-      "roleArn": "arn:aws:iam::123456789:role/IoTDefenderAuditRole",
+      "targetArn": "arn:aws:sns:us-east-1:123456789012:iot-security-alerts",
+      "roleArn": "arn:aws:iam::123456789012:role/IoTDefenderAuditRole",
       "enabled": true
     }
   }' \
@@ -259,8 +277,8 @@ aws iot create-security-profile \
   ]' \
   --alert-targets '{
     "SNS": {
-      "alertTargetArn": "arn:aws:sns:us-east-1:123456789:iot-security-alerts",
-      "roleArn": "arn:aws:iam::123456789:role/IoTDefenderAuditRole"
+      "alertTargetArn": "arn:aws:sns:us-east-1:123456789012:iot-security-alerts",
+      "roleArn": "arn:aws:iam::123456789012:role/IoTDefenderAuditRole"
     }
   }'
 ```
@@ -271,12 +289,12 @@ aws iot create-security-profile \
 # Attach to all things in the account
 aws iot attach-security-profile \
   --security-profile-name "SensorSecurityProfile" \
-  --security-profile-target-arn "arn:aws:iot:us-east-1:123456789:all/things"
+  --security-profile-target-arn "arn:aws:iot:us-east-1:123456789012:all/registered-things"
 
 # Or attach to a specific thing group
 aws iot attach-security-profile \
   --security-profile-name "SensorSecurityProfile" \
-  --security-profile-target-arn "arn:aws:iot:us-east-1:123456789:thinggroup/production-sensors"
+  --security-profile-target-arn "arn:aws:iot:us-east-1:123456789012:thinggroup/production-sensors"
 ```
 
 ### ML-Based Anomaly Detection
@@ -334,7 +352,7 @@ When audit findings or detect violations occur, you can trigger automated respon
 # Create a mitigation action to add device to quarantine group
 aws iot create-mitigation-action \
   --action-name "QuarantineDevice" \
-  --role-arn "arn:aws:iam::123456789:role/IoTDefenderMitigationRole" \
+  --role-arn "arn:aws:iam::123456789012:role/IoTDefenderMitigationRole" \
   --action-params '{
     "addThingsToThingGroupParams": {
       "thingGroupNames": ["quarantine"],
@@ -345,7 +363,7 @@ aws iot create-mitigation-action \
 # Create a mitigation action to disable the device certificate
 aws iot create-mitigation-action \
   --action-name "DisableCertificate" \
-  --role-arn "arn:aws:iam::123456789:role/IoTDefenderMitigationRole" \
+  --role-arn "arn:aws:iam::123456789012:role/IoTDefenderMitigationRole" \
   --action-params '{
     "updateDeviceCertificateParams": {
       "action": "DEACTIVATE"
@@ -366,24 +384,27 @@ aws iot start-audit-mitigation-actions-task \
 
 ## Setting Up Notifications
 
-Configure EventBridge rules for automated responses.
+Configure SNS subscriptions for audit findings and detect violations.
 
 ```bash
-# EventBridge rule for audit findings
-aws events put-rule \
-  --name iot-defender-audit-findings \
-  --event-pattern '{
-    "source": ["aws.iot"],
-    "detail-type": ["IoT Device Defender Audit Finding"]
-  }'
+# Email notifications
+aws sns subscribe \
+  --topic-arn "arn:aws:sns:us-east-1:123456789012:iot-security-alerts" \
+  --protocol email \
+  --notification-endpoint "security@example.com"
 
-# EventBridge rule for detect violations
-aws events put-rule \
-  --name iot-defender-violations \
-  --event-pattern '{
-    "source": ["aws.iot"],
-    "detail-type": ["IoT Device Defender Detect Violation"]
-  }'
+# Lambda-based automated response
+aws lambda add-permission \
+  --function-name "iot-security-response" \
+  --statement-id "AllowIotSecurityAlertsSns" \
+  --action "lambda:InvokeFunction" \
+  --principal sns.amazonaws.com \
+  --source-arn "arn:aws:sns:us-east-1:123456789012:iot-security-alerts"
+
+aws sns subscribe \
+  --topic-arn "arn:aws:sns:us-east-1:123456789012:iot-security-alerts" \
+  --protocol lambda \
+  --notification-endpoint "arn:aws:lambda:us-east-1:123456789012:function:iot-security-response"
 ```
 
 ## Wrapping Up
