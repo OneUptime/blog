@@ -8,7 +8,7 @@ Description: A detailed walkthrough of building a multi-region active-active arc
 
 ---
 
-Active-active multi-region is the gold standard of cloud architecture. Both (or all) regions are handling production traffic at the same time. If one goes down, the others keep serving without any failover delay. Users get routed to the closest region, so latency is lower. Sounds great, right? It is - but it's also one of the hardest things to get right in distributed systems.
+Active-active multi-region is the gold standard of cloud architecture. Both (or all) regions are handling production traffic at the same time. If one goes down, the others keep serving without starting a cold standby, though DNS caching and client retries can still add delay. Users get routed to the closest region, so latency is lower. Sounds great, right? It is - but it's also one of the hardest things to get right in distributed systems.
 
 The main challenge isn't the infrastructure. AWS gives you the tools. The hard part is data. Specifically, how do you keep data consistent across regions when writes can happen in any of them simultaneously? Let's work through a practical setup.
 
@@ -104,7 +104,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-When one region's health check fails, Route 53 stops routing traffic there. The DNS TTL determines how fast this happens - set it low (60 seconds) for faster failover.
+When one region's health check fails, Route 53 stops routing traffic there. DNS caching still affects how quickly clients stop using old answers. For ALB alias records, Route 53 doesn't set a separate TTL; the load balancer DNS record uses a 60-second TTL. For non-alias records, keep the TTL low for faster failover.
 
 ## Step 2: The Data Layer - The Hard Part
 
@@ -112,10 +112,10 @@ For active-active, you need data stores that handle multi-region writes. You hav
 
 ### Option A: DynamoDB Global Tables
 
-DynamoDB Global Tables give you multi-region, multi-active replication with eventual consistency. Writes in any region replicate to all other regions, typically within a second.
+DynamoDB Global Tables give you multi-region, multi-active replication. If you don't specify a consistency mode, they use multi-Region eventual consistency (MREC), and writes in any region replicate to all other regions, typically within a second.
 
 ```bash
-# Create a DynamoDB table with global tables enabled
+# Create the first regional DynamoDB table
 aws dynamodb create-table \
   --table-name "users" \
   --attribute-definitions \
@@ -125,17 +125,19 @@ aws dynamodb create-table \
   --billing-mode PAY_PER_REQUEST \
   --stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES
 
+aws dynamodb wait table-exists --table-name "users"
+
 # Add a replica in eu-west-1
 aws dynamodb update-table \
   --table-name "users" \
   --replica-updates '[{"Create": {"RegionName": "eu-west-1"}}]'
 ```
 
-The catch: if two regions write to the same item at nearly the same time, last-writer-wins. For most applications, this is fine. For financial transactions, it's not.
+The catch in the default MREC mode: if two regions write to the same item at nearly the same time, last-writer-wins. For most applications, this is fine. For financial transactions, it's not.
 
 ### Option B: Aurora Global Database
 
-Aurora Global Database gives you one write region and up to five read replicas in other regions. Replication lag is typically under a second.
+Aurora Global Database gives you one write region and secondary read-only clusters in other regions. Replication lag is typically under a second.
 
 ```bash
 # Create the Aurora global cluster
@@ -154,25 +156,42 @@ aws rds create-db-cluster \
   --global-cluster-identifier "my-global-db" \
   --region "us-east-1"
 
+aws rds create-db-instance \
+  --db-instance-identifier "primary-instance-1" \
+  --db-cluster-identifier "primary-cluster" \
+  --engine "aurora-postgresql" \
+  --engine-version "15.4" \
+  --db-instance-class "db.r6g.large" \
+  --region "us-east-1"
+
 # Add a secondary cluster in eu-west-1
 aws rds create-db-cluster \
   --db-cluster-identifier "secondary-cluster" \
   --engine "aurora-postgresql" \
   --engine-version "15.4" \
   --global-cluster-identifier "my-global-db" \
+  --enable-global-write-forwarding \
+  --region "eu-west-1"
+
+aws rds create-db-instance \
+  --db-instance-identifier "secondary-instance-1" \
+  --db-cluster-identifier "secondary-cluster" \
+  --engine "aurora-postgresql" \
+  --engine-version "15.4" \
+  --db-instance-class "db.r6g.large" \
   --region "eu-west-1"
 ```
 
-For true active-active with Aurora, you can use write forwarding. Reads happen locally, and writes from secondary regions get forwarded to the primary.
+For active-active application stacks with Aurora, you can use write forwarding. Reads happen locally, and writes from secondary clusters get forwarded to the primary instead of being committed locally.
 
 ```python
 import psycopg2
 
 # Application code that handles multi-region database access
 class MultiRegionDB:
-    def __init__(self, local_reader_endpoint, writer_endpoint):
+    def __init__(self, local_reader_endpoint, local_writer_endpoint):
         self.reader = psycopg2.connect(host=local_reader_endpoint, dbname='app')
-        self.writer = psycopg2.connect(host=writer_endpoint, dbname='app')
+        self.writer = psycopg2.connect(host=local_writer_endpoint, dbname='app')
 
     def read(self, query, params=None):
         # Reads go to the local replica - fast
@@ -181,8 +200,8 @@ class MultiRegionDB:
         return cursor.fetchall()
 
     def write(self, query, params=None):
-        # Writes go to the primary region
-        # With write forwarding enabled, this is handled automatically
+        # Connect to the local cluster endpoint. On a secondary cluster,
+        # Aurora forwards supported writes to the primary.
         cursor = self.writer.cursor()
         cursor.execute(query, params)
         self.writer.commit()
@@ -193,7 +212,7 @@ class MultiRegionDB:
 Deploy identical application stacks in each region. Use infrastructure as code to keep them in sync.
 
 ```yaml
-# CloudFormation template (deploy in each region)
+# CloudFormation snippet (deploy in each region as part of a complete stack)
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Active-active application stack
 
@@ -244,6 +263,7 @@ Users might get routed to different regions on subsequent requests. Sessions nee
 ```python
 import boto3
 import json
+import time
 import uuid
 
 # Use DynamoDB Global Tables for session storage
@@ -272,7 +292,7 @@ def get_session(session_id):
 
 With writes happening in multiple regions, you need a conflict resolution strategy. Here are common approaches:
 
-1. **Last writer wins** - Simplest. DynamoDB Global Tables do this by default.
+1. **Last writer wins** - Simplest. DynamoDB Global Tables use this in the default MREC mode.
 2. **Region affinity** - Route each user to a "home" region for writes. Reads can go anywhere.
 3. **CRDT-based** - Use conflict-free replicated data types for data that must merge cleanly.
 
@@ -280,6 +300,7 @@ Here's the region affinity pattern.
 
 ```python
 import hashlib
+import os
 
 def get_home_region(user_id):
     # Deterministically assign users to a home region based on their ID
