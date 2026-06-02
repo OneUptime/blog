@@ -22,7 +22,7 @@ For example, "Alice knows Bob" becomes:
 - Predicate: `:knows`
 - Object: `:Bob`
 
-In SPARQL, you use URIs (Uniform Resource Identifiers) to identify things. Prefixes make these shorter and more readable.
+In SPARQL, you use IRIs (Internationalized Resource Identifiers, often written as URIs) to identify things. Prefixes make these shorter and more readable.
 
 ## Loading RDF Data into Neptune
 
@@ -214,11 +214,11 @@ WHERE {
 }
 ```
 
-This query returns all people, and for those who have a `worksAt` relationship, it includes the company name. Charlie would show up with a null company value.
+This query returns all people, and for those who have a `worksAt` relationship, it includes the company name. Charlie would show up with the company value unbound.
 
 ## Aggregation and Grouping
 
-SPARQL supports the same aggregation functions you'd expect from SQL.
+SPARQL supports common aggregation functions such as `COUNT` and `AVG`.
 
 ```sparql
 # Count people per city
@@ -319,10 +319,10 @@ curl -X POST \
 
 SPARQL query performance in Neptune depends heavily on how you structure your queries.
 
-Put the most selective triple pattern first. If you're looking for a specific person, start with that.
+Use specific triple patterns when you can. If you're looking for a specific person, bind that IRI directly instead of scanning broadly and filtering afterward.
 
 ```sparql
-# Good - starts with a specific subject
+# Good - binds the specific subject directly
 PREFIX : <http://example.org/>
 PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 
@@ -332,7 +332,7 @@ WHERE {
   ?friend foaf:name ?friendName .
 }
 
-# Less efficient - starts with a broad scan
+# Less direct - scans broadly and filters afterward
 PREFIX foaf: <http://xmlns.com/foaf/0.1/>
 
 SELECT ?friendName
@@ -343,7 +343,7 @@ WHERE {
 }
 ```
 
-Use LIMIT when you don't need all results. Avoid `SELECT *` when you only need specific variables. And watch out for Cartesian products that happen when triple patterns don't share variables.
+Neptune's optimizer can reorder joins automatically; if you need to force a particular join order, use Neptune's `joinOrder` query hint. Use LIMIT when you don't need all results. Avoid `SELECT *` when you only need specific variables. And watch out for Cartesian products that happen when triple patterns don't share variables.
 
 ## When to Choose SPARQL Over Gremlin
 
