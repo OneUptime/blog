@@ -21,7 +21,7 @@ There are several good reasons to validate in API Gateway:
 - **Speed** - API Gateway validation is faster than Lambda cold starts
 - **Security** - Blocks malformed payloads before they touch your code
 
-API Gateway supports validating request bodies, query string parameters, and headers using JSON Schema.
+API Gateway supports validating request bodies with JSON Schema, and checking that required query string parameters and headers are present and non-blank.
 
 ## Basic Request Validation
 
@@ -38,7 +38,7 @@ export class ApiValidationStack extends cdk.Stack {
     super(scope, id);
 
     const handler = new lambda.Function(this, 'ApiHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda'),
     });
@@ -125,7 +125,7 @@ curl -X POST https://api-id.execute-api.us-east-1.amazonaws.com/prod/users \
 
 ## Validating Query String Parameters and Headers
 
-You can also validate that required query parameters and headers are present.
+You can also validate that required query parameters and headers are present. API Gateway checks that required request parameters exist and are not blank; it does not validate their type or format.
 
 ```typescript
 // Validate query string parameters and headers
