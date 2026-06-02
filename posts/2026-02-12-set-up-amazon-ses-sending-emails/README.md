@@ -10,7 +10,7 @@ Description: Get started with Amazon Simple Email Service for sending transactio
 
 Sending emails from your application is one of those things that sounds simple until you actually try to do it reliably at scale. Self-hosting an email server means dealing with IP reputation, bounce handling, deliverability tuning, and compliance headaches. Amazon SES takes care of all that infrastructure while charging a fraction of what services like SendGrid or Mailgun cost.
 
-At $0.10 per 1,000 emails (with 62,000 free emails per month if you're sending from EC2), SES is hands-down the most cost-effective way to send email from AWS.
+At $0.10 per 1,000 emails (with 3,000 message charges free each month for the first 12 months under the AWS Free Tier), SES is hands-down the most cost-effective way to send email from AWS.
 
 ## What SES Can Do
 
@@ -76,7 +76,7 @@ aws ses verify-domain-dkim \
   --region us-east-1
 ```
 
-This returns three CNAME records you need to add to your DNS. For full DKIM setup details, check our [DKIM configuration guide](https://oneuptime.com/blog/post/2026-02-12-configure-dkim-amazon-ses/view).
+This returns three DKIM tokens that you use to create CNAME records in your DNS. For full DKIM setup details, check our [DKIM configuration guide](https://oneuptime.com/blog/post/2026-02-12-configure-dkim-amazon-ses/view).
 
 ## Step 3: Send a Test Email via CLI
 
@@ -201,7 +201,7 @@ def send_email(sender, recipient, subject, body_html, body_text):
                 }
             },
             # Use a configuration set for tracking
-            ConfigurationSetName='my-config-set'
+            ConfigurationSetName='production-email'
         )
     except ClientError as e:
         print(f"Error: {e.response['Error']['Message']}")
@@ -282,6 +282,9 @@ aws sesv2 create-configuration-set \
     "SendingEnabled": true
   }'
 
+# Create an SNS topic for SES notifications
+aws sns create-topic --name ses-notifications
+
 # Add SNS event destination for bounces and complaints
 aws sesv2 create-configuration-set-event-destination \
   --configuration-set-name "production-email" \
@@ -300,9 +303,6 @@ aws sesv2 create-configuration-set-event-destination \
 This is critical for maintaining your sender reputation. Set up an SNS subscription to process bounce and complaint notifications:
 
 ```bash
-# Create an SNS topic for SES notifications
-aws sns create-topic --name ses-notifications
-
 # Subscribe your processing endpoint
 aws sns subscribe \
   --topic-arn "arn:aws:sns:us-east-1:123456789012:ses-notifications" \
@@ -310,7 +310,7 @@ aws sns subscribe \
   --notification-endpoint "https://api.example.com/ses-notifications"
 ```
 
-Never keep sending to addresses that have bounced. Maintaining a suppression list is essential for good deliverability. SES has a built-in account-level suppression list you can enable:
+Never keep sending to addresses that have bounced. Maintaining a suppression list is essential for good deliverability. After production access is approved, SES has a built-in account-level suppression list you can enable:
 
 ```bash
 # Enable account-level suppression list
