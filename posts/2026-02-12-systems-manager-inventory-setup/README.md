@@ -21,7 +21,7 @@ Out of the box, Systems Manager Inventory can gather several categories of data 
 - **Network Configuration** - IP addresses, DNS settings, MAC addresses
 - **Windows Updates** - Installed updates and patches (Windows only)
 - **Instance Details** - OS name, version, hostname, domain
-- **Services** - Running services and their states (Windows only)
+- **Services** - Running services and their states
 - **Windows Roles** - Server roles and features (Windows only)
 - **Custom Inventory** - Whatever you want to track
 
@@ -200,7 +200,7 @@ SELECT
   resourceid AS instance_id,
   name,
   version
-FROM ssm_inventory.aws_component
+FROM ssm_inventory.aws_awscomponent
 WHERE name = 'amazon-ssm-agent'
   AND version < '3.2.0.0'
 ORDER BY version ASC;
@@ -268,6 +268,7 @@ Resources:
 
   InventoryDataSync:
     Type: AWS::SSM::ResourceDataSync
+    DependsOn: InventoryBucketPolicy
     Properties:
       SyncName: inventory-sync
       S3Destination:
@@ -284,6 +285,26 @@ Resources:
           - Id: ExpireOldData
             Status: Enabled
             ExpirationInDays: 90
+
+  InventoryBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref InventoryBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: SSMBucketDelivery
+            Effect: Allow
+            Principal:
+              Service: ssm.amazonaws.com
+            Action: s3:PutObject
+            Resource: !Sub '${InventoryBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                s3:x-amz-acl: bucket-owner-full-control
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:resource-data-sync/*'
 ```
 
 ## Monitoring Inventory Collection
@@ -292,7 +313,7 @@ You'll want to know if inventory collection stops working. Set up a CloudWatch a
 
 ```bash
 # Check association execution status
-aws ssm list-association-executions \
+aws ssm describe-association-executions \
   --association-id "your-association-id" \
   --filters "Key=Status,Value=Failed,Type=EQUAL" \
   --query "AssociationExecutions[].{Time:CreatedTime,Status:Status,DetailedStatus:DetailedStatus}" \
