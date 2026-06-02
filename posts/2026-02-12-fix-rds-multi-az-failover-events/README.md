@@ -8,7 +8,7 @@ Description: Understand why RDS Multi-AZ failovers happen, minimize their impact
 
 ---
 
-Your application suddenly lost database connectivity for 15-30 seconds, and when you check the RDS events, you see:
+Your application suddenly lost database connectivity for 60-120 seconds, and when you check the RDS events, you see:
 
 ```text
 Multi-AZ instance failover started
@@ -26,7 +26,7 @@ In a Multi-AZ deployment, RDS maintains a standby replica in a different Availab
 3. The old primary is demoted or replaced
 4. Applications reconnect to the new primary
 
-The whole process typically takes 15-30 seconds for most database engines, though it can be as quick as 10 seconds or take up to a minute in some cases.
+The whole process typically takes 60-120 seconds, though large transactions or a lengthy recovery process can increase failover time.
 
 ```mermaid
 sequenceDiagram
@@ -94,7 +94,7 @@ Hardware failures on the underlying host can trigger a failover. RDS detects the
 
 ### 4. Database Crash
 
-If the database engine crashes (due to out-of-memory, corrupted pages, or bugs), RDS restarts it. In Multi-AZ, this triggers a failover to the healthy standby.
+If the database engine crashes or becomes unresponsive (due to out-of-memory, corrupted pages, or bugs), RDS restarts it. In Multi-AZ, this can trigger a failover to the healthy standby.
 
 ### 5. Manual Failover
 
@@ -137,8 +137,7 @@ After a failover, the RDS DNS record points to the new primary. If your applicat
 
 For Java applications:
 
-```java
-// In JVM startup options
+```text
 -Dsun.net.inetaddr.ttl=30
 -Dsun.net.inetaddr.negative.ttl=10
 ```
@@ -179,6 +178,7 @@ During the failover window, connections will fail. Retry with backoff:
 
 ```python
 import time
+from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
 def execute_with_retry(engine, query, params=None, max_retries=5):
@@ -186,7 +186,7 @@ def execute_with_retry(engine, query, params=None, max_retries=5):
     for attempt in range(max_retries):
         try:
             with engine.connect() as conn:
-                result = conn.execute(query, params)
+                result = conn.execute(text(query), params or {})
                 return result
         except OperationalError as e:
             if attempt < max_retries - 1:
@@ -199,7 +199,7 @@ def execute_with_retry(engine, query, params=None, max_retries=5):
 
 ### 5. Use RDS Proxy
 
-RDS Proxy handles failover much more gracefully than direct connections. It maintains a connection pool to RDS and transparently handles failovers, reducing failover time to as little as a few seconds.
+RDS Proxy handles failover much more gracefully than direct connections. It maintains a connection pool to RDS and transparently handles failovers, reducing failover times by up to 66% for RDS Multi-AZ DB instances.
 
 ```bash
 # Create RDS Proxy
@@ -230,7 +230,7 @@ aws rds reboot-db-instance \
 ```
 
 While the failover is happening, watch your application logs. You should see:
-- Connection errors for 15-30 seconds
+- Connection errors for 60-120 seconds
 - Automatic reconnection after the failover completes
 - No data loss or corruption
 
@@ -258,7 +258,7 @@ for metric in DatabaseConnections CPUUtilization ReadLatency WriteLatency; do
     --namespace AWS/RDS \
     --metric-name $metric \
     --dimensions Name=DBInstanceIdentifier,Value=my-database \
-    --start-time $(date -u -v-2H +%Y-%m-%dT%H:%M:%SZ) \
+    --start-time $(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ) \
     --end-time $(date -u +%Y-%m-%dT%H:%M:%SZ) \
     --period 60 \
     --statistics Average Maximum
@@ -275,7 +275,7 @@ RDS Multi-AZ failovers are a feature, not a bug. They protect your database from
 2. **Keep DNS TTL low** - 30 seconds or less
 3. **Validate connections** before using them
 4. **Implement retry logic** with exponential backoff
-5. **Consider RDS Proxy** for seamless failover handling
+5. **Consider RDS Proxy** for faster failover handling
 6. **Test failover** regularly so you know your app handles it
 7. **Monitor events** so you know when failovers happen
 
