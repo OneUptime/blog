@@ -18,7 +18,7 @@ Despite its name, this error often has nothing to do with authentication. It's o
 
 ## The Misleading Error
 
-The "Missing Authentication Token" error is API Gateway's generic response when a request hits a URL that doesn't match any configured resource or method. It's essentially a 403 that should be a 404 in many cases.
+The "Missing Authentication Token" error is commonly API Gateway's response when a request hits a URL that doesn't match any configured resource or method. It's essentially a 403 that should be a 404 in many cases. It can also appear when IAM authorization is enabled and the request isn't signed.
 
 ## Cause 1: Wrong URL (Most Common)
 
@@ -100,7 +100,7 @@ aws apigateway get-method \
   --query 'authorizationType'
 ```
 
-If it returns `AWS_IAM`, you need to sign your request. Using the AWS CLI:
+If it returns `AWS_IAM`, you need to sign your request. From the command line:
 
 ```bash
 # Use awscurl for signed requests
@@ -187,7 +187,8 @@ aws apigateway put-integration \
   --resource-id def456 \
   --http-method OPTIONS \
   --type MOCK \
-  --request-templates '{"application/json":"{\"statusCode\": 200}"}'
+  --request-templates '{"application/json":"{\"statusCode\": 200}"}' \
+  --passthrough-behavior NEVER
 
 # Configure CORS response headers
 aws apigateway put-method-response \
@@ -207,8 +208,8 @@ aws apigateway put-integration-response \
   --http-method OPTIONS \
   --status-code 200 \
   --response-parameters '{
-    "method.response.header.Access-Control-Allow-Headers": "'\''Content-Type,Authorization'\''",
-    "method.response.header.Access-Control-Allow-Methods": "'\''GET,POST,OPTIONS'\''",
+    "method.response.header.Access-Control-Allow-Headers": "'\''Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'\''",
+    "method.response.header.Access-Control-Allow-Methods": "'\''DELETE,GET,HEAD,OPTIONS,PUT,POST,PATCH'\''",
     "method.response.header.Access-Control-Allow-Origin": "'\''*'\''"
   }'
 
@@ -216,10 +217,9 @@ aws apigateway put-integration-response \
 aws apigateway create-deployment --rest-api-id abc123 --stage-name prod
 ```
 
-Or use the simpler console shortcut via CLI:
+Also add CORS headers to default 4XX gateway responses so browser clients can see API Gateway errors:
 
 ```bash
-# This is easier - use the put-gateway-response for the DEFAULT_4XX
 aws apigateway put-gateway-response \
   --rest-api-id abc123 \
   --response-type DEFAULT_4XX \
