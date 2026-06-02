@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudWatch, EC2, Linux, Monitoring
 
-Description: Step-by-step guide to installing and configuring the CloudWatch Agent on EC2 Linux instances for collecting system metrics, custom metrics, and application logs.
+Description: Step-by-step guide to installing and configuring the CloudWatch Agent on EC2 Linux instances for collecting system metrics and application logs.
 
 ---
 
@@ -37,7 +37,7 @@ aws iam attach-role-policy \
   --role-name CloudWatchAgentRole \
   --policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy
 
-# If you plan to store the config in SSM Parameter Store, add this too
+# If you plan to install or manage the agent through Systems Manager, add this too
 aws iam attach-role-policy \
   --role-name CloudWatchAgentRole \
   --policy-arn arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
@@ -64,7 +64,7 @@ aws ssm send-command \
   --comment "Install CloudWatch Agent"
 ```
 
-This works on any instance with the SSM agent installed (which comes pre-installed on Amazon Linux 2 and most recent AMIs).
+This works on any instance with the SSM agent installed (which comes pre-installed on Amazon Linux, Amazon Linux 2, and some other AMIs).
 
 ## Installation Method 2: Using the Package Manager
 
@@ -75,7 +75,7 @@ For Amazon Linux 2 / Amazon Linux 2023:
 sudo yum install amazon-cloudwatch-agent -y
 ```
 
-For Ubuntu/Debian:
+For Ubuntu:
 
 ```bash
 # Download the CloudWatch Agent .deb package
@@ -85,11 +85,31 @@ wget https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-
 sudo dpkg -i amazon-cloudwatch-agent.deb
 ```
 
-For RHEL/CentOS:
+For Debian:
+
+```bash
+# Download the CloudWatch Agent .deb package
+wget https://amazoncloudwatch-agent.s3.amazonaws.com/debian/amd64/latest/amazon-cloudwatch-agent.deb
+
+# Install it
+sudo dpkg -i amazon-cloudwatch-agent.deb
+```
+
+For RHEL:
 
 ```bash
 # Download the CloudWatch Agent .rpm package
 wget https://amazoncloudwatch-agent.s3.amazonaws.com/redhat/amd64/latest/amazon-cloudwatch-agent.rpm
+
+# Install it
+sudo rpm -U amazon-cloudwatch-agent.rpm
+```
+
+For CentOS:
+
+```bash
+# Download the CloudWatch Agent .rpm package
+wget https://amazoncloudwatch-agent.s3.amazonaws.com/centos/amd64/latest/amazon-cloudwatch-agent.rpm
 
 # Install it
 sudo rpm -U amazon-cloudwatch-agent.rpm
@@ -110,7 +130,7 @@ This walks you through a series of questions about what metrics and logs to coll
 
 ### Writing the configuration manually
 
-Here's a practical configuration file that collects system metrics, custom metrics, and application logs:
+Here's a practical configuration file that collects system metrics and application logs:
 
 ```json
 {
@@ -281,6 +301,8 @@ sudo systemctl stop amazon-cloudwatch-agent
 ## Installing on Multiple Instances with User Data
 
 For auto-scaling groups, include the installation in your launch template user data:
+
+If you download the configuration from S3, make sure the instance profile also has permission to read that object.
 
 ```bash
 #!/bin/bash
