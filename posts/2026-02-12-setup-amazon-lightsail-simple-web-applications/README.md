@@ -14,13 +14,13 @@ Amazon Lightsail is AWS's simplified hosting platform. It bundles compute, stora
 
 Each Lightsail plan comes with:
 - A virtual server (instance) with a fixed amount of CPU, RAM, and SSD storage
-- A static IP address
+- Public IP addressing
 - DNS management
 - Data transfer allowance
 - Snapshots for backup
 - SSH and browser-based terminal access
 
-Pricing starts at $3.50/month for the smallest instance. No surprise bills, no hidden costs.
+Pricing starts at $3.50/month for the smallest IPv6-only Linux instance. Linux plans with public IPv4 addressing start at $5/month. No surprise bills, no hidden costs.
 
 ## Choosing a Plan
 
@@ -28,12 +28,12 @@ Here's a rough guide for picking the right plan size.
 
 | Monthly Price | vCPUs | RAM   | Storage | Transfer | Good For |
 |--------------|-------|-------|---------|----------|----------|
-| $3.50        | 1     | 512MB | 20GB    | 1TB      | Static sites, small blogs |
-| $5           | 1     | 1GB   | 40GB    | 2TB      | WordPress, simple apps |
-| $10          | 1     | 2GB   | 60GB    | 3TB      | Medium traffic sites |
-| $20          | 2     | 4GB   | 80GB    | 4TB      | Multi-page apps, APIs |
-| $40          | 2     | 8GB   | 160GB   | 5TB      | E-commerce, databases |
-| $80          | 4     | 16GB  | 320GB   | 6TB      | High-traffic applications |
+| $5           | 2     | 512MB | 20GB    | 1TB      | Static sites, small blogs |
+| $7           | 2     | 1GB   | 40GB    | 2TB      | WordPress, simple apps |
+| $12          | 2     | 2GB   | 60GB    | 3TB      | Medium traffic sites |
+| $24          | 2     | 4GB   | 80GB    | 4TB      | Multi-page apps, APIs |
+| $44          | 2     | 8GB   | 160GB   | 5TB      | E-commerce, databases |
+| $84          | 4     | 16GB  | 320GB   | 6TB      | High-traffic applications |
 
 Start small and upgrade as needed - Lightsail makes it easy to snapshot and move to a bigger plan.
 
@@ -79,7 +79,7 @@ aws lightsail create-instances \
 
 ## Assigning a Static IP
 
-By default, your instance gets a dynamic IP that can change if you stop and start the instance. Assign a static IP to keep it permanent.
+By default, an instance with public IPv4 gets a dynamic IPv4 address that can change if you stop and start the instance. Assign a static IPv4 address to keep it permanent.
 
 ```bash
 # Create a static IP
@@ -97,11 +97,11 @@ aws lightsail get-static-ip \
   --query 'staticIp.ipAddress'
 ```
 
-Static IPs are free as long as they're attached to a running instance.
+Static IPv4 addresses are free as long as they're attached to an instance. They can't be attached to IPv6-only instances.
 
 ## Configuring the Firewall
 
-Lightsail instances have a built-in firewall. By default, SSH (22) and HTTP (80) are open. Add HTTPS and any other ports your app needs.
+Lightsail instances have a built-in firewall. Base OS blueprints commonly open SSH (22) and HTTP (80) by default, and some application blueprints also open HTTPS (443). Verify the current rules, then add HTTPS and any other ports your app needs.
 
 ```bash
 # Open HTTPS port
@@ -126,10 +126,12 @@ Lightsail includes DNS management. Point your domain to your Lightsail instance.
 ```bash
 # Create a DNS zone for your domain
 aws lightsail create-domain \
+  --region us-east-1 \
   --domain-name example.com
 
 # Add an A record pointing to your static IP
 aws lightsail create-domain-entry \
+  --region us-east-1 \
   --domain-name example.com \
   --domain-entry '{
     "name": "example.com",
@@ -139,6 +141,7 @@ aws lightsail create-domain-entry \
 
 # Add a CNAME for www
 aws lightsail create-domain-entry \
+  --region us-east-1 \
   --domain-name example.com \
   --domain-entry '{
     "name": "www.example.com",
@@ -152,6 +155,7 @@ Update your domain registrar's nameservers to the ones Lightsail provides.
 ```bash
 # Get the nameservers for your DNS zone
 aws lightsail get-domain \
+  --region us-east-1 \
   --domain-name example.com \
   --query 'domain.domainEntries[?type==`NS`].target'
 ```
@@ -173,15 +177,15 @@ INSTANCE_IP=$(aws lightsail get-instance \
   --query 'instance.publicIpAddress' \
   --output text)
 
-# SSH into the instance
-ssh -i ~/.ssh/lightsail-key.pem ubuntu@$INSTANCE_IP
+# SSH into the Node.js Bitnami instance
+ssh -i ~/.ssh/lightsail-key.pem bitnami@$INSTANCE_IP
 ```
 
 Once connected, deploy a simple Node.js application.
 
 ```bash
 # On the Lightsail instance - set up a Node.js app
-cd /home/ubuntu
+cd /home/bitnami
 
 # Clone your application
 git clone https://github.com/youruser/your-app.git
@@ -196,7 +200,7 @@ sudo npm install -g pm2
 # Start your app with PM2
 pm2 start app.js --name my-app
 pm2 save
-pm2 startup systemd
+sudo env PATH=$PATH:/usr/bin pm2 startup systemd -u bitnami --hp /home/bitnami
 ```
 
 ## Setting Up SSL with Let's Encrypt
