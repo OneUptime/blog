@@ -75,14 +75,14 @@ If your job requests 4 GPUs but your compute environment only has instance types
 ### Check 3: Service Quotas
 
 ```bash
-# Check EC2 instance limits
+# Check the On-Demand Standard EC2 vCPU quota
 aws service-quotas get-service-quota \
   --service-code ec2 \
   --quota-code L-1216C47A \
   --query 'Quota.Value'
 ```
 
-If you have hit your vCPU limit for the instance family, Batch cannot launch new instances.
+If you have hit the relevant EC2 vCPU quota for the instance class you are using, Batch cannot launch new instances.
 
 ### Check 4: Subnet and Security Group
 
@@ -122,7 +122,7 @@ Common causes:
 
 ## Problem: Exit Code 137 (Out of Memory)
 
-Exit code 137 means the container was killed by the OOM (Out of Memory) killer.
+Exit code 137 means the container received SIGKILL. In Batch jobs, this is often because the container was killed by the OOM (Out of Memory) killer.
 
 ```bash
 # Check how much memory the job requested
@@ -191,11 +191,12 @@ Common causes and fixes:
 aws ecr describe-images --repository-name my-repo --image-ids imageTag=latest
 ```
 
-2. **ECR permissions** - The instance role needs ECR pull permissions
+2. **ECR permissions** - For EC2 jobs, the container instance role needs ECR pull permissions. For Fargate jobs, the execution role needs them.
 ```json
 {
     "Effect": "Allow",
     "Action": [
+        "ecr:BatchCheckLayerAvailability",
         "ecr:GetDownloadUrlForLayer",
         "ecr:BatchGetImage",
         "ecr:GetAuthorizationToken"
@@ -204,7 +205,7 @@ aws ecr describe-images --repository-name my-repo --image-ids imageTag=latest
 }
 ```
 
-3. **No internet access** - If instances are in a private subnet without a NAT Gateway, they cannot reach ECR
+3. **No ECR network path** - If instances are in a private subnet without a NAT Gateway or the required VPC endpoints, they cannot reach ECR
 ```bash
 # Check if the subnet has internet access
 aws ec2 describe-route-tables \
@@ -266,7 +267,7 @@ Three different IAM roles are involved:
 
 ## Problem: Job Timeout
 
-Batch does not have a built-in timeout, but you can implement one.
+Batch has a built-in timeout for job attempts.
 
 ```bash
 # Set timeout in job definition
