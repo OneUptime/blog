@@ -30,13 +30,13 @@ sequenceDiagram
     participant Rev as Reviewer
 
     Dev->>GH: Open Pull Request
-    GH->>Amp: Webhook: PR opened
+    GH->>Amp: Repository event: PR opened
     Amp->>Amp: Build & Deploy Preview
     Amp->>GH: Post preview URL as comment
     Rev->>Amp: Visit preview URL
     Rev->>GH: Approve PR
     Dev->>GH: Merge PR
-    GH->>Amp: Webhook: PR closed
+    GH->>Amp: Repository event: PR closed
     Amp->>Amp: Tear down preview
 ```
 
@@ -46,9 +46,9 @@ Before enabling PR previews, make sure you have:
 
 - An Amplify app connected to a GitHub, GitLab, or Bitbucket repository
 - At least one branch deployed (typically `main`)
-- Repository admin permissions to configure webhooks
+- Repository admin permissions to authorize the repository integration
 
-PR previews currently work best with GitHub. GitLab and Bitbucket support is available but has some limitations around webhook configurations.
+PR previews currently work best with GitHub. For GitHub repositories, Amplify uses the Amplify GitHub App and can surface the preview URL directly in the pull request.
 
 ## Step 1: Enable Pull Request Previews
 
@@ -60,7 +60,7 @@ In the Amplify console:
 4. Select the branch that PRs will target (usually `main`)
 5. Amplify will install a GitHub App on your repository if it has not already
 
-That is the core setup. Amplify installs a webhook on your repository that fires whenever a PR is opened, updated, or closed.
+That is the core setup. For GitHub repositories, Amplify uses the GitHub App authorization to react whenever a PR is opened, updated, or closed.
 
 ## Step 2: Configure Preview Build Settings
 
@@ -84,7 +84,7 @@ frontend:
             npm run build;
           fi
   artifacts:
-    baseDirectory: build
+    baseDirectory: .next
     files:
       - '**/*'
   cache:
@@ -99,16 +99,16 @@ The `$AWS_PULL_REQUEST_ID` environment variable is automatically set by Amplify 
 PR previews should typically connect to development or staging backends, not production. Set preview-specific environment variables in the Amplify console:
 
 1. Go to "Hosting" then "Environment variables"
-2. Add variables with the branch scope set to "Previews"
+2. Add variables for the preview branches or for the backend environment used by previews
 
 ```text
 # Preview-specific environment variables
 API_URL=https://dev-api.example.com
-DATABASE_URL=postgresql://user:pass@dev-db:5432/myapp
+DATABASE_NAME=myapp_preview
 NEXT_PUBLIC_ENVIRONMENT=preview
 ```
 
-This ensures no PR preview accidentally writes to your production database or calls your production API.
+This ensures no PR preview accidentally writes to your production database or calls your production API. Do not store secrets such as database passwords in environment variables; use Amplify Secrets for Gen 2 apps or environment secrets in AWS Systems Manager Parameter Store for Gen 1 apps.
 
 ## Step 4: Add Access Controls
 
@@ -118,11 +118,11 @@ PR previews are publicly accessible by default. For private projects, you will w
 2. Under "Pull request previews," set access to "Restricted"
 3. Configure a username and password
 
-Everyone who needs to review PRs will need these credentials. Alternatively, you can use AWS IAM for more granular access control.
+Everyone who needs to review PRs will need these credentials. For more granular reviewer access, implement authentication and authorization in your application.
 
 ## Step 5: Configure GitHub Integration
 
-Amplify posts the preview URL as a comment on your GitHub PR. To customize what appears in the comment, you can set up a custom GitHub check:
+For GitHub repositories, Amplify posts the preview URL on your GitHub PR. Amplify does not provide a built-in setting to customize that bot comment, but you can add your own GitHub check or workflow alongside it:
 
 ```bash
 # The Amplify GitHub App automatically creates:
@@ -189,7 +189,7 @@ build:
       fi
 ```
 
-**Use a smaller build image**: In the Amplify console under "Build settings," you can select a smaller build image for previews if your app does not need all the tools in the default image.
+**Right-size the build environment**: In the Amplify console under "Build settings," you can choose an appropriate build instance size or configure a custom build image if your app does not need all the tools in the default image.
 
 ## Step 8: Preview Notifications
 
@@ -199,7 +199,7 @@ Set up Slack or email notifications for preview builds so reviewers know when a 
 # Create a Lambda function that forwards Amplify events to Slack
 aws lambda create-function \
   --function-name amplify-preview-notifier \
-  --runtime nodejs18.x \
+  --runtime nodejs24.x \
   --handler index.handler \
   --role arn:aws:iam::123456789:role/lambda-role \
   --zip-file fileb://notifier.zip
@@ -209,20 +209,13 @@ A simpler approach is to rely on the GitHub PR comment that Amplify posts automa
 
 ## Debugging PR Preview Issues
 
-**Preview not building**: Check that the webhook is correctly installed. In GitHub, go to Settings then Webhooks and verify the Amplify webhook is listed and showing successful deliveries.
+**Preview not building**: Check the Amplify troubleshooting guidance for web previews. Common causes include hitting the branches-per-app quota or using a public GitHub repository with an Amplify app that requires an IAM service role.
 
-**Preview shows old content**: Amplify caches aggressively. In your build commands, add a cache-busting step:
-
-```bash
-# Clear Amplify's CDN cache after deploying a preview
-aws cloudfront create-invalidation \
-  --distribution-id $CLOUDFRONT_ID \
-  --paths "/*"
-```
+**Preview shows old content**: Review your app's `Cache-Control` headers and browser cache behavior. Amplify lets you tune CDN cache duration with custom headers, but its managed CloudFront distribution is not something you normally invalidate from preview build commands.
 
 **Preview URL returns 404**: The build might have failed silently. Check the Amplify console for build logs. Common causes include missing environment variables or incompatible Node.js versions.
 
-**GitHub check stuck in "pending"**: This usually means the webhook delivery failed. Re-deliver the webhook from GitHub's webhook settings page.
+**GitHub check stuck in "pending"**: This usually means Amplify did not receive or process the repository event. Check the Amplify build logs and verify that the Amplify GitHub App is installed and authorized for the repository.
 
 ## Cost Management
 
