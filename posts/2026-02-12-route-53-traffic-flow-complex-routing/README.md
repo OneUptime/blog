@@ -34,42 +34,51 @@ Traffic policy JSON for weighted routing with failover:
   "RecordType": "A",
   "Endpoints": {
     "us-east-endpoint": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.order-app-use1-1234567890.us-east-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "order-app-use1-1234567890.us-east-1.elb.amazonaws.com"
     },
     "eu-west-endpoint": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.order-app-euw1-0987654321.eu-west-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "order-app-euw1-0987654321.eu-west-1.elb.amazonaws.com"
     },
     "ap-southeast-endpoint": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.order-app-apse1-1122334455.ap-southeast-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "order-app-apse1-1122334455.ap-southeast-1.elb.amazonaws.com"
     }
   },
-  "StartRule": "weighted-primary",
+  "StartRule": "failover-rule",
   "Rules": {
+    "failover-rule": {
+      "RuleType": "failover",
+      "Primary": {
+        "RuleReference": "weighted-primary",
+        "HealthCheck": "55555555-5555-5555-5555-555555555555"
+      },
+      "Secondary": {
+        "EndpointReference": "ap-southeast-endpoint",
+        "HealthCheck": "33333333-3333-3333-3333-333333333333"
+      }
+    },
     "weighted-primary": {
       "RuleType": "weighted",
       "Items": [
         {
           "Weight": 70,
           "EndpointReference": "us-east-endpoint",
-          "HealthCheck": "hc-us-east-1"
+          "HealthCheck": "11111111-1111-1111-1111-111111111111"
         },
         {
           "Weight": 30,
           "EndpointReference": "eu-west-endpoint",
-          "HealthCheck": "hc-eu-west-1"
+          "HealthCheck": "22222222-2222-2222-2222-222222222222"
         }
-      ],
-      "Secondary": {
-        "EndpointReference": "ap-southeast-endpoint",
-        "HealthCheck": "hc-ap-southeast-1"
-      }
+      ]
     }
   }
 }
 ```
+
+Use a calculated health check for the primary failover target so the primary group stays healthy while at least one of the weighted regional endpoints is healthy.
 
 Create and apply this policy:
 
@@ -102,37 +111,37 @@ Traffic policy for latency-based routing:
   "RecordType": "A",
   "Endpoints": {
     "us-east-alb": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.app-use1-1234567890.us-east-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "app-use1-1234567890.us-east-1.elb.amazonaws.com"
     },
     "eu-west-alb": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.app-euw1-0987654321.eu-west-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "app-euw1-0987654321.eu-west-1.elb.amazonaws.com"
     },
     "ap-northeast-alb": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.app-apne1-5566778899.ap-northeast-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "app-apne1-5566778899.ap-northeast-1.elb.amazonaws.com"
     }
   },
   "StartRule": "latency-rule",
   "Rules": {
     "latency-rule": {
       "RuleType": "latency",
-      "Items": [
+      "Regions": [
         {
           "Region": "us-east-1",
           "EndpointReference": "us-east-alb",
-          "HealthCheck": "hc-use1"
+          "HealthCheck": "11111111-1111-1111-1111-111111111111"
         },
         {
           "Region": "eu-west-1",
           "EndpointReference": "eu-west-alb",
-          "HealthCheck": "hc-euw1"
+          "HealthCheck": "22222222-2222-2222-2222-222222222222"
         },
         {
           "Region": "ap-northeast-1",
           "EndpointReference": "ap-northeast-alb",
-          "HealthCheck": "hc-apne1"
+          "HealthCheck": "33333333-3333-3333-3333-333333333333"
         }
       ]
     }
@@ -152,39 +161,42 @@ Here's a more complex scenario: route European users to EU regions with weighted
   "RecordType": "A",
   "Endpoints": {
     "eu-west-alb": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.app-euw1.eu-west-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "app-euw1-1234567890.eu-west-1.elb.amazonaws.com"
     },
     "eu-central-alb": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.app-euc1.eu-central-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "app-euc1-1234567890.eu-central-1.elb.amazonaws.com"
     },
     "us-east-alb": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.app-use1.us-east-1.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "app-use1-1234567890.us-east-1.elb.amazonaws.com"
     },
     "us-west-alb": {
-      "Type": "elastic-load-balancer",
-      "Value": "dualstack.app-usw2.us-west-2.elb.amazonaws.com"
+      "Type": "application-load-balancer",
+      "Value": "app-usw2-1234567890.us-west-2.elb.amazonaws.com"
     }
   },
   "StartRule": "geo-rule",
   "Rules": {
     "geo-rule": {
       "RuleType": "geo",
-      "Items": [
+      "Locations": [
         {
-          "ContinentCode": "EU",
+          "Continent": "EU",
+          "IsDefault": false,
           "RuleReference": "eu-weighted"
         },
         {
-          "ContinentCode": "NA",
+          "Continent": "NA",
+          "IsDefault": false,
           "RuleReference": "us-weighted"
+        },
+        {
+          "Country": "*",
+          "EndpointReference": "us-east-alb"
         }
-      ],
-      "GeoDefault": {
-        "EndpointReference": "us-east-alb"
-      }
+      ]
     },
     "eu-weighted": {
       "RuleType": "weighted",
@@ -192,12 +204,12 @@ Here's a more complex scenario: route European users to EU regions with weighted
         {
           "Weight": 60,
           "EndpointReference": "eu-west-alb",
-          "HealthCheck": "hc-euw1"
+          "HealthCheck": "11111111-1111-1111-1111-111111111111"
         },
         {
           "Weight": 40,
           "EndpointReference": "eu-central-alb",
-          "HealthCheck": "hc-euc1"
+          "HealthCheck": "22222222-2222-2222-2222-222222222222"
         }
       ]
     },
@@ -207,12 +219,12 @@ Here's a more complex scenario: route European users to EU regions with weighted
         {
           "Weight": 50,
           "EndpointReference": "us-east-alb",
-          "HealthCheck": "hc-use1"
+          "HealthCheck": "33333333-3333-3333-3333-333333333333"
         },
         {
           "Weight": 50,
           "EndpointReference": "us-west-alb",
-          "HealthCheck": "hc-usw2"
+          "HealthCheck": "44444444-4444-4444-4444-444444444444"
         }
       ]
     }
@@ -262,7 +274,7 @@ aws route53 update-traffic-policy-instance \
   --ttl 60
 ```
 
-Version switching is instant. The only delay is DNS TTL propagation, which is why you'll want to keep your TTL low (60 seconds) during active changes.
+Version switching is quick, but Route 53 briefly replaces the generated record sets before the policy instance reaches the `Applied` state. After that, the remaining delay is DNS TTL propagation, which is why you'll want to keep your TTL low (60 seconds) during active changes.
 
 ## Health Check Integration
 
