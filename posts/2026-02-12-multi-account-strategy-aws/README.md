@@ -127,7 +127,7 @@ This SCP prevents dangerous actions in production accounts.
       "Effect": "Deny",
       "Action": [
         "guardduty:DeleteDetector",
-        "guardduty:DisassociateFromMasterAccount"
+        "guardduty:DisassociateFromAdministratorAccount"
       ],
       "Resource": "*"
     },
@@ -178,7 +178,7 @@ For sandbox accounts, you might have a different SCP that restricts which servic
       "Action": "ec2:RunInstances",
       "Resource": "arn:aws:ec2:*:*:instance/*",
       "Condition": {
-        "ForAnyValue:StringNotLike": {
+        "StringNotLike": {
           "ec2:InstanceType": ["t3.*", "t3a.*", "t4g.*"]
         }
       }
@@ -239,15 +239,41 @@ resource "aws_iam_role_policy" "deploy_permissions" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid    = "AllowECSServiceDeployments"
         Effect = "Allow"
         Action = [
           "ecs:UpdateService",
-          "ecs:DescribeServices",
+          "ecs:DescribeServices"
+        ]
+        Resource = "arn:aws:ecs:*:*:service/*/*"
+        Condition = {
+          StringEquals = {
+            "aws:ResourceTag/Environment" = "production"
+          }
+        }
+      },
+      {
+        Sid    = "AllowRegisterProductionTaskDefinitions"
+        Effect = "Allow"
+        Action = [
           "ecs:RegisterTaskDefinition",
+          "ecs:TagResource"
+        ]
+        Resource = "arn:aws:ecs:*:*:task-definition/*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestTag/Environment" = "production"
+          }
+        }
+      },
+      {
+        Sid    = "AllowCodeDeployProductionDeployments"
+        Effect = "Allow"
+        Action = [
           "codedeploy:CreateDeployment",
           "codedeploy:GetDeployment"
         ]
-        Resource = "*"
+        Resource = "arn:aws:codedeploy:*:*:deploymentgroup:*/*"
         Condition = {
           StringEquals = {
             "aws:ResourceTag/Environment" = "production"
@@ -276,13 +302,43 @@ resource "aws_s3_bucket_policy" "org_logs" {
     Version = "2012-10-17"
     Statement = [
       {
-        Sid    = "AllowOrganizationCloudTrail"
+        Sid    = "AllowCloudTrailAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "cloudtrail.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.org_logs.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceArn" = var.organization_trail_arn
+          }
+        }
+      },
+      {
+        Sid    = "AllowOrganizationCloudTrailWrite"
         Effect = "Allow"
         Principal = {
           Service = "cloudtrail.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.org_logs.arn}/cloudtrail/*"
+        Resource = "${aws_s3_bucket.org_logs.arn}/AWSLogs/${var.org_id}/*"
+        Condition = {
+          StringEquals = {
+            "aws:SourceOrgID" = var.org_id,
+            "aws:SourceArn"   = var.organization_trail_arn,
+            "s3:x-amz-acl"    = "bucket-owner-full-control"
+          }
+        }
+      },
+      {
+        Sid    = "AllowConfigAclCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+        Action   = "s3:GetBucketAcl"
+        Resource = aws_s3_bucket.org_logs.arn
         Condition = {
           StringEquals = {
             "aws:SourceOrgID" = var.org_id
@@ -290,16 +346,31 @@ resource "aws_s3_bucket_policy" "org_logs" {
         }
       },
       {
-        Sid    = "AllowOrganizationConfig"
+        Sid    = "AllowConfigBucketExistenceCheck"
+        Effect = "Allow"
+        Principal = {
+          Service = "config.amazonaws.com"
+        }
+        Action   = "s3:ListBucket"
+        Resource = aws_s3_bucket.org_logs.arn
+        Condition = {
+          StringEquals = {
+            "aws:SourceOrgID" = var.org_id
+          }
+        }
+      },
+      {
+        Sid    = "AllowOrganizationConfigWrite"
         Effect = "Allow"
         Principal = {
           Service = "config.amazonaws.com"
         }
         Action   = "s3:PutObject"
-        Resource = "${aws_s3_bucket.org_logs.arn}/config/*"
+        Resource = "${aws_s3_bucket.org_logs.arn}/AWSLogs/*/Config/*"
         Condition = {
           StringEquals = {
-            "aws:SourceOrgID" = var.org_id
+            "aws:SourceOrgID" = var.org_id,
+            "s3:x-amz-acl"    = "bucket-owner-full-control"
           }
         }
       }
