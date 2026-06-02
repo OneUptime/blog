@@ -8,7 +8,7 @@ Description: Learn how to add and manage Aurora read replicas for horizontal rea
 
 ---
 
-One of Aurora's biggest advantages over standard RDS is how easy it is to add read replicas. Since all instances in an Aurora cluster share the same storage volume, creating a new replica doesn't require copying data. It takes minutes instead of hours, and the replica is immediately in sync with near-zero lag.
+One of Aurora's biggest advantages over standard RDS is how easy it is to add read replicas. Since all instances in an Aurora cluster share the same storage volume, creating a new replica doesn't require copying data. It takes minutes instead of hours, and the replica stays in sync with minimal lag.
 
 If your application is read-heavy (and most are), spreading reads across multiple replicas lets you handle significantly more traffic without touching the writer instance. Let's walk through setting up replicas, configuring your application to use them, and auto-scaling based on demand.
 
@@ -20,9 +20,9 @@ In standard RDS, a read replica gets its data through asynchronous replication f
 - Creating a replica involves copying the entire database
 
 In Aurora, read replicas share the same storage volume as the writer:
-- Replica lag is typically 10-20 milliseconds
+- Replica lag is usually much less than 100 milliseconds
 - No data copying needed to create a replica
-- Up to 15 read replicas per cluster (vs. 5 for standard RDS)
+- Up to 15 read replicas per cluster
 - Any replica can be promoted to writer during failover
 
 ## Adding a Read Replica
@@ -228,9 +228,9 @@ Watch these key metrics across your readers:
 # Check replica lag across all readers
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
-  --metric-name AuroraReplicaLag \
+  --metric-name AuroraReplicaLagMaximum \
   --dimensions Name=DBClusterIdentifier,Value=myapp-aurora-cluster \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
   --statistics Maximum Average \
@@ -243,7 +243,7 @@ Set up alarms for replica health:
 # Alert if replica lag exceeds 100ms
 aws cloudwatch put-metric-alarm \
   --alarm-name "aurora-replica-lag-high" \
-  --metric-name AuroraReplicaLag \
+  --metric-name AuroraReplicaLagMaximum \
   --namespace AWS/RDS \
   --statistic Maximum \
   --period 60 \
@@ -278,20 +278,23 @@ from psycopg2 import OperationalError
 def resilient_read_query(sql, params=None, max_retries=3):
     """Execute a read query with retry logic for reader failures."""
     for attempt in range(max_retries):
+        conn = None
         try:
             conn = read_pool.getconn()
-            try:
-                with conn.cursor() as cur:
-                    cur.execute(sql, params)
-                    return cur.fetchall()
-            finally:
-                read_pool.putconn(conn)
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                rows = cur.fetchall()
+            read_pool.putconn(conn)
+            return rows
         except OperationalError as e:
             if attempt == max_retries - 1:
+                if conn is not None:
+                    read_pool.putconn(conn, close=True)
                 raise
             print(f"Read query failed (attempt {attempt + 1}), retrying: {e}")
             # Mark the bad connection for disposal
-            read_pool.putconn(conn, close=True)
+            if conn is not None:
+                read_pool.putconn(conn, close=True)
             time.sleep(0.5 * (attempt + 1))
 ```
 
