@@ -10,7 +10,7 @@ Description: Learn how to publish custom CloudWatch metrics from your applicatio
 
 AWS CloudWatch comes with a solid set of built-in metrics for most services - CPU utilization, network throughput, request counts, and so on. But what happens when you need to track something specific to your application? Maybe it's the number of orders processed per minute, queue depth in a custom job system, or cache hit ratios. That's where custom metrics come in.
 
-Custom CloudWatch metrics let you push any numerical data point into CloudWatch and then alarm on it, graph it, or use it in dashboards just like any built-in metric. In this post, we'll walk through every way you can publish custom metrics and discuss the trade-offs of each approach.
+Custom CloudWatch metrics let you push any numerical data point into CloudWatch and then alarm on it, graph it, or use it in dashboards just like any built-in metric. In this post, we'll walk through several common ways you can publish custom metrics and discuss the trade-offs of each approach.
 
 ## Understanding CloudWatch Metric Concepts
 
@@ -85,7 +85,7 @@ For application-level metric publishing, you'll likely use an AWS SDK. Here's ho
 
 ```python
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Create a CloudWatch client
 cloudwatch = boto3.client('cloudwatch', region_name='us-east-1')
@@ -96,7 +96,7 @@ cloudwatch.put_metric_data(
     MetricData=[
         {
             'MetricName': 'OrdersProcessed',
-            'Timestamp': datetime.utcnow(),
+            'Timestamp': datetime.now(timezone.utc),
             'Value': 42,
             'Unit': 'Count',
             'Dimensions': [
@@ -112,8 +112,7 @@ When you're dealing with high-throughput applications, you don't want to make an
 
 ```python
 import boto3
-from datetime import datetime
-from collections import defaultdict
+from datetime import datetime, timezone
 import threading
 import time
 
@@ -133,7 +132,7 @@ class MetricBuffer:
         """Add a metric data point to the buffer."""
         data_point = {
             'MetricName': metric_name,
-            'Timestamp': datetime.utcnow(),
+            'Timestamp': datetime.now(timezone.utc),
             'Value': value,
             'Unit': unit,
         }
@@ -152,7 +151,7 @@ class MetricBuffer:
             to_send = self.buffer[:]
             self.buffer.clear()
 
-        # CloudWatch accepts up to 1000 metric data points per call
+        # CloudWatch accepts up to 1000 metric data structures per call
         for i in range(0, len(to_send), 1000):
             batch = to_send[i:i+1000]
             self.cloudwatch.put_metric_data(
@@ -243,7 +242,7 @@ cloudwatch.put_metric_data(
 )
 ```
 
-This approach cuts your API call costs dramatically while preserving the statistical properties of your data.
+This approach cuts your API call costs dramatically while preserving the sample count, sum, minimum, and maximum for your data. If you need percentile statistics, send raw values or use the `Values` and `Counts` fields instead.
 
 ## High-Resolution Metrics
 
@@ -290,7 +289,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "LowOrderVolume" \
   --namespace "MyApp/Production" \
   --metric-name "OrdersProcessed" \
-  --dimensions Name=Environment,Value=prod \
+  --dimensions Name=Environment,Value=prod Name=Service,Value=order-api \
   --statistic Sum \
   --period 300 \
   --threshold 10 \
@@ -303,7 +302,7 @@ aws cloudwatch put-metric-alarm \
 
 There are a few things that trip people up with custom metrics. First, if you publish a metric with no data points for 15 days, the metric disappears from the console (though the data is still queryable via API). Second, dimension names are case-sensitive - `environment` and `Environment` create two different metric streams. Third, don't forget to set the correct `Unit` - it affects how CloudWatch aggregates your data.
 
-Also, be aware of the `PutMetricData` API limits. You can include up to 1,000 data points per call and make up to 150 transactions per second per account per region. If you're hitting these limits, you need to buffer and batch more aggressively.
+Also, be aware of the `PutMetricData` API limits. You can include up to 1,000 metric data structures per call and make up to 500 requests per second per account per region by default. If you're hitting these limits, you need to buffer and batch more aggressively.
 
 ## Wrapping Up
 
