@@ -31,8 +31,6 @@ Or use Docker Compose for a more maintainable setup.
 
 ```yaml
 # docker-compose.yml
-version: '3.8'
-
 services:
   localstack:
     image: localstack/localstack
@@ -42,13 +40,14 @@ services:
     environment:
       - SERVICES=s3,dynamodb,lambda,sqs,sns,ses
       - DEBUG=1
+      - PERSISTENCE=1
       - DOCKER_HOST=unix:///var/run/docker.sock
     volumes:
       - "./localstack-data:/var/lib/localstack"
       - "/var/run/docker.sock:/var/run/docker.sock"
 ```
 
-Start it with `docker-compose up -d`.
+Start it with `docker compose up -d`.
 
 ## Verifying LocalStack is Running
 
@@ -68,6 +67,10 @@ localstack status services
 You can use the regular AWS CLI with LocalStack by pointing it to the local endpoint.
 
 ```bash
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
+
 # Create an S3 bucket
 aws --endpoint-url=http://localhost:4566 s3 mb s3://test-bucket
 
@@ -343,8 +346,12 @@ for message in response.get('Messages', []):
 Automate resource creation when LocalStack starts.
 
 ```bash
-# init-aws.sh - runs when LocalStack starts
 #!/bin/bash
+# init-aws.sh - runs when LocalStack starts
+
+export AWS_ACCESS_KEY_ID=test
+export AWS_SECRET_ACCESS_KEY=test
+export AWS_DEFAULT_REGION=us-east-1
 
 echo "Creating S3 buckets..."
 awslocal s3 mb s3://app-uploads
@@ -370,6 +377,8 @@ Mount this script in your Docker Compose file.
 volumes:
   - "./init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh"
 ```
+
+Make the script executable before starting LocalStack: `chmod +x init-aws.sh`.
 
 ## Best Practices
 
