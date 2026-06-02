@@ -76,7 +76,7 @@ Starting brings a stopped instance back to life. The instance may launch on diff
 - **EBS volumes reattach** - your data is right where you left it
 - **New public IP assigned** - unless you have an Elastic IP
 - **Instance may move to different host** - this is normal and usually transparent
-- **User data scripts may run again** - depending on how they're configured
+- **User data scripts usually don't run again** - by default they run only on initial launch, unless you configure them to run on every boot
 - **Billing resumes** - compute charges start again
 
 ### Via the CLI
@@ -122,7 +122,7 @@ Terminating is permanent. The instance is deleted, and by default, the root EBS 
 - **Additional EBS volumes may or may not be deleted** - depends on the `DeleteOnTermination` setting for each volume
 - **Elastic IP is disassociated** - but not released (you still own it)
 - **Instance store data is lost** - permanently
-- **Billing stops** - after the instance enters "terminated" state
+- **Billing stops** - after the instance enters "shutting-down" or "terminated" state
 
 ### Via the Console
 
@@ -182,7 +182,7 @@ Hibernation saves the instance's RAM to the root EBS volume, then stops the inst
 - Instance must be EBS-backed
 - Root volume must be encrypted
 - Root volume must be large enough to hold the RAM contents
-- Instance type must support hibernation (most do)
+- Instance type must be in a supported instance family
 - Must be enabled at launch - you can't enable it later
 
 ```bash
@@ -259,7 +259,7 @@ Where "office-hours" is defined as Monday-Friday, 8am-6pm in your timezone. Inst
 
 ## Force Stopping a Stuck Instance
 
-Occasionally, an instance gets stuck in the "stopping" state. If it's been more than 15 minutes:
+Occasionally, an instance gets stuck in the "stopping" state. If it's been more than 10 minutes:
 
 ```bash
 # Force stop an instance that's stuck
@@ -290,7 +290,7 @@ Set up CloudWatch Events to trigger notifications on instance state changes, or 
 | Stop | EBS: Yes, Instance Store: No | Changes | Stops (compute) | Yes |
 | Start | N/A | May change | Resumes | N/A |
 | Reboot | All preserved | Same | Continues | N/A |
-| Hibernate | EBS + RAM: Yes | Changes | Stops | Yes |
-| Terminate | Root vol: Usually No | Released | Stops | No |
+| Hibernate | EBS + RAM: Yes | Changes | Stops when stopped | Yes |
+| Terminate | Root vol: Usually No | Released or detached | Stops at shutting-down | No |
 
 Understanding these differences is essential for managing your EC2 infrastructure effectively. Use stops for cost savings, reboots for maintenance, hibernation for state preservation, and termination only when you're genuinely done with an instance.
