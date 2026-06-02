@@ -89,7 +89,7 @@ The `Region` field is critical - it tells Route 53 which AWS region the endpoint
 
 ## Adding Health Checks
 
-Without health checks, Route 53 will continue routing to a region even if the endpoint there is down. Always add health checks to latency-based records.
+Without a health signal, Route 53 will continue routing to a region even if the endpoint there is down. For ALB aliases, `EvaluateTargetHealth` can use Elastic Load Balancing health, and explicit Route 53 health checks give you a path-level health signal for latency-based records.
 
 ```bash
 # Create health checks for each region
@@ -253,4 +253,4 @@ You can also use global testing services to verify routing from different locati
 - Latency data is based on AWS's measurements and may not perfectly reflect your users' actual experience.
 - There's no way to set a bias or preference toward a specific region with latency routing. For that, use geoproximity routing with Traffic Flow. See https://oneuptime.com/blog/post/2026-02-12-route-53-geoproximity-routing-traffic-flow/view.
 
-Latency-based routing is one of the easiest wins for global applications. If your app runs in multiple AWS regions, set it up. The performance improvement for distant users is substantial, and the automatic failover with health checks gives you resilience for free.
+Latency-based routing is one of the easiest wins for global applications. If your app runs in multiple AWS regions, set it up. The performance improvement for distant users is substantial, and the automatic failover with health checks or `EvaluateTargetHealth` gives you resilience for free.
