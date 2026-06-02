@@ -8,7 +8,7 @@ Description: Strategies to minimize cross-region data transfer costs on AWS incl
 
 ---
 
-Cross-region data transfer on AWS costs $0.02 per GB in most cases. That might sound trivial, but it compounds fast. If you're replicating 5TB of data between US East and EU West every month, that's $100 in transfer fees alone. Add in database replication, log shipping, backup copies, and inter-region API calls, and many organizations spend thousands monthly on cross-region traffic they could reduce or eliminate.
+Cross-region data transfer on AWS varies by service and region pair, but many common routes are around $0.02 per GB. That might sound trivial, but it compounds fast. If you're replicating 5TB of data between US East and EU West every month at $0.02 per GB, that's $100 in transfer fees alone. Add in database replication, log shipping, backup copies, and inter-region API calls, and many organizations spend thousands monthly on cross-region traffic they could reduce or eliminate.
 
 The key is figuring out what actually needs to cross regions and what doesn't.
 
@@ -35,7 +35,7 @@ aws ce get-cost-and-usage \
 Also check VPC Flow Logs for cross-region traffic patterns:
 
 ```bash
-# Enable flow logs on your VPC peering connections
+# Enable flow logs on VPCs involved in cross-region traffic
 aws ec2 create-flow-logs \
   --resource-type VPC \
   --resource-ids vpc-0a1b2c3d4e5f67890 \
@@ -79,6 +79,9 @@ aws s3api put-bucket-replication \
         "Destination": {
           "Bucket": "arn:aws:s3:::destination-bucket",
           "StorageClass": "STANDARD_IA"
+        },
+        "DeleteMarkerReplication": {
+          "Status": "Disabled"
         }
       }
     ]
@@ -145,7 +148,12 @@ def upload_compressed_to_remote_region(data, bucket, key, region):
 Instead of replicating S3 data to multiple regions for end-user access, use CloudFront with a single origin. CloudFront caches content at edge locations worldwide, and origin fetch traffic from CloudFront to S3 doesn't incur cross-region transfer charges in many cases.
 
 ```bash
-# Create a CloudFront distribution with a single S3 origin
+# Create an Origin Access Control for the S3 origin
+aws cloudfront create-origin-access-control \
+  --origin-access-control-config Name="oac-for-s3",SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=s3
+
+# Create a CloudFront distribution with a single S3 origin.
+# Replace OriginAccessControlId with the Id returned by the previous command.
 aws cloudfront create-distribution \
   --distribution-config '{
     "CallerReference": "my-global-distribution",
@@ -156,15 +164,20 @@ aws cloudfront create-distribution \
           "Id": "S3Origin",
           "DomainName": "my-bucket.s3.us-east-1.amazonaws.com",
           "S3OriginConfig": {
-            "OriginAccessIdentity": "origin-access-identity/cloudfront/EXAMPLE"
-          }
+            "OriginAccessIdentity": ""
+          },
+          "OriginAccessControlId": "E1ABCD2EFGHIJ"
         }
       ]
     },
     "DefaultCacheBehavior": {
       "TargetOriginId": "S3Origin",
       "ViewerProtocolPolicy": "redirect-to-https",
-      "AllowedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]},
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"],
+        "CachedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]}
+      },
       "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
       "Compress": true
     },
@@ -179,7 +192,7 @@ This eliminates the need for S3 CRR entirely for read-heavy workloads and often 
 
 Cross-region database replication can be a major transfer cost driver.
 
-**For RDS:** Consider whether you truly need a cross-region read replica, or if it's mainly for DR. If it's for DR, AWS Backup with cross-region copy is much cheaper than continuous replication:
+**For RDS:** Consider whether you truly need a cross-region read replica, or if it's mainly for DR. If it's for DR and your RTO/RPO can tolerate scheduled recovery points, AWS Backup with cross-region copy can be cheaper than running a continuous read replica:
 
 ```bash
 # Set up cross-region backup copy instead of a live replica
@@ -207,9 +220,14 @@ aws backup create-backup-plan \
 
 ```python
 import boto3
+from boto3.dynamodb.types import TypeDeserializer
 
 dynamodb = boto3.resource('dynamodb', region_name='eu-west-1')
 target_table = dynamodb.Table('critical-data-eu')
+deserializer = TypeDeserializer()
+
+def deserialize_dynamodb(item):
+    return {key: deserializer.deserialize(value) for key, value in item.items()}
 
 def lambda_handler(event, context):
     """Selectively replicate only critical records to remote region"""
