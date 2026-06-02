@@ -31,7 +31,7 @@ Firehose doesn't insert records one at a time. It batches records into S3 files,
 
 Before creating the delivery stream, you need:
 
-1. A Redshift cluster that's accessible from Firehose (public or in the same VPC)
+1. A publicly accessible Redshift cluster or Redshift Serverless workgroup with the Firehose regional CIDR range allowed
 2. A Redshift table that matches your data schema
 3. An S3 bucket for intermediate storage
 4. An S3 bucket (or prefix) for error records
@@ -61,7 +61,7 @@ aws firehose create-delivery-stream \
   --delivery-stream-name events-to-redshift \
   --delivery-stream-type DirectPut \
   --redshift-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/FirehoseRedshiftRole",
+    "RoleARN": "arn:aws:iam::123456789012:role/FirehoseRedshiftRole",
     "ClusterJDBCURL": "jdbc:redshift://my-cluster.xxxxx.us-east-1.redshift.amazonaws.com:5439/analytics",
     "CopyCommand": {
       "DataTableName": "public.user_events",
@@ -71,7 +71,7 @@ aws firehose create-delivery-stream \
     "Username": "firehose_user",
     "Password": "YourSecurePassword123!",
     "S3Configuration": {
-      "RoleARN": "arn:aws:iam::123456789:role/FirehoseRedshiftRole",
+      "RoleARN": "arn:aws:iam::123456789012:role/FirehoseRedshiftRole",
       "BucketARN": "arn:aws:s3:::my-firehose-intermediate",
       "Prefix": "redshift-staging/user-events/",
       "BufferingHints": {
@@ -87,7 +87,7 @@ aws firehose create-delivery-stream \
     },
     "S3BackupMode": "Enabled",
     "S3BackupConfiguration": {
-      "RoleARN": "arn:aws:iam::123456789:role/FirehoseRedshiftRole",
+      "RoleARN": "arn:aws:iam::123456789012:role/FirehoseRedshiftRole",
       "BucketARN": "arn:aws:s3:::my-firehose-backup",
       "Prefix": "backup/user-events/",
       "BufferingHints": {
@@ -115,9 +115,9 @@ Let me break down the important parts:
 
 ## IAM Role Configuration
 
-The Firehose role needs permissions for S3, Redshift, and CloudWatch.
+The Firehose role needs permissions for S3 and CloudWatch. Firehose uses the Redshift username and password from the delivery stream configuration to connect to Redshift.
 
-This IAM policy gives Firehose access to S3, Redshift COPY, and CloudWatch logging.
+This IAM policy gives Firehose access to the intermediate and backup S3 buckets and CloudWatch logging.
 
 ```json
 {
@@ -139,14 +139,6 @@ This IAM policy gives Firehose access to S3, Redshift COPY, and CloudWatch loggi
         "arn:aws:s3:::my-firehose-backup",
         "arn:aws:s3:::my-firehose-backup/*"
       ]
-    },
-    {
-      "Effect": "Allow",
-      "Action": [
-        "redshift:DescribeClusters",
-        "redshift:GetClusterCredentials"
-      ],
-      "Resource": "*"
     },
     {
       "Effect": "Allow",
@@ -261,14 +253,13 @@ aws logs get-log-events \
 
 ## Using a Manifest File
 
-For better reliability, configure Firehose to use a manifest file. The manifest lists all the S3 files that should be loaded, making the COPY operation more predictable.
+If Firehose retries a Redshift load until the retry duration expires, it skips that batch and writes information about the skipped S3 objects to a manifest file under the `errors/` prefix. You can use that manifest to backfill the skipped objects manually.
 
-```bash
-# The COPY command with manifest support
-# Firehose can generate manifests automatically with certain configurations
+```sql
+-- Manual backfill with a manifest that Firehose wrote for a skipped batch
 COPY public.user_events
-FROM 's3://my-firehose-intermediate/redshift-staging/manifest.json'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftCopyRole'
+FROM 's3://my-firehose-intermediate/errors/manifest.json'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftCopyRole'
 MANIFEST
 JSON 'auto'
 TIMEFORMAT 'auto';
@@ -295,7 +286,7 @@ buffer_config = {
 -- Optimized COPY options for JSON data
 COPY public.user_events
 FROM 's3://my-firehose-intermediate/redshift-staging/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftCopyRole'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftCopyRole'
 JSON 'auto'
 TIMEFORMAT 'auto'
 TRUNCATECOLUMNS          -- Truncate instead of failing on long strings
@@ -330,7 +321,7 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator LessThanOrEqualToThreshold \
   --evaluation-periods 3 \
   --dimensions Name=DeliveryStreamName,Value=events-to-redshift \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 Track `DeliveryToRedshift.DataFreshness` to see how far behind your data is. If it's growing, your Redshift cluster might be struggling with the COPY load.
@@ -339,24 +330,16 @@ For end-to-end pipeline monitoring, you can integrate these metrics with OneUpti
 
 ## VPC Configuration
 
-If your Redshift cluster is in a VPC, Firehose needs a route to reach it. You have two options:
+If your Redshift cluster or Redshift Serverless workgroup is in a VPC, Firehose still needs to reach it through a public endpoint. Configure Redshift to be publicly accessible, allow the Amazon Data Firehose CIDR block for your Region in the Redshift security group, and avoid enhanced VPC routing for Firehose-to-Redshift delivery.
 
-1. **Public Redshift endpoint** - The cluster has a public IP. Simpler but less secure.
-2. **VPC configuration on Firehose** - Firehose launches ENIs in your VPC subnets to reach the private cluster.
-
-For the VPC option, add VPC configuration to your delivery stream.
+For example, in `us-east-1`, allow the Firehose CIDR block on the Redshift port.
 
 ```bash
-aws firehose update-destination \
-  --delivery-stream-name events-to-redshift \
-  --current-delivery-stream-version-id 1 \
-  --destination-id destinationId-000000000001 \
-  --redshift-destination-update '{
-    "CloudWatchLoggingOptions": {"Enabled": true},
-    "S3Update": {
-      "RoleARN": "arn:aws:iam::123456789:role/FirehoseRedshiftRole"
-    }
-  }'
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-0123456789abcdef0 \
+  --protocol tcp \
+  --port 5439 \
+  --cidr 52.70.63.192/27
 ```
 
 Firehose to Redshift is a solid approach for near-real-time data warehouse ingestion. The main thing to watch is your buffer configuration and COPY frequency - too many small COPYs will slow down your cluster, while too-large buffers increase your data latency. Find the balance that works for your query freshness requirements.
