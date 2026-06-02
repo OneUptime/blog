@@ -130,9 +130,11 @@ For partitioned tables, you need to register each partition:
 
 ```python
 # Add a batch of partitions
+import calendar
+
 partitions = []
 for month in range(1, 13):
-    for day in range(1, 32):
+    for day in range(1, calendar.monthrange(2025, month)[1] + 1):
         m = str(month).zfill(2)
         d = str(day).zfill(2)
         partitions.append({
@@ -194,7 +196,7 @@ glue.create_connection(
 )
 ```
 
-Connections are used by crawlers and ETL jobs to access databases. For better security, store credentials in AWS Secrets Manager and reference them in the connection.
+Connections are used by crawlers and ETL jobs to access databases. For better security, store credentials in AWS Secrets Manager and use the `SECRET_ID` connection property instead of `USERNAME` and `PASSWORD`.
 
 ## Updating Tables
 
@@ -207,7 +209,8 @@ table_input = table['Table']
 
 # Remove catalog-managed fields before updating
 for key in ['DatabaseName', 'CreateTime', 'UpdateTime', 'CreatedBy',
-            'IsRegisteredWithLakeFormation', 'CatalogId', 'VersionId']:
+            'IsRegisteredWithLakeFormation', 'CatalogId', 'VersionId',
+            'IsMultiDialectView', 'IsMaterializedView', 'Status']:
     table_input.pop(key, None)
 
 # Add new columns
@@ -313,15 +316,15 @@ glue.put_resource_policy(
 )
 ```
 
-This lets another AWS account query your Data Catalog tables using Athena or Glue.
+This lets another AWS account access your Data Catalog tables with Glue. For Athena queries, also grant access to the underlying data, such as the S3 locations, and register the shared Glue catalog as an Athena data catalog in the querying account.
 
 ## Cost Considerations
 
 The Data Catalog itself has generous free tier limits:
 - First million objects stored per month: free
-- First million API requests per month: free
+- First million metadata requests per month: free
 
-Beyond that, it's $1 per 100,000 objects stored and $1 per million API requests. For most organizations, the Data Catalog cost is negligible.
+Beyond that, it's $1 per 100,000 objects stored and $1 per million metadata requests. For most organizations, the Data Catalog cost is negligible.
 
 ## Wrapping Up
 
