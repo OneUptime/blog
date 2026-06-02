@@ -29,27 +29,28 @@ If any of these steps fail or stall, your instance stays in pending.
 
 ### 1. EBS Volume Issues
 
-This is the most frequent culprit. If the root EBS volume can't be created or attached, the instance will hang in pending state.
+This is a common culprit. If the root EBS volume can't be created or attached, the launch can fail or the instance can move from pending to terminated.
 
-Check for EBS volume limits in your account:
+Check for EBS storage quotas in your account:
 
 ```bash
-# Check your current EBS volume count and limits
+# Check your current gp2 EBS storage quota in TiB
 
 aws service-quotas get-service-quota \
   --service-code ebs \
   --quota-code L-D18FCD1D \
   --query 'Quota.Value'
 
-# Count your current volumes in the region
+# Sum your current gp2 volume size in GiB for the region
 aws ec2 describe-volumes \
-  --query 'length(Volumes)' \
+  --filters Name=volume-type,Values=gp2 \
+  --query 'sum(Volumes[].Size)' \
   --output text
 ```
 
 If you're hitting the limit, either delete unused volumes or request a quota increase.
 
-Another EBS-related issue is encrypted volumes. If you're launching from an encrypted AMI and the KMS key isn't accessible, the volume creation will fail silently.
+Another EBS-related issue is encrypted volumes. If you're launching from an encrypted AMI and the KMS key isn't accessible, the launch can fail or the instance can terminate after entering pending.
 
 ```bash
 # Check if the AMI uses encrypted snapshots
@@ -80,7 +81,7 @@ For more details on capacity issues, check out our post on [fixing InsufficientI
 
 ### 3. ENI (Elastic Network Interface) Limits
 
-Every instance needs at least one network interface. If your account has hit the ENI limit for the AZ, new instances can't get a network interface and will be stuck.
+Every instance needs at least one network interface. If your account has hit the ENI quota, new instances can't get a network interface and can fail to launch. The quota is listed per Region, but AWS enforces it per Availability Zone.
 
 ```bash
 # Check your current ENI count
@@ -135,7 +136,7 @@ aws ec2 describe-route-tables \
 
 ### 6. Instance Profile / IAM Role Issues
 
-If you specify an instance profile that doesn't exist or that your account doesn't have permission to pass, the launch can stall.
+If you specify an instance profile that doesn't exist or that your account doesn't have permission to pass, the launch can fail before the instance reaches running.
 
 ```bash
 # Verify the instance profile exists
@@ -150,7 +151,7 @@ Make sure the user or role launching the instance has `iam:PassRole` permission 
 
 ### Check the System Log
 
-Even if the instance is stuck, you can sometimes get useful information from the system log:
+If the instance got far enough to start booting before it stalled or terminated, you can sometimes get useful information from the system log:
 
 ```bash
 # Get the console output (may take a few minutes to populate)
@@ -177,7 +178,7 @@ CloudTrail captures API calls and can show you if there were errors during the R
 # Look for RunInstances events in CloudTrail
 aws cloudtrail lookup-events \
   --lookup-attributes AttributeKey=EventName,AttributeValue=RunInstances \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ) \
+  --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ) \
   --query 'Events[*].{Time:EventTime,Error:CloudTrailEvent}' \
   --output json | head -50
 ```
@@ -211,4 +212,4 @@ To avoid instances getting stuck in the future:
 4. **Use launch templates** - They make it easier to retry with consistent configurations
 5. **Set up proper monitoring** - Tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can alert you when instances fail to launch properly
 
-The pending state problem is almost always a resource limits issue. Once you identify which resource is constrained, the fix is usually straightforward.
+The pending state problem is often a resource limits or capacity issue. Once you identify which resource is constrained, the fix is usually straightforward.
