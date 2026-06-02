@@ -8,7 +8,9 @@ Description: Learn how to migrate large datasets to Amazon S3 using AWS Snowball
 
 ---
 
-When you have tens or hundreds of terabytes of data to move to AWS, transferring it over the network becomes impractical. Even on a 1 Gbps dedicated connection, transferring 100 TB would take over 10 days of continuous transfer at full speed, and in practice it takes much longer. AWS Snowball solves this by shipping you a physical storage device. You load your data onto it, ship it back, and AWS uploads it to S3 for you.
+When you have tens or hundreds of terabytes of data to move to AWS, transferring it over the network becomes impractical. Even on a 1 Gbps dedicated connection, transferring 100 TB would take over 10 days of continuous transfer at full speed, and in practice it takes much longer. For existing AWS Snowball Edge customers, AWS Snowball solves this by shipping you a physical storage device. You load your data onto it, ship it back, and AWS uploads it to S3 for you.
+
+AWS Snowball Edge is no longer available to new customers. New customers should evaluate AWS DataSync for online transfers, AWS Data Transfer Terminal for secure physical transfers, or AWS Partner solutions.
 
 This guide covers the entire Snowball workflow from ordering to verifying your data in S3.
 
@@ -20,19 +22,19 @@ The general rule of thumb is straightforward:
 graph TD
     A[Data Size] --> B{How much data?}
     B -->|Under 10 TB| C[Use network transfer]
-    B -->|10-80 TB| D[Use Snowball]
-    B -->|80+ TB| E[Use Snowball Edge or multiple devices]
-    B -->|Petabyte scale| F[Use AWS Snowmobile]
+    B -->|10-210 TB| D[Use Snowball Edge if already eligible]
+    B -->|New customer or online transfer| E[Use DataSync or Data Transfer Terminal]
+    B -->|Petabyte scale| F[Use multiple Snowball Edge devices if eligible]
     C --> G[S3 Transfer Acceleration / DataSync]
-    D --> H[Order Snowball]
-    E --> I[Order Snowball Edge Storage Optimized]
-    F --> J[Contact AWS - shipping container truck]
+    D --> H[Order Snowball Edge Storage Optimized]
+    E --> I[Plan online or facility-based transfer]
+    F --> J[Use multiple import jobs]
 ```
 
 - **Under 10 TB**: Network transfer with S3 Transfer Acceleration or AWS DataSync is usually faster when you factor in shipping time
-- **10-80 TB**: Standard Snowball device
-- **80 TB - 210 TB**: Snowball Edge Storage Optimized (up to 210 TB usable per device)
-- **Multiple petabytes**: Multiple Snowball Edge devices or AWS Snowmobile (an actual shipping container)
+- **10-210 TB**: Snowball Edge Storage Optimized if your account is already eligible to order Snowball Edge
+- **New customers or online transfers**: AWS DataSync, Direct Connect plus DataSync, AWS Data Transfer Terminal, or an AWS Partner solution
+- **Multiple petabytes**: Multiple Snowball Edge import jobs if eligible
 
 ## Ordering a Snowball Device
 
@@ -56,34 +58,34 @@ response = snowball.create_job(
         ]
     },
     Description='Data center migration - file server data',
-    AddressId='ADIXXXXXXXXX',  # Your shipping address ID
-    RoleARN='arn:aws:iam::123456789:role/SnowballImportRole',
-    SnowballType='STANDARD',  # or EDGE, EDGE_C, EDGE_CG
+    AddressId='ADID1234ab12-3eec-4eb3-9be6-9374c10eb51b',  # Your shipping address ID
+    RoleARN='arn:aws:iam::123456789012:role/SnowballImportRole',
+    SnowballType='V3_5S',  # Snowball Edge Storage Optimized 210TB
     ShippingOption='SECOND_DAY',  # SECOND_DAY, NEXT_DAY, EXPRESS
     Notification={
-        'SnsTopicARN': 'arn:aws:sns:us-east-1:123456789:snowball-notifications',
+        'SnsTopicARN': 'arn:aws:sns:us-east-1:123456789012:snowball-notifications',
         'JobStatesToNotify': [
             'New', 'PreparingAppliance', 'InTransitToCustomer',
             'WithCustomer', 'InTransitToAWS', 'WithAWSSortingFacility',
-            'AtAWS', 'Complete'
+            'WithAWS', 'Complete'
         ]
     },
-    SnowballCapacityPreference='T80'  # T50 or T80
+    SnowballCapacityPreference='T240'
 )
 
 job_id = response['JobId']
 print(f"Snowball job created: {job_id}")
 ```
 
-AWS prepares the device and ships it to you. This typically takes 3-5 business days.
+AWS prepares the device and ships it to you. Provisioning can take up to 4 weeks, so include that lead time in your migration plan.
 
 ## Receiving and Setting Up the Device
 
-When the Snowball arrives, it comes pre-configured and ready to use. Connect it to your network with the provided cables.
+When the Snowball arrives, it comes pre-configured and ready to use. Connect it to your network with a supported network cable.
 
 ### Step 1: Power On and Connect
 
-Plug in the device and connect it to your network via the provided 10GbE or 25GbE cables. The device gets an IP address via DHCP, or you can configure a static IP through the E Ink display on the device.
+Plug in the device and connect it to your network using a supported network interface, such as 10GbE RJ45, 25GbE SFP28, or 100GbE QSFP28 depending on the device configuration. The device gets an IP address via DHCP, or you can configure a static IP through the LCD display on the device.
 
 ### Step 2: Get Your Credentials
 
@@ -106,29 +108,32 @@ print(f"Unlock code: {unlock_code}")
 
 ### Step 3: Unlock the Device
 
-Use the Snowball client to unlock:
+Use the Snowball Edge Client to unlock:
 
 ```bash
 # Download the Snowball client
 # Then unlock the device
-snowball start -i 192.168.1.100 -m /path/to/manifest -u UNLOCK_CODE
+snowballEdge unlock-device \
+  --endpoint https://192.168.1.100 \
+  --manifest-file /path/to/manifest.bin \
+  --unlock-code UNLOCK_CODE
 
 # Verify the device is ready
-snowball status
+snowballEdge describe-device \
+  --endpoint https://192.168.1.100 \
+  --manifest-file /path/to/manifest.bin \
+  --unlock-code UNLOCK_CODE
 ```
 
 ## Transferring Data
 
-### Using the Snowball Client
+### Using AWS OpsHub
 
-The Snowball client provides a simple interface for copying data:
+AWS OpsHub provides a graphical interface for copying data to the device and validates transfers with checksums:
 
 ```bash
-# Copy a directory to the Snowball
-snowball cp -r /data/file-server/ s3://my-data-migration-bucket/file-server/
-
-# Copy with multiple threads for better performance
-snowball cp -r --batch /data/file-server/ s3://my-data-migration-bucket/file-server/
+# Use AWS OpsHub for Snow Family to unlock the device and copy files
+# from your local system to the S3 bucket configured on the device.
 ```
 
 ### Using the S3 Adapter (Recommended for Large Transfers)
@@ -136,18 +141,35 @@ snowball cp -r --batch /data/file-server/ s3://my-data-migration-bucket/file-ser
 The S3 adapter lets you use standard S3 tools like the AWS CLI:
 
 ```bash
-# Start the S3 adapter on the Snowball
-snowball start -i 192.168.1.100 -m /path/to/manifest -u UNLOCK_CODE
+# Unlock the Snowball Edge device first
+snowballEdge unlock-device \
+  --endpoint https://192.168.1.100 \
+  --manifest-file /path/to/manifest.bin \
+  --unlock-code UNLOCK_CODE
+
+# Get local S3 credentials from the device
+snowballEdge list-access-keys \
+  --endpoint https://192.168.1.100 \
+  --manifest-file /path/to/manifest.bin \
+  --unlock-code UNLOCK_CODE
+
+snowballEdge get-secret-access-key \
+  --access-key-id YOUR_SNOWBALL_ACCESS_KEY \
+  --endpoint https://192.168.1.100 \
+  --manifest-file /path/to/manifest.bin \
+  --unlock-code UNLOCK_CODE
 
 # Use AWS CLI with the S3 adapter endpoint
 aws s3 cp /data/file-server/ s3://my-data-migration-bucket/file-server/ \
   --recursive \
   --endpoint http://192.168.1.100:8080 \
+  --region snow \
   --profile snowball
 
 # For better performance, use S3 sync with multiple threads
 aws s3 sync /data/file-server/ s3://my-data-migration-bucket/file-server/ \
   --endpoint http://192.168.1.100:8080 \
+  --region snow \
   --profile snowball
 ```
 
@@ -178,6 +200,7 @@ tar cf - /data/small-files/ | split -b 50G - /staging/archive-
 aws s3 cp /staging/ s3://my-data-migration-bucket/archives/ \
   --recursive \
   --endpoint http://192.168.1.100:8080 \
+  --region snow \
   --profile snowball
 ```
 
@@ -190,6 +213,7 @@ Before shipping the device back, verify your data was copied correctly:
 aws s3 ls s3://my-data-migration-bucket/ \
   --recursive \
   --endpoint http://192.168.1.100:8080 \
+  --region snow \
   --profile snowball | wc -l
 
 # Compare file counts
@@ -222,14 +246,9 @@ for root, dirs, files in os.walk(source_dir):
 
 ## Shipping the Device Back
 
-When your transfer is complete:
+When your transfer is complete, make sure all data transfer has stopped, then power off the device with AWS OpsHub or the power button above the LCD display.
 
-```bash
-# Stop the Snowball client
-snowball stop
-```
-
-Power off the device and use the prepaid shipping label (it is on the E Ink display). Drop it off with your carrier. The device is tamper-evident and encrypted, so your data is secure in transit.
+After the device shuts down, use the prepaid shipping label (it is on the E Ink display) and drop it off with your carrier. The device is tamper-evident and encrypted, so your data is secure in transit.
 
 ## Monitoring the Import
 
@@ -286,11 +305,11 @@ print(f"Total size: {total_size / (1024**4):.2f} TB")
 
 ## Using Multiple Devices for Larger Migrations
 
-For datasets larger than a single device capacity, order multiple Snowball devices as a cluster:
+For datasets larger than a single device capacity, order multiple import jobs. Cluster jobs are for local-use clusters, not S3 import jobs:
 
 ```python
-# Create a cluster job for larger migrations
-snowball.create_cluster(
+# Create another import job for an additional device
+snowball.create_job(
     JobType='IMPORT',
     Resources={
         'S3Resources': [
@@ -300,10 +319,11 @@ snowball.create_cluster(
         ]
     },
     Description='Data center migration - full storage migration',
-    AddressId='ADIXXXXXXXXX',
-    RoleARN='arn:aws:iam::123456789:role/SnowballImportRole',
-    SnowballType='EDGE',
-    ShippingOption='SECOND_DAY'
+    AddressId='ADID1234ab12-3eec-4eb3-9be6-9374c10eb51b',
+    RoleARN='arn:aws:iam::123456789012:role/SnowballImportRole',
+    SnowballType='V3_5S',
+    ShippingOption='SECOND_DAY',
+    SnowballCapacityPreference='T240'
 )
 ```
 
@@ -312,10 +332,10 @@ snowball.create_cluster(
 Snowball pricing includes:
 - **Service fee**: Per-device fee (varies by device type and region)
 - **Shipping**: Included in the service fee for standard shipping
-- **Extra days**: First 10 days on-site are included, after that it is a per-day charge
-- **Data transfer into S3**: Free (as with all S3 ingress)
+- **Extra days**: Depending on device type and job configuration, the first 15 days on-site are included, after that it is a per-day charge
+- **Data transfer into S3**: No data transfer fee for ingress, but standard S3 storage and request charges apply after import
 
-For a single Snowball 80TB device, expect around $300 for the service fee. Compare this to the cost of provisioning a Direct Connect or paying for months of saturated internet bandwidth.
+Pricing varies by Region, device type, and pricing plan. Compare this to the cost of provisioning a Direct Connect or paying for months of saturated internet bandwidth.
 
 For monitoring the data once it lands in S3, you can set up [OneUptime](https://oneuptime.com/blog/post/2026-02-12-migrate-from-on-premises-to-aws-step-by-step/view) to track access patterns and storage costs from day one.
 
