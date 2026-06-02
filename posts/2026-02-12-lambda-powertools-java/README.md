@@ -16,7 +16,7 @@ Lambda Powertools for Java uses annotations and the aspect-oriented programming 
 
 Add the dependencies to your Maven or Gradle build.
 
-Here's the Maven configuration for all Powertools modules.
+Here's the Maven configuration for the Powertools modules used below.
 
 ```xml
 <!-- pom.xml -->
@@ -24,35 +24,42 @@ Here's the Maven configuration for all Powertools modules.
     <!-- Core utilities -->
     <dependency>
         <groupId>software.amazon.lambda</groupId>
+        <artifactId>powertools-logging-log4j</artifactId>
+        <version>2.10.0</version>
+    </dependency>
+    <dependency>
+        <groupId>software.amazon.lambda</groupId>
         <artifactId>powertools-logging</artifactId>
-        <version>2.0.0</version>
+        <version>2.10.0</version>
     </dependency>
     <dependency>
         <groupId>software.amazon.lambda</groupId>
         <artifactId>powertools-tracing</artifactId>
-        <version>2.0.0</version>
+        <version>2.10.0</version>
     </dependency>
     <dependency>
         <groupId>software.amazon.lambda</groupId>
         <artifactId>powertools-metrics</artifactId>
-        <version>2.0.0</version>
+        <version>2.10.0</version>
     </dependency>
     <dependency>
         <groupId>software.amazon.lambda</groupId>
-        <artifactId>powertools-idempotency</artifactId>
-        <version>2.0.0</version>
-    </dependency>
-    <dependency>
-        <groupId>software.amazon.lambda</groupId>
-        <artifactId>powertools-parameters</artifactId>
-        <version>2.0.0</version>
+        <artifactId>powertools-idempotency-dynamodb</artifactId>
+        <version>2.10.0</version>
     </dependency>
 
     <!-- AspectJ for annotation support -->
     <dependency>
         <groupId>org.aspectj</groupId>
         <artifactId>aspectjrt</artifactId>
-        <version>1.9.21</version>
+        <version>1.9.22</version>
+    </dependency>
+
+    <!-- CRaC runtime hooks for the SnapStart example -->
+    <dependency>
+        <groupId>org.crac</groupId>
+        <artifactId>crac</artifactId>
+        <version>1.4.0</version>
     </dependency>
 </dependencies>
 
@@ -80,8 +87,19 @@ Here's the Maven configuration for all Powertools modules.
                         <groupId>software.amazon.lambda</groupId>
                         <artifactId>powertools-metrics</artifactId>
                     </aspectLibrary>
+                    <aspectLibrary>
+                        <groupId>software.amazon.lambda</groupId>
+                        <artifactId>powertools-idempotency-core</artifactId>
+                    </aspectLibrary>
                 </aspectLibraries>
             </configuration>
+            <dependencies>
+                <dependency>
+                    <groupId>org.aspectj</groupId>
+                    <artifactId>aspectjtools</artifactId>
+                    <version>1.9.22</version>
+                </dependency>
+            </dependencies>
             <executions>
                 <execution>
                     <goals>
@@ -103,23 +121,21 @@ package com.myapp.handlers;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import software.amazon.lambda.powertools.logging.Logging;
-import software.amazon.lambda.powertools.logging.LoggingUtils;
-
-import java.util.Map;
 
 public class OrderHandler implements RequestHandler<OrderEvent, OrderResponse> {
 
-    private static final Logger logger = LogManager.getLogger(OrderHandler.class);
+    private static final Logger logger = LoggerFactory.getLogger(OrderHandler.class);
 
     @Logging(logEvent = true)  // Logs the incoming event
     @Override
     public OrderResponse handleRequest(OrderEvent event, Context context) {
         // Add custom keys to all subsequent log messages
-        LoggingUtils.appendKey("orderId", event.getOrderId());
-        LoggingUtils.appendKey("customerId", event.getCustomerId());
+        MDC.put("orderId", String.valueOf(event.getOrderId()));
+        MDC.put("customerId", String.valueOf(event.getCustomerId()));
 
         logger.info("Processing order");
 
@@ -133,8 +149,8 @@ public class OrderHandler implements RequestHandler<OrderEvent, OrderResponse> {
             return new OrderResponse(500, "Internal error");
         } finally {
             // Clean up for Lambda reuse
-            LoggingUtils.removeKey("orderId");
-            LoggingUtils.removeKey("customerId");
+            MDC.remove("orderId");
+            MDC.remove("customerId");
         }
     }
 
@@ -149,12 +165,12 @@ public class OrderHandler implements RequestHandler<OrderEvent, OrderResponse> {
 Configure Log4j2 with the Powertools JSON layout for structured output.
 
 ```xml
-<!-- src/main/resources/log4j2.xml -->
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- src/main/resources/log4j2.xml -->
 <Configuration>
     <Appenders>
         <Console name="JsonAppender" target="SYSTEM_OUT">
-            <LambdaJsonLayout />
+            <JsonTemplateLayout eventTemplateUri="classpath:LambdaJsonLayout.json" />
         </Console>
     </Appenders>
     <Loggers>
@@ -174,6 +190,7 @@ package com.myapp.handlers;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
+import software.amazon.lambda.powertools.tracing.CaptureMode;
 import software.amazon.lambda.powertools.tracing.Tracing;
 import software.amazon.lambda.powertools.tracing.TracingUtils;
 import software.amazon.lambda.powertools.logging.Logging;
@@ -213,28 +230,37 @@ public class OrderHandler implements RequestHandler<OrderEvent, OrderResponse> {
 }
 ```
 
-The `@Tracing` annotation also patches the AWS SDK automatically when used with the Powertools aspect, so all DynamoDB, S3, and SQS calls show up in your X-Ray traces.
+The tracing dependency also instruments AWS SDK for Java 2.x clients automatically, so downstream DynamoDB, S3, and SQS calls show up in your X-Ray traces.
 
 ## Custom Metrics
 
-Use the `@Metrics` annotation with the MetricsUtils helper to emit custom CloudWatch metrics.
+Use the `@FlushMetrics` annotation with the MetricsFactory singleton to emit custom CloudWatch metrics.
 
 ```java
 package com.myapp.handlers;
 
 import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestHandler;
-import software.amazon.cloudwatchlogs.emf.model.Unit;
+import software.amazon.lambda.powertools.metrics.FlushMetrics;
 import software.amazon.lambda.powertools.metrics.Metrics;
-import software.amazon.lambda.powertools.metrics.MetricsUtils;
+import software.amazon.lambda.powertools.metrics.MetricsFactory;
+import software.amazon.lambda.powertools.metrics.model.DimensionSet;
+import software.amazon.lambda.powertools.metrics.model.MetricUnit;
 
 public class OrderHandler implements RequestHandler<OrderEvent, OrderResponse> {
 
-    @Metrics(namespace = "OrderService", service = "order-handler", captureColdStart = true)
+    private static final Metrics metrics = MetricsFactory.getMetricsInstance();
+
+    @FlushMetrics(namespace = "OrderService", service = "order-handler", captureColdStart = true)
     @Override
     public OrderResponse handleRequest(OrderEvent event, Context context) {
+        // Add dimensions
+        metrics.addDimension(
+            DimensionSet.of("Environment", System.getenv().getOrDefault("ENVIRONMENT", "prod"))
+        );
+
         // Single value metric
-        MetricsUtils.metricsLogger().putMetric("OrderReceived", 1, Unit.COUNT);
+        metrics.addMetric("OrderReceived", 1, MetricUnit.COUNT);
 
         long startTime = System.currentTimeMillis();
 
@@ -242,21 +268,16 @@ public class OrderHandler implements RequestHandler<OrderEvent, OrderResponse> {
             OrderResult result = processOrder(event);
 
             // Business metrics
-            MetricsUtils.metricsLogger().putMetric("OrderProcessed", 1, Unit.COUNT);
-            MetricsUtils.metricsLogger().putMetric("OrderValue", result.getTotal(), Unit.COUNT);
+            metrics.addMetric("OrderProcessed", 1, MetricUnit.COUNT);
+            metrics.addMetric("OrderValue", result.getTotal(), MetricUnit.NONE);
 
             // Performance metrics
             long duration = System.currentTimeMillis() - startTime;
-            MetricsUtils.metricsLogger().putMetric("ProcessingDuration", duration, Unit.MILLISECONDS);
-
-            // Add dimensions
-            MetricsUtils.metricsLogger().putDimensions(
-                DimensionSet.of("Environment", System.getenv("ENVIRONMENT"))
-            );
+            metrics.addMetric("ProcessingDuration", duration, MetricUnit.MILLISECONDS);
 
             return new OrderResponse(200, result);
         } catch (Exception e) {
-            MetricsUtils.metricsLogger().putMetric("OrderFailed", 1, Unit.COUNT);
+            metrics.addMetric("OrderFailed", 1, MetricUnit.COUNT);
             throw e;
         }
     }
@@ -329,9 +350,12 @@ import com.amazonaws.services.lambda.runtime.Context;
 import com.amazonaws.services.lambda.runtime.RequestStreamHandler;
 import org.crac.Core;
 import org.crac.Resource;
+import java.io.InputStream;
+import java.io.OutputStream;
+import software.amazon.lambda.powertools.metrics.FlushMetrics;
 import software.amazon.lambda.powertools.logging.Logging;
 import software.amazon.lambda.powertools.tracing.Tracing;
-import software.amazon.lambda.powertools.metrics.Metrics;
+import software.amazon.lambda.powertools.tracing.TracingUtils;
 
 public class OrderHandler implements RequestStreamHandler, Resource {
 
@@ -339,6 +363,7 @@ public class OrderHandler implements RequestStreamHandler, Resource {
 
     public OrderHandler() {
         this.orderService = new OrderService();
+        TracingUtils.init(); // Ensure tracing SnapStart priming is registered
         // Register for CRaC lifecycle events
         Core.getGlobalContext().register(this);
     }
@@ -359,7 +384,7 @@ public class OrderHandler implements RequestStreamHandler, Resource {
 
     @Logging
     @Tracing
-    @Metrics(namespace = "OrderService", captureColdStart = true)
+    @FlushMetrics(namespace = "OrderService", captureColdStart = true)
     @Override
     public void handleRequest(InputStream input, OutputStream output, Context context) {
         // Handler logic
@@ -369,7 +394,7 @@ public class OrderHandler implements RequestStreamHandler, Resource {
 
 ## SAM Template Configuration
 
-Here's a complete SAM template for a Java Lambda function with Powertools.
+Here's a SAM template excerpt for a Java Lambda function with Powertools.
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
@@ -385,7 +410,7 @@ Globals:
       Variables:
         POWERTOOLS_SERVICE_NAME: order-service
         POWERTOOLS_METRICS_NAMESPACE: OrderService
-        LOG_LEVEL: INFO
+        POWERTOOLS_LOG_LEVEL: INFO
 
 Resources:
   OrderFunction:
