@@ -62,44 +62,46 @@ Testing error paths is just as important as testing happy paths.
 from unittest.mock import MagicMock
 from botocore.exceptions import ClientError
 
-def delete_s3_object(s3_client, bucket, key):
-    """Delete an S3 object, returning True if deleted, False if not found."""
+def get_s3_object_text(s3_client, bucket, key):
+    """Read an S3 object as text, returning None if not found."""
     try:
-        s3_client.delete_object(Bucket=bucket, Key=key)
-        return True
+        response = s3_client.get_object(Bucket=bucket, Key=key)
+        return response['Body'].read().decode('utf-8')
     except ClientError as e:
         if e.response['Error']['Code'] == 'NoSuchKey':
-            return False
+            return None
         raise
 
-def test_delete_existing_object():
+def test_get_existing_object():
     mock_s3 = MagicMock()
-    mock_s3.delete_object.return_value = {}
-    assert delete_s3_object(mock_s3, 'bucket', 'key') is True
+    mock_body = MagicMock()
+    mock_body.read.return_value = b'hello'
+    mock_s3.get_object.return_value = {'Body': mock_body}
+    assert get_s3_object_text(mock_s3, 'bucket', 'key') == 'hello'
 
-def test_delete_nonexistent_object():
+def test_get_nonexistent_object():
     mock_s3 = MagicMock()
-    mock_s3.delete_object.side_effect = ClientError(
+    mock_s3.get_object.side_effect = ClientError(
         {
             'Error': {'Code': 'NoSuchKey', 'Message': 'Not found'},
             'ResponseMetadata': {'RequestId': 'test-123', 'HTTPStatusCode': 404}
         },
-        'DeleteObject'
+        'GetObject'
     )
-    assert delete_s3_object(mock_s3, 'bucket', 'key') is False
+    assert get_s3_object_text(mock_s3, 'bucket', 'key') is None
 
-def test_delete_permission_error():
+def test_get_permission_error():
     mock_s3 = MagicMock()
-    mock_s3.delete_object.side_effect = ClientError(
+    mock_s3.get_object.side_effect = ClientError(
         {
             'Error': {'Code': 'AccessDenied', 'Message': 'Forbidden'},
             'ResponseMetadata': {'RequestId': 'test-456', 'HTTPStatusCode': 403}
         },
-        'DeleteObject'
+        'GetObject'
     )
     import pytest
     with pytest.raises(ClientError):
-        delete_s3_object(mock_s3, 'bucket', 'key')
+        get_s3_object_text(mock_s3, 'bucket', 'key')
 ```
 
 ### Using patch Decorator
@@ -145,6 +147,7 @@ Boto3 includes a built-in `Stubber` class that provides more structured mocking 
 ```python
 from botocore.stub import Stubber
 import boto3
+from datetime import datetime, timezone
 
 def test_list_buckets_with_stubber():
     s3 = boto3.client('s3')
@@ -155,8 +158,8 @@ def test_list_buckets_with_stubber():
             'list_buckets',
             {
                 'Buckets': [
-                    {'Name': 'bucket-1', 'CreationDate': '2026-01-01T00:00:00Z'},
-                    {'Name': 'bucket-2', 'CreationDate': '2026-01-02T00:00:00Z'}
+                    {'Name': 'bucket-1', 'CreationDate': datetime(2026, 1, 1, tzinfo=timezone.utc)},
+                    {'Name': 'bucket-2', 'CreationDate': datetime(2026, 1, 2, tzinfo=timezone.utc)}
                 ],
                 'Owner': {'DisplayName': 'test', 'ID': 'abc123'}
             }
@@ -189,7 +192,7 @@ def test_error_with_stubber():
 
 ## JavaScript: Mocking with Jest
 
-For Node.js applications using Jest, you can mock the SDK at the module level.
+For Node.js applications using Jest, you can mock SDK clients directly.
 
 ### Mocking AWS SDK v3
 
@@ -298,6 +301,9 @@ test('different responses for different keys', async () => {
 The easiest code to test is code that accepts its dependencies rather than creating them.
 
 ```python
+import json
+from unittest.mock import MagicMock
+
 # Good - accepts client as parameter
 class OrderProcessor:
     def __init__(self, dynamodb_table, sqs_client, queue_url):
@@ -334,6 +340,8 @@ def test_process_order():
 
 ```javascript
 // Good - accepts client as parameter
+import { PutObjectCommand } from '@aws-sdk/client-s3';
+
 export class FileService {
     constructor(s3Client, bucketName) {
         this.s3 = s3Client;
