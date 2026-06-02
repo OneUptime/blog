@@ -59,12 +59,12 @@ This Terraform configuration creates a GuardDuty detector with S3 Protection ena
 ```hcl
 resource "aws_guardduty_detector" "main" {
   enable = true
+}
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-  }
+resource "aws_guardduty_detector_feature" "s3_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
 }
 ```
 
@@ -196,6 +196,49 @@ aws events put-targets \
     "Id": "sns-target",
     "Arn": "arn:aws:sns:us-east-1:111111111111:security-alerts"
   }]'
+
+# Allow EventBridge to publish to the SNS topic
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:111111111111:security-alerts \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Id": "__default_policy_ID",
+    "Statement": [
+      {
+        "Sid": "__default_statement_ID",
+        "Effect": "Allow",
+        "Principal": {
+          "AWS": "*"
+        },
+        "Action": [
+          "SNS:GetTopicAttributes",
+          "SNS:SetTopicAttributes",
+          "SNS:AddPermission",
+          "SNS:RemovePermission",
+          "SNS:DeleteTopic",
+          "SNS:Subscribe",
+          "SNS:ListSubscriptionsByTopic",
+          "SNS:Publish"
+        ],
+        "Resource": "arn:aws:sns:us-east-1:111111111111:security-alerts",
+        "Condition": {
+          "StringEquals": {
+            "AWS:SourceAccount": "111111111111"
+          }
+        }
+      },
+      {
+        "Sid": "AllowEventBridgePublish",
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "events.amazonaws.com"
+        },
+        "Action": "sns:Publish",
+        "Resource": "arn:aws:sns:us-east-1:111111111111:security-alerts"
+      }
+    ]
+  }'
 ```
 
 ## Automated Remediation
@@ -233,27 +276,35 @@ def handler(event, context):
 
 def restrict_bucket(bucket_name):
     """Add a deny policy to block all access except from security role"""
-    deny_policy = {
-        "Version": "2012-10-17",
-        "Statement": [
-            {
-                "Sid": "EmergencyDenyAll",
-                "Effect": "Deny",
-                "Principal": "*",
-                "Action": "s3:GetObject",
-                "Resource": f"arn:aws:s3:::{bucket_name}/*",
-                "Condition": {
-                    "StringNotLike": {
-                        "aws:PrincipalArn": "arn:aws:iam::*:role/SecurityTeamRole"
-                    }
+    try:
+        policy = json.loads(s3.get_bucket_policy(Bucket=bucket_name)['Policy'])
+    except s3.exceptions.NoSuchBucketPolicy:
+        policy = {
+            "Version": "2012-10-17",
+            "Statement": []
+        }
+
+    policy['Statement'].append(
+        {
+            "Sid": "EmergencyDenyAll",
+            "Effect": "Deny",
+            "Principal": "*",
+            "Action": "s3:*",
+            "Resource": [
+                f"arn:aws:s3:::{bucket_name}",
+                f"arn:aws:s3:::{bucket_name}/*"
+            ],
+            "Condition": {
+                "StringNotLike": {
+                    "aws:PrincipalArn": "arn:aws:iam::*:role/SecurityTeamRole"
                 }
             }
-        ]
-    }
+        }
+    )
 
     s3.put_bucket_policy(
         Bucket=bucket_name,
-        Policy=json.dumps(deny_policy)
+        Policy=json.dumps(policy)
     )
     print(f"Emergency deny policy applied to {bucket_name}")
 
