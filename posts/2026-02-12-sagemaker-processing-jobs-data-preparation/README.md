@@ -113,7 +113,7 @@ bucket = session.default_bucket()
 from sagemaker.sklearn.processing import SKLearnProcessor
 
 sklearn_processor = SKLearnProcessor(
-    framework_version='1.2-1',
+    framework_version='1.4-2',
     role=role,
     instance_type='ml.m5.xlarge',
     instance_count=1,
@@ -284,6 +284,7 @@ Processing Jobs aren't just for data prep. They're also perfect for model evalua
 
 import os
 import json
+import tarfile
 import joblib
 import pandas as pd
 import numpy as np
@@ -298,6 +299,11 @@ def main():
     output_dir = '/opt/ml/processing/evaluation'
 
     # Load the trained model
+    model_archive = os.path.join(model_dir, 'model.tar.gz')
+    if os.path.exists(model_archive):
+        with tarfile.open(model_archive, 'r:gz') as tar:
+            tar.extractall(path=model_dir)
+
     model = joblib.load(os.path.join(model_dir, 'model.joblib'))
 
     # Load test data
@@ -409,7 +415,7 @@ For production pipelines, pipe these logs into [OneUptime](https://oneuptime.com
 Processing Jobs charge you for the instance time plus any S3 data transfer. A few ways to keep costs reasonable:
 
 - **Right-size your instances** - Don't use ml.m5.4xlarge for a job that only needs 4 GB of RAM
-- **Use Spot instances** - Processing Jobs don't support managed spot directly, but you can use SageMaker Pipelines to achieve similar savings
+- **Use managed spot for training** - Processing Jobs don't support managed spot directly, but SageMaker Training Jobs do
 - **Compress your data** - Reading compressed files from S3 is faster and cheaper than uncompressed
 - **Clean up S3** - Processing Jobs create output in S3. Set lifecycle rules to clean up old data
 
