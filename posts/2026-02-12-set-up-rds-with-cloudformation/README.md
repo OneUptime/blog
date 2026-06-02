@@ -153,7 +153,7 @@ Resources:
   # The RDS Instance
   RDSInstance:
     Type: AWS::RDS::DBInstance
-    DeletionPolicy: !If [IsProduction, Snapshot, Delete]
+    DeletionPolicy: Snapshot
     UpdateReplacePolicy: Snapshot
     Properties:
       DBInstanceIdentifier: !Sub '${ProjectName}-${Environment}'
@@ -343,7 +343,7 @@ aws cloudformation create-stack \
     ParameterKey=MasterUsername,ParameterValue=admin \
     ParameterKey=MasterUserPassword,ParameterValue=YourSecurePassword123 \
     ParameterKey=VpcId,ParameterValue=vpc-abc123 \
-    ParameterKey=PrivateSubnetIds,ParameterValue=\"subnet-abc123,subnet-def456\" \
+    ParameterKey=PrivateSubnetIds,ParameterValue=subnet-abc123\\,subnet-def456 \
     ParameterKey=ApplicationSecurityGroupId,ParameterValue=sg-abc123 \
     ParameterKey=AlertSNSTopicARN,ParameterValue=arn:aws:sns:us-east-1:123456789012:alerts
 
@@ -367,10 +367,19 @@ aws cloudformation update-stack \
   --template-body file://rds-template.yaml \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameters \
+    ParameterKey=ProjectName,UsePreviousValue=true \
+    ParameterKey=Environment,UsePreviousValue=true \
     ParameterKey=DBInstanceClass,ParameterValue=db.r6g.xlarge \
-    ParameterKey=MasterUserPassword,UsePreviousValue=true
+    ParameterKey=AllocatedStorage,UsePreviousValue=true \
+    ParameterKey=MaxAllocatedStorage,UsePreviousValue=true \
+    ParameterKey=MasterUsername,UsePreviousValue=true \
+    ParameterKey=MasterUserPassword,UsePreviousValue=true \
+    ParameterKey=VpcId,UsePreviousValue=true \
+    ParameterKey=PrivateSubnetIds,UsePreviousValue=true \
+    ParameterKey=ApplicationSecurityGroupId,UsePreviousValue=true \
+    ParameterKey=AlertSNSTopicARN,UsePreviousValue=true
 ```
 
-CloudFormation will show you a change set before applying. Always review it carefully, especially for RDS changes that might cause downtime.
+The `update-stack` command starts the update directly. To preview changes before applying them, create and review a change set, then execute it when you're ready. Always review RDS changes carefully because some updates might cause downtime.
 
-For the Terraform alternative, see our guide on [setting up RDS with Terraform](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-with-terraform/view). And once your instance is running, make sure you're using [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) to keep an eye on query performance.
+For the Terraform alternative, see our guide on [setting up RDS with Terraform](https://oneuptime.com/blog/post/2026-02-12-set-up-rds-with-terraform/view). And once your instance is running, make sure you're using [Performance Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-rds-with-performance-insights/view) or CloudWatch Database Insights to keep an eye on query performance.
