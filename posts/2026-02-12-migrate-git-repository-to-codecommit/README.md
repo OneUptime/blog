@@ -95,32 +95,38 @@ git push --mirror https://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-app
 
 ## Handling Large Files and Git LFS
 
-If your repository uses Git LFS, you need to handle LFS objects separately since CodeCommit doesn't support Git LFS natively.
+If your repository uses Git LFS and native Git LFS support is not available in your CodeCommit account or Region, you need to handle LFS objects separately.
 
 ```bash
 # First, check if the repo uses LFS
-cd my-application-mirror
-git lfs ls-files
+git clone https://github.com/myorg/my-application.git my-application-lfs-convert
+cd my-application-lfs-convert
+git lfs install
+git lfs fetch --all
+git lfs migrate info --everything
 
 # If it does, convert LFS pointers back to actual files
-git lfs fetch --all
-git lfs uninstall
+for branch in $(git branch -r | grep -v -- '->'); do
+  git branch --track "${branch#origin/}" "$branch" 2>/dev/null || true
+done
+git lfs migrate export --everything --include="*"
 
-# Convert all LFS pointers to real files in history
-# This rewrites history, so the commit hashes will change
-git filter-repo --force --blob-callback '
-  if blob.data.startswith(b"version https://git-lfs"):
-    pass  # Handle LFS pointer conversion
-'
+# Push the rewritten branches and tags to CodeCommit
+git remote add codecommit https://git-codecommit.us-east-1.amazonaws.com/v1/repos/my-application
+git push codecommit --all
+git push codecommit --tags
+```
 
-# Alternative: just download LFS files and add them normally
+This rewrites history, so the commit hashes will change. Alternative: just download LFS files on the current branch and add them normally.
+
+```bash
 git lfs pull
 git lfs untrack "*"
 git add -A
 git commit -m "Convert LFS files to regular Git objects"
 ```
 
-For repositories with very large files (over 6 MB individual files or over 2 GB total), you may hit CodeCommit limits. In that case, clean up large files before migrating.
+For repositories with very large files, you may hit CodeCommit limits. A single Git blob cannot be larger than 2 GB. The 6 MB individual file limit applies when using the CodeCommit console, APIs, or AWS CLI to add or edit files, not to normal Git pushes. In that case, clean up large files before migrating.
 
 ```bash
 # Find large files in repository history
@@ -143,7 +149,7 @@ If your repository has submodules pointing to external repos, update the submodu
 
 ```bash
 # Check for submodules
-cat .gitmodules
+test -f .gitmodules && cat .gitmodules
 
 # Update submodule URLs to point to CodeCommit
 # First, migrate each submodule repository to CodeCommit
