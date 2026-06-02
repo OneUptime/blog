@@ -218,7 +218,7 @@ terraform plan
 
 ## Handling Token Expiration
 
-SSO tokens expire after a configurable period (typically 1-8 hours). When they expire, Terraform operations will fail with an authentication error. You'll need to re-authenticate:
+AWS account credentials from IAM Identity Center expire after the session duration configured on the permission set. New permission sets default to 1 hour and can be configured up to 12 hours. When the session expires, Terraform operations will fail with an authentication error. You'll need to re-authenticate:
 
 ```bash
 # Re-authenticate when tokens expire
@@ -228,7 +228,7 @@ aws sso login --profile dev-account
 terraform apply
 ```
 
-For long-running operations, you might want to extend the session duration in your SSO settings. AWS IAM Identity Center lets administrators configure session length up to 12 hours.
+For long-running operations, you might want to extend the AWS account session duration on the permission set. AWS IAM Identity Center lets administrators configure that session length up to 12 hours.
 
 ## CI/CD Considerations
 
