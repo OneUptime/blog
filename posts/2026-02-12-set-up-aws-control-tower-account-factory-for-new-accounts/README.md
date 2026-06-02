@@ -41,57 +41,18 @@ First, review and configure the Account Factory defaults. In the AWS Console, na
 The Account Factory settings page lets you configure:
 
 - **Network configuration** - Default VPC settings for new accounts
-- **Account email template** - Naming convention for account emails
-- **Organizational Unit** - Where new accounts land in your OU structure
+- **Organizational Unit allow list** - Which OUs can receive new accounts through Account Factory
 
 ## Step 2: Configure Network Defaults
 
 Account Factory can automatically provision VPC networking in new accounts. This is optional but recommended for consistency.
 
-Here is a Terraform configuration that sets up Account Factory network defaults:
+Use the Account Factory network configuration page to set the public subnet setting, private subnet count, VPC CIDR range, Regions, and number of Availability Zones for new accounts. You can also configure Account Factory to create new accounts without a VPC.
 
-```hcl
-# Configure Account Factory network settings
-
-resource "aws_controltower_landing_zone" "network_config" {
-  manifest_json = jsonencode({
-    governedRegions = ["us-east-1", "us-west-2"]
-    organizationStructure = {
-      security = {
-        name = "Security"
-      }
-      sandbox = {
-        name = "Sandbox"
-      }
-    }
-    centralizedLogging = {
-      accountId = "111111111111"
-      configurations = {
-        loggingBucket = {
-          retentionDays = 365
-        }
-        accessLoggingBucket = {
-          retentionDays = 365
-        }
-      }
-      enabled = true
-    }
-    securityRoles = {
-      accountId = "222222222222"
-    }
-    accessManagement = {
-      enabled = true
-    }
-  })
-
-  version = "3.3"
-}
-```
-
-For the VPC configuration specifically, you can set defaults through the Account Factory settings page or through Service Catalog:
+For programmatic provisioning, first find the Account Factory product in Service Catalog:
 
 ```bash
-# List the Account Factory provisioned product portfolios
+# List the Account Factory product
 aws servicecatalog search-products \
   --filters '{"FullTextSearch": ["AWS Control Tower Account Factory"]}'
 ```
@@ -100,8 +61,8 @@ aws servicecatalog search-products \
 
 The simplest way to create an account is through the Control Tower console:
 
-1. Go to AWS Control Tower > Account Factory
-2. Click "Create account"
+1. Go to AWS Control Tower > Organizations
+2. Click "Create resources" and then "Create account"
 3. Fill in the required fields:
    - Account email (unique, never used with AWS before)
    - Display name
@@ -119,21 +80,35 @@ For automation, you can create accounts using the Service Catalog API. This is h
 ```python
 # Python script to create a new account via Service Catalog
 import boto3
-import json
 
-sc_client = boto3.client('servicecatalog')
+# Use your AWS Control Tower home Region.
+sc_client = boto3.client('servicecatalog', region_name='us-east-1')
 
 # Find the Account Factory product
 products = sc_client.search_products(
     Filters={'FullTextSearch': ['AWS Control Tower Account Factory']}
 )
-product_id = products['ProductViewSummaries'][0]['ProductId']
+account_factory_product = next(
+    product for product in products['ProductViewSummaries']
+    if product['Name'] == 'AWS Control Tower Account Factory'
+)
+product_id = account_factory_product['ProductId']
 
-# Get the latest provisioning artifact (version)
+# If the product has more than one launch path, choose the path explicitly
+provision_kwargs = {}
+if not account_factory_product.get('HasDefaultPath'):
+    paths = sc_client.list_launch_paths(ProductId=product_id)
+    provision_kwargs['PathId'] = paths['LaunchPathSummaries'][0]['Id']
+
+# Get the newest active provisioning artifact (version)
 artifacts = sc_client.list_provisioning_artifacts(
     ProductId=product_id
 )
-artifact_id = artifacts['ProvisioningArtifactDetails'][-1]['Id']
+active_artifacts = [
+    artifact for artifact in artifacts['ProvisioningArtifactDetails']
+    if artifact.get('Active') and artifact.get('Guidance') != 'DEPRECATED'
+]
+artifact_id = max(active_artifacts, key=lambda artifact: artifact['CreatedTime'])['Id']
 
 # Provision a new account
 response = sc_client.provision_product(
@@ -165,7 +140,8 @@ response = sc_client.provision_product(
             'Key': 'SSOUserLastName',
             'Value': 'Lead'
         }
-    ]
+    ],
+    **provision_kwargs
 )
 
 print(f"Account provisioning started: {response['RecordDetail']['RecordId']}")
@@ -179,7 +155,8 @@ Track the status of account creation:
 # Check the status of account provisioning
 import boto3
 
-sc_client = boto3.client('servicecatalog')
+# Use your AWS Control Tower home Region.
+sc_client = boto3.client('servicecatalog', region_name='us-east-1')
 
 # Use the record ID from the provision call
 record = sc_client.describe_record(
@@ -191,7 +168,7 @@ print(f"Provisioning status: {status}")
 
 # List any errors if provisioning failed
 if status == 'FAILED':
-    for error in record['RecordErrors']:
+    for error in record['RecordDetail'].get('RecordErrors', []):
         print(f"Error: {error['Description']}")
 ```
 
@@ -213,7 +190,7 @@ sequenceDiagram
     Organizations-->>ControlTower: Account Created
     ControlTower->>ControlTower: Apply Guardrails
     ControlTower->>ControlTower: Configure VPC
-    ControlTower->>SSO: Create SSO Permission Set
+    ControlTower->>SSO: Configure IAM Identity Center access
     SSO-->>User: Access Granted
     ControlTower-->>ServiceCatalog: Provisioning Complete
     ServiceCatalog-->>User: Account Ready
@@ -256,6 +233,11 @@ module "team_alpha_dev" {
     Team        = "alpha"
     Environment = "dev"
     CostCenter  = "CC-1234"
+  }
+
+  change_management_parameters = {
+    change_reason       = "Provision development account for Team Alpha"
+    change_requested_by = "platform-team"
   }
 
   account_customizations_name = "sandbox-baseline"
