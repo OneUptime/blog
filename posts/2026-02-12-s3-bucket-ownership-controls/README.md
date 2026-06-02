@@ -8,9 +8,9 @@ Description: Understand and configure S3 bucket ownership controls to manage obj
 
 ---
 
-S3 object ownership is one of those things you don't think about until it bites you. Here's the scenario: Account B uploads an object to Account A's bucket. By default, Account B owns that object - not Account A. Account A can't even read it without Account B explicitly granting access through ACLs.
+S3 object ownership is one of those things you don't think about until it bites you. Here's the scenario: Account B uploads an object to Account A's older bucket with ACLs enabled and Object writer ownership. Account B owns that object - not Account A. Account A can't read it unless Account B explicitly grants access through ACLs.
 
-This is confusing, error-prone, and has caused countless support tickets. S3 Bucket Ownership Controls fix this by letting the bucket owner take ownership of all objects regardless of who uploaded them.
+This is confusing, error-prone, and has caused countless support tickets. S3 Bucket Ownership Controls fix this by letting the bucket owner control whether ACLs are enabled and, with the recommended setting, take ownership of all objects regardless of who uploaded them.
 
 ## Understanding the Problem
 
@@ -19,7 +19,7 @@ In the pre-ownership-controls world, S3 had two access control mechanisms runnin
 1. **IAM policies and bucket policies** - The modern way
 2. **ACLs (Access Control Lists)** - The legacy way
 
-ACLs are object-level permissions that override bucket policies in many cases. When someone uploads an object with `bucket-owner-full-control` ACL, the bucket owner gets access. Without it, the uploader keeps exclusive ownership.
+ACLs are object-level permissions that can grant access separately from bucket policies. When someone uploads an object with `bucket-owner-full-control` ACL, the bucket owner gets access. Without it, the uploader keeps exclusive ownership when Object writer is enabled.
 
 This dual system created confusion. AWS's recommendation is now clear: disable ACLs entirely and use policies for everything.
 
@@ -161,7 +161,7 @@ For example, if Account B was relying on ACLs for write access, add an explicit 
 
 ### Step 3: Update uploaders
 
-Any application that includes ACL headers in PUT requests needs to stop doing that. With `BucketOwnerEnforced`, ACL headers in requests will cause a 400 error.
+Any application that includes ACL headers in PUT requests should stop doing that. With `BucketOwnerEnforced`, most ACL headers in requests will cause a 400 error. S3 still accepts requests that don't specify an ACL or that specify bucket owner full control, but removing ACL-related code is cleaner.
 
 Remove ACL-related code from your uploads.
 
@@ -193,7 +193,7 @@ aws s3 cp file.txt s3://my-bucket/
 
 ### Step 4: Enable BucketOwnerEnforced
 
-Once all ACL dependencies are removed, flip the switch.
+Once all ACL dependencies are removed, reset any non-default bucket ACL to the default private ACL, then flip the switch.
 
 ```bash
 # Enable bucket owner enforced
@@ -210,7 +210,7 @@ aws s3api put-bucket-ownership-controls \
 
 ### Step 5: Verify
 
-Try an upload with an ACL header to confirm it's rejected.
+Try an upload with an unsupported ACL header to confirm it's rejected.
 
 ```bash
 # This should return a 400 error
@@ -268,7 +268,7 @@ resource "aws_s3_bucket_public_access_block" "data" {
 
 ## Common Issues After Migration
 
-**"AccessControlListNotSupported" errors**: Applications are still sending ACL headers. Update them to remove the ACL parameter.
+**"AccessControlListNotSupported" errors**: Applications are still sending unsupported ACL headers. Update them to remove the ACL parameter.
 
 **Cross-account access breaks**: The other account was relying on ACLs for access. Add a bucket policy to grant the necessary permissions explicitly.
 
