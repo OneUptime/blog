@@ -25,14 +25,15 @@ Understanding the available metrics is important. Here are the main ones:
 
 | Metric | What It Measures |
 |---|---|
-| UnblendedCost | Actual cost charged for usage |
+| UnblendedCost | Cost calculated at unblended rates |
+| NetUnblendedCost | Unblended cost after applicable discounts |
 | BlendedCost | Average cost across an organization |
 | AmortizedCost | Upfront costs spread over the reservation period |
 | NetAmortizedCost | Amortized cost minus discounts and credits |
 | UsageQuantity | Units consumed (hours, GB, requests) |
 | NormalizedUsageAmount | Usage normalized to smallest instance size |
 
-For most reports, `UnblendedCost` is the most useful because it shows what you actually paid.
+For most allocation reports, `UnblendedCost` is useful because it shows charges at unblended rates. Use `NetUnblendedCost` when you want costs after applicable discounts.
 
 ## Report 1: Costs by Environment and Service
 
@@ -96,22 +97,21 @@ import boto3
 ce = boto3.client("ce")
 
 def ri_coverage_report(start_date, end_date):
-    """Show Reserved Instance coverage by service."""
+    """Show Reserved Instance coverage by instance type."""
     response = ce.get_reservation_coverage(
         TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="MONTHLY",
         GroupBy=[
-            {"Type": "DIMENSION", "Key": "SERVICE"}
+            {"Type": "DIMENSION", "Key": "INSTANCE_TYPE"}
         ]
     )
 
     print(f"\nReserved Instance Coverage Report")
-    print(f"{'Service':<45} {'Coverage':>10} {'On-Demand Hrs':>15} {'RI Hrs':>10}")
+    print(f"{'Instance Type':<45} {'Coverage':>10} {'On-Demand Hrs':>15} {'RI Hrs':>10}")
     print("-" * 85)
 
     for period in response["CoveragesByTime"]:
         for group in period["Groups"]:
-            service = group["Attributes"]["SERVICE"]
+            instance_type = group["Attributes"]["INSTANCE_TYPE"]
             coverage = group["Coverage"]["CoverageHours"]
 
             total = float(coverage["TotalRunningHours"])
@@ -120,7 +120,7 @@ def ri_coverage_report(start_date, end_date):
             pct = float(coverage["CoverageHoursPercentage"])
 
             if total > 10:  # Only show services with meaningful usage
-                print(f"  {service:<43} {pct:>9.1f}% {od_hours:>14,.0f} {ri_hours:>9,.0f}")
+                print(f"  {instance_type:<43} {pct:>9.1f}% {od_hours:>14,.0f} {ri_hours:>9,.0f}")
 
     # Overall coverage
     total_coverage = response["Total"]["CoverageHours"]
@@ -171,7 +171,7 @@ savings_plan_utilization("2026-01-01", "2026-02-01")
 
 ## Report 4: Cost Trends with Anomaly Highlighting
 
-This report plots daily costs and highlights days that deviate significantly from the average.
+This report lists daily costs and highlights days that deviate significantly from the average.
 
 ```python
 import boto3
@@ -269,7 +269,7 @@ region_cost_report("2026-01-01", "2026-02-01")
 
 ## Automating Report Delivery
 
-Wrap your reports in a Lambda function triggered by CloudWatch Events on a schedule.
+Wrap your reports in a Lambda function triggered by an EventBridge scheduled rule on a schedule.
 
 ```hcl
 # Schedule weekly report delivery
