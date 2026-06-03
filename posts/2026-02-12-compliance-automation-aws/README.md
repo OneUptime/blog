@@ -83,6 +83,14 @@ resource "aws_config_config_rule" "s3_encryption" {
   }
 }
 
+resource "aws_config_config_rule" "s3_public_access" {
+  name = "s3-bucket-public-read-prohibited"
+  source {
+    owner             = "AWS"
+    source_identifier = "S3_BUCKET_PUBLIC_READ_PROHIBITED"
+  }
+}
+
 resource "aws_config_config_rule" "rds_encryption" {
   name = "rds-storage-encrypted"
   source {
@@ -222,6 +230,11 @@ resource "aws_config_remediation_configuration" "restricted_ssh" {
     resource_value = "RESOURCE_ID"
   }
 
+  parameter {
+    name         = "AutomationAssumeRole"
+    static_value = aws_iam_role.remediation.arn
+  }
+
   automatic                  = true
   maximum_automatic_attempts = 3
   retry_attempt_seconds      = 60
@@ -257,20 +270,40 @@ mainSteps:
             # Get current rules
             sg = ec2.describe_security_groups(GroupIds=[sg_id])['SecurityGroups'][0]
 
+            revoked = False
             for rule in sg['IpPermissions']:
-                if rule.get('FromPort') == 22 and rule.get('ToPort') == 22:
-                    for ip_range in rule.get('IpRanges', []):
-                        if ip_range.get('CidrIp') == '0.0.0.0/0':
-                            ec2.revoke_security_group_ingress(
-                                GroupId=sg_id,
-                                IpPermissions=[{
-                                    'IpProtocol': 'tcp',
-                                    'FromPort': 22,
-                                    'ToPort': 22,
-                                    'IpRanges': [{'CidrIp': '0.0.0.0/0'}]
-                                }]
-                            )
-                            return {'status': 'remediated', 'sg': sg_id}
+                from_port = rule.get('FromPort')
+                to_port = rule.get('ToPort')
+                if rule.get('IpProtocol') == 'tcp' and from_port <= 22 <= to_port:
+                    permission = {
+                        'IpProtocol': 'tcp',
+                        'FromPort': from_port,
+                        'ToPort': to_port
+                    }
+
+                    public_ipv4 = [
+                        ip_range for ip_range in rule.get('IpRanges', [])
+                        if ip_range.get('CidrIp') == '0.0.0.0/0'
+                    ]
+                    public_ipv6 = [
+                        ip_range for ip_range in rule.get('Ipv6Ranges', [])
+                        if ip_range.get('CidrIpv6') == '::/0'
+                    ]
+
+                    if public_ipv4:
+                        permission['IpRanges'] = public_ipv4
+                    if public_ipv6:
+                        permission['Ipv6Ranges'] = public_ipv6
+
+                    if public_ipv4 or public_ipv6:
+                        ec2.revoke_security_group_ingress(
+                            GroupId=sg_id,
+                            IpPermissions=[permission]
+                        )
+                        revoked = True
+
+            if revoked:
+                return {'status': 'remediated', 'sg': sg_id}
 
             return {'status': 'no_action_needed', 'sg': sg_id}
       InputPayload:
@@ -283,12 +316,14 @@ Security Hub aggregates findings from Config, GuardDuty, Inspector, and Macie in
 
 ```hcl
 # Enable Security Hub with compliance standards
-resource "aws_securityhub_account" "main" {}
+resource "aws_securityhub_account" "main" {
+  enable_default_standards = false
+}
 
 # Enable CIS AWS Foundations Benchmark
 resource "aws_securityhub_standards_subscription" "cis" {
   depends_on    = [aws_securityhub_account.main]
-  standards_arn = "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"
+  standards_arn = "arn:aws:securityhub:${var.region}::standards/cis-aws-foundations-benchmark/v/1.4.0"
 }
 
 # Enable AWS Foundational Security Best Practices
@@ -300,7 +335,7 @@ resource "aws_securityhub_standards_subscription" "aws_best_practices" {
 # Enable PCI DSS if applicable
 resource "aws_securityhub_standards_subscription" "pci" {
   depends_on    = [aws_securityhub_account.main]
-  standards_arn = "arn:aws:securityhub:${var.region}::standards/pci-dss/v/3.2.1"
+  standards_arn = "arn:aws:securityhub:${var.region}::standards/pci-dss/v/4.0.1"
 }
 ```
 
@@ -310,7 +345,6 @@ Generate compliance reports automatically for audit preparation.
 
 ```python
 import boto3
-import json
 from datetime import datetime
 
 def generate_compliance_report():
@@ -327,19 +361,50 @@ def generate_compliance_report():
 
     for standard in standards:
         standard_arn = standard['StandardsSubscriptionArn']
+        standards_id = f"standards/{standard['StandardsArn'].split(':standards/')[-1]}"
 
         # Get control results
         controls = []
         paginator = securityhub.get_paginator('describe_standards_controls')
         for page in paginator.paginate(StandardsSubscriptionArn=standard_arn):
-            controls.extend(page['Controls'])
+            controls.extend([
+                control for control in page['Controls']
+                if control['ControlStatus'] == 'ENABLED'
+            ])
 
-        passed = sum(1 for c in controls if c['ComplianceStatus'] == 'PASSED')
-        failed = sum(1 for c in controls if c['ComplianceStatus'] == 'FAILED')
+        # Get active failed findings for this standard
+        failed_findings = []
+        findings_paginator = securityhub.get_paginator('get_findings')
+        for page in findings_paginator.paginate(
+            Filters={
+                'ComplianceAssociatedStandardsId': [
+                    {'Value': standards_id, 'Comparison': 'EQUALS'}
+                ],
+                'ComplianceStatus': [
+                    {'Value': 'FAILED', 'Comparison': 'EQUALS'}
+                ],
+                'RecordState': [
+                    {'Value': 'ACTIVE', 'Comparison': 'EQUALS'}
+                ],
+                'WorkflowStatus': [
+                    {'Value': 'SUPPRESSED', 'Comparison': 'NOT_EQUALS'}
+                ]
+            }
+        ):
+            failed_findings.extend(page['Findings'])
+
+        failed_control_ids = {
+            finding.get('Compliance', {}).get('SecurityControlId')
+            for finding in failed_findings
+        }
+        failed_control_ids.discard(None)
+
+        failed = len(failed_control_ids)
         total = len(controls)
+        passed = total - failed
 
         standard_report = {
-            'name': standard_arn.split('/')[-2],
+            'name': standards_id,
             'total_controls': total,
             'passed': passed,
             'failed': failed,
@@ -352,7 +417,7 @@ def generate_compliance_report():
                     'remediation': c.get('RemediationUrl', 'N/A')
                 }
                 for c in controls
-                if c['ComplianceStatus'] == 'FAILED'
+                if c['ControlId'] in failed_control_ids
             ]
         }
 
