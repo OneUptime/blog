@@ -24,7 +24,7 @@ A credential report is a CSV file containing one row per IAM user (including the
 
 ## Generating a Credential Report
 
-Credential reports are generated on demand. They take a few seconds to build.
+Credential reports can be requested on demand. If IAM generated a report within the last four hours, you get the most recent report; otherwise IAM generates a new one, which usually takes a few seconds to build.
 
 ```bash
 # Generate a fresh credential report
@@ -43,9 +43,9 @@ aws iam get-credential-report \
 You can also check when the last report was generated:
 
 ```bash
-# Check the generation status and timestamp
-aws iam generate-credential-report \
-  --query '{State: State, Date: Description}'
+# Check the report timestamp
+aws iam get-credential-report \
+  --query '{GeneratedTime: GeneratedTime, ReportFormat: ReportFormat}'
 ```
 
 ## Reading the Report
@@ -71,7 +71,11 @@ Here's a Python script that analyzes a credential report and flags common securi
 import boto3
 import csv
 from io import StringIO
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
+
+def is_true(value):
+    """Credential report booleans are strings such as true/false."""
+    return str(value).lower() == "true"
 
 def run_credential_audit():
     """
@@ -98,14 +102,14 @@ def run_credential_audit():
 
         # Check 1: Root account MFA
         if user == "<root_account>":
-            if row["mfa_active"] == "false":
+            if not is_true(row["mfa_active"]):
                 findings.append({
                     "severity": "CRITICAL",
                     "user": user,
                     "issue": "Root account does not have MFA enabled"
                 })
 
-            if row.get("access_key_1_active") == "true":
+            if is_true(row.get("access_key_1_active")) or is_true(row.get("access_key_2_active")):
                 findings.append({
                     "severity": "HIGH",
                     "user": user,
@@ -114,7 +118,7 @@ def run_credential_audit():
             continue
 
         # Check 2: Console users without MFA
-        if row["password_enabled"] == "true" and row["mfa_active"] == "false":
+        if is_true(row["password_enabled"]) and not is_true(row["mfa_active"]):
             findings.append({
                 "severity": "HIGH",
                 "user": user,
@@ -122,7 +126,7 @@ def run_credential_audit():
             })
 
         # Check 3: Unused console passwords (no login in 90+ days)
-        if row["password_enabled"] == "true":
+        if is_true(row["password_enabled"]):
             last_used = row.get("password_last_used", "N/A")
             if last_used not in ("N/A", "no_information", "not_supported"):
                 last_login = datetime.fromisoformat(
@@ -139,7 +143,7 @@ def run_credential_audit():
         # Check 4: Old access keys (not rotated in 90+ days)
         for key_num in ["1", "2"]:
             active = row.get(f"access_key_{key_num}_active", "false")
-            if active != "true":
+            if not is_true(active):
                 continue
 
             rotated = row.get(f"access_key_{key_num}_last_rotated", "N/A")
@@ -161,7 +165,7 @@ def run_credential_audit():
         # Check 5: Unused access keys (not used in 90+ days)
         for key_num in ["1", "2"]:
             active = row.get(f"access_key_{key_num}_active", "false")
-            if active != "true":
+            if not is_true(active):
                 continue
 
             last_used = row.get(
@@ -171,7 +175,7 @@ def run_credential_audit():
                 findings.append({
                     "severity": "MEDIUM",
                     "user": user,
-                    "issue": f"Access key {key_num} has never been used"
+                    "issue": f"Access key {key_num} has no last-used data"
                 })
                 continue
 
@@ -247,8 +251,8 @@ There are a few things credential reports don't cover:
 
 - **IAM roles**: The report only includes IAM users, not roles. For role auditing, you need to use other APIs.
 - **Permission details**: The report shows credentials, not what permissions those credentials grant.
-- **Real-time data**: Reports are snapshots. There can be a delay of up to 4 hours.
-- **Service account usage**: The report shows when keys were used but not what they were used for.
+- **Real-time data**: Reports are snapshots. You can generate a credential report as often as once every 4 hours, so recent changes may not appear in a new report immediately.
+- **Service account usage**: The report shows when keys were used and the last service and Region, but not the specific API actions or resources.
 
 For role-level auditing, use the IAM Access Advisor:
 
@@ -300,9 +304,14 @@ def compare_reports(old_file, new_file):
 
     # Check for changes
     for user in set(old.keys()) & set(new.keys()):
-        if old[user]["mfa_active"] == "true" and new[user]["mfa_active"] == "false":
+        old_mfa = old[user]["mfa_active"].lower() == "true"
+        new_mfa = new[user]["mfa_active"].lower() == "true"
+        old_key = old[user]["access_key_1_active"].lower() == "true"
+        new_key = new[user]["access_key_1_active"].lower() == "true"
+
+        if old_mfa and not new_mfa:
             print(f"[MFA REMOVED] {user}")
-        if old[user]["access_key_1_active"] == "false" and new[user]["access_key_1_active"] == "true":
+        if not old_key and new_key:
             print(f"[NEW ACCESS KEY] {user}")
 
 compare_reports("/tmp/cred-report-2026-01-12.csv", "/tmp/cred-report-2026-02-12.csv")
