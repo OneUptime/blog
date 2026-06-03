@@ -12,7 +12,7 @@ When your primary origin goes down, you don't want your users staring at error p
 
 ## How Origin Failover Works
 
-Origin failover uses origin groups, each containing a primary and secondary origin. When CloudFront sends a request to the primary origin and gets back a configured error status code (like 500, 502, 503, or 504), it automatically retries the same request against the secondary origin. This happens transparently - the user just gets a slightly slower response instead of an error.
+Origin failover uses origin groups, each containing a primary and secondary origin. When CloudFront sends a `GET`, `HEAD`, or `OPTIONS` request to the primary origin and gets back a configured error status code (like 500, 502, 503, or 504), it automatically retries the same request against the secondary origin. This happens transparently - the user just gets a slightly slower response instead of an error.
 
 ```mermaid
 sequenceDiagram
@@ -128,8 +128,14 @@ Point your cache behavior at the origin group:
   "DefaultCacheBehavior": {
     "TargetOriginId": "app-failover-group",
     "ViewerProtocolPolicy": "redirect-to-https",
-    "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
-    "CachedMethods": ["GET", "HEAD"],
+    "AllowedMethods": {
+      "Quantity": 7,
+      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
+    },
     "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
     "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3"
   }
@@ -156,8 +162,13 @@ A practical pattern is failing over to a static S3 bucket that shows a maintenan
         "Id": "app-server",
         "DomainName": "app-alb.us-east-1.elb.amazonaws.com",
         "CustomOriginConfig": {
+          "HTTPPort": 80,
           "HTTPSPort": 443,
-          "OriginProtocolPolicy": "https-only"
+          "OriginProtocolPolicy": "https-only",
+          "OriginSslProtocols": {
+            "Quantity": 1,
+            "Items": ["TLSv1.2"]
+          }
         }
       },
       {
@@ -291,7 +302,7 @@ Worst case, that's 30+ seconds for connection timeouts before failover kicks in.
 }
 ```
 
-With these settings, failover happens after at most 15 seconds (5 second connection timeout + 10 second read timeout) instead of potentially much longer.
+With these settings, connection-based failover can happen after one 5 second connection timeout instead of potentially much longer. For `GET` and `HEAD` requests where CloudFront connects but the origin doesn't respond, the 10 second origin read timeout also affects how quickly CloudFront gives up on the primary origin.
 
 ## Monitoring Failover Events
 
@@ -312,16 +323,16 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
 ```
 
-Also check CloudFront access logs (standard or real-time) for the `x-edge-result-type` field. When failover happens, you'll see `Error` results from the primary followed by `Miss` results as requests go to the secondary.
+Also check CloudFront access logs (standard or real-time) for fields such as `sc-status`, `x-edge-result-type`, `x-edge-response-result-type`, and `time-to-first-byte`. Failover requests are usually reported as misses to the origin group, while `Error` values and 4xx/5xx status codes help you identify requests that still failed.
 
 For more on real-time monitoring, see our guide on [CloudFront real-time logging](https://oneuptime.com/blog/post/2026-02-12-cloudfront-real-time-logging/view).
 
 ## Limitations to Know
 
-- **No automatic failback**: CloudFront doesn't track origin health over time. Each request independently tries the primary first. Once the primary recovers, requests automatically go back to it.
-- **Only HTTP status codes trigger failover**: Connection timeouts trigger failover, but slow responses (within the timeout) that return 200 don't trigger failover even if the response is wrong.
+- **No global failover state**: CloudFront doesn't track origin health over time. Each request independently tries the primary first. Once the primary recovers, requests automatically go back to it.
+- **HTTP status codes and connection failures trigger failover**: Configured 4xx/5xx status codes and failed origin connections can trigger failover, but slow responses (within the timeout) that return 200 don't trigger failover even if the response is wrong.
 - **Two origins maximum per group**: You can't chain three origins.
-- **POST/PUT requests are retried**: Be careful with non-idempotent requests. If the primary processes the request but returns a 500 after processing, the secondary will also process it.
+- **Only GET, HEAD, and OPTIONS requests fail over**: CloudFront doesn't fail over for other viewer request methods such as `POST`, `PUT`, `PATCH`, or `DELETE`.
 
 ## Testing Failover
 
@@ -336,6 +347,7 @@ aws wafv2 update-web-acl \
   --name test-failover \
   --scope REGIONAL \
   --default-action '{"Block":{"CustomResponse":{"ResponseCode":503}}}' \
+  --rules '[]' \
   --id ACL_ID \
   --lock-token LOCK_TOKEN \
   --visibility-config '{"SampledRequestsEnabled":true,"CloudWatchMetricsEnabled":true,"MetricName":"test-failover"}'
