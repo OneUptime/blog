@@ -8,13 +8,13 @@ Description: A comprehensive guide to writing AppSpec files for AWS CodeDeploy, 
 
 ---
 
-The AppSpec file is the brain of every CodeDeploy deployment. It tells the agent exactly what files to copy, what permissions to set, and what scripts to run at each phase of the deployment. Get it wrong and your deployments will fail in confusing ways. Get it right and you've got a repeatable, reliable deployment process.
+The AppSpec file is the brain of every CodeDeploy deployment. For EC2/On-Premises deployments, it tells the agent exactly what files to copy, what permissions to set, and what scripts to run at each phase of the deployment. For ECS and Lambda deployments, it tells CodeDeploy which service or function version to deploy and which validation hooks to run. Get it wrong and your deployments will fail in confusing ways. Get it right and you've got a repeatable, reliable deployment process.
 
 This guide covers everything you need to know about AppSpec files - from basic structure to advanced hook configurations across EC2, ECS, and Lambda compute platforms.
 
 ## AppSpec File Basics
 
-The AppSpec file must be named `appspec.yml` (or `appspec.json` if you prefer JSON) and placed in the root of your deployment bundle. CodeDeploy won't find it if it's buried in a subdirectory.
+For EC2/On-Premises deployments, the AppSpec file must be a YAML file named `appspec.yml` and placed in the root of your deployment bundle. ECS and Lambda AppSpec revisions can be YAML or JSON, and can also be entered directly when you create the deployment.
 
 The structure varies depending on your compute platform, but the core concept stays the same: define what gets deployed and how.
 
@@ -94,7 +94,7 @@ A few rules to remember:
 
 - `source: /` copies the entire bundle
 - If the destination directory doesn't exist, CodeDeploy creates it
-- Files at the destination get overwritten during the Install phase
+- Files managed by the previous successful deployment are replaced during the Install phase. If CodeDeploy finds unmanaged files already at the destination, the deployment fails by default unless you set `file_exists_behavior: OVERWRITE` or `RETAIN`.
 - You can have multiple file mappings
 
 ### The `permissions` Section
@@ -126,7 +126,7 @@ The `pattern` field lets you apply permissions only to files matching a glob pat
 
 Hooks are where the real work happens. Each hook runs a script at a specific point in the deployment lifecycle.
 
-Here's the full lifecycle order for an in-place deployment:
+Here's the basic lifecycle order for an in-place deployment without load balancer traffic hooks:
 
 ```mermaid
 graph TD
@@ -146,7 +146,7 @@ The hooks you can define scripts for are:
 - **ApplicationStart** - Start your application.
 - **ValidateService** - Verify the deployment worked. If this fails, CodeDeploy marks it as failed.
 
-Each hook script definition takes three parameters:
+Each hook script definition supports these parameters. `location` is required; `timeout` and `runas` are optional:
 
 ```yaml
 hooks:
@@ -258,7 +258,7 @@ Resources:
   - TargetService:
       Type: AWS::ECS::Service
       Properties:
-        TaskDefinition: "arn:aws:ecs:us-east-1:123456789:task-definition/myapp:5"
+        TaskDefinition: "arn:aws:ecs:us-east-1:123456789012:task-definition/myapp:5"
         LoadBalancerInfo:
           ContainerName: "myapp-container"
           ContainerPort: 8080
@@ -276,7 +276,7 @@ For more on ECS deployments, see our guide on [setting up CodeDeploy for ECS](ht
 
 ## Lambda AppSpec
 
-Lambda AppSpec files define the function to deploy and the traffic shifting strategy:
+Lambda AppSpec files define the function versions to deploy and the validation hooks to run during traffic shifting:
 
 ```yaml
 # appspec.yml for Lambda deployments
@@ -300,27 +300,32 @@ Check out our detailed guide on [CodeDeploy for Lambda deployments](https://oneu
 
 ## JSON Format
 
-If you prefer JSON over YAML, CodeDeploy supports `appspec.json`:
+If you prefer JSON over YAML for ECS or Lambda deployments, CodeDeploy supports JSON AppSpec content. Here's the Lambda example in JSON:
 
 ```json
 {
   "version": 0.0,
-  "os": "linux",
-  "files": [
+  "Resources": [
     {
-      "source": "/",
-      "destination": "/var/www/myapp"
+      "MyFunction": {
+        "Type": "AWS::Lambda::Function",
+        "Properties": {
+          "Name": "my-lambda-function",
+          "Alias": "live",
+          "CurrentVersion": "1",
+          "TargetVersion": "2"
+        }
+      }
     }
   ],
-  "hooks": {
-    "AfterInstall": [
-      {
-        "location": "scripts/after_install.sh",
-        "timeout": 300,
-        "runas": "root"
-      }
-    ]
-  }
+  "Hooks": [
+    {
+      "BeforeAllowTraffic": "CodeDeployHookBeforeTraffic"
+    },
+    {
+      "AfterAllowTraffic": "CodeDeployHookAfterTraffic"
+    }
+  ]
 }
 ```
 
@@ -328,7 +333,7 @@ If you prefer JSON over YAML, CodeDeploy supports `appspec.json`:
 
 I've seen these trip up teams over and over:
 
-1. **Wrong filename** - It must be `appspec.yml`, not `Appspec.yml` or `appspec.yaml`.
+1. **Wrong filename for EC2/On-Premises** - It must be `appspec.yml`, not `Appspec.yml` or `appspec.yaml`.
 2. **Not in the root** - The file must be at the top level of your deployment bundle.
 3. **Bad YAML indentation** - YAML is whitespace-sensitive. Use spaces, not tabs.
 4. **Missing script permissions** - Hook scripts must be executable. Add `chmod +x` to your build step.
@@ -336,7 +341,7 @@ I've seen these trip up teams over and over:
 
 ## Tips for Production
 
-For a solid production setup, keep these things in mind. Always include a `ValidateService` hook - it's your last line of defense against bad deployments. Set reasonable timeouts based on actual timing, not guesses. Log everything in your hook scripts so you can debug failures quickly. And use `set -e` in bash scripts so they fail fast on errors rather than silently continuing.
+For a solid production setup, keep these things in mind. For EC2/On-Premises deployments, include a `ValidateService` hook - it's your last line of defense against bad deployments. Set reasonable timeouts based on actual timing, not guesses. Log everything in your hook scripts so you can debug failures quickly. And use `set -e` in bash scripts so they fail fast on errors rather than silently continuing.
 
 When things go wrong, check the CodeDeploy agent logs at `/var/log/aws/codedeploy-agent/codedeploy-agent.log` and your script output at `/opt/codedeploy-agent/deployment-root/<deployment-group>/<deployment-id>/logs/scripts.log`.
 
