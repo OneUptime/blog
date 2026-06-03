@@ -87,7 +87,7 @@ For a specific JSON key within the secret:
 arn:aws:secretsmanager:REGION:ACCOUNT:secret:SECRET_NAME:JSON_KEY::
 ```
 
-The trailing colons after the JSON key represent version-stage and version-id, which default to `AWSCURRENT` and latest.
+The trailing colons after the JSON key represent version-stage and version-id. If you omit both, ECS retrieves the version with the `AWSCURRENT` staging label.
 
 ## Terraform Configuration
 
@@ -185,7 +185,7 @@ resource "aws_ecs_task_definition" "app" {
       environment = [
         {
           name  = "DB_HOST"
-          value = aws_db_instance.production.endpoint
+          value = aws_db_instance.production.address
         }
       ]
 
@@ -302,12 +302,10 @@ resource "aws_cloudwatch_event_rule" "secret_rotation" {
 
   event_pattern = jsonencode({
     source      = ["aws.secretsmanager"]
-    detail-type = ["AWS API Call via CloudTrail"]
+    detail-type = ["AWS Service Event via CloudTrail"]
     detail = {
-      eventName = ["RotateSecret"]
-      requestParameters = {
-        secretId = [aws_secretsmanager_secret.db_creds.arn]
-      }
+      eventSource = ["secretsmanager.amazonaws.com"]
+      eventName   = ["RotationSucceeded"]
     }
   })
 }
@@ -322,6 +320,8 @@ resource "aws_cloudwatch_event_target" "redeploy" {
 ## Using Parameter Store as an Alternative
 
 For simpler cases where you don't need rotation, you can use SSM Parameter Store instead of Secrets Manager. ECS supports both.
+
+For Parameter Store values, the task execution role needs `ssm:GetParameters` permission for the parameter ARN.
 
 ```json
 {
