@@ -37,6 +37,8 @@ aws ses verify-domain-identity --domain example.com
 aws ses verify-email-identity --email-address contact@example.com
 ```
 
+For domain verification, add the DNS record returned by SES before sending from that domain. For email verification, click the verification link SES sends to that inbox.
+
 If you are in the SES sandbox (new accounts), you can only send to verified email addresses. Request production access through the AWS console to send to any address.
 
 ## Step 2: Build the Lambda Function
@@ -239,6 +241,13 @@ aws dynamodb update-time-to-live \
 ## Step 4: Set Up API Gateway
 
 ```bash
+REGION=us-east-1
+LAMBDA_FUNCTION_NAME=contact-form-handler
+LAMBDA_ARN=$(aws lambda get-function \
+  --function-name $LAMBDA_FUNCTION_NAME \
+  --query 'Configuration.FunctionArn' --output text)
+ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+
 # Create the REST API
 API_ID=$(aws apigateway create-rest-api \
   --name contact-form-api \
@@ -268,6 +277,30 @@ aws apigateway put-method \
   --resource-id $CONTACT_ID \
   --http-method OPTIONS \
   --authorization-type NONE
+
+# Connect both methods to the Lambda function with Lambda proxy integration
+for METHOD in POST OPTIONS; do
+  aws apigateway put-integration \
+    --rest-api-id $API_ID \
+    --resource-id $CONTACT_ID \
+    --http-method $METHOD \
+    --type AWS_PROXY \
+    --integration-http-method POST \
+    --uri "arn:aws:apigateway:$REGION:lambda:path/2015-03-31/functions/$LAMBDA_ARN/invocations"
+done
+
+# Allow API Gateway to invoke the Lambda function
+aws lambda add-permission \
+  --function-name $LAMBDA_FUNCTION_NAME \
+  --statement-id contact-form-api-gateway \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:$REGION:$ACCOUNT_ID:$API_ID/*/*/contact"
+
+# Deploy the API to the production stage
+aws apigateway create-deployment \
+  --rest-api-id $API_ID \
+  --stage-name production
 ```
 
 ## Step 5: Frontend Form
@@ -374,12 +407,14 @@ def verify_recaptcha(token):
     return result.get('success', False) and result.get('score', 0) >= 0.5
 ```
 
+Package `requests` with your Lambda deployment or provide it through a Lambda layer.
+
 Add the verification to your handler before sending the email:
 
 ```python
 # Check reCAPTCHA before processing the submission
 recaptcha_token = body.get('recaptchaToken')
-if recaptcha_token and not verify_recaptcha(recaptcha_token):
+if not recaptcha_token or not verify_recaptcha(recaptcha_token):
     return cors_response(403, {'error': 'reCAPTCHA verification failed'})
 ```
 
@@ -389,6 +424,9 @@ Besides sending an email, store submissions in DynamoDB for backup:
 
 ```python
 # Store every submission in DynamoDB as a backup
+import uuid
+from datetime import datetime, timezone
+
 submissions_table = dynamodb.Table('contact-form-submissions')
 
 def store_submission(body, source_ip):
@@ -399,15 +437,16 @@ def store_submission(body, source_ip):
         'subject': body.get('subject', ''),
         'message': body['message'],
         'sourceIp': source_ip,
-        'submittedAt': datetime.utcnow().isoformat(),
+        'submittedAt': datetime.now(timezone.utc).isoformat(),
         'ttl': int(time.time()) + (90 * 86400)  # Keep for 90 days
     })
 ```
 
 ## IAM Permissions
 
+IAM policy for the contact form Lambda:
+
 ```json
-// IAM policy for the contact form Lambda
 {
   "Version": "2012-10-17",
   "Statement": [
