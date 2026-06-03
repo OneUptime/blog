@@ -8,7 +8,7 @@ Description: A practical guide to building REST APIs with AWS Amplify and API Ga
 
 ---
 
-Amplify's REST API module gives you a quick way to create API Gateway endpoints backed by Lambda functions. You define your routes, Amplify provisions the API Gateway, Lambda functions, and IAM roles, and you get a client-side SDK to call your APIs with automatic authentication.
+Amplify's REST API module gives you a quick way to create API Gateway endpoints backed by Lambda functions. You define your routes, Amplify provisions the API Gateway, Lambda functions, and IAM roles, and you get a client-side SDK to call your APIs with authenticated, signed requests when your app is configured with Amplify Auth.
 
 It's a solid choice when you want a traditional REST API without the overhead of setting up API Gateway, Lambda, and their permissions manually.
 
@@ -60,7 +60,6 @@ const {
     GetCommand,
     PutCommand,
     DeleteCommand,
-    QueryCommand,
     ScanCommand,
 } = require('@aws-sdk/lib-dynamodb');
 const { randomUUID } = require('crypto');
@@ -75,8 +74,13 @@ exports.handler = async (event) => {
 
     const { httpMethod, path, pathParameters, body, requestContext } = event;
 
-    // Get the authenticated user's ID from the Cognito authorizer
-    const userId = requestContext?.authorizer?.claims?.sub || 'anonymous';
+    // Amplify CLI REST restrictions use AWS_IAM by default, so use the Cognito
+    // identity ID. If you configure a Cognito user pool authorizer yourself,
+    // requestContext.authorizer.claims.sub will also be available.
+    const userId =
+        requestContext?.identity?.cognitoIdentityId ||
+        requestContext?.authorizer?.claims?.sub ||
+        'anonymous';
 
     try {
         let response;
@@ -157,20 +161,21 @@ async function getItem(id, userId) {
 async function listItems(userId, queryParams) {
     const limit = parseInt(queryParams?.limit || '20', 10);
 
-    const result = await docClient.send(new QueryCommand({
+    const result = await docClient.send(new ScanCommand({
         TableName: TABLE_NAME,
-        IndexName: 'userId-createdAt-index',
-        KeyConditionExpression: 'userId = :userId',
+        FilterExpression: 'userId = :userId',
         ExpressionAttributeValues: {
             ':userId': userId,
         },
-        Limit: limit,
-        ScanIndexForward: false, // Newest first
     }));
 
+    const items = (result.Items || [])
+        .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+        .slice(0, limit);
+
     return successResponse(200, {
-        items: result.Items,
-        count: result.Count,
+        items,
+        count: items.length,
         lastKey: result.LastEvaluatedKey,
     });
 }
@@ -253,7 +258,7 @@ function errorResponse(statusCode, message) {
 
 ## Calling the API from Your App
 
-Amplify's REST API client automatically attaches the Cognito token to requests.
+For Amplify-generated REST APIs that use IAM authorization, Amplify's REST API client signs requests with the credentials from Amplify Auth. If you configure API Gateway with a Cognito user pool authorizer instead, pass a JWT in the `Authorization` header.
 
 Here's how to use the API client:
 
@@ -468,7 +473,9 @@ function withMiddleware(handler) {
         }
 
         // Extract user info
-        event.userId = event.requestContext?.authorizer?.claims?.sub;
+        event.userId =
+            event.requestContext?.identity?.cognitoIdentityId ||
+            event.requestContext?.authorizer?.claims?.sub;
 
         try {
             const result = await handler(event);
@@ -514,4 +521,4 @@ For securing these APIs with Cognito tokens, see [integrating Cognito with API G
 
 ## Wrapping Up
 
-Amplify's REST API module takes the plumbing out of building API Gateway + Lambda backends. You define routes, write handler logic, and the infrastructure is managed for you. The client-side SDK handles authentication automatically, so your frontend code stays clean. For simple CRUD APIs, it's hard to beat the speed of development. When you need more control - custom authorizers, VPC connections, or complex API Gateway configurations - you can always eject to CDK or Terraform while keeping the Amplify client libraries for your frontend.
+Amplify's REST API module takes the plumbing out of building API Gateway + Lambda backends. You define routes, write handler logic, and the infrastructure is managed for you. The client-side SDK handles authenticated request signing for Amplify-generated IAM-protected APIs, so your frontend code stays clean. For simple CRUD APIs, it's hard to beat the speed of development. When you need more control - custom authorizers, VPC connections, or complex API Gateway configurations - you can always eject to CDK or Terraform while keeping the Amplify client libraries for your frontend.
