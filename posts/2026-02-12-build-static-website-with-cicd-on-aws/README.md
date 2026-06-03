@@ -159,11 +159,21 @@ phases:
       - |
         aws s3 cp build/index.html s3://$S3_BUCKET/index.html \
           --cache-control "public, max-age=0, must-revalidate"
+      # Upload optional app shell metadata with no cache
+      - |
+        if [ -f build/service-worker.js ]; then
+          aws s3 cp build/service-worker.js s3://$S3_BUCKET/service-worker.js \
+            --cache-control "public, max-age=0, must-revalidate"
+        fi
+        if [ -f build/manifest.json ]; then
+          aws s3 cp build/manifest.json s3://$S3_BUCKET/manifest.json \
+            --cache-control "public, max-age=0, must-revalidate"
+        fi
       # Invalidate CloudFront cache
       - |
         aws cloudfront create-invalidation \
           --distribution-id $CLOUDFRONT_DIST_ID \
-          --paths "/index.html" "/manifest.json"
+          --paths "/index.html" "/service-worker.js" "/manifest.json"
       - echo "Deployment complete!"
 
 artifacts:
@@ -185,20 +195,19 @@ Create the CodeBuild project:
 aws codebuild create-project \
   --name static-website-build \
   --source '{
-    "type": "GITHUB",
-    "location": "https://github.com/youruser/your-website.git",
+    "type": "CODEPIPELINE",
     "buildspec": "buildspec.yml"
   }' \
   --environment '{
     "type": "LINUX_CONTAINER",
     "computeType": "BUILD_GENERAL1_SMALL",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux2023-x86_64-standard:5.0",
     "environmentVariables": [
       {"name": "S3_BUCKET", "value": "my-website-production"},
       {"name": "CLOUDFRONT_DIST_ID", "value": "EXXXXXXXXXX"}
     ]
   }' \
-  --artifacts '{"type": "NO_ARTIFACTS"}' \
+  --artifacts '{"type": "CODEPIPELINE"}' \
   --service-role arn:aws:iam::ACCOUNT_ID:role/codebuild-website-role \
   --cache '{"type": "LOCAL", "modes": ["LOCAL_SOURCE_CACHE", "LOCAL_CUSTOM_CACHE"]}'
 ```
@@ -218,15 +227,15 @@ aws codepipeline create-pipeline --pipeline '{
         "name": "SourceAction",
         "actionTypeId": {
           "category": "Source",
-          "owner": "ThirdParty",
-          "provider": "GitHub",
+          "owner": "AWS",
+          "provider": "CodeStarSourceConnection",
           "version": "1"
         },
         "configuration": {
-          "Owner": "youruser",
-          "Repo": "your-website",
-          "Branch": "main",
-          "OAuthToken": "YOUR_GITHUB_TOKEN"
+          "ConnectionArn": "arn:aws:codestar-connections:us-east-1:ACCOUNT_ID:connection/CONNECTION_ID",
+          "FullRepositoryId": "youruser/your-website",
+          "BranchName": "main",
+          "OutputArtifactFormat": "CODE_ZIP"
         },
         "outputArtifacts": [{"name": "SourceOutput"}]
       }]
@@ -393,8 +402,9 @@ aws cloudwatch put-metric-alarm \
   --period 300 \
   --threshold 5 \
   --comparison-operator GreaterThanThreshold \
-  --dimensions Name=DistributionId,Value=YOUR_DIST_ID \
+  --dimensions Name=DistributionId,Value=YOUR_DIST_ID Name=Region,Value=Global \
   --evaluation-periods 2 \
+  --region us-east-1 \
   --alarm-actions arn:aws:sns:us-east-1:ACCOUNT_ID:alerts
 ```
 
