@@ -16,17 +16,17 @@ Picking the wrong one means either overpaying for simple operations or fighting 
 
 | Feature | CloudFront Functions | Lambda@Edge |
 |---------|---------------------|-------------|
-| Runtime | JavaScript (ECMAScript 5.1) | Node.js, Python |
-| Execution time | < 1 ms | Up to 5s (viewer), 30s (origin) |
-| Memory | 2 MB | 128 MB - 10,240 MB |
-| Package size | 10 KB | 1 MB (viewer), 50 MB (origin) |
+| Runtime | JavaScript (ECMAScript 5.1 compliant, with runtime 2.0 support for some newer features) | Node.js, Python |
+| Execution time | < 1 ms | Up to 30s |
+| Memory | 2 MB | 128 MB (viewer), up to 10,240 MB (origin) |
+| Package size | 10 KB | 50 MB |
 | Network access | No | Yes |
 | File system | No | Yes (/tmp, 512 MB) |
 | Trigger points | Viewer request, viewer response | All four |
 | Pricing | ~$0.10 per million | ~$0.60 per million |
-| Scale | Millions of requests/sec | Thousands of requests/sec |
+| Scale | Millions of requests/sec | Up to 10,000 requests/sec per Region |
 
-The most important distinctions: CloudFront Functions can't make network calls, can't access origin triggers, and run in a restricted JavaScript environment. Lambda@Edge can do all of that but costs 6x more and runs 10-50x slower.
+The most important distinctions: CloudFront Functions can't make network calls, can't access origin triggers, and run in a restricted JavaScript environment. Lambda@Edge can do all of that but costs 6x more per invocation and adds more latency.
 
 ## When to Use CloudFront Functions
 
@@ -60,7 +60,7 @@ function handler(event) {
 }
 ```
 
-Note the syntax: CloudFront Functions use `function handler(event)` not `exports.handler`. They don't support `async/await` or ES6+ features.
+Note the syntax: CloudFront Functions use `function handler(event)` not `exports.handler`. The runtime is not Node.js, so you can't use `require`, npm packages, Node.js globals, or network APIs. For the most up-to-date JavaScript features, use JavaScript runtime 2.0.
 
 ### Cache Key Normalization
 
@@ -142,7 +142,7 @@ Use Lambda@Edge when your edge logic needs:
 - Network access (calling APIs, databases, or other AWS services)
 - Origin request/response triggers (not just viewer)
 - More than 2 MB of memory
-- Complex logic that needs modern JavaScript (async/await, ES6+)
+- Complex logic that needs a full Node.js runtime, npm packages, or JavaScript features that CloudFront Functions don't support
 - JWT verification with a third-party library
 - A/B testing with external configuration
 - Dynamic origin selection
@@ -153,7 +153,9 @@ This Lambda@Edge function validates JWTs by decoding and verifying the signature
 
 ```javascript
 // Lambda@Edge - viewer request
-const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
+
+const JWT_SECRET = 'replace-this-with-your-signing-secret';
 
 exports.handler = async (event) => {
   const request = event.Records[0].cf.request;
@@ -171,7 +173,7 @@ exports.handler = async (event) => {
   const token = authHeader[0].value.replace('Bearer ', '');
 
   try {
-    const payload = decodeAndVerifyJwt(token);
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ['HS256'] });
 
     // Forward user context to origin
     request.headers['x-user-id'] = [{
@@ -248,6 +250,7 @@ export class CloudFrontFunctionStack extends cdk.Stack {
       code: cloudfront.FunctionCode.fromFile({
         filePath: 'functions/url-rewriter.js',
       }),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
       comment: 'Rewrites URLs for SPA routing',
     });
 
@@ -255,13 +258,16 @@ export class CloudFrontFunctionStack extends cdk.Stack {
       code: cloudfront.FunctionCode.fromFile({
         filePath: 'functions/security-headers.js',
       }),
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
       comment: 'Adds security headers',
     });
+
+    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(bucket);
 
     // Create distribution with both functions
     new cloudfront.Distribution(this, 'Distribution', {
       defaultBehavior: {
-        origin: new origins.S3Origin(bucket),
+        origin: s3Origin,
         functionAssociations: [
           {
             function: urlRewriter,
@@ -311,14 +317,14 @@ Lambda@Edge is harder to test locally. The best approach is unit testing with mo
 
 ## Performance Comparison
 
-CloudFront Functions run in under 1 millisecond. Lambda@Edge typically takes 5-50ms for viewer triggers and 50-200ms for origin triggers (excluding cold starts). For high-traffic sites, that difference adds up.
+CloudFront Functions are designed for submillisecond execution. Lambda@Edge supports longer-running work, up to 30 seconds, and typically adds more latency because it runs in a full Lambda environment. For high-traffic sites, that difference adds up.
 
 Here's a rough cost comparison at 100 million requests/month:
 
 - **CloudFront Functions**: ~$10/month
 - **Lambda@Edge (viewer)**: ~$60/month + compute duration
 
-For simple operations, CloudFront Functions are 6x cheaper and 10x faster. The math only favors Lambda@Edge when you actually need its capabilities.
+For simple operations, CloudFront Functions are 6x cheaper per invocation and have substantially lower latency. The math only favors Lambda@Edge when you actually need its capabilities.
 
 ## Migration Strategy
 
@@ -326,7 +332,7 @@ If you're currently using Lambda@Edge for simple operations, consider migrating 
 
 1. Identify Lambda@Edge functions that don't make network calls
 2. Check if they only use viewer request/response triggers
-3. Rewrite in ES5.1 JavaScript (no async/await, no require)
+3. Rewrite for the CloudFront Functions JavaScript runtime (no `require`, npm packages, or network APIs)
 4. Test thoroughly with CloudFront's test-function API
 5. Deploy alongside Lambda@Edge, then switch over
 
@@ -347,7 +353,7 @@ graph TD
     D -->|Yes| C
     D -->|No| E{Code > 10KB?}
     E -->|Yes| C
-    E -->|No| F{Need ES6/async?}
+    E -->|No| F{Need Node.js/npm package?}
     F -->|Yes| C
     F -->|No| G[CloudFront Functions]
 ```
