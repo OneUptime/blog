@@ -35,7 +35,7 @@ export class HybridStack extends cdk.Stack {
     });
 
     // Virtual Private Gateway (AWS side of the VPN)
-    const vpnGateway = vpc.addVpnGateway({
+    vpc.enableVpnGateway({
       type: ec2.VpnConnectionType.IPSEC_1,
       amazonSideAsn: 64512,
     });
@@ -51,20 +51,18 @@ export class HybridStack extends cdk.Stack {
     const vpnConnection = new ec2.CfnVPNConnection(this, 'VpnConnection', {
       type: 'ipsec.1',
       customerGatewayId: customerGateway.ref,
-      vpnGatewayId: vpnGateway.gatewayId,
+      vpnGatewayId: vpc.vpnGatewayId!,
       staticRoutesOnly: false, // Use BGP for dynamic routing
-      options: {
-        tunnelOptions: [
-          {
-            preSharedKey: 'your-secure-psk-1',
-            tunnelInsideCidr: '169.254.10.0/30',
-          },
-          {
-            preSharedKey: 'your-secure-psk-2',
-            tunnelInsideCidr: '169.254.10.4/30',
-          },
-        ],
-      },
+      vpnTunnelOptionsSpecifications: [
+        {
+          preSharedKey: 'your-secure-psk-1',
+          tunnelInsideCidr: '169.254.10.0/30',
+        },
+        {
+          preSharedKey: 'your-secure-psk-2',
+          tunnelInsideCidr: '169.254.10.4/30',
+        },
+      ],
     });
   }
 }
@@ -85,7 +83,7 @@ graph LR
 
 Direct Connect takes weeks to provision (you're literally running fiber), but the benefits for hybrid workloads are significant:
 
-- Dedicated bandwidth: 1 Gbps, 10 Gbps, or 100 Gbps
+- Dedicated bandwidth: 1 Gbps, 10 Gbps, 100 Gbps, or 400 Gbps
 - Consistent latency (no internet variability)
 - Lower data transfer costs
 - Private connectivity (doesn't traverse the internet)
@@ -169,8 +167,8 @@ Storage Gateway bridges on-premises applications to AWS cloud storage. It suppor
 
 aws storagegateway create-nfs-file-share \
   --client-token "unique-token" \
-  --gateway-arn "arn:aws:storagegateway:us-east-1:123456789:gateway/sgw-12345" \
-  --role "arn:aws:iam::123456789:role/StorageGatewayRole" \
+  --gateway-arn "arn:aws:storagegateway:us-east-1:123456789012:gateway/sgw-12345" \
+  --role "arn:aws:iam::123456789012:role/StorageGatewayRole" \
   --location-arn "arn:aws:s3:::my-hybrid-bucket" \
   --default-storage-class "S3_STANDARD" \
   --client-list "10.0.0.0/16"
@@ -184,6 +182,8 @@ For bulk data movement between on-premises and AWS, DataSync is faster and more 
 
 ```typescript
 // DataSync task for regular data sync
+import * as datasync from 'aws-cdk-lib/aws-datasync';
+
 const datasyncTask = new datasync.CfnTask(this, 'SyncTask', {
   sourceLocationArn: onPremLocationArn,
   destinationLocationArn: s3LocationArn,
@@ -205,6 +205,8 @@ Use AWS IAM Identity Center (formerly SSO) with your on-premises Active Director
 
 ```typescript
 // Connect to on-premises AD through AWS Managed Microsoft AD
+import * as directoryservice from 'aws-cdk-lib/aws-directoryservice';
+
 const directory = new directoryservice.CfnMicrosoftAD(this, 'ManagedAD', {
   name: 'corp.example.com',
   password: 'SecurePassword123!', // Use Secrets Manager in production
@@ -259,7 +261,7 @@ For a comprehensive monitoring approach, check out our guide on [building a logg
 
 Hybrid architectures expand your attack surface. Some important security measures:
 
-- Encrypt all traffic between on-premises and AWS (VPN or Direct Connect with MACsec)
+- Encrypt all traffic between on-premises and AWS (VPN or Direct Connect with MACsec on supported dedicated connections)
 - Use security groups and NACLs to restrict access between environments
 - Implement least-privilege IAM policies for hybrid resources
 - Use AWS Systems Manager for patch management across both environments
