@@ -33,13 +33,13 @@ kubectl apply -f deployment.yaml --server-side
 
 ## Field Manager Identity
 
-Every server-side apply requires a field manager name that identifies who owns the fields:
+Every server-side apply request uses a field manager name that identifies who owns the fields. `kubectl` sets one by default, but you can specify it explicitly:
 
 ```bash
 # Apply with explicit field manager
 kubectl apply -f deployment.yaml \
   --server-side \
-  --field-manager=kubectl-client-side-apply
+  --field-manager=my-automation
 ```
 
 In Go code:
@@ -62,7 +62,7 @@ func applyResource(ctx context.Context, k8sClient client.Client, obj client.Obje
 Check which manager owns which fields:
 
 ```bash
-kubectl get deployment webapp -o yaml
+kubectl get deployment webapp -o yaml --show-managed-fields
 ```
 
 Look for the `managedFields` section:
@@ -216,6 +216,7 @@ When you try to modify a field owned by another manager, you get a conflict erro
 
 ```go
 func tryTakeOwnership(ctx context.Context, k8sClient client.Client) error {
+    replicas := int32(5)
     deployment := &appsv1.Deployment{
         TypeMeta: metav1.TypeMeta{
             APIVersion: "apps/v1",
@@ -226,7 +227,7 @@ func tryTakeOwnership(ctx context.Context, k8sClient client.Client) error {
             Namespace: "default",
         },
         Spec: appsv1.DeploymentSpec{
-            Replicas: ptr.To(int32(5)),  // autoscaler owns this
+            Replicas: &replicas,  // autoscaler owns this
         },
     }
 
@@ -247,6 +248,8 @@ Force take ownership if necessary:
 
 ```go
 func forceTakeOwnership(ctx context.Context, k8sClient client.Client) error {
+    replicas := int32(5)
+    force := true
     deployment := &appsv1.Deployment{
         TypeMeta: metav1.TypeMeta{
             APIVersion: "apps/v1",
@@ -257,13 +260,13 @@ func forceTakeOwnership(ctx context.Context, k8sClient client.Client) error {
             Namespace: "default",
         },
         Spec: appsv1.DeploymentSpec{
-            Replicas: ptr.To(int32(5)),
+            Replicas: &replicas,
         },
     }
 
     return k8sClient.Patch(ctx, deployment, client.Apply, &client.PatchOptions{
         FieldManager: "manual-scaler",
-        Force:        ptr.To(true),  // Force take ownership
+        Force:        &force,  // Force take ownership
     })
 }
 ```
@@ -311,10 +314,7 @@ func removeLabel(ctx context.Context, k8sClient client.Client) error {
         ObjectMeta: metav1.ObjectMeta{
             Name:      "webapp",
             Namespace: "default",
-            Labels: map[string]string{
-                "app": "webapp",
-                // Omit "managed-by" label to remove it
-            },
+            // Omit the previously owned "managed-by" label to remove it.
         },
     }
 
