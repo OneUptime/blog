@@ -243,7 +243,7 @@ foreach ($inst in $runningInstances) {
 
     $avgCpu = ($cpuMetric.Datapoints | Measure-Object -Property Average -Average).Average
 
-    if ($avgCpu -lt 5) {
+    if ($null -ne $avgCpu -and $avgCpu -lt 5) {
         $name = ($inst.Tags | Where-Object { $_.Key -eq 'Name' }).Value
         Write-Host "  $($inst.InstanceId) ($name) | $($inst.InstanceType) | Avg CPU: $([math]::Round($avgCpu, 2))%"
     }
@@ -277,9 +277,10 @@ $currentConfig = Get-LMFunction -FunctionName $FunctionName -Region $Region
 Write-Host "Current code SHA: $($currentConfig.Configuration.CodeSha256)"
 
 # Update the function code
+$zipBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $ZipPath).Path)
 $result = Update-LMFunctionCode `
     -FunctionName $FunctionName `
-    -ZipFilename $ZipPath `
+    -ZipFile $zipBytes `
     -Region $Region
 
 Write-Host "New code SHA: $($result.CodeSha256)"
