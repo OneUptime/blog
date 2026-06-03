@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Tag Editor, Tagging, Resource Management
 
-Description: Use AWS Tag Editor to find untagged or incorrectly tagged resources and apply tags in bulk across your entire AWS account or organization.
+Description: Use AWS Tag Editor to find untagged or incorrectly tagged resources and apply tags in bulk across your AWS account.
 
 ---
 
@@ -23,12 +23,12 @@ The most common use case is finding resources that are missing required tags. Le
 In the console, Tag Editor lets you search by:
 - **Region** (one, multiple, or all regions)
 - **Resource types** (specific types or all supported types)
-- **Tags** (resources with specific tag key/value pairs, or resources missing a specific tag)
+- **Tags** (resources with specific tag key/value pairs, or all resources of the selected types so you can inspect missing tags in the results)
 
-For the CLI approach, you can use the Resource Groups Tagging API:
+For the CLI approach, you can use the Resource Groups Tagging API for resources that are currently tagged or were previously tagged:
 
 ```bash
-# Find all resources in us-east-1 (no tag filter - gets everything)
+# Find tagged or previously tagged resources in us-east-1
 
 aws resourcegroupstaggingapi get-resources \
   --region us-east-1 \
@@ -36,20 +36,14 @@ aws resourcegroupstaggingapi get-resources \
   --output json
 ```
 
-To find resources missing a specific tag, you'll need a bit of filtering:
+`get-resources` doesn't return resources that have never had tags. To find resources missing a specific tag, use AWS Resource Explorer with a view that includes tags:
 
 ```bash
 # Find resources that DON'T have the 'Environment' tag
-aws resourcegroupstaggingapi get-resources \
-  --region us-east-1 \
-  --output json | python3 -c "
-import json, sys
-data = json.load(sys.stdin)
-for resource in data['ResourceTagMappingList']:
-    tags = {t['Key']: t['Value'] for t in resource.get('Tags', [])}
-    if 'Environment' not in tags:
-        print(f\"Missing Environment tag: {resource['ResourceARN']}\")
-" | head -50
+aws resource-explorer-2 search \
+  --query-string "region:us-east-1 -tag.key:Environment" \
+  --query "Resources[].Arn" \
+  --output text
 ```
 
 To find resources with a specific tag value:
@@ -195,7 +189,7 @@ aws resourcegroupstaggingapi untag-resources \
 
 ## Tag Compliance Reporting
 
-Build a compliance report to track your tagging health over time:
+Build a compliance report to track your tagging health over time for resources returned by the Resource Groups Tagging API:
 
 ```python
 import boto3
@@ -204,7 +198,8 @@ import json
 
 def generate_tag_compliance_report(region, required_tags):
     """
-    Generate a report showing tag compliance across all resources.
+    Generate a report showing tag compliance for resources returned by the
+    Resource Groups Tagging API.
     """
     client = boto3.client('resourcegroupstaggingapi', region_name=region)
     paginator = client.get_paginator('get_resources')
