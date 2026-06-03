@@ -65,17 +65,19 @@ kubectl get cephobjectstore -n rook-ceph
 
 ## Exposing Object Store Service
 
-Create a Service to access the object store.
+Rook creates an internal Service named `rook-ceph-rgw-my-store`. Create an additional Service only when you need external access to the object store.
 
 ```yaml
 # object-store-service.yaml
 apiVersion: v1
 kind: Service
 metadata:
-  name: rook-ceph-rgw-my-store
+  name: rook-ceph-rgw-my-store-external
   namespace: rook-ceph
   labels:
     app: rook-ceph-rgw
+    rook_cluster: rook-ceph
+    rook_object_store: my-store
 spec:
   ports:
   - name: http
@@ -84,6 +86,7 @@ spec:
     targetPort: 80
   selector:
     app: rook-ceph-rgw
+    rook_cluster: rook-ceph
     rook_object_store: my-store
   type: LoadBalancer  # Or ClusterIP/NodePort based on needs
 ```
@@ -238,7 +241,7 @@ spec:
         - |
           while true; do
             echo "$(date)" > backup-$(date +%s).txt
-            aws s3 cp backup-*.txt s3://$BUCKET_NAME/ --endpoint-url=$AWS_ENDPOINT_URL
+            aws s3 cp backup-*.txt s3://$BUCKET_NAME/ --endpoint-url=http://$AWS_HOST:$AWS_PORT
             sleep 300
           done
         env:
@@ -257,11 +260,16 @@ spec:
             configMapKeyRef:
               name: app-bucket
               key: BUCKET_NAME
-        - name: AWS_ENDPOINT_URL
+        - name: AWS_HOST
           valueFrom:
             configMapKeyRef:
               name: app-bucket
               key: BUCKET_HOST
+        - name: AWS_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: app-bucket
+              key: BUCKET_PORT
 ```
 
 ## Bucket Policies and Access Control
@@ -323,8 +331,8 @@ Prometheus metrics:
 rate(ceph_rgw_req[5m])
 
 # Bandwidth
-rate(ceph_rgw_sent[5m])
-rate(ceph_rgw_received[5m])
+rate(ceph_rgw_op_global_put_obj_bytes[5m])
+rate(ceph_rgw_op_global_get_obj_bytes[5m])
 
 # Error rate
 rate(ceph_rgw_failed_req[5m])
@@ -332,7 +340,7 @@ rate(ceph_rgw_failed_req[5m])
 
 ## Multi-Site Replication
 
-Configure replication between object stores for disaster recovery.
+Define the realm, zonegroup, and zone resources used by multi-site object stores, then reference the zone from a CephObjectStore.
 
 ```yaml
 # Configure realm, zonegroup, and zone for multi-site
@@ -363,6 +371,18 @@ spec:
   dataPool:
     replicated:
       size: 3
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStore
+metadata:
+  name: zone-a-store
+  namespace: rook-ceph
+spec:
+  zone:
+    name: zone-a
+  gateway:
+    port: 80
+    instances: 1
 ```
 
 ## Performance Tuning
@@ -412,7 +432,7 @@ lifecycle_config = {
     'Rules': [{
         'Id': 'Delete old backups',
         'Status': 'Enabled',
-        'Prefix': 'backups/',
+        'Filter': {'Prefix': 'backups/'},
         'Expiration': {'Days': 30}
     }]
 }
