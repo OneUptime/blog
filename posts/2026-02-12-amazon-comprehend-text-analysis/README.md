@@ -152,7 +152,7 @@ for the specific dataset.
 
 ## Syntax Analysis
 
-Syntax analysis breaks text down into its grammatical components - parts of speech, tokens, and their relationships.
+Syntax analysis breaks text down into its grammatical components - parts of speech and tokens.
 
 ```python
 def analyze_syntax(text, language='en'):
