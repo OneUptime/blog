@@ -38,7 +38,7 @@ spec:
       serviceAccountName: velero
       containers:
       - name: verify
-        image: velero/velero:v1.12.0
+        image: your-registry/velero-verifier:v1.18.1
         command:
         - /bin/bash
         - -c
@@ -48,23 +48,24 @@ spec:
 
           BACKUP_NAME="$1"
           TEST_NAMESPACE="backup-test-$(date +%s)"
+          RESTORE_NAME="test-restore-$(date +%s)"
 
           echo "Verifying backup: $BACKUP_NAME"
 
           # Create restore to test namespace
-          velero restore create test-restore-$(date +%s) \
-            --from-backup $BACKUP_NAME \
-            --namespace-mappings production:$TEST_NAMESPACE \
+          velero restore create "$RESTORE_NAME" \
+            --from-backup "$BACKUP_NAME" \
+            --namespace-mappings "production:$TEST_NAMESPACE" \
             --wait
 
           # Check if restore succeeded
-          RESTORE_STATUS=$(velero restore get test-restore-* -o json | jq -r '.items[0].status.phase')
+          RESTORE_STATUS=$(kubectl get restores.velero.io "$RESTORE_NAME" -n velero -o jsonpath='{.status.phase}')
 
           if [ "$RESTORE_STATUS" = "Completed" ]; then
             echo "Backup verification successful"
 
             # Cleanup test namespace
-            kubectl delete namespace $TEST_NAMESPACE --wait=false
+            kubectl delete namespace "$TEST_NAMESPACE" --wait=false
 
             exit 0
           else
@@ -72,12 +73,13 @@ spec:
             exit 1
           fi
         args:
+        - "verify-backup"
         - "daily-backup-latest"
       restartPolicy: Never
   backoffLimit: 3
 ```
 
-This Job restores a backup to a temporary namespace and verifies success.
+This Job restores a backup to a temporary namespace and verifies success. The verifier image should include `bash`, the Velero CLI, `kubectl`, and `jq`; the official Velero image is a Distroless image intended to run Velero itself.
 
 ## Implementing Comprehensive Verification Script
 
@@ -102,14 +104,15 @@ echo "=========================================="
 # Step 1: Verify backup exists and is complete
 
 echo "Step 1: Checking backup status..."
-BACKUP_STATUS=$(velero backup get $BACKUP_NAME -o json | jq -r '.status.phase')
+BACKUP_JSON=$(kubectl get backups.velero.io "$BACKUP_NAME" -n velero -o json)
+BACKUP_STATUS=$(echo "$BACKUP_JSON" | jq -r '.status.phase')
 
 if [ "$BACKUP_STATUS" != "Completed" ]; then
   echo "ERROR: Backup status is $BACKUP_STATUS"
   exit 1
 fi
 
-BACKUP_ERRORS=$(velero backup get $BACKUP_NAME -o json | jq -r '.status.errors // 0')
+BACKUP_ERRORS=$(echo "$BACKUP_JSON" | jq -r '.status.errors // 0')
 if [ "$BACKUP_ERRORS" -gt 0 ]; then
   echo "WARNING: Backup has $BACKUP_ERRORS errors"
 fi
@@ -118,25 +121,26 @@ echo "Backup status: OK"
 
 # Step 2: Perform restore to test namespace
 echo "Step 2: Restoring backup to test namespace..."
-velero restore create $RESTORE_NAME \
-  --from-backup $BACKUP_NAME \
-  --namespace-mappings production:$TEST_NAMESPACE \
+velero restore create "$RESTORE_NAME" \
+  --from-backup "$BACKUP_NAME" \
+  --namespace-mappings "production:$TEST_NAMESPACE" \
   --wait
 
 # Step 3: Check restore completion
 echo "Step 3: Verifying restore completion..."
-RESTORE_STATUS=$(velero restore describe $RESTORE_NAME -o json | jq -r '.status.phase')
+RESTORE_JSON=$(kubectl get restores.velero.io "$RESTORE_NAME" -n velero -o json)
+RESTORE_STATUS=$(echo "$RESTORE_JSON" | jq -r '.status.phase')
 
 if [ "$RESTORE_STATUS" != "Completed" ]; then
   echo "ERROR: Restore failed with status: $RESTORE_STATUS"
-  velero restore logs $RESTORE_NAME
+  velero restore logs "$RESTORE_NAME"
   exit 1
 fi
 
-RESTORE_ERRORS=$(velero restore describe $RESTORE_NAME -o json | jq -r '.status.errors // 0')
+RESTORE_ERRORS=$(echo "$RESTORE_JSON" | jq -r '.status.errors // 0')
 if [ "$RESTORE_ERRORS" -gt 0 ]; then
   echo "WARNING: Restore has $RESTORE_ERRORS errors"
-  velero restore logs $RESTORE_NAME | grep -i error
+  velero restore logs "$RESTORE_NAME" | grep -i error
 fi
 
 echo "Restore status: OK"
@@ -144,29 +148,30 @@ echo "Restore status: OK"
 # Step 4: Wait for pods to be ready
 echo "Step 4: Waiting for pods to start..."
 kubectl wait --for=condition=ready pod \
-  -n $TEST_NAMESPACE \
+  -n "$TEST_NAMESPACE" \
   --all \
   --timeout=5m || true
 
-RUNNING_PODS=$(kubectl get pods -n $TEST_NAMESPACE --field-selector=status.phase=Running --no-headers | wc -l)
-TOTAL_PODS=$(kubectl get pods -n $TEST_NAMESPACE --no-headers | wc -l)
+RUNNING_PODS=$(kubectl get pods -n "$TEST_NAMESPACE" --field-selector=status.phase=Running --no-headers | wc -l)
+TOTAL_PODS=$(kubectl get pods -n "$TEST_NAMESPACE" --no-headers | wc -l)
 
 echo "Pods running: $RUNNING_PODS/$TOTAL_PODS"
 
 # Step 5: Verify PVCs are bound
 echo "Step 5: Checking PVC status..."
-UNBOUND_PVCS=$(kubectl get pvc -n $TEST_NAMESPACE --field-selector=status.phase!=Bound --no-headers 2>/dev/null | wc -l)
+PVC_JSON=$(kubectl get pvc -n "$TEST_NAMESPACE" -o json)
+UNBOUND_PVCS=$(echo "$PVC_JSON" | jq '[.items[] | select(.status.phase != "Bound")] | length')
 
 if [ "$UNBOUND_PVCS" -gt 0 ]; then
   echo "WARNING: $UNBOUND_PVCS PVCs are not bound"
-  kubectl get pvc -n $TEST_NAMESPACE
+  kubectl get pvc -n "$TEST_NAMESPACE"
 fi
 
 # Step 6: Test application connectivity
 echo "Step 6: Testing application connectivity..."
-kubectl run test-connectivity -n $TEST_NAMESPACE \
+kubectl run test-connectivity -n "$TEST_NAMESPACE" \
   --image=curlimages/curl \
-  --rm -it --restart=Never -- \
+  --rm --attach --restart=Never --command -- \
   curl -s -o /dev/null -w "%{http_code}" http://myapp.$TEST_NAMESPACE.svc.cluster.local/health || true
 
 # Step 7: Generate verification report
@@ -195,8 +200,8 @@ cat /tmp/verification-report-$RESTORE_NAME.txt
 
 # Step 8: Cleanup test resources
 echo "Step 8: Cleaning up test resources..."
-kubectl delete namespace $TEST_NAMESPACE --wait=false
-velero restore delete $RESTORE_NAME --confirm
+kubectl delete namespace "$TEST_NAMESPACE" --wait=false
+velero restore delete "$RESTORE_NAME" --confirm
 
 echo "=========================================="
 echo "Backup verification completed successfully"
@@ -233,7 +238,7 @@ spec:
           serviceAccountName: velero
           containers:
           - name: verify
-            image: velero/velero:v1.12.0
+            image: your-registry/velero-verifier:v1.18.1
             command:
             - /bin/bash
             - /scripts/backup-verification.sh
@@ -243,9 +248,6 @@ spec:
             volumeMounts:
             - name: verification-script
               mountPath: /scripts
-            env:
-            - name: KUBECONFIG
-              value: /var/run/secrets/kubernetes.io/serviceaccount/kubeconfig
           volumes:
           - name: verification-script
             configMap:
@@ -278,7 +280,7 @@ spec:
       serviceAccountName: velero
       containers:
       - name: validate
-        image: postgres:15
+        image: your-registry/app-validator:postgres15
         command:
         - /bin/bash
         - -c
@@ -291,14 +293,14 @@ spec:
           echo "Validating PostgreSQL database..."
 
           # Wait for PostgreSQL to be ready
-          until kubectl exec -n $TEST_NAMESPACE deployment/postgres -- pg_isready; do
+          until kubectl exec -n "$TEST_NAMESPACE" deployment/postgres -- pg_isready; do
             echo "Waiting for PostgreSQL..."
             sleep 5
           done
 
           # Test database query
-          ROW_COUNT=$(kubectl exec -n $TEST_NAMESPACE deployment/postgres -- \
-            psql -U postgres -d myapp -t -c "SELECT COUNT(*) FROM users;")
+          ROW_COUNT=$(kubectl exec -n "$TEST_NAMESPACE" deployment/postgres -- \
+            psql -U postgres -d myapp -t -c "SELECT COUNT(*) FROM users;" | tr -d '[:space:]')
 
           echo "Database contains $ROW_COUNT users"
 
@@ -309,8 +311,8 @@ spec:
 
           # Test application API
           echo "Testing application API..."
-          RESPONSE=$(kubectl run test-api -n $TEST_NAMESPACE \
-            --image=curlimages/curl --rm -it --restart=Never -- \
+          RESPONSE=$(kubectl run test-api -n "$TEST_NAMESPACE" \
+            --image=curlimages/curl --rm --attach --restart=Never --command -- \
             curl -s http://api.$TEST_NAMESPACE.svc.cluster.local/healthz)
 
           if [[ "$RESPONSE" != *"healthy"* ]]; then
@@ -321,11 +323,12 @@ spec:
           echo "Application validation successful"
           exit 0
         args:
+        - "app-validation-job"
         - "backup-test-12345"
       restartPolicy: Never
 ```
 
-This Job performs application-specific validation after restore.
+This Job performs application-specific validation after restore. The validator image should include `bash`, `kubectl`, and the PostgreSQL client tools used by the script.
 
 ## Monitoring Verification Job Status
 
@@ -344,7 +347,7 @@ spec:
     rules:
     - alert: BackupVerificationFailed
       expr: |
-        kube_job_status_failed{job_name=~"backup-verification.*"} > 0
+        kube_job_failed{job_name=~"backup-verification.*", condition="true"} == 1
       for: 5m
       labels:
         severity: critical
@@ -354,7 +357,8 @@ spec:
 
     - alert: BackupVerificationMissing
       expr: |
-        time() - kube_job_status_completion_time{job_name=~"backup-verification.*"} > 172800
+        time() - max by (namespace) (kube_job_status_completion_time{job_name=~"backup-verification.*"}) > 172800
+        or absent(kube_job_status_completion_time{job_name=~"backup-verification.*"})
       labels:
         severity: warning
       annotations:
@@ -363,7 +367,7 @@ spec:
 
     - alert: BackupVerificationDurationHigh
       expr: |
-        kube_job_status_completion_time - kube_job_status_start_time > 3600
+        kube_job_status_completion_time{job_name=~"backup-verification.*"} - kube_job_status_start_time{job_name=~"backup-verification.*"} > 3600
       for: 5m
       labels:
         severity: warning
@@ -476,15 +480,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Configure kubectl
-      uses: azure/k8s-set-context@v1
+      uses: azure/k8s-set-context@v4
       with:
         kubeconfig: ${{ secrets.KUBECONFIG }}
 
     - name: Install Velero CLI
       run: |
-        wget https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz
-        tar -xvf velero-v1.12.0-linux-amd64.tar.gz
-        sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+        wget https://github.com/velero-io/velero/releases/download/v1.18.1/velero-v1.18.1-linux-amd64.tar.gz
+        tar -xvf velero-v1.18.1-linux-amd64.tar.gz
+        sudo mv velero-v1.18.1-linux-amd64/velero /usr/local/bin/
 
     - name: Run Backup Verification
       run: |
