@@ -10,7 +10,7 @@ Description: Train custom text classifiers with Amazon Comprehend to categorize 
 
 Comprehend's built-in sentiment and entity detection cover general use cases well, but most businesses have classification needs that are unique to their domain. Support ticket routing, document categorization, content tagging, compliance flagging - these all need classifiers trained on your specific categories and data. Amazon Comprehend Custom Classification lets you train your own text classifiers without writing a single line of ML code.
 
-You provide labeled training data, Comprehend trains the model, and you get an endpoint you can call to classify new documents. The whole process is managed - no infrastructure to set up, no hyperparameters to tune (unless you want to), and no ML expertise required.
+You provide labeled training data, Comprehend trains the model, and you create an endpoint you can call to classify new documents. The whole process is managed - no infrastructure to set up, no hyperparameters to tune, and no ML expertise required.
 
 ## When Custom Classification Makes Sense
 
@@ -18,7 +18,7 @@ Use custom classification when:
 
 - The built-in Comprehend features don't cover your categories (e.g., classifying support tickets as "billing", "technical", "feature request")
 - You need multi-label classification (a document can belong to multiple categories)
-- You have at least 50 labeled examples per category (more is better)
+- You have at least 50 labeled examples per category for multi-class CSV training, or at least 10 examples per label and 50 total documents for multi-label CSV training (more is better)
 - You need consistent, repeatable classification that doesn't depend on prompt engineering
 
 ## Preparing Training Data
@@ -79,7 +79,11 @@ def validate_training_data(file_path, multi_label=False):
             if multi_label:
                 labels = label.split('|')
                 for l in labels:
-                    label_counts[l.strip()] += 1
+                    clean_label = l.strip()
+                    if clean_label:
+                        label_counts[clean_label] += 1
+                    else:
+                        errors.append(f"Row {row_num}: Empty label in multi-label list")
             else:
                 label_counts[label] += 1
 
@@ -92,7 +96,9 @@ def validate_training_data(file_path, multi_label=False):
         print(f"  {label}: {count} ({count/total_rows:.1%})")
 
     # Check for minimum examples per class
-    min_examples = 50
+    min_examples = 10 if multi_label else 50
+    if multi_label and total_rows < 50:
+        errors.append(f"Multi-label training data has only {total_rows} documents (minimum: 50)")
     for label, count in label_counts.items():
         if count < min_examples:
             errors.append(f"Label '{label}' has only {count} examples (minimum: {min_examples})")
@@ -223,7 +229,7 @@ def classify_text(text, endpoint_arn):
         EndpointArn=endpoint_arn
     )
 
-    classes = response['Classes']
+    classes = response.get('Classes', response.get('Labels', []))
     # Sort by confidence
     classes.sort(key=lambda x: x['Score'], reverse=True)
 
@@ -252,6 +258,7 @@ for ticket in tickets:
 Here's a complete system that classifies incoming tickets and routes them to the right team.
 
 ```python
+import boto3
 import json
 
 class TicketRouter:
@@ -277,7 +284,9 @@ class TicketRouter:
             EndpointArn=self.endpoint_arn
         )
 
-        top_class = max(response['Classes'], key=lambda x: x['Score'])
+        predictions = response.get('Classes', response.get('Labels', []))
+        predictions.sort(key=lambda x: x['Score'], reverse=True)
+        top_class = predictions[0]
 
         if top_class['Score'] < self.threshold:
             # Low confidence - route to manual review
@@ -286,7 +295,7 @@ class TicketRouter:
                 'classification': 'UNCERTAIN',
                 'confidence': top_class['Score'],
                 'routing': {'queue': 'manual-review', 'priority': 'normal'},
-                'top_predictions': response['Classes'][:3]
+                'top_predictions': predictions[:3]
             }
 
         routing = self.ROUTING_MAP.get(top_class['Name'], {
