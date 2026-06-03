@@ -94,7 +94,7 @@ First, create the trust policy for the role in Account A.
 }
 ```
 
-The `ExternalId` condition adds an extra layer of security against confused deputy attacks. Always use it for cross-account role assumptions.
+The `ExternalId` condition adds an extra layer of security against confused deputy attacks, especially when a third party assumes roles on behalf of multiple customers. Use it when you're granting access to a third party or another account outside your zone of trust.
 
 Now attach a permissions policy to this role that grants S3 access.
 
@@ -166,6 +166,8 @@ Then attach a policy to the access point.
 }
 ```
 
+The underlying bucket policy also has to allow requests through that access point. For a cross-account access point owned by another account, the bucket owner can delegate access with a condition like `s3:DataAccessPointAccount`.
+
 Access points are especially useful when you've got multiple teams or accounts that need different levels of access to the same bucket.
 
 ## Using AWS Organizations for Simplified Access
@@ -196,9 +198,9 @@ This grants read access to every account in your organization. It's a single lin
 
 ## Handling Encryption
 
-Cross-account access gets trickier when your bucket uses KMS encryption. The accessing account needs both S3 permissions AND KMS key permissions.
+Cross-account access gets trickier when your bucket uses KMS encryption. The accessing principal needs both S3 permissions AND KMS key permissions.
 
-If the bucket uses SSE-KMS, you'll need to update the KMS key policy too.
+If the bucket uses SSE-KMS with a customer managed key, you'll need to update the KMS key policy too.
 
 ```json
 {
@@ -215,13 +217,15 @@ If the bucket uses SSE-KMS, you'll need to update the KMS key policy too.
 }
 ```
 
+For cross-account KMS access, the external account also needs an IAM policy that delegates those KMS permissions to the user or role. A key policy by itself is not enough.
+
 Forgetting the KMS piece is one of the most common reasons cross-account access fails. If you're getting access denied errors even though your S3 policies look right, check the encryption configuration first. For more on troubleshooting these kinds of issues, check out our post on [troubleshooting S3 403 errors](https://oneuptime.com/blog/post/2026-02-12-troubleshoot-s3-403-forbidden-access-denied/view).
 
 ## Object Ownership Gotcha
 
-There's a subtle issue with cross-account PutObject operations. By default, when Account B uploads an object to Account A's bucket, Account B owns that object - not Account A. This means Account A can't even read it without special permissions.
+There's a subtle issue with cross-account PutObject operations on older or ACL-enabled buckets. If the bucket uses the Object writer ownership setting, when Account B uploads an object to Account A's bucket, Account B owns that object - not Account A. This means Account A can't even read it without special permissions.
 
-The fix is to use S3 Object Ownership settings. Set the bucket to "Bucket owner enforced" to disable ACLs entirely and ensure the bucket owner always owns all objects.
+The fix is to use S3 Object Ownership settings. Set the bucket to "Bucket owner enforced" to disable ACLs entirely and ensure the bucket owner always owns all objects. This is the default for newly created S3 buckets, but it's still worth checking for existing buckets.
 
 ```bash
 # Set bucket ownership controls
