@@ -18,7 +18,7 @@ When a budget threshold is crossed, Budget Actions can take three types of actio
 
 1. **Apply an IAM policy**: Attach a restrictive policy to users, groups, or roles that prevents creating new resources.
 2. **Apply a Service Control Policy (SCP)**: Restrict an entire AWS account (requires AWS Organizations).
-3. **Target a specific resource**: Stop or terminate specific resources like EC2 instances.
+3. **Run an SSM document**: Stop specific Amazon EC2 or Amazon RDS instances.
 
 Actions can run automatically or require manual approval. For production environments, I'd recommend starting with manual approval until you're confident the actions won't disrupt legitimate workloads.
 
@@ -66,8 +66,13 @@ resource "aws_iam_role_policy" "budget_actions" {
       {
         Effect = "Allow"
         Action = [
-          "ec2:DescribeInstances",
-          "ec2:StopInstances"
+          "ec2:DescribeInstanceStatus",
+          "ec2:StartInstances",
+          "ec2:StopInstances",
+          "rds:DescribeDBInstances",
+          "rds:StartDBInstance",
+          "rds:StopDBInstance",
+          "ssm:StartAutomationExecution"
         ]
         Resource = "*"
       },
@@ -331,6 +336,7 @@ resource "aws_budgets_budget_action" "tier3_lockdown" {
   definition {
     scp_action_definition {
       policy_id = aws_organizations_policy.emergency_restrict.id
+      target_ids = ["111111111111"]
     }
   }
 
@@ -361,7 +367,7 @@ aws budgets describe-budget-action-histories \
 
 ## Reversing Actions
 
-When a new billing period starts or when the cost issue is resolved, you'll want to reverse the applied policies. Budget Actions can handle this automatically - when actual spend drops below the threshold (like at the start of a new month), the action is reversed.
+When a new billing period starts or when the cost issue is resolved, you'll want to reverse the applied policies. Budget Actions can handle this automatically for IAM and SCP actions at the beginning of the next budget period. Actions that target specific EC2 or RDS instances don't reset automatically.
 
 You can also manually reverse actions through the console or CLI.
 
@@ -370,7 +376,7 @@ aws budgets execute-budget-action \
   --account-id 123456789012 \
   --budget-name "dev-account-controlled" \
   --action-id "action-id-here" \
-  --execution-type REVERSE_ACTION
+  --execution-type REVERSE_BUDGET_ACTION
 ```
 
 ## Best Practices
