@@ -34,17 +34,23 @@ provider "kubernetes" {
   config_path    = "~/.kube/config"
   config_context = "my-cluster-context"
 }
+```
 
+```hcl
 # Or configure using explicit credentials
+
 provider "kubernetes" {
   host = "https://cluster-api.example.com:6443"
 
-  client_certificate     = file("~/.kube/client-cert.pem")
-  client_key             = file("~/.kube/client-key.pem")
-  cluster_ca_certificate = file("~/.kube/cluster-ca-cert.pem")
+  client_certificate     = file(pathexpand("~/.kube/client-cert.pem"))
+  client_key             = file(pathexpand("~/.kube/client-key.pem"))
+  cluster_ca_certificate = file(pathexpand("~/.kube/cluster-ca-cert.pem"))
 }
+```
 
+```hcl
 # Or use exec plugin (for AWS EKS, GKE, etc.)
+
 provider "kubernetes" {
   host                   = data.aws_eks_cluster.cluster.endpoint
   cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
@@ -307,9 +313,9 @@ resource "kubernetes_secret" "db_credentials" {
   }
 
   data = {
-    username = base64encode("appuser")
-    password = base64encode("securepassword123")
-    url      = base64encode("postgresql://appuser:securepassword123@postgres:5432/appdb")
+    username = "appuser"
+    password = "securepassword123"
+    url      = "postgresql://appuser:securepassword123@postgres:5432/appdb"
   }
 
   type = "Opaque"
@@ -319,19 +325,19 @@ resource "kubernetes_secret" "db_credentials" {
 resource "kubernetes_secret" "tls_cert" {
   metadata {
     name      = "tls-certificate"
-    namespace = kubernetes_namespace.production.metadata[0].name
+    namespace = kubernetes_namespace.development.metadata[0].name
   }
 
   data = {
-    "tls.crt" = filebase64("${path.module}/certs/tls.crt")
-    "tls.key" = filebase64("${path.module}/certs/tls.key")
+    "tls.crt" = file("${path.module}/certs/tls.crt")
+    "tls.key" = file("${path.module}/certs/tls.key")
   }
 
   type = "kubernetes.io/tls"
 }
 ```
 
-Secrets are base64-encoded automatically by Kubernetes. Terraform handles encoding when using the data attribute.
+Secret data is base64-encoded by Kubernetes when stored through the API. Terraform handles the encoding when using the data attribute.
 
 ## Managing Ingress Resources
 
@@ -341,10 +347,9 @@ Ingress resources route external HTTP/HTTPS traffic to services.
 resource "kubernetes_ingress_v1" "web_app" {
   metadata {
     name      = "web-app-ingress"
-    namespace = kubernetes_namespace.production.metadata[0].name
+    namespace = kubernetes_namespace.development.metadata[0].name
 
     annotations = {
-      "kubernetes.io/ingress.class"                = "nginx"
       "cert-manager.io/cluster-issuer"             = "letsencrypt-prod"
       "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
       "nginx.ingress.kubernetes.io/rate-limit"     = "100"
@@ -352,6 +357,8 @@ resource "kubernetes_ingress_v1" "web_app" {
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     tls {
       hosts       = ["app.example.com"]
       secret_name = kubernetes_secret.tls_cert.metadata[0].name
@@ -611,7 +618,7 @@ resource "kubernetes_network_policy" "web_app" {
       to {
         namespace_selector {
           match_labels = {
-            name = "kube-system"
+            "kubernetes.io/metadata.name" = "kube-system"
           }
         }
       }
@@ -631,7 +638,7 @@ Network policies implement zero-trust networking by explicitly defining allowed 
 
 Always use explicit dependencies between resources using depends_on when Terraform cannot infer them automatically. This ensures resources are created in the correct order.
 
-Store sensitive data in Terraform variables or use external secret management systems. Never commit secrets directly to version control.
+Store sensitive data in external secret management systems when possible. If you pass secrets through Terraform variables, mark them as sensitive and protect your state carefully because provider data can still be stored in state. Never commit secrets directly to version control.
 
 Use consistent labeling across all resources to enable easy filtering and management. Include labels for environment, team, application, and managed-by.
 
