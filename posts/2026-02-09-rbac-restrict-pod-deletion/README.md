@@ -317,6 +317,8 @@ Track unauthorized pod deletion attempts:
 # audit-policy.yaml
 apiVersion: audit.k8s.io/v1
 kind: Policy
+omitStages:
+- RequestReceived
 rules:
 # Log pod deletion attempts
 - level: Metadata
@@ -324,17 +326,6 @@ rules:
   - group: ""
     resources: ["pods"]
   verbs: ["delete"]
-
-# Log failed deletion attempts specifically
-- level: Metadata
-  resources:
-  - group: ""
-    resources: ["pods"]
-  verbs: ["delete"]
-  omitStages:
-  - RequestReceived
-  responseStatus:
-    code: 403
 ```
 
 Query for unauthorized attempts:
@@ -357,14 +348,10 @@ jq 'select(.objectRef.resource=="pods" and
 Alert on repeated attempts:
 
 ```yaml
-# Prometheus alert
+# Prometheus alert after exporting matching audit log events as a counter
 - alert: RepeatedPodDeletionAttempts
   expr: |
-    sum(rate(apiserver_audit_event_total{
-      resource="pods",
-      verb="delete",
-      responseStatus_code="403"
-    }[5m])) by (user) > 5
+    sum(rate(kubernetes_audit_failed_pod_deletions_total[5m])) by (user) > 5
   annotations:
     summary: "User {{ $labels.user }} attempting pod deletions repeatedly"
 ```
@@ -373,30 +360,30 @@ Alert on repeated attempts:
 
 Document the approved workflow:
 
-```markdown
+````markdown
 # Pod Management Guidelines
 
 ## ❌ Do NOT Delete Pods Directly
 ```bash
 kubectl delete pod my-app-abc123  # Causes immediate disruption
-```bash
+```
 
 ## ✅ Use Deployment Operations Instead
 
 ### Restart All Pods
 ```bash
 kubectl rollout restart deployment my-app
-```bash
+```
 
 ### Update Container Image
 ```bash
 kubectl set image deployment my-app app=my-app:v2.0
-```bash
+```
 
 ### Roll Back to Previous Version
 ```bash
 kubectl rollout undo deployment my-app
-```bash
+```
 
 ### Force Pod Recreation (if stuck)
 ```bash
@@ -404,8 +391,8 @@ kubectl rollout restart deployment my-app
 ## Or scale to 0 and back up
 kubectl scale deployment my-app --replicas=0
 kubectl scale deployment my-app --replicas=3
-```bash
-```text
+```
+````
 
 Provide training and onboarding materials explaining why direct pod deletion is restricted.
 
