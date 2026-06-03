@@ -8,9 +8,9 @@ Description: Learn how to implement RBAC policies and admission controls that en
 
 ---
 
-Applications running in Kubernetes should use ServiceAccount credentials, not user credentials. ServiceAccounts have well-defined scopes, can be easily rotated, and provide clear audit trails. User credentials in pods create security risks. If a pod is compromised, the attacker gains access with the user's full permissions across the cluster.
+Applications running in Kubernetes should use ServiceAccount credentials, not user credentials. ServiceAccounts have well-defined identities, ServiceAccount tokens can rotate, and ServiceAccounts provide clear audit trails. User credentials in pods create security risks. If a pod is compromised, the attacker gains access with the user's full permissions across the cluster.
 
-Enforcing ServiceAccount usage requires both technical controls and organizational policies. RBAC determines what ServiceAccounts can do. Admission controls prevent pods from using user credentials. Together, these mechanisms ensure all workloads use appropriate ServiceAccount identities.
+Enforcing ServiceAccount usage requires both technical controls and organizational policies. RBAC determines what ServiceAccounts can do. Admission controls can reject pods that use the default ServiceAccount or mount likely user credentials. Together, these mechanisms ensure all workloads use appropriate ServiceAccount identities.
 
 ## Understanding the Security Risk of User Credentials in Pods
 
@@ -22,9 +22,9 @@ Embedding user credentials in pods creates several problems:
 
 **Poor Auditability**: Audit logs show the user, not which pod performed an action. This obscures the true source of API calls.
 
-**No Namespace Isolation**: User permissions span multiple namespaces. A compromised pod in one namespace can access resources in others.
+**No Namespace Isolation**: User permissions can span multiple namespaces. A compromised pod in one namespace can access resources in others if the user has cross-namespace permissions.
 
-ServiceAccounts solve these issues by providing pod-specific, namespace-scoped identities with minimal required permissions.
+ServiceAccounts solve these issues by providing pod-specific, namespaced identities with minimal required permissions when paired with RBAC.
 
 ## Creating ServiceAccounts for Applications
 
@@ -50,7 +50,7 @@ rules:
 - apiGroups: [""]
   resources:
     - configmaps
-  verbs: ["get", "list"]
+  verbs: ["get"]
   resourceNames:
     - my-app-config
 
@@ -98,7 +98,7 @@ spec:
         image: company/my-app:v1.0
 ```
 
-The application automatically receives a ServiceAccount token mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`.
+The application automatically receives a ServiceAccount token mounted at `/var/run/secrets/kubernetes.io/serviceaccount/token`. In Kubernetes v1.22 and later, this is a short-lived projected token that the kubelet rotates.
 
 ## Detecting Pods Using User Credentials
 
@@ -167,12 +167,8 @@ def validate_pod():
         if 'secret' in volume:
             secret_name = volume['secret'].get('secretName', '')
 
-            # Allow ServiceAccount tokens
-            if 'token' in secret_name:
-                continue
-
             # Check if secret might be user credentials
-            suspicious_keywords = ['kubeconfig', 'user', 'admin', 'credential']
+            suspicious_keywords = ['kubeconfig', 'user', 'admin', 'credential', 'token']
             if any(keyword in secret_name.lower() for keyword in suspicious_keywords):
                 return deny_response(
                     req['uid'],
@@ -206,7 +202,11 @@ def deny_response(uid, message):
     })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8443, ssl_context='adhoc')
+    app.run(
+        host='0.0.0.0',
+        port=8443,
+        ssl_context=('/tls/tls.crt', '/tls/tls.key')
+    )
 ```
 
 Deploy and register the webhook:
@@ -220,10 +220,12 @@ metadata:
 webhooks:
 - name: serviceaccount.enforcer.example.com
   clientConfig:
+    caBundle: <base64-encoded-ca-bundle>
     service:
       name: serviceaccount-enforcer
       namespace: kube-system
       path: "/validate-pod"
+      port: 443
   rules:
   - operations: ["CREATE", "UPDATE"]
     apiGroups: [""]
@@ -245,7 +247,7 @@ kubectl label namespace production enforce-serviceaccount=true
 kubectl label namespace staging enforce-serviceaccount=true
 ```
 
-Now pods in these namespaces must use dedicated ServiceAccounts.
+Now pods in these namespaces must use dedicated ServiceAccounts. The webhook server must present a certificate trusted by the `caBundle`, and the Service should forward port 443 to the webhook container's port 8443.
 
 ## Disabling ServiceAccount Token Auto-Mounting
 
@@ -278,7 +280,7 @@ metadata:
 automountServiceAccountToken: false
 ```
 
-This prevents pods from accessing the Kubernetes API even if they try.
+This prevents Kubernetes from automatically mounting a ServiceAccount token. Without another credential, the pod cannot authenticate to the Kubernetes API.
 
 ## Auditing ServiceAccount Usage
 
@@ -291,8 +293,8 @@ kind: Policy
 rules:
 # Log all ServiceAccount API access
 - level: Metadata
-  users:
-    - "system:serviceaccount:*"
+  userGroups:
+    - "system:serviceaccounts"
   omitStages:
   - RequestReceived
 
@@ -314,13 +316,13 @@ jq 'select(.user.username | startswith("system:serviceaccount:") | not) |
   /var/log/kubernetes/audit.log
 ```
 
-This reveals users making direct API calls instead of using ServiceAccounts.
+This reveals non-ServiceAccount API calls that you can investigate for inappropriate user credential usage.
 
 ## Creating ServiceAccount Management Policies
 
 Document ServiceAccount best practices:
 
-```markdown
+````markdown
 # ServiceAccount Guidelines
 
 ## Creating ServiceAccounts
@@ -347,7 +349,7 @@ kubectl create rolebinding my-app-binding \
   --role=my-app-role \
   --serviceaccount=production:my-app \
   --namespace=production
-```bash
+```
 
 ## Using in Deployments
 
@@ -357,25 +359,25 @@ spec:
   containers:
   - name: app
     image: my-app:v1
-```bash
+```
 
-## ❌ Do NOT
+## Do NOT
 
 - Use user credentials in pods
 - Mount kubeconfig files as secrets
 - Share ServiceAccounts across teams
 - Use the `default` ServiceAccount for applications
-```text
+````
 
 ## Rotating ServiceAccount Tokens
 
-Kubernetes 1.24+ uses time-bound tokens that rotate automatically. For older clusters or long-lived tokens:
+Kubernetes v1.22 and later uses time-bound pod tokens that rotate automatically. Kubernetes v1.24 and later no longer auto-creates legacy token Secrets for every ServiceAccount. For older clusters or long-lived tokens:
 
 ```bash
 # Create a time-bound token (expires after 1 hour)
 kubectl create token my-app -n production --duration=1h
 
-# For long-lived tokens (not recommended), create a Secret
+# For non-expiring legacy tokens (not recommended), create a Secret
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Secret
@@ -394,33 +396,40 @@ Rotate regularly:
 # Delete old token secret
 kubectl delete secret my-app-token -n production
 
-# Create new one
-kubectl create secret generic my-app-token \
-  --from-literal=token=$(kubectl create token my-app -n production --duration=8760h) \
-  -n production
+# Recreate a legacy ServiceAccount token Secret
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: my-app-token
+  namespace: production
+  annotations:
+    kubernetes.io/service-account.name: my-app
+type: kubernetes.io/service-account-token
+EOF
 ```
 
 ## Monitoring ServiceAccount Permissions
 
-Create alerts for suspicious ServiceAccount activity:
+Create alerts for suspicious ServiceAccount activity from exported audit events. The exact metric and labels depend on your audit log exporter:
 
 ```yaml
 # Prometheus alert
 - alert: ServiceAccountEscalation
   expr: |
-    apiserver_audit_event_total{
+    audit_events_total{
       user=~"system:serviceaccount:.*",
       verb="create",
-      objectRef_resource=~"roles|rolebindings|clusterroles|clusterrolebindings"
+      resource=~"roles|rolebindings|clusterroles|clusterrolebindings"
     } > 0
   annotations:
     summary: "ServiceAccount attempting RBAC modifications"
 
 - alert: ServiceAccountSecretAccess
   expr: |
-    rate(apiserver_audit_event_total{
+    rate(audit_events_total{
       user=~"system:serviceaccount:.*",
-      objectRef_resource="secrets",
+      resource="secrets",
       verb="get"
     }[5m]) > 10
   annotations:
@@ -481,4 +490,4 @@ Run the migration:
 ./migrate-to-serviceaccounts.sh production
 ```
 
-Enforcing ServiceAccount usage for workloads improves security through least-privilege access, better auditability, and reduced credential sprawl. Admission webhooks prevent pods from using user credentials, while automated audits ensure compliance. By making ServiceAccounts the standard for pod authentication, you create a more secure and maintainable Kubernetes environment.
+Enforcing ServiceAccount usage for workloads improves security through least-privilege access, better auditability, and reduced credential sprawl. Admission webhooks can reject risky pod patterns, while automated audits ensure compliance. By making ServiceAccounts the standard for pod authentication, you create a more secure and maintainable Kubernetes environment.
