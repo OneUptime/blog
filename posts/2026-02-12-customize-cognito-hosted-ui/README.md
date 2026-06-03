@@ -22,7 +22,7 @@ The hosted UI handles several pages:
 - SAML/OIDC redirect initiation
 - Consent page for OAuth scopes
 
-All of these are customizable through the Cognito console or API.
+Branding for the Hosted UI (classic) is customizable through the Cognito console or API.
 
 ## Setting Up the Hosted UI
 
@@ -48,16 +48,16 @@ https://{domain}/login?client_id={clientId}&response_type=code&scope=openid+emai
 
 ## Basic Customization
 
-Cognito lets you customize the hosted UI through CSS and image uploads:
+Cognito lets you customize the Hosted UI (classic) through CSS and image uploads:
 
 ```hcl
 resource "aws_cognito_user_pool_ui_customization" "main" {
-  user_pool_id = aws_cognito_user_pool.main.id
+  user_pool_id = aws_cognito_user_pool_domain.main.user_pool_id
 
   # Custom CSS (max 131072 characters)
   css = file("cognito-custom.css")
 
-  # Logo image (max 100KB, JPG or PNG)
+  # Logo image (max 100KB, JPG, JPEG, or PNG)
   image_file = filebase64("logo.png")
 
   # Apply to all clients (use client_id for client-specific styling)
@@ -73,28 +73,26 @@ The hosted UI uses specific CSS classes you can override. Here's a comprehensive
 /* cognito-custom.css */
 
 /* Page background */
+.background-customizable {
+  background-color: #f5f5f5;
+}
+
+/* Header banner */
 .banner-customizable {
   background-color: #1a1a2e;
   padding: 25px 0;
+}
+
+/* Identity provider description */
+.idpDescription-customizable {
+  color: #333333;
+  font-size: 14px;
 }
 
 /* Logo container */
 .logo-customizable {
   max-width: 200px;
   max-height: 80px;
-}
-
-/* Main form container */
-.modal-content {
-  border-radius: 12px;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-}
-
-/* Form background */
-.modalCustomizable {
-  background-color: #ffffff;
-  border-radius: 12px;
-  padding: 30px;
 }
 
 /* Submit button */
@@ -141,15 +139,6 @@ The hosted UI uses specific CSS classes you can override. Here's a comprehensive
   color: #4361ee;
 }
 
-.anchor-customizable {
-  color: #4361ee;
-  text-decoration: none;
-}
-
-.anchor-customizable:hover {
-  text-decoration: underline;
-}
-
 /* Social sign-in buttons */
 .socialButton-customizable {
   border: 2px solid #e0e0e0;
@@ -160,6 +149,17 @@ The hosted UI uses specific CSS classes you can override. Here's a comprehensive
 }
 
 .socialButton-customizable:hover {
+  border-color: #4361ee;
+}
+
+/* Federated identity provider buttons */
+.idpButton-customizable {
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  color: #333333;
+}
+
+.idpButton-customizable:hover {
   border-color: #4361ee;
 }
 
@@ -176,35 +176,20 @@ The hosted UI uses specific CSS classes you can override. Here's a comprehensive
   margin: 10px 0;
 }
 
-/* Tab bar for sign-in / sign-up toggle */
-.tabBar-customizable {
-  border-bottom: 2px solid #e0e0e0;
-}
-
-.tab-customizable {
-  color: #666666;
-  font-weight: 600;
-}
-
-.tab-customizable:hover {
-  color: #4361ee;
-}
-
-/* Page footer */
-.footer-customizable {
-  color: #999999;
-  font-size: 12px;
-}
-
-/* Background color for the entire page */
-body {
-  background-color: #f5f5f5;
-}
-
 /* Password requirements hint */
-.password-requirements-customizable {
-  color: #888;
+.passwordCheck-valid-customizable {
+  color: #19BF00;
   font-size: 12px;
+}
+
+.passwordCheck-notValid-customizable {
+  color: #DF3312;
+  font-size: 12px;
+}
+
+/* Redirect text */
+.redirect-customizable {
+  text-align: center;
 }
 ```
 
@@ -225,7 +210,7 @@ Different app clients can have different branding:
 ```hcl
 # Customization for the main web app
 resource "aws_cognito_user_pool_ui_customization" "web" {
-  user_pool_id = aws_cognito_user_pool.main.id
+  user_pool_id = aws_cognito_user_pool_domain.main.user_pool_id
   client_id    = aws_cognito_user_pool_client.web_app.id
   css          = file("web-custom.css")
   image_file   = filebase64("web-logo.png")
@@ -233,7 +218,7 @@ resource "aws_cognito_user_pool_ui_customization" "web" {
 
 # Different branding for the partner portal
 resource "aws_cognito_user_pool_ui_customization" "partner" {
-  user_pool_id = aws_cognito_user_pool.main.id
+  user_pool_id = aws_cognito_user_pool_domain.main.user_pool_id
   client_id    = aws_cognito_user_pool_client.partner_app.id
   css          = file("partner-custom.css")
   image_file   = filebase64("partner-logo.png")
@@ -242,11 +227,16 @@ resource "aws_cognito_user_pool_ui_customization" "partner" {
 
 ## Customizing Email Templates
 
-Beyond the sign-in page, customize the verification and reset email templates:
+Beyond the sign-in page, customize the verification and reset email templates. Custom email message bodies and subjects require the user pool to send email with Amazon SES:
 
 ```hcl
 resource "aws_cognito_user_pool" "main" {
   name = "my-app-user-pool"
+
+  email_configuration {
+    email_sending_account = "DEVELOPER"
+    source_arn            = aws_ses_email_identity.myapp.arn
+  }
 
   # Verification email
   verification_message_template {
@@ -297,7 +287,7 @@ resource "aws_cognito_user_pool" "main" {
 
 ## Advanced Customization with Lambda
 
-For full control over email messages, use the Custom Message Lambda trigger:
+For full control over email messages, use the Custom Message Lambda trigger. As with message templates, setting `emailMessage` and `emailSubject` in the Lambda response requires the user pool to send email with Amazon SES:
 
 ```javascript
 // custom-message.js
@@ -357,6 +347,7 @@ The hosted UI has some constraints you should know about:
 - CSS changes are limited to predefined classes - you can't restructure the HTML
 - Maximum CSS size is 131,072 characters
 - Logo images must be under 100KB
+- The combined CSS, logo, and request headers for `SetUICustomization` must fit within the 135KB request limit
 - You can't add custom JavaScript
 - The layout and flow sequence are fixed
 
