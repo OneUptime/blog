@@ -32,7 +32,7 @@ unhealthy_pods=$(kubectl get pods -A --field-selector status.phase!=Running,stat
 notready_nodes=$(kubectl get nodes -o json | jq '[.items[] | select(.status.conditions[] | select(.type=="Ready" and .status!="True"))] | length')
 
 # Check API server errors
-api_errors=$(kubectl get --raw /metrics | grep apiserver_request_total | grep code=\"5 | wc -l)
+api_errors=$(kubectl get --raw /metrics | grep apiserver_request_total | grep 'code="5' | wc -l)
 
 echo "Unhealthy pods: $unhealthy_pods"
 echo "Not ready nodes: $notready_nodes"
@@ -48,7 +48,7 @@ fi
 
 ## Rolling Back Control Plane
 
-For managed Kubernetes services, control plane rollback is generally not supported. You must restore from etcd backup. For self-managed clusters, you have more options.
+For managed Kubernetes services, control plane rollback is generally not supported. Contact your provider support or recover by recreating the cluster from backups. For self-managed kubeadm clusters, restore the static pod manifests and etcd data that kubeadm backs up during an upgrade.
 
 ```bash
 #!/bin/bash
@@ -59,33 +59,25 @@ FAILED_VERSION="1.29.0"
 
 echo "Rolling back control plane from $FAILED_VERSION to $OLD_VERSION..."
 
-# Stop API server
-sudo systemctl stop kube-apiserver
+# Find the kubeadm manifest backup created during the failed upgrade
+MANIFEST_BACKUP_DIR=$(sudo find /etc/kubernetes/tmp -maxdepth 1 -type d -name 'kubeadm-backup-manifests-*' | sort | tail -n 1)
 
-# Stop controller manager
-sudo systemctl stop kube-controller-manager
+if [ -z "$MANIFEST_BACKUP_DIR" ]; then
+  echo "ERROR: kubeadm manifest backup not found"
+  exit 1
+fi
 
-# Stop scheduler
-sudo systemctl stop kube-scheduler
+# Restore static pod manifests. The kubelet will restart the control plane pods.
+sudo cp "$MANIFEST_BACKUP_DIR"/*.yaml /etc/kubernetes/manifests/
 
-# Replace binaries with old versions
-sudo cp /usr/local/bin/kube-apiserver.$OLD_VERSION /usr/local/bin/kube-apiserver
-sudo cp /usr/local/bin/kube-controller-manager.$OLD_VERSION /usr/local/bin/kube-controller-manager
-sudo cp /usr/local/bin/kube-scheduler.$OLD_VERSION /usr/local/bin/kube-scheduler
-
-# Update static pod manifests
-sudo sed -i "s/$FAILED_VERSION/$OLD_VERSION/g" /etc/kubernetes/manifests/kube-apiserver.yaml
-sudo sed -i "s/$FAILED_VERSION/$OLD_VERSION/g" /etc/kubernetes/manifests/kube-controller-manager.yaml
-sudo sed -i "s/$FAILED_VERSION/$OLD_VERSION/g" /etc/kubernetes/manifests/kube-scheduler.yaml
-
-# Start services
-sudo systemctl start kube-apiserver
-sleep 10
-sudo systemctl start kube-controller-manager
-sudo systemctl start kube-scheduler
+# Downgrade kubeadm-managed node binaries/packages to the previous patch version.
+# Ensure the pkgs.k8s.io apt repository points to the matching minor release first.
+sudo apt-get update
+sudo apt-get install -y --allow-downgrades kubeadm=${OLD_VERSION}-1.1 kubelet=${OLD_VERSION}-1.1 kubectl=${OLD_VERSION}-1.1
+sudo systemctl restart kubelet
 
 # Verify rollback
-kubectl version --short
+kubectl version
 kubectl get nodes
 ```
 
@@ -114,12 +106,13 @@ sudo systemctl stop etcd
 # Backup current data (just in case)
 sudo mv $ETCD_DATA_DIR ${ETCD_DATA_DIR}.backup-$(date +%Y%m%d-%H%M%S)
 
-# Restore from snapshot
-export ETCDCTL_API=3
-sudo etcdctl snapshot restore $BACKUP_FILE \
+# Restore from snapshot. In an HA etcd cluster, restore every member from the
+# same snapshot with that member's name and peer URL.
+sudo env ETCDCTL_API=3 etcdctl snapshot restore $BACKUP_FILE \
   --data-dir=$ETCD_DATA_DIR \
   --name=$ETCD_NAME \
   --initial-cluster=$ETCD_NAME=https://10.0.1.10:2380 \
+  --initial-cluster-token=etcd-cluster-1 \
   --initial-advertise-peer-urls=https://10.0.1.10:2380
 
 # Fix permissions
@@ -132,16 +125,14 @@ sudo systemctl start etcd
 sleep 10
 
 # Verify etcd health
-etcdctl endpoint health \
+ETCDCTL_API=3 etcdctl endpoint health \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
   --cert=/etc/kubernetes/pki/etcd/server.crt \
   --key=/etc/kubernetes/pki/etcd/server.key
 
-# Restart control plane components
-sudo systemctl restart kube-apiserver
-sudo systemctl restart kube-controller-manager
-sudo systemctl restart kube-scheduler
+# Restart kubelet so static pod control plane components reconnect to etcd
+sudo systemctl restart kubelet
 
 echo "etcd restored successfully"
 ```
@@ -180,10 +171,12 @@ ssh $NODE_NAME << EOF
   sudo systemctl stop kubelet
 
   # Install old kubelet version
-  sudo apt-get install -y --allow-downgrades kubelet=$OLD_VERSION-00
+  # Ensure the pkgs.k8s.io apt repository points to the matching minor release first.
+  sudo apt-get update
+  sudo apt-get install -y --allow-downgrades kubelet=$OLD_VERSION-1.1
 
   # Install old kubectl
-  sudo apt-get install -y --allow-downgrades kubectl=$OLD_VERSION-00
+  sudo apt-get install -y --allow-downgrades kubectl=$OLD_VERSION-1.1
 
   # Restart kubelet
   sudo systemctl start kubelet
@@ -203,19 +196,19 @@ kubectl uncordon $NODE_NAME
 kubectl get node $NODE_NAME -o wide
 ```
 
-For managed node groups (EKS, GKE, AKS), rolling back typically means replacing node groups:
+For managed node groups (EKS, GKE, AKS), rolling back typically means replacing node groups with nodes that are supported by the current control plane. EKS managed node groups cannot be rolled back in place to an earlier Kubernetes version or AMI version, and new managed node groups must use the cluster's Kubernetes version:
 
 ```bash
 #!/bin/bash
 # rollback-eks-nodegroup.sh
 
 CLUSTER_NAME="production"
-NEW_NODEGROUP="workers-v128"
-OLD_VERSION="1.28"
+NEW_NODEGROUP="workers-replacement"
+CLUSTER_VERSION="1.29"
 
-echo "Creating rollback node group with version $OLD_VERSION..."
+echo "Creating replacement node group with version $CLUSTER_VERSION..."
 
-# Create new node group with old version
+# Create new node group with the cluster's Kubernetes version
 aws eks create-nodegroup \
   --cluster-name $CLUSTER_NAME \
   --nodegroup-name $NEW_NODEGROUP \
@@ -223,7 +216,7 @@ aws eks create-nodegroup \
   --subnets subnet-abc123 subnet-def456 \
   --instance-types t3.large \
   --scaling-config minSize=3,maxSize=10,desiredSize=5 \
-  --kubernetes-version $OLD_VERSION
+  --kubernetes-version $CLUSTER_VERSION
 
 # Wait for new node group
 echo "Waiting for new node group..."
@@ -329,7 +322,7 @@ while true; do
   notready=$(kubectl get nodes -o json | jq '[.items[] | select(.status.conditions[] | select(.type=="Ready" and .status!="True"))] | length')
 
   # Check API server health
-  if ! kubectl get --raw /healthz > /dev/null 2>&1; then
+  if ! kubectl get --raw /readyz > /dev/null 2>&1; then
     echo "$(date): API server unhealthy"
     ((failure_count++))
   elif [ $unhealthy -gt 10 ] || [ $notready -gt 0 ]; then
@@ -402,15 +395,15 @@ echo "Validating cluster after rollback..."
 
 # Check control plane version
 echo "Control plane version:"
-kubectl version --short
+kubectl version
 
 # Check node versions
 echo "Node versions:"
 kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion
 
-# Check component health
-echo "Component health:"
-kubectl get componentstatuses
+# Check API server readiness
+echo "API server readiness:"
+kubectl get --raw /readyz
 
 # Check all pods
 unhealthy=$(kubectl get pods -A --field-selector status.phase!=Running,status.phase!=Succeeded -o json | jq '.items | length')
