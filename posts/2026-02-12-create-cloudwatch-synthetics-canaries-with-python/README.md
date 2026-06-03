@@ -8,20 +8,17 @@ Description: Create CloudWatch Synthetics canaries using Python to monitor your 
 
 ---
 
-CloudWatch Synthetics supports Python as a canary runtime alongside Node.js. If your team is more comfortable with Python, or if your existing monitoring scripts are in Python, you can write canaries using the Python Selenium runtime for browser-based checks and the Python runtime for API checks.
+CloudWatch Synthetics supports Python as a canary runtime alongside Node.js and Java. If your team is more comfortable with Python, or if your existing monitoring scripts are in Python, you can write canaries using the Python Selenium runtime for both browser-based checks and API checks.
 
 Python canaries are particularly popular for API monitoring because Python's requests-like patterns feel natural for HTTP testing. The Synthetics Python library provides wrappers that integrate with CloudWatch metrics and artifact storage.
 
 This guide covers creating Python canaries for API monitoring, browser testing, and custom checks.
 
-## Python Canary Runtimes
+## Python Canary Runtime
 
-CloudWatch Synthetics offers two Python runtimes:
+CloudWatch Synthetics offers Python runtimes under the **syn-python-selenium** family. They include Selenium WebDriver for browser-based canaries, but you can also use the same runtime for API and HTTP checks that do not create a browser instance.
 
-- **syn-python-selenium**: For browser-based canaries using Selenium WebDriver
-- **syn-python**: For API and HTTP canaries without a browser
-
-The API runtime is lighter and faster. Use it for endpoint monitoring. The Selenium runtime is for canaries that need to interact with web pages.
+Use direct HTTP requests for endpoint monitoring. Use Selenium WebDriver when a canary needs to interact with web pages.
 
 ## Step 1: Create an API Canary with Python
 
@@ -107,7 +104,7 @@ def check_endpoint(endpoint):
 
         # Check response time
         if duration_ms > 5000:
-            logger.warn(f"{name} took {duration_ms:.0f}ms - slower than 5s threshold")
+            logger.warning(f"{name} took {duration_ms:.0f}ms - slower than 5s threshold")
 
     except urllib.error.HTTPError as e:
         duration_ms = (time.time() - start_time) * 1000
@@ -147,19 +144,19 @@ zip -r canary-code.zip python/
 # Upload to S3
 aws s3 cp canary-code.zip s3://my-canary-artifacts-123456/api-canary/canary-code.zip
 
-# Create the canary with Python runtime
+# Create the canary with the Python Selenium runtime
 aws synthetics create-canary \
   --name api-health-check \
   --artifact-s3-location "s3://my-canary-artifacts-123456/api-canary/" \
   --execution-role-arn arn:aws:iam::123456789012:role/canary-execution-role \
   --schedule '{"Expression": "rate(5 minutes)"}' \
-  --runtime-version syn-python-selenium-3.0 \
+  --runtime-version syn-python-selenium-10.0 \
   --code '{
     "S3Bucket": "my-canary-artifacts-123456",
     "S3Key": "api-canary/canary-code.zip",
     "Handler": "api_canary.handler"
   }' \
-  --run-config '{"TimeoutInSeconds": 60, "MemoryInMBs": 960}'
+  --run-config '{"TimeoutInSeconds": 60, "MemoryInMB": 960}'
 
 # Start the canary
 aws synthetics start-canary --name api-health-check
@@ -365,7 +362,7 @@ def test_order_workflow():
             make_request('DELETE', f'/orders/{order_id}')
             logger.info("Test order deleted")
         except Exception as e:
-            logger.warn(f"Failed to clean up test order: {str(e)}")
+            logger.warning(f"Failed to clean up test order: {str(e)}")
 
     logger.info("Order workflow canary completed successfully")
 
