@@ -25,7 +25,7 @@ Without a DLQ, that event is simply discarded after the retries. Gone. No trace 
 
 ## Choosing Between SQS and SNS for Your DLQ
 
-Lambda supports two services as DLQ targets:
+Lambda supports two services as DLQ targets: standard Amazon SQS queues and standard Amazon SNS topics. FIFO queues and FIFO topics are not supported for Lambda DLQs.
 
 **Amazon SQS** is the better choice when you want to:
 - Reprocess failed events later (messages stay in the queue)
@@ -34,7 +34,7 @@ Lambda supports two services as DLQ targets:
 
 **Amazon SNS** is better when you want to:
 - Fan out failure notifications to multiple subscribers
-- Trigger alerts immediately upon failure
+- Trigger alerts when Lambda gives up on an event
 - Send failures to email, SMS, or other notification channels
 
 For most use cases, SQS is the practical choice. You can always add an SNS subscription later if you need notifications too.
@@ -172,8 +172,8 @@ aws lambda get-function-configuration \
 When Lambda sends a failed event to your DLQ, the message body is the original event payload. But the interesting stuff is in the message attributes:
 
 - `RequestID` - the Lambda request ID for correlation with CloudWatch Logs
-- `ErrorCode` - the HTTP status code (usually 200 for handled errors, or 5xx for crashes)
-- `ErrorMessage` - the error message from the function
+- `ErrorCode` - the HTTP status code
+- `ErrorMessage` - the first 1 KB of the error message from the function
 
 Here's a Python script that reads and processes DLQ messages.
 
@@ -261,20 +261,20 @@ Lambda Destinations were introduced after DLQs and offer more capabilities. Here
 | Success handling | No | Yes |
 | Failure handling | Yes | Yes |
 | Payload richness | Original event only | Event + response + metadata |
-| Target types | SQS, SNS | SQS, SNS, EventBridge, Lambda |
-| Invocation scope | Async only | Async only |
+| Target types | SQS, SNS | SQS, SNS, S3 (failure only), EventBridge, Lambda |
+| Invocation scope | Async only | Async invocations, plus supported event source mappings for some failure destinations |
 
 For new projects, consider using Destinations instead. Read more in our guide on [Lambda Destinations for asynchronous invocation](https://oneuptime.com/blog/post/2026-02-12-lambda-destinations-asynchronous-invocation/view). That said, DLQs are still perfectly valid, widely used, and simpler to reason about.
 
 ## Common Mistakes to Avoid
 
-**Missing IAM permissions.** The number one issue. Your Lambda execution role needs `sqs:SendMessage` (or `sns:Publish` for SNS) on the DLQ resource. Without it, Lambda silently drops the failed event.
+**Missing IAM permissions.** The number one issue. Your Lambda execution role needs `sqs:SendMessage` (or `sns:Publish` for SNS) on the DLQ resource. Without it, Lambda deletes the event and emits the `DeadLetterErrors` metric.
 
 **Not monitoring the DLQ.** If nobody's watching, failed events pile up and expire. Set up alarms and build a reprocessing pipeline.
 
 **Setting retention too low.** The default SQS retention is 4 days. For a DLQ, you probably want 14 days (the maximum) to give yourself time to investigate and reprocess.
 
-**Confusing DLQ sources.** If your Lambda function is triggered by an SQS queue, there are actually two DLQ configurations at play - one on the source SQS queue and one on the Lambda function. They serve different purposes. The source queue's DLQ catches messages that couldn't be delivered to Lambda, while Lambda's DLQ catches function execution failures.
+**Confusing DLQ sources.** If your Lambda function is triggered by an SQS queue, configure the DLQ on the source SQS queue's redrive policy. SQS event source mappings invoke Lambda synchronously, so the function-level Lambda DLQ for asynchronous invocations does not catch those processing failures.
 
 ## Automating Reprocessing with a DLQ Redrive
 
