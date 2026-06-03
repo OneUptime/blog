@@ -24,7 +24,7 @@ For production systems, this translates to lower cloud costs, simpler operations
 
 Triton Inference Server supports multiple ML frameworks including TensorFlow, PyTorch, ONNX, TensorRT, and even custom backends. It exposes models through HTTP and gRPC endpoints with OpenAPI documentation.
 
-The server expects models to follow a specific directory structure called the model repository. Each model has its own subdirectory with version folders and a configuration file. Triton watches this repository and dynamically loads models as they're added or updated.
+The server expects models to follow a specific directory structure called the model repository. Each model has its own subdirectory with version folders and a configuration file. Triton can load models at startup, poll the repository for changes, or load and unload models through the repository API depending on the model control mode you choose.
 
 This architecture makes it perfect for Kubernetes deployments where you can mount model repositories from PersistentVolumes, ConfigMaps, or pull them from object storage.
 
@@ -37,7 +37,7 @@ model-repository/
 ├── sentiment-analysis/
 │   ├── config.pbtxt
 │   └── 1/
-│       └── model.onnx
+│       └── model.pt
 ├── image-classifier/
 │   ├── config.pbtxt
 │   └── 1/
@@ -48,9 +48,9 @@ model-repository/
         └── model.pt
 ```
 
-The version folders (1, 2, 3, etc.) allow you to deploy multiple versions of the same model simultaneously. Triton can serve them concurrently or route traffic based on version requests.
+The version folders (1, 2, 3, etc.) allow you to deploy multiple versions of the same model simultaneously when the model's version policy allows it. Triton can serve them concurrently or route traffic based on version requests.
 
-Create a configuration file for each model. Here's an example for a PyTorch sentiment analysis model:
+Create a configuration file for each model. Here's an example for a TorchScript sentiment analysis model:
 
 ```protobuf
 # sentiment-analysis/config.pbtxt
@@ -62,19 +62,19 @@ input [
   {
     name: "input_ids"
     data_type: TYPE_INT64
-    dims: [ -1, 128 ]
+    dims: [ 128 ]
   },
   {
     name: "attention_mask"
     data_type: TYPE_INT64
-    dims: [ -1, 128 ]
+    dims: [ 128 ]
   }
 ]
 output [
   {
     name: "output"
     data_type: TYPE_FP32
-    dims: [ -1, 2 ]
+    dims: [ 2 ]
   }
 ]
 
@@ -173,7 +173,7 @@ spec:
           args:
             - tritonserver
             - --model-repository=/models/model-repository
-            - --strict-model-config=false  # Auto-generate config if missing
+            # Triton auto-completes supported model configs by default
             - --log-verbose=1
           ports:
             - containerPort: 8000
@@ -242,6 +242,8 @@ kind: Service
 metadata:
   name: triton-inference
   namespace: ml-inference
+  labels:
+    app: triton-server
 spec:
   selector:
     app: triton-server
@@ -272,39 +274,48 @@ kubectl apply -f triton-service.yaml
 Verify all models loaded successfully:
 
 ```bash
-kubectl port-forward -n ml-inference svc/triton-inference 8000:8000
+kubectl port-forward -n ml-inference svc/triton-inference 8000:8000 &
 
 # Check server status
 curl http://localhost:8000/v2/health/ready
 
-# List all loaded models
-curl http://localhost:8000/v2/models
+# List ready models
+curl -X POST http://localhost:8000/v2/repository/index \
+  -H "Content-Type: application/json" \
+  -d '{"ready": true}'
 ```
 
-You should see JSON output listing all your models with their versions and status.
+You should see JSON output listing the ready models with their versions and status.
 
 Test inference on a specific model:
 
 ```bash
 # Prepare input data
-cat > sentiment-input.json << 'EOF'
-{
-  "inputs": [
-    {
-      "name": "input_ids",
-      "shape": [1, 128],
-      "datatype": "INT64",
-      "data": [101, 2023, 2003, 1037, 2204, 3319, 102, ...]
-    },
-    {
-      "name": "attention_mask",
-      "shape": [1, 128],
-      "datatype": "INT64",
-      "data": [1, 1, 1, 1, 1, 1, 1, ...]
-    }
-  ]
-}
-EOF
+python3 - <<'PY'
+import json
+
+tokens = [101, 2023, 2003, 1037, 2204, 3319, 102]
+input_ids = tokens + [0] * (128 - len(tokens))
+attention_mask = [1] * len(tokens) + [0] * (128 - len(tokens))
+
+with open("sentiment-input.json", "w") as f:
+    json.dump({
+        "inputs": [
+            {
+                "name": "input_ids",
+                "shape": [1, 128],
+                "datatype": "INT64",
+                "data": input_ids
+            },
+            {
+                "name": "attention_mask",
+                "shape": [1, 128],
+                "datatype": "INT64",
+                "data": attention_mask
+            }
+        ]
+    }, f)
+PY
 
 # Send inference request
 curl -X POST http://localhost:8000/v2/models/sentiment-analysis/infer \
@@ -335,7 +346,9 @@ curl -X POST http://localhost:8000/v2/repository/models/new-model/load
 curl -X POST http://localhost:8000/v2/repository/models/old-model/unload
 
 # Check model status
-curl http://localhost:8000/v2/repository/models/sentiment-analysis
+curl -X POST http://localhost:8000/v2/repository/index \
+  -H "Content-Type: application/json" \
+  -d '{"ready": true}'
 ```
 
 This is powerful for managing resource-constrained environments where you want fine-grained control over which models consume GPU memory.
@@ -439,15 +452,21 @@ instance_group [
 Use rate limiting to prevent one model from monopolizing resources:
 
 ```protobuf
-# In model config
-rate_limiter {
-  resources [
-    {
-      name: "gpu_memory"
-      count: 2048  # MiB
+# In model config. Start Triton with --rate-limit enabled.
+instance_group [
+  {
+    count: 1
+    kind: KIND_GPU
+    rate_limiter {
+      resources [
+        {
+          name: "gpu_slots"
+          count: 1
+        }
+      ]
     }
-  ]
-}
+  }
+]
 ```
 
 ## Conclusion
