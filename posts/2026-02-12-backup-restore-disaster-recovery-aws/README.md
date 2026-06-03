@@ -91,14 +91,15 @@ aws backup create-backup-plan \
         "StartWindowMinutes": 60,
         "CompletionWindowMinutes": 180,
         "Lifecycle": {
-          "DeleteAfterDays": 35,
-          "MoveToColdStorageAfterDays": 7
+          "MoveToColdStorageAfterDays": 8,
+          "DeleteAfterDays": 98
         },
         "CopyActions": [
           {
             "DestinationBackupVaultArn": "arn:aws:backup:us-west-2:123456789:backup-vault:dr-vault",
             "Lifecycle": {
-              "DeleteAfterDays": 35
+              "MoveToColdStorageAfterDays": 8,
+              "DeleteAfterDays": 98
             }
           }
         ]
@@ -119,7 +120,7 @@ aws backup create-backup-plan \
 
 This plan does two things:
 - Hourly backups retained for 3 days (kept in the primary region for quick restores)
-- Daily backups copied to the DR region, moved to cold storage after a week, deleted after 35 days
+- Daily backups copied to the DR region, moved to cold storage after 8 days, deleted after 98 days
 
 ## Step 3: Assign Resources to the Backup Plan
 
@@ -131,7 +132,7 @@ aws backup create-backup-selection \
   --backup-plan-id "your-plan-id" \
   --backup-selection '{
     "SelectionName": "tagged-resources",
-    "IamRoleArn": "arn:aws:iam::123456789:role/AWSBackupServiceRole",
+    "IamRoleArn": "arn:aws:iam::123456789:role/service-role/AWSBackupDefaultServiceRole",
     "ListOfTags": [
       {
         "ConditionType": "STRINGEQUALS",
@@ -157,7 +158,7 @@ aws rds add-tags-to-resource \
 
 ## Step 4: S3 Cross-Region Replication
 
-S3 isn't covered by AWS Backup's cross-region copy feature, so set up cross-region replication (CRR) separately.
+AWS Backup supports Amazon S3 backups and cross-region copy, but S3 Cross-Region Replication (CRR) is still useful when you want new object versions replicated continuously instead of only at backup times.
 
 ```bash
 # Enable versioning (required for CRR)
@@ -230,7 +231,7 @@ class DisasterRecovery:
 
         response = self.backup.start_restore_job(
             RecoveryPointArn=recovery_point_arn,
-            IamRoleArn='arn:aws:iam::123456789:role/AWSBackupServiceRole',
+            IamRoleArn='arn:aws:iam::123456789:role/service-role/AWSBackupDefaultServiceRole',
             Metadata={
                 'DBInstanceIdentifier': 'restored-production-db',
                 'DBInstanceClass': 'db.r5.large',
@@ -250,7 +251,7 @@ class DisasterRecovery:
 
         response = self.backup.start_restore_job(
             RecoveryPointArn=recovery_point_arn,
-            IamRoleArn='arn:aws:iam::123456789:role/AWSBackupServiceRole',
+            IamRoleArn='arn:aws:iam::123456789:role/service-role/AWSBackupDefaultServiceRole',
             Metadata={
                 'InstanceType': 'c5.xlarge',
                 'SubnetId': subnet_id,
@@ -298,6 +299,9 @@ Parameters:
   RestoredDBEndpoint:
     Type: String
     Description: Endpoint of the restored RDS instance
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
 
 Resources:
   DRVPC:
@@ -308,12 +312,50 @@ Resources:
         - Key: Name
           Value: dr-vpc
 
+  DRInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  DRInternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref DRVPC
+      InternetGatewayId: !Ref DRInternetGateway
+
+  DRPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref DRVPC
+
+  DRDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: DRInternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref DRPublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref DRInternetGateway
+
+  DRSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow web traffic in the DR VPC
+      VpcId: !Ref DRVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+
   DRSubnet1:
     Type: AWS::EC2::Subnet
     Properties:
       VpcId: !Ref DRVPC
       CidrBlock: 10.1.1.0/24
       AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
 
   DRSubnet2:
     Type: AWS::EC2::Subnet
@@ -321,6 +363,19 @@ Resources:
       VpcId: !Ref DRVPC
       CidrBlock: 10.1.2.0/24
       AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+
+  DRSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DRSubnet1
+      RouteTableId: !Ref DRPublicRouteTable
+
+  DRSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref DRSubnet2
+      RouteTableId: !Ref DRPublicRouteTable
 
   DRALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -332,6 +387,34 @@ Resources:
       SecurityGroups:
         - !Ref DRSecurityGroup
 
+  DRTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref DRVPC
+      Protocol: HTTP
+      Port: 80
+      TargetType: instance
+      HealthCheckPath: /health
+
+  DRListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref DRALB
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref DRTargetGroup
+
+  DRLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        ImageId: !Ref LatestAmiId
+        InstanceType: t3.medium
+        SecurityGroupIds:
+          - !Ref DRSecurityGroup
+
   DRAutoScalingGroup:
     Type: AWS::AutoScaling::AutoScalingGroup
     Properties:
@@ -341,6 +424,8 @@ Resources:
       VPCZoneIdentifier:
         - !Ref DRSubnet1
         - !Ref DRSubnet2
+      TargetGroupARNs:
+        - !Ref DRTargetGroup
       LaunchTemplate:
         LaunchTemplateId: !Ref DRLaunchTemplate
         Version: !GetAtt DRLaunchTemplate.LatestVersionNumber
