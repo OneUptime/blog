@@ -48,25 +48,14 @@ Create a Dockerfile with vLLM and model:
 
 ```dockerfile
 # Dockerfile.vllm
-FROM nvidia/cuda:12.1.0-devel-ubuntu22.04
-
-# Install Python and dependencies
-RUN apt-get update && apt-get install -y \
-    python3.10 \
-    python3-pip \
-    git \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install vLLM
-RUN pip install --no-cache-dir \
-    vllm==0.3.0 \
-    ray==2.9.0
+FROM vllm/vllm-openai:v0.22.0
 
 # Install additional packages
-RUN pip install --no-cache-dir \
-    fastapi==0.104.0 \
-    uvicorn==0.24.0 \
-    pydantic==2.5.0
+RUN python3 -m pip install --no-cache-dir \
+    fastapi==0.115.6 \
+    uvicorn==0.32.1 \
+    pydantic==2.10.4 \
+    prometheus-client==0.21.1
 
 WORKDIR /app
 
@@ -76,10 +65,8 @@ COPY serve.py /app/
 # Expose port
 EXPOSE 8000
 
-# Set environment variables
-ENV CUDA_VISIBLE_DEVICES=0
-
-CMD ["python3", "/app/serve.py"]
+# Override the base image's "vllm serve" entrypoint for this custom FastAPI app.
+ENTRYPOINT ["python3", "/app/serve.py"]
 ```
 
 Create a serving script:
@@ -88,7 +75,7 @@ Create a serving script:
 # serve.py
 from vllm import LLM, SamplingParams
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import uvicorn
 import os
 
@@ -125,6 +112,9 @@ class GenerateResponse(BaseModel):
     generated_text: str
     num_tokens: int
 
+class BatchGenerateRequest(BaseModel):
+    requests: list[GenerateRequest] = Field(..., min_length=1)
+
 @app.get("/health")
 def health_check():
     """Health check endpoint"""
@@ -157,8 +147,9 @@ def generate(request: GenerateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/batch-generate")
-def batch_generate(requests: list[GenerateRequest]):
+def batch_generate(batch: BatchGenerateRequest):
     """Batch generation endpoint"""
+    requests = batch.requests
     prompts = [req.prompt for req in requests]
 
     # Use first request's params for batch (or make configurable)
@@ -232,7 +223,7 @@ spec:
           value: "1"
         - name: GPU_MEMORY_UTILIZATION
           value: "0.9"
-        - name: HUGGING_FACE_HUB_TOKEN
+        - name: HF_TOKEN
           valueFrom:
             secretKeyRef:
               name: hf-token
@@ -241,6 +232,8 @@ spec:
         ports:
         - containerPort: 8000
           name: http
+        - containerPort: 9090
+          name: metrics
 
         resources:
           requests:
@@ -303,12 +296,18 @@ spec:
   - port: 8000
     targetPort: 8000
     name: http
+  - port: 9090
+    targetPort: 9090
+    name: metrics
   type: ClusterIP
 ```
 
 Create HuggingFace token secret:
 
 ```bash
+# Create namespace
+kubectl create namespace llm-serving
+
 # Create secret for HuggingFace token
 kubectl create secret generic hf-token \
   --from-literal=token=your-huggingface-token \
@@ -318,7 +317,6 @@ kubectl create secret generic hf-token \
 Deploy:
 
 ```bash
-kubectl create namespace llm-serving
 kubectl apply -f vllm-deployment.yaml
 
 # Wait for pods to be ready
@@ -408,7 +406,7 @@ spec:
 
 ## Autoscaling Based on Request Load
 
-Configure HPA based on custom metrics:
+Configure HPA based on custom metrics. The Pods metric requires a custom metrics adapter such as Prometheus Adapter to expose `vllm_concurrent_requests` to the Kubernetes custom metrics API:
 
 ```yaml
 # vllm-hpa.yaml
@@ -434,10 +432,10 @@ spec:
   - type: Pods
     pods:
       metric:
-        name: vllm_requests_per_second
+        name: vllm_concurrent_requests
       target:
         type: AverageValue
-        averageValue: "10"
+        averageValue: "2"
 
   behavior:
     scaleUp:
@@ -459,29 +457,50 @@ spec:
 Add Prometheus metrics:
 
 ```python
-# Add to serve.py
-from prometheus_client import Counter, Histogram, start_http_server
+# Update generate in serve.py
+from prometheus_client import Counter, Gauge, Histogram, start_http_server
 
 REQUEST_COUNT = Counter('vllm_requests_total', 'Total requests')
 REQUEST_LATENCY = Histogram('vllm_request_latency_seconds', 'Request latency')
 TOKENS_GENERATED = Counter('vllm_tokens_generated_total', 'Total tokens generated')
+IN_PROGRESS = Gauge('vllm_concurrent_requests', 'Requests currently being processed')
 
 # Start metrics server
 start_http_server(9090)
 
-@app.post("/generate")
+@app.post("/generate", response_model=GenerateResponse)
 def generate(request: GenerateRequest):
     import time
     start = time.time()
 
     REQUEST_COUNT.inc()
+    IN_PROGRESS.inc()
 
-    # ... generation code ...
+    try:
+        sampling_params = SamplingParams(
+            max_tokens=request.max_tokens,
+            temperature=request.temperature,
+            top_p=request.top_p,
+            top_k=request.top_k,
+            presence_penalty=request.presence_penalty,
+            frequency_penalty=request.frequency_penalty
+        )
 
-    TOKENS_GENERATED.inc(len(outputs[0].outputs[0].token_ids))
-    REQUEST_LATENCY.observe(time.time() - start)
+        outputs = llm.generate([request.prompt], sampling_params)
+        response = GenerateResponse(
+            generated_text=outputs[0].outputs[0].text,
+            num_tokens=len(outputs[0].outputs[0].token_ids)
+        )
 
-    return response
+        TOKENS_GENERATED.inc(response.num_tokens)
+        return response
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    finally:
+        REQUEST_LATENCY.observe(time.time() - start)
+        IN_PROGRESS.dec()
 ```
 
 Query metrics:
@@ -495,6 +514,9 @@ histogram_quantile(0.95, rate(vllm_request_latency_seconds_bucket[5m]))
 
 # Tokens per second
 rate(vllm_tokens_generated_total[1m])
+
+# Concurrent requests per pod
+vllm_concurrent_requests
 
 # GPU utilization
 DCGM_FI_DEV_GPU_UTIL{pod=~"vllm.*"}
