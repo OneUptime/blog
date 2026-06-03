@@ -8,7 +8,7 @@ Description: Learn how to create, configure, and manage AWS KMS customer managed
 
 ---
 
-AWS KMS gives you three types of keys: AWS owned keys (fully managed by AWS), AWS managed keys (visible but not configurable), and customer managed keys (CMKs) where you control everything. If you need control over key policies, rotation, and lifecycle, customer managed keys are the way to go.
+AWS KMS gives you three types of keys: AWS owned keys (fully managed by AWS), AWS managed keys (visible but not configurable), and customer managed keys (previously called CMKs) where you control the key policy, rotation settings, aliases, tags, and lifecycle. If you need control over key policies, rotation, and lifecycle, customer managed keys are the way to go.
 
 This guide covers creating CMKs, setting up proper policies, managing key aliases, and handling the full lifecycle from creation to eventual deletion.
 
@@ -81,6 +81,8 @@ Most teams manage KMS keys through Terraform. Here's a solid baseline configurat
 
 ```hcl
 # Create a customer managed key with a proper policy
+data "aws_caller_identity" "current" {}
+
 resource "aws_kms_key" "database" {
   description             = "Encryption key for production databases"
   deletion_window_in_days = 30
@@ -220,10 +222,10 @@ aws kms cancel-key-deletion \
 You should track who's using your keys and how. CloudTrail logs every KMS API call automatically.
 
 ```bash
-# Find recent Decrypt calls for a specific key
+# Find recent Decrypt calls
 aws cloudtrail lookup-events \
-  --lookup-attributes AttributeKey=ResourceType,AttributeValue=AWS::KMS::Key \
-  --max-results 20
+  --lookup-attributes AttributeKey=EventName,AttributeValue=Decrypt \
+  --max-items 20
 ```
 
 Set up a CloudWatch alarm for unusual activity.
@@ -233,8 +235,8 @@ Set up a CloudWatch alarm for unusual activity.
 aws cloudwatch put-metric-alarm \
   --alarm-name "KMS-Excessive-Decrypts" \
   --namespace "AWS/KMS" \
-  --metric-name "NumberOfDecryptOps" \
-  --dimensions Name=KeyId,Value="1234abcd-12ab-34cd-56ef-1234567890ab" \
+  --metric-name "SuccessfulRequest" \
+  --dimensions Name=KeyArn,Value="arn:aws:kms:us-east-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab" Name=Operation,Value=Decrypt \
   --statistic Sum \
   --period 3600 \
   --threshold 10000 \
