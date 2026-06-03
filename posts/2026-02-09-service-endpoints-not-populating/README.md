@@ -8,15 +8,15 @@ Description: Learn how to diagnose and fix Kubernetes Service endpoints that fai
 
 ---
 
-Kubernetes Services route traffic to pods by automatically maintaining a list of endpoints. When pods match the Service selector and pass readiness checks, Kubernetes adds them to the Service endpoints. However, when this automatic population fails, requests to the Service fail even though healthy pods exist.
+Kubernetes Services route traffic to pods by automatically maintaining a list of endpoints. When pods match the Service selector and pass readiness checks, Kubernetes adds them as ready Service endpoints. However, when this automatic population fails, requests to the Service fail even though healthy pods exist.
 
 This troubleshooting guide walks through diagnosing why Service endpoints don't populate, fixing common misconfigurations, and implementing validation that prevents these issues in production.
 
 ## Understanding Service Endpoint Population
 
-Services use label selectors to find matching pods. The Endpoints controller watches for pods matching the selector and adds their IP addresses to the Service endpoints. Only ready pods appear in endpoints, as determined by readiness probe status.
+Services use label selectors to find matching pods. The EndpointSlice controller watches for pods matching the selector and adds their IP addresses to EndpointSlices for the Service. Ready pods appear as ready endpoints, as determined by readiness probe status.
 
-Several layers must align correctly for endpoint population to work. Pod labels must match Service selectors exactly, pods must pass readiness probes, Network Policies must allow traffic, and the Endpoints controller must function properly. A problem at any layer prevents endpoint population.
+Several layers must align correctly for Service traffic to work. Pod labels must match Service selectors exactly, pods must pass readiness probes, Network Policies must allow traffic to the selected pods, and the EndpointSlice controller must function properly. Selector, readiness, and controller problems can prevent ready endpoints from appearing; Network Policy problems usually cause traffic failures after endpoints already exist.
 
 ## Identifying Missing Endpoints
 
@@ -65,7 +65,7 @@ Label mismatches are the most common cause of missing endpoints. Service selecto
 
 ```bash
 # Check Service selector
-kubectl get service myapp -n default -o jsonpath='{.spec.selector}' | jq
+kubectl get service myapp -n default -o json | jq '.spec.selector'
 
 # Output:
 # {
@@ -74,7 +74,7 @@ kubectl get service myapp -n default -o jsonpath='{.spec.selector}' | jq
 # }
 
 # Check pod labels
-kubectl get pods -n default -l app=myapp -o jsonpath='{.items[*].metadata.labels}' | jq
+kubectl get pods -n default -l app=myapp -o json | jq '.items[].metadata.labels'
 
 # Output:
 # {
@@ -140,7 +140,7 @@ kubectl get endpoints myapp -n default
 
 ## Fixing Readiness Probe Failures
 
-Pods must pass readiness probes before appearing in Service endpoints. Failed readiness probes prevent endpoint population even when pods are otherwise healthy.
+Pods must pass readiness probes before being used as ready Service endpoints. Failed readiness probes prevent pods from becoming ready endpoints even when pods are otherwise healthy.
 
 ```bash
 # Check pod readiness status
@@ -200,7 +200,7 @@ If the endpoint doesn't exist or returns errors, fix the application or adjust t
 
 ## Checking Network Policy Restrictions
 
-Network Policies can prevent endpoint population by blocking required traffic. Check for policies affecting your pods.
+Network Policies do not prevent endpoint population, but they can block traffic to pods after endpoints exist. If endpoints are populated and requests still fail, check for policies affecting your pods.
 
 ```bash
 # List NetworkPolicies in namespace
@@ -210,7 +210,7 @@ kubectl get networkpolicy -n default
 kubectl describe networkpolicy <policy-name> -n default
 ```
 
-Ensure Network Policies allow traffic from the Service to pods.
+Ensure Network Policies allow traffic from the client pods or ingress controller pods to your backend pods.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -235,23 +235,26 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
+    ports:
+    - protocol: TCP
+      port: 8080
 ```
 
 ## Verifying Endpoints Controller Functionality
 
-If selectors match and pods are ready but endpoints still don't populate, check the Endpoints controller.
+If selectors match and pods are ready but endpoints still don't populate, check the EndpointSlice controller in kube-controller-manager.
 
 ```bash
 # Check kube-controller-manager status
 kubectl get pods -n kube-system | grep controller-manager
 
 # Check controller manager logs
-kubectl logs -n kube-system kube-controller-manager-master-1 | \
+kubectl logs -n kube-system -l component=kube-controller-manager --tail=200 | \
   grep -i endpoint | tail -50
 
 # Look for errors like:
-# Error syncing endpoints for service default/myapp: <error message>
+# Error syncing endpointslices for service default/myapp: <error message>
 ```
 
 Check the endpoints controller lease to ensure it's running.
@@ -324,7 +327,7 @@ kubectl get endpointslice <endpointslice-name> -n default -o yaml | \
   yq eval '.endpoints'
 ```
 
-EndpointSlices show why specific endpoints are excluded, such as terminating state or failing readiness.
+EndpointSlices show endpoint conditions such as `ready`, `serving`, and `terminating`, which helps distinguish failing readiness from terminating pods.
 
 ## Implementing Pre-Deployment Validation
 
@@ -337,18 +340,18 @@ Create a validation script that checks Service and Deployment compatibility befo
 SERVICE_NAME=$1
 NAMESPACE=${2:-default}
 
-# Get Service selector
-SERVICE_SELECTOR=$(kubectl get service $SERVICE_NAME -n $NAMESPACE \
-  -o jsonpath='{.spec.selector}' 2>/dev/null)
+# Get Service selector as a kubectl label selector
+SERVICE_SELECTOR=$(kubectl get service "$SERVICE_NAME" -n "$NAMESPACE" -o json 2>/dev/null | \
+  jq -r '.spec.selector // empty | to_entries | map("\(.key)=\(.value)") | join(",")')
 
 if [ -z "$SERVICE_SELECTOR" ]; then
-  echo "Error: Service $SERVICE_NAME not found"
+  echo "Error: Service $SERVICE_NAME not found or has no selector"
   exit 1
 fi
 
 # Find matching pods
-MATCHING_PODS=$(kubectl get pods -n $NAMESPACE \
-  --selector=$(echo $SERVICE_SELECTOR | jq -r 'to_entries | map("\(.key)=\(.value)") | join(",")') \
+MATCHING_PODS=$(kubectl get pods -n "$NAMESPACE" \
+  --selector="$SERVICE_SELECTOR" \
   -o jsonpath='{.items[*].metadata.name}')
 
 if [ -z "$MATCHING_PODS" ]; then
@@ -361,13 +364,13 @@ echo "Found matching pods: $MATCHING_PODS"
 
 # Check readiness of matching pods
 for pod in $MATCHING_PODS; do
-  READY=$(kubectl get pod $pod -n $NAMESPACE \
+  READY=$(kubectl get pod "$pod" -n "$NAMESPACE" \
     -o jsonpath='{.status.containerStatuses[0].ready}')
   echo "Pod $pod ready: $READY"
 done
 
 # Check endpoints
-ENDPOINTS=$(kubectl get endpoints $SERVICE_NAME -n $NAMESPACE \
+ENDPOINTS=$(kubectl get endpoints "$SERVICE_NAME" -n "$NAMESPACE" \
   -o jsonpath='{.subsets[*].addresses[*].ip}')
 
 if [ -z "$ENDPOINTS" ]; then
@@ -398,7 +401,7 @@ data:
         expr: |
           (kube_service_spec_type{type="ClusterIP"}
           unless on(service,namespace)
-          kube_endpoint_address_available) > 0
+          label_replace(kube_endpoint_address{ready="true"}, "service", "$1", "endpoint", "(.*)")) > 0
         for: 5m
         labels:
           severity: warning
@@ -406,16 +409,14 @@ data:
           summary: "Service {{ $labels.namespace }}/{{ $labels.service }} has no endpoints"
           description: "Check label selectors and pod readiness"
 
-      - alert: EndpointCountMismatch
+      - alert: ServiceWithNotReadyEndpoints
         expr: |
-          kube_deployment_spec_replicas
-          != on(deployment,namespace)
-          kube_endpoint_address_available{endpoint=~".*"}
+          kube_endpoint_address{ready="false"} > 0
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "Endpoint count doesn't match replica count"
+          summary: "Service {{ $labels.namespace }}/{{ $labels.endpoint }} has not-ready endpoints"
 ```
 
-Service endpoint issues prevent traffic from reaching pods despite healthy containers running. By systematically checking label selectors, readiness probes, Network Policies, and controller functionality, you identify and resolve endpoint population problems. Combined with validation scripts and monitoring, these practices ensure Services correctly route traffic to backend pods.
+Service endpoint issues prevent traffic from reaching pods despite healthy containers running. By systematically checking label selectors, readiness probes, EndpointSlices, Network Policies, and controller functionality, you identify and resolve endpoint population and traffic problems. Combined with validation scripts and monitoring, these practices ensure Services correctly route traffic to backend pods.
