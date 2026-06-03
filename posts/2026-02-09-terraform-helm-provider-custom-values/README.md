@@ -144,7 +144,6 @@ prometheus:
 
 grafana:
   enabled: true
-  adminPassword: ${grafana_admin_password}
   persistence:
     enabled: true
     size: 10Gi
@@ -254,7 +253,7 @@ resource "helm_release" "app" {
 }
 ```
 
-Values set with `set_sensitive` will be masked in Terraform plan output and logs, providing an additional layer of security.
+Values set with `set_sensitive` will be masked in Terraform plan output, providing an additional layer of security. They are still stored in Terraform state as sensitive values, so protect your state backend accordingly.
 
 ## Managing Chart Repositories
 
@@ -321,11 +320,28 @@ resource "helm_release" "app" {
   namespace = var.namespace
 
   postrender {
-    binary_path = "kustomize"
-    args        = ["build", "${path.module}/kustomize/overlays/${var.environment}"]
+    binary_path = "${path.module}/scripts/kustomize-postrender.sh"
+    args        = ["${path.module}/kustomize/overlays/${var.environment}"]
   }
 }
 ```
+
+The wrapper script needs to read Helm's rendered manifests from standard input and write the transformed manifests to standard output:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+overlay_dir="$1"
+rendered_file="${overlay_dir}/all.yaml"
+
+cat > "$rendered_file"
+trap 'rm -f "$rendered_file"' EXIT
+
+kustomize build "$overlay_dir"
+```
+
+The overlay's `kustomization.yaml` should include `all.yaml` as a resource so Kustomize patches Helm's rendered output.
 
 This is particularly powerful when you need to add labels, annotations, or patches that are not exposed through the chart's values.
 
