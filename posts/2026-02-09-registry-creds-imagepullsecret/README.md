@@ -8,7 +8,7 @@ Description: Learn how to implement registry-creds to automatically propagate Im
 
 ---
 
-Managing ImagePullSecrets across multiple namespaces in Kubernetes clusters can become tedious and error-prone, especially in large deployments. The registry-creds project provides an automated solution that continuously propagates registry credentials to all namespaces, ensuring pods can pull images from private registries without manual intervention.
+Managing ImagePullSecrets across multiple namespaces in Kubernetes clusters can become tedious and error-prone, especially in large deployments. The registry-creds project provides an automated solution that continuously refreshes registry credentials across namespaces, ensuring pods can pull images from private registries without manual intervention.
 
 ## Understanding ImagePullSecret Challenges
 
@@ -19,22 +19,21 @@ When working with private container registries like Docker Hub, Harbor, or AWS E
 3. **Security gaps** - New namespaces might be forgotten, causing pull failures
 4. **Operational overhead** - DevOps teams spend time on repetitive tasks
 
-Registry-creds solves these issues by watching for new namespaces and automatically injecting the required secrets.
+Registry-creds solves these issues by watching namespaces and automatically injecting the required secrets into the default service account.
 
 ## How Registry-Creds Works
 
-Registry-creds runs as a controller in your cluster. It maintains a master set of credentials and uses Kubernetes watches to detect namespace creation events. When a new namespace appears, the controller immediately copies the configured ImagePullSecrets into it.
+Registry-creds runs as a controller in your cluster. It gets credentials from the configured registry providers and uses a Kubernetes namespace informer to process namespace add and update events. It creates or updates the generated ImagePullSecret in each namespace and adds that secret to the namespace's default service account. The controller also refreshes credentials on a timer, which defaults to 60 minutes.
 
 The controller supports multiple registry types simultaneously, including:
-- Docker Hub
+- Docker Hub or other private registries using standard Docker credentials
 - AWS ECR (with automatic token refresh)
 - Google Container Registry (GCR)
 - Azure Container Registry (ACR)
-- Private registries using standard Docker credentials
 
 ## Deploying Registry-Creds
 
-First, install registry-creds using the official deployment manifest:
+First, install registry-creds using a deployment manifest:
 
 ```yaml
 # registry-creds-deployment.yaml
@@ -115,28 +114,56 @@ spec:
           value: "123456789012"
         - name: awsregion
           value: "us-east-1"
-        # Docker Hub configuration
-        - name: DOCKER_USER
+        # Docker Hub or private registry configuration
+        - name: DOCKER_PRIVATE_REGISTRY_SERVER
           valueFrom:
             secretKeyRef:
-              name: registry-creds-dockerhub
-              key: DOCKER_USER
+              name: registry-creds-dpr
+              key: DOCKER_PRIVATE_REGISTRY_SERVER
               optional: true
-        - name: DOCKER_PASSWORD
+        - name: DOCKER_PRIVATE_REGISTRY_USER
           valueFrom:
             secretKeyRef:
-              name: registry-creds-dockerhub
-              key: DOCKER_PASSWORD
+              name: registry-creds-dpr
+              key: DOCKER_PRIVATE_REGISTRY_USER
+              optional: true
+        - name: DOCKER_PRIVATE_REGISTRY_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: registry-creds-dpr
+              key: DOCKER_PRIVATE_REGISTRY_PASSWORD
               optional: true
         # GCR configuration
-        - name: GCR_URL
+        - name: gcrurl
           value: "https://gcr.io"
-        - name: GCR_APPLICATION_DEFAULT_CREDENTIALS
+        # Azure Container Registry configuration
+        - name: ACR_URL
           valueFrom:
             secretKeyRef:
-              name: registry-creds-gcr
-              key: application_default_credentials.json
+              name: registry-creds-acr
+              key: ACR_URL
               optional: true
+        - name: ACR_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: registry-creds-acr
+              key: ACR_CLIENT_ID
+              optional: true
+        - name: ACR_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: registry-creds-acr
+              key: ACR_PASSWORD
+              optional: true
+        volumeMounts:
+        - name: gcr-creds
+          mountPath: "/root/.config/gcloud"
+          readOnly: true
+      volumes:
+      - name: gcr-creds
+        secret:
+          secretName: registry-creds-gcr
+          optional: true
 ```
 
 Apply the deployment:
@@ -147,13 +174,14 @@ kubectl apply -f registry-creds-deployment.yaml
 
 ## Configuring Registry Credentials
 
-Create the credential secrets that registry-creds will propagate. For Docker Hub:
+Create the credential secrets that registry-creds uses to generate ImagePullSecrets. For Docker Hub:
 
 ```bash
 # Create Docker Hub credentials secret
-kubectl create secret generic registry-creds-dockerhub \
-  --from-literal=DOCKER_USER=myusername \
-  --from-literal=DOCKER_PASSWORD=mypassword \
+kubectl create secret generic registry-creds-dpr \
+  --from-literal=DOCKER_PRIVATE_REGISTRY_SERVER=https://index.docker.io/v1/ \
+  --from-literal=DOCKER_PRIVATE_REGISTRY_USER=myusername \
+  --from-literal=DOCKER_PRIVATE_REGISTRY_PASSWORD=mypassword \
   -n registry-creds
 ```
 
@@ -167,13 +195,23 @@ kubectl create secret generic registry-creds-ecr \
   -n registry-creds
 ```
 
-For a private registry with custom credentials:
+For GCR, create a secret that contains your application default credentials file:
 
 ```bash
-# Create Docker config.json for private registry
-kubectl create secret generic registry-creds-private \
-  --from-file=.dockerconfigjson=$HOME/.docker/config.json \
-  --type=kubernetes.io/dockerconfigjson \
+# Create GCR credentials
+kubectl create secret generic registry-creds-gcr \
+  --from-file=application_default_credentials.json=$HOME/.config/gcloud/application_default_credentials.json \
+  -n registry-creds
+```
+
+For Azure Container Registry, create a secret with the registry URL, service principal application ID, and service principal password:
+
+```bash
+# Create ACR credentials
+kubectl create secret generic registry-creds-acr \
+  --from-literal=ACR_URL=myregistry.azurecr.io \
+  --from-literal=ACR_CLIENT_ID=my-client-id \
+  --from-literal=ACR_PASSWORD=my-client-secret \
   -n registry-creds
 ```
 
@@ -189,7 +227,7 @@ kubectl create namespace test-namespace
 kubectl get secrets -n test-namespace
 ```
 
-You should see secrets named `awsecr-cred`, `gcr-secret`, and `dockerhub-secret` automatically created.
+You should see generated ImagePullSecrets such as `awsecr-cred`, `gcr-secret`, `dpr-secret`, and `acr-secret`, depending on which registry credentials you configured.
 
 Check the default service account:
 
@@ -208,7 +246,7 @@ metadata:
   namespace: test-namespace
 imagePullSecrets:
 - name: awsecr-cred
-- name: dockerhub-secret
+- name: dpr-secret
 - name: gcr-secret
 ```
 
@@ -244,9 +282,10 @@ When registry credentials change, update the secret in the registry-creds namesp
 
 ```bash
 # Update Docker Hub password
-kubectl create secret generic registry-creds-dockerhub \
-  --from-literal=DOCKER_USER=myusername \
-  --from-literal=DOCKER_PASSWORD=mynewpassword \
+kubectl create secret generic registry-creds-dpr \
+  --from-literal=DOCKER_PRIVATE_REGISTRY_SERVER=https://index.docker.io/v1/ \
+  --from-literal=DOCKER_PRIVATE_REGISTRY_USER=myusername \
+  --from-literal=DOCKER_PRIVATE_REGISTRY_PASSWORD=mynewpassword \
   -n registry-creds \
   --dry-run=client -o yaml | kubectl apply -f -
 
@@ -254,22 +293,18 @@ kubectl create secret generic registry-creds-dockerhub \
 kubectl rollout restart deployment/registry-creds -n registry-creds
 ```
 
-Registry-creds will automatically update all namespace secrets with the new credentials.
+Registry-creds will update namespace secrets with the new credentials on the next refresh cycle.
 
-## Excluding Namespaces
+## Skipping kube-system
 
-To prevent registry-creds from adding secrets to specific namespaces, add an annotation:
+By default, registry-creds skips the `kube-system` namespace. To allow registry-creds to manage ImagePullSecrets there, set the `skip-kube-system` flag to `false` in the container args:
 
 ```yaml
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: no-registry-creds
-  annotations:
-    registry-creds/ignore: "true"
+args:
+- --skip-kube-system=false
 ```
 
-This is useful for system namespaces or environments with custom registry requirements.
+For other namespaces, registry-creds v1.10 does not provide annotation-based exclusions; use a different secret propagation tool if you need that behavior.
 
 ## Monitoring Registry-Creds
 
@@ -283,9 +318,9 @@ kubectl logs -n registry-creds deployment/registry-creds -f
 Successful propagation produces log entries like:
 
 ```text
-Successfully created secret dockerhub-secret in namespace test-namespace
-Successfully patched serviceaccount default in namespace test-namespace
-AWS ECR token refreshed for account 123456789012
+Created new secret dpr-secret in namespace test-namespace
+Updating ServiceAccount default in namespace test-namespace
+Finished refreshing credentials for namespace test-namespace
 ```
 
 ## Best Practices
