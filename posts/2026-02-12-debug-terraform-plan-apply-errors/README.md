@@ -62,11 +62,10 @@ Fix: Check your resource names, module references, and whether you need a `moved
 Terraform found a circular dependency between resources.
 
 ```text
-Error: Cycle: aws_security_group.app, aws_security_group_rule.app_to_db,
-aws_security_group.db, aws_security_group_rule.db_from_app
+Error: Cycle: aws_security_group.app, aws_security_group.db
 ```
 
-This usually happens with security groups that reference each other. The fix is to break the cycle by using `aws_security_group_rule` resources instead of inline rules:
+This usually happens with security groups that reference each other. The fix is to break the cycle by using separate `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources instead of inline rules:
 
 ```hcl
 # Create security groups without inline rules
@@ -81,22 +80,20 @@ resource "aws_security_group" "db" {
 }
 
 # Then add rules separately - no cycle
-resource "aws_security_group_rule" "app_to_db" {
-  type                     = "egress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.app.id
-  source_security_group_id = aws_security_group.db.id
+resource "aws_vpc_security_group_egress_rule" "app_to_db" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.db.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 
-resource "aws_security_group_rule" "db_from_app" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.db.id
-  source_security_group_id = aws_security_group.app.id
+resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -174,7 +171,7 @@ Error: Error modifying DB Instance: InvalidParameterCombination:
 Cannot upgrade postgres from 15.4 to 16.2.
 ```
 
-Fix: Check the AWS documentation for valid parameter combinations. For RDS upgrades specifically, you may need to go through intermediate versions.
+Fix: Check the AWS documentation for valid parameter combinations. For RDS upgrades specifically, you may need to choose a supported target minor version or go through intermediate versions.
 
 ### "Error: Error waiting for X: timeout"
 
@@ -231,13 +228,9 @@ Fix: Add retry configuration to the provider and use `-parallelism` to reduce co
 
 ```hcl
 provider "aws" {
-  region = "us-east-1"
-
-  default_tags {
-    tags = {
-      ManagedBy = "terraform"
-    }
-  }
+  region      = "us-east-1"
+  retry_mode  = "standard"
+  max_retries = 15
 }
 ```
 
