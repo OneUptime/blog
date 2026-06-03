@@ -10,17 +10,17 @@ Description: Learn how to use AWS Glue interactive sessions for faster ETL devel
 
 Developing Glue ETL jobs the traditional way is painful. You write your script, submit a job, wait 3-5 minutes for it to spin up, discover a bug, fix it, resubmit, and wait again. That feedback loop kills productivity. Glue interactive sessions fix this by giving you a live Spark environment that starts in seconds and lets you iterate on your code in a Jupyter notebook.
 
-You get the same Glue runtime, the same DynamicFrame APIs, the same connections - but with the instant feedback of a notebook. When your code works, you can convert it directly into a Glue job without changes.
+You get the same Glue runtime, the same DynamicFrame APIs, the same connections - but with the instant feedback of a notebook. When your code works, you can convert it into a Glue job with minimal changes.
 
 ## How Interactive Sessions Work
 
-An interactive session is a temporary Spark environment managed by Glue. When you start one, Glue provisions compute resources and connects them to your notebook. You pay only for the time the session is active (billed per DPU-second, minimum 1 minute), and the session automatically stops after an idle timeout.
+An interactive session is a temporary Spark environment managed by Glue. When you start one, Glue provisions compute resources and connects them to your notebook. You pay only for the time the session is active (billed per DPU-second, with a minimum of 2 DPUs and a 1-minute minimum billing duration), and the session automatically stops after an idle timeout.
 
 The key advantage over EMR notebooks or local development is that you get the exact same Glue environment, including Glue-specific features like:
 - DynamicFrames and the GlueContext
 - Glue Data Catalog integration
 - Connection types (JDBC, S3, etc.)
-- Glue transforms and bookmarks
+- Glue transforms
 
 ## Setting Up Your Local Environment
 
@@ -54,6 +54,7 @@ Now configure your AWS credentials. The interactive session needs permissions to
                 "glue:CreateSession",
                 "glue:DeleteSession",
                 "glue:GetSession",
+                "glue:ListSessions",
                 "glue:StopSession",
                 "glue:RunStatement",
                 "glue:GetStatement",
@@ -97,9 +98,9 @@ Open a Jupyter notebook with the `Glue PySpark` kernel and configure the session
 The worker type and count determine your compute resources:
 - `G.1X` - 4 vCPU, 16 GB memory per worker
 - `G.2X` - 8 vCPU, 32 GB memory per worker
-- `G.025X` - 2 vCPU, 4 GB memory (cheapest option for light development)
+- `G.4X` - 16 vCPU, 64 GB memory per worker
 
-Start with `G.025X` and 2 workers for development. That's enough for testing with sample data and keeps costs low.
+Start with `G.1X` and 2 workers for development. That's enough for testing with sample data and matches the minimum 2 DPU requirement.
 
 ## Writing Your ETL Code
 
@@ -220,7 +221,13 @@ print(f"Sample size: {sample_dyf.count()} records")
 
 ## Using Glue Connections
 
-If your ETL needs to read from or write to databases, you can use Glue connections in interactive sessions:
+If your ETL needs to read from or write to databases, you can use Glue connections in interactive sessions. Add the connection to your initial session configuration before the session starts:
+
+```python
+%connections my-rds-connection
+```
+
+Then read through the catalog or connection options:
 
 ```python
 # Read from a JDBC source using a Glue connection
@@ -305,6 +312,6 @@ aws glue stop-session --id "session-abc123"
 aws glue delete-session --id "session-abc123"
 ```
 
-Set the idle timeout appropriately. The default is 480 minutes (8 hours), which is way too long. Set it to 30 minutes for development work - you can always start a new session quickly.
+Set the idle timeout appropriately. The default for Spark ETL sessions is 2880 minutes (48 hours), which is way too long. Set it to 30 minutes for development work - you can always start a new session quickly.
 
 Interactive sessions changed how I develop Glue ETL. What used to take a full day of submit-wait-debug cycles now takes a couple of hours. For reducing the cost of running these jobs in production, check out [Glue Flex execution](https://oneuptime.com/blog/post/2026-02-12-aws-glue-flex-execution-cost-savings/view).
