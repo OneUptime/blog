@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, RBAC, Security
 
-Description: Restrict access to Kubernetes Secrets using RBAC resourceNames with name prefixes to grant fine-grained permissions based on secret naming conventions.
+Description: Restrict access to Kubernetes Secrets using RBAC resourceNames and secret naming conventions.
 
 ---
 
-Secrets contain sensitive data like passwords, tokens, and certificates. Granting blanket secret access to all secrets in a namespace risks exposing credentials that applications don't need. Using resourceNames in RBAC policies restricts access to specific secrets or secrets matching naming patterns.
+Secrets contain sensitive data like passwords, tokens, and certificates. Granting blanket secret access to all secrets in a namespace risks exposing credentials that applications don't need. Using resourceNames in RBAC policies restricts access to specific secrets by exact name.
 
 ## Understanding resourceNames in RBAC
 
-The resourceNames field in RBAC rules limits permissions to specific resource instances. For secrets, this means you can grant access to database-credentials but not api-keys, even though both exist in the same namespace.
+The resourceNames field in RBAC rules limits permissions to specific resource instances. Kubernetes matches resourceNames exactly; it does not support prefixes or wildcards in this field. For secrets, this means you can grant access to database-credentials but not api-keys, even though both exist in the same namespace.
 
 This granularity enables multiple applications to coexist in a namespace while maintaining secret isolation. Each application's service account can only access its own secrets.
 
@@ -115,11 +115,11 @@ metadata:
   namespace: shared
 type: kubernetes.io/tls
 data:
-  tls.crt: LS0tLS1CRUdJTi...
-  tls.key: LS0tLS1CRUdJTi...
+  tls.crt: c29tZS1jZXJ0
+  tls.key: c29tZS1rZXk=
 ```
 
-Grant access based on name prefix.
+Grant access to the exact secret names that use the prefix.
 
 ```yaml
 # rbac-prefix-access.yaml
@@ -141,7 +141,7 @@ rules:
   resourceNames:
     - "app-a-database"
     - "app-a-api-key"
-  verbs: ["get", "list", "watch"]
+  verbs: ["get"]
 
 # Access to shared secrets
 - apiGroups: [""]
@@ -165,9 +165,9 @@ subjects:
   namespace: shared
 ```
 
-## Creating Dynamic Secret Access Patterns
+## Creating Generated Secret Access Patterns
 
-Build roles that adapt to naming patterns.
+Build roles from naming patterns by generating exact resourceNames.
 
 ```yaml
 # rbac-dynamic-secrets.yaml
@@ -206,10 +206,8 @@ rules:
     - "backend-config-secret"
   verbs: ["get"]
 
-# Can list secrets to discover available ones
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["list"]
+# Avoid granting list on secrets unless the subject should see every returned
+# secret's data. list on secrets returns full Secret objects.
 ```
 
 ## Implementing Team-Based Secret Access
@@ -276,7 +274,7 @@ rules:
   resourceNames:
     - "platform-aws-credentials"
     - "platform-github-token"
-  verbs: ["get", "list", "watch"]
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -347,6 +345,20 @@ rules:
     - "dev-myapp-cache"
   verbs: ["get"]
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: myapp-dev-secrets-binding
+  namespace: myapp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: myapp-dev-secrets
+subjects:
+- kind: ServiceAccount
+  name: myapp-dev-sa
+  namespace: myapp
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -366,6 +378,20 @@ rules:
     - "prod-myapp-api-key"
     - "prod-myapp-cache"
   verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: myapp-prod-secrets-binding
+  namespace: myapp
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: myapp-prod-secrets
+subjects:
+- kind: ServiceAccount
+  name: myapp-prod-sa
+  namespace: myapp
 ```
 
 ## Auditing Secret Access
@@ -382,11 +408,19 @@ kubectl get roles,clusterroles --all-namespaces -o json | \
 # Find service accounts with access to specific secret
 SECRET_NAME="myapp-db-credentials"
 kubectl get rolebindings -n production -o json | \
-  jq -r --arg secret "$SECRET_NAME" '.items[] |
-    select(.roleRef.name as $role |
-      (kubectl get role $role -n production -o json |
-       .rules[]?.resourceNames[]? == $secret)) |
-    {binding: .metadata.name, subjects: .subjects}'
+  jq -r '.items[] | select(.roleRef.kind == "Role") |
+    [.metadata.name, .roleRef.name] | @tsv' | \
+  while IFS=$'\t' read -r binding role; do
+    if kubectl get role "$role" -n production -o json | \
+      jq -e --arg secret "$SECRET_NAME" '
+        .rules[]? |
+        select(any(.resources[]?; . == "secrets")) |
+        select(((.resourceNames // []) | length) == 0 or ((.resourceNames // []) | index($secret)))
+      ' >/dev/null; then
+      kubectl get rolebinding "$binding" -n production -o json | \
+        jq '{binding: .metadata.name, subjects: .subjects}'
+    fi
+  done
 
 # Check if service account can access secret
 kubectl auth can-i get secret/myapp-db-credentials -n production \
@@ -432,31 +466,28 @@ kubectl patch role myapp-versioned-secrets -n production --type=json \
   -p='[{"op": "remove", "path": "/rules/0/resourceNames/1"}]'
 ```
 
-## Creating Wildcard Alternative Using Labels
+## Creating a Label-Driven Alternative
 
-Since RBAC doesn't support wildcard resourceNames, use labels and admission controllers.
+Since RBAC doesn't support wildcard resourceNames, use labels to drive automation that generates exact resourceNames. Admission controllers cannot filter read requests such as get, list, or watch, so they cannot enforce secret read access by label.
 
 ```yaml
-# admission-controller-secret-filter.yaml
-# This is pseudocode for an admission webhook
-apiVersion: admissionregistration.k8s.io/v1
-kind: ValidatingWebhookConfiguration
+# generated-rbac-from-labels.yaml
+# Generated from secrets labeled team=platform
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
 metadata:
-  name: secret-access-filter
-webhooks:
-- name: filter-secret-access.example.com
-  rules:
-  - operations: ["GET"]
-    apiGroups: [""]
-    resources: ["secrets"]
-  clientConfig:
-    service:
-      name: secret-filter-webhook
-      namespace: kube-system
-  admissionReviewVersions: ["v1"]
+  name: platform-generated-secret-access
+  namespace: production
+rules:
+- apiGroups: [""]
+  resources: ["secrets"]
+  resourceNames:
+    - "platform-aws-credentials"
+    - "platform-github-token"
+  verbs: ["get"]
 ```
 
-The webhook validates secret access based on naming patterns.
+The automation updates the Role when matching secrets are added or removed.
 
 ## Testing Secret Access Restrictions
 
@@ -464,6 +495,7 @@ Verify resourceNames work correctly.
 
 ```bash
 # Create test secrets
+kubectl create namespace test
 kubectl create secret generic app-a-secret -n test --from-literal=key=valueA
 kubectl create secret generic app-b-secret -n test --from-literal=key=valueB
 
@@ -498,4 +530,4 @@ kubectl auth can-i get secret/app-b-secret -n test \
 # no
 ```
 
-Using RBAC resourceNames to restrict secret access by name creates fine-grained permissions within namespaces. Establish naming conventions for secrets based on application, team, or environment, then grant access only to secrets matching those patterns. This approach enables secret isolation even when multiple applications share a namespace.
+Using RBAC resourceNames to restrict secret access by exact name creates fine-grained permissions within namespaces. Establish naming conventions for secrets based on application, team, or environment, then grant access only to the exact secret names that follow those conventions. This approach enables secret isolation even when multiple applications share a namespace.
