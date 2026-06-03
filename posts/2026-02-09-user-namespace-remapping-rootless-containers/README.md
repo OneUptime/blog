@@ -8,13 +8,13 @@ Description: Learn how to configure user namespace remapping in Kubernetes to ru
 
 ---
 
-User namespaces map container user IDs to different host user IDs, allowing processes that appear to run as root inside containers to run as unprivileged users on the host. This security feature prevents container breakouts from gaining root access to the host system. While containers might run as UID 0 internally, the host kernel sees them as UID 100000, eliminating many privilege escalation attack vectors.
+User namespaces map container user IDs to different host user IDs, allowing processes that appear to run as root inside containers to run as unprivileged users on the host. This security feature reduces the impact of container breakouts that rely on host-level root privileges. While containers might run as UID 0 internally, the host kernel sees them as an unprivileged UID/GID range chosen by the kubelet, eliminating many privilege escalation attack vectors.
 
 ## Understanding User Namespace Remapping
 
 Without user namespaces, a process running as UID 0 (root) inside a container runs as UID 0 on the host. If the container breaks out of its isolation, the attacker has root privileges on the host system.
 
-User namespaces create a mapping between container UIDs and host UIDs. A process appearing as UID 0 in the container actually runs as UID 100000 on the host. Breaking out of the container gives the attacker only the privileges of UID 100000, typically an unprivileged user with no system access.
+User namespaces create a mapping between container UIDs and host UIDs. A process appearing as UID 0 in the container actually runs as an unprivileged UID on the host. Breaking out of the container gives the attacker only the privileges of that mapped UID, typically an unprivileged user with no system access.
 
 ## Checking User Namespace Support
 
@@ -30,32 +30,27 @@ ssh node01 "cat /proc/sys/user/max_user_namespaces"
 ssh node01 "unshare --user --pid --fork echo YES"
 # Should output: YES
 
-# Verify containerd/CRI-O supports user namespaces
-ssh node01 "containerd config default | grep -i userns"
+# Verify runtime versions. Kubernetes user namespaces require
+# containerd 2.0+ or CRI-O 1.25+, and runc 1.2+ or crun 1.9+.
+ssh node01 "containerd --version"
+ssh node01 "runc --version"
 ```
 
-Most modern Linux kernels (3.8+) support user namespaces, but some distributions disable them by default for security reasons.
+Kubernetes pods that use user namespaces also require Linux idmap mount support on the filesystems used by `/var/lib/kubelet/pods/` and pod volumes. In practice, Linux 6.3 or later is the safest baseline because tmpfs idmap mounts are commonly needed for projected service account tokens, Secrets, and ConfigMaps.
 
 ## Configuring Containerd for User Namespaces
 
-Enable user namespace support in containerd:
+Use a container runtime version that supports Kubernetes user namespaces. Current Kubernetes user namespace support works with containerd 2.0 or later and a compatible OCI runtime such as runc 1.2 or later:
 
 ```toml
 # /etc/containerd/config.toml
 version = 2
 
 [plugins."io.containerd.grpc.v1.cri"]
-  # Enable user namespace support
   [plugins."io.containerd.grpc.v1.cri".containerd]
     [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
       runtime_type = "io.containerd.runc.v2"
       [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]
-        SystemdCgroup = true
-
-    # Add user namespace runtime
-    [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-userns]
-      runtime_type = "io.containerd.runc.v2"
-      [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc-userns.options]
         SystemdCgroup = true
 ```
 
@@ -71,40 +66,40 @@ ssh node01 "sudo systemctl status containerd"
 Configure subordinate user and group IDs on each node:
 
 ```bash
-# Add subordinate UID range for kubelet user
-ssh node01 "echo 'root:100000:65536' | sudo tee -a /etc/subuid"
+# Add a custom subordinate UID range for kubelet
+ssh node01 "echo 'kubelet:65536:7208960' | sudo tee -a /etc/subuid"
 
-# Add subordinate GID range
-ssh node01 "echo 'root:100000:65536' | sudo tee -a /etc/subgid"
+# Add the matching subordinate GID range
+ssh node01 "echo 'kubelet:65536:7208960' | sudo tee -a /etc/subgid"
 
 # Verify configuration
 ssh node01 "cat /etc/subuid /etc/subgid"
 ```
 
-This allocates UIDs 100000-165535 on the host for use by containers. Container UID 0 maps to host UID 100000, container UID 1 maps to host UID 100001, and so on.
+This custom range allocates enough IDs for the default 110 pods per node, with 65,536 IDs per pod. Kubernetes can also use its default allocation above the host's normal 0-65535 range without this custom range; configure `/etc/subuid` and `/etc/subgid` only when you need to control the allocation explicitly.
 
-## Creating a RuntimeClass for User Namespaces
+## RuntimeClass and User Namespaces
 
-Define a RuntimeClass that enables user namespaces:
+RuntimeClass selects a runtime handler, but it does not enable Kubernetes user namespaces by itself. If you already use RuntimeClass for another reason, keep it configured as usual:
 
 ```yaml
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: userns
-handler: runc-userns
+  name: runc
+handler: runc
 ```
 
-Apply the RuntimeClass:
+Apply the RuntimeClass if your cluster uses this handler:
 
 ```bash
-kubectl apply -f runtimeclass-userns.yaml
+kubectl apply -f runtimeclass-runc.yaml
 kubectl get runtimeclass
 ```
 
 ## Using User Namespaces in Pods
 
-Reference the RuntimeClass in pod specifications:
+Set `hostUsers: false` in pod specifications:
 
 ```yaml
 apiVersion: v1
@@ -112,10 +107,10 @@ kind: Pod
 metadata:
   name: nginx-userns
 spec:
-  runtimeClassName: userns
+  hostUsers: false
   containers:
   - name: nginx
-    image: nginx:1.21
+    image: nginx:1.27
     ports:
     - containerPort: 80
     securityContext:
@@ -123,7 +118,7 @@ spec:
       runAsGroup: 0
 ```
 
-Despite `runAsUser: 0`, this container runs as UID 100000 on the host.
+Despite `runAsUser: 0`, this container runs as a non-root mapped UID on the host.
 
 ## Verifying User Namespace Remapping
 
@@ -136,8 +131,8 @@ NODE=$(kubectl get pod nginx-userns -o jsonpath='{.spec.nodeName}')
 # Get the container process on the host
 ssh $NODE "ps aux | grep 'nginx: master' | grep -v grep"
 
-# Output shows UID 100000 instead of 0:
-# 100000   12345  0.0  0.1  nginx: master process
+# Output shows a non-root mapped UID instead of 0:
+# 833617920   12345  0.0  0.1  nginx: master process
 ```
 
 Inspect the process namespace:
@@ -145,11 +140,11 @@ Inspect the process namespace:
 ```bash
 # Check UID mapping
 ssh $NODE "cat /proc/12345/uid_map"
-# Output: 0     100000    65536
+# Output is similar to: 0     833617920    65536
 
 # This means:
-# Container UID 0 = Host UID 100000
-# Container UID 1 = Host UID 100001
+# Container UID 0 = Host UID 833617920
+# Container UID 1 = Host UID 833617921
 # ... and so on for 65536 UIDs
 ```
 
@@ -172,7 +167,7 @@ spec:
       labels:
         app: web
     spec:
-      runtimeClassName: userns
+      hostUsers: false
       securityContext:
         runAsNonRoot: false  # Can be false because of user namespace
         fsGroup: 2000
@@ -194,7 +189,7 @@ spec:
         emptyDir: {}
 ```
 
-The application can run as root inside the container without security concerns because user namespaces remap it to an unprivileged UID on the host.
+The application can run as root inside the container with reduced host risk because user namespaces remap it to an unprivileged UID on the host.
 
 ## Combining with Other Security Features
 
@@ -205,12 +200,12 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: defense-in-depth
-  annotations:
-    container.apparmor.security.beta.kubernetes.io/app: runtime/default
 spec:
-  runtimeClassName: userns
+  hostUsers: false
   securityContext:
     seccompProfile:
+      type: RuntimeDefault
+    appArmorProfile:
       type: RuntimeDefault
     seLinuxOptions:
       level: "s0:c100,c200"
@@ -245,7 +240,7 @@ kind: Pod
 metadata:
   name: app-with-volume
 spec:
-  runtimeClassName: userns
+  hostUsers: false
   securityContext:
     fsGroup: 2000
     fsGroupChangePolicy: "OnRootMismatch"
@@ -264,19 +259,19 @@ spec:
       claimName: app-pvc
 ```
 
-The fsGroup setting ensures volume files have the correct group ownership for the remapped user.
+The `fsGroup` setting refers to the group inside the container. With Kubernetes user namespaces and idmap mounts, host UID/GID values do not need to match the container's volume ownership.
 
 ## Limitations and Considerations
 
 User namespaces have some limitations:
 
-**Privileged containers incompatible**: Containers requiring privileged mode cannot use user namespaces. The combination is contradictory.
+**Host-level privileged workloads incompatible**: Workloads that need real host privileges, such as loading kernel modules or managing host resources, are not good candidates for user namespaces.
 
-**Host networking restrictions**: Pods using `hostNetwork: true` typically cannot use user namespaces due to network capability requirements.
+**Host namespace restrictions**: Pods using `hostNetwork: true`, `hostPID: true`, or `hostIPC: true` cannot use user namespaces.
 
-**Volume driver support**: Some volume drivers don't properly handle user namespace UID remapping. Test your storage before deploying.
+**Volume and filesystem support**: Pod volumes need filesystem support for idmap mounts. NFS volumes cannot currently be mounted in user-namespace pods because the Linux NFS client does not support idmap mounts.
 
-**Performance overhead**: Minimal but measurable overhead exists for UID/GID mapping on every filesystem operation.
+**Raw block volume restrictions**: Pods using user namespaces cannot use `volumeDevices` raw block volumes.
 
 ## Testing User Namespace Security
 
@@ -288,7 +283,7 @@ kind: Pod
 metadata:
   name: userns-test
 spec:
-  runtimeClassName: userns
+  hostUsers: false
   containers:
   - name: test
     image: ubuntu:22.04
@@ -301,8 +296,8 @@ spec:
       echo "Inside container UID:"
       id
 
-      echo "Attempting to access /etc/shadow on host (should fail):"
-      cat /etc/shadow 2>&1 || echo "Access denied (expected)"
+      echo "UID map inside container:"
+      cat /proc/self/uid_map
 
       echo "Attempting to change system time (should fail):"
       date -s "2025-01-01" 2>&1 || echo "Permission denied (expected)"
@@ -313,7 +308,7 @@ spec:
       runAsUser: 0
 ```
 
-Even though the container runs as UID 0, it cannot access sensitive host files or perform privileged operations.
+Even though the container runs as UID 0, its capabilities apply inside the user namespace and do not grant host-level privileges.
 
 ## Monitoring User Namespace Usage
 
@@ -328,7 +323,7 @@ echo "==========================="
 
 kubectl get pods --all-namespaces -o json | jq -r '
   .items[] |
-  select(.spec.runtimeClassName == "userns") |
+  select(.spec.hostUsers == false) |
   {
     namespace: .metadata.namespace,
     pod: .metadata.name,
@@ -343,7 +338,7 @@ kubectl get pods --all-namespaces -o json | jq -r '
 Common problems and solutions:
 
 ```bash
-# Check if user namespaces are enabled in kernel
+# Check if unprivileged user namespaces are enabled, on distributions that expose this sysctl
 ssh node01 "cat /proc/sys/kernel/unprivileged_userns_clone"
 # Should be 1
 
@@ -353,16 +348,15 @@ ssh node01 "cat /etc/subuid /etc/subgid"
 # Check for overlapping UID ranges
 ssh node01 "cat /etc/subuid | awk -F: '{print \$2, \$2+\$3}' | sort -n"
 
-# View container process namespaces
-kubectl exec nginx-userns -- cat /proc/1/uid_map
+# View the container's UID map
+kubectl exec nginx-userns -- cat /proc/self/uid_map
 ```
 
 If volumes show permission errors:
 
 ```bash
-# The volume might have ownership issues
-# Fix by setting correct fsGroup in pod securityContext
-# Or manually adjust volume ownership to match mapped UIDs
+# The volume or backing filesystem might not support idmap mounts
+# Check pod events and fix fsGroup or storage configuration as needed
 ```
 
 ## Best Practices
@@ -371,11 +365,11 @@ Enable user namespaces for all non-privileged workloads. The security benefit ou
 
 Test thoroughly before production deployment. Some applications assume they run as actual root and may fail with user namespaces.
 
-Document which RuntimeClass to use for different workload types. Create guidelines for your development teams.
+Document which workloads should set `hostUsers: false`. Create guidelines for your development teams.
 
-Monitor for pods running as real root. Alert when pods don't use the user namespace RuntimeClass.
+Monitor for pods running as real root. Alert when eligible pods don't set `hostUsers: false`.
 
-Plan your UID range allocation carefully to avoid overlaps between different tenants or teams.
+Plan any custom kubelet subordinate UID/GID range carefully to avoid overlaps.
 
 Combine user namespaces with other security features for defense in depth. No single security mechanism is sufficient.
 
