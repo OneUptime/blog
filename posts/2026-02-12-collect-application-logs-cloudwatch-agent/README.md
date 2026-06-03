@@ -40,7 +40,7 @@ The key fields are:
 - `file_path`: The path to the log file. Supports wildcards like `/var/log/myapp/*.log`.
 - `log_group_name`: The CloudWatch Log Group to send events to. Created automatically if it doesn't exist.
 - `log_stream_name`: The Log Stream name. Supports placeholders like `{instance_id}`, `{hostname}`, and `{ip_address}`.
-- `retention_in_days`: Sets the retention policy on the log group when it's created.
+- `retention_in_days`: Sets the retention policy on the log group. If the log group already exists, the agent updates its retention policy to this value.
 
 ## Collecting Multiple Log Files
 
@@ -92,7 +92,7 @@ Most applications produce multiple log files. Here's a config that covers a typi
 
 ## Wildcard Patterns
 
-You can use wildcards to collect from rotating log files or multiple services:
+You can use wildcards to collect from rotating log files of the same type:
 
 ```json
 {
@@ -102,7 +102,7 @@ You can use wildcards to collect from rotating log files or multiple services:
 }
 ```
 
-Or for date-based log rotation:
+For date-based log rotation:
 
 ```json
 {
@@ -112,11 +112,11 @@ Or for date-based log rotation:
 }
 ```
 
-The agent handles log rotation correctly. If a file is rotated (renamed) and a new file appears at the same path, the agent picks up the new file and continues.
+The agent handles log rotation correctly. If a file is rotated (renamed) and a new file appears at the same path, the agent picks up the new file and continues. When you use a wildcard, only the latest matching file is pushed based on modification time, so use separate `collect_list` entries for different kinds of logs.
 
 ## Handling Multi-Line Log Entries
 
-Stack traces and other multi-line log entries need special handling. Without configuration, each line would become a separate log event, making stack traces nearly impossible to read.
+Stack traces and other multi-line log entries need special handling. Without configuration, multi-line mode is disabled and lines that begin with a non-whitespace character start new log events, which can split stack traces and related context.
 
 Use `multi_line_start_pattern` to tell the agent where a new log entry begins:
 
@@ -186,11 +186,12 @@ Common timestamp formats:
 
 | Log Format | timestamp_format |
 |-----------|-----------------|
-| `2026-02-12T10:30:15Z` | `%Y-%m-%dT%H:%M:%S%z` |
+| `2026-02-12T10:30:15Z` | `%Y-%m-%dT%H:%M:%SZ` |
 | `2026-02-12 10:30:15` | `%Y-%m-%d %H:%M:%S` |
 | `Feb 12 10:30:15` | `%b %d %H:%M:%S` |
 | `12/Feb/2026:10:30:15 +0000` | `%d/%b/%Y:%H:%M:%S %z` |
-| `1707734415` | `%s` |
+
+If your timestamp uses a literal `Z` for UTC, set `timezone` to `UTC` in that log collection entry.
 
 ## Log Encoding
 
@@ -303,13 +304,25 @@ The IAM role needs CloudWatch Logs permissions. The `CloudWatchAgentServerPolicy
       "Effect": "Allow",
       "Action": [
         "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:PutRetentionPolicy",
-        "logs:DescribeLogStreams",
         "logs:DescribeLogGroups"
       ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:PutRetentionPolicy",
+        "logs:DescribeLogStreams"
+      ],
       "Resource": "arn:aws:logs:*:*:log-group:/myapp/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:*:*:log-group:/myapp/*:log-stream:*"
     }
   ]
 }
@@ -323,7 +336,7 @@ The IAM role needs CloudWatch Logs permissions. The `CloudWatchAgentServerPolicy
 
 **Duplicate log entries**: This can happen if you restart the agent frequently. The agent tracks its position in each file using a state file at `/opt/aws/amazon-cloudwatch-agent/logs/state/`.
 
-**Large delay in log delivery**: Increase the `force_flush_interval` setting (lower number = more frequent flushes). Also check your network connectivity to CloudWatch Logs endpoints.
+**Large delay in log delivery**: Decrease the `force_flush_interval` setting (lower number = more frequent flushes). Also check your network connectivity to CloudWatch Logs endpoints.
 
 ## Wrapping Up
 
