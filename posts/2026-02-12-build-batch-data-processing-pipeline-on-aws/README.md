@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Step Functions, Lambda, S3, Data Engineering
 
-Description: Build a scalable batch data processing pipeline on AWS using Step Functions, Lambda, S3, and Glue with scheduling, error handling, and monitoring.
+Description: Build a scalable batch data processing pipeline on AWS using Step Functions, Lambda, S3, and DynamoDB with scheduling, error handling, and monitoring.
 
 ---
 
@@ -25,8 +25,7 @@ graph TD
     SF --> Load[Lambda: Load]
     S3Clean --> Load
     Load --> DDB[(DynamoDB / RDS)]
-    SF --> Notify[Lambda: Notify]
-    Notify --> SNS[SNS]
+    SF --> SNS[SNS: Notify]
 ```
 
 EventBridge triggers a Step Functions state machine on schedule, which orchestrates extract, transform, and load steps - with error handling and notifications built in.
@@ -77,7 +76,7 @@ const RAW_BUCKET = process.env.RAW_BUCKET;
 
 exports.handler = async (event) => {
   const { source, date } = event;
-  const processingDate = date || new Date().toISOString().split('T')[0];
+  const processingDate = (date ? new Date(date) : new Date()).toISOString().split('T')[0];
 
   console.log(`Extracting data for ${processingDate} from ${source}`);
 
@@ -162,7 +161,9 @@ exports.handler = async (event) => {
     // Calculate summary statistics
     const summary = {
       totalRecords: transformed.length,
-      averageValue: transformed.reduce((sum, r) => sum + r.value, 0) / transformed.length,
+      averageValue: transformed.length
+        ? transformed.reduce((sum, r) => sum + r.value, 0) / transformed.length
+        : 0,
       byCategory: {},
     };
 
@@ -241,11 +242,22 @@ exports.handler = async (event) => {
         PutRequest: { Item: item },
       }));
 
-      await docClient.send(new BatchWriteCommand({
-        RequestItems: {
-          [TABLE]: putRequests,
-        },
-      }));
+      let requestItems = {
+        [TABLE]: putRequests,
+      };
+      let retryDelay = 100;
+
+      do {
+        const result = await docClient.send(new BatchWriteCommand({
+          RequestItems: requestItems,
+        }));
+
+        requestItems = result.UnprocessedItems || {};
+        if (Object.keys(requestItems).length > 0) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          retryDelay = Math.min(retryDelay * 2, 5000);
+        }
+      } while (Object.keys(requestItems).length > 0);
 
       loaded += batch.length;
     }
@@ -263,7 +275,7 @@ exports.handler = async (event) => {
 
 ## Step 3: Step Functions State Machine
 
-Orchestrate the pipeline with Step Functions. This gives you visual monitoring, automatic retries, and parallel execution:
+Orchestrate the pipeline with Step Functions. This gives you visual monitoring, automatic retries, and error handling:
 
 ```json
 {
@@ -386,7 +398,10 @@ aws events put-targets \
     "Id": "pipeline-target",
     "Arn": "arn:aws:states:us-east-1:ACCOUNT_ID:stateMachine:data-pipeline",
     "RoleArn": "arn:aws:iam::ACCOUNT_ID:role/eventbridge-sfn-role",
-    "Input": "{\"date\": \"<aws.scheduler.current-date>\"}"
+    "InputTransformer": {
+      "InputPathsMap": {"time": "$.time"},
+      "InputTemplate": "{\"date\": \"<time>\"}"
+    }
   }]'
 ```
 
