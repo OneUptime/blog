@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Rekognition, Comprehend, Content Moderation, Lambda
 
-Description: Build an automated content moderation system on AWS using Rekognition for images, Comprehend for text, and Step Functions for review workflows.
+Description: Build an automated content moderation system on AWS using Rekognition for images, Comprehend for text, and SQS for review workflows.
 
 ---
 
@@ -21,10 +21,8 @@ graph TD
     C --> D{Content Type}
     D -->|Image| E[Rekognition Moderation]
     D -->|Text| F[Comprehend Toxicity]
-    D -->|Video| G[Rekognition Video]
     E --> H{Safe?}
     F --> H
-    G --> H
     H -->|Yes| I[Approve - Publish Content]
     H -->|Borderline| J[Human Review Queue]
     H -->|No| K[Reject - Notify User]
@@ -121,11 +119,45 @@ import re
 
 comprehend = boto3.client('comprehend')
 
+MAX_TOXICITY_SEGMENT_BYTES = 1000
+MAX_TOXICITY_SEGMENTS = 10
+MAX_SENTIMENT_BYTES = 5000
+
 # Custom blocked word list for domain-specific moderation
 BLOCKED_PATTERNS = [
     # Add your platform-specific blocked patterns here
     r'\b(spam|buy now|click here)\b'
 ]
+
+def split_text_segments(text):
+    """Split text into Comprehend toxicity segments of at most 1 KB each."""
+    segments = []
+    current = ''
+    current_size = 0
+
+    for char in text:
+        char_size = len(char.encode('utf-8'))
+        if char_size > MAX_TOXICITY_SEGMENT_BYTES:
+            continue
+
+        if current and current_size + char_size > MAX_TOXICITY_SEGMENT_BYTES:
+            segments.append({'Text': current})
+            if len(segments) >= MAX_TOXICITY_SEGMENTS:
+                return segments
+            current = char
+            current_size = char_size
+        else:
+            current += char
+            current_size += char_size
+
+    if current and len(segments) < MAX_TOXICITY_SEGMENTS:
+        segments.append({'Text': current})
+
+    return segments
+
+def truncate_utf8(text, max_bytes):
+    """Truncate text to a UTF-8 byte limit without splitting a character."""
+    return text.encode('utf-8')[:max_bytes].decode('utf-8', errors='ignore')
 
 def moderate_text(text, content_id):
     """Analyze text for toxic or harmful content."""
@@ -147,8 +179,12 @@ def moderate_text(text, content_id):
             return result
 
     # Run Comprehend toxicity detection
+    text_segments = split_text_segments(text)
+    if not text_segments:
+        return result
+
     toxicity_response = comprehend.detect_toxic_content(
-        TextSegments=[{'Text': text[:10000]}],
+        TextSegments=text_segments,
         LanguageCode='en'
     )
 
@@ -167,7 +203,7 @@ def moderate_text(text, content_id):
 
     # Run sentiment analysis as additional signal
     sentiment_response = comprehend.detect_sentiment(
-        Text=text[:5000],
+        Text=truncate_utf8(text, MAX_SENTIMENT_BYTES),
         LanguageCode='en'
     )
     result['sentiment'] = sentiment_response['Sentiment']
@@ -194,7 +230,7 @@ The main handler receives content submissions and routes to the appropriate mode
 import boto3
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 content_table = dynamodb.Table('ModerationLog')
@@ -204,7 +240,7 @@ REVIEW_QUEUE_URL = 'https://sqs.us-east-1.amazonaws.com/123456789/moderation-rev
 
 def handler(event, context):
     body = json.loads(event['body'])
-    content_type = body['contentType']  # 'image', 'text', or 'video'
+    content_type = body['contentType']  # 'image' or 'text'
     user_id = event['requestContext']['authorizer']['claims']['sub']
     content_id = str(uuid.uuid4())
 
@@ -244,7 +280,7 @@ def handler(event, context):
                 'userId': user_id,
                 'contentType': content_type,
                 'moderationResult': result,
-                'submittedAt': datetime.utcnow().isoformat()
+                'submittedAt': datetime.now(timezone.utc).isoformat()
             })
         )
         return respond(200, {'contentId': content_id, 'status': 'PENDING_REVIEW'})
@@ -256,7 +292,7 @@ def log_moderation(content_id, user_id, status, method, details):
         'status': status,
         'method': method,
         'details': json.dumps(details, default=str),
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     })
 
 def check_user_violations(user_id):
@@ -303,7 +339,7 @@ Build an API for the human review interface:
 # Lambda - API for human review of flagged content
 import boto3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 sqs = boto3.client('sqs')
 dynamodb = boto3.resource('dynamodb')
@@ -345,7 +381,7 @@ def submit_review(event, context):
         ExpressionAttributeValues={
             ':status': decision,
             ':reviewer': reviewer,
-            ':time': datetime.utcnow().isoformat()
+            ':time': datetime.now(timezone.utc).isoformat()
         }
     )
 
