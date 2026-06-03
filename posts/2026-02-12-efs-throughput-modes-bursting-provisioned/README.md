@@ -16,18 +16,18 @@ Let's dig into each mode, understand the economics, and figure out which one mak
 
 ### Bursting Throughput
 
-This is the default mode. Throughput scales with the size of your file system:
+This is the default mode when you create a file system with the AWS CLI or API and don't specify a throughput mode. Throughput scales with the amount of data in the EFS Standard storage class:
 
-- **Baseline throughput**: 50 KB/s per GB of data stored
-- **Burst throughput**: Up to 100 MB/s regardless of size (for file systems under 1 TB)
+- **Baseline throughput**: 50 KiB/s per GiB of data stored for writes, or up to 150 KiB/s per GiB for reads because EFS meters reads at one-third the rate of writes
+- **Burst throughput**: Up to 100 MiB/s write-only or 300 MiB/s read-only for file systems up to 1 TiB, then 100 MiB/s write-only or 300 MiB/s read-only per TiB of data stored, up to the Regional bursting limit
 - **Burst credits**: You accumulate credits when you're below baseline and spend them when you burst
 
-For example, a 100 GB file system gets:
-- Baseline: 5 MB/s (100 GB x 50 KB/s)
-- Burst: 100 MB/s
-- Burst credit accumulation: You earn credits at 5 MB/s when idle and spend them at up to 100 MB/s when active
+For example, a 100 GiB file system gets:
+- Baseline: 5 MiB/s write-only or 15 MiB/s read-only
+- Burst: 100 MiB/s write-only or 300 MiB/s read-only
+- Burst credit accumulation: You earn credits at 5 MiB/s when idle and can use them to burst above baseline
 
-For file systems over 1 TB, the burst throughput equals the baseline (50 KB/s x stored GB), which is already quite high. A 10 TB file system gets 500 MB/s baseline without needing to burst.
+For file systems over 1 TiB, both baseline and burst throughput scale with size. A 10 TiB file system gets 500 MiB/s write-only or 1.5 GiB/s read-only baseline, and can burst to 1 GiB/s write-only or 3 GiB/s read-only when it has credits.
 
 ### Provisioned Throughput
 
@@ -35,21 +35,21 @@ You specify exactly how much throughput you want, regardless of data size. This 
 
 - You pay for the provisioned amount whether you use it or not
 - You can adjust it up or down (with some cooldown restrictions)
-- You can provision up to 3 GB/s for read and 1 GB/s for write
+- You can provision up to 10 GiB/s for read and 3.33 GiB/s for write in some Regions, and up to 3 GiB/s for read and 1 GiB/s for write in other Regions
 
 ### Elastic Throughput
 
-The newest option. Throughput automatically scales up and down based on workload demand:
+The AWS-recommended default in the EFS console. Throughput automatically scales up and down based on workload demand:
 
 - No need to provision or manage capacity
-- Scales up to 10 GB/s for reads and 3 GB/s for writes
+- Scales up to 20-60 GiB/s for reads and 1-5 GiB/s for writes for Regional file systems, depending on the Region
 - You pay only for the throughput you actually use
 - No burst credits to worry about
 
 ## When to Use Each Mode
 
 **Use Bursting when:**
-- Your data set is large (multiple TB) - the baseline throughput is already generous
+- Your data set is large (multiple TiB) - the baseline throughput is already generous
 - Your access pattern is bursty - short periods of high throughput with long idle periods
 - You want to keep costs low for mostly-idle file systems
 
@@ -66,10 +66,10 @@ The newest option. Throughput automatically scales up and down based on workload
 
 ## Creating File Systems with Each Mode
 
-Bursting (default):
+Bursting (default for AWS CLI/API when omitted):
 
 ```bash
-# Create with bursting throughput (the default)
+# Create with bursting throughput
 
 aws efs create-file-system \
   --throughput-mode bursting \
@@ -80,7 +80,7 @@ aws efs create-file-system \
 Provisioned:
 
 ```bash
-# Create with 256 MB/s provisioned throughput
+# Create with 256 MiB/s provisioned throughput
 aws efs create-file-system \
   --throughput-mode provisioned \
   --provisioned-throughput-in-mibps 256 \
@@ -124,7 +124,7 @@ aws efs update-file-system \
   --throughput-mode bursting
 ```
 
-You can decrease provisioned throughput or switch modes only once in a 24-hour period. Increasing provisioned throughput can be done at any time.
+After you switch to Provisioned throughput or change the provisioned throughput amount, you must wait at least 24 hours before changing throughput mode again or decreasing the provisioned amount.
 
 ## Monitoring Burst Credits
 
@@ -149,7 +149,7 @@ Set up an alarm before credits run out:
 # Alarm when burst credits are low
 aws cloudwatch put-metric-alarm \
   --alarm-name "efs-burst-credits-low" \
-  --alarm-description "EFS burst credits below 1 TB - throughput may drop" \
+  --alarm-description "EFS burst credits below 1 TiB - throughput may drop" \
   --namespace "AWS/EFS" \
   --metric-name "BurstCreditBalance" \
   --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" \
@@ -165,32 +165,32 @@ aws cloudwatch put-metric-alarm \
 
 Let's compare costs for a few scenarios (us-east-1 pricing, approximate):
 
-**Scenario 1: 50 GB file system, needs 100 MB/s consistently**
+**Scenario 1: 50 GiB file system, needs 100 MiB/s consistently**
 
 | Mode | Monthly Cost |
 |------|-------------|
 | Bursting | $15 (storage only) - but you'll run out of burst credits quickly |
-| Provisioned | $15 (storage) + $600 (100 MB/s provisioned) = $615 |
+| Provisioned | $15 (storage) + about $600 (100 MiB/s provisioned, minus included baseline) = about $615 |
 | Elastic | $15 (storage) + usage-based throughput charges |
 
 For consistent high throughput on small data, Provisioned is the predictable choice. Elastic might be cheaper if the high throughput is only needed part of the time.
 
-**Scenario 2: 10 TB file system, moderate usage**
+**Scenario 2: 10 TiB file system, moderate usage**
 
 | Mode | Monthly Cost |
 |------|-------------|
-| Bursting | $3,000 (storage only) - gets 500 MB/s baseline for free |
+| Bursting | $3,000 (storage only) - gets 500 MiB/s write-only or 1.5 GiB/s read-only baseline for free |
 | Provisioned | $3,000 + provisioned cost - unnecessary since baseline is already high |
 | Elastic | $3,000 + minimal usage charges |
 
 For large file systems, Bursting is almost always the most cost-effective because the baseline throughput is proportional to storage.
 
-**Scenario 3: 200 GB file system, spiky traffic (occasional 500 MB/s bursts)**
+**Scenario 3: 200 GiB file system, spiky traffic (occasional 500 MiB/s bursts)**
 
 | Mode | Monthly Cost |
 |------|-------------|
 | Bursting | $60 - works if bursts are short and infrequent |
-| Provisioned | $60 + $3,000 (500 MB/s) = $3,060 - expensive for occasional use |
+| Provisioned | $60 + about $3,000 (500 MiB/s) = about $3,060 - expensive for occasional use |
 | Elastic | $60 + pay-per-use - best for spiky patterns |
 
 Elastic shines for unpredictable workloads where provisioned would be wasteful.
@@ -201,58 +201,57 @@ You can calculate how long you can burst with this formula:
 
 ```python
 def calculate_burst_duration(
-    storage_gb,
-    burst_throughput_mbps,
+    storage_gib,
+    burst_throughput_mibps,
     current_credits_bytes=None
 ):
     """
     Calculate how long you can sustain a burst.
 
     Args:
-        storage_gb: Amount of data stored in GB
-        burst_throughput_mbps: Desired burst throughput in MB/s
+        storage_gib: Amount of data stored in GiB
+        burst_throughput_mibps: Desired metered burst throughput in MiB/s
         current_credits_bytes: Current credit balance (default: max)
     """
-    baseline_throughput = storage_gb * 50 * 1024  # bytes/s
-    burst_bytes = burst_throughput_mbps * 1024 * 1024  # bytes/s
+    baseline_throughput = storage_gib * 50 * 1024  # bytes/s
+    burst_bytes = burst_throughput_mibps * 1024 * 1024  # bytes/s
 
-    # Max credits = file system can accumulate up to 2.1 TB
-    max_credits = 2.1 * 1024 * 1024 * 1024 * 1024  # bytes
+    # Max credits = 2.1 TiB for file systems under 1 TiB,
+    # or 2.1 TiB per TiB stored for larger file systems.
+    max_credits = 2.1 * max(1, storage_gib / 1024) * 1024**4  # bytes
     credits = current_credits_bytes or max_credits
 
     if burst_bytes <= baseline_throughput:
         return float('inf')  # Burst is within baseline, no credit drain
 
-    # Net credit drain rate
-    drain_rate = burst_bytes - baseline_throughput  # bytes/s
-
-    duration_seconds = credits / drain_rate
+    duration_seconds = credits / burst_bytes
     duration_hours = duration_seconds / 3600
 
-    print(f"Storage: {storage_gb} GB")
-    print(f"Baseline throughput: {baseline_throughput / 1024 / 1024:.1f} MB/s")
-    print(f"Burst throughput: {burst_throughput_mbps} MB/s")
-    print(f"Available credits: {credits / 1024 / 1024 / 1024:.1f} GB")
+    print(f"Storage: {storage_gib} GiB")
+    print(f"Baseline throughput: {baseline_throughput / 1024 / 1024:.1f} MiB/s")
+    print(f"Burst throughput: {burst_throughput_mibps} MiB/s")
+    print(f"Available credits: {credits / 1024 / 1024 / 1024:.1f} GiB")
     print(f"Burst duration: {duration_hours:.1f} hours")
     return duration_hours
 
-# Example: 100 GB file system bursting at 100 MB/s
+# Example: 100 GiB file system bursting at 100 MiB/s
 calculate_burst_duration(100, 100)
 ```
 
 ## Auto-Switching with Lambda
 
-Here's a pattern where you automatically switch to provisioned throughput when burst credits get low, and switch back when they recover:
+Here's a pattern where you automatically switch to provisioned throughput when burst credits get low, and switch back when they recover after the 24-hour cooldown:
 
 ```python
 import boto3
+from datetime import datetime, timedelta, timezone
 
 efs = boto3.client('efs')
 cloudwatch = boto3.client('cloudwatch')
 
-LOW_CREDIT_THRESHOLD = 500 * 1024**3  # 500 GB in bytes
-HIGH_CREDIT_THRESHOLD = 1500 * 1024**3  # 1.5 TB in bytes
-PROVISIONED_THROUGHPUT = 128  # MB/s
+LOW_CREDIT_THRESHOLD = 500 * 1024**3  # 500 GiB in bytes
+HIGH_CREDIT_THRESHOLD = 1500 * 1024**3  # 1.5 TiB in bytes
+PROVISIONED_THROUGHPUT = 128  # MiB/s
 
 def handler(event, context):
     fs_id = event.get('file_system_id', 'fs-0abc123def456789')
@@ -262,12 +261,13 @@ def handler(event, context):
     current_mode = fs['ThroughputMode']
 
     # Get current burst credits
+    end_time = datetime.now(timezone.utc)
     response = cloudwatch.get_metric_statistics(
         Namespace='AWS/EFS',
         MetricName='BurstCreditBalance',
         Dimensions=[{'Name': 'FileSystemId', 'Value': fs_id}],
-        StartTime='2026-02-12T00:00:00Z',
-        EndTime='2026-02-12T23:59:59Z',
+        StartTime=end_time - timedelta(hours=1),
+        EndTime=end_time,
         Period=300,
         Statistics=['Average']
     )
@@ -276,11 +276,12 @@ def handler(event, context):
         print("No burst credit data available")
         return
 
-    credits = response['Datapoints'][-1]['Average']
-    print(f"Current mode: {current_mode}, Credits: {credits / 1024**3:.1f} GB")
+    latest = max(response['Datapoints'], key=lambda point: point['Timestamp'])
+    credits = latest['Average']
+    print(f"Current mode: {current_mode}, Credits: {credits / 1024**3:.1f} GiB")
 
     if current_mode == 'bursting' and credits < LOW_CREDIT_THRESHOLD:
-        print(f"Credits low, switching to provisioned ({PROVISIONED_THROUGHPUT} MB/s)")
+        print(f"Credits low, switching to provisioned ({PROVISIONED_THROUGHPUT} MiB/s)")
         efs.update_file_system(
             FileSystemId=fs_id,
             ThroughputMode='provisioned',
@@ -298,7 +299,7 @@ Note: This pattern has the 24-hour cooldown limitation. For truly dynamic worklo
 
 ## Best Practices
 
-1. **Start with Bursting** for new file systems. Monitor burst credits to see if it's sufficient.
+1. **Start with Elastic** for spiky or unpredictable new workloads, or Bursting when you specifically want throughput to scale with stored data. If using Bursting, monitor burst credits to see if it's sufficient.
 2. **Use Elastic for unpredictable workloads** - it's the most flexible option.
 3. **Use Provisioned only for well-understood, consistent throughput needs** on small file systems.
 4. **Monitor BurstCreditBalance religiously** if using bursting mode. Running out of credits with no warning is a common cause of sudden performance drops.
@@ -308,4 +309,4 @@ For more on monitoring EFS metrics, see our post on [monitoring EFS with CloudWa
 
 ## Wrapping Up
 
-Throughput mode is a lever that directly affects both your file system's performance and your AWS bill. Bursting is free (included in storage costs) but limited by your data size. Provisioned gives guaranteed throughput but costs extra. Elastic scales automatically but charges per use. The right choice depends on your data size, access patterns, and tolerance for variability. When in doubt, start with Bursting, watch the metrics, and switch if needed.
+Throughput mode is a lever that directly affects both your file system's performance and your AWS bill. Bursting is free (included in storage costs) but limited by your data size. Provisioned gives guaranteed throughput but costs extra. Elastic scales automatically but charges per use. The right choice depends on your data size, access patterns, and tolerance for variability. When in doubt, start with Elastic for unpredictable workloads, or Bursting when you want throughput tied to stored data, watch the metrics, and switch if needed.
