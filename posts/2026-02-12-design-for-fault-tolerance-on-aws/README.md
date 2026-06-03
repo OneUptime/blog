@@ -193,14 +193,14 @@ On AWS, you can implement bulkheads using separate Lambda functions with individ
 ```typescript
 // Each service gets its own concurrency limit
 const paymentFunction = new lambda.Function(this, 'PaymentHandler', {
-  runtime: lambda.Runtime.NODEJS_18_X,
+  runtime: lambda.Runtime.NODEJS_24_X,
   handler: 'payment.handler',
   code: lambda.Code.fromAsset('lambda'),
   reservedConcurrentExecutions: 50, // Max 50 concurrent payment operations
 });
 
 const notificationFunction = new lambda.Function(this, 'NotificationHandler', {
-  runtime: lambda.Runtime.NODEJS_18_X,
+  runtime: lambda.Runtime.NODEJS_24_X,
   handler: 'notification.handler',
   code: lambda.Code.fromAsset('lambda'),
   reservedConcurrentExecutions: 20, // Notifications get less capacity
@@ -283,7 +283,7 @@ new cloudwatch.Alarm(this, 'DLQAlarm', {
 
 ## Chaos Engineering
 
-You can't be confident in your fault tolerance without testing it. AWS Fault Injection Simulator lets you inject failures and observe how your system responds.
+You can't be confident in your fault tolerance without testing it. AWS Fault Injection Service lets you inject failures and observe how your system responds.
 
 ```typescript
 // FIS experiment: terminate EC2 instances
@@ -325,10 +325,13 @@ For critical data, consider cross-region replication too.
 
 ```typescript
 // DynamoDB global table for cross-region data durability
-const table = new dynamodb.Table(this, 'GlobalTable', {
+const table = new dynamodb.TableV2(this, 'GlobalTable', {
   partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-  replicationRegions: ['eu-west-1', 'ap-southeast-1'],
-  billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+  replicas: [
+    { region: 'eu-west-1' },
+    { region: 'ap-southeast-1' },
+  ],
+  billing: dynamodb.Billing.onDemand(),
 });
 ```
 
