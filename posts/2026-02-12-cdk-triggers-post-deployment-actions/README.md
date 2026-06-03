@@ -8,11 +8,11 @@ Description: Use AWS CDK Triggers to run Lambda functions after deployment for t
 
 ---
 
-There's a common need in infrastructure deployments that CloudFormation doesn't handle well: running code after resources are created. You might need to run a database migration after RDS spins up, warm a cache after ElastiCache is ready, or run a health check after deploying a new API. CDK Triggers were built specifically for this. They're simpler than custom resources and more purpose-built for post-deployment tasks.
+There's a common need in infrastructure deployments that CloudFormation doesn't handle well: running code after resources are created. You might need to run a database migration after RDS spins up, warm a cache after ElastiCache is ready, or run a health check after deploying a new API. CDK Triggers were built specifically for this. They're simpler than writing custom resources yourself and more purpose-built for post-deployment tasks.
 
 ## What Are CDK Triggers?
 
-A CDK Trigger is a construct that executes a Lambda function after specific resources in your stack have been created or updated. Unlike custom resources, triggers don't create CloudFormation resources - they just run code at the right time.
+A CDK Trigger is a construct that executes a Lambda function during deployment, after any resources it depends on have been provisioned. Unlike writing a custom resource yourself, triggers give you a purpose-built CDK API for running code at the right time.
 
 Here's the basic pattern:
 
@@ -29,7 +29,7 @@ export class TriggersStack extends cdk.Stack {
 
     // Lambda function that runs after deployment
     const migrationFn = new lambda.Function(this, 'MigrationFunction', {
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda/migration'),
       timeout: cdk.Duration.minutes(5),
@@ -46,7 +46,7 @@ export class TriggersStack extends cdk.Stack {
 }
 ```
 
-The trigger ensures the Lambda function runs every time the stack is deployed. If the function fails, the deployment fails too, so you get immediate feedback.
+The trigger ensures the Lambda function runs on the first deployment and, by default, again when the handler code or configuration changes. If the function fails, the deployment fails too, so you get immediate feedback.
 
 ## Running After Specific Resources
 
@@ -61,7 +61,7 @@ const vpc = new ec2.Vpc(this, 'VPC');
 
 const database = new rds.DatabaseInstance(this, 'Database', {
   engine: rds.DatabaseInstanceEngine.postgres({
-    version: rds.PostgresEngineVersion.VER_15_4,
+    version: rds.PostgresEngineVersion.VER_17_7,
   }),
   instanceType: ec2.InstanceType.of(
     ec2.InstanceClass.T3,
@@ -73,7 +73,7 @@ const database = new rds.DatabaseInstance(this, 'Database', {
 
 // Migration Lambda that connects to the database
 const migrationFn = new lambda.Function(this, 'MigrationFn', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/migration'),
   vpc: vpc,
@@ -145,7 +145,7 @@ After deploying a new ElastiCache cluster or invalidating a CloudFront distribut
 import * as elasticache from 'aws-cdk-lib/aws-elasticache';
 
 const cacheWarmer = new lambda.Function(this, 'CacheWarmer', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/cache-warmer'),
   vpc: vpc,
@@ -286,7 +286,7 @@ const settingsTable = new dynamodb.Table(this, 'SettingsTable', {
 });
 
 const seedFn = new lambda.Function(this, 'SeedData', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/seed'),
   environment: {
@@ -323,4 +323,4 @@ For custom resources, check out our post on [CDK custom resources for advanced p
 
 ## Wrapping Up
 
-CDK Triggers fill a gap that's existed in CloudFormation since forever - running code after resources are deployed. They're simpler than custom resources, more predictable, and perfect for the most common post-deployment tasks. Start with health checks and database migrations, and you'll quickly find more use cases. The `executeAfter` method is the key - it makes sure your code only runs when the resources it depends on are actually ready.
+CDK Triggers fill a gap that's existed in CloudFormation since forever - running code after resources are deployed. They're simpler than writing custom resources yourself, more predictable, and perfect for the most common post-deployment tasks. Start with health checks and database migrations, and you'll quickly find more use cases. The `executeAfter` method is the key - it makes sure your code only runs when the resources it depends on are actually ready.
