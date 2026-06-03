@@ -8,23 +8,23 @@ Description: Learn how to create consistent snapshots across multiple volumes si
 
 ---
 
-Applications with multiple volumes need coordinated snapshots to maintain consistency across all volumes. Creating snapshots at the same point in time prevents partial state captures that could lead to corruption during restoration.
+Applications with multiple volumes need coordinated snapshots to maintain consistency across all volumes. Creating snapshots at the same point in time, when the storage system supports it, prevents partial state captures that could lead to corruption during restoration.
 
 ## Understanding Multi-Volume Consistency
 
 Multi-volume consistency requires:
 
-1. All snapshots created at the same logical point in time
+1. All snapshots created at the same logical point in time when possible
 2. Application state synchronized across volumes
 3. Coordinated freeze and thaw operations
-4. Atomic snapshot creation when possible
+4. Atomic snapshot creation when possible through CSI volume group snapshot support
 5. Consistent labeling for snapshot groups
 
 Without coordination, different volumes may capture different transaction states, leading to inconsistent restores.
 
 ## Creating Snapshot Groups with Labels
 
-Use labels to group related snapshots:
+Use labels to group related snapshots. Labels organize individual `VolumeSnapshot` objects, but they do not make snapshot creation atomic; use CSI `VolumeGroupSnapshot` support when your cluster and CSI driver provide it.
 
 ```yaml
 apiVersion: batch/v1
@@ -92,7 +92,7 @@ spec:
 
             echo "Progress: $READY/$TOTAL snapshots ready"
 
-            if [ "$READY" = "$TOTAL" ]; then
+            if [ "$TOTAL" -gt 0 ] && [ "$READY" = "$TOTAL" ]; then
               echo "✓ All snapshots in group $GROUP_ID are ready"
               exit 0
             fi
@@ -149,24 +149,18 @@ spec:
           set -e
 
           # Install kubectl
-          apt-get update && apt-get install -y curl
+          apt-get update && apt-get install -y curl jq ca-certificates
           curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
           chmod +x kubectl && mv kubectl /usr/local/bin/
 
           GROUP_ID="app-consistent-$(date +%Y%m%d-%H%M%S)"
+          export GROUP_ID
           echo "=== Creating application-consistent snapshot group: $GROUP_ID ==="
 
-          # Step 1: Freeze application
-          echo "Step 1: Freezing application..."
-          psql -c "SELECT pg_start_backup('multi-volume-backup', false, false);"
+          cat > /tmp/create-snapshots.sh <<'SNAPSHOT_SCRIPT'
+          #!/bin/bash
+          set -e
 
-          # Also freeze other databases if needed
-          # redis-cli -h redis-service SAVE
-          # mongosh --host mongodb-service --eval "db.fsyncLock()"
-
-          echo "✓ Application frozen"
-
-          # Step 2: Create all snapshots quickly
           echo "Step 2: Creating snapshots..."
 
           PVCS=(
@@ -199,15 +193,31 @@ spec:
             echo "Created snapshot for $PVC_NAME"
           done
 
-          # Step 3: Unfreeze application
-          echo "Step 3: Unfreezing application..."
           sleep 10  # Allow snapshots to start
-          psql -c "SELECT pg_stop_backup(false);"
+          SNAPSHOT_SCRIPT
+          chmod +x /tmp/create-snapshots.sh
+
+          # Step 1: Put PostgreSQL into backup mode
+          echo "Step 1: Starting PostgreSQL backup mode..."
+
+          # Also freeze other databases if needed
+          # redis-cli -h redis-service SAVE
+          # mongosh --host mongodb-service --eval "db.fsyncLock()"
+
+          psql -v ON_ERROR_STOP=1 -o /tmp/postgres-backup-metadata.txt <<'SQL'
+          SELECT pg_backup_start(label => 'multi-volume-backup', fast => false);
+          \! /tmp/create-snapshots.sh
+          SELECT * FROM pg_backup_stop(wait_for_archive => true);
+          SQL
+
+          kubectl create configmap postgres-backup-metadata-${GROUP_ID} \
+            --from-file=postgres-backup-metadata=/tmp/postgres-backup-metadata.txt \
+            --dry-run=client -o yaml | kubectl apply -f -
 
           # Unfreeze other databases
           # mongosh --host mongodb-service --eval "db.fsyncUnlock()"
 
-          echo "✓ Application unfrozen"
+          echo "✓ PostgreSQL backup mode ended"
 
           # Step 4: Wait for completion
           echo "Step 4: Waiting for snapshots to complete..."
@@ -217,7 +227,7 @@ spec:
             READY=$(kubectl get volumesnapshot -l snapshot-group=$GROUP_ID \
               -o json | jq '[.items[] | select(.status.readyToUse == true)] | length')
 
-            if [ "$READY" = "$TOTAL" ]; then
+            if [ "$TOTAL" -gt 0 ] && [ "$READY" = "$TOTAL" ]; then
               echo "✓ All snapshots complete"
               kubectl get volumesnapshot -l snapshot-group=$GROUP_ID
               exit 0
@@ -241,19 +251,20 @@ Restore all volumes from a snapshot group:
 set -e
 
 GROUP_ID="${1}"
-TARGET_NAMESPACE="${2:-default}"
+NAMESPACE="${2:-default}"
 
 if [ -z "$GROUP_ID" ]; then
-  echo "Usage: $0 <snapshot-group-id> [target-namespace]"
+  echo "Usage: $0 <snapshot-group-id> [namespace]"
   exit 1
 fi
 
 echo "=== Restoring snapshot group: $GROUP_ID ==="
-echo "Target namespace: $TARGET_NAMESPACE"
+echo "Namespace: $NAMESPACE"
 
-# Get all snapshots in the group
+# Get all snapshots in the group. The VolumeSnapshots and restored PVCs must be
+# in the same namespace when using spec.dataSource.
 
-SNAPSHOTS=$(kubectl get volumesnapshot -l snapshot-group=$GROUP_ID \
+SNAPSHOTS=$(kubectl get volumesnapshot -n $NAMESPACE -l snapshot-group=$GROUP_ID \
   -o jsonpath='{.items[*].metadata.name}')
 
 if [ -z "$SNAPSHOTS" ]; then
@@ -266,7 +277,7 @@ echo "Found snapshots: $SNAPSHOTS"
 # Create PVCs from each snapshot
 for SNAPSHOT in $SNAPSHOTS; do
   # Get original PVC name from label
-  PVC_NAME=$(kubectl get volumesnapshot $SNAPSHOT \
+  PVC_NAME=$(kubectl get volumesnapshot -n $NAMESPACE $SNAPSHOT \
     -o jsonpath='{.metadata.labels.pvc-name}')
 
   if [ -z "$PVC_NAME" ]; then
@@ -275,14 +286,14 @@ for SNAPSHOT in $SNAPSHOTS; do
   fi
 
   # Get restore size
-  RESTORE_SIZE=$(kubectl get volumesnapshot $SNAPSHOT \
+  RESTORE_SIZE=$(kubectl get volumesnapshot -n $NAMESPACE $SNAPSHOT \
     -o jsonpath='{.status.restoreSize}')
 
   RESTORED_PVC="${PVC_NAME}-restored"
 
   echo "Restoring $PVC_NAME to $RESTORED_PVC..."
 
-  kubectl apply -n $TARGET_NAMESPACE -f - <<EOF
+  kubectl apply -n $NAMESPACE -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -307,12 +318,12 @@ done
 
 echo "Waiting for all PVCs to be bound..."
 
-kubectl wait -n $TARGET_NAMESPACE \
+kubectl wait -n $NAMESPACE \
   --for=jsonpath='{.status.phase}'=Bound \
   pvc -l restored-from-group=$GROUP_ID --timeout=600s
 
 echo "✓ All volumes restored from group $GROUP_ID"
-kubectl get pvc -n $TARGET_NAMESPACE -l restored-from-group=$GROUP_ID
+kubectl get pvc -n $NAMESPACE -l restored-from-group=$GROUP_ID
 ```
 
 ## Scheduled Multi-Volume Snapshots
@@ -382,7 +393,7 @@ spec:
                 READY=$(kubectl get volumesnapshot -l snapshot-group=$GROUP_ID \
                   -o json | jq '[.items[] | select(.status.readyToUse == true)] | length')
 
-                if [ "$READY" = "$TOTAL" ]; then
+                if [ "$TOTAL" -gt 0 ] && [ "$READY" = "$TOTAL" ]; then
                   echo "✓ Snapshot group $GROUP_ID complete"
                   exit 0
                 fi
@@ -423,7 +434,7 @@ spec:
 
               # Get all snapshot groups
               GROUPS=$(kubectl get volumesnapshot -o json | \
-                jq -r '[.items[].metadata.labels."snapshot-group"] | unique | .[]')
+                jq -r '[.items[].metadata.labels."snapshot-group" | select(. != null)] | unique | .[]')
 
               for GROUP in $GROUPS; do
                 # Get retention days for this group
