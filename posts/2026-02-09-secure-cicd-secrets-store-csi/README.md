@@ -12,7 +12,7 @@ Storing sensitive credentials securely is critical for CI/CD pipelines. The Kube
 
 ## Understanding Secrets Store CSI Driver
 
-The Secrets Store CSI Driver mounts secrets from external systems as volumes in pods. Unlike native Kubernetes secrets, credentials never reside in etcd. Instead, they are fetched at pod startup and mounted as files or environment variables, providing better security through external secret lifecycle management and audit trails.
+The Secrets Store CSI Driver mounts secrets from external systems as volumes in pods. Unlike native Kubernetes secrets, credentials do not reside in etcd when you only use CSI volume mounts. Instead, they are fetched at pod startup and mounted as files; if you need environment variables, the driver can optionally sync mounted content to Kubernetes Secrets first. Synced Kubernetes Secrets are stored like normal Kubernetes Secrets, so use them only when the workload requires that integration.
 
 ## Installing Secrets Store CSI Driver
 
@@ -33,9 +33,14 @@ helm install csi-secrets-store \
 Install provider (example: Vault):
 
 ```bash
-# Install Vault CSI provider
-helm install vault csi-secrets-store-provider-vault/vault \
-  --namespace kube-system
+# Add HashiCorp Helm repository
+helm repo add hashicorp https://helm.releases.hashicorp.com
+
+# Install Vault with the CSI provider enabled
+helm install vault hashicorp/vault \
+  --namespace vault \
+  --create-namespace \
+  --set="csi.enabled=true"
 ```
 
 ## Configuring HashiCorp Vault Integration
@@ -134,7 +139,7 @@ spec:
 Create Tekton task using CSI secrets:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: build-with-csi-secrets
@@ -168,9 +173,9 @@ spec:
           $(workspaces.source.path)
 
     - name: build-image
-      image: gcr.io/kaniko-project/executor:latest
+      image: gcr.io/kaniko-project/executor:v1.23.2-debug
       script: |
-        #!/bin/sh
+        #!/busybox/sh
         set -e
 
         # Create Docker config from CSI secrets
@@ -190,15 +195,20 @@ spec:
     - name: deploy-to-aws
       image: amazon/aws-cli:latest
       script: |
-        #!/bin/bash
+        #!/bin/sh
+        set -e
 
         # Load AWS credentials from CSI
         export AWS_ACCESS_KEY_ID=$(cat /mnt/secrets/aws-access-key)
         export AWS_SECRET_ACCESS_KEY=$(cat /mnt/secrets/aws-secret-key)
 
+        # Install kubectl for this deploy step
+        curl -LO "https://dl.k8s.io/release/v1.33.1/bin/linux/amd64/kubectl"
+        chmod +x kubectl
+
         # Deploy
         aws eks update-kubeconfig --name production-cluster
-        kubectl set image deployment/myapp myapp=$(params.image-name)
+        ./kubectl set image deployment/myapp myapp=$(params.image-name)
 
   volumes:
     - name: secrets-store
@@ -209,7 +219,7 @@ spec:
           secretProviderClass: "ci-secrets"
 ```
 
-Create service account:
+Create service account and use it in the TaskRun or PipelineRun that runs the Task:
 
 ```yaml
 apiVersion: v1
@@ -219,30 +229,23 @@ metadata:
   namespace: tekton-pipelines
 
 ---
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+apiVersion: tekton.dev/v1
+kind: TaskRun
 metadata:
-  name: tekton-role
+  name: build-with-csi-secrets-run
   namespace: tekton-pipelines
-rules:
-  - apiGroups: [""]
-    resources: ["secrets"]
-    verbs: ["get", "list", "create", "update"]
-
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: tekton-binding
-  namespace: tekton-pipelines
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: tekton-role
-subjects:
-  - kind: ServiceAccount
-    name: tekton-sa
-    namespace: tekton-pipelines
+spec:
+  serviceAccountName: tekton-sa
+  taskRef:
+    name: build-with-csi-secrets
+  params:
+    - name: image-name
+      value: registry.example.com/myapp:latest
+    - name: git-url
+      value: github.com/example/private-repo.git
+  workspaces:
+    - name: source
+      emptyDir: {}
 ```
 
 ## Using AWS Secrets Manager
@@ -281,7 +284,7 @@ eksctl create iamserviceaccount \
   --name tekton-sa \
   --namespace tekton-pipelines \
   --cluster production \
-  --attach-policy-arn arn:aws:iam::aws:policy/SecretsManagerReadWrite \
+  --attach-policy-arn arn:aws:iam::aws:policy/SecretsManagerReadOnly \
   --approve
 ```
 
@@ -325,10 +328,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Import Secrets from Vault
-        uses: hashicorp/vault-action@v2
+        uses: hashicorp/vault-action@v3.4.0
         with:
           url: https://vault.example.com
           token: ${{ secrets.VAULT_TOKEN }}
@@ -363,16 +366,21 @@ spec:
           serviceAccountName: secret-rotator
           containers:
             - name: rotator
-              image: vault:latest
+              image: hashicorp/vault:1.20
               env:
                 - name: VAULT_ADDR
                   value: "https://vault.vault.svc:8200"
+                - name: VAULT_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: vault-rotator-token
+                      key: token
               command:
                 - /bin/sh
                 - -c
                 - |
                   # Generate new credentials
-                  NEW_PASS=$(openssl rand -base64 32)
+                  NEW_PASS=$(vault write -field=random_bytes sys/tools/random/32 format=base64)
 
                   # Update in Vault
                   vault kv put cicd/docker-registry \
@@ -382,8 +390,7 @@ spec:
                   # Update in Docker registry
                   # Implementation depends on registry
 
-                  # Restart affected pods
-                  kubectl rollout restart deployment/ci-pipeline -n tekton-pipelines
+                  # Restart affected pods or reload mounted files with your deployment automation
           restartPolicy: OnFailure
 ```
 
@@ -391,17 +398,10 @@ spec:
 
 Track secret usage:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vault-audit-config
-data:
-  audit.hcl: |
-    audit "file" {
-      path = "/vault/logs/audit.log"
-      log_raw = false
-    }
+```bash
+# Enable a file audit device
+kubectl exec -it vault-0 -n vault -- \
+  vault audit enable file file_path=/vault/logs/audit.log
 ```
 
 Query audit logs:
