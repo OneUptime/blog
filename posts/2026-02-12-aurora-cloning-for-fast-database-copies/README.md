@@ -66,9 +66,12 @@ aws rds restore-db-cluster-to-point-in-time \
 
 The `--restore-type copy-on-write` flag is what makes this a clone rather than a full restore. The `--use-latest-restorable-time` flag tells Aurora to clone from the most recent consistent point.
 
-After creating the cluster, you need to add at least one instance:
+After creating the cluster, wait until it's available and then add at least one instance:
 
 ```bash
+aws rds wait db-cluster-available \
+  --db-cluster-identifier my-clone-cluster
+
 # Add an instance to the cloned cluster
 aws rds create-db-instance \
   --db-instance-identifier my-clone-instance-1 \
@@ -86,7 +89,7 @@ If you manage infrastructure as code, here's the Terraform configuration:
 resource "aws_rds_cluster" "clone" {
   cluster_identifier   = "my-clone-cluster"
   engine               = "aurora-mysql"
-  engine_version       = "5.7.mysql_aurora.2.11.2"
+  engine_version       = aws_rds_cluster.production.engine_version
   db_subnet_group_name = aws_db_subnet_group.main.name
 
   # These parameters make it a clone
@@ -144,6 +147,9 @@ aws rds restore-db-cluster-to-point-in-time \
   --db-subnet-group-name dev-subnet-group \
   --vpc-security-group-ids sg-dev123
 
+aws rds wait db-cluster-available \
+  --db-cluster-identifier "${CLONE_ID}"
+
 # Add an instance to the clone
 aws rds create-db-instance \
   --db-instance-identifier "${CLONE_ID}-instance-1" \
@@ -190,9 +196,8 @@ Want to test a migration before running it on production? Clone the database, ru
 Aurora cloning has a few constraints you should be aware of:
 
 - **Cross-region cloning isn't supported.** The clone must be in the same region as the source. If you need a cross-region copy, use [Aurora Global Databases](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view) or snapshot-and-restore.
-- **Clone depth limit.** You can create clones of clones, but only up to 15 levels deep.
-- **Maximum 15 clones per source.** You can't have more than 15 active clones from a single source cluster.
-- **Same engine version.** The clone uses the same engine version as the source.
+- **Copy-on-write clone limit.** You can create up to 15 clones with the copy-on-write protocol. After that, additional clones are created as full copies, up to the DB cluster quota for the Region.
+- **Same engine family.** The clone uses the same Aurora engine as the source. If you change the deployment configuration while cloning, Aurora can create the clone on the latest minor version of the source engine.
 - **Storage grows independently.** Once you start writing to the clone, it uses its own storage pages. A clone that diverges significantly from the original will use nearly as much storage as a full copy.
 
 ## Cost Implications
