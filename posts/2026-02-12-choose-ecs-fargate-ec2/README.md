@@ -43,19 +43,19 @@ This is usually the deciding factor, so let's dig into the numbers.
 
 ### Fargate Pricing
 
-Fargate charges per vCPU-second and per GB-second of memory your task uses. As of 2026, roughly:
+Fargate charges per vCPU-second and per GB-second of memory your task requests. As of 2026, for Linux/x86 in us-east-1, roughly:
 
 - vCPU per hour: ~$0.04048
 - GB memory per hour: ~$0.004445
 
-A task with 0.5 vCPU and 1 GB memory running 24/7 costs about $29/month.
+A task with 0.5 vCPU and 1 GB memory running 24/7 costs about $18/month.
 
 ### EC2 Pricing
 
 With EC2, you pay for the instances regardless of how many containers you run on them. A t3.large (2 vCPU, 8 GB) costs about $60/month on-demand, but:
 
 - With 1-year reserved instances: ~$38/month (37% savings)
-- With 3-year reserved instances: ~$24/month (60% savings)
+- With 3-year reserved instances: ~$26/month (57% savings)
 - With spot instances: ~$18/month (70% savings)
 
 The key math: if you can pack 4-6 containers onto a t3.large (which has 2 vCPU and 8 GB), the per-container cost on EC2 is much lower than Fargate.
@@ -66,8 +66,8 @@ Here's what running a small service (3 tasks, 0.5 vCPU, 1 GB each) looks like pe
 
 | Option | Monthly Cost | Operational Effort |
 |--------|-------------|-------------------|
-| Fargate | ~$87 | Minimal |
-| Fargate Spot | ~$61 | Minimal (handle interruptions) |
+| Fargate | ~$54 | Minimal |
+| Fargate Spot | as low as ~$16 | Minimal (handle interruptions) |
 | EC2 On-Demand (1x t3.large) | ~$60 | Moderate |
 | EC2 Reserved (1x t3.large, 1yr) | ~$38 | Moderate |
 | EC2 Spot (1x t3.large) | ~$18 | Higher (handle interruptions + manage instances) |
@@ -121,9 +121,9 @@ Fargate tasks typically take 30-60 seconds to start. The infrastructure needs to
 
 EC2 tasks start faster (5-15 seconds) when an instance with available capacity already exists, because the instance is already running and often has the image cached. But if a new instance needs to launch, add 2-3 minutes for that.
 
-Resource Ceiling
+### Resource Ceiling
 
-Fargate maxes out at 4 vCPU and 30 GB memory per task. For most workloads that's plenty, but if you need a task with 16 GB of RAM for in-memory processing or GPU access, EC2 is your only option.
+Fargate supports up to 16 vCPU and 120 GB memory per task for Linux workloads on platform version 1.4.0 or later. For most workloads that's plenty, but if you need more than that, GPU access, or specialized instance hardware, EC2 is your only option.
 
 EC2 gives you access to the full range of instance types, including:
 - Compute-optimized (c5, c6g) for CPU-heavy workloads
@@ -182,10 +182,12 @@ You don't have to pick one. A single ECS cluster can use both Fargate and EC2 th
 
 ```bash
 # Cluster with both Fargate and EC2 capacity providers
+# Assume ec2-gpu is an Auto Scaling group capacity provider
+# you already created for GPU-backed EC2 instances.
 
 aws ecs create-cluster \
   --cluster-name hybrid-cluster \
-  --capacity-providers FARGATE FARGATE_SPOT ec2-on-demand ec2-spot \
+  --capacity-providers FARGATE FARGATE_SPOT ec2-gpu \
   --default-capacity-provider-strategy \
     capacityProvider=FARGATE,weight=1,base=0
 
@@ -196,7 +198,8 @@ aws ecs create-service \
   --service-name web-frontend \
   --task-definition web:1 \
   --desired-count 3 \
-  --capacity-provider-strategy capacityProvider=FARGATE,weight=1
+  --capacity-provider-strategy capacityProvider=FARGATE,weight=1 \
+  --network-configuration 'awsvpcConfiguration={subnets=[subnet-12345678],securityGroups=[sg-12345678],assignPublicIp=DISABLED}'
 
 # ML inference on EC2 with GPUs
 aws ecs create-service \
@@ -210,7 +213,8 @@ aws ecs create-service \
 aws ecs run-task \
   --cluster hybrid-cluster \
   --task-definition batch-job:1 \
-  --capacity-provider-strategy capacityProvider=FARGATE_SPOT,weight=1
+  --capacity-provider-strategy capacityProvider=FARGATE_SPOT,weight=1 \
+  --network-configuration 'awsvpcConfiguration={subnets=[subnet-12345678],securityGroups=[sg-12345678],assignPublicIp=DISABLED}'
 ```
 
 ## Decision Framework
