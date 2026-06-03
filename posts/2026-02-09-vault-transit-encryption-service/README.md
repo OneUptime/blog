@@ -14,7 +14,7 @@ Applications often need to encrypt sensitive data before storing it in databases
 
 The Transit engine acts as encryption-as-a-service. It performs cryptographic operations without exposing encryption keys. Applications send plaintext data to Vault for encryption and receive ciphertext, or send ciphertext for decryption and receive plaintext. Keys never leave Vault.
 
-Transit supports multiple encryption algorithms, key rotation with automatic re-encryption, and convergent encryption for deterministic results. This eliminates the complexity of key management while providing strong encryption.
+Transit supports multiple encryption algorithms, key rotation, rewrapping ciphertext to newer key versions, and convergent encryption for deterministic results. This eliminates the complexity of key management while providing strong encryption.
 
 ## Enabling Transit Engine
 
@@ -92,11 +92,11 @@ path "transit/keys/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-path "transit/keys/*/rotate" {
+path "transit/keys/+/rotate" {
   capabilities = ["update"]
 }
 
-path "transit/keys/*/config" {
+path "transit/keys/+/config" {
   capabilities = ["update"]
 }
 EOF
@@ -105,8 +105,8 @@ EOF
 vault write auth/kubernetes/role/app \
   bound_service_account_names=app-sa \
   bound_service_account_namespaces=default \
-  policies=transit-encrypt \
-  ttl=1h
+  token_policies=transit-encrypt \
+  token_ttl=1h
 ```
 
 ## Implementing Transit in Go Applications
@@ -117,11 +117,10 @@ Encrypt and decrypt data in Go:
 package main
 
 import (
-    "context"
     "encoding/base64"
     "fmt"
-    "io/ioutil"
     "log"
+    "os"
 
     vault "github.com/hashicorp/vault/api"
 )
@@ -141,7 +140,7 @@ func NewTransitClient(vaultAddr, keyName string) (*TransitClient, error) {
     }
 
     // Authenticate with Kubernetes auth
-    jwt, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    jwt, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
     if err != nil {
         return nil, err
     }
@@ -425,7 +424,10 @@ Automate rewrapping:
 func (tc *TransitClient) RewrapIfNeeded(ciphertext string) (string, bool, error) {
     // Parse version from ciphertext
     // Format: vault:v1:...
-    version := extractVersion(ciphertext)
+    version, err := extractVersion(ciphertext)
+    if err != nil {
+        return "", false, err
+    }
 
     // Get current key version
     keyInfo, err := tc.client.Logical().Read(
@@ -435,11 +437,13 @@ func (tc *TransitClient) RewrapIfNeeded(ciphertext string) (string, bool, error)
         return "", false, err
     }
 
-    latestVersion := keyInfo.Data["latest_version"].(json.Number)
-    latest, _ := latestVersion.Int64()
+    latest, err := strconv.Atoi(fmt.Sprint(keyInfo.Data["latest_version"]))
+    if err != nil {
+        return "", false, err
+    }
 
     // If not latest, rewrap
-    if int64(version) < latest {
+    if version < latest {
         params := map[string]interface{}{
             "ciphertext": ciphertext,
         }
@@ -457,6 +461,15 @@ func (tc *TransitClient) RewrapIfNeeded(ciphertext string) (string, bool, error)
 
     return ciphertext, false, nil
 }
+
+func extractVersion(ciphertext string) (int, error) {
+    parts := strings.SplitN(ciphertext, ":", 3)
+    if len(parts) != 3 || parts[0] != "vault" || !strings.HasPrefix(parts[1], "v") {
+        return 0, fmt.Errorf("invalid Vault transit ciphertext format")
+    }
+
+    return strconv.Atoi(strings.TrimPrefix(parts[1], "v"))
+}
 ```
 
 ## Signing and Verification
@@ -473,12 +486,12 @@ vault write transit/sign/signing-key \
   input=$(echo "document to sign" | base64)
 
 # Output:
-# signature    vault:v1:MEUCIQDfOJ...
+# signature    vault:v1:base64signature...
 
 # Verify signature
 vault write transit/verify/signing-key \
   input=$(echo "document to sign" | base64) \
-  signature="vault:v1:MEUCIQDfOJ..."
+  signature="vault:v1:base64signature..."
 
 # Output:
 # valid    true
@@ -489,9 +502,9 @@ vault write transit/verify/signing-key \
 Create HMACs for data integrity:
 
 ```bash
-# Create HMAC key
+# Create HMAC-only key
 vault write transit/keys/hmac-key \
-  type=aes256-gcm96
+  type=hmac
 
 # Generate HMAC
 vault write transit/hmac/hmac-key \
