@@ -117,7 +117,7 @@ Auto Scaling settings:
 
 You can add Global Secondary Indexes (GSIs) and Local Secondary Indexes (LSIs) at this point, though you can also add GSIs later.
 
-**GSI** - lets you query by a different partition key and optional sort key. You can add up to 20 per table.
+**GSI** - lets you query by a different partition key and optional sort key. By default, you can add up to 20 per table.
 
 **LSI** - lets you use a different sort key with the same partition key. You can only add these at table creation time (up to 5 per table).
 
@@ -182,12 +182,12 @@ In the form view, you click "Add new attribute" for each field beyond the keys. 
 
 After adding a few items, you can query them from the "Explore table items" tab. Use the "Query" option (not Scan) when possible.
 
-Select the table or index to query, enter the partition key value, and optionally filter by sort key:
+Select the table or index to query, enter the partition key value, and optionally add a sort key condition if the table or index has a sort key:
 
 ```text
 Query settings:
-  Partition key (userId): user-001
-  Sort key condition: begins_with "2026-02"
+  Partition key (customerId): customer-001
+  Sort key condition (orderTimestamp): begins_with "2026-02"
 ```
 
 This is much more efficient than scanning the entire table. Scans read every item and should be avoided in production.
