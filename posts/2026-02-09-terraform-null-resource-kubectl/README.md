@@ -8,7 +8,7 @@ Description: Learn how to use Terraform null resources with local-exec provision
 
 ---
 
-While Terraform provides excellent support for standard Kubernetes resources, some operations require direct kubectl commands. The null_resource with local-exec provisioner bridges this gap, allowing you to execute arbitrary kubectl commands as part of your Terraform workflow. This technique is particularly useful for applying raw manifests, executing administrative commands, or working with custom resources that don't have Terraform providers.
+While Terraform provides excellent support for standard Kubernetes resources, some operations require or are simpler with direct kubectl commands. The null_resource with local-exec provisioner bridges this gap, allowing you to execute arbitrary kubectl commands as part of your Terraform workflow. This technique is particularly useful for applying raw manifests, executing administrative commands, or working with custom resources when native Terraform resources such as kubernetes_manifest are not suitable.
 
 ## Understanding Null Resources
 
@@ -55,13 +55,16 @@ resource "null_resource" "apply_manifests" {
   provisioner "local-exec" {
     when    = destroy
     command = <<-EOT
-      kubectl delete -f ${path.module}/manifests/monitoring/alertmanager.yaml --ignore-not-found=true
-      kubectl delete -f ${path.module}/manifests/monitoring/grafana.yaml --ignore-not-found=true
-      kubectl delete -f ${path.module}/manifests/monitoring/prometheus.yaml --ignore-not-found=true
+      kubectl delete -f ${self.triggers.alertmanager_manifest} --ignore-not-found=true
+      kubectl delete -f ${self.triggers.grafana_manifest} --ignore-not-found=true
+      kubectl delete -f ${self.triggers.prometheus_manifest} --ignore-not-found=true
     EOT
   }
 
   triggers = {
+    prometheus_manifest    = "${path.module}/manifests/monitoring/prometheus.yaml"
+    grafana_manifest       = "${path.module}/manifests/monitoring/grafana.yaml"
+    alertmanager_manifest  = "${path.module}/manifests/monitoring/alertmanager.yaml"
     manifest_hash = sha256(join("", [
       filesha256("${path.module}/manifests/monitoring/prometheus.yaml"),
       filesha256("${path.module}/manifests/monitoring/grafana.yaml"),
@@ -224,7 +227,7 @@ This conditionally patches the deployment based on a variable, adding annotation
 
 ## Creating Custom Resources
 
-When working with CRDs that lack Terraform provider support, use kubectl to create custom resources:
+When working with CRDs that lack a dedicated Terraform resource, you can use kubectl to create custom resources:
 
 ```hcl
 variable "istio_gateway_config" {
@@ -259,7 +262,7 @@ resource "null_resource" "create_istio_gateway" {
             name: http
             protocol: HTTP
           hosts:
-          ${join("\n          ", [for host in var.istio_gateway_config.hosts : "- ${host}"])}
+          ${join("\n          ", [for host in var.istio_gateway_config.hosts : "- ${jsonencode(host)}"])}
         - port:
             number: 443
             name: https
@@ -268,18 +271,20 @@ resource "null_resource" "create_istio_gateway" {
             mode: SIMPLE
             credentialName: gateway-cert
           hosts:
-          ${join("\n          ", [for host in var.istio_gateway_config.hosts : "- ${host}"])}
+          ${join("\n          ", [for host in var.istio_gateway_config.hosts : "- ${jsonencode(host)}"])}
       EOF
     EOT
   }
 
   provisioner "local-exec" {
     when    = destroy
-    command = "kubectl delete gateway ${var.istio_gateway_config.name} -n ${var.istio_gateway_config.namespace} --ignore-not-found=true"
+    command = "kubectl delete gateway ${self.triggers.gateway_name} -n ${self.triggers.gateway_namespace} --ignore-not-found=true"
   }
 
   triggers = {
-    config_hash = sha256(jsonencode(var.istio_gateway_config))
+    gateway_name      = var.istio_gateway_config.name
+    gateway_namespace = var.istio_gateway_config.namespace
+    config_hash       = sha256(jsonencode(var.istio_gateway_config))
   }
 }
 ```
@@ -478,10 +483,10 @@ variable "kubernetes_context" {
 
 resource "null_resource" "kubectl_command" {
   provisioner "local-exec" {
-    command = "kubectl --kubeconfig=${var.kubeconfig_path} --context=${var.kubernetes_context} get nodes"
+    command = "kubectl --kubeconfig=${pathexpand(var.kubeconfig_path)} --context=${var.kubernetes_context} get nodes"
 
     environment = {
-      KUBECONFIG = var.kubeconfig_path
+      KUBECONFIG = pathexpand(var.kubeconfig_path)
     }
   }
 
