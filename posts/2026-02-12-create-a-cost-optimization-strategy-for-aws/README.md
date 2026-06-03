@@ -122,7 +122,7 @@ aws compute-optimizer get-ec2-instance-recommendations \
     Current: currentInstanceType,
     Finding: finding,
     Recommended: recommendationOptions[0].instanceType,
-    EstSavings: recommendationOptions[0].estimatedMonthlySavings.value
+    EstSavings: recommendationOptions[0].savingsOpportunity.estimatedMonthlySavings.value
   }" \
   --output table
 ```
@@ -204,7 +204,7 @@ aws ec2 request-spot-fleet \
         "SubnetId": "subnet-0a1b2c3d"
       }
     ],
-    "AllocationStrategy": "lowestPrice"
+    "AllocationStrategy": "priceCapacityOptimized"
   }'
 ```
 
@@ -214,7 +214,7 @@ Spot can save 60-90% compared to on-demand. Learn more about [using Spot Instanc
 
 Sometimes the biggest savings come from changing how you build things, not just how you pay for them.
 
-**Move to serverless where it fits.** A Lambda function that runs 1 million times per month at 256MB/200ms costs about $1.50. The equivalent always-on EC2 instance costs $30+.
+**Move to serverless where it fits.** A Lambda function that runs 1 million times per month at 256MB/200ms costs about $1.05 before the free tier in US East. The equivalent always-on EC2 instance costs $30+.
 
 **Reduce data transfer.** Data transfer is often 10-20% of the total bill. Key strategies:
 - VPC endpoints for AWS API traffic (see our guide on [reducing NAT Gateway costs](https://oneuptime.com/blog/post/2026-02-12-reduce-nat-gateway-data-transfer-costs/view))
@@ -227,6 +227,7 @@ Sometimes the biggest savings come from changing how you build things, not just 
 ```python
 import redis
 import boto3
+import json
 
 cache = redis.Redis(host='my-cluster.cache.amazonaws.com')
 
