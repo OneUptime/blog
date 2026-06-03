@@ -43,7 +43,7 @@ aws servicediscovery create-http-namespace \
   --description "Production services namespace"
 ```
 
-Note that Service Connect uses HTTP namespaces, not DNS namespaces. This is different from traditional Cloud Map service discovery.
+When ECS creates a default Service Connect namespace for you, it creates an HTTP namespace and doesn't create Route 53 hosted zones. You can also use an existing Cloud Map namespace in the same Region.
 
 ## Configuring Service Connect on the Cluster
 
@@ -213,15 +213,15 @@ Service Connect performs client-side load balancing across all healthy instances
 
 ### Health Checking
 
-The proxy automatically monitors the health of backend instances and removes unhealthy ones from the load balancing pool. You don't need to configure this - it happens automatically.
+The proxy uses outlier detection as a passive health check and avoids tasks that have repeated failed connections. Define container health checks in your task definition as well so Service Connect can confirm new tasks are ready before routing traffic to them.
 
 ## Monitoring Service Connect
 
-Service Connect publishes metrics to CloudWatch under the `AWS/ECS/ManagedScaling` namespace. These include:
+Service Connect publishes metrics to CloudWatch under the `AWS/ECS` namespace. These include:
 
-- Request count per service
-- Response time percentiles (p50, p90, p99)
-- Error rates
+- Request count by discovery name
+- Target response time
+- HTTP status code counts
 - Active connection counts
 
 You can also view metrics through the ECS console's Service Connect dashboard, which shows a service map and per-service traffic data.
@@ -229,12 +229,13 @@ You can also view metrics through the ECS console's Service Connect dashboard, w
 ```bash
 # Query Service Connect metrics
 aws cloudwatch get-metric-statistics \
-  --namespace "AWS/ECS/ManagedScaling" \
+  --namespace "AWS/ECS" \
   --metric-name RequestCount \
   --dimensions \
+    Name=DiscoveryName,Value=backend-api \
     Name=ServiceName,Value=backend-api \
     Name=ClusterName,Value=production \
-  --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 300 \
   --statistics Sum
@@ -278,4 +279,4 @@ A few things to watch out for:
 
 ## Wrapping Up
 
-ECS Service Connect is a solid middle ground between raw DNS discovery and a full service mesh. You get client-side load balancing, automatic health checking, and useful traffic metrics without the complexity of managing Envoy configurations or App Mesh resources. For most microservice architectures on ECS, it's the right choice unless you specifically need the advanced traffic management features of App Mesh.
+ECS Service Connect is a solid middle ground between raw DNS discovery and a full service mesh. You get client-side load balancing, passive health checking, and useful traffic metrics without the complexity of managing Envoy configurations or App Mesh resources. For most microservice architectures on ECS, it's the right choice unless you specifically need the advanced traffic management features of App Mesh.
