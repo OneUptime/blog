@@ -203,12 +203,22 @@ This IAM policy allows CloudTrail to write to CloudWatch Logs:
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "AWSCloudTrailCreateLogStream",
       "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
-      ],
-      "Resource": "arn:aws:logs:us-east-1:111111111111:log-group:CloudTrail/Logs:*"
+      "Action": "logs:CreateLogStream",
+      "Resource": [
+        "arn:aws:logs:us-east-1:111111111111:log-group:CloudTrail/Logs:log-stream:111111111111_CloudTrail_us-east-1*",
+        "arn:aws:logs:us-east-1:111111111111:log-group:CloudTrail/Logs:log-stream:o-exampleorgid_*"
+      ]
+    },
+    {
+      "Sid": "AWSCloudTrailPutLogEvents",
+      "Effect": "Allow",
+      "Action": "logs:PutLogEvents",
+      "Resource": [
+        "arn:aws:logs:us-east-1:111111111111:log-group:CloudTrail/Logs:log-stream:111111111111_CloudTrail_us-east-1*",
+        "arn:aws:logs:us-east-1:111111111111:log-group:CloudTrail/Logs:log-stream:o-exampleorgid_*"
+      ]
     }
   ]
 }
@@ -243,7 +253,10 @@ CREATE EXTERNAL TABLE cloudtrail_logs (
         accountid:STRING,
         invokedby:STRING,
         accesskeyid:STRING,
-        userName:STRING,
+        username:STRING,
+        onbehalfof:STRUCT<
+            userid:STRING,
+            identitystorearn:STRING>,
         sessioncontext:STRUCT<
             attributes:STRUCT<
                 mfaauthenticated:STRING,
@@ -253,7 +266,11 @@ CREATE EXTERNAL TABLE cloudtrail_logs (
                 principalid:STRING,
                 arn:STRING,
                 accountid:STRING,
-                userName:STRING>>>,
+                username:STRING>,
+            ec2roledelivery:STRING,
+            webidfederationdata:STRUCT<
+                federatedprovider:STRING,
+                attributes:MAP<STRING,STRING>>>>,
     eventtime STRING,
     eventsource STRING,
     eventname STRING,
@@ -268,19 +285,38 @@ CREATE EXTERNAL TABLE cloudtrail_logs (
     requestid STRING,
     eventid STRING,
     resources ARRAY<STRUCT<
-        ARN:STRING,
-        accountId:STRING,
+        arn:STRING,
+        accountid:STRING,
         type:STRING>>,
     eventtype STRING,
+    apiversion STRING,
+    readonly STRING,
     recipientaccountid STRING,
-    sharedEventID STRING
+    serviceeventdetails STRING,
+    sharedeventid STRING,
+    vpcendpointid STRING,
+    vpcendpointaccountid STRING,
+    eventcategory STRING,
+    addendum STRUCT<
+        reason:STRING,
+        updatedfields:STRING,
+        originalrequestid:STRING,
+        originaleventid:STRING>,
+    sessioncredentialfromconsole STRING,
+    edgedevicedetails STRING,
+    tlsdetails STRUCT<
+        tlsversion:STRING,
+        ciphersuite:STRING,
+        clientprovidedhostheader:STRING>
 )
 PARTITIONED BY (account STRING, region STRING, year STRING, month STRING, day STRING)
 ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
-LOCATION 's3://org-cloudtrail-logs-central/AWSLogs/';
+STORED AS INPUTFORMAT 'com.amazon.emr.cloudtrail.CloudTrailInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'
+LOCATION 's3://org-cloudtrail-logs-central/AWSLogs/o-exampleorgid/';
 ```
 
-Now you can run queries across all accounts:
+After you add partitions for each account, Region, and date with `ALTER TABLE ADD PARTITION`, you can run queries across all accounts:
 
 ```sql
 -- Find all console logins across all accounts in the last 24 hours
@@ -328,16 +364,11 @@ This lifecycle policy transitions logs to cheaper storage classes over time and 
 
 ## Monitoring Your Trail
 
-It's surprisingly common for trails to silently stop working. Set up a CloudWatch alarm to catch this.
+It's surprisingly common for trails to silently stop working. Check the trail status regularly and alert if `IsLogging` is false or if `LatestDeliveryError`, `LatestDigestDeliveryError`, or `LatestCloudWatchLogsDeliveryError` is present.
 
 ```bash
-# Create metric filter for trail delivery errors
-aws logs put-metric-filter \
-  --log-group-name CloudTrail/Logs \
-  --filter-name TrailDeliveryErrors \
-  --filter-pattern '{ $.errorCode = "TrailNotFoundException" }' \
-  --metric-transformations \
-    metricName=TrailErrors,metricNamespace=CloudTrail,metricValue=1
+# Check trail logging and delivery status
+aws cloudtrail get-trail-status --name org-trail --region us-east-1
 ```
 
 For a more robust monitoring setup, consider integrating your aggregated CloudTrail data with [OneUptime](https://oneuptime.com) for real-time alerts on suspicious API activity across all your accounts.
