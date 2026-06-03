@@ -39,9 +39,9 @@ AWS offers several options for storing metrics:
 
 | Feature | CloudWatch | Timestream | Managed Prometheus |
 |---------|-----------|------------|-------------------|
-| Retention | 15 months | Configurable | 150 days |
-| Query language | CloudWatch Insights | SQL | PromQL |
-| Cost model | Per metric per month | Per write + storage | Per samples ingested |
+| Retention | 15 months | Configurable | 150 days by default, configurable up to 1095 days |
+| Query language | GetMetricStatistics / Metrics Insights | SQL | PromQL |
+| Cost model | Per metric per month | Writes + storage + queries | Samples ingested + storage + queries |
 | Best for | AWS service metrics | Custom business metrics | Kubernetes workloads |
 
 For most teams, a combination works best: CloudWatch for AWS service metrics and Timestream for custom application and business metrics.
@@ -305,10 +305,12 @@ Set up Amazon Managed Grafana for dashboards:
 aws grafana create-workspace \
   --account-access-type CURRENT_ACCOUNT \
   --authentication-providers AWS_SSO \
-  --permission-type SERVICE_MANAGED \
-  --workspace-data-sources TIMESTREAM,CLOUDWATCH \
+  --permission-type CUSTOMER_MANAGED \
+  --workspace-role-arn arn:aws:iam::123456789012:role/managed-grafana-metrics-role \
   --workspace-name "app-dashboards"
 ```
+
+After the workspace is created, add the Timestream and CloudWatch data sources in Grafana. The workspace role needs permissions to query both services.
 
 In Grafana, create a dashboard with panels for:
 
