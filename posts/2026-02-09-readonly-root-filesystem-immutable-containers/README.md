@@ -50,6 +50,7 @@ spec:
       readOnlyRootFilesystem: true
       runAsNonRoot: true
       runAsUser: 101
+      runAsGroup: 101
 ```
 
 When you try to deploy this nginx pod, it will fail because nginx needs to write to `/var/run/nginx.pid`, `/var/cache/nginx/`, and other locations.
@@ -74,6 +75,8 @@ kind: Pod
 metadata:
   name: nginx-readonly
 spec:
+  securityContext:
+    fsGroup: 101
   containers:
   - name: nginx
     image: nginx:1.25
@@ -81,6 +84,7 @@ spec:
       readOnlyRootFilesystem: true
       runAsNonRoot: true
       runAsUser: 101
+      runAsGroup: 101
     volumeMounts:
     - name: cache
       mountPath: /var/cache/nginx
@@ -136,12 +140,15 @@ spec:
       labels:
         app: webapp
     spec:
+      securityContext:
+        fsGroup: 1000
       containers:
       - name: app
         image: mywebapp:latest
         securityContext:
           readOnlyRootFilesystem: true
           runAsUser: 1000
+          runAsGroup: 1000
         volumeMounts:
         - name: tmp
           mountPath: /tmp
@@ -166,6 +173,8 @@ kind: Pod
 metadata:
   name: java-app
 spec:
+  securityContext:
+    fsGroup: 1000
   containers:
   - name: app
     image: openjdk:17-slim
@@ -173,6 +182,7 @@ spec:
     securityContext:
       readOnlyRootFilesystem: true
       runAsUser: 1000
+      runAsGroup: 1000
     volumeMounts:
     - name: tmp
       mountPath: /tmp
@@ -206,12 +216,15 @@ spec:
       labels:
         app: postgres
     spec:
+      securityContext:
+        fsGroup: 999
       containers:
       - name: postgres
         image: postgres:16
         securityContext:
           readOnlyRootFilesystem: true
           runAsUser: 999
+          runAsGroup: 999
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -355,6 +368,8 @@ kind: Pod
 metadata:
   name: app-with-init
 spec:
+  securityContext:
+    fsGroup: 1000
   initContainers:
   - name: setup
     image: busybox
@@ -376,6 +391,7 @@ spec:
     securityContext:
       readOnlyRootFilesystem: true
       runAsUser: 1000
+      runAsGroup: 1000
     volumeMounts:
     - name: app-config
       mountPath: /etc/app
@@ -456,9 +472,20 @@ spec:
   validations:
   - expression: |
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.readOnlyRootFilesystem) &&
         c.securityContext.readOnlyRootFilesystem == true
-      )
+      ) &&
+      (!has(object.spec.initContainers) || object.spec.initContainers.all(c,
+        has(c.securityContext) &&
+        has(c.securityContext.readOnlyRootFilesystem) &&
+        c.securityContext.readOnlyRootFilesystem == true
+      )) &&
+      (!has(object.spec.ephemeralContainers) || object.spec.ephemeralContainers.all(c,
+        has(c.securityContext) &&
+        has(c.securityContext.readOnlyRootFilesystem) &&
+        c.securityContext.readOnlyRootFilesystem == true
+      ))
     message: "All containers must have readOnlyRootFilesystem: true"
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -495,7 +522,7 @@ WORKDIR /app
 
 # Install dependencies
 COPY package*.json ./
-RUN npm ci --only=production && \
+RUN npm ci --omit=dev && \
     chown -R appuser:appgroup /app
 
 # Copy application
@@ -535,8 +562,10 @@ POD_NAME="test-readonly-$$"
 
 # Deploy test pod
 kubectl run $POD_NAME \
-  --image=nginx:1.25 \
-  --dry-run=client -o yaml | \
+  --image=busybox:1.36 \
+  --restart=Never \
+  --dry-run=client -o yaml \
+  --command -- sleep 3600 | \
   kubectl patch -f - --local --type=json -p='[
     {"op":"add","path":"/spec/containers/0/securityContext","value":{"readOnlyRootFilesystem":true}},
     {"op":"add","path":"/spec/containers/0/volumeMounts","value":[{"name":"tmp","mountPath":"/tmp"}]},
