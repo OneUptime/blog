@@ -14,23 +14,24 @@ It's not the right fit for every use case - there are some differences from mana
 
 ## Collections vs Clusters
 
-The main conceptual shift is that OpenSearch Serverless uses "collections" instead of clusters. A collection is a group of indexes that share the same access policy and encryption settings. There are two types:
+The main conceptual shift is that OpenSearch Serverless uses "collections" instead of clusters. A collection is a logical group of indexes for a workload, with encryption and data access controlled by policies that match collection and index patterns. There are three types:
 
 - **Search collections** - Optimized for full-text search with low-latency lookups
 - **Time series collections** - Optimized for log analytics and time-based data with higher ingestion throughput
+- **Vector search collections** - Optimized for semantic search and vector embeddings
 
 You pick the type when you create the collection, and it can't be changed later.
 
 ## Setting Up Security Policies
 
-Before creating a collection, you need encryption and network policies. These are defined at the account level and matched to collections using patterns.
+For a usable collection, you need encryption and network policies. These are defined at the account level and matched to collections using patterns.
 
 Here's the encryption policy:
 
 ```bash
 # Create an encryption policy for all collections matching the pattern
 
-# AWS-managed key is simpler; use customer-managed KMS for more control
+# AWS owned key is simpler; use a customer-managed KMS key for more control
 aws opensearchserverless create-security-policy \
     --name "default-encryption" \
     --type "encryption" \
@@ -168,20 +169,13 @@ Here's a Python example for indexing documents:
 # Index documents into an OpenSearch Serverless collection
 # Uses AWS SigV4 authentication instead of basic auth
 import boto3
-from opensearchpy import OpenSearch, RequestsHttpConnection
-from requests_aws4auth import AWS4Auth
+from opensearchpy import OpenSearch, RequestsHttpConnection, AWSV4SignerAuth
 
 region = 'us-east-1'
 service = 'aoss'
 
 credentials = boto3.Session().get_credentials()
-awsauth = AWS4Auth(
-    credentials.access_key,
-    credentials.secret_key,
-    region,
-    service,
-    session_token=credentials.token
-)
+awsauth = AWSV4SignerAuth(credentials, region, service)
 
 # The endpoint comes from the collection details
 host = 'abc123.us-east-1.aoss.amazonaws.com'
@@ -196,13 +190,8 @@ client = OpenSearch(
 )
 
 # Create an index with mappings
+# OpenSearch Serverless manages shard counts, replica counts, and refresh interval
 index_body = {
-    'settings': {
-        'index': {
-            'number_of_shards': 2,
-            'number_of_replicas': 0
-        }
-    },
     'mappings': {
         'properties': {
             'timestamp': {'type': 'date'},
@@ -287,14 +276,14 @@ for hit in results['hits']['hits']:
 There are some things that work differently in OpenSearch Serverless:
 
 1. **No cluster management** - You can't configure instance types, node counts, or shard settings at the cluster level
-2. **OCU-based billing** - You pay for OpenSearch Compute Units (OCUs), which scale automatically. Minimum is 2 OCUs for indexing and 2 for search
-3. **No multi-tenancy within a collection** - Each collection is isolated
+2. **OCU-based billing** - You pay for OpenSearch Compute Units (OCUs), which scale automatically. With redundant active replicas enabled, the first collection is billed for a minimum of 1 OCU for indexing and 1 OCU for search
+3. **Data access policies instead of fine-grained access control** - Serverless uses collection and index-level data access policies rather than the fine-grained access control model from provisioned domains
 4. **Limited plugin support** - Not all OpenSearch plugins are available
 5. **SigV4 authentication only** - No basic auth or SAML (for the API; dashboards support SAML)
 
 ## Cost Considerations
 
-The minimum cost for an OpenSearch Serverless collection is 4 OCUs (2 for indexing, 2 for search) running 24/7. At roughly $0.24 per OCU-hour, that's about $700/month minimum. This makes it more expensive than a small managed cluster for light workloads, but much cheaper when you'd otherwise need to over-provision for peak traffic.
+The minimum cost for the first OpenSearch Serverless collection with redundant active replicas is 2 OCUs (1 for indexing and 1 for search) running 24/7. At roughly $0.24 per OCU-hour in US East regions, that's about $350/month minimum before storage. For development and test workloads, you can disable redundant active replicas when you create the collection, which lowers the minimum to 1 OCU. This can still be more expensive than a small managed cluster for light workloads, but much cheaper when you'd otherwise need to over-provision for peak traffic.
 
 You can set capacity limits to control costs:
 
