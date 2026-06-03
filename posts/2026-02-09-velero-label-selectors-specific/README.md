@@ -47,6 +47,9 @@ spec:
         app: myapp
         component: frontend
         tier: critical
+        backup: required
+        backup-frequency: hourly
+        environment: production
     spec:
       containers:
       - name: frontend
@@ -125,7 +128,7 @@ spec:
   - '*'
 ```
 
-This backup captures resources from app1, app2, or app3, excluding development and test tiers.
+This backup captures resources from app1, app2, or app3, excluding resources labeled with development and test tiers.
 
 ## Creating Tier-Based Backup Schedules
 
@@ -146,8 +149,9 @@ spec:
       matchLabels:
         tier: critical
     snapshotVolumes: true
-    labels:
-      backup-tier: critical
+    metadata:
+      labels:
+        backup-tier: critical
 
 ---
 apiVersion: velero.io/v1
@@ -163,8 +167,9 @@ spec:
       matchLabels:
         tier: standard
     snapshotVolumes: true
-    labels:
-      backup-tier: standard
+    metadata:
+      labels:
+        backup-tier: standard
 
 ---
 apiVersion: velero.io/v1
@@ -180,8 +185,9 @@ spec:
       matchLabels:
         tier: non-critical
     defaultVolumesToFsBackup: true
-    labels:
-      backup-tier: non-critical
+    metadata:
+      labels:
+        backup-tier: non-critical
 ```
 
 This creates a tiered backup strategy based on resource criticality.
@@ -241,8 +247,9 @@ spec:
         - required
         - critical
     snapshotVolumes: true
-    labels:
-      application: ecommerce
+    metadata:
+      labels:
+        application: ecommerce
 
 ---
 apiVersion: velero.io/v1
@@ -259,8 +266,9 @@ spec:
         app: analytics
         backup: required
     defaultVolumesToFsBackup: true
-    labels:
-      application: analytics
+    metadata:
+      labels:
+        application: analytics
 ```
 
 Each application gets independent backup configuration based on requirements.
@@ -286,8 +294,9 @@ spec:
         backup: required
     snapshotVolumes: true
     storageLocation: primary
-    labels:
-      env: production
+    metadata:
+      labels:
+        env: production
 
 ---
 apiVersion: velero.io/v1
@@ -305,8 +314,9 @@ spec:
         backup: required
     defaultVolumesToFsBackup: true
     storageLocation: secondary
-    labels:
-      env: staging
+    metadata:
+      labels:
+        env: staging
 ```
 
 Production receives frequent backups with volume snapshots, while staging uses daily file-level backups.
@@ -328,8 +338,8 @@ spec:
       stateful: "true"
   # Enable volume snapshots for stateful resources
   snapshotVolumes: true
-  # Longer backup timeout for large volumes
-  defaultVolumesToFsBackup: false
+  # Longer CSI snapshot timeout for large volumes
+  csiSnapshotTimeout: 30m
 
 ---
 apiVersion: velero.io/v1
@@ -356,10 +366,10 @@ This optimizes backup performance by handling stateful and stateless resources d
 Verify label selectors capture intended resources:
 
 ```bash
-# Preview resources that will be backed up
+# Preview common workload resources matching the selector
 kubectl get all --all-namespaces -l tier=critical
 
-# Count resources matching selector
+# Count common workload resources matching selector
 kubectl get all --all-namespaces -l app=myapp --no-headers | wc -l
 
 # Check for resources missing required labels
@@ -367,7 +377,7 @@ kubectl get deployments --all-namespaces -o json | \
   jq -r '.items[] | select(.metadata.labels.backup == null) | .metadata.name'
 ```
 
-Regular audits ensure labels remain current and backups capture all necessary resources.
+Regular audits ensure labels remain current and backups capture all necessary resources. `kubectl get all` checks common workload resources, so include other resource types such as configmaps, secrets, and persistentvolumeclaims when those are part of your backup policy.
 
 ## Creating Backup Verification Script
 
@@ -382,7 +392,7 @@ EXPECTED_COUNT=$2
 
 echo "Verifying backup selection for: $LABEL_SELECTOR"
 
-# Count resources matching selector
+# Count common workload resources matching selector
 ACTUAL_COUNT=$(kubectl get all --all-namespaces -l "$LABEL_SELECTOR" --no-headers 2>/dev/null | wc -l)
 
 echo "Resources found: $ACTUAL_COUNT"
@@ -498,10 +508,10 @@ velero backup create test-label-selector \
 velero backup download test-label-selector
 
 # Extract and count resources
-tar -tzf test-label-selector.tar.gz | grep -c ".json"
+tar -tzf test-label-selector-data.tar.gz | grep -c ".json"
 
 # Verify specific resources are included
-tar -tzf test-label-selector.tar.gz | grep "deployments/namespaces/production/myapp.json"
+tar -tzf test-label-selector-data.tar.gz | grep "deployments/namespaces/production/myapp.json"
 
 # Check backup logs for selection details
 velero backup logs test-label-selector | grep "label"
