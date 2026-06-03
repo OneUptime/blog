@@ -114,7 +114,7 @@ new MonitoringStack(app, 'Monitoring', {
 
 ## Passing Data Between Stacks
 
-When stacks need to share data, you pass it through constructor props. CDK handles the cross-stack references using CloudFormation exports under the hood.
+When stacks need to share data, you pass it through constructor props. CDK handles the cross-stack references using CloudFormation stack outputs under the hood.
 
 ```typescript
 // Network stack exports a VPC
@@ -159,7 +159,7 @@ export class DatabaseStack extends cdk.Stack {
 }
 ```
 
-CDK automatically creates CloudFormation exports and imports. Be aware that this creates a dependency - you can't delete a stack that exports values used by another stack.
+For same-account, same-region references, CDK can automatically create CloudFormation exports and imports. Be aware that this creates a dependency - you can't delete a stack that exports values used by another stack. For cross-account or cross-region references, current CDK versions can use CloudFormation `Fn::GetStackOutput` instead.
 
 ## Stack Dependencies
 
@@ -254,8 +254,8 @@ CloudFormation has a 500-resource limit per stack. If you're approaching that, i
 const app = new cdk.App();
 const stack = new MyLargeStack(app, 'Large');
 
-// After synthesis, check cdk.out for the template size
-// cdk synth will warn if you're approaching limits
+// After synthesis, check cdk.out for the resource count
+// cdk synth will warn if the stack exceeds 80% of the resource limit
 ```
 
 ## Stack Tags
