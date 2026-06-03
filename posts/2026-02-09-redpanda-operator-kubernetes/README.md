@@ -27,97 +27,109 @@ For teams running on Kubernetes, Redpanda's simplified architecture translates t
 
 ## Installing the Redpanda Operator
 
-Start by installing the Redpanda Operator using Helm:
+Start by installing cert-manager and the Redpanda Operator using Helm:
 
 ```bash
-# Add the Redpanda Helm repository
+# Install cert-manager for Redpanda TLS certificates
+helm install cert-manager oci://quay.io/jetstack/charts/cert-manager \
+  --version v1.20.2 \
+  --namespace cert-manager \
+  --create-namespace \
+  --set crds.enabled=true \
+  --wait
 
+# Add the Redpanda Helm repository
 helm repo add redpanda https://charts.redpanda.com
 helm repo update
 
-# Create namespace for Redpanda
-kubectl create namespace redpanda
-
 # Install the Redpanda Operator
-helm install redpanda-operator redpanda/operator \
+helm upgrade --install redpanda-controller redpanda/operator \
   --namespace redpanda \
-  --set image.tag=v2.15.0 \
+  --create-namespace \
+  --version v26.1.4 \
+  --set crds.enabled=true \
   --wait
 ```
 
 Verify the operator installation:
 
 ```bash
-kubectl get pods -n redpanda
+kubectl --namespace redpanda rollout status --watch deployment/redpanda-controller-operator
 kubectl get crd | grep redpanda
 ```
 
-You should see the operator pod running and several custom resource definitions (CRDs) registered.
+You should see the operator deployment rolled out and several custom resource definitions (CRDs) registered.
 
 ## Creating a Basic Redpanda Cluster
 
 Deploy a simple three-node Redpanda cluster:
 
 ```yaml
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: Redpanda
 metadata:
   name: redpanda-cluster
   namespace: redpanda
 spec:
-  # Number of Redpanda brokers
-  replicas: 3
+  chartRef: {}
+  clusterSpec:
+    # Redpanda version
+    image:
+      tag: v26.1.9
 
-  # Redpanda version
-  version: v23.3.5
+    # Number of Redpanda brokers
+    statefulset:
+      replicas: 3
 
-  # Resource requirements
-  resources:
-    cpu:
-      cores: 2
-    memory:
-      container:
-        max: 4Gi
-    redpanda:
-      memory: 3Gi
+    # Resource requirements
+    resources:
+      cpu:
+        cores: 2
+      memory:
+        container:
+          max: 5Gi
 
-  # Storage configuration
-  storage:
-    capacity: 100Gi
-    storageClassName: fast-ssd
-
-  # Configuration overrides
-  configuration:
-    # Enable developer mode for testing (disable for production)
-    developerMode: false
+    # Storage configuration
+    storage:
+      persistentVolume:
+        size: 100Gi
+        storageClass: fast-ssd
 
     # Kafka API
-    kafkaApi:
-    - port: 9092
-      authenticationMethod: sasl
-
-    # Admin API
-    adminApi:
-    - port: 9644
-
-    # Schema Registry
-    schemaRegistry:
-      port: 8081
-
-    # HTTP Proxy (Pandaproxy)
-    pandaproxyApi:
-    - port: 8082
+    listeners:
+      kafka:
+        port: 9092
+        authenticationMethod: sasl
+        tls:
+          cert: default
+          requireClientAuth: false
+      admin:
+        port: 9644
+      schemaRegistry:
+        enabled: true
+        port: 8081
+      http:
+        enabled: true
+        port: 8082
 
     # TLS configuration
     tls:
       enabled: true
-      requireClientAuth: false
+      certs:
+        default:
+          caEnabled: true
 
-  # License key for enterprise features (optional)
-  licenseKey:
-    secretKeyRef:
-      name: redpanda-license
-      key: license
+    # SASL authentication
+    auth:
+      sasl:
+        enabled: true
+        mechanism: SCRAM-SHA-256
+
+    # License key for enterprise features (optional)
+    enterprise:
+      licenseSecretRef:
+        name: redpanda-license
+        key: license
 ```
 
 Apply the configuration:
@@ -138,100 +150,113 @@ kubectl get pods -n redpanda -w
 For production deployments, use more robust configurations:
 
 ```yaml
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: Redpanda
 metadata:
   name: production-redpanda
   namespace: redpanda
 spec:
-  replicas: 5
+  chartRef: {}
+  clusterSpec:
+    image:
+      tag: v26.1.9
 
-  version: v23.3.5
+    statefulset:
+      replicas: 5
+      podTemplate:
+        spec:
+          affinity:
+            podAntiAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+              - labelSelector:
+                  matchExpressions:
+                  - key: app.kubernetes.io/name
+                    operator: In
+                    values:
+                    - redpanda
+                topologyKey: kubernetes.io/hostname
+          tolerations:
+          - key: dedicated
+            operator: Equal
+            value: redpanda
+            effect: NoSchedule
 
-  # Pod template for custom settings
-  podTemplate:
-    spec:
-      affinity:
-        podAntiAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-          - labelSelector:
-              matchExpressions:
-              - key: app.kubernetes.io/name
-                operator: In
-                values:
-                - redpanda
-            topologyKey: kubernetes.io/hostname
-      tolerations:
-      - key: dedicated
-        operator: Equal
-        value: redpanda
-        effect: NoSchedule
+    resources:
+      cpu:
+        cores: 4
+        overprovisioned: false
+      memory:
+        container:
+          max: 10Gi
 
-  resources:
-    cpu:
-      cores: 4
-      overprovisioned: false
-    memory:
-      container:
-        max: 8Gi
-      redpanda:
-        memory: 7Gi
-        reserveMemory: 1Gi
-
-  storage:
-    capacity: 500Gi
-    storageClassName: fast-ssd
-
-  configuration:
-    developerMode: false
+    storage:
+      persistentVolume:
+        size: 500Gi
+        storageClass: fast-ssd
 
     # Tuned properties for production
-    tunable:
-      log_segment_size: 1073741824  # 1GB
-      group_topic_partitions: 16
-      default_topic_replications: 3
-      transaction_coordinator_replication: 3
-      id_allocator_replication: 3
+    config:
+      cluster:
+        log_segment_size: 1073741824  # 1GB
+        group_topic_partitions: 16
+        default_topic_replications: 3
+        transaction_coordinator_replication: 3
+        id_allocator_replication: 3
 
     # Kafka API with SASL
-    kafkaApi:
-    - port: 9092
-      authenticationMethod: sasl
-      external:
+    listeners:
+      kafka:
+        port: 9092
+        authenticationMethod: sasl
+        tls:
+          cert: default
+          requireClientAuth: false
+        external:
+          default:
+            enabled: true
+            port: 9094
+            tls:
+              cert: external
+      admin:
+        port: 9644
+        tls:
+          cert: default
+          requireClientAuth: true
+      schemaRegistry:
         enabled: true
-        type: LoadBalancer
-        annotations:
-          service.beta.kubernetes.io/aws-load-balancer-type: nlb
-
-    # Admin API with TLS
-    adminApi:
-    - port: 9644
-      tls:
+        port: 8081
+        authenticationMethod: http_basic
+        tls:
+          cert: default
+      http:
         enabled: true
-        requireClientAuth: true
+        port: 8082
+        authenticationMethod: http_basic
+        tls:
+          cert: default
 
-    # Schema Registry
-    schemaRegistry:
-      port: 8081
-      authenticationMethod: http_basic
-      tls:
-        enabled: true
+    external:
+      enabled: true
+      type: LoadBalancer
 
-    # Pandaproxy for HTTP access
-    pandaproxyApi:
-    - port: 8082
-      authenticationMethod: http_basic
-      tls:
-        enabled: true
-
-    # TLS configuration
     tls:
       enabled: true
-      requireClientAuth: true
       certs:
         default:
           secretRef:
             name: redpanda-tls
+          caEnabled: true
+        external:
+          caEnabled: true
+
+    auth:
+      sasl:
+        enabled: true
+        mechanism: SCRAM-SHA-256
+        users:
+        - name: admin
+          password: strongpassword123
+          mechanism: SCRAM-SHA-256
 ```
 
 ## Setting Up Authentication
@@ -249,14 +274,15 @@ stringData:
   username: admin
   password: strongpassword123
 ---
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: User
 metadata:
-  name: admin-user
+  name: admin
   namespace: redpanda
 spec:
   cluster:
-    name: production-redpanda
+    clusterRef:
+      name: production-redpanda
   authentication:
     type: scram-sha-256
     password:
@@ -267,30 +293,44 @@ spec:
   authorization:
     type: simple
     acls:
-    - resource:
+    - type: allow
+      resource:
         type: cluster
-      operations: [all]
-    - resource:
+      operations: [Alter, Describe, ClusterAction, Create, AlterConfigs, DescribeConfigs]
+    - type: allow
+      resource:
         type: topic
         name: "*"
-      operations: [all]
-    - resource:
+      operations: [Read, Write, Delete, Alter, Describe, Create, AlterConfigs, DescribeConfigs]
+    - type: allow
+      resource:
         type: group
         name: "*"
-      operations: [all]
+      operations: [Read, Describe, Delete]
 ```
 
 Create additional users with limited permissions:
 
 ```yaml
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-producer-secret
+  namespace: redpanda
+type: Opaque
+stringData:
+  username: app-producer
+  password: app-producer-password
+---
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: User
 metadata:
   name: app-producer
   namespace: redpanda
 spec:
   cluster:
-    name: production-redpanda
+    clusterRef:
+      name: production-redpanda
   authentication:
     type: scram-sha-256
     password:
@@ -301,14 +341,16 @@ spec:
   authorization:
     type: simple
     acls:
-    - resource:
+    - type: allow
+      resource:
         type: topic
         name: orders
-      operations: [write, describe]
-    - resource:
+      operations: [Write, Describe]
+    - type: allow
+      resource:
         type: topic
         name: products
-      operations: [write, describe]
+      operations: [Write, Describe]
 ```
 
 ## Configuring TLS Certificates
@@ -317,12 +359,28 @@ Create TLS certificates for secure communication:
 
 ```bash
 # Generate CA certificate
-openssl req -new -x509 -keyout ca-key.pem -out ca-cert.pem -days 365
+openssl req -new -x509 -nodes \
+  -keyout ca-key.pem \
+  -out ca-cert.pem \
+  -days 365 \
+  -subj "/CN=redpanda-ca"
 
-# Generate server certificate
-openssl req -new -keyout server-key.pem -out server-req.pem
-openssl x509 -req -in server-req.pem -CA ca-cert.pem -CAkey ca-key.pem \
-  -CAcreateserial -out server-cert.pem -days 365
+# Generate server key and certificate signing request
+openssl req -new -nodes \
+  -keyout server-key.pem \
+  -out server-req.pem \
+  -subj "/CN=production-redpanda.redpanda.svc.cluster.local" \
+  -addext "subjectAltName=DNS:production-redpanda.redpanda.svc.cluster.local,DNS:production-redpanda-0.production-redpanda.redpanda.svc.cluster.local,DNS:production-redpanda-1.production-redpanda.redpanda.svc.cluster.local,DNS:production-redpanda-2.production-redpanda.redpanda.svc.cluster.local"
+
+# Sign the server certificate
+openssl x509 -req \
+  -in server-req.pem \
+  -CA ca-cert.pem \
+  -CAkey ca-key.pem \
+  -CAcreateserial \
+  -copy_extensions copy \
+  -out server-cert.pem \
+  -days 365
 
 # Create Kubernetes secret
 kubectl create secret generic redpanda-tls \
@@ -337,34 +395,36 @@ kubectl create secret generic redpanda-tls \
 Use the Redpanda Topic CRD to create topics:
 
 ```yaml
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: Topic
 metadata:
   name: orders-topic
   namespace: redpanda
 spec:
   cluster:
-    name: production-redpanda
+    clusterRef:
+      name: production-redpanda
   partitions: 12
   replicationFactor: 3
-  config:
+  additionalConfig:
     cleanup.policy: delete
     retention.ms: "604800000"  # 7 days
     compression.type: snappy
     min.insync.replicas: "2"
     segment.bytes: "1073741824"  # 1GB
 ---
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: Topic
 metadata:
   name: events-topic
   namespace: redpanda
 spec:
   cluster:
-    name: production-redpanda
+    clusterRef:
+      name: production-redpanda
   partitions: 24
   replicationFactor: 3
-  config:
+  additionalConfig:
     cleanup.policy: compact
     compression.type: lz4
     min.insync.replicas: "2"
@@ -379,7 +439,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: order-processor
-  namespace: applications
+  namespace: redpanda
 spec:
   replicas: 3
   selector:
@@ -395,7 +455,7 @@ spec:
         image: myapp/order-processor:v1.0.0
         env:
         - name: KAFKA_BOOTSTRAP_SERVERS
-          value: "production-redpanda.redpanda.svc.cluster.local:9092"
+          value: "production-redpanda-0.production-redpanda.redpanda.svc.cluster.local:9092,production-redpanda-1.production-redpanda.redpanda.svc.cluster.local:9092,production-redpanda-2.production-redpanda.redpanda.svc.cluster.local:9092"
         - name: KAFKA_SECURITY_PROTOCOL
           value: "SASL_SSL"
         - name: KAFKA_SASL_MECHANISM
@@ -429,14 +489,27 @@ package main
 
 import (
     "context"
+    "crypto/tls"
+    "crypto/x509"
     "fmt"
+    "os"
+    "strings"
+
     "github.com/segmentio/kafka-go"
     "github.com/segmentio/kafka-go/sasl/scram"
-    "crypto/tls"
-    "os"
 )
 
 func main() {
+    caCert, err := os.ReadFile(os.Getenv("KAFKA_SSL_CA_LOCATION"))
+    if err != nil {
+        panic(err)
+    }
+
+    certPool := x509.NewCertPool()
+    if ok := certPool.AppendCertsFromPEM(caCert); !ok {
+        panic("failed to parse CA certificate")
+    }
+
     mechanism, err := scram.Mechanism(
         scram.SHA256,
         os.Getenv("KAFKA_SASL_USERNAME"),
@@ -447,15 +520,21 @@ func main() {
     }
 
     dialer := &kafka.Dialer{
-        TLS: &tls.Config{},
+        TLS: &tls.Config{
+            RootCAs: certPool,
+        },
         SASLMechanism: mechanism,
     }
 
-    writer := kafka.NewWriter(kafka.WriterConfig{
-        Brokers: []string{os.Getenv("KAFKA_BOOTSTRAP_SERVERS")},
-        Topic:   "orders-topic",
-        Dialer:  dialer,
-    })
+    writer := &kafka.Writer{
+        Addr:     kafka.TCP(strings.Split(os.Getenv("KAFKA_BOOTSTRAP_SERVERS"), ",")...),
+        Topic:    "orders-topic",
+        Balancer: &kafka.LeastBytes{},
+        Transport: &kafka.Transport{
+            TLS:  dialer.TLS,
+            SASL: mechanism,
+        },
+    }
     defer writer.Close()
 
     err = writer.WriteMessages(context.Background(),
@@ -477,7 +556,7 @@ func main() {
 Deploy Prometheus monitoring:
 
 ```yaml
-apiVersion: v1
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: redpanda-metrics
@@ -490,7 +569,7 @@ spec:
   - port: admin
     path: /metrics
     interval: 30s
-  - port: prometheus
+  - port: admin
     path: /public_metrics
     interval: 30s
 ```
@@ -515,12 +594,13 @@ spec:
     spec:
       containers:
       - name: console
-        image: redpandadata/console:v2.4.0
+        image: docker.redpanda.com/redpandadata/console:v3.7.3
         ports:
         - containerPort: 8080
+          name: http
         env:
         - name: KAFKA_BROKERS
-          value: "production-redpanda.redpanda.svc.cluster.local:9092"
+          value: "production-redpanda-0.production-redpanda.redpanda.svc.cluster.local:9092,production-redpanda-1.production-redpanda.redpanda.svc.cluster.local:9092,production-redpanda-2.production-redpanda.redpanda.svc.cluster.local:9092"
         - name: KAFKA_SASL_ENABLED
           value: "true"
         - name: KAFKA_SASL_MECHANISM
@@ -537,6 +617,16 @@ spec:
               key: password
         - name: KAFKA_TLS_ENABLED
           value: "true"
+        - name: KAFKA_TLS_CAFILEPATH
+          value: "/etc/kafka/certs/ca.crt"
+        volumeMounts:
+        - name: kafka-certs
+          mountPath: /etc/kafka/certs
+          readOnly: true
+      volumes:
+      - name: kafka-certs
+        secret:
+          secretName: redpanda-tls
 ---
 apiVersion: v1
 kind: Service
@@ -547,7 +637,7 @@ spec:
   type: LoadBalancer
   ports:
   - port: 80
-    targetPort: 8080
+    targetPort: http
   selector:
     app: redpanda-console
 ```
@@ -559,13 +649,13 @@ Scale the Redpanda cluster horizontally:
 ```bash
 # Scale up to 7 nodes
 kubectl patch redpanda production-redpanda -n redpanda \
-  --type merge -p '{"spec":{"replicas":7}}'
+  --type merge -p '{"spec":{"clusterSpec":{"statefulset":{"replicas":7}}}}'
 
 # Watch the scaling process
 kubectl get pods -n redpanda -w
 ```
 
-Redpanda will automatically rebalance partitions across the new nodes.
+Redpanda can rebalance partitions across the new nodes after scaling. Check the cluster balancer status with `rpk cluster partitions balancer-status`.
 
 ## Backup and Disaster Recovery
 
@@ -573,21 +663,22 @@ Configure periodic backups using Tiered Storage:
 
 ```yaml
 spec:
-  configuration:
-    cloudStorage:
-      enabled: true
-      bucket: redpanda-backups
-      region: us-east-1
-      accessKey:
-        secretKeyRef:
-          name: aws-credentials
-          key: access-key
-      secretKey:
-        secretKeyRef:
-          name: aws-credentials
-          key: secret-key
-      reconciliationIntervalMs: 10000
-      segmentUploadTimeoutMs: 30000
+  clusterSpec:
+    storage:
+      tiered:
+        credentialsSecretRef:
+          accessKey:
+            name: aws-credentials
+            key: access-key
+          secretKey:
+            name: aws-credentials
+            key: secret-key
+        config:
+          cloud_storage_enabled: true
+          cloud_storage_bucket: redpanda-backups
+          cloud_storage_region: us-east-1
+          cloud_storage_reconciliation_interval_ms: 10000
+          cloud_storage_segment_upload_timeout_ms: 30000
 ```
 
 ## Troubleshooting
