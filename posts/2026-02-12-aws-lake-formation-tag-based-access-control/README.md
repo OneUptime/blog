@@ -40,7 +40,7 @@ aws lakeformation create-lf-tag \
     --tag-values '["sales", "product", "customer", "operations"]'
 ```
 
-You can have up to 50 LF-Tags per account, and each tag can have up to 50 values. That's plenty for most organizations.
+You can have up to 1,000 LF-Tags per account, and each tag can have up to 1,000 values. A single API call can include up to 50 tag values, so use multiple calls if you need to add more. That's plenty for most organizations.
 
 ## Assigning Tags to Resources
 
@@ -122,7 +122,7 @@ But it does NOT cover tables tagged classification=confidential or classificatio
 
 ## Cross-Account Tag Sharing
 
-If you're running a multi-account setup (which you should be), you can share LF-Tags across accounts using AWS RAM (Resource Access Manager):
+If you're running a multi-account setup (which you should be), you can share access using LF-Tags across accounts. Cross-account Lake Formation grants can use AWS RAM (Resource Access Manager), depending on your cross-account version settings:
 
 ```bash
 # Share LF-Tags with another account
@@ -134,10 +134,11 @@ aws lakeformation grant-permissions \
             "TagValues": ["public", "internal"]
         }
     }' \
-    --permissions '["DESCRIBE", "ASSOCIATE"]'
+    --permissions '["DESCRIBE", "ASSOCIATE"]' \
+    --permissions-with-grant-option '["DESCRIBE", "ASSOCIATE"]'
 ```
 
-This lets the other account use your tags on their resources and receive permissions based on tag expressions. It's a clean way to manage data sharing in organizations with separate AWS accounts per team.
+This lets the other account view those tags and associate them with shared Data Catalog resources. To actually grant data access, you also grant database or table permissions to the external account using an `LFTagPolicy` expression, with the grant option, so administrators in the receiving account can pass access on to their principals. It's a clean way to manage data sharing in organizations with separate AWS accounts per team.
 
 ## Combining with Column-Level Security
 
