@@ -8,18 +8,19 @@ Description: Learn how to use CloudFormation DeletionPolicy to protect critical 
 
 ---
 
-By default, when you delete a CloudFormation stack, every resource it created gets deleted too. That's usually fine for security groups and IAM roles - they're easy to recreate. But for databases with years of production data, or S3 buckets with irreplaceable files, that default behavior is terrifying. DeletionPolicy lets you override it.
+By default, when you delete a CloudFormation stack, most resources it created get deleted too. That's usually fine for security groups and IAM roles - they're easy to recreate. But for databases with years of production data, or S3 buckets with irreplaceable files, that default behavior is terrifying. DeletionPolicy lets you override it.
 
 ## What is DeletionPolicy?
 
 `DeletionPolicy` is an attribute you add to any resource in your CloudFormation template. It controls what happens to that resource when the stack is deleted (or when the resource is removed from the template during an update).
 
-Three options:
+Four options:
 
 | Policy | What Happens |
 |---|---|
-| `Delete` | Resource is destroyed (the default) |
+| `Delete` | Resource is destroyed (the default for most resources) |
 | `Retain` | Resource is kept but disconnected from CloudFormation |
+| `RetainExceptOnCreate` | Resource is retained except when the stack operation that created it rolls back |
 | `Snapshot` | Creates a final snapshot before deleting (only for supported resources) |
 
 ## Using DeletionPolicy: Retain
@@ -72,6 +73,8 @@ Resources:
     Properties:
       DBInstanceClass: db.t3.large
       Engine: mysql
+      MasterUsername: admin
+      ManageMasterUserPassword: true
       AllocatedStorage: 50
 
   RedisCache:
@@ -85,6 +88,8 @@ Resources:
 
 Resources that support `Snapshot`:
 
+- `AWS::DocDB::DBCluster`
+- `AWS::EC2::Volume`
 - `AWS::RDS::DBInstance`
 - `AWS::RDS::DBCluster`
 - `AWS::ElastiCache::CacheCluster`
@@ -136,6 +141,8 @@ Resources:
     Properties:
       DBInstanceClass: db.r5.large
       Engine: postgres
+      MasterUsername: admin
+      ManageMasterUserPassword: true
       AllocatedStorage: 200
       StorageEncrypted: true
       KmsKeyId: !Ref DataKey
@@ -239,17 +246,18 @@ For resources like KMS keys that might still be needed to decrypt existing data,
 After deleting a stack, check what was retained:
 
 ```bash
-# List deleted stacks and their retained resources
+# List deleted stacks
 aws cloudformation list-stacks \
   --stack-status-filter DELETE_COMPLETE \
-  --query 'StackSummaries[*].{Name:StackName,Deleted:DeletionTime}'
+  --query 'StackSummaries[*].{Name:StackName,Id:StackId,Deleted:DeletionTime}'
 
-# For a specific deleted stack, check which resources were retained
+# For a specific deleted stack, use the deleted stack ID to check retained resources
 aws cloudformation describe-stack-resources \
-  --stack-name my-old-stack 2>/dev/null || echo "Stack fully deleted"
+  --stack-name arn:aws:cloudformation:us-east-1:123456789012:stack/my-old-stack/abc123 \
+  --query 'StackResources[?ResourceStatus==`DELETE_SKIPPED`].[LogicalResourceId,ResourceType,PhysicalResourceId]'
 ```
 
-Unfortunately, CloudFormation doesn't provide a built-in way to list retained resources from deleted stacks. The best approach is to use tagging:
+CloudFormation keeps deleted stack resource details for up to 90 days. For longer-term tracking, the best approach is to use tagging:
 
 ```yaml
 # Tag resources with the stack name so you can find them later
@@ -293,9 +301,9 @@ And set DeletionPolicy on critical resources as an additional safety layer.
 
 ## Best Practices
 
-**Retain databases and encryption keys by default.** The cost of an orphaned database is negligible compared to the cost of losing data.
+**Retain databases and encryption keys by default.** The cost of an orphaned database is usually easier to recover from than the cost of losing data.
 
-**Use Snapshot for RDS when possible.** It gives you a backup without ongoing costs.
+**Use Snapshot for RDS when possible.** It gives you a backup without keeping the database instance running.
 
 **Tag retained resources.** You need to be able to find and manage them after the stack is gone.
 
