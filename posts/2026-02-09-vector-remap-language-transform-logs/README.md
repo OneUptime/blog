@@ -14,13 +14,13 @@ This guide explores practical VRL techniques for transforming Kubernetes logs in
 
 ## Understanding Vector Remap Language
 
-VRL is a strongly-typed, memory-safe language that compiles to efficient bytecode. Key features include:
+VRL is a strongly-typed, memory-safe language that compiles to native Rust code. Key features include:
 
 - **Type safety**: Catches errors at compile time
 - **Null safety**: Explicit handling of missing fields
-- **Immutability**: Prevents accidental data corruption
+- **Fail safety**: Requires fallible functions to handle errors explicitly
 - **Rich standard library**: Built-in functions for common transformations
-- **Kubernetes-aware**: Native understanding of Kubernetes metadata
+- **Kubernetes metadata support**: Works naturally with metadata added by Vector's `kubernetes_logs` source
 
 VRL transforms are applied using the `remap` transform in Vector configuration.
 
@@ -111,11 +111,11 @@ source = '''
 
   # Normalize log level
   .level = downcase(.level)
-  if contains(["error", "err", "fatal", "critical"], .level) {
+  if includes(["error", "err", "fatal", "critical"], .level) {
     .level = "error"
-  } else if contains(["warn", "warning"], .level) {
+  } else if includes(["warn", "warning"], .level) {
     .level = "warn"
-  } else if contains(["debug", "trace"], .level) {
+  } else if includes(["debug", "trace"], .level) {
     .level = "debug"
   } else {
     .level = "info"
@@ -356,12 +356,12 @@ source = '''
 
   # Redact email addresses
   if exists(parsed.email) {
-    parsed.email = redact_email(parsed.email)
+    parsed.email = redact(parsed.email, filters: [r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}'])
   }
 
   # Redact passwords from URLs
   if exists(parsed.url) {
-    parsed.url = redact(parsed.url, patterns: [r'password=([^&]+)'], replacement: "password=***")
+    parsed.url = redact(parsed.url, filters: [r'password=([^&]+)'], redactor: {"type": "text", "replacement": "password=***"})
   }
 
   # Redact API keys
@@ -384,7 +384,9 @@ source = '''
   }
 
   # Remove entire sensitive fields
-  parsed = remove(parsed, ["ssn", "password", "secret"])
+  del(parsed.ssn)
+  del(parsed.password)
+  del(parsed.secret)
 
   .message = encode_json(parsed)
 '''
@@ -428,8 +430,8 @@ source = '''
   required_fields = ["service", "level", "message"]
   missing = []
 
-  for field in required_fields {
-    if !exists(.parsed[field]) {
+  for_each(required_fields) -> |_index, field| {
+    if get!(.parsed, [field]) == null {
       missing = push(missing, field)
     }
   }
@@ -496,10 +498,10 @@ cat > test-log.json << EOF
 EOF
 
 # Test VRL transform
-vector vrl test-log.json <<EOF
+vector vrl --input test-log.json <<EOF
 parsed = parse_json!(.message)
 .level = parsed.level
-.duration_ms = to_float(parsed.duration_ms)
+.duration_ms = to_float!(parsed.duration_ms)
 if .duration_ms > 1000 { .slow = true }
 .
 EOF
