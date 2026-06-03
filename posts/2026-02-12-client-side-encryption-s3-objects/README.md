@@ -21,47 +21,76 @@ Client-side encryption adds complexity, so it's not always the right choice. Her
 
 If server-side encryption meets your requirements, it's simpler. See our posts on [SSE-S3](https://oneuptime.com/blog/post/2026-02-12-server-side-encryption-s3-managed-keys-sse-s3/view) and [SSE-KMS](https://oneuptime.com/blog/post/2026-02-12-server-side-encryption-aws-kms-sse-kms/view) first.
 
-## Option 1: Client-Side Encryption with KMS-Managed Keys
+## Option 1: Client-Side Encryption with the AWS Encryption SDK
 
-The AWS SDK provides an S3 encryption client that handles client-side encryption using KMS keys. KMS generates and manages the data encryption keys, but the actual encryption/decryption happens on your machine.
+The AWS Encryption SDK handles client-side envelope encryption using KMS keys. KMS protects the data encryption keys, but the actual encryption/decryption of your object data happens on your machine before you upload it to S3.
 
 Install the required package first.
 
 ```bash
-pip install boto3 amazon-s3-encryption-sdk
+pip install boto3 aws-encryption-sdk aws-cryptographic-material-providers
 ```
 
 Here's how to use it.
 
 ```python
-from s3_encryption_sdk import EncryptionSDKClient
-from s3_encryption_sdk.materials_providers.kms import KMSMasterKeyProvider
 import boto3
+import aws_encryption_sdk
+from aws_encryption_sdk import CommitmentPolicy
+from aws_cryptographic_material_providers.mpl import AwsCryptographicMaterialProviders
+from aws_cryptographic_material_providers.mpl.config import MaterialProvidersConfig
+from aws_cryptographic_material_providers.mpl.models import CreateAwsKmsKeyringInput
 
-# Create a KMS master key provider
-
+# Create a KMS keyring
 kms_key_id = 'arn:aws:kms:us-east-1:123456789012:key/your-key-id'
-kms_provider = KMSMasterKeyProvider(key_id=kms_key_id)
+kms_client = boto3.client('kms', region_name='us-east-1')
+s3 = boto3.client('s3', region_name='us-east-1')
 
-# Create the encryption client
-encryption_client = EncryptionSDKClient(kms_provider)
+material_providers = AwsCryptographicMaterialProviders(
+    config=MaterialProvidersConfig()
+)
+keyring = material_providers.create_aws_kms_keyring(
+    input=CreateAwsKmsKeyringInput(
+        kms_key_id=kms_key_id,
+        kms_client=kms_client
+    )
+)
+
+# Create the encryption SDK client
+encryption_client = aws_encryption_sdk.EncryptionSDKClient(
+    commitment_policy=CommitmentPolicy.REQUIRE_ENCRYPT_REQUIRE_DECRYPT
+)
 
 # Encrypt and upload
 plaintext_data = b'This is sensitive financial data that should never be seen by AWS'
+encryption_context = {
+    'purpose': 's3-client-side-encryption',
+    's3-key': 'sensitive/financial-record.dat'
+}
 
-encryption_client.put_object(
+ciphertext, _ = encryption_client.encrypt(
+    source=plaintext_data,
+    keyring=keyring,
+    encryption_context=encryption_context
+)
+
+s3.put_object(
     Bucket='my-encrypted-bucket',
     Key='sensitive/financial-record.dat',
-    Body=plaintext_data
+    Body=ciphertext
 )
 
 # Download and decrypt
-response = encryption_client.get_object(
+response = s3.get_object(
     Bucket='my-encrypted-bucket',
     Key='sensitive/financial-record.dat'
 )
 
-decrypted_data = response['Body'].read()
+decrypted_data, _ = encryption_client.decrypt(
+    source=response['Body'].read(),
+    keyring=keyring,
+    encryption_context=encryption_context
+)
 print(f"Decrypted: {decrypted_data.decode()}")
 ```
 
@@ -73,10 +102,7 @@ If you want full control over the key material, you can manage your own symmetri
 import boto3
 import os
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from cryptography.hazmat.primitives import hashes
-from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 import base64
-import json
 
 class ClientSideEncryptor:
     """
@@ -281,10 +307,11 @@ Client-side encryption adds CPU overhead to your application. For small objects,
 
 Because S3 can't read your encrypted data, several features won't work:
 
-- S3 Select and Athena queries
+- S3 Select, and Athena queries unless you use Athena's supported CSE-KMS format
 - S3 Object Lambda transformations
-- Server-side copy operations (you'll need to download, decrypt, encrypt, re-upload)
 - Content-based lifecycle rules
+
+You can still copy the ciphertext as an object. But if you need S3 or another AWS service to inspect, transform, or re-encrypt the plaintext, you'll need to download, decrypt, process, encrypt, and re-upload it in your application.
 
 ### Versioning and Encryption
 
@@ -307,12 +334,11 @@ response = s3.get_object(
 
 raw_data = response['Body'].read()
 
-# This should NOT be readable as text
-try:
-    text = raw_data.decode('utf-8')
-    print("WARNING: Data appears to be plaintext!")
-except UnicodeDecodeError:
-    print("GOOD: Data is encrypted (not valid UTF-8)")
+# This should NOT contain the plaintext you uploaded
+if b'Patient record' in raw_data:
+    print("WARNING: Data appears to contain plaintext!")
+else:
+    print("GOOD: Plaintext marker was not found in the stored object")
 ```
 
 ## Wrapping Up
