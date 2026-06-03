@@ -1,36 +1,36 @@
-# Configure Velero Restic Integration for File-Level Backup of Persistent Volumes
+# Configure Velero File System Backup for Persistent Volumes
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Velero, Restic, Kubernetes, Backup, Persistent Volume
+Tags: Velero, Kopia, Kubernetes, Backup, Persistent Volume
 
-Description: Learn how to configure Velero with Restic for file-level backup of persistent volumes in Kubernetes. Complete guide covering installation, configuration, and optimization techniques.
+Description: Learn how to configure Velero File System Backup for persistent volumes in Kubernetes. Complete guide covering installation, configuration, and optimization techniques.
 
 ---
 
-While volume snapshots provide fast backups through storage system integration, they have limitations when working with cloud providers that don't support snapshots or when you need to move data between different storage systems. Velero's Restic integration solves these challenges by performing file-level backups directly from mounted volumes, creating portable backups that work across any storage backend. This approach offers universal compatibility at the cost of slightly longer backup times.
+While volume snapshots provide fast backups through storage system integration, they have limitations when working with cloud providers that don't support snapshots or when you need to move data between different storage systems. Velero's File System Backup feature solves these challenges by performing file-level backups directly from mounted volumes, creating portable backups that work across any supported object storage backend. This approach offers broad compatibility at the cost of slightly longer backup times.
 
-## Understanding Restic File-Level Backups
+## Understanding File-Level Backups
 
-Restic is an open-source backup program that creates encrypted, deduplicated backups. When integrated with Velero, Restic runs as a DaemonSet on every node, backing up pod volume data by reading files directly from mounted volumes. This file-level approach works with any volume type including NFS, HostPath, EBS, Azure Disk, and others.
+Velero File System Backup uses the node-agent DaemonSet and the Kopia uploader by default to create encrypted, deduplicated backups. The node-agent runs on each node and backs up pod volume data by reading files directly from mounted volumes. This file-level approach works with many volume types, including NFS, EBS, Azure Disk, and local persistent volumes. HostPath volumes are not supported.
 
-Unlike snapshot-based backups that rely on storage driver capabilities, Restic backups are storage-agnostic. You can back up volumes from one storage system and restore them to completely different infrastructure, making Restic ideal for disaster recovery scenarios and cross-cloud migrations.
+Unlike snapshot-based backups that rely on storage driver capabilities, file-level backups are storage-agnostic. You can back up volumes from one storage system and restore them to completely different infrastructure, making File System Backup useful for disaster recovery scenarios and cross-cloud migrations.
 
-## Installing Velero with Restic Support
+## Installing Velero with File System Backup Support
 
-Install Velero with the Restic DaemonSet enabled:
+Install Velero with the node-agent DaemonSet enabled:
 
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket my-velero-backups \
   --backup-location-config region=us-east-1 \
   --use-node-agent \
   --secret-file ./credentials-velero
 ```
 
-The `--use-node-agent` flag deploys the node-agent DaemonSet (formerly called Restic) that performs file-level backups.
+The `--use-node-agent` flag deploys the node-agent DaemonSet that performs file-level backups. In current Velero releases, the Restic uploader is deprecated and disabled for new backups, so use the default Kopia uploader for new installations.
 
 Verify the node-agent pods are running:
 
@@ -42,9 +42,9 @@ kubectl get pods -n velero -l name=node-agent
 kubectl get daemonset -n velero node-agent
 ```
 
-## Annotating Pods for Restic Backup
+## Annotating Pods for File-Level Backup
 
-Velero doesn't automatically back up volumes with Restic. You must explicitly opt-in by annotating pods:
+Velero doesn't automatically back up pod volumes with File System Backup unless you opt in globally or per backup. With the default opt-in approach, annotate pods:
 
 ```yaml
 apiVersion: v1
@@ -53,8 +53,8 @@ metadata:
   name: my-app
   namespace: production
   annotations:
-    # Back up all volumes in this pod
-    backup.velero.io/backup-volumes: data-volume,config-volume
+    # Back up this persistent volume in the pod
+    backup.velero.io/backup-volumes: data-volume
 spec:
   containers:
   - name: app
@@ -62,15 +62,10 @@ spec:
     volumeMounts:
     - name: data-volume
       mountPath: /data
-    - name: config-volume
-      mountPath: /config
   volumes:
   - name: data-volume
     persistentVolumeClaim:
       claimName: app-data-pvc
-  - name: config-volume
-    configMap:
-      name: app-config
 ```
 
 The annotation `backup.velero.io/backup-volumes` lists which volumes to back up using file-level backup.
@@ -113,7 +108,7 @@ Once pods are annotated, create backups normally:
 
 ```bash
 # Create backup including file-level volume data
-velero backup create restic-backup \
+velero backup create fs-backup \
   --include-namespaces production \
   --default-volumes-to-fs-backup=false \
   --wait
@@ -124,13 +119,13 @@ The `--default-volumes-to-fs-backup=false` flag means only annotated volumes are
 To backup all volumes by default:
 
 ```bash
-velero backup create restic-backup-all \
+velero backup create fs-backup-all \
   --include-namespaces production \
   --default-volumes-to-fs-backup=true \
   --wait
 ```
 
-This backs up all volumes without requiring pod annotations.
+This backs up eligible pod volumes without requiring pod annotations. Velero still excludes volumes such as default service account tokens, Secrets, ConfigMaps, and HostPath volumes from File System Backup.
 
 ## Monitoring File-Level Backup Progress
 
@@ -138,48 +133,32 @@ Track backup progress and identify issues:
 
 ```bash
 # Get backup status
-velero backup describe restic-backup
+velero backup describe fs-backup
 
 # Check node-agent pod logs
 kubectl logs -n velero -l name=node-agent
 
 # View detailed backup logs
-velero backup logs restic-backup
+velero backup logs fs-backup
 ```
 
 File-level backups take longer than snapshots. Monitor progress:
 
 ```bash
 # Watch backup status
-watch velero backup get restic-backup
+watch velero backup get fs-backup
 
 # Check backup phase
-kubectl get backup restic-backup -n velero -o jsonpath='{.status.phase}'
+kubectl get backup fs-backup -n velero -o jsonpath='{.status.phase}'
 ```
 
-## Configuring Restic Resource Limits
+## Configuring Node-Agent Resource Limits
 
 Node-agent pods consume CPU and memory during backups. Configure appropriate resource limits:
 
-```yaml
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: node-agent
-  namespace: velero
-spec:
-  template:
-    spec:
-      containers:
-      - name: node-agent
-        image: velero/velero:v1.12.0
-        resources:
-          requests:
-            memory: "512Mi"
-            cpu: "500m"
-          limits:
-            memory: "2Gi"
-            cpu: "2000m"
+```bash
+kubectl patch daemonset node-agent -n velero --patch \
+  '{"spec":{"template":{"spec":{"containers":[{"name":"node-agent","resources":{"requests":{"memory":"512Mi","cpu":"500m"},"limits":{"memory":"2Gi","cpu":"2000m"}}}]}}}}'
 ```
 
 Adjust these values based on your volume sizes and backup frequency.
@@ -188,40 +167,51 @@ Adjust these values based on your volume sizes and backup frequency.
 
 Several factors affect file-level backup performance:
 
-**1. Exclude unnecessary files:**
+**1. Exclude unnecessary volumes or Kubernetes resources:**
 
 ```bash
-# Create backup excluding temporary files
+# Exclude a volume from File System Backup when using the opt-out approach
+kubectl -n production annotate pod/my-app \
+  backup.velero.io/backup-volumes-excludes=cache-volume
+
+# Create backup excluding Kubernetes API resources that are not needed
 velero backup create optimized-backup \
   --include-namespaces production \
   --default-volumes-to-fs-backup=true \
-  --exclude-resources='events,pods/log' \
+  --exclude-resources='events' \
   --wait
 ```
 
 **2. Configure concurrent uploads:**
 
-Increase parallelism by setting environment variables:
+Increase file upload parallelism per backup:
+
+```bash
+velero backup create optimized-backup \
+  --include-namespaces production \
+  --default-volumes-to-fs-backup=true \
+  --parallel-files-upload 4 \
+  --wait
+```
+
+You can also configure how many File System Backup operations the node-agent handles per node:
 
 ```yaml
-apiVersion: apps/v1
-kind: DaemonSet
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: node-agent
+  name: node-agent-config
   namespace: velero
-spec:
-  template:
-    spec:
-      containers:
-      - name: node-agent
-        env:
-        # Increase concurrent file uploads
-        - name: VELERO_RESTIC_TIMEOUT
-          value: "4h"
-        # Set upload parallelism
-        - name: GOMAXPROCS
-          value: "4"
+data:
+  config.json: |
+    {
+      "loadConcurrency": {
+        "globalConfig": 2
+      }
+    }
 ```
+
+Pass this ConfigMap to Velero at install time with `--node-agent-configmap node-agent-config`, or add `--node-agent-configmap=node-agent-config` to the node-agent DaemonSet arguments and restart the DaemonSet.
 
 **3. Schedule backups during off-peak hours:**
 
@@ -229,7 +219,7 @@ spec:
 apiVersion: velero.io/v1
 kind: Schedule
 metadata:
-  name: nightly-restic-backup
+  name: nightly-fs-backup
   namespace: velero
 spec:
   # Run at 2 AM when load is low
@@ -247,10 +237,10 @@ Restore volumes backed up with file-level backup:
 
 ```bash
 # Restore entire backup
-velero restore create --from-backup restic-backup --wait
+velero restore create --from-backup fs-backup --wait
 
 # Restore to different namespace
-velero restore create --from-backup restic-backup \
+velero restore create --from-backup fs-backup \
   --namespace-mappings production:production-restore \
   --wait
 ```
@@ -272,20 +262,18 @@ kubectl logs -n velero -l name=node-agent --follow
 
 ## Handling Large Volumes
 
-For very large volumes, adjust timeout settings:
+For very large volumes, adjust the File System Backup operation timeout in the Velero server deployment:
+
+```bash
+kubectl edit deployment velero -n velero
+```
+
+Add or update the server argument:
 
 ```yaml
-apiVersion: velero.io/v1
-kind: Backup
-metadata:
-  name: large-volume-backup
-  namespace: velero
-spec:
-  includedNamespaces:
-  - production
-  defaultVolumesToFsBackup: true
-  # Increase timeout to 6 hours for large volumes
-  fsBackupTimeout: 6h
+args:
+- server
+- --fs-backup-timeout=360m
 ```
 
 Also consider splitting large volumes into smaller incremental backups:
@@ -304,7 +292,7 @@ velero backup create incremental-backup \
   --wait
 ```
 
-Restic's deduplication means subsequent backups only store changed data.
+Kopia's deduplication means subsequent backups only store changed data.
 
 ## Troubleshooting File-Level Backup Issues
 
@@ -338,11 +326,14 @@ Increase the timeout in Velero configuration:
 
 ```bash
 kubectl edit deployment velero -n velero
+```
 
-# Add or modify environment variable
-env:
-- name: VELERO_RESTIC_TIMEOUT
-  value: "6h"
+Add or modify the server argument:
+
+```yaml
+args:
+- server
+- --fs-backup-timeout=360m
 ```
 
 ## Comparing Snapshot vs File-Level Backup
@@ -356,7 +347,7 @@ Choose the right backup method for your use case:
 - Cost is a consideration (snapshots are often cheaper)
 
 **Use file-level backup when:**
-- Storage doesn't support snapshots (NFS, HostPath)
+- Storage doesn't support snapshots, such as NFS or local persistent volumes
 - You need portability between storage systems
 - You're performing cross-cloud migrations
 - You want backup encryption and deduplication
@@ -374,40 +365,39 @@ spec:
   - production
   # Use snapshots where possible
   snapshotVolumes: true
-  # Fall back to file-level for unsupported volumes
+  # File-level backup still requires annotations or defaultVolumesToFsBackup=true
   defaultVolumesToFsBackup: false
 ```
 
-## Monitoring Restic Repository Health
+## Monitoring Backup Repository Health
 
-Check the health of your Restic repository:
+Check the health of your Velero backup repositories:
 
 ```bash
-# Get Restic repository information
-velero restic repo get
+# Get backup repository information
+velero repo get
 
 # Check repository statistics
-kubectl get resticrepositories -n velero
+kubectl get backuprepositories -n velero
 
 # Describe repository for details
-kubectl describe resticrepository <repo-name> -n velero
+kubectl describe backuprepository <repo-name> -n velero
 ```
 
-Occasionally, you may need to maintain the repository:
+Occasionally, you may need to check repository maintenance history:
 
 ```bash
-# Prune old backup data (Velero does this automatically)
-# But you can trigger it manually if needed
-velero backup-location get
+kubectl describe backuprepository <repo-name> -n velero
 ```
 
 ## Securing File-Level Backups
 
-Restic backups are encrypted by default using AES-256. Ensure your Velero credentials are properly secured:
+File System Backup repositories are encrypted using repository credentials stored in the `velero-repo-credentials` secret. Ensure your repository and cloud credentials are properly secured:
 
 ```bash
 # Verify secret exists
 kubectl get secret -n velero cloud-credentials
+kubectl get secret -n velero velero-repo-credentials
 
 # Rotate credentials if compromised
 kubectl create secret generic cloud-credentials \
@@ -419,40 +409,23 @@ kubectl rollout restart deployment velero -n velero
 kubectl rollout restart daemonset node-agent -n velero
 ```
 
-## Automating Restic Maintenance
+## Configuring Repository Maintenance
 
-Set up automated repository maintenance:
+Velero runs backup repository maintenance automatically. You can adjust the default maintenance frequency during installation:
 
-```yaml
-apiVersion: batch/v1
-kind: CronJob
-metadata:
-  name: velero-restic-maintenance
-  namespace: velero
-spec:
-  schedule: "0 3 * * 0"  # Weekly on Sunday at 3 AM
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          serviceAccountName: velero
-          containers:
-          - name: maintenance
-            image: velero/velero:v1.12.0
-            command:
-            - /bin/bash
-            - -c
-            - |
-              # Check backup locations
-              velero backup-location get
-
-              # List old backups
-              velero backup get | grep -E "Completed|PartiallyFailed" | awk '{print $1}'
-          restartPolicy: OnFailure
+```bash
+velero install \
+  --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
+  --bucket my-velero-backups \
+  --backup-location-config region=us-east-1 \
+  --use-node-agent \
+  --default-repo-maintain-frequency 6h \
+  --secret-file ./credentials-velero
 ```
 
-This CronJob performs regular repository health checks.
+Use `velero repo get` and `kubectl describe backuprepository <repo-name> -n velero` to check recent maintenance status.
 
 ## Conclusion
 
-Velero's Restic integration provides universal file-level backup capabilities for Kubernetes persistent volumes. While slower than snapshot-based approaches, file-level backups offer unmatched portability and compatibility across storage systems. Configure appropriate resource limits for node-agent pods, optimize backup schedules for your workload patterns, and leverage Restic's deduplication to minimize storage costs. Combine file-level backups with volume snapshots to create a comprehensive backup strategy that provides fast recovery within your infrastructure and portable backups for disaster recovery scenarios.
+Velero's File System Backup provides portable file-level backup capabilities for Kubernetes persistent volumes. While slower than snapshot-based approaches, file-level backups offer broad portability and compatibility across storage systems. Configure appropriate resource limits for node-agent pods, optimize backup schedules for your workload patterns, and leverage Kopia's deduplication to minimize storage costs. Combine file-level backups with volume snapshots to create a comprehensive backup strategy that provides fast recovery within your infrastructure and portable backups for disaster recovery scenarios.
