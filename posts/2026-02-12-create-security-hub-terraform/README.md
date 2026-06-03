@@ -29,22 +29,22 @@ resource "aws_securityhub_standards_subscription" "aws_foundational" {
   depends_on = [aws_securityhub_account.main]
 }
 
-# CIS AWS Foundations Benchmark v1.4.0
+# CIS AWS Foundations Benchmark v5.0.0
 resource "aws_securityhub_standards_subscription" "cis" {
-  standards_arn = "arn:aws:securityhub:us-east-1::standards/cis-aws-foundations-benchmark/v/1.4.0"
+  standards_arn = "arn:aws:securityhub:us-east-1::standards/cis-aws-foundations-benchmark/v/5.0.0"
 
   depends_on = [aws_securityhub_account.main]
 }
 
 # PCI DSS (only if you handle payment card data)
 resource "aws_securityhub_standards_subscription" "pci_dss" {
-  standards_arn = "arn:aws:securityhub:us-east-1::standards/pci-dss/v/3.2.1"
+  standards_arn = "arn:aws:securityhub:us-east-1::standards/pci-dss/v/4.0.1"
 
   depends_on = [aws_securityhub_account.main]
 }
 ```
 
-A note on standards: each standard you enable generates Config rules behind the scenes. More standards means more Config rule evaluations, which means higher AWS Config costs. Enable only the standards that match your compliance requirements.
+A note on standards: many Security Hub controls create service-linked AWS Config rules behind the scenes. More enabled controls means more security checks, which can increase Security Hub and AWS Config costs. Enable only the standards that match your compliance requirements.
 
 ## Disabling Specific Controls
 
@@ -55,7 +55,7 @@ This disables specific controls that generate noise in your environment:
 ```hcl
 # Disable the "IAM user MFA" check if you only use SSO
 resource "aws_securityhub_standards_control" "iam_user_mfa" {
-  standards_control_arn = "arn:aws:securityhub:us-east-1:${data.aws_caller_identity.current.account_id}:control/aws-foundational-security-best-practices/v/1.0.0/IAM.6"
+  standards_control_arn = "arn:aws:securityhub:us-east-1:${data.aws_caller_identity.current.account_id}:control/aws-foundational-security-best-practices/v/1.0.0/IAM.5"
   control_status        = "DISABLED"
   disabled_reason       = "We use SSO exclusively - no IAM user passwords"
 
@@ -64,7 +64,7 @@ resource "aws_securityhub_standards_control" "iam_user_mfa" {
 
 # Disable CloudTrail multi-region check if handled by organization trail
 resource "aws_securityhub_standards_control" "cloudtrail_multi_region" {
-  standards_control_arn = "arn:aws:securityhub:us-east-1:${data.aws_caller_identity.current.account_id}:control/cis-aws-foundations-benchmark/v/1.4.0/3.1"
+  standards_control_arn = "arn:aws:securityhub:us-east-1:${data.aws_caller_identity.current.account_id}:control/cis-aws-foundations-benchmark/v/5.0.0/3.1"
   control_status        = "DISABLED"
   disabled_reason       = "Multi-region CloudTrail is managed by the organization master account"
 
@@ -175,9 +175,7 @@ resource "aws_cloudwatch_event_rule" "securityhub_to_slack" {
   event_pattern = jsonencode({
     source      = ["aws.securityhub"]
     detail-type = ["Security Hub Findings - Custom Action"]
-    detail = {
-      actionName = ["SendToSlack"]
-    }
+    resources   = [aws_securityhub_action_target.send_to_slack.arn]
   })
 }
 
