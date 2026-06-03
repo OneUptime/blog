@@ -18,16 +18,16 @@ Configure the Vault provider in your Terraform configuration:
 # versions.tf
 
 terraform {
-  required_version = ">= 1.5.0"
+  required_version = ">= 1.11.0"
 
   required_providers {
     vault = {
       source  = "hashicorp/vault"
-      version = "~> 3.23"
+      version = "~> 5.9"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.24"
+      version = "~> 3.1"
     }
   }
 }
@@ -63,7 +63,7 @@ Manage secrets as Terraform resources:
 # secrets.tf
 resource "vault_mount" "kv_v2" {
   path        = "secret"
-  type        = "kv-v2"
+  type        = "kv"
   description = "KV Version 2 secret engine"
 
   options = {
@@ -75,12 +75,13 @@ resource "vault_kv_secret_v2" "database_credentials" {
   mount = vault_mount.kv_v2.path
   name  = "production/database"
 
-  data_json = jsonencode({
+  data_json_wo = jsonencode({
     username = "app_user"
     password = var.database_password
     host     = "postgres.production.svc.cluster.local"
     port     = 5432
   })
+  data_json_wo_version = 1
 
   custom_metadata {
     max_versions = 5
@@ -95,11 +96,12 @@ resource "vault_kv_secret_v2" "api_keys" {
   mount = vault_mount.kv_v2.path
   name  = "production/api-keys"
 
-  data_json = jsonencode({
+  data_json_wo = jsonencode({
     stripe_key    = var.stripe_api_key
     sendgrid_key  = var.sendgrid_api_key
     datadog_key   = var.datadog_api_key
   })
+  data_json_wo_version = 1
 
   custom_metadata {
     max_versions = 3
@@ -142,11 +144,12 @@ resource "vault_database_secrets_mount" "postgres" {
   path = "database"
 
   postgresql {
-    name              = "production-postgres"
-    username          = "vault"
-    password          = var.postgres_vault_password
-    connection_url    = "postgresql://{{username}}:{{password}}@postgres.production.svc.cluster.local:5432/myapp"
-    verify_connection = true
+    name                = "production-postgres"
+    username            = "vault"
+    password_wo         = var.postgres_vault_password
+    password_wo_version = 1
+    connection_url      = "postgresql://{{username}}:{{password}}@postgres.production.svc.cluster.local:5432/myapp"
+    verify_connection   = true
     allowed_roles = [
       "readonly",
       "readwrite",
@@ -181,6 +184,11 @@ resource "vault_database_secret_backend_role" "readwrite" {
 
   default_ttl = 1800
   max_ttl     = 43200
+}
+
+variable "postgres_vault_password" {
+  type      = string
+  sensitive = true
 }
 ```
 
@@ -270,7 +278,11 @@ resource "vault_policy" "app_readonly" {
   policy = <<EOT
 # Read application secrets
 path "secret/data/production/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+path "secret/metadata/production/*" {
+  capabilities = ["list"]
 }
 
 # Read database credentials
@@ -291,7 +303,11 @@ resource "vault_policy" "app_readwrite" {
   policy = <<EOT
 # Read and write application secrets
 path "secret/data/production/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
+}
+
+path "secret/metadata/production/*" {
+  capabilities = ["list"]
 }
 
 # Generate database credentials
@@ -338,20 +354,12 @@ resource "vault_auth_backend" "kubernetes" {
   path = "kubernetes"
 }
 
-data "kubernetes_service_account" "vault" {
-  metadata {
-    name      = "vault"
-    namespace = "vault-system"
-  }
-}
-
 resource "vault_kubernetes_auth_backend_config" "kubernetes" {
-  backend         = vault_auth_backend.kubernetes.path
-  kubernetes_host = "https://kubernetes.default.svc.cluster.local"
-  kubernetes_ca_cert = base64decode(
-    data.kubernetes_service_account.vault.secret[0].data["ca.crt"]
-  )
-  token_reviewer_jwt = data.kubernetes_service_account.vault.secret[0].data.token
+  backend                       = vault_auth_backend.kubernetes.path
+  kubernetes_host               = "https://kubernetes.default.svc.cluster.local"
+  kubernetes_ca_cert            = var.kubernetes_ca_cert
+  token_reviewer_jwt_wo         = var.token_reviewer_jwt
+  token_reviewer_jwt_wo_version = 1
 }
 
 resource "vault_kubernetes_auth_backend_role" "production_apps" {
@@ -370,6 +378,15 @@ resource "vault_kubernetes_auth_backend_role" "ci_cd" {
   bound_service_account_namespaces = ["ci-cd"]
   token_ttl                        = 1800
   token_policies                   = [vault_policy.ci_cd.name]
+}
+
+variable "kubernetes_ca_cert" {
+  type = string
+}
+
+variable "token_reviewer_jwt" {
+  type      = string
+  sensitive = true
 }
 ```
 
@@ -429,9 +446,10 @@ variable "secrets" {
 }
 
 resource "vault_kv_secret_v2" "app_secret" {
-  mount     = "secret"
-  name      = "${var.namespace}/${var.app_name}"
-  data_json = jsonencode(var.secrets)
+  mount                = "secret"
+  name                 = "${var.namespace}/${var.app_name}"
+  data_json_wo         = jsonencode(var.secrets)
+  data_json_wo_version = 1
 }
 
 resource "vault_policy" "app_policy" {
@@ -500,11 +518,11 @@ terraform {
 # Or use remote backend
 terraform {
   backend "s3" {
-    bucket         = "terraform-state"
-    key            = "vault/terraform.tfstate"
-    region         = "us-east-1"
-    encrypt        = true
-    dynamodb_table = "terraform-locks"
+    bucket       = "terraform-state"
+    key          = "vault/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
   }
 }
 ```
@@ -560,9 +578,9 @@ apply:
 Track changes with audit logging:
 
 ```bash
-# Query Terraform-managed resources
-vault list -format=json sys/policy | jq -r '.[]' | \
-    xargs -I {} vault policy read {} | grep "managed_by.*terraform"
+# Query Terraform-managed KV metadata
+vault kv metadata get -format=json -mount=secret production/database | \
+    jq -r '.data.custom_metadata.managed_by'
 
 # Monitor for drift
 terraform plan -detailed-exitcode
@@ -574,7 +592,7 @@ Store sensitive variables in secure locations. Use environment variables, encryp
 
 Use modules for repeated patterns. This reduces duplication and ensures consistency across environments.
 
-Implement proper state locking to prevent concurrent modifications. Use remote backends that support locking like S3 with DynamoDB or Kubernetes.
+Implement proper state locking to prevent concurrent modifications. Use remote backends that support locking like S3 with native lock files or Kubernetes.
 
 Version your Terraform configuration and track changes through Git. This provides audit trails and enables rollbacks.
 
