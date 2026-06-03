@@ -107,14 +107,16 @@ import re
 def get_pr_diff(repo, pr_number, github_token):
     """Fetch the diff for a pull request."""
     headers = {
-        'Authorization': f'token {github_token}',
-        'Accept': 'application/vnd.github.v3.diff'
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github.v3.diff',
+        'X-GitHub-Api-Version': '2022-11-28'
     }
 
     response = requests.get(
         f'https://api.github.com/repos/{repo}/pulls/{pr_number}',
         headers=headers
     )
+    response.raise_for_status()
 
     return response.text
 
@@ -189,7 +191,7 @@ REVIEW_PROMPT = """You are an experienced code reviewer. Review the following co
 File: {filename}
 Language: {language}
 
-Changes (unified diff format):
+Changes (unified diff format with new-file line numbers):
 {diff}
 
 Analyze the code for:
@@ -229,9 +231,20 @@ def analyze_file(file_data):
     # Reconstruct the diff text for this file
     diff_text = ''
     for hunk in file_data['hunks']:
-        diff_text += f'@@ Line {hunk["newStart"]} @@\n'
-        diff_text += '\n'.join(hunk['lines'])
-        diff_text += '\n'
+        diff_text += f'@@ New file starts at line {hunk["newStart"]} @@\n'
+        new_line = hunk['newStart']
+        old_line = hunk['oldStart']
+        for line in hunk['lines']:
+            if line.startswith('+') and not line.startswith('+++'):
+                diff_text += f'{new_line}: {line}\n'
+                new_line += 1
+            elif line.startswith('-') and not line.startswith('---'):
+                diff_text += f'old {old_line}: {line}\n'
+                old_line += 1
+            else:
+                diff_text += f'{new_line}: {line}\n'
+                new_line += 1
+                old_line += 1
 
     # Skip if diff is too small (less than 3 changed lines)
     if file_data['additions'] + file_data['deletions'] < 3:
@@ -244,7 +257,7 @@ def analyze_file(file_data):
     )
 
     response = bedrock.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='anthropic.claude-sonnet-4-6',
         contentType='application/json',
         accept='application/json',
         body=json.dumps({
@@ -284,8 +297,9 @@ import json
 def post_review(repo, pr_number, head_sha, issues_by_file, github_token):
     """Post a code review with inline comments on the GitHub PR."""
     headers = {
-        'Authorization': f'token {github_token}',
-        'Accept': 'application/vnd.github.v3+json'
+        'Authorization': f'Bearer {github_token}',
+        'Accept': 'application/vnd.github+json',
+        'X-GitHub-Api-Version': '2022-11-28'
     }
 
     # Build review comments
@@ -309,11 +323,9 @@ def post_review(repo, pr_number, head_sha, issues_by_file, github_token):
             comment = {
                 'path': filename,
                 'body': body,
-                'line': issue.get('line', 1)
+                'line': int(issue.get('line', 1)),
+                'side': 'RIGHT'
             }
-
-            # Only add side if it is a valid value
-            comment['side'] = 'RIGHT'
             comments.append(comment)
 
             total_issues += 1
@@ -336,7 +348,7 @@ def post_review(repo, pr_number, head_sha, issues_by_file, github_token):
         'commit_id': head_sha,
         'body': body_text,
         'event': review_event,
-        'comments': comments[:50]  # GitHub limits to 50 comments per review
+        'comments': comments[:50]  # Keep each review small to reduce secondary rate-limit risk
     }
 
     response = requests.post(
@@ -344,6 +356,7 @@ def post_review(repo, pr_number, head_sha, issues_by_file, github_token):
         headers=headers,
         json=review_data
     )
+    response.raise_for_status()
 
     return response.status_code
 ```
@@ -357,6 +370,7 @@ Tie it all together in the main review processing Lambda:
 import boto3
 import json
 import os
+from datetime import datetime
 
 dynamodb = boto3.resource('dynamodb')
 review_table = dynamodb.Table('CodeReviews')
