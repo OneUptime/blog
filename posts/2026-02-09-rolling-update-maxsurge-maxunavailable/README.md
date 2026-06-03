@@ -61,7 +61,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1           # Add only 1 pod at a time
-      maxUnavailable: 0     # Never allow any downtime
+      maxUnavailable: 0     # Do not reduce available pods during rollout
   selector:
     matchLabels:
       app: critical-api
@@ -92,7 +92,7 @@ spec:
 
 This configuration:
 - Updates one pod at a time
-- Ensures zero unavailable pods
+- Ensures zero unavailable pods during the rollout
 - Provides maximum safety but slowest updates
 - Requires extra cluster capacity (maxSurge pods)
 
@@ -210,7 +210,7 @@ spec:
 
 This configuration:
 - Doesn't require extra cluster capacity
-- Updates by replacing pods in-place
+- Updates by terminating old pods before creating replacements
 - Slower than having maxSurge > 0
 - Ideal when resources are tight
 
@@ -269,7 +269,7 @@ kind: PodDisruptionBudget
 metadata:
   name: ha-service-pdb
 spec:
-  minAvailable: 12  # Always keep at least 80% available
+  minAvailable: 12  # Require at least 80% available for voluntary evictions
   selector:
     matchLabels:
       app: ha-service
@@ -328,6 +328,8 @@ Calculate based on desired behavior:
 ```python
 #!/usr/bin/env python3
 
+import math
+
 def calculate_rollout_parameters(replicas, desired_update_speed, min_available_percent):
     """
     Calculate optimal maxSurge and maxUnavailable.
@@ -337,14 +339,15 @@ def calculate_rollout_parameters(replicas, desired_update_speed, min_available_p
         desired_update_speed: 'fast', 'medium', or 'slow'
         min_available_percent: Minimum availability required (0-100)
     """
-    max_unavailable_count = replicas - int(replicas * min_available_percent / 100)
+    min_available_count = math.ceil(replicas * min_available_percent / 100)
+    max_unavailable_count = max(0, replicas - min_available_count)
 
     if desired_update_speed == 'fast':
         max_surge = max(2, int(replicas * 0.5))
-        max_unavailable = max(1, max_unavailable_count)
+        max_unavailable = max_unavailable_count
     elif desired_update_speed == 'medium':
         max_surge = max(1, int(replicas * 0.25))
-        max_unavailable = max(1, min(2, max_unavailable_count))
+        max_unavailable = min(2, max_unavailable_count)
     else:  # slow
         max_surge = 1
         max_unavailable = min(1, max_unavailable_count)
@@ -422,7 +425,7 @@ Test rollout strategies in staging before production. Verify update speed and av
 
 Combine with proper health checks. ReadinessProbe prevents traffic to unhealthy new pods.
 
-Use Pod Disruption Budgets for additional protection:
+Use Pod Disruption Budgets for additional protection against voluntary evictions such as node drains:
 
 ```yaml
 apiVersion: policy/v1
@@ -430,7 +433,7 @@ kind: PodDisruptionBudget
 metadata:
   name: my-app-pdb
 spec:
-  minAvailable: 75%  # Complements maxUnavailable setting
+  minAvailable: 75%  # Applies to voluntary evictions
   selector:
     matchLabels:
       app: my-app
