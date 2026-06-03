@@ -237,7 +237,7 @@ print("Auto-scaling configured!")
 
 ## Updating an Endpoint
 
-Sometimes you need to update a running endpoint - maybe with a new model version or different instance types. SageMaker supports blue/green deployments for zero-downtime updates.
+Sometimes you need to update a running endpoint - maybe with a new model version or different instance types. SageMaker uses blue/green deployments by default to keep endpoints available during updates.
 
 ```python
 from sagemaker.model import Model
@@ -267,7 +267,7 @@ client.create_endpoint_config(
     }]
 )
 
-# Update the endpoint - SageMaker does a rolling deployment
+# Update the endpoint - SageMaker uses a blue/green deployment by default
 client.update_endpoint(
     EndpointName='xgb-classification-endpoint',
     EndpointConfigName='xgb-endpoint-config-v2'
