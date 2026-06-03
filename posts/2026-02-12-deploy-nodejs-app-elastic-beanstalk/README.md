@@ -8,7 +8,7 @@ Description: Deploy a Node.js web application to AWS Elastic Beanstalk with step
 
 ---
 
-Deploying a Node.js application to Elastic Beanstalk is one of the fastest ways to get a production-ready setup on AWS. You get load balancing, auto-scaling, health monitoring, and zero-downtime deployments out of the box. Let's walk through the entire process from a fresh Node.js project to a running production deployment.
+Deploying a Node.js application to Elastic Beanstalk is one of the fastest ways to get a production-ready setup on AWS. You get load balancing, auto-scaling, health monitoring, and configurable deployment strategies. Let's walk through the entire process from a fresh Node.js project to a running production deployment.
 
 ## Project Setup
 
@@ -17,7 +17,7 @@ Start with a standard Express application. Here's the project structure.
 ```text
 my-node-app/
   .ebextensions/
-    01-nodecommand.config
+    01-environment.config
   .platform/
     nginx/
       conf.d/
@@ -111,14 +111,15 @@ And the package.json.
     "compression": "^1.7.4",
     "express": "^4.18.2",
     "helmet": "^7.1.0",
-    "morgan": "^1.10.0"
+    "morgan": "^1.10.0",
+    "pg": "^8.11.5"
   },
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.0.0"
   },
   "engines": {
-    "node": "18.x"
+    "node": "22.x"
   }
 }
 ```
@@ -136,11 +137,9 @@ web: node server.js
 Create `.ebextensions` for Beanstalk-specific configuration.
 
 ```yaml
-# .ebextensions/01-nodecommand.config
+# .ebextensions/01-environment.config
 
 option_settings:
-  aws:elasticbeanstalk:container:nodejs:
-    NodeCommand: "npm start"
   aws:elasticbeanstalk:application:environment:
     NODE_ENV: production
   aws:elasticbeanstalk:environment:proxy:
@@ -194,11 +193,11 @@ Now let's deploy. Install the EB CLI if you haven't already, then initialize and
 ```bash
 # Initialize the Beanstalk project
 cd /path/to/my-node-app
-eb init --platform "Node.js 18" --region us-east-1 my-node-app
+eb init --platform "Node.js 22" --region us-east-1 my-node-app
 
 # Create a production environment
 eb create production \
-  --instance-type t3.small \
+  --instance_type t3.small \
   --min-instances 2 \
   --max-instances 6 \
   --elb-type application \
@@ -226,6 +225,16 @@ aws elasticbeanstalk update-environment \
     },
     {
       "Namespace": "aws:rds:dbinstance",
+      "OptionName": "HasCoupledDatabase",
+      "Value": "true"
+    },
+    {
+      "Namespace": "aws:rds:dbinstance",
+      "OptionName": "DBUser",
+      "Value": "appuser"
+    },
+    {
+      "Namespace": "aws:rds:dbinstance",
       "OptionName": "DBInstanceClass",
       "Value": "db.t3.micro"
     },
@@ -249,11 +258,11 @@ Beanstalk exposes database connection details as environment variables. Use them
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  host: process.env.RDS_HOSTNAME,
-  port: process.env.RDS_PORT || 5432,
-  user: process.env.RDS_USERNAME,
-  password: process.env.RDS_PASSWORD,
-  database: process.env.RDS_DB_NAME,
+  host: process.env.DB_HOST || process.env.RDS_HOSTNAME,
+  port: process.env.DB_PORT || process.env.RDS_PORT || 5432,
+  user: process.env.DB_USER || process.env.RDS_USERNAME,
+  password: process.env.DB_PASSWORD || process.env.RDS_PASSWORD,
+  database: process.env.DB_NAME || process.env.RDS_DB_NAME,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
@@ -336,6 +345,7 @@ option_settings:
     BatchSize: 50
   aws:autoscaling:updatepolicy:rollingupdate:
     RollingUpdateEnabled: true
+    RollingUpdateType: Health
     MaxBatchSize: 1
     MinInstancesInService: 1
 ```
@@ -373,7 +383,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Install dependencies
         run: npm ci
