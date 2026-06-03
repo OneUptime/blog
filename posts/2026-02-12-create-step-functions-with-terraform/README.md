@@ -127,7 +127,7 @@ This workflow validates an order, processes payment (with retries), and sends a 
 Step Functions offers two types:
 
 - **Standard** - for long-running workflows (up to a year). Charges per state transition.
-- **Express** - for high-volume, short-duration workflows (up to 5 minutes). Charges per execution.
+- **Express** - for high-volume, short-duration workflows (up to 5 minutes). Charges per execution, duration, and memory used.
 
 Choose Express for high-throughput, short-lived workflows:
 
@@ -161,9 +161,36 @@ resource "aws_cloudwatch_log_group" "sfn_logs" {
   name              = "/aws/stepfunctions/data-transform"
   retention_in_days = 14
 }
+
+resource "aws_iam_role_policy" "sfn_logging" {
+  name = "step-functions-logging"
+  role = aws_iam_role.step_functions.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogDelivery",
+          "logs:CreateLogStream",
+          "logs:GetLogDelivery",
+          "logs:UpdateLogDelivery",
+          "logs:DeleteLogDelivery",
+          "logs:ListLogDeliveries",
+          "logs:PutLogEvents",
+          "logs:PutResourcePolicy",
+          "logs:DescribeResourcePolicies",
+          "logs:DescribeLogGroups"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
 ```
 
-Express workflows don't have the visual execution history that Standard workflows offer, so logging is essential for debugging.
+Express workflows don't record execution history in Step Functions the way Standard workflows do, so logging is essential for debugging.
 
 ## Parallel Execution
 
@@ -387,6 +414,39 @@ resource "aws_cloudwatch_event_rule" "trigger" {
   event_pattern = jsonencode({
     source      = ["custom.orders"]
     detail-type = ["OrderCreated"]
+  })
+}
+
+resource "aws_iam_role" "eventbridge_sfn" {
+  name = "eventbridge-step-functions-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "events.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy" "eventbridge_start_sfn" {
+  name = "start-step-functions"
+  role = aws_iam_role.eventbridge_sfn.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = "states:StartExecution"
+        Resource = aws_sfn_state_machine.order_processor.arn
+      }
+    ]
   })
 }
 
