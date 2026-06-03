@@ -69,7 +69,7 @@ DXGW_ID=$(aws directconnect create-direct-connect-gateway \
 echo "Direct Connect Gateway: $DXGW_ID"
 ```
 
-The Amazon-side ASN is the BGP ASN that AWS uses for the BGP session. Choose a value in the private ASN range (64512-65534) that doesn't conflict with your on-premises ASN.
+The Amazon-side ASN is the BGP ASN that AWS uses for the BGP session. Choose a value in the private ASN range (64512-65534 or 4200000000-4294967294) that doesn't conflict with your on-premises ASN.
 
 ## Step 2: Associate the Direct Connect Gateway with Transit Gateway
 
@@ -119,6 +119,7 @@ TVIF_ID=$(aws directconnect create-transit-virtual-interface \
     "authKey": "bgp-auth-key-here",
     "amazonAddress": "169.254.200.1/30",
     "customerAddress": "169.254.200.2/30",
+    "addressFamily": "ipv4",
     "directConnectGatewayId": "'$DXGW_ID'",
     "tags": [{"key": "Name", "value": "transit-vif"}]
   }' \
@@ -210,6 +211,7 @@ aws directconnect create-transit-virtual-interface \
     "virtualInterfaceName": "transit-vif-primary",
     "vlan": 300,
     "asn": 65000,
+    "addressFamily": "ipv4",
     "directConnectGatewayId": "'$DXGW_ID'"
   }'
 
@@ -220,6 +222,7 @@ aws directconnect create-transit-virtual-interface \
     "virtualInterfaceName": "transit-vif-secondary",
     "vlan": 300,
     "asn": 65000,
+    "addressFamily": "ipv4",
     "directConnectGatewayId": "'$DXGW_ID'"
   }'
 ```
@@ -254,7 +257,7 @@ VPN_BACKUP=$(aws ec2 create-vpn-connection \
   --output text)
 ```
 
-BGP handles the failover automatically. Direct Connect routes have a shorter AS path than VPN routes, so they're preferred. If Direct Connect goes down, BGP falls back to the VPN.
+BGP handles the failover automatically. For matching prefixes in a transit gateway route table, Direct Connect gateway propagated routes are preferred over Site-to-Site VPN propagated routes. If Direct Connect stops advertising the route, the VPN route becomes active.
 
 ## Monitoring
 
