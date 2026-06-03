@@ -18,7 +18,7 @@ Traditional approaches require embedding tracing libraries directly into applica
 
 The sidecar pattern provides several advantages. First, it enables centralized management of tracing configuration. Second, it allows you to update tracing agents without rebuilding application containers. Third, it reduces the burden on development teams who can focus on business logic rather than observability infrastructure.
 
-Sidecars run in the same pod as your application, sharing the network namespace. This means the tracing agent can intercept traffic on localhost, making it transparent to the application. Your services simply send traces to localhost, and the sidecar handles forwarding to backend systems.
+Sidecars run in the same pod as your application, sharing the network namespace. This means the tracing agent can receive telemetry on localhost, keeping the application configuration simple. Your services simply send traces to localhost, and the sidecar handles forwarding to backend systems.
 
 ## Implementing OpenTelemetry Collector Sidecar
 
@@ -60,16 +60,16 @@ data:
       otlp:
         endpoint: "tracing-backend.monitoring:4317"
         tls:
-          insecure: false
-      logging:
-        loglevel: info
+          insecure: true
+      debug:
+        verbosity: normal
 
     service:
       pipelines:
         traces:
           receivers: [otlp, jaeger]
           processors: [batch, resource]
-          exporters: [otlp, logging]
+          exporters: [otlp, debug]
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -97,6 +97,8 @@ spec:
         # Configure app to send traces to sidecar
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://localhost:4318"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
         - name: OTEL_SERVICE_NAME
           value: "web-application"
         resources:
@@ -109,7 +111,7 @@ spec:
 
       # OpenTelemetry Collector sidecar
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.91.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
         - "--config=/conf/collector-config.yaml"
         ports:
@@ -141,7 +143,7 @@ This configuration creates a deployment where each pod runs your application alo
 
 ## Configuring Auto-Instrumentation with Java Agent Sidecar
 
-For Java applications, you can use a sidecar pattern to inject the OpenTelemetry Java agent without modifying your application container. This uses an init container to copy the agent and a shared volume.
+For Java applications, you can use a sidecar pattern to inject the OpenTelemetry Java agent without modifying your application container. This uses an init container to download the agent and a shared volume.
 
 ```yaml
 apiVersion: apps/v1
@@ -162,13 +164,13 @@ spec:
       # Init container to download Java agent
       initContainers:
       - name: agent-download
-        image: alpine:3.18
+        image: alpine:3.22
         command:
         - sh
         - -c
         - |
           wget -O /agents/opentelemetry-javaagent.jar \
-            https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v1.32.0/opentelemetry-javaagent.jar
+            https://github.com/open-telemetry/opentelemetry-java-instrumentation/releases/download/v2.27.0/opentelemetry-javaagent.jar
         volumeMounts:
         - name: agent-volume
           mountPath: /agents
@@ -185,6 +187,8 @@ spec:
           value: "-javaagent:/agents/opentelemetry-javaagent.jar"
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://localhost:4318"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "http/protobuf"
         - name: OTEL_SERVICE_NAME
           value: "java-service"
         - name: OTEL_TRACES_EXPORTER
@@ -202,7 +206,7 @@ spec:
 
       # OpenTelemetry Collector sidecar
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.91.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
         args:
         - "--config=/conf/collector-config.yaml"
         ports:
@@ -247,7 +251,7 @@ webhooks:
       path: "/inject"
     caBundle: LS0tLS1CRUdJTi... # Base64 encoded CA cert
   rules:
-  - operations: ["CREATE", "UPDATE"]
+  - operations: ["CREATE"]
     apiGroups: [""]
     apiVersions: ["v1"]
     resources: ["pods"]
@@ -303,7 +307,7 @@ When you deploy this, the webhook automatically adds the OpenTelemetry Collector
 
 ## Managing Sidecar Configuration and Updates
 
-One challenge with sidecar injection is managing configuration changes and updates. Using ConfigMaps allows you to update tracing configuration without redeploying applications.
+One challenge with sidecar injection is managing configuration changes and updates. Using ConfigMaps allows you to update tracing configuration without rebuilding application images.
 
 ```yaml
 apiVersion: v1
@@ -329,6 +333,8 @@ data:
     exporters:
       otlp:
         endpoint: "tracing-backend.monitoring:4317"
+        tls:
+          insecure: true
 
     service:
       pipelines:
@@ -349,19 +355,38 @@ kubectl apply -f otel-collector-config.yaml
 kubectl rollout restart deployment/web-application -n default
 ```
 
-For more dynamic configuration, you can implement configuration reloading in your sidecar containers. The OpenTelemetry Collector supports configuration reloading through file watching.
+For more dynamic configuration, use a reloader or supervisor that restarts or reloads the sidecar when the mounted configuration changes. A ConfigMap update alone does not automatically apply a new Collector configuration to a running sidecar.
 
 ## Monitoring Sidecar Health and Performance
 
 Tracing sidecars need monitoring to ensure they don't become bottlenecks. Configure health checks and resource limits appropriately.
 
 ```yaml
+# Add these fields to collector-config.yaml
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    metrics:
+      readers:
+      - pull:
+          exporter:
+            prometheus:
+              host: "0.0.0.0"
+              port: 8888
+
+# Add these fields to the pod's container spec
 containers:
 - name: otel-collector
-  image: otel/opentelemetry-collector-contrib:0.91.0
+  image: otel/opentelemetry-collector-contrib:0.153.0
   ports:
   - containerPort: 13133
     name: health-check
+  - containerPort: 8888
+    name: metrics
   livenessProbe:
     httpGet:
       path: /
@@ -383,7 +408,7 @@ containers:
       cpu: "200m"
 ```
 
-Monitor key metrics like trace processing rate, export latency, and queue size to detect issues early. The OpenTelemetry Collector exposes Prometheus metrics on port 8888 by default.
+Monitor key metrics like trace processing rate, export latency, and queue size to detect issues early. The OpenTelemetry Collector exposes internal Prometheus metrics on port 8888 by default on localhost; configure the metrics reader as shown above when you need Prometheus to scrape the sidecar over the pod network.
 
 ## Conclusion
 
