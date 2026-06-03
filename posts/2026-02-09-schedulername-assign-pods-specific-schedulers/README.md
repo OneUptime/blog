@@ -42,6 +42,19 @@ subjects:
   name: custom-scheduler
   namespace: kube-system
 ---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: custom-scheduler-volume-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:volume-scheduler
+subjects:
+- kind: ServiceAccount
+  name: custom-scheduler
+  namespace: kube-system
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -64,8 +77,6 @@ spec:
         command:
         - kube-scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
-        - --leader-elect=false
-        - --scheduler-name=custom-scheduler
         - --v=3
         volumeMounts:
         - name: config
@@ -218,7 +229,6 @@ spec:
         command:
         - /cost-optimizer-scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
-        - --scheduler-name=cost-optimizer
         volumeMounts:
         - name: config
           mountPath: /etc/kubernetes
@@ -301,6 +311,9 @@ spec:
     matchLabels:
       app: trading-engine
   template:
+    metadata:
+      labels:
+        app: trading-engine
     spec:
       schedulerName: latency-sensitive
       containers:
@@ -333,12 +346,21 @@ data:
         score:
           enabled:
           # Maximize node utilization
-          - name: MostAllocated
+          - name: NodeResourcesFit
             weight: 10
           disabled:
           # Disable balanced allocation
           - name: NodeResourcesBalancedAllocation
-          - name: NodeResourcesLeastAllocated
+      pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: MostAllocated
+            resources:
+            - name: cpu
+              weight: 1
+            - name: memory
+              weight: 1
 ```
 
 ## Multi-Scheduler Namespace Policy
@@ -481,6 +503,9 @@ spec:
     matchLabels:
       app: scheduler-fallback
   template:
+    metadata:
+      labels:
+        app: scheduler-fallback
     spec:
       serviceAccountName: scheduler-fallback
       containers:
@@ -493,8 +518,7 @@ spec:
           value: "default-scheduler"
         command:
         - /fallback-controller
-        # Watches pending pods and changes schedulerName after timeout
+        # Watches pending pods and recreates them with the fallback scheduler after timeout
 ```
 
 The schedulerName field provides a powerful way to route workloads to specialized schedulers. Whether you need GPU optimization, cost efficiency, latency sensitivity, or custom placement logic, multiple schedulers enable you to optimize scheduling for different workload types while keeping the default scheduler for standard workloads.
-
