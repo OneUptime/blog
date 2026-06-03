@@ -17,7 +17,7 @@ This guide covers everything from initial configuration to publishing packages a
 You'll need:
 
 - An AWS CodeArtifact domain and repository (see our guide on [setting up CodeArtifact](https://oneuptime.com/blog/post/2026-02-12-aws-codeartifact-package-management/view))
-- AWS CLI installed and configured
+- AWS CLI installed and configured (AWS CLI 2.9.5 or newer if you use npm 10 or newer)
 - Node.js and npm installed
 
 ## Quick Setup with the Login Command
@@ -38,6 +38,7 @@ This automatically:
 - Gets an authorization token
 - Sets the registry URL in your npm config
 - Configures the auth token
+- For npm 6 and lower, configures `always-auth=true`
 - The token is valid for 12 hours by default
 
 Verify the configuration:
@@ -73,6 +74,8 @@ AUTH_TOKEN=$(aws codeartifact get-authorization-token \
 # Configure npm
 npm config set registry "$REPO_URL"
 npm config set //${REPO_URL#https://}:_authToken="$AUTH_TOKEN"
+
+# For npm 6 and lower only
 npm config set //${REPO_URL#https://}:always-auth=true
 ```
 
@@ -110,7 +113,6 @@ For team-wide configuration, use a project-level `.npmrc` file. This goes in you
 # .npmrc - Project-level npm configuration
 # Route all packages through CodeArtifact (which proxies public npm)
 registry=https://my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/npm/my-packages/
-//my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/npm/my-packages/:always-auth=true
 ```
 
 Don't put the auth token in `.npmrc` - that's a secret. Instead, set it via environment variable:
@@ -119,6 +121,8 @@ Don't put the auth token in `.npmrc` - that's a secret. Instead, set it via envi
 # .npmrc with environment variable for the auth token
 registry=https://my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/npm/my-packages/
 //my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/npm/my-packages/:_authToken=${CODEARTIFACT_AUTH_TOKEN}
+
+# For npm 6 and lower only
 //my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/npm/my-packages/:always-auth=true
 ```
 
@@ -177,13 +181,11 @@ Here's a CodeBuild buildspec that authenticates with CodeArtifact:
 version: 0.2
 
 phases:
-  pre_build:
+  install:
     commands:
       # Authenticate npm with CodeArtifact
       - aws codeartifact login --tool npm --repository my-packages --domain my-org --domain-owner 123456789012
       - echo "npm configured for CodeArtifact"
-  install:
-    commands:
       - npm ci
   build:
     commands:
@@ -198,11 +200,9 @@ For publishing from CI:
 version: 0.2
 
 phases:
-  pre_build:
-    commands:
-      - aws codeartifact login --tool npm --repository my-packages --domain my-org --domain-owner 123456789012
   install:
     commands:
+      - aws codeartifact login --tool npm --repository my-packages --domain my-org --domain-owner 123456789012
       - npm ci
   build:
     commands:
@@ -226,8 +226,7 @@ The CodeBuild service role needs these permissions:
         "codeartifact:GetAuthorizationToken",
         "codeartifact:GetRepositoryEndpoint",
         "codeartifact:ReadFromRepository",
-        "codeartifact:PublishPackageVersion",
-        "codeartifact:PutPackageMetadata"
+        "codeartifact:PublishPackageVersion"
       ],
       "Resource": "*"
     },
@@ -282,9 +281,11 @@ Your auth token has expired. Run `aws codeartifact login` again.
 **"404 Not Found" for a public package:**
 Make sure your repository has an upstream connection to the public npm registry. Check with:
 ```bash
-aws codeartifact list-repositories-in-domain \
+aws codeartifact describe-repository \
   --domain my-org \
-  --query 'repositories[*].{Name:name,Upstreams:upstreams}'
+  --domain-owner 123456789012 \
+  --repository my-packages \
+  --query '{Upstreams:repository.upstreams,ExternalConnections:repository.externalConnections}'
 ```
 
 **"403 Forbidden" on publish:**
