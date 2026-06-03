@@ -16,7 +16,8 @@ Origin Access Identity (OAI) was the original way to restrict S3 access to Cloud
 
 - Didn't support SSE-KMS encrypted objects
 - Didn't support S3 Object Lambda
-- Didn't support S3 buckets in different AWS accounts as well
+- Didn't support all S3 Regions, including newer opt-in Regions
+- Didn't support dynamic S3 requests like `PUT` and `DELETE`
 - Used a legacy authentication mechanism
 
 OAC fixes all of these. It uses AWS Signature Version 4 (SigV4) for authentication, which is the standard authentication method for AWS services. If you're starting fresh, always use OAC. If you have existing OAI setups, plan to migrate them.
@@ -70,8 +71,14 @@ Create or update your distribution to use the OAC with your S3 origin. The impor
   "DefaultCacheBehavior": {
     "TargetOriginId": "s3-oac-origin",
     "ViewerProtocolPolicy": "redirect-to-https",
-    "AllowedMethods": ["GET", "HEAD"],
-    "CachedMethods": ["GET", "HEAD"],
+    "AllowedMethods": {
+      "Quantity": 2,
+      "Items": ["GET", "HEAD"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
+    },
     "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
     "Compress": true
   },
@@ -98,8 +105,8 @@ If updating an existing distribution:
 # Get current config
 aws cloudfront get-distribution-config --id E1234567890 > config.json
 
-# Edit the origin to add OriginAccessControlId and clear OriginAccessIdentity
-# Then update
+# Note the ETag from config.json, then edit the DistributionConfig object to
+# add OriginAccessControlId and clear OriginAccessIdentity
 aws cloudfront update-distribution \
   --id E1234567890 \
   --distribution-config file://updated-config.json \
@@ -155,7 +162,7 @@ aws s3api put-public-access-block \
     'BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true'
 ```
 
-This ensures the only way to access the content is through CloudFront.
+With the bucket policy above, this keeps public S3 access blocked so anonymous users can only access the content through CloudFront.
 
 ## Step 5: Test the Setup
 
@@ -169,9 +176,9 @@ curl -I https://my-assets-bucket.s3.us-east-1.amazonaws.com/index.html
 
 ## Using OAC with SSE-KMS Encrypted Objects
 
-One of OAC's biggest advantages over OAI is SSE-KMS support. If your S3 objects are encrypted with a KMS key, add the KMS decrypt permission to the bucket policy and the KMS key policy.
+One of OAC's biggest advantages over OAI is SSE-KMS support. If your S3 objects are encrypted with a KMS key, keep the S3 bucket policy that allows CloudFront to read the objects, and add KMS permissions to the KMS key policy.
 
-Update the bucket policy to also allow CloudFront to use the KMS key:
+For the bucket policy, allow CloudFront to read the encrypted objects:
 
 ```json
 {
