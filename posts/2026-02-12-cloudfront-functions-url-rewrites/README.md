@@ -14,7 +14,7 @@ CloudFront Functions let you run lightweight JavaScript code at CloudFront edge 
 
 Before diving in, let's clarify when to use which:
 
-**CloudFront Functions** run on the viewer-facing side only (viewer request and viewer response events). They're limited to 10KB of code, can't make network calls, and have a 1ms execution time limit. But they run at every edge location and cost $0.10 per million invocations.
+**CloudFront Functions** run on the viewer-facing side only (viewer request and viewer response events). They're limited to 10KB of code, can't make network calls, and have a very short execution time limit measured as compute utilization. But they run at every edge location and cost $0.10 per million invocations.
 
 **Lambda@Edge** can run on all four event types (viewer request/response and origin request/response). It supports up to 50MB deployment packages, can make network calls, and has up to 30 seconds of execution time. But it's more expensive and adds more latency.
 
@@ -81,9 +81,11 @@ The test event file looks like:
   "request": {
     "method": "GET",
     "uri": "/blog/",
+    "querystring": {},
     "headers": {
       "host": {"value": "example.com"}
-    }
+    },
+    "cookies": {}
   }
 }
 ```
@@ -325,37 +327,40 @@ function handler(event) {
 
 ## Debugging Functions
 
-CloudFront Functions don't have console.log, but you can use the `console.log` equivalent in the test harness. For production debugging, check CloudWatch metrics:
+CloudFront Functions support `console.log()` for debugging, and test runs return function logs in the response. For production debugging, check CloudWatch metrics:
 
 ```bash
 # Check function invocation metrics
 aws cloudwatch get-metric-statistics \
   --namespace AWS/CloudFront \
   --metric-name FunctionInvocations \
-  --dimensions Name=FunctionName,Value=add-index-html \
+  --dimensions Name=FunctionName,Value=add-index-html Name=Region,Value=Global \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Sum
+  --statistics Sum \
+  --region us-east-1
 
 # Check for function errors
 aws cloudwatch get-metric-statistics \
   --namespace AWS/CloudFront \
   --metric-name FunctionValidationErrors \
-  --dimensions Name=FunctionName,Value=add-index-html \
+  --dimensions Name=FunctionName,Value=add-index-html Name=Region,Value=Global \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Sum
+  --statistics Sum \
+  --region us-east-1
 ```
 
 ## Limitations to Keep in Mind
 
 - 10KB maximum function size
-- 2MB maximum request/response size for manipulation
+- 2MB maximum function memory
+- No access to the HTTP request body
 - No network calls (can't call APIs or databases)
 - No file system access
-- 1ms execution time limit (10ms for viewer response)
+- Very short execution time limit, surfaced as compute utilization from 0 to 100
 - JavaScript only (ECMAScript 5.1 compatible with some additions in runtime 2.0)
 - Can only associate with viewer request and viewer response events
 
