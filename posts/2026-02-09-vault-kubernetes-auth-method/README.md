@@ -40,26 +40,21 @@ Enable and configure the Kubernetes authentication method:
 # Enable Kubernetes auth
 vault auth enable kubernetes
 
+# Allow Vault's service account to use the Kubernetes TokenReview API
+kubectl create clusterrolebinding vault-tokenreview-binding \
+  --clusterrole=system:auth-delegator \
+  --serviceaccount=vault:vault
+
 # Get Kubernetes API server address
 KUBERNETES_HOST=$(kubectl config view --raw --minify --flatten \
   -o jsonpath='{.clusters[0].cluster.server}')
 
 echo "Kubernetes API: $KUBERNETES_HOST"
 
-# Get the service account token Vault will use
-TOKEN_REVIEWER_JWT=$(kubectl -n vault get secret \
-  $(kubectl -n vault get sa vault -o jsonpath='{.secrets[0].name}') \
-  -o jsonpath='{.data.token}' | base64 -d)
-
-# Get Kubernetes CA certificate
-KUBERNETES_CA_CERT=$(kubectl config view --raw --minify --flatten \
-  -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d)
-
-# Configure Kubernetes auth method
+# Configure Kubernetes auth method. When Vault runs in Kubernetes, it can use
+# its local service account token and CA certificate for TokenReview requests.
 vault write auth/kubernetes/config \
-  token_reviewer_jwt="$TOKEN_REVIEWER_JWT" \
-  kubernetes_host="$KUBERNETES_HOST" \
-  kubernetes_ca_cert="$KUBERNETES_CA_CERT"
+  kubernetes_host="$KUBERNETES_HOST"
 ```
 
 ## Creating Policies for Applications
@@ -71,7 +66,11 @@ Define policies that control what secrets applications can access:
 vault policy write app-policy - <<EOF
 # Allow reading app secrets
 path "secret/data/app/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+path "secret/metadata/app/*" {
+  capabilities = ["list"]
 }
 
 # Allow reading database credentials
@@ -83,7 +82,11 @@ EOF
 # Create policy for admin tasks
 vault policy write admin-policy - <<EOF
 path "secret/data/admin/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
+}
+
+path "secret/metadata/admin/*" {
+  capabilities = ["list"]
 }
 
 path "sys/policies/acl/*" {
@@ -101,29 +104,29 @@ Create Kubernetes auth roles that map service accounts to Vault policies:
 vault write auth/kubernetes/role/app \
   bound_service_account_names=app-sa \
   bound_service_account_namespaces=default \
-  policies=app-policy \
-  ttl=1h
+  token_policies=app-policy \
+  token_ttl=1h
 
 # Create role allowing any service account in namespace
 vault write auth/kubernetes/role/namespace-wide \
   bound_service_account_names="*" \
   bound_service_account_namespaces=production \
-  policies=app-policy \
-  ttl=30m
+  token_policies=app-policy \
+  token_ttl=30m
 
 # Create role for specific service accounts across namespaces
 vault write auth/kubernetes/role/monitoring \
   bound_service_account_names=monitoring-sa \
   bound_service_account_namespaces="default,production,staging" \
-  policies=monitoring-policy \
-  ttl=24h
+  token_policies=monitoring-policy \
+  token_ttl=24h
 ```
 
 Key parameters explained:
 - `bound_service_account_names`: Which service accounts can use this role
 - `bound_service_account_namespaces`: Which namespaces those service accounts must be in
-- `policies`: Vault policies assigned to authenticated pods
-- `ttl`: Token lifetime
+- `token_policies`: Vault policies assigned to authenticated pods
+- `token_ttl`: Token lifetime
 
 ## Creating Service Accounts for Applications
 
@@ -200,10 +203,9 @@ Here's how to authenticate from different application types:
 package main
 
 import (
-    "context"
     "fmt"
-    "io/ioutil"
     "log"
+    "os"
 
     vault "github.com/hashicorp/vault/api"
 )
@@ -219,7 +221,7 @@ func main() {
     }
 
     // Read service account token
-    jwt, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    jwt, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
     if err != nil {
         log.Fatal(err)
     }
@@ -252,7 +254,6 @@ func main() {
 ### Python Application
 
 ```python
-import os
 import hvac
 
 def authenticate_to_vault():
@@ -264,7 +265,7 @@ def authenticate_to_vault():
     client = hvac.Client(url='http://vault.vault.svc.cluster.local:8200')
 
     # Authenticate
-    response = client.auth.kubernetes.login(
+    client.auth.kubernetes.login(
         role='app',
         jwt=jwt
     )
@@ -328,29 +329,30 @@ echo "Database URL: $DATABASE_URL"
 Configure roles with additional constraints:
 
 ```bash
-# Role with audience restriction
+# Role with audience restriction. Pods using this role must mount a projected
+# service account token with the matching audience.
 vault write auth/kubernetes/role/secure-app \
   bound_service_account_names=app-sa \
   bound_service_account_namespaces=production \
   audience="vault://production" \
-  policies=app-policy \
-  ttl=1h \
-  max_ttl=4h
+  token_policies=app-policy \
+  token_ttl=1h \
+  token_max_ttl=4h
 
 # Role with token period for renewable tokens
 vault write auth/kubernetes/role/long-running \
   bound_service_account_names=worker-sa \
   bound_service_account_namespaces=default \
-  policies=worker-policy \
-  period=24h
+  token_policies=worker-policy \
+  token_period=24h
 
 # Role with bound CIDR blocks
 vault write auth/kubernetes/role/restricted \
   bound_service_account_names=restricted-sa \
   bound_service_account_namespaces=default \
   token_bound_cidrs="10.244.0.0/16" \
-  policies=restricted-policy \
-  ttl=30m
+  token_policies=restricted-policy \
+  token_ttl=30m
 ```
 
 ## Troubleshooting Authentication Issues
@@ -373,8 +375,8 @@ kubectl -n vault logs vault-0 | grep kubernetes
 # Verify service account exists
 kubectl get sa app-sa -n default
 
-# Check service account token exists
-kubectl get sa app-sa -n default -o yaml | grep secrets
+# Check the projected service account token exists in the pod
+kubectl exec vault-auth-test -- ls /var/run/secrets/kubernetes.io/serviceaccount/token
 ```
 
 Common errors and solutions:
@@ -415,8 +417,8 @@ Handle service account token rotation:
 vault write auth/kubernetes/role/rotating-app \
   bound_service_account_names=app-sa \
   bound_service_account_namespaces=default \
-  policies=app-policy \
-  ttl=15m \
+  token_policies=app-policy \
+  token_ttl=15m \
   token_explicit_max_ttl=1h
 
 # In your application, implement token renewal
@@ -444,8 +446,7 @@ func renewToken(client *vault.Client) {
     secret, err = client.Auth().Token().RenewSelf(0)
     if err != nil {
         log.Printf("Token renewal failed: %v", err)
-        // Re-authenticate if renewal fails
-        authenticate()
+        // Re-authenticate using your login function if renewal fails
     }
 }
 ```
