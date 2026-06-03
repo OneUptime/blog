@@ -114,6 +114,20 @@ The channel configuration is pretty verbose, so here it is as a JSON file.
       "InputAttachmentName": "primary-input",
       "InputSettings": {
         "SourceEndBehavior": "CONTINUE",
+        "AudioSelectors": [
+          {
+            "Name": "default",
+            "SelectorSettings": {
+              "AudioTrackSelection": {
+                "Tracks": [
+                  {
+                    "Track": 1
+                  }
+                ]
+              }
+            }
+          }
+        ],
         "DeblockFilter": "DISABLED",
         "DenoiseFilter": "DISABLED",
         "FilterStrength": 1,
@@ -249,7 +263,7 @@ The channel configuration is pretty verbose, so here it is as a JSON file.
 }
 ```
 
-Save that to a file and create the channel.
+Save that to a file. Make sure the IAM role in the next step exists first, then create the channel.
 
 ```bash
 # Create the channel from the JSON config
@@ -259,7 +273,24 @@ aws medialive create-channel \
 
 ## Step 4: Create the IAM Role
 
-MediaLive needs an IAM role to access MediaPackage, CloudWatch, and other services. Here's what that looks like.
+MediaLive needs an IAM role before you create the channel so it can access MediaPackage, CloudWatch, and other services. The role needs a trust policy that lets MediaLive assume it:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "medialive.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+Attach a permissions policy like this:
 
 ```json
 {
@@ -269,7 +300,7 @@ MediaLive needs an IAM role to access MediaPackage, CloudWatch, and other servic
       "Effect": "Allow",
       "Action": [
         "mediapackage:DescribeChannel",
-        "mediapackage:CreateChannel",
+        "mediapackage:DescribeOriginEndpoint",
         "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:PutLogEvents",
@@ -332,11 +363,7 @@ aws cloudfront create-distribution \
       "ViewerProtocolPolicy": "redirect-to-https",
       "AllowedMethods": {"Quantity": 2, "Items": ["HEAD", "GET"]},
       "CachedMethods": {"Quantity": 2, "Items": ["HEAD", "GET"]},
-      "ForwardedValues": {
-        "QueryString": true,
-        "Cookies": {"Forward": "none"}
-      },
-      "MinTTL": 2
+      "CachePolicyId": "08627262-05a9-4f76-9ded-b50ca2e3a84f"
     }
   }'
 ```
@@ -346,19 +373,20 @@ aws cloudfront create-distribution \
 Live streams need real-time monitoring. MediaLive pushes metrics to CloudWatch, including:
 
 - Input video frame rate
-- Output bitrate for each rendition
+- Active outputs
 - Active alerts (signal loss, encoder errors)
 - Network in/out throughput
 
 Set up CloudWatch alarms for critical conditions like signal loss. For a broader monitoring setup across your infrastructure, check out how [OneUptime handles multi-service monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
 
 ```bash
-# Create an alarm for when input goes black
+# Create an alarm for one channel pipeline when input frame rate drops
 aws cloudwatch put-metric-alarm \
-  --alarm-name "medialive-input-loss" \
+  --alarm-name "medialive-input-loss-pipeline-0" \
   --metric-name "InputVideoFrameRate" \
-  --namespace "MediaLive" \
-  --statistic "Average" \
+  --namespace "AWS/MediaLive" \
+  --dimensions Name=ChannelId,Value=your-channel-id Name=Pipeline,Value=Pipeline0 \
+  --statistic "Maximum" \
   --period 60 \
   --threshold 1 \
   --comparison-operator "LessThanThreshold" \
@@ -366,9 +394,11 @@ aws cloudwatch put-metric-alarm \
   --alarm-actions "arn:aws:sns:us-east-1:123456789:alerts"
 ```
 
+For a standard channel, create a matching alarm for `Pipeline1` too.
+
 ## Cost Expectations
 
-MediaLive pricing depends on the input resolution, output codec, and whether you're using standard or reserved channels. A single 1080p channel with three outputs typically runs around $1.50-3.00 per hour. That adds up for 24/7 streams, so look into reserved pricing if you're running continuously.
+MediaLive pricing depends on the input resolution, output codec, channel class, and whether you're using on-demand or reserved pricing. A single 1080p channel with three outputs typically runs around $1.50-3.00 per hour. That adds up for 24/7 streams, so look into reserved pricing if you're running continuously.
 
 MediaPackage and CloudFront costs are on top of that, based on data transferred and requests served.
 
