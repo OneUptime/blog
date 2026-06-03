@@ -42,7 +42,6 @@ import json
 import boto3
 
 # List of approved AMI IDs
-
 APPROVED_AMIS = [
     'ami-0abcdef1234567890',
     'ami-0fedcba9876543210',
@@ -50,16 +49,45 @@ APPROVED_AMIS = [
 
 config = boto3.client('config')
 
+def get_configuration_item(invoking_event):
+    if invoking_event['messageType'] == 'OversizedConfigurationItemChangeNotification':
+        summary = invoking_event['configurationItemSummary']
+        result = config.get_resource_config_history(
+            resourceType=summary['resourceType'],
+            resourceId=summary['resourceId'],
+            limit=1
+        )
+        if not result['configurationItems']:
+            return None
+        configuration_item = result['configurationItems'][0]
+        configuration_item['configuration'] = json.loads(configuration_item['configuration'])
+        return configuration_item
+
+    return invoking_event.get('configurationItem')
+
 def handler(event, context):
     # Parse the invoking event
     invoking_event = json.loads(event['invokingEvent'])
     rule_parameters = json.loads(event.get('ruleParameters', '{}'))
 
     # Get the configuration item (the resource being evaluated)
-    configuration_item = invoking_event.get('configurationItem')
+    configuration_item = get_configuration_item(invoking_event)
 
     if not configuration_item:
-        # This can happen for oversized configuration items
+        return
+
+    if event.get('eventLeftScope') or configuration_item.get('configurationItemStatus') in ['ResourceDeleted', 'ResourceDeletedNotRecorded']:
+        config.put_evaluations(
+            Evaluations=[{
+                'ComplianceResourceType': configuration_item['resourceType'],
+                'ComplianceResourceId': configuration_item['resourceId'],
+                'ComplianceType': 'NOT_APPLICABLE',
+                'Annotation': 'Resource was deleted or left the rule scope',
+                'OrderingTimestamp': configuration_item['configurationItemCaptureTime']
+            }],
+            ResultToken=event['resultToken'],
+            TestMode=event.get('testMode', False)
+        )
         return
 
     # Only evaluate EC2 instances
@@ -85,7 +113,8 @@ def handler(event, context):
             'Annotation': annotation,
             'OrderingTimestamp': configuration_item['configurationItemCaptureTime']
         }],
-        ResultToken=event['resultToken']
+        ResultToken=event['resultToken'],
+        TestMode=event.get('testMode', False)
     )
 ```
 
@@ -163,6 +192,9 @@ aws configservice put-config-rule \
       "SourceDetails": [{
         "EventSource": "aws.config",
         "MessageType": "ConfigurationItemChangeNotification"
+      }, {
+        "EventSource": "aws.config",
+        "MessageType": "OversizedConfigurationItemChangeNotification"
       }]
     },
     "InputParameters": "{}"
@@ -181,6 +213,22 @@ import boto3
 
 config = boto3.client('config')
 
+def get_configuration_item(invoking_event):
+    if invoking_event['messageType'] == 'OversizedConfigurationItemChangeNotification':
+        summary = invoking_event['configurationItemSummary']
+        result = config.get_resource_config_history(
+            resourceType=summary['resourceType'],
+            resourceId=summary['resourceId'],
+            limit=1
+        )
+        if not result['configurationItems']:
+            return None
+        configuration_item = result['configurationItems'][0]
+        configuration_item['configuration'] = json.loads(configuration_item['configuration'])
+        return configuration_item
+
+    return invoking_event.get('configurationItem')
+
 def handler(event, context):
     invoking_event = json.loads(event['invokingEvent'])
     rule_parameters = json.loads(event.get('ruleParameters', '{}'))
@@ -188,8 +236,22 @@ def handler(event, context):
     # Get minimum retention from rule parameters, default to 7
     min_retention = int(rule_parameters.get('minRetentionDays', 7))
 
-    configuration_item = invoking_event.get('configurationItem')
+    configuration_item = get_configuration_item(invoking_event)
     if not configuration_item:
+        return
+
+    if event.get('eventLeftScope') or configuration_item.get('configurationItemStatus') in ['ResourceDeleted', 'ResourceDeletedNotRecorded']:
+        config.put_evaluations(
+            Evaluations=[{
+                'ComplianceResourceType': configuration_item['resourceType'],
+                'ComplianceResourceId': configuration_item['resourceId'],
+                'ComplianceType': 'NOT_APPLICABLE',
+                'Annotation': 'Resource was deleted or left the rule scope',
+                'OrderingTimestamp': configuration_item['configurationItemCaptureTime']
+            }],
+            ResultToken=event['resultToken'],
+            TestMode=event.get('testMode', False)
+        )
         return
 
     if configuration_item['resourceType'] != 'AWS::RDS::DBInstance':
@@ -213,7 +275,8 @@ def handler(event, context):
             'Annotation': annotation,
             'OrderingTimestamp': configuration_item['configurationItemCaptureTime']
         }],
-        ResultToken=event['resultToken']
+        ResultToken=event['resultToken'],
+        TestMode=event.get('testMode', False)
     )
 ```
 
@@ -233,6 +296,9 @@ aws configservice put-config-rule \
       "SourceDetails": [{
         "EventSource": "aws.config",
         "MessageType": "ConfigurationItemChangeNotification"
+      }, {
+        "EventSource": "aws.config",
+        "MessageType": "OversizedConfigurationItemChangeNotification"
       }]
     },
     "InputParameters": "{\"minRetentionDays\": \"30\"}"
@@ -246,7 +312,7 @@ This periodic rule checks all resources for required tags.
 ```python
 import json
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 config = boto3.client('config')
 
@@ -291,20 +357,21 @@ def handler(event, context):
                     'ComplianceResourceId': resource['resourceId'],
                     'ComplianceType': compliance,
                     'Annotation': annotation[:255],
-                    'OrderingTimestamp': datetime.utcnow().isoformat() + 'Z'
+                    'OrderingTimestamp': datetime.now(timezone.utc)
                 })
 
     # Put evaluations in batches of 100
     for i in range(0, len(evaluations), 100):
         config.put_evaluations(
             Evaluations=evaluations[i:i+100],
-            ResultToken=event['resultToken']
+            ResultToken=event['resultToken'],
+            TestMode=event.get('testMode', False)
         )
 ```
 
 ## Terraform for Custom Rules
 
-Here's a complete Terraform module for deploying a custom Config rule.
+Here's the core Terraform for deploying a custom Config rule.
 
 ```hcl
 resource "aws_lambda_function" "config_rule" {
@@ -341,6 +408,11 @@ resource "aws_config_config_rule" "approved_amis" {
       event_source = "aws.config"
       message_type = "ConfigurationItemChangeNotification"
     }
+
+    source_detail {
+      event_source = "aws.config"
+      message_type = "OversizedConfigurationItemChangeNotification"
+    }
   }
 
   depends_on = [aws_lambda_permission.config]
@@ -356,6 +428,7 @@ You can test your Lambda function locally by creating a sample event.
   "invokingEvent": "{\"configurationItem\":{\"resourceType\":\"AWS::EC2::Instance\",\"resourceId\":\"i-1234567890abcdef0\",\"configuration\":{\"imageId\":\"ami-0abcdef1234567890\"},\"configurationItemCaptureTime\":\"2026-02-12T00:00:00.000Z\"},\"messageType\":\"ConfigurationItemChangeNotification\"}",
   "ruleParameters": "{}",
   "resultToken": "test-token",
+  "testMode": true,
   "eventLeftScope": false,
   "executionRoleArn": "arn:aws:iam::111111111111:role/AWSConfigRole",
   "configRuleArn": "arn:aws:config:us-east-1:111111111111:config-rule/config-rule-abc123",
