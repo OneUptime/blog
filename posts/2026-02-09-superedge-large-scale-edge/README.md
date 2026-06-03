@@ -36,91 +36,45 @@ kubectl get nodes
 kubectl auth can-i '*' '*'
 ```
 
-SuperEdge requires Kubernetes 1.20 or later. Ensure your cluster meets the version requirement:
+SuperEdge's published installation examples target Kubernetes 1.18.x, and the edgeadm guide recommends Kubernetes 1.18 or later. Check the compatibility notes for the SuperEdge release you plan to run:
 
 ```bash
-kubectl version --short
+kubectl version -o yaml
 ```
 
 ## Installing SuperEdge Cloud Components
 
-Deploy SuperEdge components to the cloud control plane using the provided installation script:
+Deploy SuperEdge components to the cloud control plane using the provided edgeadm workflow or the official manifests:
 
 ```bash
 # Download SuperEdge
 git clone https://github.com/superedge/superedge.git
 cd superedge
 
-# Install cloud components
-kubectl apply -f deployment/superedge-cloud.yaml
+# Download edgeadm from the SuperEdge release for your CPU architecture,
+# then convert an existing kubeadm cluster into an edge cluster.
+edgeadm change
 ```
 
-Alternatively, install using individual manifests for more control:
+Alternatively, install individual manifests for more control:
 
 ```yaml
 # superedge-namespace.yaml
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: superedge-system
+  name: edge-system
 ```
 
-Deploy the tunnel cloud component for stable networking:
+Deploy the tunnel cloud component from the official manifest after filling in the certificate and token placeholders in `deployment/tunnel-cloud.yaml`:
 
-```yaml
-# tunnel-cloud.yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: tunnel-cloud
-  namespace: superedge-system
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: tunnel-cloud
-  template:
-    metadata:
-      labels:
-        app: tunnel-cloud
-    spec:
-      containers:
-      - name: tunnel-cloud
-        image: superedge/tunnel:latest
-        command:
-        - tunnel
-        args:
-        - --mode=cloud
-        - --v=4
-        ports:
-        - containerPort: 9000
-          name: proxy
-        - containerPort: 51010
-          name: tunnel
-        resources:
-          requests:
-            cpu: "100m"
-            memory: "128Mi"
-          limits:
-            cpu: "1000m"
-            memory: "512Mi"
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: tunnel-cloud
-  namespace: superedge-system
-spec:
-  type: LoadBalancer
-  selector:
-    app: tunnel-cloud
-  ports:
-  - port: 9000
-    name: proxy
-    targetPort: 9000
-  - port: 51010
-    name: tunnel
-    targetPort: 51010
+```bash
+kubectl apply -f deployment/tunnel-coredns.yaml
+
+# Fill in TunnelCloudEdgeToken, TunnelPersistentConnectionServerKey,
+# TunnelPersistentConnectionServerCrt, TunnelProxyServerKey, and
+# TunnelProxyServerCrt before applying this manifest.
+kubectl apply -f deployment/tunnel-cloud.yaml
 ```
 
 Deploy the application-grid-controller for managing edge applications:
@@ -131,7 +85,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: application-grid-controller
-  namespace: superedge-system
+  namespace: edge-system
 spec:
   replicas: 1
   selector:
@@ -144,12 +98,12 @@ spec:
     spec:
       serviceAccountName: application-grid-controller
       containers:
-      - name: controller
-        image: superedge/application-grid-controller:latest
+      - name: application-grid-controller
+        image: superedge.tencentcloudcr.com/superedge/application-grid-controller:v0.7.0
         command:
-        - application-grid-controller
+        - /usr/local/bin/application-grid-controller
         args:
-        - --v=4
+        - --feature-gates=EndpointSlice=true
         resources:
           requests:
             cpu: "100m"
@@ -167,7 +121,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: application-grid-controller
-  namespace: superedge-system
+  namespace: edge-system
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -189,7 +143,7 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: application-grid-controller
-  namespace: superedge-system
+  namespace: edge-system
 ```
 
 Apply all cloud components:
@@ -201,63 +155,24 @@ kubectl apply -f application-grid-rbac.yaml
 kubectl apply -f application-grid-controller.yaml
 
 # Verify deployment
-kubectl get pods -n superedge-system
+kubectl get pods -n edge-system
 ```
 
 ## Configuring Edge Nodes
 
-Add edge nodes to your cluster using kubeadm or k3s, then install SuperEdge edge components. Create an installation script for edge nodes:
+Add edge nodes to your cluster using kubeadm, then install SuperEdge edge components from the official manifests. For tunnel support, fill in the placeholders in `deployment/tunnel-edge.yaml`, including the tunnel cloud endpoint, token, and certificates:
 
 ```bash
 #!/bin/bash
 # install-superedge-edge.sh
 
-# Get tunnel cloud service endpoint
-TUNNEL_CLOUD_IP="<TUNNEL_CLOUD_LOADBALANCER_IP>"
-TUNNEL_CLOUD_PORT="51010"
+# Apply on edge worker nodes after configuring deployment/tunnel-edge.yaml.
+kubectl apply -f deployment/tunnel-edge.yaml
 
-# Install edge components
-cat <<EOF | kubectl apply -f -
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: edge-health
-  namespace: superedge-system
-spec:
-  selector:
-    matchLabels:
-      app: edge-health
-  template:
-    metadata:
-      labels:
-        app: edge-health
-    spec:
-      affinity:
-        nodeAffinity:
-          requiredDuringSchedulingIgnoredDuringExecution:
-            nodeSelectorTerms:
-            - matchExpressions:
-              - key: node-role.kubernetes.io/edge
-                operator: Exists
-      hostNetwork: true
-      containers:
-      - name: edge-health
-        image: superedge/edge-health:latest
-        command:
-        - edge-health
-        args:
-        - --v=4
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: kubelet
-          mountPath: /var/lib/kubelet
-          readOnly: true
-      volumes:
-      - name: kubelet
-        hostPath:
-          path: /var/lib/kubelet
-EOF
+# Fill in HmacKey in deployment/edge-health.yaml before applying it.
+kubectl apply -f deployment/edge-health-admission.yaml
+kubectl apply -f deployment/edge-health-webhook.yaml
+kubectl apply -f deployment/edge-health.yaml
 ```
 
 Label edge nodes to identify them for SuperEdge management:
@@ -271,96 +186,62 @@ kubectl label node edge-node-2 node-role.kubernetes.io/edge=
 kubectl get nodes -l node-role.kubernetes.io/edge
 ```
 
-## Creating Node Groups for Topology Management
+## Creating Node Units for Topology Management
 
-Organize edge nodes into logical groups based on geographic location or network topology. SuperEdge uses these groups for topology-aware routing:
+Organize edge nodes into logical node units based on geographic location or network topology. SuperEdge's ServiceGroup resources use the value of `gridUniqKey` as the node label key, and nodes with the same label value belong to the same node unit:
 
-```yaml
-# node-group-us-west.yaml
-apiVersion: superedge.io/v1
-kind: NodeGroup
-metadata:
-  name: us-west
-spec:
-  # Selector for nodes in this group
-  selector:
-    matchLabels:
-      topology.superedge.io/region: us-west
-  # Edge autonomy settings
-  autonomy:
-    enabled: true
-    # Keep running during cloud disconnection
-    cloudDisconnectDuration: 10m
+```bash
+kubectl label node edge-node-1 zone=us-west
+kubectl label node edge-node-2 zone=us-west
+kubectl label node edge-node-3 zone=us-east
+kubectl label node edge-node-4 zone=us-east
+kubectl label node edge-node-5 zone=eu-central
+kubectl label node edge-node-6 zone=eu-central
 ```
 
-Create node groups for different regions:
+For multi-region edge-health detection, label nodes with SuperEdge's health topology label and enable the zone ConfigMap:
 
 ```yaml
-# node-groups.yaml
-apiVersion: superedge.io/v1
-kind: NodeGroup
+# edge-health-zone-config.yaml
+apiVersion: v1
+kind: ConfigMap
 metadata:
-  name: us-west
-spec:
-  selector:
-    matchLabels:
-      topology.superedge.io/region: us-west
-  autonomy:
-    enabled: true
----
-apiVersion: superedge.io/v1
-kind: NodeGroup
-metadata:
-  name: us-east
-spec:
-  selector:
-    matchLabels:
-      topology.superedge.io/region: us-east
-  autonomy:
-    enabled: true
----
-apiVersion: superedge.io/v1
-kind: NodeGroup
-metadata:
-  name: eu-central
-spec:
-  selector:
-    matchLabels:
-      topology.superedge.io/region: eu-central
-  autonomy:
-    enabled: true
+  name: edge-health-zone-config
+  namespace: edge-system
+data:
+  TaintZoneAdmission: "true"
 ```
 
 Label nodes with their regions:
 
 ```bash
 # US West nodes
-kubectl label node edge-node-1 topology.superedge.io/region=us-west
-kubectl label node edge-node-2 topology.superedge.io/region=us-west
+kubectl label node edge-node-1 superedgehealth/topology-zone=us-west
+kubectl label node edge-node-2 superedgehealth/topology-zone=us-west
 
 # US East nodes
-kubectl label node edge-node-3 topology.superedge.io/region=us-east
-kubectl label node edge-node-4 topology.superedge.io/region=us-east
+kubectl label node edge-node-3 superedgehealth/topology-zone=us-east
+kubectl label node edge-node-4 superedgehealth/topology-zone=us-east
 
 # EU Central nodes
-kubectl label node edge-node-5 topology.superedge.io/region=eu-central
-kubectl label node edge-node-6 topology.superedge.io/region=eu-central
+kubectl label node edge-node-5 superedgehealth/topology-zone=eu-central
+kubectl label node edge-node-6 superedgehealth/topology-zone=eu-central
 ```
 
 ## Deploying Applications with ServiceGrid
 
-ServiceGrid is SuperEdge's abstraction for deploying services across node groups with topology-aware routing. Create a ServiceGrid that deploys to all regions:
+ServiceGroup provides DeploymentGrid for deploying workloads across node units and ServiceGrid for keeping service traffic inside the same node unit. Create a DeploymentGrid that deploys to all regions:
 
 ```yaml
-# app-servicegrid.yaml
+# app-deploymentgrid.yaml
 apiVersion: superedge.io/v1
-kind: ServiceGrid
+kind: DeploymentGrid
 metadata:
   name: edge-app
   namespace: default
 spec:
   # Define the grid structure
-  gridUniqKey: topology.superedge.io/region
+  gridUniqKey: zone
   template:
     replicas: 3
     selector:
@@ -385,38 +266,35 @@ spec:
               memory: "256Mi"
 ```
 
-This creates 3 replicas of the application in each node group, ensuring regional deployment and fault tolerance.
+This creates 3 replicas of the application in each node unit, ensuring regional deployment and fault tolerance.
 
-Create the corresponding service with topology-aware routing:
+Create the corresponding ServiceGrid with the same `gridUniqKey`:
 
 ```yaml
-# app-service.yaml
-apiVersion: v1
-kind: Service
+# app-servicegrid.yaml
+apiVersion: superedge.io/v1
+kind: ServiceGrid
 metadata:
   name: edge-app
   namespace: default
-  annotations:
-    topologyKeys: topology.superedge.io/region
 spec:
-  selector:
-    app: edge-app
-  ports:
-  - port: 80
-    targetPort: 80
-  # Enable topology-aware routing
-  topologyKeys:
-  - topology.superedge.io/region
-  - "*"
+  gridUniqKey: zone
+  template:
+    selector:
+      app: edge-app
+    ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
 ```
 
-The `topologyKeys` annotation ensures that service traffic routes to endpoints in the same region first, falling back to other regions only if local endpoints are unavailable.
+ServiceGrid creates a Kubernetes Service that routes requests from a node unit to endpoints in the same node unit. Do not use Kubernetes `spec.topologyKeys` for new clusters; that alpha Service topology field was deprecated in Kubernetes 1.21 and removed after Kubernetes 1.22.
 
 Deploy the application:
 
 ```bash
+kubectl apply -f app-deploymentgrid.yaml
 kubectl apply -f app-servicegrid.yaml
-kubectl apply -f app-service.yaml
 
 # Verify deployment across regions
 kubectl get pods -o wide -l app=edge-app
@@ -426,25 +304,13 @@ kubectl get pods -o wide -l app=edge-app
 
 Edge autonomy ensures that edge nodes continue operating when disconnected from the cloud control plane. Configure autonomy settings for critical workloads:
 
-```yaml
-# autonomy-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: edge-autonomy-config
-  namespace: superedge-system
-data:
-  # Grace period before marking cloud as unreachable
-  cloud-disconnect-threshold: "5m"
-  # How long to maintain autonomy
-  autonomy-duration: "24h"
-  # Cache pod specs locally
-  cache-pod-specs: "true"
-  # Allow pod restarts during autonomy
-  allow-pod-restart: "true"
+```bash
+# Let pods reach the local lite-apiserver instead of depending directly on the cloud API server.
+kubectl annotate endpoints kubernetes superedge.io/local-endpoint=127.0.0.1
+kubectl annotate endpoints kubernetes superedge.io/local-port=51003
 ```
 
-This configuration allows edge nodes to operate autonomously for 24 hours during cloud disconnection, restarting pods as needed using cached specifications.
+This configuration is part of SuperEdge's L3 edge autonomy design: lite-apiserver proxies edge-side API requests, tunnel handles cloud-to-edge access, and edge-health keeps healthy edge nodes from being incorrectly marked unhealthy during cloud-edge network interruptions.
 
 ## Implementing Distributed Health Checking
 
@@ -455,32 +321,38 @@ SuperEdge's edge-health component performs distributed health checks across edge
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: edge-health-config
-  namespace: superedge-system
+  name: hmac-config
+  namespace: edge-system
 data:
-  edge-health.yaml: |
-    # Health check plugins
-    plugins:
-      - name: ping
-        enabled: true
-        interval: 30s
-        timeout: 5s
-      - name: kubelet
-        enabled: true
-        interval: 30s
-        timeout: 5s
-
-    # Distributed health check settings
-    check:
-      # Number of neighbor nodes to check
-      neighbors: 3
-      # Threshold for marking node unhealthy
-      unhealthyThreshold: 3
-      # Threshold for marking node healthy
-      healthyThreshold: 1
+  hmackey: "replace-with-at-least-16-characters"
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: edge-health
+  namespace: edge-system
+spec:
+  selector:
+    matchLabels:
+      name: edge-health
+  template:
+    metadata:
+      labels:
+        name: edge-health
+    spec:
+      serviceAccountName: edge-health
+      hostNetwork: true
+      containers:
+      - name: edge-health
+        image: superedge.tencentcloudcr.com/superedge/edge-health:v0.7.0
+        command:
+        - edge-health
+        args:
+        - --kubeletauthplugin=timeout=5,retrytime=3,weight=1,port=10250
+        - --v=2
 ```
 
-Edge-health distributes health check responsibilities across nodes in the same region, eliminating single points of failure in health monitoring.
+Edge-health uses kubelet health check plugins and communication between edge-health instances. For region isolation, use the `superedgehealth/topology-zone` node label and the `edge-health-zone-config` ConfigMap shown earlier.
 
 ## Monitoring Large-Scale Edge Fleets
 
@@ -492,7 +364,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: prometheus-config
-  namespace: superedge-system
+  namespace: edge-system
 data:
   prometheus.yml: |
     global:
@@ -505,10 +377,11 @@ data:
       - role: pod
         namespaces:
           names:
-          - superedge-system
+          - edge-system
       relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_label_app]
-        regex: (tunnel-cloud|edge-health|application-grid-controller)
+      - source_labels: [__meta_kubernetes_pod_label_app, __meta_kubernetes_pod_label_name]
+        separator: ";"
+        regex: (tunnel-cloud|application-grid-controller);|;edge-health
         action: keep
 
     # Scrape edge applications
@@ -524,13 +397,11 @@ data:
 View edge fleet metrics:
 
 ```bash
-# Port forward to Prometheus
-kubectl port-forward -n superedge-system svc/prometheus 9090:9090
+# Port forward to Prometheus, if you deploy it in edge-system
+kubectl port-forward -n edge-system svc/prometheus 9090:9090
 
-# Key metrics to monitor:
-# - superedge_edge_health_check_success
-# - superedge_tunnel_connections
-# - superedge_autonomy_status
+# Inspect the metrics exposed by the component versions you deploy and build
+# alerts around tunnel availability, node readiness, and edge-health logs.
 ```
 
 ## Conclusion
