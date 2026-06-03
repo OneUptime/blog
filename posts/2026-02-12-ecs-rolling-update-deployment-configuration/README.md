@@ -37,7 +37,7 @@ graph LR
 
 **minimumHealthyPercent** sets the lower bound on the number of tasks that must remain running during a deployment, as a percentage of the desired count. If you have 4 tasks and set this to 50%, ECS will keep at least 2 tasks running at all times.
 
-**maximumPercent** sets the upper bound on the total number of tasks (old + new combined) that can run during deployment. If you have 4 tasks and set this to 200%, ECS can run up to 8 tasks simultaneously during the update.
+**maximumPercent** sets the upper bound on the total number of tasks (old + new combined) that can be in `RUNNING` or `PENDING` during deployment. If you have 4 tasks and set this to 200%, ECS can run up to 8 tasks simultaneously during the update.
 
 ## Default Configuration
 
@@ -106,13 +106,13 @@ When you want to deploy as fast as possible and have plenty of resources.
 {
   "deploymentConfiguration": {
     "minimumHealthyPercent": 100,
-    "maximumPercent": 300
+    "maximumPercent": 200
   },
   "desiredCount": 4
 }
 ```
 
-ECS can spin up all 4 new tasks at once (up to 12 total running), wait for them to be healthy, then drain all 4 old tasks. The deployment completes in a single batch rather than multiple rolling batches.
+ECS can spin up all 4 new tasks at once (up to 8 total running), wait for them to be healthy, then drain all 4 old tasks. The deployment completes in a single batch rather than multiple rolling batches.
 
 ## Configuring via AWS CLI
 
@@ -180,7 +180,7 @@ const service = new ecs.FargateService(this, 'Service', {
 
 ## Health Check Grace Period
 
-An often overlooked but critical setting is the health check grace period. This tells ECS how long to wait before starting to check the health of newly launched tasks.
+An often overlooked but critical setting is the health check grace period. This tells ECS how long to ignore unhealthy Elastic Load Balancing, VPC Lattice, and container health checks after newly launched tasks first start.
 
 ```bash
 # Set a health check grace period of 120 seconds
@@ -218,7 +218,7 @@ For more on circuit breakers, check out our guide on [ECS deployment circuit bre
 
 You should monitor your deployments to catch issues early. Watch for these CloudWatch metrics during a rolling update:
 
-- **RunningTaskCount** - Should stay above your minimum healthy threshold
+- **RunningTaskCount** - Should stay above your minimum healthy threshold when Container Insights is enabled
 - **CPUUtilization** and **MemoryUtilization** - Spikes during deployment can indicate resource pressure
 - **HealthyHostCount** on the ALB target group - Should never drop to zero
 
@@ -234,7 +234,7 @@ Here is a quick decision framework:
 | Resource-constrained cluster | 50% | 100% |
 | Cost-sensitive environment | 50% | 150% |
 | Single task service | 0% | 200% |
-| Fast deployment needed | 100% | 300% |
+| Fast deployment needed | 100% | 200% |
 
 The right configuration depends on your tolerance for reduced capacity, your cluster's available resources, and how fast you need deployments to complete.
 
