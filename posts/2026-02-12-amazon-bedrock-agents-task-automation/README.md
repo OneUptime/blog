@@ -41,8 +41,6 @@ Here's how to create a basic agent using the AWS SDK for Python (boto3).
 
 ```python
 import boto3
-import json
-
 # Initialize the Bedrock Agent client
 
 bedrock_agent = boto3.client('bedrock-agent', region_name='us-east-1')
@@ -78,42 +76,70 @@ Here's an example OpenAPI schema for an order management action group.
   "paths": {
     "/orders/{orderId}": {
       "get": {
-        "summary": "Get order details and status",
+        "description": "Get details and shipping status for a customer order.",
         "operationId": "getOrderStatus",
         "parameters": [
           {
             "name": "orderId",
             "in": "path",
+            "description": "The order ID to look up.",
             "required": true,
             "schema": { "type": "string" }
           }
         ],
         "responses": {
           "200": {
-            "description": "Order details retrieved successfully"
+            "description": "Order details retrieved successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orderId": {
+                      "type": "string",
+                      "description": "The order ID."
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "The current order status."
+                    },
+                    "eta": {
+                      "type": "string",
+                      "description": "The estimated delivery date."
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
     },
     "/orders/{orderId}/return": {
       "post": {
-        "summary": "Initiate a return for an order",
+        "description": "Initiate a product return for a customer order.",
         "operationId": "initiateReturn",
+        "x-requireConfirmation": "ENABLED",
         "parameters": [
           {
             "name": "orderId",
             "in": "path",
+            "description": "The order ID for the order being returned.",
             "required": true,
             "schema": { "type": "string" }
           }
         ],
         "requestBody": {
+          "required": true,
           "content": {
             "application/json": {
               "schema": {
                 "type": "object",
                 "properties": {
-                  "reason": { "type": "string" }
+                  "reason": {
+                    "type": "string",
+                    "description": "The customer's reason for requesting a return."
+                  }
                 }
               }
             }
@@ -121,7 +147,28 @@ Here's an example OpenAPI schema for an order management action group.
         },
         "responses": {
           "200": {
-            "description": "Return initiated successfully"
+            "description": "Return initiated successfully",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orderId": {
+                      "type": "string",
+                      "description": "The order ID."
+                    },
+                    "returnId": {
+                      "type": "string",
+                      "description": "The generated return ID."
+                    },
+                    "status": {
+                      "type": "string",
+                      "description": "The return request status."
+                    }
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -130,7 +177,7 @@ Here's an example OpenAPI schema for an order management action group.
 }
 ```
 
-Now attach this action group to your agent with a Lambda function that handles the actual API logic.
+Now attach this action group to your agent with a Lambda function that handles the actual API logic. Make sure the Lambda function also has a resource-based policy that allows Amazon Bedrock to invoke it.
 
 ```python
 # Create the action group and link it to a Lambda function
@@ -171,7 +218,13 @@ def lambda_handler(event, context):
         result = get_order_status(order_id)
     elif api_path == '/orders/{orderId}/return' and http_method == 'POST':
         order_id = next(p['value'] for p in parameters if p['name'] == 'orderId')
-        body = json.loads(event.get('requestBody', {}).get('content', '{}'))
+        body_properties = (
+            event.get('requestBody', {})
+            .get('content', {})
+            .get('application/json', {})
+            .get('properties', [])
+        )
+        body = {p['name']: p['value'] for p in body_properties}
         result = initiate_return(order_id, body.get('reason', ''))
     else:
         result = {'error': 'Unknown action'}
