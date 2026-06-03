@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, IPAM, Networking
 
-Description: Configure Whereabouts IPAM plugin to assign static IP addresses to Kubernetes pods from defined IP pools, enabling predictable IP addressing for applications requiring firewall rules.
+Description: Configure Whereabouts IPAM plugin to assign predictable IP addresses to Kubernetes pods from defined IP pools, including requested addresses for applications requiring firewall rules.
 
 ---
 
-Most Kubernetes CNI plugins assign dynamic IP addresses to pods, which change whenever pods restart. Whereabouts provides an IP Address Management (IPAM) plugin that allocates static IPs from defined pools while preventing conflicts across the cluster. This enables applications requiring consistent IP addresses for firewall rules, IP whitelisting, or integration with legacy systems.
+Most Kubernetes CNI plugins assign dynamic IP addresses to pods, which can change whenever pods restart. Whereabouts provides an IP Address Management (IPAM) plugin that allocates IPs from defined pools while preventing conflicts across the cluster. This enables applications requiring consistent IP ranges, or explicitly requested addresses, for firewall rules, IP whitelisting, or integration with legacy systems.
 
 ## Understanding Whereabouts IPAM
 
@@ -17,8 +17,8 @@ Whereabouts is a CNI IPAM plugin that:
 - Allocates IPs from defined pools
 - Prevents IP conflicts using cluster-wide coordination
 - Supports IP range definitions and exclusions
-- Works with any CNI plugin (Multus, macvlan, ipvlan, bridge)
-- Stores allocations in Kubernetes custom resources
+- Works with CNI plugins that delegate IPAM, often through Multus with plugins such as macvlan, ipvlan, or bridge
+- Stores allocations in Kubernetes custom resources when using the Kubernetes datastore
 - Handles IP reclamation when pods are deleted
 
 Unlike simple host-local IPAM which works per-node, Whereabouts coordinates across the entire cluster to prevent IP conflicts when pods move between nodes.
@@ -30,7 +30,8 @@ Deploy Whereabouts using the manifest:
 ```bash
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/whereabouts.cni.cncf.io_ippools.yaml
 kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/whereabouts.cni.cncf.io_overlappingrangeipreservations.yaml
-kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/daemonset-install.yaml
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/daemonset-install.yaml
+kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/whereabouts/master/doc/crds/reconciler-deployment.yaml
 ```
 
 Verify installation:
@@ -74,7 +75,7 @@ Apply the network definition:
 kubectl apply -f whereabouts-network.yaml
 ```
 
-## Creating Pods with Static IPs
+## Creating Pods with Predictable IPs
 
 Deploy a pod using the Whereabouts-managed network:
 
@@ -108,20 +109,36 @@ The pod receives an IP from the range 192.168.50.100-200. If you delete and recr
 
 ## Requesting Specific IP Addresses
 
-Request a specific IP address for a pod:
+To reserve a single predictable address for one workload, create a dedicated NetworkAttachmentDefinition whose usable range contains only that address:
 
 ```yaml
-# specific-ip-pod.yaml
+# database-ip-network.yaml
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: database-ip-network
+  namespace: default
+spec:
+  config: '{
+    "cniVersion": "0.3.1",
+    "type": "macvlan",
+    "master": "eth0",
+    "mode": "bridge",
+    "ipam": {
+      "type": "whereabouts",
+      "range": "192.168.50.0/24",
+      "range_start": "192.168.50.150",
+      "range_end": "192.168.50.150",
+      "gateway": "192.168.50.1"
+    }
+  }'
+---
 apiVersion: v1
 kind: Pod
 metadata:
   name: database-server
   annotations:
-    k8s.v1.cni.cncf.io/networks: |
-      [{
-        "name": "static-ip-network",
-        "ips": ["192.168.50.150/24"]
-      }]
+    k8s.v1.cni.cncf.io/networks: database-ip-network
 spec:
   containers:
   - name: postgres
@@ -134,15 +151,15 @@ spec:
 Apply and verify:
 
 ```bash
-kubectl apply -f specific-ip-pod.yaml
+kubectl apply -f database-ip-network.yaml
 kubectl exec database-server -- ip addr show net1 | grep inet
 ```
 
-The pod should have exactly 192.168.50.150.
+The pod should have 192.168.50.150. If another pod already holds that address, Whereabouts will fail the allocation instead of assigning a duplicate.
 
-## StatefulSet with Stable IPs
+## StatefulSet with Stable IP Ranges
 
-Use Whereabouts with StatefulSets to maintain IP assignments across pod restarts:
+Use Whereabouts with StatefulSets to keep stateful workloads on a consistent IP range:
 
 ```yaml
 # statefulset-static-ips.yaml
@@ -225,7 +242,10 @@ spec:
       "exclude": [
         "192.168.60.1/32",
         "192.168.60.2/32",
-        "192.168.60.10-192.168.60.20"
+        "192.168.60.10/31",
+        "192.168.60.12/30",
+        "192.168.60.16/30",
+        "192.168.60.20/32"
       ],
       "gateway": "192.168.60.1"
     }
@@ -289,8 +309,8 @@ Check current IP allocations:
 # List IP pools
 kubectl get ippools.whereabouts.cni.cncf.io -A
 
-# View specific pool details
-kubectl get ippool -n default -o yaml
+# View pool details
+kubectl get ippools.whereabouts.cni.cncf.io -n default -o yaml
 ```
 
 Output shows allocated IPs and which pods own them:
@@ -299,14 +319,19 @@ Output shows allocated IPs and which pods own them:
 apiVersion: whereabouts.cni.cncf.io/v1alpha1
 kind: IPPool
 metadata:
-  name: static-ip-network
+  name: 192.168.50.0-24
   namespace: default
 spec:
   range: "192.168.50.0/24"
   allocations:
-    "192.168.50.100": "default/web-server"
-    "192.168.50.101": "default/api-server"
-    "192.168.50.150": "default/database-server"
+    "100":
+      id: "container-id"
+      podref: "default/web-server"
+      ifname: "net1"
+    "150":
+      id: "container-id"
+      podref: "default/database-server"
+      ifname: "net1"
 ```
 
 ## Debugging IP Assignment Issues
@@ -339,7 +364,7 @@ Common issues:
 
 ```bash
 # Check pool usage
-kubectl get ippool static-ip-network -o jsonpath='{.spec.allocations}' | jq 'length'
+kubectl get ippools.whereabouts.cni.cncf.io -n default 192.168.50.0-24 -o jsonpath='{.spec.allocations}' | jq 'length'
 ```
 
 Solution: Expand the range or delete unused pods.
@@ -362,7 +387,7 @@ Whereabouts automatically reclaims IPs when pods are deleted:
 kubectl delete pod web-server
 
 # Check that IP is released
-kubectl get ippool static-ip-network -o yaml
+kubectl get ippools.whereabouts.cni.cncf.io -n default 192.168.50.0-24 -o yaml
 ```
 
 The IP should disappear from allocations and become available for new pods.
@@ -371,8 +396,8 @@ Force IP pool reset (use carefully):
 
 ```bash
 # Delete and recreate IP pool
-kubectl delete ippool static-ip-network
-# Pods using this network will recreate the pool
+kubectl delete ippools.whereabouts.cni.cncf.io -n default 192.168.50.0-24
+# New pod network attachments using this range will recreate the pool
 ```
 
 ## Integration with Firewall Rules
@@ -420,15 +445,15 @@ spec:
         command: ['sh', '-c', 'sleep 3600']
 ```
 
-Configure your firewall to allow 203.0.113.100-110, and only these pods can access the protected resource.
+Configure your firewall to allow the real routed range you assign to these pods. Traffic sourced from those pod IPs will match the firewall rule, provided your network path preserves the pod source addresses.
 
 ## Performance Considerations
 
 Whereabouts has some performance characteristics:
 
-- Initial IP assignment: ~10-50ms overhead
-- Uses etcd/API server for coordination
-- Scales to thousands of pods
+- Initial IP assignment depends on Kubernetes API server and datastore latency
+- Uses the Kubernetes API server or etcd for coordination
+- Supports large deployments, but allocation latency depends on pool size and pod churn
 - Lock contention possible under high pod churn
 
 Monitor API server load:
@@ -448,9 +473,9 @@ Whereabouts has some limitations:
 
 - IPs are assigned from a pool, not guaranteed static across pod recreation
 - Requires Multus for multiple network interfaces
-- IP persistence requires external mechanisms (manual assignment)
+- IP persistence requires external mechanisms or a dedicated one-address range per workload
 - No built-in DNS integration (use headless services)
 
-For truly static IPs that persist across pod recreation, combine Whereabouts with manual IP assignment in pod annotations.
+For truly static IPs that persist across pod recreation, use a dedicated one-address Whereabouts range per workload or a static IPAM configuration designed for manual address assignment.
 
 Whereabouts IPAM provides cluster-wide IP address management for Kubernetes workloads requiring predictable IP addresses. Use it with Multus for multi-network pods, StatefulSets for database clusters, or any application that needs consistent IP ranges for firewall rules or legacy system integration. While not providing truly static IPs that persist across pod deletions, it offers controlled IP allocation from defined pools with cluster-wide conflict prevention.
