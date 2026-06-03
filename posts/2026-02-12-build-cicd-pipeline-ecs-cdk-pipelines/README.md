@@ -26,7 +26,7 @@ For ECS workloads specifically, CDK Pipelines gives you:
 
 ## Prerequisites
 
-You will need the AWS CDK v2 installed, an AWS account bootstrapped for CDK, and a GitHub repository (or CodeCommit) for your source code. You should also have a working Dockerized application ready to deploy.
+You will need the AWS CDK v2 installed, an AWS account bootstrapped for CDK, a GitHub repository (or CodeCommit) for your source code, and an AWS CodeConnections connection if you are using GitHub. You should also have a working Dockerized application ready to deploy.
 
 ## Project Structure
 
@@ -90,6 +90,8 @@ import * as ecr_assets from 'aws-cdk-lib/aws-ecr-assets';
 import { Construct } from 'constructs';
 
 export class EcsServiceStack extends cdk.Stack {
+  public readonly serviceUrl: cdk.CfnOutput;
+
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
@@ -102,7 +104,7 @@ export class EcsServiceStack extends cdk.Stack {
     // Create the ECS cluster
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
-      containerInsights: true,
+      containerInsightsV2: ecs.ContainerInsights.ENABLED,
     });
 
     // Build Docker image from the repository root
@@ -150,6 +152,10 @@ export class EcsServiceStack extends cdk.Stack {
         interval: cdk.Duration.seconds(30),
       },
     });
+
+    this.serviceUrl = new cdk.CfnOutput(this, 'ServiceUrl', {
+      value: `http://${alb.loadBalancerDnsName}`,
+    });
   }
 }
 ```
@@ -165,11 +171,14 @@ import { Construct } from 'constructs';
 import { EcsServiceStack } from './ecs-service-stack';
 
 export class EcsStage extends cdk.Stage {
+  public readonly serviceUrl: cdk.CfnOutput;
+
   constructor(scope: Construct, id: string, props?: cdk.StageProps) {
     super(scope, id, props);
 
     // Instantiate the ECS service stack within this stage
-    new EcsServiceStack(this, 'EcsService', {});
+    const serviceStack = new EcsServiceStack(this, 'EcsService', {});
+    this.serviceUrl = serviceStack.serviceUrl;
   }
 }
 ```
@@ -198,9 +207,9 @@ export class PipelineStack extends cdk.Stack {
     const pipeline = new CodePipeline(this, 'Pipeline', {
       pipelineName: 'EcsDeployPipeline',
       synth: new ShellStep('Synth', {
-        // Pull source from GitHub
-        input: CodePipelineSource.gitHub('your-org/your-repo', 'main', {
-          authentication: cdk.SecretValue.secretsManager('github-token'),
+        // Pull source from GitHub using an AWS CodeConnections connection
+        input: CodePipelineSource.connection('your-org/your-repo', 'main', {
+          connectionArn: 'arn:aws:codestar-connections:us-east-1:111111111111:connection/your-connection-id',
         }),
         // Build commands - install deps, build, and synthesize CDK
         commands: [
@@ -209,9 +218,6 @@ export class PipelineStack extends cdk.Stack {
           'npx cdk synth',
         ],
       }),
-      // Enable Docker builds in the synth step
-      dockerEnabledForSynth: true,
-      dockerEnabledForSelfMutation: true,
     });
 
     // Add staging environment
@@ -246,7 +252,7 @@ export class PipelineStack extends cdk.Stack {
 You can add validation steps after each stage to run integration tests or smoke tests.
 
 ```typescript
-// Add a post-deployment test step after staging
+// Replace the earlier staging addStage call with this to add a post-deployment test
 pipeline.addStage(staging, {
   post: [
     new ShellStep('IntegrationTests', {
@@ -255,7 +261,7 @@ pipeline.addStage(staging, {
       ],
       envFromCfnOutputs: {
         // Pass the ALB URL to your tests
-        SERVICE_URL: stagingService.serviceUrl,
+        SERVICE_URL: staging.serviceUrl,
       },
     }),
   ],
@@ -271,7 +277,7 @@ graph TD
     A[Push to GitHub] --> B[Source Stage]
     B --> C[Synth - Build CDK]
     C --> D[Self-Mutate Pipeline]
-    D --> E[Build Docker Image]
+    D --> E[Publish Docker Image Asset]
     E --> F[Deploy to Staging]
     F --> G[Run Integration Tests]
     G --> H[Manual Approval]
@@ -322,7 +328,7 @@ Once the pipeline is running, you should monitor it. Set up CloudWatch alarms fo
 
 ## Common Pitfalls
 
-**Docker builds failing in CodeBuild**: Make sure you set `dockerEnabledForSynth: true` on the pipeline. Without this, Docker commands will not be available during the build.
+**Docker builds failing in CodeBuild**: Docker image assets in application stages are built and pushed by the pipeline's asset publishing projects. Set `dockerEnabledForSynth: true` only if your synth step or CDK asset bundling runs Docker, and set `dockerEnabledForSelfMutation: true` only if the pipeline stack itself uses Docker assets.
 
 **Cross-account deployment errors**: Double-check that you bootstrapped each target account with the `--trust` flag pointing to the pipeline account.
 
