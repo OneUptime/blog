@@ -23,7 +23,7 @@ This coordination prevents corruption and ensures clean recovery.
 
 ## PostgreSQL Snapshot Workflow
 
-PostgreSQL requires coordination with pg_start_backup() and pg_stop_backup() for consistent backups.
+PostgreSQL requires coordination with pg_backup_start() and pg_backup_stop() for consistent backups.
 
 Create a snapshot Job with pre and post hooks:
 
@@ -58,11 +58,7 @@ spec:
 
           echo "=== Starting PostgreSQL consistent backup ==="
 
-          # Step 1: Start backup mode
-          echo "Starting backup mode..."
-          psql -c "SELECT pg_start_backup('k8s-snapshot', false, false);"
-
-          # Step 2: Create snapshot
+          # Step 1: Prepare the snapshot manifest
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           SNAPSHOT_NAME="postgres-${TIMESTAMP}"
 
@@ -74,7 +70,7 @@ spec:
           chmod +x kubectl
           mv kubectl /usr/local/bin/
 
-          cat <<EOF | kubectl apply -f -
+          cat <<EOF > /tmp/postgres-snapshot.yaml
           apiVersion: snapshot.storage.k8s.io/v1
           kind: VolumeSnapshot
           metadata:
@@ -88,15 +84,15 @@ spec:
               persistentVolumeClaimName: postgres-pvc
           EOF
 
-          # Step 3: Wait for snapshot to start
-          echo "Waiting for snapshot creation..."
-          sleep 10
+          # Step 3: Keep the same database connection open during snapshot creation
+          psql <<EOF
+          SELECT pg_backup_start('k8s-snapshot', false);
+          \! kubectl apply -f /tmp/postgres-snapshot.yaml
+          \! sleep 10
+          SELECT * FROM pg_backup_stop(false);
+          EOF
 
-          # Step 4: Stop backup mode
-          echo "Stopping backup mode..."
-          psql -c "SELECT pg_stop_backup(false);"
-
-          echo "✓ PostgreSQL consistent backup complete"
+          echo "PostgreSQL consistent backup complete"
 
           # Step 5: Wait for snapshot to be ready
           echo "Waiting for snapshot to be ready..."
@@ -151,18 +147,14 @@ spec:
             - /bin/bash
             - -c
             - |
-              apt-get update && apt-get install -y curl jq
+              apt-get update && apt-get install -y curl
               curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
               chmod +x kubectl && mv kubectl /usr/local/bin/
 
               TIMESTAMP=$(date +%Y%m%d-%H%M%S)
               SNAPSHOT_NAME="postgres-${TIMESTAMP}"
 
-              echo "Starting backup mode"
-              psql -c "SELECT pg_start_backup('scheduled-backup-${TIMESTAMP}', false, false);"
-
-              echo "Creating snapshot"
-              kubectl apply -f - <<EOF
+              cat <<EOF > /tmp/postgres-snapshot.yaml
               apiVersion: snapshot.storage.k8s.io/v1
               kind: VolumeSnapshot
               metadata:
@@ -176,10 +168,13 @@ spec:
                   persistentVolumeClaimName: postgres-pvc
               EOF
 
-              sleep 10
-
-              echo "Stopping backup mode"
-              psql -c "SELECT pg_stop_backup(false);"
+              echo "Creating snapshot during PostgreSQL backup mode"
+              psql <<EOF
+              SELECT pg_backup_start('scheduled-backup-${TIMESTAMP}', false);
+              \! kubectl apply -f /tmp/postgres-snapshot.yaml
+              \! sleep 10
+              SELECT * FROM pg_backup_stop(false);
+              EOF
 
               echo "Backup complete"
 ```
@@ -227,13 +222,21 @@ spec:
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
           SNAPSHOT_NAME="mysql-${TIMESTAMP}"
 
-          # Step 1: Flush tables to disk
+          # Step 1: Flush tables to disk and keep the session open
           echo "Flushing tables..."
-          mysql -e "FLUSH TABLES WITH READ LOCK;"
+          mkfifo /tmp/mysql-lock
+          mysql --batch --skip-column-names < /tmp/mysql-lock > /tmp/binlog-position.txt &
+          MYSQL_PID=$!
+          exec 3> /tmp/mysql-lock
+          printf "FLUSH TABLES WITH READ LOCK;\nSHOW MASTER STATUS;\n" >&3
+
+          # Give the lock and binlog status query time to complete
+          sleep 2
 
           # Step 2: Get binary log position for point-in-time recovery
           echo "Recording binary log position..."
-          mysql -e "SHOW MASTER STATUS\G" > /tmp/binlog-position.txt
+          BINLOG_FILE=$(awk 'NR==1 {print $1}' /tmp/binlog-position.txt)
+          BINLOG_POSITION=$(awk 'NR==1 {print $2}' /tmp/binlog-position.txt)
 
           # Step 3: Create snapshot
           echo "Creating snapshot..."
@@ -246,8 +249,8 @@ spec:
               app: mysql
               backup-type: consistent
             annotations:
-              backup.kubernetes.io/binlog-position: "$(cat /tmp/binlog-position.txt | grep Position | awk '{print $2}')"
-              backup.kubernetes.io/binlog-file: "$(cat /tmp/binlog-position.txt | grep File | awk '{print $2}')"
+              backup.kubernetes.io/binlog-position: "$BINLOG_POSITION"
+              backup.kubernetes.io/binlog-file: "$BINLOG_FILE"
           spec:
             volumeSnapshotClassName: csi-snapshot-class
             source:
@@ -259,9 +262,11 @@ spec:
 
           # Step 5: Unlock tables
           echo "Unlocking tables..."
-          mysql -e "UNLOCK TABLES;"
+          printf "UNLOCK TABLES;\n" >&3
+          exec 3>&-
+          wait "$MYSQL_PID"
 
-          echo "✓ MySQL consistent backup complete"
+          echo "MySQL consistent backup complete"
 
           # Wait for snapshot completion
           for i in {1..60}; do
@@ -439,13 +444,14 @@ spec:
           chmod +x kubectl && mv kubectl /usr/local/bin/
 
           TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          LASTSAVE_BEFORE=$(redis-cli -h redis-service LASTSAVE)
 
           # Trigger BGSAVE for background save
           echo "Triggering Redis BGSAVE..."
           redis-cli -h redis-service BGSAVE
 
           # Wait for save to complete
-          while [ "$(redis-cli -h redis-service LASTSAVE)" = "$(redis-cli -h redis-service LASTSAVE)" ]; do
+          while [ "$(redis-cli -h redis-service LASTSAVE)" = "$LASTSAVE_BEFORE" ]; do
             sleep 1
           done
 
@@ -519,9 +525,9 @@ spec:
           # Wait for all snapshots in the batch
           for i in {1..120}; do
             READY_COUNT=$(kubectl get volumesnapshot -l batch-id=$BATCH_ID \
-              -o json | jq '[.items[] | select(.status.readyToUse == true)] | length')
+              -o jsonpath='{range .items[?(@.status.readyToUse==true)]}{.metadata.name}{"\n"}{end}' | wc -l | tr -d ' ')
 
-            TOTAL_COUNT=$(kubectl get volumesnapshot -l batch-id=$BATCH_ID --no-headers | wc -l)
+            TOTAL_COUNT=$(kubectl get volumesnapshot -l batch-id=$BATCH_ID --no-headers | wc -l | tr -d ' ')
 
             echo "Ready: $READY_COUNT / $TOTAL_COUNT"
 
