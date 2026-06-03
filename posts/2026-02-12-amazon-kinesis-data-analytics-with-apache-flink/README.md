@@ -8,31 +8,32 @@ Description: Build real-time streaming applications on Amazon Kinesis Data Analy
 
 ---
 
-When SQL streaming analytics hits its limits - and it will for complex use cases - Apache Flink is the natural next step. Kinesis Data Analytics for Apache Flink lets you run full Flink applications on AWS without managing Flink clusters. You get stateful processing, exactly-once semantics, event time handling, and all the power of the Flink API with none of the operational burden.
+When SQL streaming analytics hits its limits - and it will for complex use cases - Apache Flink is the natural next step. Amazon Managed Service for Apache Flink, formerly Kinesis Data Analytics for Apache Flink, lets you run full Flink applications on AWS without managing Flink clusters. You get stateful processing, exactly-once semantics, event time handling, and all the power of the Flink API with none of the operational burden.
 
-This post walks through building Flink applications in both Java and Python, deploying them to Kinesis Data Analytics, and handling the tricky parts like state management and watermarks.
+This post walks through building Flink applications in both Java and Python, deploying them to Managed Service for Apache Flink, and handling the tricky parts like state management and watermarks.
 
 ## When to Use Flink Over SQL
 
-Both SQL and Flink run on Kinesis Data Analytics. Here's when to reach for Flink:
+Amazon Managed Service for Apache Flink supports Flink applications written in Java, Python, Scala, and SQL. Here's when to reach for the Flink APIs:
 
 - Complex event processing with multiple stateful stages
 - Custom windowing logic beyond tumbling and sliding
 - Integration with external systems (databases, APIs) during processing
 - Machine learning inference on streaming data
 - Processing that requires exactly-once semantics
-- Applications that need checkpointing and savepoints
+- Applications that need checkpointing and application snapshots
 
 ## Setting Up a Java Flink Application
 
 Let's start with a Maven project. Here are the essential dependencies.
 
-This pom.xml includes the required dependencies for a Flink application on Kinesis Data Analytics.
+This pom.xml includes the required dependencies for a Flink application on Managed Service for Apache Flink.
 
 ```xml
 <properties>
     <flink.version>1.18.1</flink.version>
-    <kda.version>2.0.0</kda.version>
+    <kinesis.connector.version>4.3.0-1.18</kinesis.connector.version>
+    <kda.version>1.2.0</kda.version>
 </properties>
 
 <dependencies>
@@ -45,7 +46,12 @@ This pom.xml includes the required dependencies for a Flink application on Kines
     <dependency>
         <groupId>org.apache.flink</groupId>
         <artifactId>flink-connector-kinesis</artifactId>
-        <version>${flink.version}</version>
+        <version>${kinesis.connector.version}</version>
+    </dependency>
+    <dependency>
+        <groupId>org.apache.flink</groupId>
+        <artifactId>flink-connector-aws-kinesis-streams</artifactId>
+        <version>${kinesis.connector.version}</version>
     </dependency>
     <dependency>
         <groupId>org.apache.flink</groupId>
@@ -71,8 +77,11 @@ import org.apache.flink.api.common.eventtime.*;
 import org.apache.flink.api.common.functions.AggregateFunction;
 import org.apache.flink.api.common.serialization.*;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.configuration.Configuration;
+import org.apache.flink.connector.aws.config.AWSConfigConstants;
 import org.apache.flink.connector.kinesis.sink.KinesisStreamsSink;
 import org.apache.flink.connector.kinesis.source.KinesisStreamsSource;
+import org.apache.flink.connector.kinesis.source.config.KinesisSourceConfigOptions;
 import org.apache.flink.streaming.api.datastream.*;
 import org.apache.flink.streaming.api.environment.*;
 import org.apache.flink.streaming.api.windowing.assigners.*;
@@ -94,13 +103,15 @@ public class EngagementMetrics {
         env.getCheckpointConfig().setMinPauseBetweenCheckpoints(30000);
 
         // Configure Kinesis source
-        Properties sourceProperties = new Properties();
-        sourceProperties.setProperty("aws.region", "us-east-1");
-        sourceProperties.setProperty("flink.stream.initpos", "LATEST");
+        Configuration sourceConfig = new Configuration();
+        sourceConfig.set(
+            KinesisSourceConfigOptions.STREAM_INITIAL_POSITION,
+            KinesisSourceConfigOptions.InitialPosition.LATEST
+        );
 
         KinesisStreamsSource<String> source = KinesisStreamsSource.<String>builder()
-            .setStreamArn("arn:aws:kinesis:us-east-1:123456789:stream/user-events")
-            .setSourceConfig(sourceProperties)
+            .setStreamArn("arn:aws:kinesis:us-east-1:123456789012:stream/user-events")
+            .setSourceConfig(sourceConfig)
             .setDeserializationSchema(new SimpleStringSchema())
             .build();
 
@@ -116,14 +127,17 @@ public class EngagementMetrics {
             .map(EngagementMetrics::parseEvent)
             .filter(event -> event != null)
             .keyBy(event -> event.f0)  // Key by userId
-            .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))
+            .window(TumblingEventTimeWindows.of(Time.minutes(1)))
             .aggregate(new EngagementAggregator())
             .map(result -> new ObjectMapper().writeValueAsString(result));
 
         // Configure Kinesis sink
+        Properties sinkProperties = new Properties();
+        sinkProperties.put(AWSConfigConstants.AWS_REGION, "us-east-1");
+
         KinesisStreamsSink<String> sink = KinesisStreamsSink.<String>builder()
-            .setKinesisClientProperties(sourceProperties)
-            .setStreamArn("arn:aws:kinesis:us-east-1:123456789:stream/engagement-metrics")
+            .setKinesisClientProperties(sinkProperties)
+            .setStreamName("engagement-metrics")
             .setSerializationSchema(new SimpleStringSchema())
             .setPartitionKeyGenerator(element -> String.valueOf(element.hashCode()))
             .build();
@@ -155,6 +169,7 @@ public class EngagementMetrics {
             return null;
         }
     }
+
 }
 ```
 
@@ -208,6 +223,42 @@ public class EngagementAggregator implements
         return a;
     }
 }
+
+class EngagementAccumulator {
+    public String userId;
+    public long eventCount;
+    public long pageViews;
+    public long clicks;
+    public long purchases;
+    public double totalAmount;
+}
+
+class EngagementResult {
+    public String userId;
+    public long eventCount;
+    public long pageViews;
+    public long clicks;
+    public long purchases;
+    public double totalAmount;
+    public long emittedAt;
+
+    public EngagementResult(
+            String userId,
+            long eventCount,
+            long pageViews,
+            long clicks,
+            long purchases,
+            double totalAmount,
+            long emittedAt) {
+        this.userId = userId;
+        this.eventCount = eventCount;
+        this.pageViews = pageViews;
+        this.clicks = clicks;
+        this.purchases = purchases;
+        this.totalAmount = totalAmount;
+        this.emittedAt = emittedAt;
+    }
+}
 ```
 
 ## PyFlink Application
@@ -218,8 +269,6 @@ This PyFlink script computes real-time metrics from a Kinesis stream using the T
 
 ```python
 from pyflink.table import EnvironmentSettings, TableEnvironment
-from pyflink.table.expressions import col, lit
-from pyflink.table.window import Tumble
 
 # Set up the environment
 
@@ -253,8 +302,8 @@ t_env.execute_sql("""
 t_env.execute_sql("""
     CREATE TABLE engagement_metrics (
         event_type STRING,
-        window_start TIMESTAMP(3),
-        window_end TIMESTAMP(3),
+        window_start TIMESTAMP_LTZ(3),
+        window_end TIMESTAMP_LTZ(3),
         event_count BIGINT,
         unique_users BIGINT,
         total_amount DOUBLE
@@ -271,21 +320,24 @@ t_env.execute_sql("""
     INSERT INTO engagement_metrics
     SELECT
         eventType AS event_type,
-        TUMBLE_START(event_time, INTERVAL '1' MINUTE) AS window_start,
-        TUMBLE_END(event_time, INTERVAL '1' MINUTE) AS window_end,
+        window_start,
+        window_end,
         COUNT(*) AS event_count,
         COUNT(DISTINCT userId) AS unique_users,
         SUM(amount) AS total_amount
-    FROM user_events
+    FROM TABLE(
+        TUMBLE(TABLE user_events, DESCRIPTOR(event_time), INTERVAL '1' MINUTE)
+    )
     GROUP BY
         eventType,
-        TUMBLE(event_time, INTERVAL '1' MINUTE)
+        window_start,
+        window_end
 """)
 ```
 
-## Deploying to Kinesis Data Analytics
+## Deploying to Managed Service for Apache Flink
 
-Package your application and upload it to S3, then create the KDA application.
+Package your application and upload it to S3, then create the Managed Service for Apache Flink application.
 
 ```bash
 # Build the JAR (for Java)
@@ -298,7 +350,7 @@ aws s3 cp target/engagement-metrics-1.0.jar s3://my-flink-apps/
 aws kinesisanalyticsv2 create-application \
   --application-name engagement-metrics \
   --runtime-environment FLINK-1_18 \
-  --service-execution-role arn:aws:iam::123456789:role/KDAFlinkRole \
+  --service-execution-role arn:aws:iam::123456789012:role/KDAFlinkRole \
   --application-configuration '{
     "FlinkApplicationConfiguration": {
       "CheckpointConfiguration": {
@@ -338,11 +390,11 @@ aws kinesisanalyticsv2 start-application \
   }'
 ```
 
-## State Management and Savepoints
+## State Management and Snapshots
 
-One of Flink's biggest advantages is stateful processing with exactly-once semantics. Kinesis Data Analytics handles state management through checkpoints stored in S3.
+One of Flink's biggest advantages is stateful processing with exactly-once semantics. Managed Service for Apache Flink handles state management through checkpoints stored in S3.
 
-To create a savepoint (for upgrades or debugging):
+To create an application snapshot (for upgrades or debugging):
 
 ```bash
 aws kinesisanalyticsv2 create-application-snapshot \
@@ -350,7 +402,7 @@ aws kinesisanalyticsv2 create-application-snapshot \
   --snapshot-name pre-upgrade-snapshot
 ```
 
-Restore from a snapshot when starting.
+Restore from an application snapshot when starting.
 
 ```bash
 aws kinesisanalyticsv2 start-application \
@@ -368,7 +420,7 @@ aws kinesisanalyticsv2 start-application \
 
 ## Scaling and Performance
 
-KDA for Flink scales using Kinesis Processing Units (KPUs). Each KPU provides 1 vCPU and 4 GB of memory.
+Managed Service for Apache Flink scales using Kinesis Processing Units (KPUs). Each KPU provides 1 vCPU and 4 GB of memory.
 
 The parallelism setting controls how many parallel instances of your operators run. Match it to your shard count for optimal throughput.
 
@@ -398,6 +450,6 @@ Check your Flink application health with CloudWatch metrics.
 - **lastCheckpointSize** - State size
 - **currentInputWatermark** - How far behind event time is
 
-For SQL-based streaming analytics as an alternative, see our guide on [Kinesis Data Analytics with SQL](https://oneuptime.com/blog/post/2026-02-12-amazon-kinesis-data-analytics-with-sql/view).
+For SQL-based streaming analytics in Flink as an alternative, see our guide on [Kinesis Data Analytics with SQL](https://oneuptime.com/blog/post/2026-02-12-amazon-kinesis-data-analytics-with-sql/view).
 
-Flink on Kinesis Data Analytics gives you serious stream processing power without the Flink cluster management headache. It's the right choice when your streaming logic outgrows SQL - stateful processing, complex event patterns, and exactly-once guarantees are all table stakes with Flink.
+Flink on Managed Service for Apache Flink gives you serious stream processing power without the Flink cluster management headache. It's the right choice when your streaming logic outgrows SQL - stateful processing, complex event patterns, and exactly-once guarantees are all table stakes with Flink.
