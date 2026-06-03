@@ -150,7 +150,7 @@ aws glue create-database --database-input '{
 
 ## Step 4: Build the Ingestion Layer
 
-Create a Glue job that ingests data from an RDS database into the raw zone.
+Create a Glue job that ingests cataloged source tables, such as tables crawled from an RDS database, into the raw zone.
 
 ```python
 # ingest_rds.py - Glue job to ingest from RDS to S3 raw zone
@@ -162,7 +162,7 @@ from awsglue.context import GlueContext
 from awsglue.job import Job
 from datetime import datetime
 
-args = getResolvedOptions(sys.argv, ['JOB_NAME', 'connection_name', 'database', 'tables'])
+args = getResolvedOptions(sys.argv, ['JOB_NAME', 'database', 'tables'])
 sc = SparkContext()
 glueContext = GlueContext(sc)
 spark = glueContext.spark_session
@@ -175,7 +175,7 @@ tables = args['tables'].split(',')
 for table_name in tables:
     print(f"Ingesting table: {table_name}")
 
-    # Read from RDS via Glue connection
+    # Read from a Glue Data Catalog table
     source_df = glueContext.create_dynamic_frame.from_catalog(
         database=args['database'],
         table_name=table_name,
@@ -332,6 +332,14 @@ job.commit()
 ## Step 7: Set Up Crawlers for All Zones
 
 ```bash
+# Crawler for raw zone
+aws glue create-crawler \
+  --name raw-zone-crawler \
+  --role GlueServiceRole \
+  --database-name raw_zone \
+  --targets '{"S3Targets": [{"Path": "s3://mycompany-data-lake/raw/"}]}' \
+  --recrawl-policy '{"RecrawlBehavior": "CRAWL_NEW_FOLDERS_ONLY"}'
+
 # Crawler for processed zone
 aws glue create-crawler \
   --name processed-zone-crawler \
@@ -365,6 +373,26 @@ aws lakeformation grant-permissions \
   --resource '{"Database": {"Name": "processed_zone"}}' \
   --permissions '["ALL"]'
 
+aws lakeformation grant-permissions \
+  --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/DataEngineerRole"}' \
+  --resource '{"Database": {"Name": "curated_zone"}}' \
+  --permissions '["ALL"]'
+
+aws lakeformation grant-permissions \
+  --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/DataEngineerRole"}' \
+  --resource '{"Table": {"DatabaseName": "raw_zone", "TableWildcard": {}}}' \
+  --permissions '["ALL"]'
+
+aws lakeformation grant-permissions \
+  --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/DataEngineerRole"}' \
+  --resource '{"Table": {"DatabaseName": "processed_zone", "TableWildcard": {}}}' \
+  --permissions '["ALL"]'
+
+aws lakeformation grant-permissions \
+  --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/DataEngineerRole"}' \
+  --resource '{"Table": {"DatabaseName": "curated_zone", "TableWildcard": {}}}' \
+  --permissions '["ALL"]'
+
 # Grant analysts read access to processed and curated only
 aws lakeformation grant-permissions \
   --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::123456789012:role/AnalystRole"}' \
@@ -396,22 +424,49 @@ aws glue create-trigger \
   --workflow-name daily-data-lake-pipeline \
   --name start-ingestion \
   --type SCHEDULED \
+  --start-on-creation \
   --schedule "cron(0 4 * * ? *)" \
   --actions '[{"JobName": "ingest-rds-orders"}]'
 
 aws glue create-trigger \
   --workflow-name daily-data-lake-pipeline \
+  --name crawl-raw-after-ingestion \
+  --type CONDITIONAL \
+  --start-on-creation \
+  --predicate '{"Conditions": [{"LogicalOperator": "EQUALS", "JobName": "ingest-rds-orders", "State": "SUCCEEDED"}]}' \
+  --actions '[{"CrawlerName": "raw-zone-crawler"}]'
+
+aws glue create-trigger \
+  --workflow-name daily-data-lake-pipeline \
   --name start-transform \
   --type CONDITIONAL \
-  --predicate '{"Conditions": [{"LogicalOperator": "EQUALS", "JobName": "ingest-rds-orders", "State": "SUCCEEDED"}]}' \
+  --start-on-creation \
+  --predicate '{"Conditions": [{"LogicalOperator": "EQUALS", "CrawlerName": "raw-zone-crawler", "CrawlState": "SUCCEEDED"}]}' \
   --actions '[{"JobName": "transform-orders"}]'
+
+aws glue create-trigger \
+  --workflow-name daily-data-lake-pipeline \
+  --name crawl-processed-after-transform \
+  --type CONDITIONAL \
+  --start-on-creation \
+  --predicate '{"Conditions": [{"LogicalOperator": "EQUALS", "JobName": "transform-orders", "State": "SUCCEEDED"}]}' \
+  --actions '[{"CrawlerName": "processed-zone-crawler"}]'
 
 aws glue create-trigger \
   --workflow-name daily-data-lake-pipeline \
   --name start-curate \
   --type CONDITIONAL \
-  --predicate '{"Conditions": [{"LogicalOperator": "EQUALS", "JobName": "transform-orders", "State": "SUCCEEDED"}]}' \
-  --actions '[{"JobName": "curate-daily-metrics"}, {"CrawlerName": "processed-zone-crawler"}]'
+  --start-on-creation \
+  --predicate '{"Conditions": [{"LogicalOperator": "EQUALS", "CrawlerName": "processed-zone-crawler", "CrawlState": "SUCCEEDED"}]}' \
+  --actions '[{"JobName": "curate-daily-metrics"}]'
+
+aws glue create-trigger \
+  --workflow-name daily-data-lake-pipeline \
+  --name crawl-curated-after-curate \
+  --type CONDITIONAL \
+  --start-on-creation \
+  --predicate '{"Conditions": [{"LogicalOperator": "EQUALS", "JobName": "curate-daily-metrics", "State": "SUCCEEDED"}]}' \
+  --actions '[{"CrawlerName": "curated-zone-crawler"}]'
 ```
 
 This gives you a fully governed data lake. Raw data flows in, gets cleaned and transformed, and analysts query the curated results through Athena - all with fine-grained access control via Lake Formation. For more details on the individual components, see our guides on [Lake Formation setup](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-lake-formation-for-data-lakes/view) and [batch analytics with Glue and Athena](https://oneuptime.com/blog/post/2026-02-12-build-batch-analytics-pipeline-glue-athena/view).
