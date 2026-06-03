@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, RDS, Security, SSL, Database
 
-Description: Complete guide to enabling and enforcing SSL/TLS encryption for connections to Amazon RDS databases including MySQL, PostgreSQL, and SQL Server.
+Description: Complete guide to enabling and enforcing SSL/TLS encryption for connections to Amazon RDS databases including MySQL and PostgreSQL.
 
 ---
 
@@ -16,12 +16,12 @@ Amazon RDS supports SSL/TLS connections for all major database engines. The good
 
 Every RDS instance comes with a server certificate installed automatically. AWS manages these certificates through the Amazon RDS Certificate Authority. Your application connects using the certificate to verify it's talking to the real database server, and the connection is encrypted end-to-end.
 
-The certificate chain can be downloaded from AWS. As of 2024, AWS moved to regional certificate bundles, so you'll want to use the right one for your region.
+The certificate chain can be downloaded from AWS. AWS provides both global and regional certificate bundles, so you can use the bundle that matches your deployment.
 
 Download the certificate bundle for your application to use:
 
 ```bash
-# Download the global certificate bundle (works for all regions)
+# Download the global certificate bundle (works for commercial AWS Regions)
 
 wget https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 
@@ -87,13 +87,13 @@ You can also enforce SSL at the user level. This is useful if you want to requir
 -- Require SSL for a specific MySQL user
 ALTER USER 'app_user'@'%' REQUIRE SSL;
 
--- Or require a specific certificate
+-- Or require the client to present a valid X.509 certificate
 ALTER USER 'app_user'@'%' REQUIRE X509;
 ```
 
 ## Enabling SSL for PostgreSQL on RDS
 
-PostgreSQL handles SSL configuration through the `rds.force_ssl` parameter. Setting this to 1 makes SSL mandatory for all connections.
+PostgreSQL handles SSL configuration through the `rds.force_ssl` parameter. Setting this to 1 makes SSL mandatory for all connections. For RDS for PostgreSQL 15 and later, this parameter defaults to 1; for version 14 and earlier, it defaults to 0.
 
 ```bash
 # Create a custom parameter group for PostgreSQL
@@ -107,6 +107,8 @@ aws rds modify-db-parameter-group \
   --db-parameter-group-name require-ssl-postgres \
   --parameters "ParameterName=rds.force_ssl,ParameterValue=1,ApplyMethod=immediate"
 ```
+
+If you attach a new custom parameter group to an existing PostgreSQL instance, reboot the instance after the parameter group is associated so the instance uses the new group.
 
 To connect from the command line with SSL:
 
@@ -165,6 +167,7 @@ const connection = mysql.createConnection({
 
 ```python
 import psycopg2
+import os
 
 # Connect to PostgreSQL with full certificate verification
 conn = psycopg2.connect(
@@ -183,9 +186,7 @@ conn = psycopg2.connect(
 ```java
 // JDBC connection string with SSL parameters
 String url = "jdbc:mysql://mydb.abc123xyz.us-east-1.rds.amazonaws.com:3306/myapp"
-    + "?useSSL=true"
-    + "&requireSSL=true"
-    + "&verifyServerCertificate=true"
+    + "?sslMode=VERIFY_IDENTITY"
     + "&trustCertificateKeyStoreUrl=file:/path/to/truststore.jks"
     + "&trustCertificateKeyStorePassword=changeit";
 ```
@@ -240,7 +241,7 @@ If your enforcement is working, this connection will be refused.
 
 ## Performance Impact
 
-SSL adds some overhead. The TLS handshake adds latency to new connections, and encryption/decryption uses CPU. In practice, the impact is minimal - usually 5-10% overhead on connection establishment and negligible impact on data transfer for modern instance types.
+SSL adds some overhead. The TLS handshake adds latency to new connections, and encryption/decryption uses CPU. In practice, the impact is usually small for modern instance types, but the exact cost depends on your workload, client behavior, and connection churn.
 
 Using connection pooling significantly reduces the impact since the TLS handshake only happens once per pooled connection rather than on every query.
 
