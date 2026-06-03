@@ -14,25 +14,24 @@ Vitess powers some of the largest MySQL deployments in the world, including YouT
 
 Vitess sits between your application and MySQL, providing a distributed database layer. VTGate serves as the query router, accepting MySQL protocol connections and routing queries to appropriate shards. VTTablet wraps each MySQL instance, handling connection pooling, query rewriting, and health monitoring. The topology service (using etcd or Consul) tracks cluster metadata and coordinates distributed operations.
 
-This architecture enables horizontal scaling while preserving MySQL compatibility. Applications connect to VTGate using standard MySQL drivers, unaware that data spans multiple physical databases. Vitess handles query routing, transaction coordination, and cross-shard joins automatically.
+This architecture enables horizontal scaling while preserving MySQL compatibility. Applications connect to VTGate using standard MySQL drivers, unaware that data spans multiple physical databases. Vitess handles query routing, transaction coordination, and many cross-shard queries, although cross-shard joins should still be designed carefully because they can be expensive.
 
 ## Installing the Vitess Operator
 
 Deploy Vitess using the official Kubernetes operator:
 
 ```bash
-# Install the Vitess operator
-
-kubectl apply -f https://raw.githubusercontent.com/planetscale/vitess-operator/v2.11.0/deploy/operator.yaml
-
 # Create namespace for Vitess cluster
 kubectl create namespace vitess
 
+# Install the Vitess operator CRDs, RBAC, and controller
+kubectl apply -k "github.com/planetscale/vitess-operator/deploy?ref=v2.16.0"
+
 # Verify operator is running
-kubectl get pods -n vitess-operator
+kubectl get pods -l app=vitess-operator
 ```
 
-The operator manages VitessCluster custom resources, creating StatefulSets for MySQL, vtgate, and vtctld components.
+The operator manages VitessCluster custom resources, creating the Kubernetes resources for MySQL-backed vttablet pods, vtgate, and vtctld components.
 
 ## Deploying a Vitess Cluster
 
@@ -46,6 +45,26 @@ metadata:
   name: commerce
   namespace: vitess
 spec:
+  backup:
+    engine: builtin
+    locations:
+      - name: s3-backups
+        s3:
+          region: us-west-2
+          bucket: vitess-backups
+          keyPrefix: commerce
+          authSecret:
+            name: aws-credentials
+            key: credentials
+
+  images:
+    vtctld: vitess/lite:v23.0.0
+    vtgate: vitess/lite:v23.0.0
+    vttablet: vitess/lite:v23.0.0
+    vtbackup: vitess/lite:v23.0.0
+    mysqld:
+      mysql80Compatible: vitess/lite:v23.0.0
+
   # Global cell configuration
   cells:
     - name: zone1
@@ -133,12 +152,21 @@ CREATE TABLE products (
 );
 
 CREATE TABLE customers (
-  id BIGINT NOT NULL AUTO_INCREMENT,
+  id BIGINT NOT NULL,
   email VARCHAR(255) NOT NULL,
   name VARCHAR(255),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   UNIQUE KEY idx_email (email)
+);
+
+CREATE TABLE orders (
+  id BIGINT NOT NULL,
+  customer_id BIGINT NOT NULL,
+  total DECIMAL(10,2) NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_customer_id (customer_id)
 );
 "
 ```
@@ -162,7 +190,8 @@ Connect to VTGate using the MySQL protocol:
 ```bash
 # Port-forward VTGate
 kubectl port-forward -n vitess \
-  svc/commerce-zone1-vtgate 15306:3306
+  "svc/$(kubectl get vitesscluster commerce -n vitess -o jsonpath='{.status.gatewayServiceName}')" \
+  15306:3306
 
 # Connect with MySQL client
 mysql -h 127.0.0.1 -P 15306
@@ -172,7 +201,7 @@ kubectl get svc -n vitess commerce-zone1-vtgate
 mysql -h <EXTERNAL_IP> -P 3306
 ```
 
-Query across shards transparently:
+After applying the VSchema in the next section, query across shards transparently:
 
 ```sql
 -- Show databases (keyspaces)
@@ -180,20 +209,20 @@ SHOW DATABASES;
 
 USE commerce;
 
--- Insert data (automatically routed to appropriate shard)
-INSERT INTO customers (email, name) VALUES
-  ('alice@example.com', 'Alice'),
-  ('bob@example.com', 'Bob'),
-  ('charlie@example.com', 'Charlie');
+-- Insert data with explicit primary-vindex values so VTGate can route each row
+INSERT INTO customers (id, email, name) VALUES
+  (1, 'alice@example.com', 'Alice'),
+  (2, 'bob@example.com', 'Bob'),
+  (3, 'charlie@example.com', 'Charlie');
 
 -- Query data (Vitess queries all shards and merges results)
 SELECT * FROM customers ORDER BY created_at DESC;
 
 -- Check which shard contains specific data
-EXPLAIN SELECT * FROM customers WHERE email = 'alice@example.com';
+EXPLAIN SELECT * FROM customers WHERE id = 1;
 ```
 
-Vitess automatically distributes data across shards based on the primary key.
+Vitess distributes rows across shards based on the table's primary vindex.
 
 ## Implementing Custom Sharding Keys
 
@@ -216,14 +245,6 @@ data:
         },
         "xxhash": {
           "type": "xxhash"
-        },
-        "lookup": {
-          "type": "consistent_lookup_unique",
-          "params": {
-            "table": "customer_lookup",
-            "from": "email",
-            "to": "customer_id"
-          }
         }
       },
       "tables": {
@@ -256,102 +277,78 @@ Apply the VSchema:
 # Apply VSchema configuration
 kubectl apply -f vschema-config.yaml
 
-# Use vtctlclient to apply the schema
-kubectl exec -it -n vitess \
-  $(kubectl get pods -n vitess -l app=vtctld -o jsonpath='{.items[0].metadata.name}') \
-  -- vtctlclient -server localhost:15999 \
-  ApplyVSchema -vschema="$(cat vschema-config.yaml | yq e '.data."vschema.json"' -)" \
+# Use vtctldclient to apply the schema
+kubectl port-forward -n vitess \
+  "svc/$(kubectl get vitesscluster commerce -n vitess -o jsonpath='{.status.vitessDashboard.serviceName}')" \
+  15999:15999
+
+vtctldclient --server localhost:15999 \
+  ApplyVSchema --vschema="$(kubectl get configmap vschema-config -n vitess -o jsonpath='{.data.vschema\.json}')" \
   commerce
 ```
 
-This configuration shards customers and orders by customer_id using xxhash, keeping related data together for efficient queries.
+This configuration shards customers by id and orders by customer_id using xxhash, keeping related data together when order customer_id values match customer ids.
 
 ## Resharding Without Downtime
 
-As data grows, add more shards:
+As data grows, add more shards. With the operator, first add a second partitioning with `parts: 4` to the same keyspace so the target shards are deployed, then create the resharding workflow:
 
 ```bash
 # Create a resharding operation from 2 shards to 4 shards
-kubectl exec -it -n vitess \
-  $(kubectl get pods -n vitess -l app=vtctld -o jsonpath='{.items[0].metadata.name}') \
-  -- vtctlclient -server localhost:15999 \
-  Reshard -source_shards='-80,80-' \
-  -target_shards='-40,40-80,80-c0,c0-' \
-  commerce.commerce2customers
+vtctldclient --server localhost:15999 \
+  Reshard --workflow commerce2customers --target-keyspace commerce create \
+  --source-shards='-80,80-' \
+  --target-shards='-40,40-80,80-c0,c0-'
 ```
 
 Monitor the resharding process:
 
 ```bash
 # Check workflow status
-kubectl exec -it -n vitess \
-  $(kubectl get pods -n vitess -l app=vtctld -o jsonpath='{.items[0].metadata.name}') \
-  -- vtctlclient -server localhost:15999 \
-  Workflow commerce.commerce2customers show
+vtctldclient --server localhost:15999 \
+  Reshard --workflow commerce2customers --target-keyspace commerce show
 
 # Once caught up, switch reads to new shards
-kubectl exec -it -n vitess \
-  $(kubectl get pods -n vitess -l app=vtctld -o jsonpath='{.items[0].metadata.name}') \
-  -- vtctlclient -server localhost:15999 \
-  Workflow commerce.commerce2customers SwitchTraffic
+vtctldclient --server localhost:15999 \
+  Reshard --workflow commerce2customers --target-keyspace commerce switchtraffic \
+  --tablet-types "replica"
+
+# Then switch primary traffic
+vtctldclient --server localhost:15999 \
+  Reshard --workflow commerce2customers --target-keyspace commerce switchtraffic \
+  --tablet-types "primary"
 
 # Complete the resharding
-kubectl exec -it -n vitess \
-  $(kubectl get pods -n vitess -l app=vtctld -o jsonpath='{.items[0].metadata.name}') \
-  -- vtctlclient -server localhost:15999 \
-  Workflow commerce.commerce2customers Complete
+vtctldclient --server localhost:15999 \
+  Reshard --workflow commerce2customers --target-keyspace commerce complete
 ```
 
-Vitess copies data in the background, then atomically switches traffic to the new shards without application downtime.
+Vitess copies data in the background, then switches serving traffic to the new shards without application downtime.
 
 ## Configuring Automated Backups
 
-Set up automated backups using vtbackup:
+Set up automated backups using the Vitess operator:
 
 ```yaml
-# backup-cronjob.yaml
-apiVersion: batch/v1
-kind: CronJob
+# backup-schedule.yaml
+apiVersion: planetscale.com/v2
+kind: VitessBackupSchedule
 metadata:
-  name: vitess-backup
+  name: commerce-daily-backup
   namespace: vitess
 spec:
+  cluster: commerce
   schedule: "0 2 * * *"
-  jobTemplate:
-    spec:
-      template:
-        spec:
-          containers:
-            - name: vtbackup
-              image: vitess/lite:v17.0.0
-              command:
-                - bash
-                - -c
-                - |
-                  vtbackup \
-                    -topo_implementation=etcd2 \
-                    -topo_global_server_address=etcd-global:2379 \
-                    -backup_storage_implementation=s3 \
-                    -s3_backup_aws_region=us-west-2 \
-                    -s3_backup_storage_bucket=vitess-backups \
-                    -s3_backup_storage_root=commerce \
-                    -init_keyspace=commerce \
-                    -init_shard=-80
-              env:
-                - name: AWS_ACCESS_KEY_ID
-                  valueFrom:
-                    secretKeyRef:
-                      name: aws-credentials
-                      key: access-key-id
-                - name: AWS_SECRET_ACCESS_KEY
-                  valueFrom:
-                    secretKeyRef:
-                      name: aws-credentials
-                      key: secret-access-key
-          restartPolicy: OnFailure
+  strategies:
+    - name: commerce-x-80
+      keyspace: commerce
+      shard: "-80"
+    - name: commerce-80-x
+      keyspace: commerce
+      shard: "80-"
 ```
 
-This creates daily backups of each shard to S3.
+This creates daily backups of each shard to the S3 location configured on the VitessCluster.
 
 ## Monitoring Vitess Performance
 
@@ -367,7 +364,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: vttablet
+      planetscale.com/component: vttablet
   endpoints:
     - port: web
       interval: 15s
@@ -381,7 +378,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: vtgate
+      planetscale.com/component: vtgate
   endpoints:
     - port: web
       interval: 15s
@@ -390,10 +387,10 @@ spec:
 
 Key metrics to monitor:
 
-- Query latency percentiles (vtgate_api_count, vtgate_api_error_count)
-- Shard health (vttablet_tablet_state)
-- Replication lag (vttablet_replication_lag_seconds)
-- Connection pool utilization (vtgate_vttablet_call_count)
+- Query latency and counts (VTGateApi)
+- Tablet health and discovery (HealthcheckConnections)
+- VReplication lag during resharding (VReplicationLagSeconds)
+- VReplication workflow state (VReplicationStreamState)
 
 ## Implementing Query Routing Policies
 
@@ -401,13 +398,16 @@ Control query routing for read replicas:
 
 ```sql
 -- Route reads to replicas (reduce primary load)
-SELECT /*+ SCATTER_ERRORS_AS_WARNINGS */ * FROM customers;
+USE commerce@replica;
+SELECT * FROM customers;
 
 -- Force query to primary for strong consistency
-SELECT /*+ PRIMARY */ * FROM customers WHERE id = 123;
+USE commerce@primary;
+SELECT * FROM customers WHERE id = 123;
 
--- Use specific replica for analytics
-SELECT /*+ REPLICA */ COUNT(*) FROM customers;
+-- Use replicas for analytics
+USE commerce@replica;
+SELECT COUNT(*) FROM customers;
 ```
 
 Configure default routing policies in VTGate:
@@ -418,9 +418,9 @@ spec:
     - name: zone1
       gateway:
         extraFlags:
-          tablet_types_to_wait: "MASTER,REPLICA"
-          tablet_grpc_timeout: "30s"
-          queryserver-config-query-timeout: "30"
+          default-tablet-type: "primary"
+          discovery-low-replication-lag: "30s"
+          discovery-high-replication-lag-minimum-serving: "2h"
 ```
 
 ## Conclusion
