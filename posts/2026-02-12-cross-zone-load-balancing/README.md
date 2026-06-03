@@ -8,7 +8,7 @@ Description: Learn how cross-zone load balancing works on AWS and how to configu
 
 ---
 
-By default, a load balancer node in one Availability Zone only distributes traffic to targets in that same AZ. If you have 8 instances in AZ-a and 2 in AZ-b, and DNS sends 50% of traffic to each AZ, those 2 instances in AZ-b are getting hammered while AZ-a instances are underutilized.
+When cross-zone load balancing is disabled, a load balancer node in one Availability Zone only distributes traffic to targets in that same AZ. If you have 8 instances in AZ-a and 2 in AZ-b, and DNS sends 50% of traffic to each AZ, those 2 instances in AZ-b are getting hammered while AZ-a instances are underutilized.
 
 Cross-zone load balancing fixes this. When enabled, each load balancer node distributes traffic across all registered targets in all AZs, not just the targets in its own AZ.
 
@@ -66,12 +66,12 @@ Different load balancer types handle cross-zone load balancing differently:
 
 | Load Balancer | Cross-Zone Default | Cost Impact |
 |---------------|-------------------|-------------|
-| ALB | Always enabled (can't disable) | No extra charge |
+| ALB | Enabled at the load balancer level (can be disabled per target group) | No extra charge |
 | NLB | Disabled by default | Cross-AZ data transfer charges |
-| Classic LB | Disabled by default | No extra charge |
-| Gateway LB | Disabled by default | No extra charge |
+| Classic LB | Depends on how you create it (Console enables it by default; API/CLI disable it by default) | No extra charge |
+| Gateway LB | Disabled by default | Cross-AZ data transfer charges |
 
-The key takeaway: ALBs always do cross-zone load balancing. NLBs don't by default, and enabling it costs money because of cross-AZ data transfer.
+The key takeaway: ALBs always have cross-zone load balancing enabled at the load balancer level, though you can override it per target group. NLBs don't by default, and enabling it costs money because of cross-AZ data transfer.
 
 ## Enabling Cross-Zone on NLB
 
@@ -112,7 +112,7 @@ Target group settings override load balancer settings. This lets you enable cros
 Here's how to configure cross-zone load balancing in Terraform for both ALB and NLB:
 
 ```hcl
-# ALB - cross-zone is always enabled, nothing to configure
+# ALB - cross-zone is always enabled at the load balancer level
 resource "aws_lb" "web" {
   name               = "web-alb"
   internal           = false
@@ -120,7 +120,7 @@ resource "aws_lb" "web" {
   subnets            = var.public_subnet_ids
   security_groups    = [aws_security_group.alb.id]
 
-  # Cross-zone is always on for ALB
+  # Cross-zone is always on for ALB at the load balancer level
   # No configuration needed
 }
 
@@ -143,7 +143,7 @@ resource "aws_lb_target_group" "tcp_cross_zone" {
   target_type = "instance"
 
   # Target group level cross-zone (overrides LB setting)
-  connection_termination = false
+  load_balancing_cross_zone_enabled = "true"
 }
 ```
 
@@ -154,7 +154,7 @@ resource "aws_lb_target_group" "tcp_cross_zone" {
 - You have uneven instance distribution across AZs (common during scaling events, deployments, or AZ capacity issues)
 - Your Auto Scaling group is spread across AZs but doesn't always maintain equal counts per AZ
 - You want the simplest possible load distribution
-- You're using an ALB (it's on by default and you don't have a choice)
+- You're using an ALB (it's on by default at the load balancer level)
 
 **Consider keeping it disabled when:**
 
@@ -165,17 +165,17 @@ resource "aws_lb_target_group" "tcp_cross_zone" {
 
 ## Cost Implications
 
-Cross-AZ data transfer charges apply when an NLB with cross-zone enabled sends traffic to a target in a different AZ. As of 2026, inter-AZ data transfer costs $0.01 per GB in most regions.
+Cross-AZ data transfer charges apply when an NLB with cross-zone enabled sends traffic to a target in a different AZ. As of 2026, inter-AZ data transfer often costs $0.01 per GB in each direction in US regions, but you should confirm the current rate for your region.
 
 Here's a quick cost estimate:
 
 ```text
 Scenario: 100 GB/day of traffic through NLB
 Without cross-zone: $0 extra (traffic stays in-AZ)
-With cross-zone: ~50% crosses AZs = 50 GB x $0.01 = $0.50/day = $15/month
+With cross-zone: ~50% crosses AZs = 50 GB x $0.01 x 2 directions = $1.00/day = $30/month
 ```
 
-For most workloads, $15/month is negligible compared to the benefit of even load distribution. But for high-throughput workloads processing terabytes per day, it adds up.
+For most workloads, $30/month is negligible compared to the benefit of even load distribution. But for high-throughput workloads processing terabytes per day, it adds up.
 
 ## Ensuring Even Instance Distribution
 
@@ -211,10 +211,10 @@ aws elbv2 describe-target-health \
   }' --output table
 ```
 
-Use CloudWatch to monitor per-target request counts and identify imbalance:
+Use CloudWatch to monitor healthy host counts by Availability Zone and identify capacity imbalance:
 
 ```bash
-# Check request count per target
+# Check healthy host count by AZ
 aws cloudwatch get-metric-data \
   --metric-data-queries '[
     {
@@ -279,4 +279,4 @@ aws elb modify-load-balancer-attributes \
 
 ## Summary
 
-Cross-zone load balancing ensures even traffic distribution regardless of how your instances are spread across AZs. ALBs have it enabled by default. For NLBs, enable it unless you have specific cost or latency reasons not to. The small cross-AZ data transfer cost is usually worth the improved load distribution and better AZ failure resilience. Pair cross-zone load balancing with Auto Scaling groups that balance instances across AZs for the most reliable setup. For comprehensive monitoring of your load balancer health and traffic distribution, check out [configuring health checks for EC2 behind a load balancer](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view).
+Cross-zone load balancing ensures even traffic distribution regardless of how your instances are spread across AZs. ALBs have it enabled by default at the load balancer level. For NLBs, enable it unless you have specific cost or latency reasons not to. The small cross-AZ data transfer cost is usually worth the improved load distribution and better AZ failure resilience. Pair cross-zone load balancing with Auto Scaling groups that balance instances across AZs for the most reliable setup. For comprehensive monitoring of your load balancer health and traffic distribution, check out [configuring health checks for EC2 behind a load balancer](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view).
