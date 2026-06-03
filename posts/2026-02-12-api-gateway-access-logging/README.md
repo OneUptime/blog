@@ -21,7 +21,7 @@ This post focuses on access logs since they're what you need for production moni
 
 ## Prerequisites: IAM Role for Logging
 
-API Gateway needs permission to write to CloudWatch. You need to set up a global IAM role for this - it's a one-time configuration per AWS account.
+API Gateway needs permission to write to CloudWatch. For REST APIs, you need to set up an IAM role for this - it's a one-time configuration per AWS account and Region.
 
 Create the logging role:
 
@@ -59,7 +59,7 @@ aws apigateway update-account \
     op=replace,path=/cloudwatchRoleArn,value=arn:aws:iam::123456789012:role/APIGatewayCloudWatchRole
 ```
 
-This role setting is account-wide. You only need to do it once, and all APIs in the account can use it.
+This role setting is account-wide within the Region where you configure it. You only need to do it once per Region, and all REST APIs in that account and Region can use it.
 
 ## Creating the Log Group
 
@@ -238,9 +238,9 @@ Calculate latency percentiles by endpoint:
 fields resourcePath, responseLatency
 | stats
     avg(responseLatency) as avgLatency,
-    percentile(responseLatency, 50) as p50,
-    percentile(responseLatency, 90) as p90,
-    percentile(responseLatency, 99) as p99,
+    pct(responseLatency, 50) as p50,
+    pct(responseLatency, 90) as p90,
+    pct(responseLatency, 99) as p99,
     count(*) as requests
   by resourcePath
 | sort requests desc
