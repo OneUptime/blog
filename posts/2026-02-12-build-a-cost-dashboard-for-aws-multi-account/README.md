@@ -32,7 +32,7 @@ graph TD
     L --> M[Custom Dashboard UI]
 ```
 
-We are actually building two paths: one using Cost and Usage Reports (CUR) with Athena/QuickSight for deep analysis, and one using the Cost Explorer API with Lambda for real-time summaries and alerts.
+We are actually building two paths: one using Cost and Usage Reports (CUR) with Athena/QuickSight for deep analysis, and one using the Cost Explorer API with Lambda for daily summaries and alerts.
 
 ## Setting Up Cost and Usage Reports
 
@@ -62,6 +62,7 @@ Resources:
     Properties:
       Bucket: !Ref CURBucket
       PolicyDocument:
+        Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal:
@@ -70,14 +71,39 @@ Resources:
               - s3:GetBucketAcl
               - s3:GetBucketPolicy
             Resource: !GetAtt CURBucket.Arn
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub 'arn:aws:cur:us-east-1:${AWS::AccountId}:definition/*'
+                aws:SourceAccount: !Ref AWS::AccountId
           - Effect: Allow
             Principal:
               Service: billingreports.amazonaws.com
             Action: s3:PutObject
             Resource: !Sub '${CURBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                aws:SourceArn: !Sub 'arn:aws:cur:us-east-1:${AWS::AccountId}:definition/*'
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  CostAndUsageReport:
+    Type: AWS::CUR::ReportDefinition
+    Properties:
+      ReportName: company-cur
+      TimeUnit: HOURLY
+      Format: Parquet
+      Compression: Parquet
+      AdditionalSchemaElements:
+        - RESOURCES
+      AdditionalArtifacts:
+        - ATHENA
+      S3Bucket: !Ref CURBucket
+      S3Prefix: cur-reports
+      S3Region: !Ref AWS::Region
+      ReportVersioning: OVERWRITE_REPORT
+      RefreshClosedReports: true
 ```
 
-Once CUR is enabled, AWS drops Parquet or CSV files into the bucket. Parquet is better for Athena queries because of columnar compression - use it.
+Once CUR is enabled, AWS drops Parquet or CSV files into the bucket. Parquet is better for Athena queries because of columnar compression - use it. It can take up to 24 hours for the first report to arrive, and AWS updates the report at least once a day after delivery starts.
 
 ## Crawling CUR Data with Glue
 
@@ -85,6 +111,7 @@ Glue crawlers automatically detect the schema of your CUR data and make it query
 
 ```yaml
 # Glue crawler to catalog CUR data for Athena queries
+Resources:
   CURDatabase:
     Type: AWS::Glue::Database
     Properties:
@@ -145,7 +172,7 @@ ORDER BY cost DESC
 LIMIT 50;
 ```
 
-Spot unused resources (running EC2 with near-zero CPU):
+Spot expensive EC2 running hours that are worth checking against CloudWatch utilization:
 
 ```sql
 -- Find potentially idle EC2 instances
@@ -162,69 +189,87 @@ HAVING SUM(line_item_unblended_cost) > 50
 ORDER BY monthly_cost DESC;
 ```
 
-## Real-Time Cost Aggregation with Lambda
+## Daily Cost Aggregation with Lambda
 
-CUR data has a delay of several hours. For near-real-time cost tracking, use the Cost Explorer API from a Lambda function:
+CUR data and Cost Explorer data are not real time. Cost Explorer refreshes cost data at least once every 24 hours, but the API is convenient for daily summaries:
 
 ```python
 # Lambda function that pulls daily costs per account from Cost Explorer
 import boto3
-import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-ce_client = boto3.client('ce')
+ce_client = boto3.client('ce', region_name='us-east-1')
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('CostSummaries')
 
 def handler(event, context):
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     start = (today - timedelta(days=30)).isoformat()
     end = today.isoformat()
 
     # Get cost grouped by linked account and service
-    response = ce_client.get_cost_and_usage(
-        TimePeriod={'Start': start, 'End': end},
-        Granularity='DAILY',
-        Metrics=['UnblendedCost', 'UsageQuantity'],
-        GroupBy=[
+    request = {
+        'TimePeriod': {'Start': start, 'End': end},
+        'Granularity': 'DAILY',
+        'Metrics': ['UnblendedCost'],
+        'GroupBy': [
             {'Type': 'DIMENSION', 'Key': 'LINKED_ACCOUNT'},
             {'Type': 'DIMENSION', 'Key': 'SERVICE'}
         ]
-    )
+    }
 
     # Aggregate and store results in DynamoDB
-    for day_result in response['ResultsByTime']:
-        date = day_result['TimePeriod']['Start']
-        for group in day_result['Groups']:
-            account_id = group['Keys'][0]
-            service = group['Keys'][1]
-            cost = float(group['Metrics']['UnblendedCost']['Amount'])
+    for response in get_cost_pages(request):
+        for day_result in response['ResultsByTime']:
+            date = day_result['TimePeriod']['Start']
+            for group in day_result['Groups']:
+                account_id = group['Keys'][0]
+                service = group['Keys'][1]
+                cost = float(group['Metrics']['UnblendedCost']['Amount'])
 
-            if cost > 0:
-                table.put_item(Item={
-                    'pk': f'ACCOUNT#{account_id}',
-                    'sk': f'DATE#{date}#SERVICE#{service}',
-                    'accountId': account_id,
-                    'service': service,
-                    'date': date,
-                    'cost': str(round(cost, 4)),
-                    'updatedAt': datetime.utcnow().isoformat()
-                })
+                if cost > 0:
+                    table.put_item(Item={
+                        'pk': f'ACCOUNT#{account_id}',
+                        'sk': f'DATE#{date}#SERVICE#{service}',
+                        'accountId': account_id,
+                        'service': service,
+                        'date': date,
+                        'cost': str(round(cost, 4)),
+                        'updatedAt': datetime.now(timezone.utc).isoformat()
+                    })
 
     return {'statusCode': 200, 'body': 'Cost data aggregated'}
+
+def get_cost_pages(request):
+    while True:
+        response = ce_client.get_cost_and_usage(**request)
+        yield response
+
+        token = response.get('NextPageToken')
+        if not token:
+            break
+        request['NextPageToken'] = token
 ```
 
-Schedule this Lambda to run every 6 hours using EventBridge:
+Schedule this Lambda to run daily using EventBridge:
 
 ```yaml
-# EventBridge rule to run the cost aggregator every 6 hours
+# EventBridge rule to run the cost aggregator daily
 CostAggregatorSchedule:
   Type: AWS::Events::Rule
   Properties:
-    ScheduleExpression: rate(6 hours)
+    ScheduleExpression: rate(1 day)
     Targets:
       - Arn: !GetAtt CostAggregatorLambda.Arn
         Id: CostAggregator
+
+CostAggregatorSchedulePermission:
+  Type: AWS::Lambda::Permission
+  Properties:
+    FunctionName: !Ref CostAggregatorLambda
+    Action: lambda:InvokeFunction
+    Principal: events.amazonaws.com
+    SourceArn: !GetAtt CostAggregatorSchedule.Arn
 ```
 
 ## Building the Anomaly Detection Layer
@@ -234,13 +279,13 @@ A dashboard is only useful if someone is looking at it. Add automated anomaly de
 ```python
 # Lambda function to detect cost anomalies and send alerts
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
-ce_client = boto3.client('ce')
+ce_client = boto3.client('ce', region_name='us-east-1')
 sns_client = boto3.client('sns')
 
 def handler(event, context):
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
 
     # Compare yesterday's cost to the 7-day average
     yesterday_cost = get_daily_cost(today - timedelta(days=1), today)
@@ -248,7 +293,7 @@ def handler(event, context):
     avg_per_day = week_avg / 7
 
     # Alert if yesterday was more than 30% above the weekly average
-    if yesterday_cost > avg_per_day * 1.3:
+    if avg_per_day > 0 and yesterday_cost > avg_per_day * 1.3:
         spike_pct = ((yesterday_cost - avg_per_day) / avg_per_day) * 100
         sns_client.publish(
             TopicArn='arn:aws:sns:us-east-1:123456789:cost-alerts',
@@ -259,15 +304,25 @@ def handler(event, context):
         )
 
 def get_daily_cost(start, end):
-    response = ce_client.get_cost_and_usage(
-        TimePeriod={'Start': start.isoformat(), 'End': end.isoformat()},
-        Granularity='DAILY',
-        Metrics=['UnblendedCost']
-    )
-    total = sum(
-        float(d['Total']['UnblendedCost']['Amount'])
-        for d in response['ResultsByTime']
-    )
+    request = {
+        'TimePeriod': {'Start': start.isoformat(), 'End': end.isoformat()},
+        'Granularity': 'DAILY',
+        'Metrics': ['UnblendedCost']
+    }
+    total = 0
+
+    while True:
+        response = ce_client.get_cost_and_usage(**request)
+        total += sum(
+            float(d['Total']['UnblendedCost']['Amount'])
+            for d in response['ResultsByTime']
+        )
+
+        token = response.get('NextPageToken')
+        if not token:
+            break
+        request['NextPageToken'] = token
+
     return total
 ```
 
@@ -291,10 +346,9 @@ def handler(event, context):
     # Get cost summary for a specific account
     if '/account/' in path:
         account_id = path.split('/account/')[1]
-        result = table.query(
+        items = query_all(
             KeyConditionExpression=Key('pk').eq(f'ACCOUNT#{account_id}')
         )
-        items = result.get('Items', [])
         return respond(200, items)
 
     # Get total costs across all accounts for a date range
@@ -302,14 +356,39 @@ def handler(event, context):
         # Scan with filter for date range
         start_date = params.get('start', '2026-01-01')
         end_date = params.get('end', '2026-12-31')
-        result = table.scan()
         items = [
-            i for i in result['Items']
+            i for i in scan_all()
             if start_date <= i.get('date', '') <= end_date
         ]
         return respond(200, items)
 
     return respond(404, {'error': 'Not found'})
+
+def query_all(**kwargs):
+    items = []
+    while True:
+        response = table.query(**kwargs)
+        items.extend(response.get('Items', []))
+
+        last_key = response.get('LastEvaluatedKey')
+        if not last_key:
+            break
+        kwargs['ExclusiveStartKey'] = last_key
+
+    return items
+
+def scan_all(**kwargs):
+    items = []
+    while True:
+        response = table.scan(**kwargs)
+        items.extend(response.get('Items', []))
+
+        last_key = response.get('LastEvaluatedKey')
+        if not last_key:
+            break
+        kwargs['ExclusiveStartKey'] = last_key
+
+    return items
 
 def respond(status, body):
     return {
@@ -335,6 +414,6 @@ A few lessons from running cost dashboards at scale:
 
 ## Wrapping Up
 
-A centralized cost dashboard turns AWS billing from a monthly surprise into a daily operational metric. The CUR + Athena path gives you deep historical analysis, while the Cost Explorer API path gives you near-real-time visibility. Combine both with anomaly detection, and you will catch runaway spending before it becomes a budget crisis.
+A centralized cost dashboard turns AWS billing from a monthly surprise into a daily operational metric. The CUR + Athena path gives you deep historical analysis, while the Cost Explorer API path gives you simpler daily summaries. Combine both with anomaly detection, and you will catch runaway spending before it becomes a budget crisis.
 
 The entire stack is serverless, so the dashboard itself costs very little to run - usually under $20/month even for organizations with dozens of accounts.
