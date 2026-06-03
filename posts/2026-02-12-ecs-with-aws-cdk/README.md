@@ -79,7 +79,6 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
-import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns';
@@ -116,7 +115,7 @@ export class EcsProductionStack extends cdk.Stack {
     const cluster = new ecs.Cluster(this, 'Cluster', {
       vpc,
       clusterName: `${props.environment}-cluster`,
-      containerInsights: true,
+      containerInsightsV2: ecs.ContainerInsights.ENABLED,
     });
 
     // Reference the ECR repository
@@ -132,7 +131,7 @@ export class EcsProductionStack extends cdk.Stack {
     // Create a log group with retention
     const logGroup = new logs.LogGroup(this, 'AppLogGroup', {
       logGroupName: `/ecs/${props.environment}/app`,
-      retention: logs.RetentionDays.THIRTY_DAYS,
+      retention: logs.RetentionDays.ONE_MONTH,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
@@ -294,6 +293,10 @@ class MicroService extends Construct {
 Use the construct for each microservice:
 
 ```typescript
+cluster.addDefaultCloudMapNamespace({
+  name: 'services.local',
+});
+
 // Create services
 const apiService = new MicroService(this, 'ApiService', {
   cluster,
@@ -324,7 +327,7 @@ cdk synth
 cdk diff
 
 # Deploy the stack
-cdk deploy EcsProduction --parameters imageTag=v1.2.3
+IMAGE_TAG=v1.2.3 cdk deploy EcsProduction
 
 # Deploy all stacks at once
 cdk deploy --all
