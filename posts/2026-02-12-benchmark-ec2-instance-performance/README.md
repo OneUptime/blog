@@ -30,15 +30,19 @@ Here's a script that installs all the benchmarking tools you'll need on Amazon L
 ```bash
 # Install benchmarking tools on Amazon Linux 2023
 
-sudo yum groupinstall "Development Tools" -y
-sudo yum install -y sysbench fio iperf3 stress-ng htop
+sudo dnf groupinstall "Development Tools" -y
+sudo dnf install -y fio iperf3 stress-ng htop
+
+# Install sysbench from the upstream package repository
+curl -s https://packagecloud.io/install/repositories/akopytov/sysbench/script.rpm.sh | sudo bash
+sudo dnf install -y sysbench
 
 # Install Geekbench (optional, for standardized CPU scoring)
-wget https://cdn.geekbench.com/Geekbench-6.3.0-Linux.tar.gz
-tar xf Geekbench-6.3.0-Linux.tar.gz
+wget https://cdn.geekbench.com/Geekbench-6.7.1-Linux.tar.gz
+tar xf Geekbench-6.7.1-Linux.tar.gz
 ```
 
-For Ubuntu-based AMIs, swap `yum` for `apt-get`:
+For Ubuntu-based AMIs, use `apt-get`:
 
 ```bash
 # Install benchmarking tools on Ubuntu
@@ -107,14 +111,14 @@ Disk performance benchmarking is crucial, especially when you're deciding betwee
 Test sequential read/write performance:
 
 ```bash
-# Sequential write test - 4KB block size, 1GB file
+# Sequential write test - 1MB block size, 1GB file
 fio --name=seq-write --ioengine=libaio --direct=1 \
-    --bs=4k --size=1G --numjobs=1 --iodepth=32 \
+    --bs=1M --size=1G --numjobs=1 --iodepth=32 \
     --rw=write --group_reporting
 
 # Sequential read test
 fio --name=seq-read --ioengine=libaio --direct=1 \
-    --bs=4k --size=1G --numjobs=1 --iodepth=32 \
+    --bs=1M --size=1G --numjobs=1 --iodepth=32 \
     --rw=read --group_reporting
 ```
 
@@ -170,7 +174,10 @@ RESULTS_DIR="benchmark-results-$(date +%Y%m%d-%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 
 echo "=== EC2 Benchmark Suite ==="
-echo "Instance type: $(curl -s http://169.254.169.254/latest/meta-data/instance-type)"
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+echo "Instance type: $(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/instance-type)"
 echo "Results directory: $RESULTS_DIR"
 
 # CPU benchmark
