@@ -17,12 +17,17 @@ SAM extends CloudFormation with simplified syntax for serverless resources. You 
 The SAM CLI is separate from the AWS CLI. Install it based on your platform:
 
 ```bash
-# macOS (using Homebrew)
+# macOS (download the package for your processor from the AWS SAM CLI releases)
+# Apple silicon
+sudo installer -pkg ./aws-sam-cli-macos-arm64.pkg -target /
+# Intel
+sudo installer -pkg ./aws-sam-cli-macos-x86_64.pkg -target /
 
-brew install aws-sam-cli
-
-# Linux
-pip install aws-sam-cli
+# Linux x86_64
+curl -Lo aws-sam-cli-linux-x86_64.zip \
+  https://github.com/aws/aws-sam-cli/releases/latest/download/aws-sam-cli-linux-x86_64.zip
+unzip aws-sam-cli-linux-x86_64.zip -d sam-installation
+sudo ./sam-installation/install
 
 # Verify installation
 sam --version
@@ -35,7 +40,9 @@ The fastest way to start is with `sam init`:
 ```bash
 # Create a new SAM project
 sam init \
+  --no-interactive \
   --runtime python3.12 \
+  --dependency-manager pip \
   --app-template hello-world \
   --name my-serverless-app \
   --package-type Zip
@@ -75,6 +82,7 @@ Globals:
       Variables:
         ENVIRONMENT: !Ref Environment
         LOG_LEVEL: INFO
+        ORDERS_TABLE: !Ref OrdersTable
 
 Parameters:
   Environment:
@@ -142,6 +150,8 @@ Resources:
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref OrdersTable
+        - SQSPollerPolicy:
+            QueueName: !GetAtt OrderQueue.QueueName
 
   # DynamoDB table
   OrdersTable:
@@ -172,7 +182,7 @@ Outputs:
     Value: !GetAtt CreateOrderFunction.Arn
 ```
 
-Notice how much simpler this is compared to raw CloudFormation. SAM's `AWS::Serverless::Function` type automatically creates the IAM role, log group, and event source mappings.
+Notice how much simpler this is compared to raw CloudFormation. SAM's `AWS::Serverless::Function` type automatically creates the Lambda function, the IAM role when you don't provide one, and event source mappings.
 
 ## Writing the Function Code
 
@@ -184,7 +194,7 @@ import json
 import os
 import uuid
 import boto3
-from datetime import datetime
+from datetime import UTC, datetime
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table(os.environ.get('ORDERS_TABLE', 'orders'))
@@ -207,7 +217,7 @@ def lambda_handler(event, context):
         'items': body.get('items', []),
         'total': str(body.get('total', 0)),
         'status': 'created',
-        'createdAt': datetime.utcnow().isoformat()
+        'createdAt': datetime.now(UTC).isoformat()
     }
 
     table.put_item(Item=item)
@@ -381,15 +391,15 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
-      - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/setup-sam@v3
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
