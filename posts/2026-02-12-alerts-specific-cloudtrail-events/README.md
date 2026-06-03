@@ -8,7 +8,7 @@ Description: Learn how to create targeted alerts for specific AWS CloudTrail eve
 
 ---
 
-Having CloudTrail enabled is just the first step. The real value comes from knowing when something important happens - not 15 minutes later when you're checking logs, but immediately. Whether it's someone creating a new IAM user, disabling encryption on an S3 bucket, or modifying a VPC, you need alerts that tell you about it in real time.
+Having CloudTrail enabled is just the first step. The real value comes from knowing when something important happens - not 15 minutes later when you're checking logs, but in near real time. Whether it's someone creating a new IAM user, disabling encryption on an S3 bucket, or modifying a VPC, you need alerts that tell you about it quickly.
 
 There are two main approaches to alerting on CloudTrail events: CloudWatch metric filters and EventBridge rules. Each has its strengths, and you'll probably end up using both.
 
@@ -18,7 +18,7 @@ This approach requires [CloudTrail integrated with CloudWatch Logs](https://oneu
 
 ### The CIS Benchmark Alerts
 
-The CIS AWS Foundations Benchmark defines specific CloudTrail events you should be alerting on. Here's how to set up the complete set.
+The CIS AWS Foundations Benchmark defines specific CloudTrail events you should be alerting on. Here's how to set up a core subset.
 
 Unauthorized API calls should be monitored because a spike in access-denied errors often indicates compromised credentials or an attacker probing your environment.
 
@@ -100,11 +100,22 @@ aws logs put-metric-filter \
   --filter-pattern '{ ($.eventSource = "s3.amazonaws.com") && (($.eventName = "PutBucketAcl") || ($.eventName = "PutBucketPolicy") || ($.eventName = "PutBucketCors") || ($.eventName = "PutBucketLifecycle") || ($.eventName = "PutBucketReplication") || ($.eventName = "DeleteBucketPolicy") || ($.eventName = "DeleteBucketCors") || ($.eventName = "DeleteBucketLifecycle") || ($.eventName = "DeleteBucketReplication")) }' \
   --metric-transformations \
     metricName=S3BucketPolicyChanges,metricNamespace=CISBenchmark,metricValue=1,defaultValue=0
+
+aws cloudwatch put-metric-alarm \
+  --alarm-name CIS-S3BucketPolicyChanges \
+  --metric-name S3BucketPolicyChanges \
+  --namespace CISBenchmark \
+  --statistic Sum \
+  --period 300 \
+  --threshold 1 \
+  --comparison-operator GreaterThanOrEqualToThreshold \
+  --evaluation-periods 1 \
+  --alarm-actions arn:aws:sns:us-east-1:111111111111:security-alerts
 ```
 
 ## Approach 2: EventBridge Rules
 
-EventBridge is the newer, more flexible approach. It catches CloudTrail events directly without needing the CloudWatch Logs integration. The event patterns are more expressive, and you can route events to more target types.
+EventBridge is the newer, more flexible approach. It catches CloudTrail events directly without needing the CloudWatch Logs integration, as long as you have a trail that is currently logging the events you want to match. The event patterns are more expressive, and you can route events to more target types.
 
 ### Alert on IAM User Creation
 
