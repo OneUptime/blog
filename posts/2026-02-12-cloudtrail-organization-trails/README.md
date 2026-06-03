@@ -14,9 +14,9 @@ Let's walk through exactly how to set it up, what permissions you'll need, and t
 
 ## What Is an Organization Trail?
 
-An organization trail is a CloudTrail trail created in the management account (sometimes still called the master account) that automatically applies to every member account in your AWS Organization. Every API call, every console sign-in, every resource change - it all flows into a single S3 bucket that you control from the management account.
+An organization trail is a CloudTrail trail created in the management account (sometimes still called the master account) that automatically applies to every member account in your AWS Organization. Management events, console sign-ins, and any data events you explicitly configure - it all flows into a single S3 bucket that you control from the management account.
 
-This is different from creating individual trails in each account. With an organization trail, member accounts can see the trail but they can't modify or delete it. That's a big deal for security teams who need to guarantee audit log integrity.
+This is different from creating individual trails in each account. With an organization trail, member accounts can see the trail but they can't modify or delete it. That's a big deal for security teams who need to protect audit log integrity.
 
 ## Prerequisites
 
@@ -73,6 +73,21 @@ Your organization trail needs an S3 bucket that accepts logs from all accounts. 
         "Service": "cloudtrail.amazonaws.com"
       },
       "Action": "s3:PutObject",
+      "Resource": "arn:aws:s3:::my-org-cloudtrail-bucket/AWSLogs/111111111111/*",
+      "Condition": {
+        "StringEquals": {
+          "s3:x-amz-acl": "bucket-owner-full-control",
+          "aws:SourceArn": "arn:aws:cloudtrail:us-east-1:111111111111:trail/my-org-trail"
+        }
+      }
+    },
+    {
+      "Sid": "AWSCloudTrailOrganizationWrite",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "cloudtrail.amazonaws.com"
+      },
+      "Action": "s3:PutObject",
       "Resource": "arn:aws:s3:::my-org-cloudtrail-bucket/AWSLogs/o-organizationid/*",
       "Condition": {
         "StringEquals": {
@@ -85,7 +100,7 @@ Your organization trail needs an S3 bucket that accepts logs from all accounts. 
 }
 ```
 
-Replace `111111111111` with your management account ID and `o-organizationid` with your actual organization ID. The key thing here is the Resource path on the PutObject statement - it uses the organization ID prefix, not individual account IDs.
+Replace `111111111111` with your management account ID and `o-organizationid` with your actual organization ID. The key thing here is the Resource path on the organization PutObject statement - it uses the organization ID prefix. The management account prefix is also included so delivery still works if the trail is changed from an organization trail to an account trail.
 
 ## Creating the Organization Trail
 
@@ -225,11 +240,12 @@ After setup, verify that the trail is working across all accounts.
 
 ```bash
 # Check trail status
-aws cloudtrail get-trail-status --name my-org-trail
+aws cloudtrail get-trail-status --name my-org-trail \
+  --query '{IsLogging:IsLogging,LatestDeliveryError:LatestDeliveryError,LatestDeliveryTime:LatestDeliveryTime}'
 
 # Verify it's an org trail
 aws cloudtrail describe-trails --trail-name-list my-org-trail \
-  --query 'trailList[0].{Name:Name,IsOrgTrail:IsOrganizationTrail,IsMultiRegion:IsMultiRegionTrail,Logging:HasCustomEventSelectors}'
+  --query 'trailList[0].{Name:Name,IsOrgTrail:IsOrganizationTrail,IsMultiRegion:IsMultiRegionTrail}'
 ```
 
 You can also sign into a member account and run `aws cloudtrail describe-trails` to confirm the organization trail appears there.
