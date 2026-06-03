@@ -23,14 +23,14 @@ Extended resources must be integer quantities and are advertised at the node lev
 
 ## How Extended Resources Work
 
-Extended resources use the `kubernetes.io/` or custom domain prefix in their name. You advertise them by patching the node's capacity and allocatable fields. The kubelet doesn't track these resources automatically - you must update them via the API server.
+Extended resources use fully-qualified names outside the `kubernetes.io/` domain. You advertise them by patching the node's capacity field. The kubelet updates the allocatable field asynchronously after the capacity patch. The kubelet doesn't track these resources automatically - you must update them via the API server.
 
 The workflow:
 
 1. Register the resource by patching node status
 2. Pods request the resource in their spec
 3. The scheduler places pods only on nodes with available capacity
-4. The scheduler decrements available capacity when scheduling
+4. The scheduler accounts for requested capacity when scheduling
 
 ## Registering an Extended Resource
 
@@ -57,7 +57,7 @@ The tilde (`~1`) escapes the forward slash in the resource name. After this patc
 You can also use kubectl with a JSON patch:
 
 ```bash
-kubectl patch node worker-1 --type='json' \
+kubectl patch node worker-1 --subresource='status' --type='json' \
   -p='[{"op": "add", "path": "/status/capacity/example.com~1fpga", "value": "4"}]'
 ```
 
@@ -112,7 +112,7 @@ Use device plugins when:
 For dynamic resources, build a controller that watches capacity and updates node status. Here's a simple example in Python:
 
 ```python
-from kubernetes import client, config, watch
+from kubernetes import client, config
 import time
 
 config.load_kube_config()
@@ -132,7 +132,8 @@ def advertise_resource(node_name, resource_name, quantity):
 
     v1.patch_node_status(
         name=node_name,
-        body=patch_body
+        body=patch_body,
+        _content_type="application/json-patch+json"
     )
 
 # Run on each node
@@ -154,7 +155,7 @@ Run this as a DaemonSet to advertise resources on all nodes automatically.
 Extended resources work well for software licenses. Here's how to advertise 10 MATLAB licenses:
 
 ```bash
-kubectl patch node worker-1 --type='json' \
+kubectl patch node worker-1 --subresource='status' --type='json' \
   -p='[{"op": "add", "path": "/status/capacity/example.com~1matlab-license", "value": "10"}]'
 ```
 
@@ -176,7 +177,7 @@ spec:
         example.com/matlab-license: "1"
 ```
 
-The scheduler ensures no more than 10 MATLAB pods run simultaneously across all nodes advertising the license.
+The scheduler ensures no more than 10 MATLAB pods using that resource run simultaneously on that node. If you advertise the same license resource on multiple nodes, the scheduler treats each node's advertised capacity separately.
 
 ## Handling Resource Updates
 
@@ -205,7 +206,7 @@ The script uses kubectl or the API to patch the node status.
 To remove a resource, set its capacity to zero or remove the key:
 
 ```bash
-kubectl patch node worker-1 --type='json' \
+kubectl patch node worker-1 --subresource='status' --type='json' \
   -p='[{"op": "remove", "path": "/status/capacity/example.com~1fpga"}]'
 ```
 
@@ -221,11 +222,7 @@ kubectl describe node worker-1 | grep -A 5 "Allocated resources"
 
 You'll see your extended resource alongside CPU and memory with requests and limits.
 
-For more detailed monitoring, query the metrics API:
-
-```bash
-kubectl get --raw /apis/metrics.k8s.io/v1beta1/nodes/worker-1
-```
+The resource metrics API reports CPU and memory usage; it does not report arbitrary extended resource allocation. For custom runtime usage, expose your own metrics from the resource manager or workload.
 
 ## Common Pitfalls
 
@@ -248,10 +245,10 @@ kubectl get --raw /apis/metrics.k8s.io/v1beta1/nodes/worker-1
 
 ## Real-World Example: Database Connection Pools
 
-Here's a creative use case: advertising available database connection slots. If you have a database that supports 100 connections, advertise them as an extended resource:
+Here's a creative use case: advertising available database connection slots for a node-local database or proxy. If it supports 100 connections, advertise them as an extended resource:
 
 ```bash
-kubectl patch node db-node --type='json' \
+kubectl patch node db-node --subresource='status' --type='json' \
   -p='[{"op": "add", "path": "/status/capacity/example.com~1db-connections", "value": "100"}]'
 ```
 
@@ -265,7 +262,7 @@ resources:
     example.com/db-connections: "5"
 ```
 
-This prevents over-subscription at the scheduler level, though you still need application-level connection pooling.
+This prevents over-subscription at the scheduler level for workloads placed on that node, though you still need application-level connection pooling.
 
 ## Conclusion
 
