@@ -10,7 +10,7 @@ Description: Learn how to use Kubebuilder to scaffold a complete Kubernetes oper
 
 Starting an operator from scratch means creating dozens of files. You need API types, controller boilerplate, RBAC manifests, CRD definitions, Dockerfiles, Makefiles, and deployment configurations. Get the structure wrong and you're fighting the tooling instead of building features.
 
-Kubebuilder scaffolds all of this for you. One command creates a complete operator project following Kubernetes best practices. You get working code, complete with tests, CI configuration, and documentation. This guide shows you how to use Kubebuilder effectively.
+Kubebuilder scaffolds all of this for you. One command creates a complete operator project following Kubernetes best practices. You get working code, complete with tests and documentation. This guide shows you how to use Kubebuilder effectively.
 
 ## Installing Kubebuilder
 
@@ -55,8 +55,6 @@ application-operator/
 ├── Makefile
 ├── PROJECT
 ├── README.md
-├── cmd/
-│   └── main.go
 ├── config/
 │   ├── default/
 │   ├── manager/
@@ -64,8 +62,12 @@ application-operator/
 │   └── rbac/
 ├── go.mod
 ├── go.sum
-└── hack/
-    └── boilerplate.go.txt
+├── hack/
+│   └── boilerplate.go.txt
+├── internal/
+│   └── controller/
+└── cmd/
+    └── main.go
 ```
 
 ## Creating an API
@@ -84,7 +86,7 @@ kubebuilder create api \
 This generates:
 
 - API types in `api/v1/application_types.go`
-- Controller in `controllers/application_controller.go`
+- Controller in `internal/controller/application_controller.go`
 - Sample CR in `config/samples/apps_v1_application.yaml`
 - RBAC markers and manifests
 
@@ -168,8 +170,8 @@ func init() {
 Fill in the reconciliation logic.
 
 ```go
-// controllers/application_controller.go
-package controllers
+// internal/controller/application_controller.go
+package controller
 
 import (
     "context"
@@ -190,7 +192,6 @@ import (
 // +kubebuilder:rbac:groups=apps.example.com,resources=applications/status,verbs=get;update;patch
 // +kubebuilder:rbac:groups=apps.example.com,resources=applications/finalizers,verbs=update
 // +kubebuilder:rbac:groups=apps,resources=deployments,verbs=get;list;watch;create;update;patch;delete
-// +kubebuilder:rbac:groups="",resources=services,verbs=get;list;watch;create;update;patch;delete
 
 type ApplicationReconciler struct {
     client.Client
@@ -302,13 +303,14 @@ func (r *ApplicationReconciler) SetupWithManager(mgr ctrl.Manager) error {
 
 ## Generating Manifests
 
-Generate CRDs and RBAC.
+Generate DeepCopy code, CRDs, and RBAC.
 
 ```bash
+make generate
 make manifests
 ```
 
-This updates files in the config/ directory based on your code annotations.
+This updates generated Go code and files in the config/ directory based on your code annotations.
 
 ## Adding Webhooks
 
@@ -326,47 +328,57 @@ kubebuilder create webhook \
 Implement webhook logic.
 
 ```go
-// api/v1/application_webhook.go
+// internal/webhook/v1/application_webhook.go
 package v1
 
 import (
-    "k8s.io/apimachinery/pkg/runtime"
+    "context"
+    "fmt"
+
     ctrl "sigs.k8s.io/controller-runtime"
-    "sigs.k8s.io/controller-runtime/pkg/webhook"
+    "sigs.k8s.io/controller-runtime/pkg/webhook/admission"
+
+    appsexamplev1 "github.com/yourorg/application-operator/api/v1"
 )
 
-func (r *Application) SetupWebhookWithManager(mgr ctrl.Manager) error {
-    return ctrl.NewWebhookManagedBy(mgr).
-        For(r).
+func SetupApplicationWebhookWithManager(mgr ctrl.Manager) error {
+    return ctrl.NewWebhookManagedBy(mgr, &appsexamplev1.Application{}).
+        WithDefaulter(&ApplicationCustomDefaulter{}).
+        WithValidator(&ApplicationCustomValidator{}).
         Complete()
 }
 
 // +kubebuilder:webhook:path=/mutate-apps-example-com-v1-application,mutating=true,failurePolicy=fail,sideEffects=None,groups=apps.example.com,resources=applications,verbs=create;update,versions=v1,name=mapplication.kb.io,admissionReviewVersions=v1
 
-var _ webhook.Defaulter = &Application{}
+type ApplicationCustomDefaulter struct{}
 
-func (r *Application) Default() {
-    if r.Spec.Replicas == 0 {
-        r.Spec.Replicas = 1
-    }
-}
-
-// +kubebuilder:webhook:path=/validate-apps-example-com-v1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=apps.example.com,resources=applications,verbs=create;update,versions=v1,name=vapplication.kb.io,admissionReviewVersions=v1
-
-var _ webhook.Validator = &Application{}
-
-func (r *Application) ValidateCreate() error {
-    if r.Spec.Port < 1 || r.Spec.Port > 65535 {
-        return fmt.Errorf("port must be between 1 and 65535")
+func (d *ApplicationCustomDefaulter) Default(ctx context.Context, obj *appsexamplev1.Application) error {
+    if obj.Spec.Replicas == 0 {
+        obj.Spec.Replicas = 1
     }
     return nil
 }
 
-func (r *Application) ValidateUpdate(old runtime.Object) error {
-    return r.ValidateCreate()
+// +kubebuilder:webhook:path=/validate-apps-example-com-v1-application,mutating=false,failurePolicy=fail,sideEffects=None,groups=apps.example.com,resources=applications,verbs=create;update,versions=v1,name=vapplication.kb.io,admissionReviewVersions=v1
+
+type ApplicationCustomValidator struct{}
+
+func (v *ApplicationCustomValidator) ValidateCreate(ctx context.Context, obj *appsexamplev1.Application) (admission.Warnings, error) {
+    return nil, validateApplication(obj)
 }
 
-func (r *Application) ValidateDelete() error {
+func (v *ApplicationCustomValidator) ValidateUpdate(ctx context.Context, oldObj, newObj *appsexamplev1.Application) (admission.Warnings, error) {
+    return nil, validateApplication(newObj)
+}
+
+func (v *ApplicationCustomValidator) ValidateDelete(ctx context.Context, obj *appsexamplev1.Application) (admission.Warnings, error) {
+    return nil, nil
+}
+
+func validateApplication(app *appsexamplev1.Application) error {
+    if app.Spec.Port < 1 || app.Spec.Port > 65535 {
+        return fmt.Errorf("port must be between 1 and 65535")
+    }
     return nil
 }
 ```
@@ -383,7 +395,7 @@ make install
 make run
 
 # In another terminal, create a sample resource
-kubectl apply -f config/samples/apps_v1_application.yaml
+kubectl apply -k config/samples/
 
 # Check the result
 kubectl get applications
@@ -433,14 +445,15 @@ Understanding the generated structure helps customize it.
 │   ├── rbac/           # RBAC rules
 │   ├── samples/        # Example CRs
 │   └── webhook/        # Webhook configs
-├── controllers/         # Controller implementations
 ├── cmd/main.go         # Entry point
+├── internal/
+│   └── controller/     # Controller implementations
 └── Makefile           # Build automation
 ```
 
 ## Best Practices
 
-Run make manifests after changing API types. This regenerates CRDs and RBAC.
+Run make generate after changing API types, then run make manifests. This regenerates DeepCopy code, CRDs, and RBAC.
 
 Use make test before committing. The generated tests verify basic functionality.
 
