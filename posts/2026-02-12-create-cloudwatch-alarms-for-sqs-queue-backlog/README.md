@@ -21,7 +21,7 @@ SQS publishes several metrics to CloudWatch:
 - **ApproximateAgeOfOldestMessage**: Age in seconds of the oldest message in the queue
 - **NumberOfMessagesSent**: Messages produced per period
 - **NumberOfMessagesReceived**: Messages consumed per period
-- **NumberOfMessagesDeleted**: Messages successfully processed per period
+- **NumberOfMessagesDeleted**: Messages successfully deleted per period, usually after processing
 
 ```mermaid
 flowchart LR
@@ -31,7 +31,7 @@ flowchart LR
     CONS -->|NumberOfMessagesDeleted| DONE[Processed]
 ```
 
-The three most important for backlog detection are **ApproximateNumberOfMessagesVisible** (how deep is the queue), **ApproximateAgeOfOldestMessage** (how stale is the oldest message), and the ratio of sent to deleted (are consumers keeping up).
+The three most important for backlog detection are **ApproximateNumberOfMessagesVisible** (how deep is the queue), **ApproximateAgeOfOldestMessage** (how stale is the oldest message), and the comparison of sent to deleted (are consumers keeping up).
 
 ## Prerequisites
 
@@ -108,7 +108,7 @@ aws cloudwatch put-metric-alarm \
   --treat-missing-data "breaching"
 ```
 
-Note the `treat-missing-data: breaching` here. If no data points exist, it likely means no messages were deleted, which is exactly the problem we want to catch.
+Note the `treat-missing-data: breaching` here. Use this only for queues that should continuously delete messages; on idle queues, missing data can also mean no messages arrived.
 
 ## Step 4: Create a Backlog Growth Rate Alarm
 
@@ -160,7 +160,7 @@ aws cloudwatch put-metric-alarm \
   --treat-missing-data "notBreaching"
 ```
 
-This alarm fires when more messages are being sent than deleted for 30 consecutive minutes (six 5-minute periods). The threshold of 100 means the net growth must be more than 100 messages per period.
+This alarm fires when the queue grows by more than 100 messages per period for 30 consecutive minutes (six 5-minute periods).
 
 ## Step 5: Monitor the Dead Letter Queue
 
@@ -221,10 +221,12 @@ The warning goes to a Slack channel. The critical pages the on-call engineer.
 
 ## Step 7: Auto-Scale Consumers Based on Queue Depth
 
-Alarms are not just for notifications. You can use them to trigger auto-scaling actions. If your consumers run on ECS or EC2 Auto Scaling groups, scale based on the backlog.
+Alarms are not just for notifications. You can use them to trigger auto-scaling actions. If your consumers run on ECS or EC2 Auto Scaling groups, scale based on backlog per consumer rather than raw queue depth so the metric changes proportionally with capacity.
 
 ```bash
-# Create a scaling policy triggered by queue depth
+# Create a scaling policy triggered by backlog per task.
+# Assumes the ECS service is already registered as a scalable target and
+# you publish Custom/SQS BacklogPerTask = visible queue messages / running tasks.
 aws application-autoscaling put-scaling-policy \
   --service-namespace ecs \
   --resource-id service/my-cluster/my-consumer-service \
@@ -234,8 +236,8 @@ aws application-autoscaling put-scaling-policy \
   --target-tracking-scaling-policy-configuration '{
     "TargetValue": 100,
     "CustomizedMetricSpecification": {
-      "MetricName": "ApproximateNumberOfMessagesVisible",
-      "Namespace": "AWS/SQS",
+      "MetricName": "BacklogPerTask",
+      "Namespace": "Custom/SQS",
       "Dimensions": [{"Name": "QueueName", "Value": "order-processing-queue"}],
       "Statistic": "Average"
     },
@@ -244,7 +246,7 @@ aws application-autoscaling put-scaling-policy \
   }'
 ```
 
-This keeps the queue depth around 100 by automatically scaling consumers up or down.
+This keeps the backlog around 100 messages per running task by automatically scaling consumers up or down.
 
 ## Choosing the Right Thresholds
 
