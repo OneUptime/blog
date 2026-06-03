@@ -33,7 +33,7 @@ The static IP addresses are a bonus - they never change, so you can allowlist th
 
 aws globalaccelerator create-accelerator \
   --name "my-app-accelerator" \
-  --ip-address-type DUAL_STACK \
+  --ip-address-type IPV4 \
   --enabled \
   --region us-west-2
 ```
@@ -105,11 +105,6 @@ aws globalaccelerator create-endpoint-group \
     "Weight": 100,
     "ClientIPPreservationEnabled": true
   }]' \
-  --health-check-port 443 \
-  --health-check-protocol HTTPS \
-  --health-check-path "/health" \
-  --health-check-interval-seconds 30 \
-  --threshold-count 3 \
   --traffic-dial-percentage 100 \
   --region us-west-2
 ```
@@ -126,18 +121,15 @@ aws globalaccelerator create-endpoint-group \
     "Weight": 100,
     "ClientIPPreservationEnabled": true
   }]' \
-  --health-check-port 443 \
-  --health-check-protocol HTTPS \
-  --health-check-path "/health" \
-  --health-check-interval-seconds 30 \
-  --threshold-count 3 \
   --traffic-dial-percentage 100 \
   --region us-west-2
 ```
 
 ## Step 4: Configure Health Checks
 
-Global Accelerator's built-in health checks determine whether an endpoint group receives traffic. If all endpoints in a group are unhealthy, traffic automatically routes to the next nearest healthy group.
+Global Accelerator's health checks determine whether endpoints receive traffic. If there are no healthy endpoints in a group with a weight greater than zero, traffic fails over to another endpoint group with a healthy endpoint. If Global Accelerator can't find a healthy endpoint after trying the three closest endpoint groups, it fails open and routes traffic to an endpoint in the closest group.
+
+For Application Load Balancer and Network Load Balancer endpoints, configure the health checks on the load balancer target groups. Global Accelerator health check options apply to EC2 instance and Elastic IP address endpoints.
 
 Health check settings to tune:
 
@@ -154,7 +146,7 @@ aws globalaccelerator update-endpoint-group \
   --region us-west-2
 ```
 
-With 10-second intervals and a threshold of 2, failover happens in about 20 seconds.
+For EC2 instance or Elastic IP address endpoints, 10-second intervals and a threshold of 2 can mark an endpoint unhealthy after about 20 seconds.
 
 ## Step 5: Point Your Domain to the Accelerator
 
