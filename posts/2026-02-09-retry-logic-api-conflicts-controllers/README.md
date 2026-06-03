@@ -31,9 +31,7 @@ package main
 import (
     "context"
     "fmt"
-    "time"
 
-    appsv1 "k8s.io/api/apps/v1"
     "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
@@ -152,7 +150,7 @@ The exponential backoff with jitter prevents retry storms when multiple controll
 
 ## Using client-go Retry Helper
 
-Kubernetes client-go provides a built-in retry helper that implements exponential backoff:
+Kubernetes client-go provides a built-in retry helper that retries conflict errors with the backoff settings you provide:
 
 ```go
 import (
@@ -192,11 +190,11 @@ func updateWithRetryHelper(clientset *kubernetes.Clientset, namespace, name stri
 }
 ```
 
-`retry.DefaultRetry` provides sensible defaults:
+`retry.DefaultRetry` provides sensible defaults for conflicts where multiple clients are changing the same resource:
 - Initial delay: 10ms
-- Backoff factor: 2x
-- Max duration: 1000 seconds
-- Steps: unlimited
+- Backoff factor: 1x
+- Jitter: 0.1
+- Steps: 5
 
 You can customize the retry behavior:
 
@@ -248,9 +246,9 @@ func smartRetryUpdate(clientset *kubernetes.Clientset, namespace, name string) e
             // Check if it is a not-found error
             if errors.IsNotFound(err) {
                 // Resource does not exist, no point retrying
-                return nil
+                return err
             }
-            // Other errors might be transient, let retry logic handle them
+            // RetryOnConflict only retries conflict errors; other errors are returned to the caller
             return err
         }
 
@@ -272,7 +270,7 @@ func smartRetryUpdate(clientset *kubernetes.Clientset, namespace, name string) e
                 // Permission error, retrying will not help
                 return updateErr
             }
-            // Conflict or transient error, retry
+            // Conflict errors are retried; other errors are returned to the caller
             return updateErr
         }
 
@@ -389,7 +387,7 @@ type RateLimitedController struct {
 }
 
 func NewRateLimitedController(clientset *kubernetes.Clientset) *RateLimitedController {
-    // Allow 10 retries per second with burst of 20
+    // Allow 10 update attempts per second with burst of 20
     return &RateLimitedController{
         clientset: clientset,
         limiter:   rate.NewLimiter(10, 20),
@@ -414,7 +412,7 @@ func (c *RateLimitedController) updateWithRateLimit(namespace, name string) erro
 
         deployment.Spec.Replicas = int32Ptr(5)
 
-        _, updateErr := clientset.AppsV1().Deployments(namespace).Update(
+        _, updateErr := c.clientset.AppsV1().Deployments(namespace).Update(
             context.TODO(),
             deployment,
             metav1.UpdateOptions{},
@@ -477,9 +475,9 @@ func (cb *CircuitBreaker) Call(fn func() error) error {
 
 4. **Limit retry attempts**: Set a maximum to avoid infinite loops
 
-5. **Distinguish error types**: Only retry conflict and transient errors
+5. **Distinguish error types**: RetryOnConflict retries conflict errors; use separate retry logic if you also need to retry transient errors
 
-6. **Use client-go helpers**: RetryOnConflict implements best practices
+6. **Use client-go helpers**: RetryOnConflict implements the standard conflict retry pattern
 
 7. **Monitor retry rates**: Track retry metrics to detect issues early
 
