@@ -169,7 +169,9 @@ aws amplify create-branch \
 # Enable pull request previews
 aws amplify update-app \
     --app-id $APP_ID \
+    --enable-auto-branch-creation \
     --enable-branch-auto-build \
+    --auto-branch-creation-patterns 'feature/*' \
     --auto-branch-creation-config '{
         "enableAutoBuild": true,
         "enablePullRequestPreview": true,
@@ -189,7 +191,7 @@ aws amplify update-app \
     --app-id $APP_ID \
     --custom-rules '[
         {
-            "source": "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json)$)([^.]+$)/>",
+            "source": "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>",
             "target": "/index.html",
             "status": "200"
         }
@@ -211,7 +213,7 @@ frontend:
     preBuild:
       commands:
         # Use npm ci for faster, more reliable installs
-        - npm ci --prefer-offline
+        - npm ci --cache .npm --prefer-offline
     build:
       commands:
         # Increase Node.js memory for large builds
@@ -225,7 +227,7 @@ frontend:
       # Cache node_modules
       - node_modules/**/*
       # Cache npm cache
-      - ~/.npm/**/*
+      - .npm/**/*
 ```
 
 ## Monitoring Your Deployment
@@ -239,7 +241,7 @@ Check deployment status programmatically:
 aws amplify list-jobs \
     --app-id $APP_ID \
     --branch-name main \
-    --max-results 5
+    --max-items 5
 
 # Get specific build logs
 aws amplify get-job \
