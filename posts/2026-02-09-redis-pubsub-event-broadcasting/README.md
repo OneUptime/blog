@@ -66,7 +66,7 @@ package main
 import (
     "context"
     "encoding/json"
-    "github.com/go-redis/redis/v8"
+    "github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -183,7 +183,7 @@ func patternSubscribe(ctx context.Context, rdb *redis.Client) {
 
 ## Building a Notification Service
 
-Deploy subscriber pods:
+Deploy a subscriber pod:
 
 ```yaml
 apiVersion: apps/v1
@@ -192,7 +192,7 @@ metadata:
   name: notification-service
   namespace: default
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: notification-service
@@ -210,6 +210,8 @@ spec:
         - name: REDIS_PORT
           value: "6379"
 ```
+
+Use more replicas only when each instance has distinct local clients to notify, or when the handler is idempotent. Redis Pub/Sub broadcasts each message to every active subscriber, so multiple replicas of this service would otherwise send duplicate emails, SMS messages, or push notifications.
 
 Service implementation:
 
@@ -279,7 +281,7 @@ import (
     "context"
     "encoding/json"
     "net/http"
-    "github.com/go-redis/redis/v8"
+    "github.com/redis/go-redis/v9"
     "github.com/gorilla/websocket"
 )
 
@@ -299,7 +301,10 @@ var rdb = redis.NewClient(&redis.Options{
 })
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
-    conn, _ := upgrader.Upgrade(w, r, nil)
+    conn, err := upgrader.Upgrade(w, r, nil)
+    if err != nil {
+        return
+    }
     defer conn.Close()
 
     roomID := r.URL.Query().Get("room")
@@ -426,14 +431,14 @@ spec:
   groups:
   - name: redis-pubsub
     rules:
-    - alert: NoActiveSubscribers
+    - alert: NoActivePubSubChannels
       expr: |
-        redis_pubsub_channels_subscribers == 0
+        redis_pubsub_channels == 0
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "No active subscribers for channel"
+        summary: "No active Pub/Sub channels"
 ```
 
 ## Best Practices
