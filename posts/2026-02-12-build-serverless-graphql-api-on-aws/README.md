@@ -44,7 +44,8 @@ type Post {
   id: ID!
   title: String!
   content: String!
-  author: User!
+  authorId: ID!
+  author: User
   createdAt: AWSDateTime!
   updatedAt: AWSDateTime!
 }
@@ -120,26 +121,26 @@ aws appsync create-data-source \
 
 Create resolvers that map GraphQL operations to DynamoDB operations. Here's the resolver for creating a post:
 
-```json
+```vtl
 {
   "version": "2018-05-29",
   "operation": "PutItem",
   "key": {
-    "id": { "S": "$util.autoId()" }
+    "id": $util.dynamodb.toDynamoDBJson($util.autoId())
   },
   "attributeValues": {
-    "title": { "S": "$ctx.args.input.title" },
-    "content": { "S": "$ctx.args.input.content" },
-    "authorId": { "S": "$ctx.args.input.authorId" },
-    "createdAt": { "S": "$util.time.nowISO8601()" },
-    "updatedAt": { "S": "$util.time.nowISO8601()" }
+    "title": $util.dynamodb.toDynamoDBJson($ctx.args.input.title),
+    "content": $util.dynamodb.toDynamoDBJson($ctx.args.input.content),
+    "authorId": $util.dynamodb.toDynamoDBJson($ctx.args.input.authorId),
+    "createdAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601()),
+    "updatedAt": $util.dynamodb.toDynamoDBJson($util.time.nowISO8601())
   }
 }
 ```
 
 For the list query with pagination:
 
-```json
+```vtl
 {
   "version": "2018-05-29",
   "operation": "Scan",
@@ -158,7 +159,7 @@ Install the dependencies:
 
 ```bash
 npm install @apollo/server graphql @as-integrations/aws-lambda
-npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
+npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb uuid
 ```
 
 Create your Apollo Server Lambda handler:
@@ -194,7 +195,7 @@ Define your type definitions:
 const typeDefs = `#graphql
   type Query {
     getPost(id: ID!): Post
-    listPosts(limit: Int, offset: Int): [Post!]!
+    listPosts(limit: Int): [Post!]!
   }
 
   type Mutation {
@@ -254,7 +255,7 @@ const resolvers = {
       return result.Item || null;
     },
 
-    listPosts: async (_, { limit = 20, offset = 0 }) => {
+    listPosts: async (_, { limit = 20 }) => {
       const result = await docClient.send(
         new ScanCommand({ TableName: TABLE, Limit: limit })
       );
@@ -320,7 +321,7 @@ service: graphql-api
 
 provider:
   name: aws
-  runtime: nodejs20.x
+  runtime: nodejs24.x
   region: us-east-1
   stage: ${opt:stage, 'dev'}
   environment:
