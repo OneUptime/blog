@@ -26,7 +26,7 @@ graph TD
     F --> I[Extract Speaker Segments]
     G --> J[DynamoDB - Transcript Index]
     G --> K[S3 - Formatted Transcripts]
-    K --> L[OpenSearch - Full-Text Search]
+    J --> L[Search API - Full-Text Search]
 ```
 
 ## Setting Up the Transcription Pipeline
@@ -37,9 +37,24 @@ When a podcast episode is uploaded to S3, a Lambda function kicks off the transc
 # CloudFormation for podcast transcription infrastructure
 
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  TranscribeTriggerLambdaArn:
+    Type: String
+    Description: ARN of the Lambda function that starts transcription jobs
+
 Resources:
+  TranscribeTriggerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TranscribeTriggerLambdaArn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub arn:${AWS::Partition}:s3:::podcast-episodes
+
   PodcastBucket:
     Type: AWS::S3::Bucket
+    DependsOn: TranscribeTriggerPermission
     Properties:
       BucketName: podcast-episodes
       NotificationConfiguration:
@@ -52,7 +67,7 @@ Resources:
                     Value: episodes/
                   - Name: suffix
                     Value: .mp3
-            Function: !GetAtt TranscribeTriggerLambda.Arn
+            Function: !Ref TranscribeTriggerLambdaArn
 
   TranscriptBucket:
     Type: AWS::S3::Bucket
@@ -79,7 +94,8 @@ Resources:
 import boto3
 import json
 import os
-from datetime import datetime
+import re
+from datetime import UTC, datetime
 
 transcribe = boto3.client('transcribe')
 
@@ -90,20 +106,25 @@ def handler(event, context):
 
     # Extract episode identifier from the filename
     filename = os.path.basename(key)
-    episode_id = filename.replace('.mp3', '').replace('.wav', '').replace('.m4a', '')
-    job_name = f'podcast-{episode_id}-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}'
+    episode_id = os.path.splitext(filename)[0]
+    episode_id = re.sub(r'[^0-9A-Za-z._-]+', '-', episode_id).strip('-') or 'episode'
+    job_name = f'podcast-{episode_id}-{datetime.now(UTC).strftime("%Y%m%d%H%M%S")}'
 
     # Determine media format from extension
     extension = filename.split('.')[-1].lower()
     media_format_map = {
         'mp3': 'mp3',
         'mp4': 'mp4',
-        'm4a': 'mp4',
+        'm4a': 'm4a',
         'wav': 'wav',
         'flac': 'flac',
-        'ogg': 'ogg'
+        'ogg': 'ogg',
+        'amr': 'amr',
+        'webm': 'webm'
     }
-    media_format = media_format_map.get(extension, 'mp3')
+    if extension not in media_format_map:
+        raise ValueError(f'Unsupported media format: {extension}')
+    media_format = media_format_map[extension]
 
     # Start the transcription job
     transcribe.start_transcription_job(
@@ -116,6 +137,7 @@ def handler(event, context):
         OutputBucketName='podcast-transcripts',
         OutputKey=f'raw/{episode_id}.json',
         Settings={
+            'VocabularyName': 'my-podcast-vocab',
             'ShowSpeakerLabels': True,
             'MaxSpeakerLabels': 5,      # Max speakers to identify
             'ShowAlternatives': False
@@ -138,39 +160,42 @@ Podcast-specific terms, guest names, and brand names need custom vocabulary to b
 # Create custom vocabulary for your podcast
 import boto3
 
+s3 = boto3.client('s3')
 transcribe = boto3.client('transcribe')
 
-def create_podcast_vocabulary(vocabulary_name, terms):
+def create_podcast_vocabulary(vocabulary_name, terms, bucket, key):
     """Create a custom vocabulary for accurate podcast transcription."""
-    # Format: Phrase\tIPA\tSoundsLike\tDisplayAs
-    # At minimum, provide the Phrase column
-    vocabulary_entries = []
+    # Table format: Phrase\tSoundsLike\tIPA\tDisplayAs
+    # SoundsLike and IPA are no longer supported, so leave those columns empty.
+    rows = ['Phrase\tSoundsLike\tIPA\tDisplayAs']
     for term in terms:
-        entry = term['phrase']
-        if 'soundsLike' in term:
-            entry += f'\t\t{term["soundsLike"]}'
-        if 'displayAs' in term:
-            entry += f'\t{term["displayAs"]}'
-        vocabulary_entries.append(entry)
+        rows.append(f'{term["phrase"]}\t\t\t{term.get("displayAs", "")}')
+
+    s3.put_object(
+        Bucket=bucket,
+        Key=key,
+        Body='\n'.join(rows).encode('utf-8'),
+        ContentType='text/plain'
+    )
 
     transcribe.create_vocabulary(
         VocabularyName=vocabulary_name,
         LanguageCode='en-US',
-        Phrases=[t['phrase'] for t in terms]
+        VocabularyFileUri=f's3://{bucket}/{key}'
     )
 
 # Example: Add podcast-specific terms
 create_podcast_vocabulary('my-podcast-vocab', [
-    {'phrase': 'OneUptime', 'soundsLike': 'one-up-time'},
-    {'phrase': 'Kubernetes', 'soundsLike': 'koo-ber-net-eez'},
-    {'phrase': 'DevOps', 'soundsLike': 'dev-ops'},
-    {'phrase': 'microservices', 'soundsLike': 'micro-services'},
-    {'phrase': 'PostgreSQL', 'soundsLike': 'post-gres-Q-L'},
-    {'phrase': 'GraphQL', 'soundsLike': 'graph-Q-L'},
-    {'phrase': 'WebSocket', 'soundsLike': 'web-socket'},
+    {'phrase': 'OneUptime', 'displayAs': 'OneUptime'},
+    {'phrase': 'Kubernetes', 'displayAs': 'Kubernetes'},
+    {'phrase': 'DevOps', 'displayAs': 'DevOps'},
+    {'phrase': 'microservices', 'displayAs': 'microservices'},
+    {'phrase': 'Postgre-S.Q.L.', 'displayAs': 'PostgreSQL'},
+    {'phrase': 'Graph-Q.L.', 'displayAs': 'GraphQL'},
+    {'phrase': 'WebSocket', 'displayAs': 'WebSocket'},
     # Add guest names
-    {'phrase': 'Nawaz Dhandala', 'soundsLike': 'na-waz-dan-da-la'}
-])
+    {'phrase': 'Nawaz-Dhandala', 'displayAs': 'Nawaz Dhandala'}
+], 'podcast-transcripts', 'vocabularies/my-podcast-vocab.txt')
 ```
 
 ## Processing the Transcript
@@ -181,7 +206,7 @@ When Transcribe finishes, process the raw output into useful formats:
 # Lambda to process the raw Transcribe output into formatted transcripts
 import boto3
 import json
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 s3 = boto3.client('s3')
 dynamodb = boto3.resource('dynamodb')
@@ -225,12 +250,13 @@ def handler(event, context):
     transcript_table.put_item(Item={
         'episodeId': episode_id,
         'fullText': plain_text[:50000],  # DynamoDB 400KB limit
+        'fullTextLower': plain_text[:50000].lower(),
         'speakerCount': len(set(s['speaker'] for s in speaker_segments)),
         'durationSeconds': get_duration(raw_transcript),
         'wordCount': len(plain_text.split()),
         'chapterCount': len(chapters),
         'status': 'COMPLETED',
-        'processedAt': datetime.utcnow().isoformat()
+        'processedAt': datetime.now(UTC).isoformat()
     })
 
     return {'episodeId': episode_id, 'wordCount': len(plain_text.split())}
@@ -243,11 +269,17 @@ def generate_plain_text(raw_transcript):
 def generate_speaker_segments(raw_transcript):
     """Generate speaker-labeled segments from the transcript."""
     segments = []
-    items = raw_transcript['results']['items']
+    transcript_items = raw_transcript['results']['items']
     speaker_labels = raw_transcript['results'].get('speaker_labels', {})
 
     if not speaker_labels:
         return segments
+
+    words_by_time = {
+        (item.get('start_time'), item.get('end_time')): item['alternatives'][0]['content']
+        for item in transcript_items
+        if item.get('type') == 'pronunciation'
+    }
 
     for segment in speaker_labels.get('segments', []):
         speaker = segment['speaker_label']
@@ -257,8 +289,9 @@ def generate_speaker_segments(raw_transcript):
         # Collect words for this segment
         words = []
         for item in segment.get('items', []):
-            if 'alternatives' in item:
-                words.append(item['alternatives'][0]['content'])
+            word = words_by_time.get((item.get('start_time'), item.get('end_time')))
+            if word:
+                words.append(word)
 
         text = ' '.join(words)
         if text.strip():
@@ -312,7 +345,7 @@ def format_srt_entry(num, start, end, text):
 def format_srt_time(seconds):
     """Format seconds to SRT time format (HH:MM:SS,mmm)."""
     td = timedelta(seconds=seconds)
-    hours, remainder = divmod(td.seconds, 3600)
+    hours, remainder = divmod(int(td.total_seconds()), 3600)
     minutes, secs = divmod(remainder, 60)
     millis = int(td.microseconds / 1000)
     return f'{hours:02d}:{minutes:02d}:{secs:02d},{millis:03d}'
@@ -389,8 +422,8 @@ def handler(event, context):
 
     # Search across transcripts
     response = table.scan(
-        FilterExpression=Attr('fullText').contains(query.lower()),
-        ProjectionExpression='episodeId, wordCount, durationSeconds, processedAt'
+        FilterExpression=Attr('fullTextLower').contains(query.lower()),
+        ProjectionExpression='episodeId, fullText, wordCount, durationSeconds, processedAt'
     )
 
     results = []
