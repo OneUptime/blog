@@ -49,7 +49,7 @@ interface CognitoStackProps extends cdk.StackProps {
 export class CognitoStack extends cdk.Stack {
     public readonly userPool: cognito.UserPool;
     public readonly userPoolClient: cognito.UserPoolClient;
-    public readonly identityPool: cognito.CfnIdentityPool;
+    public readonly identityPool!: cognito.CfnIdentityPool;
 
     constructor(scope: Construct, id: string, props: CognitoStackProps) {
         super(scope, id, props);
@@ -245,7 +245,7 @@ Here's how to add a Pre Token Generation trigger:
 // Pre Token Generation Lambda
 const preTokenGenerationFn = new lambda.Function(this, 'PreTokenGeneration', {
     functionName: `${appName}-pre-token-${environment}`,
-    runtime: lambda.Runtime.NODEJS_20_X,
+    runtime: lambda.Runtime.NODEJS_22_X,
     handler: 'index.handler',
     code: lambda.Code.fromAsset('lambda/pre-token-generation'),
     timeout: cdk.Duration.seconds(5),
@@ -264,7 +264,7 @@ this.userPool.addTrigger(
 // Post Confirmation trigger (e.g., add user to default group)
 const postConfirmationFn = new lambda.Function(this, 'PostConfirmation', {
     functionName: `${appName}-post-confirm-${environment}`,
-    runtime: lambda.Runtime.NODEJS_20_X,
+    runtime: lambda.Runtime.NODEJS_22_X,
     handler: 'index.handler',
     code: lambda.Code.fromAsset('lambda/post-confirmation'),
     timeout: cdk.Duration.seconds(5),
@@ -293,13 +293,24 @@ Add an Identity Pool for direct AWS resource access:
 ```typescript
 // Add to the CognitoStack
 
+// Identity Pool
+this.identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
+    identityPoolName: `${appName}_${environment}`,
+    allowUnauthenticatedIdentities: false,
+    cognitoIdentityProviders: [{
+        clientId: this.userPoolClient.userPoolClientId,
+        providerName: this.userPool.userPoolProviderName,
+        serverSideTokenCheck: true,
+    }],
+});
+
 // Authenticated role
 const authenticatedRole = new iam.Role(this, 'CognitoAuthRole', {
     assumedBy: new iam.FederatedPrincipal(
         'cognito-identity.amazonaws.com',
         {
             'StringEquals': {
-                'cognito-identity.amazonaws.com:aud': '', // Set after identity pool creation
+                'cognito-identity.amazonaws.com:aud': this.identityPool.ref,
             },
             'ForAnyValue:StringLike': {
                 'cognito-identity.amazonaws.com:amr': 'authenticated',
@@ -313,31 +324,6 @@ authenticatedRole.addToPolicy(new iam.PolicyStatement({
     actions: ['s3:GetObject', 's3:PutObject'],
     resources: ['arn:aws:s3:::my-app-bucket/private/${cognito-identity.amazonaws.com:sub}/*'],
 }));
-
-// Identity Pool
-this.identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
-    identityPoolName: `${appName}_${environment}`,
-    allowUnauthenticatedIdentities: false,
-    cognitoIdentityProviders: [{
-        clientId: this.userPoolClient.userPoolClientId,
-        providerName: this.userPool.userPoolProviderName,
-        serverSideTokenCheck: true,
-    }],
-});
-
-// Fix the trust policy with the actual identity pool ID
-(authenticatedRole.assumeRolePolicy as iam.PolicyDocument).addStatements(
-    new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        principals: [new iam.FederatedPrincipal('cognito-identity.amazonaws.com')],
-        actions: ['sts:AssumeRoleWithWebIdentity'],
-        conditions: {
-            'StringEquals': {
-                'cognito-identity.amazonaws.com:aud': this.identityPool.ref,
-            },
-        },
-    })
-);
 
 // Attach roles
 new cognito.CfnIdentityPoolRoleAttachment(this, 'IdentityPoolRoles', {
