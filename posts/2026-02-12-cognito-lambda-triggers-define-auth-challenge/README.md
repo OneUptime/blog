@@ -131,17 +131,12 @@ Here's a multi-step flow with password first, then OTP:
 exports.handler = async (event) => {
     const session = event.request.session;
 
-    if (session.length === 0) {
-        // Step 1: Start with SRP password verification
-        event.response.challengeName = 'SRP_A';
-        event.response.issueTokens = false;
-        event.response.failAuthentication = false;
-    } else if (
+    if (
         session.length === 1 &&
         session[0].challengeName === 'SRP_A' &&
         session[0].challengeResult === true
     ) {
-        // SRP step A passed, continue SRP flow
+        // SRP step A was provided by the client, continue SRP flow
         event.response.challengeName = 'PASSWORD_VERIFIER';
         event.response.issueTokens = false;
         event.response.failAuthentication = false;
@@ -283,7 +278,8 @@ async function startCustomAuth(username) {
         AuthFlow: 'CUSTOM_AUTH',
         ClientId: 'your-app-client-id',
         AuthParameters: {
-            USERNAME: username
+            USERNAME: username,
+            CHALLENGE_NAME: 'CUSTOM_CHALLENGE'
         }
     }));
 
@@ -311,6 +307,8 @@ async function answerChallenge(session, username, answer) {
     return response;
 }
 ```
+
+For a passwordless custom challenge, include `CHALLENGE_NAME: 'CUSTOM_CHALLENGE'` in `AuthParameters`. For a flow that starts with SRP password verification, include `CHALLENGE_NAME: 'SRP_A'` and the computed `SRP_A` value instead.
 
 ## Debugging Tips
 
