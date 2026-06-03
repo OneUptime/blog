@@ -126,6 +126,7 @@ This is where the real work happens. When a user sends a message, we need to tra
 import boto3
 import json
 import os
+import time
 
 dynamodb = boto3.resource('dynamodb')
 connections_table = dynamodb.Table(os.environ['CONNECTIONS_TABLE'])
@@ -143,11 +144,20 @@ def handler(event, context):
     room_id = body.get('roomId', 'general')
 
     # Get all connections in this room
-    response = connections_table.scan(
-        FilterExpression='roomId = :room',
-        ExpressionAttributeValues={':room': room_id}
-    )
-    connections = response['Items']
+    connections = []
+    scan_kwargs = {
+        'FilterExpression': 'roomId = :room',
+        'ExpressionAttributeValues': {':room': room_id}
+    }
+
+    while True:
+        response = connections_table.scan(**scan_kwargs)
+        connections.extend(response['Items'])
+
+        if 'LastEvaluatedKey' not in response:
+            break
+
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
     # Find unique target languages
     target_langs = set(conn['language'] for conn in connections)
@@ -164,6 +174,17 @@ def handler(event, context):
                 TargetLanguageCode=lang
             )
             translations[lang] = result['TranslatedText']
+
+    messages_table.put_item(
+        Item={
+            'roomId': room_id,
+            'timestamp': int(time.time() * 1000),
+            'sender': connection_id,
+            'sourceLang': source_lang,
+            'message': message,
+            'translations': translations
+        }
+    )
 
     # Broadcast to each connection in their preferred language
     apigw = boto3.client('apigatewaymanagementapi',
@@ -199,6 +220,7 @@ A simple caching pattern looks like this:
 ```python
 # Check cache before calling Translate API
 import hashlib
+import time
 
 def get_translation(text, source_lang, target_lang):
     cache_key = hashlib.md5(f"{text}:{source_lang}:{target_lang}".encode()).hexdigest()
@@ -233,9 +255,14 @@ Sometimes users do not specify their source language. Amazon Comprehend can dete
 
 ```python
 # Auto-detect source language when not provided
+import boto3
+
 comprehend = boto3.client('comprehend')
 
 def detect_language(text):
+    if len(text) < 20:
+        return 'auto'
+
     response = comprehend.detect_dominant_language(Text=text)
     languages = response['Languages']
     # Return the language with highest confidence
@@ -243,7 +270,7 @@ def detect_language(text):
     return best['LanguageCode']
 ```
 
-This adds a small amount of latency, but it means users can type in any language and the system figures out the rest.
+This adds a small amount of latency, but it means users can type in many languages and the system figures out the rest. For very short messages, use Amazon Translate's `auto` source language option or fall back to the user's selected language because Amazon Comprehend requires at least 20 UTF-8 characters.
 
 ## Client-Side Integration
 
@@ -273,7 +300,7 @@ function sendMessage(text) {
 
 ## Cost Considerations
 
-Amazon Translate charges per character. For a chat application, messages tend to be short, so costs stay reasonable. At the time of writing, Amazon Translate costs about $15 per million characters. A typical chat message is around 100 characters, so one million messages would cost about $1.50 in translation fees.
+Amazon Translate charges per character. For a chat application, messages tend to be short, so costs stay reasonable. At the time of writing, Amazon Translate costs about $15 per million characters. A typical chat message is around 100 characters, so one million messages would cost about $1,500 in translation fees for one target-language translation per message. Actual cost scales with the number of target languages and your cache hit rate.
 
 API Gateway WebSocket connections are billed per connection minute plus per message. Lambda costs are based on invocations and duration. DynamoDB on-demand pricing means you only pay for what you use.
 
@@ -285,7 +312,7 @@ The architecture we have built is already serverless, so it scales automatically
 
 - API Gateway has a limit of 500 new connections per second by default. Request a quota increase if you expect spikes.
 - DynamoDB scan operations on the connections table become expensive as you scale. Consider adding a GSI on `roomId` to make lookups more efficient.
-- Amazon Translate has a default limit of 10,000 characters per request. For long messages, you need to chunk the text.
+- Amazon Translate has a limit of 10,000 bytes per `TranslateText` request. Depending on the character set, this can be fewer than 10,000 characters. For long messages, you need to chunk the text.
 
 ## Adding Custom Terminology
 
