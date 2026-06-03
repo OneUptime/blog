@@ -49,7 +49,7 @@ rules:
   verbs: ["get"]
 
 # Create events for logging
-- apiGroups: [""]
+- apiGroups: ["events.k8s.io"]
   resources: ["events"]
   verbs: ["create"]
 ---
@@ -154,7 +154,12 @@ rules:
 
 # Read services
 - apiGroups: [""]
-  resources: ["services", "endpoints"]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+
+# Read service endpoints
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get", "list", "watch"]
 
 # Read metrics
@@ -335,7 +340,7 @@ subjects:
   namespace: secure-apps
 ```
 
-Any pod using this service account must comply with the restricted security standard.
+Any pod created in this namespace must comply with the restricted security standard.
 
 ```yaml
 # deployment-secure.yaml
@@ -355,7 +360,7 @@ spec:
     spec:
       serviceAccountName: secure-app
 
-      # Required by restricted standard
+      # Settings that satisfy restricted standard requirements
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -367,7 +372,7 @@ spec:
       - name: app
         image: app:1.0.0
 
-        # Required by restricted standard
+        # Settings that satisfy restricted standard requirements
         securityContext:
           allowPrivilegeEscalation: false
           readOnlyRootFilesystem: true
@@ -423,7 +428,7 @@ rules:
   verbs: ["get", "list", "watch"]
 
 # Create events
-- apiGroups: [""]
+- apiGroups: ["events.k8s.io"]
   resources: ["events"]
   verbs: ["create", "patch"]
 ---
@@ -495,18 +500,18 @@ spec:
 Check service accounts for proper security configuration.
 
 ```bash
-# Find service accounts with automountServiceAccountToken=true
+# Find service accounts that have not disabled token automounting
 kubectl get serviceaccounts --all-namespaces -o json | \
   jq -r '.items[] | select(.automountServiceAccountToken!=false) |
     "\(.metadata.namespace)/\(.metadata.name)"'
 
-# Find pods running as root
+# Find pods explicitly configured to run as root
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] | select(.spec.securityContext.runAsUser==0 or
     .spec.containers[].securityContext.runAsUser==0) |
     "\(.metadata.namespace)/\(.metadata.name)"'
 
-# Find pods with privilege escalation allowed
+# Find pods explicitly allowing privilege escalation
 kubectl get pods --all-namespaces -o json | \
   jq -r '.items[] | select(.spec.containers[].securityContext.allowPrivilegeEscalation==true) |
     "\(.metadata.namespace)/\(.metadata.name)"'
@@ -529,12 +534,15 @@ spec:
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: test
-    image: busybox
+    image: curlimages/curl:8.10.1
     command: ['sleep', '3600']
     securityContext:
       allowPrivilegeEscalation: false
+      readOnlyRootFilesystem: true
       capabilities:
         drop:
         - ALL
@@ -543,7 +551,8 @@ EOF
 # Test API access
 kubectl exec -it security-test -n production -- sh
 # Try to list pods (should fail)
-wget -O- --header "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
+curl -sS --cacert /var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
+  -H "Authorization: Bearer $(cat /var/run/secrets/kubernetes.io/serviceaccount/token)" \
   https://kubernetes.default.svc/api/v1/namespaces/production/pods
 
 # Try to escalate (should fail)
