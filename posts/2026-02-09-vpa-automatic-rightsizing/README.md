@@ -8,13 +8,13 @@ Description: Deploy Vertical Pod Autoscaler to automatically adjust pod resource
 
 ---
 
-The Vertical Pod Autoscaler automatically adjusts CPU and memory requests for pods based on historical usage. Unlike manual right-sizing, VPA continuously monitors workloads and adapts to changing resource needs. This eliminates guesswork and reduces the operational burden of maintaining optimal resource allocation.
+The Vertical Pod Autoscaler automatically adjusts CPU and memory requests for pods based on historical usage. Unlike manual right-sizing, VPA periodically monitors workloads and adapts to changing resource needs. This eliminates guesswork and reduces the operational burden of maintaining optimal resource allocation.
 
 ## How VPA Works
 
-VPA consists of three components working together. The Recommender analyzes metrics and suggests resource values. The Updater evicts pods that need resource changes. The Admission Controller intercepts pod creation and applies recommended resources.
+VPA consists of three components working together. The Recommender analyzes metrics and suggests resource values. The Updater evicts pods that need resource changes or updates them in place when the configured mode and cluster support it. The Admission Controller intercepts pod creation and applies recommended resources.
 
-When a pod starts, the Admission Controller injects VPA-recommended requests. As the pod runs, the Recommender observes CPU and memory usage from metrics-server. When actual usage diverges significantly from requests, the Updater evicts the pod. The Admission Controller then recreates it with updated requests.
+When a pod starts, the Admission Controller injects VPA-recommended resources. As the pod runs, the Recommender observes CPU and memory usage from the resource metrics API, typically provided by metrics-server. When actual usage diverges significantly from requests, the Updater evicts the pod in Recreate mode. The workload controller then creates a replacement pod, and the Admission Controller applies the updated resources.
 
 This eviction-based approach means VPA causes pod restarts. For stateless applications, this is acceptable. For stateful workloads or services requiring high availability, use VPA in recommendation mode only.
 
@@ -87,7 +87,7 @@ spec:
     kind: Deployment
     name: web-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -102,11 +102,11 @@ spec:
       - memory
 ```
 
-The updateMode of Auto enables automatic request updates. VPA will evict pods when recommendations differ from current requests by more than 10%.
+The updateMode of Recreate enables automatic request updates by evicting pods when their current requests differ significantly from recommendations.
 
 ## Understanding Update Modes
 
-VPA supports three update modes, each suited to different scenarios:
+VPA supports several update modes. The most common explicit modes are Off, Initial, and Recreate:
 
 **Off**: VPA generates recommendations but does not apply them. View recommendations manually:
 
@@ -125,14 +125,16 @@ updatePolicy:
 
 New pods get optimized requests immediately. Existing pods update naturally during rolling deployments.
 
-**Auto**: VPA updates both new and existing pods. Existing pods get evicted when recommendations change significantly:
+**Recreate**: VPA updates both new and existing pods. Existing pods get evicted when recommendations change significantly:
 
 ```yaml
 updatePolicy:
-  updateMode: "Auto"
+  updateMode: "Recreate"
 ```
 
 This provides the most automatic behavior but causes the most disruption.
+
+The older **Auto** mode is deprecated and currently behaves like Recreate. New configurations should use explicit modes such as Recreate, Initial, InPlaceOrRecreate, or InPlace when the required feature gates and Kubernetes version are available.
 
 ## Configuring Resource Boundaries
 
@@ -188,7 +190,7 @@ spec:
     kind: Deployment
     name: multi-container-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -227,7 +229,7 @@ spec:
     kind: Deployment
     name: myapp
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -284,33 +286,38 @@ Recommendation:
       Memory:  768Mi
 ```
 
-Target represents the recommended values. Lower Bound is the minimum VPA would set. Upper Bound is the maximum for current conditions.
+Target represents the recommended values. Lower Bound and Upper Bound are the ranges VPA uses to decide whether the current requests are far enough from the target to update.
 
-Track recommendation changes over time with Prometheus:
+Track recommendation changes over time with Prometheus if your monitoring stack exports VPA custom resource status, such as through kube-state-metrics custom resource state metrics:
 
 ```promql
 # Current VPA recommendation
-vpa_status_recommendation{
-  target_name="web-app-vpa",
-  namespace="production"
+kube_customresource_verticalpodautoscaler_status_recommendation_containerrecommendations_target{
+  verticalpodautoscaler="web-app-vpa",
+  namespace="production",
+  container="app"
 }
 
 # Recommendation changes
-delta(vpa_status_recommendation[1h])
+delta(kube_customresource_verticalpodautoscaler_status_recommendation_containerrecommendations_target{
+  verticalpodautoscaler="web-app-vpa",
+  namespace="production",
+  container="app"
+}[1h])
 ```
 
 Alert on frequent recommendation changes - this indicates unstable workload behavior or VPA misconfiguration.
 
 ## Troubleshooting VPA Issues
 
-Pods not getting updated despite VPA being in Auto mode suggests several possible issues. Check if metrics-server is running:
+Pods not getting updated despite VPA being in Recreate mode suggests several possible issues. Check if metrics-server is running:
 
 ```bash
 kubectl get deployment metrics-server -n kube-system
 kubectl top nodes
 ```
 
-VPA requires metrics-server to gather usage data. Without it, VPA cannot make recommendations.
+VPA requires a resource metrics source to gather usage data. In the default setup, metrics-server provides this through the metrics.k8s.io API.
 
 Verify VPA components are healthy:
 
@@ -356,7 +363,7 @@ kubectl describe vpa database-vpa -n data
 
 Apply recommended resources manually during scheduled maintenance:
 
-```yaml
+```bash
 # Update StatefulSet with recommended resources
 kubectl edit statefulset postgres -n data
 ```
@@ -365,7 +372,7 @@ This approach balances optimization with stability requirements.
 
 ## Performance Considerations
 
-VPA adds computational overhead. The Recommender continuously analyzes metrics for all VPA-managed workloads. In large clusters, this consumes significant CPU and memory.
+VPA adds computational overhead. The Recommender periodically analyzes metrics for all VPA-managed workloads. In large clusters, this consumes significant CPU and memory.
 
 Configure the Recommender's resource limits appropriately:
 
@@ -407,7 +414,7 @@ spec:
 
 ## Best Practices
 
-Start with recommendation mode for all workloads. Observe recommendations for a week before enabling Auto mode. This builds confidence in VPA's behavior.
+Start with recommendation mode for all workloads. Observe recommendations for a week before enabling Recreate mode. This builds confidence in VPA's behavior.
 
 Set conservative boundaries initially:
 
@@ -422,7 +429,7 @@ maxAllowed:
 
 Expand boundaries as you validate VPA's recommendations align with actual needs.
 
-Exclude critical production services from Auto mode initially. Use Initial mode for gradual adoption:
+Exclude critical production services from Recreate mode initially. Use Initial mode for gradual adoption:
 
 ```yaml
 updatePolicy:
