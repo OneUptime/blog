@@ -33,12 +33,12 @@ graph TD
 Start a new Gen 2 project or migrate an existing one:
 
 ```bash
-# Create a new Next.js app with Amplify Gen 2
+# Scaffold Amplify Gen 2 backend files in your project
 
 npm create amplify@latest
 
 # Or add Amplify to an existing project
-npm add @aws-amplify/backend @aws-amplify/backend-cli
+npm add --save-dev @aws-amplify/backend@latest @aws-amplify/backend-cli@latest typescript
 ```
 
 After setup, your project structure looks like this:
@@ -73,6 +73,8 @@ const schema = a.schema({
     isComplete: a.boolean().default(false),
     dueDate: a.date(),
     tags: a.string().array(),
+    categoryId: a.id(),
+    category: a.belongsTo('Category', 'categoryId'),
   })
   .authorization(allow => [
     allow.owner(),           // Owner can do everything
@@ -106,7 +108,7 @@ Auth configuration is similarly code-first:
 
 ```typescript
 // amplify/auth/resource.ts
-import { defineAuth } from '@aws-amplify/backend';
+import { defineAuth, secret } from '@aws-amplify/backend';
 
 export const auth = defineAuth({
   loginWith: {
@@ -114,14 +116,14 @@ export const auth = defineAuth({
       // Customize the verification email
       verificationEmailStyle: 'CODE',
       verificationEmailSubject: 'Welcome to our app!',
-      verificationEmailBody: (code) =>
-        `Your verification code is: ${code}`,
+      verificationEmailBody: (createCode) =>
+        `Your verification code is: ${createCode()}`,
     },
     // Enable social sign-in providers
     externalProviders: {
       google: {
-        clientId: 'your-google-client-id',
-        clientSecret: 'your-google-client-secret',
+        clientId: secret('GOOGLE_CLIENT_ID'),
+        clientSecret: secret('GOOGLE_CLIENT_SECRET'),
       },
       callbackUrls: ['http://localhost:3000/'],
       logoutUrls: ['http://localhost:3000/'],
@@ -158,9 +160,14 @@ export const sendNotification = defineFunction({
 // amplify/functions/send-notification/handler.ts
 import type { Handler } from 'aws-lambda';
 
-// The handler receives typed events
-export const handler: Handler = async (event) => {
-  const { userId, message } = event.arguments;
+type NotificationEvent = {
+  userId: string;
+  message: string;
+};
+
+// The handler receives the Lambda event payload
+export const handler: Handler<NotificationEvent> = async (event) => {
+  const { userId, message } = event;
 
   const response = await fetch(process.env.NOTIFICATION_SERVICE_URL!, {
     method: 'POST',
@@ -209,11 +216,11 @@ npx ampx sandbox
 # Changes are deployed automatically on file save
 ```
 
-The sandbox watches your files and deploys changes in real-time. It's like hot-reloading for your backend. When you save a change to your data model, the sandbox updates the cloud resources within seconds.
+The sandbox watches your `amplify/` files and deploys changes in real-time. It's like hot-reloading for your backend. When you save a supported change, the sandbox updates the cloud resources quickly using CDK hot swapping where possible.
 
 ```bash
-# List active sandboxes
-npx ampx sandbox list
+# Generate frontend config for a deployed sandbox by stack name
+npx ampx generate outputs --stack <cloudformation-stack-name>
 
 # Delete your sandbox when done
 npx ampx sandbox delete
@@ -269,19 +276,27 @@ You can define custom operations that go beyond basic CRUD:
 
 ```typescript
 // In your schema definition
+import { a, defineFunction } from '@aws-amplify/backend';
+
+const getTodoStats = defineFunction({
+  entry: './get-todo-stats/handler.ts',
+});
+
 const schema = a.schema({
   Todo: a.model({ /* ... */ }),
+
+  TodoStats: a.customType({
+    totalTodos: a.integer(),
+    completedTodos: a.integer(),
+    completionRate: a.float(),
+  }),
 
   // Custom query backed by a Lambda function
   getTodoStats: a.query()
     .arguments({ userId: a.string().required() })
-    .returns(a.customType({
-      totalTodos: a.integer(),
-      completedTodos: a.integer(),
-      completionRate: a.float(),
-    }))
-    .handler(a.handler.function('getTodoStats'))
-    .authorization(allow => [allow.authenticated()]),
+    .returns(a.ref('TodoStats'))
+    .authorization(allow => [allow.authenticated()])
+    .handler(a.handler.function(getTodoStats)),
 });
 ```
 
@@ -291,7 +306,7 @@ When you're ready to deploy, Amplify Gen 2 integrates with CI/CD pipelines:
 
 ```bash
 # Deploy to a named environment
-npx ampx pipeline-deploy --branch main
+npx ampx pipeline-deploy --branch main --app-id <your-amplify-app-id>
 
 # Or connect to Amplify Hosting for automatic deployments
 # Push to your Git repo and Amplify builds automatically
