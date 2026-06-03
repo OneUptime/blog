@@ -84,16 +84,18 @@ This shows exactly what was backed up.
 Warnings indicate potential issues that didn't prevent the backup but need attention:
 
 ```bash
-# Show warnings
-velero backup describe production-backup-20260209 --warnings
+# Review the warnings section
+velero backup describe production-backup-20260209
 ```
 
 Common warnings include:
 
 ```text
-Warnings: 2
-  Could not get volume info for persistent volume claim production/cache-pvc: volume not found
-  Resource production/old-deployment has 0 replicas, skipping
+Warnings:
+  Velero:    <none>
+  Cluster:   <none>
+  Namespaces:
+    production: resource: /persistentvolumeclaims name: /cache-pvc message: /error getting volume info: volume not found
 ```
 
 Parse warnings programmatically:
@@ -104,19 +106,16 @@ Parse warnings programmatically:
 
 BACKUP_NAME=$1
 
-# Extract warnings
+# Extract the warnings section
 velero backup describe $BACKUP_NAME | \
-  sed -n '/^Warnings:/,/^[A-Z]/p' | \
-  grep -v "^Warnings:" | \
-  grep -v "^[A-Z]" | \
+  sed -n '/^Warnings:/,/^Errors:/p' | \
+  sed '1d;$d' | \
   while read warning; do
     echo "WARNING: $warning"
 
     # Alert on specific warnings
-    if echo "$warning" | grep -q "Could not get volume info"; then
+    if echo "$warning" | grep -qi "volume info"; then
       echo "  → Action: Check PVC and volume snapshot configuration"
-    elif echo "$warning" | grep -q "has 0 replicas"; then
-      echo "  → Action: Consider excluding scaled-down resources"
     fi
   done
 ```
@@ -127,14 +126,17 @@ Errors indicate resources that failed to backup:
 
 ```bash
 # View errors
-velero backup describe production-backup-20260209 --errors
+velero backup describe production-backup-20260209
 ```
 
 Example errors:
 
 ```text
-Errors: 1
-  Error backing up production/failing-pvc: snapshot failed: volume snapshot timeout
+Errors:
+  Velero:    <none>
+  Cluster:   <none>
+  Namespaces:
+    production: resource: /persistentvolumeclaims name: /failing-pvc message: /snapshot failed: volume snapshot timeout
 ```
 
 This tells you exactly what failed and why.
@@ -181,12 +183,14 @@ echo "---"
 # Get resource lists
 velero backup describe $BACKUP1 --details | \
   grep -A 1000 "Resource List:" | \
-  grep "^\s\+[a-z]" | \
+  grep "^[[:space:]]*-" | \
+  sed 's/^[[:space:]]*-[[:space:]]*//' | \
   sort > /tmp/backup1.txt
 
 velero backup describe $BACKUP2 --details | \
   grep -A 1000 "Resource List:" | \
-  grep "^\s\+[a-z]" | \
+  grep "^[[:space:]]*-" | \
+  sed 's/^[[:space:]]*-[[:space:]]*//' | \
   sort > /tmp/backup2.txt
 
 # Show differences
@@ -215,13 +219,15 @@ NAMESPACE=$2
 
 # Get expected resources from cluster
 echo "Expected resources in $NAMESPACE:"
-kubectl get all,pvc,configmap,secret -n $NAMESPACE -o name | sort > /tmp/expected.txt
+kubectl get all,pvc,configmap,secret -n $NAMESPACE -o json | \
+  jq -r '.items[] | .metadata.name' | \
+  sort > /tmp/expected.txt
 
 # Get resources from backup
 echo "Resources in backup $BACKUP_NAME:"
 velero backup describe $BACKUP_NAME --details | \
-  grep "$NAMESPACE/" | \
-  awk '{print $2}' | \
+  grep "^[[:space:]]*- $NAMESPACE/" | \
+  sed "s|^[[:space:]]*- $NAMESPACE/||" | \
   sort > /tmp/backed-up.txt
 
 # Compare
@@ -250,7 +256,7 @@ velero backup get -l velero.io/schedule-name=$SCHEDULE_NAME -o json | \
     .metadata.name,
     .status.completionTimestamp,
     .status.startTimestamp,
-    .status.totalItems,
+    (.status.progress.itemsBackedUp // 0),
     .status.phase
   ] | @tsv' | \
   while IFS=$'\t' read name completed started items phase; do
@@ -273,22 +279,24 @@ Verify persistent volume snapshots:
 
 ```bash
 # Get backup with volume info
-velero backup describe production-backup-20260209
+velero backup describe production-backup-20260209 --details
 
-# Look for volume snapshot section
-velero backup describe production-backup-20260209 | \
-  grep -A 20 "Persistent Volumes:"
+# Look for volume snapshot sections
+velero backup describe production-backup-20260209 --details | \
+  grep -A 30 "Backup Volumes:"
 ```
 
 Expected output:
 
 ```text
-Persistent Volumes:
-  pv-12345:
-    Snapshot ID:        snap-abc123
-    Type:              snapshot
-    Availability Zone:  us-east-1a
-    IOPS:              3000
+Backup Volumes:
+  Velero-Native Snapshots:
+    pv-12345:
+      Snapshot ID:        snap-abc123
+      Type:               gp3
+      Availability Zone:  us-east-1a
+      IOPS:               3000
+      Result:             completed
 ```
 
 Script to verify all PVCs have snapshots:
@@ -300,16 +308,18 @@ Script to verify all PVCs have snapshots:
 BACKUP_NAME=$1
 
 # Get PVCs from backup
-velero backup describe $BACKUP_NAME --details | \
-  grep "PersistentVolumeClaim:" -A 100 | \
-  grep "^\s\+-" | \
-  sed 's/^\s\+-\s//' | \
+velero backup describe "$BACKUP_NAME" --details -o json | \
+  jq -r '.status.resourceList["v1/PersistentVolumeClaim"][]?' | \
   while read pvc; do
-    # Check if snapshot exists
-    if velero backup describe $BACKUP_NAME | grep -q "$pvc.*Snapshot ID"; then
-      echo "✓ $pvc has snapshot"
+    # Check if a CSI snapshot or pod volume backup entry exists for this PVC.
+    if velero backup describe "$BACKUP_NAME" --details -o json | \
+      jq -e --arg pvc "$pvc" '
+        (.status.backupVolumes.csiSnapshots | type == "object" and has($pvc)) or
+        (.status.backupVolumes.podVolumeBackups | objects | .podVolumeBackupsDetails.Completed // [] | tostring | contains($pvc))
+      ' >/dev/null; then
+      echo "✓ $pvc has snapshot or pod volume backup"
     else
-      echo "✗ $pvc missing snapshot"
+      echo "✗ $pvc missing snapshot or pod volume backup"
     fi
   done
 ```
@@ -335,7 +345,7 @@ Export backup details for analysis or reporting:
 
 ```bash
 # Export to JSON
-velero backup describe production-backup-20260209 -o json > backup-details.json
+velero backup get production-backup-20260209 -o json > backup-details.json
 
 # Extract specific information
 cat backup-details.json | jq '{
@@ -343,7 +353,7 @@ cat backup-details.json | jq '{
   phase: .status.phase,
   errors: .status.errors,
   warnings: .status.warnings,
-  totalItems: .status.totalItems,
+  itemsBackedUp: (.status.progress.itemsBackedUp // 0),
   duration: (.status.completionTimestamp | fromdateiso8601) - (.status.startTimestamp | fromdateiso8601)
 }'
 ```
@@ -361,9 +371,10 @@ from datetime import datetime
 def get_backup_details(backup_name):
     """Get backup details from Velero."""
     result = subprocess.run(
-        ['velero', 'backup', 'describe', backup_name, '-o', 'json'],
+        ['velero', 'backup', 'get', backup_name, '-o', 'json'],
         capture_output=True,
-        text=True
+        text=True,
+        check=True
     )
     return json.loads(result.stdout)
 
@@ -375,7 +386,7 @@ def generate_report(backup_name):
     print(f"Backup Report: {backup_name}")
     print("=" * 60)
     print(f"Status: {status.get('phase', 'Unknown')}")
-    print(f"Items backed up: {status.get('totalItems', 0)}")
+    print(f"Items backed up: {status.get('progress', {}).get('itemsBackedUp', 0)}")
     print(f"Errors: {status.get('errors', 0)}")
     print(f"Warnings: {status.get('warnings', 0)}")
 
@@ -434,7 +445,7 @@ spec:
               echo "Analyzing backup: $LATEST"
 
               # Check status
-              STATUS=$(velero backup describe $LATEST -o json | jq -r '.status.phase')
+              STATUS=$(velero backup get $LATEST -o json | jq -r '.status.phase')
 
               if [ "$STATUS" != "Completed" ]; then
                 echo "ERROR: Backup failed with status: $STATUS"
@@ -442,16 +453,16 @@ spec:
               fi
 
               # Check for errors
-              ERRORS=$(velero backup describe $LATEST -o json | jq -r '.status.errors // 0')
+              ERRORS=$(velero backup get $LATEST -o json | jq -r '.status.errors // 0')
 
               if [ "$ERRORS" -gt 0 ]; then
                 echo "ERROR: Backup has $ERRORS errors"
-                velero backup describe $LATEST --errors
+                velero backup describe $LATEST
                 exit 1
               fi
 
               # Verify expected resources
-              ITEMS=$(velero backup describe $LATEST -o json | jq -r '.status.totalItems')
+              ITEMS=$(velero backup get $LATEST -o json | jq -r '.status.progress.itemsBackedUp // 0')
 
               if [ "$ITEMS" -lt 10 ]; then
                 echo "WARNING: Only $ITEMS items backed up (expected more)"
