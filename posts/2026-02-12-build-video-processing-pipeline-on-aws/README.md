@@ -83,7 +83,8 @@ exports.handler = async (event) => {
   const parts = key.split('/');
   const userId = parts[1];
   const fileName = parts[parts.length - 1];
-  const jobId = `${Date.now()}-${fileName.replace(/[^a-zA-Z0-9]/g, '-')}`;
+  const safeFileName = fileName.replace(/[^a-zA-Z0-9_-]/g, '-').slice(0, 60);
+  const jobId = `${Date.now()}-${safeFileName}`.slice(0, 80);
 
   // Start the Step Functions workflow
   await sfnClient.send(new StartExecutionCommand({
@@ -108,23 +109,12 @@ The main processing step creates a MediaConvert job that transcodes the video in
 
 ```javascript
 // lambda/transcode.js
-const { MediaConvertClient, CreateJobCommand, DescribeEndpointsCommand } = require('@aws-sdk/client-mediaconvert');
+const { MediaConvertClient, CreateJobCommand } = require('@aws-sdk/client-mediaconvert');
 
-let endpoint = null;
-
-// MediaConvert requires a customer-specific endpoint
-async function getEndpoint() {
-  if (endpoint) return endpoint;
-  const client = new MediaConvertClient({});
-  const { Endpoints } = await client.send(new DescribeEndpointsCommand({}));
-  endpoint = Endpoints[0].Url;
-  return endpoint;
-}
+const client = new MediaConvertClient({});
 
 exports.handler = async (event) => {
   const { sourceBucket, sourceKey, jobId } = event;
-  const mcEndpoint = await getEndpoint();
-  const client = new MediaConvertClient({ endpoint: mcEndpoint });
 
   const inputPath = `s3://${sourceBucket}/${sourceKey}`;
   const outputPath = `s3://${process.env.OUTPUT_BUCKET}/processed/${jobId}/`;
@@ -155,6 +145,7 @@ exports.handler = async (event) => {
           Outputs: [
             // 1080p variant
             {
+              ContainerSettings: { Container: 'M3U8' },
               VideoDescription: {
                 Width: 1920,
                 Height: 1080,
@@ -177,6 +168,7 @@ exports.handler = async (event) => {
             },
             // 720p variant
             {
+              ContainerSettings: { Container: 'M3U8' },
               VideoDescription: {
                 Width: 1280,
                 Height: 720,
@@ -198,6 +190,38 @@ exports.handler = async (event) => {
               NameModifier: '_720p',
             },
           ],
+        },
+        // MP4 for direct download
+        {
+          Name: 'MP4',
+          OutputGroupSettings: {
+            Type: 'FILE_GROUP_SETTINGS',
+            FileGroupSettings: {
+              Destination: `${outputPath}mp4/`,
+            },
+          },
+          Outputs: [{
+            ContainerSettings: { Container: 'MP4' },
+            VideoDescription: {
+              Width: 1280,
+              Height: 720,
+              CodecSettings: {
+                Codec: 'H_264',
+                H264Settings: {
+                  RateControlMode: 'QVBR',
+                  QvbrSettings: { QvbrQualityLevel: 7 },
+                  MaxBitrate: 3000000,
+                },
+              },
+            },
+            AudioDescriptions: [{
+              CodecSettings: {
+                Codec: 'AAC',
+                AacSettings: { Bitrate: 128000, SampleRate: 48000 },
+              },
+            }],
+            NameModifier: '_720p',
+          }],
         },
         // Thumbnail generation
         {
@@ -281,7 +305,7 @@ For HLS adaptive streaming, CloudFront needs to serve the manifest and segment f
 // CloudFront distribution for video delivery
 const distribution = new cloudfront.Distribution(this, 'VideoCDN', {
   defaultBehavior: {
-    origin: new origins.S3Origin(outputBucket),
+    origin: origins.S3BucketOrigin.withOriginAccessControl(outputBucket),
     viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
     cachePolicy: new cloudfront.CachePolicy(this, 'VideoCachePolicy', {
       defaultTtl: cdk.Duration.days(30),
