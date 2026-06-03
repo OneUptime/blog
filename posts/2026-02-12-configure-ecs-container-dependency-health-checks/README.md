@@ -29,8 +29,8 @@ The conditions are:
 | Condition | Meaning |
 |---|---|
 | START | Dependency container has started |
-| COMPLETE | Dependency container has finished (exited with code 0) |
-| SUCCESS | Same as COMPLETE |
+| COMPLETE | Dependency container has finished, regardless of exit code |
+| SUCCESS | Dependency container has finished and exited with code 0 |
 | HEALTHY | Dependency container's health check is passing |
 
 ## Step 1: Define Container Health Checks
@@ -53,7 +53,7 @@ Health checks in ECS use the Docker HEALTHCHECK mechanism. You specify a command
         }
       ],
       "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost:8001/ready || exit 1"],
+        "command": ["CMD-SHELL", "curl -f http://localhost:9901/ready || exit 1"],
         "interval": 5,
         "timeout": 3,
         "retries": 3,
@@ -138,7 +138,7 @@ aws ecs register-task-definition \
       "essential": true,
       "portMappings": [{"containerPort": 8080}],
       "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost:8001/ready || exit 1"],
+        "command": ["CMD-SHELL", "curl -f http://localhost:9901/ready || exit 1"],
         "interval": 5,
         "timeout": 3,
         "retries": 3,
@@ -213,7 +213,7 @@ Some tasks need a one-time initialization before the main containers start, like
 }
 ```
 
-The `db-migrate` container is `essential: false`, meaning the task will not fail if it exits (which it will, after running the migration). The `SUCCESS` condition means the web container only starts after the migration exits successfully (exit code 0).
+The `db-migrate` container is `essential: false`, meaning the task will not fail just because it exits after running the migration. This is also required because `COMPLETE` and `SUCCESS` dependencies cannot be set on essential containers. The `SUCCESS` condition means the web container only starts after the migration exits successfully (exit code 0).
 
 ### Pattern 2: Sidecar Proxy (Service Mesh)
 
@@ -260,12 +260,8 @@ The `db-migrate` container is `essential: false`, meaning the task will not fail
       "name": "fluentbit",
       "image": "public.ecr.aws/aws-observability/aws-for-fluent-bit:latest",
       "essential": true,
-      "healthCheck": {
-        "command": ["CMD-SHELL", "curl -f http://localhost:2020/api/v1/health || exit 1"],
-        "interval": 10,
-        "timeout": 5,
-        "retries": 3,
-        "startPeriod": 10
+      "firelensConfiguration": {
+        "type": "fluentbit"
       }
     },
     {
@@ -273,12 +269,15 @@ The `db-migrate` container is `essential: false`, meaning the task will not fail
       "image": "my-app:latest",
       "essential": true,
       "dependsOn": [
-        {"containerName": "fluentbit", "condition": "HEALTHY"}
+        {"containerName": "fluentbit", "condition": "START"}
       ],
       "logConfiguration": {
-        "logDriver": "fluentd",
+        "logDriver": "awsfirelens",
         "options": {
-          "fluentd-address": "localhost:24224"
+          "Name": "cloudwatch_logs",
+          "region": "us-east-1",
+          "log_group_name": "/ecs/web-app",
+          "log_stream_prefix": "app"
         }
       }
     }
@@ -286,7 +285,7 @@ The `db-migrate` container is `essential: false`, meaning the task will not fail
 }
 ```
 
-This ensures the Fluent Bit agent is healthy before the application starts, so no logs are lost during startup.
+This uses FireLens and ensures the Fluent Bit log router has started before the application starts, which helps avoid log loss during startup.
 
 ### Pattern 4: Multiple Dependencies
 
@@ -418,4 +417,4 @@ If container B depends on container A being HEALTHY, but A never reaches HEALTHY
 
 ## Wrapping Up
 
-Container dependency health checks give you reliable startup ordering in multi-container ECS tasks. The pattern is simple: define health checks on your infrastructure containers (proxies, agents, init containers), then make your application containers depend on them with the HEALTHY or SUCCESS condition. This eliminates race conditions during startup and ensures your application only begins serving traffic when all supporting infrastructure is ready. Get the `startPeriod` right for each container, and your multi-container tasks will start reliably every time.
+Container dependency health checks give you reliable startup ordering in multi-container ECS tasks. The pattern is simple: define health checks on your infrastructure containers (proxies and long-running agents), use `SUCCESS` for nonessential init containers, then make your application containers depend on them with the right condition. This eliminates race conditions during startup and ensures your application only begins serving traffic when all supporting infrastructure is ready. Get the `startPeriod` right for each container, and your multi-container tasks will start reliably every time.
