@@ -37,11 +37,11 @@ graph LR
     E --> C
 ```
 
-Amplify creates a CloudFront distribution and provisions an SSL certificate through AWS Certificate Manager (ACM). It then updates your DNS records to point to CloudFront.
+Amplify creates a CloudFront distribution and provisions an SSL certificate through AWS Certificate Manager (ACM). If your domain is managed in Route 53, Amplify can update your DNS records to point to CloudFront; with third-party DNS providers, you add the records yourself.
 
 ## Configuring Subdomains
 
-By default, Amplify maps your branches to subdomains. You get to choose which branch maps to which domain:
+Amplify lets you map deployed branches to specific domains or subdomains. You get to choose which branch maps to which domain:
 
 | Branch | Domain |
 |--------|--------|
@@ -97,27 +97,27 @@ Type: CNAME
 Host: www
 Value: d1234abcdef.cloudfront.net
 
-# Step 3: For the root domain, add an ANAME/ALIAS record
-# Note: Not all registrars support ANAME/ALIAS records
-Type: ANAME or ALIAS
+# Step 3: For the root domain, add an apex-compatible record
+# Note: Not all registrars support ANAME, ALIAS, or flattened CNAME records
+Type: ANAME, ALIAS, or flattened CNAME
 Host: @
 Value: d1234abcdef.cloudfront.net
 ```
 
-Here's the tricky part: some DNS providers don't support ANAME or ALIAS records for the root domain. If that's your situation, you have a few options:
+Here's the tricky part: some DNS providers don't support ANAME, ALIAS, or flattened CNAME records for the root domain. If that's your situation, you have a few options:
 
 1. **Transfer to Route 53** - this is the cleanest solution
-2. **Use a provider that supports ALIAS records** - Cloudflare does, for example
+2. **Use a provider that supports apex CNAME flattening or ALIAS-style records** - Cloudflare supports CNAME flattening, for example
 3. **Use a www redirect** - point the root domain to www using your registrar's redirect feature
 
 ## SSL Certificate Provisioning
 
 Amplify uses ACM to provision a free SSL certificate. The certificate validation happens through DNS. After you add the CNAME validation record, it typically takes 10-30 minutes for the certificate to validate.
 
-You can check the status in the Amplify Console. It goes through these stages:
+You can check the status in the Amplify Console. It typically moves through these states:
 
 ```text
-Pending validation -> Requesting certificate -> Available
+Pending verification -> Available
 ```
 
 If validation gets stuck, double-check that:
@@ -128,7 +128,7 @@ If validation gets stuck, double-check that:
 
 ## Handling WWW Redirects
 
-Most sites want `www.yourdomain.com` to redirect to `yourdomain.com` (or vice versa). Amplify handles this automatically.
+Most sites want `www.yourdomain.com` to redirect to `yourdomain.com` (or vice versa). Amplify creates a default root-to-www redirect when you add a custom domain, and you can change the redirect behavior in the console.
 
 In the subdomain configuration, set up your redirect:
 
@@ -141,25 +141,21 @@ Amplify sets up a 301 redirect so that `www.yourdomain.com/any-path` correctly r
 
 ## Branch-Based Preview URLs
 
-One of Amplify's nice features is automatic preview environments for branches. You can set up pattern-based subdomains:
+One of Amplify's nice features is automatic preview environments for branches. For a Route 53 custom domain, you can combine branch autodetection with automatic subdomain creation:
 
 ```text
-Pattern: pr-*
-Domain: pr-*.yourdomain.com
+Branch autodetection pattern: pr-*
+Automatic subdomain creation: enabled
 ```
 
-This means when you push a branch called `pr-42`, it's automatically available at `pr-42.yourdomain.com`. This is incredibly useful for PR reviews.
+This means when you push a branch called `pr-42`, Amplify can automatically connect the branch and create a matching subdomain such as `pr-42.yourdomain.com`. This is incredibly useful for PR reviews.
 
-To enable this, go to the "Previews" section in Amplify Console and enable previews for your repository. You can configure which branches get preview URLs:
+To enable this, go to the "Previews" section in Amplify Console and enable previews for your repository. If you manage Amplify with infrastructure as code, enable pull request previews on the branch resource:
 
-```bash
-# In your amplify.yml or through the console
-# Enable previews for pull request branches
-previews:
-  pullRequestPreviewsEnabled: true
-  pullRequestEnvironment:
-    stage: PULL_REQUEST
-    framework: null
+```yaml
+# AWS::Amplify::Branch
+EnablePullRequestPreview: true
+PullRequestEnvironmentName: pr-preview
 ```
 
 ## Custom Headers and Redirects
@@ -208,9 +204,9 @@ dig _c3e2d7e8a9.yourdomain.com CNAME
 
 If the certificate has been pending for more than an hour, verify the CNAME record is correct. A common mistake is including the domain name in the host field. For example, if your domain is `example.com`, the host should be `_c3e2d7e8a9` not `_c3e2d7e8a9.example.com` (some providers auto-append the domain).
 
-### Root Domain Returns 404
+### Root Domain Doesn't Resolve
 
-This happens when your DNS provider doesn't support ALIAS records. The root domain (without www) requires an ALIAS or ANAME record. If your provider doesn't support it, consider using Route 53 for DNS or redirecting the root to www.
+This can happen when your DNS provider doesn't support apex-compatible records that point to hostnames. The root domain (without www) needs an ALIAS, ANAME, or flattened CNAME-style record. If your provider doesn't support one, consider using Route 53 for DNS or redirecting the root to www.
 
 ### Slow Initial Load After Domain Change
 
