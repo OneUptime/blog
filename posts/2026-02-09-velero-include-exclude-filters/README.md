@@ -17,7 +17,7 @@ Velero offers several filtering mechanisms:
 - Namespace filters (include/exclude specific namespaces)
 - Resource type filters (include/exclude resource kinds)
 - Label selectors (filter resources by labels)
-- Resource policies (exclude specific resource instances)
+- Resource policies (reusable scoped resource filters and volume backup policies)
 
 These filters can be combined to create sophisticated backup strategies that capture exactly what you need.
 
@@ -260,9 +260,9 @@ spec:
     ttl: 48h0m0s
 ```
 
-## Excluding Resources by Annotation
+## Excluding Resources by Label
 
-Use annotations to exclude specific resources:
+Use Velero's exclusion label to exclude specific resources:
 
 ```yaml
 apiVersion: v1
@@ -270,8 +270,8 @@ kind: ConfigMap
 metadata:
   name: temp-config
   namespace: production
-  annotations:
-    backup.velero.io/backup-exclude: "true"
+  labels:
+    velero.io/exclude-from-backup: "true"
 data:
   temp: value
 ```
@@ -280,7 +280,7 @@ This ConfigMap will be excluded from all backups regardless of other filters.
 
 Resource Policies for Advanced Filtering
 
-Create resource policies for complex exclusion rules:
+Create resource policies for reusable scoped resource filters and volume handling rules:
 
 ```yaml
 apiVersion: v1
@@ -292,37 +292,29 @@ metadata:
     velero.io/plugin-config: "true"
     velero.io/resource-policy: "true"
 data:
-  policy: |
+  resource-policies.yaml: |
     version: v1
-    resourcePolicies:
-    # Exclude completed jobs
-    - resource: jobs
-      conditions:
-        namespaces:
-        - production
+    includeExcludePolicy:
+      includedClusterScopedResources:
+      - crd
+      excludedClusterScopedResources: []
+      includedNamespaceScopedResources:
+      - deployment
+      - statefulset
+      - pvc
+      - secret
+      - configmap
+      excludedNamespaceScopedResources:
+      - job
+      - replicaset
+      - event
+    volumePolicies:
+    - conditions:
+        volumeTypes:
+        - emptyDir
+        - configmap
       action:
-        type: exclude
-        properties:
-          conditions:
-          - status.succeeded >= 1
-    # Exclude old replica sets
-    - resource: replicasets
-      conditions:
-        namespaces:
-        - "*"
-      action:
-        type: exclude
-        properties:
-          conditions:
-          - spec.replicas == 0
-          - status.replicas == 0
-    # Exclude empty PVCs
-    - resource: persistentvolumeclaims
-      action:
-        type: exclude
-        properties:
-          conditions:
-          - status.phase == "Pending"
+        type: skip
 ```
 
 Apply the resource policy:
@@ -332,7 +324,7 @@ kubectl apply -f resource-policy.yaml
 
 # Reference in backup
 velero backup create with-policy \
-  --resource-policy-configmap velero-resource-policy
+  --resource-policies-configmap velero-resource-policy
 ```
 
 ## Excluding Temporary and Cache Data
@@ -342,7 +334,7 @@ Exclude ephemeral data from backups:
 ```bash
 # Exclude common temporary resources
 velero backup create no-temp \
-  --exclude-resources 'events,*.events.k8s.io,backups.velero.io,restores.velero.io' \
+  --exclude-resources 'events,events.events.k8s.io,backups.velero.io,restores.velero.io' \
   --exclude-namespaces 'kube-system,kube-public,kube-node-lease'
 
 # Use labels to mark temporary resources
@@ -375,7 +367,7 @@ spec:
     - events.events.k8s.io
     - backups.velero.io
     - restores.velero.io
-    # Exclude pod logs (use log aggregation instead)
+    # Exclude pod objects that workload controllers can recreate
     - pods
     # Exclude replica sets (deployment covers it)
     - replicasets
@@ -397,12 +389,12 @@ spec:
 Test filters before creating scheduled backups:
 
 ```bash
-# Dry-run to see what would be backed up
+# Preview the Backup object without submitting it
 velero backup create test-filter \
   --include-namespaces production \
   --exclude-resources events,pods \
   --selector tier=critical \
-  --dry-run -o yaml
+  -o yaml
 
 # Create actual test backup
 velero backup create validation-backup \
@@ -414,7 +406,7 @@ velero backup create validation-backup \
 velero backup describe validation-backup --details
 
 # See resource counts
-velero backup describe validation-backup | grep "Resource List:"
+velero backup describe validation-backup --details | grep -A 50 "Resource List:"
 
 # Delete test backup
 velero backup delete validation-backup
@@ -427,10 +419,10 @@ Understand how Velero applies filters:
 1. Namespace inclusion/exclusion filters
 2. Resource type inclusion/exclusion filters
 3. Label selector filters
-4. Resource-specific annotations
+4. Resource-specific exclusion labels
 5. Resource policies
 
-Exclusions always take precedence over inclusions. If a resource matches both include and exclude criteria, it will be excluded.
+Velero applies include and exclude filters before volume policies. Resources with the `velero.io/exclude-from-backup=true` label are excluded even if they match the backup's label selector.
 
 ```bash
 # This excludes secrets even though they match the label
