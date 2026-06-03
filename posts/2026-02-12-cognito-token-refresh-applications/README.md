@@ -37,7 +37,7 @@ The refresh token is special because it's opaque - it's not a JWT and you can't 
 
 ## Basic Token Refresh
 
-The simplest way to refresh tokens is using the Cognito `InitiateAuth` API with the `REFRESH_TOKEN_AUTH` flow.
+For app clients without refresh token rotation, the simplest way to refresh tokens is using the Cognito `InitiateAuth` API with the `REFRESH_TOKEN_AUTH` flow.
 
 Here's the basic refresh call:
 
@@ -60,7 +60,7 @@ async function refreshTokens(refreshToken) {
             }
         }));
 
-        // Note: refresh token itself is NOT returned
+        // Note: with REFRESH_TOKEN_AUTH, the refresh token itself is NOT returned
         // You keep using the same refresh token
         return {
             idToken: response.AuthenticationResult.IdToken,
@@ -78,7 +78,7 @@ async function refreshTokens(refreshToken) {
 }
 ```
 
-Notice that the refresh call doesn't return a new refresh token - you keep using the original one until it expires.
+Notice that this refresh call doesn't return a new refresh token - you keep using the original one until it expires. If you enable refresh token rotation, use `GetTokensFromRefreshToken` or the OAuth token endpoint instead.
 
 ## Proactive Refresh Strategy
 
@@ -97,11 +97,11 @@ class TokenManager {
     // Store tokens after initial login
     setTokens(authResult) {
         this.tokens = {
-            idToken: authResult.IdToken,
-            accessToken: authResult.AccessToken,
-            refreshToken: authResult.RefreshToken,
+            idToken: authResult.IdToken ?? authResult.idToken,
+            accessToken: authResult.AccessToken ?? authResult.accessToken,
+            refreshToken: authResult.RefreshToken ?? authResult.refreshToken,
             // Calculate absolute expiry time
-            expiresAt: Date.now() + (authResult.ExpiresIn * 1000)
+            expiresAt: authResult.expiresAt ?? Date.now() + (authResult.ExpiresIn * 1000)
         };
     }
 
@@ -317,7 +317,7 @@ router.post('/auth/refresh', async (req, res) => {
 
 ## Refresh Token Rotation and Revocation
 
-Cognito supports refresh token rotation for added security. When enabled, each refresh call returns a new refresh token and invalidates the previous one.
+Cognito supports refresh token rotation for added security. When enabled, refresh requests through `GetTokensFromRefreshToken` or the OAuth token endpoint return a new refresh token and invalidate the previous one after an optional grace period. `REFRESH_TOKEN_AUTH` isn't compatible with refresh token rotation.
 
 Enable it through the user pool client settings:
 
@@ -327,7 +327,30 @@ aws cognito-idp update-user-pool-client \
     --client-id your-app-client-id \
     --token-validity-units RefreshToken=days \
     --refresh-token-validity 30 \
+    --refresh-token-rotation Feature=ENABLED,RetryGracePeriodSeconds=10 \
     --enable-token-revocation
+```
+
+With rotation enabled, the SDK refresh call uses `GetTokensFromRefreshToken`:
+
+```javascript
+const {
+    GetTokensFromRefreshTokenCommand
+} = require('@aws-sdk/client-cognito-identity-provider');
+
+async function refreshTokensWithRotation(refreshToken) {
+    const response = await client.send(new GetTokensFromRefreshTokenCommand({
+        ClientId: CLIENT_ID,
+        RefreshToken: refreshToken
+    }));
+
+    return {
+        idToken: response.AuthenticationResult.IdToken,
+        accessToken: response.AuthenticationResult.AccessToken,
+        refreshToken: response.AuthenticationResult.RefreshToken,
+        expiresIn: response.AuthenticationResult.ExpiresIn
+    };
+}
 ```
 
 You can also explicitly revoke a refresh token during logout:
