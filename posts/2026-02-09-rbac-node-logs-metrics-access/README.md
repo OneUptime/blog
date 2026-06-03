@@ -10,7 +10,7 @@ Description: Learn how to grant RBAC permissions for accessing node logs and met
 
 Node-level observability is critical for troubleshooting Kubernetes clusters. Platform teams need to collect metrics, read system logs, and monitor node health without disrupting workloads. The challenge is granting this access without exposing node management capabilities that could let users drain nodes, modify labels, or worse, manipulate node conditions to trigger pod evictions.
 
-The default node-reader role is too restrictive for real observability needs. It allows reading node objects but not accessing logs or proxy endpoints needed for metrics collection. The cluster-admin role grants full access but includes dangerous permissions like the ability to delete nodes or update taints. The solution lies in creating custom roles that grant precise observability permissions.
+Basic read-only node permissions are too restrictive for real observability needs. They allow reading node objects but not accessing kubelet logs or metrics endpoints. The cluster-admin role grants full access but includes dangerous permissions like the ability to delete nodes or update taints. The solution lies in creating custom roles that grant precise observability permissions.
 
 ## Understanding Node Resource Permissions
 
@@ -18,13 +18,13 @@ Kubernetes nodes expose several API endpoints with different permission requirem
 
 **Node Objects**: Basic information about node capacity, conditions, and addresses. Requires `get`, `list`, and `watch` verbs on the `nodes` resource.
 
-**Node Logs**: System logs from kubelet, container runtime, and kernel logs. Requires the `get` verb on the `nodes/log` subresource.
+**Node Logs**: System logs exposed by the kubelet `/logs/` endpoint. Requires the `get` verb on the `nodes/log` subresource when using kubelet webhook authorization.
 
-**Node Metrics**: CPU, memory, disk, and network metrics via the kubelet metrics endpoint. Requires the `get` verb on the `nodes/metrics` subresource.
+**Node Metrics**: CPU, memory, disk, and network metrics via the kubelet `/metrics` endpoint. Requires the `get` verb on the `nodes/metrics` subresource when using kubelet webhook authorization.
 
-**Node Proxy**: Direct proxying to kubelet endpoints for debugging. Requires the `get`, `create`, `delete` verbs on the `nodes/proxy` subresource.
+**Node Proxy**: Proxying to kubelet endpoints through the Kubernetes API server. Requires the `nodes/proxy` subresource; the exact RBAC verb depends on the HTTP method, such as `get` for `GET` requests.
 
-**Node Stats**: Summary statistics from kubelet stats endpoint. Typically accessed via metrics-server rather than direct permissions.
+**Node Stats**: Summary statistics from the kubelet `/stats/` endpoint. Requires the `get` verb on the `nodes/stats` subresource, although metrics-server 0.6 and later queries `/metrics/resource` instead of `/stats/summary`.
 
 ## Creating a Node Observer Role
 
@@ -54,6 +54,12 @@ rules:
 - apiGroups: [""]
   resources:
     - nodes/metrics
+  verbs: ["get"]
+
+# Access node stats summary
+- apiGroups: [""]
+  resources:
+    - nodes/stats
   verbs: ["get"]
 
 # Read node status (part of node object)
@@ -106,45 +112,62 @@ Users and ServiceAccounts with this role can read node information and access lo
 
 ## Accessing Node Logs
 
-With the node-observer role, you can retrieve logs from nodes using kubectl:
+With the node-observer role, a ServiceAccount can retrieve logs directly from the kubelet HTTPS endpoint:
 
 ```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+NODE_IP=10.0.1.12
+
 # Get kubelet logs from a specific node
-kubectl get --raw /api/v1/nodes/worker-node-1/proxy/logs/kubelet.log
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/logs/kubelet.log
 
 # Get kernel logs (requires appropriate log path)
-kubectl get --raw /api/v1/nodes/worker-node-1/proxy/logs/kern.log
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/logs/kern.log
 
 # Get container runtime logs
-kubectl get --raw /api/v1/nodes/worker-node-1/proxy/logs/containerd.log
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/logs/containerd.log
 ```
 
 The exact log paths depend on your node OS and logging configuration. Common paths include:
 
 ```bash
 # List available logs on a node
-kubectl get --raw /api/v1/nodes/worker-node-1/proxy/logs/
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/logs/
 
-# Alternative: Use kubectl debug with node-observer role
+# Alternative: Use kubectl debug with separate pod and host access permissions
 kubectl debug node/worker-node-1 -it --image=busybox
 # Then access logs at /host/var/log/
 ```
 
-Actually, `kubectl debug` requires additional permissions. For pure node log access without debug capabilities, use the proxy method.
+Actually, `kubectl debug` requires additional permissions. For pure node log access without debug capabilities, use the direct kubelet `/logs/` endpoint with `nodes/log` permissions.
 
 ## Collecting Node Metrics
 
 Access node metrics through the kubelet metrics endpoint:
 
 ```bash
+TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+NODE_IP=10.0.1.12
+
 # Get kubelet metrics in Prometheus format
-kubectl get --raw /api/v1/nodes/worker-node-1/proxy/metrics
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/metrics
 
 # Get cadvisor metrics (container metrics)
-kubectl get --raw /api/v1/nodes/worker-node-1/proxy/metrics/cadvisor
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/metrics/cadvisor
+
+# Get resource metrics used by metrics-server 0.6 and later
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/metrics/resource
 
 # Parse specific metrics
-kubectl get --raw /api/v1/nodes/worker-node-1/proxy/metrics | grep node_cpu
+curl -sk --header "Authorization: Bearer $TOKEN" \
+  https://$NODE_IP:10250/metrics | grep node_cpu
 ```
 
 For Prometheus or other monitoring systems, configure ServiceAccount with node-observer permissions:
@@ -153,24 +176,23 @@ For Prometheus or other monitoring systems, configure ServiceAccount with node-o
 # prometheus-node-scrape-config.yaml
 scrape_configs:
 - job_name: 'kubernetes-nodes'
+  scheme: https
+  metrics_path: /metrics
   kubernetes_sd_configs:
   - role: node
-  scheme: https
   tls_config:
     ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
   bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
   relabel_configs:
   - action: labelmap
     regex: __meta_kubernetes_node_label_(.+)
-  - target_label: __address__
-    replacement: kubernetes.default.svc:443
-  - source_labels: [__meta_kubernetes_node_name]
+  - source_labels: [__meta_kubernetes_node_address_InternalIP]
     regex: (.+)
-    target_label: __metrics_path__
-    replacement: /api/v1/nodes/${1}/proxy/metrics
+    target_label: __address__
+    replacement: ${1}:10250
 ```
 
-The Prometheus ServiceAccount needs the node-observer role to scrape these endpoints.
+The Prometheus ServiceAccount needs the node-observer role to scrape these endpoints. If your kubelet serving certificates are not signed by the ServiceAccount CA bundle, configure `tls_config` with the correct CA or server name for your cluster.
 
 ## Allowing Node Proxy Access for Debugging
 
@@ -187,19 +209,23 @@ rules:
 - apiGroups: [""]
   resources:
     - nodes
+  verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
     - nodes/log
     - nodes/metrics
+    - nodes/stats
     - nodes/status
-  verbs: ["get", "list", "watch"]
+  verbs: ["get"]
 
 # Add proxy access
 - apiGroups: [""]
   resources:
     - nodes/proxy
-  verbs: ["get", "create"]
+  verbs: ["get"]
 ```
 
-With proxy access, users can query kubelet endpoints directly:
+With proxy access, users can query kubelet endpoints through the API server:
 
 ```bash
 # Query kubelet healthz endpoint
@@ -223,7 +249,7 @@ Explicitly document what permissions you are NOT granting to make security bound
 # - nodes: create, update, patch, delete
 #   Prevents node manipulation, draining, cordoning
 # - nodes/proxy: delete
-#   Prevents closing existing proxy connections improperly
+#   Prevents DELETE proxy requests
 # - No access to node SSH or host filesystem
 #   Use kubectl debug with separate permissions for that
 ```
@@ -365,22 +391,35 @@ Track who accesses node logs and metrics:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-# Log node log and metric access
+# Log API-server node proxy access
 - level: Metadata
   resources:
   - group: ""
-    resources: ["nodes/log", "nodes/metrics", "nodes/proxy"]
+    resources: ["nodes/proxy"]
   verbs: ["get"]
+
+# Log kubelet SubjectAccessReview bodies for direct kubelet access checks
+- level: Request
+  resources:
+  - group: "authorization.k8s.io"
+    resources: ["subjectaccessreviews"]
+  verbs: ["create"]
 ```
 
 Review audit logs for suspicious patterns:
 
 ```bash
-# Find who is accessing node logs
-jq 'select(.objectRef.resource=="nodes/log")' /var/log/kubernetes/audit.log
+# Find SubjectAccessReviews for direct kubelet log access
+jq 'select(.objectRef.resource=="subjectaccessreviews") |
+    select(.requestObject.spec.resourceAttributes.resource=="nodes") |
+    select(.requestObject.spec.resourceAttributes.subresource=="log")' \
+  /var/log/kubernetes/audit.log
 
 # Identify users accessing many nodes rapidly (potential scanning)
-jq 'select(.objectRef.resource=="nodes/log") | .user.username' \
+jq 'select(.objectRef.resource=="subjectaccessreviews") |
+    select(.requestObject.spec.resourceAttributes.resource=="nodes") |
+    select(.requestObject.spec.resourceAttributes.subresource=="log") |
+    .requestObject.spec.user' \
   /var/log/kubernetes/audit.log | sort | uniq -c | sort -rn
 ```
 
