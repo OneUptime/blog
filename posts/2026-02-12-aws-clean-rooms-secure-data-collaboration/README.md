@@ -10,7 +10,7 @@ Description: A practical guide to setting up AWS Clean Rooms for secure multi-pa
 
 There are plenty of situations where two companies need to analyze data together but neither wants to share their raw data with the other. A retailer and an ad platform want to measure campaign effectiveness. Two healthcare organizations want to do population health research. A bank wants to enrich its data with third-party demographic info. AWS Clean Rooms was built for exactly these scenarios.
 
-Clean Rooms lets multiple parties bring their data to a shared analysis environment where they can run approved queries without ever seeing each other's raw data. The data never leaves your AWS account, and you control exactly which computations are allowed.
+Clean Rooms lets multiple parties bring their data to a shared analysis environment where they can run approved queries without ever seeing each other's raw data. The raw source data stays in each member's AWS account, and you control exactly which computations are allowed.
 
 ## How Clean Rooms Works
 
@@ -18,7 +18,7 @@ The basic model involves a few concepts:
 
 - **Collaboration** - An agreement between two or more parties to analyze data together
 - **Membership** - Each party that joins a collaboration
-- **Configured table** - A Glue table that a member makes available to the collaboration with specific restrictions
+- **Configured table** - A table reference, such as a Glue table, that a member makes available to the collaboration with specific restrictions
 - **Analysis rule** - Controls what can be done with a configured table (aggregation only, list output, or custom)
 - **Query runner** - The member who actually runs queries against the collaboration
 
@@ -49,6 +49,7 @@ aws cleanrooms create-collaboration \
     --data-encryption-metadata '{
         "allowCleartext": true,
         "allowDuplicates": true,
+        "allowJoinsOnColumnsWithDifferentNames": false,
         "preserveNulls": false
     }'
 ```
@@ -58,17 +59,8 @@ CompanyB then accepts the invitation by creating their membership:
 ```bash
 # CompanyB creates their membership in the collaboration
 aws cleanrooms create-membership \
-    --collaboration-identifier "collab-abc123" \
-    --query-log-status "ENABLED" \
-    --default-result-configuration '{
-        "outputConfiguration": {
-            "s3": {
-                "resultFormat": "CSV",
-                "bucket": "companb-cleanroom-results",
-                "keyPrefix": "results/"
-            }
-        }
-    }'
+    --collaboration-identifier "12345678-1234-1234-1234-123456789abc" \
+    --query-log-status "ENABLED"
 ```
 
 ## Configuring Tables
@@ -97,7 +89,7 @@ Now set the analysis rule. This is where you define what queries are allowed:
 # Only allow aggregation queries - no raw data output
 # Minimum aggregation threshold of 100 prevents identification of individuals
 aws cleanrooms create-configured-table-analysis-rule \
-    --configured-table-identifier "ct-abc123" \
+    --configured-table-identifier "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
     --analysis-rule-type "AGGREGATION" \
     --analysis-rule-policy '{
         "v1": {
@@ -119,7 +111,7 @@ aws cleanrooms create-configured-table-analysis-rule \
                 "joinColumns": ["hashed_email"],
                 "joinRequired": "QUERY_RUNNER",
                 "dimensionColumns": ["purchase_date", "category", "store_region"],
-                "scalarFunctions": ["COALESCE", "CAST"],
+                "scalarFunctions": ["COALESCE", "CAST", "EXTRACT"],
                 "outputConstraints": [
                     {
                         "columnName": "hashed_email",
@@ -150,6 +142,38 @@ aws cleanrooms create-configured-table \
     --analysis-method "DIRECT_QUERY"
 ```
 
+CompanyB also needs an analysis rule for the columns that can be joined, grouped, and constrained:
+
+```bash
+# CompanyB allows aggregation queries grouped by campaign
+aws cleanrooms create-configured-table-analysis-rule \
+    --configured-table-identifier "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" \
+    --analysis-rule-type "AGGREGATION" \
+    --analysis-rule-policy '{
+        "v1": {
+            "aggregation": {
+                "aggregateColumns": [
+                    {
+                        "columnNames": ["hashed_email"],
+                        "function": "COUNT_DISTINCT"
+                    }
+                ],
+                "joinColumns": ["hashed_email"],
+                "joinRequired": "QUERY_RUNNER",
+                "dimensionColumns": ["campaign_id", "impression_date", "ad_format"],
+                "scalarFunctions": ["EXTRACT"],
+                "outputConstraints": [
+                    {
+                        "columnName": "hashed_email",
+                        "minimum": 100,
+                        "type": "COUNT_DISTINCT"
+                    }
+                ]
+            }
+        }
+    }'
+```
+
 ## Associating Tables with the Collaboration
 
 After configuring tables, each party associates them with the collaboration:
@@ -157,15 +181,15 @@ After configuring tables, each party associates them with the collaboration:
 ```bash
 # CompanyA associates their configured table
 aws cleanrooms create-configured-table-association \
-    --membership-identifier "mem-abc123" \
-    --configured-table-identifier "ct-retailpurchases" \
+    --membership-identifier "11111111-1111-1111-1111-111111111111" \
+    --configured-table-identifier "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" \
     --name "purchases" \
     --role-arn "arn:aws:iam::111122223333:role/CleanRoomsServiceRole"
 
 # CompanyB associates their configured table
 aws cleanrooms create-configured-table-association \
-    --membership-identifier "mem-def456" \
-    --configured-table-identifier "ct-adimpressions" \
+    --membership-identifier "22222222-2222-2222-2222-222222222222" \
+    --configured-table-identifier "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" \
     --name "impressions" \
     --role-arn "arn:aws:iam::222233334444:role/CleanRoomsServiceRole"
 ```
@@ -178,9 +202,9 @@ Now the query runner can analyze the combined data. The query must comply with a
 # Run an aggregation query to measure ad campaign effectiveness
 aws cleanrooms start-protected-query \
     --type "SQL" \
-    --membership-identifier "mem-abc123" \
+    --membership-identifier "11111111-1111-1111-1111-111111111111" \
     --sql-parameters '{
-        "queryString": "SELECT i.campaign_id, p.category, DATE_TRUNC(month, p.purchase_date) AS purchase_month, COUNT_DISTINCT(p.hashed_email) AS unique_buyers, SUM(p.amount) AS total_spend, AVG(p.amount) AS avg_order_value FROM purchases p INNER JOIN impressions i ON p.hashed_email = i.hashed_email WHERE p.purchase_date >= DATE(2026-01-01) GROUP BY i.campaign_id, p.category, DATE_TRUNC(month, p.purchase_date) HAVING COUNT_DISTINCT(p.hashed_email) >= 100"
+        "queryString": "SELECT i.campaign_id, p.category, EXTRACT(year FROM p.purchase_date) AS purchase_year, EXTRACT(month FROM p.purchase_date) AS purchase_month, COUNT(DISTINCT p.hashed_email) AS unique_buyers, SUM(p.amount) AS total_spend, AVG(p.amount) AS avg_order_value FROM purchases p INNER JOIN impressions i ON p.hashed_email = i.hashed_email WHERE p.purchase_date >= DATE '2026-01-01' GROUP BY i.campaign_id, p.category, EXTRACT(year FROM p.purchase_date), EXTRACT(month FROM p.purchase_date) HAVING COUNT(DISTINCT p.hashed_email) >= 100"
     }' \
     --result-configuration '{
         "outputConfiguration": {
@@ -193,7 +217,7 @@ aws cleanrooms start-protected-query \
     }'
 ```
 
-The result tells you how many unique buyers who saw a particular ad campaign went on to purchase in each category, along with their total and average spend. Neither party sees the other's raw data.
+The result tells you how many unique buyers who saw a particular ad campaign went on to purchase in each category and month, along with their total and average spend. Neither party sees the other's raw data.
 
 ## Monitoring Query Results
 
@@ -202,8 +226,8 @@ Check on your protected query:
 ```bash
 # Get the status and results of a protected query
 aws cleanrooms get-protected-query \
-    --membership-identifier "mem-abc123" \
-    --protected-query-identifier "pq-xyz789"
+    --membership-identifier "11111111-1111-1111-1111-111111111111" \
+    --protected-query-identifier "33333333-3333-3333-3333-333333333333"
 ```
 
 ## Cryptographic Computing (Optional)
@@ -228,11 +252,12 @@ aws cleanrooms create-collaboration \
     --data-encryption-metadata '{
         "allowCleartext": false,
         "allowDuplicates": false,
+        "allowJoinsOnColumnsWithDifferentNames": false,
         "preserveNulls": false
     }'
 ```
 
-When `allowCleartext` is false, both parties must encrypt their join columns using the same shared encryption key before loading data. This adds a setup step but provides stronger privacy guarantees.
+When `allowCleartext` is false, both parties must encrypt their join columns using the same shared encryption key before loading data. This adds a setup step but provides stronger privacy guarantees. C3R supports a limited subset of SQL on encrypted data, so aggregate functions like `SUM` and `AVG` are not supported on encrypted columns.
 
 ## IAM Role for Clean Rooms
 
