@@ -24,21 +24,21 @@ Here's a typical Node.js application as an example.
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 FROM node:20-alpine
 WORKDIR /app
 COPY --from=builder /app/node_modules ./node_modules
 COPY . .
 EXPOSE 8080
-# EB expects the app to listen on the port specified by PORT env var
+# EB expects the app to listen on the configured container port
 CMD ["node", "server.js"]
 ```
 
-One critical detail: Elastic Beanstalk's Docker platform uses a reverse proxy (Nginx) that forwards traffic to your container. Your application needs to listen on the port specified by the `PORT` environment variable, which defaults to 8080.
+One critical detail: Elastic Beanstalk's Docker platform uses a reverse proxy (Nginx) that forwards traffic to your container. Your application needs to listen on the container port you expose in the `Dockerfile` or configure in `Dockerrun.aws.json`. If you set the `PORT` environment property, your code can read that value from the `PORT` environment variable.
 
 ```javascript
-// server.js - Listen on the port EB assigns
+// server.js - Listen on the configured application port
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -78,12 +78,12 @@ Pre-building images and storing them in ECR speeds up deployments and ensures co
 aws ecr create-repository --repository-name my-docker-app --region us-east-1
 
 # Authenticate Docker with ECR
-aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Build and push the image
 docker build -t my-docker-app .
-docker tag my-docker-app:latest 123456789.dkr.ecr.us-east-1.amazonaws.com/my-docker-app:latest
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-docker-app:latest
+docker tag my-docker-app:latest 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-docker-app:latest
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-docker-app:latest
 ```
 
 Then create a `Dockerrun.aws.json` that points to the ECR image instead of building from a Dockerfile.
@@ -92,7 +92,7 @@ Then create a `Dockerrun.aws.json` that points to the ECR image instead of build
 {
     "AWSEBDockerrunVersion": "1",
     "Image": {
-        "Name": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-docker-app:latest",
+        "Name": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-docker-app:latest",
         "Update": "true"
     },
     "Ports": [
@@ -112,8 +112,6 @@ For applications that need multiple services - like a web app with a Redis cache
 
 ```yaml
 # docker-compose.yml - Multi-container setup
-version: '3.8'
-
 services:
   web:
     build: .
@@ -166,6 +164,7 @@ option_settings:
   aws:elasticbeanstalk:application:environment:
     NODE_ENV: production
     LOG_LEVEL: info
+    PORT: 8080
   aws:autoscaling:asg:
     MinSize: 2
     MaxSize: 6
@@ -175,12 +174,14 @@ option_settings:
     SystemType: enhanced
 ```
 
+For Docker Compose environments, Elastic Beanstalk does not provide the Nginx proxy and ignores the `ProxyServer` setting, so run your proxy as a container or publish the web service port in `docker-compose.yml`.
+
 ## Handling Persistent Storage
 
-Docker containers are ephemeral - any data written inside the container disappears when it's replaced. For persistent data, mount EBS volumes or use external services like S3 or RDS.
+Docker containers are ephemeral - any data written inside the container disappears when it's replaced. For persistent data, use an external service like S3 or RDS, or bind mount a host directory for data that only needs to persist on the same instance.
 
 ```yaml
-# .ebextensions/storage.config - Mount an EBS volume for persistent data
+# .ebextensions/storage.config - Create a host directory for container data
 commands:
   01_mkdir:
     command: "mkdir -p /data/app"
@@ -246,7 +247,6 @@ option_settings:
     DeploymentPolicy: Rolling
     BatchSizeType: Percentage
     BatchSize: 25
-  aws:elasticbeanstalk:command:
     Timeout: 600
 ```
 
@@ -270,18 +270,15 @@ sudo docker logs <container-id>
 sudo cat /var/app/current/docker-compose.yml
 ```
 
-For persistent logging, configure Docker to send logs to CloudWatch.
+For persistent logging, enable Elastic Beanstalk log streaming to CloudWatch Logs.
 
 ```yaml
 # .ebextensions/cloudwatch-logs.config
-files:
-  "/etc/awslogs/config/docker.conf":
-    mode: "000644"
-    content: |
-      [docker]
-      log_group_name=/aws/elasticbeanstalk/my-docker-app/docker
-      log_stream_name={instance_id}
-      file=/var/log/eb-docker/containers/eb-current-app/*-stdouterr.log
+option_settings:
+  aws:elasticbeanstalk:cloudwatch:logs:
+    StreamLogs: true
+    DeleteOnTerminate: false
+    RetentionInDays: 30
 ```
 
 ## Performance Considerations
