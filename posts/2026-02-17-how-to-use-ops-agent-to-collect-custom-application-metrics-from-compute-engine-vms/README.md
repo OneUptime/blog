@@ -48,11 +48,10 @@ bash add-google-cloud-ops-agent-repo.sh --also-install
 
 The Ops Agent configuration lives in `/etc/google-cloud-ops-agent/config.yaml`. The default configuration collects standard system metrics and system logs. To add custom metrics, you extend this file.
 
-The configuration has three main sections:
+The configuration uses the same building blocks for metrics and logging:
 
 ```yaml
 # /etc/google-cloud-ops-agent/config.yaml
-# Three main sections: metrics, logging, and combined (not shown)
 metrics:
   receivers:
     # Define where metrics come from
@@ -80,7 +79,7 @@ Here is a Python Flask application that exposes custom metrics:
 
 ```python
 from flask import Flask
-from prometheus_client import Counter, Histogram, Gauge, generate_latest
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 app = Flask(__name__)
 
@@ -111,7 +110,7 @@ QUEUE_DEPTH = Gauge(
 @app.route('/metrics')
 def metrics():
     """Expose Prometheus-formatted metrics for the Ops Agent to scrape."""
-    return generate_latest(), 200, {'Content-Type': 'text/plain'}
+    return generate_latest(), 200, {'Content-Type': CONTENT_TYPE_LATEST}
 
 @app.route('/api/data')
 def get_data():
@@ -182,19 +181,22 @@ sudo journalctl -u google-cloud-ops-agent -n 20 --no-pager
 
 ## Step 5: Collect StatsD Metrics
 
-If your application uses StatsD instead of Prometheus, the Ops Agent can handle that too:
+The Ops Agent does not have a native StatsD receiver. If your application uses StatsD, run a StatsD-to-Prometheus exporter on the VM and configure the Ops Agent to scrape the exporter's Prometheus endpoint:
 
 ```yaml
-# Configure StatsD receiver in the Ops Agent config
+# Scrape a StatsD exporter with the Ops Agent Prometheus receiver
 metrics:
   receivers:
     hostmetrics:
       type: hostmetrics
-    statsd_app:
-      type: statsd
+    statsd_exporter:
+      type: prometheus
       config:
-        # Listen on UDP port 8125 for StatsD metrics
-        endpoint: 0.0.0.0:8125
+        scrape_configs:
+          - job_name: 'statsd-exporter'
+            scrape_interval: 15s
+            static_configs:
+              - targets: ['localhost:9102']
   service:
     pipelines:
       default_pipeline:
@@ -202,10 +204,10 @@ metrics:
           - hostmetrics
       statsd_pipeline:
         receivers:
-          - statsd_app
+          - statsd_exporter
 ```
 
-Then send metrics from your application using any StatsD client:
+Then send metrics from your application to the exporter using any StatsD client:
 
 ```python
 import statsd
@@ -221,7 +223,7 @@ client.gauge('connections.active', 15) # Gauge
 
 ## Step 6: Collect JMX Metrics for Java Applications
 
-For Java applications, the Ops Agent has a built-in JMX receiver:
+For Java applications, the Ops Agent has a built-in JVM receiver that collects metrics from a JMX endpoint:
 
 ```yaml
 # Configure JMX metrics collection for a Java application
@@ -230,11 +232,8 @@ metrics:
     hostmetrics:
       type: hostmetrics
     jmx_app:
-      type: jmx
-      config:
-        endpoint: localhost:9999
-        # Specify which JMX MBeans to collect
-        target_system: jvm
+      type: jvm
+      endpoint: localhost:9999
   service:
     pipelines:
       default_pipeline:
@@ -251,6 +250,7 @@ Make sure your Java application has JMX enabled:
 # Start Java application with JMX remote access enabled
 java -Dcom.sun.management.jmxremote \
      -Dcom.sun.management.jmxremote.port=9999 \
+     -Dcom.sun.management.jmxremote.rmi.port=9999 \
      -Dcom.sun.management.jmxremote.authenticate=false \
      -Dcom.sun.management.jmxremote.ssl=false \
      -jar myapp.jar
@@ -258,18 +258,23 @@ java -Dcom.sun.management.jmxremote \
 
 ## Step 7: View Custom Metrics in Cloud Monitoring
 
-Once the Ops Agent is collecting your custom metrics, they appear in Cloud Monitoring under the `prometheus.googleapis.com` namespace for Prometheus metrics or `custom.googleapis.com` for StatsD metrics.
+Once the Ops Agent is collecting your custom metrics, Prometheus-scraped metrics appear in Cloud Monitoring under the `prometheus.googleapis.com` namespace. JVM integration metrics appear under the `workload.googleapis.com/jvm.*` namespace.
 
 To find your metrics in the Cloud Console, go to Monitoring and then Metrics Explorer. Search for your metric name, such as `prometheus.googleapis.com/app_requests_total/counter`.
 
-You can also query metrics using the gcloud CLI:
+You can also query metrics using the Cloud Monitoring API:
 
 ```bash
 # Query a custom metric from Cloud Monitoring
-gcloud monitoring time-series list \
-  --filter='metric.type="prometheus.googleapis.com/app_requests_total/counter"' \
-  --interval-start-time=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ) \
-  --format="table(metric.labels, points[0].value)"
+PROJECT_ID="my-project"
+START_TIME=$(date -u -d '-1 hour' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+curl -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+  --get "https://monitoring.googleapis.com/v3/projects/${PROJECT_ID}/timeSeries" \
+  --data-urlencode 'filter=metric.type="prometheus.googleapis.com/app_requests_total/counter"' \
+  --data-urlencode "interval.startTime=${START_TIME}" \
+  --data-urlencode "interval.endTime=${END_TIME}"
 ```
 
 ## Step 8: Create Alerting Policies
@@ -278,14 +283,20 @@ Set up alerts on your custom metrics to get notified when something goes wrong:
 
 ```bash
 # Create an alerting policy for high request latency
-gcloud monitoring policies create \
-  --display-name="High Request Latency" \
-  --condition-display-name="P95 latency above 500ms" \
-  --condition-filter='metric.type="prometheus.googleapis.com/app_request_duration_seconds/histogram" AND resource.type="gce_instance"' \
-  --condition-threshold-value=0.5 \
-  --condition-threshold-comparison=COMPARISON_GT \
-  --condition-threshold-duration=300s \
-  --notification-channels=projects/my-project/notificationChannels/12345
+cat > high-latency-policy.yaml <<'EOF'
+displayName: High Request Latency
+combiner: OR
+conditions:
+  - displayName: P95 latency above 500ms
+    conditionPrometheusQueryLanguage:
+      query: |
+        histogram_quantile(0.95, sum by (le) (rate(app_request_duration_seconds_bucket[5m]))) > 0.5
+      duration: 300s
+notificationChannels:
+  - projects/my-project/notificationChannels/12345
+EOF
+
+gcloud monitoring policies create --policy-from-file=high-latency-policy.yaml
 ```
 
 ## Troubleshooting
@@ -302,8 +313,8 @@ sudo journalctl -u google-cloud-ops-agent -f | grep -i error
 # Verify your application's metrics endpoint is accessible
 curl http://localhost:5000/metrics
 
-# Validate the Ops Agent configuration syntax
-sudo /opt/google-cloud-ops-agent/libexec/google_cloud_ops_agent_diagnostics -config /etc/google-cloud-ops-agent/config.yaml
+# Check Ops Agent health-check logs
+sudo journalctl -u google-cloud-ops-agent"*"
 ```
 
 Also make sure the VM's service account has the `roles/monitoring.metricWriter` IAM role, otherwise the agent cannot send metrics to Cloud Monitoring.
