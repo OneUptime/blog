@@ -27,7 +27,7 @@ sequenceDiagram
 
     ASG->>EC2: Launch new instance
     ASG->>CD: Notify of scale-out event
-    CD->>EC2: Install CodeDeploy agent
+    EC2->>CD: CodeDeploy agent polls for deployment
     CD->>S3: Fetch latest revision
     CD->>EC2: Deploy application
     EC2->>CD: Report success/failure
@@ -58,14 +58,17 @@ Here's a user data script that installs the agent on boot:
 yum update -y
 yum install -y ruby wget
 
-REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+TOKEN=$(curl -X PUT -s "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+REGION=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" -s \
+  http://169.254.169.254/latest/meta-data/placement/region)
 cd /home/ec2-user
 wget "https://aws-codedeploy-${REGION}.s3.${REGION}.amazonaws.com/latest/install"
 chmod +x ./install
 ./install auto
 
 # Verify agent started
-service codedeploy-agent status
+systemctl status codedeploy-agent
 ```
 
 Make sure the launch template also references the correct instance profile with S3 read permissions:
@@ -135,7 +138,7 @@ aws deploy update-deployment-group \
 
 When the ASG launches a new instance, CodeDeploy automatically deploys the last successful revision. But there are some nuances you should know about.
 
-The deployment to new instances happens independently from regular deployments. If a normal deployment is in progress and a new instance launches, the new instance gets the previous successful revision, not the one currently being deployed.
+The deployment to new instances happens independently from regular deployments. If a normal deployment is in progress and a new instance launches, the new instance gets the previous successful revision, not the one currently being deployed. By default, CodeDeploy then starts a follow-on deployment after the original deployment succeeds to bring those outdated instances up to the newly deployed revision.
 
 You can check whether a deployment was triggered by an ASG event:
 
@@ -182,14 +185,14 @@ aws deploy create-deployment-group \
   --load-balancer-info targetGroupInfoList=[{name=MyApp-TG}]
 ```
 
-The `COPY_AUTO_SCALING_GROUP` option tells CodeDeploy to create a new ASG with the same configuration as the original. After the deployment succeeds and traffic shifts, the old ASG gets scaled down.
+The `COPY_AUTO_SCALING_GROUP` option tells CodeDeploy to create a new ASG with the same configuration as the original. After the deployment succeeds and traffic shifts, the instances in the original fleet are terminated after the wait time you configured.
 
 ## Handling Deployment Failures During Scale-Out
 
-If a deployment to a newly launched instance fails, the instance gets terminated and the ASG launches another one. This can create a loop if your deployment has a bug. To prevent infinite cycling:
+If a deployment to a newly launched instance fails, the instance gets terminated and the ASG launches another one. This can create a loop if your deployment has a bug. To stop deployments when a CloudWatch alarm enters ALARM state:
 
 ```bash
-# Set a maximum number of failed instances before stopping
+# Stop deployments when the configured CloudWatch alarm is triggered
 aws deploy update-deployment-group \
   --application-name MyApp \
   --current-deployment-group-name MyApp-ASG-Production \
@@ -206,10 +209,10 @@ aws autoscaling describe-auto-scaling-instances \
 
 ## Suspending and Resuming ASG Integration
 
-Sometimes you need to temporarily pause the CodeDeploy-ASG integration - maybe during maintenance or while debugging. You can suspend the launch lifecycle hook:
+Sometimes you need to temporarily pause new scale-out activity during maintenance or while debugging. Suspending the ASG `Launch` process pauses new instance launches for the whole Auto Scaling Group:
 
 ```bash
-# Suspend the CodeDeploy lifecycle hook
+# Suspend new ASG launches
 aws autoscaling suspend-processes \
   --auto-scaling-group-name MyApp-ASG \
   --scaling-processes Launch
@@ -218,7 +221,7 @@ aws autoscaling suspend-processes \
 Remember to resume it when you're done:
 
 ```bash
-# Resume the lifecycle hook
+# Resume new ASG launches
 aws autoscaling resume-processes \
   --auto-scaling-group-name MyApp-ASG \
   --scaling-processes Launch
@@ -231,7 +234,7 @@ Common issues with ASG integration:
 - **New instances don't get deployed to** - Check that the ASG is associated with the deployment group, not just tagged.
 - **Instances stuck in Pending:Wait** - The CodeDeploy agent might not be installed or the deployment is failing. Check agent logs.
 - **Deployment loop** - If every new instance fails deployment and gets replaced, you've got a bad revision. Fix the deployment and push a new one.
-- **Old revision deployed** - During an active deployment, new instances get the previous revision. This is by design.
+- **Old revision deployed** - During an active deployment, new instances get the previous revision first. By default, CodeDeploy starts a follow-on deployment after the original deployment succeeds to update those instances.
 
 For comprehensive deployment monitoring, tools like [OneUptime](https://oneuptime.com) can help you track deployment health across your ASG instances and alert you when scale-out deployments fail.
 
