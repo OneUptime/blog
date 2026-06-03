@@ -138,8 +138,7 @@ The redirect handler needs to be fast. Every millisecond of latency is felt by t
 # Looks up the short code and returns a 302 redirect to the original URL
 import boto3
 import json
-import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 urls_table = dynamodb.Table('url-shortener-urls')
@@ -167,7 +166,7 @@ def handler(event, context):
 
     long_url = result['Item']['longUrl']
 
-    # Record the click asynchronously (fire and forget)
+    # Record the click data, but do not let analytics failures block the redirect
     try:
         record_click(short_code, event)
     except Exception:
@@ -185,18 +184,19 @@ def handler(event, context):
 
 def record_click(short_code, event):
     """Record click analytics data."""
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
 
     # Extract visitor info from the request
     request_context = event.get('requestContext', {})
     identity = request_context.get('identity', {})
+    headers = event.get('headers') or {}
 
     clicks_table.put_item(Item={
         'shortCode': short_code,
         'clickedAt': now,
         'sourceIp': identity.get('sourceIp', 'unknown'),
         'userAgent': identity.get('userAgent', 'unknown'),
-        'referer': event.get('headers', {}).get('Referer', 'direct')
+        'referer': headers.get('Referer', 'direct')
     })
 
     # Increment the click counter on the URL record
@@ -272,6 +272,12 @@ API_ID=$(aws apigateway create-rest-api \
   --name url-shortener \
   --query 'id' --output text)
 
+REGION=$(aws configure get region)
+ACCOUNT_ID=$(aws sts get-caller-identity --query 'Account' --output text)
+CREATE_FUNCTION_NAME=url-create
+REDIRECT_FUNCTION_NAME=url-redirect
+ANALYTICS_FUNCTION_NAME=url-analytics
+
 # Get the root resource ID
 ROOT_ID=$(aws apigateway get-resources \
   --rest-api-id $API_ID \
@@ -291,6 +297,21 @@ aws apigateway put-method \
   --http-method POST \
   --authorization-type NONE
 
+aws apigateway put-integration \
+  --rest-api-id $API_ID \
+  --resource-id $SHORTEN_ID \
+  --http-method POST \
+  --type AWS_PROXY \
+  --integration-http-method POST \
+  --uri "arn:aws:apigateway:${REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:${CREATE_FUNCTION_NAME}/invocations"
+
+aws lambda add-permission \
+  --function-name $CREATE_FUNCTION_NAME \
+  --statement-id apigateway-create-url \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT_ID}:${API_ID}/*/POST/shorten"
+
 # Create /{code} resource for redirects
 CODE_ID=$(aws apigateway create-resource \
   --rest-api-id $API_ID \
@@ -305,6 +326,61 @@ aws apigateway put-method \
   --http-method GET \
   --authorization-type NONE \
   --request-parameters 'method.request.path.code=true'
+
+aws apigateway put-integration \
+  --rest-api-id $API_ID \
+  --resource-id $CODE_ID \
+  --http-method GET \
+  --type AWS_PROXY \
+  --integration-http-method POST \
+  --uri "arn:aws:apigateway:${REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:${REDIRECT_FUNCTION_NAME}/invocations"
+
+aws lambda add-permission \
+  --function-name $REDIRECT_FUNCTION_NAME \
+  --statement-id apigateway-redirect-url \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT_ID}:${API_ID}/*/GET/*"
+
+# Create /analytics/{code} resource for analytics
+ANALYTICS_ID=$(aws apigateway create-resource \
+  --rest-api-id $API_ID \
+  --parent-id $ROOT_ID \
+  --path-part analytics \
+  --query 'id' --output text)
+
+ANALYTICS_CODE_ID=$(aws apigateway create-resource \
+  --rest-api-id $API_ID \
+  --parent-id $ANALYTICS_ID \
+  --path-part '{code}' \
+  --query 'id' --output text)
+
+aws apigateway put-method \
+  --rest-api-id $API_ID \
+  --resource-id $ANALYTICS_CODE_ID \
+  --http-method GET \
+  --authorization-type NONE \
+  --request-parameters 'method.request.path.code=true'
+
+aws apigateway put-integration \
+  --rest-api-id $API_ID \
+  --resource-id $ANALYTICS_CODE_ID \
+  --http-method GET \
+  --type AWS_PROXY \
+  --integration-http-method POST \
+  --uri "arn:aws:apigateway:${REGION}:lambda:path/2015-03-31/functions/arn:aws:lambda:${REGION}:${ACCOUNT_ID}:function:${ANALYTICS_FUNCTION_NAME}/invocations"
+
+aws lambda add-permission \
+  --function-name $ANALYTICS_FUNCTION_NAME \
+  --statement-id apigateway-url-analytics \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:${REGION}:${ACCOUNT_ID}:${API_ID}/*/GET/analytics/*"
+
+# Deploy the API to a stage
+aws apigateway create-deployment \
+  --rest-api-id $API_ID \
+  --stage-name production
 ```
 
 ## Step 6: Add Custom Domain
@@ -315,7 +391,7 @@ For a URL shortener, the domain is everything. Set up a short custom domain:
 # Create a custom domain for the URL shortener
 aws apigateway create-domain-name \
   --domain-name short.example.com \
-  --regional-certificate-arn arn:aws:acm:us-east-1:123456789012:certificate/CERT_ID \
+  --regional-certificate-arn arn:aws:acm:${REGION}:123456789012:certificate/CERT_ID \
   --endpoint-configuration types=REGIONAL
 
 # Map the domain to the API
@@ -337,15 +413,14 @@ Add DAX as a caching layer in front of DynamoDB for microsecond reads:
 # Use DAX for microsecond redirect lookups
 import amazondax
 
-dax_client = amazondax.AmazonDaxClient(
-    endpoints=['my-dax-cluster.abc123.dax-clusters.us-east-1.amazonaws.com:8111']
+dax = amazondax.AmazonDaxClient.resource(
+    endpoint_url='my-dax-cluster.abc123.dax-clusters.us-east-1.amazonaws.com:8111',
+    region_name='us-east-1'
 )
+table = dax.Table('url-shortener-urls')
 
 def get_url(short_code):
-    response = dax_client.get_item(
-        TableName='url-shortener-urls',
-        Key={'shortCode': {'S': short_code}}
-    )
+    response = table.get_item(Key={'shortCode': short_code})
     return response.get('Item')
 ```
 
@@ -368,6 +443,9 @@ Instead of writing click data synchronously, send it to an SQS queue and process
 ```python
 # Send click data to SQS for async processing
 import boto3
+import json
+import os
+from datetime import datetime, timezone
 
 sqs = boto3.client('sqs')
 CLICKS_QUEUE_URL = os.environ['CLICKS_QUEUE_URL']
@@ -377,9 +455,9 @@ def record_click_async(short_code, event):
         QueueUrl=CLICKS_QUEUE_URL,
         MessageBody=json.dumps({
             'shortCode': short_code,
-            'clickedAt': datetime.utcnow().isoformat(),
+            'clickedAt': datetime.now(timezone.utc).isoformat(),
             'sourceIp': event.get('requestContext', {}).get('identity', {}).get('sourceIp'),
-            'userAgent': event.get('headers', {}).get('User-Agent')
+            'userAgent': (event.get('headers') or {}).get('User-Agent')
         })
     )
 ```
