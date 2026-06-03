@@ -32,8 +32,8 @@ First, download the sample template.
 ```bash
 # Download the CIS Benchmark sample conformance pack
 
-aws s3 cp s3://aws-configservice-us-east-1/cloudformation-templates-for-managed-rules/Operational-Best-Practices-for-CIS-AWS-v1.4-Level1.yaml \
-  cis-level1-pack.yaml
+curl -L -o cis-level1-pack.yaml \
+  https://raw.githubusercontent.com/awslabs/aws-config-rules/master/aws-config-conformance-packs/Operational-Best-Practices-for-CIS-AWS-v1.4-Level1.yaml
 ```
 
 Deploy it using the CLI.
