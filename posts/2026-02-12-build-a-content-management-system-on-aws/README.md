@@ -86,7 +86,7 @@ DynamoDB table design for content:
 
 // GSI1: GSI1PK=TYPE#{contentType}, GSI1SK=UPDATED#{updatedAt}
 // GSI2: GSI2PK=SLUG#{slug}, GSI2SK=TYPE#{contentType}
-// GSI3: GSI3PK=STATUS#{status}, GSI3SK=TYPE#{contentType}#UPDATED#{updatedAt}
+// GSI3: GSI3PK=STATUS#{status}, GSI3SK=TYPE#{contentType}#STATE#{state}#UPDATED#{updatedAt}
 ```
 
 ## Step 2: Content CRUD API
@@ -134,7 +134,7 @@ exports.createContent = async (event) => {
     GSI2PK: `SLUG#${slug}`,
     GSI2SK: `TYPE#${contentType}`,
     GSI3PK: 'STATUS#draft',
-    GSI3SK: `TYPE#${contentType}#UPDATED#${now}`,
+    GSI3SK: `TYPE#${contentType}#STATE#metadata#UPDATED#${now}`,
   };
 
   await docClient.send(new PutCommand({
@@ -147,10 +147,8 @@ exports.createContent = async (event) => {
   await docClient.send(new PutCommand({
     TableName: process.env.CONTENT_TABLE,
     Item: {
-      PK: `CONTENT#${contentId}`,
-      SK: 'VERSION#000001',
       ...contentItem,
-      SK: undefined,
+      SK: 'VERSION#000001',
     },
   }));
 
@@ -182,13 +180,14 @@ exports.updateContent = async (event) => {
   await docClient.send(new UpdateCommand({
     TableName: process.env.CONTENT_TABLE,
     Key: { PK: `CONTENT#${contentId}`, SK: 'METADATA' },
-    UpdateExpression: 'SET fields = :fields, version = :version, updatedAt = :now, updatedBy = :user, GSI1SK = :gsi1sk',
+    UpdateExpression: 'SET fields = :fields, version = :version, updatedAt = :now, updatedBy = :user, GSI1SK = :gsi1sk, GSI3SK = :gsi3sk',
     ExpressionAttributeValues: {
       ':fields': updatedFields,
       ':version': newVersion,
       ':now': now,
       ':user': userId,
       ':gsi1sk': `UPDATED#${now}`,
+      ':gsi3sk': `TYPE#${current.contentType}#STATE#metadata#UPDATED#${now}`,
     },
   }));
 
@@ -227,12 +226,13 @@ exports.publishContent = async (event) => {
   await docClient.send(new UpdateCommand({
     TableName: process.env.CONTENT_TABLE,
     Key: { PK: `CONTENT#${contentId}`, SK: 'METADATA' },
-    UpdateExpression: 'SET #status = :status, publishedAt = :now, GSI3PK = :gsi3pk',
+    UpdateExpression: 'SET #status = :status, publishedAt = :now, GSI3PK = :gsi3pk, GSI3SK = :gsi3sk',
     ExpressionAttributeNames: { '#status': 'status' },
     ExpressionAttributeValues: {
       ':status': 'published',
       ':now': now,
       ':gsi3pk': 'STATUS#published',
+      ':gsi3sk': `TYPE#${current.contentType}#STATE#metadata#UPDATED#${now}`,
     },
   }));
 
@@ -240,12 +240,12 @@ exports.publishContent = async (event) => {
   await docClient.send(new PutCommand({
     TableName: process.env.CONTENT_TABLE,
     Item: {
-      PK: `CONTENT#${contentId}`,
-      SK: 'PUBLISHED',
       ...current,
       SK: 'PUBLISHED',
       status: 'published',
       publishedAt: now,
+      GSI3PK: 'STATUS#published',
+      GSI3SK: `TYPE#${current.contentType}#STATE#published#UPDATED#${now}`,
     },
   }));
 
@@ -276,7 +276,7 @@ exports.getBySlug = async (event) => {
     },
   }));
 
-  const content = result.Items?.[0];
+  const content = result.Items?.find((item) => item.SK === 'PUBLISHED');
   if (!content || content.status !== 'published') {
     return { statusCode: 404, body: JSON.stringify({ error: 'Not found' }) };
   }
@@ -304,7 +304,7 @@ exports.listByType = async (event) => {
     KeyConditionExpression: 'GSI3PK = :status AND begins_with(GSI3SK, :typePrefix)',
     ExpressionAttributeValues: {
       ':status': 'STATUS#published',
-      ':typePrefix': `TYPE#${contentType}`,
+      ':typePrefix': `TYPE#${contentType}#STATE#published`,
     },
     ScanIndexForward: false,
     Limit: parseInt(limit),
@@ -366,35 +366,37 @@ exports.uploadMedia = async (event) => {
 
 // Generate responsive image variants after upload
 exports.processMedia = async (event) => {
-  const bucket = event.Records[0].s3.bucket.name;
-  const key = decodeURIComponent(event.Records[0].s3.object.key);
+  for (const record of event.Records) {
+    const bucket = record.s3.bucket.name;
+    const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
 
-  if (!key.startsWith('media/') || key.includes('/variants/')) return;
+    if (!key.startsWith('media/') || key.includes('/variants/')) continue;
 
-  const image = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
-  const buffer = Buffer.from(await image.Body.transformToByteArray());
+    const image = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    const buffer = Buffer.from(await image.Body.transformToByteArray());
 
-  // Generate variants
-  const variants = [
-    { width: 320, suffix: 'sm' },
-    { width: 768, suffix: 'md' },
-    { width: 1200, suffix: 'lg' },
-    { width: 1920, suffix: 'xl' },
-  ];
+    // Generate variants
+    const variants = [
+      { width: 320, suffix: 'sm' },
+      { width: 768, suffix: 'md' },
+      { width: 1200, suffix: 'lg' },
+      { width: 1920, suffix: 'xl' },
+    ];
 
-  for (const variant of variants) {
-    const resized = await sharp(buffer)
-      .resize(variant.width, null, { withoutEnlargement: true })
-      .webp({ quality: 80 })
-      .toBuffer();
+    for (const variant of variants) {
+      const resized = await sharp(buffer)
+        .resize(variant.width, null, { withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toBuffer();
 
-    const variantKey = key.replace(/\/([^/]+)$/, `/variants/${variant.suffix}.webp`);
-    await s3.send(new PutObjectCommand({
-      Bucket: bucket,
-      Key: variantKey,
-      Body: resized,
-      ContentType: 'image/webp',
-    }));
+      const variantKey = key.replace(/\/([^/]+)$/, `/variants/${variant.suffix}.webp`);
+      await s3.send(new PutObjectCommand({
+        Bucket: bucket,
+        Key: variantKey,
+        Body: resized,
+        ContentType: 'image/webp',
+      }));
+    }
   }
 };
 ```
@@ -405,6 +407,8 @@ Index content in OpenSearch via DynamoDB Streams:
 
 ```javascript
 // indexer/handler.js - Index content changes into OpenSearch
+const { unmarshall } = require('@aws-sdk/util-dynamodb');
+
 exports.handler = async (event) => {
   for (const record of event.Records) {
     if (record.eventName === 'REMOVE') continue;
@@ -412,20 +416,20 @@ exports.handler = async (event) => {
     const newImage = record.dynamodb.NewImage;
     if (!newImage.SK?.S?.startsWith('PUBLISHED')) continue;
 
-    const contentId = newImage.contentId.S;
-    const fields = JSON.parse(newImage.fields?.S || '{}');
+    const item = unmarshall(newImage);
+    const fields = item.fields || {};
 
     await opensearch.index({
       index: 'content',
-      id: contentId,
+      id: item.contentId,
       body: {
-        contentId,
-        contentType: newImage.contentType.S,
+        contentId: item.contentId,
+        contentType: item.contentType,
         title: fields.title,
         body: stripHtml(fields.body),
         tags: fields.tags,
         slug: fields.slug,
-        publishedAt: newImage.publishedAt?.S,
+        publishedAt: item.publishedAt,
       },
     });
   }
