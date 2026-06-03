@@ -41,7 +41,7 @@ AWS offers three templates:
 
 - **Production**: Multi-AZ, provisioned IOPS, larger instance sizes
 - **Dev/Test**: Single-AZ, general purpose storage
-- **Free tier**: db.t3.micro, 20 GB storage, single-AZ
+- **Free tier**: a free tier eligible micro instance such as db.t3.micro or db.t4g.micro, 20 GB storage, single-AZ
 
 For learning and experimentation, the **Free tier** template is fine. For anything that matters, start with **Dev/Test** and upgrade to **Production** when you're ready.
 
@@ -59,7 +59,7 @@ If you choose the Secrets Manager option, AWS will automatically rotate the pass
 
 Choose your instance class:
 
-- **db.t3.micro**: 1 vCPU, 1 GB RAM - free tier eligible, good for testing
+- **db.t3.micro**: 2 vCPU, 1 GB RAM - free tier eligible, good for testing
 - **db.t3.medium**: 2 vCPU, 4 GB RAM - good for light workloads
 - **db.r6g.large**: 2 vCPU, 16 GB RAM - production workloads
 - **db.r6g.xlarge and above**: Heavier production workloads
@@ -70,9 +70,9 @@ The right size depends on your workload. You can always resize later, though it 
 
 Configure storage settings:
 
-- **Storage type**: Choose between General Purpose SSD (gp3), Provisioned IOPS SSD (io1/io2), or Magnetic (not recommended).
-  - **gp3** is the best choice for most workloads. It provides a baseline of 3,000 IOPS and 125 MiB/s throughput, and you can scale them independently.
-  - **io1/io2** is for high-performance workloads that need consistent low-latency I/O.
+- **Storage type**: Choose between General Purpose SSD (gp3), Provisioned IOPS SSD (io1/io2), or legacy Magnetic storage (not recommended).
+  - **gp3** is the best choice for most workloads. For MySQL volumes from 20-399 GiB, it provides a baseline of 3,000 IOPS and 125 MiB/s throughput. At 400 GiB and above, the baseline increases and you can provision additional IOPS and throughput.
+  - **io1/io2** is for high-performance workloads that need consistent low-latency I/O. Use io2 Block Express where it's available.
 
 - **Allocated storage**: Start with what you need. For dev environments, 20-50 GB is usually enough. For production, plan based on your data growth.
 
@@ -83,9 +83,9 @@ Here's how the storage options break down.
 ```text
 Storage Type     | IOPS         | Throughput      | Cost
 -----------------|--------------|-----------------|------------------
-gp3              | 3,000 base   | 125 MiB/s base  | $0.08/GB-month
-io1              | Up to 64,000 | Up to 1,000 MiB/s| $0.125/GB-month
-Magnetic         | Variable     | Variable        | Not recommended
+gp3              | 3,000 base   | 125 MiB/s base  | Charged per GB-month
+io1/io2          | Provisioned  | Varies by IOPS  | Charged for storage and provisioned IOPS
+Magnetic         | Variable     | Variable        | Legacy, deprecated, not recommended
 ```
 
 ## Step 8: Availability and Durability
@@ -170,12 +170,11 @@ This creates a dedicated application user with appropriate privileges.
 -- Create an application user with limited privileges
 CREATE USER 'myapp'@'%' IDENTIFIED BY 'strong_password_here';
 GRANT SELECT, INSERT, UPDATE, DELETE ON myapp_db.* TO 'myapp'@'%';
-FLUSH PRIVILEGES;
 ```
 
 ## Cost Considerations
 
-RDS MySQL pricing depends on instance class, storage, and data transfer. A db.t3.micro in us-east-1 with 20 GB gp3 storage runs about $15/month. A production db.r6g.large with Multi-AZ and 100 GB io1 storage will be closer to $400-500/month. Always check the AWS pricing calculator for current numbers.
+RDS MySQL pricing depends on instance class, storage, provisioned IOPS, and data transfer. A db.t3.micro in us-east-1 with 20 GB gp3 storage runs about $15/month. A production db.r6g.large with Multi-AZ and 100 GB io1 or io2 storage can run several hundred dollars per month, and more depending on provisioned IOPS. Always check the AWS pricing calculator for current numbers.
 
 ## Wrapping Up
 
