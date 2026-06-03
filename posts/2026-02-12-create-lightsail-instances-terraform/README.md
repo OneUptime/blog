@@ -23,15 +23,9 @@ resource "aws_lightsail_instance" "web" {
   name              = "web-server"
   availability_zone = "us-east-1a"
   blueprint_id      = "ubuntu_22_04"
-  bundle_id         = "small_3_0"  # 2 GB RAM, 1 vCPU, 60 GB SSD
+  bundle_id         = "small_3_0"  # 2 GB RAM, 2 vCPU, 60 GB SSD
 
-  user_data = <<-EOF
-    #!/bin/bash
-    apt-get update
-    apt-get install -y nginx
-    systemctl enable nginx
-    systemctl start nginx
-  EOF
+  user_data = "sudo apt-get update && sudo apt-get install -y nginx && sudo systemctl enable nginx && sudo systemctl start nginx"
 
   tags = {
     Environment = "production"
@@ -57,13 +51,13 @@ Lightsail offers two types of blueprints: OS-only (like Ubuntu, Amazon Linux, De
 # lamp_8           - LAMP stack on Amazon Linux
 # nginx            - Nginx on Amazon Linux
 
-# Bundle IDs (pricing as of 2024)
-# nano_3_0    - 512 MB RAM, 1 vCPU, 20 GB SSD  ($3.50/mo)
-# micro_3_0   - 1 GB RAM, 1 vCPU, 40 GB SSD    ($5/mo)
-# small_3_0   - 2 GB RAM, 1 vCPU, 60 GB SSD    ($10/mo)
-# medium_3_0  - 4 GB RAM, 2 vCPU, 80 GB SSD    ($20/mo)
-# large_3_0   - 8 GB RAM, 2 vCPU, 160 GB SSD   ($40/mo)
-# xlarge_3_0  - 16 GB RAM, 4 vCPU, 320 GB SSD  ($80/mo)
+# Bundle IDs (Linux with public IPv4 pricing as of 2026)
+# nano_3_0    - 512 MB RAM, 2 vCPU, 20 GB SSD  ($5/mo)
+# micro_3_0   - 1 GB RAM, 2 vCPU, 40 GB SSD    ($7/mo)
+# small_3_0   - 2 GB RAM, 2 vCPU, 60 GB SSD    ($12/mo)
+# medium_3_0  - 4 GB RAM, 2 vCPU, 80 GB SSD    ($24/mo)
+# large_3_0   - 8 GB RAM, 2 vCPU, 160 GB SSD   ($44/mo)
+# xlarge_3_0  - 16 GB RAM, 4 vCPU, 320 GB SSD  ($84/mo)
 ```
 
 You can look up the full list:
@@ -99,7 +93,7 @@ output "static_ip" {
 
 ## Firewall Rules
 
-Lightsail instances come with a built-in firewall. By default, SSH (22) and HTTP (80) are open. You'll want to customize this for your use case.
+Lightsail instances come with a built-in firewall. Base OS blueprints open SSH (22) and HTTP (80) by default; some application blueprints also open HTTPS (443). You'll want to customize this for your use case.
 
 This configures the firewall to allow only specific ports:
 
@@ -139,7 +133,7 @@ This creates a key pair and associates it with the instance:
 ```hcl
 resource "aws_lightsail_key_pair" "main" {
   name       = "my-lightsail-key"
-  public_key = file("~/.ssh/id_rsa.pub")
+  public_key = file(pathexpand("~/.ssh/id_rsa.pub"))
 }
 
 resource "aws_lightsail_instance" "web" {
@@ -155,7 +149,7 @@ resource "aws_lightsail_instance" "web" {
 
 For high availability, put multiple instances behind a Lightsail load balancer. The load balancer includes a free SSL certificate.
 
-This creates a load balancer with SSL and attaches two instances:
+This creates a load balancer, requests an SSL certificate, and attaches two instances. The certificate attachment should be applied after domain validation completes:
 
 ```hcl
 resource "aws_lightsail_lb" "web" {
@@ -168,13 +162,14 @@ resource "aws_lightsail_lb" "web" {
   }
 }
 
-# Attach SSL certificate
+# Request SSL certificate
 resource "aws_lightsail_lb_certificate" "web" {
   name        = "web-lb-cert"
   lb_name     = aws_lightsail_lb.web.name
   domain_name = "app.example.com"
 }
 
+# Attach SSL certificate after domain validation
 resource "aws_lightsail_lb_certificate_attachment" "web" {
   lb_name          = aws_lightsail_lb.web.name
   certificate_name = aws_lightsail_lb_certificate.web.name
@@ -190,11 +185,7 @@ resource "aws_lightsail_instance" "web_nodes" {
   bundle_id         = "small_3_0"
   key_pair_name     = aws_lightsail_key_pair.main.name
 
-  user_data = <<-EOF
-    #!/bin/bash
-    apt-get update && apt-get install -y nginx
-    systemctl enable nginx && systemctl start nginx
-  EOF
+  user_data = "sudo apt-get update && sudo apt-get install -y nginx && sudo systemctl enable nginx && sudo systemctl start nginx"
 }
 
 # Attach instances to the load balancer
@@ -220,7 +211,7 @@ resource "aws_lightsail_database" "main" {
   master_username                  = "dbadmin"
   master_password                  = "change-this-password"
   blueprint_id                     = "postgres_14"
-  bundle_id                        = "micro_2_0"  # 1 GB RAM, 1 vCPU, 40 GB SSD
+  bundle_id                        = "micro_2_0"  # 1 GB RAM, 2 vCPU, 40 GB SSD
   preferred_backup_window          = "03:00-04:00"
   preferred_maintenance_window     = "sun:05:00-sun:06:00"
   publicly_accessible              = false
@@ -330,7 +321,7 @@ resource "aws_lightsail_instance" "fleet" {
 
 ## When to Use Lightsail vs EC2
 
-Lightsail makes sense when you want simple, predictable pricing and don't need fine-grained control over networking. EC2 is better when you need VPC peering, detailed security group rules, auto-scaling groups, or specific instance types.
+Lightsail makes sense when you want simple, predictable pricing and don't need fine-grained control over networking. EC2 is better when you need custom VPC networking, detailed security group rules, auto-scaling groups, or specific instance types.
 
 For monitoring your Lightsail instances, check out our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view) - Lightsail publishes basic metrics to CloudWatch that you can alarm on.
 
