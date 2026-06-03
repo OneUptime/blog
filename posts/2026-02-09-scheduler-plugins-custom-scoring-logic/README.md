@@ -14,9 +14,9 @@ This guide will show you how to build and integrate custom scoring plugins to im
 
 ## Understanding the Scheduler Framework
 
-The Kubernetes scheduler operates in phases: queue sort, pre-filter, filter, post-filter, pre-score, score, reserve, permit, pre-bind, bind, and post-bind. Custom plugins can hook into any of these phases. Scoring plugins specifically run in the score phase, assigning numeric scores to nodes after filtering.
+The Kubernetes scheduler operates in phases: pre-enqueue, queue sort, pre-filter, filter, post-filter, pre-score, score, reserve, permit, pre-bind, bind, and post-bind. Custom plugins can hook into any of these phases. Scoring plugins specifically run in the score phase, assigning numeric scores to nodes after filtering.
 
-Plugins implement defined interfaces and register themselves with the scheduler. The framework handles plugin lifecycle, invocation order, and score normalization. Your plugin focuses purely on the scoring logic.
+Plugins implement defined interfaces and register themselves with the scheduler. The framework handles plugin lifecycle, invocation order, and optional score normalization. Your plugin focuses purely on the scoring logic.
 
 ## Setting Up the Plugin Development Environment
 
@@ -32,6 +32,7 @@ go mod init github.com/yourorg/custom-scorer
 go get k8s.io/kubernetes/pkg/scheduler/framework@v1.28.0
 go get k8s.io/api@v0.28.0
 go get k8s.io/apimachinery@v0.28.0
+go get k8s.io/component-base@v0.28.0
 ```
 
 ## Implementing a Custom Scoring Plugin
@@ -132,10 +133,12 @@ type CostAware struct {
     costMap   map[string]float64
 }
 
+const Name = "CostAware"
+
 var _ framework.ScorePlugin = &CostAware{}
 
 func (ca *CostAware) Name() string {
-    return "CostAware"
+    return Name
 }
 
 // Score nodes based on their cost
@@ -147,6 +150,9 @@ func (ca *CostAware) Score(ctx context.Context, state *framework.CycleState, p *
     }
 
     node := nodeInfo.Node()
+    if node == nil {
+        return 0, framework.NewStatus(framework.Error, fmt.Sprintf("node %q not found", nodeName))
+    }
 
     // Get cost from node label or annotation
     costStr, ok := node.Labels["node.kubernetes.io/cost-per-hour"]
@@ -156,7 +162,9 @@ func (ca *CostAware) Score(ctx context.Context, state *framework.CycleState, p *
     }
 
     var cost float64
-    fmt.Sscanf(costStr, "%f", &cost)
+    if _, err := fmt.Sscanf(costStr, "%f", &cost); err != nil {
+        return 50, nil
+    }
 
     // Invert cost to score (lower cost = higher score)
     // Assuming cost range of $0.10 to $1.00 per hour
@@ -194,7 +202,6 @@ package datalocality
 
 import (
     "context"
-    "strings"
 
     v1 "k8s.io/api/core/v1"
     "k8s.io/apimachinery/pkg/runtime"
@@ -205,10 +212,12 @@ type DataLocality struct {
     handle framework.Handle
 }
 
+const Name = "DataLocality"
+
 var _ framework.ScorePlugin = &DataLocality{}
 
 func (dl *DataLocality) Name() string {
-    return "DataLocality"
+    return Name
 }
 
 func (dl *DataLocality) Score(ctx context.Context, state *framework.CycleState, p *v1.Pod, nodeName string) (int64, *framework.Status) {
@@ -224,6 +233,9 @@ func (dl *DataLocality) Score(ctx context.Context, state *framework.CycleState, 
     }
 
     node := nodeInfo.Node()
+    if node == nil {
+        return 0, framework.NewStatus(framework.Error, "node not found")
+    }
 
     // Check if node is in the same data zone
     nodeZone, ok := node.Labels["topology.kubernetes.io/zone"]
@@ -236,8 +248,10 @@ func (dl *DataLocality) Score(ctx context.Context, state *framework.CycleState, 
         return 100, nil
     }
 
-    // Partial score for same region
-    if strings.Split(nodeZone, "-")[0] == strings.Split(dataZone, "-")[0] {
+    // Partial score for same region when region labels are present
+    dataRegion, hasDataRegion := p.Labels["data-region"]
+    nodeRegion, hasNodeRegion := node.Labels["topology.kubernetes.io/region"]
+    if hasDataRegion && hasNodeRegion && nodeRegion == dataRegion {
         return 30, nil
     }
 
@@ -307,11 +321,13 @@ profiles:
         weight: 5
       - name: DataLocality
         weight: 3
-      # Keep default plugins
+      # Optionally tune default plugin weights
       - name: NodeResourcesBalancedAllocation
         weight: 1
       - name: ImageLocality
         weight: 1
+leaderElection:
+  leaderElect: false
 ```
 
 ## Building and Deploying the Custom Scheduler
@@ -345,6 +361,52 @@ Deploy to Kubernetes:
 ```yaml
 # deployment.yaml
 apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: custom-scheduler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: custom-scheduler-as-kube-scheduler
+subjects:
+- kind: ServiceAccount
+  name: custom-scheduler
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:kube-scheduler
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: custom-scheduler-as-volume-scheduler
+subjects:
+- kind: ServiceAccount
+  name: custom-scheduler
+  namespace: kube-system
+roleRef:
+  kind: ClusterRole
+  name: system:volume-scheduler
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: custom-scheduler-extension-apiserver-authentication-reader
+  namespace: kube-system
+roleRef:
+  kind: Role
+  name: extension-apiserver-authentication-reader
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: custom-scheduler
+  namespace: kube-system
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: scheduler-config
@@ -364,6 +426,8 @@ data:
             weight: 5
           - name: DataLocality
             weight: 3
+    leaderElection:
+      leaderElect: false
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -387,7 +451,6 @@ spec:
         command:
         - ./custom-scheduler
         - --config=/etc/kubernetes/scheduler-config.yaml
-        - --leader-elect=false
         volumeMounts:
         - name: config
           mountPath: /etc/kubernetes
