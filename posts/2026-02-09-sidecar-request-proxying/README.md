@@ -16,7 +16,7 @@ This pattern forms the foundation of service mesh architectures, but you don't n
 
 Traditional load balancing happens at the network layer, often using external load balancers or ingress controllers. Sidecar proxies bring load balancing closer to the application, enabling more sophisticated routing logic and better observability.
 
-The sidecar shares the pod's network namespace, which means it can intercept all network traffic on localhost. Your application sends requests to localhost, and the sidecar handles routing to backend services. This keeps networking logic separate from business logic.
+The sidecar shares the pod's network namespace, which means containers in the same pod can communicate over localhost. Your application sends requests to the sidecar's localhost listener, and the sidecar handles routing to backend services. This keeps networking logic separate from business logic.
 
 Sidecar proxies also provide a consistent interface for implementing retries, timeouts, circuit breaking, and other resilience patterns. Rather than implementing these in every service, the proxy handles them transparently.
 
@@ -83,7 +83,7 @@ data:
             - endpoint:
                 address:
                   socket_address:
-                    address: backend-service.default.svc.cluster.local
+                    address: backend-service-headless.default.svc.cluster.local
                     port_value: 8080
         health_checks:
         - timeout: 1s
@@ -155,7 +155,7 @@ spec:
           name: envoy-config
 ```
 
-The application sends all backend requests to localhost:8080, where Envoy receives them. Envoy performs health checking, load balancing, and automatic retries before forwarding requests to the backend service.
+The application sends all backend requests to localhost:8080, where Envoy receives them. Envoy performs health checking, load balancing, and automatic retries before forwarding requests to the backend service. Use a headless Service or another DNS name that resolves to the backend pod addresses if you want Envoy itself to balance across backend instances; a regular ClusterIP Service will be load balanced by Kubernetes.
 
 ## Advanced Load Balancing with Multiple Backends
 
@@ -221,6 +221,9 @@ data:
                     route:
                       cluster: websocket_cluster
                       timeout: 0s
+                      hash_policy:
+                      - header:
+                          header_name: x-session-id
                       upgrade_configs:
                       - upgrade_type: websocket
 
@@ -261,6 +264,8 @@ data:
         health_checks:
         - timeout: 2s
           interval: 10s
+          unhealthy_threshold: 3
+          healthy_threshold: 2
           http_health_check:
             path: "/health"
 
@@ -310,7 +315,7 @@ data:
                     port_value: 8080
 ```
 
-This configuration demonstrates path-based routing to different backend clusters, each with appropriate load balancing strategies. API requests use least-request balancing, WebSockets use consistent hashing, and static assets use simple round-robin.
+This configuration demonstrates path-based routing to different backend clusters, each with appropriate load balancing strategies. API requests use least-request balancing, WebSockets use consistent hashing based on the session header, and static assets use simple round-robin.
 
 ## Circuit Breaking and Connection Limits
 
@@ -601,7 +606,11 @@ data:
                   socket_address:
                     address: envoy-control-plane.monitoring.svc.cluster.local
                     port_value: 18000
-        http2_protocol_options: {}
+        typed_extension_protocol_options:
+          envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
+            "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
+            explicit_http_config:
+              http2_protocol_options: {}
 ```
 
 This configuration connects to a control plane service that provides dynamic listener and cluster configurations. As backend services scale up or down, the control plane updates Envoy without restarts.
