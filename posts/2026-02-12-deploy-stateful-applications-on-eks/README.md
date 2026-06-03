@@ -55,7 +55,9 @@ eksctl create iamserviceaccount \
   --cluster my-cluster \
   --namespace kube-system \
   --name ebs-csi-controller-sa \
-  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicy \
+  --role-name AmazonEKS_EBS_CSI_DriverRole \
+  --role-only \
+  --attach-policy-arn arn:aws:iam::aws:policy/service-role/AmazonEBSCSIDriverPolicyV2 \
   --approve
 
 # Install the EBS CSI driver add-on
@@ -78,7 +80,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
   encrypted: "true"
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Retain
@@ -94,7 +96,7 @@ The `WaitForFirstConsumer` binding mode is important for EKS - it ensures the vo
 
 ## Deploying a PostgreSQL StatefulSet
 
-Here's a production-ready PostgreSQL deployment:
+Here's a basic PostgreSQL deployment:
 
 ```yaml
 # postgres-statefulset.yaml - PostgreSQL on EKS
@@ -199,9 +201,9 @@ kubectl apply -f postgres-statefulset.yaml
 kubectl get pods -l app=postgres -w
 ```
 
-## Deploying a Redis Cluster
+## Deploying Redis with Persistence
 
-For a Redis cluster with sentinel for high availability:
+For Redis with persistent storage:
 
 ```yaml
 # redis-statefulset.yaml - Redis with persistence
@@ -241,7 +243,8 @@ spec:
             - --appendonly
             - "yes"
             - --save
-            - "60 1000"
+            - "60"
+            - "1000"
           resources:
             requests:
               cpu: 250m
@@ -314,10 +317,10 @@ gp3 volumes support online expansion - no pod restart needed.
 
 ## Topology Awareness
 
-EBS volumes are AZ-specific. If a node fails and the pod reschedules to a different AZ, it can't attach the volume. Use topology constraints to keep pods in the same AZ as their volumes:
+EBS volumes are AZ-specific. If a node fails and the pod reschedules to a different AZ, it can't attach the volume. `WaitForFirstConsumer` and the PersistentVolume's node affinity help Kubernetes schedule pods in the right AZ for their bound volumes. For multi-replica workloads, topology constraints can also spread new replicas across AZs:
 
 ```yaml
-# topologySpreadConstraints ensure pods stay in appropriate AZs
+# topologySpreadConstraints can spread replicas across AZs during scheduling
 spec:
   topologySpreadConstraints:
     - maxSkew: 1
