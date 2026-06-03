@@ -18,15 +18,15 @@ Inspector offers two levels of Lambda scanning:
 
 1. **Standard scanning** - Scans the software packages in your function's deployment package and layers. It checks package versions against CVE databases. Think of it like running `npm audit` or `pip check` against your function's dependencies.
 
-2. **Code scanning** - Goes deeper and analyzes the actual Lambda function code for vulnerabilities like injection flaws, insecure deserialization, hardcoded credentials, and other security anti-patterns. This currently supports Python, Java, and Node.js.
+2. **Code scanning** - Goes deeper and analyzes the actual Lambda function code for vulnerabilities like injection flaws, insecure deserialization, hardcoded credentials, and other security anti-patterns. This currently supports Java, .NET, Node.js, Python, and Ruby.
 
-You can enable one or both.
+You can enable standard scanning on its own, or enable standard scanning together with code scanning.
 
 ## Enabling Lambda Standard Scanning
 
 ### Via CLI
 
-This enables Inspector to automatically scan all Lambda functions for vulnerable packages:
+This enables Inspector to automatically scan eligible Lambda functions for vulnerable packages:
 
 ```bash
 # Enable Inspector with Lambda scanning
@@ -36,17 +36,14 @@ aws inspector2 enable \
 
 # Verify it's enabled
 aws inspector2 batch-get-account-status \
-  --query 'Accounts[0].ResourceState.Lambda'
+  --query 'accounts[0].resourceState.lambda.status'
 ```
 
-If Inspector is already enabled for other resource types, use the update command:
+If Inspector is already enabled for other resource types, you still use the enable command to activate Lambda scanning:
 
 ```bash
-aws inspector2 update-configuration \
-  --ecr-configuration '{}' \
-  --ec2-configuration '{
-    "ScanMode": "EC2_SSM_AGENT_BASED"
-  }'
+aws inspector2 enable \
+  --resource-types LAMBDA
 ```
 
 ### Via Terraform
@@ -78,14 +75,14 @@ This enables code-level vulnerability scanning for Lambda functions:
 ```bash
 # Enable Lambda code scanning
 aws inspector2 enable \
-  --resource-types LAMBDA_CODE
+  --resource-types LAMBDA LAMBDA_CODE
 ```
 
-Code scanning uses Amazon CodeGuru under the hood. It's more thorough than package scanning but also more expensive. For most teams, the combination of both types provides the best coverage.
+Code scanning detections map to the Amazon CodeGuru Detector Library. It's more thorough than package scanning but also more expensive. For most teams, the combination of both types provides the best coverage.
 
 ## How Scanning Works
 
-Once enabled, Inspector automatically discovers all Lambda functions in your account and scans them. Here's the flow:
+Once enabled, Inspector automatically discovers eligible Lambda functions in your account and scans them. A function is eligible when it uses a supported runtime, has been invoked or updated in the last 90 days, is marked `$LATEST`, isn't excluded by tags, and isn't encrypted with a customer managed KMS key. Here's the flow:
 
 ```mermaid
 sequenceDiagram
@@ -102,7 +99,7 @@ sequenceDiagram
     Note over I,L: Rescans on deploy or CVE update
 ```
 
-Scans trigger automatically when:
+Scans trigger automatically for eligible functions when:
 - A new function is created
 - An existing function is updated (new deployment)
 - A new CVE is published that affects an installed package
@@ -173,16 +170,16 @@ aws inspector2 list-findings \
       "value": "arn:aws:inspector2:us-east-1:111111111111:finding/abc123"
     }]
   }' \
-  --query 'Findings[0].{
-    Title:Title,
-    Severity:Severity,
-    Status:Status,
-    Function:Resources[0].Details.AwsLambdaFunction.FunctionName,
-    Runtime:Resources[0].Details.AwsLambdaFunction.Runtime,
-    Package:PackageVulnerabilityDetails.VulnerablePackages,
-    CVE:PackageVulnerabilityDetails.VulnerabilityId,
-    FixAvailable:FixAvailable,
-    Remediation:Remediation
+  --query 'findings[0].{
+    Title:title,
+    Severity:severity,
+    Status:status,
+    Function:resources[0].details.awsLambdaFunction.functionName,
+    Runtime:resources[0].details.awsLambdaFunction.runtime,
+    Package:packageVulnerabilityDetails.vulnerablePackages,
+    CVE:packageVulnerabilityDetails.vulnerabilityId,
+    FixAvailable:fixAvailable,
+    Remediation:remediation
   }'
 ```
 
@@ -220,24 +217,25 @@ import sys
 inspector = boto3.client('inspector2')
 
 def check_function_vulnerabilities(function_name):
-    response = inspector.list_findings(
-        filterCriteria={
-            'lambdaFunctionName': [{
-                'comparison': 'EQUALS',
-                'value': function_name
-            }],
-            'severity': [
-                {'comparison': 'EQUALS', 'value': 'CRITICAL'},
-                {'comparison': 'EQUALS', 'value': 'HIGH'}
-            ],
-            'findingStatus': [{
-                'comparison': 'EQUALS',
-                'value': 'ACTIVE'
-            }]
-        }
-    )
+    paginator = inspector.get_paginator('list_findings')
+    findings = []
 
-    findings = response['Findings']
+    for page in paginator.paginate(
+            filterCriteria={
+                'lambdaFunctionName': [{
+                    'comparison': 'EQUALS',
+                    'value': function_name
+                }],
+                'severity': [
+                    {'comparison': 'EQUALS', 'value': 'CRITICAL'},
+                    {'comparison': 'EQUALS', 'value': 'HIGH'}
+                ],
+                'findingStatus': [{
+                    'comparison': 'EQUALS',
+                    'value': 'ACTIVE'
+                }]
+            }):
+        findings.extend(page['findings'])
 
     if findings:
         print(f"Found {len(findings)} critical/high vulnerabilities in {function_name}:")
@@ -311,9 +309,11 @@ aws inspector2 enable \
   --resource-types LAMBDA LAMBDA_CODE \
   --account-ids "222222222222" "333333333333" "444444444444"
 
-# Or enable for all org members
+# Or automatically enable it for new org members
 aws inspector2 update-organization-configuration \
   --auto-enable '{
+    "ec2": true,
+    "ecr": true,
     "lambda": true,
     "lambdaCode": true
   }'
