@@ -18,7 +18,7 @@ The TTL setting applies to both the backup metadata stored in the Kubernetes clu
 
 ## Basic TTL Configuration
 
-You can set TTL when creating a backup using the `--ttl` flag. The value accepts duration strings like `24h`, `7d`, or `720h`.
+You can set TTL when creating a backup using the `--ttl` flag. The value accepts duration strings like `24h`, `168h`, or `720h`.
 
 ```bash
 # Create a backup with 30-day TTL
@@ -88,8 +88,8 @@ spec:
     ttl: 720h0m0s  # 30 days
     includedNamespaces:
     - production
-    labelSelector:
-      matchLabels:
+    metadata:
+      labels:
         backup-type: weekly
 ---
 # Monthly backups - keep for 1 year
@@ -104,8 +104,8 @@ spec:
     ttl: 8760h0m0s  # 365 days
     includedNamespaces:
     - production
-    labelSelector:
-      matchLabels:
+    metadata:
+      labels:
         backup-type: monthly
 ```
 
@@ -136,48 +136,48 @@ Expires:      2026-02-16 02:00:00 +0000 UTC
 
 ## Modifying TTL for Existing Backups
 
-If you need to extend or shorten the TTL of an existing backup, you must edit the backup resource directly:
+If you need to extend or shorten the retention of an existing backup, you must edit the backup resource directly:
 
 ```bash
 # Edit the backup resource
 kubectl edit backup my-backup -n velero
 ```
 
-Find the `spec.ttl` field and modify it:
+Find the `status.expiration` field and modify it:
 
 ```yaml
-spec:
-  ttl: 1440h0m0s  # Change from 7 days to 60 days
+status:
+  expiration: "2026-04-10T02:00:00Z"  # Set the new expiration time
 ```
 
 Alternatively, use kubectl patch:
 
 ```bash
-# Extend TTL to 60 days
+# Set a new expiration time
 kubectl patch backup my-backup -n velero \
   --type merge \
-  --patch '{"spec":{"ttl":"1440h0m0s"}}'
+  --patch '{"status":{"expiration":"2026-04-10T02:00:00Z"}}'
 ```
 
-## Disabling Automatic Deletion
+## Extending Retention for Compliance
 
-If you want to keep a backup indefinitely (for compliance or legal reasons), set the TTL to 0:
+Velero does not provide a per-backup "never expire" TTL value. If you want to keep a backup for a long compliance or legal retention period, set a long TTL explicitly:
 
 ```bash
-# Create backup without TTL
+# Create backup with a 10-year TTL
 velero backup create compliance-backup \
-  --ttl 0 \
+  --ttl 87600h0m0s \
   --include-namespaces production
 ```
 
-This backup will never expire automatically. You must manually delete it when no longer needed.
+This backup will not be eligible for automatic deletion until the configured TTL expires. You must manually delete it when no longer needed.
 
 ## Monitoring TTL-Based Deletions
 
-Configure monitoring to track backup deletions. Velero exposes Prometheus metrics that you can alert on:
+Configure monitoring to track backup deletions. Velero exposes Prometheus metrics for backup deletion attempts, successes, and failures that you can alert on:
 
 ```yaml
-# PrometheusRule for backup expiration alerts
+# PrometheusRule for backup deletion alerts
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:
@@ -188,21 +188,20 @@ spec:
   - name: velero
     interval: 30s
     rules:
-    - alert: BackupExpiringSoon
-      expr: |
-        (velero_backup_expiration_timestamp_seconds - time()) < 86400
-      for: 1h
-      labels:
-        severity: warning
-      annotations:
-        summary: "Backup {{ $labels.backup }} expires in less than 24 hours"
     - alert: BackupDeleted
       expr: |
-        increase(velero_backup_deletion_total[5m]) > 0
+        increase(velero_backup_deletion_success_total[5m]) > 0
       labels:
         severity: info
       annotations:
         summary: "Backup deleted by TTL policy"
+    - alert: BackupDeletionFailed
+      expr: |
+        increase(velero_backup_deletion_failure_total[5m]) > 0
+      labels:
+        severity: warning
+      annotations:
+        summary: "Velero backup deletion failed"
 ```
 
 ## Storage Lifecycle Policies
@@ -210,13 +209,14 @@ spec:
 Combine Velero TTL with object storage lifecycle policies for defense-in-depth:
 
 ```json
-// S3 lifecycle policy example
 {
   "Rules": [
     {
       "Id": "velero-backup-expiration",
       "Status": "Enabled",
-      "Prefix": "backups/",
+      "Filter": {
+        "Prefix": "backups/"
+      },
       "Expiration": {
         "Days": 90
       }
