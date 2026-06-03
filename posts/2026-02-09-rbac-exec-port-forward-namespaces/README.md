@@ -357,7 +357,7 @@ Developers can port-forward to debug connectivity but cannot exec to run command
 
 ```bash
 # This works - port-forward
-kubectl port-forward mypod -n production 8080:8080
+kubectl port-forward pod/mypod -n production 8080:8080
 
 # This fails - exec
 kubectl exec -it mypod -n production -- /bin/bash
@@ -370,21 +370,21 @@ Verify permissions work correctly.
 
 ```bash
 # Test development namespace (should work)
-kubectl auth can-i create pods/exec -n development --as=user@company.com
+kubectl auth can-i create pods --subresource=exec -n development --as=user@company.com
 # yes
 
 kubectl exec -it debug-pod -n development -- /bin/bash
 # Success
 
 # Test production namespace (should fail for regular user)
-kubectl auth can-i create pods/exec -n production --as=user@company.com
+kubectl auth can-i create pods --subresource=exec -n production --as=user@company.com
 # no
 
 kubectl exec -it app-pod -n production -- /bin/bash
 # Error: Forbidden
 
 # Test as oncall engineer (should work in production)
-kubectl auth can-i create pods/exec -n production \
+kubectl auth can-i create pods --subresource=exec -n production \
   --as-group=oncall-engineers
 # yes
 ```
@@ -400,14 +400,14 @@ jq -r 'select(.verb=="create" and
   "\(.requestReceivedTimestamp) \(.user.username) \(.verb) \(.objectRef.subresource) in \(.objectRef.namespace)/\(.objectRef.name)"' \
   /var/log/kubernetes/audit.log
 
-# List users with exec permissions
+# List roles with exec permissions
 kubectl get roles,clusterroles --all-namespaces -o json | \
   jq -r '.items[] | select(.rules[]?.resources[]? | contains("pods/exec")) |
     {namespace: .metadata.namespace, role: .metadata.name}'
 
 # Check specific user's exec permissions across namespaces
 for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
-  CAN_EXEC=$(kubectl auth can-i create pods/exec -n $ns --as=user@company.com)
+  CAN_EXEC=$(kubectl auth can-i create pods --subresource=exec -n "$ns" --as=user@company.com)
   if [ "$CAN_EXEC" = "yes" ]; then
     echo "User can exec in namespace: $ns"
   fi
@@ -477,7 +477,8 @@ kubectl debug mypod -n staging \
   --image=busybox \
   --target=mycontainer
 
-# This requires both pods/ephemeralcontainers and pods/exec permissions
+# Creating the debug container requires pods/ephemeralcontainers update permission.
+# Execing into the debug container later requires pods/exec create permission.
 ```
 
 Namespace-scoped exec and port-forward permissions balance debugging needs with security. Grant these capabilities to development and staging namespaces for all developers, but restrict production access to oncall engineers and SRE teams. Use audit logs to monitor usage and implement time-based access for temporary debugging needs in production.
