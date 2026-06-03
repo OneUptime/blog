@@ -84,16 +84,20 @@ async function publishOrderEvent(eventType, orderData) {
 }
 
 // Usage examples
-await publishOrderEvent('OrderCreated', {
-  orderId: '12345',
-  customerId: 'cust-789',
-  total: 149.99
-});
+async function example() {
+  await publishOrderEvent('OrderCreated', {
+    orderId: '12345',
+    customerId: 'cust-789',
+    total: 149.99
+  });
 
-await publishOrderEvent('OrderShipped', {
-  orderId: '12345',
-  trackingNumber: 'TRACK-ABC-123'
-});
+  await publishOrderEvent('OrderShipped', {
+    orderId: '12345',
+    trackingNumber: 'TRACK-ABC-123'
+  });
+}
+
+example().catch(console.error);
 ```
 
 ## Creating Rules on Custom Buses
@@ -124,8 +128,15 @@ aws events put-targets \
   --event-bus-name orders-bus \
   --targets '[{
     "Id": "notify-sales",
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:notify-sales-team"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:notify-sales-team"
   }]'
+
+aws lambda add-permission \
+  --function-name notify-sales-team \
+  --statement-id allow-eventbridge-high-value-orders \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/orders-bus/high-value-order-alert
 ```
 
 Resource Policies for Access Control
@@ -142,10 +153,10 @@ This policy allows another AWS account to publish events to your bus:
       "Sid": "AllowCrossAccountPublish",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::987654321:root"
+        "AWS": "arn:aws:iam::987654321098:root"
       },
       "Action": "events:PutEvents",
-      "Resource": "arn:aws:events:us-east-1:123456789:event-bus/orders-bus"
+      "Resource": "arn:aws:events:us-east-1:123456789012:event-bus/orders-bus"
     }
   ]
 }
@@ -156,16 +167,9 @@ Apply it with:
 ```bash
 aws events put-permission \
   --event-bus-name orders-bus \
-  --policy '{
-    "Version": "2012-10-17",
-    "Statement": [{
-      "Sid": "AllowPartnerAccount",
-      "Effect": "Allow",
-      "Principal": { "AWS": "987654321" },
-      "Action": "events:PutEvents",
-      "Resource": "arn:aws:events:us-east-1:123456789:event-bus/orders-bus"
-    }]
-  }'
+  --statement-id AllowPartnerAccount \
+  --action events:PutEvents \
+  --principal 987654321098
 ```
 
 ## Cross-Account Event Routing
@@ -189,8 +193,8 @@ aws events put-targets \
   --rule forward-orders \
   --targets '[{
     "Id": "central-bus",
-    "Arn": "arn:aws:events:us-east-1:123456789:event-bus/orders-bus",
-    "RoleArn": "arn:aws:iam::987654321:role/EventBridgeCrossAccountRole"
+    "Arn": "arn:aws:events:us-east-1:123456789012:event-bus/orders-bus",
+    "RoleArn": "arn:aws:iam::987654321098:role/EventBridgeCrossAccountRole"
   }]'
 ```
 
@@ -261,8 +265,17 @@ Resources:
   HighValueFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: high-value/
       Handler: highValue.handler
       Runtime: nodejs20.x
+
+  HighValueFunctionPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HighValueFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt HighValueRule.Arn
 
   AnalyticsQueue:
     Type: AWS::SQS::Queue
@@ -292,7 +305,7 @@ This adds cost allocation tags to your bus:
 
 ```bash
 aws events tag-resource \
-  --resource-arn arn:aws:events:us-east-1:123456789:event-bus/orders-bus \
+  --resource-arn arn:aws:events:us-east-1:123456789012:event-bus/orders-bus \
   --tags '[
     { "Key": "Team", "Value": "orders" },
     { "Key": "Environment", "Value": "production" },
@@ -302,7 +315,7 @@ aws events tag-resource \
 
 ## Monitoring Custom Buses
 
-Each custom bus gets its own CloudWatch metrics. Monitor `PutEvents` failures and invocation counts per rule. If events are being dropped, you'll see it in the `FailedInvocations` metric.
+Custom-bus rule metrics include the event bus name as a CloudWatch dimension. Monitor `PutEventsFailedEntriesCount` for ingestion failures and invocation counts per rule. If target invocations fail permanently, you'll see it in the `FailedInvocations` metric.
 
 For a broader view of event-driven monitoring, check out our post on [EventBridge archive and replay for debugging](https://oneuptime.com/blog/post/2026-02-12-eventbridge-archive-replay-event-debugging/view).
 
