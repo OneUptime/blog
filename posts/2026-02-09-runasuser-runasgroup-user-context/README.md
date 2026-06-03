@@ -27,15 +27,17 @@ metadata:
   name: nonroot-demo
 spec:
   securityContext:
-    runAsUser: 1000
+    runAsUser: 101
+    runAsGroup: 101
     runAsNonRoot: true
   containers:
   - name: app
-    image: nginx:1.21
-    command: ["sh", "-c", "whoami && id && nginx -g 'daemon off;'"]
+    image: nginxinc/nginx-unprivileged:stable-alpine
+    ports:
+    - containerPort: 8080
 ```
 
-This configuration forces the container to run as user 1000. The `runAsNonRoot: true` setting provides an additional safety check, refusing to start the container if it tries to run as root.
+This configuration forces the container to run as user 101. The `runAsNonRoot: true` setting provides an additional safety check, refusing to start the container if it tries to run as root.
 
 ## Configuring Both User and Group
 
@@ -82,7 +84,7 @@ spec:
     fsGroup: 5000
   containers:
   - name: web-server
-    image: nginx:1.21
+    image: nginxinc/nginx-unprivileged:stable-alpine
     securityContext:
       runAsUser: 101  # nginx user
       runAsGroup: 101
@@ -112,18 +114,18 @@ Always verify that containers run with the expected user context:
 # Check the process user
 
 kubectl exec multi-user-pod -c web-server -- id
-# uid=101(nginx) gid=101(nginx) groups=5000
+# uid=101(nginx) gid=101(nginx) groups=101(nginx),5000
 
 kubectl exec multi-user-pod -c log-processor -- id
-# uid=2000 gid=2000 groups=5000
+# uid=2000 gid=2000 groups=2000,5000
 
 # Check file ownership
 kubectl exec multi-user-pod -c web-server -- sh -c "touch /tmp/web.txt && ls -l /tmp/web.txt"
 # -rw-r--r-- 1 101 101 0 ... /tmp/web.txt
 
-# Verify the process cannot become root
-kubectl exec multi-user-pod -c web-server -- su
-# su: must be run from a terminal (or fails due to permissions)
+# Verify the process is not root
+kubectl exec multi-user-pod -c web-server -- id -u
+# 101
 ```
 
 These checks confirm the security context configuration is working correctly.
@@ -363,7 +365,7 @@ spec:
 
       echo "=== Network Test ==="
       # Try to bind to privileged port
-      nc -l -p 80 2>&1 && echo "Port 80: OK" || echo "Port 80: FAILED (expected)"
+      timeout 1 nc -l -p 80 2>&1 && echo "Port 80: OK" || echo "Port 80: FAILED (common without CAP_NET_BIND_SERVICE)"
       # Try non-privileged port
       timeout 1 nc -l -p 8080 2>&1 && echo "Port 8080: OK" || echo "Port 8080: timed out"
 
