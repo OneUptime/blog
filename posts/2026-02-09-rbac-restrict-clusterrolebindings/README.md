@@ -8,13 +8,13 @@ Description: Learn how to implement RBAC policies that prevent regular users fro
 
 ---
 
-ClusterRoleBindings grant cluster-wide permissions to users, groups, or service accounts. Unlike RoleBindings which are scoped to a single namespace, ClusterRoleBindings affect the entire cluster. A user who can create ClusterRoleBindings can grant themselves or others cluster-admin privileges, completely bypassing all security controls.
+ClusterRoleBindings grant cluster-wide permissions to users, groups, or service accounts. Unlike RoleBindings which are scoped to a single namespace, ClusterRoleBindings affect the entire cluster. A user who can create ClusterRoleBindings and is allowed to bind powerful ClusterRoles can grant themselves or others cluster-admin privileges, completely bypassing all security controls.
 
 The ability to create ClusterRoleBindings is a cluster-level privilege that should be restricted to platform administrators. Even senior developers or team leads should not have this permission in production clusters. This restriction is critical for preventing privilege escalation and maintaining security boundaries.
 
 ## Understanding the Privilege Escalation Risk
 
-The attack path is straightforward. If a user has permission to create ClusterRoleBindings and can reference any ClusterRole, they can grant themselves cluster-admin:
+The attack path is straightforward. If a user has permission to create ClusterRoleBindings and is authorized to bind any ClusterRole, they can grant themselves cluster-admin:
 
 ```bash
 # Malicious or accidental privilege escalation
@@ -24,7 +24,7 @@ kubectl create clusterrolebinding escalate-privileges \
   --user=attacker@company.com
 ```
 
-Even if the user does not initially have cluster-admin permissions, this command gives it to them. From that point, they have unrestricted access to all cluster resources, all namespaces, and all secrets.
+If the user is also authorized to bind the `cluster-admin` ClusterRole, this command gives it to them. From that point, they have unrestricted access to all cluster resources, all namespaces, and all secrets.
 
 Kubernetes includes automatic privilege escalation prevention that stops users from creating RoleBindings or ClusterRoleBindings that grant permissions the user does not already have. However, this protection only works if the initial RBAC configuration is correct.
 
@@ -44,7 +44,7 @@ kubectl get clusterrolebindings -o json | \
   {binding: .metadata.name, subjects: .subjects}'
 ```
 
-Only the cluster-admin role and system:masters group should have permission to create ClusterRoleBindings.
+In a default cluster, the `cluster-admin` ClusterRole is bound to the `system:masters` group. Any additional users or groups with permission to create ClusterRoleBindings should be platform administrators only.
 
 ## Finding Overly Permissive Roles
 
@@ -61,10 +61,9 @@ kubectl get clusterroles -o json | \
   .metadata.name'
 ```
 
-Expected results should only show:
+Expected results in a default cluster should only show:
 
 - `cluster-admin` (full cluster access)
-- `system:controller:clusterrole-aggregation-controller` (system component)
 
 Any custom roles in this output need review. If you have custom roles that grant ClusterRoleBinding creation, verify they are only bound to platform administrators.
 
@@ -181,7 +180,7 @@ kubectl create clusterrolebinding developer-cluster-access \
 
 ## Testing Privilege Escalation Prevention
 
-Kubernetes includes built-in privilege escalation prevention. Even if a user has permission to create ClusterRoleBindings, they cannot bind roles with permissions they do not have:
+Kubernetes includes built-in privilege escalation prevention. Even if a user has permission to create ClusterRoleBindings, they cannot bind roles with permissions they do not have unless they also have the `bind` verb on the referenced role:
 
 ```yaml
 # Test: Can a namespace-admin create ClusterRoleBinding?
@@ -211,7 +210,7 @@ kubectl create clusterrolebinding escalate \
 # Error: user cannot bind role with permissions they do not already have
 ```
 
-The escalation prevention works because the limited-user does not have cluster-admin permissions, so they cannot create a binding that grants those permissions to anyone else.
+The escalation prevention works because the limited-user does not have cluster-admin permissions and is not authorized to bind the `cluster-admin` role, so they cannot create a binding that grants those permissions to anyone else.
 
 However, do not rely solely on escalation prevention. The correct approach is to not grant ClusterRoleBinding creation permissions to regular users at all.
 
@@ -252,19 +251,13 @@ jq 'select(.objectRef.resource=="clusterrolebindings" and .verb=="create") |
     /var/log/kubernetes/audit.log
 ```
 
-Set up alerts for unauthorized ClusterRoleBinding attempts:
+Set up alerts from your audit log backend for unauthorized ClusterRoleBinding attempts. For example, if your logs are available to `jq`, this filter finds rejected create attempts:
 
-```yaml
-# Prometheus alert rule
-- alert: UnauthorizedClusterRoleBindingAttempt
-  expr: |
-    apiserver_audit_event_total{
-      objectRef_resource="clusterrolebindings",
-      verb="create",
-      responseStatus_code="403"
-    } > 0
-  annotations:
-    summary: "Unauthorized ClusterRoleBinding creation attempted"
+```bash
+jq 'select(.objectRef.resource=="clusterrolebindings" and
+           .verb=="create" and
+           .responseStatus.code==403)' \
+  /var/log/kubernetes/audit.log
 ```
 
 ## Implementing Break-Glass Procedures
