@@ -97,7 +97,7 @@ This is the part people often miss. The OPTIONS response handles the preflight c
 
 ## CORS on HTTP API (Much Easier)
 
-HTTP APIs have built-in CORS support that's way simpler to configure. No OPTIONS method needed - API Gateway handles it automatically.
+HTTP APIs have built-in CORS support that's way simpler to configure. For most routes, no OPTIONS method is needed - API Gateway handles it automatically.
 
 Configure CORS on HTTP API:
 
@@ -115,7 +115,7 @@ aws apigatewayv2 update-api \
   }'
 ```
 
-That's it. HTTP API handles the OPTIONS preflight automatically and adds CORS headers to all responses. Your Lambda function doesn't need to return any CORS headers.
+That's it. HTTP API handles the OPTIONS preflight automatically and adds CORS headers to CORS responses that include an `Origin` header. Your Lambda function doesn't need to return any CORS headers. If you're using a `$default` route with an authorizer, add an unauthenticated `OPTIONS /{proxy+}` route so preflight requests don't get caught by the authorizer.
 
 ## CloudFormation for REST API CORS
 
@@ -211,7 +211,7 @@ Resources:
 
 ## Multiple Origins
 
-REST APIs don't natively support multiple origins in the `Access-Control-Allow-Origin` header - it only accepts a single value or `*`. To support multiple specific origins, you need to check the request's `Origin` header and respond dynamically.
+REST APIs don't natively support multiple origins in the `Access-Control-Allow-Origin` header - it only accepts a single value or `*`. To support multiple specific origins, you need to check the request's `Origin` header and respond dynamically on both the actual response and the preflight response.
 
 Handle multiple origins in your Lambda function:
 
@@ -230,19 +230,21 @@ def lambda_handler(event, context):
     headers = event.get("headers", {})
     origin = headers.get("origin") or headers.get("Origin", "")
 
-    # Use the origin if it's allowed, otherwise don't set the header
-    cors_origin = origin if origin in ALLOWED_ORIGINS else ALLOWED_ORIGINS[0]
-
     data = get_data()
+
+    response_headers = {
+        "Access-Control-Allow-Headers": "Content-Type,Authorization",
+        "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
+        "Vary": "Origin",  # Important for caching
+    }
+
+    # Use the origin if it's allowed, otherwise don't set the header
+    if origin in ALLOWED_ORIGINS:
+        response_headers["Access-Control-Allow-Origin"] = origin
 
     return {
         "statusCode": 200,
-        "headers": {
-            "Access-Control-Allow-Origin": cors_origin,
-            "Access-Control-Allow-Headers": "Content-Type,Authorization",
-            "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-            "Vary": "Origin",  # Important for caching
-        },
+        "headers": response_headers,
         "body": json.dumps(data),
     }
 ```
