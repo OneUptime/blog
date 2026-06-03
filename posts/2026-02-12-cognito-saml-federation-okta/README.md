@@ -35,21 +35,9 @@ sequenceDiagram
     Cognito->>App: JWT tokens
 ```
 
-## Step 1: Get Cognito SAML Metadata
+## Step 1: Get Cognito SAML Configuration Values
 
-Before configuring Okta, you need the Cognito SAML endpoint information. The metadata URL is:
-
-```text
-https://cognito-idp.{region}.amazonaws.com/{userPoolId}/.well-known/saml-metadata.xml
-```
-
-For example:
-
-```text
-https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX/.well-known/saml-metadata.xml
-```
-
-You'll also need the Assertion Consumer Service (ACS) URL:
+Before configuring Okta, you need the Cognito SAML endpoint information. The Assertion Consumer Service (ACS) URL is:
 
 ```text
 https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
@@ -108,9 +96,8 @@ resource "aws_cognito_identity_provider" "okta" {
     # Option 2: Use the metadata file content
     # MetadataFile = file("okta-metadata.xml")
 
-    # Enable IdP-initiated sign-out
+    # Enable SAML single logout
     IDPSignout = "true"
-    SLORedirectBindingURI = "https://your-okta-domain.okta.com/app/xxxxxxxxxx/slo/saml"
   }
 
   # Map SAML attributes to Cognito attributes
@@ -250,7 +237,7 @@ The SAML assertion should contain elements like:
 </saml:Attribute>
 ```
 
-The `Name` field in each attribute must match the key in your Cognito `attribute_mapping`.
+The `Name` field in each attribute must match the value in your Cognito `attribute_mapping`.
 
 ## Multi-Tenant SAML Setup
 
