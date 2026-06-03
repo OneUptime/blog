@@ -38,10 +38,10 @@ The primary cluster in one Region handles all writes. Secondary clusters in othe
 
 Global Datastore requires:
 
-- ElastiCache for Redis 5.0.6 or later
-- Redis cluster mode enabled (required)
-- At least one Redis cluster with encryption in transit enabled
-- r5 or r6g node types (t-series nodes are not supported)
+- ElastiCache for Redis OSS 5.0.6 or later, or ElastiCache for Valkey 7.2 or later
+- Redis cluster mode enabled or disabled; this guide uses cluster mode enabled
+- VPC subnet groups in each Region; if you enable encryption in transit, specify a cache subnet group
+- Supported node families in size large or above, such as M5, M6g, M7g, R5, R6g, R6gd, R7g, and C7gn
 
 ## Step 1: Create the Primary Cluster
 
@@ -63,6 +63,7 @@ aws elasticache create-replication-group \
   --transit-encryption-enabled \
   --at-rest-encryption-enabled \
   --cache-parameter-group-name default.redis7.cluster.on \
+  --cache-subnet-group-name my-cache-subnet-group \
   --region us-east-1
 ```
 
@@ -105,11 +106,9 @@ aws elasticache create-replication-group \
   --replication-group-id my-global-redis-eu \
   --replication-group-description "EU secondary for Global Datastore" \
   --global-replication-group-id ldgnf-my-global-redis \
-  --cache-node-type cache.r6g.large \
-  --num-node-groups 3 \
   --replicas-per-node-group 1 \
-  --automatic-failover-enabled \
   --multi-az-enabled \
+  --cache-subnet-group-name my-cache-subnet-group-eu \
   --region eu-west-1
 ```
 
@@ -121,11 +120,9 @@ aws elasticache create-replication-group \
   --replication-group-id my-global-redis-apac \
   --replication-group-description "APAC secondary for Global Datastore" \
   --global-replication-group-id ldgnf-my-global-redis \
-  --cache-node-type cache.r6g.large \
-  --num-node-groups 3 \
   --replicas-per-node-group 1 \
-  --automatic-failover-enabled \
   --multi-az-enabled \
+  --cache-subnet-group-name my-cache-subnet-group-apac \
   --region ap-southeast-1
 ```
 
@@ -206,7 +203,7 @@ def write_to_cache(key, value, ttl=3600):
 
 ### Option 2: Write Locally and Accept Eventual Consistency
 
-For some use cases, you can write to a local data store and let the primary sync later. This works for things like view counters or non-critical metadata.
+For some use cases, you can write to a separate local data store or queue and reconcile those updates through the primary Region later. Global Datastore does not replicate writes from a secondary cluster back to the primary, so this pattern only works for data that can tolerate delayed reconciliation, such as view counters or non-critical metadata.
 
 ## Failover to a Secondary Region
 
@@ -231,16 +228,16 @@ After failover:
 ### Check Replication Lag
 
 ```bash
-# Monitor replication lag to secondary Regions
+# Monitor replication lag to a secondary Region's primary cache node
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name GlobalDatastoreReplicationLag \
-  --dimensions Name=GlobalReplicationGroupId,Value=ldgnf-my-global-redis \
+  --dimensions Name=CacheClusterId,Value=my-global-redis-eu-0001-001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
   --statistics Average,Maximum \
-  --region us-east-1
+  --region eu-west-1
 ```
 
 ### Set Up Lag Alerts
@@ -251,14 +248,14 @@ aws cloudwatch put-metric-alarm \
   --alarm-name global-redis-lag-high \
   --namespace AWS/ElastiCache \
   --metric-name GlobalDatastoreReplicationLag \
-  --dimensions Name=GlobalReplicationGroupId,Value=ldgnf-my-global-redis \
+  --dimensions Name=CacheClusterId,Value=my-global-redis-eu-0001-001 \
   --statistic Maximum \
   --period 60 \
-  --threshold 5000 \
+  --threshold 5 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:CacheAlerts \
-  --region us-east-1
+  --region eu-west-1
 ```
 
 ## Cost Considerations
@@ -275,7 +272,7 @@ The biggest cost driver is the cross-Region data transfer. For write-heavy workl
 
 1. **Put the primary in the Region closest to your write traffic.** Writes always go to the primary, so minimize that latency.
 
-2. **Use cluster mode enabled.** It is required for Global Datastore and gives you horizontal scaling within each Region.
+2. **Use cluster mode enabled when you need sharding.** Global Datastore supports cluster mode enabled and disabled, but cluster mode enabled gives you horizontal scaling within each Region.
 
 3. **Monitor replication lag continuously.** Lag spikes can indicate network issues or that your secondary clusters need more capacity.
 
