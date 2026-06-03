@@ -32,11 +32,11 @@ resource "kubernetes_deployment" "api" {
 
 The deployment implicitly depends on the namespace because it references the namespace name. Terraform creates the namespace first.
 
-However, some dependencies cannot be expressed through references. For example, a CRD must exist before you can create instances of that custom resource, but there's no direct reference relationship.
+However, some dependencies cannot be expressed through references. For example, a CRD must exist before you can create instances of that custom resource, but there's no direct reference relationship. With the Kubernetes provider's `kubernetes_manifest` resource, the CRD schema must also be available during Terraform planning, so CRDs and their custom resources often need separate apply steps.
 
 ## Basic depends_on Usage with CRDs
 
-Custom Resource Definitions must be installed before creating custom resources. Use depends_on to enforce this order:
+Custom Resource Definitions must be installed before creating custom resources. Use depends_on to enforce this order when the CRD schema is already available to Terraform during planning, such as when you apply the CRD first and then apply the custom resource:
 
 ```hcl
 resource "kubernetes_manifest" "app_crd" {
@@ -103,7 +103,7 @@ resource "kubernetes_manifest" "my_application" {
 }
 ```
 
-Without depends_on, Terraform might try to create the custom resource before the CRD exists, causing the apply to fail.
+Without depends_on, Terraform might try to create the custom resource before the CRD exists, causing the apply to fail. If the CRD is being created by `kubernetes_manifest` in the same configuration, run a first apply for the CRD so the Kubernetes API exposes its schema, then apply the custom resource.
 
 ## RBAC Dependencies
 
@@ -211,7 +211,7 @@ The deployment depends on the role binding, which implicitly depends on both the
 When installing operators, the operator deployment must be ready before creating resources it manages:
 
 ```hcl
-# Install the operator
+# Simplified operator deployment. Install cert-manager CRDs and RBAC separately.
 
 resource "kubernetes_deployment" "cert_manager" {
   metadata {
@@ -251,7 +251,7 @@ resource "kubernetes_deployment" "cert_manager" {
   }
 }
 
-# Wait for operator webhook to be ready
+# Wait for the operator deployment to be available
 resource "null_resource" "wait_for_cert_manager" {
   provisioner "local-exec" {
     command = "kubectl wait --for=condition=Available --timeout=300s deployment/cert-manager -n cert-manager"
@@ -321,11 +321,11 @@ resource "kubernetes_manifest" "app_certificate" {
 }
 ```
 
-This chain ensures the cert-manager operator is fully operational before creating issuers and certificates.
+This chain ensures the cert-manager deployment is available before creating issuers and certificates. The cert-manager CRDs must still be installed before Terraform plans the `ClusterIssuer` and `Certificate` manifests.
 
 ## Network Policy Dependencies
 
-Network policies should be created after workloads to prevent connectivity issues during deployment:
+Network policies can be created after workloads if your rollout requires temporary unrestricted connectivity during startup:
 
 ```hcl
 resource "kubernetes_deployment" "frontend" {
@@ -460,7 +460,7 @@ resource "kubernetes_network_policy" "allow_frontend_to_backend" {
 }
 ```
 
-This ensures workloads start before network restrictions apply, preventing startup failures.
+This ensures workloads start before network restrictions apply, which can prevent startup failures in applications that need temporary bootstrap connectivity.
 
 ## Database Initialization Dependencies
 
@@ -474,8 +474,8 @@ resource "kubernetes_secret" "db_credentials" {
   }
 
   data = {
-    username = base64encode("appuser")
-    password = base64encode("securepassword")
+    username = "appuser"
+    password = "securepassword"
   }
 }
 
@@ -591,6 +591,8 @@ resource "kubernetes_job" "db_migration" {
     backoff_limit = 4
   }
 
+  wait_for_completion = true
+
   depends_on = [
     kubernetes_stateful_set.postgres
   ]
@@ -639,7 +641,7 @@ resource "kubernetes_deployment" "app" {
 }
 ```
 
-The application waits for the database migration job to complete before starting.
+With `wait_for_completion = true`, the application waits for the database migration job to complete before starting.
 
 ## Multiple Dependencies
 
@@ -664,7 +666,7 @@ resource "kubernetes_secret" "app_secrets" {
   }
 
   data = {
-    api_key = base64encode("secret-key")
+    api_key = "secret-key"
   }
 }
 
