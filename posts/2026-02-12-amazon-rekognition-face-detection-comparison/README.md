@@ -14,7 +14,7 @@ The applications range from identity verification and access control to photo or
 
 ## Face Detection and Attribute Analysis
 
-Face detection finds every face in an image and returns detailed attributes for each one. This includes the bounding box, landmarks (eyes, nose, mouth positions), and attribute predictions.
+Face detection finds the 100 largest faces in an image and returns detailed attributes for each one. This includes the bounding box, landmarks (eyes, nose, mouth positions), and attribute predictions.
 
 ```python
 import boto3
@@ -26,7 +26,7 @@ def detect_faces(bucket, key):
     """Detect faces and analyze their attributes."""
     response = rekognition.detect_faces(
         Image={'S3Object': {'Bucket': bucket, 'Name': key}},
-        Attributes=['ALL']  # Use 'DEFAULT' for just bounding box
+        Attributes=['ALL']  # Use 'DEFAULT' for bounding box, confidence, landmarks, pose, and quality
     )
 
     faces = response['FaceDetails']
@@ -208,7 +208,7 @@ matches = search_face(
 
 ## Identity Verification System
 
-Here's a complete identity verification flow that compares a government ID with a live selfie.
+Here's a basic identity verification flow that compares a government ID with a selfie captured by your app.
 
 ```python
 class IdentityVerifier:
@@ -253,7 +253,7 @@ class IdentityVerifier:
             return result
         result['checks']['quality'] = True
 
-        # Step 3: Check eyes are open (liveness indicator)
+        # Step 3: Check eyes are open (quality check, not a liveness check)
         if not face['EyesOpen']['Value']:
             result['checks']['eyes_open'] = False
             result['reason'] = "Eyes appear to be closed"
