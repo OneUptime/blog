@@ -17,8 +17,8 @@ In this guide, you'll learn how to configure static and dynamic shovels, impleme
 Shovels consume messages from a source queue or exchange and publish them to a destination. Key characteristics:
 
 - **One-way transfer** - Messages flow from source to destination only
-- **Protocol bridging** - Can connect AMQP 0.9.1, AMQP 1.0, and STOMP
-- **Message transformation** - Can modify messages during transfer
+- **Protocol bridging** - Can connect AMQP 0.9.1 and AMQP 1.0 endpoints
+- **Message transformation** - Can add shovel metadata headers or override publish properties during transfer
 - **Reliable delivery** - Uses publisher confirms and acknowledgments
 - **Dynamic or static** - Configure at runtime or in configuration files
 
@@ -34,7 +34,7 @@ Configure RabbitMQ clusters with shovel plugin enabled:
 
 ```yaml
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: source-cluster
   namespace: rabbitmq
@@ -49,7 +49,7 @@ spec:
       cluster_name = source-cluster
 ---
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: destination-cluster
   namespace: rabbitmq
@@ -81,7 +81,7 @@ Static shovels are defined in RabbitMQ configuration:
 
 ```yaml
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: source-cluster
   namespace: rabbitmq
@@ -96,13 +96,21 @@ spec:
         {rabbitmq_shovel, [
           {shovels, [
             {migration_shovel, [
-              {sources, [
-                {brokers, ["amqp://source-cluster:5672"]},
+              {source, [
+                {protocol, amqp091},
+                {uris, ["amqp://source-cluster:5672"]},
                 {queue, <<"legacy_queue">>}
               ]},
-              {destinations, [
-                {brokers, ["amqp://destination-cluster:5672"]},
-                {queue, <<"new_queue">>}
+              {destination, [
+                {protocol, amqp091},
+                {uris, ["amqp://destination-cluster:5672"]},
+                {declarations, [
+                  {'queue.declare', [{queue, <<"new_queue">>}, durable]}
+                ]},
+                {publish_fields, [
+                  {exchange, <<>>},
+                  {routing_key, <<"new_queue">>}
+                ]}
               ]},
               {ack_mode, on_confirm},
               {reconnect_delay, 5}
@@ -128,7 +136,7 @@ def create_shovel(mgmt_url, username, password, shovel_name, config):
         headers={"content-type": "application/json"},
         data=json.dumps({"value": config})
     )
-    return response.status_code == 201
+    return response.ok
 
 # Configure a basic shovel
 shovel_config = {
@@ -199,8 +207,8 @@ curl -u ${SOURCE_USER}:${SOURCE_PASS} -X PUT \
 ```
 
 This shovel:
-- Consumes from `events` exchange with routing key pattern `order.*`
-- Publishes to `processed_events` exchange with modified routing key
+- Declares an exclusive queue, binds it to the `events` exchange with routing key `order.*`, and consumes from that queue
+- Publishes to `processed_events` exchange with the fixed routing key `migrated.order.*`
 
 ## Transforming Messages During Transfer
 
@@ -217,13 +225,13 @@ curl -u ${SOURCE_USER}:${SOURCE_PASS} -X PUT \
       "dest-uri": "amqp://destination-cluster:5672",
       "dest-queue": "processed_messages",
       "ack-mode": "on-confirm",
-      "add-forward-headers": true,
+      "dest-add-forward-headers": true,
       "dest-add-timestamp-header": true
     }
   }'
 ```
 
-The `add-forward-headers` option adds metadata about the shovel transfer.
+The `dest-add-forward-headers` option adds metadata about the shovel transfer.
 
 ## Implementing Selective Message Routing
 
@@ -250,7 +258,7 @@ channel.basic_publish(
 )
 ```
 
-Configure shovel to route based on headers (requires custom consumer):
+Shovels do not filter messages by header themselves. Route the selected messages into a dedicated source queue first, or use a custom consumer for header-based filtering:
 
 ```bash
 # Shovel with prefetch for selective routing
@@ -280,7 +288,7 @@ curl -u ${SOURCE_USER}:${SOURCE_PASS} \
 
 # Get specific shovel status
 curl -u ${SOURCE_USER}:${SOURCE_PASS} \
-  http://localhost:15672/api/shovels/%2F/data-migration
+  http://localhost:15672/api/shovels/vhost/%2F/data-migration
 ```
 
 Using rabbitmqctl:
@@ -290,37 +298,7 @@ kubectl exec -n rabbitmq source-cluster-server-0 -- \
   rabbitmqctl shovel_status
 ```
 
-Create Prometheus alerts:
-
-```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: rabbitmq-shovel-alerts
-  namespace: monitoring
-spec:
-  groups:
-  - name: rabbitmq-shovels
-    rules:
-    - alert: ShovelNotRunning
-      expr: |
-        rabbitmq_shovels_up == 0
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "RabbitMQ shovel not running"
-        description: "Shovel {{ $labels.shovel }} is not running"
-
-    - alert: ShovelHighErrorRate
-      expr: |
-        rate(rabbitmq_shovel_errors_total[5m]) > 0.1
-      for: 10m
-      labels:
-        severity: warning
-      annotations:
-        summary: "High shovel error rate"
-```
+RabbitMQ's built-in Prometheus plugin exposes broker metrics, but it does not expose per-shovel `up` or error counters. For Prometheus alerts on shovel health, export the management API or `rabbitmqctl shovel_status --formatter=json` output through your own check.
 
 ## Migrating Data Between Clusters
 
@@ -380,7 +358,7 @@ curl -u ${SOURCE_USER}:${SOURCE_PASS} -X PUT \
   }'
 ```
 
-The `src-delete-after: queue-length` option deletes the shovel when the source queue is empty.
+The `src-delete-after: queue-length` option measures the source queue length when the shovel starts and deletes the shovel after it transfers that many messages.
 
 ## Protocol Bridging with Shovels
 
@@ -396,8 +374,8 @@ curl -u ${SOURCE_USER}:${SOURCE_PASS} -X PUT \
       "src-uri": "amqp://rabbitmq:5672",
       "src-queue": "messages",
       "dest-protocol": "amqp10",
-      "dest-uri": "amqp://azure-servicebus.servicebus.windows.net",
-      "dest-address": "queue-name",
+      "dest-uri": "amqp://destination-amqp10-broker:5672",
+      "dest-address": "/queues/queue-name",
       "ack-mode": "on-confirm"
     }
   }'
@@ -425,7 +403,7 @@ kubectl logs -n rabbitmq source-cluster-server-0 | grep shovel
 
 # View shovel details
 kubectl exec -n rabbitmq source-cluster-server-0 -- \
-  rabbitmqctl eval 'rabbit_shovel_status:status().'
+  rabbitmqctl shovel_status --formatter=json
 
 # Delete problematic shovel
 curl -u ${SOURCE_USER}:${SOURCE_PASS} -X DELETE \
