@@ -162,11 +162,12 @@ const lambda = new LambdaClient({ region: 'us-east-1' });
 
 const response = await lambda.send(new InvokeCommand({
     FunctionName: 'my-processor',
-    Payload: JSON.stringify({ user_id: 'user-123', action: 'process' })
+    Payload: Buffer.from(JSON.stringify({ user_id: 'user-123', action: 'process' }))
 }));
 
 // Decode the response payload
-const result = JSON.parse(Buffer.from(response.Payload).toString());
+const payload = Buffer.from(response.Payload ?? []).toString();
+const result = payload ? JSON.parse(payload) : null;
 console.log(result);
 ```
 
@@ -258,11 +259,19 @@ const response = await s3.send(new GetObjectCommand({
 await pipeline(response.Body, createWriteStream('/tmp/large-file.csv'));
 console.log('File downloaded');
 
-// Or convert to string for small responses
-const text = await response.Body.transformToString();
+// Or, for small responses, fetch the object and convert the fresh body to a string
+const textResponse = await s3.send(new GetObjectCommand({
+    Bucket: 'my-bucket',
+    Key: 'large-file.csv'
+}));
+const text = await textResponse.Body.transformToString();
 
-// Or convert to buffer
-const buffer = await response.Body.transformToByteArray();
+// Or fetch the object and convert the fresh body to a buffer
+const bufferResponse = await s3.send(new GetObjectCommand({
+    Bucket: 'my-bucket',
+    Key: 'large-file.csv'
+}));
+const buffer = Buffer.from(await bufferResponse.Body.transformToByteArray());
 ```
 
 ## TypeScript Support
