@@ -8,7 +8,7 @@ Description: Learn how to safely upgrade Kubernetes addons after control plane u
 
 ---
 
-When you upgrade the Kubernetes control plane, your cluster addons don't automatically upgrade themselves. This creates a version mismatch that can lead to compatibility issues, degraded performance, or even cluster instability. Understanding how to properly upgrade addons after a control plane upgrade is essential for maintaining a healthy cluster.
+When you upgrade the Kubernetes control plane, some cluster addons might not automatically upgrade themselves, depending on how your cluster is managed. This can create a version mismatch that can lead to compatibility issues, degraded performance, or even cluster instability. Understanding how to properly upgrade addons after a control plane upgrade is essential for maintaining a healthy cluster.
 
 ## Why Addon Upgrades Matter
 
@@ -37,7 +37,7 @@ kubectl get daemonset calico-node -n kube-system -o jsonpath='{.spec.template.sp
 
 ## Upgrading CoreDNS
 
-CoreDNS is the default DNS service for Kubernetes. After upgrading the control plane, you should upgrade CoreDNS to ensure compatibility.
+CoreDNS is the default DNS service for Kubernetes. After upgrading the control plane, you should verify the CoreDNS version and upgrade it if your cluster tooling did not already do so.
 
 ```bash
 # Get the recommended CoreDNS version for your Kubernetes version
@@ -72,7 +72,7 @@ kubectl rollout status deployment/coredns -n kube-system
 
 ## Upgrading kube-proxy
 
-The kube-proxy component handles network routing for services. It should match or be close to your control plane version.
+The kube-proxy component handles network routing for services. It must not be newer than the kube-apiserver version and should stay within the supported Kubernetes version skew for your cluster.
 
 ```bash
 # Update kube-proxy to match control plane version (e.g., 1.29.0)
@@ -103,8 +103,8 @@ kubectl get pods -n kube-system -l k8s-app=calico-node -o jsonpath='{.items[0].s
 # Download new Calico manifest
 curl https://raw.githubusercontent.com/projectcalico/calico/v3.27.0/manifests/calico.yaml -o calico-v3.27.0.yaml
 
-# Review the manifest for any breaking changes
-diff <(kubectl get daemonset calico-node -n kube-system -o yaml) calico-v3.27.0.yaml
+# Review the changes Kubernetes would apply
+kubectl diff -f calico-v3.27.0.yaml
 
 # Apply the new version
 kubectl apply -f calico-v3.27.0.yaml
@@ -120,10 +120,12 @@ For Cilium:
 
 ```bash
 # Upgrade Cilium using Helm
+helm repo add cilium https://helm.cilium.io
 helm repo update
+helm get values cilium --namespace kube-system -o yaml > cilium-values.yaml
 helm upgrade cilium cilium/cilium --version 1.15.0 \
   --namespace kube-system \
-  --reuse-values
+  -f cilium-values.yaml
 
 # Check Cilium status
 cilium status --wait
@@ -147,7 +149,7 @@ aws eks update-addon \
   --cluster-name my-cluster \
   --addon-name vpc-cni \
   --addon-version v1.16.0-eksbuild.1 \
-  --resolve-conflicts OVERWRITE
+  --resolve-conflicts PRESERVE
 
 # Check addon status
 aws eks describe-addon \
@@ -277,6 +279,6 @@ spec:
 
 ## Best Practices
 
-Always backup addon configurations before upgrading. Use staging environments to test addon upgrades before applying them to production. Monitor addon health continuously using Prometheus and alerting. Keep addon versions within one minor version of your control plane. Document your addon versions and upgrade procedures in your runbooks.
+Always backup addon configurations before upgrading. Use staging environments to test addon upgrades before applying them to production. Monitor addon health continuously using Prometheus and alerting. Keep addon versions within the supported version skew for your Kubernetes distribution and each addon. Document your addon versions and upgrade procedures in your runbooks.
 
 Upgrading Kubernetes addons after control plane upgrades is a critical maintenance task that ensures your cluster remains stable, secure, and performant. By following a systematic approach and testing thoroughly, you can minimize risks and maintain high availability throughout the upgrade process.
