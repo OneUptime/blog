@@ -79,9 +79,9 @@ In the networking account, create a resource share.
 aws ram create-resource-share \
   --name "shared-production-subnets" \
   --resource-arns \
-    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-private-1a" \
-    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-private-1b" \
-    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-private-1c" \
+    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0abc123def4567890" \
+    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0def456abc7890123" \
+    "arn:aws:ec2:us-east-1:111111111111:subnet/subnet-0123abc456def7890" \
   --principals \
     "arn:aws:organizations::111111111111:ou/o-abc123/ou-prod-456" \
   --permission-arns \
@@ -109,8 +109,8 @@ aws ec2 describe-subnets \
 aws ec2 run-instances \
   --image-id "ami-0abc123def456" \
   --instance-type "t3.medium" \
-  --subnet-id "subnet-private-1a" \
-  --security-group-ids "sg-consumer-app" \
+  --subnet-id "subnet-0abc123def4567890" \
+  --security-group-ids "sg-0123abc456def7890" \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=app-server}]'
 ```
 
@@ -125,25 +125,25 @@ Transit Gateways are expensive to set up and even more expensive to duplicate. S
 aws ram create-resource-share \
   --name "shared-transit-gateway" \
   --resource-arns \
-    "arn:aws:ec2:us-east-1:111111111111:transit-gateway/tgw-abc123" \
+    "arn:aws:ec2:us-east-1:111111111111:transit-gateway/tgw-0123abc456def7890" \
   --principals \
     "arn:aws:organizations::111111111111:organization/o-abc123"
 ```
 
-From the consumer account, create a Transit Gateway attachment.
+From the consumer account, create a Transit Gateway attachment. If the Transit Gateway's auto-accept shared attachments setting is disabled, the networking account must accept the attachment before it becomes available.
 
 ```bash
 # In the consumer account - attach a VPC to the shared TGW
 aws ec2 create-transit-gateway-vpc-attachment \
-  --transit-gateway-id "tgw-abc123" \
-  --vpc-id "vpc-consumer-123" \
-  --subnet-ids "subnet-consumer-1a" "subnet-consumer-1b"
+  --transit-gateway-id "tgw-0123abc456def7890" \
+  --vpc-id "vpc-0abc123def4567890" \
+  --subnet-ids "subnet-0def456abc7890123" "subnet-0123abc456def7890"
 
 # Add routes to send traffic through the TGW
 aws ec2 create-route \
-  --route-table-id "rtb-consumer-main" \
+  --route-table-id "rtb-0abc123def4567890" \
   --destination-cidr-block "10.0.0.0/8" \
-  --transit-gateway-id "tgw-abc123"
+  --transit-gateway-id "tgw-0123abc456def7890"
 ```
 
 ## Step 5: Share Route 53 Resolver Rules
@@ -155,7 +155,7 @@ If you have a central DNS resolver with forwarding rules (e.g., forwarding queri
 aws ram create-resource-share \
   --name "shared-dns-rules" \
   --resource-arns \
-    "arn:aws:route53resolver:us-east-1:111111111111:resolver-rule/rslvr-rr-corp-forward" \
+    "arn:aws:route53resolver:us-east-1:111111111111:resolver-rule/rslvr-rr-0123456789abcdef0" \
   --principals \
     "arn:aws:organizations::111111111111:organization/o-abc123"
 ```
@@ -165,8 +165,8 @@ Consumer accounts can then associate the shared rule with their VPCs.
 ```bash
 # In consumer account - associate the shared resolver rule
 aws route53resolver associate-resolver-rule \
-  --resolver-rule-id "rslvr-rr-corp-forward" \
-  --vpc-id "vpc-consumer-123" \
+  --resolver-rule-id "rslvr-rr-0123456789abcdef0" \
+  --vpc-id "vpc-0abc123def4567890" \
   --name "corp-dns-forwarding"
 ```
 
@@ -233,7 +233,7 @@ manager.list_shares()
 1. **Share at the OU level, not individual accounts.** New accounts added to the OU automatically get access.
 2. **Use descriptive share names.** When you have dozens of shares, clear naming prevents confusion.
 3. **Audit shares regularly.** Review who has access to what.
-4. **Don't over-share.** Only share what's needed. Sharing a full VPC when you only need one subnet is unnecessary exposure.
+4. **Don't over-share.** Only share what's needed. Sharing every subnet in a VPC when you only need one subnet is unnecessary exposure.
 5. **Tag shared resources.** Makes it easier to track ownership and purpose.
 
 ```bash
