@@ -40,7 +40,9 @@ rules:
     - persistentvolumeclaims
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 
-# Read PersistentVolumes to see provisioning status
+# Optional: read PersistentVolumes to see provisioning status.
+# PersistentVolumes are cluster-scoped, so this rule only takes effect
+# if the ClusterRole is bound with a ClusterRoleBinding.
 - apiGroups: [""]
   resources:
     - persistentvolumes
@@ -174,7 +176,7 @@ def validate_pvc():
     req = admission_review['request']
     pvc = req['object']
 
-    namespace = pvc['metadata']['namespace']
+    namespace = req['namespace']
     storage_class = pvc['spec'].get('storageClassName')
 
     if not storage_class:
@@ -299,11 +301,11 @@ metadata:
   name: standard
   annotations:
     storageclass.kubernetes.io/is-default-class: "true"
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iopsPerGB: "10"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 allowVolumeExpansion: true
 reclaimPolicy: Delete
 volumeBindingMode: WaitForFirstConsumer
@@ -369,23 +371,13 @@ jq 'select(.objectRef.resource=="persistentvolumeclaims" and
 
 # Find StorageClass modifications
 jq 'select(.objectRef.resource=="storageclasses" and
-           .verb in ["create", "update", "patch", "delete"])' \
+           (.verb=="create" or .verb=="update" or .verb=="patch" or .verb=="delete"))' \
   /var/log/kubernetes/audit.log
 ```
 
 Alert on unauthorized StorageClass modifications:
 
-```yaml
-- alert: UnauthorizedStorageClassChange
-  expr: |
-    apiserver_audit_event_total{
-      objectRef_resource="storageclasses",
-      verb=~"update|patch|delete",
-      user_username!~"storage-admin@.*"
-    } > 0
-  annotations:
-    summary: "StorageClass modified by non-admin user"
-```
+Export audit logs to your log backend and alert on events where `objectRef.resource` is `storageclasses`, `verb` is `update`, `patch`, or `delete`, and `user.username` does not match your storage-admin identities. The built-in `apiserver_audit_event_total` metric counts audit events but does not expose object or user fields as labels.
 
 ## Monitoring Storage Consumption
 
