@@ -34,14 +34,14 @@ spec:
     ports:
     - containerPort: 8080
 
-    # Startup probe: allows up to 10 minutes for initialization
+    # Startup probe: allows about 10 minutes for initialization
     startupProbe:
       httpGet:
         path: /healthz
         port: 8080
       initialDelaySeconds: 10
       periodSeconds: 10
-      failureThreshold: 60  # 60 * 10s = 10 minutes
+      failureThreshold: 60  # 60 * 10s = 10 minutes after the initial delay
 
     # Liveness probe: only starts after startup succeeds
     livenessProbe:
@@ -60,7 +60,7 @@ spec:
       failureThreshold: 2
 ```
 
-This gives the application 10 minutes to start, but once running, liveness checks happen every 10 seconds.
+This gives the application about 10 minutes to start, but once running, liveness checks happen every 10 seconds.
 
 ## Implementing Startup Detection Endpoints
 
@@ -112,10 +112,9 @@ func initialize() {
 }
 
 func healthHandler(w http.ResponseWriter, r *http.Request) {
-    // During startup, return success if we're making progress
+    // During startup, keep the startup probe failing until initialization completes
     if atomic.LoadInt32(&started) == 0 {
-        // Check if server is responding (proves we're alive)
-        w.WriteHeader(http.StatusOK)
+        w.WriteHeader(http.StatusServiceUnavailable)
         w.Write([]byte("Starting up"))
         return
     }
@@ -182,7 +181,7 @@ spec:
             port: 8080
           initialDelaySeconds: 20
           periodSeconds: 10
-          failureThreshold: 30  # 5 minutes total
+          failureThreshold: 30  # 5 minutes after the initial delay
 
         livenessProbe:
           httpGet:
@@ -201,7 +200,7 @@ spec:
           failureThreshold: 2
 ```
 
-Spring Boot Actuator provides built-in health endpoints that work perfectly with Kubernetes probes.
+Spring Boot Actuator provides built-in liveness and readiness health endpoints that work well with Kubernetes probes.
 
 ## Startup Probes for Database-Heavy Applications
 
@@ -222,14 +221,14 @@ spec:
     ports:
     - containerPort: 8080
 
-    # Allow 15 minutes for data preloading
+    # Allow about 15 minutes for data preloading
     startupProbe:
       httpGet:
         path: /startup
         port: 8080
       initialDelaySeconds: 30
       periodSeconds: 15
-      failureThreshold: 60  # 15 minutes
+      failureThreshold: 60  # 15 minutes after the initial delay
 
     livenessProbe:
       httpGet:
@@ -292,7 +291,7 @@ def startup_check():
         return jsonify({
             "status": "in_progress",
             "progress": startup_progress
-        }), 200  # Return 200 while making progress
+        }), 503  # Keep the startup probe failing until startup completes
 
 @app.route('/healthz')
 def liveness():
@@ -361,7 +360,7 @@ app.get('/startup', (req, res) => {
       error: startupError.message
     });
   } else {
-    res.status(200).json({
+    res.status(503).json({
       status: 'in_progress',
       phase: startupPhase
     });
@@ -409,7 +408,7 @@ startupProbe:
   initialDelaySeconds: 10  # Time before first check
   periodSeconds: 10         # How often to check
   failureThreshold: 36      # Maximum checks before restart
-  # Total allowed startup time: 10 + (10 * 36) = 370 seconds
+  # Total allowed startup time: about 10 + (10 * 36) = 370 seconds
 ```
 
 ## Startup Probes for Migration Scripts
@@ -445,7 +444,7 @@ spec:
         port: 8080
       initialDelaySeconds: 5
       periodSeconds: 5
-      failureThreshold: 20  # 100 seconds
+      failureThreshold: 20  # 100 seconds after the initial delay
 
     livenessProbe:
       httpGet:
@@ -491,7 +490,7 @@ def startup_check():
         return jsonify({
             "status": "in_progress",
             "elapsed_seconds": int(time.time() - startup_start)
-        }), 200
+        }), 503
 ```
 
 ## Monitoring Startup Duration
@@ -499,11 +498,11 @@ def startup_check():
 Track how long pods take to start:
 
 ```promql
-# Average startup duration
-avg(kube_pod_start_time - kube_pod_created)
+# Average time from pod creation to readiness
+avg(kube_pod_status_ready_time - kube_pod_created)
 
-# Pods still in startup phase
-count(kube_pod_status_phase{phase="Pending"})
+# Pods not yet ready
+count(kube_pod_status_ready{condition="false"})
 
 # Startup probe failures
 rate(prober_probe_total{probe_type="Startup",result="failed"}[5m])
@@ -516,14 +515,14 @@ groups:
   - name: startup
     rules:
       - alert: PodStartupTooSlow
-        expr: time() - kube_pod_start_time > 600
+        expr: kube_pod_status_ready{condition="false"} == 1 and time() - kube_pod_created > 600
         labels:
           severity: warning
         annotations:
           summary: "Pod {{ $labels.pod }} taking too long to start"
 
       - alert: StartupProbeFailure
-        expr: kube_pod_status_container_ready_time == 0
+        expr: increase(prober_probe_total{probe_type="Startup",result="failed"}[10m]) > 0
         for: 10m
         labels:
           severity: critical
