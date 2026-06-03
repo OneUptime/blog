@@ -48,7 +48,7 @@ aws s3api get-bucket-ownership-controls \
 # }
 ```
 
-If you see `BucketOwnerEnforced`, ACLs are disabled and all the ACL-related commands below won't work on that bucket. This is the recommended state.
+If you see `BucketOwnerEnforced`, ACLs are disabled and attempts to set or update ACLs won't work on that bucket. Read ACL requests are still supported. This is the recommended state.
 
 ## Enabling ACLs (When You Must)
 
@@ -58,7 +58,7 @@ Enable ACLs on a bucket:
 
 ```bash
 # Enable ACLs with bucket owner preferred
-# (bucket owner automatically owns new objects)
+# (bucket owner owns new objects uploaded with bucket-owner-full-control)
 aws s3api put-bucket-ownership-controls \
     --bucket my-bucket \
     --ownership-controls '{"Rules": [{"ObjectOwnership": "BucketOwnerPreferred"}]}'
@@ -137,8 +137,7 @@ aws s3api put-bucket-acl \
 # Grant full control to another account while keeping your own access
 aws s3api put-bucket-acl \
     --bucket my-bucket \
-    --grant-full-control "id=your-canonical-user-id" \
-    --grant-read "id=other-account-canonical-id"
+    --grant-full-control "id=your-canonical-user-id,id=other-account-canonical-id"
 
 # Find your canonical user ID
 aws s3api list-buckets --query "Owner.ID" --output text
@@ -170,8 +169,8 @@ Here's why AWS recommends disabling ACLs:
 # This scenario causes problems:
 # Account A owns the bucket
 # Account B uploads a file without bucket-owner-full-control
-# Account A can't read or delete that file!
-# It's visible in listing but inaccessible
+# Account A can't read that file unless access is granted
+# It's visible in listing but inaccessible for reads
 ```
 
 **2. ACLs are limited.** You can only grant permissions to AWS accounts, not to IAM users or roles. You can't use conditions like IP restrictions or VPC endpoints. For anything beyond the basics, you need bucket policies anyway.
@@ -227,14 +226,14 @@ aws s3api get-bucket-ownership-controls --bucket my-bucket
 
 Despite the general advice to avoid ACLs, there are a few scenarios where they're still useful:
 
-1. **S3 access logging** - The target bucket for access logs needs the `log-delivery-write` ACL
+1. **S3 access logging** - Legacy logging setups can grant the log delivery group access with the `log-delivery-write` ACL, though a bucket policy is recommended
 2. **Legacy applications** that depend on ACL-based access control
 3. **Simple cross-account writes** where you just need the bucket owner to have access to uploaded objects
 
 For the access logging case:
 
 ```bash
-# Enable S3 access logging (requires ACLs on the target bucket)
+# Enable S3 access logging with the legacy ACL method
 aws s3api put-bucket-ownership-controls \
     --bucket my-log-bucket \
     --ownership-controls '{"Rules": [{"ObjectOwnership": "BucketOwnerPreferred"}]}'
