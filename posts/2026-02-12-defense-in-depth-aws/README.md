@@ -31,7 +31,7 @@ Each layer serves as an independent barrier. If an attacker gets past your WAF r
 
 Your first line of defense is at the network edge. AWS provides several services that work together here.
 
-This CloudFormation template sets up a CloudFront distribution with AWS WAF and Shield Advanced protection.
+This CloudFormation template sets up an AWS WAF web ACL for CloudFront. Create CloudFront-scoped WAF resources in `us-east-1`, then associate the web ACL with your CloudFront distribution. If you use Shield Advanced automatic application layer DDoS mitigation, AWS manages the Shield mitigation rule in the web ACL for you.
 
 ```yaml
 # CloudFormation template for edge protection
@@ -79,7 +79,7 @@ Resources:
         MetricName: WebACLMetric
 ```
 
-AWS WAF managed rules cover the OWASP Top 10 vulnerabilities out of the box. You don't need to write custom rules from scratch - start with the managed rule groups and add custom rules as needed.
+AWS WAF managed rules provide protection against a wide range of common web application vulnerabilities, including some of the high-risk issues described in OWASP publications such as the OWASP Top 10. You don't need to write custom rules from scratch - start with the managed rule groups and add custom rules as needed.
 
 ## Layer 2: Network Security
 
@@ -124,10 +124,30 @@ resource "aws_network_acl" "private" {
     to_port    = 0
   }
 
-  # Allow outbound to VPC and HTTPS to internet
+  # Allow return traffic for outbound HTTPS connections
+  ingress {
+    protocol   = "tcp"
+    rule_no    = 110
+    action     = "allow"
+    cidr_block = "0.0.0.0/0"
+    from_port  = 1024
+    to_port    = 65535
+  }
+
+  # Allow outbound traffic within the VPC
+  egress {
+    protocol   = -1
+    rule_no    = 100
+    action     = "allow"
+    cidr_block = "10.0.0.0/16"
+    from_port  = 0
+    to_port    = 0
+  }
+
+  # Allow outbound HTTPS to internet
   egress {
     protocol   = "tcp"
-    rule_no    = 100
+    rule_no    = 110
     action     = "allow"
     cidr_block = "0.0.0.0/0"
     from_port  = 443
@@ -164,10 +184,10 @@ The key principle is least privilege networking. Your application servers should
 
 Harden your compute instances. Use AWS Systems Manager instead of SSH, run Amazon Inspector for vulnerability scanning, and make sure your AMIs are patched regularly.
 
-This SSM document enforces security baselines on EC2 instances.
+This SSM document enforces security baselines on Amazon Linux 2 EC2 instances.
 
 ```yaml
-# SSM Automation document for security hardening
+# SSM Command document for security hardening
 schemaVersion: '2.2'
 description: Security hardening for EC2 instances
 mainSteps:
@@ -176,9 +196,9 @@ mainSteps:
     inputs:
       runCommand:
         # Disable root SSH login
-        - sed -i 's/PermitRootLogin yes/PermitRootLogin no/' /etc/ssh/sshd_config
+        - sed -i -E 's/^#?PermitRootLogin .*/PermitRootLogin no/' /etc/ssh/sshd_config
         # Disable password authentication
-        - sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
+        - sed -i -E 's/^#?PasswordAuthentication .*/PasswordAuthentication no/' /etc/ssh/sshd_config
         # Enable automatic security updates
         - yum install -y yum-cron
         - sed -i 's/update_cmd = default/update_cmd = security/' /etc/yum/yum-cron.conf
@@ -224,7 +244,7 @@ This IAM policy demonstrates the principle of least privilege for an application
 }
 ```
 
-Never use wildcard permissions in production. Every `*` in an IAM policy is a potential security hole. Take the time to scope down to exactly what's needed.
+Avoid broad wildcard permissions in production. Some AWS actions require `Resource: "*"`, but wildcard actions or resources can easily grant more access than intended. Take the time to scope down to exactly what's needed wherever the service supports it.
 
 ## Layer 5: Data Protection
 
@@ -275,11 +295,10 @@ For more on encryption practices, check out our post on [encryption everywhere o
 
 All the preventive controls in the world won't help if you can't detect when something goes wrong. Enable GuardDuty, CloudTrail, and AWS Config across all accounts and regions.
 
-This Python script enables GuardDuty with automated response through EventBridge.
+This Python script enables GuardDuty in each region.
 
 ```python
 import boto3
-import json
 
 # Enable GuardDuty in all regions
 def enable_guardduty_all_regions():
