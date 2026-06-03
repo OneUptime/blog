@@ -18,13 +18,13 @@ ConfigMaps and Secrets are standard Kubernetes resources controlled by RBAC verb
 
 **get**: Retrieve a specific ConfigMap or Secret by name. Required to read contents.
 
-**list**: List all ConfigMaps or Secrets in a namespace. Shows names and metadata but not contents unless combined with get.
+**list**: List all ConfigMaps or Secrets in a namespace. The API returns full objects for list responses, so for Secrets this can expose secret data even without `get`.
 
 **watch**: Stream updates when ConfigMaps or Secrets change. Useful for automated tools.
 
 **create/update/patch/delete**: Modification operations. Exclude these for read-only access.
 
-A role with `get` and `list` allows reading all configuration data. A role with only `list` allows seeing what exists without reading contents. This distinction matters for Secrets containing sensitive data.
+A role with `get` and `list` allows reading all configuration data. For Secrets, `get`, `list`, and `watch` should all be treated as sensitive read access because each can return secret data. This distinction matters for Secrets containing sensitive data.
 
 ## Creating a ConfigMap Reader Role
 
@@ -121,9 +121,9 @@ kubectl get secret database-password -n production -o jsonpath='{.data.password}
 
 Be cautious granting full Secret read access. Secrets may contain database passwords, API keys, and TLS certificates.
 
-## Creating a Secret Lister Role (Metadata Only)
+## Creating a Secret Lister Role
 
-For users who need to see what secrets exist without reading values:
+For users who need to list Secret names in the default `kubectl get secrets` table:
 
 ```yaml
 # secret-lister-role.yaml
@@ -136,7 +136,7 @@ rules:
 - apiGroups: [""]
   resources:
     - secrets
-  verbs: ["list"]  # Only list, no get
+  verbs: ["list"]  # No get for named Secret requests
 ```
 
 Apply and bind:
@@ -150,17 +150,22 @@ kubectl create rolebinding dev-secret-list \
   --namespace=production
 ```
 
-Developers can list secrets but not read contents:
+Developers can list secrets with the default table output, but this is not a metadata-only security boundary:
 
 ```bash
 # This works
 kubectl get secrets -n production
 # Shows: NAME, TYPE, DATA, AGE
 
+# This also works and can expose Secret data from the list response
+kubectl get secrets -n production -o yaml
+
 # This fails
 kubectl get secret database-password -n production -o yaml
 # Error: User cannot get resource "secrets"
 ```
+
+Kubernetes RBAC does not provide a native "list only metadata" permission for core Secret objects. Do not grant `list` on Secrets to users who must not be able to read Secret values.
 
 ## Restricting Access to Specific ConfigMaps and Secrets
 
@@ -331,7 +336,7 @@ Query audit logs:
 
 ```bash
 # Who is reading secrets?
-jq 'select(.objectRef.resource=="secrets" and .verb in ["get", "list"]) |
+jq 'select(.objectRef.resource=="secrets" and (.verb == "get" or .verb == "list")) |
     {user: .user.username, secret: .objectRef.name, namespace: .objectRef.namespace}' \
   /var/log/kubernetes/audit.log
 
@@ -347,7 +352,7 @@ For stricter secret access control, use External Secrets Operator:
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -365,10 +370,10 @@ spec:
       property: password
 ```
 
-Configure SecretStore with limited RBAC:
+Configure provider-side access with limited permissions, and let the operator manage the Kubernetes Secret:
 
 ```yaml
-# secret-store-sa.yaml
+# external-secrets-target-role.yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -381,15 +386,14 @@ metadata:
   name: external-secrets-role
   namespace: production
 rules:
-# Can only create/update secrets, not read them
+# Target Secret write permissions for the operator in this namespace
 - apiGroups: [""]
   resources:
     - secrets
-  verbs: ["create", "update", "patch"]
-# No "get" or "list" permission
+  verbs: ["get", "create", "update", "patch"]
 ```
 
-This pattern keeps actual secrets in Vault or AWS Secrets Manager. Kubernetes users with read access to Secrets still need Vault permissions to read values.
+This pattern keeps the source of truth in Vault or AWS Secrets Manager and lets provider IAM or Vault policies control what the operator can fetch. Once values are synced into Kubernetes Secrets, any Kubernetes user with Secret read access can read those synced values.
 
 ## Implementing Break-Glass for Emergency Secret Access
 
@@ -410,7 +414,7 @@ fi
 
 # Create temporary RoleBinding
 kubectl create rolebinding "emergency-secret-access-${USER}" \
-  --clusterrole=secret-reader \
+  --role=secret-reader \
   --user="$USER" \
   --namespace="$NAMESPACE"
 
