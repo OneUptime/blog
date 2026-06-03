@@ -23,7 +23,7 @@ Deploy cert-manager for certificate management:
 ```bash
 # Install cert-manager CRDs and components
 
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.3/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Verify installation
 kubectl get pods -n cert-manager
@@ -119,6 +119,17 @@ Deploy PostgreSQL StatefulSet with TLS:
 apiVersion: v1
 kind: Service
 metadata:
+  name: postgres
+  namespace: database
+spec:
+  selector:
+    app: postgres
+  ports:
+  - port: 5432
+---
+apiVersion: v1
+kind: Service
+metadata:
   name: postgres-headless
   namespace: database
 spec:
@@ -144,6 +155,16 @@ spec:
       labels:
         app: postgres
     spec:
+      initContainers:
+      - name: prepare-tls-certs
+        image: busybox:1.36
+        command: ["sh", "-c", "cp /source/* /certs/ && chown 999:999 /certs/* && chmod 0600 /certs/tls.key && chmod 0644 /certs/tls.crt /certs/ca.crt"]
+        volumeMounts:
+        - name: tls-secret
+          mountPath: /source
+          readOnly: true
+        - name: tls-certs
+          mountPath: /certs
       containers:
       - name: postgres
         image: postgres:15
@@ -168,7 +189,7 @@ spec:
           readOnly: true
         - name: config
           mountPath: /docker-entrypoint-initdb.d
-        command:
+        args:
         - postgres
         - -c
         - ssl=on
@@ -186,10 +207,11 @@ spec:
             cpu: 2
             memory: 4Gi
       volumes:
-      - name: tls-certs
+      - name: tls-secret
         secret:
           secretName: postgres-tls
-          defaultMode: 0600
+      - name: tls-certs
+        emptyDir: {}
       - name: config
         configMap:
           name: postgres-config
@@ -218,16 +240,14 @@ data:
     #!/bin/bash
     set -e
 
-    # Copy CA certificate to PostgreSQL data directory
-    cp /var/lib/postgresql/certs/ca.crt /var/lib/postgresql/data/
-
-    # Set correct permissions
-    chmod 600 /var/lib/postgresql/certs/tls.key
-    chown postgres:postgres /var/lib/postgresql/certs/*
-
     # Configure pg_hba.conf to require SSL
-    echo "hostssl all all 0.0.0.0/0 md5" >> /var/lib/postgresql/data/pg_hba.conf
-    echo "host all all 0.0.0.0/0 reject" >> /var/lib/postgresql/data/pg_hba.conf
+    cat > "$PGDATA/pg_hba.conf" <<'EOF'
+    local all all trust
+    hostssl all all 0.0.0.0/0 scram-sha-256
+    hostssl all all ::/0 scram-sha-256
+    hostnossl all all 0.0.0.0/0 reject
+    hostnossl all all ::/0 reject
+    EOF
 ```
 
 Deploy everything:
@@ -249,15 +269,9 @@ Configure application clients to use TLS:
 ```python
 # app.py
 import psycopg2
-import ssl
 
 # Get CA certificate from secret
 ca_cert_path = "/etc/tls/ca.crt"
-
-# Create SSL context
-ssl_context = ssl.create_default_context(cafile=ca_cert_path)
-ssl_context.check_hostname = True
-ssl_context.verify_mode = ssl.CERT_REQUIRED
 
 # Connect with TLS
 conn = psycopg2.connect(
@@ -272,7 +286,7 @@ conn = psycopg2.connect(
 
 # Verify connection is encrypted
 cursor = conn.cursor()
-cursor.execute("SELECT ssl_is_used(), ssl_version(), ssl_cipher();")
+cursor.execute("SELECT ssl, version, cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid();")
 ssl_info = cursor.fetchone()
 print(f"SSL Used: {ssl_info[0]}, Version: {ssl_info[1]}, Cipher: {ssl_info[2]}")
 ```
@@ -358,6 +372,29 @@ Deploy MySQL with TLS enabled:
 
 ```yaml
 # mysql-statefulset.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: database
+spec:
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql-headless
+  namespace: database
+spec:
+  clusterIP: None
+  selector:
+    app: mysql
+  ports:
+  - port: 3306
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -442,7 +479,7 @@ spec:
   secretName: app-client-tls
   duration: 8760h
   renewBefore: 720h
-  commonName: myapp-client
+  commonName: postgres
   privateKey:
     algorithm: RSA
     size: 2048
@@ -457,9 +494,10 @@ spec:
 
 Configure PostgreSQL for client certificate verification:
 
-```yaml
+```conf
 # Update pg_hba.conf
-hostssl all all 0.0.0.0/0 cert clientcert=verify-full
+hostssl all all 0.0.0.0/0 cert
+hostssl all all ::/0 cert
 ```
 
 Connect with client certificate:
@@ -474,8 +512,8 @@ conn = psycopg2.connect(
     user="postgres",
     sslmode="verify-full",
     sslrootcert="/etc/tls/ca.crt",
-    sslcert="/etc/tls/client.crt",
-    sslkey="/etc/tls/client.key"
+    sslcert="/etc/tls/tls.crt",
+    sslkey="/etc/tls/tls.key"
 )
 ```
 
@@ -490,8 +528,8 @@ kubectl get certificate -n database
 # View certificate details
 kubectl describe certificate postgres-server-cert -n database
 
-# Force renewal for testing
-kubectl delete secret postgres-tls -n database
+# Force renewal for testing (requires cmctl)
+cmctl renew postgres-server-cert -n database
 ```
 
 Configure renewal alerting:
@@ -541,7 +579,7 @@ kubectl get certificate -n database -o jsonpath='{range .items[*]}{.metadata.nam
 
 TLS adds computational overhead. Optimize with:
 
-```yaml
+```conf
 # Use modern ciphers for better performance
 ssl_ciphers = 'ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256'
 ssl_prefer_server_ciphers = on
