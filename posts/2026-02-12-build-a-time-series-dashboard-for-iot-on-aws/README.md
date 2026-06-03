@@ -8,7 +8,7 @@ Description: Learn how to build a real-time time-series dashboard for IoT data o
 
 ---
 
-IoT devices generate a relentless stream of time-stamped data. Temperature readings, pressure values, GPS coordinates, energy consumption - it all needs to go somewhere, and you need to be able to visualize it in near real-time. AWS has a purpose-built stack for this: IoT Core for ingestion, Amazon Timestream for storage, and Amazon Managed Grafana for visualization.
+IoT devices generate a relentless stream of time-stamped data. Temperature readings, pressure values, GPS coordinates, energy consumption - it all needs to go somewhere, and you need to be able to visualize it in near real-time. For existing Amazon Timestream for LiveAnalytics customers, AWS has a purpose-built stack for this: IoT Core for ingestion, Timestream for storage, and Amazon Managed Grafana for visualization.
 
 This guide covers how to wire these services together into a production-ready IoT time-series dashboard.
 
@@ -29,7 +29,9 @@ Devices publish telemetry over MQTT to IoT Core. An IoT rule routes data directl
 
 ## Setting Up Amazon Timestream
 
-Timestream is AWS's serverless time-series database. It automatically manages data lifecycle by moving data between an in-memory store (fast queries on recent data) and a magnetic store (cheap queries on historical data).
+Timestream for LiveAnalytics is AWS's serverless time-series database. It automatically manages data lifecycle by moving data between an in-memory store (fast point-in-time queries on recent data) and a magnetic store (cheap queries on historical data).
+
+One current caveat: AWS closed new customer access to Timestream for LiveAnalytics on June 20, 2025. Existing customers with an active payer account can continue using it; new AWS customers should evaluate Amazon Timestream for InfluxDB or another time-series store before following this exact architecture.
 
 Create a database and table:
 
@@ -59,7 +61,7 @@ timestream_write.create_table(
 )
 ```
 
-The memory store gives you sub-millisecond query latency for recent data, which is exactly what you need for a real-time dashboard. Older data transitions to the magnetic store automatically.
+The memory store gives you low-latency point-in-time queries for recent data, which is exactly what you need for a real-time dashboard. Older data transitions to the magnetic store automatically.
 
 ## Configuring IoT Core
 
@@ -82,11 +84,11 @@ IoT Core rules can route MQTT messages directly into Timestream without any Lamb
 
 ```json
 {
-  "sql": "SELECT * FROM 'sensors/+/telemetry'",
+  "sql": "SELECT temperature, humidity, pressure, batteryLevel FROM 'sensors/+/telemetry'",
   "actions": [
     {
       "timestream": {
-        "roleArn": "arn:aws:iam::123456789:role/IoTTimestreamRole",
+        "roleArn": "arn:aws:iam::123456789012:role/IoTTimestreamRole",
         "databaseName": "iot-telemetry",
         "tableName": "sensor-data",
         "dimensions": [
@@ -105,7 +107,7 @@ IoT Core rules can route MQTT messages directly into Timestream without any Lamb
 }
 ```
 
-This rule listens on the MQTT topic pattern `sensors/+/telemetry`, extracts the device ID as a dimension, and writes all numeric fields as measures into Timestream.
+This rule listens on the MQTT topic pattern `sensors/+/telemetry`, stores the device ID as a dimension, and writes each selected telemetry field as its own Timestream measure record.
 
 Here is the CloudFormation version for infrastructure as code:
 
@@ -116,7 +118,7 @@ IoTTimestreamRule:
   Properties:
     RuleName: SensorToTimestream
     TopicRulePayload:
-      Sql: "SELECT * FROM 'sensors/+/telemetry'"
+      Sql: "SELECT temperature, humidity, pressure, batteryLevel FROM 'sensors/+/telemetry'"
       Actions:
         - Timestream:
             RoleArn: !GetAtt IoTTimestreamRole.Arn
@@ -174,29 +176,39 @@ Timestream uses SQL with time-series extensions. Here are some useful queries fo
 
 ```sql
 -- Latest reading per device
+WITH latest AS (
+  SELECT deviceId,
+         measure_name,
+         max_by(measure_value::double, time) as latest_value
+  FROM "iot-telemetry"."sensor-data"
+  WHERE time > ago(1h)
+    AND measure_name IN ('temperature', 'humidity')
+  GROUP BY deviceId, measure_name
+)
 SELECT deviceId,
-       max_by(temperature, time) as latest_temp,
-       max_by(humidity, time) as latest_humidity
-FROM "iot-telemetry"."sensor-data"
-WHERE time > ago(1h)
+       max(CASE WHEN measure_name = 'temperature' THEN latest_value END) as latest_temp,
+       max(CASE WHEN measure_name = 'humidity' THEN latest_value END) as latest_humidity
+FROM latest
 GROUP BY deviceId
 
--- Hourly averages for a specific device
+-- Hourly temperature averages for a specific device
 SELECT bin(time, 1h) as hour,
-       avg(temperature) as avg_temp,
-       min(temperature) as min_temp,
-       max(temperature) as max_temp
+       avg(measure_value::double) as avg_temp,
+       min(measure_value::double) as min_temp,
+       max(measure_value::double) as max_temp
 FROM "iot-telemetry"."sensor-data"
-WHERE deviceId = 'sensor-factory-A-001'
+WHERE measure_name = 'temperature'
+  AND deviceId = 'sensor-factory-A-001'
   AND time > ago(24h)
 GROUP BY bin(time, 1h)
 ORDER BY hour DESC
 
 -- Detect readings outside normal range
-SELECT deviceId, time, temperature
+SELECT deviceId, time, measure_value::double as temperature
 FROM "iot-telemetry"."sensor-data"
-WHERE time > ago(1h)
-  AND (temperature > 100 OR temperature < 30)
+WHERE measure_name = 'temperature'
+  AND time > ago(1h)
+  AND (measure_value::double > 100 OR measure_value::double < 30)
 ORDER BY time DESC
 ```
 
@@ -215,9 +227,7 @@ GrafanaWorkspace:
     AccountAccessType: CURRENT_ACCOUNT
     AuthenticationProviders:
       - AWS_SSO
-    PermissionType: SERVICE_MANAGED
-    DataSources:
-      - TIMESTREAM
+    PermissionType: CUSTOMER_MANAGED
     RoleArn: !GetAtt GrafanaRole.Arn
 ```
 
@@ -236,14 +246,15 @@ For the time-series graph, use this query in Grafana:
 
 ```sql
 -- Grafana time-series panel query
-SELECT time, deviceId, temperature
+SELECT time, deviceId, measure_value::double as temperature
 FROM "iot-telemetry"."sensor-data"
-WHERE deviceId IN ($devices)
+WHERE measure_name = 'temperature'
+  AND deviceId IN (${devices:singlequote})
   AND $__timeFilter
 ORDER BY time
 ```
 
-The `$__timeFilter` macro is a Grafana variable that automatically maps to the dashboard's selected time range. The `$devices` variable lets users filter by device.
+The `$__timeFilter` macro is a Grafana variable that automatically maps to the dashboard's selected time range. The `${devices:singlequote}` variable lets users filter by one or more devices.
 
 ## Adding Real-Time Anomaly Detection
 
@@ -260,26 +271,29 @@ timestream_query = boto3.client('timestream-query')
 def handler(event, context):
     device_id = event['deviceId']
     temperature = event['temperature']
+    escaped_device_id = device_id.replace("'", "''")
 
     # Get historical average for this device
     query = f"""
-        SELECT avg(temperature) as avg_temp, stddev(temperature) as std_temp
+        SELECT avg(measure_value::double) as avg_temp,
+               stddev(measure_value::double) as std_temp
         FROM "iot-telemetry"."sensor-data"
-        WHERE deviceId = '{device_id}'
+        WHERE measure_name = 'temperature'
+          AND deviceId = '{escaped_device_id}'
           AND time > ago(7d)
     """
 
     result = timestream_query.query(QueryString=query)
     rows = result['Rows']
 
-    if rows:
+    if rows and all('ScalarValue' in cell for cell in rows[0]['Data']):
         avg_temp = float(rows[0]['Data'][0]['ScalarValue'])
         std_temp = float(rows[0]['Data'][1]['ScalarValue'])
 
         # Alert if reading is more than 3 standard deviations from mean
-        if abs(temperature - avg_temp) > 3 * std_temp:
+        if std_temp > 0 and abs(temperature - avg_temp) > 3 * std_temp:
             sns.publish(
-                TopicArn='arn:aws:sns:us-east-1:123456789:iot-anomalies',
+                TopicArn='arn:aws:sns:us-east-1:123456789012:iot-anomalies',
                 Subject=f'Anomaly: {device_id}',
                 Message=json.dumps({
                     'deviceId': device_id,
