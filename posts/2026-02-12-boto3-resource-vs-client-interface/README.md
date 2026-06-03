@@ -8,7 +8,7 @@ Description: Understand the differences between Boto3 resource and client interf
 
 ---
 
-Boto3 gives you two distinct ways to interact with AWS services: the **client** interface and the **resource** interface. Both let you accomplish the same tasks, but they work quite differently. Picking the right one - or knowing when to mix them - can make your code cleaner and more maintainable. Let's break down the differences and figure out when to use each.
+Boto3 gives you two distinct ways to interact with AWS services: the **client** interface and the **resource** interface. For services and operations where both are available, they often let you accomplish the same tasks, but they work quite differently. Picking the right one - or knowing when to mix them - can make your code cleaner and more maintainable. Let's break down the differences and figure out when to use each.
 
 ## The Client Interface
 
@@ -38,7 +38,7 @@ The client interface covers every API action for every AWS service. If an operat
 
 ## The Resource Interface
 
-The resource interface is the higher-level, object-oriented API. Instead of working with dictionaries, you work with Python objects that have attributes and methods. Resources handle pagination automatically and provide a more intuitive programming model.
+The resource interface is the higher-level, object-oriented API. Instead of starting with dictionaries, you work with Python objects that have attributes and methods, though individual resource actions can still return low-level dictionary responses. Resource collections handle pagination automatically and provide a more intuitive programming model.
 
 The same S3 operations look notably different with resources.
 
@@ -252,7 +252,7 @@ That said, the existing resource interfaces aren't going anywhere. They're still
 | Feature | Client | Resource |
 |---------|--------|----------|
 | API coverage | All services | ~10 services |
-| Response format | Dictionaries | Objects |
+| Response format | Dictionaries | Resource objects; action responses may still be dictionaries |
 | Pagination | Manual/Paginator | Automatic |
 | New features | Immediate | Delayed |
 | Object-oriented | No | Yes |
