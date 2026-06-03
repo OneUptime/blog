@@ -21,9 +21,11 @@ Update your settings for production use.
 
 import os
 
+from .base import *
+
 DEBUG = False
-ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
-SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY')
+ALLOWED_HOSTS = [host.strip() for host in os.environ['ALLOWED_HOSTS'].split(',') if host.strip()]
+SECRET_KEY = os.environ['DJANGO_SECRET_KEY']
 
 # Database - use RDS
 DATABASES = {
@@ -42,11 +44,11 @@ STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 # Security settings
-SECURE_BROWSER_XSS_FILTER = True
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 SECURE_SSL_REDIRECT = os.environ.get('SECURE_SSL_REDIRECT', 'true') == 'true'
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 # Logging
 LOGGING = {
@@ -80,18 +82,25 @@ MIDDLEWARE = [
     # ... rest of middleware
 ]
 
-STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
+STORAGES = {
+    'default': {
+        'BACKEND': 'django.core.files.storage.FileSystemStorage',
+    },
+    'staticfiles': {
+        'BACKEND': 'whitenoise.storage.CompressedManifestStaticFilesStorage',
+    },
+}
 ```
 
 Create a `requirements.txt`.
 
 ```text
-Django==5.0
-gunicorn==21.2.0
-psycopg2-binary==2.9.9
-whitenoise==6.6.0
-django-storages==1.14
-boto3==1.34.0
+Django==5.2.14
+gunicorn==23.0.0
+psycopg2-binary==2.9.12
+whitenoise==6.12.0
+django-storages==1.14.6
+boto3==1.43.21
 ```
 
 ## Option 1: Deploy to EC2
@@ -176,6 +185,7 @@ Environment="DJANGO_SETTINGS_MODULE=myapp.settings.production"
 Environment="DJANGO_SECRET_KEY=your-secret-key"
 Environment="DB_HOST=your-rds-endpoint"
 Environment="DB_PASSWORD=your-password"
+Environment="ALLOWED_HOSTS=your-domain.com,your-ec2-ip"
 ExecStart=/opt/myapp/venv/bin/gunicorn myapp.wsgi:application -c gunicorn.conf.py
 
 [Install]
@@ -295,15 +305,8 @@ web: gunicorn myapp.wsgi:application --bind :8000 --workers 3
 ```bash
 # Initialize and deploy
 eb init -p python-3.11 my-django-app
-eb create django-production
+eb create django-production --envvars DJANGO_SECRET_KEY=your-secret-key,DB_HOST=your-rds-endpoint,DB_PASSWORD=your-password,ALLOWED_HOSTS=.elasticbeanstalk.com
 eb deploy
-
-# Set environment variables
-eb setenv \
-    DJANGO_SECRET_KEY='your-secret-key' \
-    DB_HOST='your-rds-endpoint' \
-    DB_PASSWORD='your-password' \
-    ALLOWED_HOSTS='.elasticbeanstalk.com'
 
 # Check status
 eb status
@@ -341,7 +344,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Collect static files
-RUN python manage.py collectstatic --noinput 2>/dev/null || true
+RUN DJANGO_SETTINGS_MODULE=myapp.settings.production \
+    DJANGO_SECRET_KEY=build-time-placeholder \
+    ALLOWED_HOSTS=localhost \
+    python manage.py collectstatic --noinput
 
 # Create non-root user
 RUN adduser --disabled-password --gecos '' appuser
@@ -387,6 +393,7 @@ docker build -t django-app .
 docker run -p 8000:8000 \
     -e DJANGO_SECRET_KEY=test-key \
     -e DJANGO_SETTINGS_MODULE=myapp.settings.production \
+    -e ALLOWED_HOSTS=localhost,127.0.0.1 \
     -e DB_HOST=host.docker.internal \
     django-app
 
@@ -433,18 +440,36 @@ INSTALLED_APPS += ['storages']
 
 AWS_STORAGE_BUCKET_NAME = os.environ.get('AWS_STORAGE_BUCKET_NAME')
 AWS_S3_REGION_NAME = os.environ.get('AWS_REGION', 'us-east-1')
-AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
-AWS_DEFAULT_ACL = None
-AWS_S3_OBJECT_PARAMETERS = {
-    'CacheControl': 'max-age=86400',
+AWS_S3_CUSTOM_DOMAIN = os.environ.get(
+    'AWS_S3_CUSTOM_DOMAIN',
+    f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+)
+
+STORAGES = {
+    'default': {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'bucket_name': AWS_STORAGE_BUCKET_NAME,
+            'region_name': AWS_S3_REGION_NAME,
+            'location': 'media',
+            'default_acl': None,
+        },
+    },
+    'staticfiles': {
+        'BACKEND': 'storages.backends.s3.S3Storage',
+        'OPTIONS': {
+            'bucket_name': AWS_STORAGE_BUCKET_NAME,
+            'region_name': AWS_S3_REGION_NAME,
+            'location': 'static',
+            'default_acl': None,
+            'object_parameters': {
+                'CacheControl': 'max-age=86400',
+            },
+        },
+    },
 }
 
-# Static files
-STATICFILES_STORAGE = 'storages.backends.s3boto3.S3StaticStorage'
 STATIC_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/static/'
-
-# Media files
-DEFAULT_FILE_STORAGE = 'storages.backends.s3boto3.S3Boto3Storage'
 MEDIA_URL = f'https://{AWS_S3_CUSTOM_DOMAIN}/media/'
 ```
 
@@ -469,7 +494,7 @@ aws rds create-db-instance \
     --vpc-security-group-ids sg-xxx \
     --db-name myapp \
     --backup-retention-period 7 \
-    --multi-az false
+    --no-multi-az
 ```
 
 ## Best Practices
