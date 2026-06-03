@@ -14,7 +14,7 @@ Description: A detailed comparison of Amazon Aurora and standard RDS for MySQL a
 
 This is where the fundamental difference lies. Standard RDS and Aurora use completely different storage architectures.
 
-**Standard RDS** attaches an EBS volume to a single instance. Data is written to the EBS volume, and replication to read replicas happens via the MySQL/PostgreSQL built-in replication mechanism (binary log or WAL streaming). If the instance fails, RDS creates a new instance and attaches the same EBS volume.
+**Standard RDS** stores data on EBS-backed storage attached to the DB instance. Data is written to that storage, and replication to read replicas happens via the MySQL/PostgreSQL built-in replication mechanism (binary log or WAL streaming). In Single-AZ deployments, RDS recovers the instance and storage in the same AZ. In Multi-AZ deployments, RDS maintains a synchronous standby in another AZ and fails over to it if the primary instance fails.
 
 **Aurora** uses a distributed, fault-tolerant storage layer shared across all instances in the cluster. Data is automatically replicated 6 ways across 3 Availability Zones. The storage layer and compute layer are decoupled.
 
@@ -68,7 +68,7 @@ This is where Aurora absolutely shines. Standard RDS replication uses logical re
 
 # RDS MySQL - check replica lag
 mysql -h rds-replica.abc123.us-east-1.rds.amazonaws.com -u admin -p \
-  -e "SHOW SLAVE STATUS\G" | grep "Seconds_Behind_Master"
+  -e "SHOW REPLICA STATUS\G" | grep "Seconds_Behind_Master"
 # Typical: 0-30 seconds, can spike to minutes
 
 # Aurora - check replica lag
@@ -87,9 +87,9 @@ aws cloudwatch get-metric-statistics \
 
 | Feature | Standard RDS | Aurora |
 |---------|-------------|--------|
-| Max storage | 64 TB | 128 TB |
+| Max storage | 64 TiB for MySQL and PostgreSQL | 128 TiB for many versions; 256 TiB for newer Aurora MySQL and PostgreSQL versions |
 | Auto-scaling | Manual or limited auto-growth | Automatic, 10 GB increments |
-| Storage type | GP2, GP3, IO1, IO2 | Distributed, SSD-based |
+| Storage type | gp2, gp3, io1, io2 Block Express | Distributed, SSD-based |
 | Provisioning | Must provision in advance | Pay for what you use |
 | Replication storage | Each replica has its own volume | Shared storage layer |
 
@@ -103,7 +103,7 @@ Standard RDS Multi-AZ maintains a synchronous standby replica in a different AZ.
 
 ### Aurora Failover
 
-Aurora can fail over to any reader in any AZ. Because readers share the same storage, there's no need to replay transaction logs. Failover typically completes in under 30 seconds, and often under 15 seconds.
+Aurora can fail over to an eligible reader, ideally in a different AZ. Because readers share the same storage, failover is much faster than recreating the primary instance. AWS says service is typically restored in less than 60 seconds, and often in less than 30 seconds, when an Aurora Replica is available.
 
 ```bash
 # Test Aurora failover
@@ -123,10 +123,10 @@ aws rds describe-events \
 
 These features aren't available on standard RDS:
 
-- **Backtrack** - Rewind the database to a previous point in time in seconds. See the guide on [Aurora Backtrack](https://oneuptime.com/blog/post/2026-02-12-aurora-backtrack-to-rewind-a-database/view).
+- **Backtrack** - Rewind an Aurora MySQL database to a previous point in time in seconds. Backtrack isn't available for Aurora PostgreSQL. See the guide on [Aurora Backtrack](https://oneuptime.com/blog/post/2026-02-12-aurora-backtrack-to-rewind-a-database/view).
 - **Cloning** - Create instant copies of your database using copy-on-write. See the guide on [Aurora Cloning](https://oneuptime.com/blog/post/2026-02-12-aurora-cloning-for-fast-database-copies/view).
 - **Global Databases** - Sub-second cross-region replication. See the guide on [Aurora Global Databases](https://oneuptime.com/blog/post/2026-02-12-set-up-aurora-global-databases-for-multi-region/view).
-- **Parallel Query** - Push query processing to the storage layer. See the guide on [Aurora Parallel Query](https://oneuptime.com/blog/post/2026-02-12-aurora-parallel-query-for-analytics/view).
+- **Parallel Query** - Push query processing to the storage layer for Aurora MySQL analytic queries. See the guide on [Aurora Parallel Query](https://oneuptime.com/blog/post/2026-02-12-aurora-parallel-query-for-analytics/view).
 - **Machine Learning Integration** - Call ML services from SQL. See the guide on [Aurora ML](https://oneuptime.com/blog/post/2026-02-12-aurora-machine-learning-ml-integration/view).
 
 ### Standard RDS Advantages
@@ -144,7 +144,7 @@ This is where things get nuanced. Aurora isn't always more expensive, and it isn
 
 ### Compute Costs
 
-Aurora instance pricing is about 20-30% higher than equivalent RDS instances for the same instance class. However, because Aurora is more efficient, you can often use a smaller instance class and get the same performance.
+Aurora instance pricing is usually higher than Single-AZ standard RDS pricing for the same instance class, but the comparison depends on engine, Region, and whether you're comparing against Single-AZ, Multi-AZ with one standby, or Multi-AZ DB clusters. Because Aurora is more efficient for some workloads, you can often use a smaller instance class and get the same performance.
 
 ### Storage Costs
 
@@ -198,7 +198,7 @@ graph TD
     H -->|No| I{Need low replication lag?}
 
     I -->|Yes| G
-    I -->|No| J{More than 2 readers needed?}
+    I -->|No| J{Need shared-storage reader endpoint?}
 
     J -->|Yes| G
     J -->|No| F
@@ -207,10 +207,10 @@ graph TD
 ### Choose Aurora When:
 
 - You need very low replication lag (sub-100ms)
-- You need more than 2 read replicas
+- You need low-lag read scaling with Aurora Replicas and a shared reader endpoint
 - You want features like Backtrack, Cloning, or Global Databases
 - Your workload is write-heavy
-- You need fast failover (under 30 seconds)
+- You need fast failover (typically under 60 seconds, often under 30 seconds, with an Aurora Replica)
 - Your database storage grows unpredictably
 
 ### Choose Standard RDS When:
