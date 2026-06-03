@@ -8,7 +8,7 @@ Description: Learn how to use volume topology constraints to ensure pods are sch
 
 ---
 
-Persistent volumes are created in specific availability zones. If a pod using a volume is scheduled in a different zone, it either won't work or will suffer from high latency and data transfer costs. Volume topology constraints solve this by ensuring pods land in the same topology domain as their storage.
+Many cloud block storage persistent volumes are created in specific availability zones. If a pod using a topology-constrained volume is scheduled in a different zone, it either won't work or will suffer from high latency and data transfer costs. Volume topology constraints solve this by ensuring pods land in the same topology domain as their storage.
 
 ## Volume Binding Modes
 
@@ -30,7 +30,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd-zonal
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "3000"
@@ -40,7 +40,7 @@ volumeBindingMode: WaitForFirstConsumer
 # Limit to specific zones
 allowedTopologies:
 - matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
+  - key: topology.ebs.csi.aws.com/zone
     values:
     - us-east-1a
     - us-east-1b
@@ -120,6 +120,9 @@ spec:
       containers:
       - name: postgres
         image: postgres:15
+        env:
+        - name: POSTGRES_PASSWORD
+          value: changeme
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -179,6 +182,58 @@ spec:
           values:
           - us-east-1a
 ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv-node2
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-nvme
+  local:
+    path: /mnt/nvme0n1
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - worker-node-2
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values:
+          - us-east-1b
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: local-pv-node3
+spec:
+  capacity:
+    storage: 1Ti
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: local-nvme
+  local:
+    path: /mnt/nvme0n1
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - worker-node-3
+        - key: topology.kubernetes.io/zone
+          operator: In
+          values:
+          - us-east-1c
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -190,6 +245,9 @@ spec:
     matchLabels:
       app: cache
   template:
+    metadata:
+      labels:
+        app: cache
     spec:
       containers:
       - name: redis
@@ -305,19 +363,19 @@ Check volume and pod placement:
 ```bash
 # List PVs with their zones
 kubectl get pv -o json | \
-  jq -r '.items[] | {name: .metadata.name, zone: .metadata.labels["topology.kubernetes.io/zone"], node: .spec.nodeAffinity}'
+  jq -r '.items[] | {name: .metadata.name, zones: [.spec.nodeAffinity.required.nodeSelectorTerms[]?.matchExpressions[]? | select(.key | endswith("/zone")) | .values[]], nodeAffinity: .spec.nodeAffinity}'
 
 # Check PVC binding status
 kubectl get pvc --all-namespaces
 
 # Verify pod is in same zone as volume
 POD_NAME="database-0"
-kubectl get pod $POD_NAME -o jsonpath='{.spec.nodeName}' | \
-  xargs kubectl get node -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}'
+NODE_NAME=$(kubectl get pod "$POD_NAME" -o jsonpath='{.spec.nodeName}')
+kubectl get node "$NODE_NAME" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}'
 
 # List volumes by zone
 kubectl get pv -o json | \
-  jq -r '.items[] | .metadata.labels["topology.kubernetes.io/zone"]' | \
+  jq -r '.items[] | .spec.nodeAffinity.required.nodeSelectorTerms[]?.matchExpressions[]? | select(.key | endswith("/zone")) | .values[]' | \
   sort | uniq -c
 ```
 
@@ -331,7 +389,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: expandable-storage
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
 volumeBindingMode: WaitForFirstConsumer
@@ -356,7 +414,7 @@ kubectl patch pvc data-database-0 -p '{"spec":{"resources":{"requests":{"storage
 
 ## Volume Snapshot Topology
 
-Create snapshots with topology awareness:
+Create snapshots and restore them with a topology-aware StorageClass:
 
 ```yaml
 # volume-snapshot-class.yaml
@@ -428,7 +486,7 @@ kubectl get events --sort-by='.lastTimestamp' | grep -i volume
 kubectl describe storageclass fast-ssd-zonal
 
 # Verify allowed topologies
-kubectl get storageclass fast-ssd-zonal -o jsonpath='{.allowedTopologies}' | jq
+kubectl get storageclass fast-ssd-zonal -o json | jq '.allowedTopologies'
 ```
 
 If pod and volume are in different zones:
@@ -436,12 +494,13 @@ If pod and volume are in different zones:
 ```bash
 # This shouldn't happen with WaitForFirstConsumer
 # But if it does, check the volume's node affinity
-kubectl get pv <pv-name> -o jsonpath='{.spec.nodeAffinity}' | jq
+PV_NAME="<pv-name>"
+kubectl get pv "$PV_NAME" -o json | jq '.spec.nodeAffinity'
 
 # And compare with pod's node
-kubectl get pod <pod-name> -o jsonpath='{.spec.nodeName}' | \
-  xargs kubectl get node -o jsonpath='{.metadata.labels}'
+POD_NAME="<pod-name>"
+NODE_NAME=$(kubectl get pod "$POD_NAME" -o jsonpath='{.spec.nodeName}')
+kubectl get node "$NODE_NAME" -o json | jq '.metadata.labels'
 ```
 
 Volume topology constraints are essential for zone-aware storage in Kubernetes. By using WaitForFirstConsumer binding mode and proper topology configurations, you ensure pods are always scheduled in the same zone as their storage, optimizing performance and minimizing costs.
-
