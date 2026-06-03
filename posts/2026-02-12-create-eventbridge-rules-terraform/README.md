@@ -8,7 +8,7 @@ Description: A hands-on guide to building AWS EventBridge rules with Terraform, 
 
 ---
 
-Amazon EventBridge (formerly CloudWatch Events) is the event bus that ties AWS services together. When an EC2 instance changes state, when a CodePipeline deployment fails, when an S3 object is created - EventBridge can catch those events and route them to targets like Lambda functions, SQS queues, or Step Functions. It's also the service you use for cron-style scheduled tasks in AWS.
+Amazon EventBridge (formerly CloudWatch Events) is the event bus that ties AWS services together. When an EC2 instance changes state, when a CodePipeline deployment fails, when an S3 object is created - EventBridge can catch those events and route them to targets like Lambda functions, SQS queues, or Step Functions. EventBridge scheduled rules can also run cron-style scheduled tasks in AWS, although EventBridge Scheduler is the recommended service for new standalone schedules.
 
 This guide walks through building EventBridge rules in Terraform, from simple schedules to complex event patterns with custom event buses.
 
@@ -16,7 +16,7 @@ This guide walks through building EventBridge rules in Terraform, from simple sc
 
 EventBridge has three main concepts:
 
-1. **Event Bus** - Where events arrive. The default bus receives all AWS service events. You can create custom buses for your own application events.
+1. **Event Bus** - Where events arrive. The default bus receives events from AWS services in your account; some services, such as S3 object events, require event delivery to EventBridge to be enabled first. You can create custom buses for your own application events.
 2. **Rules** - Pattern matchers that filter events on the bus.
 3. **Targets** - Where matching events get sent (Lambda, SQS, SNS, Step Functions, etc.).
 
@@ -34,7 +34,7 @@ graph LR
 
 ## Scheduled Rules (Cron Jobs)
 
-The most common use case is replacing traditional cron jobs with EventBridge schedules that trigger Lambda functions.
+One common use case is replacing traditional cron jobs with EventBridge scheduled rules that trigger Lambda functions.
 
 This creates a rule that triggers a Lambda function every 5 minutes:
 
@@ -218,6 +218,14 @@ resource "aws_cloudwatch_event_target" "high_value_to_lambda" {
   target_id      = "process-high-value"
   arn            = aws_lambda_function.high_value_processor.arn
 }
+
+resource "aws_lambda_permission" "allow_orders_eventbridge" {
+  statement_id  = "AllowOrdersEventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.high_value_processor.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.high_value_order.arn
+}
 ```
 
 To publish events to the custom bus from your application:
@@ -252,6 +260,15 @@ A single rule can have up to five targets. This is useful when you want to fan o
 This rule sends S3 upload events to both a Lambda function and an SQS queue:
 
 ```hcl
+resource "aws_s3_bucket" "uploads" {
+  bucket = "my-upload-bucket"
+}
+
+resource "aws_s3_bucket_notification" "uploads_eventbridge" {
+  bucket      = aws_s3_bucket.uploads.id
+  eventbridge = true
+}
+
 resource "aws_cloudwatch_event_rule" "s3_upload" {
   name = "s3-object-created"
 
@@ -260,7 +277,7 @@ resource "aws_cloudwatch_event_rule" "s3_upload" {
     detail-type = ["Object Created"]
     detail = {
       bucket = {
-        name = ["my-upload-bucket"]
+        name = [aws_s3_bucket.uploads.id]
       }
     }
   })
@@ -272,10 +289,40 @@ resource "aws_cloudwatch_event_target" "s3_to_lambda" {
   arn       = aws_lambda_function.process_upload.arn
 }
 
+resource "aws_lambda_permission" "allow_s3_eventbridge" {
+  statement_id  = "AllowS3EventBridgeInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.process_upload.function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.s3_upload.arn
+}
+
 resource "aws_cloudwatch_event_target" "s3_to_sqs" {
   rule      = aws_cloudwatch_event_rule.s3_upload.name
   target_id = "queue-upload"
   arn       = aws_sqs_queue.upload_queue.arn
+}
+
+resource "aws_sqs_queue_policy" "allow_s3_eventbridge" {
+  queue_url = aws_sqs_queue.upload_queue.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowEventBridgeSendMessage"
+      Effect = "Allow"
+      Principal = {
+        Service = "events.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.upload_queue.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_cloudwatch_event_rule.s3_upload.arn
+        }
+      }
+    }]
+  })
 }
 ```
 
@@ -329,10 +376,32 @@ resource "aws_cloudwatch_event_target" "with_dlq" {
     maximum_retry_attempts       = 3
   }
 }
+
+resource "aws_sqs_queue_policy" "allow_eventbridge_dlq" {
+  queue_url = aws_sqs_queue.eventbridge_dlq.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Sid    = "AllowEventBridgeDLQ"
+      Effect = "Allow"
+      Principal = {
+        Service = "events.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.eventbridge_dlq.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_cloudwatch_event_rule.every_five_minutes.arn
+        }
+      }
+    }]
+  })
+}
 ```
 
 For monitoring your event-driven architecture end to end, take a look at our guide on [CloudWatch alarms with Terraform](https://oneuptime.com/blog/post/2026-02-12-create-cloudwatch-alarms-terraform/view) to set up alerts on failed invocations and DLQ depth.
 
 ## Wrapping Up
 
-EventBridge is one of those AWS services that gets more useful the more you lean into it. Start with scheduled rules to replace cron, then add event patterns for AWS service events you care about. When your application architecture matures, custom event buses give you a clean way to decouple services. The Terraform configurations in this guide cover the most common patterns you'll encounter.
+EventBridge is one of those AWS services that gets more useful the more you lean into it. Use scheduled rules where they fit, then add event patterns for AWS service events you care about. When your application architecture matures, custom event buses give you a clean way to decouple services. The Terraform configurations in this guide cover the most common patterns you'll encounter.
