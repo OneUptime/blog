@@ -42,6 +42,8 @@ import redis
 import json
 import hashlib
 import functools
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -54,7 +56,7 @@ cache = redis.Redis(
     ssl=True,
     decode_responses=True,
     socket_timeout=2,
-    retry_on_timeout=True
+    retry=Retry(ExponentialBackoff(), 3)
 )
 
 def cache_response(ttl=300, prefix='api'):
@@ -316,6 +318,7 @@ Here's a locking mechanism to prevent it:
 
 ```python
 import time
+import uuid
 
 def get_with_lock(cache_key, fetch_func, ttl=300, lock_ttl=10):
     """
@@ -329,7 +332,8 @@ def get_with_lock(cache_key, fetch_func, ttl=300, lock_ttl=10):
 
     # Cache miss - try to acquire a lock
     lock_key = f"lock:{cache_key}"
-    lock_acquired = cache.set(lock_key, '1', ex=lock_ttl, nx=True)
+    lock_token = str(uuid.uuid4())
+    lock_acquired = cache.set(lock_key, lock_token, ex=lock_ttl, nx=True)
 
     if lock_acquired:
         # We got the lock - fetch from database
@@ -338,7 +342,18 @@ def get_with_lock(cache_key, fetch_func, ttl=300, lock_ttl=10):
             cache.setex(cache_key, ttl, json.dumps(result))
             return result
         finally:
-            cache.delete(lock_key)
+            cache.eval(
+                """
+                if redis.call("get", KEYS[1]) == ARGV[1] then
+                    return redis.call("del", KEYS[1])
+                else
+                    return 0
+                end
+                """,
+                1,
+                lock_key,
+                lock_token
+            )
     else:
         # Another request is fetching - wait and retry
         for _ in range(lock_ttl * 10):
@@ -373,7 +388,7 @@ Track these metrics to know if your caching strategy is working:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
   --metric-name CacheHitRate \
-  --dimensions Name=CacheClusterId,Value=my-redis-001 \
+  --dimensions Name=CacheClusterId,Value=my-redis-001 Name=CacheNodeId,Value=0001 \
   --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
