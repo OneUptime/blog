@@ -43,7 +43,7 @@ The command returns the new AMI ID in the destination region:
 
 ```json
 {
-    "ImageId": "ami-eu-0987654321fedcba0"
+    "ImageId": "ami-0987654321fedcba0"
 }
 ```
 
@@ -53,13 +53,13 @@ Wait for it to become available before using it:
 # Check the status of the copy in the destination region
 aws ec2 describe-images \
     --region eu-west-1 \
-    --image-ids ami-eu-0987654321fedcba0 \
+    --image-ids ami-0987654321fedcba0 \
     --query 'Images[0].State'
 
 # Wait for it to be ready
 aws ec2 wait image-available \
     --region eu-west-1 \
-    --image-ids ami-eu-0987654321fedcba0
+    --image-ids ami-0987654321fedcba0
 ```
 
 ## Encryption During Copy
@@ -82,19 +82,19 @@ aws ec2 copy-image \
     --region eu-west-1 \
     --name "webapp-v2.1-eu-encrypted" \
     --encrypted \
-    --kms-key-id arn:aws:kms:eu-west-1:123456789012:key/mrk-abc123
+    --kms-key-id arn:aws:kms:eu-west-1:123456789012:key/1234abcd-12ab-34cd-56ef-1234567890ab
 ```
 
 If the source AMI is encrypted with a customer-managed KMS key, you need permission to use that key for the copy to work. The destination can use a different KMS key.
 
 ## Copying Shared AMIs
 
-If someone shared an AMI with you, you can copy it to any region in your own account:
+If someone shared an AMI with you, you can copy it to another region in your own account as long as the owner has granted you read access to the backing snapshots. If the snapshots are encrypted, you also need access to the KMS key.
 
 ```bash
 # Copy a shared AMI to your account in another region
 aws ec2 copy-image \
-    --source-image-id ami-shared-0123456789 \
+    --source-image-id ami-0abcdef1234567890 \
     --source-region us-east-1 \
     --region us-west-2 \
     --name "shared-webapp-us-west-2-copy"
@@ -124,7 +124,7 @@ if [ -z "$AMI_NAME" ]; then
         --output text)
 fi
 
-# Copy to each target region in parallel
+# Initiate copy jobs for each target region
 for REGION in "${TARGET_REGIONS[@]}"; do
     echo "Copying $SOURCE_AMI to $REGION..."
 
@@ -179,11 +179,11 @@ aws ec2 describe-snapshots \
 
 AMI copies involve:
 
-1. **Data transfer between regions** - Standard inter-region data transfer charges apply. This is roughly $0.02 per GB depending on the regions.
-2. **Snapshot storage in the destination** - The same per-GB monthly cost as any EBS snapshot ($0.05/GB-month).
+1. **Data transfer between regions** - Standard inter-region data transfer charges apply, and rates depend on the source and destination regions.
+2. **Snapshot storage in the destination** - The same per-GB monthly cost as other standard EBS snapshots in that region. In many regions, standard snapshot storage is $0.05/GB-month.
 3. **No charge for the AMI metadata itself**.
 
-For a 50 GB AMI copied to 3 regions, you're looking at about:
+For a 50 GB AMI copied to 3 regions at $0.02/GB transfer and $0.05/GB-month snapshot storage, you're looking at about:
 - Transfer: 50 GB x 3 regions x $0.02 = $3.00 (one-time)
 - Storage: 50 GB x 3 regions x $0.05 = $7.50/month
 
@@ -191,7 +191,7 @@ Not huge numbers, but they add up if you're copying many AMIs frequently. Clean 
 
 ## Disaster Recovery Pattern
 
-A common DR pattern is to continuously replicate AMIs from your primary region to a DR region:
+A common DR pattern is to regularly replicate AMIs from your primary region to a DR region:
 
 ```bash
 #!/bin/bash
@@ -209,6 +209,8 @@ DR_AMIS=$(aws ec2 describe-images \
     --output text)
 
 while IFS=$'\t' read -r AMI_ID AMI_NAME; do
+    [ -z "$AMI_ID" ] && continue
+
     # Check if this AMI already exists in the DR region (by name)
     EXISTS=$(aws ec2 describe-images \
         --region $DR_REGION \
@@ -235,7 +237,18 @@ Run this on a schedule (daily or after each AMI build) to keep your DR region up
 
 ## Tags Don't Copy Automatically
 
-One gotcha: tags from the source AMI don't automatically copy to the destination. You need to tag the copy separately:
+One gotcha: tags from the source AMI don't automatically copy to the destination unless you ask for them. You can use `--copy-image-tags` when copying user-defined AMI tags:
+
+```bash
+aws ec2 copy-image \
+    --source-image-id ami-0123456789abcdef0 \
+    --source-region us-east-1 \
+    --region eu-west-1 \
+    --name "webapp-v2.1-eu-copy" \
+    --copy-image-tags
+```
+
+Or tag the copy separately:
 
 ```bash
 # Copy tags from source to destination AMI
@@ -247,7 +260,7 @@ SOURCE_TAGS=$(aws ec2 describe-images \
 
 aws ec2 create-tags \
     --region eu-west-1 \
-    --resources ami-eu-0987654321fedcba0 \
+    --resources ami-0987654321fedcba0 \
     --tags "$SOURCE_TAGS"
 ```
 
@@ -263,7 +276,7 @@ aws ec2 create-tags \
 # Check why an AMI copy failed
 aws ec2 describe-images \
     --region eu-west-1 \
-    --image-ids ami-failed-123 \
+    --image-ids ami-0fedcba9876543210 \
     --query 'Images[0].StateReason'
 ```
 
@@ -271,7 +284,7 @@ aws ec2 describe-images \
 
 1. **Automate multi-region copies as part of your CI/CD pipeline.** Don't rely on manual copies - they get forgotten.
 
-2. **Encrypt during copy if the source isn't encrypted.** It's a free operation that significantly improves your security posture.
+2. **Encrypt during copy if the source isn't encrypted.** It's a straightforward way to improve your security posture.
 
 3. **Clean up old AMIs in destination regions.** It's easy to forget about copies in regions you don't look at often. Use [monitoring](https://oneuptime.com) to track resources across regions.
 
