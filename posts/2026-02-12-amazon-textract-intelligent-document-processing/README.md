@@ -338,10 +338,12 @@ class DataValidator:
 Tie everything together into a Lambda-based pipeline triggered by S3 uploads.
 
 ```python
+from urllib.parse import unquote_plus
+
 def lambda_handler(event, context):
     """Process documents uploaded to S3."""
     bucket = event['Records'][0]['s3']['bucket']['name']
-    key = event['Records'][0]['s3']['object']['key']
+    key = unquote_plus(event['Records'][0]['s3']['object']['key'])
 
     # Step 1: Classify
     doc_type, confidence, _ = classify_document(bucket, key)
@@ -380,6 +382,20 @@ def send_to_human_review(bucket, key, reason, errors=None):
             'reason': reason,
             'errors': errors or []
         })
+    )
+
+def store_results(bucket, key, extracted):
+    """Store extraction results in DynamoDB."""
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('DocumentProcessingResults')
+    table.put_item(
+        Item={
+            'document_id': f'{bucket}/{key}',
+            'bucket': bucket,
+            'key': key,
+            'document_type': extracted.get('type', 'unknown'),
+            'extracted_data': json.dumps(extracted)
+        }
     )
 ```
 
