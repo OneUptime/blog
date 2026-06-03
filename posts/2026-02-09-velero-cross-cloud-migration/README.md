@@ -8,7 +8,7 @@ Description: Learn how to migrate Kubernetes workloads between different cloud p
 
 ---
 
-Moving Kubernetes workloads between cloud providers is challenging when using provider-specific resources like load balancers, storage classes, and managed services. Velero provides cloud-agnostic backup and restore capabilities that simplify cross-cloud migration. This guide shows you how to migrate clusters between providers while handling provider-specific differences.
+Moving Kubernetes workloads between cloud providers is challenging when using provider-specific resources like load balancers, storage classes, and managed services. Velero provides cloud-agnostic backup and restore capabilities for Kubernetes resources and file system volume backups that simplify cross-cloud migration. This guide shows you how to migrate clusters between providers while handling provider-specific differences.
 
 ## Installing Velero on Source Cluster
 
@@ -22,6 +22,7 @@ SOURCE_CLOUD="aws"
 VELERO_VERSION="v1.12.0"
 BUCKET_NAME="k8s-migration-backup"
 REGION="us-east-1"
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
 # Install Velero CLI
 
@@ -73,7 +74,7 @@ EOF
 
 aws iam create-policy --policy-name VeleroPolicy --policy-document file://velero-policy.json
 aws iam create-user --user-name velero
-aws iam attach-user-policy --user-name velero --policy-arn arn:aws:iam::ACCOUNT_ID:policy/VeleroPolicy
+aws iam attach-user-policy --user-name velero --policy-arn arn:aws:iam::${ACCOUNT_ID}:policy/VeleroPolicy
 aws iam create-access-key --user-name velero > velero-credentials.json
 
 # Create credentials file
@@ -83,14 +84,16 @@ aws_access_key_id=$(jq -r .AccessKey.AccessKeyId velero-credentials.json)
 aws_secret_access_key=$(jq -r .AccessKey.SecretAccessKey velero-credentials.json)
 EOF
 
-# Install Velero in source cluster
+# Install Velero in source cluster. Use file system backup for PV data because
+# cloud-provider volume snapshots cannot be restored across providers.
 velero install \
     --provider aws \
     --plugins velero/velero-plugin-for-aws:v1.8.0 \
     --bucket ${BUCKET_NAME} \
     --backup-location-config region=${REGION} \
-    --snapshot-location-config region=${REGION} \
-    --secret-file ./credentials-velero
+    --secret-file ./credentials-velero \
+    --use-volume-snapshots=false \
+    --use-node-agent
 
 kubectl wait --for=condition=available --timeout=300s deployment/velero -n velero
 
@@ -101,7 +104,7 @@ This setup uses S3 as a cloud-agnostic storage backend accessible from any provi
 
 ## Creating Comprehensive Backup
 
-Back up all cluster resources including persistent volumes.
+Back up all cluster resources including persistent volume data.
 
 ```bash
 #!/bin/bash
@@ -109,12 +112,12 @@ Back up all cluster resources including persistent volumes.
 
 BACKUP_NAME="full-cluster-$(date +%Y%m%d-%H%M%S)"
 
-# Create backup with volume snapshots
+# Create backup with file system backup for volume data
 velero backup create ${BACKUP_NAME} \
     --include-namespaces "*" \
     --exclude-namespaces velero,kube-system \
-    --snapshot-volumes=true \
-    --default-volumes-to-fs-backup=false \
+    --snapshot-volumes=false \
+    --default-volumes-to-fs-backup=true \
     --wait
 
 # Wait for backup to complete
@@ -141,32 +144,23 @@ This creates a complete backup of all application workloads and data.
 Transform cloud-specific resources during migration.
 
 ```yaml
-# ConfigMap mapping for resource transformation
+# Velero built-in storage class mapping for restore
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: migration-mappings
+  name: change-storage-class-config
   namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
 data:
-  storage-class-mappings.yaml: |
-    # AWS to GCP storage class mappings
-    gp2: pd-standard
-    gp3: pd-balanced
-    io1: pd-ssd
-    st1: pd-standard
-    sc1: pd-standard
-
-  load-balancer-mappings.yaml: |
-    # Service type transformations
-    aws-nlb: gcp-ilb
-    aws-alb: gcp-l7
-
-  ingress-class-mappings.yaml: |
-    # Ingress controller mappings
-    alb: gce
-    nginx-aws: nginx-gcp
+  gp2: pd-standard
+  gp3: pd-balanced
+  io1: pd-ssd
+  st1: pd-standard
+  sc1: pd-standard
 ---
-# Velero restore configuration with mappings
+# Velero restore configuration with namespace mapping and filtering
 apiVersion: velero.io/v1
 kind: Restore
 metadata:
@@ -179,15 +173,13 @@ spec:
   excludedNamespaces:
   - velero
   - kube-system
-  restorePVs: true
+  restorePVs: false
 
-  # Transform storage classes
-  storageClassMappings:
-    gp2: pd-standard
-    gp3: pd-balanced
-    io1: pd-ssd
+  # Namespace mappings
+  namespaceMapping:
+    production: production-gcp
 
-  # Label transformations
+  # Restore only matching resources
   labelSelector:
     matchExpressions:
     - key: environment
@@ -195,7 +187,7 @@ spec:
       values: [production]
 ```
 
-These mappings translate provider-specific configurations automatically.
+The storage class ConfigMap is applied by Velero's built-in restore item action. Load balancer and ingress annotations still need provider-specific review.
 
 ## Installing Velero on Target Cluster
 
@@ -205,44 +197,21 @@ Set up Velero on the destination cluster with access to the same backup storage.
 #!/bin/bash
 # Install Velero on target cluster (GCP example)
 
-TARGET_CLOUD="gcp"
-PROJECT_ID="my-gcp-project"
 BUCKET_NAME="k8s-migration-backup"
+REGION="us-east-1"
 
 # Switch to target cluster context
 kubectl config use-context gke-target-cluster
 
-# Create GCP service account for Velero
-gcloud iam service-accounts create velero \
-    --display-name "Velero service account"
+# Reuse the AWS credentials file that can read the S3 backup bucket.
+# If you use GCS instead of S3, install the GCP plugin and use a GCS bucket.
 
-# Grant permissions
-SERVICE_ACCOUNT_EMAIL=$(gcloud iam service-accounts list \
-    --filter="displayName:Velero service account" \
-    --format='value(email)')
-
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-    --member serviceAccount:${SERVICE_ACCOUNT_EMAIL} \
-    --role roles/compute.storageAdmin
-
-gcloud projects add-iam-policy-binding ${PROJECT_ID} \
-    --member serviceAccount:${SERVICE_ACCOUNT_EMAIL} \
-    --role roles/storage.admin
-
-# Create service account key
-gcloud iam service-accounts keys create credentials-velero \
-    --iam-account ${SERVICE_ACCOUNT_EMAIL}
-
-# Enable GCS access to S3 bucket (for cross-cloud access)
-# Configure Cloud Storage interoperability
-gsutil hmac create ${SERVICE_ACCOUNT_EMAIL}
-
-# Install Velero on target cluster using S3-compatible backend
+# Install Velero on target cluster using the same S3 backup storage
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.8.0,velero/velero-plugin-for-gcp:v1.8.0 \
+    --plugins velero/velero-plugin-for-aws:v1.8.0 \
     --bucket ${BUCKET_NAME} \
-    --backup-location-config region=us-east-1,s3ForcePathStyle="true",s3Url=https://storage.googleapis.com \
+    --backup-location-config region=${REGION} \
     --secret-file ./credentials-velero \
     --use-volume-snapshots=false \
     --use-node-agent
@@ -268,6 +237,22 @@ RESTORE_NAME="cross-cloud-restore-$(date +%Y%m%d-%H%M%S)"
 # Verify backup is accessible
 velero backup get ${BACKUP_NAME}
 
+# Apply storage class mapping before creating the restore
+cat <<EOF | kubectl apply -f -
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  gp2: pd-standard
+  gp3: pd-balanced
+  io1: pd-ssd
+EOF
+
 # Create restore with transformations
 cat <<EOF | kubectl apply -f -
 apiVersion: velero.io/v1
@@ -284,13 +269,7 @@ spec:
   - velero
   - kube-system
 
-  restorePVs: true
-
-  # Storage class mappings (AWS -> GCP)
-  storageClassMappings:
-    gp2: pd-standard
-    gp3: pd-balanced
-    io1: pd-ssd
+  restorePVs: false
 
   # Namespace mappings (optional)
   namespaceMapping:
@@ -304,7 +283,6 @@ spec:
   - configmaps
   - secrets
   - persistentvolumeclaims
-  - persistentvolumes
 
   # Hook configuration for post-restore actions
   hooks:
@@ -345,7 +323,7 @@ done
 kubectl get all -n production-gcp
 ```
 
-This restores workloads with automatic transformation of cloud-specific resources.
+This restores workloads with namespace remapping and the storage class mapping ConfigMap applied by Velero.
 
 ## Handling Load Balancer Migration
 
@@ -361,8 +339,7 @@ NAMESPACE="production-gcp"
 kubectl get svc -n ${NAMESPACE} --field-selector spec.type=LoadBalancer -o json > services.json
 
 # Update annotations for target cloud
-jq '.items[] | .metadata.name' services.json | while read -r SERVICE; do
-  SERVICE=$(echo $SERVICE | tr -d '"')
+jq -r '.items[].metadata.name' services.json | while read -r SERVICE; do
 
   echo "Updating service: $SERVICE"
 
@@ -370,12 +347,13 @@ jq '.items[] | .metadata.name' services.json | while read -r SERVICE; do
   kubectl annotate svc ${SERVICE} -n ${NAMESPACE} \
     service.beta.kubernetes.io/aws-load-balancer-type- \
     service.beta.kubernetes.io/aws-load-balancer-internal- \
-    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled-
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled- || true
 
-  # Add GCP-specific annotations
-  kubectl annotate svc ${SERVICE} -n ${NAMESPACE} \
-    cloud.google.com/neg='{"ingress": true}' \
-    cloud.google.com/backend-config='{"default": "backend-config"}'
+  # Add GKE-specific annotations only when they match the desired load balancer.
+  # Example for an internal passthrough Network Load Balancer:
+  # kubectl annotate svc ${SERVICE} -n ${NAMESPACE} \
+  #   networking.gke.io/load-balancer-type=Internal \
+  #   --overwrite
 
   # Force service recreation to get new load balancer
   kubectl patch svc ${SERVICE} -n ${NAMESPACE} -p '{"spec":{"type":"ClusterIP"}}'
@@ -478,11 +456,11 @@ aws route53 change-resource-record-sets --hosted-zone-id ${ZONE_ID} --change-bat
 
 echo "DNS updated. Monitoring traffic shift..."
 
-# Monitor traffic on both clusters
+# Monitor resource usage on both clusters
 for i in {1..20}; do
   echo "Minute $i:"
-  echo "  Old cluster requests: $(kubectl --context=eks-source-cluster top pods -n production --containers | awk '{sum+=$3} END {print sum}')"
-  echo "  New cluster requests: $(kubectl --context=gke-target-cluster top pods -n production-gcp --containers | awk '{sum+=$3} END {print sum}')"
+  echo "  Old cluster CPU(m): $(kubectl --context=eks-source-cluster top pods -n production --no-headers | awk '{sum+=$2} END {print sum}')"
+  echo "  New cluster CPU(m): $(kubectl --context=gke-target-cluster top pods -n production-gcp --no-headers | awk '{sum+=$2} END {print sum}')"
   sleep 60
 done
 
@@ -515,9 +493,11 @@ echo "Waiting for soak period to ensure stability..."
 sleep $(($SOAK_PERIOD_HOURS * 3600))
 
 # Verify target cluster is stable
-TARGET_ERROR_RATE=$(kubectl --context=gke-target-cluster top pods -n production-gcp --containers | grep Restart | awk '{sum+=$4} END {print sum}')
+TARGET_RESTARTS=$(kubectl --context=gke-target-cluster get pods -n production-gcp \
+  -o jsonpath='{range .items[*]}{range .status.containerStatuses[*]}{.restartCount}{"\n"}{end}{end}' \
+  | awk '{sum+=$1} END {print sum+0}')
 
-if [ $TARGET_ERROR_RATE -gt 10 ]; then
+if [ $TARGET_RESTARTS -gt 10 ]; then
   echo "ERROR: Target cluster showing high restart rate. Aborting decommission."
   exit 1
 fi
