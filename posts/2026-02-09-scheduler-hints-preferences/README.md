@@ -170,26 +170,26 @@ spec:
     spec:
       affinity:
         podAntiAffinity:
-          # Strongly prefer different nodes
+          # Prefer different zones
           preferredDuringSchedulingIgnoredDuringExecution:
           - weight: 100
             podAffinityTerm:
               labelSelector:
                 matchLabels:
                   app: api
-              topologyKey: kubernetes.io/hostname
-          # Require different zones
+              topologyKey: topology.kubernetes.io/zone
+          # Require different nodes
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
               matchLabels:
                 app: api
-            topologyKey: topology.kubernetes.io/zone
+            topologyKey: kubernetes.io/hostname
       containers:
       - name: api
         image: myapp/api:v1
 ```
 
-This configuration requires that no two api pods run in the same availability zone, and prefers that they run on different nodes within zones.
+This configuration requires that no two api pods run on the same node, and prefers that they run in different availability zones.
 
 ## Combining Multiple Hints
 
@@ -247,9 +247,8 @@ spec:
               matchLabels:
                 app: db
             topologyKey: kubernetes.io/hostname
-        # Keep databases away from compute-heavy workloads
-        podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
+          # Keep databases away from compute-heavy workloads
           - weight: 80
             podAffinityTerm:
               labelSelector:
@@ -312,7 +311,7 @@ spec:
         operator: Equal
         value: gpu
         effect: NoSchedule
-      # Prefer GPU nodes
+      # Require GPU nodes
       nodeSelector:
         accelerator: nvidia-gpu
       containers:
@@ -399,6 +398,11 @@ profiles:
         weight: 10
       disabled:
       - name: NodeResourcesBalancedAllocation
+  pluginConfig:
+  - name: NodeResourcesFit
+    args:
+      scoringStrategy:
+        type: MostAllocated
 ```
 
 Then specify which scheduler to use:
