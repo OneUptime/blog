@@ -8,7 +8,7 @@ Description: Build a real-time serverless WebSocket API using Amazon API Gateway
 
 ---
 
-HTTP is request-response. The client asks, the server answers, and the connection closes. But for real-time features like chat, live notifications, collaborative editing, and dashboards, you need the server to push data to the client without being asked. That is what WebSockets are for.
+HTTP is request-response. The client asks, the server answers, and the connection can be reused or closed. But for real-time features like chat, live notifications, collaborative editing, and dashboards, you need the server to push data to the client without being asked. That is what WebSockets are for.
 
 Amazon API Gateway supports WebSocket APIs natively. Combined with Lambda for business logic and DynamoDB for connection tracking, you can build a fully serverless real-time system that scales automatically and costs nothing when idle.
 
@@ -142,7 +142,16 @@ def handler(event, context):
     )
 
     # Get all active connections
-    connections = table.scan()['Items']
+    connections = []
+    scan_kwargs = {}
+    while True:
+        response = table.scan(**scan_kwargs)
+        connections.extend(response['Items'])
+
+        if 'LastEvaluatedKey' not in response:
+            break
+
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
     # Broadcast the message to all connected clients
     broadcast_payload = json.dumps({
@@ -180,7 +189,8 @@ def handler(event, context):
 CONNECT_INTEGRATION=$(aws apigatewayv2 create-integration \
   --api-id YOUR_API_ID \
   --integration-type AWS_PROXY \
-  --integration-uri arn:aws:lambda:us-east-1:123456789012:function:ws-connect \
+  --integration-method POST \
+  --integration-uri arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:ws-connect/invocations \
   --query IntegrationId --output text)
 
 aws apigatewayv2 create-route \
@@ -192,7 +202,8 @@ aws apigatewayv2 create-route \
 DISCONNECT_INTEGRATION=$(aws apigatewayv2 create-integration \
   --api-id YOUR_API_ID \
   --integration-type AWS_PROXY \
-  --integration-uri arn:aws:lambda:us-east-1:123456789012:function:ws-disconnect \
+  --integration-method POST \
+  --integration-uri arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:ws-disconnect/invocations \
   --query IntegrationId --output text)
 
 aws apigatewayv2 create-route \
@@ -204,7 +215,8 @@ aws apigatewayv2 create-route \
 MESSAGE_INTEGRATION=$(aws apigatewayv2 create-integration \
   --api-id YOUR_API_ID \
   --integration-type AWS_PROXY \
-  --integration-uri arn:aws:lambda:us-east-1:123456789012:function:ws-send-message \
+  --integration-method POST \
+  --integration-uri arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:ws-send-message/invocations \
   --query IntegrationId --output text)
 
 aws apigatewayv2 create-route \
@@ -227,10 +239,34 @@ Your WebSocket URL will be: `wss://YOUR_API_ID.execute-api.us-east-1.amazonaws.c
 
 ## Step 6: Grant Lambda Permissions
 
-The sendMessage Lambda needs permission to call the API Gateway management API:
+API Gateway needs permission to invoke each Lambda function:
+
+```bash
+aws lambda add-permission \
+  --function-name ws-connect \
+  --statement-id apigateway-ws-connect \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn 'arn:aws:execute-api:us-east-1:123456789012:YOUR_API_ID/production/$connect'
+
+aws lambda add-permission \
+  --function-name ws-disconnect \
+  --statement-id apigateway-ws-disconnect \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn 'arn:aws:execute-api:us-east-1:123456789012:YOUR_API_ID/production/$disconnect'
+
+aws lambda add-permission \
+  --function-name ws-send-message \
+  --statement-id apigateway-ws-send-message \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:us-east-1:123456789012:YOUR_API_ID/production/sendMessage"
+```
+
+The Lambda execution roles also need permission to use DynamoDB. The sendMessage Lambda needs permission to call the API Gateway management API:
 
 ```json
-// IAM policy allowing Lambda to send messages to WebSocket connections
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -243,10 +279,14 @@ The sendMessage Lambda needs permission to call the API Gateway management API:
       "Effect": "Allow",
       "Action": [
         "dynamodb:Scan",
+        "dynamodb:Query",
         "dynamodb:PutItem",
         "dynamodb:DeleteItem"
       ],
-      "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/websocket-connections"
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:123456789012:table/websocket-connections",
+        "arn:aws:dynamodb:us-east-1:123456789012:table/websocket-connections/index/*"
+      ]
     }
   ]
 }
@@ -323,10 +363,11 @@ Then query by room instead of scanning:
 
 ```python
 # Query connections for a specific room instead of scanning all
+from boto3.dynamodb.conditions import Key
+
 connections = table.query(
     IndexName='room-index',
-    KeyConditionExpression='roomId = :room',
-    ExpressionAttributeValues={':room': room_id}
+    KeyConditionExpression=Key('roomId').eq(room_id)
 )['Items']
 ```
 
