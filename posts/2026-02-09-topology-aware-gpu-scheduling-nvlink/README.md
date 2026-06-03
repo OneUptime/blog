@@ -47,7 +47,7 @@ kubectl debug node/<gpu-node> -it --image=nvidia/cuda:12.0.0-base-ubuntu22.04 --
 
 ## Installing GPU Feature Discovery
 
-Deploy GPU Feature Discovery to label nodes with topology info:
+Deploy GPU Feature Discovery to label nodes with GPU inventory info:
 
 ```yaml
 # gpu-feature-discovery.yaml
@@ -66,10 +66,11 @@ spec:
         app: gpu-feature-discovery
     spec:
       nodeSelector:
-        nvidia.com/gpu.present: "true"
+        feature.node.kubernetes.io/pci-10de.present: "true"
       containers:
       - name: gpu-feature-discovery
-        image: nvcr.io/nvidia/gpu-feature-discovery:v0.8.2
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
+        command: ["gpu-feature-discovery"]
         volumeMounts:
         - name: output-dir
           mountPath: /etc/kubernetes/node-feature-discovery/features.d
@@ -98,15 +99,15 @@ Deploy and check labels:
 ```bash
 kubectl apply -f gpu-feature-discovery.yaml
 
-# Check discovered topology labels
-kubectl get nodes -l nvidia.com/gpu.present=true -o json | \
+# Check discovered GPU labels
+kubectl get nodes -l nvidia.com/gpu.count -o json | \
   jq '.items[].metadata.labels | with_entries(select(.key | contains("nvidia.com/gpu")))'
 
 # Example labels:
 # nvidia.com/gpu.count: "8"
 # nvidia.com/gpu.product: "A100-SXM4-40GB"
-# nvidia.com/gpu.nvlink: "true"
-# nvidia.com/gpu.nvlink.version: "3"
+# nvidia.com/gpu.family: "ampere"
+# nvidia.com/gpu.memory: "40960"
 ```
 
 ## Creating Topology-Aware Node Labels
@@ -134,7 +135,7 @@ Create a script to auto-label based on topology:
 #!/bin/bash
 # label-gpu-topology.sh
 
-for node in $(kubectl get nodes -l nvidia.com/gpu.present=true -o name | cut -d/ -f2); do
+for node in $(kubectl get nodes -l nvidia.com/gpu.count -o name | cut -d/ -f2); do
     echo "Processing node: $node"
 
     # Get topology from node
@@ -157,45 +158,22 @@ for node in $(kubectl get nodes -l nvidia.com/gpu.present=true -o name | cut -d/
 done
 ```
 
-## Configuring the GPU Device Plugin for Topology
+## Configuring Kubernetes Topology Manager
 
-Configure the NVIDIA device plugin to expose topology:
+The NVIDIA device plugin does not have an NVLink-specific scheduler strategy field. For CPU, memory, and device NUMA alignment, configure the kubelet Topology Manager on GPU nodes:
 
 ```yaml
-# device-plugin-config.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: device-plugin-config
-  namespace: gpu-operator
-data:
-  config.yaml: |
-    version: v1
-    flags:
-      migStrategy: none
-
-    sharing:
-      timeSlicing:
-        renameByDefault: false
-
-    resources:
-      gpus:
-      - pattern: "*"
-        name: nvidia.com/gpu
-
-    # Enable topology-aware scheduling
-    topology:
-      strategy: nvlink-preferred
-      fallback: any
+# /var/lib/kubelet/config.yaml
+apiVersion: kubelet.config.k8s.io/v1
+kind: KubeletConfiguration
+topologyManagerPolicy: restricted
+topologyManagerScope: pod
 ```
 
-Update GPU Operator to use topology config:
+Restart kubelet after updating the config:
 
 ```bash
-helm upgrade gpu-operator nvidia/gpu-operator \
-  --namespace gpu-operator \
-  --set devicePlugin.config.name=device-plugin-config \
-  --reuse-values
+sudo systemctl restart kubelet
 ```
 
 ## Deploying Workloads with Topology Affinity
@@ -218,7 +196,7 @@ spec:
           requiredDuringSchedulingIgnoredDuringExecution:
             nodeSelectorTerms:
             - matchExpressions:
-              # Prefer nodes with NVLink
+              # Require nodes with NVLink
               - key: gpu-topology
                 operator: In
                 values:
@@ -255,31 +233,18 @@ spec:
       - name: nccl-topology
         configMap:
           name: nccl-topology-config
+      restartPolicy: OnFailure
 ```
 
 ## Creating NCCL Topology Files
 
-Generate NCCL topology files for optimal communication:
+Use NCCL to dump the detected topology, then review it before reusing it with `NCCL_TOPO_FILE`:
 
-```xml
-<!-- nccl-topology.xml -->
-<system version="1">
-  <gpu dev="0" sm="80" rank="0" gdr="1">
-    <cpu affinity="0-23"/>
-    <nvlink target="1" count="12"/>
-    <nvlink target="2" count="12"/>
-    <nvlink target="3" count="12"/>
-  </gpu>
+```bash
+NCCL_DEBUG=INFO NCCL_TOPO_DUMP_FILE=/tmp/nccl-topology.xml \
+  python train.py
 
-  <gpu dev="1" sm="80" rank="1" gdr="1">
-    <cpu affinity="0-23"/>
-    <nvlink target="0" count="12"/>
-    <nvlink target="2" count="12"/>
-    <nvlink target="3" count="12"/>
-  </gpu>
-
-  <!-- More GPUs... -->
-</system>
+kubectl cp <gpu-pod>:/tmp/nccl-topology.xml ./nccl-topology.xml -n ml-training
 ```
 
 Create ConfigMap:
@@ -325,33 +290,49 @@ class TopologyAwareScheduler:
 
         return scores.get(topology, 0)
 
+    def get_gpu_limit(self, pod):
+        """Return total GPU limit across all containers in a pod"""
+        total = 0
+        for container in pod.spec.containers:
+            limits = container.resources.limits if container.resources else None
+            if limits and "nvidia.com/gpu" in limits:
+                total += int(limits["nvidia.com/gpu"])
+        return total
+
+    def get_allocated_gpus(self, node_name):
+        """Return GPUs already allocated to scheduled pods on a node"""
+        allocated = 0
+        pods = self.v1.list_pod_for_all_namespaces(
+            field_selector=f"spec.nodeName={node_name},status.phase!=Succeeded,status.phase!=Failed"
+        )
+        for pod in pods.items:
+            allocated += self.get_gpu_limit(pod)
+        return allocated
+
     def schedule_pod(self, pod):
         """Schedule pod to best node based on topology"""
         namespace = pod.metadata.namespace
         pod_name = pod.metadata.name
 
         # Get GPU request
-        gpu_request = 0
-        for container in pod.spec.containers:
-            if container.resources and container.resources.limits:
-                gpu_request = container.resources.limits.get("nvidia.com/gpu", 0)
+        gpu_request = self.get_gpu_limit(pod)
 
-        # Only consider topology for multi-GPU pods
-        if gpu_request < 2:
-            logging.info(f"Single GPU pod, using default scheduling")
+        if gpu_request == 0:
+            logging.info(f"Pod {pod_name} does not request GPUs")
             return None
 
         # Get candidate nodes
-        nodes = self.v1.list_node(label_selector="nvidia.com/gpu.present=true")
+        nodes = self.v1.list_node(label_selector="nvidia.com/gpu.count")
 
         # Score nodes
         node_scores = []
         for node in nodes.items:
-            # Check if node has enough GPUs
+            # Check if node has enough unallocated GPUs
             gpu_capacity = int(node.status.allocatable.get("nvidia.com/gpu", 0))
+            gpu_available = gpu_capacity - self.get_allocated_gpus(node.metadata.name)
 
-            if gpu_capacity >= gpu_request:
-                score = self.get_gpu_topology_score(node.metadata.name)
+            if gpu_available >= gpu_request:
+                score = self.get_gpu_topology_score(node.metadata.name) if gpu_request >= 2 else 0
                 node_scores.append((node.metadata.name, score))
 
         # Sort by score
@@ -371,7 +352,7 @@ class TopologyAwareScheduler:
             target=client.V1ObjectReference(kind="Node", name=best_node)
         )
 
-        self.v1.create_namespaced_pod_binding(namespace, binding)
+        self.v1.create_namespaced_pod_binding(pod_name, namespace, binding)
 
         return best_node
 
