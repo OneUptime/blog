@@ -8,13 +8,13 @@ Description: Learn how to deploy Redis with Sentinel on Kubernetes for automatic
 
 ---
 
-Redis Sentinel provides automatic failover for Redis master-replica topologies, monitoring cluster health and promoting replicas when the master fails. On Kubernetes, proper Sentinel deployment ensures your applications maintain Redis connectivity during infrastructure failures. This guide demonstrates deploying production-ready Redis Sentinel with automatic failover, proper quorum configuration, and client integration patterns.
+Redis Sentinel provides automatic failover for Redis master-replica topologies, monitoring cluster health and promoting replicas when the master fails. On Kubernetes, proper Sentinel deployment helps your applications maintain Redis connectivity during infrastructure failures. This guide demonstrates deploying Redis Sentinel with automatic failover, proper quorum configuration, and client integration patterns.
 
 ## Understanding Redis Sentinel Architecture
 
-Redis Sentinel operates as a separate process that monitors Redis instances. Multiple Sentinel nodes form a distributed system that reaches consensus about master health. When a quorum of Sentinels agrees the master is down, they automatically promote a replica and reconfigure the topology.
+Redis Sentinel operates as a separate process that monitors Redis instances. Multiple Sentinel nodes form a distributed system that reaches agreement about master health. When enough Sentinels report the master as down and a failover is authorized by a majority of known Sentinels, they promote a replica and reconfigure the topology.
 
-The distributed nature prevents split-brain scenarios where network partitions could cause multiple masters. Sentinels use the Raft consensus algorithm to ensure only one replica promotes to master during failures, maintaining data consistency.
+The distributed nature reduces split-brain risk during network partitions. Sentinels use quorum checks, epochs, leader election, and majority authorization to coordinate failover so only one Sentinel leads a given promotion.
 
 ## Deploying Redis with Sentinel
 
@@ -366,7 +366,7 @@ kubectl logs -n redis redis-sentinel-0
 kubectl exec -it -n redis redis-replica-0 -- redis-cli info replication
 # Should show role: master
 
-# Old master rejoins as replica when pod restarts
+# Sentinel reconfigures the old master as a replica after it becomes reachable again
 kubectl get pods -n redis -w
 ```
 
@@ -415,7 +415,7 @@ package main
 
 import (
     "context"
-    "github.com/go-redis/redis/v8"
+    "github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -453,8 +453,9 @@ Configure quorum for split-brain protection:
 ```yaml
 data:
   sentinel.conf: |
-    # Quorum must be majority of Sentinels (N/2 + 1)
-    # With 3 Sentinels, quorum should be 2
+    # Quorum is the number of Sentinels that must agree the master is unreachable.
+    # Failover still requires authorization from a majority of known Sentinels.
+    # With 3 Sentinels, quorum 2 is a common production setting.
     sentinel monitor mymaster redis-master-0.redis-master.redis.svc.cluster.local 6379 2
 
     # Faster failover detection
@@ -470,7 +471,7 @@ data:
     # sentinel notification-script mymaster /path/to/script.sh
 ```
 
-For 5 Sentinels, use quorum 3. For 7 Sentinels, use quorum 4.
+For 5 Sentinels, quorum 2 or 3 are common choices depending on how quickly you want failover detection to trigger; failover authorization still requires at least 3 Sentinels. For 7 Sentinels, authorization requires at least 4 Sentinels.
 
 ## Monitoring Sentinel Health
 
@@ -497,10 +498,11 @@ spec:
         - name: exporter
           image: oliver006/redis_exporter:latest
           ports:
-            - containerPort: 9121
+            - name: metrics
+              containerPort: 9121
           env:
             - name: REDIS_ADDR
-              value: redis://redis-master.redis:6379
+              value: redis://redis-sentinel.redis:26379
             - name: REDIS_PASSWORD
               value: ""
 ---
@@ -513,7 +515,9 @@ spec:
   selector:
     app: redis-exporter
   ports:
-    - port: 9121
+    - name: metrics
+      port: 9121
+      targetPort: metrics
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -535,19 +539,19 @@ Key metrics to monitor:
 # Sentinel status
 redis_sentinel_masters
 
-# Replication lag
-redis_replication_lag_seconds
+# Replica lag reported by the master
+redis_connected_slave_lag_seconds
 
 # Connected slaves
 redis_connected_slaves
 
-# Failover events
-increase(redis_sentinel_failovers_total[1h])
+# Failover/configuration changes
+changes(redis_sentinel_master_config_epoch[1h])
 ```
 
 ## Handling Network Partitions
 
-Configure network policies to prevent split-brain:
+Configure network policies to preserve required Sentinel communication while limiting access:
 
 ```yaml
 # network-policy.yaml
@@ -568,6 +572,12 @@ spec:
         - podSelector:
             matchLabels:
               app: redis
+        - podSelector:
+            matchLabels:
+              app: redis-sentinel
+        - podSelector:
+            matchLabels:
+              app: redis-client
       ports:
         - protocol: TCP
           port: 26379
@@ -579,6 +589,25 @@ spec:
       ports:
         - protocol: TCP
           port: 6379
+    - to:
+        - podSelector:
+            matchLabels:
+              app: redis-sentinel
+      ports:
+        - protocol: TCP
+          port: 26379
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
 ```
 
 ## Scaling Sentinels
@@ -589,7 +618,7 @@ Add more Sentinels for better failure detection:
 # Scale to 5 Sentinels
 kubectl scale statefulset redis-sentinel --replicas=5 -n redis
 
-# Update quorum to 3 (majority of 5)
+# Update quorum if you want a higher down-detection threshold
 kubectl edit configmap redis-config -n redis
 # Change: sentinel monitor mymaster ... 3
 
@@ -629,7 +658,8 @@ spec:
                   redis-cli -h $MASTER BGSAVE
 
                   # Wait for save to complete
-                  while [ "$(redis-cli -h $MASTER LASTSAVE)" = "$(date +%s)" ]; do
+                  LASTSAVE=$(redis-cli -h $MASTER LASTSAVE)
+                  while [ "$(redis-cli -h $MASTER LASTSAVE)" = "$LASTSAVE" ]; do
                     sleep 1
                   done
 
@@ -640,6 +670,6 @@ spec:
 
 ## Conclusion
 
-Redis Sentinel provides robust automatic failover for Redis on Kubernetes through distributed consensus and health monitoring. The Sentinel architecture prevents split-brain scenarios while enabling rapid failover when masters fail, typically completing promotion in under 10 seconds.
+Redis Sentinel provides robust automatic failover for Redis on Kubernetes through distributed health monitoring and coordinated failover. The Sentinel architecture reduces split-brain risk while enabling rapid failover when masters fail, with promotion time depending on `down-after-milliseconds`, `failover-timeout`, network conditions, and replica synchronization state.
 
 The key to successful deployment is proper quorum configuration matching your Sentinel count and using Sentinel-aware client libraries that automatically discover the current master. Combined with appropriate monitoring and testing of failover procedures, Redis Sentinel delivers the high availability required for production caching and session storage workloads on Kubernetes.
