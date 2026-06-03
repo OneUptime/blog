@@ -12,7 +12,7 @@ Setting up AWS SDK v3 clients properly is the foundation of any Node.js applicat
 
 ## Basic Client Setup
 
-Every v3 client takes a configuration object. At minimum, you need to specify the region.
+Every v3 client takes a configuration object. At minimum, the client needs a region, either passed in the constructor or resolved from the SDK's default configuration sources.
 
 ```javascript
 import { S3Client } from '@aws-sdk/client-s3';
@@ -25,7 +25,7 @@ const dynamodb = new DynamoDBClient({ region: 'us-west-2' });
 const lambda = new LambdaClient({ region: 'eu-west-1' });
 ```
 
-If you don't specify a region, the SDK looks for it in environment variables (`AWS_REGION` or `AWS_DEFAULT_REGION`), then in your AWS config file (`~/.aws/config`).
+If you don't specify a region, the SDK looks for it in the `AWS_REGION` environment variable, then in your AWS config file (`~/.aws/config`) when shared config loading is enabled with `AWS_SDK_LOAD_CONFIG`.
 
 ## Region Configuration Strategies
 
@@ -98,7 +98,7 @@ import https from 'https';
 // Configure HTTP handler with custom timeouts
 const httpHandler = new NodeHttpHandler({
     connectionTimeout: 5000,   // 5 seconds to establish connection
-    requestTimeout: 30000,     // 30 seconds for the request to complete
+    requestTimeout: 30000,     // 30 seconds before the handler times out the request
     httpsAgent: new https.Agent({
         maxSockets: 50,        // connection pool size
         keepAlive: true,       // reuse connections
