@@ -37,8 +37,8 @@ helm repo update
 helm install traefik traefik/traefik \
   --namespace traefik \
   --create-namespace \
-  --set ports.web.redirectTo.port=websecure \
-  --set ports.websecure.tls.enabled=true
+  --set ports.web.http.redirections.entryPoint.to=websecure \
+  --set ports.websecure.http.tls.enabled=true
 ```
 
 Verify installation:
@@ -67,17 +67,11 @@ spec:
   # Minimum TLS version
   minVersion: VersionTLS12
 
-  # Allowed cipher suites (recommended secure ciphers)
+  # Allowed cipher suites for TLS 1.2 and earlier (recommended secure ciphers)
   cipherSuites:
     - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
     - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
     - TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305
-    - TLS_AES_128_GCM_SHA256
-    - TLS_AES_256_GCM_SHA384
-    - TLS_CHACHA20_POLY1305_SHA256
-
-  # Prefer server cipher suites
-  preferServerCipherSuites: true
 
   # ALPN protocols
   alpnProtocols:
@@ -124,7 +118,7 @@ Implement strict TLS settings for maximum security.
 
 ### TLS 1.3 Only Configuration
 
-Configure TLS 1.3 with modern ciphers:
+Configure TLS 1.3. TLS 1.3 cipher suites are not configurable in Traefik; the supported TLS 1.3 suites are enabled by the Go TLS implementation.
 
 ```yaml
 # strict-tls-options.yaml
@@ -137,12 +131,6 @@ spec:
   # TLS 1.3 only
   minVersion: VersionTLS13
 
-  # TLS 1.3 cipher suites
-  cipherSuites:
-    - TLS_AES_128_GCM_SHA256
-    - TLS_AES_256_GCM_SHA384
-    - TLS_CHACHA20_POLY1305_SHA256
-
   # Curve preferences
   curvePreferences:
     - CurveP521
@@ -151,6 +139,7 @@ spec:
   # ALPN with HTTP/2 preference
   alpnProtocols:
     - h2
+    - http/1.1
 ```
 
 Apply to IngressRoute:
@@ -193,20 +182,16 @@ spec:
   # TLS 1.2 minimum (PCI DSS requirement)
   minVersion: VersionTLS12
 
-  # Strong cipher suites only
+  # Strong TLS 1.2 cipher suites only
   cipherSuites:
     - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
     - TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
-    - TLS_AES_256_GCM_SHA384
-    - TLS_AES_128_GCM_SHA256
-
-  preferServerCipherSuites: true
 
   curvePreferences:
     - CurveP384
     - CurveP256
 
-  # Disable client renegotiation
+  # Reject clients without a matching SNI value
   sniStrict: true
 ```
 
@@ -239,7 +224,6 @@ spec:
 
   cipherSuites:
     - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-    - TLS_AES_256_GCM_SHA384
 ```
 
 Create CA certificate secret:
@@ -298,7 +282,6 @@ spec:
 
   cipherSuites:
     - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-    - TLS_AES_256_GCM_SHA384
 ```
 
 ## Multiple TLS Configurations
@@ -319,9 +302,6 @@ metadata:
   namespace: traefik
 spec:
   minVersion: VersionTLS13
-  cipherSuites:
-    - TLS_AES_256_GCM_SHA384
-    - TLS_CHACHA20_POLY1305_SHA256
 ---
 # Staging - balanced TLS
 apiVersion: traefik.io/v1alpha1
@@ -333,7 +313,6 @@ spec:
   minVersion: VersionTLS12
   cipherSuites:
     - TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384
-    - TLS_AES_256_GCM_SHA384
 ---
 # Development - permissive TLS
 apiVersion: traefik.io/v1alpha1
@@ -342,7 +321,7 @@ metadata:
   name: development-tls
   namespace: traefik
 spec:
-  minVersion: VersionTLS11
+  minVersion: VersionTLS12
 ```
 
 Apply to different IngressRoutes:
@@ -393,11 +372,11 @@ spec:
 
 ## TLS Store Configuration
 
-Configure default certificates and options.
+Configure default certificates.
 
 ### Default TLS Store
 
-Set default certificate for all TLS routes:
+Set a static default certificate for all TLS routes:
 
 ```yaml
 # tls-store.yaml
@@ -410,7 +389,18 @@ spec:
   # Default certificate
   defaultCertificate:
     secretName: default-tls-cert
+```
 
+Or generate the default certificate with an ACME resolver instead of using a static secret:
+
+```yaml
+# tls-store-acme.yaml
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: traefik
+spec:
   # Default generated certificate
   defaultGeneratedCert:
     resolver: myresolver
@@ -527,8 +517,8 @@ cd testssl.sh
 # Run comprehensive TLS test
 ./testssl.sh app.example.com
 
-# Test specific cipher
-./testssl.sh --cipher TLS_AES_256_GCM_SHA384 app.example.com
+# Test cipher support per protocol
+./testssl.sh --cipher-per-proto app.example.com
 ```
 
 ## Monitoring TLS
@@ -557,11 +547,11 @@ data:
 View TLS metrics:
 
 ```bash
-# Port-forward to Traefik dashboard
-kubectl port-forward -n traefik svc/traefik 9000:9000
+# Port-forward to Traefik metrics
+kubectl port-forward -n traefik svc/traefik 9100:9100
 
 # Access metrics
-curl http://localhost:9000/metrics | grep tls
+curl http://localhost:9100/metrics | grep tls
 ```
 
 ## Troubleshooting
@@ -570,7 +560,7 @@ Common TLS issues:
 
 **Cipher suite mismatch**: Verify supported ciphers:
 ```bash
-openssl ciphers -v | grep TLS_AES_256_GCM_SHA384
+openssl ciphers -v | grep ECDHE-RSA-AES256-GCM-SHA384
 ```
 
 **Client certificate rejection**: Check CA certificate:
