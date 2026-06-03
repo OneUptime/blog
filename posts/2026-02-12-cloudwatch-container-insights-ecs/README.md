@@ -10,11 +10,11 @@ Description: Step-by-step guide to enabling CloudWatch Container Insights for Am
 
 Running containers on ECS without proper monitoring is like driving at night with the headlights off. You know something is out there, but you can't see it until you hit it. CloudWatch Container Insights fixes that by giving you visibility into your ECS clusters at every level - from the cluster down to individual containers.
 
-Container Insights collects, aggregates, and summarizes metrics and logs from your containerized applications. It provides pre-built dashboards showing CPU, memory, network, and disk usage for your clusters, services, and tasks. It also captures performance log events that you can query with CloudWatch Logs Insights.
+Container Insights collects, aggregates, and summarizes metrics and logs from your containerized applications. Container Insights with enhanced observability provides pre-built dashboards showing CPU, memory, network, and disk usage for your clusters, services, tasks, and containers. It also captures performance log events that you can query with CloudWatch Logs Insights.
 
 ## What You Get with Container Insights
 
-When you enable Container Insights for ECS, you get metrics at three levels:
+When you enable Container Insights with enhanced observability for ECS, you get metrics at four levels:
 
 **Cluster level** - overall CPU and memory utilization, running task count, service count, and container instance count (for EC2 launch type).
 
@@ -22,7 +22,9 @@ When you enable Container Insights for ECS, you get metrics at three levels:
 
 **Task level** - per-task CPU and memory consumption, network traffic, and storage I/O.
 
-These metrics go beyond what standard ECS metrics provide. Standard ECS metrics give you service-level CPU and memory reservation and utilization. Container Insights adds network metrics, disk metrics, and task-level granularity.
+**Container level** - per-container CPU, memory, network, storage, restart, and health metrics.
+
+These metrics go beyond what standard ECS metrics provide. Standard ECS metrics give you cluster and service CPU and memory utilization, plus cluster-level reservation metrics. Container Insights adds network metrics, disk metrics, and task-level granularity.
 
 ## Enabling Container Insights for a New Cluster
 
@@ -33,7 +35,7 @@ The easiest approach is enabling it when you create the cluster:
 
 aws ecs create-cluster \
   --cluster-name production-cluster \
-  --settings name=containerInsights,value=enabled
+  --settings name=containerInsights,value=enhanced
 ```
 
 That's it for the cluster side. Container Insights starts collecting metrics automatically for any tasks launched in this cluster.
@@ -46,7 +48,7 @@ If you already have a cluster running, you can enable it without downtime:
 # Enable Container Insights on an existing ECS cluster
 aws ecs update-cluster-settings \
   --cluster production-cluster \
-  --settings name=containerInsights,value=enabled
+  --settings name=containerInsights,value=enhanced
 ```
 
 Verify it's enabled:
@@ -58,7 +60,7 @@ aws ecs describe-clusters \
   --include SETTINGS
 ```
 
-You should see `containerInsights` set to `enabled` in the response.
+You should see `containerInsights` set to `enhanced` in the response.
 
 ## Enabling at the Account Level
 
@@ -68,7 +70,7 @@ If you want Container Insights on by default for all new clusters in your accoun
 # Enable Container Insights as the default for all new ECS clusters
 aws ecs put-account-setting-default \
   --name containerInsights \
-  --value enabled
+  --value enhanced
 ```
 
 This doesn't retroactively enable it on existing clusters - you'll still need to update those individually.
@@ -77,44 +79,25 @@ This doesn't retroactively enable it on existing clusters - you'll still need to
 
 If you're using Fargate, Container Insights works out of the box once you enable it on the cluster. No agents to install, no sidecar containers to deploy. Fargate handles the metric collection internally.
 
-Your task definitions don't need any changes either. Just make sure the task execution role has the right permissions:
-
-```json
-// Task execution role permissions for Container Insights with Fargate
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:CreateLogGroup"
-      ],
-      "Resource": "arn:aws:logs:*:*:*"
-    }
-  ]
-}
-```
+Your task definitions don't need any changes either. The task execution role only needs CloudWatch Logs permissions if your application containers use the `awslogs` log driver for application logs.
 
 ## Setup for EC2 Launch Type
 
-For the EC2 launch type, you need the CloudWatch agent running on your container instances. The recommended approach is deploying it as a daemon service.
+For the EC2 launch type, enabling Container Insights with enhanced observability on the cluster is enough for cluster, service, task, and container metrics. If you also want EC2 instance-level metrics, deploy the CloudWatch agent as a daemon service.
 
 First, create a task definition for the CloudWatch agent:
 
 ```json
-// Task definition for CloudWatch agent daemon service
 {
-  "family": "cloudwatch-agent",
+  "family": "ecs-cwagent-daemon-service",
   "taskRoleArn": "arn:aws:iam::123456789012:role/CWAgentECSTaskRole",
   "executionRoleArn": "arn:aws:iam::123456789012:role/CWAgentECSExecutionRole",
   "networkMode": "bridge",
   "containerDefinitions": [
     {
       "name": "cloudwatch-agent",
-      "image": "amazon/cloudwatch-agent:latest",
-      "essential": true,
+      "image": "public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1b1374",
+      "essential": false,
       "mountPoints": [
         {
           "sourceVolume": "proc",
@@ -127,6 +110,21 @@ First, create a task definition for the CloudWatch agent:
           "readOnly": true
         },
         {
+          "sourceVolume": "al1_cgroup",
+          "containerPath": "/cgroup",
+          "readOnly": true
+        },
+        {
+          "sourceVolume": "al2_cgroup",
+          "containerPath": "/rootfs/sys/fs/cgroup",
+          "readOnly": true
+        },
+        {
+          "sourceVolume": "al1_cgroup",
+          "containerPath": "/rootfs/cgroup",
+          "readOnly": true
+        },
+        {
           "sourceVolume": "al2_cgroup",
           "containerPath": "/sys/fs/cgroup",
           "readOnly": true
@@ -135,16 +133,16 @@ First, create a task definition for the CloudWatch agent:
       "environment": [
         {
           "name": "USE_DEFAULT_CONFIG",
-          "value": "true"
+          "value": "True"
         }
       ],
       "logConfiguration": {
         "logDriver": "awslogs",
         "options": {
-          "awslogs-group": "/ecs/cloudwatch-agent",
+          "awslogs-group": "/ecs/ecs-cwagent-daemon-service",
           "awslogs-region": "us-east-1",
           "awslogs-stream-prefix": "ecs",
-          "awslogs-create-group": "true"
+          "awslogs-create-group": "True"
         }
       }
     }
@@ -152,9 +150,12 @@ First, create a task definition for the CloudWatch agent:
   "volumes": [
     {"name": "proc", "host": {"sourcePath": "/proc"}},
     {"name": "dev", "host": {"sourcePath": "/dev"}},
+    {"name": "al1_cgroup", "host": {"sourcePath": "/cgroup"}},
     {"name": "al2_cgroup", "host": {"sourcePath": "/sys/fs/cgroup"}}
   ],
-  "requiresCompatibilities": ["EC2"]
+  "requiresCompatibilities": ["EC2"],
+  "cpu": "128",
+  "memory": "64"
 }
 ```
 
@@ -168,10 +169,9 @@ aws ecs register-task-definition \
 # Create a daemon service so it runs on every container instance
 aws ecs create-service \
   --cluster production-cluster \
-  --service-name cloudwatch-agent \
-  --task-definition cloudwatch-agent \
-  --scheduling-strategy DAEMON \
-  --launch-type EC2
+  --service-name cwagent-daemon-service \
+  --task-definition ecs-cwagent-daemon-service \
+  --scheduling-strategy DAEMON
 ```
 
 The daemon scheduling strategy ensures the agent runs on every EC2 instance in the cluster. When new instances join, they automatically get the agent.
@@ -181,7 +181,6 @@ The daemon scheduling strategy ensures the agent runs on every EC2 instance in t
 The agent needs permissions to publish metrics and logs. Here's the task role policy:
 
 ```json
-// IAM policy for the CloudWatch agent task role
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -222,7 +221,7 @@ Resources:
       ClusterName: production-cluster
       ClusterSettings:
         - Name: containerInsights
-          Value: enabled
+          Value: enhanced
 
   CloudWatchAgentTaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -235,17 +234,58 @@ Resources:
         - EC2
       ContainerDefinitions:
         - Name: cloudwatch-agent
-          Image: amazon/cloudwatch-agent:latest
-          Essential: true
+          Image: public.ecr.aws/cloudwatch-agent/cloudwatch-agent:1.300066.1b1374
+          Essential: false
+          MountPoints:
+            - SourceVolume: proc
+              ContainerPath: /rootfs/proc
+              ReadOnly: true
+            - SourceVolume: dev
+              ContainerPath: /rootfs/dev
+              ReadOnly: true
+            - SourceVolume: al1_cgroup
+              ContainerPath: /cgroup
+              ReadOnly: true
+            - SourceVolume: al2_cgroup
+              ContainerPath: /sys/fs/cgroup
+              ReadOnly: true
+            - SourceVolume: al2_cgroup
+              ContainerPath: /rootfs/sys/fs/cgroup
+              ReadOnly: true
+            - SourceVolume: al1_cgroup
+              ContainerPath: /rootfs/cgroup
+              ReadOnly: true
           Environment:
             - Name: USE_DEFAULT_CONFIG
-              Value: "true"
+              Value: "True"
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/ecs-cwagent-daemon-service
+              awslogs-region: us-east-1
+              awslogs-stream-prefix: ecs
+              awslogs-create-group: "True"
+      Volumes:
+        - Name: proc
+          Host:
+            SourcePath: /proc
+        - Name: dev
+          Host:
+            SourcePath: /dev
+        - Name: al1_cgroup
+          Host:
+            SourcePath: /cgroup
+        - Name: al2_cgroup
+          Host:
+            SourcePath: /sys/fs/cgroup
+      Cpu: "128"
+      Memory: "64"
 
   CloudWatchAgentService:
     Type: AWS::ECS::Service
     Properties:
       Cluster: !Ref ECSCluster
-      ServiceName: cloudwatch-agent
+      ServiceName: cwagent-daemon-service
       TaskDefinition: !Ref CloudWatchAgentTaskDefinition
       SchedulingStrategy: DAEMON
       LaunchType: EC2
@@ -319,7 +359,7 @@ Create alarms on Container Insights metrics to catch problems early:
 aws cloudwatch put-metric-alarm \
   --alarm-name "ECS-HighCPU-WebAPI" \
   --namespace "ECS/ContainerInsights" \
-  --metric-name "CpuUtilized" \
+  --metric-name "TaskCpuUtilization" \
   --dimensions Name=ClusterName,Value=production-cluster Name=ServiceName,Value=web-api \
   --statistic Average \
   --period 300 \
@@ -349,8 +389,8 @@ aws cloudwatch put-metric-alarm \
 If metrics aren't showing up, check these common issues:
 
 1. **Container Insights not enabled on the cluster** - verify with `aws ecs describe-clusters --clusters your-cluster --include SETTINGS`
-2. **CloudWatch agent not running** (EC2 launch type) - check if the daemon service has running tasks
-3. **IAM permissions** - the agent needs `cloudwatch:PutMetricData` and related permissions
+2. **CloudWatch agent not running** (EC2 instance-level metrics) - check if the daemon service has running tasks
+3. **IAM permissions** - the agent needs `cloudwatch:PutMetricData` and related permissions for EC2 instance-level metrics
 4. **Log group not created** - check if `/aws/ecs/containerinsights/{cluster}/performance` exists
 
 For Fargate tasks that show zero network metrics, make sure you're running platform version 1.4.0 or later. Older platform versions don't report all metric types.
@@ -363,10 +403,10 @@ Container Insights does add to your CloudWatch bill. The main costs come from:
 - Performance log events stored in CloudWatch Logs
 - Any alarms you create on Container Insights metrics
 
-For a cluster with 50 tasks across 5 services, expect roughly $15-30/month in additional CloudWatch costs. For strategies to keep these costs in check, see our post on [reducing CloudWatch costs](https://oneuptime.com/blog/post/2026-02-12-reduce-cloudwatch-costs/view).
+Costs vary by Region, launch type, task definitions, running task IDs, containers, alarms, and log volume. As a reference point, the AWS pricing example for Container Insights with enhanced observability on ECS estimates 2,264 CloudWatch metrics, or $158.48/month in US East (N. Virginia), for 1 cluster, 5 services, 10 task definitions, 20 task IDs, and 50 average running containers before application log charges. For strategies to keep these costs in check, see our post on [reducing CloudWatch costs](https://oneuptime.com/blog/post/2026-02-12-reduce-cloudwatch-costs/view).
 
 ## Wrapping Up
 
-Container Insights transforms ECS from a "launch and hope" platform into something you can properly observe. The setup is straightforward - enable the setting on your cluster, and for EC2 launch type, deploy the CloudWatch agent as a daemon. From there, you get automatic dashboards, queryable performance data, and the ability to alarm on container-level metrics.
+Container Insights transforms ECS from a "launch and hope" platform into something you can properly observe. The setup is straightforward - enable the setting on your cluster, and for EC2 instance-level metrics, deploy the CloudWatch agent as a daemon. From there, you get automatic dashboards, queryable performance data, and the ability to alarm on container-level metrics.
 
 If you're running anything beyond a hobby project on ECS, Container Insights should be one of the first things you enable. The visibility it provides pays for itself the first time you need to debug a performance issue or capacity problem.
