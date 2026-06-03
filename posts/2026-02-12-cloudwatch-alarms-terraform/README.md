@@ -181,7 +181,7 @@ resource "aws_cloudwatch_metric_alarm" "rds_connections" {
 ## ALB Alarms
 
 ```hcl
-# ALB 5xx error rate alarm
+# ALB 5xx error count alarm
 resource "aws_cloudwatch_metric_alarm" "alb_5xx" {
   alarm_name          = "${var.environment}-alb-high-5xx"
   alarm_description   = "ALB target 5xx errors exceed threshold"
