@@ -37,6 +37,9 @@ variable "app_name" {
 resource "aws_cognito_user_pool" "main" {
   name = "${var.app_name}-${var.environment}"
 
+  # Required for advanced security mode
+  user_pool_tier = "PLUS"
+
   # Username configuration
   username_attributes      = ["email"]
   auto_verified_attributes = ["email"]
@@ -237,7 +240,7 @@ resource "aws_cognito_user_pool_domain" "main" {
   user_pool_id = aws_cognito_user_pool.main.id
 }
 
-# Or use a custom domain (requires ACM certificate)
+# Or use a custom domain (requires an ACM certificate in us-east-1 and DNS alias record)
 # resource "aws_cognito_user_pool_domain" "custom" {
 #   domain          = "auth.example.com"
 #   certificate_arn = aws_acm_certificate.auth.arn
@@ -309,17 +312,17 @@ resource "aws_lambda_permission" "pre_token_generation" {
   source_arn    = aws_cognito_user_pool.main.arn
 }
 
-# Attach Lambda triggers to the user pool
-resource "aws_cognito_user_pool" "main" {
-  # ... (previous configuration) ...
-
-  lambda_config {
-    pre_token_generation = aws_lambda_function.pre_token_generation.arn
-    # Add more triggers as needed:
-    # pre_authentication    = aws_lambda_function.pre_auth.arn
-    # post_confirmation     = aws_lambda_function.post_confirm.arn
-    # user_migration        = aws_lambda_function.user_migration.arn
+# Add this lambda_config block to the existing aws_cognito_user_pool.main resource
+lambda_config {
+  pre_token_generation_config {
+    lambda_arn     = aws_lambda_function.pre_token_generation.arn
+    lambda_version = "V2_0"
   }
+
+  # Add more triggers as needed:
+  # pre_authentication = aws_lambda_function.pre_auth.arn
+  # post_confirmation  = aws_lambda_function.post_confirm.arn
+  # user_migration     = aws_lambda_function.user_migration.arn
 }
 ```
 
