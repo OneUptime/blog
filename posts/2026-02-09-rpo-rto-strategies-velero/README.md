@@ -122,42 +122,38 @@ kubectl config use-context standby-cluster
 # Install Velero with same configuration
 velero install \
   --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
+  --secret-file ./aws-iam-creds \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
   --use-volume-snapshots=false
 
 # Test restore speed regularly
 velero restore create warmup-test \
-  --from-backup latest-backup
+  --from-backup production-backup
 ```
 
-**Parallel restore operations**: Configure Velero for faster restores:
+**Restore order configuration**: Keep Velero's default restore order unless testing shows you need a custom order. If you do customize it, configure the Velero server flag:
+
+```bash
+velero server \
+  --restore-resource-priorities=customresourcedefinitions,namespaces,storageclasses,volumesnapshotclass.snapshot.storage.k8s.io,volumesnapshotcontents.snapshot.storage.k8s.io,volumesnapshots.snapshot.storage.k8s.io,persistentvolumes,persistentvolumeclaims,secrets,configmaps,serviceaccounts,services,deployments,statefulsets,daemonsets
+```
+
+For file system backup restores, configure parallel file downloads on the restore:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: velero.io/v1
+kind: Restore
 metadata:
-  name: velero-server-config
+  name: production-restore
   namespace: velero
-data:
-  restore-resource-priorities: |
-    namespaces,
-    customresourcedefinitions,
-    storageclasses,
-    volumesnapshotclass.snapshot.storage.k8s.io,
-    volumesnapshotcontents.snapshot.storage.k8s.io,
-    volumesnapshots.snapshot.storage.k8s.io,
-    persistentvolumes,
-    persistentvolumeclaims,
-    secrets,
-    configmaps,
-    serviceaccounts,
-    services,
-    deployments,
-    statefulsets,
-    daemonsets
-  restore-item-action-timeout: 10m
+spec:
+  backupName: production-backup
+  itemOperationTimeout: 4h
+  uploaderConfig:
+    parallelFilesDownload: 10
 ```
 
 **Selective restore for faster RTO**:
@@ -188,7 +184,7 @@ START_TIME=$(date +%s)
 
 # Trigger restore
 velero restore create rto-test \
-  --from-backup latest-backup \
+  --from-backup production-backup \
   --wait
 
 # Wait for all pods to be ready
@@ -363,22 +359,38 @@ spec:
           serviceAccountName: velero
           containers:
           - name: rto-test
-            image: velero/velero:latest
+            image: bitnami/kubectl:latest
             command:
-            - /bin/bash
+            - /bin/sh
             - -c
             - |
+              TEST_ID=$(date +%s)
+              TEST_NAMESPACE="rto-test-${TEST_ID}"
+              RESTORE_NAME="rto-test-restore-${TEST_ID}"
+
               # Create test namespace
-              kubectl create namespace rto-test-$(date +%s)
+              kubectl create namespace "${TEST_NAMESPACE}"
 
               # Start timer
               START=$(date +%s)
 
               # Restore to test namespace
-              velero restore create rto-test-restore-$(date +%s) \
-                --from-backup latest-production-backup \
-                --namespace-mappings production:rto-test-$(date +%s) \
-                --wait
+              cat <<EOF | kubectl apply -f -
+              apiVersion: velero.io/v1
+              kind: Restore
+              metadata:
+                name: ${RESTORE_NAME}
+                namespace: velero
+              spec:
+                backupName: production-backup
+                namespaceMapping:
+                  production: ${TEST_NAMESPACE}
+              EOF
+
+              kubectl wait restores.velero.io/"${RESTORE_NAME}" \
+                --namespace velero \
+                --for=jsonpath='{.status.phase}'=Completed \
+                --timeout=30m
 
               # Calculate RTO
               END=$(date +%s)
@@ -388,7 +400,7 @@ spec:
               echo "RTO Test: ${RTO}s"
 
               # Cleanup
-              kubectl delete namespace rto-test-$(date +%s)
+              kubectl delete namespace "${TEST_NAMESPACE}"
           restartPolicy: OnFailure
 ```
 
@@ -408,7 +420,7 @@ Document your RPO/RTO strategy in runbooks:
 
 ### Critical Service Recovery (RTO: 30min)
 1. Verify standby cluster is available
-2. Execute: velero restore create critical-recovery --from-backup latest-critical
+2. Execute: velero restore create critical-recovery --from-backup critical-backup-20260209090000
 3. Monitor: kubectl get pods -n production -w
 4. Validate: curl https://healthcheck.example.com
 5. Update DNS if needed
