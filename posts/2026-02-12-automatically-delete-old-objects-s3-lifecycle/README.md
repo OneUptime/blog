@@ -135,7 +135,10 @@ To use tag-based expiration, tag your objects when you upload them:
 ```bash
 # Upload with a lifecycle tag
 
-aws s3 cp temp-data.json s3://my-bucket/temp/data.json \
+aws s3api put-object \
+    --bucket my-bucket \
+    --key temp/data.json \
+    --body temp-data.json \
     --tagging "lifecycle=ephemeral"
 ```
 
@@ -262,7 +265,7 @@ aws s3api put-bucket-lifecycle-configuration \
                 },
                 "Transitions": [
                     {
-                        "Days": 14,
+                        "Days": 30,
                         "StorageClass": "STANDARD_IA"
                     },
                     {
@@ -315,6 +318,8 @@ aws s3api put-bucket-lifecycle-configuration \
     }'
 ```
 
+Date-based rules keep applying after the date has passed. Disable or remove the rule if you only want a one-time cleanup.
+
 ## Monitoring Lifecycle Rule Execution
 
 Lifecycle rules run asynchronously and don't provide direct execution logs. But you can monitor their effect.
@@ -331,8 +336,8 @@ aws s3api list-objects-v2 \
     --query "Contents[].StorageClass" \
     --output text | sort | uniq -c | sort -rn
 
-# Monitor deletion activity via CloudTrail
-# Look for DeleteObject events with requestParameters.lifecycle=true
+# Monitor deletion activity with S3 Lifecycle event notifications
+# Use s3:LifecycleExpiration:Delete and s3:LifecycleExpiration:DeleteMarkerCreated events
 ```
 
 ## Common Mistakes
@@ -341,15 +346,15 @@ aws s3api list-objects-v2 \
 
 **Not cleaning up multipart uploads.** They're invisible in normal listings but still cost money. Always add an AbortIncompleteMultipartUpload rule.
 
-**Transitioning tiny objects to IA.** Objects smaller than 128 KB get charged as 128 KB in IA storage classes. Filter by size or keep them in Standard.
+**Transitioning tiny objects to IA.** New lifecycle configurations do not transition objects smaller than 128 KB by default. Filter by size or keep them in Standard so transition request costs and minimum storage charges don't outweigh the savings.
 
 **Setting rules too aggressive.** Start conservative. You can always shorten retention periods, but you can't recover expired objects (unless you have versioning and the non-current version hasn't been expired yet).
 
-**Overlapping rules.** If two rules apply to the same object, S3 applies the most conservative action. But this can lead to confusing behavior. Keep your rules non-overlapping when possible.
+**Overlapping rules.** If two rules apply to the same object, S3 generally optimizes for lower cost: shorter expirations win, lower-cost transitions win, and permanent deletion takes precedence over transition. But this can lead to confusing behavior. Keep your rules non-overlapping when possible.
 
 ## Estimating Cost Savings
 
-Quick math for a typical scenario:
+Quick math for a typical scenario (actual rates vary by AWS Region, so check current S3 pricing for your buckets):
 
 ```text
 Current state: 5 TB in Standard = $117.50/month
