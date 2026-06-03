@@ -40,7 +40,7 @@ aws dms create-replication-instance \
   --vpc-security-group-ids sg-12345678 \
   --replication-subnet-group-identifier my-dms-subnet-group \
   --multi-az \
-  --publicly-accessible false
+  --no-publicly-accessible
 ```
 
 For production, always use `--multi-az` to ensure the replication instance fails over automatically. Size the storage based on how much change data you expect to buffer during target outages.
@@ -70,8 +70,7 @@ aws dms create-endpoint \
   --server-name my-mysql-server.example.com \
   --port 3306 \
   --username dms_user \
-  --password 'SecurePassword!' \
-  --database-name myapp
+  --password 'SecurePassword!'
 ```
 
 Make sure binary logging is enabled on your MySQL source and the DMS user has the required privileges.
@@ -95,7 +94,7 @@ aws dms create-endpoint \
   --username dms_user \
   --password 'SecurePassword!' \
   --database-name myapp \
-  --extra-connection-attributes "PluginName=pglogical"
+  --extra-connection-attributes "PluginName=test_decoding;slotName=dms_slot"
 ```
 
 For PostgreSQL, you need to configure logical replication.
@@ -110,8 +109,10 @@ For PostgreSQL, you need to configure logical replication.
 SELECT pg_create_logical_replication_slot('dms_slot', 'test_decoding');
 
 -- Grant necessary permissions
-GRANT rds_replication TO dms_user;
+ALTER ROLE dms_user WITH REPLICATION;
 ```
+
+For Amazon RDS or Aurora PostgreSQL, enable logical replication in the DB parameter group and grant the `rds_replication` role instead of using the PostgreSQL `REPLICATION` role attribute.
 
 ### RDS or Aurora Source
 
@@ -126,8 +127,7 @@ aws dms create-endpoint \
   --server-name my-aurora-cluster.cluster-xxxxx.us-east-1.rds.amazonaws.com \
   --port 3306 \
   --username dms_user \
-  --password 'SecurePassword!' \
-  --database-name myapp
+  --password 'SecurePassword!'
 ```
 
 ## Step 3: Configure Target Endpoint
@@ -152,7 +152,7 @@ aws dms create-endpoint \
   --endpoint-type target \
   --engine-name s3 \
   --s3-settings '{
-    "ServiceAccessRoleArn": "arn:aws:iam::123456789:role/DMSAccessS3",
+    "ServiceAccessRoleArn": "arn:aws:iam::123456789012:role/DMSAccessS3",
     "BucketName": "my-data-lake",
     "BucketFolder": "cdc-data",
     "DataFormat": "parquet",
@@ -167,7 +167,7 @@ aws dms create-endpoint \
   --endpoint-type target \
   --engine-name dynamodb \
   --dynamo-db-settings '{
-    "ServiceAccessRoleArn": "arn:aws:iam::123456789:role/DMSAccessDynamoDB"
+    "ServiceAccessRoleArn": "arn:aws:iam::123456789012:role/DMSAccessDynamoDB"
   }'
 ```
 
@@ -178,12 +178,12 @@ Always test endpoints before creating a replication task.
 ```bash
 # Test source endpoint connectivity
 aws dms test-connection \
-  --replication-instance-arn arn:aws:dms:us-east-1:123456789:rep:prod-replicator \
-  --endpoint-arn arn:aws:dms:us-east-1:123456789:endpoint:source-mysql
+  --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:6USOU366XFJUWATDJGBCJS3VIQ \
+  --endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:GVBUJQXJZASXWHTWCLN2WNT57E
 
 # Check test status
 aws dms describe-connections \
-  --filter "Name=endpoint-arn,Values=arn:aws:dms:us-east-1:123456789:endpoint:source-mysql"
+  --filters "Name=endpoint-arn,Values=arn:aws:dms:us-east-1:123456789012:endpoint:GVBUJQXJZASXWHTWCLN2WNT57E"
 ```
 
 ## Step 5: Create the Replication Task
@@ -194,9 +194,9 @@ This is where you define what gets replicated and how.
 # Create a replication task with full load + CDC
 aws dms create-replication-task \
   --replication-task-identifier mysql-to-redshift \
-  --source-endpoint-arn arn:aws:dms:us-east-1:123456789:endpoint:source-mysql \
-  --target-endpoint-arn arn:aws:dms:us-east-1:123456789:endpoint:target-redshift \
-  --replication-instance-arn arn:aws:dms:us-east-1:123456789:rep:prod-replicator \
+  --source-endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:GVBUJQXJZASXWHTWCLN2WNT57E \
+  --target-endpoint-arn arn:aws:dms:us-east-1:123456789012:endpoint:K7V4P2R4UXXMSKQ4Y3N5QZQY5E \
+  --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:6USOU366XFJUWATDJGBCJS3VIQ \
   --migration-type full-load-and-cdc \
   --table-mappings file://table-mappings.json \
   --replication-task-settings file://task-settings.json
@@ -250,7 +250,8 @@ The task settings file configures error handling, logging, and performance.
     "TargetSchema": "",
     "SupportLobs": true,
     "LimitedSizeLobMode": true,
-    "LobMaxSize": 32
+    "LobMaxSize": 32,
+    "BatchApplyEnabled": false
   },
   "Logging": {
     "EnableLogging": true,
@@ -266,7 +267,6 @@ The task settings file configures error handling, logging, and performance.
     "TableErrorPolicy": "SUSPEND_TABLE"
   },
   "ChangeProcessingTuning": {
-    "BatchApplyEnabled": true,
     "MinTransactionSize": 1000,
     "CommitTimeout": 10
   }
@@ -278,12 +278,12 @@ The task settings file configures error handling, logging, and performance.
 ```bash
 # Start the replication task
 aws dms start-replication-task \
-  --replication-task-arn arn:aws:dms:us-east-1:123456789:task:mysql-to-redshift \
+  --replication-task-arn arn:aws:dms:us-east-1:123456789012:task:OEAMB3NXSTZ6LFYZFEPPBBXPYM \
   --start-replication-task-type start-replication
 
 # Check task status
 aws dms describe-replication-tasks \
-  --filters "Name=replication-task-arn,Values=arn:aws:dms:us-east-1:123456789:task:mysql-to-redshift" \
+  --filters "Name=replication-task-arn,Values=arn:aws:dms:us-east-1:123456789012:task:OEAMB3NXSTZ6LFYZFEPPBBXPYM" \
   --query 'ReplicationTasks[0].{Status:Status,CDCLatency:ReplicationTaskStats.CDCLatencySource}'
 ```
 
@@ -308,7 +308,8 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
   --dimensions Name=ReplicationInstanceIdentifier,Value=prod-replicator \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+               Name=ReplicationTaskIdentifier,Value=mysql-to-redshift \
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 ## Troubleshooting Common Issues
@@ -320,9 +321,9 @@ aws cloudwatch put-metric-alarm \
 **Full load takes too long** - Increase the replication instance size and adjust the `MaxFullLoadSubTasks` setting to parallelize table loads.
 
 ```bash
-# View replication task logs
-aws dms describe-replication-task-assessment-results \
-  --replication-task-arn arn:aws:dms:us-east-1:123456789:task:mysql-to-redshift
+# View replication task log metadata
+aws dms describe-replication-instance-task-logs \
+  --replication-instance-arn arn:aws:dms:us-east-1:123456789012:rep:6USOU366XFJUWATDJGBCJS3VIQ
 ```
 
 ## Wrapping Up
