@@ -10,11 +10,11 @@ Description: Learn how to configure connection draining on AWS load balancers to
 
 If you've ever pulled an EC2 instance out of a load balancer and watched active requests fail with 502 errors, you already know why connection draining matters. It's one of those features that seems minor until it saves you from a production incident during a deployment.
 
-Connection draining - also called deregistration delay on Application Load Balancers (ALBs) - gives in-flight requests time to complete before an instance is fully removed from the target group. Without it, the load balancer just cuts off connections immediately, and your users see errors.
+Connection draining - called deregistration delay on Application Load Balancers (ALBs) and Network Load Balancers (NLBs) - gives in-flight requests time to complete before an instance is fully removed from the target group. If you disable it or set the delay too low, the load balancer can cut off active connections, and your users see errors.
 
 ## What Happens Without Connection Draining
 
-When you deregister an instance or it fails a health check, the load balancer needs to stop sending traffic to it. Without connection draining, here's the sequence:
+When you deregister an instance, the load balancer needs to stop sending traffic to it. Without connection draining, here's the sequence:
 
 1. Instance is marked for removal
 2. Load balancer immediately stops all connections
@@ -122,7 +122,7 @@ Here's a quick reference:
 
 Connection draining plays a critical role during Auto Scaling events. When Auto Scaling decides to terminate an instance (scale-in), it first deregisters the instance from the target group. The deregistration delay kicks in, giving connections time to complete before the instance is terminated.
 
-But there's a catch. Auto Scaling has its own termination timeout. If your deregistration delay is longer than the Auto Scaling cooldown period, the instance might get terminated before connections finish draining.
+But there's a catch. Auto Scaling waits for Elastic Load Balancing deregistration delay during scale-in, but a lifecycle hook is still useful when the instance needs to run application-level shutdown work before termination.
 
 You can configure a lifecycle hook to handle this properly:
 
@@ -136,7 +136,7 @@ aws autoscaling put-lifecycle-hook \
   --default-result CONTINUE
 ```
 
-This gives the instance an extra 300 seconds before Auto Scaling forcefully terminates it.
+This can keep the instance in the `Terminating:Wait` state for up to 300 seconds while your shutdown automation finishes. If you need more time, call `RecordLifecycleActionHeartbeat` before the heartbeat timeout expires.
 
 ## Monitoring Connection Draining
 
@@ -144,7 +144,7 @@ You'll want to keep an eye on how often instances are draining and whether the t
 
 For ALBs, watch the `TargetResponseTime` metric to understand how long your requests typically take. If the p99 latency is 10 seconds, a 30-second deregistration delay gives you a 3x buffer.
 
-You can also check the `UnHealthyHostCount` metric. Spikes here often correlate with draining events.
+You can also check the `HealthyHostCount` metric. Deregistering targets reduce healthy host count while they drain, but they do not increase `UnHealthyHostCount`.
 
 For a more comprehensive monitoring setup, consider using [OneUptime to monitor your AWS infrastructure](https://oneuptime.com/blog/post/2026-02-12-monitor-ec2-instances-with-cloudwatch-detailed-monitoring/view). You can set up alerts that fire when draining events coincide with error rate increases.
 
@@ -175,21 +175,25 @@ During this period, the load balancer sends all new requests to the new instance
 
 Sometimes connections don't close cleanly. Maybe a client has abandoned a connection but the server side hasn't detected it yet. For these cases, you can configure your application to help.
 
-Add a shutdown hook that closes idle connections:
+Add a shutdown hook that marks the instance as not ready and waits before exiting:
 
 ```python
 # Python example: graceful shutdown handler for a Flask app
 import signal
 import sys
+import time
 from flask import Flask
 
 app = Flask(__name__)
+is_draining = False
 
 def graceful_shutdown(signum, frame):
     """Handle SIGTERM by stopping new request acceptance and waiting for in-flight requests."""
+    global is_draining
     print("Received SIGTERM, starting graceful shutdown...")
-    # Stop accepting new connections
-    # Your framework may have its own shutdown method
+    is_draining = True
+    # Keep this shorter than your load balancer's deregistration delay.
+    time.sleep(30)
     sys.exit(0)
 
 # Register the signal handler for SIGTERM
@@ -197,6 +201,8 @@ signal.signal(signal.SIGTERM, graceful_shutdown)
 
 @app.route('/health')
 def health():
+    if is_draining:
+        return 'draining', 503
     return 'ok', 200
 ```
 
@@ -208,7 +214,7 @@ def health():
 
 **Not testing draining behavior:** It's easy to configure and forget about it. Run a load test, deregister an instance, and verify that no requests fail during the drain period.
 
-**Ignoring the interaction with health checks:** If an instance starts failing health checks, it enters draining mode. Make sure your health check thresholds and deregistration delay work well together.
+**Ignoring the interaction with health checks:** For ALB target groups, a target is `draining` when it is being deregistered. Failed health checks make it `unhealthy`, which affects routing differently. Make sure your health check thresholds and deregistration delay work well together.
 
 ## Wrapping Up
 
