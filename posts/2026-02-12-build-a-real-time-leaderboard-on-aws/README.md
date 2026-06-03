@@ -88,7 +88,7 @@ The score submission handler writes to both Redis and DynamoDB. Redis is the sou
 import boto3
 import json
 import redis
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Redis connection (inside VPC)
 r = redis.Redis(
@@ -130,7 +130,7 @@ def handler(event, context):
             new_score = current
 
     # Get the player's new rank (0-indexed, so add 1)
-    rank = r.zrevrank(redis_key, player_id)
+    rank = r.zrank(redis_key, player_id) if mode == 'lowest' else r.zrevrank(redis_key, player_id)
     rank = rank + 1 if rank is not None else None
 
     # Persist to DynamoDB
@@ -139,7 +139,7 @@ def handler(event, context):
         'playerId': player_id,
         'score': str(new_score),
         'rank': rank,
-        'updatedAt': datetime.utcnow().isoformat()
+        'updatedAt': datetime.now(timezone.utc).isoformat()
     })
 
     return {
@@ -248,12 +248,13 @@ def respond(status, body):
 
 ## Real-Time Updates with WebSockets
 
-Push leaderboard changes to connected clients using API Gateway WebSocket API:
+Push leaderboard changes to connected clients using API Gateway WebSocket API. Store connections in a DynamoDB table keyed by `connectionId`, with a global secondary index named `LeaderboardConnectionsIndex` on `leaderboardId` for efficient broadcasts:
 
 ```python
 # Lambda to manage WebSocket connections and broadcast updates
 import boto3
 import json
+from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb')
 connections_table = dynamodb.Table('WebSocketConnections')
@@ -283,9 +284,9 @@ def broadcast_update(leaderboard_id, update_data):
     )
 
     # Find all connections watching this leaderboard
-    response = connections_table.scan(
-        FilterExpression='leaderboardId = :lb',
-        ExpressionAttributeValues={':lb': leaderboard_id}
+    response = connections_table.query(
+        IndexName='LeaderboardConnectionsIndex',
+        KeyConditionExpression=Key('leaderboardId').eq(leaderboard_id)
     )
 
     stale_connections = []
@@ -310,15 +311,16 @@ Support different leaderboard types - daily, weekly, all-time, and per-region:
 ```python
 # Manage multiple leaderboard types with automatic expiration
 import redis
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 
 r = redis.Redis(host='leaderboard-redis.xxx.cache.amazonaws.com', port=6379)
 
 def submit_to_all_boards(player_id, score):
     """Submit a score to all relevant leaderboard timeframes."""
-    today = datetime.utcnow().strftime('%Y-%m-%d')
-    week = datetime.utcnow().strftime('%Y-W%W')
-    month = datetime.utcnow().strftime('%Y-%m')
+    now = datetime.now(timezone.utc)
+    today = now.strftime('%Y-%m-%d')
+    week = now.strftime('%Y-W%W')
+    month = now.strftime('%Y-%m')
 
     pipe = r.pipeline()
 
@@ -345,7 +347,7 @@ def submit_to_all_boards(player_id, score):
 
 ## Monitoring Leaderboard Performance
 
-Redis sorted set operations should be sub-millisecond. If response times climb, you have a problem - either the dataset is too large for the instance, or network latency is the bottleneck. Monitor Redis memory usage, operation latency, and connection counts. For end-to-end API monitoring including client-perceived latency, [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-an-api-monetization-platform-on-aws/view) can help track the full request path.
+Redis sorted set operations should be sub-millisecond. If response times climb, you have a problem - either the dataset is too large for the instance, or network latency is the bottleneck. Monitor Redis memory usage, operation latency, and connection counts. For end-to-end API monitoring including client-perceived latency, [OneUptime](https://oneuptime.com/product/monitoring) can help track the full request path.
 
 ## Wrapping Up
 
