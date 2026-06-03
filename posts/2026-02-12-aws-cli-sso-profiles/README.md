@@ -10,7 +10,7 @@ Description: Learn how to configure AWS CLI with SSO profiles using IAM Identity
 
 Long-term IAM access keys are a security liability. They sit in plaintext files on your laptop, they get committed to git repositories, they get shared in Slack messages. AWS IAM Identity Center (formerly AWS SSO) offers a better approach: you authenticate through your identity provider (Okta, Azure AD, Google Workspace, etc.), and the CLI gets short-lived credentials automatically. No access keys to manage, rotate, or accidentally leak.
 
-If your organization uses IAM Identity Center (and if you're on [Control Tower](https://oneuptime.com/blog/post/2026-02-12-aws-control-tower-landing-zones/view), you already have it), setting up SSO for the CLI is one of the best security improvements you can make.
+If your organization uses IAM Identity Center (and if your [Control Tower](https://oneuptime.com/blog/post/2026-02-12-aws-control-tower-landing-zones/view) landing zone uses IAM Identity Center, you already have it), setting up SSO for the CLI is one of the best security improvements you can make.
 
 ## How SSO CLI Authentication Works
 
@@ -136,7 +136,7 @@ One login gives you access to all profiles. That's the benefit of the `sso-sessi
 
 ## Step 4: Automatic Token Refresh
 
-SSO tokens have a configurable expiration. By default, the access token lasts 8 hours. You can request longer sessions if your IdP supports it.
+SSO sessions have configurable expiration. The IAM Identity Center user interactive session defaults to 8 hours, while permission set credentials for AWS accounts default to 1 hour and can be configured up to 12 hours. The CLI and SDKs refresh the hourly access token automatically while the underlying IAM Identity Center session is still valid.
 
 ```bash
 # Check when your current session expires
@@ -228,9 +228,9 @@ eval $(aws configure export-credentials --profile dev-admin --format env)
 
 # Or for Docker/other tools
 aws configure export-credentials --profile dev-admin --format env
-# AWS_ACCESS_KEY_ID=ASIATEMP...
-# AWS_SECRET_ACCESS_KEY=temp...
-# AWS_SESSION_TOKEN=FwoG...
+# export AWS_ACCESS_KEY_ID=ASIATEMP...
+# export AWS_SECRET_ACCESS_KEY=temp...
+# export AWS_SESSION_TOKEN=FwoG...
 ```
 
 ## Migrating from Access Keys to SSO
@@ -272,7 +272,7 @@ jobs:
     steps:
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::123456789:role/GitHubDeployRole
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubDeployRole
           aws-region: us-east-1
       - run: aws s3 ls  # Uses OIDC-federated credentials
 ```
@@ -281,7 +281,7 @@ jobs:
 
 **"Error loading SSO Token"** - Run `aws sso login --profile your-profile` to refresh.
 
-**Browser doesn't open** - Set the `AWS_SSO_BROWSER` environment variable to your browser path, or use `--no-browser` and manually navigate to the URL.
+**Browser doesn't open** - Use `--no-browser` and manually navigate to the URL.
 
 **"The SSO session associated with this profile has expired"** - Your SSO session has timed out. Log in again.
 
