@@ -10,6 +10,8 @@ Description: A hands-on tutorial for deploying a complete web application to AWS
 
 Deploying a web application shouldn't take all day. With AWS App Runner, you can go from a container image to a production-ready URL with HTTPS, auto-scaling, and rolling deployments in about 10 minutes. This tutorial walks through a complete deployment from start to finish.
 
+Note: AWS App Runner is no longer open to new AWS customers. Existing App Runner customers can continue to create and manage services normally.
+
 We'll deploy a Node.js web application, but the steps work the same for any language or framework that runs in a container.
 
 ## Preparing Your Application
@@ -60,7 +62,7 @@ WORKDIR /app
 
 # Copy package files first for better caching
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Copy application code
 COPY . .
@@ -155,10 +157,10 @@ aws iam create-role \
   --role-name AppRunnerInstanceRole \
   --assume-role-policy-document file://instance-trust-policy.json
 
-# Add permissions your app needs
+# Add permissions your app needs, including any referenced secrets or parameters
 aws iam put-role-policy \
   --role-name AppRunnerInstanceRole \
-  --policy-name S3Access \
+  --policy-name AppAccess \
   --policy-document '{
     "Version": "2012-10-17",
     "Statement": [
@@ -166,6 +168,16 @@ aws iam put-role-policy \
         "Effect": "Allow",
         "Action": ["s3:GetObject", "s3:PutObject"],
         "Resource": "arn:aws:s3:::my-webapp-assets/*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "secretsmanager:GetSecretValue",
+        "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:webapp/db-url-*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "ssm:GetParameters",
+        "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/webapp/session-secret"
       }
     ]
   }'
@@ -187,39 +199,39 @@ aws apprunner create-auto-scaling-configuration \
 aws apprunner create-service \
   --service-name my-webapp \
   --source-configuration '{
-    "imageRepository": {
-      "imageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-webapp:latest",
-      "imageConfiguration": {
-        "port": "8080",
-        "runtimeEnvironmentVariables": {
+    "ImageRepository": {
+      "ImageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-webapp:latest",
+      "ImageConfiguration": {
+        "Port": "8080",
+        "RuntimeEnvironmentVariables": {
           "NODE_ENV": "production",
           "LOG_LEVEL": "info"
         },
-        "runtimeEnvironmentSecrets": {
-          "DATABASE_URL": "arn:aws:secretsmanager:us-east-1:123456789012:secret:webapp/db-url",
+        "RuntimeEnvironmentSecrets": {
+          "DATABASE_URL": "arn:aws:secretsmanager:us-east-1:123456789012:secret:webapp/db-url-AbCdEf",
           "SESSION_SECRET": "arn:aws:ssm:us-east-1:123456789012:parameter/webapp/session-secret"
         },
-        "startCommand": "node server.js"
+        "StartCommand": "node server.js"
       },
-      "imageRepositoryType": "ECR"
+      "ImageRepositoryType": "ECR"
     },
-    "autoDeploymentsEnabled": true,
-    "authenticationConfiguration": {
-      "accessRoleArn": "arn:aws:iam::123456789012:role/AppRunnerECRAccess"
+    "AutoDeploymentsEnabled": true,
+    "AuthenticationConfiguration": {
+      "AccessRoleArn": "arn:aws:iam::123456789012:role/AppRunnerECRAccess"
     }
   }' \
   --instance-configuration '{
-    "cpu": "1024",
-    "memory": "2048",
-    "instanceRoleArn": "arn:aws:iam::123456789012:role/AppRunnerInstanceRole"
+    "Cpu": "1024",
+    "Memory": "2048",
+    "InstanceRoleArn": "arn:aws:iam::123456789012:role/AppRunnerInstanceRole"
   }' \
   --health-check-configuration '{
-    "protocol": "HTTP",
-    "path": "/health",
-    "interval": 10,
-    "timeout": 5,
-    "healthyThreshold": 1,
-    "unhealthyThreshold": 5
+    "Protocol": "HTTP",
+    "Path": "/health",
+    "Interval": 10,
+    "Timeout": 5,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 5
   }' \
   --auto-scaling-configuration-arn "arn:aws:apprunner:us-east-1:123456789012:autoscalingconfiguration/webapp-scaling/1/abc123"
 ```
@@ -248,10 +260,10 @@ aws apprunner associate-custom-domain \
 # Check the DNS validation records you need to add
 aws apprunner describe-custom-domains \
   --service-arn arn:aws:apprunner:us-east-1:123456789012:service/my-webapp/abc123 \
-  --query "CustomDomains[*].{domain:DomainName, status:Status, records:CertificateValidationRecords}"
+  --query "{dnsTarget:DNSTarget, domains:CustomDomains[*].{domain:DomainName, status:Status, records:CertificateValidationRecords}}"
 ```
 
-Add the CNAME records to your DNS provider, and App Runner will validate the domain and provision an SSL certificate. This usually takes 10-30 minutes.
+Add the certificate validation CNAME records to your DNS provider, then create a CNAME record for `app.mycompany.com` that points to the returned `DNSTarget`. App Runner will validate the domain and provision an SSL certificate. This usually takes 10-30 minutes.
 
 ## Connecting to a Database
 
@@ -268,9 +280,9 @@ aws apprunner create-vpc-connector \
 aws apprunner update-service \
   --service-arn arn:aws:apprunner:us-east-1:123456789012:service/my-webapp/abc123 \
   --network-configuration '{
-    "egressConfiguration": {
-      "egressType": "VPC",
-      "vpcConnectorArn": "arn:aws:apprunner:us-east-1:123456789012:vpcconnector/webapp-vpc/1/abc123"
+    "EgressConfiguration": {
+      "EgressType": "VPC",
+      "VpcConnectorArn": "arn:aws:apprunner:us-east-1:123456789012:vpcconnector/webapp-vpc/1/abc123"
     }
   }'
 ```
@@ -330,7 +342,7 @@ aws cloudwatch get-metric-statistics \
   --namespace "AWS/AppRunner" \
   --metric-name "2xxStatusResponses" \
   --dimensions Name=ServiceName,Value=my-webapp \
-  --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%SZ)" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 300 \
   --statistics Sum
@@ -340,7 +352,7 @@ Available metrics include:
 - `2xxStatusResponses`, `4xxStatusResponses`, `5xxStatusResponses`
 - `RequestLatency`
 - `ActiveInstances`
-- `RequestCount`
+- `Requests`
 
 For application logs, App Runner streams stdout/stderr to CloudWatch Logs automatically. You'll find them in the `/aws/apprunner/{service-name}/{service-id}/application` log group.
 
