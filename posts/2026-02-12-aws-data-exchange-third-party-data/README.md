@@ -24,7 +24,7 @@ Some common use cases include:
 - Geospatial information
 - Economic indicators
 
-The beauty of it is that once you subscribe, updates flow in automatically. No more chasing vendors for the latest quarterly refresh.
+The beauty of it is that once you subscribe, providers can publish updates as new revisions, and you can automate how those updates land in your account. No more chasing vendors for the latest quarterly refresh.
 
 ## Prerequisites
 
@@ -78,20 +78,20 @@ Once you find something useful, click on the product and hit "Continue to subscr
 
 After you accept the terms, AWS processes your subscription request. For free products, this is instant. For paid ones, the provider might need to approve your request first.
 
-You can also subscribe via the CLI.
+After you subscribe through the AWS Data Exchange console or AWS Marketplace purchase workflow, you can inspect your entitled data sets via the CLI.
 
 ```bash
-# List available data sets for a specific product
-
+# List data sets you are entitled to as a subscriber
 aws dataexchange list-data-sets \
+  --origin ENTITLED \
   --query "DataSets[].{Name:Name, Id:Id}" \
   --output table
 
-# Create a subscription to a data set
-aws dataexchange create-data-set \
-  --asset-type S3_SNAPSHOT \
-  --description "Weather data feed" \
-  --name "weather-data-2026"
+# List revisions for one entitled data set
+aws dataexchange list-data-set-revisions \
+  --data-set-id "your-dataset-id" \
+  --query "Revisions[].{Id:Id, CreatedAt:CreatedAt}" \
+  --output table
 ```
 
 ## Step 3: Export Data to S3
@@ -111,7 +111,7 @@ aws dataexchange create-job \
         {
           "RevisionId": "your-revision-id",
           "Bucket": "my-data-exchange-bucket",
-          "KeyPattern": "weather-data/${Revision.CreatedAt.Year}/${Revision.Id}/"
+          "KeyPattern": "weather-data/${Revision.CreatedAt.Year}/${Revision.Id}/${Asset.Id}"
         }
       ]
     }
@@ -125,7 +125,7 @@ aws dataexchange get-job --job-id "your-job-id" \
   --query "State"
 ```
 
-The key pattern is helpful for organizing files by date or revision. You can use variables like `${Revision.CreatedAt.Year}`, `${Revision.CreatedAt.Month}`, and `${Revision.Id}`.
+The key pattern is helpful for organizing files by date or revision. You can use variables like `${Revision.CreatedAt.Year}`, `${Revision.CreatedAt.Month}`, `${Revision.Id}`, and `${Asset.Id}`. AWS Data Exchange requires the key pattern to include `${Asset.Name}` or `${Asset.Id}`, and `${Asset.Id}` is the safest choice when you need unique S3 object keys.
 
 ## Step 4: Automate with EventBridge
 
@@ -147,8 +147,9 @@ Resources:
         detail-type:
           - "Revision Published To Data Set"
         detail:
-          DataSetId:
-            - "your-dataset-id"
+          DataSets:
+            Id:
+              - "your-dataset-id"
       State: ENABLED
       Targets:
         - Arn: !GetAtt ExportFunction.Arn
@@ -170,18 +171,22 @@ Resources:
           def handler(event, context):
               client = boto3.client('dataexchange')
               detail = event['detail']
+              data_set_id = detail['DataSets'][0]['Id']
 
               # Create an export job for the new revision
               response = client.create_job(
                   Type='EXPORT_REVISIONS_TO_S3',
                   Details={
                       'ExportRevisionsToS3': {
-                          'DataSetId': detail['DataSetId'],
-                          'RevisionDestinations': [{
-                              'RevisionId': detail['RevisionId'],
+                          'DataSetId': data_set_id,
+                          'RevisionDestinations': [
+                            {
+                              'RevisionId': revision_id,
                               'Bucket': 'my-data-exchange-bucket',
-                              'KeyPattern': 'auto-export/${Revision.CreatedAt.Year}/${Revision.CreatedAt.Month}/'
-                          }]
+                              'KeyPattern': 'auto-export/${Revision.CreatedAt.Year}/${Revision.CreatedAt.Month}/${Revision.Id}/${Asset.Id}'
+                            }
+                            for revision_id in detail['RevisionIds']
+                          ]
                       }
                   }
               )
@@ -189,6 +194,41 @@ Resources:
               # Start the export job
               client.start_job(JobId=response['Id'])
               return {'statusCode': 200, 'jobId': response['Id']}
+
+  LambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ExportFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt DataExchangeRule.Arn
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: data-exchange-auto-export
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - dataexchange:CreateJob
+                  - dataexchange:StartJob
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
 ```
 
 With this in place, every time the data provider publishes a new revision, your Lambda function kicks off an export. The data lands in your S3 bucket without you lifting a finger.
@@ -226,7 +266,7 @@ LIMIT 100;
 
 ## Monitoring Your Subscriptions
 
-You should keep an eye on your Data Exchange usage, especially for paid subscriptions. CloudWatch metrics can help here. You can track export job failures, data freshness, and costs.
+You should keep an eye on your Data Exchange usage, especially for paid subscriptions. EventBridge events, CloudTrail, and CloudWatch Logs can help here. You can track export job failures, data freshness, and costs.
 
 For monitoring your AWS infrastructure more broadly, tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can give you a unified view of your services' health.
 
@@ -235,7 +275,7 @@ For monitoring your AWS infrastructure more broadly, tools like [OneUptime](http
 A few things to watch out for:
 
 - **Subscription fees** vary wildly. Some datasets are free, others cost thousands per month.
-- **Data transfer costs** apply when exporting to S3 (standard S3 PUT pricing).
+- **S3 request costs** apply when exporting to S3, and cross-Region data transfer costs can apply if your S3 bucket is in a different Region from the data set.
 - **Storage costs** for the data sitting in S3.
 - **Query costs** if you're using Athena or Redshift to analyze the data.
 
