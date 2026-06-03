@@ -8,16 +8,16 @@ Description: Implement the Cognito Post Confirmation Lambda trigger to send welc
 
 ---
 
-The Post Confirmation trigger fires after a user successfully confirms their account - either by entering a verification code or when an admin confirms them. This is the right place for actions that should happen once per user lifecycle: creating database records, sending welcome emails, setting up default resources, or notifying your team about new sign-ups.
+The Post Confirmation trigger fires after a user successfully confirms their account - either by entering a verification code or when an admin confirms a signed-up user. This is the right place for actions that should happen after confirmation, such as creating database records, sending welcome emails, setting up default resources, or notifying your team about new sign-ups.
 
 ## When the Trigger Fires
 
-The Post Confirmation trigger fires in two scenarios:
+The Post Confirmation trigger has two `triggerSource` values:
 
-1. **PostConfirmation_ConfirmSignUp** - After a user confirms their email/phone during self-registration
+1. **PostConfirmation_ConfirmSignUp** - After a user confirms their email/phone during self-registration, or after an admin confirms the signed-up user with `AdminConfirmSignUp`
 2. **PostConfirmation_ConfirmForgotPassword** - After a user confirms a password reset
 
-Importantly, this trigger does NOT fire for admin-confirmed users (AdminConfirmSignUp API) unless you're using auto-confirmation in the Pre Sign-Up trigger.
+Importantly, this trigger does not fire for user accounts created directly with administrator credentials, such as `AdminCreateUser`. It only runs for users who sign up in the user pool and then complete confirmation, including confirmation with `AdminConfirmSignUp`.
 
 ## Basic Setup
 
@@ -30,7 +30,7 @@ resource "aws_lambda_function" "post_confirmation" {
   function_name    = "cognito-post-confirmation"
   role             = aws_iam_role.post_confirmation_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  runtime          = "nodejs22.x"
   timeout          = 10
 
   environment {
