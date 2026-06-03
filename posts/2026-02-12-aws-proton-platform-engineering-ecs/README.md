@@ -10,7 +10,7 @@ Description: Learn how to use AWS Proton to build a self-service platform for de
 
 Platform engineering is about building internal tools and abstractions that let development teams deploy their code without being infrastructure experts. Instead of every team writing their own CloudFormation templates and ECS configurations, you define standardized templates once and let developers use them through a self-service interface.
 
-AWS Proton is built for exactly this. It lets you create environment and service templates that encode your organization's best practices, then exposes a simplified interface for developers to provision infrastructure. Let's build a platform for ECS deployments using Proton.
+AWS Proton is built for exactly this. It lets you create environment and service templates that encode your organization's best practices, then exposes a simplified interface for developers to provision infrastructure. AWS has announced that Proton is closed to new customers as of October 7, 2025, and support ends on October 7, 2026, so this is mainly useful for existing Proton customers. Let's build a platform for ECS deployments using Proton.
 
 ## How Proton Works
 
@@ -70,11 +70,11 @@ schema:
         cluster_name:
           type: string
           description: "Name of the ECS cluster"
-        enable_container_insights:
+        container_insights:
           type: string
           description: "Enable Container Insights"
-          default: "true"
-          enum: ["true", "false"]
+          default: "enabled"
+          enum: ["enabled", "disabled", "enhanced"]
       required:
         - cluster_name
 ```
@@ -91,7 +91,7 @@ Resources:
     Type: AWS::EC2::VPC
     Properties:
       CidrBlock: '{{ environment.inputs.vpc_cidr }}'
-      EnableDnsHosting: true
+      EnableDnsHostnames: true
       EnableDnsSupport: true
       Tags:
         - Key: Name
@@ -113,13 +113,47 @@ Resources:
       AvailabilityZone: !Select [1, !GetAZs '']
       MapPublicIpOnLaunch: true
 
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
   ECSCluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: '{{ environment.inputs.cluster_name }}'
       ClusterSettings:
         - Name: containerInsights
-          Value: '{{ environment.inputs.enable_container_insights }}'
+          Value: '{{ environment.inputs.container_insights }}'
 
   SharedALB:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -130,6 +164,17 @@ Resources:
         - !Ref PublicSubnet2
       SecurityGroups:
         - !Ref ALBSecurityGroup
+
+  SharedALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref SharedALB
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: fixed-response
+          FixedResponseConfig:
+            StatusCode: 404
 
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -157,6 +202,8 @@ Outputs:
     Value: !Join [',', [!Ref PublicSubnet1, !Ref PublicSubnet2]]
   ALBArn:
     Value: !Ref SharedALB
+  ALBListenerArn:
+    Value: !Ref SharedALBListener
   ALBSecurityGroupId:
     Value: !Ref ALBSecurityGroup
 ```
@@ -195,17 +242,41 @@ aws proton create-environment-template-version \
     }
   }'
 
+aws proton wait environment-template-version-registered \
+  --template-name ecs-environment \
+  --major-version 1 \
+  --minor-version 0
+
 # Publish the template version
 aws proton update-environment-template-version \
   --template-name ecs-environment \
   --major-version 1 \
   --minor-version 0 \
   --status PUBLISHED
+
+# Create an environment from the template
+cat > env-spec.yaml <<'EOF'
+proton: EnvironmentSpec
+spec:
+  vpc_cidr: "10.0.0.0/16"
+  cluster_name: "prod-ecs"
+  container_insights: "enabled"
+EOF
+
+aws proton create-environment \
+  --name prod-environment \
+  --template-name ecs-environment \
+  --template-major-version 1 \
+  --proton-service-role-arn "arn:aws:iam::123456789012:role/AWSProtonServiceRole" \
+  --spec file://env-spec.yaml
+
+aws proton wait environment-deployed \
+  --name prod-environment
 ```
 
 ## Step 2: Create a Service Template
 
-The service template defines how applications are deployed. Here's one for a Fargate service with autoscaling:
+The service template defines how applications are deployed. Here's one for a load-balanced Fargate service:
 
 ```yaml
 # service-template/schema/schema.yaml
@@ -241,6 +312,10 @@ schema:
           type: string
           description: "Health check endpoint"
           default: "/health"
+        listener_rule_priority:
+          type: number
+          description: "Unique ALB listener rule priority"
+          default: 100
       required:
         - image
 ```
@@ -277,6 +352,7 @@ Resources:
 
   Service:
     Type: AWS::ECS::Service
+    DependsOn: ListenerRule
     Properties:
       ServiceName: '{{ service.name }}-{{ service_instance.name }}'
       Cluster: '{{ environment.outputs.ClusterArn }}'
@@ -285,15 +361,42 @@ Resources:
       LaunchType: FARGATE
       NetworkConfiguration:
         AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
           Subnets: !Split [',', '{{ environment.outputs.SubnetIds }}']
           SecurityGroups:
             - !Ref ServiceSecurityGroup
+      LoadBalancers:
+        - ContainerName: '{{ service.name }}'
+          ContainerPort: '{{ service_instance.inputs.port }}'
+          TargetGroupArn: !Ref TargetGroup
       DeploymentConfiguration:
         MinimumHealthyPercent: 100
         MaximumPercent: 200
         DeploymentCircuitBreaker:
           Enable: true
           Rollback: true
+
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: '{{ environment.outputs.VpcId }}'
+      Protocol: HTTP
+      Port: '{{ service_instance.inputs.port }}'
+      TargetType: ip
+      HealthCheckPath: '{{ service_instance.inputs.health_check_path }}'
+
+  ListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Properties:
+      ListenerArn: '{{ environment.outputs.ALBListenerArn }}'
+      Priority: '{{ service_instance.inputs.listener_rule_priority }}'
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - '/{{ service.name }}*'
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
 
   ExecutionRole:
     Type: AWS::IAM::Role
@@ -337,6 +440,17 @@ Resources:
       RetentionInDays: 30
 ```
 
+Use the same manifest format in `service-template/manifest.yaml`:
+
+```yaml
+# service-template/manifest.yaml
+infrastructure:
+  templates:
+    - rendering_engine: jinja
+      template_language: cloudformation
+      file: cloudformation.yaml
+```
+
 Register and publish the service template:
 
 ```bash
@@ -344,7 +458,8 @@ Register and publish the service template:
 aws proton create-service-template \
   --name fargate-service \
   --display-name "Fargate Web Service" \
-  --description "ECS Fargate service with ALB and autoscaling"
+  --description "ECS Fargate service with an ALB" \
+  --pipeline-provisioning "CUSTOMER_MANAGED"
 
 tar -czf svc-template.tar.gz -C service-template .
 aws s3 cp svc-template.tar.gz s3://proton-templates-bucket/svc-template.tar.gz
@@ -358,6 +473,17 @@ aws proton create-service-template-version \
       "key": "svc-template.tar.gz"
     }
   }'
+
+aws proton wait service-template-version-registered \
+  --template-name fargate-service \
+  --major-version 1 \
+  --minor-version 0
+
+aws proton update-service-template-version \
+  --template-name fargate-service \
+  --major-version 1 \
+  --minor-version 0 \
+  --status PUBLISHED
 ```
 
 ## Step 3: Developers Deploy Services
@@ -365,30 +491,30 @@ aws proton create-service-template-version \
 Now development teams can deploy their applications without knowing anything about CloudFormation, IAM roles, or ECS configuration:
 
 ```bash
+cat > service-spec.yaml <<'EOF'
+proton: ServiceSpec
+instances:
+  - name: "production"
+    environment: "prod-environment"
+    spec:
+      image: "123456789012.dkr.ecr.us-east-1.amazonaws.com/user-api:v1.0.0"
+      port: 8080
+      cpu: 512
+      memory: 1024
+      desired_count: 3
+      health_check_path: "/health"
+      listener_rule_priority: 100
+EOF
+
 # A developer creates a service using the template
 aws proton create-service \
   --name user-api \
   --template-name fargate-service \
   --template-major-version 1 \
-  --spec '{
-    "instances": [
-      {
-        "name": "production",
-        "environment": "prod-environment",
-        "spec": {
-          "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/user-api:v1.0.0",
-          "port": 8080,
-          "cpu": 512,
-          "memory": 1024,
-          "desired_count": 3,
-          "health_check_path": "/health"
-        }
-      }
-    ]
-  }'
+  --spec file://service-spec.yaml
 ```
 
-The developer specifies their image, port, and resource needs. Proton handles everything else - the task definition, IAM roles, security groups, logging, and deployment configuration.
+The developer specifies their image, port, ALB listener priority, and resource needs. Proton handles everything else - the task definition, IAM roles, security groups, logging, load balancer target group, and deployment configuration.
 
 ## Template Updates
 
