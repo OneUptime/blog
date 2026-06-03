@@ -10,7 +10,7 @@ Description: Learn how to build scalable work queue patterns using Kubernetes Jo
 
 Work queue patterns let you process large numbers of tasks using a pool of workers that pull work items from a shared queue. Combining Kubernetes Jobs with Redis creates a flexible, scalable system for batch processing where the number of work items isn't known upfront.
 
-This pattern excels when you have dynamic workloads, tasks arriving continuously, or when you want to decouple work submission from processing. Redis serves as the reliable queue, while Kubernetes Jobs provide the worker pool with automatic scaling and failure handling.
+This pattern excels when you have batch workloads, need to decouple work submission from processing, or want to adjust worker parallelism while a batch is running. Redis serves as the queue, while Kubernetes Jobs provide the worker pool with parallel execution and failure handling.
 
 ## Setting Up Redis for the Work Queue
 
@@ -71,7 +71,7 @@ spec:
       storage: 10Gi
 ```
 
-This configuration enables append-only file persistence so your queue survives Redis restarts. Work items won't be lost even if Redis crashes.
+This configuration enables append-only file persistence so your queue can survive Redis restarts. With `appendfsync everysec`, Redis may still lose up to about one second of recent writes during a crash; use `appendfsync always`, replication, or a managed Redis service if your queue requires stronger durability.
 
 ## Populating the Work Queue
 
@@ -146,7 +146,7 @@ kind: Job
 metadata:
   name: queue-workers
 spec:
-  completions: 1000      # Match the number of work items
+  completions: 1000      # Match the number of work items for a fixed batch
   parallelism: 50        # Run 50 workers concurrently
   template:
     spec:
@@ -169,7 +169,7 @@ spec:
             memory: "512Mi"
 ```
 
-Each worker pod pulls one item from the queue, processes it, and exits. Kubernetes tracks completions and starts new pods until all items are processed.
+Each worker pod pulls one item from the queue, processes it, and exits. Kubernetes tracks completions and starts new pods until the fixed batch is processed. For an open-ended queue where the number of items is not known upfront, leave `completions` unset and have workers coordinate completion through the queue instead of matching completions to item count.
 
 ## Implementing the Worker
 
@@ -207,8 +207,8 @@ def process_work_item(item):
 def main():
     r = redis.Redis(host='redis-queue', port=6379, decode_responses=True)
 
-    # Atomically pop one item from queue
-    work_json = r.lpop('work-queue')
+    # Atomically claim one item by moving it to a processing list
+    work_json = r.lmove('work-queue', 'processing-queue', 'LEFT', 'RIGHT')
 
     if work_json is None:
         print("No work available")
@@ -227,6 +227,9 @@ def main():
 
         # Increment success counter
         r.incr('stats:completed')
+
+        # Remove item from processing list after successful processing
+        r.lrem('processing-queue', 1, work_json)
 
         print(f"Success: {work_item['id']}")
         sys.exit(0)
@@ -247,13 +250,16 @@ def main():
         # Increment error counter
         r.incr('stats:errors')
 
+        # Remove item from processing list after recording the error
+        r.lrem('processing-queue', 1, work_json)
+
         sys.exit(1)
 
 if __name__ == "__main__":
     main()
 ```
 
-This worker implementation handles several important scenarios. It atomically pops items to prevent two workers from grabbing the same item. It stores results in Redis for retrieval. It pushes failed items to an error queue for later investigation.
+This worker implementation handles several important scenarios. It atomically moves items into a processing list to prevent two workers from grabbing the same item. It stores results in Redis for retrieval. It pushes failed items to an error queue for later investigation. If a worker crashes before it removes its item from `processing-queue`, a separate reclaimer should move stale processing items back to `work-queue`.
 
 ## Monitoring Queue Progress
 
@@ -268,11 +274,11 @@ def monitor_queue():
     """Monitor queue processing progress"""
     r = redis.Redis(host='redis-queue', port=6379, decode_responses=True)
 
-    last_completed = 0
     start_time = time.time()
 
     while True:
         queue_length = r.llen('work-queue')
+        processing = r.llen('processing-queue')
         completed = int(r.get('stats:completed') or 0)
         errors = int(r.get('stats:errors') or 0)
 
@@ -288,10 +294,10 @@ def monitor_queue():
         else:
             eta_str = "unknown"
 
-        print(f"Queue: {queue_length} | Completed: {completed} | "
+        print(f"Queue: {queue_length} | Processing: {processing} | Completed: {completed} | "
               f"Errors: {errors} | Rate: {rate:.2f}/sec | ETA: {eta_str}")
 
-        if queue_length == 0:
+        if queue_length == 0 and processing == 0:
             print("Queue empty, processing complete")
             break
 
@@ -334,7 +340,7 @@ def add_normal_work(items):
     print(f"Added {len(items)} items to queue")
 ```
 
-Workers don't need to know about priority. They just keep pulling from the front of the queue.
+Workers don't need to know about priority. They just keep pulling from the front of the queue. If you add more work after a fixed-completion Job has already reached its completion count, start another Job or use a variable-count work queue Job instead.
 
 ## Dynamic Parallelism Adjustment
 
@@ -349,7 +355,7 @@ JOB_NAME="queue-workers"
 
 while true; do
   # Get current queue size
-  QUEUE_SIZE=$(kubectl run -it --rm redis-cli --image=redis:7-alpine \
+  QUEUE_SIZE=$(kubectl run redis-cli-check --rm -i --image=redis:7-alpine \
     --restart=Never -- redis-cli -h $REDIS_HOST LLEN work-queue 2>/dev/null | tail -1)
 
   # Calculate desired parallelism
@@ -387,7 +393,7 @@ import time
 
 MAX_RETRIES = 3
 
-def process_with_retry(work_item, r):
+def process_with_retry(work_item, work_json, r):
     """Process item with retry tracking"""
     retry_count = work_item.get('retry_count', 0)
 
@@ -403,26 +409,35 @@ def process_with_retry(work_item, r):
             work_item['retry_count'] = retry_count + 1
             work_item['last_error'] = str(e)
 
-            # Use rpush to add back to end of queue
-            r.rpush('work-queue', json.dumps(work_item))
+            # Use a transaction to requeue the item and remove the old claim together
+            pipe = r.pipeline()
+            pipe.rpush('work-queue', json.dumps(work_item))
+            pipe.lrem('processing-queue', 1, work_json)
+            pipe.execute()
 
             print(f"Retriable error, re-queued (attempt {retry_count + 1}/{MAX_RETRIES})")
             sys.exit(0)  # Exit successfully, item is back in queue
         else:
             # Max retries exceeded
-            r.rpush('error-queue', json.dumps({
+            pipe = r.pipeline()
+            pipe.rpush('error-queue', json.dumps({
                 'work_item': work_item,
                 'error': f"Max retries exceeded: {e}"
             }))
+            pipe.lrem('processing-queue', 1, work_json)
+            pipe.execute()
             print(f"Max retries exceeded")
             sys.exit(1)
 
     except PermanentError as e:
         # Non-retriable error, send to error queue immediately
-        r.rpush('error-queue', json.dumps({
+        pipe = r.pipeline()
+        pipe.rpush('error-queue', json.dumps({
             'work_item': work_item,
             'error': str(e)
         }))
+        pipe.lrem('processing-queue', 1, work_json)
+        pipe.execute()
         print(f"Permanent error: {e}")
         sys.exit(1)
 ```
@@ -458,7 +473,7 @@ def collect_results():
         json.dump(results, f, indent=2)
 
     # Calculate statistics
-    total_records = sum(r.get('records_processed', 0) for r in results)
+    total_records = sum(result.get('records_processed', 0) for result in results)
     print(f"Total records processed: {total_records}")
 
 if __name__ == "__main__":
@@ -517,6 +532,6 @@ spec:
         command: ["python3", "/app/collect_results.py"]
 ```
 
-Chain these together with job dependencies or a workflow engine like Argo Workflows for fully automated processing.
+Chain these together with an external controller or a workflow engine like Argo Workflows for fully automated processing.
 
 The work queue pattern with Redis and Kubernetes Jobs provides a robust, scalable solution for batch processing. It handles dynamic workloads, provides natural retry mechanisms, and scales efficiently to process millions of tasks.
