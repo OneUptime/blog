@@ -65,6 +65,40 @@ aws events put-rule \
 aws events put-targets \
   --rule guardduty-all-findings \
   --targets "Id"="1","Arn"="arn:aws:sns:us-east-1:111111111111:guardduty-findings"
+
+# Allow EventBridge to publish to the SNS topic
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:111111111111:guardduty-findings \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Sid": "DefaultTopicOwnerPermissions",
+        "Effect": "Allow",
+        "Principal": {"AWS": "*"},
+        "Action": [
+          "SNS:GetTopicAttributes",
+          "SNS:SetTopicAttributes",
+          "SNS:AddPermission",
+          "SNS:RemovePermission",
+          "SNS:DeleteTopic",
+          "SNS:Subscribe",
+          "SNS:ListSubscriptionsByTopic",
+          "SNS:Publish"
+        ],
+        "Resource": "arn:aws:sns:us-east-1:111111111111:guardduty-findings",
+        "Condition": {"StringEquals": {"AWS:SourceAccount": "111111111111"}}
+      },
+      {
+        "Sid": "AllowEventBridgePublish",
+        "Effect": "Allow",
+        "Principal": {"Service": "events.amazonaws.com"},
+        "Action": "sns:Publish",
+        "Resource": "arn:aws:sns:us-east-1:111111111111:guardduty-findings"
+      }
+    ]
+  }'
 ```
 
 ## Severity-Based Routing
@@ -72,9 +106,9 @@ aws events put-targets \
 You probably don't want an email for every low-severity finding. Set up different notification channels based on severity.
 
 ```bash
-# High severity (7+) - goes to PagerDuty/immediate alerting
+# High and critical severity (7+) - goes to PagerDuty/immediate alerting
 aws events put-rule \
-  --name guardduty-high-severity \
+  --name guardduty-high-critical-severity \
   --event-pattern '{
     "source": ["aws.guardduty"],
     "detail-type": ["GuardDuty Finding"],
@@ -91,13 +125,12 @@ aws events put-rule \
     "detail-type": ["GuardDuty Finding"],
     "detail": {
       "severity": [
-        {"numeric": [">=", 4]},
-        {"numeric": ["<", 7]}
+        {"numeric": [">=", 4, "<", 7]}
       ]
     }
   }'
 
-# Low severity (0-3.9) - goes to a log or daily digest
+# Low severity (1-3.9) - goes to a log or daily digest
 aws events put-rule \
   --name guardduty-low-severity \
   --event-pattern '{
@@ -117,12 +150,15 @@ Slack is where most teams actually notice alerts. Here's a Lambda function that 
 import json
 import os
 import urllib.request
+from datetime import datetime
 
 SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
 
 def get_severity_color(severity):
     """Return a color based on finding severity."""
-    if severity >= 7:
+    if severity >= 9:
+        return '#8B0000'  # Dark red
+    elif severity >= 7:
         return '#FF0000'  # Red
     elif severity >= 4:
         return '#FFA500'  # Orange
@@ -130,7 +166,9 @@ def get_severity_color(severity):
         return '#FFFF00'  # Yellow
 
 def get_severity_label(severity):
-    if severity >= 7:
+    if severity >= 9:
+        return 'CRITICAL'
+    elif severity >= 7:
         return 'HIGH'
     elif severity >= 4:
         return 'MEDIUM'
@@ -176,7 +214,7 @@ def handler(event, context):
                 {'title': 'Description', 'value': description[:500], 'short': False},
             ],
             'footer': 'Amazon GuardDuty',
-            'ts': int(event['time'].replace('T', ' ').replace('Z', '').split('.')[0].replace('-', '').replace(' ', '').replace(':', ''))
+            'ts': str(int(datetime.fromisoformat(event['time'].replace('Z', '+00:00')).timestamp()))
         }]
     }
 
@@ -269,7 +307,7 @@ aws events put-rule \
 Here's the complete Terraform configuration for severity-based routing.
 
 ```hcl
-# SNS Topic for high-severity findings
+# SNS Topic for high and critical severity findings
 resource "aws_sns_topic" "guardduty_critical" {
   name = "guardduty-critical-findings"
 }
@@ -280,10 +318,10 @@ resource "aws_sns_topic_subscription" "email" {
   endpoint  = "security@example.com"
 }
 
-# EventBridge rule for high severity
+# EventBridge rule for high and critical severity
 resource "aws_cloudwatch_event_rule" "guardduty_high" {
-  name        = "guardduty-high-severity"
-  description = "Capture high severity GuardDuty findings"
+  name        = "guardduty-high-critical-severity"
+  description = "Capture high and critical severity GuardDuty findings"
 
   event_pattern = jsonencode({
     source      = ["aws.guardduty"]
@@ -325,8 +363,7 @@ resource "aws_cloudwatch_event_rule" "guardduty_medium" {
     detail-type = ["GuardDuty Finding"]
     detail = {
       severity = [
-        { numeric = [">=", 4] },
-        { numeric = ["<", 7] }
+        { numeric = [">=", 4, "<", 7] }
       ]
     }
   })
@@ -355,11 +392,11 @@ aws events put-rule \
 
 aws events put-targets \
   --rule forward-guardduty-to-primary \
-  --targets "Id"="1","Arn"="arn:aws:events:us-east-1:111111111111:event-bus/default" \
+  --targets "Id"="1","Arn"="arn:aws:events:us-east-1:111111111111:event-bus/default","RoleArn"="arn:aws:iam::111111111111:role/EventBridgeForwardingRole" \
   --region us-west-2
 ```
 
-This requires a cross-region EventBridge setup, which needs the appropriate permissions on the target event bus.
+This requires a cross-region EventBridge setup, which needs the appropriate permissions on the target event bus and a sender role that can put events on that bus.
 
 ## Testing Your Notifications
 
