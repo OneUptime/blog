@@ -20,7 +20,7 @@ The standard approach uses the AWS CLI to get a login password and pipe it to `d
 # Authenticate Docker with ECR
 
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 ```
 
 Breaking this down:
@@ -61,8 +61,8 @@ Edit your Docker config file to use the helper.
 ```json
 {
   "credHelpers": {
-    "123456789.dkr.ecr.us-east-1.amazonaws.com": "ecr-login",
-    "123456789.dkr.ecr.eu-west-1.amazonaws.com": "ecr-login"
+    "123456789012.dkr.ecr.us-east-1.amazonaws.com": "ecr-login",
+    "123456789012.dkr.ecr.eu-west-1.amazonaws.com": "ecr-login"
   }
 }
 ```
@@ -84,7 +84,7 @@ Now you can push and pull without running `docker login` first. The credential h
 docker-credential-ecr-login list
 
 # Try a pull
-docker pull 123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
+docker pull 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
 ```
 
 ## Method 3: Using AWS Profiles
@@ -107,12 +107,12 @@ docker pull 444444444444.dkr.ecr.us-east-1.amazonaws.com/my-app:latest
 
 ## Method 4: IAM Roles (EC2 / ECS / CodeBuild)
 
-When running on AWS infrastructure (EC2, ECS, CodeBuild, Lambda), you don't need explicit credentials. The AWS SDK uses the attached IAM role automatically.
+When running Docker and the AWS CLI on AWS infrastructure (EC2, CodeBuild, or similar environments), you don't need explicit credentials. The AWS SDK uses the attached IAM role automatically.
 
 ```bash
 # On an EC2 instance with an IAM role, just run:
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # The CLI uses the instance's IAM role for authentication
 ```
@@ -146,7 +146,7 @@ For CI/CD platforms that support OIDC, you can authenticate without storing long
 - name: Configure AWS credentials
   uses: aws-actions/configure-aws-credentials@v4
   with:
-    role-to-assume: arn:aws:iam::123456789:role/github-actions
+    role-to-assume: arn:aws:iam::123456789012:role/github-actions
     aws-region: us-east-1
 
 - name: Login to ECR
@@ -180,7 +180,7 @@ For pulling images:
         "ecr:BatchGetImage",
         "ecr:BatchCheckLayerAvailability"
       ],
-      "Resource": "arn:aws:ecr:us-east-1:123456789:repository/my-app"
+      "Resource": "arn:aws:ecr:us-east-1:123456789012:repository/my-app"
     }
   ]
 }
@@ -197,7 +197,7 @@ For pushing images (add to the pull permissions):
     "ecr:UploadLayerPart",
     "ecr:CompleteLayerUpload"
   ],
-  "Resource": "arn:aws:ecr:us-east-1:123456789:repository/my-app"
+  "Resource": "arn:aws:ecr:us-east-1:123456789012:repository/my-app"
 }
 ```
 
@@ -227,7 +227,7 @@ This means Docker doesn't have valid credentials for the registry. Re-run the lo
 ```bash
 # Re-authenticate
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 ```
 
 If using the credential helper, verify it's properly installed.
@@ -237,7 +237,7 @@ If using the credential helper, verify it's properly installed.
 which docker-credential-ecr-login
 
 # Test it directly
-echo "123456789.dkr.ecr.us-east-1.amazonaws.com" | docker-credential-ecr-login get
+echo "123456789012.dkr.ecr.us-east-1.amazonaws.com" | docker-credential-ecr-login get
 ```
 
 ### "denied: Your authorization token has expired"
@@ -246,9 +246,9 @@ The ECR token lasts 12 hours. Get a fresh one.
 
 ```bash
 # Clear old credentials and re-authenticate
-docker logout 123456789.dkr.ecr.us-east-1.amazonaws.com
+docker logout 123456789012.dkr.ecr.us-east-1.amazonaws.com
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 ```
 
 ### "User is not authorized to perform ecr:GetAuthorizationToken"
@@ -280,7 +280,7 @@ aws ecr get-login-password --region us-east-1 | docker login ...
 
 # Use the correct region
 aws ecr get-login-password --region eu-west-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.eu-west-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.eu-west-1.amazonaws.com
 ```
 
 ## Docker Config File Cleanup
@@ -292,8 +292,8 @@ If you authenticate with multiple registries, your `~/.docker/config.json` can g
 cat ~/.docker/config.json | python3 -m json.tool
 
 # Logout from all ECR registries
-docker logout 123456789.dkr.ecr.us-east-1.amazonaws.com
-docker logout 123456789.dkr.ecr.eu-west-1.amazonaws.com
+docker logout 123456789012.dkr.ecr.us-east-1.amazonaws.com
+docker logout 123456789012.dkr.ecr.eu-west-1.amazonaws.com
 ```
 
 ## Quick Reference Script
