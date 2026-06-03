@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, ECS, Docker, Docker Compose, Container
 
-Description: Learn how to deploy Docker Compose applications to Amazon ECS using the Docker ECS integration and the ecs-cli, with practical examples and migration tips.
+Description: Learn how Docker Compose applications were deployed to Amazon ECS using the retired Docker ECS integration and the legacy ecs-cli, with practical examples and migration tips.
 
 ---
 
 If you've been running your application locally with Docker Compose, the idea of deploying that same configuration to ECS sounds appealing. Instead of rewriting everything as ECS task definitions and services, you'd just point your compose file at ECS and let it figure out the rest.
 
-There are a couple of ways to do this, and each has tradeoffs. Let's go through the options, see what works well, and discuss when you might want to take a different approach.
+There have been a couple of ways to do this, and each has tradeoffs. Docker's ECS integration for Compose has been retired, so treat it as a legacy workflow for older environments and migrations rather than a current recommendation. Let's go through the options, see what worked well, and discuss when you might want to take a different approach.
 
 ## The Docker ECS Context
 
-Docker Desktop includes a built-in ECS integration through Docker Contexts. You can switch your Docker CLI to target ECS instead of your local Docker daemon, and then use `docker compose up` to deploy directly to ECS.
+Older Docker Desktop and Compose CLI releases included a built-in ECS integration through Docker Contexts. In those releases, you could switch your Docker CLI to target ECS instead of your local Docker daemon, and then use `docker compose up` to deploy directly to ECS. Current Docker documentation lists the ECS cloud integration as retired, so the commands in this section only apply if you are maintaining an older installation that still includes it.
 
-First, create an ECS context:
+In that legacy setup, create an ECS context:
 
 ```bash
 # Create a new Docker context for ECS
@@ -30,7 +30,7 @@ docker context use myecscontext
 docker context show
 ```
 
-When you create the context, Docker will prompt you for your AWS credentials and default region. It uses these to provision resources in your account.
+When you create the context, Docker can prompt you for your AWS credentials and default region or use configured AWS credentials. It uses these to provision resources in your account.
 
 ## A Sample Compose File for ECS
 
@@ -38,8 +38,6 @@ Here's a compose file for a typical web application with a backend API, a fronte
 
 ```yaml
 # docker-compose.yml
-version: "3.8"
-
 services:
   frontend:
     image: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/frontend:latest
@@ -52,8 +50,6 @@ services:
 
   backend:
     image: ${AWS_ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com/backend:latest
-    ports:
-      - "8080:8080"
     environment:
       - REDIS_URL=redis://cache:6379
       - DATABASE_URL=${DATABASE_URL}
@@ -71,8 +67,6 @@ services:
 
   cache:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
 
 x-aws-vpc: "vpc-abc123"
 x-aws-cluster: "production-cluster"
@@ -80,13 +74,13 @@ x-aws-cluster: "production-cluster"
 
 A few things to note about this file:
 
-- Images must be in ECR (or a public registry). The Docker ECS integration pulls images during deployment.
-- The `deploy` section maps to ECS resource allocation. `limits` become the task-level CPU and memory, and `replicas` sets the desired count.
+- Images must be in ECR or another registry that ECS can pull from. The Docker ECS integration does not build images in ECS during deployment.
+- The `deploy` section maps to ECS deployment configuration. Resource values are translated into ECS task and container CPU and memory settings, and `replicas` sets the desired count.
 - The `x-aws-vpc` and `x-aws-cluster` extensions let you target a specific VPC and ECS cluster.
 
 ## Deploying with Docker Compose
 
-With the ECS context active, deployment is straightforward:
+With the legacy ECS context active, deployment is straightforward:
 
 ```bash
 # Deploy the application to ECS
@@ -105,7 +99,7 @@ docker compose up -d --scale backend=4
 docker compose down
 ```
 
-Behind the scenes, Docker translates your compose file into CloudFormation and deploys it. It creates:
+Behind the scenes, the retired Docker ECS integration translates your compose file into CloudFormation and deploys it. Depending on the Compose file and existing resources you reference, it creates or updates resources such as:
 - An ECS cluster (if you didn't specify one)
 - Task definitions for each service
 - ECS services with the specified replica counts
@@ -115,7 +109,7 @@ Behind the scenes, Docker translates your compose file into CloudFormation and d
 
 ## ECS Compose Extensions
 
-The Docker ECS integration supports several custom extensions for ECS-specific configuration:
+The retired Docker ECS integration supported several custom extensions for ECS-specific configuration:
 
 ```yaml
 services:
@@ -144,7 +138,7 @@ These extensions let you configure:
 
 ## Using the ECS CLI (Legacy)
 
-Before the Docker ECS integration, there was the `ecs-cli` tool. It's still functional and some teams prefer it for its explicit control:
+Before the Docker ECS integration, there was the `ecs-cli` tool. It is a legacy tool, and new ECS deployments should generally use native ECS APIs, AWS CloudFormation, AWS CDK, or another actively maintained deployment path:
 
 ```bash
 # Install the ECS CLI
@@ -197,21 +191,21 @@ Understanding how compose concepts map to ECS helps you write better compose fil
 | `services` | Task definitions + ECS services |
 | `ports` | Port mappings + load balancer listeners |
 | `environment` | Container environment variables |
-| `depends_on` | Container dependencies |
+| `depends_on` | Startup ordering in Compose; not a substitute for ECS service readiness |
 | `volumes` (named) | EFS volumes |
 | `deploy.replicas` | Service desired count |
 | `deploy.resources` | Task CPU/memory |
 | `networks` | Security groups + Cloud Map |
 
 Some compose features don't translate well:
-- **Build context** - ECS can't build images. You must push to a registry first.
-- **Host volumes** - On Fargate, you can't mount host paths. Use EFS for persistent storage.
+- **Build context** - ECS can't build images from a Compose `build` context. You must build and push images to a registry first.
+- **Host volumes and bind mounts** - On Fargate, you can't mount host paths. Use EFS for persistent storage.
 - **Privileged mode** - Not supported on Fargate.
 - **Network mode** - Always `awsvpc` on Fargate, regardless of what the compose file says.
 
 ## Practical Workflow
 
-Here's a workflow that works well for teams transitioning from local Docker Compose to ECS:
+For legacy Docker ECS integration users, this workflow was common when transitioning from local Docker Compose to ECS:
 
 ```bash
 # 1. Build and push images to ECR
@@ -248,32 +242,31 @@ The `docker-compose.dev.yml` file overrides images with build contexts, adds deb
 
 The Docker Compose to ECS path has some notable limitations:
 
-1. **No persistent local volumes.** Compose volumes become ephemeral on Fargate. For persistent storage, you need to use EFS, which requires additional setup.
+1. **No host-path persistence on Fargate.** Local bind mounts do not translate to Fargate host storage. For persistent storage, you need to use EFS, which requires additional setup.
 
 2. **Limited networking control.** You can't define complex network topologies. Everything ends up in the same VPC with Cloud Map for discovery.
 
 3. **CloudFormation overhead.** Each deployment creates or updates a CloudFormation stack, which can be slow for large applications.
 
-4. **Feature lag.** New ECS features aren't immediately available through the compose integration. You might need to wait for Docker to add support.
+4. **Retired integration.** New ECS features are not being added to Docker's retired ECS integration. Use native ECS definitions, CloudFormation, CDK, or another maintained tool for new work.
 
-5. **No rolling updates.** The compose integration doesn't support gradual rollouts. Deployments replace all tasks at once.
+5. **Limited deployment controls.** ECS services can perform rolling deployments, but the Compose integration does not expose the full ECS deployment feature set, such as blue/green deployments, circuit breakers, or detailed deployment configuration.
 
 For teams that outgrow these limitations, the natural next step is to move to native ECS task definitions managed through CloudFormation or CDK. See our guide on [migrating from Docker Compose to ECS task definitions](https://oneuptime.com/blog/post/2026-02-12-migrate-docker-compose-ecs-task-definitions/view).
 
 ## When to Use Compose vs Native ECS
 
-Use Docker Compose with ECS when:
-- You're prototyping or running a small application
-- Your team is familiar with Compose but not ECS
-- You want the fastest path from local to cloud
+Use the retired Docker Compose ECS integration only when:
+- You're maintaining an existing deployment that already depends on it
+- You're prototyping in an older environment where the integration is still installed
 - Your deployment requirements are simple
 
 Use native ECS task definitions when:
 - You need fine-grained control over deployment configuration
-- You require autoscaling, circuit breakers, or blue/green deployments
+- You require advanced autoscaling policies, circuit breakers, or blue/green deployments
 - You're managing many services across multiple environments
 - You want to leverage the full ECS feature set
 
 ## Wrapping Up
 
-Docker Compose with ECS bridges the gap between local development and cloud deployment. It's a great starting point, especially for teams that are already invested in the Compose workflow. Just be aware of the limitations, and plan to migrate to native ECS configurations as your application grows in complexity and scale.
+Docker Compose with ECS helped bridge the gap between local development and cloud deployment, especially for teams that were already invested in the Compose workflow. Because Docker's ECS integration is now retired, use it only with that limitation in mind, and plan to migrate to native ECS configurations as your application grows in complexity and scale.
