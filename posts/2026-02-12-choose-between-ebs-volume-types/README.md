@@ -8,14 +8,14 @@ Description: A practical comparison of EBS volume types including gp3, gp2, io2,
 
 ---
 
-AWS offers six EBS volume types, and picking the right one makes a real difference in both performance and cost. The wrong choice can mean paying 10x more than you need to, or getting 10x less performance than you expected. Each type is designed for specific access patterns, and understanding those patterns is the key to choosing well.
+AWS offers several EBS volume types, and picking the right one makes a real difference in both performance and cost. The wrong choice can mean paying 10x more than you need to, or getting 10x less performance than you expected. Each type is designed for specific access patterns, and understanding those patterns is the key to choosing well.
 
 ## The Quick Answer
 
 If you're in a hurry:
 
 - **Most workloads**: gp3. It's the best general purpose option.
-- **Databases needing guaranteed IOPS**: io2 or io2 Block Express.
+- **Databases needing guaranteed IOPS**: io2.
 - **Big data, streaming, logs**: st1.
 - **Archival, infrequent access**: sc1.
 
@@ -25,10 +25,9 @@ Now let's dig into why.
 
 | Type | Category | Max IOPS | Max Throughput | Price (GB/month) | Best For |
 |------|----------|----------|---------------|-------------------|----------|
-| gp3 | SSD | 16,000 | 1,000 MB/s | $0.08 | Most workloads |
+| gp3 | SSD | 80,000 | 2,000 MB/s | $0.08 | Most workloads |
 | gp2 | SSD | 16,000 | 250 MB/s | $0.10 | Legacy (prefer gp3) |
-| io2 | SSD | 64,000 | 1,000 MB/s | $0.125 + IOPS | Databases, latency-critical |
-| io2 Block Express | SSD | 256,000 | 4,000 MB/s | $0.125 + IOPS | Extreme performance |
+| io2 (Block Express) | SSD | 256,000 | 4,000 MB/s | $0.125 + IOPS | Databases, latency-critical |
 | io1 | SSD | 64,000 | 1,000 MB/s | $0.125 + IOPS | Legacy (prefer io2) |
 | st1 | HDD | 500 | 500 MB/s | $0.045 | Sequential read/write |
 | sc1 | HDD | 250 | 250 MB/s | $0.015 | Cold storage |
@@ -96,12 +95,12 @@ io2 volumes provide provisioned IOPS with guaranteed performance. You specify ex
 **When to use io2:**
 - Production databases (PostgreSQL, MySQL, Oracle, SQL Server)
 - Applications requiring sub-millisecond latency
-- Workloads needing more than 16,000 IOPS per volume
+- Workloads needing more than 80,000 IOPS per volume
 - Multi-Attach scenarios (attaching one volume to multiple instances)
 
 **io2 vs gp3 for databases:**
 
-The real question is whether you need guaranteed IOPS or whether gp3's 16,000 IOPS ceiling is enough. For many databases, gp3 at 16,000 IOPS is plenty and costs much less:
+The real question is whether you need guaranteed IOPS, lower latency, or whether gp3's 80,000 IOPS ceiling is enough. For many databases, gp3 at 16,000 IOPS is plenty and costs much less:
 
 - **gp3 at 16,000 IOPS, 200 GB**: $16 + (13,000 x $0.005) = $81/month
 - **io2 at 16,000 IOPS, 200 GB**: $25 + (16,000 x $0.065) = $1,065/month
@@ -110,7 +109,7 @@ io2 costs roughly 13x more for the same IOPS. The premium buys you:
 - 99.999% durability (vs 99.8-99.9% for gp3)
 - Multi-Attach capability
 - More consistent latency
-- Up to 64,000 IOPS per volume
+- Up to 256,000 IOPS per volume on Nitro-based instances
 
 ```bash
 # Create an io2 volume for a production database
@@ -124,7 +123,7 @@ aws ec2 create-volume \
 
 ### io2 Block Express
 
-For instances that support it (R5b, X2idn, etc.), io2 Block Express pushes the limits further: up to 256,000 IOPS and 4,000 MB/s throughput per volume. This is for the most demanding database workloads.
+io2 uses the Block Express architecture and pushes the limits further: up to 256,000 IOPS and 4,000 MB/s throughput per volume on Nitro-based instances. This is for the most demanding database workloads.
 
 ## st1: Throughput-Optimized HDD
 
@@ -186,8 +185,8 @@ flowchart TD
     B -->|Yes| D{Need guaranteed IOPS?}
     C -->|Frequent| E[st1]
     C -->|Infrequent| F[sc1]
-    D -->|Yes, 16K+ IOPS| G[io2]
-    D -->|No, 16K or less| H[gp3]
+    D -->|Yes| G[io2]
+    D -->|No, 80K or less| H[gp3]
     D -->|Not sure| H
 ```
 
