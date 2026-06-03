@@ -101,7 +101,11 @@ def bootstrap_config(environment, application='main-app'):
             Name=param_name,
             Value=value,
             Type='String',
-            Overwrite=True,
+            Overwrite=True
+        )
+        ssm.add_tags_to_resource(
+            ResourceType='Parameter',
+            ResourceId=param_name,
             Tags=[
                 {'Key': 'Environment', 'Value': environment},
                 {'Key': 'Application', 'Value': application},
@@ -117,7 +121,7 @@ for env in ['development', 'staging', 'production']:
 
 ## Secrets Management with Secrets Manager
 
-Sensitive values like database passwords, API keys, and certificates should go in Secrets Manager, not Parameter Store. Secrets Manager provides automatic rotation, cross-account access, and fine-grained IAM policies.
+Sensitive values like database passwords, API keys, and certificates that need automatic rotation should go in Secrets Manager rather than plain Parameter Store strings. Secrets Manager provides automatic rotation, cross-account access, and fine-grained IAM policies.
 
 ```python
 # Lambda to manage and rotate secrets
@@ -210,11 +214,24 @@ def rotation_handler(event, context):
 
     elif step == 'finishSecret':
         # Mark the new version as current
-        secrets_client.update_secret_version_stage(
-            SecretId=secret_id,
-            VersionStage='AWSCURRENT',
-            MoveToVersionId=token
-        )
+        metadata = secrets_client.describe_secret(SecretId=secret_id)
+        current_version = None
+        for version_id, stages in metadata['VersionIdsToStages'].items():
+            if 'AWSCURRENT' in stages:
+                if version_id == token:
+                    return
+                current_version = version_id
+                break
+
+        update_args = {
+            'SecretId': secret_id,
+            'VersionStage': 'AWSCURRENT',
+            'MoveToVersionId': token
+        }
+        if current_version:
+            update_args['RemoveFromVersionId'] = current_version
+
+        secrets_client.update_secret_version_stage(**update_args)
 ```
 
 ## Building the Config Client Library
@@ -369,6 +386,14 @@ Set up the EventBridge rule to capture SSM parameter changes:
       Targets:
         - Arn: !GetAtt ConfigChangeHandler.Arn
           Id: ConfigChangeNotifier
+
+  ConfigChangeInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt ConfigChangeHandler.Arn
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt ConfigChangeRule.Arn
 ```
 
 ## Configuration Validation
