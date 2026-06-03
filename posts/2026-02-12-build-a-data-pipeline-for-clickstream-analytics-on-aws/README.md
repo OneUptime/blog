@@ -21,7 +21,7 @@ graph TD
     C --> D[Lambda - Enrichment]
     D --> E[Kinesis Data Firehose]
     E --> F[S3 Data Lake]
-    E --> G[Redshift Serverless]
+    F --> G[Redshift Serverless / Spectrum]
 
     C --> H[Lambda - Real-time Analytics]
     H --> I[DynamoDB - Real-time Counters]
@@ -64,7 +64,7 @@ class ClickstreamSDK {
       properties,
       sessionId: this.sessionId,
       userId: this.userId,
-      timestamp: new Date().toISOString(),
+      eventTimestamp: new Date().toISOString(),
       page: {
         url: window.location.href,
         path: window.location.pathname,
@@ -153,20 +153,26 @@ exports.handler = async (event) => {
   const enrichedEvents = events.map(e => ({
     ...e,
     serverTimestamp: new Date().toISOString(),
-    sourceIp: event.requestContext.identity.sourceIp,
+    sourceIp: event.requestContext?.identity?.sourceIp || event.requestContext?.http?.sourceIp,
     receivedAt: Date.now(),
   }));
 
   // Push to Kinesis in batches
-  const records = enrichedEvents.map(e => ({
-    Data: Buffer.from(JSON.stringify(e)),
-    PartitionKey: e.sessionId || 'default',
-  }));
+  for (let i = 0; i < enrichedEvents.length; i += 500) {
+    const records = enrichedEvents.slice(i, i + 500).map(e => ({
+      Data: Buffer.from(JSON.stringify(e)),
+      PartitionKey: e.sessionId || 'default',
+    }));
 
-  await kinesis.send(new PutRecordsCommand({
-    StreamName: STREAM_NAME,
-    Records: records,
-  }));
+    const result = await kinesis.send(new PutRecordsCommand({
+      StreamName: STREAM_NAME,
+      Records: records,
+    }));
+
+    if (result.FailedRecordCount && result.FailedRecordCount > 0) {
+      throw new Error(`Failed to put ${result.FailedRecordCount} records to Kinesis`);
+    }
+  }
 
   return {
     statusCode: 200,
@@ -185,8 +191,13 @@ A Lambda consumer enriches events with additional context:
 
 ```javascript
 // enrichment/handler.js - Enrich clickstream events
+const { FirehoseClient, PutRecordBatchCommand } = require('@aws-sdk/client-firehose');
 const { UAParser } = require('ua-parser-js');
 const geoip = require('geoip-lite');
+const { updateRealTimeCounters } = require('../real-time/counters');
+
+const firehose = new FirehoseClient({});
+const DELIVERY_STREAM_NAME = process.env.FIREHOSE_STREAM;
 
 exports.handler = async (event) => {
   const enrichedRecords = [];
@@ -246,6 +257,23 @@ exports.handler = async (event) => {
   // Update real-time counters
   await updateRealTimeCounters(enrichedRecords);
 };
+
+async function forwardToFirehose(events) {
+  for (let i = 0; i < events.length; i += 500) {
+    const records = events.slice(i, i + 500).map(e => ({
+      Data: Buffer.from(`${JSON.stringify(e)}\n`),
+    }));
+
+    const result = await firehose.send(new PutRecordBatchCommand({
+      DeliveryStreamName: DELIVERY_STREAM_NAME,
+      Records: records,
+    }));
+
+    if (result.FailedPutCount && result.FailedPutCount > 0) {
+      throw new Error(`Failed to put ${result.FailedPutCount} records to Firehose`);
+    }
+  }
+}
 ```
 
 ## Step 4: Storage in S3 Data Lake
@@ -270,7 +298,9 @@ aws firehose create-delivery-stream \
       "Enabled": true,
       "InputFormatConfiguration": {
         "Deserializer": {
-          "OpenXJsonSerDe": {}
+          "OpenXJsonSerDe": {
+            "CaseInsensitive": true
+          }
         }
       },
       "OutputFormatConfiguration": {
@@ -290,7 +320,7 @@ aws firehose create-delivery-stream \
   }'
 ```
 
-Parquet format reduces storage costs by 80% compared to JSON and makes queries 10-100x faster.
+Parquet format can significantly reduce storage compared to JSON and makes many analytical queries faster because Athena can scan only the columns needed by the query.
 
 ## Step 5: Real-Time Counters
 
@@ -298,6 +328,11 @@ For dashboards that need up-to-the-second data, maintain counters in DynamoDB:
 
 ```javascript
 // real-time/counters.js - Maintain real-time clickstream counters
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
 async function updateRealTimeCounters(events) {
   const now = new Date();
   const minuteKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}T${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -344,6 +379,8 @@ async function updateRealTimeCounters(events) {
     }));
   }
 }
+
+module.exports = { updateRealTimeCounters };
 ```
 
 ## Step 6: Query with Athena
@@ -357,7 +394,7 @@ CREATE EXTERNAL TABLE clickstream.events (
   eventName string,
   sessionId string,
   userId string,
-  timestamp string,
+  eventTimestamp string,
   page struct<
     url: string,
     path: string,
@@ -424,13 +461,14 @@ Key dashboards to build:
 ## Cost at Scale
 
 For a site with 10 million page views per day:
-- Kinesis Data Streams: ~$30/month (1 shard)
+- API Gateway: about $300/month for HTTP APIs or more for REST APIs at 300 million requests/month
+- Kinesis Data Streams: about $15-30/month for a provisioned stream that fits in 1 shard, plus any enhanced fan-out or retention charges
 - Lambda processing: ~$15/month
-- S3 storage (Parquet): ~$5/month per TB
-- Firehose delivery: ~$30/month
+- S3 Standard storage (Parquet): about $23/month per TB stored
+- Firehose delivery and format conversion: roughly $50-60/month for 300 million small records because records are billed in 5 KB increments
 - Athena queries: ~$5 per TB scanned
 
-Total: roughly $100-200/month for 10 million events/day. Compare that to $500-2000/month for equivalent commercial analytics tools.
+Total: roughly $400-700/month for 10 million events/day when using HTTP APIs, before optional Redshift Serverless usage. Compare that to $500-2000/month for equivalent commercial analytics tools.
 
 For monitoring the pipeline itself, see our guide on [building a metrics collection system on AWS](https://oneuptime.com/blog/post/2026-02-12-build-a-metrics-collection-system-on-aws/view).
 
