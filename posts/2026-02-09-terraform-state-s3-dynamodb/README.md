@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, AWS, State Management
 
-Description: Learn how to set up secure Terraform state storage using AWS S3 and DynamoDB for locking, enabling team collaboration on Kubernetes infrastructure with encryption and versioning.
+Description: Learn how to set up secure Terraform state storage using AWS S3 lockfiles, enabling team collaboration on Kubernetes infrastructure with encryption and versioning.
 
 ---
 
-Terraform state tracks your infrastructure. For team environments, you need remote state storage with locking to prevent conflicts. AWS S3 with DynamoDB provides reliable state management with encryption, versioning, and atomic locking for Kubernetes infrastructure.
+Terraform state tracks your infrastructure. For team environments, you need remote state storage with locking to prevent conflicts. AWS S3 provides reliable state management with encryption, versioning, and lockfile-based locking for Kubernetes infrastructure.
 
 This guide shows you how to configure S3 backends for production Terraform workflows.
 
 ## Understanding Remote State Requirements
 
-Remote state needs three things: storage, locking, and encryption. S3 provides durable storage with versioning. DynamoDB provides distributed locking so only one person can modify infrastructure at a time. AWS KMS provides encryption for sensitive data in state files.
+Remote state needs three things: storage, locking, and encryption. S3 provides durable storage with versioning. S3 lockfiles provide locking so only one person can modify infrastructure at a time. AWS KMS provides encryption for sensitive data in state files.
 
 Without locking, two people running terraform apply simultaneously can corrupt state. Without encryption, secrets in state are vulnerable.
 
@@ -26,7 +26,7 @@ Create infrastructure for state storage:
 # state-backend/main.tf
 
 terraform {
-  required_version = ">= 1.6.0"
+  required_version = ">= 1.11.0"
   required_providers {
     aws = {
       source  = "hashicorp/aws"
@@ -46,11 +46,6 @@ variable "aws_region" {
 
 variable "state_bucket_name" {
   type = string
-}
-
-variable "dynamodb_table_name" {
-  type    = string
-  default = "terraform-state-lock"
 }
 
 # KMS key for encryption
@@ -118,36 +113,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "terraform_state" {
   rule {
     id     = "delete-old-versions"
     status = "Enabled"
+    filter {}
 
     noncurrent_version_expiration {
       noncurrent_days = 90
     }
-  }
-}
-
-# DynamoDB table for locking
-resource "aws_dynamodb_table" "terraform_lock" {
-  name           = var.dynamodb_table_name
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-
-  tags = {
-    Name        = "Terraform State Lock"
-    Environment = "Production"
-  }
-
-  point_in_time_recovery {
-    enabled = true
-  }
-
-  server_side_encryption {
-    enabled     = true
-    kms_key_arn = aws_kms_key.terraform_state.arn
   }
 }
 
@@ -174,17 +144,6 @@ resource "aws_iam_policy" "terraform_state" {
         ]
       },
       {
-        Sid    = "AllowDynamoDBLocking"
-        Effect = "Allow"
-        Action = [
-          "dynamodb:PutItem",
-          "dynamodb:GetItem",
-          "dynamodb:DeleteItem",
-          "dynamodb:DescribeTable"
-        ]
-        Resource = aws_dynamodb_table.terraform_lock.arn
-      },
-      {
         Sid    = "AllowKMSEncryption"
         Effect = "Allow"
         Action = [
@@ -200,10 +159,6 @@ resource "aws_iam_policy" "terraform_state" {
 
 output "s3_bucket_name" {
   value = aws_s3_bucket.terraform_state.id
-}
-
-output "dynamodb_table_name" {
-  value = aws_dynamodb_table.terraform_lock.name
 }
 
 output "kms_key_id" {
@@ -232,7 +187,7 @@ terraform {
     region         = "us-west-2"
     encrypt        = true
     kms_key_id     = "arn:aws:kms:us-west-2:ACCOUNT:key/KEY-ID"
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -257,7 +212,7 @@ terraform {
     region         = "us-west-2"
     encrypt        = true
     kms_key_id     = "arn:aws:kms:us-west-2:ACCOUNT:key/KEY-ID"
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -271,7 +226,7 @@ terraform {
     region         = "us-west-2"
     encrypt        = true
     kms_key_id     = "arn:aws:kms:us-west-2:ACCOUNT:key/KEY-ID"
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 ```
@@ -294,7 +249,7 @@ key            = "kubernetes/production/terraform.tfstate"
 region         = "us-west-2"
 encrypt        = true
 kms_key_id     = "arn:aws:kms:us-west-2:ACCOUNT:key/KEY-ID"
-dynamodb_table = "terraform-state-lock"
+use_lockfile   = true
 ```
 
 Initialize with config file:
@@ -316,7 +271,7 @@ terraform {
     key            = "kubernetes/production/terraform.tfstate"
     region         = "us-west-2"
     encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 EOF
@@ -347,4 +302,4 @@ terraform force-unlock LOCK_ID
 
 ## Summary
 
-S3 and DynamoDB provide production-grade Terraform state management. Encryption protects sensitive data, versioning enables recovery, and locking prevents conflicts. This setup scales from small teams to large organizations managing dozens of Kubernetes clusters across multiple environments. Proper state management is essential for reliable infrastructure automation and team collaboration.
+S3 provides production-grade Terraform state management. Encryption protects sensitive data, versioning enables recovery, and locking prevents conflicts. This setup scales from small teams to large organizations managing dozens of Kubernetes clusters across multiple environments. Proper state management is essential for reliable infrastructure automation and team collaboration.
