@@ -31,7 +31,7 @@ By default, Docker and containerd grant containers a set of capabilities that, w
 
 Before configuring capabilities, ensure you have:
 
-- A Kubernetes cluster with a recent version (1.20+)
+- A supported Kubernetes cluster (ValidatingAdmissionPolicy requires Kubernetes 1.30+)
 - kubectl with appropriate access
 - Understanding of your application's privilege requirements
 - Familiarity with Linux capabilities
@@ -48,7 +48,8 @@ metadata:
 spec:
   containers:
   - name: app
-    image: nginx:1.25
+    image: busybox:1.36
+    command: ["sleep", "3600"]
     securityContext:
       capabilities:
         drop:
@@ -61,7 +62,7 @@ Test this configuration:
 
 ```bash
 kubectl apply -f no-capabilities.yaml
-kubectl exec -it no-capabilities -- capsh --print
+kubectl exec -it no-capabilities -- grep '^Cap' /proc/1/status
 ```
 
 You'll see that the process has no capabilities in its effective, permitted, or inheritable sets.
@@ -86,13 +87,14 @@ spec:
         app: web
     spec:
       containers:
-      - name: nginx
-        image: nginx:1.25
+      - name: web
+        image: python:3.12-alpine
+        command: ["python", "-m", "http.server", "80"]
         ports:
         - containerPort: 80
         securityContext:
           runAsNonRoot: true
-          runAsUser: 101  # nginx user
+          runAsUser: 1000
           capabilities:
             drop:
             - ALL
@@ -100,7 +102,7 @@ spec:
             - NET_BIND_SERVICE  # Allow binding to port 80
 ```
 
-This configuration allows nginx to bind to port 80 while running as a non-root user, but grants no other elevated privileges.
+This configuration allows the web server to bind to port 80 while running as a non-root user, but grants no other elevated privileges. On clusters where `net.ipv4.ip_unprivileged_port_start` is set to `0` for pods, non-root processes can bind to port 80 without `NET_BIND_SERVICE`.
 
 ## Common Capability Patterns
 
@@ -196,7 +198,7 @@ spec:
         - SYS_ADMIN  # Equivalent to root for many purposes
         - SYS_MODULE # Can load kernel modules
         - SYS_RAWIO  # Can perform I/O port operations
-        - DAC_OVERRIDE  # Bypass all file permission checks
+        - DAC_OVERRIDE  # Bypass file read, write, and execute permission checks
 ```
 
 If your application requires these capabilities, consider:
@@ -230,7 +232,7 @@ Alternatively, use tools like `pscap` to audit running containers:
 apt-get install libcap2-bin
 
 # Check capabilities of a running process
-docker exec <container-id> sh -c 'cat /proc/1/status | grep Cap'
+kubectl exec <pod-name> -- sh -c 'cat /proc/1/status | grep Cap'
 ```
 
 ## Implementing Capabilities in DaemonSets
@@ -262,8 +264,6 @@ spec:
           capabilities:
             drop:
             - ALL
-            add:
-            - SYS_TIME  # Read system time
           readOnlyRootFilesystem: true
         volumeMounts:
         - name: proc
@@ -281,39 +281,21 @@ spec:
           path: /sys
 ```
 
-## Policy Enforcement with Pod Security Policies
+## Policy Enforcement with Pod Security Admission
 
 Enforce capability restrictions cluster-wide using admission controllers:
 
 ```yaml
-apiVersion: policy/v1beta1
-kind: PodSecurityPolicy
+apiVersion: v1
+kind: Namespace
 metadata:
-  name: restricted-capabilities
-spec:
-  privileged: false
-  allowPrivilegeEscalation: false
-  requiredDropCapabilities:
-  - ALL
-  allowedCapabilities:
-  - NET_BIND_SERVICE
-  volumes:
-  - 'configMap'
-  - 'emptyDir'
-  - 'projected'
-  - 'secret'
-  - 'downwardAPI'
-  - 'persistentVolumeClaim'
-  runAsUser:
-    rule: MustRunAsNonRoot
-  seLinux:
-    rule: RunAsAny
-  fsGroup:
-    rule: RunAsAny
-  readOnlyRootFilesystem: true
+  name: restricted-workloads
+  labels:
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
 ```
 
-For newer Kubernetes versions, use ValidatingAdmissionPolicy:
+The Restricted Pod Security Standard requires containers to drop `ALL` capabilities and only permits adding back `NET_BIND_SERVICE`. For custom allowed capability lists, use ValidatingAdmissionPolicy:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
@@ -331,18 +313,66 @@ spec:
   validations:
   - expression: |
       object.spec.containers.all(c,
+        has(c.securityContext) &&
+        has(c.securityContext.capabilities) &&
         has(c.securityContext.capabilities.drop) &&
         'ALL' in c.securityContext.capabilities.drop
+      ) &&
+      (!has(object.spec.initContainers) ||
+        object.spec.initContainers.all(c,
+          has(c.securityContext) &&
+          has(c.securityContext.capabilities) &&
+          has(c.securityContext.capabilities.drop) &&
+          'ALL' in c.securityContext.capabilities.drop
+        )
+      ) &&
+      (!has(object.spec.ephemeralContainers) ||
+        object.spec.ephemeralContainers.all(c,
+          has(c.securityContext) &&
+          has(c.securityContext.capabilities) &&
+          has(c.securityContext.capabilities.drop) &&
+          'ALL' in c.securityContext.capabilities.drop
+        )
       )
     message: "All capabilities must be dropped"
   - expression: |
       object.spec.containers.all(c,
+        !has(c.securityContext) ||
+        !has(c.securityContext.capabilities) ||
         !has(c.securityContext.capabilities.add) ||
         c.securityContext.capabilities.add.all(cap,
           cap in ['NET_BIND_SERVICE', 'CHOWN', 'SETUID', 'SETGID']
         )
+      ) &&
+      (!has(object.spec.initContainers) ||
+        object.spec.initContainers.all(c,
+          !has(c.securityContext) ||
+          !has(c.securityContext.capabilities) ||
+          !has(c.securityContext.capabilities.add) ||
+          c.securityContext.capabilities.add.all(cap,
+            cap in ['NET_BIND_SERVICE', 'CHOWN', 'SETUID', 'SETGID']
+          )
+        )
+      ) &&
+      (!has(object.spec.ephemeralContainers) ||
+        object.spec.ephemeralContainers.all(c,
+          !has(c.securityContext) ||
+          !has(c.securityContext.capabilities) ||
+          !has(c.securityContext.capabilities.add) ||
+          c.securityContext.capabilities.add.all(cap,
+            cap in ['NET_BIND_SERVICE', 'CHOWN', 'SETUID', 'SETGID']
+          )
+        )
       )
     message: "Only approved capabilities can be added"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: restrict-capabilities-binding
+spec:
+  policyName: restrict-capabilities
+  validationActions: [Deny]
 ```
 
 ## Init Containers and Capabilities
@@ -396,13 +426,13 @@ echo "Testing capability restrictions..."
 
 # Test 1: Verify ALL capabilities are dropped
 kubectl run test-drop-all --image=busybox --rm -it --restart=Never \
-  --overrides='{"spec":{"containers":[{"name":"test","image":"busybox","command":["sh","-c","capsh --print"],"securityContext":{"capabilities":{"drop":["ALL"]}}}]}}' \
-  -- sh -c "capsh --print | grep Current"
+  --overrides='{"spec":{"containers":[{"name":"test","image":"busybox","securityContext":{"capabilities":{"drop":["ALL"]}}}]}}' \
+  --command -- sh -c "grep '^Cap' /proc/1/status"
 
 # Test 2: Verify specific capability is added
-kubectl run test-net-bind --image=nginx --rm -it --restart=Never \
-  --overrides='{"spec":{"containers":[{"name":"test","image":"nginx","securityContext":{"runAsUser":101,"capabilities":{"drop":["ALL"],"add":["NET_BIND_SERVICE"]}}}]}}' \
-  -- sh -c "capsh --print | grep NET_BIND_SERVICE"
+kubectl run test-net-bind --image=python:3.12-alpine --rm -it --restart=Never \
+  --overrides='{"spec":{"containers":[{"name":"test","image":"python:3.12-alpine","securityContext":{"runAsUser":1000,"capabilities":{"drop":["ALL"],"add":["NET_BIND_SERVICE"]}}}]}}' \
+  --command -- sh -c "python -c 'v=int(open(\"/proc/1/status\").read().split(\"CapEff:\")[1].split()[0],16); print(bool(v & (1 << 10)))'"
 
 # Test 3: Verify dangerous capabilities are blocked
 kubectl run test-dangerous --image=busybox --rm -it --restart=Never \
@@ -426,12 +456,12 @@ data:
       condition: >
         container and
         (container.privileged=true or
-         container.capability.sys_admin or
-         container.capability.sys_module)
+         thread.cap_effective contains CAP_SYS_ADMIN or
+         thread.cap_effective contains CAP_SYS_MODULE)
       output: >
         Container running with sensitive capabilities
         (user=%user.name container=%container.name
-         image=%container.image.repository capabilities=%container.capabilities)
+         image=%container.image.repository capabilities=%thread.cap_effective)
       priority: WARNING
 ```
 
