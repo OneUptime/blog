@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Cognito, Security, Authentication
 
-Description: Configure strong password policies in Amazon Cognito User Pools including complexity requirements, temporary passwords, and custom validation with Lambda triggers.
+Description: Configure strong password policies in Amazon Cognito User Pools including complexity requirements, temporary passwords, and custom validation.
 
 ---
 
@@ -32,7 +32,7 @@ resource "aws_cognito_user_pool" "main" {
     require_numbers   = true
     require_symbols   = true
 
-    # Temporary password expiration (1-365 days)
+    # Temporary password expiration (0-365 days; 0 uses the Cognito default)
     temporary_password_validity_days = 3
   }
 }
@@ -42,6 +42,8 @@ Through the AWS CLI:
 
 ```bash
 # Update password policy
+# Include your existing user-pool settings in the request; omitted settings
+# are reset to Cognito defaults by update-user-pool.
 
 aws cognito-idp update-user-pool \
   --user-pool-id us-east-1_XXXXXXXXX \
@@ -59,7 +61,7 @@ aws cognito-idp update-user-pool \
 
 ## Choosing the Right Minimum Length
 
-There's an ongoing debate about password complexity vs. length. Modern guidance from NIST (SP 800-63B) favors longer passwords over complex ones. A 16-character passphrase like "correct-horse-battery-staple" is stronger than "P@ss1234" even though the short one has more character variety.
+There's an ongoing debate about password complexity vs. length. Modern guidance from NIST (SP 800-63B) favors longer passwords over complex ones. A long passphrase like "correct-horse-battery-staple" is stronger than "P@ss1234" even though the short one has more character variety.
 
 Cognito lets you set minimum length from 6 to 99 characters. Here's a practical approach:
 
@@ -115,18 +117,18 @@ async function resetTemporaryPassword(username) {
 }
 ```
 
-## Custom Password Validation with Lambda
+## Custom Password Validation
 
-Cognito's built-in rules cover basic complexity, but you might need custom validation. Common requirements include:
+Cognito's built-in rules cover basic complexity, but you might need custom validation. Cognito Lambda triggers don't receive the user's plaintext password, so run these checks in your application before calling Cognito sign-up, password change, or password reset APIs. Common requirements include:
 
 - Blocking commonly breached passwords
 - Preventing passwords that contain the username
 - Enforcing organization-specific rules
 
-Use a Pre Sign-Up Lambda trigger for custom validation:
+Here's a reusable validator:
 
 ```javascript
-// password-validation-lambda.js
+// custom-password-validator.js
 // Custom password policy enforcement
 
 // Top 1000 most common passwords (abbreviated)
@@ -137,34 +139,35 @@ const commonPasswords = new Set([
   // ... add the full list in production
 ]);
 
-export const handler = async (event) => {
-  const { userAttributes } = event.request;
-  const password = event.request.password || '';
-  const email = userAttributes.email || '';
+export function validateCustomPassword(password, email) {
+  const errors = [];
 
   // Check against common passwords
   if (commonPasswords.has(password.toLowerCase())) {
-    throw new Error('Password is too common. Please choose a more unique password.');
+    errors.push('Password is too common. Please choose a more unique password.');
   }
 
   // Check if password contains the email username
   const emailUsername = email.split('@')[0].toLowerCase();
   if (emailUsername.length > 2 && password.toLowerCase().includes(emailUsername)) {
-    throw new Error('Password cannot contain your email address.');
+    errors.push('Password cannot contain your email address.');
   }
 
   // Check for sequential characters
   if (hasSequentialChars(password, 4)) {
-    throw new Error('Password cannot contain sequential characters like "abcd" or "1234".');
+    errors.push('Password cannot contain sequential characters like "abcd" or "1234".');
   }
 
   // Check for repeated characters
   if (hasRepeatedChars(password, 3)) {
-    throw new Error('Password cannot contain three or more repeated characters.');
+    errors.push('Password cannot contain three or more repeated characters.');
   }
 
-  return event;
-};
+  return {
+    valid: errors.length === 0,
+    errors: errors
+  };
+}
 
 function hasSequentialChars(password, length) {
   for (let i = 0; i <= password.length - length; i++) {
@@ -186,33 +189,28 @@ function hasRepeatedChars(password, count) {
 }
 ```
 
-Wire the Lambda trigger to your User Pool:
+Use it before you send the password to Cognito:
 
-```hcl
-resource "aws_cognito_user_pool" "main" {
-  name = "my-app-user-pool"
+```javascript
+import { signUp } from 'aws-amplify/auth';
+import { validateCustomPassword } from './custom-password-validator.js';
 
-  lambda_config {
-    pre_sign_up = aws_lambda_function.password_validation.arn
+async function signUpWithPasswordPolicy(email, password) {
+  const result = validateCustomPassword(password, email);
+
+  if (!result.valid) {
+    throw new Error(result.errors.join(' '));
   }
-}
 
-resource "aws_lambda_function" "password_validation" {
-  filename         = "password-validation.zip"
-  function_name    = "cognito-password-validation"
-  role             = aws_iam_role.lambda_role.arn
-  handler          = "password-validation-lambda.handler"
-  runtime          = "nodejs20.x"
-  timeout          = 5
-}
-
-# Allow Cognito to invoke the Lambda
-resource "aws_lambda_permission" "cognito" {
-  statement_id  = "AllowCognitoInvoke"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.password_validation.function_name
-  principal     = "cognito-idp.amazonaws.com"
-  source_arn    = aws_cognito_user_pool.main.arn
+  return signUp({
+    username: email,
+    password: password,
+    options: {
+      userAttributes: {
+        email: email
+      }
+    }
+  });
 }
 ```
 
@@ -349,13 +347,13 @@ console.log(result.valid ? 'Password is valid' : result.errors.join(', '));
 
 Different compliance frameworks have specific password requirements:
 
-- **PCI DSS**: Minimum 7 characters, numeric and alphabetic
+- **PCI DSS**: Minimum 12 characters, or 8 characters if the system doesn't support 12, with numeric and alphabetic characters
 - **HIPAA**: Doesn't specify exact requirements, but references NIST guidelines
 - **SOC 2**: Password complexity appropriate to the risk
-- **NIST 800-63B**: Minimum 8 characters, check against breached password lists, no complexity rules required
+- **NIST 800-63B**: Minimum 15 characters for passwords used as a single factor, minimum 8 characters when used as part of MFA, check against commonly used or compromised password lists, and no composition rules
 
-Cognito's built-in policy covers most of these. For breach-checking, you'll need the Lambda trigger approach shown above. For more on securing your Cognito setup, see [enabling MFA in Cognito User Pools](https://oneuptime.com/blog/post/2026-02-12-enable-mfa-cognito-user-pools/view).
+Cognito's built-in policy covers basic length and character requirements. For breach-checking, validate passwords before you submit them to Cognito, as shown above. For more on securing your Cognito setup, see [enabling MFA in Cognito User Pools](https://oneuptime.com/blog/post/2026-02-12-enable-mfa-cognito-user-pools/view).
 
 ## Summary
 
-A good password policy balances security with usability. Cognito's built-in settings handle basic complexity, but custom Lambda validation lets you block common passwords, prevent username-based passwords, and enforce organization-specific rules. Favor longer minimum lengths over excessive complexity requirements, and always implement client-side validation for a better user experience. And don't forget - passwords are just one layer. MFA is what really protects accounts.
+A good password policy balances security with usability. Cognito's built-in settings handle basic complexity, but application-side validation lets you block common passwords, prevent username-based passwords, and enforce organization-specific rules before submitting passwords to Cognito. Favor longer minimum lengths over excessive complexity requirements, and always implement client-side validation for a better user experience. And don't forget - passwords are just one layer. MFA is what really protects accounts.
