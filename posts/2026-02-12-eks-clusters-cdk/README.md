@@ -22,6 +22,7 @@ import * as cdk from 'aws-cdk-lib';
 import * as eks from 'aws-cdk-lib/aws-eks';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import { KubectlV34Layer } from '@aws-cdk/lambda-layer-kubectl-v34';
 import { Construct } from 'constructs';
 
 export class EksStack extends cdk.Stack {
@@ -49,11 +50,16 @@ export class EksStack extends cdk.Stack {
     // Create the EKS cluster
     const cluster = new eks.Cluster(this, 'Cluster', {
       clusterName: 'production-cluster',
-      version: eks.KubernetesVersion.V1_29,
+      version: eks.KubernetesVersion.V1_34,
+      kubectlLayer: new KubectlV34Layer(this, 'KubectlLayer'),
       vpc: vpc,
       vpcSubnets: [{ subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS }],
       defaultCapacity: 0, // We'll add node groups separately
       endpointAccess: eks.EndpointAccess.PRIVATE,
+      authenticationMode: eks.AuthenticationMode.API_AND_CONFIG_MAP,
+      albController: {
+        version: eks.AlbControllerVersion.V2_8_2,
+      },
       clusterLogging: [
         eks.ClusterLoggingTypes.API,
         eks.ClusterLoggingTypes.AUDIT,
@@ -94,7 +100,7 @@ cluster.addNodegroupCapacity('GeneralWorkload', {
   maxSize: 10,
   desiredSize: 3,
   diskSize: 100,
-  amiType: eks.NodegroupAmiType.AL2_X86_64,
+  amiType: eks.NodegroupAmiType.AL2023_X86_64_STANDARD,
   capacityType: eks.CapacityType.ON_DEMAND,
   subnets: { subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS },
   labels: {
@@ -118,6 +124,7 @@ cluster.addNodegroupCapacity('SpotWorkload', {
   minSize: 0,
   maxSize: 20,
   desiredSize: 2,
+  amiType: eks.NodegroupAmiType.AL2023_X86_64_STANDARD,
   capacityType: eks.CapacityType.SPOT,
   labels: {
     'workload-type': 'spot',
@@ -191,7 +198,7 @@ dynamoServiceAccount.addToPrincipalPolicy(new iam.PolicyStatement({
     'dynamodb:Query',
     'dynamodb:UpdateItem',
   ],
-  resources: ['arn:aws:iam::123456789012:table/orders'],
+  resources: [`arn:aws:dynamodb:${cdk.Stack.of(this).region}:${cdk.Stack.of(this).account}:table/orders`],
 }));
 ```
 
@@ -246,21 +253,6 @@ cluster.addManifest('NginxDeployment', {
 Install Helm charts for cluster add-ons:
 
 ```typescript
-// Install AWS Load Balancer Controller via Helm
-cluster.addHelmChart('AwsLoadBalancerController', {
-  chart: 'aws-load-balancer-controller',
-  repository: 'https://aws.github.io/eks-charts',
-  namespace: 'kube-system',
-  release: 'aws-load-balancer-controller',
-  values: {
-    clusterName: cluster.clusterName,
-    serviceAccount: {
-      create: false,
-      name: 'aws-load-balancer-controller',
-    },
-  },
-});
-
 // Install metrics-server
 cluster.addHelmChart('MetricsServer', {
   chart: 'metrics-server',
@@ -294,8 +286,15 @@ const adminRole = iam.Role.fromRoleArn(
   this, 'AdminRole',
   'arn:aws:iam::123456789012:role/K8sAdminRole'
 );
-cluster.awsAuth.addRoleMapping(adminRole, {
-  groups: ['system:masters'],
+
+new eks.AccessEntry(this, 'AdminAccessEntry', {
+  cluster,
+  principal: adminRole.roleArn,
+  accessPolicies: [
+    eks.AccessPolicy.fromAccessPolicyName('AmazonEKSClusterAdminPolicy', {
+      accessScopeType: eks.AccessScopeType.CLUSTER,
+    }),
+  ],
 });
 
 // Grant read-only access to developers
@@ -303,12 +302,19 @@ const devRole = iam.Role.fromRoleArn(
   this, 'DevRole',
   'arn:aws:iam::123456789012:role/DeveloperRole'
 );
-cluster.awsAuth.addRoleMapping(devRole, {
-  groups: ['developers'],
+
+new eks.AccessEntry(this, 'DevAccessEntry', {
+  cluster,
+  principal: devRole.roleArn,
+  accessPolicies: [
+    eks.AccessPolicy.fromAccessPolicyName('AmazonEKSViewPolicy', {
+      accessScopeType: eks.AccessScopeType.CLUSTER,
+    }),
+  ],
 });
 ```
 
-You'll need to create a corresponding ClusterRoleBinding in Kubernetes to define what the 'developers' group can do.
+If you use Kubernetes RBAC groups instead of EKS access policies, create a corresponding ClusterRoleBinding in Kubernetes to define what the group can do.
 
 ## Cluster Add-ons
 
