@@ -93,9 +93,9 @@ spec:
             memory: 512Mi
 ```
 
-This configuration uses two topology spread constraints. The first ensures even distribution across zones with strict enforcement. The second encourages distribution across nodes within zones but allows violations if necessary.
+This configuration uses two topology spread constraints. The first ensures even distribution across zones with strict enforcement. The second encourages distribution across nodes but allows violations if necessary.
 
-With nine replicas across three zones, you get three pods per zone. The node-level constraint then tries to spread those three pods across different nodes within each zone, maximizing resilience to both zone and node failures.
+With nine replicas across three zones, you get three pods per zone. The node-level constraint then tries to spread pods across different nodes while the zone-level constraint preserves zone balance, maximizing resilience to both zone and node failures.
 
 Verify the distribution after deployment:
 
@@ -107,8 +107,9 @@ kubectl get pods -n production -l app=api-service -o wide
 # Count pods per zone
 for zone in us-east-1a us-east-1b us-east-1c; do
   echo "Zone $zone:"
-  kubectl get nodes -l topology.kubernetes.io/zone=$zone -o name | \
-    xargs -I {} kubectl get pods -n production -l app=api-service --field-selector spec.nodeName={} --no-headers | wc -l
+  for node in $(kubectl get nodes -l topology.kubernetes.io/zone=$zone -o jsonpath='{.items[*].metadata.name}'); do
+    kubectl get pods -n production -l app=api-service --field-selector spec.nodeName=$node --no-headers
+  done | wc -l
 done
 ```
 
@@ -168,7 +169,7 @@ spec:
           storage: 100Gi
 ```
 
-For this StatefulSet with three replicas, the anti-affinity rule ensures each pod runs on a different node. The topology spread constraint ensures these three nodes are in different availability zones. This combination provides maximum resilience for stateful workloads.
+For this StatefulSet with three replicas in a cluster with three eligible zones, the anti-affinity rule ensures each pod runs on a different node. The topology spread constraint ensures those pods are evenly distributed across zones. This combination provides maximum resilience for stateful workloads.
 
 ## Handling Uneven Cluster Topology
 
@@ -220,14 +221,16 @@ echo "Pod distribution for app=$APP_LABEL across $TOPOLOGY_KEY:"
 echo
 
 # Get unique topology values
-TOPOLOGIES=$(kubectl get nodes -o jsonpath="{.items[*].metadata.labels.$TOPOLOGY_KEY}" | tr ' ' '\n' | sort -u)
+TOPOLOGIES=$(kubectl get nodes -o json | jq -r --arg key "$TOPOLOGY_KEY" '.items[].metadata.labels[$key] // empty' | sort -u)
 
 for TOPOLOGY in $TOPOLOGIES; do
   COUNT=$(kubectl get pods -n $NAMESPACE -l app=$APP_LABEL -o json | \
-    jq -r --arg topo "$TOPOLOGY" --arg key "$TOPOLOGY_KEY" \
-    '.items[] | select(.spec.nodeName) | .spec.nodeName' | \
-    xargs -I {} kubectl get node {} -o jsonpath="{.metadata.labels.$TOPOLOGY_KEY}" | \
-    grep -c "^$TOPOLOGY$" || echo 0)
+    jq -r '.items[] | select(.spec.nodeName) | .spec.nodeName' | \
+    while read -r NODE; do
+      [ -n "$NODE" ] && kubectl get node "$NODE" -o json
+    done | \
+    jq -r --arg key "$TOPOLOGY_KEY" '.metadata.labels[$key] // empty' | \
+    grep -c "^$TOPOLOGY$" || true)
   echo "$TOPOLOGY: $COUNT pods"
 done
 EOF
@@ -269,7 +272,7 @@ spec:
           matchLabels:
             app: critical-service
             tier: frontend
-      # Secondary constraint: spread across nodes within zones
+      # Secondary constraint: spread across nodes
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
         whenUnsatisfiable: ScheduleAnyway
@@ -294,7 +297,7 @@ spec:
             memory: 1Gi
 ```
 
-The constraint evaluation happens in order. The scheduler first ensures zone-level distribution, then optimizes for node distribution within those zones, and finally considers rack-level distribution when possible. This layered approach provides comprehensive failure domain isolation.
+The scheduler evaluates all of these constraints together. A pod must satisfy every `DoNotSchedule` constraint, while `ScheduleAnyway` constraints influence scoring so the scheduler prefers nodes that reduce skew across those topology domains. This layered approach provides comprehensive failure domain isolation.
 
 ## Default Topology Spread Constraints
 
@@ -320,18 +323,13 @@ profiles:
       defaultingType: List
 ```
 
-With these defaults, every pod automatically spreads across zones and nodes without requiring explicit constraints in pod specs. Individual deployments can still override these defaults when needed.
+With these defaults, pods that do not set explicit topology spread constraints automatically use the configured zone and node constraints. Individual deployments can still override these defaults when needed.
 
-For managed Kubernetes services, many providers support default constraints through cluster configuration options:
+For managed Kubernetes services, scheduler configuration access varies by provider. When you cannot customize the kube-scheduler configuration, set `topologySpreadConstraints` in your workload manifests and make sure the cluster has node pools spanning the intended zones:
 
 ```bash
-# GKE: Enable balanced scheduling
-gcloud container clusters update production-cluster \
-  --enable-autoscaling \
-  --autoscaling-profile=balanced
-
-# EKS: Default spreading via node group configuration
-# AKS: Availability zones configured at node pool level
+# Example: confirm nodes are labeled with the zones you plan to spread across
+kubectl get nodes -L topology.kubernetes.io/zone
 ```
 
 ## Testing Topology Spread Behavior
@@ -384,7 +382,9 @@ kubectl get nodes -l topology.kubernetes.io/zone=$ZONE -o name | \
   xargs -I {} kubectl cordon {}
 
 # Verify pods reschedule to other zones
-kubectl delete pods -l app=topology-test --field-selector spec.nodeName=$NODE
+for node in $(kubectl get nodes -l topology.kubernetes.io/zone=$ZONE -o jsonpath='{.items[*].metadata.name}'); do
+  kubectl delete pods -l app=topology-test --field-selector spec.nodeName=$node
+done
 ```
 
 Test constraint behavior under resource pressure by deliberately creating contention and observing how the scheduler balances spreading requirements against resource availability.
