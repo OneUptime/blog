@@ -8,19 +8,19 @@ Description: Learn how to deploy a Next.js application with AWS Amplify Hosting,
 
 ---
 
-Next.js apps are more complex to host than plain React SPAs because they have server-side rendering, API routes, middleware, and incremental static regeneration. Most hosting platforms treat them as static sites and miss these features. Amplify Hosting has native Next.js support that handles SSR and ISR correctly, deploying your app across Lambda@Edge and CloudFront.
+Next.js apps are more complex to host than plain React SPAs because they have server-side rendering, API routes, middleware, and incremental static regeneration. Most hosting platforms treat them as static sites and miss these features. Amplify Hosting has native Next.js support that handles SSR and ISR correctly, deploying your app with Amplify Hosting compute and CloudFront.
 
 Let's set up a Next.js deployment on Amplify that takes advantage of all these features.
 
 ## Amplify's Next.js Support
 
-Amplify detects Next.js projects automatically and deploys them differently than static sites:
+Amplify detects supported Next.js projects automatically and deploys them differently than static sites. Amplify Hosting compute supports Next.js versions 12 through 15:
 
 - **Static pages** get served from CloudFront's CDN
-- **SSR pages** run on Lambda@Edge at CloudFront edge locations
-- **API routes** run on Lambda
+- **SSR pages** run on Amplify Hosting compute
+- **API routes** run on Amplify Hosting compute
 - **ISR (Incremental Static Regeneration)** works with background revalidation
-- **Middleware** runs at the edge
+- **Middleware** is supported, but Edge API Routes and Edge Middleware are not
 - **Image Optimization** works with Next.js Image component
 
 ```mermaid
@@ -30,8 +30,8 @@ graph LR
     B --> D[SSR Functions]
     B --> E[API Routes]
     C --> F[CloudFront CDN]
-    D --> G[Lambda@Edge]
-    E --> H[Lambda]
+    D --> G[Amplify Hosting Compute]
+    E --> H[Amplify Hosting Compute]
     F --> I[Users]
     G --> I
     H --> I
@@ -98,23 +98,24 @@ For monorepo setups where Next.js is in a subdirectory:
 
 ```yaml
 version: 1
-appRoot: apps/web
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - npm ci
-    build:
-      commands:
-        - npm run build
-  artifacts:
-    baseDirectory: .next
-    files:
-      - '**/*'
-  cache:
-    paths:
-      - .next/cache/**/*
-      - node_modules/**/*
+applications:
+  - appRoot: apps/web
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - npm ci
+        build:
+          commands:
+            - npm run build
+      artifacts:
+        baseDirectory: .next
+        files:
+          - '**/*'
+      cache:
+        paths:
+          - .next/cache/**/*
+          - node_modules/**/*
 ```
 
 ## Environment Variables
@@ -124,22 +125,15 @@ Next.js environment variables have specific naming conventions that affect how A
 Configure environment variables:
 
 ```bash
-# Server-side env vars (not exposed to the browser)
+# Branch environment variables
 aws amplify update-branch \
     --app-id $APP_ID \
     --branch-name main \
     --environment-variables \
-        DATABASE_URL=postgresql://user:pass@host/db,API_SECRET=your-secret-here
-
-# Client-side env vars (must start with NEXT_PUBLIC_)
-aws amplify update-branch \
-    --app-id $APP_ID \
-    --branch-name main \
-    --environment-variables \
-        NEXT_PUBLIC_API_URL=https://api.example.com,NEXT_PUBLIC_APP_NAME=MyApp
+        DATABASE_URL=postgresql://user:pass@host/db,API_SECRET=your-secret-here,NEXT_PUBLIC_API_URL=https://api.example.com,NEXT_PUBLIC_APP_NAME=MyApp
 ```
 
-For secrets that shouldn't be visible in the console, use AWS Systems Manager Parameter Store:
+Client-side variables must start with `NEXT_PUBLIC_`. For variables that need to be available to the Next.js server runtime, write only the values your app needs into `.env.production` during the build:
 
 ```yaml
 version: 1
@@ -148,12 +142,29 @@ frontend:
     preBuild:
       commands:
         - npm ci
-        # Fetch secrets from Parameter Store
-        - export DATABASE_URL=$(aws ssm get-parameter --name /myapp/prod/database-url --with-decryption --query Parameter.Value --output text)
     build:
       commands:
+        - env | grep -e DATABASE_URL -e API_SECRET >> .env.production
+        - env | grep -e NEXT_PUBLIC_ >> .env.production
         - npm run build
 ```
+
+For values managed in AWS Systems Manager Parameter Store, fetch them during the build and write them to the same Next.js environment file:
+
+```yaml
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - npm ci
+    build:
+      commands:
+        - echo "DATABASE_URL=$(aws ssm get-parameter --name /myapp/prod/database-url --with-decryption --query Parameter.Value --output text)" >> .env.production
+        - npm run build
+```
+
+Don't put long-lived credentials or secrets in `.env.production`; deployment artifacts can be read by users with access to the build output. Use IAM roles when the SSR runtime needs to access AWS resources.
 
 ## Custom Domain Configuration
 
@@ -193,7 +204,7 @@ export default function Hero() {
 }
 ```
 
-Amplify handles the image processing at the edge. You don't need to configure an external image loader.
+Amplify handles the image processing for SSR apps. You don't need to configure an external image loader unless you want to override Amplify's built-in image optimization.
 
 ### ISR (Incremental Static Regeneration)
 
@@ -218,7 +229,7 @@ export default async function ProductPage({ params }) {
 
 ### API Routes
 
-API routes are deployed as Lambda functions:
+API routes are deployed to Amplify Hosting compute:
 
 ```typescript
 // app/api/users/route.ts
@@ -238,7 +249,7 @@ export async function POST(request: Request) {
 
 ### Middleware
 
-Next.js middleware runs at the edge on Amplify:
+Next.js middleware is supported on Amplify, but Edge API Routes and Edge Middleware are not:
 
 ```typescript
 // middleware.ts
@@ -269,7 +280,8 @@ Enable preview deployments for pull requests:
 # Enable auto branch creation for feature branches
 aws amplify update-app \
     --app-id $APP_ID \
-    --enable-branch-auto-build
+    --enable-auto-branch-creation \
+    --auto-branch-creation-patterns feature/*
 
 # Enable PR previews
 aws amplify update-app \
@@ -322,17 +334,17 @@ module.exports = nextConfig;
 
 ## Troubleshooting Common Issues
 
-**Build fails with memory errors**: Increase the Node.js memory limit in your build spec:
+**Build fails with memory errors**: Set `NODE_OPTIONS` as an Amplify environment variable, then retry the build. If the build still fails while uploading cache, temporarily remove `.next/cache/**/*` from `cache.paths` and add it back after a successful build:
 
 ```yaml
-build:
-  commands:
-    - NODE_OPTIONS=--max_old_space_size=4096 npm run build
+cache:
+  paths:
+    - node_modules/**/*
 ```
 
-**SSR returns 500 errors**: Check the Amplify compute logs. Go to the Amplify console, select your app, and check the "Hosting compute" logs for Lambda errors.
+**SSR returns 500 errors**: Check the Amplify compute logs. Go to the Amplify console, select your app, and check the "Hosting compute" logs for runtime errors.
 
-**Environment variables not available at runtime**: Make sure you're using `NEXT_PUBLIC_` prefix for client-side variables. Server-side variables need to be set through Amplify, not just in `.env` files.
+**Environment variables not available at runtime**: Make sure you're using the `NEXT_PUBLIC_` prefix for client-side variables. Server-side runtime variables for Next.js SSR need to be written to `.env.production` during the Amplify build.
 
 For React SPAs, see [setting up Amplify Hosting for a React app](https://oneuptime.com/blog/post/2026-02-12-amplify-hosting-react-app/view). And for authentication integration, check out [implementing Cognito Authentication in Next.js](https://oneuptime.com/blog/post/2026-02-12-cognito-authentication-nextjs/view).
 
