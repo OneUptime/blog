@@ -81,7 +81,7 @@ spec:
           storage: 500Gi
 ```
 
-With 6 replicas and 3 zones, this creates 2 pods per zone.
+With 6 replicas and 3 zones, this can place 2 pods per zone when enough eligible nodes and storage are available.
 
 ## Multi-Level Topology Spread
 
@@ -113,7 +113,7 @@ spec:
         labelSelector:
           matchLabels:
             app: cassandra
-      # Also spread across nodes within each zone
+      # Also prefer spreading across nodes
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
         whenUnsatisfiable: ScheduleAnyway
@@ -173,7 +173,7 @@ spec:
       topologySpreadConstraints:
       # Spread across racks
       - maxSkew: 1
-        topologyKey: topology.kubernetes.io/rack
+        topologyKey: topology.example.com/rack
         whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
@@ -259,13 +259,8 @@ spec:
           value: "elasticsearch-0,elasticsearch-1,elasticsearch-2"
         - name: ES_JAVA_OPTS
           value: "-Xms16g -Xmx16g"
-        # Enable zone awareness
-        - name: node.attr.zone
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.labels['topology.kubernetes.io/zone']
-        - name: cluster.routing.allocation.awareness.attributes
-          value: zone
+        # Set node.attr.zone with an operator or admission webhook if you need
+        # Elasticsearch allocation awareness; the downward API cannot read node labels.
         resources:
           requests:
             cpu: 4000m
@@ -285,7 +280,7 @@ spec:
 
 ## MinDomains for Minimum Distribution
 
-Ensure minimum number of topology domains:
+Account for a minimum number of topology domains:
 
 ```yaml
 # min-domains-statefulset.yaml
@@ -307,7 +302,7 @@ spec:
     spec:
       topologySpreadConstraints:
       - maxSkew: 1
-        minDomains: 3  # Require at least 3 zones
+        minDomains: 3  # Calculate skew as if at least 3 zones should exist
         topologyKey: topology.kubernetes.io/zone
         whenUnsatisfiable: DoNotSchedule
         labelSelector:
@@ -323,6 +318,7 @@ spec:
         - --listen-peer-urls=http://0.0.0.0:2380
         - --listen-client-urls=http://0.0.0.0:2379
         - --advertise-client-urls=http://$(POD_NAME).etcd:2379
+        - --initial-cluster=etcd-0=http://etcd-0.etcd:2380,etcd-1=http://etcd-1.etcd:2380,etcd-2=http://etcd-2.etcd:2380,etcd-3=http://etcd-3.etcd:2380,etcd-4=http://etcd-4.etcd:2380
         - --initial-cluster-state=new
         env:
         - name: POD_NAME
@@ -426,13 +422,13 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: zonal-storage
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
 volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
 - matchLabelExpressions:
-  - key: topology.kubernetes.io/zone
+  - key: topology.ebs.csi.aws.com/zone
     values:
     - us-east-1a
     - us-east-1b
@@ -488,7 +484,7 @@ spec:
 3. **Consider Volume Binding**: Use WaitForFirstConsumer for volume topology awareness
 4. **Test Failover**: Validate application handles zone failures correctly
 5. **Monitor Distribution**: Regularly check pod distribution across zones
-6. **Use MinDomains**: Specify minimum zones for critical workloads
+6. **Use MinDomains**: Account for missing topology domains in skew calculations for critical workloads
 7. **Combine with PDBs**: Use PodDisruptionBudgets to protect during maintenance
 8. **Plan for Scaling**: Ensure topology constraints work at different replica counts
 
@@ -517,4 +513,3 @@ kubectl get pv -o json | \
 ```
 
 Pod Topology Spread Constraints with StatefulSets ensure your stateful workloads maintain high availability by distributing pods across failure domains while preserving the ordering and identity guarantees that StatefulSets provide.
-
