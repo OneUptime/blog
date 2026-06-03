@@ -75,70 +75,38 @@ sudo cat /mnt/encrypted-test/test.txt
 
 ## Implementing LUKS CSI Driver
 
-Deploy a CSI driver that supports LUKS encryption. This example uses a custom wrapper around the local-path provisioner.
+Deploy a CSI driver that supports LUKS encryption. The Kubernetes local volume provisioner is not a CSI driver, so a LUKS integration must use a real CSI driver that implements the CSI node calls and registers with kubelet.
 
-```yaml
-# luks-csi-driver.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: luks-keys
-  namespace: kube-system
-data:
-  master.key: |
-    # Base64 encoded master key
-    <base64-key-here>
----
-apiVersion: apps/v1
-kind: DaemonSet
-metadata:
-  name: luks-csi-node
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      app: luks-csi-node
-  template:
-    metadata:
-      labels:
-        app: luks-csi-node
-    spec:
-      hostNetwork: true
-      hostPID: true
-      containers:
-      - name: node-driver
-        image: k8s.gcr.io/sig-storage/local-volume-provisioner:v2.5.0
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: keys
-          mountPath: /etc/luks-keys
-          readOnly: true
-        - name: pods-mount-dir
-          mountPath: /var/lib/kubelet/pods
-          mountPropagation: Bidirectional
-        - name: csi-socket
-          mountPath: /csi
-        env:
-        - name: NODE_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: spec.nodeName
-      volumes:
-      - name: keys
-        secret:
-          secretName: luks-keys
-      - name: pods-mount-dir
-        hostPath:
-          path: /var/lib/kubelet/pods
-          type: Directory
-      - name: csi-socket
-        hostPath:
-          path: /var/lib/kubelet/plugins/luks.csi.k8s.io
-          type: DirectoryOrCreate
+```bash
+# Example: install csi-driver-lvm with encrypted StorageClasses enabled
+kubectl create secret generic csi-lvm-encryption-secret \
+  --from-literal=passphrase="$(openssl rand -base64 32)" \
+  -n kube-system
+
+helm install --repo https://helm.metal-stack.io csi-driver-lvm csi-driver-lvm \
+  --namespace kube-system \
+  --set lvm.devicePattern='/dev/nvme[0-9]n[0-9]' \
+  --set storageClasses.linearEncrypted.enabled=true \
+  --set storageClasses.linearEncrypted.encryptionSecret.namespace=kube-system
 ```
 
-This is a simplified example. Production deployments should use dedicated LUKS CSI drivers like the dm-crypt CSI driver or storage solutions with native encryption support.
+Create a PVC using the encrypted StorageClass:
+
+```yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: encrypted-local-volume
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: csi-driver-lvm-linear-encrypted
+  resources:
+    requests:
+      storage: 10Gi
+```
+
+This is a simplified example. Production deployments should use dedicated LUKS CSI drivers such as csi-driver-lvm or storage solutions with native encryption support.
 
 ## Using Storage Solutions with Native Encryption
 
@@ -161,8 +129,14 @@ parameters:
   staleReplicaTimeout: "2880"
   encrypted: "true"
   # Reference to secret containing encryption key
+  csi.storage.k8s.io/provisioner-secret-name: longhorn-encryption-key
+  csi.storage.k8s.io/provisioner-secret-namespace: longhorn-system
   csi.storage.k8s.io/node-publish-secret-name: longhorn-encryption-key
   csi.storage.k8s.io/node-publish-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-stage-secret-name: longhorn-encryption-key
+  csi.storage.k8s.io/node-stage-secret-namespace: longhorn-system
+  csi.storage.k8s.io/node-expand-secret-name: longhorn-encryption-key
+  csi.storage.k8s.io/node-expand-secret-namespace: longhorn-system
 ```
 
 Create the encryption key secret:
@@ -174,6 +148,7 @@ openssl rand -base64 32 > encryption.key
 # Create secret
 kubectl create secret generic longhorn-encryption-key \
   --from-file=CRYPTO_KEY_VALUE=encryption.key \
+  --from-literal=CRYPTO_KEY_PROVIDER=secret \
   -n longhorn-system
 
 # Apply storage class
@@ -221,6 +196,13 @@ vault auth enable kubernetes
 vault write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc:443" \
   kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+
+# Bind the CSI driver's Kubernetes service account to the policy
+vault write auth/kubernetes/role/csi-driver \
+  bound_service_account_names=csi-driver-luks \
+  bound_service_account_namespaces=kube-system \
+  policies=luks-reader \
+  ttl=1h
 ```
 
 Configure CSI driver to fetch keys from Vault:
@@ -277,7 +259,7 @@ spec:
     rules:
     - alert: LUKSDeviceFailure
       expr: |
-        node_disk_info{device=~"dm-.*"} == 0
+        node_filesystem_device_error{device=~"/dev/mapper/.*|/dev/dm-.*"} == 1
       for: 5m
       labels:
         severity: critical
@@ -291,7 +273,7 @@ Implement key rotation for LUKS volumes.
 
 ```bash
 # Add new key to LUKS header
-echo "new_passphrase" | sudo cryptsetup luksAddKey /dev/sdb -
+printf "%s" "new_passphrase" | sudo cryptsetup luksAddKey --key-file /path/to/current.key /dev/sdb -
 
 # Verify multiple keys exist
 sudo cryptsetup luksDump /dev/sdb | grep "Key Slot"
@@ -299,9 +281,9 @@ sudo cryptsetup luksDump /dev/sdb | grep "Key Slot"
 # Remove old key
 echo "old_passphrase" | sudo cryptsetup luksRemoveKey /dev/sdb -
 
-# For automated rotation with CSI
-kubectl patch storageclass longhorn-encrypted \
-  -p '{"parameters":{"csi.storage.k8s.io/node-publish-secret-name":"longhorn-encryption-key-v2"}}'
+# For CSI-managed volumes, follow the driver's documented key rotation process.
+# Creating a new StorageClass can change the key for newly provisioned volumes,
+# but it does not rotate existing LUKS headers by itself.
 ```
 
 ## Performance Considerations
