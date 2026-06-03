@@ -8,7 +8,7 @@ Description: Learn how to use the setHostnameAsFQDN field to configure pods to u
 
 ---
 
-Most applications running in Kubernetes containers see a simple hostname like `web-app-7b8c9d`, but some legacy applications or distributed systems expect the hostname to be a fully qualified domain name (FQDN) like `web-app-7b8c9d.default.svc.cluster.local`. The `setHostnameAsFQDN` field in the pod specification solves this problem by configuring the container's hostname to be its complete DNS name.
+Most applications running in Kubernetes containers see a simple hostname like `web-app-7b8c9d`, but some legacy applications or distributed systems expect the hostname to be a fully qualified domain name (FQDN) like `web-app-7b8c9d.web.default.svc.cluster.local`. The `setHostnameAsFQDN` field in the pod specification solves this problem by configuring the container's hostname to be its complete DNS name when the pod has a hostname and subdomain.
 
 This field is particularly valuable when migrating applications to Kubernetes that were originally designed for traditional server environments where machines have FQDN hostnames.
 
@@ -36,7 +36,7 @@ kubectl logs web-app-xyz123
 
 ```
 
-The FQDN exists in DNS, but it's not what the container sees as its hostname.
+If you configure a pod hostname and subdomain, the pod can have an FQDN, but by default it's not what the container sees as its hostname.
 
 ## Enabling setHostnameAsFQDN
 
@@ -44,11 +44,27 @@ The `setHostnameAsFQDN` field changes this behavior:
 
 ```yaml
 apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: production
+spec:
+  clusterIP: None
+  selector:
+    app: web
+  ports:
+  - port: 80
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: web-app
   namespace: production
+  labels:
+    app: web
 spec:
+  hostname: web-app
+  subdomain: web
   setHostnameAsFQDN: true
   containers:
   - name: nginx
@@ -66,8 +82,8 @@ Now the output shows:
 
 ```bash
 kubectl logs web-app
-# Hostname: web-app.production.pod.cluster.local
-# FQDN: web-app.production.pod.cluster.local
+# Hostname: web-app.web.production.svc.cluster.local
+# FQDN: web-app.web.production.svc.cluster.local
 ```
 
 The container sees its full DNS name as the hostname. This matches what many enterprise applications expect.
@@ -186,7 +202,7 @@ spec:
       secretName: kerberos-keytab
 ```
 
-Without `setHostnameAsFQDN: true`, the Kerberos authentication would fail because the principal name wouldn't match the hostname.
+Without `setHostnameAsFQDN: true`, Kerberos authentication can fail when the application builds or validates the service principal from the pod hostname.
 
 ## StatefulSet Integration
 
@@ -309,9 +325,22 @@ The corresponding pod manifest:
 
 ```yaml
 apiVersion: v1
+kind: Service
+metadata:
+  name: python-cluster
+spec:
+  clusterIP: None
+  selector:
+    app: python-cluster
+  ports:
+  - port: 8080
+---
+apiVersion: v1
 kind: Pod
 metadata:
   name: python-cluster-node
+  labels:
+    app: python-cluster
 spec:
   hostname: node-01
   subdomain: python-cluster
@@ -346,7 +375,7 @@ hostname -f
 
 # Check /etc/hosts
 cat /etc/hosts
-# Should have an entry mapping the FQDN to the pod IP
+# Should have an entry mapping the pod hostname to the pod IP
 ```
 
 Check DNS resolution:
@@ -370,7 +399,7 @@ Some applications parse the hostname and expect a simple name without dots. Test
 The field requires Kubernetes 1.22 or later. Check your cluster version:
 
 ```bash
-kubectl version --short
+kubectl version
 ```
 
 When using this with StatefulSets, the FQDN includes the pod ordinal, so `cassandra-0` becomes `cassandra-0.cassandra.default.svc.cluster.local`. Ensure your application handles ordinal-based naming.
