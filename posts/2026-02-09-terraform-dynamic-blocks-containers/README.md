@@ -47,8 +47,8 @@ variable "containers" {
     },
     {
       name  = "sidecar"
-      image = "busybox:latest"
-      port  = 8080
+      image = "redis:7-alpine"
+      port  = 6379
     }
   ]
 }
@@ -303,14 +303,42 @@ variable "enable_monitoring" {
 variable "monitoring_container" {
   description = "Monitoring sidecar configuration"
   type = object({
-    name  = string
-    image = string
-    port  = number
+    name            = string
+    image           = string
+    port            = number
+    cpu_request     = string
+    memory_request  = string
+    cpu_limit       = string
+    memory_limit    = string
+    env_vars        = map(string)
+    volume_mounts   = list(object({
+      name       = string
+      mount_path = string
+      read_only  = bool
+    }))
+    liveness_probe = object({
+      path          = string
+      port          = number
+      initial_delay = number
+      period        = number
+    })
   })
   default = {
-    name  = "prometheus-exporter"
-    image = "prom/node-exporter:latest"
-    port  = 9100
+    name           = "prometheus-exporter"
+    image          = "prom/node-exporter:latest"
+    port           = 9100
+    cpu_request    = "50m"
+    memory_request = "64Mi"
+    cpu_limit      = "100m"
+    memory_limit   = "128Mi"
+    env_vars       = {}
+    volume_mounts  = []
+    liveness_probe = {
+      path          = "/metrics"
+      port          = 9100
+      initial_delay = 15
+      period        = 10
+    }
   }
 }
 
