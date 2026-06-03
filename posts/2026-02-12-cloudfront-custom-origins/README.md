@@ -21,7 +21,7 @@ Any HTTP or HTTPS server that isn't an S3 bucket endpoint is a custom origin in 
 - On-premises web servers
 - Third-party APIs or services
 
-The key requirement is that the origin must be reachable via HTTP or HTTPS on a public DNS name. CloudFront can't reach private IP addresses directly.
+For a standard custom origin, the origin must be reachable via HTTP or HTTPS on a public DNS name. For private ALBs, NLBs, or EC2 instances, use CloudFront VPC origins instead.
 
 ## Basic Custom Origin Configuration
 
@@ -64,8 +64,14 @@ Here's a distribution configuration with an ALB as a custom origin:
   "DefaultCacheBehavior": {
     "TargetOriginId": "alb-origin",
     "ViewerProtocolPolicy": "redirect-to-https",
-    "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
-    "CachedMethods": ["GET", "HEAD"],
+    "AllowedMethods": {
+      "Quantity": 7,
+      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
+    },
     "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
     "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
     "Compress": true
@@ -104,9 +110,9 @@ Two timeout settings matter:
 }
 ```
 
-**OriginReadTimeout** (1-180 seconds) is how long CloudFront waits for a response from the origin. If your backend is slow, increase this. The default is 30 seconds.
+**OriginReadTimeout** (1-120 seconds) is how long CloudFront waits for a response from the origin. If your backend is slow, increase this. The default is 30 seconds.
 
-**OriginKeepaliveTimeout** (1-180 seconds) controls how long CloudFront keeps idle connections open to the origin. Higher values reduce the overhead of establishing new connections but consume more origin resources.
+**OriginKeepaliveTimeout** (1-120 seconds) controls how long CloudFront keeps idle connections open to the origin. Higher values reduce the overhead of establishing new connections but consume more origin resources.
 
 For APIs that might take a while to process:
 
@@ -229,8 +235,8 @@ You can use any publicly accessible HTTP server as a CloudFront origin. This is 
     "HTTPSPort": 443,
     "OriginProtocolPolicy": "https-only",
     "OriginSslProtocols": {
-      "Quantity": 2,
-      "Items": ["TLSv1.2", "TLSv1.1"]
+      "Quantity": 1,
+      "Items": ["TLSv1.2"]
     },
     "OriginReadTimeout": 60,
     "OriginKeepaliveTimeout": 5
@@ -293,9 +299,9 @@ aws cloudwatch get-metric-statistics \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Average,p99
+  --statistics Average
 ```
 
 ## Summary
 
-Custom origins in CloudFront handle any HTTP/HTTPS server that isn't an S3 endpoint. The critical configuration points are the origin protocol policy (use HTTPS in production), timeouts (increase for slow backends), and security (use custom headers plus prefix lists to restrict origin access to CloudFront only). Whether your origin is an ALB, EC2 instance, or external server, the setup follows the same pattern. Just make sure the domain name resolves publicly and the origin responds correctly on the configured ports.
+Custom origins in CloudFront handle any HTTP/HTTPS server that isn't an S3 endpoint. The critical configuration points are the origin protocol policy (use HTTPS in production), timeouts (increase for slow backends), and security (use custom headers plus prefix lists to restrict origin access to CloudFront only). Whether your origin is an ALB, EC2 instance, or external server, the setup follows the same pattern. Just make sure the domain name resolves from CloudFront and the origin responds correctly on the configured ports.
