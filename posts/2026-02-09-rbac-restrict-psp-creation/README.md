@@ -8,7 +8,7 @@ Description: Learn how to implement RBAC policies that prevent unauthorized crea
 
 ---
 
-PodSecurityPolicy (PSP) controls security-sensitive aspects of pod specifications. While PSP is deprecated in favor of Pod Security Admission, many clusters still use it, and the RBAC patterns apply to any admission control system. The key challenge is preventing users from creating or binding permissive policies that bypass security controls.
+PodSecurityPolicy (PSP) controls security-sensitive aspects of pod specifications. PSP was deprecated in Kubernetes v1.21 and removed in v1.25, so these examples apply only to Kubernetes v1.24 and earlier, or to distributions that still provide PSP-compatible APIs. The RBAC patterns are still useful when thinking about who can change admission policy configuration. The key challenge is preventing users from creating or binding permissive policies that bypass security controls.
 
 A user who can create a PSP and bind it to themselves can grant their pods any privileges they want, including running as root, accessing the host network, or mounting host paths. This completely bypasses security boundaries. Proper RBAC configuration ensures only cluster administrators can manage PSPs while application teams can use pre-approved policies.
 
@@ -16,7 +16,7 @@ A user who can create a PSP and bind it to themselves can grant their pods any p
 
 Using a PSP requires two permissions:
 
-**Use Permission**: A RoleBinding that grants the `use` verb on a specific PSP resource. When a pod is created, Kubernetes checks if the creating user or the pod's ServiceAccount has permission to use at least one PSP that validates the pod's specification.
+**Use Permission**: A RoleBinding or ClusterRoleBinding that grants the `use` verb on a specific PSP resource. When a pod is created, Kubernetes checks if the creating user or the pod's ServiceAccount has permission to use at least one PSP that validates the pod's specification.
 
 **Create/Update Permission**: The ability to create or modify PSP objects themselves. This should be restricted to cluster administrators only.
 
@@ -121,11 +121,11 @@ Ensure only cluster administrators can manage PSP objects:
 
 ```bash
 # Check who can create PSPs
-kubectl auth can-i create podsecuritypolicies --as=developer@company.com
+kubectl auth can-i create podsecuritypolicies.policy --as=developer@company.com
 # Should return: no
 
 # Verify admin can create PSPs
-kubectl auth can-i create podsecuritypolicies
+kubectl auth can-i create podsecuritypolicies.policy
 # Should return: yes (if you're an admin)
 ```
 
@@ -227,7 +227,7 @@ Enable audit logging to track PSP admission decisions:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-# Log PSP admission decisions
+# Log PSP object access and changes
 - level: Metadata
   omitStages:
     - RequestReceived
@@ -235,7 +235,7 @@ rules:
   - group: "policy"
     resources: ["podsecuritypolicies"]
 
-# Log pod creation to see which PSP was used
+# Log pod creation and admission decisions
 - level: Metadata
   omitStages:
     - RequestReceived
@@ -248,9 +248,13 @@ rules:
 Search audit logs for PSP usage:
 
 ```bash
-# Find which PSP was used for pod creation
+# Find pods annotated with the PSP that admitted them
+kubectl get pods --all-namespaces \
+  -o jsonpath="{range .items[*]}{.metadata.namespace} {.metadata.name} {.metadata.annotations.kubernetes\.io\/psp}{'\n'}{end}"
+
+# Find pod creation audit annotations
 jq 'select(.objectRef.resource=="pods" and .verb=="create") |
-    .annotations."authorization.k8s.io/decision"' \
+    .annotations' \
     /var/log/kubernetes/audit.log
 
 # Find failed PSP admission
@@ -277,8 +281,9 @@ Verify restricted pods succeed:
 ```bash
 # Create a restricted pod
 kubectl run restricted-test \
-  --image=nginx \
-  --as=developer@company.com
+  --image=busybox:1.36 \
+  --as=developer@company.com \
+  --overrides='{"apiVersion":"v1","spec":{"securityContext":{"runAsNonRoot":true,"runAsUser":1000},"containers":[{"name":"restricted-test","image":"busybox:1.36","command":["sleep","3600"],"securityContext":{"allowPrivilegeEscalation":false,"capabilities":{"drop":["ALL"]}}}]}}'
 # Should succeed
 ```
 
@@ -323,7 +328,7 @@ metadata:
 
 PSA does not require RBAC configuration, as it is enforced at the namespace level. However, you still need RBAC to control who can modify namespace labels:
 
-```yaml
+```bash
 # Prevent users from modifying namespace labels
 # Default RBAC already restricts this to cluster admins
 # Verify with:
@@ -333,7 +338,7 @@ kubectl auth can-i update namespace development --as=developer@company.com
 
 ## Preventing PSP Binding Escalation
 
-A subtle attack: If a user can create RoleBindings and can bind any ClusterRole, they might bind the use-privileged-psp role to themselves:
+A subtle attack: If a user can create RoleBindings, they might try to bind the use-privileged-psp role to themselves:
 
 ```bash
 # Check if user can create rolebindings
@@ -347,7 +352,7 @@ kubectl create rolebinding escalate-psp \
   --as=developer@company.com
 ```
 
-Kubernetes prevents this automatically through escalation prevention. A user cannot create a RoleBinding granting permissions they don't already have. Verify this protection is working:
+Kubernetes prevents this automatically through escalation prevention unless the user already has the permissions in the referenced role or has explicit `bind` permission on that role. Verify this protection is working:
 
 ```bash
 # This should fail
@@ -360,16 +365,16 @@ kubectl create rolebinding test-escalation \
 
 ## Monitoring PSP Violations
 
-Set up alerts for repeated PSP violations that might indicate attack attempts:
+Set up log-based alerts for repeated PSP violations that might indicate attack attempts. The built-in `apiserver_audit_event_total` metric only counts exported audit events and does not include request fields such as verb, resource, status code, or user, so use your audit log backend or a log-to-metrics pipeline for these labels:
 
 ```yaml
-# Prometheus alert rule
+# Prometheus alert rule for a custom metric generated from audit logs
 groups:
 - name: psp-violations
   rules:
   - alert: RepeatedPSPViolations
     expr: |
-      sum(rate(apiserver_audit_event_total{
+      sum(rate(kubernetes_audit_pod_create_forbidden_total{
         verb="create",
         objectRef_resource="pods",
         responseStatus_code="403"
