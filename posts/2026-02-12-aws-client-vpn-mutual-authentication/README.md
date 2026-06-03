@@ -30,7 +30,7 @@ cd easy-rsa/easyrsa3
 ./easyrsa build-ca nopass
 
 # Generate the server certificate
-./easyrsa build-server-full server nopass
+./easyrsa --san=DNS:server build-server-full server nopass
 
 # Generate a client certificate
 ./easyrsa build-client-full client1.domain.tld nopass
@@ -55,7 +55,7 @@ aws acm import-certificate \
   --certificate-chain fileb://pki/ca.crt \
   --region us-east-1
 
-# Import the client certificate (CA cert is enough for mutual auth)
+# Import the client certificate
 aws acm import-certificate \
   --certificate fileb://pki/issued/client1.domain.tld.crt \
   --private-key fileb://pki/private/client1.domain.tld.key \
@@ -63,7 +63,7 @@ aws acm import-certificate \
   --region us-east-1
 ```
 
-Save the certificate ARNs from the output - you'll need them for the VPN endpoint.
+Save the certificate ARNs from the output - you'll need them for the VPN endpoint. If the server and client certificates were issued by the same CA, AWS also lets you use the server certificate ARN for both the server certificate and the client root certificate chain.
 
 ## Step 3: Create the Client VPN Endpoint
 
@@ -74,7 +74,7 @@ Now create the VPN endpoint itself:
 aws ec2 create-client-vpn-endpoint \
   --client-cidr-block "10.100.0.0/16" \
   --server-certificate-arn "arn:aws:acm:us-east-1:123456789012:certificate/server-cert-id" \
-  --authentication-options 'Type=certificate-authentication,MutualAuthentication={ClientRootCertificateChainArn=arn:aws:acm:us-east-1:123456789012:certificate/ca-cert-id}' \
+  --authentication-options 'Type=certificate-authentication,MutualAuthentication={ClientRootCertificateChainArn=arn:aws:acm:us-east-1:123456789012:certificate/client-cert-id}' \
   --connection-log-options '{
     "Enabled": true,
     "CloudwatchLogGroup": "/aws/clientvpn",
@@ -131,20 +131,20 @@ If you need internet access through the VPN (not recommended with split tunnel),
 
 ## Step 6: Add Routes
 
-If your VPC has specific routing requirements:
+The route for the VPC CIDR is added automatically when you associate a subnet. For additional networks, such as peered VPCs, add routes manually. If you associated multiple subnets, add the same additional routes for each associated subnet:
 
 ```bash
-# Add a route to the VPC CIDR through the associated subnet
-aws ec2 create-client-vpn-route \
-  --client-vpn-endpoint-id cvpn-endpoint-abc123 \
-  --destination-cidr-block "10.0.0.0/16" \
-  --target-vpc-subnet-id subnet-111111
-
-# Add a route to a peered VPC
+# Add a route to a peered VPC through the first associated subnet
 aws ec2 create-client-vpn-route \
   --client-vpn-endpoint-id cvpn-endpoint-abc123 \
   --destination-cidr-block "172.16.0.0/16" \
   --target-vpc-subnet-id subnet-111111
+
+# Add the same route through the second associated subnet
+aws ec2 create-client-vpn-route \
+  --client-vpn-endpoint-id cvpn-endpoint-abc123 \
+  --destination-cidr-block "172.16.0.0/16" \
+  --target-vpc-subnet-id subnet-222222
 ```
 
 ## Step 7: Download and Distribute Client Configuration
@@ -201,7 +201,7 @@ export class VpnStack extends cdk.Stack {
 
     const clientCert = acm.Certificate.fromCertificateArn(
       this, 'ClientCert',
-      'arn:aws:acm:us-east-1:123456789012:certificate/ca-cert-id'
+      'arn:aws:acm:us-east-1:123456789012:certificate/client-cert-id'
     );
 
     // CloudWatch Logs for VPN connections
@@ -295,10 +295,10 @@ When someone leaves the team, revoke their certificate:
 # Import the CRL to the VPN endpoint
 aws ec2 import-client-vpn-client-certificate-revocation-list \
   --client-vpn-endpoint-id cvpn-endpoint-abc123 \
-  --certificate-revocation-list fileb://pki/crl.pem
+  --certificate-revocation-list file://pki/crl.pem
 ```
 
-The VPN endpoint checks the CRL during authentication, so revoked certificates are blocked immediately.
+Importing the CRL resets existing client connections. After that, the VPN endpoint checks the CRL during authentication, so revoked certificates are blocked.
 
 ## Monitoring VPN Connections
 
