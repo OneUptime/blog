@@ -50,14 +50,14 @@ spec:
     name: mysql-snapshot-20260209
     kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
-  # Access mode must match original PVC
+  # Access mode should be compatible with the restored volume
   accessModes:
     - ReadWriteOnce
   resources:
     requests:
       # Size must be >= snapshot restore size
       storage: 10Gi
-  # Must use a StorageClass that supports snapshots
+  # Use a StorageClass backed by the same CSI driver as the snapshot
   storageClassName: standard
 ```
 
@@ -217,24 +217,38 @@ For testing or migration, restore snapshots to different namespaces:
 # Create the target namespace
 kubectl create namespace recovery-test
 
-# Create a snapshot reference in the target namespace
 # Note: VolumeSnapshots are namespace-scoped
-# If snapshot is in different namespace, you need to use VolumeSnapshotContent
+# To reference a snapshot in another namespace, use dataSourceRef
+# with the CrossNamespaceVolumeDataSource feature and a ReferenceGrant
 
-# Get the VolumeSnapshotContent name
-SNAPSHOT_CONTENT=$(kubectl get volumesnapshot mysql-snapshot-20260209 \
-  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+# Allow PVCs in recovery-test to reference VolumeSnapshots in default
+kubectl apply -n default -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-snapshot-restore
+spec:
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: recovery-test
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: mysql-snapshot-20260209
+EOF
 
-# Create PVC in new namespace referencing the content
+# Create PVC in the new namespace referencing the source snapshot
 kubectl apply -n recovery-test -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: mysql-test-pvc
 spec:
-  dataSource:
-    name: ${SNAPSHOT_CONTENT}
-    kind: VolumeSnapshotContent
+  dataSourceRef:
+    name: mysql-snapshot-20260209
+    namespace: default
+    kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
   accessModes:
     - ReadWriteOnce
@@ -245,16 +259,11 @@ spec:
 EOF
 ```
 
-However, a cleaner approach is to copy the snapshot:
+If the cross-namespace feature is not enabled, restore in the snapshot's namespace instead:
 
 ```bash
-# Copy snapshot to target namespace
-kubectl get volumesnapshot mysql-snapshot-20260209 -o yaml | \
-  sed 's/namespace: default/namespace: recovery-test/' | \
-  kubectl apply -f -
-
-# Now restore in the new namespace
-kubectl apply -n recovery-test -f - <<EOF
+# Restore in the namespace where the VolumeSnapshot exists
+kubectl apply -n default -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -423,16 +432,14 @@ spec:
 
               echo "Testing restore from: $LATEST_SNAPSHOT"
 
-              # Create test namespace
-              kubectl create namespace snapshot-test-$(date +%s) || true
+              TEST_PVC="test-restore-$(date +%s)"
 
-              # Restore to test namespace
+              # Restore in the same namespace as the snapshot
               cat <<EOF | kubectl apply -f -
               apiVersion: v1
               kind: PersistentVolumeClaim
               metadata:
-                name: test-restore
-                namespace: snapshot-test
+                name: $TEST_PVC
               spec:
                 dataSource:
                   name: $LATEST_SNAPSHOT
@@ -447,14 +454,14 @@ spec:
               EOF
 
               # Wait for restoration
-              kubectl wait -n snapshot-test \
+              kubectl wait \
                 --for=jsonpath='{.status.phase}'=Bound \
-                pvc/test-restore --timeout=600s
+                pvc/$TEST_PVC --timeout=600s
 
               echo "Restore test successful!"
 
               # Cleanup
-              kubectl delete namespace snapshot-test
+              kubectl delete pvc $TEST_PVC
           restartPolicy: OnFailure
 ```
 
