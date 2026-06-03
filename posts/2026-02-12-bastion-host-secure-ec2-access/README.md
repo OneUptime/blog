@@ -156,13 +156,15 @@ This user data script configures basic security hardening:
 set -e
 
 # Update everything
-yum update -y
+dnf update -y
 
 # Disable root login
-sed -i 's/^PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+sed -i -E 's/^[#[:space:]]*PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+grep -q '^PermitRootLogin ' /etc/ssh/sshd_config || echo "PermitRootLogin no" >> /etc/ssh/sshd_config
 
 # Disable password authentication (keys only)
-sed -i 's/^PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+sed -i -E 's/^[#[:space:]]*PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+grep -q '^PasswordAuthentication ' /etc/ssh/sshd_config || echo "PasswordAuthentication no" >> /etc/ssh/sshd_config
 
 # Restrict SSH to specific users
 echo "AllowUsers ec2-user" >> /etc/ssh/sshd_config
@@ -172,35 +174,32 @@ echo "ClientAliveInterval 300" >> /etc/ssh/sshd_config
 echo "ClientAliveCountMax 2" >> /etc/ssh/sshd_config
 
 # Restart SSH
-systemctl restart sshd
+sshd -t && systemctl restart sshd
 
 # Install and enable fail2ban
-amazon-linux-extras install -y epel
-yum install -y fail2ban
+dnf install -y fail2ban fail2ban-systemd
 
 cat > /etc/fail2ban/jail.local << 'F2B'
 [sshd]
 enabled = true
 port = ssh
 filter = sshd
-logpath = /var/log/secure
+backend = systemd
 maxretry = 3
 bantime = 3600
 findtime = 600
 F2B
 
-systemctl enable fail2ban
-systemctl start fail2ban
+systemctl enable --now fail2ban
 
 # Enable automatic security updates
-yum install -y yum-cron
-sed -i 's/update_cmd = default/update_cmd = security/' /etc/yum/yum-cron.conf
-sed -i 's/apply_updates = no/apply_updates = yes/' /etc/yum/yum-cron.conf
-systemctl enable yum-cron
-systemctl start yum-cron
+dnf install -y dnf-automatic
+sed -i 's/^upgrade_type = default/upgrade_type = security/' /etc/dnf/automatic.conf
+sed -i 's/^apply_updates = no/apply_updates = yes/' /etc/dnf/automatic.conf
+systemctl enable --now dnf-automatic.timer
 
 # Remove unnecessary packages
-yum remove -y gcc make
+dnf remove -y gcc make
 
 # Log all commands (for audit)
 echo 'export PROMPT_COMMAND="logger -t bash -p local6.info \"[\$(whoami)] \$(history 1 | sed '\''s/^[ ]*[0-9]*[ ]*//'\'')\""' >> /etc/profile.d/audit.sh
@@ -311,7 +310,8 @@ Every session through the bastion should be logged. CloudWatch agent can ship SS
 
 ```bash
 # Install CloudWatch agent and configure SSH log shipping
-yum install -y amazon-cloudwatch-agent
+dnf install -y amazon-cloudwatch-agent rsyslog
+systemctl enable --now rsyslog
 
 cat > /opt/aws/amazon-cloudwatch-agent/etc/config.json << 'CW'
 {
@@ -332,7 +332,9 @@ cat > /opt/aws/amazon-cloudwatch-agent/etc/config.json << 'CW'
 }
 CW
 
-systemctl start amazon-cloudwatch-agent
+/opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
+  -a fetch-config -m ec2 -s \
+  -c file:/opt/aws/amazon-cloudwatch-agent/etc/config.json
 ```
 
 ## Modern Alternatives
