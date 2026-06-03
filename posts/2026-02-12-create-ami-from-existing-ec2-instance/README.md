@@ -32,7 +32,7 @@ There are several good reasons to create AMIs:
 | Image name | Descriptive, include date: `webapp-v2.1-2026-02-12` |
 | Image description | What this image contains and its purpose |
 | No reboot | Unchecked (default) for data consistency |
-| Tag image and snapshots | Check this to copy instance tags |
+| Tag image and snapshots | Use this to apply the same tags to the AMI and its snapshots |
 
 4. Click "Create image"
 
@@ -51,7 +51,7 @@ aws ec2 create-image \
     --instance-id i-0123456789abcdef0 \
     --name "webapp-v2.1-2026-02-12" \
     --description "Web application with Nginx and Node.js 20" \
-    --tag-specifications 'ResourceType=image,Tags=[{Key=Environment,Value=production},{Key=Service,Value=webapp}]'
+    --tag-specifications 'ResourceType=image,Tags=[{Key=Environment,Value=production},{Key=Service,Value=webapp}]' 'ResourceType=snapshot,Tags=[{Key=Environment,Value=production},{Key=Service,Value=webapp}]'
 ```
 
 The command returns an AMI ID immediately, but the AMI isn't ready yet. It takes several minutes to create the snapshots and register the image.
@@ -119,9 +119,14 @@ history -c
 ### Remove Instance-Specific Configuration
 
 ```bash
-# Remove the machine ID so each instance gets a unique one
-sudo rm -f /etc/machine-id
-sudo systemd-machine-id-setup
+# Reset cloud-init state and machine ID so each new instance gets a unique one
+if command -v cloud-init >/dev/null 2>&1; then
+    sudo cloud-init clean --logs --machine-id
+else
+    # If cloud-init is not available, leave systemd's machine ID uninitialized
+    printf 'uninitialized\n' | sudo tee /etc/machine-id >/dev/null
+    sudo rm -f /var/lib/dbus/machine-id
+fi
 
 # Remove any hostname customization (will be set per-instance)
 sudo hostnamectl set-hostname ""
@@ -160,7 +165,7 @@ flowchart TD
 
 ## Costs
 
-You're charged for the EBS snapshots that back the AMI. The AMI metadata itself is free. Snapshot pricing is about $0.05 per GB-month, so a 20 GB root volume costs about $1/month to keep as a snapshot.
+You're charged for the EBS snapshots that back the AMI. The AMI metadata itself is free. Snapshot pricing is about $0.05 per GB-month in many regions, so 20 GB of snapshot data costs about $1/month to keep.
 
 If you're creating AMIs regularly (e.g., weekly builds), the snapshot costs add up. Set up a cleanup process:
 
@@ -177,22 +182,26 @@ aws ec2 describe-images \
 When you no longer need an AMI:
 
 ```bash
-# Step 1: Deregister the AMI
+# Option 1: Deregister the AMI and delete associated snapshots
+aws ec2 deregister-image \
+    --image-id ami-0123456789abcdef0 \
+    --delete-associated-snapshots
+
+# Option 2: Deregister first, then delete associated snapshots manually
 aws ec2 deregister-image --image-id ami-0123456789abcdef0
 
-# Step 2: Delete the associated snapshots
-# First, find the snapshot IDs (note them before deregistering, or check)
+# Find the snapshot IDs (note them before deregistering, or check)
 aws ec2 describe-snapshots \
     --owner-ids self \
     --filters "Name=description,Values=*ami-0123456789abcdef0*" \
     --query 'Snapshots[*].SnapshotId' \
     --output text
 
-# Then delete each snapshot
+# Delete each snapshot
 aws ec2 delete-snapshot --snapshot-id snap-0123456789abcdef0
 ```
 
-Deregistering the AMI doesn't automatically delete the snapshots. If you forget to clean them up, you'll keep paying for the storage.
+Deregistering the AMI doesn't delete snapshots by default. Use `--delete-associated-snapshots` or delete them manually; any snapshots left behind continue to incur storage charges.
 
 ## Automating AMI Creation
 
