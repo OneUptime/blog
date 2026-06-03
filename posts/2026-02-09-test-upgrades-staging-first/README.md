@@ -32,8 +32,8 @@ STAGING_CLUSTER="staging"
 echo "Fetching production cluster configuration..."
 
 # Get production cluster version
-PROD_VERSION=$(kubectl get nodes --context=$PROD_CLUSTER -o json | \
-  jq -r '.items[0].status.nodeInfo.kubeletVersion')
+PROD_VERSION=$(aws eks describe-cluster --name $PROD_CLUSTER \
+  --query 'cluster.version' --output text)
 
 # Get production node types and counts
 PROD_NODES=$(kubectl get nodes --context=$PROD_CLUSTER -o json | \
@@ -43,15 +43,22 @@ PROD_NODES=$(kubectl get nodes --context=$PROD_CLUSTER -o json | \
 echo "Production version: $PROD_VERSION"
 echo "Production nodes: $PROD_NODES"
 
+PROD_SUBNET_IDS=$(aws eks describe-cluster --name $PROD_CLUSTER \
+  --query 'cluster.resourcesVpcConfig.subnetIds' --output text | tr '\t' ',')
+PROD_SECURITY_GROUP_IDS=$(aws eks describe-cluster --name $PROD_CLUSTER \
+  --query 'cluster.resourcesVpcConfig.securityGroupIds' --output text | tr '\t' ',')
+VPC_CONFIG="subnetIds=$PROD_SUBNET_IDS"
+if [ -n "$PROD_SECURITY_GROUP_IDS" ] && [ "$PROD_SECURITY_GROUP_IDS" != "None" ]; then
+  VPC_CONFIG="$VPC_CONFIG,securityGroupIds=$PROD_SECURITY_GROUP_IDS"
+fi
+
 # For EKS, create matching staging cluster
 aws eks create-cluster \
   --name $STAGING_CLUSTER \
   --version $PROD_VERSION \
   --role-arn $(aws eks describe-cluster --name $PROD_CLUSTER \
     --query 'cluster.roleArn' --output text) \
-  --resources-vpc-config subnetIds=$(aws eks describe-cluster \
-    --name $PROD_CLUSTER --query 'cluster.resourcesVpcConfig.subnetIds' \
-    --output text)
+  --resources-vpc-config "$VPC_CONFIG"
 
 echo "Staging cluster created matching production configuration"
 ```
@@ -72,9 +79,9 @@ spec:
   - list:
       elements:
       - env: production
-        cluster: production-cluster
+        cluster: https://production-api.example.com
       - env: staging
-        cluster: staging-cluster
+        cluster: https://staging-api.example.com
   template:
     metadata:
       name: '{{env}}-myapp'
@@ -143,16 +150,17 @@ Once your staging cluster is ready, perform the upgrade following the same proce
 # upgrade-staging-cluster.sh
 
 STAGING_CLUSTER="staging"
-TARGET_VERSION="1.29"
+TARGET_VERSION="1.34"
 
 echo "Starting staging cluster upgrade to version $TARGET_VERSION"
 
-# Create pre-upgrade backup
-echo "Creating pre-upgrade backup..."
-kubectl get all --all-namespaces -o yaml > staging-pre-upgrade-backup.yaml
+# Export common Kubernetes resources before the upgrade
+echo "Exporting common pre-upgrade resources..."
+kubectl get deploy,sts,ds,svc,ingress,cm,secret,pvc \
+  --all-namespaces -o yaml > staging-pre-upgrade-resources.yaml
 
-# Backup etcd (for self-managed clusters)
-ETCDCTL_API=3 etcdctl snapshot save staging-snapshot-$(date +%Y%m%d).db
+# For self-managed clusters with direct etcd access, also take an etcd snapshot
+# ETCDCTL_API=3 etcdctl --endpoints=$ETCD_ENDPOINTS snapshot save staging-snapshot-$(date +%Y%m%d).db
 
 # Upgrade control plane (EKS example)
 echo "Upgrading control plane..."
@@ -162,15 +170,7 @@ aws eks update-cluster-version \
 
 # Wait for control plane upgrade to complete
 echo "Waiting for control plane upgrade..."
-while true; do
-  status=$(aws eks describe-cluster --name $STAGING_CLUSTER \
-    --query 'cluster.status' --output text)
-  if [ "$status" == "ACTIVE" ]; then
-    break
-  fi
-  echo "Status: $status - waiting..."
-  sleep 30
-done
+aws eks wait cluster-active --name $STAGING_CLUSTER
 
 # Upgrade node groups
 echo "Upgrading node groups..."
@@ -184,16 +184,9 @@ for nodegroup in $(aws eks list-nodegroups --cluster-name $STAGING_CLUSTER \
     --kubernetes-version $TARGET_VERSION
 
   # Wait for node group upgrade
-  while true; do
-    status=$(aws eks describe-nodegroup \
-      --cluster-name $STAGING_CLUSTER \
-      --nodegroup-name $nodegroup \
-      --query 'nodegroup.status' --output text)
-    if [ "$status" == "ACTIVE" ]; then
-      break
-    fi
-    sleep 30
-  done
+  aws eks wait nodegroup-active \
+    --cluster-name $STAGING_CLUSTER \
+    --nodegroup-name $nodegroup
 done
 
 echo "Staging cluster upgrade complete"
@@ -219,10 +212,14 @@ echo "Testing API compatibility..."
 kubectl api-resources --context=$STAGING_CONTEXT > $TEST_RESULTS_DIR/api-resources.txt
 
 # Check for deprecated APIs
-kubectl get all --all-namespaces --context=$STAGING_CONTEXT \
-  -o json | jq -r '.items[] | select(.apiVersion |
-  contains("v1beta1")) | [.kind, .metadata.name, .apiVersion] | @csv' \
-  > $TEST_RESULTS_DIR/deprecated-apis.csv
+: > $TEST_RESULTS_DIR/deprecated-apis.csv
+for resource in $(kubectl api-resources --context=$STAGING_CONTEXT \
+  --verbs=list --namespaced=true -o name); do
+  kubectl get "$resource" --all-namespaces --context=$STAGING_CONTEXT \
+    --ignore-not-found -o json 2>/dev/null | jq -r '.items[]? | select(.apiVersion |
+    contains("v1beta1")) | [.kind, .metadata.namespace, .metadata.name, .apiVersion] | @csv' \
+    >> $TEST_RESULTS_DIR/deprecated-apis.csv
+done
 
 # Test 2: Pod health checks
 echo "Checking pod health..."
@@ -245,7 +242,7 @@ metadata:
 spec:
   containers:
   - name: test
-    image: curlimages/curl:latest
+    image: nicolaka/netshoot:latest
     command: ['sleep', '3600']
   restartPolicy: Never
 EOF
@@ -259,8 +256,10 @@ kubectl exec connectivity-test --context=$STAGING_CONTEXT -n default -- \
   curl -s kubernetes.default.svc.cluster.local:443 -k > /dev/null
 
 if [ $? -eq 0 ]; then
+  service_connectivity="PASS"
   echo "Service connectivity: PASS"
 else
+  service_connectivity="FAIL"
   echo "Service connectivity: FAIL"
 fi
 
@@ -268,6 +267,11 @@ fi
 echo "Testing DNS resolution..."
 kubectl exec connectivity-test --context=$STAGING_CONTEXT -n default -- \
   nslookup kubernetes.default.svc.cluster.local > $TEST_RESULTS_DIR/dns-test.txt
+if [ $? -eq 0 ]; then
+  dns_resolution="PASS"
+else
+  dns_resolution="FAIL"
+fi
 
 # Test 5: Storage provisioning
 echo "Testing storage provisioning..."
@@ -291,8 +295,10 @@ pvc_status=$(kubectl get pvc test-pvc --context=$STAGING_CONTEXT -n default \
   -o jsonpath='{.status.phase}')
 
 if [ "$pvc_status" == "Bound" ]; then
+  storage_provisioning="PASS"
   echo "Storage provisioning: PASS"
 else
+  storage_provisioning="FAIL"
   echo "Storage provisioning: FAIL (Status: $pvc_status)"
 fi
 
@@ -307,7 +313,7 @@ echo "Running application integration tests..."
 # Test 7: Performance benchmarks
 echo "Running performance benchmarks..."
 kubectl run performance-test --context=$STAGING_CONTEXT \
-  --image=williamyeh/hey --rm -it --restart=Never -- \
+  --image=williamyeh/hey --rm --restart=Never -- \
   -n 1000 -c 10 http://myapp.default.svc.cluster.local/api/health \
   > $TEST_RESULTS_DIR/performance-test.log
 
@@ -320,9 +326,9 @@ Cluster: $STAGING_CONTEXT
 
 ## Summary
 - Unhealthy Pods: $unhealthy_count
-- Service Connectivity: $([ $? -eq 0 ] && echo "PASS" || echo "FAIL")
-- DNS Resolution: PASS
-- Storage Provisioning: $pvc_status
+- Service Connectivity: $service_connectivity
+- DNS Resolution: $dns_resolution
+- Storage Provisioning: $storage_provisioning ($pvc_status)
 
 ## Deprecated APIs Found
 See deprecated-apis.csv for details.
@@ -406,8 +412,13 @@ STAGING_CONTEXT="staging"
 echo "Running chaos tests on staging cluster..."
 
 # Install chaos-mesh if not present
-kubectl apply -f https://mirrors.chaos-mesh.org/latest/chaos-mesh.yaml \
-  --context=$STAGING_CONTEXT
+helm repo add chaos-mesh https://charts.chaos-mesh.org
+helm repo update chaos-mesh
+kubectl create namespace chaos-mesh --context=$STAGING_CONTEXT \
+  --dry-run=client -o yaml | kubectl apply --context=$STAGING_CONTEXT -f -
+helm upgrade --install chaos-mesh chaos-mesh/chaos-mesh \
+  --namespace chaos-mesh \
+  --kube-context $STAGING_CONTEXT
 
 # Test 1: Pod failure chaos
 cat > pod-failure-chaos.yaml << 'EOF'
@@ -461,8 +472,8 @@ kubectl apply -f network-latency-chaos.yaml --context=$STAGING_CONTEXT
 sleep 65
 
 # Cleanup chaos experiments
-kubectl delete podchaos pod-failure-test --context=$STAGING_CONTEXT
-kubectl delete networkchaos network-latency-test --context=$STAGING_CONTEXT
+kubectl delete podchaos pod-failure-test --context=$STAGING_CONTEXT -n default
+kubectl delete networkchaos network-latency-test --context=$STAGING_CONTEXT -n default
 
 echo "Chaos testing complete"
 ```
@@ -482,8 +493,8 @@ cat > $REPORT_FILE << EOF
 
 ## Upgrade Details
 - Date: $(date)
-- Source Version: 1.28
-- Target Version: 1.29
+- Source Version: 1.33
+- Target Version: 1.34
 - Cluster: staging
 - Upgraded By: $(whoami)
 
