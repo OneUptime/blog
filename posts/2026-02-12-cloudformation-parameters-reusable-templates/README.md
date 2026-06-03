@@ -134,7 +134,7 @@ Parameters:
     Description: Route53 hosted zone
 ```
 
-When you deploy through the Console, these render as dropdown menus populated with actual resources from your account. That alone saves a ton of typing errors.
+When you deploy through the Console, many of these render as dropdown menus populated with actual resources from your account. That alone saves a ton of typing errors.
 
 **SSM Parameter Types** let you reference values stored in AWS Systems Manager Parameter Store:
 
@@ -305,7 +305,7 @@ aws cloudformation create-stack \
 
 **Validate aggressively.** Use `AllowedValues`, `AllowedPattern`, `MinLength`, and `MinValue` to catch bad inputs before they cause deployment failures.
 
-**Use AWS-specific types when possible.** They provide automatic validation and nice dropdown menus in the Console.
+**Use AWS-specific types when possible.** They provide automatic validation, and many of them provide nice dropdown menus in the Console.
 
 **Keep the parameter count manageable.** If your template has 30 parameters, it's probably doing too much. Split it into [nested stacks](https://oneuptime.com/blog/post/2026-02-12-cloudformation-nested-stacks/view) instead.
 
