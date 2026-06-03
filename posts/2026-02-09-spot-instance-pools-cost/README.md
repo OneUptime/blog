@@ -12,7 +12,7 @@ Spot instances offer significant cost savings over on-demand instances - typical
 
 ## Understanding Spot Instance Mechanics
 
-Spot instances work on market-based pricing. When cloud capacity becomes scarce, the provider sends termination notices and reclaims instances. On AWS, you get a 2-minute warning. On Azure and GCP, the warning period varies from 30 seconds to 2 minutes.
+Spot instances work on market-based pricing. When cloud capacity becomes scarce, the provider sends termination notices and reclaims instances. On AWS, you get a 2-minute warning. On Azure, Spot VMs get 30 seconds of notice. On GKE Spot VM node pools, the VM shuts down 30 seconds after the preemption notice.
 
 The key to using spots successfully is treating them as ephemeral. Assume any spot instance can disappear at any moment. Design your architecture accordingly with automatic recovery and multi-instance redundancy.
 
@@ -96,7 +96,13 @@ metadata:
   name: web-frontend
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: web-frontend
   template:
+    metadata:
+      labels:
+        app: web-frontend
     spec:
       tolerations:
       - key: spot-instance
@@ -139,7 +145,6 @@ managedNodeGroups:
   desiredCapacity: 5
   labels:
     node-lifecycle: on-demand
----
 # Spot node pool - cost-optimized burst capacity
 - name: spot-burst
   instanceTypes:
@@ -167,7 +172,13 @@ metadata:
   name: api-service
 spec:
   replicas: 15
+  selector:
+    matchLabels:
+      app: api-service
   template:
+    metadata:
+      labels:
+        app: api-service
     spec:
       affinity:
         nodeAffinity:
@@ -196,7 +207,7 @@ The preferred affinity schedules pods on spot nodes when available. If spot capa
 
 ## Handling Spot Instance Interruptions
 
-Deploy node termination handlers to gracefully drain nodes before interruption. AWS Node Termination Handler is the standard for EKS:
+Handle termination notices so nodes can drain before interruption. EKS managed node groups drain Spot nodes automatically before AWS interrupts them. For self-managed EKS node groups, or to handle additional EC2 events, AWS Node Termination Handler is the standard option:
 
 ```bash
 helm repo add eks https://aws.github.io/eks-charts
@@ -208,11 +219,7 @@ helm install aws-node-termination-handler eks/aws-node-termination-handler \
 
 This DaemonSet monitors spot instance termination notices and cordons nodes immediately when notices arrive. It then drains pods gracefully, allowing them to reschedule elsewhere before the instance terminates.
 
-For GKE, use the similar node-problem-detector:
-
-```bash
-kubectl apply -f https://k8s.io/examples/admin/node-problem-detector/npd.yaml
-```
+For GKE Spot VM node pools, GKE receives the Compute Engine termination notice and the kubelet gracefully terminates Pods on the node. The VM shuts down 30 seconds after the notice, and Pod `terminationGracePeriodSeconds` values above 15 seconds have no effect for Spot VM preemption.
 
 Monitor termination events:
 
@@ -238,7 +245,7 @@ spec:
       app: web-frontend
 ```
 
-This prevents draining nodes if it would leave fewer than 5 web-frontend pods running. Combined with spot node draining, PDBs guarantee availability during interruptions.
+This prevents voluntary evictions from draining nodes if it would leave fewer than 5 web-frontend pods running. Combined with spot node draining, PDBs reduce disruption risk during interruptions, but they do not guarantee availability for all involuntary node failures or provider-enforced termination deadlines.
 
 Set minAvailable based on your minimum capacity requirements, not total replicas. For 10 replicas needing 5 for adequate service, set minAvailable: 5.
 
@@ -273,18 +280,15 @@ Avoid over-diversifying into wildly different instance families. Keep CPU-to-mem
 Track spot vs on-demand costs:
 
 ```promql
-# Cost per node type
-sum by (lifecycle) (
-  node_labels{label_node_lifecycle=~"spot|on-demand"} *
-  on(instance) group_left
-  node_cost_hourly
-)
+# Spot node hourly cost
+sum(node_total_hourly_cost * on(node) group_left() kubecost_node_is_spot)
 
-# Savings from spot usage
-(
-  sum(node_cost_hourly{lifecycle="on-demand"}) -
-  sum(node_cost_hourly{lifecycle="spot"})
-) / sum(node_cost_hourly{lifecycle="on-demand"}) * 100
+# On-demand node hourly cost
+sum(node_total_hourly_cost * on(node) group_left() (1 - kubecost_node_is_spot))
+
+# Spot share of node hourly cost
+sum(node_total_hourly_cost * on(node) group_left() kubecost_node_is_spot) /
+sum(node_total_hourly_cost) * 100
 ```
 
 Monitor interruption frequency:
@@ -294,8 +298,8 @@ Monitor interruption frequency:
 increase(spot_interruptions_total[24h])
 
 # Interruption rate percentage
-rate(spot_interruptions_total[24h]) /
-count(kube_node_labels{label_node_lifecycle="spot"})
+increase(spot_interruptions_total[24h]) /
+count(kube_node_labels{label_node_lifecycle="spot"}) * 100
 ```
 
 High interruption rates (>20% daily) suggest poor instance type selection or availability zone issues.
@@ -326,7 +330,7 @@ Start with non-critical workloads. Move development and staging environments to 
 
 Maintain at least 3-5 replicas for any service on spots. Single or dual-replica services risk availability during interruptions.
 
-Set aggressive pod resource requests for spot workloads. This ensures quick rescheduling when nodes terminate - the scheduler can place pods immediately rather than waiting for resource availability.
+Set accurate pod resource requests for spot workloads. This helps the scheduler place pods quickly when nodes terminate, without overcommitting replacement capacity.
 
 Never run singleton workloads on spots. Databases, message brokers, and other stateful singletons belong on on-demand or reserved instances.
 
