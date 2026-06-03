@@ -190,21 +190,10 @@ Key policy for secrets:
       "Action": [
         "kms:Decrypt",
         "kms:Encrypt",
-        "kms:GenerateDataKey"
+        "kms:GenerateDataKey*",
+        "kms:DescribeKey"
       ],
       "Resource": "*"
-    },
-    {
-      "Sid": "Require encryption context",
-      "Effect": "Deny",
-      "Principal": "*",
-      "Action": "kms:Decrypt",
-      "Resource": "*",
-      "Condition": {
-        "Null": {
-          "kms:EncryptionContext:velero-backup": "true"
-        }
-      }
     }
   ]
 }
@@ -219,7 +208,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: post-restore-secret-rotation
-  namespace: velero
+  namespace: production
 data:
   rotate-secrets.sh: |
     #!/bin/bash
@@ -240,7 +229,7 @@ data:
       done
 ```
 
-Use as a restore hook:
+Use as a restore hook. Velero exec restore hooks run inside containers in restored Pods, so this example assumes the matching Pods have a `tools` container with `kubectl`, `jq`, `curl`, and the script mounted at `/scripts/rotate-secrets.sh`:
 
 ```yaml
 apiVersion: velero.io/v1
@@ -253,11 +242,16 @@ spec:
   hooks:
     resources:
     - name: rotate-secrets
+      includedResources:
+      - pods
       includedNamespaces:
       - production
+      labelSelector:
+        matchLabels:
+          rotate-secrets: "true"
       postHooks:
       - exec:
-          container: kubectl
+          container: tools
           command:
           - /scripts/rotate-secrets.sh
           - production
@@ -275,8 +269,7 @@ kubectl get secrets -n production -o jsonpath='{.items[*].metadata.name}' > exis
 velero restore create selective-secrets \
   --from-backup production-backup \
   --include-resources secrets \
-  --include-namespaces production \
-  --existing-resource-policy update
+  --include-namespaces production
 ```
 
 Or use a script for more control:
@@ -287,25 +280,21 @@ Or use a script for more control:
 
 BACKUP_NAME=$1
 TARGET_NAMESPACE=$2
+SECRET_NAME=$3
 
-# Get secrets from backup
-velero backup describe $BACKUP_NAME --details | \
-  grep "secrets" | \
-  awk '{print $1}' | \
-  while read secret; do
-    # Check if secret exists
-    if ! kubectl get secret $secret -n $TARGET_NAMESPACE &>/dev/null; then
-      echo "Restoring secret: $secret"
+# Velero selectors match labels, not metadata.name.
+# This assumes the secret was backed up with label restore-name=<secret-name>.
+if ! kubectl get secret "$SECRET_NAME" -n "$TARGET_NAMESPACE" &>/dev/null; then
+  echo "Restoring secret: $SECRET_NAME"
 
-      # Restore only this secret
-      velero restore create restore-$secret-$(date +%s) \
-        --from-backup $BACKUP_NAME \
-        --include-resources secrets \
-        --selector metadata.name=$secret
-    else
-      echo "Skipping existing secret: $secret"
-    fi
-  done
+  velero restore create "restore-$SECRET_NAME-$(date +%s)" \
+    --from-backup "$BACKUP_NAME" \
+    --include-resources secrets \
+    --include-namespaces "$TARGET_NAMESPACE" \
+    --selector "restore-name=$SECRET_NAME"
+else
+  echo "Skipping existing secret: $SECRET_NAME"
+fi
 ```
 
 ## Auditing Secrets Access in Backups
@@ -334,26 +323,24 @@ aws cloudtrail put-event-selectors \
 aws cloudtrail start-logging --name velero-secrets-audit
 ```
 
-Create CloudWatch alarms for suspicious access:
+If you forward CloudTrail events to CloudWatch Logs and create a metric filter named `UnauthorizedAPICallsCount`, create a CloudWatch alarm for suspicious access:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: secrets-access-alarm
-data:
-  alarm.json: |
-    {
-      "AlarmName": "velero-secrets-unauthorized-access",
-      "MetricName": "UnauthorizedAPICallsCount",
-      "Namespace": "CloudTrail",
-      "Statistic": "Sum",
-      "Period": 300,
-      "EvaluationPeriods": 1,
-      "Threshold": 1,
-      "ComparisonOperator": "GreaterThanThreshold",
-      "AlarmActions": ["arn:aws:sns:us-east-1:ACCOUNT_ID:security-alerts"]
-    }
+```json
+{
+  "AlarmName": "velero-secrets-unauthorized-access",
+  "MetricName": "UnauthorizedAPICallsCount",
+  "Namespace": "CloudTrail",
+  "Statistic": "Sum",
+  "Period": 300,
+  "EvaluationPeriods": 1,
+  "Threshold": 1,
+  "ComparisonOperator": "GreaterThanThreshold",
+  "AlarmActions": ["arn:aws:sns:us-east-1:ACCOUNT_ID:security-alerts"]
+}
+```
+
+```bash
+aws cloudwatch put-metric-alarm --cli-input-json file://alarm.json
 ```
 
 ## Using External Secrets Operators
@@ -362,7 +349,7 @@ Integrate with external secret managers instead of backing up secrets directly:
 
 ```yaml
 # External Secrets Operator configuration
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager
@@ -377,7 +364,7 @@ spec:
           serviceAccountRef:
             name: external-secrets
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-password
