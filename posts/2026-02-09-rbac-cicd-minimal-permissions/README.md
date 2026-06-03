@@ -41,7 +41,7 @@ rules:
 # Manage deployments
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
 
 # Read replica sets (created by deployments)
 - apiGroups: ["apps"]
@@ -68,13 +68,9 @@ rules:
   resources: ["configmaps"]
   verbs: ["get", "list", "create", "update", "patch"]
 
-# Read secrets (deployment may reference them)
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get", "list"]
-
 # Explicitly no delete permissions
 # Explicitly no RBAC permissions
+# Explicitly no secret read permissions
 # Explicitly no namespace or cluster-level resources
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -159,7 +155,7 @@ rules:
 # Create and update (no delete)
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets"]
-  verbs: ["get", "list", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
 
 - apiGroups: [""]
   resources: ["services", "configmaps"]
@@ -167,11 +163,6 @@ rules:
 
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["get", "list"]
-
-# Read-only secrets
-- apiGroups: [""]
-  resources: ["secrets"]
   verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -257,7 +248,7 @@ rules:
 # Workload resources
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets", "daemonsets"]
-  verbs: ["get", "list", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
 
 - apiGroups: [""]
   resources: ["services", "configmaps", "persistentvolumeclaims"]
@@ -387,7 +378,7 @@ rules:
 # Deploy applications
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
 
 - apiGroups: [""]
   resources: ["services", "configmaps"]
@@ -397,11 +388,6 @@ rules:
 - apiGroups: [""]
   resources: ["pods", "pods/status"]
   verbs: ["get", "list"]
-
-# Read secrets (referenced in deployments)
-- apiGroups: [""]
-  resources: ["secrets"]
-  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -434,22 +420,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Configure kubectl
+        env:
+          KUBE_CA_B64: ${{ secrets.KUBE_CA_B64 }}
+          KUBE_SERVER: ${{ secrets.KUBE_SERVER }}
+          KUBE_TOKEN: ${{ secrets.KUBE_TOKEN }}
         run: |
-          echo "${{ secrets.KUBE_TOKEN }}" | base64 -d > /tmp/token
+          printf '%s' "$KUBE_CA_B64" | base64 -d > ca.crt
+
           kubectl config set-cluster production \
-            --server=${{ secrets.KUBE_SERVER }} \
-            --insecure-skip-tls-verify=true
+            --server="$KUBE_SERVER" \
+            --certificate-authority=ca.crt
 
           kubectl config set-credentials github-actions \
-            --token=$(cat /tmp/token)
+            --token="$KUBE_TOKEN"
 
           kubectl config set-context production \
             --cluster=production \
             --user=github-actions \
             --namespace=production
+
+          kubectl config use-context production
 
       - name: Deploy
         run: |
@@ -509,7 +502,6 @@ gh secret set KUBE_TOKEN --body "$NEW_TOKEN"
 
 # Delete old token after verification
 kubectl delete secret cicd-deployer-token -n production
-kubectl delete secret cicd-deployer-token-new -n production
 ```
 
 ## Testing CI/CD Permissions
@@ -532,10 +524,10 @@ kubectl auth can-i create role -n production \
   --as=system:serviceaccount:production:cicd-deployer
 # no
 
-# Test secret access
+# Test secret access (should be no unless explicitly granted)
 kubectl auth can-i get secrets -n production \
   --as=system:serviceaccount:production:cicd-deployer
-# yes
+# no
 ```
 
 CI/CD service accounts need minimal permissions to deploy applications safely. Grant create and update permissions for deployments, services, and configuration, but deny delete operations and RBAC modifications. Use different service accounts with different permission levels for development, staging, and production environments. Audit CI/CD operations regularly and rotate credentials to maintain security.
