@@ -76,7 +76,7 @@ pip config set global.index-url "https://aws:${AUTH_TOKEN}@${REPO_URL#https://}s
 
 ## Using pip.conf
 
-For a persistent configuration, create a `pip.conf` file. On Linux/macOS it goes in `~/.config/pip/pip.conf`, on Windows it's `%APPDATA%\pip\pip.ini`:
+For a persistent configuration, create a `pip.conf` file. On Linux it goes in `~/.config/pip/pip.conf`; on macOS it goes in `~/Library/Application Support/pip/pip.conf` if that directory exists, otherwise `~/.config/pip/pip.conf`; on Windows it's `%APPDATA%\pip\pip.ini`:
 
 ```ini
 # pip.conf - Configure pip to use CodeArtifact
@@ -198,7 +198,7 @@ Or with `pyproject.toml`:
 # pyproject.toml - Modern Python package configuration
 [build-system]
 requires = ["setuptools>=65.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "myorg-shared-utils"
@@ -272,14 +272,13 @@ Here's a buildspec for Python projects using CodeArtifact:
 version: 0.2
 
 phases:
+  install:
+    runtime-versions:
+      python: 3.11
   pre_build:
     commands:
       # Configure pip to use CodeArtifact
       - aws codeartifact login --tool pip --repository my-packages --domain my-org --domain-owner 123456789012
-  install:
-    runtime-versions:
-      python: 3.11
-    commands:
       # Install dependencies from CodeArtifact
       - pip install -r requirements.txt
   build:
@@ -305,16 +304,15 @@ For publishing from CI:
 version: 0.2
 
 phases:
-  pre_build:
-    commands:
-      - aws codeartifact login --tool pip --repository my-packages --domain my-org --domain-owner 123456789012
-      - aws codeartifact login --tool twine --repository my-packages --domain my-org --domain-owner 123456789012
   install:
     runtime-versions:
       python: 3.11
+  pre_build:
     commands:
+      - aws codeartifact login --tool pip --repository my-packages --domain my-org --domain-owner 123456789012
       - pip install build twine pytest
       - pip install -r requirements.txt
+      - aws codeartifact login --tool twine --repository my-packages --domain my-org --domain-owner 123456789012
   build:
     commands:
       - pytest tests/ -v
@@ -328,14 +326,14 @@ phases:
 
 ## Virtual Environments
 
-When using virtual environments with CodeArtifact, configure pip inside the venv:
+When using virtual environments with CodeArtifact, activate the venv before installing packages. The `aws codeartifact login --tool pip` command configures pip's user config, which the venv's pip will read:
 
 ```bash
 # Create a virtual environment
 python -m venv .venv
 source .venv/bin/activate
 
-# Configure pip inside the venv
+# Configure pip for CodeArtifact
 aws codeartifact login \
   --tool pip \
   --repository my-packages \
