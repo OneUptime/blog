@@ -34,17 +34,13 @@ Benefits of cloning:
 Verify your CSI driver supports cloning:
 
 ```bash
-# Check CSI driver capabilities
+# Check which CSI provisioner your StorageClass uses
+kubectl get storageclass cloneable-storage -o jsonpath='{.provisioner}{"\n"}'
 
-kubectl get csidriver
-
-# For AWS EBS
-kubectl get csidriver ebs.csi.aws.com -o yaml | grep -A 5 volumeLifecycleModes
-
-# Should include: "Persistent"
+# Then verify in that CSI driver's documentation that volume cloning is supported.
 ```
 
-Ensure you have a StorageClass that supports cloning:
+Ensure you have a StorageClass for a CSI driver that supports cloning:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -56,7 +52,7 @@ parameters:
   type: gp3
   encrypted: "true"
 allowVolumeExpansion: true
-volumeBindingMode: WaitForFirstConsumer
+volumeBindingMode: Immediate
 ```
 
 ## Creating Your First Volume Clone
@@ -109,10 +105,10 @@ kubectl apply -f source-pvc.yaml
 kubectl apply -f source-database.yaml
 
 # Wait for pod to be ready
-kubectl wait --for=condition=ready pod source-database --timeout=120s
+kubectl wait --for=condition=Ready pod/source-database --timeout=120s
 
 # Create test data
-kubectl exec source-database -- psql -U postgres -c "
+kubectl exec -i source-database -- psql -U postgres <<'SQL'
 CREATE DATABASE testdb;
 \c testdb
 CREATE TABLE users (id SERIAL PRIMARY KEY, name VARCHAR(100), email VARCHAR(100));
@@ -120,10 +116,13 @@ INSERT INTO users (name, email) VALUES
   ('Alice', 'alice@example.com'),
   ('Bob', 'bob@example.com'),
   ('Charlie', 'charlie@example.com');
-"
+SQL
 
 # Verify data
 kubectl exec source-database -- psql -U postgres -d testdb -c "SELECT * FROM users;"
+
+# Stop writes before cloning the PVC
+kubectl delete pod/source-database --wait=true
 ```
 
 Now clone the volume:
@@ -186,7 +185,7 @@ Deploy and verify:
 
 ```bash
 kubectl apply -f cloned-database.yaml
-kubectl wait --for=condition=ready pod cloned-database --timeout=120s
+kubectl wait --for=condition=Ready pod/cloned-database --timeout=120s
 
 # Verify data was cloned
 kubectl exec cloned-database -- psql -U postgres -d testdb -c "SELECT * FROM users;"
@@ -370,11 +369,44 @@ spec:
     persistentVolumeClaimName: source-database-pvc
 EOF
 
-# Step 2: Get the VolumeSnapshotContent name
+# Step 2: Wait for the snapshot and get the backend snapshot handle
+kubectl wait --for=jsonpath='{.status.readyToUse}'=true \
+  volumesnapshot/cross-ns-snapshot -n production --timeout=600s
+
 SNAPSHOT_CONTENT=$(kubectl get volumesnapshot cross-ns-snapshot -n production \
   -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+SNAPSHOT_HANDLE=$(kubectl get volumesnapshotcontent "$SNAPSHOT_CONTENT" \
+  -o jsonpath='{.status.snapshotHandle}')
+SNAPSHOT_DRIVER=$(kubectl get volumesnapshotcontent "$SNAPSHOT_CONTENT" \
+  -o jsonpath='{.spec.driver}')
 
-# Step 3: Create PVC in different namespace using VolumeSnapshotContent
+# Step 3: Pre-provision a VolumeSnapshot in the target namespace
+kubectl apply -f - <<EOF
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotContent
+metadata:
+  name: cross-ns-snapshot-dev-content
+spec:
+  deletionPolicy: Retain
+  driver: $SNAPSHOT_DRIVER
+  source:
+    snapshotHandle: $SNAPSHOT_HANDLE
+  sourceVolumeMode: Filesystem
+  volumeSnapshotRef:
+    name: cross-ns-snapshot
+    namespace: development
+---
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshot
+metadata:
+  name: cross-ns-snapshot
+  namespace: development
+spec:
+  source:
+    volumeSnapshotContentName: cross-ns-snapshot-dev-content
+EOF
+
+# Step 4: Create PVC in different namespace using the target namespace VolumeSnapshot
 kubectl apply -n development -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -388,9 +420,9 @@ spec:
     requests:
       storage: 20Gi
   dataSource:
-    kind: VolumeSnapshotContent
+    kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
-    name: $SNAPSHOT_CONTENT
+    name: cross-ns-snapshot
 EOF
 ```
 
@@ -470,9 +502,9 @@ SOURCE_SIZE=$(kubectl get pvc source-database-pvc -o jsonpath='{.spec.resources.
 echo "Source size: $SOURCE_SIZE"
 
 # 3. CSI driver doesn't support cloning
-kubectl get csidriver -o yaml | grep -A 10 volumeLifecycleModes
+kubectl get storageclass cloneable-storage -o jsonpath='{.provisioner}{"\n"}'
 
-# If cloning not supported, use snapshot-restore instead
+# Check that provisioner's documentation. If cloning is not supported, use snapshot-restore instead.
 ```
 
 ## Best Practices
