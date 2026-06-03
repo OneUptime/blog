@@ -18,13 +18,13 @@ Lambda can poll MSK topics directly using an event source mapping. This is the e
 
 ### VPC Configuration
 
-Since MSK runs in a VPC, your Lambda function needs VPC access. Create the Lambda function in the same VPC as your MSK cluster.
+Since MSK runs in a VPC, the event source mapping connects to the cluster through VPC networking. The Lambda function itself does not need VPC configuration just to be triggered by MSK, but a producer Lambda that opens its own Kafka connection must run in a VPC that can reach the MSK brokers.
 
-This configures a Lambda function with VPC access to reach the MSK brokers.
+This configures a producer Lambda function with VPC access to reach the MSK brokers.
 
 ```bash
 aws lambda create-function \
-  --function-name msk-consumer \
+  --function-name msk-producer \
   --runtime python3.12 \
   --handler lambda_function.handler \
   --role arn:aws:iam::123456789:role/LambdaMSKRole \
@@ -44,16 +44,26 @@ The Lambda security group needs outbound access to the MSK broker ports. The MSK
 
 aws ec2 authorize-security-group-egress \
   --group-id sg-lambda-msk \
-  --protocol tcp \
-  --port 9098 \
-  --destination-group sg-kafka-brokers
+  --ip-permissions '[
+    {
+      "IpProtocol": "tcp",
+      "FromPort": 9098,
+      "ToPort": 9098,
+      "UserIdGroupPairs": [{"GroupId": "sg-kafka-brokers"}]
+    }
+  ]'
 
 # Allow MSK to accept connections from Lambda
 aws ec2 authorize-security-group-ingress \
   --group-id sg-kafka-brokers \
-  --protocol tcp \
-  --port 9098 \
-  --source-group sg-lambda-msk
+  --ip-permissions '[
+    {
+      "IpProtocol": "tcp",
+      "FromPort": 9098,
+      "ToPort": 9098,
+      "UserIdGroupPairs": [{"GroupId": "sg-lambda-msk"}]
+    }
+  ]'
 ```
 
 ### Creating the Event Source Mapping
@@ -73,7 +83,7 @@ aws lambda create-event-source-mapping \
   ]'
 ```
 
-For IAM authentication (recommended), use this instead:
+For IAM authentication (recommended), omit `--source-access-configurations` and make sure the Lambda execution role has the required `kafka-cluster` permissions:
 
 ```bash
 aws lambda create-event-source-mapping \
@@ -82,10 +92,7 @@ aws lambda create-event-source-mapping \
   --topics user-events \
   --starting-position LATEST \
   --batch-size 100 \
-  --maximum-batching-window-in-seconds 5 \
-  --source-access-configurations '[
-    {"Type": "CLIENT_CERTIFICATE_TLS_AUTH", "URI": "arn:aws:secretsmanager:us-east-1:123456789:secret:msk-client-cert"}
-  ]'
+  --maximum-batching-window-in-seconds 5
 ```
 
 ### The Lambda Handler
@@ -103,8 +110,8 @@ def handler(event, context):
 
     # Event contains records grouped by topic-partition
     for topic_partition, records in event['records'].items():
-        topic = topic_partition.rsplit('-', 1)[0]
-        partition = topic_partition.rsplit('-', 1)[1]
+        topic = records[0]['topic'] if records else topic_partition.rsplit('-', 1)[0]
+        partition = records[0]['partition'] if records else topic_partition.rsplit('-', 1)[1]
 
         print(f"Processing {len(records)} records from {topic}:{partition}")
 
@@ -118,10 +125,10 @@ def handler(event, context):
                 offset = record['offset']
                 timestamp = record['timestamp']
                 key = base64.b64decode(record['key']).decode('utf-8') if record.get('key') else None
-                headers = {
-                    h['key']: base64.b64decode(h['value']).decode('utf-8')
-                    for h in record.get('headers', [])
-                }
+                headers = {}
+                for header in record.get('headers', []):
+                    for name, values in header.items():
+                        headers[name] = bytes(values).decode('utf-8')
 
                 # Process the record
                 process_event(data, key, headers)
@@ -129,7 +136,10 @@ def handler(event, context):
             except Exception as e:
                 print(f"Error processing record at offset {record['offset']}: {e}")
                 batch_failures.append({
-                    "itemIdentifier": record['offset']
+                    "itemIdentifier": {
+                        "partition": f"{record['topic']}-{record['partition']}",
+                        "offset": int(record['offset'])
+                    }
                 })
 
     # Report individual failures for retry
@@ -164,12 +174,13 @@ This Lambda function produces messages to MSK using IAM authentication.
 import json
 import os
 from kafka import KafkaProducer
+from kafka.sasl.oauth import AbstractTokenProvider
 from aws_msk_iam_sasl_signer import MSKAuthTokenProvider
 
 # Initialize the producer outside the handler for connection reuse
 producer = None
 
-class MSKTokenProvider:
+class MSKTokenProvider(AbstractTokenProvider):
     def token(self):
         token, _ = MSKAuthTokenProvider.generate_auth_token(
             os.environ['AWS_REGION'],
@@ -320,7 +331,7 @@ This IAM policy covers MSK consumer access, VPC networking, and logging.
 
 ### Cold Starts
 
-Lambda cold starts with VPC access add 5-10 seconds of latency. For the producer pattern, this means the first request after a cold start will be slow. Mitigations:
+Lambda cold starts with VPC access and Kafka dependencies can add latency. For the producer pattern, this means the first request after a cold start can be slow. Mitigations:
 
 - Use provisioned concurrency for consistent latency
 - Keep the Kafka producer connection alive across invocations (initialize outside the handler)
@@ -330,18 +341,18 @@ Lambda cold starts with VPC access add 5-10 seconds of latency. For the producer
 # Set provisioned concurrency to avoid cold starts
 aws lambda put-provisioned-concurrency-config \
   --function-name msk-producer \
-  --qualifier $LATEST \
+  --qualifier live \
   --provisioned-concurrent-executions 5
 ```
 
 ### Consumer Scaling
 
-For the consumer pattern (event source mapping), Lambda scales based on the number of partitions. With a parallelization factor of 1 (default), you get one Lambda invocation per partition. Increase the parallelization factor for higher throughput.
+For the consumer pattern (event source mapping), Lambda scales event pollers based on workload and partition count. For predictable throughput, configure provisioned mode with minimum and maximum event pollers.
 
 ```bash
 aws lambda update-event-source-mapping \
   --uuid your-mapping-uuid \
-  --parallelization-factor 5
+  --provisioned-poller-config '{"MinimumPollers": 2, "MaximumPollers": 10}'
 ```
 
 ### Connection Limits
@@ -352,7 +363,7 @@ Each Lambda execution environment maintains its own Kafka connection. With high 
 
 Track these metrics for your Lambda-MSK integration:
 
-- **IteratorAge** on Lambda - How far behind the consumer is
+- **OffsetLag** on Lambda - How far behind the Kafka consumer is
 - **Duration** - Processing time per batch
 - **Errors** - Failed invocations
 - **ConnectionCount** on MSK - Total client connections
