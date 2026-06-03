@@ -10,11 +10,11 @@ Description: A deep dive into CloudWatch dashboard widget types, configuration o
 
 CloudWatch dashboards become truly powerful when you go beyond basic line charts and start using the full range of widget types and dashboard variables. Variables let you create a single dashboard that can switch between environments, regions, or services with a dropdown. Widgets let you present data in the format that makes the most sense - sometimes a number, sometimes a chart, sometimes a table of log entries.
 
-This post covers every widget type available, their configuration options, and how to set up dashboard variables for dynamic filtering.
+This post covers the main widget types and metric views available, their configuration options, and how to set up dashboard variables for dynamic filtering.
 
 ## Widget Types Overview
 
-CloudWatch supports these widget types as of early 2026:
+CloudWatch supports these dashboard widget types and metric views as of early 2026:
 
 - **Line** - time series line charts for trends
 - **Stacked area** - like line but filled, good for showing composition
@@ -22,6 +22,7 @@ CloudWatch supports these widget types as of early 2026:
 - **Gauge** - circular gauge with min/max range
 - **Bar** - horizontal or vertical bar charts
 - **Pie** - percentage-based breakdowns
+- **Metric table** - metric data in table form
 - **Text** - markdown content for headers and documentation
 - **Alarm status** - shows red/green/gray for alarm states
 - **Log table** - results of Logs Insights queries
@@ -29,7 +30,7 @@ CloudWatch supports these widget types as of early 2026:
 
 ## Configuring Line Chart Widgets
 
-Line charts are the workhorse of most dashboards. Here's a fully configured example showing all the options:
+Line charts are the workhorse of most dashboards. Here's a configured example showing common options:
 
 ```json
 {
@@ -92,13 +93,12 @@ Number widgets show a single large value, perfect for at-a-glance metrics:
     "title": "Active Users",
     "view": "singleValue",
     "region": "us-east-1",
-    "sparkline": true,
-    "trend": true
+    "sparkline": true
   }
 }
 ```
 
-The `sparkline: true` option adds a mini chart behind the number so you can see the recent trend. The `trend: true` option shows whether the value is going up or down compared to the previous period.
+The `sparkline: true` option adds a mini chart under the number so you can see the recent trend.
 
 ## Gauge Widgets
 
@@ -157,9 +157,9 @@ These give you a traffic-light view of your alarm states:
     ],
     "sortBy": "stateUpdatedTimestamp",
     "states": [
-      { "value": "ALARM", "label": "In Alarm" },
-      { "value": "OK", "label": "Healthy" },
-      { "value": "INSUFFICIENT_DATA", "label": "No Data" }
+      "ALARM",
+      "OK",
+      "INSUFFICIENT_DATA"
     ]
   }
 }
@@ -204,7 +204,7 @@ Embed Logs Insights query results directly in your dashboard:
 
 ## Dashboard Variables
 
-Variables are what transform a static dashboard into a dynamic, interactive one. You define variables that appear as dropdown menus at the top of the dashboard, and then reference them in widget definitions.
+Variables are what transform a static dashboard into a dynamic, interactive one. You define variables that appear as dropdown menus at the top of the dashboard, and CloudWatch applies them to matching properties, dimensions, or patterns in widget definitions.
 
 Here's how to set up a variable for environment selection:
 
@@ -249,9 +249,9 @@ Here's how to set up a variable for environment selection:
       "height": 6,
       "properties": {
         "metrics": [
-          ["MyApp/Metrics", "RequestCount", "Environment", "${env}", "ServiceName", "${service}"]
+          ["MyApp/Metrics", "RequestCount", "Environment", "prod", "ServiceName", "order-api"]
         ],
-        "title": "Request Count - ${service} (${env})",
+        "title": "Request Count",
         "view": "timeSeries"
       }
     }
@@ -259,26 +259,47 @@ Here's how to set up a variable for environment selection:
 }
 ```
 
-When someone opens this dashboard, they see dropdowns for Environment and Service at the top. Changing the selection immediately updates all widgets that reference those variables.
+When someone opens this dashboard, they see dropdowns for Environment and Service at the top. Changing the selection immediately updates matching `Environment` and `ServiceName` dimensions in the widgets.
 
 ## Dynamic Variables with Search Expressions
 
-For even more flexibility, use search expression-based widgets that automatically discover metrics:
+For even more flexibility, use search expression-based widgets that automatically discover metrics. If you need a dashboard variable inside a search expression string, use a pattern variable to replace the literal value:
 
 ```json
 {
-  "type": "metric",
-  "x": 0,
-  "y": 0,
-  "width": 24,
-  "height": 6,
-  "properties": {
-    "metrics": [
-      [{ "expression": "SEARCH('{MyApp/Production,ServiceName} MetricName=\"RequestCount\" Environment=\"${env}\"', 'Sum', 300)", "id": "e1" }]
-    ],
-    "title": "Request Count by Service",
-    "view": "timeSeries"
-  }
+  "variables": [
+    {
+      "type": "pattern",
+      "pattern": "prod",
+      "inputType": "select",
+      "id": "env",
+      "label": "Environment",
+      "defaultValue": "prod",
+      "visible": true,
+      "values": [
+        { "label": "Production", "value": "prod" },
+        { "label": "Staging", "value": "staging" },
+        { "label": "Development", "value": "dev" }
+      ]
+    }
+  ],
+  "widgets": [
+    {
+      "type": "metric",
+      "x": 0,
+      "y": 0,
+      "width": 24,
+      "height": 6,
+      "properties": {
+        "metrics": [
+          [{ "expression": "SEARCH('{MyApp/Metrics,ServiceName} MetricName=\"RequestCount\" Environment=\"prod\"', 'Sum', 300)", "id": "e1" }]
+        ],
+        "title": "Request Count by Service",
+        "view": "timeSeries",
+        "region": "us-east-1"
+      }
+    }
+  ]
 }
 ```
 
