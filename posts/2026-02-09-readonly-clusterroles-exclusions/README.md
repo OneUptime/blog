@@ -8,7 +8,7 @@ Description: Build custom read-only ClusterRoles with specific resource exclusio
 
 ---
 
-Read-only access enables users to view cluster resources without modification rights, but standard view roles grant access to everything. Custom ClusterRoles with resource exclusions provide visibility into operational resources while protecting sensitive data like secrets, config containing credentials, and security policies.
+Read-only access enables users to view cluster resources without modification rights, but standard view roles may grant access to more resources than a user needs. Custom ClusterRoles with resource omissions provide visibility into operational resources while protecting sensitive data like secrets, config containing credentials, and security policies.
 
 ## Understanding the Default View Role
 
@@ -45,9 +45,12 @@ rules:
   resources: ["deployments", "replicasets", "daemonsets", "statefulsets"]
   verbs: ["get", "list", "watch"]
 
-# Read services and endpoints
+# Read services and EndpointSlices
 - apiGroups: [""]
-  resources: ["services", "endpoints"]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get", "list", "watch"]
 
 # Read ingress
@@ -66,7 +69,7 @@ rules:
 
 ## Excluding Sensitive ConfigMaps
 
-Some ConfigMaps contain credentials or sensitive configuration. Grant access to most ConfigMaps while excluding specific ones.
+Some ConfigMaps contain credentials or sensitive configuration. RBAC does not support deny rules, so you cannot grant broad list/watch access to ConfigMaps while excluding specific names. Grant access only to non-sensitive named ConfigMaps, or omit ConfigMaps entirely.
 
 ```yaml
 # clusterrole-readonly-configmaps.yaml
@@ -75,12 +78,15 @@ kind: ClusterRole
 metadata:
   name: readonly-configmaps-filtered
 rules:
-# General configmap access
+# Named configmap access only
 - apiGroups: [""]
   resources: ["configmaps"]
-  verbs: ["get", "list", "watch"]
+  resourceNames:
+    - "app-config"
+    - "feature-flags"
+  verbs: ["get"]
 
-# Create a separate role for sensitive configmaps (not bound to users)
+# Create a separate role for sensitive configmaps only for users who need it
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
@@ -88,15 +94,14 @@ metadata:
   name: sensitive-configmap-access
   namespace: production
 rules:
-# Explicitly deny (by omission) access to these configmaps
-# Users won't have access unless specifically granted
+# Users won't have access to these unless this Role is specifically bound
 - apiGroups: [""]
   resources: ["configmaps"]
   resourceNames:
     - "database-config"
     - "api-keys"
     - "oauth-credentials"
-  verbs: []  # No verbs = no access
+  verbs: ["get"]
 ```
 
 ## Creating Resource-Specific Read Roles
@@ -156,9 +161,12 @@ metadata:
   labels:
     rbac.example.com/category: network
 rules:
-# Services and Endpoints
+# Services and EndpointSlices
 - apiGroups: [""]
-  resources: ["services", "services/status", "endpoints"]
+  resources: ["services", "services/status"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get", "list", "watch"]
 
 # Ingresses
@@ -253,7 +261,7 @@ rules:
 # - secrets (sensitive data)
 # - serviceaccounts (identity)
 # - certificatesigningrequests (PKI)
-# - podsecuritypolicies (security policies)
+# - pod security admission configuration (security policy enforcement)
 # - networkpolicies (network security)
 ```
 
@@ -268,21 +276,22 @@ kind: ClusterRole
 metadata:
   name: readonly-non-system
 rules:
-# Can read cluster-scoped resources
-- apiGroups: [""]
-  resources: ["namespaces", "nodes"]
-  verbs: ["get", "list"]
+# Can read apps resources
+- apiGroups: ["apps"]
+  resources: ["deployments"]
+  verbs: ["get", "list", "watch"]
 
-# Can read namespaced resources
-- apiGroups: ["apps", ""]
-  resources: ["deployments", "pods", "services"]
+# Can read core namespaced resources
+- apiGroups: [""]
+  resources: ["pods", "services"]
   verbs: ["get", "list", "watch"]
 ---
-# Use with RoleBinding to exclude system namespaces
+# Create RoleBindings only in the namespaces users should access
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: readonly-binding
+  namespace: application-team
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
@@ -293,7 +302,7 @@ subjects:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-Users can view resources but you can exclude system namespaces using additional RBAC rules or admission controllers.
+Namespaced permissions apply only in namespaces where you create a RoleBinding. Grant cluster-scoped resources separately if users also need to view them.
 
 ## Building Composite Read-Only Role
 
@@ -335,7 +344,10 @@ metadata:
     rbac.example.com/aggregate-to-readonly: "true"
 rules:
 - apiGroups: [""]
-  resources: ["services", "endpoints"]
+  resources: ["services"]
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["discovery.k8s.io"]
+  resources: ["endpointslices"]
   verbs: ["get", "list", "watch"]
 - apiGroups: ["networking.k8s.io"]
   resources: ["ingresses"]
