@@ -8,13 +8,13 @@ Description: Step-by-step guide to configuring AWS Direct Connect Gateway to pro
 
 ---
 
-AWS Direct Connect gives you a dedicated network connection between your data center and AWS. But what happens when you've got VPCs in multiple regions and you want on-premises access to all of them? Without a Direct Connect Gateway, you'd need separate Direct Connect connections in each region. That's expensive, complicated, and frankly unnecessary.
+AWS Direct Connect gives you a dedicated network connection between your data center and AWS. But what happens when you've got VPCs in multiple regions and you want on-premises access to all of them? Without a Direct Connect Gateway, you'd need separate private virtual interfaces or regional gateway attachments for each VPC. That's expensive, complicated, and frankly unnecessary.
 
-A Direct Connect Gateway acts as a global routing hub. You create one, associate it with virtual private gateways or transit gateways across regions, and your single physical Direct Connect connection can reach VPCs everywhere. Let's set it up.
+A Direct Connect Gateway acts as a globally available routing component. You create one, associate it with virtual private gateways or transit gateways across regions, and your single physical Direct Connect connection can reach VPCs everywhere. Let's set it up.
 
 ## How Direct Connect Gateway Works
 
-The architecture is layered. At the bottom, you've got your physical Direct Connect connection at an AWS Direct Connect location. On top of that, you create a virtual interface (VIF). The VIF connects to a Direct Connect Gateway, which in turn associates with virtual private gateways (VGWs) or transit gateways in your VPCs.
+The architecture is layered. At the bottom, you've got your physical Direct Connect connection at an AWS Direct Connect location. On top of that, you create a virtual interface (VIF). A private VIF connects to a Direct Connect Gateway for VGW associations, or a transit VIF connects to a Direct Connect Gateway for transit gateway associations.
 
 Here's the logical flow:
 
@@ -48,7 +48,7 @@ aws directconnect create-direct-connect-gateway \
 # Output will include the directConnectGatewayId - save this
 ```
 
-The ASN you choose needs to be in the private range (64512-65534) and shouldn't conflict with your on-premises ASN. If your on-premises routers use 65000, pick something else for the AWS side.
+The ASN you choose needs to be in the private ASN range (64512-65534) or private long ASN range (4200000000-4294967294), and shouldn't conflict with your on-premises ASN. If your on-premises routers use 65000, pick something else for the AWS side.
 
 ## Associating with Virtual Private Gateways
 
@@ -61,22 +61,22 @@ Associate a VGW with the Direct Connect Gateway:
 aws ec2 create-vpn-gateway --type ipsec.1 --amazon-side-asn 64513
 aws ec2 attach-vpn-gateway \
   --vpn-gateway-id vgw-0123456789abcdef0 \
-  --vpc-id vpc-prod001
+  --vpc-id vpc-0123456789abcdef0
 
 # Associate it with the Direct Connect Gateway
 aws directconnect create-direct-connect-gateway-association \
-  --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
+  --direct-connect-gateway-id 5f294f92-bafb-4011-916d-9b0bdexample \
   --gateway-id vgw-0123456789abcdef0 \
   --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.1.0.0/16"}]'
 
 # Repeat for VPCs in other regions
 aws directconnect create-direct-connect-gateway-association \
-  --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
+  --direct-connect-gateway-id 5f294f92-bafb-4011-916d-9b0bdexample \
   --gateway-id vgw-abcdef0123456789a \
   --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.2.0.0/16"}]'
 ```
 
-The `--add-allowed-prefixes` parameter is crucial. It controls which CIDR blocks are advertised to your on-premises network via BGP. If you don't set this, the VPC CIDR is used by default.
+The `--add-allowed-prefixes-to-direct-connect-gateway` parameter is crucial. For VGW associations, it acts as a filter for which associated VPC CIDRs can be advertised to your on-premises network via BGP. If you don't set this, the VPC CIDR is used by default.
 
 ## Using Transit Gateway Instead
 
@@ -96,7 +96,7 @@ aws directconnect create-transit-virtual-interface \
     "authKey": "your-bgp-auth-key",
     "amazonAddress": "169.254.100.1/30",
     "customerAddress": "169.254.100.2/30",
-    "directConnectGatewayId": "dx-gw-0123456789abcdef0",
+    "directConnectGatewayId": "5f294f92-bafb-4011-916d-9b0bdexample",
     "tags": [
       {"key": "Environment", "value": "Production"}
     ]
@@ -104,7 +104,7 @@ aws directconnect create-transit-virtual-interface \
 
 # Associate the Direct Connect Gateway with a transit gateway
 aws directconnect create-direct-connect-gateway-association \
-  --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
+  --direct-connect-gateway-id 5f294f92-bafb-4011-916d-9b0bdexample \
   --gateway-id tgw-0123456789abcdef0 \
   --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.0.0.0/8"}]'
 ```
@@ -123,8 +123,8 @@ Description: Direct Connect Gateway Multi-VPC Setup
 
 Parameters:
   AmazonSideAsn:
-    Type: Number
-    Default: 64512
+    Type: String
+    Default: '64512'
   TransitGatewayId:
     Type: String
 
@@ -132,21 +132,21 @@ Resources:
   DirectConnectGateway:
     Type: AWS::DirectConnect::DirectConnectGateway
     Properties:
-      Name: prod-dx-gateway
+      DirectConnectGatewayName: prod-dx-gateway
       AmazonSideAsn: !Ref AmazonSideAsn
 
   TGWAssociation:
     Type: AWS::DirectConnect::DirectConnectGatewayAssociation
     Properties:
-      DirectConnectGatewayId: !Ref DirectConnectGateway
-      GatewayId: !Ref TransitGatewayId
-      AllowedPrefixes:
-        - CIDR: "10.0.0.0/8"
-        - CIDR: "172.16.0.0/12"
+      DirectConnectGatewayId: !GetAtt DirectConnectGateway.DirectConnectGatewayId
+      AssociatedGatewayId: !Ref TransitGatewayId
+      AllowedPrefixesToDirectConnectGateway:
+        - "10.0.0.0/8"
+        - "172.16.0.0/12"
 
 Outputs:
   GatewayId:
-    Value: !Ref DirectConnectGateway
+    Value: !GetAtt DirectConnectGateway.DirectConnectGatewayId
     Description: Direct Connect Gateway ID
 ```
 
@@ -154,7 +154,7 @@ Outputs:
 
 When you associate VPCs with the Direct Connect Gateway, AWS propagates routes bidirectionally via BGP:
 
-- **AWS to On-Premises**: VPC CIDRs (or your allowed prefixes) are advertised to your on-premises router.
+- **AWS to On-Premises**: VPC CIDRs for VGW associations, or allowed prefixes for transit gateway associations, are advertised to your on-premises router.
 - **On-Premises to AWS**: Your on-premises prefixes are learned by the VPC route tables (if route propagation is enabled).
 
 Enable route propagation on your VPC route tables:
@@ -170,7 +170,7 @@ If you're using transit gateway, routes from Direct Connect are received in the 
 
 ## Allowed Prefix Filtering
 
-Allowed prefixes deserve special attention. They serve as a filter for what gets advertised over BGP. If your VPC CIDR is 10.1.0.0/16 but you set the allowed prefix to 10.0.0.0/8, then 10.0.0.0/8 is what your on-premises router sees. This is useful for summarization - instead of advertising 50 individual /16 prefixes, you advertise a single /8.
+Allowed prefixes deserve special attention. With VGW associations, they act as a filter: the allowed prefix must be the same as or wider than the VPC CIDR, and the VPC CIDR is what gets advertised. With transit gateway associations, AWS advertises the allowed prefixes themselves. If your VPC CIDRs sit inside 10.0.0.0/8 and you set the transit gateway association's allowed prefix to 10.0.0.0/8, then 10.0.0.0/8 is what your on-premises router sees. This is useful for summarization - instead of advertising 50 individual /16 prefixes, you advertise a single /8.
 
 However, be careful. If you summarize too aggressively, you might attract traffic destined for CIDRs that don't actually exist in your VPCs. Make sure your on-premises routing has appropriate specificity to avoid black-holing traffic.
 
@@ -183,15 +183,15 @@ Set up cross-account association:
 ```bash
 # From the VPC-owning account: send a proposal
 aws directconnect create-direct-connect-gateway-association-proposal \
-  --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
+  --direct-connect-gateway-id 5f294f92-bafb-4011-916d-9b0bdexample \
   --direct-connect-gateway-owner-account 111111111111 \
   --gateway-id vgw-0123456789abcdef0 \
   --add-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.5.0.0/16"}]'
 
 # From the gateway-owning account: accept the proposal
 aws directconnect accept-direct-connect-gateway-association-proposal \
-  --direct-connect-gateway-id dx-gw-0123456789abcdef0 \
-  --association-proposal-id proposal-abc123 \
+  --direct-connect-gateway-id 5f294f92-bafb-4011-916d-9b0bdexample \
+  --proposal-id cb7f41cb-8128-43a5-93b1-dcaedexample \
   --associated-gateway-owner-account 222222222222 \
   --override-allowed-prefixes-to-direct-connect-gateway '[{"cidr":"10.5.0.0/16"}]'
 ```
@@ -200,10 +200,10 @@ aws directconnect accept-direct-connect-gateway-association-proposal \
 
 Direct Connect Gateways have some limits worth noting:
 
-- Up to 20 VGW associations per gateway (can request an increase)
-- Up to 3 transit gateway associations per gateway
-- VPCs associated via the same Direct Connect Gateway can't communicate with each other through it - the gateway doesn't act as a transit point between VPCs
-- BGP session limits: 100 prefixes received from on-premises, 20 prefixes advertised to on-premises
+- Up to 20 VGW associations per gateway
+- Up to 6 transit gateway associations per gateway
+- VPCs associated via the same Direct Connect Gateway generally can't communicate with each other through it - the gateway doesn't act as a transit point between VPCs
+- BGP session limits on private or transit VIFs: 100 prefixes each for IPv4 and IPv6 from on-premises to AWS; for transit gateway associations, 200 combined IPv4 and IPv6 prefixes from AWS to on-premises per transit gateway
 
 That last point about VPC-to-VPC communication is important. If you need VPCs to talk to each other, use transit gateway peering or VPC peering separately. The Direct Connect Gateway only handles on-premises to VPC traffic.
 
