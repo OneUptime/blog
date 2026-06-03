@@ -19,7 +19,7 @@ You could write scripts that call `aws ec2 create-snapshot` on a schedule, but A
 - **Centralized management** - one dashboard for all your backups across services
 - **Compliance reporting** - prove that backups are happening as required
 - **Cross-region and cross-account copies** - built-in disaster recovery
-- **Lifecycle policies** - automatically transition old backups to cold storage
+- **Lifecycle policies** - automatically expire backups, and transition supported resource types to cold storage
 - **Tag-based resource selection** - no need to maintain lists of instance IDs
 - **Integration with AWS Organizations** - enforce backup policies across accounts
 
@@ -77,7 +77,6 @@ aws backup create-backup-plan --backup-plan '{
       "StartWindowMinutes": 60,
       "CompletionWindowMinutes": 360,
       "Lifecycle": {
-        "MoveToColdStorageAfterDays": 30,
         "DeleteAfterDays": 365
       }
     }
@@ -85,7 +84,7 @@ aws backup create-backup-plan --backup-plan '{
 }'
 ```
 
-This plan creates daily backups kept for 35 days and monthly backups that move to cold storage after 30 days and are deleted after a year.
+This plan creates daily backups kept for 35 days and monthly backups deleted after a year. AWS Backup cold storage lifecycle transitions are only available for supported resource types; EC2 instance backups are not currently listed as a cold-storage lifecycle resource type.
 
 The schedule uses cron expressions in UTC. `cron(0 5 ? * * *)` means "every day at 5:00 AM UTC."
 
@@ -178,6 +177,16 @@ aws backup update-backup-plan \
             }
           }
         ]
+      },
+      {
+        "RuleName": "MonthlyBackup",
+        "TargetBackupVaultName": "ec2-backups",
+        "ScheduleExpression": "cron(0 5 1 * ? *)",
+        "StartWindowMinutes": 60,
+        "CompletionWindowMinutes": 360,
+        "Lifecycle": {
+          "DeleteAfterDays": 365
+        }
       }
     ]
   }'
@@ -250,10 +259,35 @@ resource "aws_backup_plan" "ec2" {
     completion_window  = 360
 
     lifecycle {
-      cold_storage_after = 30
-      delete_after       = 365
+      delete_after = 365
     }
   }
+}
+
+data "aws_iam_policy_document" "backup_assume_role" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["backup.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "backup" {
+  name               = "AWSBackupRole"
+  assume_role_policy = data.aws_iam_policy_document.backup_assume_role.json
+}
+
+resource "aws_iam_role_policy_attachment" "backup" {
+  role       = aws_iam_role.backup.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForBackup"
+}
+
+resource "aws_iam_role_policy_attachment" "restore" {
+  role       = aws_iam_role.backup.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBackupServiceRolePolicyForRestores"
 }
 
 resource "aws_backup_selection" "ec2" {
@@ -308,21 +342,45 @@ aws events put-rule \
     "detail-type": ["Backup Job State Change"],
     "detail": {"state": ["FAILED"]}
   }'
+
+# Allow EventBridge to publish to the topic
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:backup-alerts \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {"Service": "events.amazonaws.com"},
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:backup-alerts",
+      "Condition": {
+        "ArnEquals": {
+          "aws:SourceArn": "arn:aws:events:us-east-1:123456789012:rule/backup-failure-alert"
+        }
+      }
+    }]
+  }'
+
+# Add the SNS topic as the rule target
+aws events put-targets \
+  --rule backup-failure-alert \
+  --targets "Id"="backup-alerts","Arn"="arn:aws:sns:us-east-1:123456789012:backup-alerts"
 ```
 
 ## Compliance and Reporting
 
 AWS Backup Audit Manager helps verify that your backup policies are being followed.
 
-Create a backup audit framework:
+Create a backup report plan:
 
 ```bash
-# List available frameworks
+# List existing audit frameworks
 aws backup list-frameworks
 
 # Create a report plan
 aws backup create-report-plan \
-  --report-plan-name "ec2-backup-compliance" \
+  --report-plan-name "ec2_backup_compliance" \
   --report-delivery-channel '{
     "S3BucketName": "my-backup-reports",
     "Formats": ["CSV"]
