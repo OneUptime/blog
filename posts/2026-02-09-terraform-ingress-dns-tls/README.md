@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Terraform, Kubernetes, Ingresses
 
-Description: Learn how to create Terraform modules that provision Kubernetes Ingress resources with automated DNS configuration via Route53 or CloudDNS and TLS certificate management through cert-manager for.
+Description: Learn how to create Terraform modules that provision Kubernetes Ingress resources with automated DNS configuration via Route53 or Cloud DNS and TLS certificate management through cert-manager.
 
 ---
 
@@ -16,7 +16,7 @@ This guide shows you how to build modules that provision complete ingress infras
 
 A complete ingress setup has three components: the ingress resource defining routing rules, DNS records pointing to the load balancer, and TLS certificates for HTTPS. Terraform can manage all three, using outputs from one resource as inputs to another.
 
-The ingress controller (like NGINX or Traefik) creates a load balancer. You query this to get its address, create DNS records, then configure ingress with TLS.
+The ingress controller creates or uses a load balancer. You query this to get its address, create DNS records, then configure ingress with TLS. The examples below use ingress-nginx-compatible annotations; for new deployments, use a maintained ingress controller and adjust the controller-specific annotations as needed.
 
 ## Building the Basic Ingress Module
 
@@ -82,7 +82,6 @@ resource "kubernetes_ingress_v1" "main" {
     namespace = var.namespace
     annotations = merge(
       {
-        "kubernetes.io/ingress.class"                    = "nginx"
         "nginx.ingress.kubernetes.io/ssl-redirect"       = "true"
         "nginx.ingress.kubernetes.io/force-ssl-redirect" = "true"
       },
@@ -93,6 +92,8 @@ resource "kubernetes_ingress_v1" "main" {
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     dynamic "tls" {
       for_each = var.enable_tls ? [1] : []
       content {
@@ -185,13 +186,14 @@ resource "kubernetes_ingress_v1" "main" {
     name      = var.name
     namespace = var.namespace
     annotations = {
-      "kubernetes.io/ingress.class"              = "nginx"
       "cert-manager.io/cluster-issuer"           = var.cert_manager_issuer
       "nginx.ingress.kubernetes.io/ssl-redirect" = "true"
     }
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     tls {
       hosts       = [var.hostname]
       secret_name = "${var.name}-tls"
@@ -237,6 +239,11 @@ locals {
   load_balancer_hostname = var.create_dns_record ? (
     try(data.kubernetes_ingress_v1.main[0].status[0].load_balancer[0].ingress[0].hostname, "")
   ) : ""
+  load_balancer_ip = var.create_dns_record ? (
+    try(data.kubernetes_ingress_v1.main[0].status[0].load_balancer[0].ingress[0].ip, "")
+  ) : ""
+  load_balancer_record_type  = local.load_balancer_hostname != "" ? "CNAME" : "A"
+  load_balancer_record_value = local.load_balancer_hostname != "" ? local.load_balancer_hostname : local.load_balancer_ip
 }
 
 # Create Route53 record
@@ -245,15 +252,15 @@ resource "aws_route53_record" "main" {
 
   zone_id = var.route53_zone_id
   name    = var.hostname
-  type    = "CNAME"
+  type    = local.load_balancer_record_type
   ttl     = var.dns_ttl
-  records = [local.load_balancer_hostname]
+  records = [local.load_balancer_record_value]
 
   depends_on = [kubernetes_ingress_v1.main]
 }
 
 output "dns_record_fqdn" {
-  value = var.create_dns_record ? aws_route53_record.main[0].fqdn : var.hostname
+  value = var.create_dns_record && var.route53_zone_id != "" ? aws_route53_record.main[0].fqdn : var.hostname
 }
 ```
 
@@ -298,7 +305,51 @@ terraform {
   }
 }
 
+resource "kubernetes_ingress_v1" "main" {
+  metadata {
+    name      = var.name
+    namespace = var.namespace
+    annotations = {
+      "cert-manager.io/cluster-issuer"           = var.cert_manager_issuer
+      "nginx.ingress.kubernetes.io/ssl-redirect" = "true"
+    }
+  }
+
+  spec {
+    ingress_class_name = "nginx"
+
+    tls {
+      hosts       = [var.hostname]
+      secret_name = "${var.name}-tls"
+    }
+
+    rule {
+      host = var.hostname
+
+      http {
+        path {
+          path      = "/"
+          path_type = "Prefix"
+
+          backend {
+            service {
+              name = var.service_name
+              port {
+                number = var.service_port
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  wait_for_load_balancer = var.create_dns_record
+}
+
 data "kubernetes_ingress_v1" "main" {
+  count = var.create_dns_record ? 1 : 0
+
   metadata {
     name      = kubernetes_ingress_v1.main.metadata[0].name
     namespace = kubernetes_ingress_v1.main.metadata[0].namespace
@@ -308,10 +359,9 @@ data "kubernetes_ingress_v1" "main" {
 }
 
 locals {
-  load_balancer_ip = try(
-    data.kubernetes_ingress_v1.main.status[0].load_balancer[0].ingress[0].ip,
-    ""
-  )
+  load_balancer_ip = var.create_dns_record ? (
+    try(data.kubernetes_ingress_v1.main[0].status[0].load_balancer[0].ingress[0].ip, "")
+  ) : ""
 }
 
 resource "google_dns_record_set" "main" {
@@ -351,13 +401,13 @@ resource "kubernetes_ingress_v1" "main" {
     name      = var.name
     namespace = var.namespace
     annotations = {
-      "kubernetes.io/ingress.class"        = "nginx"
-      "cert-manager.io/cluster-issuer"     = var.cert_manager_issuer
-      "nginx.ingress.kubernetes.io/rewrite-target" = "/$2"
+      "cert-manager.io/cluster-issuer" = var.cert_manager_issuer
     }
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     tls {
       hosts       = [var.hostname]
       secret_name = "${var.name}-tls"
@@ -418,7 +468,6 @@ module "api_gateway" {
     }
   ]
 
-  route53_zone_id     = var.route53_zone_id
   cert_manager_issuer = "letsencrypt-prod"
 }
 ```
@@ -458,14 +507,13 @@ variable "oauth_url" {
 # modules/ingress-advanced/main.tf
 locals {
   base_annotations = {
-    "kubernetes.io/ingress.class"        = "nginx"
-    "cert-manager.io/cluster-issuer"     = var.cert_manager_issuer
+    "cert-manager.io/cluster-issuer"           = var.cert_manager_issuer
     "nginx.ingress.kubernetes.io/ssl-redirect" = "true"
   }
 
   rate_limit_annotations = var.rate_limit.enabled ? {
-    "nginx.ingress.kubernetes.io/limit-rps"         = tostring(var.rate_limit.rpm / 60)
-    "nginx.ingress.kubernetes.io/limit-burst-multiplier" = tostring(var.rate_limit.burst / (var.rate_limit.rpm / 60))
+    "nginx.ingress.kubernetes.io/limit-rpm"              = tostring(var.rate_limit.rpm)
+    "nginx.ingress.kubernetes.io/limit-burst-multiplier" = tostring(ceil(var.rate_limit.burst / var.rate_limit.rpm))
   } : {}
 
   oauth_annotations = var.enable_oauth ? {
@@ -488,6 +536,8 @@ resource "kubernetes_ingress_v1" "main" {
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     tls {
       hosts       = [var.hostname]
       secret_name = "${var.name}-tls"
