@@ -18,13 +18,15 @@ First, check the current state and trend of CPU usage:
 
 ```bash
 # Get CPU utilization for the last 2 hours with 5-minute intervals
+START_TIME=$(python3 -c "from datetime import datetime, timezone, timedelta; print((datetime.now(timezone.utc) - timedelta(hours=2)).strftime('%Y-%m-%dT%H:%M:%SZ'))")
+END_TIME=$(python3 -c "from datetime import datetime, timezone; print(datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
 
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
   --metric-name CPUUtilization \
   --dimensions Name=DBInstanceIdentifier,Value=my-database \
-  --start-time $(date -u -v-2H +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time "$START_TIME" \
+  --end-time "$END_TIME" \
   --period 300 \
   --statistics Average Maximum \
   --output table
@@ -42,7 +44,7 @@ If you have [Enhanced Monitoring](https://oneuptime.com/blog/post/2026-02-12-ena
 ```bash
 # Check the process list from Enhanced Monitoring logs
 aws logs get-log-events \
-  --log-group-name /aws/rds/enhanced-monitoring \
+  --log-group-name RDSOSMetrics \
   --log-stream-name db-YOURDBIRESOURCEID \
   --limit 5 \
   --query 'events[*].message' \
@@ -74,7 +76,7 @@ WHERE state != 'idle'
   AND pid != pg_backend_pid()
 ORDER BY duration DESC;
 
--- Find the most time-consuming queries from pg_stat_statements
+-- Find the most time-consuming queries from pg_stat_statements, if enabled
 SELECT query,
   calls,
   total_exec_time / 1000 AS total_seconds,
@@ -132,7 +134,7 @@ EXPLAIN SELECT * FROM orders WHERE customer_id = 12345;
 ALTER TABLE orders ADD INDEX idx_customer_id (customer_id);
 ```
 
-The `CONCURRENTLY` option in PostgreSQL lets you create the index without locking the table - critical for production.
+The `CONCURRENTLY` option in PostgreSQL lets you create the index without blocking reads and writes on the table - critical for production.
 
 ### Cause 2: Too Many Connections
 
@@ -180,6 +182,9 @@ SELECT date_trunc('day', created_at) AS day,
   sum(total_amount) AS revenue
 FROM orders
 GROUP BY 1, 2;
+
+-- Required before refreshing a materialized view concurrently
+CREATE UNIQUE INDEX daily_order_stats_day_status_idx ON daily_order_stats(day, status);
 
 -- Refresh periodically
 REFRESH MATERIALIZED VIEW CONCURRENTLY daily_order_stats;
@@ -246,7 +251,7 @@ psql -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity
 Or scale up the instance temporarily:
 
 ```bash
-# Scale up to a larger instance (causes brief downtime)
+# Scale up to a larger instance (causes an outage during the change)
 aws rds modify-db-instance \
   --db-instance-identifier my-database \
   --db-instance-class db.r6g.2xlarge \
