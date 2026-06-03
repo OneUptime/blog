@@ -49,7 +49,7 @@ resource "aws_backup_vault" "production" {
 # Vault lock policy - prevents anyone from deleting backups
 resource "aws_backup_vault_lock_configuration" "production" {
   backup_vault_name   = aws_backup_vault.production.name
-  min_retention_days  = 7
+  min_retention_days  = 1
   max_retention_days  = 365
   changeable_for_days = 3  # 3-day cooling period before lock is permanent
 }
@@ -86,15 +86,13 @@ resource "aws_backup_plan" "production" {
     completion_window = 180  # Must complete within 180 minutes
 
     lifecycle {
-      cold_storage_after = 7   # Move to cold storage after 7 days
-      delete_after       = 30  # Delete after 30 days
+      delete_after = 30  # Delete after 30 days
     }
 
     copy_action {
       destination_vault_arn = aws_backup_vault.dr_region.arn
       lifecycle {
-        cold_storage_after = 7
-        delete_after       = 30
+        delete_after = 30
       }
     }
   }
@@ -136,17 +134,23 @@ This configuration sets up an RDS instance with robust backup settings.
 
 ```hcl
 resource "aws_db_instance" "production" {
-  identifier     = "production-db"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r6g.xlarge"
+  identifier        = "production-db"
+  engine            = "postgres"
+  engine_version    = "15.4"
+  instance_class    = "db.r6g.xlarge"
+  allocated_storage = 100
+  db_name           = "app"
+  username          = "app_admin"
+
+  # Store and rotate the master password in AWS Secrets Manager
+  manage_master_user_password = true
 
   # Automated backup configuration
-  backup_retention_period   = 35       # Maximum retention (35 days)
-  backup_window             = "03:00-04:00"
-  maintenance_window        = "Mon:04:00-Mon:05:00"
-  copy_tags_to_snapshot     = true
-  delete_automated_backups_on_termination = false  # Keep backups even if instance is deleted
+  backup_retention_period  = 35       # Maximum retention (35 days)
+  backup_window            = "03:00-04:00"
+  maintenance_window       = "Mon:04:00-Mon:05:00"
+  copy_tags_to_snapshot    = true
+  delete_automated_backups = false  # Keep backups even if instance is deleted
 
   # Enable point-in-time recovery (uses transaction logs)
   # This is enabled automatically when backup_retention_period > 0
@@ -232,6 +236,7 @@ resource "aws_s3_bucket_replication_configuration" "primary" {
   rule {
     id     = "replicate-all"
     status = "Enabled"
+    filter {}
 
     destination {
       bucket        = aws_s3_bucket.replica.arn
