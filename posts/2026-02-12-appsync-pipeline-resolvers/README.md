@@ -78,7 +78,7 @@ export function response(ctx) {
 
 ### Function 2: Check Inventory
 
-This function verifies that all requested items are available:
+This simplified function verifies that the first requested item is available:
 
 ```javascript
 // checkInventory function
@@ -131,17 +131,16 @@ export function request(ctx) {
   const orderId = util.autoId();
   const now = util.time.nowISO8601();
   const input = ctx.args.input;
+  const item = input.items[0];
 
-  // Calculate total using data from previous steps
-  const total = input.items.reduce((sum, item) =>
-    sum + (item.quantity * ctx.stash.productPrice), 0
-  );
+  // Calculate total using data from the inventory check
+  const total = item.quantity * ctx.stash.productPrice;
 
   const order = {
     orderId: orderId,
     userId: ctx.stash.userId,
     customerName: ctx.stash.user.name,
-    items: input.items,
+    items: [item],
     total: total,
     status: 'pending',
     createdAt: now,
@@ -171,6 +170,8 @@ The before and after templates manage the overall flow:
 
 ```javascript
 // Pipeline resolver - before step
+import { util } from '@aws-appsync/utils';
+
 export function request(ctx) {
   // Initialize the stash with common data
   ctx.stash.startTime = util.time.nowISO8601();
@@ -192,6 +193,11 @@ This template defines the full pipeline:
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
+
+Parameters:
+  ResolverCodeBucket:
+    Type: String
+    Description: S3 bucket that contains the AppSync JavaScript resolver files.
 
 Resources:
   # Data sources
@@ -238,7 +244,7 @@ Resources:
       Runtime:
         Name: APPSYNC_JS
         RuntimeVersion: "1.0.0"
-      CodeS3Location: functions/validateUser.js
+      CodeS3Location: !Sub "s3://${ResolverCodeBucket}/functions/validateUser.js"
 
   CheckInventoryFunction:
     Type: AWS::AppSync::FunctionConfiguration
@@ -249,7 +255,7 @@ Resources:
       Runtime:
         Name: APPSYNC_JS
         RuntimeVersion: "1.0.0"
-      CodeS3Location: functions/checkInventory.js
+      CodeS3Location: !Sub "s3://${ResolverCodeBucket}/functions/checkInventory.js"
 
   CreateOrderFunction:
     Type: AWS::AppSync::FunctionConfiguration
@@ -260,7 +266,7 @@ Resources:
       Runtime:
         Name: APPSYNC_JS
         RuntimeVersion: "1.0.0"
-      CodeS3Location: functions/createOrder.js
+      CodeS3Location: !Sub "s3://${ResolverCodeBucket}/functions/createOrder.js"
 
   # Pipeline resolver
   CreateOrderResolver:
@@ -279,6 +285,8 @@ Resources:
         Name: APPSYNC_JS
         RuntimeVersion: "1.0.0"
       Code: |
+        import { util } from '@aws-appsync/utils';
+
         export function request(ctx) {
           ctx.stash.startTime = util.time.nowISO8601();
           return {};
@@ -331,16 +339,18 @@ LeaveReviewResolver:
 
 ## Error Handling in Pipelines
 
-When a function throws an error, the pipeline stops and the error propagates to the client. You can use the `ctx.prev.result` and `ctx.error` fields in the after template to handle errors gracefully.
+When a function throws an error with `util.error`, the pipeline stops and the error propagates to the client. For errors returned by a data source, a function response handler can inspect `ctx.error` and decide whether to re-raise, transform, or ignore the error.
 
-This after template provides custom error messages:
+This response handler provides custom error messages:
 
 ```javascript
-// Pipeline after template with error handling
+// Function response handler with error handling
+import { util } from '@aws-appsync/utils';
+
 export function response(ctx) {
   if (ctx.error) {
     // Log the error for debugging
-    console.log('Pipeline error:', ctx.error);
+    console.log('Data source error:', ctx.error);
 
     // Return a clean error to the client
     util.error(ctx.error.message, ctx.error.type, {
