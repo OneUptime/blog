@@ -20,7 +20,7 @@ The beauty of this combo is that Amplify abstracts away most of the AppSync conf
 
 ## Getting Started
 
-First, make sure you've got the Amplify CLI installed and an Amplify project initialized.
+First, make sure you've got the Amplify CLI installed and an Amplify project initialized. The CLI flow below uses the Amplify Gen 1 project structure.
 
 Here's how to add the API category to your project:
 
@@ -49,9 +49,9 @@ type Post @model @auth(rules: [{ allow: owner }]) {
   id: ID!
   title: String!
   content: String!
-  status: PostStatus!
+  status: PostStatus! @index(name: "byStatus", queryField: null)
   createdAt: AWSDateTime
-  comments: [Comment] @hasMany
+  comments: [Comment] @hasMany(indexName: "byPost", fields: ["id"])
 }
 
 # Define a Comment type linked to Post
@@ -59,7 +59,7 @@ type Comment @model @auth(rules: [{ allow: owner }]) {
   id: ID!
   postID: ID! @index(name: "byPost")
   content: String!
-  post: Post @belongsTo
+  post: Post @belongsTo(fields: ["postID"])
 }
 
 # Enum for post status
@@ -83,19 +83,21 @@ Amplify generates the DynamoDB tables, AppSync resolvers, and all the GraphQL op
 
 ## Querying Data from Your App
 
-Once the API is deployed, you can start making queries from your frontend. Amplify generates TypeScript-friendly query and mutation files.
+Once the API is deployed and the Amplify library is configured in your app, you can start making queries from your frontend. Amplify generates TypeScript-friendly query and mutation files.
 
 Here's how to fetch all posts in a React app:
 
 ```javascript
 // Import the generated queries and the Amplify API client
-import { API, graphqlOperation } from 'aws-amplify';
+import { generateClient } from 'aws-amplify/api';
 import { listPosts } from './graphql/queries';
+
+const client = generateClient();
 
 async function fetchPosts() {
   try {
     // Execute the listPosts query
-    const response = await API.graphql(graphqlOperation(listPosts));
+    const response = await client.graphql({ query: listPosts });
     const posts = response.data.listPosts.items;
     console.log('Posts:', posts);
     return posts;
@@ -120,9 +122,10 @@ async function addPost(title, content) {
   };
 
   try {
-    const result = await API.graphql(
-      graphqlOperation(createPost, { input })
-    );
+    const result = await client.graphql({
+      query: createPost,
+      variables: { input }
+    });
     console.log('Created post:', result.data.createPost);
     return result.data.createPost;
   } catch (error) {
@@ -143,11 +146,9 @@ import { onCreatePost } from './graphql/subscriptions';
 
 function subscribeToNewPosts() {
   // Set up a subscription that fires when a new post is created
-  const subscription = API.graphql(
-    graphqlOperation(onCreatePost)
-  ).subscribe({
-    next: (event) => {
-      const newPost = event.value.data.onCreatePost;
+  const subscription = client.graphql({ query: onCreatePost }).subscribe({
+    next: ({ data }) => {
+      const newPost = data.onCreatePost;
       console.log('New post created:', newPost.title);
     },
     error: (error) => {
@@ -183,19 +184,21 @@ Then create a Lambda function to handle the resolver logic:
 exports.handler = async (event) => {
   const { status } = event.arguments;
 
-  // Use the DynamoDB DocumentClient to query
-  const AWS = require('aws-sdk');
-  const docClient = new AWS.DynamoDB.DocumentClient();
+  // Use the DynamoDB document client to query
+  const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+  const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+
+  const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
   const params = {
-    TableName: process.env.POST_TABLE,
+    TableName: process.env.POST_TABLE_NAME,
     IndexName: 'byStatus',
     KeyConditionExpression: '#status = :status',
     ExpressionAttributeNames: { '#status': 'status' },
     ExpressionAttributeValues: { ':status': status }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 };
 ```
@@ -235,12 +238,13 @@ A few things to keep in mind as your API grows:
 
 ```javascript
 // Fetch posts with pagination
-const response = await API.graphql(
-  graphqlOperation(listPosts, {
+const response = await client.graphql({
+  query: listPosts,
+  variables: {
     limit: 20,
     nextToken: previousNextToken  // null for first page
-  })
-);
+  }
+});
 
 const { items, nextToken } = response.data.listPosts;
 ```
