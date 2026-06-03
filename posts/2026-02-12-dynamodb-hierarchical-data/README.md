@@ -46,8 +46,10 @@ const categories = [
 To get direct children, create a GSI on `parentId`:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { DynamoDBDocumentClient, GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Get all direct children of a category
 async function getChildren(parentId) {
@@ -58,7 +60,7 @@ async function getChildren(parentId) {
     ExpressionAttributeValues: { ':pid': parentId }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 
 // Get the full path from root to a node (ancestors)
@@ -67,10 +69,10 @@ async function getAncestors(categoryId) {
   let current = categoryId;
 
   while (current) {
-    const item = await docClient.get({
+    const item = await docClient.send(new GetCommand({
       TableName: 'Categories',
       Key: { categoryId: current }
-    }).promise();
+    }));
 
     if (!item.Item) break;
     path.unshift(item.Item);
@@ -86,39 +88,20 @@ async function getAncestors(categoryId) {
 
 ## Pattern 2: Materialized Path
 
-Store the full path from root to each node as an attribute. This makes ancestor queries trivial:
+Store the full path from root to each node as the sort key. This makes ancestor queries trivial:
 
 ```javascript
 // Each item stores its full path
 const items = [
-  { id: 'root', path: 'root', name: 'All Products' },
-  { id: 'electronics', path: 'root#electronics', name: 'Electronics' },
-  { id: 'computers', path: 'root#electronics#computers', name: 'Computers' },
-  { id: 'laptops', path: 'root#electronics#computers#laptops', name: 'Laptops' },
-  { id: 'desktops', path: 'root#electronics#computers#desktops', name: 'Desktops' }
+  { pk: 'CATEGORY', sk: 'root', id: 'root', name: 'All Products' },
+  { pk: 'CATEGORY', sk: 'root#electronics', id: 'electronics', name: 'Electronics' },
+  { pk: 'CATEGORY', sk: 'root#electronics#computers', id: 'computers', name: 'Computers' },
+  { pk: 'CATEGORY', sk: 'root#electronics#computers#laptops', id: 'laptops', name: 'Laptops' },
+  { pk: 'CATEGORY', sk: 'root#electronics#computers#desktops', id: 'desktops', name: 'Desktops' }
 ];
 ```
 
-Now use `begins_with` to find all descendants:
-
-```javascript
-// Get all items under electronics (using path prefix)
-async function getDescendants(ancestorPath) {
-  const params = {
-    TableName: 'Categories',
-    IndexName: 'path-index',
-    KeyConditionExpression: 'begins_with(#path, :prefix)',
-    ExpressionAttributeNames: { '#path': 'path' },
-    ExpressionAttributeValues: { ':prefix': ancestorPath }
-  };
-
-  // Note: begins_with on a GSI partition key doesn't work directly
-  // Instead, use the path as a sort key with a fixed partition key
-  return (await docClient.query(params).promise()).Items;
-}
-```
-
-A better design uses a fixed partition key with the path as the sort key:
+To find descendants by path prefix, the path needs to be modeled as a sort key. DynamoDB `Query` requires equality on the partition key, and `begins_with` can be used as the optional sort key condition.
 
 ```javascript
 // Table design: pk = "CATEGORY", sk = path
@@ -134,7 +117,7 @@ async function getSubtree(pathPrefix) {
     }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 
 // Get all items under electronics
@@ -176,23 +159,13 @@ This supports multiple access patterns in a single query:
 ```javascript
 // Get a node and all its children in one query
 async function getNodeWithChildren(nodeId) {
-  const params = {
-    TableName: 'HierarchyTable',
-    KeyConditionExpression: 'pk = :pk AND (sk = :meta OR begins_with(sk, :childPrefix))',
-    ExpressionAttributeValues: {
-      ':pk': `NODE#${nodeId}`,
-      ':meta': 'META',
-      ':childPrefix': 'CHILD#'
-    }
-  };
-
-  // DynamoDB doesn't support OR in KeyConditionExpression
-  // So query without sort key condition and filter, or do two queries
-  const allItems = await docClient.query({
+  // DynamoDB doesn't support OR in KeyConditionExpression,
+  // so query the item collection and split relationship types in memory.
+  const allItems = await docClient.send(new QueryCommand({
     TableName: 'HierarchyTable',
     KeyConditionExpression: 'pk = :pk',
     ExpressionAttributeValues: { ':pk': `NODE#${nodeId}` }
-  }).promise();
+  }));
 
   const meta = allItems.Items.find(i => i.sk === 'META');
   const children = allItems.Items.filter(i => i.sk.startsWith('CHILD#'));
@@ -232,17 +205,17 @@ const nodes = [
 Finding all descendants of "electronics" (lft=2, rgt=9):
 
 ```javascript
-// Query all nodes where lft > 2 AND rgt < 9
+// Query all nodes where lft is between 3 and 8
 async function getDescendants(nodeId) {
   // First, get the node's lft and rgt values
-  const node = await docClient.get({
+  const node = await docClient.send(new GetCommand({
     TableName: 'NestedSets',
     Key: { id: nodeId }
-  }).promise();
+  }));
 
   const { lft, rgt } = node.Item;
 
-  // Query using a GSI where lft is the sort key
+  // Query using a GSI where treeId is the partition key and lft is the sort key
   const params = {
     TableName: 'NestedSets',
     IndexName: 'tree-index',
@@ -254,7 +227,7 @@ async function getDescendants(nodeId) {
     }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 ```
 

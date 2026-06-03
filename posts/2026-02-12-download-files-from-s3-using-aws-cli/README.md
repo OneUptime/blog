@@ -67,7 +67,7 @@ aws s3 sync s3://my-bucket/data/ ./local-data/
 # Sync with deletion - remove local files not in S3
 aws s3 sync s3://my-bucket/data/ ./local-data/ --delete
 
-# Sync only recent files (by size, not date)
+# Sync using file size only, ignoring timestamps
 aws s3 sync s3://my-bucket/data/ ./local-data/ --size-only
 ```
 
@@ -242,10 +242,10 @@ fi
 
 **Slow downloads** - Increase concurrent requests. Also make sure you're downloading from the same region as your bucket. Cross-region downloads are significantly slower.
 
-**"Access Denied"** - You need `s3:GetObject` permission. Check your IAM policy, bucket policy, and any VPC endpoint policies that might be blocking access.
+**"Access Denied"** - You need `s3:GetObject` permission for current objects, or `s3:GetObjectVersion` when downloading a specific version. Check your IAM policy, bucket policy, and any VPC endpoint policies that might be blocking access.
 
 **Out of disk space** - Always check the total download size with `--summarize` first. For very large datasets, consider using `--exclude` to download only what you need.
 
-**Interrupted downloads** - Use `sync` instead of `cp` for large directories. If a sync is interrupted, just run it again and it'll pick up where it left off.
+**Interrupted downloads** - Use `sync` instead of `cp` for large directories. If a sync is interrupted, just run it again and it'll skip files that already downloaded successfully.
 
 The AWS CLI's S3 download capabilities cover everything from quick one-off file grabs to large-scale data transfers. For most workflows, `aws s3 sync` is your best friend since it's smart about what needs downloading and resilient to interruptions.
