@@ -8,7 +8,7 @@ Description: Learn how to build offline-first applications using AWS Amplify Dat
 
 ---
 
-Building apps that work without an internet connection used to be a real headache. You'd have to manage local databases, build sync logic, handle conflicts, and hope nothing fell apart when the user reconnected. AWS Amplify DataStore takes most of that pain away.
+Building apps that work without an internet connection used to be a real headache. You'd have to manage local databases, build sync logic, handle conflicts, and hope nothing fell apart when the user reconnected. AWS Amplify DataStore takes most of that pain away. As of 2026, DataStore is an Amplify Gen 1 feature in maintenance mode, so it is most relevant for existing Gen 1 apps rather than brand-new Amplify Gen 2 projects.
 
 DataStore gives you a local-first programming model. Your app reads and writes to a local store on the device, and DataStore handles syncing those changes to the cloud when connectivity is available. It's powered by AppSync under the hood, but you don't have to think about GraphQL queries or mutations.
 
@@ -42,6 +42,7 @@ type Task @model @auth(rules: [{ allow: owner }]) {
   id: ID!
   title: String!
   description: String
+  teamId: ID
   priority: Priority!
   isComplete: Boolean!
   dueDate: AWSDate
@@ -64,7 +65,7 @@ Working with DataStore feels like working with a local ORM. There are no network
 Here's how to create a new task:
 
 ```javascript
-import { DataStore } from 'aws-amplify';
+import { DataStore } from 'aws-amplify/datastore';
 import { Task, Priority } from './models';
 
 // Save a new task - it's stored locally and synced to the cloud
@@ -86,7 +87,7 @@ async function createTask(title, description) {
 Querying is just as simple:
 
 ```javascript
-// Fetch all incomplete tasks sorted by priority
+// Fetch all incomplete tasks
 async function getIncompleteTasks() {
   const tasks = await DataStore.query(Task, (t) =>
     t.isComplete.eq(false)
@@ -139,7 +140,7 @@ async function deleteTask(taskId) {
 DataStore supports observers that fire whenever data changes, whether from local operations or remote sync. This is perfect for keeping your UI in sync.
 
 ```javascript
-import { DataStore } from 'aws-amplify';
+import { DataStore } from 'aws-amplify/datastore';
 import { Task } from './models';
 
 // Subscribe to all changes on the Task model
@@ -159,7 +160,7 @@ In a React app, you'd wire this into a `useEffect`:
 
 ```javascript
 import { useState, useEffect } from 'react';
-import { DataStore } from 'aws-amplify';
+import { DataStore } from 'aws-amplify/datastore';
 import { Task } from './models';
 
 function useTaskList() {
@@ -186,23 +187,30 @@ function useTaskList() {
 When multiple devices edit the same record while offline, you get a conflict. DataStore offers three built-in strategies:
 
 1. **Auto Merge** (default) - merges non-conflicting field changes automatically
-2. **Optimistic Concurrency** - last writer wins based on version
-3. **Custom** - you write your own resolution logic
+2. **Optimistic Concurrency** - rejects stale writes when the incoming version doesn't match the server version, so the client can resolve and retry
+3. **Custom Lambda** - you write your own server-side resolution logic
 
-You configure the strategy in your AppSync resolver. For most apps, Auto Merge works great. But if you need custom logic, here's how you set it up:
+You configure the AppSync conflict strategy with `amplify update api`. For most apps, Auto Merge works great. If you need client-side handling when a mutation is rejected by AppSync, you can add a DataStore conflict handler:
 
 ```javascript
 // Configure DataStore with a custom conflict handler
+import { DataStore, DISCARD } from 'aws-amplify/datastore';
+import { Task } from './models';
+
 DataStore.configure({
   conflictHandler: async (data) => {
     const { modelConstructor, localModel, remoteModel } = data;
 
     // Example: server always wins except for the title field
-    const resolved = modelConstructor.copyOf(remoteModel, (draft) => {
-      draft.title = localModel.title;  // Keep local title
-    });
+    if (modelConstructor === Task) {
+      const resolved = modelConstructor.copyOf(remoteModel, (draft) => {
+        draft.title = localModel.title;  // Keep local title
+      });
 
-    return resolved;
+      return resolved;
+    }
+
+    return DISCARD;
   }
 });
 ```
@@ -213,6 +221,9 @@ You don't always want to sync every record to every device. Selective sync lets 
 
 ```javascript
 // Only sync tasks that belong to the current user's team
+import { DataStore, syncExpression } from 'aws-amplify/datastore';
+import { Task } from './models';
+
 DataStore.configure({
   syncExpressions: [
     syncExpression(Task, () => {
@@ -230,6 +241,8 @@ Sometimes you need to wipe the local data - like when a user logs out or you nee
 
 ```javascript
 // Clear all local DataStore data
+import { DataStore } from 'aws-amplify/datastore';
+
 async function clearLocalData() {
   await DataStore.clear();
   console.log('Local data cleared');
@@ -255,7 +268,7 @@ Testing offline scenarios can be tricky. Here are a few approaches:
 
 ```javascript
 // Jest mock for DataStore in unit tests
-jest.mock('aws-amplify', () => ({
+jest.mock('aws-amplify/datastore', () => ({
   DataStore: {
     save: jest.fn().mockResolvedValue({ id: 'mock-id', title: 'Test' }),
     query: jest.fn().mockResolvedValue([]),
@@ -272,7 +285,7 @@ jest.mock('aws-amplify', () => ({
 DataStore exposes hub events you can listen to for monitoring sync status:
 
 ```javascript
-import { Hub } from 'aws-amplify';
+import { Hub } from 'aws-amplify/utils';
 
 // Listen to DataStore sync events
 Hub.listen('datastore', (capsule) => {
