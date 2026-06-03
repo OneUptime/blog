@@ -12,7 +12,7 @@ HashiCorp Vault Enterprise control groups provide multi-party authorization for 
 
 ## Understanding Control Groups
 
-Control groups add an authorization gate between a request and its response. When a user requests a secret protected by a control group, Vault wraps the response and waits for the required number of authorizations. Only after sufficient approvals does Vault unwrap and deliver the actual secret.
+Control groups add an authorization gate between a request and its response. When a user requests a secret protected by a control group, Vault returns a response-wrapping token and waits for the required number of authorizations. Only after sufficient approvals can the requester unwrap the token to retrieve the actual secret.
 
 This pattern is valuable for production database credentials, encryption keys, API tokens with elevated privileges, and any secret where dual authorization reduces risk.
 
@@ -34,7 +34,7 @@ path "database/creds/production" {
         approvals = 2
       }
     }
-    max_ttl = "1h"
+    ttl = "1h"
   }
 }
 
@@ -48,19 +48,19 @@ path "secret/data/production/master-keys" {
         approvals = 3
       }
     }
-    max_ttl = "30m"
+    ttl = "30m"
   }
 }
 ```
 
-The `approvals` parameter specifies how many authorizers must approve the request. The `max_ttl` sets the deadline for collecting approvals.
+The `approvals` parameter specifies how many authorizers must approve the request. The `ttl` sets the lifetime of the response-wrapping token used for the request.
 
 ## Setting Up Approver Groups
 
 Create identity groups for approvers:
 
 ```bash
-# Enable identity secrets engine
+# Enable the userpass auth method
 vault auth enable userpass
 
 # Create users
@@ -68,27 +68,35 @@ vault write auth/userpass/users/alice password=secure-password
 vault write auth/userpass/users/bob password=secure-password
 vault write auth/userpass/users/charlie password=secure-password
 
+# Get the auth method accessor and create identity entities for the users
+USERPASS_ACCESSOR=$(vault auth list -format=json | jq -r '.["userpass/"].accessor')
+
+ALICE_ENTITY=$(vault write -format=json identity/entity name="alice" | jq -r ".data.id")
+BOB_ENTITY=$(vault write -format=json identity/entity name="bob" | jq -r ".data.id")
+CHARLIE_ENTITY=$(vault write -format=json identity/entity name="charlie" | jq -r ".data.id")
+
+vault write identity/entity-alias name="alice" \
+    canonical_id="$ALICE_ENTITY" \
+    mount_accessor="$USERPASS_ACCESSOR"
+
+vault write identity/entity-alias name="bob" \
+    canonical_id="$BOB_ENTITY" \
+    mount_accessor="$USERPASS_ACCESSOR"
+
+vault write identity/entity-alias name="charlie" \
+    canonical_id="$CHARLIE_ENTITY" \
+    mount_accessor="$USERPASS_ACCESSOR"
+
 # Create internal group
 vault write identity/group name="database-admins" \
     policies="approver-policy" \
-    type="internal"
-
-# Get entity IDs for users
-ALICE_ENTITY=$(vault read -field=id identity/entity/name/alice)
-BOB_ENTITY=$(vault read -field=id identity/entity/name/bob)
-
-# Add members to group
-vault write identity/group name="database-admins" \
+    type="internal" \
     member_entity_ids="$ALICE_ENTITY,$BOB_ENTITY"
 
 # Create security team group
 vault write identity/group name="security-team" \
     policies="approver-policy" \
-    type="internal"
-
-CHARLIE_ENTITY=$(vault read -field=id identity/entity/name/charlie)
-
-vault write identity/group name="security-team" \
+    type="internal" \
     member_entity_ids="$CHARLIE_ENTITY"
 ```
 
@@ -98,19 +106,14 @@ Approvers need permission to authorize requests:
 
 ```hcl
 # approver-policy.hcl
-# Allow listing pending control group requests
+# Allow checking control group request status
 path "sys/control-group/request" {
-  capabilities = ["list"]
+  capabilities = ["create", "update"]
 }
 
 # Allow authorizing control group requests
 path "sys/control-group/authorize" {
-  capabilities = ["update"]
-}
-
-# Allow viewing control group request details
-path "sys/control-group/request/*" {
-  capabilities = ["read"]
+  capabilities = ["create", "update"]
 }
 ```
 
@@ -135,6 +138,7 @@ import (
 
 type ControlGroupRequest struct {
     client    *api.Client
+    token     string
     accessor  string
     requestID string
 }
@@ -162,13 +166,14 @@ func RequestProtectedSecret(vaultAddr, token, path string) (*ControlGroupRequest
     }
 
     // Extract wrap info which contains control group details
-    if secret.WrapInfo != nil && secret.WrapInfo.WrappedAccessor != "" {
+    if secret.WrapInfo != nil && secret.WrapInfo.Token != "" && secret.WrapInfo.Accessor != "" {
         fmt.Printf("Control group authorization required\n")
         fmt.Printf("Accessor: %s\n", secret.WrapInfo.Accessor)
-        fmt.Printf("Request must be approved within: %v\n", secret.WrapInfo.TTL)
+        fmt.Printf("Request must be approved within: %d seconds\n", secret.WrapInfo.TTL)
 
         return &ControlGroupRequest{
             client:    client,
+            token:     secret.WrapInfo.Token,
             accessor:  secret.WrapInfo.Accessor,
             requestID: secret.WrapInfo.Accessor,
         }, nil
@@ -188,8 +193,11 @@ func (cgr *ControlGroupRequest) PollForApproval(timeout time.Duration) (*api.Sec
         select {
         case <-ticker.C:
             // Check authorization status
-            status, err := cgr.client.Logical().Read(
-                fmt.Sprintf("sys/control-group/request/%s", cgr.accessor),
+            status, err := cgr.client.Logical().Write(
+                "sys/control-group/request",
+                map[string]interface{}{
+                    "accessor": cgr.accessor,
+                },
             )
             if err != nil {
                 return nil, fmt.Errorf("failed to check status: %w", err)
@@ -198,17 +206,19 @@ func (cgr *ControlGroupRequest) PollForApproval(timeout time.Duration) (*api.Sec
             authorized := status.Data["approved"].(bool)
             if authorized {
                 // Unwrap the secret
-                cgr.client.SetToken(cgr.accessor)
-                secret, err := cgr.client.Logical().Unwrap("")
+                secret, err := cgr.client.Logical().Unwrap(cgr.token)
                 if err != nil {
                     return nil, fmt.Errorf("failed to unwrap: %w", err)
                 }
                 return secret, nil
             }
 
-            fmt.Printf("Waiting for approval... (%d/%d approvals)\n",
-                int(status.Data["approval_count"].(float64)),
-                int(status.Data["required_authorizations"].(float64)))
+            approvalCount := 0
+            if authorizations, ok := status.Data["authorizations"].([]interface{}); ok {
+                approvalCount = len(authorizations)
+            }
+
+            fmt.Printf("Waiting for approval... (%d approvals recorded)\n", approvalCount)
 
         case <-deadline:
             return nil, fmt.Errorf("approval timeout exceeded")
@@ -230,10 +240,11 @@ import (
 )
 
 type Approver struct {
-    client *api.Client
+    client           *api.Client
+    pendingAccessors []string
 }
 
-func NewApprover(vaultAddr, token string) (*Approver, error) {
+func NewApprover(vaultAddr, token string, pendingAccessors []string) (*Approver, error) {
     config := api.DefaultConfig()
     config.Address = vaultAddr
 
@@ -244,33 +255,23 @@ func NewApprover(vaultAddr, token string) (*Approver, error) {
 
     client.SetToken(token)
 
-    return &Approver{client: client}, nil
+    return &Approver{client: client, pendingAccessors: pendingAccessors}, nil
 }
 
-// ListPendingRequests shows all pending control group requests
+// ListPendingRequests returns accessors collected by the application.
+// Vault's control group API checks a specific accessor; it does not provide
+// a list endpoint for pending requests.
 func (a *Approver) ListPendingRequests() ([]string, error) {
-    secret, err := a.client.Logical().List("sys/control-group/request")
-    if err != nil {
-        return nil, fmt.Errorf("failed to list requests: %w", err)
-    }
-
-    if secret == nil || secret.Data == nil {
-        return []string{}, nil
-    }
-
-    keys := secret.Data["keys"].([]interface{})
-    requests := make([]string, len(keys))
-    for i, k := range keys {
-        requests[i] = k.(string)
-    }
-
-    return requests, nil
+    return a.pendingAccessors, nil
 }
 
 // GetRequestDetails retrieves information about a control group request
 func (a *Approver) GetRequestDetails(accessor string) (map[string]interface{}, error) {
-    secret, err := a.client.Logical().Read(
-        fmt.Sprintf("sys/control-group/request/%s", accessor),
+    secret, err := a.client.Logical().Write(
+        "sys/control-group/request",
+        map[string]interface{}{
+            "accessor": accessor,
+        },
     )
     if err != nil {
         return nil, fmt.Errorf("failed to read request: %w", err)
@@ -309,7 +310,6 @@ package main
 
 import (
     "encoding/json"
-    "html/template"
     "net/http"
     "github.com/gorilla/mux"
 )
@@ -331,7 +331,6 @@ func (ad *ApprovalDashboard) HandleListRequests(w http.ResponseWriter, r *http.R
         RequestPath string
         Requester   string
         Approvals   int
-        Required    int
         TTL         string
     }
 
@@ -342,13 +341,22 @@ func (ad *ApprovalDashboard) HandleListRequests(w http.ResponseWriter, r *http.R
             continue
         }
 
+        approvalCount := 0
+        if authorizations, ok := details["authorizations"].([]interface{}); ok {
+            approvalCount = len(authorizations)
+        }
+
+        requester := ""
+        if requestEntity, ok := details["request_entity"].(map[string]interface{}); ok {
+            requester, _ = requestEntity["name"].(string)
+        }
+
         requestDetails = append(requestDetails, RequestInfo{
             Accessor:    accessor,
             RequestPath: details["request_path"].(string),
-            Requester:   details["request_entity"].(map[string]interface{})["name"].(string),
-            Approvals:   int(details["approval_count"].(float64)),
-            Required:    int(details["required_authorizations"].(float64)),
-            TTL:         details["ttl"].(string),
+            Requester:   requester,
+            Approvals:   approvalCount,
+            TTL:         "tracked by wrapping token TTL",
         })
     }
 
@@ -388,7 +396,7 @@ const dashboardHTML = `
                 const row = table.insertRow();
                 row.insertCell(0).textContent = req.Requester;
                 row.insertCell(1).textContent = req.RequestPath;
-                row.insertCell(2).textContent = req.Approvals + '/' + req.Required;
+                row.insertCell(2).textContent = req.Approvals;
                 row.insertCell(3).textContent = req.TTL;
 
                 const approveBtn = document.createElement('button');
@@ -465,7 +473,7 @@ spec:
         image: vault-approval-dashboard:latest
         env:
         - name: VAULT_ADDR
-          value: "http://vault:8200"
+          value: "https://vault.vault-system.svc:8200"
         - name: VAULT_TOKEN
           valueFrom:
             secretKeyRef:
@@ -518,14 +526,14 @@ Track control group operations with audit logs:
 ```bash
 # Query control group requests
 kubectl exec -n vault-system vault-0 -- cat /vault/logs/audit.log | \
-    jq 'select(.request.path | startswith("sys/control-group"))'
+    jq 'select((.request.path // "") | startswith("sys/control-group"))'
 
-# Find timed-out requests
+# Find failed unwrap attempts, including expired or invalid wrapping tokens
 kubectl exec -n vault-system vault-0 -- cat /vault/logs/audit.log | \
-    jq 'select(.response.data.approved == false and .response.data.ttl == 0)'
+    jq 'select((.request.path // "") == "sys/wrapping/unwrap" and (.error != null))'
 ```
 
-Set up Prometheus alerts:
+If your approval dashboard exports its own metrics, set up Prometheus alerts for pending and expired requests:
 
 ```yaml
 apiVersion: v1
@@ -555,7 +563,7 @@ data:
 
 ## Best Practices
 
-Set appropriate `max_ttl` values for control group authorization windows. Balance urgency with security by allowing enough time for approval without creating excessive risk windows.
+Set appropriate `ttl` values for control group authorization windows. Balance urgency with security by allowing enough time for approval without creating excessive risk windows.
 
 Ensure approver groups have sufficient members to prevent bottlenecks. If approvals require 3 people but only 3 are authorized, any unavailability blocks access.
 
