@@ -20,7 +20,7 @@ graph TD
     B -->|/api/*| C[ALB Origin]
     B -->|/static/*| D[S3 Static Assets]
     B -->|/media/*| E[S3 Media Bucket]
-    B -->|Default /*| F[S3 Website Origin]
+    B -->|Default /*| F[S3 Site Origin]
 ```
 
 ## Configuring Multiple Origins
@@ -55,7 +55,7 @@ Here's a distribution with four origins serving different content types:
       },
       {
         "Id": "alb-api",
-        "DomainName": "internal-api-alb-123456.us-east-1.elb.amazonaws.com",
+        "DomainName": "api-alb-123456.us-east-1.elb.amazonaws.com",
         "CustomOriginConfig": {
           "HTTPPort": 80,
           "HTTPSPort": 443,
@@ -132,7 +132,7 @@ Cache behaviors connect URL patterns to origins. The order matters - CloudFront 
 ```
 
 Notice how each behavior has different settings:
-- API behavior allows all HTTP methods, uses no caching, and forwards all headers
+- API behavior allows all HTTP methods, uses no caching, and forwards all viewer headers
 - Static assets use aggressive caching with compression
 - Media files use caching but skip compression (media is already compressed)
 
@@ -170,6 +170,8 @@ Origin groups let you define a primary and secondary origin. If the primary retu
 }
 ```
 
+CloudFront origin failover applies only to `GET`, `HEAD`, and `OPTIONS` viewer requests. For `OPTIONS` failover, include `OPTIONS` in the cache behavior's cached methods.
+
 You'll need both origins defined in the Origins section first. Here's a complete example with primary and secondary API origins:
 
 ```json
@@ -181,6 +183,7 @@ You'll need both origins defined in the Origins section first. Here's a complete
         "Id": "alb-api-primary",
         "DomainName": "primary-api-alb.us-east-1.elb.amazonaws.com",
         "CustomOriginConfig": {
+          "HTTPPort": 80,
           "HTTPSPort": 443,
           "OriginProtocolPolicy": "https-only"
         }
@@ -189,6 +192,7 @@ You'll need both origins defined in the Origins section first. Here's a complete
         "Id": "alb-api-secondary",
         "DomainName": "secondary-api-alb.us-west-2.elb.amazonaws.com",
         "CustomOriginConfig": {
+          "HTTPPort": 80,
           "HTTPSPort": 443,
           "OriginProtocolPolicy": "https-only"
         }
@@ -245,6 +249,16 @@ A common pattern is using S3 cross-region replication with an origin group for s
 
 aws s3 mb s3://my-website-secondary --region us-west-2
 
+# Enable versioning on both buckets; S3 replication requires it
+aws s3api put-bucket-versioning \
+  --bucket my-website-primary \
+  --versioning-configuration Status=Enabled
+
+aws s3api put-bucket-versioning \
+  --bucket my-website-secondary \
+  --versioning-configuration Status=Enabled \
+  --region us-west-2
+
 # Enable cross-region replication from primary to secondary
 aws s3api put-bucket-replication \
   --bucket my-website-primary \
@@ -253,7 +267,7 @@ aws s3api put-bucket-replication \
     "Rules": [{
       "Status": "Enabled",
       "Priority": 1,
-      "Filter": {},
+      "Filter": {"Prefix": ""},
       "Destination": {
         "Bucket": "arn:aws:s3:::my-website-secondary"
       },
@@ -273,8 +287,8 @@ Then set up an origin group with both buckets:
         "Id": "s3-failover",
         "FailoverCriteria": {
           "StatusCodes": {
-            "Quantity": 2,
-            "Items": [403, 404]
+            "Quantity": 6,
+            "Items": [403, 404, 500, 502, 503, 504]
           }
         },
         "Members": {
@@ -290,7 +304,7 @@ Then set up an origin group with both buckets:
 }
 ```
 
-For S3 origins, you'd typically fail over on 403 (access denied) and 404 (not found) in addition to 5xx errors, since S3 doesn't return traditional server errors the same way application servers do.
+For S3 origins, you'd typically fail over on 403 (access denied) and 404 (not found) in addition to 5xx errors, since 403 and 404 can indicate that the object is unavailable or inaccessible in the primary bucket.
 
 ## Creating the Distribution with CLI
 
@@ -327,10 +341,10 @@ curl -sI https://d1234abcdef.cloudfront.net/static/app.js | grep -i 'x-cache\|vi
 
 ## Monitoring Multi-Origin Setups
 
-With multiple origins, monitor each one separately:
+With multiple origins, start with distribution-level CloudFront metrics:
 
 ```bash
-# Check error rate per origin
+# Check distribution-level 5xx error rate
 aws cloudwatch get-metric-statistics \
   --namespace AWS/CloudFront \
   --metric-name 5xxErrorRate \
@@ -340,10 +354,11 @@ aws cloudwatch get-metric-statistics \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Average
+  --statistics Average \
+  --region us-east-1
 ```
 
-For origin-specific health monitoring, use Route 53 health checks or external monitoring to verify each origin independently. For a comprehensive monitoring setup, check our post on [CloudFront origin failover for high availability](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-failover-high-availability/view).
+CloudFront's standard CloudWatch metrics are scoped to the distribution, not to individual origins. For origin-specific health monitoring, use Route 53 health checks, origin service metrics, CloudFront logs, or external monitoring to verify each origin independently. For a comprehensive monitoring setup, check our post on [CloudFront origin failover for high availability](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-failover-high-availability/view).
 
 ## Summary
 
