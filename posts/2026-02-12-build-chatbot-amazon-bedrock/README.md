@@ -29,7 +29,7 @@ def chat(messages, user_input):
 
     # Call the model with the full conversation history
     response = bedrock_runtime.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 1024,
@@ -72,7 +72,7 @@ def chat_stream(messages, user_input):
     messages.append({"role": "user", "content": user_input})
 
     response = bedrock_runtime.invoke_model_with_response_stream(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 1024,
@@ -118,7 +118,7 @@ def save_session(session_id, messages):
         'session_id': session_id,
         'messages': json.dumps(messages),
         'updated_at': datetime.utcnow().isoformat(),
-        'ttl': int(time.time()) + 86400  # Expire after 24 hours
+        'ttl': int(time.time()) + 86400  # Eligible for expiration after 24 hours
     })
 
 def load_session(session_id):
@@ -149,6 +149,16 @@ dynamodb_client.create_table(
     ],
     BillingMode='PAY_PER_REQUEST'
 )
+
+dynamodb_client.get_waiter('table_exists').wait(TableName='chatbot-sessions')
+
+dynamodb_client.update_time_to_live(
+    TableName='chatbot-sessions',
+    TimeToLiveSpecification={
+        'Enabled': True,
+        'AttributeName': 'ttl'
+    }
+)
 ```
 
 ## Building the Serverless API
@@ -172,7 +182,7 @@ def lambda_handler(event, context):
     """Handle chatbot API requests."""
     body = json.loads(event.get('body', '{}'))
     user_message = body.get('message', '')
-    session_id = body.get('session_id', str(uuid.uuid4()))
+    session_id = body.get('session_id') or str(uuid.uuid4())
 
     if not user_message:
         return {
@@ -192,7 +202,7 @@ def lambda_handler(event, context):
     try:
         # Call Bedrock
         response = bedrock_runtime.invoke_model(
-            modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+            modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
             body=json.dumps({
                 'anthropic_version': 'bedrock-2023-05-31',
                 'max_tokens': 1024,
@@ -284,7 +294,7 @@ but let the user know you're not certain about specifics."""
     messages.append({"role": "user", "content": user_message})
 
     response = bedrock_runtime.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='anthropic.claude-sonnet-4-5-20250929-v1:0',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 1024,
@@ -294,7 +304,10 @@ but let the user know you're not certain about specifics."""
     )
 
     result = json.loads(response['body'].read())
-    return result['content'][0]['text']
+    assistant_message = result['content'][0]['text']
+    messages.append({"role": "assistant", "content": assistant_message})
+    save_conversation(session_id, messages)
+    return assistant_message
 ```
 
 ## Frontend Integration
@@ -335,8 +348,11 @@ class ChatWidget {
 }
 
 // Usage
-const chat = new ChatWidget('https://your-api-gateway-url/chat');
-const reply = await chat.sendMessage('What is your return policy?');
+async function askQuestion() {
+    const chat = new ChatWidget('https://your-api-gateway-url/chat');
+    const reply = await chat.sendMessage('What is your return policy?');
+    return reply;
+}
 ```
 
 ## Monitoring and Improvement
