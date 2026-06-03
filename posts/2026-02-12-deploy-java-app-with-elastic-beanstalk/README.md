@@ -37,6 +37,8 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Map;
+
 @SpringBootApplication
 @RestController
 public class DemoApplication {
@@ -114,19 +116,19 @@ eb create production --instance-type t3.medium --single
 eb status
 ```
 
-For JAR deployments, you can also upload directly.
-
-```bash
-# Deploy a specific JAR file
-eb deploy --staged
-```
-
-Or configure the EB CLI to know where your JAR is.
+For JAR deployments, configure the EB CLI to know where your JAR is.
 
 ```yaml
 # .elasticbeanstalk/config.yml
 deploy:
   artifact: target/demo-0.0.1-SNAPSHOT.jar
+```
+
+If you use Git and the build artifact is not committed, deploy the latest staged build.
+
+```bash
+# Deploy the configured artifact, including uncommitted build output
+eb deploy --staged
 ```
 
 ## WAR File Deployment with Tomcat
@@ -314,7 +316,7 @@ A few things I've seen trip up Java developers specifically:
 .git
 .idea
 *.iml
-target/
+target/*
 !target/*.jar
 node_modules/
 ```
