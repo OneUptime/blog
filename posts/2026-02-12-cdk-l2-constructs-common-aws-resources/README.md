@@ -14,7 +14,7 @@ This post covers the L2 constructs you'll reach for most often, with practical e
 
 ## S3 Buckets
 
-S3 is probably the most common AWS resource in any project. The L2 construct sets good defaults out of the box - public access is blocked, encryption is enabled, and you get helpful methods for granting access.
+S3 is probably the most common AWS resource in any project. The L2 construct sets good defaults out of the box - new buckets and objects don't allow public access, encryption is enabled, and you get helpful methods for granting access.
 
 ```typescript
 // Create an S3 bucket with common production settings
@@ -22,6 +22,9 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as cdk from 'aws-cdk-lib';
 
 const dataBucket = new s3.Bucket(this, 'DataBucket', {
+  // Explicitly block public access
+  blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+
   // Versioning keeps object history
   versioned: true,
 
@@ -132,8 +135,9 @@ const myFunction = new lambda.Function(this, 'MyFunction', {
 The DynamoDB L2 construct makes table creation clean and readable.
 
 ```typescript
-// Create a DynamoDB table with indexes and auto-scaling
+// Create a DynamoDB table with indexes and on-demand billing
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 
 const usersTable = new dynamodb.Table(this, 'UsersTable', {
   partitionKey: {
@@ -146,7 +150,9 @@ const usersTable = new dynamodb.Table(this, 'UsersTable', {
   },
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
   // Enable point-in-time recovery
-  pointInTimeRecovery: true,
+  pointInTimeRecoverySpecification: {
+    pointInTimeRecoveryEnabled: true,
+  },
   // Enable server-side encryption
   encryption: dynamodb.TableEncryption.AWS_MANAGED,
   // Stream changes for event-driven processing
@@ -182,6 +188,7 @@ SQS queues with dead letter queues are a common pattern.
 ```typescript
 // Create SQS queues with DLQ pattern
 import * as sqs from 'aws-cdk-lib/aws-sqs';
+import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
 
 // Dead letter queue for failed messages
 const dlq = new sqs.Queue(this, 'OrdersDLQ', {
@@ -278,12 +285,20 @@ const api = new apigw.RestApi(this, 'MyApi', {
 
 // Create resources and methods
 const users = api.root.addResource('users');
-users.addMethod('GET', new apigw.LambdaIntegration(listUsersFunction));
-users.addMethod('POST', new apigw.LambdaIntegration(createUserFunction));
+const listUsersMethod = users.addMethod('GET', new apigw.LambdaIntegration(listUsersFunction), {
+  apiKeyRequired: true,
+});
+users.addMethod('POST', new apigw.LambdaIntegration(createUserFunction), {
+  apiKeyRequired: true,
+});
 
 const singleUser = users.addResource('{userId}');
-singleUser.addMethod('GET', new apigw.LambdaIntegration(getUserFunction));
-singleUser.addMethod('PUT', new apigw.LambdaIntegration(updateUserFunction));
+singleUser.addMethod('GET', new apigw.LambdaIntegration(getUserFunction), {
+  apiKeyRequired: true,
+});
+singleUser.addMethod('PUT', new apigw.LambdaIntegration(updateUserFunction), {
+  apiKeyRequired: true,
+});
 
 // Add API key and usage plan for rate limiting
 const apiKey = api.addApiKey('ApiKey');
@@ -299,6 +314,18 @@ const usagePlan = api.addUsagePlan('UsagePlan', {
   },
 });
 usagePlan.addApiKey(apiKey);
+usagePlan.addApiStage({
+  stage: api.deploymentStage,
+  throttle: [
+    {
+      method: listUsersMethod,
+      throttle: {
+        rateLimit: 50,
+        burstLimit: 100,
+      },
+    },
+  ],
+});
 ```
 
 ## Putting It All Together
