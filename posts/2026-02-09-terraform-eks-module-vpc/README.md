@@ -131,7 +131,7 @@ output "nat_gateway_ips" {
 
 The subnet tags are critical. The `kubernetes.io/role/elb` tag tells the AWS Load Balancer Controller to use public subnets for internet-facing ALBs and NLBs. The `kubernetes.io/role/internal-elb` tag marks private subnets for internal load balancers.
 
-Using `/19` CIDR blocks for private subnets gives each AZ 8,190 IP addresses, which is essential for pods using the VPC CNI plugin. Public subnets use `/24` blocks because they only host NAT Gateways and load balancers.
+Using `/19` CIDR blocks for private subnets gives each AZ 8,192 total addresses, with 8,187 usable after AWS-reserved subnet addresses, which is essential for pods using the VPC CNI plugin. Public subnets use `/24` blocks because they only host NAT Gateways and load balancers.
 
 ## Step 2: Define the EKS Module
 
@@ -143,7 +143,7 @@ variable "cluster_name" {
 
 variable "cluster_version" {
   type    = string
-  default = "1.29"
+  default = "1.35"
 }
 
 variable "vpc_id" {
@@ -320,6 +320,10 @@ output "oidc_provider_arn" {
 output "cluster_security_group_id" {
   value = module.eks.cluster_security_group_id
 }
+
+output "node_security_group_id" {
+  value = module.eks.node_security_group_id
+}
 ```
 
 ## Step 3: Wire the Modules Together
@@ -344,7 +348,7 @@ module "eks" {
   source = "./modules/eks-cluster"
 
   cluster_name        = "production"
-  cluster_version     = "1.29"
+  cluster_version     = "1.35"
   vpc_id              = module.vpc.vpc_id
   subnet_ids          = module.vpc.private_subnet_ids
   node_instance_types = ["m6i.xlarge"]
@@ -366,17 +370,16 @@ This is why we use large private subnets (/19 per AZ).
 
 ## Security Group Configuration
 
-EKS creates a cluster security group and a node security group automatically. For additional restrictions, you can add custom security group rules:
+The EKS service creates a primary cluster security group, and this Terraform module creates additional cluster and node security groups by default. For additional restrictions, you can add custom security group rules:
 
 ```hcl
-resource "aws_security_group_rule" "allow_rds" {
-  type                     = "egress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  source_security_group_id = aws_security_group.rds.id
-  security_group_id        = module.eks.cluster_security_group_id
-  description              = "Allow pods to connect to RDS"
+resource "aws_vpc_security_group_egress_rule" "allow_rds" {
+  security_group_id            = module.eks.node_security_group_id
+  referenced_security_group_id = aws_security_group.rds.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+  description                  = "Allow worker nodes and pods to connect to RDS"
 }
 ```
 
