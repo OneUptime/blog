@@ -107,7 +107,7 @@ const logGroup = new logs.LogGroup(this, 'AppLogs', {
 
 // Attach to Lambda function
 const orderFunction = new lambda.Function(this, 'OrderFunction', {
-  runtime: lambda.Runtime.NODEJS_18_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda'),
   logGroup,
@@ -128,9 +128,10 @@ fields @timestamp, @message, level, error, requestId
 
 # Calculate error rate per minute
 filter level = "ERROR" or level = "INFO"
+| fields case(level = "ERROR", 1, 0) as is_error
 | stats count(*) as total,
-        sum(level = "ERROR") as errors,
-        (sum(level = "ERROR") / count(*)) * 100 as error_rate
+        sum(is_error) as errors,
+        (sum(is_error) / count(*)) * 100 as error_rate
   by bin(5m) as time_bucket
 
 # Slowest requests
@@ -157,8 +158,9 @@ const { createMetricsLogger, Unit } = require('aws-embedded-metrics');
 exports.handler = async (event) => {
   const metrics = createMetricsLogger();
 
-  // Set dimensions for filtering
-  metrics.setDimensions({ Service: 'OrderService', Environment: 'production' });
+  // Set namespace and dimensions for filtering
+  metrics.setNamespace('OrderService');
+  metrics.putDimensions({ Service: 'OrderService', Environment: 'production' });
 
   const start = Date.now();
   try {
@@ -181,18 +183,19 @@ exports.handler = async (event) => {
 };
 ```
 
-EMF is the recommended approach for Lambda because it's batched and efficient. For EC2 or ECS, use the CloudWatch agent.
+EMF is a good approach for Lambda because it's batched and efficient. For EC2 or ECS, use the CloudWatch agent.
 
 ## Distributed Tracing with X-Ray
 
-X-Ray traces requests as they flow through your system. Instrument your Lambda functions to see the full request path.
+X-Ray traces requests as they flow through your system. Instrument your Lambda functions to see the full request path. The X-Ray SDK is in maintenance mode, so consider OpenTelemetry for new services; if you use the X-Ray SDK, use the AWS SDK for JavaScript v3 instrumentation.
 
 ```javascript
 // Enable X-Ray tracing in Lambda
 const AWSXRay = require('aws-xray-sdk-core');
-const AWS = AWSXRay.captureAWS(require('aws-sdk'));
+const { DynamoDBClient, PutItemCommand } = require('@aws-sdk/client-dynamodb');
 
-// X-Ray automatically captures AWS SDK calls
+const dynamoClient = AWSXRay.captureAWSv3Client(new DynamoDBClient({}));
+
 // For HTTP calls, wrap the client
 const https = AWSXRay.captureHTTPs(require('https'));
 
@@ -205,7 +208,7 @@ exports.handler = async (event) => {
     subsegment.addAnnotation('orderId', event.orderId);
     subsegment.addMetadata('orderItems', event.items);
 
-    // AWS SDK calls are automatically traced
+    // AWS SDK v3 calls through the captured client are traced
     const dbResult = await dynamoClient.send(new PutItemCommand({...}));
 
     // HTTP calls are also traced
@@ -226,7 +229,7 @@ Enable X-Ray in your CDK stack.
 ```typescript
 // Enable X-Ray tracing
 const orderFunction = new lambda.Function(this, 'OrderFunction', {
-  runtime: lambda.Runtime.NODEJS_18_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda'),
   tracing: lambda.Tracing.ACTIVE,  // Enable X-Ray
@@ -307,7 +310,7 @@ dashboard.addWidgets(
     width: 12,
   }),
   new cloudwatch.GraphWidget({
-    title: 'Lambda Concurrent Executions',
+    title: 'Lambda Invocations and Errors',
     left: [orderFunction.metricInvocations()],
     right: [orderFunction.metricErrors()],
     width: 12,
@@ -362,7 +365,7 @@ When you have multiple services, subscribe log groups to a central processing fu
 ```typescript
 // Centralized log processing
 const logProcessingFunction = new lambda.Function(this, 'LogProcessor', {
-  runtime: lambda.Runtime.NODEJS_18_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'log-processor.handler',
   code: lambda.Code.fromAsset('lambda'),
 });
