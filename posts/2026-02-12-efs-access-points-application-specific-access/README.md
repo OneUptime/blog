@@ -31,7 +31,7 @@ Web application access point:
 # Create access point for the web application
 
 WEB_AP=$(aws efs create-access-point \
-  --file-system-id "fs-0abc123def456789" \
+  --file-system-id "fs-0abc123def4567890" \
   --posix-user "Uid=1001,Gid=1001" \
   --root-directory "Path=/webapp,CreationInfo={OwnerUid=1001,OwnerGid=1001,Permissions=755}" \
   --tags "Key=Name,Value=webapp-access-point" "Key=Application,Value=webapp" \
@@ -46,7 +46,7 @@ Data processor access point:
 ```bash
 # Create access point for the data processor
 DATA_AP=$(aws efs create-access-point \
-  --file-system-id "fs-0abc123def456789" \
+  --file-system-id "fs-0abc123def4567890" \
   --posix-user "Uid=1002,Gid=1002" \
   --root-directory "Path=/dataprocessor,CreationInfo={OwnerUid=1002,OwnerGid=1002,Permissions=750}" \
   --tags "Key=Name,Value=data-processor-ap" "Key=Application,Value=data-processor" \
@@ -87,8 +87,8 @@ On EC2 instances, use the access point ID with the mount helper:
 
 ```bash
 # Mount using the access point
-sudo mount -t efs -o tls,accesspoint=fsap-0abc123def456 \
-  fs-0abc123def456789:/ /mnt/webapp
+sudo mount -t efs -o tls,accesspoint=fsap-0abc123def4567890 \
+  fs-0abc123def4567890:/ /mnt/webapp
 ```
 
 The mounted path shows the access point's root directory as `/`. The application sees `/mnt/webapp` as a clean root, unaware that it's actually a subdirectory of the larger file system.
@@ -104,10 +104,10 @@ In your ECS task definition, specify the access point in the EFS volume configur
     {
       "name": "webapp-data",
       "efsVolumeConfiguration": {
-        "fileSystemId": "fs-0abc123def456789",
+        "fileSystemId": "fs-0abc123def4567890",
         "transitEncryption": "ENABLED",
         "authorizationConfig": {
-          "accessPointId": "fsap-0webapp123",
+          "accessPointId": "fsap-0123456789abcdef0",
           "iam": "ENABLED"
         }
       }
@@ -115,10 +115,10 @@ In your ECS task definition, specify the access point in the EFS volume configur
     {
       "name": "processor-data",
       "efsVolumeConfiguration": {
-        "fileSystemId": "fs-0abc123def456789",
+        "fileSystemId": "fs-0abc123def4567890",
         "transitEncryption": "ENABLED",
         "authorizationConfig": {
-          "accessPointId": "fsap-0processor456",
+          "accessPointId": "fsap-0fedcba9876543210",
           "iam": "ENABLED"
         }
       }
@@ -162,7 +162,7 @@ Lambda requires an access point - you can't mount EFS on Lambda without one:
 aws lambda update-function-configuration \
   --function-name "my-function" \
   --file-system-configs '[{
-    "Arn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0abc123",
+    "Arn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0abc123def4567890",
     "LocalMountPath": "/mnt/data"
   }]'
 ```
@@ -185,10 +185,10 @@ Here's a policy for the web application's task role:
         "elasticfilesystem:ClientMount",
         "elasticfilesystem:ClientWrite"
       ],
-      "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-0abc123def456789",
+      "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-0abc123def4567890",
       "Condition": {
         "StringEquals": {
-          "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0webapp123"
+          "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0123456789abcdef0"
         }
       }
     }
@@ -207,10 +207,10 @@ And for the data processor (with read-only access):
       "Action": [
         "elasticfilesystem:ClientMount"
       ],
-      "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-0abc123def456789",
+      "Resource": "arn:aws:elasticfilesystem:us-east-1:123456789012:file-system/fs-0abc123def4567890",
       "Condition": {
         "StringEquals": {
-          "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0processor456"
+          "elasticfilesystem:AccessPointArn": "arn:aws:elasticfilesystem:us-east-1:123456789012:access-point/fsap-0fedcba9876543210"
         }
       }
     }
@@ -227,7 +227,7 @@ You can also enforce that all access must go through an access point at the file
 ```bash
 # Enforce access point usage on the file system
 aws efs put-file-system-policy \
-  --file-system-id "fs-0abc123def456789" \
+  --file-system-id "fs-0abc123def4567890" \
   --policy '{
     "Version": "2012-10-17",
     "Statement": [
@@ -242,8 +242,8 @@ aws efs put-file-system-policy \
         ],
         "Resource": "*",
         "Condition": {
-          "StringEquals": {
-            "elasticfilesystem:AccessPointArn": ""
+          "Null": {
+            "elasticfilesystem:AccessPointArn": "true"
           }
         }
       },
@@ -263,7 +263,7 @@ aws efs put-file-system-policy \
   }'
 ```
 
-This policy blocks any mount attempt that doesn't go through an access point and doesn't use TLS.
+This policy blocks mount attempts that don't go through an access point or don't use TLS.
 
 ## Shared Data Between Applications
 
@@ -272,13 +272,13 @@ Sometimes applications need to share data. You can set this up using group permi
 ```bash
 # Web app writes shared data
 aws efs create-access-point \
-  --file-system-id "fs-0abc123def456789" \
+  --file-system-id "fs-0abc123def4567890" \
   --posix-user "Uid=1001,Gid=1001,SecondaryGids=2000" \
   --root-directory "Path=/shared,CreationInfo={OwnerUid=0,OwnerGid=2000,Permissions=775}"
 
-# Data processor reads shared data
+# Data processor accesses shared data
 aws efs create-access-point \
-  --file-system-id "fs-0abc123def456789" \
+  --file-system-id "fs-0abc123def4567890" \
   --posix-user "Uid=1002,Gid=1002,SecondaryGids=2000" \
   --root-directory "Path=/shared,CreationInfo={OwnerUid=0,OwnerGid=2000,Permissions=775}"
 ```
@@ -345,13 +345,13 @@ resource "aws_efs_access_point" "processor" {
   }
 }
 
-# Access point for shared data
-resource "aws_efs_access_point" "shared" {
+# Shared-data access point for web application
+resource "aws_efs_access_point" "shared_webapp" {
   file_system_id = aws_efs_file_system.main.id
 
   posix_user {
     uid            = 1001
-    gid            = 2000
+    gid            = 1001
     secondary_gids = [2000]
   }
 
@@ -365,7 +365,33 @@ resource "aws_efs_access_point" "shared" {
   }
 
   tags = {
-    Name = "shared-data-ap"
+    Name        = "shared-data-webapp-ap"
+    Application = "webapp"
+  }
+}
+
+# Shared-data access point for data processor
+resource "aws_efs_access_point" "shared_processor" {
+  file_system_id = aws_efs_file_system.main.id
+
+  posix_user {
+    uid            = 1002
+    gid            = 1002
+    secondary_gids = [2000]
+  }
+
+  root_directory {
+    path = "/shared"
+    creation_info {
+      owner_uid   = 0
+      owner_gid   = 2000
+      permissions = "775"
+    }
+  }
+
+  tags = {
+    Name        = "shared-data-processor-ap"
+    Application = "data-processor"
   }
 }
 ```
@@ -375,13 +401,13 @@ resource "aws_efs_access_point" "shared" {
 ```bash
 # List all access points for a file system
 aws efs describe-access-points \
-  --file-system-id "fs-0abc123def456789" \
+  --file-system-id "fs-0abc123def4567890" \
   --query "AccessPoints[].{Id:AccessPointId,Name:Tags[?Key=='Name']|[0].Value,Path:RootDirectory.Path,Uid:PosixUser.Uid}" \
   --output table
 
 # Delete an access point
 aws efs delete-access-point \
-  --access-point-id "fsap-0old123"
+  --access-point-id "fsap-0123456789abcdeff"
 ```
 
 ## Best Practices
