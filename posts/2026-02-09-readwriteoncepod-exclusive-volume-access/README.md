@@ -35,15 +35,19 @@ Use RWOP when:
 
 ## Prerequisites
 
-ReadWriteOncePod requires Kubernetes 1.22+ and CSI drivers that support the feature:
+ReadWriteOncePod requires Kubernetes 1.22+ and CSI volumes. It is stable in Kubernetes 1.29 and later; older clusters might require the `ReadWriteOncePod` feature gate and compatible CSI sidecars:
 
 ```bash
 # Check Kubernetes version
 
-kubectl version --short
+kubectl version
 
-# Verify CSI driver supports RWOP
-kubectl get csidrivers -o yaml | grep -A 5 "volumeLifecycleModes"
+# Verify CSI drivers are installed
+kubectl get csidrivers
+
+# Check CSI sidecar versions; RWOP needs csi-provisioner v3.0.0+,
+# csi-attacher v3.3.0+, and csi-resizer v1.3.0+
+kubectl -n kube-system get pods | grep -E 'csi-(provisioner|attacher|resizer)'
 ```
 
 ## Creating a PVC with ReadWriteOncePod
@@ -84,7 +88,7 @@ kind: Deployment
 metadata:
   name: postgres
 spec:
-  replicas: 1  # Must be 1 for RWOP
+  replicas: 1  # Must be 1 when all replicas share one RWOP PVC
   selector:
     matchLabels:
       app: postgres
@@ -174,8 +178,9 @@ You'll see an event like:
 Events:
   Type     Reason            Message
   ----     ------            -------
-  Warning  FailedMount       Multi-Attach error for volume "pvc-xxxxx"
-                            Volume is already exclusively attached to one pod
+  Warning  FailedScheduling  0/1 nodes are available: 1 node has pod using
+                             PersistentVolumeClaim with the same name and
+                             ReadWriteOncePod access mode.
 ```
 
 Clean up the failed pod:
@@ -189,6 +194,15 @@ kubectl delete pod postgres-second-attempt
 StatefulSets work naturally with RWOP since each pod gets its own PVC:
 
 ```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+---
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -202,6 +216,8 @@ spec:
   volumeClaimTemplates:
   - metadata:
       name: data
+      labels:
+        app: postgres
     spec:
       accessModes:
         - ReadWriteOncePod  # Each pod gets exclusive access to its volume
@@ -219,10 +235,7 @@ spec:
         image: postgres:15
         env:
         - name: POSTGRES_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: postgres-secret
-              key: password
+          value: "securepassword"
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -245,17 +258,23 @@ kubectl get pvc -l app=postgres
 
 ## Migrating from RWO to RWOP
 
-Migrate existing RWO volumes to RWOP:
+Migrate existing RWO volumes to RWOP while preserving the existing PersistentVolume:
 
 ```bash
 # Step 1: Scale down the application
 kubectl scale deployment postgres --replicas=0
 
-# Step 2: Delete the existing PVC
+# Step 2: Find the bound PV and keep it when deleting the PVC
+PV_NAME=$(kubectl get pvc postgres-data -o jsonpath='{.spec.volumeName}')
 kubectl get pvc postgres-data -o yaml > pvc-backup.yaml
+kubectl patch pv "$PV_NAME" -p '{"spec":{"persistentVolumeReclaimPolicy":"Retain"}}'
 kubectl delete pvc postgres-data
 
-# Step 3: Create new PVC with RWOP
+# Step 3: Clear the old claim UID and change the PV access mode
+kubectl patch pv "$PV_NAME" -p '{"spec":{"claimRef":{"uid":""}}}'
+kubectl patch pv "$PV_NAME" -p '{"spec":{"accessModes":["ReadWriteOncePod"]}}'
+
+# Step 4: Recreate the PVC with RWOP and bind it to the same PV
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -268,20 +287,16 @@ spec:
     requests:
       storage: 20Gi
   storageClassName: standard
-  # Restore from snapshot if needed
-  dataSource:
-    name: postgres-snapshot
-    kind: VolumeSnapshot
-    apiGroup: snapshot.storage.k8s.io
+  volumeName: ${PV_NAME}
 EOF
 
-# Step 4: Scale back up
+# Step 5: Scale back up
 kubectl scale deployment postgres --replicas=1
 ```
 
 ## Combining RWOP with Pod Disruption Budgets
 
-Ensure high availability during node maintenance:
+Prevent voluntary disruptions during node maintenance:
 
 ```yaml
 apiVersion: policy/v1
@@ -314,13 +329,18 @@ spec:
       containers:
       - name: postgres
         image: postgres:15
+        env:
+        - name: POSTGRES_PASSWORD
+          value: "securepassword"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         lifecycle:
           preStop:
             exec:
               command:
               - /bin/sh
               - -c
-              - pg_ctl stop -D /var/lib/postgresql/data -m fast
+              - pg_ctl stop -D /var/lib/postgresql/data/pgdata -m fast
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
@@ -419,7 +439,7 @@ kubectl get pvc -A -o json | jq -r '.items[] |
   select(.spec.accessModes[] == "ReadWriteOncePod") |
   "\(.metadata.namespace)/\(.metadata.name): \(.status.phase)"'
 
-# Find pods using RWOP volumes
+# Find pods using PVC volumes
 kubectl get pods -A -o json | jq -r '.items[] |
   select(.spec.volumes[]?.persistentVolumeClaim != null) |
   {
@@ -467,7 +487,7 @@ kubectl delete pod <old-pod-name> --grace-period=0 --force
 ## Best Practices
 
 1. **Use RWOP for single-writer databases** to prevent data corruption
-2. **Set replica count to 1** in Deployments using RWOP
+2. **Set replica count to 1** in Deployments sharing one RWOP PVC
 3. **Use Recreate strategy** to prevent multiple pods during updates
 4. **Implement graceful shutdown** with preStop hooks
 5. **Monitor volume attachment status** for troubleshooting
