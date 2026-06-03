@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Amplify, Terraform, Infrastructure as Code, IaC, DevOps, CI/CD
 
-Description: Use Terraform to provision and manage AWS Amplify backend resources including hosting, branches, and environment configuration
+Description: Use Terraform to provision and manage AWS Amplify hosting resources including apps, branches, domains, webhooks, and environment configuration
 
 ---
 
 AWS Amplify is great for developers who want a managed hosting experience, but enterprise teams often need their infrastructure defined in Terraform alongside everything else. Instead of clicking through the Amplify console or using the Amplify CLI separately from your other infrastructure, you can manage Amplify resources entirely through Terraform.
 
-This guide covers provisioning Amplify apps, branches, domain associations, webhooks, and backend environments using Terraform. By the end, your entire Amplify setup will be reproducible and version-controlled.
+This guide covers provisioning Amplify apps, branches, domain associations, webhooks, and related backend resources using Terraform. By the end, your entire Amplify setup will be reproducible and version-controlled.
 
 ## Why Terraform for Amplify?
 
@@ -86,7 +86,7 @@ resource "aws_amplify_app" "main" {
           commands:
             - npm run build
       artifacts:
-        baseDirectory: build
+        baseDirectory: .next
         files:
           - '**/*'
       cache:
@@ -107,24 +107,11 @@ resource "aws_amplify_app" "main" {
     ])
   }
 
-  # Enable branch auto-detection
+  # Enable automatic builds for connected branches
   enable_branch_auto_build = true
 
-  # Auto-detect framework
+  # Use Amplify Hosting compute for Next.js SSR
   platform = "WEB_COMPUTE"
-
-  # Custom rewrite rules
-  custom_rule {
-    source = "/<*>"
-    status = "200"
-    target = "/index.html"
-  }
-
-  custom_rule {
-    source = "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>"
-    status = "200"
-    target = "/index.html"
-  }
 
   tags = var.tags
 }
@@ -319,7 +306,7 @@ resource "aws_cognito_user_pool_client" "main" {
   ]
 }
 
-# Pass Cognito IDs to Amplify as environment variables
+# Add these values to the environment_variables map in the existing aws_amplify_app.main resource
 resource "aws_amplify_app" "main" {
   # ... existing configuration ...
 
@@ -383,6 +370,45 @@ variable "staging_database_url" {
   sensitive   = true
 }
 
+variable "staging_username" {
+  description = "Username for staging basic authentication"
+  type        = string
+}
+
+variable "staging_password" {
+  description = "Password for staging basic authentication"
+  type        = string
+  sensitive   = true
+}
+
+variable "feature_branches" {
+  description = "Feature branches to deploy"
+  type        = list(string)
+  default     = []
+}
+
+variable "dev_api_url" {
+  description = "Development API URL"
+  type        = string
+}
+
+variable "dev_database_url" {
+  description = "Development database URL"
+  type        = string
+  sensitive   = true
+}
+
+variable "dev_username" {
+  description = "Username for development basic authentication"
+  type        = string
+}
+
+variable "dev_password" {
+  description = "Password for development basic authentication"
+  type        = string
+  sensitive   = true
+}
+
 variable "tags" {
   description = "Resource tags"
   type        = map(string)
@@ -436,9 +462,16 @@ on:
 jobs:
   apply:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ vars.AWS_REGION }}
 
       - name: Terraform Init
         run: terraform init
@@ -448,7 +481,7 @@ jobs:
         run: terraform apply -auto-approve -var-file="production.tfvars"
         working-directory: terraform/
         env:
-          TF_VAR_github_access_token: ${{ secrets.GITHUB_TOKEN }}
+          TF_VAR_github_access_token: ${{ secrets.AMPLIFY_GITHUB_ACCESS_TOKEN }}
 ```
 
 ## Common Issues
@@ -460,7 +493,7 @@ terraform import aws_amplify_app.main d1234abcde
 terraform import aws_amplify_branch.main d1234abcde/main
 ```
 
-**Access token rotation**: GitHub access tokens expire. Use a GitHub App installation token instead for longer-lived credentials.
+**Access token rotation**: Store the Amplify GitHub personal access token in a secrets manager or CI secret, and rotate it before it expires.
 
 **Domain verification timeout**: SSL certificate verification can take up to 48 hours. Set `wait_for_verification = false` initially and verify separately.
 
