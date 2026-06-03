@@ -59,7 +59,8 @@ cat > step-functions-policy.json << 'EOF'
       "Effect": "Allow",
       "Action": [
         "states:StartExecution",
-        "states:StartSyncExecution"
+        "states:StartSyncExecution",
+        "states:DescribeExecution"
       ],
       "Resource": "*"
     }
@@ -80,6 +81,13 @@ For standard (asynchronous) workflows, API Gateway starts the execution and retu
 Set up the integration to start a state machine:
 
 ```bash
+# Create the request template
+cat > start-execution-templates.json << 'EOF'
+{
+  "application/json": "{\"input\": \"$util.escapeJavaScript($input.json('$')).replaceAll(\"\\\\'\",\"'\")\", \"stateMachineArn\": \"arn:aws:states:us-east-1:123456789012:stateMachine:my-workflow\"}"
+}
+EOF
+
 # Create the integration
 aws apigateway put-integration \
   --rest-api-id abc123api \
@@ -89,9 +97,7 @@ aws apigateway put-integration \
   --integration-http-method POST \
   --uri "arn:aws:apigateway:us-east-1:states:action/StartExecution" \
   --credentials "arn:aws:iam::123456789012:role/APIGatewayStepFunctionsRole" \
-  --request-templates '{
-    "application/json": "{\"input\": \"$util.escapeJavaScript($input.json('"'"'$'"'"'))\", \"stateMachineArn\": \"arn:aws:states:us-east-1:123456789012:stateMachine:my-workflow\"}"
-  }'
+  --request-templates file://start-execution-templates.json
 
 # Configure the method response
 aws apigateway put-method-response \
@@ -107,7 +113,7 @@ aws apigateway put-integration-response \
   --http-method POST \
   --status-code 200 \
   --response-templates '{
-    "application/json": "{\"executionArn\": \"$input.json('"'"'$.executionArn'"'"')\", \"startDate\": \"$input.json('"'"'$.startDate'"'"')\"}"
+    "application/json": "{\"executionArn\": \"$input.path('"'"'$.executionArn'"'"')\", \"startDate\": $input.path('"'"'$.startDate'"'"')}"
   }'
 ```
 
@@ -120,6 +126,13 @@ If you use Express workflows, you can start a synchronous execution that waits f
 Configure synchronous execution:
 
 ```bash
+# Create the request template
+cat > sync-execution-templates.json << 'EOF'
+{
+  "application/json": "{\"input\": \"$util.escapeJavaScript($input.json('$')).replaceAll(\"\\\\'\",\"'\")\", \"stateMachineArn\": \"arn:aws:states:us-east-1:123456789012:stateMachine:my-express-workflow\"}"
+}
+EOF
+
 # Use StartSyncExecution for Express workflows
 aws apigateway put-integration \
   --rest-api-id abc123api \
@@ -129,9 +142,7 @@ aws apigateway put-integration \
   --integration-http-method POST \
   --uri "arn:aws:apigateway:us-east-1:states:action/StartSyncExecution" \
   --credentials "arn:aws:iam::123456789012:role/APIGatewayStepFunctionsRole" \
-  --request-templates '{
-    "application/json": "{\"input\": \"$util.escapeJavaScript($input.json('"'"'$'"'"'))\", \"stateMachineArn\": \"arn:aws:states:us-east-1:123456789012:stateMachine:my-express-workflow\"}"
-  }'
+  --request-templates file://sync-execution-templates.json
 
 # Map the sync execution response
 aws apigateway put-integration-response \
@@ -140,15 +151,15 @@ aws apigateway put-integration-response \
   --http-method POST \
   --status-code 200 \
   --response-templates '{
-    "application/json": "$input.json('"'"'$.output'"'"')"
+    "application/json": "$input.path('"'"'$.output'"'"')"
   }'
 ```
 
 With synchronous execution, the client gets the actual workflow output in the API response. No polling needed.
 
-## Complete CloudFormation Template
+## Core CloudFormation Template
 
-Here's a full stack with API Gateway, Step Functions, and the direct integration:
+Here's the core stack with API Gateway, Step Functions, and the direct integration:
 
 ```yaml
 Resources:
@@ -215,6 +226,10 @@ Resources:
                   - states:StartExecution
                   - states:StartSyncExecution
                 Resource: !Ref OrderWorkflow
+              - Effect: Allow
+                Action:
+                  - states:DescribeExecution
+                Resource: !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:execution:${OrderWorkflow.Name}:*"
 
   # POST method with direct Step Functions integration
   PostOrderMethod:
@@ -232,26 +247,27 @@ Resources:
         RequestTemplates:
           application/json: !Sub |
             {
-              "input": "$util.escapeJavaScript($input.json('$'))",
+              "input": "$util.escapeJavaScript($input.json('$')).replaceAll(\"\\'\",\"'\")",
               "stateMachineArn": "${OrderWorkflow}"
             }
         IntegrationResponses:
           - StatusCode: "200"
             ResponseTemplates:
               application/json: |
-                #set($output = $util.parseJson($input.json('$.output')))
+                #set($result = $input.path('$'))
+                #if($result.status == "FAILED")
+                #set($context.responseOverride.status = 500)
+                {
+                  "error": "Workflow execution failed",
+                  "cause": "$util.escapeJavaScript($result.cause).replaceAll("\\'","'")"
+                }
+                #else
+                #set($output = $util.parseJson($result.output))
                 {
                   "orderId": "$output.orderId",
                   "status": "$output.status"
                 }
-          - StatusCode: "500"
-            SelectionPattern: ".*FAILED.*"
-            ResponseTemplates:
-              application/json: |
-                {
-                  "error": "Workflow execution failed",
-                  "cause": "$input.json('$.cause')"
-                }
+                #end
       MethodResponses:
         - StatusCode: "200"
         - StatusCode: "500"
@@ -263,45 +279,40 @@ You can pass URL parameters to the state machine through the request template.
 
 Map path parameters and query strings to the Step Functions input:
 
-```json
+```vtl
 {
-  "application/json": {
-    "input": "{\"orderId\": \"$input.params('orderId')\", \"status\": \"$input.params('status')\", \"body\": $input.json('$')}",
-    "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:my-workflow"
-  }
+  "input": "{\"orderId\": \"$util.escapeJavaScript($input.params('orderId')).replaceAll(\"\\'\",\"'\")\", \"status\": \"$util.escapeJavaScript($input.params('status')).replaceAll(\"\\'\",\"'\")\", \"body\": $input.json('$')}",
+  "stateMachineArn": "arn:aws:states:us-east-1:123456789012:stateMachine:my-workflow"
 }
 ```
 
 ## Error Handling
 
-When a synchronous execution fails, the response includes the error and cause. Map these to appropriate HTTP status codes.
+When a synchronous execution fails, the Step Functions API still returns HTTP 200, but the response body includes the status, error, and cause. Use a response mapping template to override the API Gateway status code.
 
 Handle different execution outcomes:
 
 ```yaml
 IntegrationResponses:
-  # Successful execution
+  # Synchronous Express execution result
   - StatusCode: "200"
-    SelectionPattern: ""
-    ResponseTemplates:
-      application/json: "$input.json('$.output')"
-
-  # Execution failed
-  - StatusCode: "500"
-    SelectionPattern: ".*FAILED.*"
     ResponseTemplates:
       application/json: |
+        #set($result = $input.path('$'))
+        #if($result.status == "FAILED")
+        #set($context.responseOverride.status = 500)
         {
-          "error": "Execution failed",
-          "details": "$input.json('$.error')"
+          "error": "$util.escapeJavaScript($result.error).replaceAll("\\'","'")",
+          "details": "$util.escapeJavaScript($result.cause).replaceAll("\\'","'")"
         }
-
-  # Execution timed out
-  - StatusCode: "504"
-    SelectionPattern: ".*TIMED_OUT.*"
-    ResponseTemplates:
-      application/json: |
-        {"error": "Execution timed out"}
+        #elseif($result.status == "TIMED_OUT")
+        #set($context.responseOverride.status = 504)
+        {
+          "error": "Execution timed out"
+        }
+        #else
+        $result.output
+        #end
 ```
 
 ## Async Pattern with Polling
@@ -321,16 +332,16 @@ PostStartMethod:
       RequestTemplates:
         application/json: !Sub |
           {
-            "input": "$util.escapeJavaScript($input.json('$'))",
+            "input": "$util.escapeJavaScript($input.json('$')).replaceAll(\"\\'\",\"'\")",
             "stateMachineArn": "${MyStateMachine}"
           }
       IntegrationResponses:
         - StatusCode: "202"
           ResponseTemplates:
             application/json: |
-              #set($arn = $input.json('$.executionArn'))
+              #set($arn = $input.path('$.executionArn'))
               {
-                "executionArn": $arn,
+                "executionArn": "$arn",
                 "statusUrl": "/executions?arn=$util.urlEncode($arn)"
               }
 
@@ -350,7 +361,7 @@ GetStatusMethod:
 
 The client calls the start endpoint, gets back a status URL, and polls it until the execution completes.
 
-For monitoring your Step Functions executions triggered through API Gateway, check out our guide on [workflow monitoring](https://oneuptime.com/blog/post/2025-12-18-fix-json-parsing-errors-aws-step-functions/view).
+For monitoring your Step Functions executions triggered through API Gateway, check out our guide on [workflow monitoring](https://oneuptime.com/blog/post/2026-02-12-monitor-step-functions-executions-console/view).
 
 ## Wrapping Up
 
