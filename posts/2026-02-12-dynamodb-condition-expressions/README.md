@@ -8,7 +8,7 @@ Description: Learn how to use DynamoDB condition expressions for safe writes, in
 
 ---
 
-Condition expressions are DynamoDB's answer to transactions in traditional databases. They let you say "only perform this write if this condition is true." If the condition fails, the write is rejected and no data changes. This is how you prevent race conditions, avoid overwriting data, and enforce business rules at the database level.
+Condition expressions are one of DynamoDB's tools for safe writes. They let you say "only perform this write if this condition is true." If the condition fails, the write is rejected and no data changes. This is how you prevent race conditions, avoid overwriting data, and enforce business rules at the database level.
 
 Without condition expressions, two processes could read the same item, both decide to update it, and one would silently overwrite the other's changes. That's a recipe for data loss.
 
@@ -17,8 +17,16 @@ Without condition expressions, two processes could read the same item, both deci
 Condition expressions work with PutItem, UpdateItem, and DeleteItem operations. They're evaluated atomically - the check and the write happen as one operation.
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  DeleteCommand,
+  GetCommand,
+  PutCommand,
+  UpdateCommand
+} = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Only create the user if they don't already exist
 async function createUser(userId, name, email) {
@@ -35,10 +43,10 @@ async function createUser(userId, name, email) {
   };
 
   try {
-    await docClient.put(params).promise();
+    await docClient.send(new PutCommand(params));
     return { success: true };
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       return { success: false, reason: 'User already exists' };
     }
     throw error;
@@ -85,10 +93,10 @@ Optimistic locking is the most common use of condition expressions. You add a ve
 ```javascript
 // Read the current item and its version
 async function getProduct(productId) {
-  const result = await docClient.get({
+  const result = await docClient.send(new GetCommand({
     TableName: 'Products',
     Key: { productId }
-  }).promise();
+  }));
   return result.Item;
 }
 
@@ -108,10 +116,10 @@ async function updateProductPrice(productId, newPrice, expectedVersion) {
   };
 
   try {
-    const result = await docClient.update(params).promise();
+    const result = await docClient.send(new UpdateCommand(params));
     return result.Attributes;
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       // Someone else updated the item - retry with fresh data
       console.log('Concurrent modification detected, retrying...');
       const fresh = await getProduct(productId);
@@ -130,17 +138,17 @@ PutItem replaces the entire item. Without a condition, it silently overwrites ex
 
 ```javascript
 // DANGEROUS: This silently overwrites any existing order
-await docClient.put({
+await docClient.send(new PutCommand({
   TableName: 'Orders',
   Item: { orderId: 'ord-123', status: 'new', amount: 50 }
-}).promise();
+}));
 
 // SAFE: Only creates if the order doesn't exist
-await docClient.put({
+await docClient.send(new PutCommand({
   TableName: 'Orders',
   Item: { orderId: 'ord-123', status: 'new', amount: 50 },
   ConditionExpression: 'attribute_not_exists(orderId)'
-}).promise();
+}));
 ```
 
 ## Conditional Deletes
@@ -159,10 +167,10 @@ async function deleteDraftPost(postId) {
   };
 
   try {
-    await docClient.delete(params).promise();
+    await docClient.send(new DeleteCommand(params));
     return { deleted: true };
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       return { deleted: false, reason: 'Post is not in draft status' };
     }
     throw error;
@@ -189,13 +197,13 @@ async function decrementStock(productId, quantity) {
   };
 
   try {
-    const result = await docClient.update(params).promise();
+    const result = await docClient.send(new UpdateCommand(params));
     return {
       success: true,
       remainingStock: result.Attributes.stock
     };
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       return {
         success: false,
         reason: 'Insufficient stock'
@@ -253,10 +261,10 @@ async function updateOrderStatus(orderId, newStatus) {
   };
 
   try {
-    const result = await docClient.update(params).promise();
+    const result = await docClient.send(new UpdateCommand(params));
     return { success: true, order: result.Attributes };
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       return { success: false, reason: `Invalid status transition to ${newStatus}` };
     }
     throw error;
@@ -272,12 +280,12 @@ Always catch and handle the exception gracefully. The three common strategies ar
 ```javascript
 async function safeUpdate(key, updateFn, maxRetries = 3) {
   for (let attempt = 0; attempt < maxRetries; attempt++) {
-    const item = await docClient.get({ TableName: 'T', Key: key }).promise();
+    const item = await docClient.send(new GetCommand({ TableName: 'T', Key: key }));
 
     try {
       return await updateFn(item.Item);
     } catch (error) {
-      if (error.code === 'ConditionalCheckFailedException' && attempt < maxRetries - 1) {
+      if (error.name === 'ConditionalCheckFailedException' && attempt < maxRetries - 1) {
         console.log(`Retry ${attempt + 1}/${maxRetries}`);
         continue;
       }
@@ -289,7 +297,7 @@ async function safeUpdate(key, updateFn, maxRetries = 3) {
 
 **2. Return an error to the caller:**
 ```javascript
-if (error.code === 'ConditionalCheckFailedException') {
+if (error.name === 'ConditionalCheckFailedException') {
   return { statusCode: 409, body: 'Conflict: item was modified' };
 }
 ```
