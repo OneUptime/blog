@@ -8,7 +8,7 @@ Description: Protect your S3 buckets from accidental public exposure by configur
 
 ---
 
-Publicly exposed S3 buckets have been behind some of the biggest data breaches in cloud computing history. Capital One, Twitch, US military contractors - the list goes on. AWS introduced S3 Block Public Access specifically to prevent this class of mistake. It's a safety net that overrides bucket policies and ACLs that would otherwise make your data public.
+Publicly exposed S3 buckets have been behind many data exposures in cloud computing history. AWS introduced S3 Block Public Access specifically to prevent this class of mistake. It's a safety net that overrides bucket policies and ACLs that would otherwise make your data public.
 
 If you do nothing else for S3 security today, enable Block Public Access on all your buckets. Here's exactly how.
 
@@ -21,9 +21,9 @@ The four settings:
 1. **BlockPublicAcls** - Prevents new public ACLs from being applied. Existing public ACLs still work.
 2. **IgnorePublicAcls** - Ignores all public ACLs, both existing and new. Bucket still works for authenticated requests.
 3. **BlockPublicPolicy** - Prevents new bucket policies that grant public access.
-4. **RestrictPublicBuckets** - Restricts access to buckets with public policies to only AWS service principals and authorized users.
+4. **RestrictPublicBuckets** - Restricts access to buckets with public policies to only AWS service principals and authorized users within the bucket owner's account.
 
-When all four are enabled, there's no way to make the bucket or its objects public - not through ACLs, not through bucket policies, not through anything.
+When all four are enabled, ACLs and bucket policies can't make the bucket or its objects publicly accessible. Authorized IAM principals, AWS services you explicitly allow, and signed requests such as presigned URLs can still access the bucket if your policies permit them.
 
 ## Enable Block Public Access on a Single Bucket
 
@@ -56,7 +56,7 @@ The output should show all four settings as `true`:
 
 ## Enable Block Public Access at the Account Level
 
-This is the big one. Account-level Block Public Access applies to ALL buckets in your account, including future ones. It overrides individual bucket settings.
+This is the big one. Account-level Block Public Access applies to ALL buckets in your account, including future ones. Amazon S3 evaluates both the account-level and bucket-level settings, and the most restrictive combination applies.
 
 Block public access for your entire AWS account:
 
@@ -129,22 +129,23 @@ done
 
 ## Understanding the Precedence
 
-Block Public Access settings follow a hierarchy. The most restrictive setting wins.
+Block Public Access settings are evaluated at both the account and bucket level. For each of the four settings, the most restrictive value wins.
 
 ```mermaid
 graph TD
-    A[Account-Level Block Public Access] --> B{Enabled?}
-    B -->|Yes| C[ACCESS BLOCKED - regardless of bucket settings]
-    B -->|No| D[Bucket-Level Block Public Access]
-    D --> E{Enabled?}
-    E -->|Yes| C
-    E -->|No| F[Evaluate Bucket Policy / ACL]
-    F --> G{Public?}
-    G -->|Yes| H[ACCESS ALLOWED - bucket is public!]
-    G -->|No| I[ACCESS DENIED]
+    A[Request to S3 bucket or object] --> B[Check account-level Block Public Access]
+    B --> C[Check bucket-level Block Public Access]
+    C --> D[Apply the most restrictive value for each setting]
+    D --> E{Would ACL or bucket policy grant public access?}
+    E -->|Yes, and matching block setting applies| F[PUBLIC ACCESS BLOCKED]
+    E -->|Yes, no matching block setting applies| G[Evaluate normal S3 authorization]
+    E -->|No| G
+    G --> H{IAM, bucket policy, ACL, and other controls allow it?}
+    H -->|Yes| I[ACCESS ALLOWED]
+    H -->|No| J[ACCESS DENIED]
 ```
 
-The account level always wins. If account-level blocking is on, it doesn't matter what individual buckets are configured to do.
+If all four account-level settings are enabled, bucket-level settings can't make a bucket public. If account-level settings are not fully enabled, bucket-level settings can still add protection for individual buckets.
 
 ## Handling Buckets That Need Public Access
 
@@ -203,9 +204,9 @@ The problem with this approach is you have to disable account-level blocking, wh
 
 ## Enforcing with AWS Organizations SCPs
 
-If you're managing multiple accounts, use a Service Control Policy to prevent anyone from disabling Block Public Access.
+If you're managing multiple accounts, use a Service Control Policy to prevent anyone except your security administrator role from modifying Block Public Access.
 
-Create an SCP to enforce Block Public Access:
+Create an SCP to protect Block Public Access settings:
 
 ```json
 {
@@ -229,7 +230,7 @@ Create an SCP to enforce Block Public Access:
 }
 ```
 
-This prevents anyone except the SecurityAdmin role from modifying Block Public Access settings.
+This prevents anyone except the SecurityAdmin role from modifying Block Public Access settings. Enable Block Public Access first, then use a policy like this to keep other principals from changing it.
 
 ## Monitoring for Public Buckets
 
@@ -238,16 +239,20 @@ Even with blocking in place, monitor for any changes.
 Set up monitoring for public bucket changes:
 
 ```bash
-# Create a CloudWatch Events rule for S3 public access changes
+# Create an EventBridge rule for S3 public access changes.
+# CloudTrail management events must be available on the default event bus.
 aws events put-rule \
     --name "s3-public-access-changes" \
     --event-pattern '{
         "source": ["aws.s3"],
         "detail-type": ["AWS API Call via CloudTrail"],
         "detail": {
+            "eventSource": ["s3.amazonaws.com"],
             "eventName": [
                 "PutBucketPublicAccessBlock",
                 "DeleteBucketPublicAccessBlock",
+                "PutAccountPublicAccessBlock",
+                "DeleteAccountPublicAccessBlock",
                 "PutBucketAcl",
                 "PutBucketPolicy"
             ]
