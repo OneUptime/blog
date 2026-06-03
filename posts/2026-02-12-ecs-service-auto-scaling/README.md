@@ -10,14 +10,14 @@ Description: Learn how to configure auto scaling for ECS services using target t
 
 Running a fixed number of containers works until it doesn't. Traffic spikes hit, your containers max out, and response times go through the roof. Or traffic drops, and you're paying for containers that aren't doing anything. Auto scaling solves both problems by automatically adjusting your service's task count based on demand.
 
-ECS integrates with Application Auto Scaling, which supports three scaling approaches: target tracking (the easiest), step scaling (more control), and scheduled scaling (for predictable patterns). Let's set up each one.
+ECS integrates with Application Auto Scaling, which supports several scaling approaches. This guide covers three common ones: target tracking (the easiest), step scaling (more control), and scheduled scaling (for predictable patterns). Let's set up each one.
 
 ## Prerequisites
 
 Make sure you have:
 
 - An ECS service running (see [creating an ECS service](https://oneuptime.com/blog/post/2026-02-12-ecs-service-long-running-containers/view))
-- Properly configured [health checks](https://oneuptime.com/blog/post/2026-02-12-ecs-health-checks/view) so scaling decisions are based on healthy tasks
+- Properly configured [health checks](https://oneuptime.com/blog/post/2026-02-12-ecs-health-checks/view) so replacement tasks come online reliably as scaling changes
 - CloudWatch metrics enabled (Container Insights recommended)
 
 ## Registering the Scaling Target
@@ -117,7 +117,7 @@ The `ResourceLabel` combines your ALB and target group identifiers. You can find
 
 ### Scale Based on Custom Metrics
 
-If the built-in metrics don't fit your needs, use a custom CloudWatch metric. For example, scale based on queue depth.
+If the built-in metrics don't fit your needs, use a custom CloudWatch metric. Target tracking works best with utilization-style metrics that change in proportion to capacity. For example, publish queue depth per running task from your worker service and scale based on that.
 
 ```bash
 # Scale based on SQS queue depth per task
@@ -130,12 +130,12 @@ aws application-autoscaling put-scaling-policy \
   --target-tracking-scaling-policy-configuration '{
     "TargetValue": 100.0,
     "CustomizedMetricSpecification": {
-      "MetricName": "ApproximateNumberOfMessagesVisible",
-      "Namespace": "AWS/SQS",
+      "MetricName": "QueueMessagesPerTask",
+      "Namespace": "MyApp/Workers",
       "Dimensions": [
         {
-          "Name": "QueueName",
-          "Value": "processing-queue"
+          "Name": "ServiceName",
+          "Value": "worker-service"
         }
       ],
       "Statistic": "Average"
@@ -147,22 +147,10 @@ aws application-autoscaling put-scaling-policy \
 
 ## Step Scaling
 
-Step scaling gives you more control by defining exactly how many tasks to add or remove at different thresholds. It requires a CloudWatch alarm.
+Step scaling gives you more control by defining exactly how many tasks to add or remove at different thresholds. It requires a CloudWatch alarm that invokes the scaling policy.
 
 ```bash
-# Create a CloudWatch alarm for high CPU
-aws cloudwatch put-metric-alarm \
-  --alarm-name api-high-cpu \
-  --metric-name CPUUtilization \
-  --namespace AWS/ECS \
-  --statistic Average \
-  --period 60 \
-  --evaluation-periods 2 \
-  --threshold 70 \
-  --comparison-operator GreaterThanThreshold \
-  --dimensions Name=ClusterName,Value=my-cluster Name=ServiceName,Value=api-service
-
-# Create a step scaling policy linked to the alarm
+# Create a step scaling policy
 aws application-autoscaling put-scaling-policy \
   --service-namespace ecs \
   --resource-id service/my-cluster/api-service \
@@ -184,6 +172,19 @@ aws application-autoscaling put-scaling-policy \
     ],
     "Cooldown": 60
   }'
+
+# Copy the PolicyARN from the output, then create a CloudWatch alarm that invokes it
+aws cloudwatch put-metric-alarm \
+  --alarm-name api-high-cpu \
+  --metric-name CPUUtilization \
+  --namespace AWS/ECS \
+  --statistic Average \
+  --period 60 \
+  --evaluation-periods 2 \
+  --threshold 70 \
+  --comparison-operator GreaterThanOrEqualToThreshold \
+  --dimensions Name=ClusterName,Value=my-cluster Name=ServiceName,Value=api-service \
+  --alarm-actions arn:aws:autoscaling:us-east-1:123456789012:scalingPolicy:policy-id:resource/ecs/service/my-cluster/api-service:policyName/cpu-step-scaling
 ```
 
 This policy says:
@@ -195,18 +196,6 @@ The aggressive scaling at higher thresholds helps you respond faster to sudden t
 Don't forget a scale-in policy for when traffic drops.
 
 ```bash
-# Alarm for low CPU
-aws cloudwatch put-metric-alarm \
-  --alarm-name api-low-cpu \
-  --metric-name CPUUtilization \
-  --namespace AWS/ECS \
-  --statistic Average \
-  --period 300 \
-  --evaluation-periods 3 \
-  --threshold 30 \
-  --comparison-operator LessThanThreshold \
-  --dimensions Name=ClusterName,Value=my-cluster Name=ServiceName,Value=api-service
-
 # Scale-in policy
 aws application-autoscaling put-scaling-policy \
   --service-namespace ecs \
@@ -224,6 +213,19 @@ aws application-autoscaling put-scaling-policy \
     ],
     "Cooldown": 300
   }'
+
+# Copy the PolicyARN from the output, then create the low CPU alarm that invokes it
+aws cloudwatch put-metric-alarm \
+  --alarm-name api-low-cpu \
+  --metric-name CPUUtilization \
+  --namespace AWS/ECS \
+  --statistic Average \
+  --period 300 \
+  --evaluation-periods 3 \
+  --threshold 30 \
+  --comparison-operator LessThanThreshold \
+  --dimensions Name=ClusterName,Value=my-cluster Name=ServiceName,Value=api-service \
+  --alarm-actions arn:aws:autoscaling:us-east-1:123456789012:scalingPolicy:policy-id:resource/ecs/service/my-cluster/api-service:policyName/cpu-step-scale-in
 ```
 
 ## Scheduled Scaling
@@ -231,14 +233,14 @@ aws application-autoscaling put-scaling-policy \
 If you know your traffic patterns - like a lunch rush or end-of-day processing - schedule scaling actions in advance.
 
 ```bash
-# Scale up for business hours (weekdays, 8 AM to 6 PM EST)
+# Scale up for business hours (weekdays, 8 AM to 6 PM Eastern Time)
 aws application-autoscaling put-scheduled-action \
   --service-namespace ecs \
   --resource-id service/my-cluster/api-service \
   --scalable-dimension ecs:service:DesiredCount \
   --scheduled-action-name business-hours-scale-up \
   --schedule "cron(0 8 ? * MON-FRI *)" \
-  --timezone "US/Eastern" \
+  --timezone "America/New_York" \
   --scalable-target-action MinCapacity=5,MaxCapacity=20
 
 # Scale down for nights and weekends
@@ -248,7 +250,7 @@ aws application-autoscaling put-scheduled-action \
   --scalable-dimension ecs:service:DesiredCount \
   --scheduled-action-name off-hours-scale-down \
   --schedule "cron(0 18 ? * MON-FRI *)" \
-  --timezone "US/Eastern" \
+  --timezone "America/New_York" \
   --scalable-target-action MinCapacity=2,MaxCapacity=5
 ```
 
@@ -256,7 +258,7 @@ Scheduled scaling works alongside target tracking. You pre-position capacity bas
 
 ## Combining Multiple Policies
 
-You can have multiple scaling policies active simultaneously. ECS picks the one that results in the most capacity for scale-out (highest task count) and the least capacity for scale-in (highest task count). This means scale-out is always aggressive and scale-in is always conservative.
+You can have multiple scaling policies active simultaneously. Application Auto Scaling gives precedence to the policy that results in the largest capacity for both scale-out and scale-in. With multiple target tracking policies, it scales out if any policy is ready to scale out, but scales in only when all scale-in-enabled target tracking policies are ready to scale in. This means scale-out is aggressive and scale-in is conservative.
 
 A common production setup:
 
@@ -264,7 +266,7 @@ A common production setup:
 # 1. Target tracking on CPU (handles gradual load changes)
 # 2. Target tracking on ALB requests (handles request-based load)
 # 3. Scheduled scaling (pre-positions for known patterns)
-# All three work together - the highest desired count wins
+# Dynamic policies choose the highest calculated capacity, while scheduled actions adjust the min/max range
 ```
 
 ## Monitoring Auto Scaling
@@ -298,7 +300,7 @@ aws ecs describe-services \
 
 A few strategies to keep auto scaling costs reasonable:
 
-- Use Fargate Spot for workloads that can handle interruptions - it's 70% cheaper
+- Use Fargate Spot for workloads that can handle interruptions - it can be up to 70% cheaper
 - Set reasonable max-capacity limits to prevent runaway scaling
 - Use longer scale-in cooldowns (300-600 seconds) to avoid oscillation
 - Combine scheduled scaling with target tracking to pre-position only what you need
