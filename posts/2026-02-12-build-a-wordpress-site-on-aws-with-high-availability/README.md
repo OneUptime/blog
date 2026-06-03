@@ -10,7 +10,7 @@ Description: Deploy a production-grade WordPress site on AWS with auto scaling, 
 
 WordPress powers over 40% of the web, but most WordPress installations run on a single server with no redundancy. When that server goes down, your site goes down with it. Running WordPress on AWS with high availability means your site stays up even when individual servers fail, scales automatically during traffic spikes, and recovers without manual intervention.
 
-This guide walks through building a fully redundant WordPress deployment on AWS using EC2 Auto Scaling, RDS Multi-AZ, EFS for shared storage, and CloudFront for global content delivery.
+This guide walks through building a highly available WordPress deployment on AWS using EC2 Auto Scaling, RDS Multi-AZ, EFS for shared storage, and CloudFront for global content delivery.
 
 ## Architecture Overview
 
@@ -37,7 +37,7 @@ Each component serves a specific purpose:
 - **EC2 Auto Scaling** adds or removes instances based on load
 - **EFS** provides shared file storage so all instances see the same WordPress uploads
 - **RDS Multi-AZ** provides automatic database failover
-- **ElastiCache** handles session storage and object caching
+- **ElastiCache** handles object caching and PHP sessions for plugins that use them
 
 ## Step 1: Set Up the VPC
 
@@ -91,7 +91,7 @@ aws rds create-db-instance \
   --deletion-protection
 ```
 
-Multi-AZ means AWS maintains a synchronous standby replica in a different availability zone. If the primary fails, RDS automatically promotes the standby within about 60 seconds.
+Multi-AZ means AWS maintains a synchronous standby replica in a different availability zone. If the primary fails, RDS automatically promotes the standby, with failover typically completing in 60-120 seconds.
 
 ## Step 3: Create the EFS File System
 
@@ -117,19 +117,20 @@ aws efs create-mount-target \
   --security-groups sg-efs
 ```
 
-## Step 4: Set Up ElastiCache for Sessions
+## Step 4: Set Up ElastiCache for Object Caching and Sessions
 
-Without shared session storage, users get logged out when the load balancer routes them to a different instance:
+WordPress authentication uses cookies, but ElastiCache can provide shared object caching and PHP session storage for plugins that use sessions:
 
 ```bash
-# Create an ElastiCache Redis cluster
+# Create an ElastiCache Redis OSS replication group
 aws elasticache create-replication-group \
   --replication-group-id wordpress-sessions \
-  --replication-group-description "WordPress session storage" \
+  --replication-group-description "WordPress object cache and session storage" \
   --engine redis \
   --cache-node-type cache.r6g.large \
   --num-cache-clusters 2 \
   --automatic-failover-enabled \
+  --multi-az-enabled \
   --cache-subnet-group-name wordpress-cache \
   --security-group-ids sg-cache \
   --at-rest-encryption-enabled \
@@ -148,14 +149,15 @@ set -e
 # Install required packages
 yum update -y
 yum install -y httpd php8.2 php8.2-mysqlnd php8.2-fpm php8.2-gd \
-  php8.2-xml php8.2-mbstring php8.2-intl amazon-efs-utils
+  php8.2-xml php8.2-mbstring php8.2-intl php8.2-pecl-redis6 \
+  amazon-efs-utils wget
 
 # Mount EFS for WordPress files
 mkdir -p /var/www/html
-mount -t efs fs-xxx:/ /var/www/html
+mount -t efs -o tls fs-xxx:/ /var/www/html
 
 # Add to fstab for persistence
-echo "fs-xxx:/ /var/www/html efs defaults,_netdev 0 0" >> /etc/fstab
+echo "fs-xxx:/ /var/www/html efs _netdev,tls 0 0" >> /etc/fstab
 
 # Install WordPress if not already present on EFS
 if [ ! -f /var/www/html/wp-config.php ]; then
@@ -166,10 +168,9 @@ if [ ! -f /var/www/html/wp-config.php ]; then
   chown -R apache:apache /var/www/html/
 fi
 
-# Configure PHP for Redis sessions
-echo "extension=redis.so" >> /etc/php.ini
+# Configure PHP for Redis-backed sessions when plugins use PHP sessions
 echo "session.save_handler = redis" >> /etc/php.ini
-echo "session.save_path = 'tcp://wordpress-sessions.xxx.cache.amazonaws.com:6379'" >> /etc/php.ini
+echo "session.save_path = 'tls://wordpress-sessions.xxx.cache.amazonaws.com:6379'" >> /etc/php.ini
 
 # Start Apache
 systemctl enable httpd
@@ -258,14 +259,21 @@ Place CloudFront in front of the ALB for caching and global distribution:
 # Create CloudFront distribution
 aws cloudfront create-distribution \
   --distribution-config '{
+    "CallerReference": "wordpress-ha-2026-02-12",
+    "Comment": "WordPress HA distribution",
     "Origins": {
+      "Quantity": 1,
       "Items": [{
         "DomainName": "wordpress-alb-xxx.us-east-1.elb.amazonaws.com",
         "Id": "wordpress-alb",
         "CustomOriginConfig": {
           "HTTPPort": 80,
           "HTTPSPort": 443,
-          "OriginProtocolPolicy": "https-only"
+          "OriginProtocolPolicy": "https-only",
+          "OriginSslProtocols": {
+            "Quantity": 1,
+            "Items": ["TLSv1.2"]
+          }
         }
       }]
     },
@@ -273,14 +281,46 @@ aws cloudfront create-distribution \
       "TargetOriginId": "wordpress-alb",
       "ViewerProtocolPolicy": "redirect-to-https",
       "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
-      "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+      "AllowedMethods": {
+        "Quantity": 7,
+        "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"]
+        }
+      },
+      "Compress": true
     },
     "CacheBehaviors": {
+      "Quantity": 2,
       "Items": [{
         "PathPattern": "/wp-admin/*",
         "TargetOriginId": "wordpress-alb",
         "ViewerProtocolPolicy": "redirect-to-https",
-        "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+        "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+        "AllowedMethods": {
+          "Quantity": 7,
+          "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
+        "Compress": true
+      }, {
+        "PathPattern": "/wp-login.php",
+        "TargetOriginId": "wordpress-alb",
+        "ViewerProtocolPolicy": "redirect-to-https",
+        "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+        "AllowedMethods": {
+          "Quantity": 7,
+          "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
+        "Compress": true
       }]
     },
     "Enabled": true
@@ -344,4 +384,4 @@ Total: approximately $700/month for a production-grade, highly available WordPre
 
 ## Wrapping Up
 
-Running WordPress on a single server is fine for a personal blog, but for business-critical sites you need redundancy at every layer. The architecture in this guide eliminates every single point of failure: database failover with RDS Multi-AZ, shared storage with EFS, session persistence with ElastiCache, and automatic instance replacement with Auto Scaling. It costs more than a $5 shared hosting plan, but when your site handles real traffic and real revenue, the investment in availability pays for itself quickly.
+Running WordPress on a single server is fine for a personal blog, but for business-critical sites you need redundancy at every layer. The architecture in this guide addresses the common single points of failure in a single-region deployment: database failover with RDS Multi-AZ, shared storage with EFS, session persistence with ElastiCache, and automatic instance replacement with Auto Scaling. It costs more than a $5 shared hosting plan, but when your site handles real traffic and real revenue, the investment in availability pays for itself quickly.
