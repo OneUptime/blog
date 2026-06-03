@@ -98,9 +98,10 @@ Let's build a complete task definition for a web application with an Nginx rever
       "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-          "Name": "cloudwatch",
+          "Name": "cloudwatch_logs",
           "region": "us-east-1",
           "log_group_name": "/ecs/webapp/nginx",
+          "auto_create_group": "true",
           "log_stream_prefix": "nginx-"
         }
       }
@@ -133,9 +134,10 @@ Let's build a complete task definition for a web application with an Nginx rever
       "logConfiguration": {
         "logDriver": "awsfirelens",
         "options": {
-          "Name": "cloudwatch",
+          "Name": "cloudwatch_logs",
           "region": "us-east-1",
           "log_group_name": "/ecs/webapp/app",
+          "auto_create_group": "true",
           "log_stream_prefix": "app-"
         }
       }
@@ -171,7 +173,7 @@ The app container has a health check that validates it's responding on port 3000
 
 Two volumes connect the containers:
 
-1. **nginx-config** - Could be populated by an init container with dynamic Nginx configuration
+1. **nginx-config** - Could be populated by a one-shot setup container with dynamic Nginx configuration
 2. **static-assets** - The app container writes static files, and Nginx serves them directly
 
 This is a common pattern: let the application generate or compile static assets, and let Nginx serve them without proxying through the application server.
@@ -200,6 +202,15 @@ ECS integrates with AWS Cloud Map for service discovery. Each service registers 
 aws servicediscovery create-private-dns-namespace \
   --name app.local \
   --vpc vpc-abc123
+
+# Create a Cloud Map service in that namespace
+aws servicediscovery create-service \
+  --name api-service \
+  --dns-config '{
+    "NamespaceId": "ns-abc123",
+    "DnsRecords": [{"Type": "A", "TTL": 60}]
+  }' \
+  --health-check-custom-config FailureThreshold=1
 
 # Create an ECS service with service discovery
 aws ecs create-service \
@@ -234,7 +245,7 @@ response = requests.get("http://api-service.app.local:8080/api/users")
 
 ### Load Balancer Configuration
 
-For services that receive external traffic, attach an Application Load Balancer:
+For services that receive external traffic, attach an Application Load Balancer. For Fargate services using `awsvpc`, make sure the target group was created with target type `ip`, not `instance`:
 
 ```bash
 # Create the service with a load balancer
@@ -269,7 +280,7 @@ For service-to-service communication, you have several options:
 1. **Service Discovery DNS** - Simple DNS-based discovery via Cloud Map
 2. **Internal ALBs** - For HTTP-based services that need load balancing
 3. **ECS Service Connect** - ECS's newer service mesh-like feature
-4. **App Mesh** - Full service mesh with Envoy proxies
+4. **App Mesh** - Full service mesh with Envoy proxies for existing App Mesh users; AWS will discontinue App Mesh support on September 30, 2026, so use Service Connect for new ECS service-mesh deployments
 
 For most applications, Cloud Map DNS is sufficient. It's simple, reliable, and doesn't add overhead. See our guide on [ECS Service Connect](https://oneuptime.com/blog/post/2026-02-12-ecs-service-connect-service-to-service-communication/view) for the more advanced option.
 
