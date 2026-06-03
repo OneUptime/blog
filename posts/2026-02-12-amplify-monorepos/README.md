@@ -39,9 +39,9 @@ In the Amplify Console, when adding a new app:
 
 1. Connect your repository
 2. Select the branch
-3. In the build settings, specify the **monorepo root directory**
+3. Select **My app is a monorepo** and specify the app's path inside the monorepo
 
-You can set the root directory to `apps/web` for your web app. Amplify will then treat that directory as the project root.
+You can set the app path to `apps/web` for your web app. Amplify will then use that path as the app root.
 
 But here's the catch: if your app depends on packages outside its directory, you need to install dependencies from the repo root, not from the app directory.
 
@@ -56,27 +56,28 @@ version: 1
 applications:
   - appRoot: apps/web
     frontend:
+      buildPath: /
       phases:
         preBuild:
           commands:
             # Install dependencies from the root to resolve workspace packages
-            - npm ci --prefix ../../
+            - npm ci
             # Or if using yarn workspaces
-            # - cd ../../ && yarn install --frozen-lockfile
+            # - yarn install --frozen-lockfile
         build:
           commands:
             # Build shared packages first
-            - cd ../../ && npx turbo run build --filter=web...
+            - npx turbo run build --filter=web...
             # Or just build the specific app
             # - npm run build
       artifacts:
-        baseDirectory: .next
+        baseDirectory: apps/web/.next
         files:
           - '**/*'
       cache:
         paths:
-          - ../../node_modules/**/*
-          - .next/cache/**/*
+          - node_modules/**/*
+          - apps/web/.next/cache/**/*
 ```
 
 If you're using Turborepo, the build command leverages Turbo's dependency graph to build packages in the right order:
@@ -133,22 +134,23 @@ version: 1
 applications:
   - appRoot: apps/web
     frontend:
+      buildPath: /
       phases:
         preBuild:
           commands:
             # Install from repo root with Yarn
-            - cd ../../ && yarn install --frozen-lockfile
+            - yarn install --frozen-lockfile
         build:
           commands:
-            - cd ../../ && yarn turbo run build --filter=web...
+            - yarn turbo run build --filter=web...
       artifacts:
-        baseDirectory: .next
+        baseDirectory: apps/web/.next
         files:
           - '**/*'
       cache:
         paths:
-          - ../../node_modules/**/*
-          - ../../.yarn/cache/**/*
+          - node_modules/**/*
+          - .yarn/cache/**/*
 ```
 
 For Yarn Berry (v2+), you might also need:
@@ -156,14 +158,17 @@ For Yarn Berry (v2+), you might also need:
 ```yaml
         preBuild:
           commands:
-            - cd ../../
             - corepack enable
             - yarn install --immutable
 ```
 
 ## pnpm Workspaces
 
-pnpm is increasingly popular for monorepos. Amplify doesn't ship with pnpm by default, so you need to install it during the build:
+pnpm is increasingly popular for monorepos. Amplify doesn't ship with pnpm by default, so you need to install it during the build. For pnpm workspace and Turborepo apps, Amplify also expects an `.npmrc` file at the project root with a hoisted node linker:
+
+```text
+node-linker=hoisted
+```
 
 ```yaml
 # amplify.yml for pnpm
@@ -171,23 +176,23 @@ version: 1
 applications:
   - appRoot: apps/web
     frontend:
+      buildPath: /
       phases:
         preBuild:
           commands:
-            - cd ../../
             - corepack enable
             - corepack prepare pnpm@latest --activate
             - pnpm install --frozen-lockfile
         build:
           commands:
-            - cd ../../ && pnpm turbo run build --filter=web...
+            - pnpm turbo run build --filter=web...
       artifacts:
-        baseDirectory: .next
+        baseDirectory: apps/web/.next
         files:
           - '**/*'
       cache:
         paths:
-          - ../../node_modules/**/*
+          - node_modules/**/*
 ```
 
 ## Deploying Multiple Apps from One Repo
@@ -200,10 +205,11 @@ App 1 (Web Frontend):
 applications:
   - appRoot: apps/web
     frontend:
+      buildPath: /
       phases:
         build:
           commands:
-            - cd ../../ && npx turbo run build --filter=web...
+            - npx turbo run build --filter=web...
 ```
 
 App 2 (Admin Dashboard):
@@ -212,10 +218,11 @@ App 2 (Admin Dashboard):
 applications:
   - appRoot: apps/admin
     frontend:
+      buildPath: /
       phases:
         build:
           commands:
-            - cd ../../ && npx turbo run build --filter=admin...
+            - npx turbo run build --filter=admin...
 ```
 
 Both apps share the same repository and build process, but deploy independently.
@@ -241,10 +248,14 @@ backend:
   phases:
     build:
       commands:
-        - cd ../../amplify && amplifyPush --simple
+        - amplifyPush --simple
 ```
 
-For Gen 2, the backend definition in `amplify/` at the repo root works naturally since it's just TypeScript that gets compiled.
+For Gen 2, deploy the shared backend as its own Amplify app, then have each frontend app generate outputs from that backend app:
+
+```bash
+npx ampx generate outputs --branch main --app-id BACKEND-APP-ID
+```
 
 ## Build Caching
 
@@ -255,27 +266,26 @@ frontend:
   cache:
     paths:
       # Root node_modules
-      - ../../node_modules/**/*
+      - node_modules/**/*
       # Turbo cache
-      - ../../.turbo/**/*
+      - .turbo/**/*
       # Next.js build cache
-      - .next/cache/**/*
+      - apps/web/.next/cache/**/*
       # TypeScript build info
-      - ../../packages/*/dist/**/*
+      - packages/*/dist/**/*
 ```
 
 Turborepo's remote caching can also speed things up significantly. Connect it to Vercel's cache or self-host a cache server:
 
 ```json
-// turbo.json
 {
   "remoteCache": {
     "enabled": true
   },
-  "pipeline": {
+  "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     }
   }
 }
@@ -283,24 +293,13 @@ Turborepo's remote caching can also speed things up significantly. Connect it to
 
 ## Triggering Builds Only on Relevant Changes
 
-By default, any push to your repo triggers a build for all connected Amplify apps. You can optimize this by configuring build triggers to only fire when relevant files change.
+By default, any push to your repo triggers a build for all connected Amplify apps. You can optimize this by enabling Amplify's diff-based frontend build and deploy feature.
 
-In the Amplify Console, under "Build settings", set up a custom build trigger:
+In the Amplify Console, under "Hosting" > "Environment variables", set `AMPLIFY_DIFF_DEPLOY` to `true`. Amplify checks your `appRoot` for changes by default, and you can override the path with `AMPLIFY_DIFF_DEPLOY_ROOT` if needed:
 
 ```yaml
-# Only rebuild the web app if files in these paths changed
-frontend:
-  phases:
-    preBuild:
-      commands:
-        - |
-          # Check if relevant files changed
-          if git diff --name-only HEAD~1 | grep -qE '^(apps/web|packages/shared)'; then
-            echo "Changes detected, building..."
-          else
-            echo "No relevant changes, skipping build"
-            exit 0
-          fi
+AMPLIFY_DIFF_DEPLOY: true
+AMPLIFY_DIFF_DEPLOY_ROOT: apps/web
 ```
 
 ## Troubleshooting
@@ -315,7 +314,7 @@ frontend:
     preBuild:
       commands:
         - nvm use 20
-        - npm ci --prefix ../../
+        - npm ci
 ```
 
 **Shared packages not being transpiled.** If you're importing TypeScript from shared packages, make sure your bundler is configured to transpile them. For Next.js, use the `transpilePackages` option:
@@ -333,4 +332,4 @@ When you've got multiple apps deploying from one repo, tracking which deployment
 
 ## Wrapping Up
 
-Monorepos with Amplify work well once you get the build configuration right. The key is installing dependencies from the repo root, using a build tool like Turborepo to handle the dependency graph, and caching aggressively. Set up each app with its own `appRoot`, share backend resources where it makes sense, and use build triggers to avoid unnecessary deployments. It takes a bit of upfront work, but the result is a streamlined deployment pipeline for your entire organization.
+Monorepos with Amplify work well once you get the build configuration right. The key is installing dependencies from the repo root, using a build tool like Turborepo to handle the dependency graph, and caching aggressively. Set up each app with its own `appRoot`, share backend resources where it makes sense, and use diff-based deploys to avoid unnecessary deployments. It takes a bit of upfront work, but the result is a streamlined deployment pipeline for your entire organization.
