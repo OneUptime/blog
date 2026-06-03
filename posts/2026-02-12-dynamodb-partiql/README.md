@@ -17,8 +17,15 @@ It's not a replacement for the native API - it's an alternative interface. Under
 You can run PartiQL statements through the AWS SDK, the CLI, or the DynamoDB console. Let's start with the SDK:
 
 ```javascript
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB();
+const {
+  DynamoDBClient,
+  ExecuteStatementCommand,
+  BatchExecuteStatementCommand,
+  ExecuteTransactionCommand
+} = require('@aws-sdk/client-dynamodb');
+const { unmarshall } = require('@aws-sdk/util-dynamodb');
+
+const dynamodb = new DynamoDBClient({});
 
 // Execute a PartiQL statement
 async function executeStatement(statement, parameters) {
@@ -27,12 +34,12 @@ async function executeStatement(statement, parameters) {
     Parameters: parameters || []
   };
 
-  const result = await dynamodb.executeStatement(params).promise();
-  return result.Items.map(item => AWS.DynamoDB.Converter.unmarshall(item));
+  const result = await dynamodb.send(new ExecuteStatementCommand(params));
+  return (result.Items || []).map(item => unmarshall(item));
 }
 ```
 
-Note that PartiQL uses the low-level DynamoDB client, not the DocumentClient. The results come back in DynamoDB's native format (with type descriptors), so you need to unmarshall them.
+This example uses the low-level DynamoDB client. The results come back in DynamoDB's native format (with type descriptors), so you need to unmarshall them.
 
 ## SELECT: Reading Data
 
@@ -94,7 +101,7 @@ await executeStatement(
 );
 ```
 
-PartiQL INSERT is equivalent to PutItem. It replaces the entire item if one with the same key exists. There's no built-in "insert only if not exists" syntax - you'd need a condition expression via the native API for that.
+PartiQL INSERT adds a new item. If an item with the same primary key already exists, DynamoDB returns `DuplicateItemException`. If you want overwrite behavior, use the native `PutItem` API instead.
 
 ## UPDATE: Modifying Items
 
@@ -145,7 +152,7 @@ Like UPDATE, DELETE requires the full primary key. You can't do a bulk delete wi
 
 ## Batch Operations
 
-PartiQL supports batch statements for executing multiple operations atomically:
+PartiQL supports batch statements for executing multiple operations in one request:
 
 ```javascript
 // Batch execute multiple statements
@@ -157,7 +164,7 @@ async function batchExecute(statements) {
     }))
   };
 
-  return dynamodb.batchExecuteStatement(params).promise();
+  return dynamodb.send(new BatchExecuteStatementCommand(params));
 }
 
 // Insert multiple items in a batch
@@ -177,7 +184,7 @@ await batchExecute([
 ]);
 ```
 
-Batch operations can contain up to 25 statements. Each statement is processed independently - if one fails, the others still execute.
+Batch operations can contain up to 25 statements. The entire batch must contain either read statements or write statements; you can't mix reads and writes in the same batch. Each statement is processed independently - if one fails, the others still execute.
 
 ## Transactions with PartiQL
 
@@ -215,7 +222,7 @@ async function transferCredits(fromUser, toUser, amount) {
     ]
   };
 
-  await dynamodb.executeTransaction(params).promise();
+  await dynamodb.send(new ExecuteTransactionCommand(params));
 }
 ```
 
@@ -278,7 +285,7 @@ aws dynamodb execute-statement \
 
 ## Using PartiQL in the DynamoDB Console
 
-The DynamoDB console has a PartiQL editor built in. Go to your table, click "Explore table items", and switch to the "PartiQL editor" tab. This is great for ad-hoc queries and debugging.
+The DynamoDB console has a PartiQL editor built in. Open the DynamoDB console and choose "PartiQL editor" from the navigation pane. This is great for ad-hoc queries and debugging.
 
 ## PartiQL vs. Native API: When to Use Each
 
@@ -286,13 +293,13 @@ PartiQL is great for:
 - Developers familiar with SQL who want a gentler learning curve
 - Ad-hoc queries in the console or CLI
 - Simple CRUD operations where the expression syntax feels verbose
-- Batch operations mixing different operation types
+- Batch operations that group multiple reads or multiple writes
 
 The native API is better for:
-- Complex conditional writes (condition expressions)
-- Fine-grained control over capacity consumption (ReturnConsumedCapacity)
-- Operations that need ReturnValues
-- Performance-sensitive code (slightly less overhead)
+- Codebases that already standardize on DynamoDB expressions
+- Features or response shapes that aren't available through PartiQL statements
+- Operations where the native request model is clearer to your team
+- Avoiding SQL parsing overhead in performance-sensitive code paths
 
 ```javascript
 // PartiQL version - cleaner for simple queries
@@ -302,7 +309,10 @@ const result = await executeStatement(
 );
 
 // Native API version - more verbose but more control
-const result2 = await docClient.query({
+const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const docClient = DynamoDBDocumentClient.from(dynamodb);
+
+const result2 = await docClient.send(new QueryCommand({
   TableName: 'Orders',
   KeyConditionExpression: 'customerId = :cid AND orderDate >= :date',
   ProjectionExpression: 'orderId, orderAmount',
@@ -311,7 +321,7 @@ const result2 = await docClient.query({
     ':date': '2026-02-01'
   },
   ReturnConsumedCapacity: 'TOTAL'
-}).promise();
+}));
 ```
 
 ## Common Gotchas
@@ -326,9 +336,9 @@ SELECT * FROM Users WHERE email = 'jane@example.com'
 SELECT * FROM Users WHERE userId = 'user-001'
 ```
 
-**No LIKE operator.** DynamoDB doesn't support wildcard searches. Use `begins_with` via the native API instead.
+**No LIKE operator.** DynamoDB doesn't support SQL wildcard searches. Use PartiQL functions such as `begins_with` or `contains` when they fit your access pattern.
 
-**Parameter types.** PartiQL parameters must include the DynamoDB type descriptor (`{ S: 'string' }`, `{ N: '123' }`, etc.). This is easy to forget.
+**Parameter types.** When you use the low-level DynamoDB SDK client, PartiQL parameters must include the DynamoDB type descriptor (`{ S: 'string' }`, `{ N: '123' }`, etc.). This is easy to forget.
 
 ## Monitoring
 
