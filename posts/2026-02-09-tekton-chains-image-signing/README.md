@@ -12,7 +12,7 @@ Supply chain security has become critical in modern software development. Tekton
 
 ## Understanding Tekton Chains
 
-Tekton Chains observes completed TaskRuns and PipelineRuns, automatically signing artifacts and generating attestations without requiring pipeline modifications. It supports multiple signing formats including Cosign and x509, and can store signatures in OCI registries or transparency logs like Rekor.
+Tekton Chains observes completed TaskRuns and PipelineRuns, automatically signing artifacts and generating attestations without requiring pipeline modifications. It supports signing with x509, KMS, cosign-generated key pairs, and keyless Fulcio certificates, and can store signatures in OCI registries or upload entries to transparency logs like Rekor.
 
 ## Installing Tekton Chains
 
@@ -24,7 +24,7 @@ First, ensure you have Tekton Pipelines installed, then deploy Tekton Chains:
 kubectl apply -f https://storage.googleapis.com/tekton-releases/pipeline/latest/release.yaml
 
 # Install Tekton Chains
-kubectl apply -f https://storage.googleapis.com/tekton-releases/chains/latest/release.yaml
+kubectl apply -f https://infra.tekton.dev/tekton-releases/chains/latest/release.yaml
 
 # Verify installation
 kubectl get pods -n tekton-chains
@@ -34,14 +34,14 @@ Tekton Chains runs as a controller that watches for completed TaskRuns and Pipel
 
 ## Generating Signing Keys
 
-Tekton Chains supports multiple key types. For Cosign signing, generate a key pair:
+Tekton Chains supports multiple key types. For a cosign-generated key pair, generate the key in the `signing-secrets` Secret:
 
 ```bash
 # Generate Cosign key pair
 cosign generate-key-pair k8s://tekton-chains/signing-secrets
 
-# This creates a Kubernetes secret with the private key
-# The public key is displayed for verification purposes
+# This creates a Kubernetes secret with the private key and password
+# The public key is written to cosign.pub for verification purposes
 ```
 
 Alternatively, use keyless signing with OIDC:
@@ -72,19 +72,14 @@ data:
   # Configure OCI storage for signatures
   artifacts.oci.storage: "oci"
   artifacts.oci.format: "simplesigning"
-  artifacts.oci.signer: "cosign"
+  artifacts.oci.signer: "x509"
 
   # Enable transparency log
   transparency.enabled: "true"
   transparency.url: "https://rekor.sigstore.dev"
 
-  # Configure signers
-  signers.x509.fulcio.enabled: "true"
-  signers.x509.fulcio.address: "https://fulcio.sigstore.dev"
-  signers.x509.fulcio.issuer: "https://oauth2.sigstore.dev/auth"
-
-  # Cosign configuration
-  signers.cosign.key: "k8s://tekton-chains/signing-secrets"
+  # Use the key material in the signing-secrets Secret
+  signers.x509.fulcio.enabled: "false"
 ```
 
 Apply the configuration:
@@ -101,14 +96,22 @@ kubectl rollout restart deployment tekton-chains-controller -n tekton-chains
 Create a pipeline that builds and pushes images. Chains will automatically sign the output:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: build-and-sign
 spec:
   params:
     - name: image
+      type: string
       description: Reference of the image to build
+  results:
+    - name: IMAGE_DIGEST
+      description: Digest of the built image
+      value: $(tasks.build-image.results.IMAGE_DIGEST)
+    - name: IMAGE_URL
+      description: URL of the built image
+      value: $(tasks.build-image.results.IMAGE_URL)
   workspaces:
     - name: shared-workspace
 
@@ -122,32 +125,27 @@ spec:
       workspaces:
         - name: source
           workspace: shared-workspace
-
-    - name: push-image
-      runAfter: [build-image]
-      taskRef:
-        name: push-oci
-      params:
-        - name: IMAGE
-          value: $(params.image)
 ```
 
 Create a Task that produces signed artifacts:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: kaniko
 spec:
   params:
     - name: IMAGE
+      type: string
   workspaces:
     - name: source
   results:
     - name: IMAGE_DIGEST
+      type: string
       description: Digest of the built image
     - name: IMAGE_URL
+      type: string
       description: URL of the built image
 
   steps:
@@ -155,15 +153,15 @@ spec:
       image: gcr.io/kaniko-project/executor:latest
       args:
         - "--dockerfile=./Dockerfile"
-        - "--context=./$(workspaces.source.path)"
+        - "--context=$(workspaces.source.path)"
         - "--destination=$(params.IMAGE)"
-        - "--digest-file=/tekton/results/IMAGE_DIGEST"
+        - "--digest-file=$(results.IMAGE_DIGEST.path)"
 
     - name: write-url
       image: bash:latest
       script: |
         #!/bin/bash
-        echo -n "$(params.IMAGE)" > /tekton/results/IMAGE_URL
+        echo -n "$(params.IMAGE)" > "$(results.IMAGE_URL.path)"
 ```
 
 ## Configuring Attestation Format
@@ -177,17 +175,16 @@ metadata:
   name: chains-config
   namespace: tekton-chains
 data:
-  artifacts.taskrun.format: "in-toto"
-  artifacts.pipelinerun.format: "in-toto"
+  # SLSA v0.2 provenance; use slsa/v2alpha3 or slsa/v2alpha4 for SLSA v1.0
+  artifacts.taskrun.format: "slsa/v1"
+  artifacts.pipelinerun.format: "slsa/v1"
 
-  # SLSA provenance level
-  artifacts.pipelinerun.slsa.level: "2"
+  # Store TaskRun and PipelineRun provenance in OCI
+  artifacts.taskrun.storage: "oci"
+  artifacts.pipelinerun.storage: "oci"
 
-  # Include pipeline definition in attestation
-  artifacts.pipelinerun.include.pipeline: "true"
-
-  # Include task results in attestation
-  artifacts.taskrun.include.results: "true"
+  # Inspect child TaskRuns when generating PipelineRun provenance
+  artifacts.pipelinerun.enable-deep-inspection: "true"
 ```
 
 ## Verifying Signatures and Attestations
@@ -224,10 +221,10 @@ metadata:
   namespace: tekton-chains
 data:
   artifacts.oci.storage: "oci"
-  artifacts.oci.repository: "registry.example.com/signatures"
+  storage.oci.repository: "registry.example.com/signatures"
 
-  # Use the same repository as the image
-  artifacts.oci.repository.insecure: "false"
+  # Use secure TLS verification when connecting to the repository
+  storage.oci.repository.insecure: "false"
 ```
 
 Signatures are stored as OCI artifacts with a reference to the signed image.
@@ -245,9 +242,6 @@ metadata:
 data:
   transparency.enabled: "true"
   transparency.url: "https://rekor.sigstore.dev"
-
-  # Verify Rekor entry
-  transparency.verify: "true"
 ```
 
 Query Rekor for signature entries:
@@ -255,7 +249,7 @@ Query Rekor for signature entries:
 ```bash
 # Search Rekor for image signatures
 rekor-cli search \
-  --artifact ${IMAGE_URL}@${IMAGE_DIGEST}
+  --sha ${IMAGE_DIGEST#sha256:}
 
 # Get entry details
 rekor-cli get --uuid <uuid-from-search>
@@ -284,14 +278,14 @@ Add annotations to track signing status:
 kubectl get taskrun <taskrun-name> \
   -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signed}'
 
-# View signature reference
+# View signature annotations when using the tekton storage backend
 kubectl get taskrun <taskrun-name> \
-  -o jsonpath='{.metadata.annotations.chains\.tekton\.dev/signature}'
+  -o jsonpath='{.metadata.annotations}' | jq .
 ```
 
-## Configuring Multi-Format Signing
+## Configuring Multiple Storage Backends
 
-Sign artifacts in multiple formats simultaneously:
+Store signed artifacts in multiple backends simultaneously:
 
 ```yaml
 apiVersion: v1
@@ -300,29 +294,29 @@ metadata:
   name: chains-config
   namespace: tekton-chains
 data:
-  # Primary format
+  # Attestation format
   artifacts.taskrun.format: "in-toto"
   artifacts.taskrun.storage: "oci,tekton"
 
-  # Additional formats
-  artifacts.taskrun.format.additional: "slsa/v1"
-
   # Multiple storage backends
   artifacts.oci.storage: "oci"
-  artifacts.tekton.storage: "tekton"
 ```
 
-This creates multiple attestation formats for different verification tools.
+This stores the same attestation in multiple backends for different verification workflows.
 
 ## Troubleshooting Common Issues
 
 If signatures are not being created:
 
 ```bash
-# Check Chains has permissions
-kubectl auth can-i create secrets \
+# Check Chains has permissions to read signing keys and update TaskRuns
+kubectl auth can-i get secret/signing-secrets \
   --as=system:serviceaccount:tekton-chains:tekton-chains-controller \
   -n tekton-chains
+
+kubectl auth can-i patch taskruns.tekton.dev \
+  --as=system:serviceaccount:tekton-chains:tekton-chains-controller \
+  --all-namespaces
 
 # Verify signing key exists
 kubectl get secret signing-secrets -n tekton-chains
