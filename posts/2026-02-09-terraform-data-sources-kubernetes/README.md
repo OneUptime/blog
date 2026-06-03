@@ -33,7 +33,7 @@ terraform {
   required_providers {
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.27"
+      version = "~> 3.1"
     }
   }
 }
@@ -88,8 +88,8 @@ data "kubernetes_config_map" "cluster_info" {
   }
 }
 
-output "cluster_ca" {
-  value = data.kubernetes_config_map.cluster_info.data["ca.crt"]
+output "cluster_kubeconfig" {
+  value = data.kubernetes_config_map.cluster_info.data["kubeconfig"]
 }
 ```
 
@@ -107,12 +107,27 @@ resource "kubernetes_deployment" "app" {
   metadata {
     name      = "my-app"
     namespace = "production"
+    labels = {
+      app = "my-app"
+    }
   }
 
   spec {
     replicas = tonumber(data.kubernetes_config_map.app_config.data["replicas"])
 
+    selector {
+      match_labels = {
+        app = "my-app"
+      }
+    }
+
     template {
+      metadata {
+        labels = {
+          app = "my-app"
+        }
+      }
+
       spec {
         container {
           name  = "app"
@@ -173,10 +188,10 @@ output "ingress_load_balancer_ip" {
 This is particularly valuable when you need to create DNS records pointing to a load balancer that was provisioned by a Kubernetes Service:
 
 ```hcl
-resource "cloudflare_record" "app" {
+resource "cloudflare_dns_record" "app" {
   zone_id = var.cloudflare_zone_id
   name    = "app"
-  value   = data.kubernetes_service.ingress_nginx.status[0].load_balancer[0].ingress[0].ip
+  content = data.kubernetes_service.ingress_nginx.status[0].load_balancer[0].ingress[0].ip
   type    = "A"
   proxied = true
 }
@@ -184,7 +199,7 @@ resource "cloudflare_record" "app" {
 
 ## Reading Service Account Tokens
 
-For integrations that need a service account token:
+For integrations that need a service account token, read an explicitly created token Secret:
 
 ```hcl
 data "kubernetes_service_account" "ci_deployer" {
@@ -196,7 +211,7 @@ data "kubernetes_service_account" "ci_deployer" {
 
 data "kubernetes_secret" "ci_deployer_token" {
   metadata {
-    name      = data.kubernetes_service_account.ci_deployer.default_secret_name
+    name      = "ci-deployer-token"
     namespace = "ci-system"
   }
 }
@@ -206,6 +221,8 @@ output "ci_deployer_token" {
   sensitive = true
 }
 ```
+
+Kubernetes 1.24 and later does not automatically create long-lived token Secrets for service accounts. The Kubernetes provider's `default_secret_name` attribute is deprecated and may be empty, so use a known Secret name or create a token with the Kubernetes TokenRequest API.
 
 ## Querying Persistent Volumes
 
@@ -248,10 +265,12 @@ resource "helm_release" "grafana" {
   chart      = "grafana"
   namespace  = "monitoring"
 
-  set {
-    name  = "datasources.datasources\\.yaml.datasources[0].url"
-    value = "http://prometheus-server.monitoring.svc.cluster.local:80"
-  }
+  set = [
+    {
+      name  = "datasources.datasources\\.yaml.datasources[0].url"
+      value = "http://prometheus-server.monitoring.svc.cluster.local:80"
+    }
+  ]
 }
 ```
 
@@ -274,11 +293,35 @@ resource "kubernetes_deployment" "app" {
   metadata {
     name      = "my-app"
     namespace = "production"
-    annotations = local.istio_installed ? {
-      "sidecar.istio.io/inject" = "true"
-    } : {}
+    labels = {
+      app = "my-app"
+    }
   }
-  # ...
+  spec {
+    selector {
+      match_labels = {
+        app = "my-app"
+      }
+    }
+
+    template {
+      metadata {
+        labels = {
+          app = "my-app"
+        }
+        annotations = local.istio_installed ? {
+          "sidecar.istio.io/inject" = "true"
+        } : {}
+      }
+
+      spec {
+        container {
+          name  = "app"
+          image = "nginx:1.27"
+        }
+      }
+    }
+  }
 }
 ```
 
@@ -318,7 +361,7 @@ locals {
 
 ## Querying All Resources of a Type
 
-Terraform's Kubernetes provider does not support listing all resources of a type natively. For bulk queries, use the `kubernetes_resources` data source (available in newer provider versions) or combine with the `external` data source:
+Terraform's Kubernetes provider includes some list-style data sources, such as `kubernetes_all_namespaces`, but it does not support listing arbitrary resources of every type natively. For bulk queries that need filters the provider does not expose, combine Terraform with the `external` data source:
 
 ```hcl
 data "external" "namespaces" {
