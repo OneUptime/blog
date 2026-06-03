@@ -12,17 +12,17 @@ When you create an Amazon EFS file system, one of the first decisions you face i
 
 ## The Two Performance Modes
 
-**General Purpose** is the default mode and the right choice for the vast majority of workloads. It provides the lowest per-operation latency and supports up to 35,000 read operations and 7,000 write operations per second.
+**General Purpose** is the default mode and the right choice for the vast majority of workloads. It provides the lowest per-operation latency. With Regional file systems, the maximum IOPS depends on the throughput mode: Bursting supports up to 35,000 read operations and 7,000 write operations per second, Provisioned supports up to 55,000 read operations and 25,000 write operations per second, and Elastic supports much higher limits.
 
-**Max I/O** is designed for highly parallelized workloads that need to scale to thousands of concurrent clients. It supports virtually unlimited operations per second, but at the cost of slightly higher per-operation latency.
+**Max I/O** is a previous-generation performance type designed for highly parallelized workloads that can tolerate higher latency than General Purpose. It can scale to higher levels of aggregate throughput and operations per second, but Max I/O is not supported for One Zone file systems or file systems that use Elastic throughput.
 
 Here's the comparison:
 
 | Feature | General Purpose | Max I/O |
 |---------|----------------|---------|
 | Latency | Single-digit milliseconds | Slightly higher |
-| Max IOPS | 35,000 read / 7,000 write | Unlimited (practically) |
-| Max clients | Hundreds | Thousands |
+| Max IOPS | Depends on throughput mode | Higher aggregate I/O than General Purpose |
+| Max clients | Up to 25,000 connections per file system | Up to 25,000 connections per file system |
 | Best for | Web serving, CMS, dev environments | Big data, genomics, media processing |
 
 ## When to Use General Purpose
@@ -123,6 +123,11 @@ Beyond PercentIOLimit, there are several metrics you should watch:
 # Get a comprehensive performance snapshot
 for METRIC in "PercentIOLimit" "DataReadIOBytes" "DataWriteIOBytes" "MetadataIOBytes" "ClientConnections"; do
   echo "=== $METRIC ==="
+  STATISTICS="Average,Maximum"
+  if [ "$METRIC" = "ClientConnections" ]; then
+    STATISTICS="Sum"
+  fi
+
   aws cloudwatch get-metric-statistics \
     --namespace "AWS/EFS" \
     --metric-name "$METRIC" \
@@ -130,7 +135,7 @@ for METRIC in "PercentIOLimit" "DataReadIOBytes" "DataWriteIOBytes" "MetadataIOB
     --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
     --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --period 300 \
-    --statistics "Average,Maximum" \
+    --statistics "$STATISTICS" \
     --output table
   echo ""
 done
@@ -139,23 +144,20 @@ done
 The metrics to understand:
 
 - **PercentIOLimit**: How close you are to the General Purpose IOPS limit (only relevant for General Purpose mode)
-- **DataReadIOBytes / DataWriteIOBytes**: Total bytes read and written
-- **MetadataIOBytes**: I/O used for metadata operations (ls, stat, etc.)
-- **ClientConnections**: Number of active NFS connections
+- **DataReadIOBytes / DataWriteIOBytes**: Bytes associated with read and write operations
+- **MetadataIOBytes**: Bytes associated with metadata operations (ls, stat, etc.)
+- **ClientConnections**: Number of active NFS connections. For periods longer than one minute, divide the `Sum` statistic by the number of minutes in the period to calculate the average.
 
 ## Latency Comparison
 
-The latency difference between General Purpose and Max I/O is real but often overstated. For many workloads, you won't notice it. Here are typical numbers:
+The latency difference between General Purpose and Max I/O is real but often overstated. For many workloads, you won't notice it. AWS publishes these best-case General Purpose latency targets for EFS Standard storage:
 
 **General Purpose:**
-- Read latency: 0.5-2 ms
-- Write latency: 2-5 ms
-- Metadata operations: 1-5 ms
+- Read latency: about 1 ms
+- Write latency: about 2.7 ms
 
 **Max I/O:**
-- Read latency: 1-5 ms
-- Write latency: 5-15 ms
-- Metadata operations: 5-20 ms
+- Higher per-operation latency than General Purpose
 
 The difference matters most for metadata-heavy workloads (lots of small file operations, directory listings) and latency-sensitive applications.
 
@@ -212,9 +214,9 @@ aws datasync create-task \
   }'
 ```
 
-## Elastic Throughput (The New Option)
+## Elastic Throughput (The New Throughput Option)
 
-AWS introduced Elastic throughput mode as a third option that automatically scales throughput based on workload demand. It effectively removes the need to choose between bursting and provisioned throughput for many workloads. If your workload has unpredictable I/O patterns, Elastic throughput combined with General Purpose performance mode might be the best combination.
+AWS introduced Elastic throughput mode as a throughput option that automatically scales throughput based on workload demand. It effectively removes the need to choose between bursting and provisioned throughput for many workloads. If your workload has unpredictable I/O patterns, Elastic throughput combined with General Purpose performance mode might be the best combination.
 
 ```bash
 # Create with Elastic throughput
