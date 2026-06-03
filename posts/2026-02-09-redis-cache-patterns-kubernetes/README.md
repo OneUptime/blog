@@ -29,7 +29,7 @@ metadata:
   name: redis-cache
   namespace: cache-system
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: redis-cache
@@ -127,7 +127,7 @@ class ReadThroughCache:
         key_data = f"{func_name}:{args}:{sorted(kwargs.items())}"
         return f"cache:{hashlib.sha256(key_data.encode()).hexdigest()}"
 
-    def read_through(self, ttl: Optional[int] = None):
+    def read_through(self, ttl: Optional[int] = None, key_func: Optional[Callable] = None):
         """
         Decorator for read-through caching
         On cache miss, executes function and caches result
@@ -136,7 +136,7 @@ class ReadThroughCache:
             @wraps(func)
             def wrapper(*args, **kwargs) -> Any:
                 # Generate cache key
-                cache_key = self.cache_key(func.__name__, *args, **kwargs)
+                cache_key = key_func(*args, **kwargs) if key_func else self.cache_key(func.__name__, *args, **kwargs)
 
                 # Try to get from cache
                 cached_value = self.redis_client.get(cache_key)
@@ -172,7 +172,7 @@ from sqlalchemy import create_engine, text
 
 cache = ReadThroughCache(redis_host='redis-cache.cache-system.svc.cluster.local')
 
-@cache.read_through(ttl=600)  # Cache for 10 minutes
+@cache.read_through(ttl=600, key_func=lambda user_id: f"cache:user:{user_id}")  # Cache for 10 minutes
 def get_user(user_id: int) -> dict:
     """Fetch user from database (expensive operation)"""
     engine = create_engine('postgresql://user:pass@db:5432/myapp')
@@ -200,7 +200,7 @@ user = get_user(123)  # Cache MISS, loads from database
 user = get_user(123)  # Cache HIT, returns immediately
 ```
 
-Deploy this middleware as a library or sidecar container.
+Deploy this middleware as a library, or expose it through a dedicated proxy service as shown below.
 
 ## Implementing Write-Through Cache Pattern
 
@@ -225,7 +225,7 @@ class WriteThroughCache:
     def write_through(self, cache_key_func: Callable):
         """
         Decorator for write-through caching
-        Writes to both database and cache atomically
+        Writes to the database and then updates the cache
         """
         def decorator(func: Callable) -> Callable:
             def wrapper(*args, **kwargs) -> Any:
@@ -270,6 +270,9 @@ class WriteThroughCache:
                     {"id": user_id}
                 )
                 row = result.fetchone()
+                if row is None:
+                    raise ValueError(f"User {user_id} not found")
+
                 user_data = {
                     'id': row[0],
                     'email': row[1],
@@ -309,7 +312,7 @@ updated_user = cache.update_user(
 )
 ```
 
-This ensures writes always update both systems, preventing stale cache data.
+This keeps writes on a single path that updates both systems, reducing stale cache data.
 
 ## Building a Cache Proxy Service
 
@@ -334,7 +337,7 @@ write_cache = WriteThroughCache(redis_host=redis_host, db_url=db_url)
 @app.route('/users/<int:user_id>', methods=['GET'])
 def get_user(user_id):
     """Read-through cache endpoint"""
-    @read_cache.read_through(ttl=600)
+    @read_cache.read_through(ttl=600, key_func=lambda uid: f"cache:user:{uid}")
     def fetch_user(uid):
         # Database fetch logic
         return {"id": uid, "email": "user@example.com", "name": "User"}
@@ -439,6 +442,8 @@ Track cache hit rates and performance:
 ```python
 # Add metrics to cache middleware
 from prometheus_client import Counter, Histogram, Gauge
+from functools import wraps
+import json
 
 cache_hits = Counter('cache_hits_total', 'Total cache hits')
 cache_misses = Counter('cache_misses_total', 'Total cache misses')
@@ -448,12 +453,12 @@ cache_operation_duration = Histogram(
 )
 
 class MonitoredReadThroughCache(ReadThroughCache):
-    def read_through(self, ttl=None):
+    def read_through(self, ttl=None, key_func=None):
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
                 with cache_operation_duration.time():
-                    cache_key = self.cache_key(func.__name__, *args, **kwargs)
+                    cache_key = key_func(*args, **kwargs) if key_func else self.cache_key(func.__name__, *args, **kwargs)
                     cached_value = self.redis_client.get(cache_key)
 
                     if cached_value is not None:
@@ -489,6 +494,8 @@ Prevent thundering herd during cache expiration:
 ```python
 import time
 import threading
+from functools import wraps
+import json
 
 class StampedeProtectedCache(ReadThroughCache):
     def __init__(self, *args, **kwargs):
@@ -496,11 +503,11 @@ class StampedeProtectedCache(ReadThroughCache):
         self._locks = {}
         self._locks_lock = threading.Lock()
 
-    def read_through(self, ttl=None):
+    def read_through(self, ttl=None, key_func=None):
         def decorator(func):
             @wraps(func)
             def wrapper(*args, **kwargs):
-                cache_key = self.cache_key(func.__name__, *args, **kwargs)
+                cache_key = key_func(*args, **kwargs) if key_func else self.cache_key(func.__name__, *args, **kwargs)
 
                 # Try cache first
                 cached_value = self.redis_client.get(cache_key)
