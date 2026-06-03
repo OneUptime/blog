@@ -8,15 +8,15 @@ Description: Learn how to use Kubernetes RBAC to restrict Secret access to speci
 
 ---
 
-By default, any pod in a namespace can access any Secret in that namespace. This violates the principle of least privilege and creates security risks. If one application is compromised, attackers gain access to all secrets, including database credentials, API keys, and certificates for unrelated services.
+By default, any user or workload that is authorized to create Pods in a namespace can reference any Secret in that namespace through a Pod volume or environment variable. This violates the principle of least privilege and creates security risks. If one application is compromised, attackers may be able to create or modify Pods to expose unrelated secrets, including database credentials, API keys, and certificates.
 
-Kubernetes RBAC allows fine-grained control over Secret access. You can restrict which ServiceAccounts can read specific Secrets, ensuring applications only access credentials they actually need. This limits blast radius when security incidents occur.
+Kubernetes RBAC allows fine-grained control over direct API access to Secrets. You can restrict which ServiceAccounts can read specific Secrets through the Kubernetes API, ensuring applications only have API permissions for credentials they actually need. This limits blast radius when security incidents occur.
 
 In this guide, you'll learn how to implement Secret access controls using RBAC, create scoped permissions, handle multi-tenant scenarios, and audit Secret access patterns.
 
 ## Default Secret Access Behavior
 
-Without explicit RBAC rules, pods using the default ServiceAccount have no special permissions. However, pods with custom ServiceAccounts can be granted broad access:
+Without explicit RBAC rules, pods using the default ServiceAccount have no special API permissions beyond basic API discovery. However, pods with custom ServiceAccounts can be granted broad API access:
 
 ```bash
 # Create a test Secret
@@ -25,14 +25,14 @@ kubectl create secret generic sensitive-data \
   --from-literal=password=SuperSecret123 \
   --namespace production
 
-# Default ServiceAccount cannot access it
+# Default ServiceAccount cannot read it through the Kubernetes API
 kubectl auth can-i get secret/sensitive-data \
   --namespace production \
   --as system:serviceaccount:production:default
 # Output: no
 ```
 
-However, if a Role or ClusterRole grants `get secrets` to a ServiceAccount, it can access ALL secrets in the namespace.
+However, if a Role or ClusterRole grants `get secrets` to a ServiceAccount without `resourceNames`, it can read ALL secrets in the namespace where the permission applies.
 
 ## Creating ServiceAccount-Specific Secret Access
 
@@ -102,7 +102,13 @@ metadata:
   name: web-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       serviceAccountName: web-app-sa
       containers:
@@ -116,7 +122,7 @@ spec:
               key: api-key
 ```
 
-Now `web-app-sa` can ONLY access `web-app-secrets`, not other secrets in the namespace.
+Now `web-app-sa` can ONLY read `web-app-secrets` through the Kubernetes API, not other secrets in the namespace. This RBAC rule does not control whether a Pod can mount or reference a Secret; Pod creation permissions and admission policies control that path.
 
 ## Multiple Secrets for One ServiceAccount
 
@@ -135,7 +141,7 @@ rules:
   - api-database-credentials
   - api-external-keys
   - api-tls-certificate
-  verbs: ["get", "list"]  # Allow listing to find secrets
+  verbs: ["get"]  # Read only the named secrets
 ```
 
 ## Shared Secrets with Multiple ServiceAccounts
@@ -194,11 +200,11 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
 ```
 
-Both `web-app-sa` and `api-server-sa` can now access the shared database credentials.
+Both `web-app-sa` and `api-server-sa` can now read the shared database credentials through the Kubernetes API.
 
 ## Pattern-Based Secret Access
 
-Grant access to secrets matching a pattern using labels:
+Label Secrets for use with an admission policy:
 
 ```yaml
 # Secrets with labels
@@ -224,7 +230,7 @@ metadata:
 stringData:
   key: "paypal_api_456"
 ---
-# Role granting access by label selector
+# Role granting broad access; RBAC cannot filter by label selector
 apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
@@ -238,10 +244,10 @@ rules:
 
 Note: RBAC doesn't support label selectors directly. You must either:
 1. List all secret names in `resourceNames`
-2. Grant broader access and filter in application code
-3. Use a policy engine like OPA for label-based policies
+2. Grant broader API access and filter in application code
+3. Use an admission policy engine like OPA Gatekeeper for label-based Pod admission policies
 
-For strict label-based access, use OPA Gatekeeper:
+For strict label-based Pod admission, use OPA Gatekeeper:
 
 ```yaml
 apiVersion: templates.gatekeeper.sh/v1beta1
@@ -266,6 +272,8 @@ spec:
         msg := sprintf("Pod ServiceAccount %v not allowed to access secret %v", [input.review.object.spec.serviceAccountName, secret_name])
       }
 ```
+
+Gatekeeper policies like this require a matching Constraint and a sync configuration that replicates Secrets into `data.inventory`. Admission policies control Pod creation; they do not replace RBAC for direct Secret API reads.
 
 ## Read-Only vs Read-Write Access
 
@@ -310,7 +318,7 @@ rules:
 
 ## Cross-Namespace Secret Access
 
-Grant access to Secrets in different namespaces (requires ClusterRole):
+Grant API access to Secrets in different namespaces by creating the RoleBinding in the namespace that contains the Secret:
 
 ```yaml
 # Secret in shared namespace
@@ -322,22 +330,24 @@ metadata:
 stringData:
   token: "shared-token-123"
 ---
-# ClusterRole for cross-namespace access
+# Role in the namespace containing the Secret
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: shared-secret-reader
+  namespace: shared-services
 rules:
 - apiGroups: [""]
   resources: ["secrets"]
   resourceNames: ["shared-credentials"]
   verbs: ["get"]
 ---
-# ClusterRoleBinding (grants to specific namespaces)
+# RoleBinding in shared-services grants production ServiceAccounts access to this namespace
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: production-shared-secret-access
+  namespace: shared-services
 subjects:
 - kind: ServiceAccount
   name: web-app-sa
@@ -346,7 +356,7 @@ subjects:
   name: api-server-sa
   namespace: production
 roleRef:
-  kind: ClusterRole
+  kind: Role
   name: shared-secret-reader
   apiGroup: rbac.authorization.k8s.io
 ```
@@ -524,7 +534,7 @@ roleRef:
 
 1. **Always use custom ServiceAccounts**: Never use the default ServiceAccount for applications.
 
-2. **Grant minimal permissions**: Use `resourceNames` to restrict access to specific Secrets.
+2. **Grant minimal API permissions**: Use `resourceNames` to restrict direct API reads to specific Secrets.
 
 3. **Separate secrets by concern**: Don't combine unrelated credentials in one Secret.
 
@@ -536,6 +546,6 @@ roleRef:
 
 7. **Avoid wildcard permissions**: Never grant `verbs: ["*"]` or omit `resourceNames` unless necessary.
 
-8. **Test permissions**: Always verify ServiceAccount permissions before deployment.
+8. **Test permissions**: Always verify ServiceAccount API permissions before deployment.
 
-Restricting Secret access with RBAC implements the principle of least privilege in Kubernetes. By creating ServiceAccount-specific Roles with explicit Secret names, you ensure applications can only access credentials they actually need. This significantly reduces security risk and limits the blast radius of potential compromises.
+Restricting Secret API access with RBAC implements the principle of least privilege in Kubernetes. By creating ServiceAccount-specific Roles with explicit Secret names, you ensure applications can only read credentials they actually need through the Kubernetes API. This significantly reduces security risk and limits the blast radius of potential compromises.
