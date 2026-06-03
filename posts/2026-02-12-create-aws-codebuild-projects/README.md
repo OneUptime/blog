@@ -44,24 +44,39 @@ cat > codebuild-policy.json << 'EOF'
     {
       "Effect": "Allow",
       "Action": [
-        "logs:CreateLogGroup",
-        "logs:CreateLogStream",
-        "logs:PutLogEvents"
+        "logs:CreateLogGroup"
       ],
       "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/codebuild/*"
     },
     {
       "Effect": "Allow",
       "Action": [
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "arn:aws:logs:us-east-1:123456789012:log-group:/aws/codebuild/*:log-stream:*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "s3:PutObject",
         "s3:GetObject",
-        "s3:GetBucketAcl",
-        "s3:GetBucketLocation",
         "s3:GetObjectVersion"
       ],
       "Resource": [
         "arn:aws:s3:::my-build-artifacts/*",
         "arn:aws:s3:::my-build-cache/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketAcl",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-build-artifacts",
+        "arn:aws:s3:::my-build-cache"
       ]
     },
     {
@@ -80,6 +95,24 @@ cat > codebuild-policy.json << 'EOF'
         "ecr:BatchGetImage"
       ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ssm:GetParameters"
+      ],
+      "Resource": "arn:aws:ssm:us-east-1:123456789012:parameter/myapp/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codebuild:CreateReportGroup",
+        "codebuild:CreateReport",
+        "codebuild:UpdateReport",
+        "codebuild:BatchPutTestCases",
+        "codebuild:BatchPutCodeCoverages"
+      ],
+      "Resource": "arn:aws:codebuild:us-east-1:123456789012:report-group/*"
     }
   ]
 }
@@ -109,7 +142,7 @@ aws codebuild create-project \
   --source-version "refs/heads/main" \
   --environment '{
     "type": "LINUX_CONTAINER",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
     "computeType": "BUILD_GENERAL1_MEDIUM",
     "environmentVariables": [
       {
@@ -152,8 +185,8 @@ aws codebuild create-project \
 
 Let me break down the key settings:
 
-- **computeType**: `BUILD_GENERAL1_SMALL` (4 GB RAM, 2 vCPU), `BUILD_GENERAL1_MEDIUM` (7 GB, 4 vCPU), or `BUILD_GENERAL1_LARGE` (15 GB, 8 vCPU)
-- **image**: AWS-managed images come pre-loaded with common runtimes. The `standard:5.0` image includes Node.js, Python, Java, Go, and more.
+- **computeType**: `BUILD_GENERAL1_SMALL` (4 GiB RAM, 2 vCPU), `BUILD_GENERAL1_MEDIUM` (8 GiB, 4 vCPU), or `BUILD_GENERAL1_LARGE` (16 GiB, 8 vCPU)
+- **image**: AWS-managed images come pre-loaded with common runtimes. The `amazonlinux-x86_64-standard:5.0` image includes Node.js, Python, Java, Go, and more.
 - **privilegedMode**: Set to `true` only if you need to build Docker images
 - **gitCloneDepth**: Set to 1 for faster clones (shallow clone)
 - **environmentVariables**: Use `PARAMETER_STORE` or `SECRETS_MANAGER` for sensitive values
@@ -243,7 +276,7 @@ aws codebuild start-build \
 # Monitor the build
 aws codebuild batch-get-builds \
   --ids "my-app-build:build-id-123" \
-  --query 'builds[0].{Phase:currentPhase,Status:buildStatus,Duration:buildComplete}'
+  --query 'builds[0].{Phase:currentPhase,Status:buildStatus,Complete:buildComplete}'
 ```
 
 ## Step 5: Set Up Build Triggers
@@ -266,6 +299,39 @@ aws events put-rule \
   }'
 
 # Add CodeBuild as the target
+cat > events-codebuild-trust.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {
+      "Service": "events.amazonaws.com"
+    },
+    "Action": "sts:AssumeRole"
+  }]
+}
+EOF
+
+aws iam create-role \
+  --role-name EventsCodeBuildRole \
+  --assume-role-policy-document file://events-codebuild-trust.json
+
+cat > events-codebuild-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Action": "codebuild:StartBuild",
+    "Resource": "arn:aws:codebuild:us-east-1:123456789012:project/my-app-build"
+  }]
+}
+EOF
+
+aws iam put-role-policy \
+  --role-name EventsCodeBuildRole \
+  --policy-name StartCodeBuild \
+  --policy-document file://events-codebuild-policy.json
+
 aws events put-targets \
   --rule codecommit-main-push \
   --targets '[{
@@ -291,7 +357,7 @@ aws codebuild create-project \
   }' \
   --environment '{
     "type": "LINUX_CONTAINER",
-    "image": "aws/codebuild/amazonlinux2-x86_64-standard:5.0",
+    "image": "aws/codebuild/amazonlinux-x86_64-standard:5.0",
     "computeType": "BUILD_GENERAL1_SMALL"
   }' \
   --artifacts '{"type": "NO_ARTIFACTS"}' \
@@ -376,7 +442,7 @@ aws codebuild list-builds-for-project \
 # Get build details
 aws codebuild batch-get-builds \
   --ids "my-app-build:abc123" \
-  --query 'builds[0].{Status:buildStatus,Duration:buildComplete,Phases:phases[*].{Name:phaseType,Status:phaseStatus,Duration:durationInSeconds}}'
+  --query 'builds[0].{Status:buildStatus,Complete:buildComplete,Phases:phases[*].{Name:phaseType,Status:phaseStatus,Duration:durationInSeconds}}'
 ```
 
 For real-time build monitoring and alerting on failures, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view). You'll want to know about build failures before your deploy pipeline does.
