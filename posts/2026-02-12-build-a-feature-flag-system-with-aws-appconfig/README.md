@@ -76,7 +76,7 @@ Resources:
       ReplicateTo: NONE
 ```
 
-The deployment strategy is key. With `GrowthFactor: 20` and `DeploymentDurationInMinutes: 10`, the flag change rolls out to 20% of requests every 2 minutes. If the CloudWatch alarm fires during rollout, AppConfig automatically reverts the change.
+The deployment strategy is key. With `GrowthFactor: 20` and `DeploymentDurationInMinutes: 10`, the flag change rolls out to 20% of callers or targets every 2 minutes. If the CloudWatch alarm fires during rollout, AppConfig automatically reverts the change.
 
 ## Defining Feature Flags
 
@@ -181,6 +181,8 @@ Add the layer to your Lambda:
 
 ```yaml
 # Lambda with AppConfig extension layer for feature flags
+# Use the current layer ARN for your Lambda Region and architecture.
+# This example is for x86-64 in us-east-1.
   MyFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -188,7 +190,7 @@ Add the layer to your Lambda:
       Runtime: python3.12
       Handler: app.handler
       Layers:
-        - !Sub 'arn:aws:lambda:${AWS::Region}:027255383542:layer:AWS-AppConfig-Extension:100'
+        - arn:aws:lambda:us-east-1:027255383542:layer:AWS-AppConfig-Extension:321
       Environment:
         Variables:
           AWS_APPCONFIG_EXTENSION_POLL_INTERVAL_SECONDS: 45
@@ -238,7 +240,7 @@ def handler(event, context):
 
 ## Percentage-Based Rollouts
 
-AppConfig does not have built-in percentage-based targeting per user. But you can implement it by hashing the user ID and comparing against a rollout percentage stored in the flag:
+AWS AppConfig Agent supports variants, caller context, and traffic-splitting rules for feature flags. For a simple basic-flag implementation, you can also hash the user ID and compare it against a rollout percentage stored in the flag:
 
 ```python
 # Percentage-based feature flag targeting by user ID
@@ -339,15 +341,35 @@ import boto3
 import json
 
 appconfig = boto3.client('appconfig')
+appconfigdata = boto3.client('appconfigdata')
+
+APP_ID = 'APP_ID'
+ENV_ID = 'ENV_ID'
+PROFILE_ID = 'PROFILE_ID'
+
+def get_current_config():
+    """Get the latest hosted feature flag document so it can be edited."""
+    versions = appconfig.list_hosted_configuration_versions(
+        ApplicationId=APP_ID,
+        ConfigurationProfileId=PROFILE_ID
+    )['Items']
+    latest_version = max(item['VersionNumber'] for item in versions)
+    response = appconfig.get_hosted_configuration_version(
+        ApplicationId=APP_ID,
+        ConfigurationProfileId=PROFILE_ID,
+        VersionNumber=latest_version
+    )
+    return json.loads(response['Content'].read()), latest_version
 
 def list_flags(event, context):
     """List all feature flags and their current states."""
-    # Get the latest deployed configuration
-    response = appconfig.get_configuration(
-        Application='MyApplication',
-        Environment='production',
-        Configuration='feature-flags',
-        ClientId='admin-ui'
+    session = appconfigdata.start_configuration_session(
+        ApplicationIdentifier=APP_ID,
+        EnvironmentIdentifier=ENV_ID,
+        ConfigurationProfileIdentifier=PROFILE_ID
+    )
+    response = appconfigdata.get_latest_configuration(
+        ConfigurationToken=session['InitialConfigurationToken']
     )
     flags = json.loads(response['Content'].read())
     return {
@@ -362,21 +384,22 @@ def toggle_flag(event, context):
     enabled = body['enabled']
 
     # Get current config, modify it, create new version, deploy
-    current = get_current_config()
+    current, latest_version = get_current_config()
     current['values'][flag_name]['enabled'] = enabled
 
     version = appconfig.create_hosted_configuration_version(
-        ApplicationId='APP_ID',
-        ConfigurationProfileId='PROFILE_ID',
-        Content=json.dumps(current).encode(),
-        ContentType='application/json'
+        ApplicationId=APP_ID,
+        ConfigurationProfileId=PROFILE_ID,
+        Content=json.dumps(current).encode('utf-8'),
+        ContentType='application/json',
+        LatestVersionNumber=latest_version
     )
 
     appconfig.start_deployment(
-        ApplicationId='APP_ID',
-        EnvironmentId='ENV_ID',
+        ApplicationId=APP_ID,
+        EnvironmentId=ENV_ID,
         DeploymentStrategyId='STRATEGY_ID',
-        ConfigurationProfileId='PROFILE_ID',
+        ConfigurationProfileId=PROFILE_ID,
         ConfigurationVersion=str(version['VersionNumber'])
     )
 
