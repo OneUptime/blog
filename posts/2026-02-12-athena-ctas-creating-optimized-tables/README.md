@@ -48,14 +48,15 @@ SELECT
     amount,
     CAST(YEAR(sale_date) AS VARCHAR) AS year,
     LPAD(CAST(MONTH(sale_date) AS VARCHAR), 2, '0') AS month
-FROM raw_sales;
+FROM raw_sales
+WHERE sale_date >= DATE '2026-01-01' AND sale_date < DATE '2026-02-01';
 ```
 
 ## Understanding the Options
 
-**format** - Choose between PARQUET, ORC, AVRO, JSON, or TEXTFILE. Parquet and ORC are columnar formats that give you the best query performance with Athena.
+**format** - Choose between PARQUET, ORC, AVRO, JSON, ION, or TEXTFILE. Parquet and ORC are columnar formats that give you the best query performance with Athena.
 
-**parquet_compression / orc_compression** - Compression codec. SNAPPY for speed, GZIP for maximum compression, ZSTD for the best balance.
+**write_compression / parquet_compression / orc_compression** - Compression codec. SNAPPY for speed, GZIP for maximum compression, ZSTD for the best balance. AWS recommends `write_compression` for CTAS because it works consistently across supported formats.
 
 **external_location** - Where the output files go in S3. Without this, Athena uses a default location that's harder to manage.
 
@@ -157,7 +158,8 @@ SELECT
     event_id, user_id, event_type, event_data, event_timestamp,
     CAST(DATE(event_timestamp) AS VARCHAR) AS dt
 FROM events_raw
-WHERE event_timestamp >= TIMESTAMP '2026-02-01 00:00:00';
+WHERE event_timestamp >= TIMESTAMP '2026-02-12 00:00:00'
+  AND event_timestamp < TIMESTAMP '2026-02-13 00:00:00';
 ```
 
 ## Incremental CTAS with INSERT INTO
@@ -224,7 +226,7 @@ Queries against this denormalized table only scan one table instead of three, wh
 
 ## Limitations to Know
 
-**100 partition limit** - A single CTAS or INSERT INTO statement can create at most 100 new partitions. If your data spans more than 100 partitions, you need to run multiple statements or use a Glue job.
+**100 partition and bucket combination limit** - A single CTAS or INSERT INTO statement can create at most 100 unique partition and bucket combinations. If no buckets are specified, this means at most 100 new partitions. If your data spans more than 100 combinations, you need to run multiple statements or use a Glue job.
 
 **No updates** - CTAS creates immutable files. You can't update individual rows. To refresh data, either drop and recreate the table or use INSERT INTO for new partitions.
 
