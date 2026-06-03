@@ -32,13 +32,13 @@ If they are not installed, deploy them:
 
 ```bash
 # Install snapshot CRDs
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
 
 # Install the snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v7.0.1/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.2.0/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 ```
 
 Create a VolumeSnapshotClass for your CSI driver:
@@ -56,7 +56,7 @@ parameters:
   tagSpecification_1: "velero-backup=true"
 ```
 
-The label `velero.io/csi-volumesnapshot-class: "true"` tells Velero to use this snapshot class for CSI-based backups.
+The label `velero.io/csi-volumesnapshot-class: "true"` tells Velero to use this snapshot class for CSI-based backups. Use only one labeled `VolumeSnapshotClass` per CSI driver.
 
 ## Installing Velero
 
@@ -65,9 +65,9 @@ Install Velero using the CLI tool. First, download and install the Velero CLI:
 ```bash
 brew install velero  # macOS
 # or
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.13.0/velero-v1.13.0-linux-amd64.tar.gz
-tar -xvf velero-v1.13.0-linux-amd64.tar.gz
-mv velero-v1.13.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/velero-io/velero/releases/download/v1.18.1/velero-v1.18.1-linux-amd64.tar.gz
+tar -xvf velero-v1.18.1-linux-amd64.tar.gz
+mv velero-v1.18.1-linux-amd64/velero /usr/local/bin/
 ```
 
 Create the AWS credentials file:
@@ -84,12 +84,13 @@ Install Velero with the AWS plugin and CSI snapshot support:
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket myorg-velero-backups \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
   --secret-file ./credentials-velero \
   --features=EnableCSI \
+  --use-node-agent \
   --use-volume-snapshots=true
 ```
 
@@ -99,12 +100,7 @@ Alternatively, deploy with Helm for more configuration options:
 # velero-values.yaml
 initContainers:
   - name: velero-plugin-for-aws
-    image: velero/velero-plugin-for-aws:v1.9.0
-    volumeMounts:
-      - mountPath: /target
-        name: plugins
-  - name: velero-plugin-for-csi
-    image: velero/velero-plugin-for-csi:v0.7.0
+    image: velero/velero-plugin-for-aws:v1.14.0
     volumeMounts:
       - mountPath: /target
         name: plugins
@@ -239,18 +235,20 @@ spec:
           labelSelector:
             matchLabels:
               app: postgresql
+          includedResources:
+            - pods
           pre:
             - exec:
                 container: postgresql
                 command:
                   - /bin/bash
                   - -c
-                  - "pg_dump -U postgres -Fc mydb > /tmp/backup.dump && sync"
+                  - "psql -U postgres -c 'CHECKPOINT;' && sync"
                 onError: Fail
                 timeout: 5m
 ```
 
-The `pre` hook runs a command inside the pod before the snapshot is taken. This is essential for databases: you want to ensure the data is in a consistent state before snapshotting the volume.
+The `pre` hook runs a command inside the pod before the pod and its related items are backed up. For databases, use a database-native backup or quiescing procedure appropriate for your engine before relying on a volume snapshot for application-consistent recovery.
 
 ## Restoring from Backup
 
@@ -297,7 +295,7 @@ velero backup create migration-backup \
 velero restore create --from-backup migration-backup --wait
 ```
 
-For cross-region or cross-provider migrations where volume snapshots are not portable, use Velero's File System Backup (formerly Restic) approach instead:
+For cross-region or cross-provider migrations where volume snapshots are not portable, use Velero's File System Backup approach instead:
 
 ```bash
 # Annotate pods to use file system backup
@@ -360,7 +358,7 @@ velero backup logs db-backup-20260209
 
 Always test your restores regularly. A backup that cannot be restored is worthless. Set up a monthly or weekly restore drill in a test namespace to verify that your backups produce working recoverable state.
 
-Use pre-backup hooks for databases to ensure data consistency. For PostgreSQL, run `pg_start_backup` or use `pg_dump`. For MySQL, consider `FLUSH TABLES WITH READ LOCK` or use a replica for backups.
+Use pre-backup hooks for databases to run engine-appropriate quiescing or backup commands. For PostgreSQL, consider `CHECKPOINT`, the PostgreSQL backup API, `pg_basebackup`, or `pg_dump` depending on your recovery goal. For MySQL, consider `FLUSH TABLES WITH READ LOCK` or use a replica for backups.
 
 Set appropriate TTLs on your backups to manage storage costs. Keep nightly backups for 30 days, weekly backups for 90 days, and monthly backups for a year.
 
