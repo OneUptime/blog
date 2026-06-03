@@ -48,14 +48,15 @@ metadata:
   name: velero-metrics
   namespace: velero
   labels:
-    app: velero
+    app.kubernetes.io/name: velero
 spec:
   ports:
-  - name: metrics
+  - name: http-monitoring
     port: 8085
     targetPort: 8085
   selector:
-    app: velero
+    name: velero
+    app.kubernetes.io/name: velero
 ---
 apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
@@ -63,13 +64,13 @@ metadata:
   name: velero
   namespace: velero
   labels:
-    app: velero
+    app.kubernetes.io/name: velero
 spec:
   selector:
     matchLabels:
-      app: velero
+      app.kubernetes.io/name: velero
   endpoints:
-  - port: metrics
+  - port: http-monitoring
     interval: 30s
     path: /metrics
 ```
@@ -85,7 +86,7 @@ scrape_configs:
         names:
         - velero
     relabel_configs:
-    - source_labels: [__meta_kubernetes_pod_label_app]
+    - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
       action: keep
       regex: velero
     - source_labels: [__meta_kubernetes_pod_container_port_number]
@@ -105,7 +106,9 @@ velero_backup_success_total
 velero_backup_failure_total
 
 # Backup duration in seconds
-velero_backup_duration_seconds
+velero_backup_duration_seconds_bucket
+velero_backup_duration_seconds_sum
+velero_backup_duration_seconds_count
 
 # Current number of backups
 velero_backup_total
@@ -123,7 +126,7 @@ velero_volume_snapshot_success_total
 velero_volume_snapshot_failure_total
 
 # Storage location availability
-velero_backup_storage_location_available
+velero_backup_location_status_gauge
 ```
 
 ## Creating Backup Success Rate Alerts
@@ -211,18 +214,30 @@ spec:
     rules:
     - alert: VeleroBackupTooSlow
       expr: |
-        velero_backup_duration_seconds{schedule!=""} > 3600
+        histogram_quantile(
+          0.95,
+          sum by (schedule, le) (rate(velero_backup_duration_seconds_bucket{schedule!=""}[1h]))
+        ) > 3600
       for: 5m
       labels:
         severity: warning
       annotations:
         summary: "Velero backup taking too long"
-        description: "Backup {{ $labels.schedule }} took {{ $value | humanizeDuration }}"
+        description: "The 95th percentile backup duration for schedule {{ $labels.schedule }} is {{ $value | humanizeDuration }}"
 
     - alert: VeleroBackupDurationIncreasing
       expr: |
-        rate(velero_backup_duration_seconds[1h]) >
-        rate(velero_backup_duration_seconds[1h] offset 1d) * 1.5
+        (
+          sum by (schedule) (rate(velero_backup_duration_seconds_sum{schedule!=""}[1h]))
+          /
+          sum by (schedule) (rate(velero_backup_duration_seconds_count{schedule!=""}[1h]))
+        )
+        >
+        (
+          sum by (schedule) (rate(velero_backup_duration_seconds_sum{schedule!=""}[1h] offset 1d))
+          /
+          sum by (schedule) (rate(velero_backup_duration_seconds_count{schedule!=""}[1h] offset 1d))
+        ) * 1.5
       for: 2h
       labels:
         severity: warning
@@ -248,23 +263,13 @@ spec:
     rules:
     - alert: VeleroStorageLocationUnavailable
       expr: |
-        velero_backup_storage_location_available == 0
+        velero_backup_location_status_gauge == 0
       for: 5m
       labels:
         severity: critical
       annotations:
         summary: "Velero storage location unavailable"
-        description: "Storage location {{ $labels.storage_location }} has been unavailable for 5 minutes"
-
-    - alert: VeleroStorageLocationReadOnly
-      expr: |
-        velero_backup_storage_location_available{phase="ReadOnly"} == 1
-      for: 5m
-      labels:
-        severity: warning
-      annotations:
-        summary: "Velero storage location read-only"
-        description: "Storage location {{ $labels.storage_location }} is in read-only mode"
+        description: "Storage location {{ $labels.backup_location_name }} has been unavailable for 5 minutes"
 ```
 
 ## Monitoring Scheduled Backups
@@ -323,7 +328,7 @@ Visualize Velero metrics with Grafana dashboards:
         "title": "Backup Duration",
         "targets": [
           {
-            "expr": "velero_backup_duration_seconds",
+            "expr": "histogram_quantile(0.95, sum by (schedule, le) (rate(velero_backup_duration_seconds_bucket[1h])))",
             "legendFormat": "{{ schedule }}"
           }
         ],
@@ -363,25 +368,28 @@ kubectl create configmap grafana-dashboard-velero \
 
 ## Custom Metrics with Backup Hooks
 
-Add custom metrics using backup hooks:
+Add custom metrics from commands invoked by backup hooks:
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
+apiVersion: apps/v1
+kind: Deployment
 metadata:
-  name: backup-metrics-hook
-  namespace: velero
-data:
-  post-backup.sh: |
-    #!/bin/bash
-    # Send custom metrics after backup
-    BACKUP_NAME=$1
-    BACKUP_SIZE=$(velero backup describe $BACKUP_NAME -o json | jq -r '.status.totalItems')
-
-    # Push to Prometheus pushgateway
-    cat <<EOF | curl --data-binary @- http://pushgateway:9091/metrics/job/velero-backup
-    velero_backup_items{backup="$BACKUP_NAME"} $BACKUP_SIZE
-    EOF
+  name: myapp
+spec:
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+      annotations:
+        post.hook.backup.velero.io/container: app
+        post.hook.backup.velero.io/command: '["/bin/sh", "-c", "printf \"velero_backup_hook_success{app=\\\"myapp\\\"} 1\\n\" | curl --data-binary @- http://pushgateway.monitoring.svc:9091/metrics/job/velero-backup-hook"]'
+    spec:
+      containers:
+      - name: app
+        image: myapp:latest
 ```
 
 ## Integrating with Alertmanager
@@ -403,8 +411,8 @@ data:
       group_by: ['alertname']
       receiver: 'default'
       routes:
-      - match:
-          namespace: velero
+      - matchers:
+          - namespace="velero"
         receiver: 'velero-alerts'
         continue: true
 
