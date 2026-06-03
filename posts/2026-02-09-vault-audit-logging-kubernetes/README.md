@@ -12,7 +12,7 @@ Audit logs are critical for security compliance, incident investigation, and und
 
 ## Understanding Vault Audit Logs
 
-Vault audit devices log every authenticated request and response before returning to the client. Multiple audit devices can run simultaneously, and Vault only responds after all enabled audit devices successfully log the event. This ensures no operation goes unaudited.
+Vault audit devices log API requests and responses before returning to the client, with a small set of documented exceptions. Multiple audit devices can run simultaneously, and Vault sends each audit log entry to all enabled devices. If Vault cannot write an audit entry to at least one enabled device, it refuses to service the corresponding API request.
 
 Audit logs contain request details including path, operation, parameters, and response data including success/failure status, returned values (secrets are hashed), and authentication information like token metadata and policies.
 
@@ -24,7 +24,7 @@ Configure file audit logging with persistence:
 # Enable file audit device
 
 kubectl -n vault exec -it vault-0 -- vault audit enable file \
-  file_path=/vault/logs/audit.log \
+  file_path=/vault/audit/vault_audit.log \
   log_raw=false \
   mode=0600
 
@@ -32,7 +32,7 @@ kubectl -n vault exec -it vault-0 -- vault audit enable file \
 kubectl -n vault exec vault-0 -- vault audit list
 ```
 
-Configure persistent storage for audit logs:
+If you are not using the official Vault Helm chart, configure persistent storage for audit logs:
 
 ```yaml
 # vault-audit-pvc.yaml
@@ -50,7 +50,7 @@ spec:
   storageClassName: standard
 ```
 
-Update Vault StatefulSet to mount audit volume:
+Configure the official Vault Helm chart to mount an audit volume:
 
 ```yaml
 # In Helm values
@@ -59,6 +59,7 @@ server:
     enabled: true
     size: 50Gi
     storageClass: standard
+    mountPath: /vault/audit
     accessMode: ReadWriteOnce
 ```
 
@@ -68,7 +69,7 @@ Examine audit log structure:
 
 ```bash
 # View recent audit logs
-kubectl -n vault exec vault-0 -- tail /vault/logs/audit.log | jq
+kubectl -n vault exec vault-0 -- tail /vault/audit/vault_audit.log | jq
 
 # Example log entry
 {
@@ -130,9 +131,11 @@ kubectl -n vault exec vault-0 -- vault audit enable syslog \
 # Configure syslog to forward to log aggregation system
 ```
 
+The syslog audit device writes to the local syslog service on the same Unix host as the Vault server. In Kubernetes, verify that your Vault container or node provides a local syslog service before enabling this device; otherwise, prefer file audit logging with a log collector.
+
 ## Streaming to Elasticsearch
 
-Send audit logs to Elasticsearch using Fluentd:
+Send audit logs to Elasticsearch using Fluentd. For a standalone Helm deployment with `server.auditStorage.enabled=true`, the audit PVC is named `audit-vault-0`; in HA deployments, run one collector per Vault pod or use `file_path=stdout` with a cluster-level log collector.
 
 ```yaml
 # fluentd-vault-audit.yaml
@@ -145,13 +148,14 @@ data:
   fluent.conf: |
     <source>
       @type tail
-      path /vault/logs/audit.log
+      path /vault/audit/vault_audit.log
       pos_file /var/log/vault-audit.pos
       tag vault.audit
       <parse>
         @type json
+        time_type string
         time_key time
-        time_format %Y-%m-%dT%H:%M:%S.%NZ
+        time_format %Y-%m-%dT%H:%M:%S.%N%z
       </parse>
     </source>
 
@@ -170,15 +174,15 @@ data:
       logstash_format true
       logstash_prefix vault-audit
       include_tag_key true
-      type_name audit_log
     </match>
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   name: fluentd-vault-audit
   namespace: vault
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: fluentd-vault-audit
@@ -197,7 +201,7 @@ spec:
           value: "vault"
         volumeMounts:
         - name: vault-audit-logs
-          mountPath: /vault/logs
+          mountPath: /vault/audit
           readOnly: true
         - name: fluentd-config
           mountPath: /fluentd/etc/fluent.conf
@@ -205,7 +209,7 @@ spec:
       volumes:
       - name: vault-audit-logs
         persistentVolumeClaim:
-          claimName: vault-audit-logs
+          claimName: audit-vault-0
       - name: fluentd-config
         configMap:
           name: fluentd-vault-audit
@@ -217,28 +221,28 @@ Query audit logs for insights:
 
 ```bash
 # Find all failed authentication attempts
-kubectl -n vault exec vault-0 -- cat /vault/logs/audit.log | \
-  jq 'select(.error != null and .request.path | contains("auth")) |
+kubectl -n vault exec vault-0 -- cat /vault/audit/vault_audit.log | \
+  jq 'select((.error != null) and ((.request.path // "") | contains("auth"))) |
       {time: .time, path: .request.path, error: .error, remote_address: .request.remote_address}'
 
 # Track secret access by user
-kubectl -n vault exec vault-0 -- cat /vault/logs/audit.log | \
-  jq -r 'select(.request.operation == "read" and (.request.path | contains("secret"))) |
+kubectl -n vault exec vault-0 -- cat /vault/audit/vault_audit.log | \
+  jq -r 'select(.request.operation == "read" and ((.request.path // "") | contains("secret"))) |
       "\(.time) \(.auth.display_name) \(.request.path)"' | \
   sort | uniq -c
 
 # Find policy violations
-kubectl -n vault exec vault-0 -- cat /vault/logs/audit.log | \
-  jq 'select(.error | contains("permission denied")) |
+kubectl -n vault exec vault-0 -- cat /vault/audit/vault_audit.log | \
+  jq 'select((.error // "") | contains("permission denied")) |
       {time: .time, user: .auth.display_name, path: .request.path, policies: .auth.policies}'
 
 # Count operations by type
-kubectl -n vault exec vault-0 -- cat /vault/logs/audit.log | \
+kubectl -n vault exec vault-0 -- cat /vault/audit/vault_audit.log | \
   jq -r '.request.operation' | sort | uniq -c | sort -rn
 
 # Track database credential generation
-kubectl -n vault exec vault-0 -- cat /vault/logs/audit.log | \
-  jq 'select(.request.path | contains("database/creds")) |
+kubectl -n vault exec vault-0 -- cat /vault/audit/vault_audit.log | \
+  jq 'select((.request.path // "") | contains("database/creds")) |
       {time: .time, user: .auth.display_name, role: .request.path}'
 ```
 
@@ -306,7 +310,8 @@ def analyze_audit_logs(log_file):
     print("=== Vault Audit Log Analysis ===\n")
     print(f"Total Requests: {stats['total_requests']}")
     print(f"Failed Requests: {stats['failed_requests']}")
-    print(f"Success Rate: {(1 - stats['failed_requests']/stats['total_requests'])*100:.2f}%\n")
+    success_rate = 0 if stats['total_requests'] == 0 else (1 - stats['failed_requests']/stats['total_requests']) * 100
+    print(f"Success Rate: {success_rate:.2f}%\n")
 
     print("Top 10 Users:")
     for user, count in sorted(stats['by_user'].items(), key=lambda x: x[1], reverse=True)[:10]:
@@ -345,7 +350,7 @@ metadata:
   namespace: vault
 data:
   logrotate.conf: |
-    /vault/logs/audit.log {
+    /vault/audit/vault_audit.log {
       daily
       rotate 30
       compress
@@ -353,9 +358,7 @@ data:
       missingok
       notifempty
       create 0600 vault vault
-      postrotate
-        killall -HUP vault || true
-      endscript
+      copytruncate
     }
 ---
 apiVersion: batch/v1
@@ -380,19 +383,21 @@ spec:
               logrotate /etc/logrotate.conf
             volumeMounts:
             - name: vault-audit-logs
-              mountPath: /vault/logs
+              mountPath: /vault/audit
             - name: logrotate-config
               mountPath: /etc/logrotate.conf
               subPath: logrotate.conf
           volumes:
           - name: vault-audit-logs
             persistentVolumeClaim:
-              claimName: vault-audit-logs
+              claimName: audit-vault-0
           - name: logrotate-config
             configMap:
               name: vault-logrotate
           restartPolicy: OnFailure
 ```
+
+This CronJob rotates the mounted audit file from a separate pod, so it uses `copytruncate` instead of signaling the Vault process. If you run logrotate inside the Vault pod, prefer sending Vault an `HUP` signal after rotation so Vault reopens the audit file.
 
 ## Monitoring Audit Log Health
 
@@ -411,20 +416,22 @@ spec:
     interval: 30s
     rules:
     - alert: VaultAuditLogsFull
-      expr: kubelet_volume_stats_used_bytes{persistentvolumeclaim="vault-audit-logs"} /
-            kubelet_volume_stats_capacity_bytes{persistentvolumeclaim="vault-audit-logs"} > 0.85
+      expr: kubelet_volume_stats_used_bytes{persistentvolumeclaim=~"audit-vault-.*|vault-audit-logs"} /
+            kubelet_volume_stats_capacity_bytes{persistentvolumeclaim=~"audit-vault-.*|vault-audit-logs"} > 0.85
       annotations:
         summary: "Vault audit logs volume is 85% full"
 
-    - alert: VaultAuditDeviceDown
-      expr: vault_core_audit_enabled == 0
+    - alert: VaultAuditLoggingFailures
+      expr: |
+        sum(rate(vault_audit_log_request_failure[5m])) +
+        sum(rate(vault_audit_log_response_failure[5m])) > 0
       annotations:
-        summary: "No Vault audit devices are enabled"
+        summary: "Vault audit logging is failing"
 
-    - alert: HighVaultAuthFailureRate
-      expr: rate(vault_audit_failures_total[5m]) > 10
+    - alert: HighVaultAuditSinkFailureRate
+      expr: sum(rate(vault_audit_sink_failure[5m])) > 10
       annotations:
-        summary: "High rate of Vault authentication failures"
+        summary: "High rate of Vault audit sink failures"
 ```
 
 ## Compliance Reporting
@@ -439,7 +446,7 @@ START_DATE=$1
 END_DATE=$2
 OUTPUT_FILE="vault-compliance-report-$(date +%Y%m%d).json"
 
-kubectl -n vault exec vault-0 -- cat /vault/logs/audit.log | \
+kubectl -n vault exec vault-0 -- cat /vault/audit/vault_audit.log | \
   jq --arg start "$START_DATE" --arg end "$END_DATE" '
     select(.time >= $start and .time <= $end) |
     {
