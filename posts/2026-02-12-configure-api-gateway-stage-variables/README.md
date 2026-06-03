@@ -67,7 +67,7 @@ The most powerful use case is pointing different stages at different Lambda func
 In your API Gateway integration, set the Lambda function URI to:
 
 ```text
-arn:aws:lambda:us-east-1:123456789012:function:order-processor:${stageVariables.lambdaAlias}
+arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:order-processor:${stageVariables.lambdaAlias}/invocations
 ```
 
 When a request hits the `prod` stage, API Gateway resolves this to `order-processor:prod`. When it hits `dev`, it resolves to `order-processor:dev`.
@@ -103,6 +103,7 @@ This CDK stack creates an API with multiple stages, each having their own variab
 ```typescript
 import * as cdk from 'aws-cdk-lib';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { Construct } from 'constructs';
 
@@ -143,10 +144,14 @@ export class StageVariablesStack extends cdk.Stack {
 
     // Add a method with Lambda integration
     const orders = api.root.addResource('orders');
-    orders.addMethod('GET', new apigateway.LambdaIntegration(handler));
+    orders.addMethod('GET', new apigateway.Integration({
+      type: apigateway.IntegrationType.AWS_PROXY,
+      integrationHttpMethod: 'POST',
+      uri: `arn:aws:apigateway:${cdk.Stack.of(this).region}:lambda:path/2015-03-31/functions/${handler.functionArn}:\${stageVariables.lambdaAlias}/invocations`,
+    }));
 
     // Create a dev stage with different variables
-    const devStage = new apigateway.Stage(this, 'DevStage', {
+    new apigateway.Stage(this, 'DevStage', {
       deployment: api.latestDeployment!,
       stageName: 'dev',
       variables: {
@@ -154,6 +159,20 @@ export class StageVariablesStack extends cdk.Stack {
         tableName: 'orders-dev',
         logLevel: 'DEBUG',
       },
+    });
+
+    const apiGatewayPrincipal = new iam.ServicePrincipal('apigateway.amazonaws.com');
+
+    devAlias.addPermission('DevApiGatewayPermission', {
+      principal: apiGatewayPrincipal,
+      action: 'lambda:InvokeFunction',
+      sourceArn: api.arnForExecuteApi('GET', '/orders', 'dev'),
+    });
+
+    prodAlias.addPermission('ProdApiGatewayPermission', {
+      principal: apiGatewayPrincipal,
+      action: 'lambda:InvokeFunction',
+      sourceArn: api.arnForExecuteApi('GET', '/orders', 'prod'),
     });
   }
 }
@@ -263,8 +282,9 @@ const secretName = stageVars.secretName; // e.g., "prod/api/database-password"
 
 ## Limitations to Know About
 
-- Stage variables are limited to alphanumeric characters, hyphens, underscores, and periods
-- Maximum of 128 stage variables per stage
+- Stage variable names are limited to alphanumeric characters
+- Maximum of 100 stage variables per stage
+- Each variable name can be up to 64 characters
 - Each variable value can be up to 512 characters
 - Stage variables can't be used in all integration properties - check the AWS docs for specifics
 - HTTP APIs (v2) have limited stage variable support compared to REST APIs
