@@ -8,7 +8,7 @@ Description: Build a real-time analytics pipeline using Amazon Kinesis Data Stre
 
 ---
 
-Batch processing is fine when you can wait hours for results. But when you need to detect fraud as it happens, track live user behavior, or monitor system health in real time, you need a streaming pipeline. Amazon Kinesis and Lambda together give you a serverless, real-time analytics stack that scales automatically and costs nothing when idle.
+Batch processing is fine when you can wait hours for results. But when you need to detect fraud as it happens, track live user behavior, or monitor system health in real time, you need a streaming pipeline. Amazon Kinesis and Lambda together give you a serverless, real-time analytics stack that scales automatically and keeps compute costs low when traffic is quiet.
 
 This guide walks through building a complete real-time pipeline: ingesting events into Kinesis, processing them with Lambda, enriching the data, and writing results to both DynamoDB (for real-time lookups) and S3 (for batch analytics).
 
@@ -21,7 +21,7 @@ graph LR
     C --> D[DynamoDB - Real-time]
     C --> E[S3 via Firehose - Batch]
     C --> F[SNS - Alerts]
-    B --> G[Kinesis Analytics - Aggregation]
+    B --> G[Managed Service for Apache Flink - Aggregation]
     G --> H[Lambda - Windowed Results]
 ```
 
@@ -52,7 +52,6 @@ Let's build a simple event producer. In production, this could be your applicati
 # producer.py - Send events to Kinesis
 import boto3
 import json
-import time
 import uuid
 from datetime import datetime
 
@@ -97,10 +96,19 @@ def send_events_batch(events):
         Records=records
     )
 
-    # Check for failed records and retry
+    # Check for failed records and retry once
     if response['FailedRecordCount'] > 0:
-        failed = [r for r in response['Records'] if 'ErrorCode' in r]
-        print(f"Warning: {len(failed)} records failed, retrying...")
+        failed_records = [
+            records[i]
+            for i, r in enumerate(response['Records'])
+            if 'ErrorCode' in r
+        ]
+        retry_response = kinesis.put_records(
+            StreamName=stream_name,
+            Records=failed_records
+        )
+        failed = [r for r in retry_response['Records'] if 'ErrorCode' in r]
+        print(f"Warning: {len(failed)} records still failed after retry")
 
     return response
 
@@ -144,6 +152,7 @@ def lambda_handler(event, context):
 
     processed = 0
     errors = 0
+    batch_item_failures = []
 
     for record in event['Records']:
         try:
@@ -166,12 +175,15 @@ def lambda_handler(event, context):
         except Exception as e:
             print(f"Error processing record: {e}")
             errors += 1
+            batch_item_failures.append({
+                'itemIdentifier': record['kinesis']['sequenceNumber']
+            })
 
     print(f"Processed {processed} records, {errors} errors")
 
     # Return batch item failures for partial retry
     return {
-        'batchItemFailures': []
+        'batchItemFailures': batch_item_failures
     }
 
 
@@ -298,8 +310,8 @@ Key settings explained:
 - `batch-size 100`: Lambda receives up to 100 records per invocation
 - `maximum-batching-window-in-seconds 5`: Wait up to 5 seconds to fill the batch
 - `parallelization-factor 2`: Process 2 batches per shard simultaneously
-- `bisect-batch-on-function-error`: Split failed batches in half for retry
-- `ReportBatchItemFailures`: Only retry individual failed records, not the whole batch
+- `bisect-batch-on-function-error`: Split failed batches in half when the function returns an error
+- `ReportBatchItemFailures`: Retry from the failed record's sequence number instead of treating every successful record as failed
 
 ## Step 5: Add Kinesis Data Firehose for S3 Archiving
 
@@ -323,7 +335,6 @@ aws firehose create-delivery-stream \
       "SizeInMBs": 64,
       "IntervalInSeconds": 300
     },
-    "CompressionFormat": "GZIP",
     "DataFormatConversionConfiguration": {
       "Enabled": true,
       "InputFormatConfiguration": {
@@ -360,7 +371,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/Kinesis \
   --metric-name IncomingRecords \
   --dimensions Name=StreamName,Value=analytics-events \
-  --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%S)" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
   --period 300 \
   --statistics Sum
@@ -370,7 +381,7 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name IteratorAge \
   --dimensions Name=FunctionName,Value=kinesis-analytics-processor \
-  --start-time "$(date -u -v-1H +%Y-%m-%dT%H:%M:%S)" \
+  --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%S)" \
   --period 300 \
   --statistics Maximum
@@ -378,4 +389,4 @@ aws cloudwatch get-metric-statistics \
 
 Iterator age is the most important metric. It tells you how far behind your Lambda consumer is from the latest data. If it's growing, your processing can't keep up with the incoming event rate. For comprehensive pipeline monitoring, check out our guide on [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view).
 
-This architecture handles thousands of events per second at low latency, scales automatically, and costs nothing during quiet periods. It's the go-to pattern for real-time analytics on AWS.
+This architecture handles thousands of events per second at low latency and scales automatically. Lambda compute charges and DynamoDB on-demand throughput charges fall with usage, but Kinesis Data Streams can still have stream-hour or shard-hour charges during quiet periods. It's the go-to pattern for real-time analytics on AWS.
