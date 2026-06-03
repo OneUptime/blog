@@ -12,9 +12,9 @@ Backup hooks allow you to execute custom commands inside containers before and a
 
 ## Understanding Backup Hook Execution
 
-Velero executes backup hooks by running commands inside running pod containers. Pre-backup hooks run before Velero begins backing up pod resources, allowing you to prepare applications for consistent snapshots. Post-backup hooks execute after the backup completes, whether successful or failed, enabling cleanup and resumption of normal operations.
+Velero executes backup hooks by running commands inside running pod containers. Pre-backup hooks run before Velero processes a pod for backup, allowing you to prepare applications for consistent snapshots. Post-backup hooks execute after Velero has processed the pod and any additional items added by custom actions, enabling cleanup and resumption of normal operations.
 
-Hooks support both successful and error handling paths, ensuring your applications return to normal operation even if backup fails. This resilience prevents hooks from leaving applications in degraded states.
+Hooks support configurable error handling with `Fail` and `Continue` modes, helping you decide whether a hook failure should stop the backup or be logged while the backup continues.
 
 ## Creating Basic Pre-Backup Hooks
 
@@ -37,10 +37,10 @@ spec:
         app: mysql
       annotations:
         # Pre-backup hook to flush MySQL tables
-        pre.hook.backup.velero.io/command: '["/bin/bash", "-c", "mysql -u root -p$MYSQL_ROOT_PASSWORD -e \"FLUSH TABLES WITH READ LOCK;\""]'
+        pre.hook.backup.velero.io/command: '["/bin/bash", "-c", "mysql -u root -p$MYSQL_ROOT_PASSWORD -e \"FLUSH TABLES;\""]'
         pre.hook.backup.velero.io/container: mysql
-        # Post-backup hook to unlock tables
-        post.hook.backup.velero.io/command: '["/bin/bash", "-c", "mysql -u root -p$MYSQL_ROOT_PASSWORD -e \"UNLOCK TABLES;\""]'
+        # Post-backup hook for cleanup
+        post.hook.backup.velero.io/command: '["/bin/bash", "-c", "echo \"MySQL backup hook completed\""]'
         post.hook.backup.velero.io/container: mysql
     spec:
       containers:
@@ -61,7 +61,7 @@ spec:
           claimName: mysql-pvc
 ```
 
-When Velero backs up this deployment, it executes the pre-hook to lock tables before backup and the post-hook to unlock them afterward.
+When Velero backs up this deployment, it executes the pre-hook to flush tables before backup and the post-hook afterward.
 
 ## Implementing Database Dump Hooks
 
@@ -138,6 +138,8 @@ spec:
       labelSelector:
         matchLabels:
           app: postgres
+      includedResources:
+      - pods
       pre:
       - exec:
           container: postgres
@@ -146,10 +148,7 @@ spec:
           - -c
           - |
             echo "Starting database backup preparation..."
-            # Stop writes temporarily
-            psql -U postgres -c "SELECT pg_start_backup('velero_backup', true);"
-            # Wait for checkpoint
-            sleep 5
+            pg_dumpall -U postgres -f /backup/dump.sql
             echo "Database ready for backup"
           onError: Fail
           timeout: 5m
@@ -161,7 +160,7 @@ spec:
           - -c
           - |
             echo "Completing database backup..."
-            psql -U postgres -c "SELECT pg_stop_backup();"
+            gzip -f /backup/dump.sql
             echo "Database backup complete"
           onError: Continue
           timeout: 2m
@@ -171,39 +170,45 @@ This approach centralizes hook configuration and makes it easier to manage acros
 
 ## Implementing Multi-Container Hooks
 
-Execute hooks across multiple containers in a pod:
+Execute hooks across multiple containers in a pod by defining multiple backup-spec hooks:
 
 ```yaml
-apiVersion: v1
-kind: Pod
+apiVersion: velero.io/v1
+kind: Backup
 metadata:
-  name: app-with-sidecar
-  namespace: production
-  annotations:
-    # Hook for main application container
-    pre.hook.backup.velero.io/command: '["/bin/sh", "-c", "killall -SIGUSR1 myapp"]'
-    pre.hook.backup.velero.io/container: app
-    # Hook for sidecar container
-    pre.hook.backup.velero.io/command-sidecar: '["/bin/sh", "-c", "/sidecar/flush-logs.sh"]'
-    pre.hook.backup.velero.io/container-sidecar: log-shipper
+  name: app-with-sidecar-backup
+  namespace: velero
 spec:
-  containers:
-  - name: app
-    image: myapp:latest
-    volumeMounts:
-    - name: data
-      mountPath: /data
-  - name: log-shipper
-    image: fluentd:latest
-    volumeMounts:
-    - name: logs
-      mountPath: /logs
-  volumes:
-  - name: data
-    persistentVolumeClaim:
-      claimName: app-data
-  - name: logs
-    emptyDir: {}
+  includedNamespaces:
+  - production
+  hooks:
+    resources:
+    - name: app-container-hook
+      includedResources:
+      - pods
+      labelSelector:
+        matchLabels:
+          app: app-with-sidecar
+      pre:
+      - exec:
+          container: app
+          command:
+          - /bin/sh
+          - -c
+          - killall -SIGUSR1 myapp
+    - name: sidecar-container-hook
+      includedResources:
+      - pods
+      labelSelector:
+        matchLabels:
+          app: app-with-sidecar
+      pre:
+      - exec:
+          container: log-shipper
+          command:
+          - /bin/sh
+          - -c
+          - /sidecar/flush-logs.sh
 ```
 
 ## Error Handling in Hooks
@@ -227,6 +232,8 @@ spec:
       labelSelector:
         matchLabels:
           app: database
+      includedResources:
+      - pods
       pre:
       - exec:
           container: db
@@ -269,11 +276,8 @@ data:
       sleep 2
     done
 
-    # Start backup mode
-    psql -U postgres -c "SELECT pg_start_backup('velero_backup', true);"
-
-    # Create a backup label
-    echo "BACKUP_START_TIME=$(date -u +%Y%m%d_%H%M%S)" > /var/lib/postgresql/data/backup_label
+    # Create a logical dump
+    pg_dumpall -U postgres -f /backup/dump.sql
 
     echo "$(date): Database ready for backup"
 
@@ -281,11 +285,8 @@ data:
     #!/bin/bash
     echo "$(date): Finalizing PostgreSQL backup"
 
-    # Stop backup mode
-    psql -U postgres -c "SELECT pg_stop_backup();"
-
-    # Remove backup label
-    rm -f /var/lib/postgresql/data/backup_label
+    # Compress the logical dump
+    gzip -f /backup/dump.sql
 
     # Log completion
     echo "$(date): Backup finalized successfully"
@@ -300,8 +301,14 @@ metadata:
   name: postgres
   namespace: production
 spec:
+  serviceName: postgres
+  selector:
+    matchLabels:
+      app: postgres
   template:
     metadata:
+      labels:
+        app: postgres
       annotations:
         pre.hook.backup.velero.io/command: '["/bin/bash", "/hooks/postgres-pre-backup.sh"]'
         pre.hook.backup.velero.io/container: postgres
@@ -314,12 +321,17 @@ spec:
         volumeMounts:
         - name: postgres-data
           mountPath: /var/lib/postgresql/data
+        - name: backup-volume
+          mountPath: /backup
         - name: backup-hooks
           mountPath: /hooks
       volumes:
       - name: postgres-data
         persistentVolumeClaim:
           claimName: postgres-pvc
+      - name: backup-volume
+        persistentVolumeClaim:
+          claimName: postgres-backup-pvc
       - name: backup-hooks
         configMap:
           name: backup-hooks
@@ -337,11 +349,17 @@ metadata:
   name: redis
   namespace: production
 spec:
+  serviceName: redis
+  selector:
+    matchLabels:
+      app: redis
   template:
     metadata:
+      labels:
+        app: redis
       annotations:
         # Trigger BGSAVE before backup
-        pre.hook.backup.velero.io/command: '["/bin/sh", "-c", "redis-cli BGSAVE && while [ $(redis-cli LASTSAVE) -eq $(redis-cli LASTSAVE) ]; do sleep 1; done"]'
+        pre.hook.backup.velero.io/command: '["/bin/sh", "-c", "lastsave=$(redis-cli LASTSAVE); redis-cli BGSAVE; while [ \"$(redis-cli LASTSAVE)\" -eq \"$lastsave\" ]; do sleep 1; done"]'
         pre.hook.backup.velero.io/container: redis
         pre.hook.backup.velero.io/timeout: 15m
     spec:
@@ -369,7 +387,7 @@ Track hook execution through Velero logs and metrics:
 velero backup logs database-backup
 
 # Check for hook failures
-velero backup describe database-backup | grep -A 10 "Hooks:"
+velero backup describe database-backup | grep -E "HooksAttempted|HooksFailed"
 
 # Monitor hook execution time
 kubectl logs -n velero -l name=velero | grep "hook"
@@ -446,7 +464,7 @@ pre.hook.backup.velero.io/command: |
   "]
 ```
 
-**Parallel hook execution:**
+**Multiple resource hook definitions:**
 
 ```yaml
 hooks:
@@ -455,6 +473,8 @@ hooks:
     labelSelector:
       matchLabels:
         app: app1
+    includedResources:
+    - pods
     pre:
     - exec:
         command: ["/scripts/prepare.sh"]
@@ -462,12 +482,14 @@ hooks:
     labelSelector:
       matchLabels:
         app: app2
+    includedResources:
+    - pods
     pre:
     - exec:
         command: ["/scripts/prepare.sh"]
 ```
 
-Velero executes hooks for different resources in parallel.
+Velero applies each hook definition to matching pod resources.
 
 ## Conclusion
 
