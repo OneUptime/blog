@@ -126,21 +126,21 @@ Access the management UI to configure queues:
 
 ```bash
 # Get admin credentials
-kubectl get secret rabbitmq-default-user -n messaging \
-  -o jsonpath='{.data.username}' | base64 -d && echo
+export RABBITMQ_USER=$(kubectl get secret rabbitmq-default-user -n messaging \
+  -o jsonpath='{.data.username}' | base64 --decode)
 
-kubectl get secret rabbitmq-default-user -n messaging \
-  -o jsonpath='{.data.password}' | base64 -d && echo
+export RABBITMQ_PASSWORD=$(kubectl get secret rabbitmq-default-user -n messaging \
+  -o jsonpath='{.data.password}' | base64 --decode)
 
-# Port forward to management UI
-kubectl port-forward svc/rabbitmq 15672:15672 -n messaging
+# Port forward to management UI and AMQP
+kubectl port-forward svc/rabbitmq 15672:15672 5672:5672 -n messaging
 ```
 
 Create a quorum queue via the management API:
 
 ```bash
 # Create quorum queue
-curl -u admin:password -X PUT \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT \
   http://localhost:15672/api/queues/%2F/events.quorum \
   -H "Content-Type: application/json" \
   -d '{
@@ -155,23 +155,22 @@ curl -u admin:password -X PUT \
   }'
 ```
 
-Define queue policies for automatic quorum queue configuration:
+Define queue policies for quorum queue limits and overflow behavior:
 
 ```bash
 # Set policy for all queues matching pattern
-curl -u admin:password -X PUT \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT \
   http://localhost:15672/api/policies/%2F/quorum-policy \
   -H "Content-Type: application/json" \
   -d '{
-    "pattern": "^quorum\.",
+    "pattern": "^events\\.",
     "definition": {
-      "queue-type": "quorum",
       "delivery-limit": 5,
       "max-length": 1000000,
       "overflow": "reject-publish"
     },
     "priority": 1,
-    "apply-to": "queues"
+    "apply-to": "quorum_queues"
   }'
 ```
 
@@ -183,12 +182,16 @@ Publish messages with proper confirmation handling:
 # publisher.py
 import pika
 import json
+import os
 import time
 
 # Connection parameters
-credentials = pika.PlainCredentials('admin', 'password')
+credentials = pika.PlainCredentials(
+    os.environ.get('RABBITMQ_USER', 'guest'),
+    os.environ.get('RABBITMQ_PASSWORD', 'guest')
+)
 parameters = pika.ConnectionParameters(
-    host='localhost',
+    host=os.environ.get('RABBITMQ_HOST', 'localhost'),
     port=5672,
     credentials=credentials,
     connection_attempts=3,
@@ -208,7 +211,10 @@ channel.queue_declare(
     durable=True,
     arguments={
         'x-queue-type': 'quorum',
-        'x-quorum-initial-group-size': 3
+        'x-quorum-initial-group-size': 3,
+        'x-delivery-limit': 5,
+        'x-max-length': 1000000,
+        'x-max-length-bytes': 1073741824
     }
 )
 
@@ -256,11 +262,15 @@ Consume messages with proper acknowledgment:
 # consumer.py
 import pika
 import json
+import os
 import time
 
-credentials = pika.PlainCredentials('admin', 'password')
+credentials = pika.PlainCredentials(
+    os.environ.get('RABBITMQ_USER', 'guest'),
+    os.environ.get('RABBITMQ_PASSWORD', 'guest')
+)
 parameters = pika.ConnectionParameters(
-    host='localhost',
+    host=os.environ.get('RABBITMQ_HOST', 'localhost'),
     port=5672,
     credentials=credentials
 )
@@ -311,12 +321,12 @@ Handle poison messages using dead letter exchanges:
 
 ```bash
 # Create dead letter exchange and queue
-curl -u admin:password -X PUT \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT \
   http://localhost:15672/api/exchanges/%2F/dlx \
   -H "Content-Type: application/json" \
   -d '{"type": "direct", "durable": true}'
 
-curl -u admin:password -X PUT \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT \
   http://localhost:15672/api/queues/%2F/events.dlq \
   -H "Content-Type: application/json" \
   -d '{
@@ -326,27 +336,30 @@ curl -u admin:password -X PUT \
     }
   }'
 
-curl -u admin:password -X POST \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X POST \
   http://localhost:15672/api/bindings/%2F/e/dlx/q/events.dlq \
   -H "Content-Type: application/json" \
   -d '{"routing_key": "events.quorum"}'
 
-# Update main queue with DLX
-curl -u admin:password -X PUT \
-  http://localhost:15672/api/queues/%2F/events.quorum \
+# Update the quorum queue policy with DLX settings
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" -X PUT \
+  http://localhost:15672/api/policies/%2F/quorum-policy \
   -H "Content-Type: application/json" \
   -d '{
-    "durable": true,
-    "arguments": {
-      "x-queue-type": "quorum",
-      "x-delivery-limit": 5,
-      "x-dead-letter-exchange": "dlx",
-      "x-dead-letter-routing-key": "events.quorum"
-    }
+    "pattern": "^events\\.",
+    "definition": {
+      "delivery-limit": 5,
+      "max-length": 1000000,
+      "overflow": "reject-publish",
+      "dead-letter-exchange": "dlx",
+      "dead-letter-routing-key": "events.quorum"
+    },
+    "priority": 1,
+    "apply-to": "quorum_queues"
   }'
 ```
 
-After five delivery attempts, messages move to the dead letter queue automatically.
+After the delivery limit is exceeded, messages move to the dead letter queue automatically.
 
 ## Monitoring Quorum Queue Health
 
@@ -354,11 +367,11 @@ Check queue status via the API:
 
 ```bash
 # Get queue details
-curl -u admin:password \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
   http://localhost:15672/api/queues/%2F/events.quorum | jq
 
 # Check Raft member status
-curl -u admin:password \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
   http://localhost:15672/api/queues/%2F/events.quorum | \
   jq '.leader, .members'
 ```
@@ -383,11 +396,11 @@ spec:
 
 Key metrics to monitor:
 
-- `rabbitmq_queue_messages_ready` - Messages waiting for delivery
-- `rabbitmq_queue_messages_unacked` - Messages delivered but not acknowledged
-- `rabbitmq_quorum_queue_disk_writes_total` - Raft write operations
-- `rabbitmq_quorum_queue_members` - Replica count
-- `rabbitmq_queue_consumer_utilisation` - Consumer efficiency
+- `rabbitmq_detailed_queue_messages_ready` - Messages waiting for delivery
+- `rabbitmq_detailed_queue_messages_unacked` - Messages delivered but not acknowledged
+- `rabbitmq_detailed_queue_disk_writes_total` - Queue disk write operations
+- `rabbitmq_detailed_raft_write_ops` - Raft write operations
+- `rabbitmq_detailed_queue_consumer_utilisation` - Consumer efficiency
 
 ## Scaling Consumers
 
@@ -457,7 +470,7 @@ spec:
   - type: External
     external:
       metric:
-        name: rabbitmq_queue_messages_ready
+        name: rabbitmq_detailed_queue_messages_ready
         selector:
           matchLabels:
             queue: events.quorum
@@ -480,7 +493,7 @@ kubectl delete pod rabbitmq-server-1 -n messaging
 kubectl get pods -n messaging -w
 
 # Check queue status
-curl -u admin:password \
+curl -u "$RABBITMQ_USER:$RABBITMQ_PASSWORD" \
   http://localhost:15672/api/queues/%2F/events.quorum | \
   jq '.state, .leader, .members'
 ```
