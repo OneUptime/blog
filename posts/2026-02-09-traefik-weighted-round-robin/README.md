@@ -225,7 +225,7 @@ spec:
   entryPoints:
     - websecure
   routes:
-  - match: Host(`app.example.com`) && Headers(`X-Beta-User`, `true`)
+  - match: Host(`app.example.com`) && Header(`X-Beta-User`, `true`)
     kind: Rule
     priority: 10
     services:
@@ -347,9 +347,9 @@ spec:
       weight: 30
 ```
 
-## Service Health and Circuit Breaking
+## Service Health Checks
 
-Combine weighted routing with health checks.
+Combine weighted routing with health checks for ExternalName services.
 
 ### Weighted Services with Health Checks
 
@@ -367,20 +367,42 @@ spec:
   - match: Host(`app.example.com`)
     kind: Rule
     services:
-    - name: app-v1
+    - name: app-v1-external
       port: 80
       weight: 80
       healthCheck:
         path: /healthz
         interval: 10s
         timeout: 3s
-    - name: app-v2
+    - name: app-v2-external
       port: 80
       weight: 20
       healthCheck:
         path: /healthz
         interval: 10s
         timeout: 3s
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-v1-external
+  namespace: default
+spec:
+  type: ExternalName
+  externalName: app-v1.example.net
+  ports:
+  - port: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: app-v2-external
+  namespace: default
+spec:
+  type: ExternalName
+  externalName: app-v2.example.net
+  ports:
+  - port: 80
 ```
 
 ## Testing Weighted Distribution
@@ -400,8 +422,8 @@ done | sort | uniq -c
 # Test with specific header
 curl -H "X-Beta-User: true" https://app.example.com/
 
-# Load testing with weight verification
-ab -n 1000 -c 10 https://app.example.com/ | grep "Version"
+# Generate load, then verify distribution with application logs or Traefik metrics
+ab -n 1000 -c 10 https://app.example.com/
 ```
 
 Monitor weight distribution:
@@ -411,8 +433,8 @@ Monitor weight distribution:
 kubectl port-forward -n traefik svc/traefik 9000:9000
 # Visit http://localhost:9000/dashboard/
 
-# Check service weights in metrics
-curl http://localhost:9000/metrics | grep service_backend
+# Check service request counts in metrics
+curl http://localhost:9000/metrics | grep traefik_service_requests_total
 ```
 
 ## Automated Canary Deployment
@@ -475,7 +497,7 @@ EOF
     echo "Error rate too high! Rolling back..."
     # Rollback to 100% stable
     kubectl patch ingressroute $ROUTE_NAME -n $NAMESPACE --type=merge \
-      -p '{"spec":{"routes":[{"services":[{"name":"app-v1","port":80,"weight":100}]}]}}'
+      -p '{"spec":{"routes":[{"match":"Host(`app.example.com`)","kind":"Rule","services":[{"name":"app-v1","port":80,"weight":100}]}]}}'
     exit 1
   fi
 
