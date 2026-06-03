@@ -61,15 +61,15 @@ This modifies several PostgreSQL parameters for better performance.
 aws rds modify-db-parameter-group \
   --db-parameter-group-name my-postgres-params \
   --parameters \
-    "ParameterName=shared_buffers,ParameterValue={DBInstanceClassMemory/4},ApplyMethod=pending-reboot" \
+    "ParameterName=shared_buffers,ParameterValue={DBInstanceClassMemory/32768},ApplyMethod=pending-reboot" \
     "ParameterName=work_mem,ParameterValue=65536,ApplyMethod=immediate" \
     "ParameterName=maintenance_work_mem,ParameterValue=524288,ApplyMethod=immediate" \
-    "ParameterName=effective_cache_size,ParameterValue={DBInstanceClassMemory*3/4},ApplyMethod=pending-reboot" \
+    "ParameterName=effective_cache_size,ParameterValue={DBInstanceClassMemory*3/32768},ApplyMethod=immediate" \
     "ParameterName=random_page_cost,ParameterValue=1.1,ApplyMethod=immediate" \
     "ParameterName=log_min_duration_statement,ParameterValue=1000,ApplyMethod=immediate"
 ```
 
-Notice the `{DBInstanceClassMemory/4}` syntax. This is a formula that RDS evaluates based on the instance class. It means "one quarter of the instance's total memory." This is better than hardcoding values because the parameter automatically adjusts if you resize the instance.
+Notice the `{DBInstanceClassMemory/32768}` syntax. This is a formula that RDS evaluates based on the instance class. For PostgreSQL memory parameters that are stored in 8 KB pages, it means roughly "one quarter of the instance memory available to the database." This is better than hardcoding values because the parameter automatically adjusts if you resize the instance.
 
 ## Applying the Parameter Group
 
@@ -106,14 +106,14 @@ Here are the most impactful PostgreSQL parameters to tune.
 These control how PostgreSQL allocates memory.
 
 ```text
-shared_buffers = {DBInstanceClassMemory/4}
+shared_buffers = {DBInstanceClassMemory/32768}
   # Main memory cache for data pages. Set to 25% of instance memory.
   # Static - requires reboot.
 
-effective_cache_size = {DBInstanceClassMemory*3/4}
+effective_cache_size = {DBInstanceClassMemory*3/32768}
   # Hint to the query planner about available OS cache.
   # Set to 75% of instance memory. Doesn't allocate memory.
-  # Static - requires reboot.
+  # Dynamic - takes effect immediately.
 
 work_mem = 65536  (64 MB in KB)
   # Memory per sort/hash operation per query.
@@ -132,7 +132,7 @@ These help the planner make better decisions for SSDs.
 ```text
 random_page_cost = 1.1
   # Cost of a random page fetch. Default is 4.0 (for spinning disks).
-  # Set to 1.1 for SSD storage (all RDS storage is SSD).
+  # Set to 1.1 for SSD storage such as gp2, gp3, io1, or io2.
   # Dynamic.
 
 effective_io_concurrency = 200
@@ -168,7 +168,7 @@ aws rds modify-db-parameter-group \
   --db-parameter-group-name my-mysql-params \
   --parameters \
     "ParameterName=innodb_buffer_pool_size,ParameterValue={DBInstanceClassMemory*3/4},ApplyMethod=pending-reboot" \
-    "ParameterName=innodb_log_file_size,ParameterValue=1073741824,ApplyMethod=pending-reboot" \
+    "ParameterName=innodb_redo_log_capacity,ParameterValue=1073741824,ApplyMethod=immediate" \
     "ParameterName=innodb_flush_log_at_trx_commit,ParameterValue=1,ApplyMethod=immediate" \
     "ParameterName=max_connections,ParameterValue=500,ApplyMethod=immediate" \
     "ParameterName=slow_query_log,ParameterValue=1,ApplyMethod=immediate" \
@@ -184,13 +184,14 @@ innodb_buffer_pool_size = {DBInstanceClassMemory*3/4}
   # InnoDB's main memory cache. Set to 75% of memory.
   # This is the single most impactful MySQL parameter.
 
-innodb_log_file_size = 1073741824  (1 GB)
-  # Size of InnoDB redo log files. Larger = better write performance
-  # but longer crash recovery. 1 GB is good for most production.
+innodb_redo_log_capacity = 1073741824  (1 GB)
+  # Total InnoDB redo log capacity for RDS for MySQL 8.0.33 and later.
+  # Larger = better write performance but longer crash recovery.
+  # 1 GB is a reasonable starting point for many production workloads.
 
 max_connections = 500
   # Maximum client connections. Default varies by instance size.
-  # Each connection uses about 10 MB of memory.
+  # Each connection uses memory, and the amount varies with per-session buffers.
 
 slow_query_log = 1
   # Enable slow query logging.
@@ -212,7 +213,8 @@ This lists all non-default parameter values.
 # List all parameters (filtered for modified ones)
 aws rds describe-db-parameters \
   --db-parameter-group-name my-postgres-params \
-  --query 'Parameters[?Source!=`system`].{Name:ParameterName,Value:ParameterValue,ApplyType:ApplyType}' \
+  --source user \
+  --query 'Parameters[].{Name:ParameterName,Value:ParameterValue,ApplyType:ApplyType}' \
   --output table
 ```
 
@@ -240,8 +242,7 @@ def get_params(group_name):
     paginator = rds.get_paginator('describe_db_parameters')
     for page in paginator.paginate(DBParameterGroupName=group_name):
         for param in page['Parameters']:
-            if 'ParameterValue' in param:
-                params[param['ParameterName']] = param['ParameterValue']
+            params[param['ParameterName']] = param.get('ParameterValue')
     return params
 
 default_params = get_params('default.postgres16')
@@ -268,7 +269,8 @@ resource "aws_db_parameter_group" "postgres" {
 
   parameter {
     name  = "shared_buffers"
-    value = "{DBInstanceClassMemory/4}"
+    value        = "{DBInstanceClassMemory/32768}"
+    apply_method = "pending-reboot"
   }
 
   parameter {
@@ -283,7 +285,7 @@ resource "aws_db_parameter_group" "postgres" {
 
   parameter {
     name  = "effective_cache_size"
-    value = "{DBInstanceClassMemory*3/4}"
+    value = "{DBInstanceClassMemory*3/32768}"
   }
 
   parameter {
@@ -306,7 +308,7 @@ resource "aws_db_parameter_group" "postgres" {
 ## Best Practices
 
 1. **Never modify the default parameter group**: Always create custom groups. This makes it clear what you've changed.
-2. **Use formulas, not hardcoded values**: `{DBInstanceClassMemory/4}` adapts when you resize. Hardcoded values don't.
+2. **Use formulas, not hardcoded values**: `{DBInstanceClassMemory/32768}` adapts when you resize. Hardcoded values don't.
 3. **Document your changes**: Add descriptions or tags explaining why each parameter was changed.
 4. **Test changes in dev first**: Parameter changes can cause unexpected behavior. Test in non-production first.
 5. **Monitor after changes**: Watch CloudWatch metrics after any parameter change to verify the impact.
