@@ -26,7 +26,7 @@ These failures are temporary and resolve with retries, unlike permanent failures
 
 ## Kubernetes Built-In Retry
 
-Kubernetes automatically retries pod creation with exponential backoff:
+Kubernetes automatically retries several failure modes. The Deployment controller keeps retrying a rollout until it progresses or exceeds `progressDeadlineSeconds`, the kubelet retries image pulls with backoff, and containers are restarted according to the pod's restart policy:
 
 ```yaml
 apiVersion: apps/v1
@@ -35,7 +35,7 @@ metadata:
   name: web-app
 spec:
   replicas: 5
-  progressDeadlineSeconds: 600  # Keep trying for 10 minutes
+  progressDeadlineSeconds: 600  # Report failed progress after 10 minutes
   selector:
     matchLabels:
       app: web-app
@@ -50,11 +50,11 @@ spec:
         imagePullPolicy: Always  # Always try to pull
 ```
 
-Kubernetes retries failed pods automatically, but with basic logic. For more control, implement custom retry logic.
+Kubernetes retries image pulls and container restarts automatically, and workload controllers replace failed pods when possible. For more control, implement custom retry logic.
 
 ## Image Pull Retry
 
-Configure image pull backoff:
+Configure image pull behavior:
 
 ```yaml
 spec:
@@ -67,7 +67,7 @@ spec:
       # Configure pull secret
       imagePullSecrets:
       - name: registry-credentials
-      # Restart policy for image pull failures
+      # Deployments require restartPolicy: Always
       restartPolicy: Always
 ```
 
@@ -131,36 +131,41 @@ async function handleDeploymentUpdate(deployment) {
 
 async function checkIfTransientFailure(deployment) {
   const namespace = deployment.metadata.namespace;
-  const selector = deployment.spec.selector.matchLabels;
+  const selector = deployment.spec.selector.matchLabels || {};
+  const labelSelector = Object.entries(selector)
+    .map(([key, value]) => `${key}=${value}`)
+    .join(',');
 
   // Get pods for this deployment
   const k8sCoreApi = kc.makeApiClient(k8s.CoreV1Api);
-  const pods = await k8sCoreApi.listNamespacedPod(
+  const pods = await k8sCoreApi.listNamespacedPod({
     namespace,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    `app=${selector.app}`
-  );
+    labelSelector
+  });
 
   // Check pod failure reasons
-  const transientReasons = [
+  const transientContainerReasons = [
     'ImagePullBackOff',
-    'ErrImagePull',
-    'CreateContainerConfigError',
-    'InsufficientMemory',
-    'InsufficientCPU'
+    'ErrImagePull'
   ];
 
-  for (const pod of pods.body.items) {
+  for (const pod of pods.items) {
+    const scheduled = (pod.status.conditions || [])
+      .find(c => c.type === 'PodScheduled');
+
+    if (scheduled?.status === 'False' &&
+        scheduled.reason === 'Unschedulable' &&
+        /Insufficient (cpu|memory)/i.test(scheduled.message || '')) {
+      return true;
+    }
+
     const containerStatuses = pod.status.containerStatuses || [];
 
     for (const status of containerStatuses) {
       if (status.state.waiting) {
         const reason = status.state.waiting.reason;
 
-        if (transientReasons.includes(reason)) {
+        if (transientContainerReasons.includes(reason)) {
           return true;
         }
       }
@@ -187,10 +192,10 @@ async function retryDeployment(deployment) {
   }
 
   // Increment retry count
-  await k8sApi.patchNamespacedDeployment(
+  await k8sApi.patchNamespacedDeployment({
     name,
     namespace,
-    {
+    body: {
       metadata: {
         annotations: {
           'retry-count': String(retryCount + 1),
@@ -198,18 +203,14 @@ async function retryDeployment(deployment) {
         }
       }
     },
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    { headers: { 'Content-Type': 'application/merge-patch+json' } }
+  }, k8s.setHeaderOptions('Content-Type', k8s.PatchStrategy.MergePatch)
   );
 
   // Trigger a new rollout by updating an annotation
-  await k8sApi.patchNamespacedDeployment(
+  await k8sApi.patchNamespacedDeployment({
     name,
     namespace,
-    {
+    body: {
       spec: {
         template: {
           metadata: {
@@ -220,11 +221,7 @@ async function retryDeployment(deployment) {
         }
       }
     },
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    { headers: { 'Content-Type': 'application/merge-patch+json' } }
+  }, k8s.setHeaderOptions('Content-Type', k8s.PatchStrategy.MergePatch)
   );
 
   console.log(`Retry ${retryCount + 1}/${maxRetries} initiated for ${name}`);
@@ -256,7 +253,7 @@ async function retryWithBackoff(deployment) {
 
 ## Argo Rollouts Retry Strategy
 
-Configure automatic retries in Argo Rollouts:
+Configure analysis tolerance in Argo Rollouts:
 
 ```yaml
 apiVersion: argoproj.io/v1alpha1
@@ -288,7 +285,7 @@ spec:
       analysis:
         templates:
         - templateName: success-rate
-        # Retry on analysis failure
+        # Allow transient metric failures before aborting
         args:
         - name: service-name
           value: web-app
@@ -302,9 +299,9 @@ spec:
   - name: success-rate
     interval: 30s
     count: 5
-    successCondition: result >= 0.95
-    failureLimit: 3  # Allow 3 failures before aborting
-    inconclusiveLimit: 2  # Allow 2 inconclusive results
+    successCondition: result[0] >= 0.95
+    failureLimit: 3  # Allow 3 failed measurements before aborting
+    inconclusiveLimit: 2  # Allow 2 inconclusive measurements
     provider:
       prometheus:
         address: http://prometheus:9090
@@ -407,11 +404,11 @@ async function handleDeploymentFailure(deployment) {
 Track retry attempts and success rates:
 
 ```javascript
-async function retryDeployment(deployment) {
+async function monitoredRetryDeployment(deployment) {
   const start = Date.now();
 
   try {
-    await attemptRetry(deployment);
+    await retryDeployment(deployment);
 
     const duration = Date.now() - start;
     metrics.histogram('deployment.retry.duration', duration);
