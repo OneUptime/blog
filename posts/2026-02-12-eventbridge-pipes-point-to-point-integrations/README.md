@@ -38,9 +38,9 @@ This creates a pipe connecting SQS to Lambda:
 ```bash
 aws pipes create-pipe \
   --name sqs-to-lambda-pipe \
-  --source arn:aws:sqs:us-east-1:123456789:orders-queue \
-  --target arn:aws:lambda:us-east-1:123456789:function:process-order \
-  --role-arn arn:aws:iam::123456789:role/PipeRole \
+  --source arn:aws:sqs:us-east-1:123456789012:orders-queue \
+  --target arn:aws:lambda:us-east-1:123456789012:function:process-order \
+  --role-arn arn:aws:iam::123456789012:role/PipeRole \
   --source-parameters '{
     "SqsQueueParameters": {
       "BatchSize": 10,
@@ -69,7 +69,7 @@ This creates a pipe from a DynamoDB stream:
 ```json
 {
   "Name": "dynamodb-to-stepfunctions-pipe",
-  "Source": "arn:aws:dynamodb:us-east-1:123456789:table/Orders/stream/2026-01-01T00:00:00.000",
+  "Source": "arn:aws:dynamodb:us-east-1:123456789012:table/Orders/stream/2026-01-01T00:00:00.000",
   "SourceParameters": {
     "DynamoDBStreamParameters": {
       "StartingPosition": "LATEST",
@@ -79,8 +79,8 @@ This creates a pipe from a DynamoDB stream:
       "OnPartialBatchItemFailure": "AUTOMATIC_BISECT"
     }
   },
-  "Target": "arn:aws:states:us-east-1:123456789:stateMachine:ProcessOrderChanges",
-  "RoleArn": "arn:aws:iam::123456789:role/PipeRole"
+  "Target": "arn:aws:states:us-east-1:123456789012:stateMachine:ProcessOrderChanges",
+  "RoleArn": "arn:aws:iam::123456789012:role/PipeRole"
 }
 ```
 
@@ -93,9 +93,9 @@ This filter only passes through order events with a total over $100:
 ```bash
 aws pipes create-pipe \
   --name filtered-orders-pipe \
-  --source arn:aws:sqs:us-east-1:123456789:orders-queue \
-  --target arn:aws:lambda:us-east-1:123456789:function:process-high-value \
-  --role-arn arn:aws:iam::123456789:role/PipeRole \
+  --source arn:aws:sqs:us-east-1:123456789012:orders-queue \
+  --target arn:aws:lambda:us-east-1:123456789012:function:process-high-value \
+  --role-arn arn:aws:iam::123456789012:role/PipeRole \
   --source-parameters '{
     "SqsQueueParameters": {
       "BatchSize": 10
@@ -137,18 +137,18 @@ This pipe enriches SQS messages with customer data from a Lambda function:
 ```json
 {
   "Name": "enriched-orders-pipe",
-  "Source": "arn:aws:sqs:us-east-1:123456789:orders-queue",
+  "Source": "arn:aws:sqs:us-east-1:123456789012:orders-queue",
   "SourceParameters": {
     "SqsQueueParameters": {
       "BatchSize": 1
     }
   },
-  "Enrichment": "arn:aws:lambda:us-east-1:123456789:function:enrich-with-customer-data",
+  "Enrichment": "arn:aws:lambda:us-east-1:123456789012:function:enrich-with-customer-data",
   "EnrichmentParameters": {
     "InputTemplate": "{\"customerId\": <$.body.customerId>, \"orderId\": <$.body.orderId>}"
   },
-  "Target": "arn:aws:states:us-east-1:123456789:stateMachine:FulfillOrder",
-  "RoleArn": "arn:aws:iam::123456789:role/PipeRole"
+  "Target": "arn:aws:states:us-east-1:123456789012:stateMachine:FulfillOrder",
+  "RoleArn": "arn:aws:iam::123456789012:role/PipeRole"
 }
 ```
 
@@ -240,12 +240,58 @@ Resources:
       Code:
         ZipFile: |
           exports.handler = async (events) => {
-            return events.map(e => ({
-              ...e,
-              enrichedAt: new Date().toISOString(),
-              priority: e.total > 1000 ? 'high' : 'normal'
-            }));
+            return events.map(event => {
+              const body = typeof event.body === 'string'
+                ? JSON.parse(event.body)
+                : event.body;
+
+              return {
+                ...body,
+                enrichedAt: new Date().toISOString(),
+                priority: body.total > 1000 ? 'high' : 'normal'
+              };
+            });
           };
+
+  EnrichmentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  ProcessingStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: process-order-events
+      RoleArn: !GetAtt StateMachineRole.Arn
+      DefinitionString: |
+        {
+          "StartAt": "ProcessOrder",
+          "States": {
+            "ProcessOrder": {
+              "Type": "Pass",
+              "End": true
+            }
+          }
+        }
+
+  StateMachineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
 
   OrderPipe:
     Type: AWS::Pipes::Pipe
@@ -265,6 +311,7 @@ Resources:
       TargetParameters:
         StepFunctionStateMachineParameters:
           InvocationType: FIRE_AND_FORGET
+        InputTemplate: '{"orderId": <$.orderId>, "priority": <$.priority>, "enrichedAt": <$.enrichedAt>}'
 
   PipeRole:
     Type: AWS::IAM::Role
@@ -303,7 +350,7 @@ For more on EventBridge rules, see our post on [setting up EventBridge rules for
 
 ## Monitoring Pipes
 
-Pipes publish metrics to CloudWatch including `Invocations`, `ExecutionFailed`, `ExecutionThrottled`, and `IngestionRate`. Set up alarms on failure metrics to catch problems early.
+Pipes publish metrics to CloudWatch including `Invocations`, `ExecutionFailed`, `ExecutionThrottled`, and `EventCount`. Set up alarms on failure metrics to catch problems early.
 
 ## Wrapping Up
 
