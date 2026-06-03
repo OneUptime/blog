@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, Storage
+Tags: Kubernetes, Windows, Storage
 
 Description: Comprehensive guide to setting up Container Storage Interface (CSI) drivers for persistent storage on Windows nodes in Kubernetes clusters.
 
@@ -20,7 +20,7 @@ Windows containers can use several types of storage:
 
 **Persistent volumes** backed by CSI drivers provide durable storage that survives pod restarts and can move between nodes.
 
-Windows supports NTFS and ReFS filesystems, both of which handle permissions, symbolic links, and file attributes differently than Linux filesystems. CSI drivers must account for these differences.
+Windows container layers are based on NTFS, and Windows handles permissions, symbolic links, and file attributes differently than Linux filesystems. CSI drivers must account for these differences.
 
 ## Supported CSI Drivers for Windows
 
@@ -34,32 +34,25 @@ Several CSI drivers support Windows nodes:
 
 **GCP Persistent Disk CSI Driver** works with Windows nodes on GKE.
 
-**Local Path Provisioner** creates persistent volumes using local node storage.
-
 This guide focuses on the Azure Disk CSI driver as an example, but the concepts apply to other drivers.
 
 ## Installing the Azure Disk CSI Driver
 
-For Azure Kubernetes Service with Windows nodes, install the CSI driver:
+For Azure Kubernetes Service with Windows nodes, enable the managed CSI driver:
 
 ```bash
-# Add the Azure Disk CSI driver Helm repository
-
-helm repo add azuredisk-csi-driver https://raw.githubusercontent.com/kubernetes-sigs/azuredisk-csi-driver/master/charts
-helm repo update
-
-# Install the driver with Windows support
-helm install azuredisk-csi-driver azuredisk-csi-driver/azuredisk-csi-driver \
-  --namespace kube-system \
-  --set windows.enabled=true \
-  --set controller.runOnControlPlane=true
+# Enable the Azure Disk CSI driver
+az aks update \
+  --name myAKSCluster \
+  --resource-group myResourceGroup \
+  --enable-disk-driver
 
 # Verify driver installation
-kubectl get pods -n kube-system -l app=csi-azuredisk-controller
-kubectl get pods -n kube-system -l app=csi-azuredisk-node
+kubectl get pods -n kube-system -o wide | grep csi-azuredisk
 
 # Check Windows node pods specifically
-kubectl get pods -n kube-system -l app=csi-azuredisk-node -o wide | grep -i windows
+WINDOWS_NODE=$(kubectl get nodes -l kubernetes.io/os=windows -o jsonpath='{.items[0].metadata.name}')
+kubectl get pods -n kube-system -o wide --field-selector spec.nodeName=$WINDOWS_NODE | grep csi-azuredisk
 ```
 
 Verify the CSI driver is registered:
@@ -84,9 +77,8 @@ parameters:
   # Storage account type
   skuName: Premium_LRS
   # Kind of disk
-  kind: Managed
-  # Enable encryption at rest
-  encryption: enabled
+  kind: managed
+  # Azure managed disks are encrypted at rest by default
   # Cache mode (None, ReadOnly, ReadWrite)
   cachingMode: ReadOnly
   # Filesystem type (NTFS is default for Windows)
@@ -99,10 +91,6 @@ reclaimPolicy: Delete
 allowVolumeExpansion: true
 # Volume binding mode
 volumeBindingMode: WaitForFirstConsumer
-# Mount options
-mountOptions:
-  - uid=0
-  - gid=0
 ```
 
 Apply the storage class:
@@ -125,7 +113,7 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Standard_LRS
-  kind: Managed
+  kind: managed
   fsType: ntfs
   cachingMode: None
 reclaimPolicy: Delete
@@ -140,14 +128,12 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: Premium_ZRS
-  kind: Managed
+  kind: managed
   fsType: ntfs
-  cachingMode: ReadWrite
-  diskIOPSReadWrite: "5000"
-  diskMBpsReadWrite: "200"
+  cachingMode: ReadOnly
 reclaimPolicy: Retain
 allowVolumeExpansion: true
-volumeBindingMode: Immediate
+volumeBindingMode: WaitForFirstConsumer
 ```
 
 ## Creating Persistent Volume Claims
@@ -264,31 +250,27 @@ spec:
       nodeSelector:
         kubernetes.io/os: windows
       containers:
-      - name: sql-server
-        image: mcr.microsoft.com/mssql/server:2022-latest
-        env:
-        - name: ACCEPT_EULA
-          value: "Y"
-        - name: SA_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mssql-secret
-              key: password
+      - name: app
+        image: mcr.microsoft.com/windows/servercore:ltsc2022
+        command:
+        - powershell
+        - -Command
+        - |
+          Set-Content -Path C:\data\status.txt -Value "Started $env:COMPUTERNAME at $(Get-Date)"
+          Set-Content -Path C:\logs\startup.log -Value "Log volume mounted at $(Get-Date)"
+          Start-Sleep -Seconds 86400
         volumeMounts:
         - name: data
           mountPath: C:\data
         - name: logs
           mountPath: C:\logs
-        ports:
-        - containerPort: 1433
-          name: sql
         resources:
           requests:
-            memory: "4Gi"
-            cpu: "2"
+            memory: "1Gi"
+            cpu: "500m"
           limits:
-            memory: "8Gi"
-            cpu: "4"
+            memory: "2Gi"
+            cpu: "1"
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -308,13 +290,9 @@ spec:
           storage: 20Gi
 ```
 
-Create the required secret and deploy:
+Deploy the StatefulSet:
 
 ```bash
-# Create SQL Server password secret
-kubectl create secret generic mssql-secret \
-  --from-literal=password='YourStrong!Passw0rd'
-
 # Deploy StatefulSet
 kubectl apply -f windows-statefulset.yaml
 
@@ -343,17 +321,6 @@ provisioner: file.csi.azure.com
 parameters:
   skuName: Premium_LRS
   protocol: smb
-  # Enable Active Directory authentication (optional)
-  # adDomainName: contoso.com
-  # adUserName: azureuser
-mountOptions:
-  - dir_mode=0777
-  - file_mode=0777
-  - uid=0
-  - gid=0
-  - mfsymlinks
-  - cache=strict
-  - actimeo=30
 reclaimPolicy: Delete
 allowVolumeExpansion: true
 volumeBindingMode: Immediate
@@ -485,7 +452,7 @@ kubectl get pvc windows-app-data -w
 kubectl exec windows-app-with-storage -- powershell -Command "Get-Volume | Format-Table -AutoSize"
 ```
 
-For Windows, the filesystem resize happens automatically if the CSI driver supports it.
+On Windows nodes, mounted filesystem expansion is driver-specific. Kubernetes documents online resize of the mounted filesystem as unsupported for Windows, so you may need to restart the pod or remount the volume after the PVC expands.
 
 ## Troubleshooting Storage Issues
 
@@ -534,9 +501,6 @@ parameters:
   diskIOPSReadWrite: "20000"
   diskMBpsReadWrite: "1000"
   fsType: ntfs
-mountOptions:
-  - uid=0
-  - gid=0
 reclaimPolicy: Retain
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
