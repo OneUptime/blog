@@ -19,9 +19,9 @@ graph TD
     A[Data Sources] --> B[Kinesis Data Stream]
     B --> C[Lambda - Sentiment Analyzer]
     C --> D[Amazon Comprehend]
-    D --> E[Lambda - Results Processor]
-    E --> F[DynamoDB - Sentiment Data]
-    E --> G[Kinesis Firehose]
+    D --> C
+    C --> F[DynamoDB - Sentiment Data]
+    C --> G[Amazon Data Firehose]
     G --> H[S3 - Sentiment Archive]
     H --> I[Athena Queries]
     I --> J[QuickSight Dashboard]
@@ -73,18 +73,19 @@ Create connectors for each feedback source:
 # Connectors to ingest feedback from various sources into Kinesis
 import boto3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 kinesis = boto3.client('kinesis')
 
 def ingest_feedback(source, text, metadata=None):
     """Send a feedback item to the Kinesis stream for analysis."""
+    now = datetime.now(timezone.utc)
     record = {
         'source': source,
         'text': text,
         'metadata': metadata or {},
-        'timestamp': datetime.utcnow().isoformat(),
-        'id': f'{source}-{datetime.utcnow().timestamp()}'
+        'timestamp': now.isoformat(),
+        'id': f'{source}-{now.timestamp()}'
     }
 
     kinesis.put_record(
@@ -152,12 +153,16 @@ The core Lambda function reads from Kinesis and runs each piece of feedback thro
 import boto3
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
 import time
 
 comprehend = boto3.client('comprehend')
 dynamodb = boto3.resource('dynamodb')
 sentiment_table = dynamodb.Table('SentimentData')
+
+def truncate_utf8(text, max_bytes):
+    """Truncate text to a UTF-8 byte limit without splitting characters."""
+    return text.encode('utf-8')[:max_bytes].decode('utf-8', errors='ignore')
 
 def handler(event, context):
     results = []
@@ -171,21 +176,23 @@ def handler(event, context):
         if not text or len(text.strip()) < 10:
             continue
 
+        text_for_comprehend = truncate_utf8(text, 5000)
+
         # Run sentiment analysis
         sentiment_response = comprehend.detect_sentiment(
-            Text=text[:5000],
+            Text=text_for_comprehend,
             LanguageCode='en'
         )
 
         # Run key phrase extraction
         phrases_response = comprehend.detect_key_phrases(
-            Text=text[:5000],
+            Text=text_for_comprehend,
             LanguageCode='en'
         )
 
         # Run entity detection
         entities_response = comprehend.detect_entities(
-            Text=text[:5000],
+            Text=text_for_comprehend,
             LanguageCode='en'
         )
 
@@ -210,7 +217,7 @@ def handler(event, context):
                 if e['Score'] > 0.8
             ][:10],
             'metadata': payload.get('metadata', {}),
-            'analyzedAt': datetime.utcnow().isoformat()
+            'analyzedAt': datetime.now(timezone.utc).isoformat()
         }
 
         # Store in DynamoDB
@@ -221,8 +228,7 @@ def handler(event, context):
 
 def store_sentiment_data(result):
     """Store sentiment analysis results in DynamoDB."""
-    now = datetime.utcnow()
-    date_str = now.strftime('%Y-%m-%d')
+    now = datetime.now(timezone.utc)
     hour_str = now.strftime('%Y-%m-%dT%H')
 
     # Individual record
@@ -233,6 +239,7 @@ def store_sentiment_data(result):
         'sentiment': result['sentiment'],
         'sentimentScores': result['sentimentScores'],
         'keyPhrases': result['keyPhrases'],
+        'entities': result['entities'],
         'text': result['text'],
         'metadata': result['metadata'],
         'ttl': int(time.time()) + (90 * 86400)  # Keep for 90 days
@@ -265,8 +272,8 @@ Expose the sentiment data through an API for the dashboard:
 # Lambda - API endpoints for the sentiment dashboard
 import boto3
 import json
-from datetime import datetime, timedelta
-from boto3.dynamodb.conditions import Key
+from datetime import datetime, timedelta, timezone
+from boto3.dynamodb.conditions import Attr
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('SentimentData')
@@ -291,16 +298,12 @@ def get_summary(params):
     hours = int(params.get('hours', '24'))
     source = params.get('source', 'all')
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     summary = {'positive': 0, 'negative': 0, 'neutral': 0, 'mixed': 0, 'total': 0}
 
     for h in range(hours):
         hour_str = (now - timedelta(hours=h)).strftime('%Y-%m-%dT%H')
-        prefix = f'HOURLY#{source}' if source != 'all' else 'HOURLY#'
-
-        if source != 'all':
-            response = table.get_item(Key={'pk': prefix, 'sk': hour_str})
-            item = response.get('Item', {})
+        for item in get_hourly_items(source, hour_str):
             summary['positive'] += int(item.get('positiveCount', 0))
             summary['negative'] += int(item.get('negativeCount', 0))
             summary['neutral'] += int(item.get('neutralCount', 0))
@@ -313,24 +316,91 @@ def get_summary(params):
 
     return respond(200, summary)
 
+def get_hourly_items(source, hour_str):
+    """Read hourly aggregate items for one source or all sources."""
+    if source != 'all':
+        response = table.get_item(Key={'pk': f'HOURLY#{source}', 'sk': hour_str})
+        item = response.get('Item')
+        return [item] if item else []
+
+    scan_kwargs = {
+        'FilterExpression': Attr('pk').begins_with('HOURLY#') & Attr('sk').eq(hour_str)
+    }
+    items = []
+    while True:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get('Items', []))
+        if 'LastEvaluatedKey' not in response:
+            break
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+    return items
+
+def get_trend(params):
+    """Get hourly sentiment counts for charting."""
+    hours = int(params.get('hours', '24'))
+    source = params.get('source', 'all')
+    now = datetime.now(timezone.utc)
+    trend = []
+
+    for h in range(hours - 1, -1, -1):
+        hour_str = (now - timedelta(hours=h)).strftime('%Y-%m-%dT%H')
+        point = {'hour': hour_str, 'positive': 0, 'negative': 0, 'neutral': 0, 'mixed': 0, 'total': 0}
+
+        for item in get_hourly_items(source, hour_str):
+            point['positive'] += int(item.get('positiveCount', 0))
+            point['negative'] += int(item.get('negativeCount', 0))
+            point['neutral'] += int(item.get('neutralCount', 0))
+            point['mixed'] += int(item.get('mixedCount', 0))
+            point['total'] += int(item.get('totalCount', 0))
+
+        trend.append(point)
+
+    return respond(200, {'trend': trend})
+
 def get_recent(params):
     """Get the most recent sentiment results."""
     limit = int(params.get('limit', '20'))
     sentiment_filter = params.get('sentiment', None)
 
-    # Scan recent records (in production, use a GSI for better performance)
-    response = table.scan(
-        FilterExpression='begins_with(pk, :prefix)',
-        ExpressionAttributeValues={':prefix': 'RECORD#'},
-        Limit=limit * 3  # Overscan to allow for filtering
-    )
+    # Scan records (in production, use a GSI for better performance)
+    scan_kwargs = {'FilterExpression': Attr('pk').begins_with('RECORD#')}
+    items = []
+    while True:
+        response = table.scan(**scan_kwargs)
+        items.extend(response.get('Items', []))
+        if 'LastEvaluatedKey' not in response:
+            break
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
-    items = response['Items']
     if sentiment_filter:
         items = [i for i in items if i.get('sentiment') == sentiment_filter.upper()]
 
     items.sort(key=lambda x: x.get('sk', ''), reverse=True)
     return respond(200, {'items': items[:limit]})
+
+def get_top_topics(params):
+    """Get the most common key phrases in recent sentiment results."""
+    limit = int(params.get('limit', '10'))
+    scan_kwargs = {
+        'FilterExpression': Attr('pk').begins_with('RECORD#'),
+        'ProjectionExpression': 'keyPhrases'
+    }
+
+    topic_counts = {}
+    while True:
+        response = table.scan(**scan_kwargs)
+        for item in response.get('Items', []):
+            for phrase in item.get('keyPhrases', []):
+                topic_counts[phrase] = topic_counts.get(phrase, 0) + 1
+        if 'LastEvaluatedKey' not in response:
+            break
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+
+    topics = [
+        {'topic': topic, 'count': count}
+        for topic, count in sorted(topic_counts.items(), key=lambda x: x[1], reverse=True)
+    ]
+    return respond(200, {'topics': topics[:limit]})
 
 def respond(status, body):
     return {
@@ -349,7 +419,7 @@ Comprehend also supports targeted sentiment analysis, which tells you sentiment 
 def analyze_targeted_sentiment(text):
     """Analyze sentiment for specific aspects/entities in the text."""
     response = comprehend.detect_targeted_sentiment(
-        Text=text[:5000],
+        Text=truncate_utf8(text, 5000),
         LanguageCode='en'
     )
 
