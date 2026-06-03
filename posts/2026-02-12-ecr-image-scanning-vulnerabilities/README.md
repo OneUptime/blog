@@ -8,42 +8,49 @@ Description: Learn how to enable and configure ECR image scanning to automatical
 
 ---
 
-Shipping a container image with known vulnerabilities is like leaving your front door unlocked - it's only a matter of time before someone walks in. ECR includes built-in image scanning that checks your images against the Common Vulnerabilities and Exposures (CVE) database. You can scan images on push, on a schedule, or on demand, and the results tell you exactly which packages have known issues and how severe they are.
+Shipping a container image with known vulnerabilities is like leaving your front door unlocked - it's only a matter of time before someone walks in. ECR includes built-in image scanning that checks your images against the Common Vulnerabilities and Exposures (CVE) database. You can scan images on push, continuously with enhanced scanning, or on demand with basic scanning, and the results tell you exactly which packages have known issues and how severe they are.
 
-There are two scanning modes: basic scanning (free, uses Clair) and enhanced scanning (paid, uses Amazon Inspector with deeper analysis). Let's look at both.
+There are two scanning modes: basic scanning (free, uses AWS native scanning technology) and enhanced scanning (paid, uses Amazon Inspector with deeper analysis). Let's look at both.
 
 ## Basic Scanning
 
-Basic scanning uses the open-source Clair engine to check your image layers for known vulnerabilities. It scans the operating system packages in your image.
+Basic scanning uses AWS native scanning technology to check your image layers for known vulnerabilities. It scans the operating system packages in your image.
 
 ### Enable Scan on Push
 
-The simplest approach is to scan every image when it's pushed to the repository.
+The simplest approach is to scan every image when it's pushed to a matching repository.
 
 ```bash
-# Enable scan-on-push for a new repository
-
-aws ecr create-repository \
-  --repository-name my-web-app \
-  --image-scanning-configuration scanOnPush=true
-
-# Enable scan-on-push for an existing repository
-aws ecr put-image-scanning-configuration \
-  --repository-name my-web-app \
-  --image-scanning-configuration scanOnPush=true
+# Enable basic scan-on-push for matching repositories
+aws ecr put-registry-scanning-configuration \
+  --scan-type BASIC \
+  --rules '[
+    {
+      "repositoryFilters": [
+        {
+          "filter": "my-web-app",
+          "filterType": "WILDCARD"
+        }
+      ],
+      "scanFrequency": "SCAN_ON_PUSH"
+    }
+  ]'
 ```
 
 In Terraform:
 
 ```hcl
-resource "aws_ecr_repository" "web_app" {
-  name = "my-web-app"
+resource "aws_ecr_registry_scanning_configuration" "basic" {
+  scan_type = "BASIC"
 
-  image_scanning_configuration {
-    scan_on_push = true
+  rule {
+    scan_frequency = "SCAN_ON_PUSH"
+
+    repository_filter {
+      filter      = "my-web-app"
+      filter_type = "WILDCARD"
+    }
   }
-
-  image_tag_mutability = "IMMUTABLE"
 }
 ```
 
@@ -161,7 +168,7 @@ resource "aws_ecr_registry_scanning_configuration" "selective" {
 
 ## Automating Vulnerability Response
 
-Scanning is only useful if you act on the results. Here's how to set up automated alerts when vulnerabilities are found.
+Scanning is only useful if you act on the results. Here's how to set up automated alerts when vulnerabilities are found for basic scans.
 
 ### EventBridge Rule for Scan Completions
 
@@ -249,6 +256,10 @@ on:
   push:
     branches: [main]
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
   build-and-scan:
     runs-on: ubuntu-latest
@@ -293,6 +304,11 @@ jobs:
             sleep 10
           done
 
+          if [ "$STATUS" != "COMPLETE" ]; then
+            echo "Scan did not complete within the timeout."
+            exit 1
+          fi
+
       - name: Check for critical vulnerabilities
         env:
           IMAGE_TAG: ${{ github.sha }}
@@ -325,20 +341,20 @@ The best way to handle vulnerabilities is to have fewer of them in the first pla
 
 ```dockerfile
 # Instead of this (hundreds of packages)
-FROM node:18
+FROM node:24
 
 # Use this (much smaller attack surface)
-FROM node:18-alpine
+FROM node:24-alpine
 
 # Or even better for production
-FROM node:18-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY . .
 RUN npm run build
 
-FROM gcr.io/distroless/nodejs18-debian12
+FROM gcr.io/distroless/nodejs24-debian13
 COPY --from=builder /app/dist /app
 COPY --from=builder /app/node_modules /app/node_modules
 WORKDIR /app
@@ -354,9 +370,13 @@ CMD ["server.js"]
 Make sure all your repositories have scanning enabled.
 
 ```bash
-# List all repositories and their scanning config
-aws ecr describe-repositories \
-  --query 'repositories[*].{name:repositoryName,scanOnPush:imageScanningConfiguration.scanOnPush}' \
+# Show the registry scanning configuration
+aws ecr get-registry-scanning-configuration \
+  --query 'registryScanningConfiguration'
+
+# Check the effective scanning configuration for a repository
+aws ecr batch-get-repository-scanning-configuration \
+  --repository-names my-web-app \
   --output table
 ```
 
