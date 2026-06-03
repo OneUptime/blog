@@ -322,7 +322,7 @@ func (f *Framework) CreateService(name string, selector map[string]string, port 
             Ports: []corev1.ServicePort{
                 {
                     Port:       port,
-                    TargetPort: intstr.FromInt(int(port)),
+                    TargetPort: intstr.FromInt32(port),
                     Protocol:   corev1.ProtocolTCP,
                 },
             },
@@ -444,7 +444,7 @@ func TestDeploymentCreation(t *testing.T) {
     require.NoError(t, err)
     assert.Equal(t, 3, len(pods.Items), "should have 3 pods")
 
-    // Verify all pods are ready
+    // Verify all pods are running
     for _, pod := range pods.Items {
         assert.Equal(t, "Running", string(pod.Status.Phase))
     }
@@ -490,6 +490,8 @@ package fixtures
 import (
     "fmt"
     "time"
+
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // ApplicationFixture represents a complete application stack
