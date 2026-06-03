@@ -8,16 +8,16 @@ Description: Step-by-step guide to creating Amazon Kinesis Data Streams with Ter
 
 ---
 
-Amazon Kinesis Data Streams is AWS's real-time data streaming service. It captures and processes data continuously at any scale - think of it as a managed pipeline for log aggregation, event processing, real-time analytics, and IoT data ingestion. Unlike SQS (which is for message queuing with guaranteed delivery), Kinesis is designed for high-throughput streaming where multiple consumers can read the same data independently.
+Amazon Kinesis Data Streams is AWS's real-time data streaming service. It captures and processes data continuously at any scale - think of it as a managed pipeline for log aggregation, event processing, real-time analytics, and IoT data ingestion. Unlike SQS (which is for message queuing with at-least-once delivery), Kinesis is designed for high-throughput streaming where multiple consumers can read the same data independently.
 
-This guide covers creating Kinesis streams in Terraform, choosing between provisioned and on-demand capacity, setting up consumers, and delivering data to destinations with Kinesis Data Firehose.
+This guide covers creating Kinesis streams in Terraform, choosing between provisioned and on-demand capacity, setting up consumers, and delivering data to destinations with Amazon Data Firehose.
 
 ## Provisioned vs On-Demand Mode
 
 Kinesis streams come in two flavors:
 
 - **Provisioned mode**: You specify the number of shards. Each shard provides 1 MB/s write and 2 MB/s read. You pay per shard-hour.
-- **On-demand mode**: AWS automatically scales shards based on throughput. You pay per GB of data written and read.
+- **On-demand mode**: AWS automatically scales capacity based on throughput. With On-demand Standard, you pay per GB of data written and read, plus a per-stream hourly charge.
 
 For predictable workloads, provisioned mode is usually cheaper. For variable or unpredictable workloads, on-demand saves you from capacity planning headaches.
 
@@ -86,7 +86,7 @@ resource "aws_kms_key" "kinesis" {
 }
 ```
 
-With on-demand mode, you don't specify a shard count. Kinesis starts with 4 shards and scales up to 200 shards per stream (or more with a service limit increase).
+With on-demand mode, you don't specify a shard count. New on-demand streams start with 4 MB/s of write throughput and 8 MB/s of read throughput, then Kinesis scales capacity automatically as traffic grows.
 
 ## Producer IAM Policy
 
@@ -116,7 +116,7 @@ resource "aws_iam_policy" "kinesis_producer" {
         Action = [
           "kms:GenerateDataKey"
         ]
-        Resource = aws_kms_key.kinesis.arn
+        Resource = aws_kms_key.kinesis.arn  # Only needed when using a customer-managed KMS key
       }
     ]
   })
@@ -125,7 +125,7 @@ resource "aws_iam_policy" "kinesis_producer" {
 
 ## Consumer IAM Policy
 
-Consumers need read permissions and optionally enhanced fan-out registration.
+Consumers need read permissions and optionally enhanced fan-out subscription.
 
 This policy grants a consumer application read access:
 
@@ -143,10 +143,17 @@ resource "aws_iam_policy" "kinesis_consumer" {
           "kinesis:GetShardIterator",
           "kinesis:DescribeStream",
           "kinesis:DescribeStreamSummary",
-          "kinesis:ListShards",
-          "kinesis:SubscribeToShard"
+          "kinesis:ListShards"
         ]
         Resource = aws_kinesis_stream.provisioned.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "kinesis:DescribeStreamConsumer",
+          "kinesis:SubscribeToShard"
+        ]
+        Resource = "${aws_kinesis_stream.provisioned.arn}/consumer/*"
       },
       {
         Effect = "Allow"
@@ -160,7 +167,7 @@ resource "aws_iam_policy" "kinesis_consumer" {
         Action = [
           "kms:Decrypt"
         ]
-        Resource = aws_kms_key.kinesis.arn
+        Resource = aws_kms_key.kinesis.arn  # Only needed when using a customer-managed KMS key
       }
     ]
   })
@@ -185,7 +192,7 @@ resource "aws_kinesis_stream_consumer" "monitoring" {
 }
 ```
 
-## Kinesis Data Firehose Delivery
+## Amazon Data Firehose Delivery
 
 Firehose takes data from your Kinesis stream and delivers it to destinations like S3, Redshift, OpenSearch, or third-party services. It handles batching, compression, and error handling.
 
