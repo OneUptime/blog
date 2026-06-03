@@ -30,7 +30,7 @@ graph TD
 
 **Frontend runtime variables** are baked into your JavaScript bundle at build time. They're accessible in the browser, so never put secrets here.
 
-**Lambda function variables** are true runtime variables. They're available when your function executes and are stored securely by AWS.
+**Lambda function variables** are true runtime variables. They're available when your function executes, but you should still use Amplify's secrets support or AWS Secrets Manager/Systems Manager for sensitive values.
 
 ## Setting Build-Time Variables in the Console
 
@@ -127,16 +127,14 @@ Remember: these values are baked into your JavaScript at build time. Anyone can 
 
 ## Lambda Function Environment Variables
 
-For Amplify Lambda functions, you configure environment variables in the function's CloudFormation template or through the CLI.
+For Amplify Lambda functions, configure non-sensitive environment variables through the CLI or in your function definition.
 
 In Amplify Gen 1:
 
-```json
-// amplify/backend/function/myFunction/parameters.json
-{
-  "STRIPE_API_KEY": "sk_live_...",
-  "EMAIL_FROM": "noreply@example.com"
-}
+```bash
+amplify add function
+# Answer "Yes" to advanced settings
+# Answer "Yes" to environment variables configuration
 ```
 
 Or update them through the CLI:
@@ -150,12 +148,12 @@ In Amplify Gen 2, it's cleaner:
 
 ```typescript
 // amplify/functions/my-function/resource.ts
-import { defineFunction } from '@aws-amplify/backend';
+import { defineFunction, secret } from '@aws-amplify/backend';
 
 export const myFunction = defineFunction({
   name: 'my-function',
   environment: {
-    STRIPE_API_KEY: 'sk_live_...',
+    STRIPE_API_KEY: secret('STRIPE_API_KEY'),
     EMAIL_FROM: 'noreply@example.com',
     TABLE_NAME: 'orders-table',
   },
@@ -219,7 +217,7 @@ exports.handler = async (event) => {
 };
 ```
 
-For Amplify Gen 2, you can reference SSM parameters directly:
+For Amplify Gen 2, if you manage a SecureString parameter yourself, grant the function permission to read it and pass the parameter name to the function:
 
 ```typescript
 // amplify/backend.ts
@@ -228,15 +226,21 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 const backend = defineBackend({ auth, data, myFunction });
 
+const stripeKeyParamName = '/myapp/prod/stripe-key';
+
 // Reference an SSM parameter
 const stripeKey = ssm.StringParameter.fromSecureStringParameterAttributes(
   backend.myFunction.stack,
   'StripeKey',
-  { parameterName: '/myapp/prod/stripe-key' }
+  { parameterName: stripeKeyParamName }
 );
 
-// Grant the function permission to read it
+// Grant the function permission to read it and pass the name to your handler
 stripeKey.grantRead(backend.myFunction.resources.lambda);
+backend.myFunction.resources.lambda.addEnvironment(
+  'STRIPE_KEY_PARAM_NAME',
+  stripeKeyParamName
+);
 ```
 
 ## Environment-Specific Configuration
