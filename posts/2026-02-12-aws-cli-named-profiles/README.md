@@ -126,11 +126,11 @@ export AWS_PROFILE=production
 ### Option 3: The AWS_DEFAULT_PROFILE environment variable
 
 ```bash
-# Similar to AWS_PROFILE, but lower priority
+# Also recognized by the AWS CLI, but AWS_PROFILE is the documented choice
 export AWS_DEFAULT_PROFILE=staging
 ```
 
-`AWS_PROFILE` takes precedence over `AWS_DEFAULT_PROFILE`. The `--profile` flag overrides both.
+Prefer `AWS_PROFILE` unless you have a specific reason to use `AWS_DEFAULT_PROFILE`. The `--profile` flag overrides environment-based profile selection for a single command.
 
 ## Advanced Profile Configurations
 
@@ -196,21 +196,11 @@ aws_access_key_id = AKIA_MYAPP_KEY
 aws_secret_access_key = myapp_secret
 ```
 
-Or more elegantly, use a source profile to avoid duplicating credentials.
+Or use one credential profile and override the region when you run a command.
 
-```ini
-# ~/.aws/config
-
-[profile myapp]
-region = us-east-1
-
-[profile myapp-eu]
-source_profile = myapp
-region = eu-west-1
-
-[profile myapp-ap]
-source_profile = myapp
-region = ap-southeast-1
+```bash
+aws s3 ls --profile myapp --region eu-west-1
+AWS_PROFILE=myapp AWS_REGION=ap-southeast-1 aws s3 ls
 ```
 
 ### Custom Endpoints
@@ -268,7 +258,7 @@ aws_prompt() {
     echo " [aws:$AWS_PROFILE]"
   fi
 }
-# Add to PS1: export PS1="\u@\h \w$(aws_prompt) $ "
+# Add to PS1: export PS1='\u@\h \w$(aws_prompt) $ '
 ```
 
 ## Verifying Which Profile Is Active
