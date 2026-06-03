@@ -228,7 +228,7 @@ resource "aws_athena_named_query" "create_events_table" {
       'projection.day.type' = 'integer',
       'projection.day.range' = '1,31',
       'projection.day.digits' = '2',
-      'storage.location.template' = 's3://my-data-lake/events/year=${year}/month=${month}/day=${day}/'
+      'storage.location.template' = 's3://my-data-lake/events/year=$${year}/month=$${month}/day=$${day}/'
     )
   SQL
 }
@@ -363,6 +363,7 @@ resource "aws_iam_policy" "athena_analytics" {
         Action = [
           "s3:GetObject",
           "s3:PutObject",
+          "s3:ListBucket",
           "s3:GetBucketLocation"
         ]
         Resource = [
