@@ -25,8 +25,7 @@ Here's the memory section of the agent config:
   "metrics": {
     "namespace": "CWAgent",
     "append_dimensions": {
-      "InstanceId": "${aws:InstanceId}",
-      "AutoScalingGroupName": "${aws:AutoScalingGroupName}"
+      "InstanceId": "${aws:InstanceId}"
     },
     "metrics_collected": {
       "mem": {
@@ -147,7 +146,7 @@ Windows uses performance counters instead of Linux metric names:
 }
 ```
 
-`% Committed Bytes In Use` is the Windows equivalent of `mem_used_percent`. `Paging File % Usage` is the equivalent of swap usage.
+`% Committed Bytes In Use` is the closest Windows counter for memory pressure, but it measures committed bytes as a percentage of the commit limit rather than Linux physical memory usage. `Paging File % Usage` is the equivalent of swap usage.
 
 ## Disk Metrics Configuration (Windows)
 
@@ -256,7 +255,7 @@ Add these metrics to a CloudWatch dashboard for visual monitoring:
       "x": 0, "y": 0, "width": 12, "height": 6,
       "properties": {
         "metrics": [
-          ["CWAgent", "mem_used_percent", "InstanceId", "i-1234567890",
+          ["CWAgent", "mem_used_percent", "InstanceId", "i-1234567890abcdef0",
             { "stat": "Average", "label": "Memory Used %" }]
         ],
         "title": "Memory Utilization",
@@ -274,9 +273,9 @@ Add these metrics to a CloudWatch dashboard for visual monitoring:
       "x": 12, "y": 0, "width": 12, "height": 6,
       "properties": {
         "metrics": [
-          ["CWAgent", "disk_used_percent", "InstanceId", "i-1234567890", "path", "/",
+          ["CWAgent", "disk_used_percent", "InstanceId", "i-1234567890abcdef0", "path", "/", "fstype", "ext4", "device", "nvme0n1p1",
             { "stat": "Average", "label": "Root (/)" }],
-          ["CWAgent", "disk_used_percent", "InstanceId", "i-1234567890", "path", "/data",
+          ["CWAgent", "disk_used_percent", "InstanceId", "i-1234567890abcdef0", "path", "/data", "fstype", "xfs", "device", "nvme1n1",
             { "stat": "Average", "label": "Data (/data)" }]
         ],
         "title": "Disk Utilization",
