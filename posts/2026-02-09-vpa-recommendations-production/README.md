@@ -8,11 +8,11 @@ Description: Learn how to safely implement Vertical Pod Autoscaler recommendatio
 
 ---
 
-The Vertical Pod Autoscaler (VPA) helps optimize resource allocation for pods by analyzing historical usage patterns and recommending CPU and memory limits. However, applying these recommendations in production requires careful planning to avoid disruption. This guide shows you how to implement VPA recommendations safely with validation and rollback strategies.
+The Vertical Pod Autoscaler (VPA) helps optimize resource allocation for pods by analyzing historical usage patterns and recommending CPU and memory requests, and optionally limits. However, applying these recommendations in production requires careful planning to avoid disruption. This guide shows you how to implement VPA recommendations safely with validation and rollback strategies.
 
 ## Understanding VPA Update Modes
 
-VPA offers three update modes, each with different risk profiles for production environments.
+VPA offers several update modes, each with different risk profiles for production environments. The common production-safe starting point is "Off"; "Auto" is deprecated in current VPA releases, so use explicit modes such as "Recreate", "Initial", or "InPlaceOrRecreate" when you are ready to apply recommendations.
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -58,7 +58,7 @@ kubectl get vpa $VPA_NAME -n $NAMESPACE -o jsonpath='{.status.recommendation.con
 # Compare with current resource settings
 kubectl get deployment my-app -n $NAMESPACE -o jsonpath='{.spec.template.spec.containers[0].resources}' | jq '.'
 
-# Check historical metrics from last 7 days
+# Check current container metrics from the Metrics API
 kubectl top pods -n $NAMESPACE --selector=app=my-app --containers | head -20
 
 # Calculate recommendation variance
@@ -70,7 +70,7 @@ This script provides visibility into what VPA suggests versus current allocation
 
 ## Implementing Gradual Rollout with Recreate Mode
 
-For production workloads, use "Recreate" mode with controlled testing rather than "Auto" mode which evicts pods immediately.
+For production workloads, use "Recreate" mode with controlled testing rather than the deprecated "Auto" mode. In "Recreate" mode, VPA updates existing pods by evicting them when their requests differ significantly from the recommendation, while respecting PodDisruptionBudgets when they are defined.
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -103,60 +103,35 @@ Test VPA on a canary deployment first. Monitor for issues before applying to pro
 
 ## Setting Up Validation Gates
 
-Create admission webhooks or policy enforcement to validate VPA changes before they apply to pods.
+Create admission webhooks or policy enforcement to validate resource changes before new pods are admitted.
 
 ```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: vpa-validation-policy
-  namespace: production
-data:
-  policy.rego: |
-    package kubernetes.admission
-
-    # Deny if VPA increases resources by more than 50%
-    deny[msg] {
-      input.request.kind.kind == "Pod"
-      container := input.request.object.spec.containers[_]
-      old_cpu := get_current_cpu(container.name)
-      new_cpu := parse_cpu(container.resources.requests.cpu)
-      increase := (new_cpu - old_cpu) / old_cpu
-      increase > 0.5
-      msg := sprintf("VPA CPU increase of %.1f%% exceeds 50%% threshold for container %v", [increase * 100, container.name])
-    }
-
-    deny[msg] {
-      input.request.kind.kind == "Pod"
-      container := input.request.object.spec.containers[_]
-      old_mem := get_current_memory(container.name)
-      new_mem := parse_memory(container.resources.requests.memory)
-      increase := (new_mem - old_mem) / old_mem
-      increase > 0.5
-      msg := sprintf("VPA memory increase of %.1f%% exceeds 50%% threshold for container %v", [increase * 100, container.name])
-    }
----
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingWebhookConfiguration
 metadata:
   name: vpa-validation-webhook
 webhooks:
 - name: validate.vpa.k8s.io
+  matchPolicy: Equivalent
   rules:
   - apiGroups: [""]
     apiVersions: ["v1"]
-    operations: ["CREATE", "UPDATE"]
+    operations: ["CREATE"]
     resources: ["pods"]
   clientConfig:
     service:
       namespace: production
       name: vpa-validator
       path: /validate
+      port: 443
+    caBundle: <base64-encoded-ca-bundle>
   admissionReviewVersions: ["v1"]
   sideEffects: None
+  timeoutSeconds: 5
+  failurePolicy: Fail
 ```
 
-This validation policy prevents VPA from making resource changes that exceed safe thresholds, protecting against recommendation errors.
+The webhook service should compare the admitted pod's CPU and memory requests with your approved recommendation range and reject pods that exceed safe thresholds, protecting against recommendation errors.
 
 ## Building a Rollback Strategy
 
@@ -208,9 +183,12 @@ data:
       - alert: VPARecommendationChange
         expr: |
           abs(
-            (vpa_containerrecommendation_target{resource="cpu"} -
-             vpa_containerrecommendation_target{resource="cpu"} offset 1h)
-            / vpa_containerrecommendation_target{resource="cpu"} offset 1h
+            (
+              kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu"} -
+              kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu"} offset 1h
+            )
+            /
+            (kube_verticalpodautoscaler_status_recommendation_containerrecommendations_target{resource="cpu"} offset 1h)
           ) > 0.3
         for: 5m
         labels:
@@ -234,8 +212,8 @@ data:
       # Track resource utilization post-VPA
       - alert: VPAIneffectiveRecommendation
         expr: |
-          (container_memory_working_set_bytes /
-           on(pod,container) group_left()
+          (container_memory_working_set_bytes{container!="",container!="POD"} /
+           on(namespace,pod,container) group_left()
            kube_pod_container_resource_requests{resource="memory"}) > 0.9
         for: 15m
         labels:
@@ -264,7 +242,7 @@ spec:
     kind: Deployment
     name: dev-app
   updatePolicy:
-    updateMode: "Auto"  # Safe in dev environment
+    updateMode: "Recreate"  # Use explicit mode instead of deprecated Auto
 ---
 # Week 2: Staging environment with Recreate mode
 apiVersion: autoscaling.k8s.io/v1
