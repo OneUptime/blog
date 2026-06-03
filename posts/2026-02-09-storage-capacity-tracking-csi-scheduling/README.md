@@ -19,24 +19,23 @@ Without capacity tracking, the scheduler may place pods on nodes that don't have
 - Unbalanced storage utilization
 - Failed volume provisioning
 
-Storage capacity tracking publishes CSIStorageCapacity objects that inform the scheduler about available storage on each node, enabling smarter scheduling decisions.
+Storage capacity tracking publishes CSIStorageCapacity objects that inform the scheduler about available storage in each topology segment, enabling smarter scheduling decisions.
 
 ## Prerequisites
 
 Storage capacity tracking requires:
 
-- Kubernetes 1.24+ (GA feature)
+- Kubernetes 1.24+ (GA feature with the `storage.k8s.io/v1` API)
 - CSI driver with capacity support
-- CSIStorageCapacity feature enabled (on by default)
+- CSIStorageCapacity API available
 
-Verify feature gate:
+Verify the API:
 
 ```bash
-# Check if CSIStorageCapacity is enabled
+# Check if CSIStorageCapacity is available
+kubectl get --raw /apis/storage.k8s.io/v1 | jq '.resources[] | select(.name == "csistoragecapacities")'
 
-kubectl get --raw /api/v1 | jq '.resources[] | select(.name == "csistoragecapacities")'
-
-# If CSIStorageCapacity objects are available, the feature is enabled
+# If CSIStorageCapacity resources are listed, the API is available
 ```
 
 ## Enabling Storage Capacity in CSI Drivers
@@ -48,20 +47,26 @@ For CSI drivers to report capacity, they must implement the GetCapacity RPC. Che
 kubectl get csidriver
 
 # Describe the driver
-kubectl describe csidriver ebs.csi.aws.com
+kubectl describe csidriver example.csi.driver
 
-# Look for storageCapacity: true
+# Look for spec.storageCapacity: true
 ```
 
-For AWS EBS CSI driver, enable capacity tracking:
+For a CSI driver that supports capacity tracking, enable capacity publishing in the external-provisioner sidecar and enable scheduler consumption on the CSIDriver object:
 
-```bash
-# Install/upgrade with capacity tracking enabled
-helm upgrade aws-ebs-csi-driver \
-  aws-ebs-csi-driver/aws-ebs-csi-driver \
-  --namespace kube-system \
-  --set controller.volumeModificationFeature.enabled=true \
-  --set storageCapacity.enabled=true
+```yaml
+apiVersion: storage.k8s.io/v1
+kind: CSIDriver
+metadata:
+  name: example.csi.driver
+spec:
+  storageCapacity: true
+---
+# In the CSI controller Deployment, add capacity tracking to the external-provisioner container:
+args:
+  - --csi-address=/csi/csi.sock
+  - --enable-capacity
+  - --capacity-poll-interval=1m
 ```
 
 ## Viewing CSIStorageCapacity Objects
@@ -74,9 +79,9 @@ kubectl get csistoragecapacities -A
 
 # Example output:
 # NAMESPACE     NAME                          STORAGECLASS   CAPACITY
-# kube-system   ebs-capacity-us-east-1a      gp3            500Gi
-# kube-system   ebs-capacity-us-east-1b      gp3            750Gi
-# kube-system   ebs-capacity-us-east-1c      gp3            250Gi
+# kube-system   example-capacity-us-east-1a      fast-storage   500Gi
+# kube-system   example-capacity-us-east-1b      fast-storage   750Gi
+# kube-system   example-capacity-us-east-1c      fast-storage   250Gi
 
 # View detailed capacity information
 kubectl get csistoragecapacities -n kube-system -o yaml
@@ -107,10 +112,9 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: capacity-aware-storage
-provisioner: ebs.csi.aws.com
+provisioner: example.csi.driver
 parameters:
-  type: gp3
-  encrypted: "true"
+  pool: fast
 # WaitForFirstConsumer works with capacity tracking
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -123,10 +127,10 @@ Create StorageClasses for different zones:
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: ebs-us-east-1a
-provisioner: ebs.csi.aws.com
+  name: storage-us-east-1a
+provisioner: example.csi.driver
 parameters:
-  type: gp3
+  pool: fast
 volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
 - matchLabelExpressions:
@@ -137,10 +141,10 @@ allowedTopologies:
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: ebs-us-east-1b
-provisioner: ebs.csi.aws.com
+  name: storage-us-east-1b
+provisioner: example.csi.driver
 parameters:
-  type: gp3
+  pool: fast
 volumeBindingMode: WaitForFirstConsumer
 allowedTopologies:
 - matchLabelExpressions:
@@ -201,8 +205,7 @@ kubectl get pod test-capacity-scheduling -w
 # Check events
 kubectl describe pod test-capacity-scheduling
 
-# Should show events about capacity consideration
-# "Selected node with available storage capacity"
+# Events may show FailedScheduling messages when no topology segment has enough capacity
 ```
 
 ## Monitoring Storage Capacity
@@ -225,7 +228,8 @@ kubectl get csistoragecapacities -A -o json | \
 kubectl get csistoragecapacities -A -o json | \
   jq -r '.items[] |
     select(.capacity != null) |
-    select((.capacity | gsub("[^0-9]";"") | tonumber) < 100) |
+    select(.capacity | test("^[0-9]+Gi$")) |
+    select((.capacity | sub("Gi$";"") | tonumber) < 100) |
     "\(.nodeTopology.matchLabels."kubernetes.io/hostname"): \(.capacity)"'
 ```
 
@@ -247,12 +251,15 @@ for sc in $STORAGE_CLASSES; do
   echo "StorageClass: $sc"
   echo "---"
 
-  # Total capacity for this storage class
+  # Total capacity for this storage class, counting Gi values
   TOTAL=$(kubectl get csistoragecapacities -A -o json | \
     jq -r ".items[] |
       select(.storageClassName == \"$sc\") |
-      .capacity // \"0\"" | \
-    awk '{sum+=$1} END {print sum}')
+      .capacity // \"0Gi\" |
+      select(test(\"^[0-9]+Gi$\")) |
+      sub(\"Gi$\"; \"\") |
+      tonumber" | \
+    awk '{sum+=$1} END {print sum+0}')
 
   echo "Total Capacity: ${TOTAL}Gi"
 
@@ -266,7 +273,7 @@ done
 
 ## Custom CSIStorageCapacity for Local Storage
 
-For local storage providers, manually create capacity objects:
+For custom local storage providers or lab validation, create capacity objects that match the CSI driver's topology. In production, these objects should normally be published and kept current by the CSI driver deployment:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
@@ -292,13 +299,13 @@ nodeTopology:
   matchLabels:
     kubernetes.io/hostname: node2
     storage-type: nvme
-capacity: 1.5Ti
+capacity: 1536Gi
 maximumVolumeSize: 500Gi
 ```
 
 ## Automated Capacity Reporting
 
-Create a job to periodically update capacity:
+Create a job to periodically update capacity for a custom local CSI driver:
 
 ```yaml
 apiVersion: batch/v1
@@ -323,9 +330,11 @@ spec:
             - |
               # Get node storage capacity
               for node in $(kubectl get nodes -o name | cut -d'/' -f2); do
-                # SSH to node and get disk capacity
-                CAPACITY=$(kubectl debug node/$node -it --image=alpine -- \
-                  df -h /mnt/local-storage | tail -1 | awk '{print $4}')
+                # Read a node-published allocatable capacity value, for example "500Gi"
+                CAPACITY=$(kubectl get node "$node" -o jsonpath='{.metadata.annotations.storage\.example\.com/local-capacity}')
+                if [ -z "$CAPACITY" ]; then
+                  continue
+                fi
 
                 # Update or create CSIStorageCapacity
                 cat <<EOF | kubectl apply -f -
@@ -366,7 +375,7 @@ kubectl rollout restart deployment/csi-driver-controller -n kube-system
 
 # 4. Incorrect capacity reported
 # Verify underlying storage
-kubectl debug node/node1 -it --image=alpine -- df -h
+kubectl debug node/node1 --image=alpine -- df -h /host
 ```
 
 ## Best Practices
