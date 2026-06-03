@@ -10,7 +10,7 @@ Description: Learn how to propagate trace context through Kafka messages in Kube
 
 Asynchronous messaging through Kafka breaks the synchronous request chain, making distributed tracing challenging. Without proper trace context propagation, you lose visibility when messages enter Kafka topics and emerge in consumer services. OpenTelemetry provides standards for embedding trace context in Kafka message headers, enabling end-to-end tracing across asynchronous workflows.
 
-Trace context propagation through Kafka maintains the connection between producing and consuming services. When a service publishes a message to Kafka, it injects the current trace context into message headers. Consumer services extract this context and continue the distributed trace, creating a complete view of asynchronous request flows.
+Trace context propagation through Kafka maintains the connection between producing and consuming services. When a service publishes a message to Kafka, it injects the current trace context into message headers. Consumer services extract this context and correlate their spans with the producer span, creating a complete view of asynchronous request flows.
 
 ## Understanding Kafka Trace Propagation
 
@@ -32,7 +32,6 @@ import (
     "github.com/segmentio/kafka-go"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
-    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -54,12 +53,13 @@ func NewTracedKafkaProducer(brokers []string, topic string) *TracedKafkaProducer
 
 func (p *TracedKafkaProducer) SendMessage(ctx context.Context, key, value []byte) error {
     // Create span for message production
-    ctx, span := p.tracer.Start(ctx, "kafka.produce",
+    ctx, span := p.tracer.Start(ctx, "send "+p.writer.Topic,
         trace.WithSpanKind(trace.SpanKindProducer),
         trace.WithAttributes(
             attribute.String("messaging.system", "kafka"),
-            attribute.String("messaging.destination", p.writer.Topic),
-            attribute.String("messaging.operation", "publish"),
+            attribute.String("messaging.destination.name", p.writer.Topic),
+            attribute.String("messaging.operation.name", "send"),
+            attribute.String("messaging.operation.type", "send"),
         ),
     )
     defer span.End()
@@ -88,7 +88,7 @@ func (p *TracedKafkaProducer) SendMessage(ctx context.Context, key, value []byte
     }
 
     span.SetAttributes(
-        attribute.Int("messaging.message.size", len(value)),
+        attribute.Int("messaging.message.body.size", len(value)),
     )
 
     return nil
@@ -177,18 +177,19 @@ package messaging
 
 import (
     "context"
+    "strconv"
 
     "github.com/segmentio/kafka-go"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/codes"
-    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/trace"
 )
 
 type TracedKafkaConsumer struct {
     reader *kafka.Reader
     tracer trace.Tracer
+    groupID string
 }
 
 func NewTracedKafkaConsumer(brokers []string, topic, groupID string) *TracedKafkaConsumer {
@@ -198,7 +199,8 @@ func NewTracedKafkaConsumer(brokers []string, topic, groupID string) *TracedKafk
             Topic:   topic,
             GroupID: groupID,
         }),
-        tracer: otel.Tracer("kafka-consumer"),
+        tracer:  otel.Tracer("kafka-consumer"),
+        groupID: groupID,
     }
 }
 
@@ -211,18 +213,22 @@ func (c *TracedKafkaConsumer) ConsumeMessage(ctx context.Context, handler func(c
     // Extract trace context from message headers
     propagator := otel.GetTextMapPropagator()
     carrier := NewKafkaMessageCarrier(&msg)
-    ctx = propagator.Extract(ctx, carrier)
+    extractedCtx := propagator.Extract(ctx, carrier)
 
     // Create span for message consumption
-    ctx, span := c.tracer.Start(ctx, "kafka.consume",
+    ctx, span := c.tracer.Start(ctx, "process "+msg.Topic,
+        trace.WithNewRoot(),
+        trace.WithLinks(trace.LinkFromContext(extractedCtx)),
         trace.WithSpanKind(trace.SpanKindConsumer),
         trace.WithAttributes(
             attribute.String("messaging.system", "kafka"),
-            attribute.String("messaging.source", msg.Topic),
-            attribute.String("messaging.operation", "receive"),
-            attribute.Int("messaging.message.size", len(msg.Value)),
-            attribute.Int64("messaging.message.offset", msg.Offset),
-            attribute.Int("messaging.message.partition", msg.Partition),
+            attribute.String("messaging.destination.name", msg.Topic),
+            attribute.String("messaging.consumer.group.name", c.groupID),
+            attribute.String("messaging.operation.name", "process"),
+            attribute.String("messaging.operation.type", "process"),
+            attribute.Int("messaging.message.body.size", len(msg.Value)),
+            attribute.Int64("messaging.kafka.offset", msg.Offset),
+            attribute.String("messaging.destination.partition.id", strconv.Itoa(msg.Partition)),
         ),
     )
     defer span.End()
@@ -284,18 +290,31 @@ func handleOrderEvent(ctx context.Context, msg kafka.Message) error {
 
 ## Deploying Kafka and Services in Kubernetes
 
-Deploy Kafka and traced services:
+Deploy a single-node Kafka broker and traced services:
 
 ```yaml
 # kafka-deployment.yaml
 
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  namespace: messaging
+spec:
+  selector:
+    app: kafka
+  ports:
+  - name: plaintext
+    port: 9092
+    targetPort: 9092
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kafka
   namespace: messaging
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: kafka
@@ -309,11 +328,32 @@ spec:
         image: confluentinc/cp-kafka:7.5.0
         ports:
         - containerPort: 9092
+        - containerPort: 9093
         env:
-        - name: KAFKA_ZOOKEEPER_CONNECT
-          value: "zookeeper:2181"
+        - name: KAFKA_NODE_ID
+          value: "1"
+        - name: KAFKA_PROCESS_ROLES
+          value: "broker,controller"
+        - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
+          value: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT"
+        - name: KAFKA_LISTENERS
+          value: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093"
         - name: KAFKA_ADVERTISED_LISTENERS
-          value: "PLAINTEXT://kafka:9092"
+          value: "PLAINTEXT://kafka.messaging.svc.cluster.local:9092"
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: "CONTROLLER"
+        - name: KAFKA_INTER_BROKER_LISTENER_NAME
+          value: "PLAINTEXT"
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: "1@localhost:9093"
+        - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
+          value: "1"
+        - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
+          value: "1"
+        - name: CLUSTER_ID
+          value: "q1Sh-9_ISia_zwGINzRvyQ"
 ---
 # order-service-deployment.yaml
 apiVersion: apps/v1
@@ -372,21 +412,13 @@ Query traces that span Kafka boundaries:
 
 ```bash
 # Find traces with Kafka operations
-curl 'http://tempo:3100/api/search' -d '{
-  "tags": {
-    "messaging.system": "kafka",
-    "span.kind": "producer"
-  }
-}'
+curl -G -s 'http://tempo:3100/api/search' \
+  --data-urlencode 'tags=messaging.system=kafka span.kind=producer'
 
 # Find slow message processing
-curl 'http://tempo:3100/api/search' -d '{
-  "tags": {
-    "messaging.system": "kafka",
-    "span.kind": "consumer"
-  },
-  "minDuration": "5s"
-}'
+curl -G -s 'http://tempo:3100/api/search' \
+  --data-urlencode 'tags=messaging.system=kafka span.kind=consumer' \
+  --data-urlencode 'minDuration=5s'
 ```
 
-Trace context propagation through Kafka maintains end-to-end visibility across asynchronous workflows. By injecting and extracting trace context from message headers, you create complete distributed traces that span synchronous and asynchronous operations in Kubernetes environments.
+Trace context propagation through Kafka maintains end-to-end visibility across asynchronous workflows. By injecting and extracting trace context from message headers, you create correlated traces that span synchronous and asynchronous operations in Kubernetes environments.
