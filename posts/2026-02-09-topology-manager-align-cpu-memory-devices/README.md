@@ -8,7 +8,7 @@ Description: Configure Kubernetes Topology Manager to coordinate CPU, memory, an
 
 ---
 
-Topology Manager orchestrates CPU Manager, Memory Manager, and Device Manager to ensure all resources for a pod come from the same NUMA node. This eliminates cross-NUMA traffic and delivers maximum performance. This guide shows you how to configure and use Topology Manager.
+Topology Manager coordinates CPU Manager, Memory Manager, and Device Manager hints so requested resources can be aligned on compatible NUMA nodes. With strict policies, this can keep latency-sensitive resources on one NUMA node and reduce cross-NUMA traffic. This guide shows you how to configure and use Topology Manager.
 
 ## What Is Topology Manager?
 
@@ -20,7 +20,7 @@ Topology Manager is a kubelet component that coordinates resource allocation dec
 
 Without Topology Manager, each manager makes independent decisions. A pod might get CPUs from NUMA node 0, memory from node 1, and a GPU from node 2. This creates cross-NUMA traffic that kills performance.
 
-Topology Manager ensures all resources come from the same NUMA node.
+Topology Manager aligns the requested resources that its hint providers can describe.
 
 ## Topology Manager Policies
 
@@ -29,7 +29,7 @@ Topology Manager has four policies:
 - **none** (default): No coordination, managers act independently
 - **best-effort**: Prefer NUMA alignment, allow fallback
 - **restricted**: Reject pods that can't align to preferred NUMA nodes
-- **single-numa-node**: Strict alignment, all resources on one NUMA node
+- **single-numa-node**: Strict alignment, hinted resources on one NUMA node
 
 Choose based on your performance requirements.
 
@@ -43,22 +43,29 @@ kind: KubeletConfiguration
 topologyManagerPolicy: single-numa-node
 cpuManagerPolicy: static
 memoryManagerPolicy: Static
+reservedSystemCPUs: "0"
+reservedMemory:
+  - numaNode: 0
+    limits:
+      memory: "100Mi"
 ```
 
-Restart the kubelet:
+When changing manager policies on an existing node, drain it, restart the kubelet, and reset the old manager state:
 
 ```bash
+kubectl drain worker-1 --ignore-daemonsets
 systemctl stop kubelet
 rm /var/lib/kubelet/cpu_manager_state
 rm /var/lib/kubelet/memory_manager_state
 systemctl start kubelet
+kubectl uncordon worker-1
 ```
 
-Removing state files ensures clean initialization.
+Removing state files is useful when changing manager policies or recovering from incompatible checkpoints. Do not delete them during a routine kubelet restart.
 
 ## single-numa-node Policy
 
-The strictest policy. All resources must come from one NUMA node or the pod is rejected:
+The strictest policy. Resources with topology hints must fit a single NUMA node or the pod is rejected by kubelet admission:
 
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
@@ -75,7 +82,7 @@ Use this for:
 
 ## restricted Policy
 
-Less strict than `single-numa-node`. Allows allocation from preferred NUMA nodes, rejects if not possible:
+Less strict than `single-numa-node`. Allows preferred alignments that may span multiple NUMA nodes, but rejects the pod if the selected hint is not preferred:
 
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
@@ -99,7 +106,7 @@ Use this when you want NUMA awareness but can't guarantee all pods will fit on s
 
 ## Creating Topology-Aligned Pods
 
-Only Guaranteed pods with whole CPU requests get topology alignment:
+CPU Manager assigns exclusive CPUs only to containers in Guaranteed pods with whole CPU requests. Memory Manager's `Static` policy provides memory topology hints for Guaranteed pods:
 
 ```yaml
 apiVersion: v1
@@ -119,29 +126,30 @@ spec:
         memory: "16Gi"
 ```
 
-Topology Manager coordinates with CPU and Memory Managers to allocate everything from one NUMA node.
+With `single-numa-node`, Topology Manager coordinates with CPU and Memory Managers to admit the pod only when the hinted CPU and memory allocation can fit one NUMA node.
 
 ## Verifying Topology Alignment
 
-Check CPU and memory NUMA nodes:
+Check the container's allowed CPUs and memory NUMA nodes:
 
 ```bash
 # Get container ID
 
-CONTAINER_ID=$(crictl ps | grep aligned-app | awk '{print $1}')
+CONTAINER_ID=$(crictl ps --name aligned-app -q | head -n1)
+PID=$(crictl inspect "$CONTAINER_ID" | jq -r '.info.pid')
 
-# Check CPU NUMA node
-cat /sys/fs/cgroup/cpuset/kubepods/pod*/*/cpuset.cpus
+# Check allowed CPU IDs and memory NUMA nodes
+grep -E 'Cpus_allowed_list|Mems_allowed_list' /proc/"$PID"/status
 
-# Check memory NUMA node
-cat /sys/fs/cgroup/cpuset/kubepods/pod*/*/cpuset.mems
+# Map CPU IDs to NUMA nodes
+lscpu -e=CPU,NODE
 ```
 
-Both should reference the same NUMA node (e.g., `0`).
+The allowed CPU IDs should map to the same NUMA node listed in `Mems_allowed_list` for a single-NUMA allocation.
 
 ## Topology Manager with GPUs
 
-When pods request GPUs, Topology Manager aligns CPUs, memory, and GPUs:
+When pods request GPUs, Topology Manager can align CPUs, memory, and GPUs if the GPU device plugin reports NUMA topology information:
 
 ```yaml
 apiVersion: v1
@@ -163,7 +171,7 @@ spec:
         nvidia.com/gpu: "1"
 ```
 
-Topology Manager ensures the GPU is on the same NUMA node as CPUs and memory. This is critical for GPU-CPU data transfers.
+With `single-numa-node`, kubelet admits the pod only when the GPU topology hints are compatible with the CPU and memory hints. This is critical for GPU-CPU data transfers.
 
 ## Topology Manager Scope
 
@@ -185,7 +193,7 @@ Pod scope is stricter and may reduce scheduling success but maximizes performanc
 
 ## Handling Admission Failures
 
-With `single-numa-node` or `restricted` policies, pods can fail admission if resources can't align. Check events:
+With `single-numa-node` or `restricted` policies, pods can fail kubelet admission if resources can't align. Check events:
 
 ```bash
 kubectl describe pod aligned-app
@@ -206,17 +214,15 @@ Solutions:
 
 ## Reserving Resources Per NUMA Node
 
-Reserve CPU and memory on each NUMA node for system processes:
+Reserve node memory per NUMA node for system and kubelet processes. With the `Static` Memory Manager policy, the total reserved memory must account for `systemReserved`, `kubeReserved`, and memory eviction thresholds:
 
 ```yaml
 apiVersion: kubelet.config.k8s.io/v1beta1
 kind: KubeletConfiguration
 topologyManagerPolicy: single-numa-node
 systemReserved:
-  cpu: "2"
-  memory: "4Gi"
+  memory: "3Gi"
 kubeReserved:
-  cpu: "1"
   memory: "2Gi"
 reservedMemory:
   - numaNode: 0
@@ -224,10 +230,10 @@ reservedMemory:
       memory: "3Gi"
   - numaNode: 1
     limits:
-      memory: "3Gi"
+      memory: "2148Mi"
 ```
 
-This ensures each NUMA node has reserved capacity for non-pod workloads.
+This keeps reserved memory out of the Memory Manager's container workload allocations.
 
 ## Real-World Example: DPDK Network Function
 
@@ -264,7 +270,7 @@ spec:
       medium: HugePages
 ```
 
-Topology Manager ensures:
+With the required CPU, Memory, and device-manager topology hints, Topology Manager can ensure:
 
 - 8 CPUs from one NUMA node
 - 8GB hugepages from the same node
@@ -282,10 +288,9 @@ journalctl -u kubelet | grep -i "topology manager"
 
 Look for messages about NUMA node selection and admission failures.
 
-Export custom metrics with node exporter:
+For cluster-level monitoring, scrape kubelet metrics and use a privileged agent to read the kubelet pod-resources API when you need per-container CPU, memory, and device topology. A basic pod list alone does not expose NUMA placement:
 
 ```bash
-# Count pods by NUMA node
 kubectl get pods -o json | jq '.items[] | select(.status.phase=="Running") | .metadata.name'
 ```
 
@@ -322,11 +327,11 @@ spec:
         memory: "32Gi"
 ```
 
-This ensures the pod only schedules on multi-NUMA nodes.
+This ensures the pod only schedules on nodes that you have accurately labeled as multi-NUMA nodes.
 
 ## Troubleshooting
 
-**Pod Stuck Pending**: Check if requested resources exceed single NUMA node capacity:
+**Pod Fails Kubelet Admission**: Check if requested resources exceed single NUMA node capacity:
 
 ```bash
 kubectl get node worker-1 -o json | jq '.status.allocatable'
@@ -341,7 +346,7 @@ numactl --hardware
 **Inconsistent Alignment**: Verify all managers are enabled:
 
 ```bash
-kubectl get --raw /api/v1/nodes/worker-1/proxy/configz | jq '.kubeletconfig | {cpuManager, memoryManager, topologyManager}'
+kubectl get --raw /api/v1/nodes/worker-1/proxy/configz | jq '.kubeletconfig | {cpuManagerPolicy, memoryManagerPolicy, topologyManagerPolicy, topologyManagerScope}'
 ```
 
 **State File Issues**: Reset all manager state files:
@@ -401,4 +406,4 @@ Use different kubelet configs per node group.
 
 ## Conclusion
 
-Topology Manager delivers true NUMA-aware scheduling by coordinating all resource managers. Enable it with `single-numa-node` policy for maximum performance or `best-effort` for flexibility. Combine with CPU and Memory Managers, reserve resources per NUMA node, and size workloads to fit within NUMA boundaries. The scheduling constraints are worth the performance gains for latency-sensitive and high-throughput applications. Monitor admission failures, benchmark before and after, and document your NUMA strategy for the team.
+Topology Manager delivers NUMA-aware kubelet admission and allocation by coordinating resource managers. Enable it with `single-numa-node` policy for maximum performance or `best-effort` for flexibility. Combine with CPU and Memory Managers, reserve resources per NUMA node, and size workloads to fit within NUMA boundaries. The admission constraints are worth the performance gains for latency-sensitive and high-throughput applications. Monitor admission failures, benchmark before and after, and document your NUMA strategy for the team.
