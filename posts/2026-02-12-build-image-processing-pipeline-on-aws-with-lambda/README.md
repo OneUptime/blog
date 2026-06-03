@@ -37,15 +37,15 @@ graph TD
 
 ## Setting Up the Lambda Layer
 
-Sharp is a Node.js library for image processing. It uses native binaries, so you need a Lambda layer built for the Amazon Linux environment.
+Sharp is a Node.js library for image processing. It uses native binaries, so you need a Lambda layer built for the Amazon Linux environment used by your runtime.
 
 ```bash
-# Build the Sharp layer for Lambda (Amazon Linux 2)
+# Build the Sharp layer for Lambda on x64 Amazon Linux
 
 mkdir -p sharp-layer/nodejs
 cd sharp-layer/nodejs
 npm init -y
-npm install --platform=linux --arch=x64 sharp
+npm install --os=linux --cpu=x64 --libc=glibc sharp
 cd ..
 zip -r sharp-layer.zip nodejs/
 ```
@@ -79,13 +79,13 @@ export class ImagePipelineStack extends cdk.Stack {
     // Sharp Lambda layer
     const sharpLayer = new lambda.LayerVersion(this, 'SharpLayer', {
       code: lambda.Code.fromAsset('layers/sharp-layer.zip'),
-      compatibleRuntimes: [lambda.Runtime.NODEJS_18_X],
+      compatibleRuntimes: [lambda.Runtime.NODEJS_22_X],
       description: 'Sharp image processing library',
     });
 
     // Image processing Lambda
     const processorFunction = new lambda.Function(this, 'ImageProcessor', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
       code: lambda.Code.fromAsset('lambda/image-processor'),
       layers: [sharpLayer],
@@ -152,9 +152,9 @@ exports.handler = async (event) => {
   const metadata = await sharp(imageBuffer).metadata();
   console.log(`Original: ${metadata.width}x${metadata.height}, format: ${metadata.format}`);
 
-  // Strip the extension from the key for output naming
+  // Strip the source extension and use .jpg for JPEG outputs
   const baseName = key.replace(/\.[^.]+$/, '');
-  const extension = key.match(/\.[^.]+$/)[0];
+  const outputExtension = '.jpg';
 
   const uploadPromises = [];
 
@@ -171,7 +171,7 @@ exports.handler = async (event) => {
     uploadPromises.push(
       s3Client.send(new PutObjectCommand({
         Bucket: PROCESSED_BUCKET,
-        Key: `${size.name}/${baseName}${extension}`,
+        Key: `${size.name}/${baseName}${outputExtension}`,
         Body: resized,
         ContentType: 'image/jpeg',
         CacheControl: 'max-age=31536000', // Cache for 1 year
@@ -238,12 +238,11 @@ async function addWatermark(imageBuffer, watermarkPath) {
 Photos from cameras contain EXIF data with rotation info. If you don't handle this, images can appear sideways.
 
 ```javascript
-// Sharp auto-rotates based on EXIF by default, but you can control it
+// Sharp does not auto-rotate based on EXIF by default; call rotate() to apply it
 const processed = await sharp(imageBuffer)
   .rotate() // Auto-rotate based on EXIF orientation
   .resize(600, 600, { fit: 'inside' })
   .jpeg({ quality: 85 })
-  .withMetadata({ orientation: undefined }) // Strip orientation after rotating
   .toBuffer();
 ```
 
@@ -252,10 +251,13 @@ const processed = await sharp(imageBuffer)
 Put CloudFront in front of your processed bucket for fast delivery worldwide.
 
 ```typescript
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
+
 // CloudFront distribution for the processed images
 const distribution = new cloudfront.Distribution(this, 'ImageCDN', {
   defaultBehavior: {
-    origin: new origins.S3Origin(processedBucket),
+    origin: origins.S3BucketOrigin.withOriginAccessControl(processedBucket),
     viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
     cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
   },
@@ -270,9 +272,12 @@ Image processing can fail in many ways - corrupted files, unsupported formats, f
 
 ```javascript
 // Robust error handling wrapper
+const { CopyObjectCommand } = require('@aws-sdk/client-s3');
+
 exports.handler = async (event) => {
   const record = event.Records[0];
   const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
+  const copySource = `${record.s3.bucket.name}/${encodeURIComponent(key).replace(/%2F/g, '/')}`;
 
   try {
     await processImage(record);
@@ -282,7 +287,7 @@ exports.handler = async (event) => {
     // Move the problematic file to an error prefix
     await s3Client.send(new CopyObjectCommand({
       Bucket: process.env.ERROR_BUCKET,
-      CopySource: `${record.s3.bucket.name}/${key}`,
+      CopySource: copySource,
       Key: `errors/${key}`,
     }));
 
@@ -298,7 +303,7 @@ Lambda memory directly affects CPU allocation. For image processing, 1536 MB is 
 
 A few other things that help performance:
 
-- Process variants in parallel with `Promise.all()`
+- Upload generated variants in parallel with `Promise.all()`
 - Use `withoutEnlargement: true` to skip unnecessary upscaling
 - Set appropriate memory based on your largest expected image
 - Use `/tmp` storage for intermediate files if needed (up to 10 GB)
