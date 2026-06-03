@@ -14,7 +14,7 @@ In this guide, we'll implement the key controls from the benchmark. I won't cove
 
 ## Understanding the Benchmark Structure
 
-The CIS AWS Foundations Benchmark is organized into four main sections:
+The controls covered in this guide map to these main CIS AWS Foundations Benchmark areas:
 
 1. **Identity and Access Management** - IAM policies, MFA, password policies
 2. **Logging** - CloudTrail, Config, and related services
@@ -204,14 +204,14 @@ aws configservice start-configuration-recorder --configuration-recorder-name def
 
 CIS recommends CloudWatch alarms for several critical events. Here are the most important ones.
 
-This script creates metric filters and alarms for key security events:
+This script creates metric filters for key security events. Create matching CloudWatch alarms for each metric using the same pattern as the root account alarm above.
 
 ```bash
 # Unauthorized API calls
 aws logs put-metric-filter \
   --log-group-name "CloudTrail/DefaultLogGroup" \
   --filter-name "UnauthorizedAPICalls" \
-  --filter-pattern '{($.errorCode="*UnauthorizedAccess*") || ($.errorCode="AccessDenied*")}' \
+  --filter-pattern '{($.errorCode="*UnauthorizedOperation") || ($.errorCode="AccessDenied*")}' \
   --metric-transformations metricName=UnauthorizedAPICalls,metricNamespace=CISBenchmark,metricValue=1
 
 # IAM policy changes
@@ -241,17 +241,27 @@ DEFAULT_SG=$(aws ec2 describe-security-groups \
   --filters "Name=group-name,Values=default" "Name=vpc-id,Values=vpc-abc123" \
   --query "SecurityGroups[0].GroupId" --output text)
 
-# Revoke all ingress rules
-aws ec2 revoke-security-group-ingress \
-  --group-id $DEFAULT_SG \
-  --protocol all \
-  --source-group $DEFAULT_SG
+INGRESS_RULES=$(aws ec2 describe-security-groups \
+  --group-ids "$DEFAULT_SG" \
+  --query "SecurityGroups[0].IpPermissions" \
+  --output json)
 
-# Revoke all egress rules
-aws ec2 revoke-security-group-egress \
-  --group-id $DEFAULT_SG \
-  --protocol all \
-  --cidr 0.0.0.0/0
+EGRESS_RULES=$(aws ec2 describe-security-groups \
+  --group-ids "$DEFAULT_SG" \
+  --query "SecurityGroups[0].IpPermissionsEgress" \
+  --output json)
+
+if [ "$INGRESS_RULES" != "[]" ]; then
+  aws ec2 revoke-security-group-ingress \
+    --group-id "$DEFAULT_SG" \
+    --ip-permissions "$INGRESS_RULES"
+fi
+
+if [ "$EGRESS_RULES" != "[]" ]; then
+  aws ec2 revoke-security-group-egress \
+    --group-id "$DEFAULT_SG" \
+    --ip-permissions "$EGRESS_RULES"
+fi
 ```
 
 ### Enable VPC Flow Logs
@@ -260,13 +270,20 @@ Every VPC should have flow logs enabled. They capture network traffic metadata t
 
 ## Automating CIS Compliance Checks
 
-Rather than checking each control manually, use AWS Config conformance packs. AWS provides a CIS conformance pack that checks most controls automatically.
+Rather than checking each control manually, use AWS Config conformance packs. AWS provides CIS sample conformance pack templates that help check many controls automatically.
 
 ```bash
+# Download the AWS sample template and upload it to a bucket you control
+curl -L -o cis-aws-foundations-level1.yaml \
+  https://raw.githubusercontent.com/awslabs/aws-config-rules/master/aws-config-conformance-packs/Operational-Best-Practices-for-CIS-AWS-v1.4-Level1.yaml
+
+aws s3 cp cis-aws-foundations-level1.yaml \
+  s3://config-conformance-templates-123456789012/cis-aws-foundations-level1.yaml
+
 # Deploy the CIS conformance pack
 aws configservice put-conformance-pack \
   --conformance-pack-name "CIS-AWS-Foundations" \
-  --template-s3-uri "s3://config-conformance-packs/CIS-AWS-Foundations.yaml" \
+  --template-s3-uri "s3://config-conformance-templates-123456789012/cis-aws-foundations-level1.yaml" \
   --delivery-s3-bucket "config-conformance-results-123456789012"
 ```
 
@@ -279,7 +296,7 @@ aws securityhub enable-security-hub
 # Enable the CIS standard
 aws securityhub batch-enable-standards \
   --standards-subscription-requests '[
-    {"StandardsArn": "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"}
+    {"StandardsArn": "arn:aws:securityhub:us-east-1::standards/cis-aws-foundations-benchmark/v/1.4.0"}
   ]'
 ```
 
