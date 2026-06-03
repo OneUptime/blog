@@ -14,7 +14,7 @@ Without automatic cleanup, completed jobs accumulate in your cluster, making it 
 
 ## Understanding the TTL Controller
 
-The TTL After Finished controller watches for jobs that have completed or failed. Once a job finishes, the controller starts a countdown based on the ttlSecondsAfterFinished field. When the timer expires, the controller deletes the job and all its pods.
+The TTL After Finished controller watches for jobs that have completed or failed. Once a job finishes, the controller starts a countdown based on the ttlSecondsAfterFinished field. When the timer expires, the job becomes eligible for cascading deletion along with its pods.
 
 This happens automatically without any manual intervention. You set the TTL when creating the job, and Kubernetes handles the rest.
 
@@ -34,7 +34,7 @@ spec:
         command: ["sh", "-c", "echo Processing && sleep 30"]
 ```
 
-After this job completes, it stays in the cluster for 100 seconds. You can check its status, view logs, and inspect results. After 100 seconds, the controller deletes it automatically.
+After this job completes, it stays in the cluster for 100 seconds. You can check its status, view logs, and inspect results. After 100 seconds, it becomes eligible for automatic cleanup.
 
 ## Setting Appropriate TTL Values
 
@@ -99,9 +99,10 @@ metadata:
   name: conditional-cleanup
 spec:
   ttlSecondsAfterFinished: 300  # 5 minutes default
+  backoffLimit: 0
   template:
     spec:
-      restartPolicy: OnFailure
+      restartPolicy: Never
       containers:
       - name: processor
         image: processor:latest
@@ -152,7 +153,7 @@ spec:
             -d "item_id=$ITEM_ID&status=success"
 ```
 
-With TTL set to 0, the job deletes as soon as it finishes. This is perfect when running thousands of jobs per hour and you track status externally.
+With TTL set to 0, the job becomes eligible for deletion as soon as it finishes. This is useful when running thousands of jobs per hour and you track status externally.
 
 ## Monitoring Before Cleanup
 
@@ -163,15 +164,15 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: metrics-job
-  annotations:
-    prometheus.io/scrape: "true"
-    prometheus.io/port: "9090"
 spec:
-  ttlSecondsAfterFinished: 120  # 2 minutes for metric collection
+  ttlSecondsAfterFinished: 30  # Delete 30 seconds after the container exits
   template:
     metadata:
       labels:
         app: metrics-job
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
     spec:
       restartPolicy: OnFailure
       containers:
@@ -195,7 +196,7 @@ spec:
           sleep 90
 ```
 
-The job sleeps for 90 seconds after completing work, giving Prometheus time to scrape final metrics. Then the TTL controller cleans it up 30 seconds later.
+The job sleeps for 90 seconds after completing work, giving Prometheus time to scrape final metrics. After the container exits and the job is marked complete, the TTL controller cleans it up 30 seconds later.
 
 ## Logging Before Cleanup
 
@@ -317,7 +318,7 @@ kubectl get jobs --sort-by=.status.completionTime
 
 ## Disabling Automatic Cleanup
 
-If you need to preserve a specific job, remove its TTL:
+If you need to preserve a specific job, remove its TTL before the TTL expires:
 
 ```bash
 # Remove TTL from a job to prevent cleanup
@@ -325,7 +326,7 @@ kubectl patch job important-job --type=json \
   -p='[{"op": "remove", "path": "/spec/ttlSecondsAfterFinished"}]'
 ```
 
-Now the job persists indefinitely, even after completion. Use this sparingly for jobs you need to keep for audit or compliance reasons.
+If the job has not already become eligible for deletion, it now persists indefinitely, even after completion. Use this sparingly for jobs you need to keep for audit or compliance reasons.
 
 ## CronJob Integration
 
