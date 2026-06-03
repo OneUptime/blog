@@ -8,7 +8,7 @@ Description: Enable and configure multi-factor authentication in Amazon Cognito 
 
 ---
 
-Passwords alone aren't enough to protect user accounts. Multi-factor authentication adds a second verification step that makes compromised passwords far less dangerous. Cognito supports two MFA methods - TOTP (authenticator apps like Google Authenticator) and SMS codes. This post covers setting up both.
+Passwords alone aren't enough to protect user accounts. Multi-factor authentication adds a second verification step that makes compromised passwords far less dangerous. Cognito supports TOTP (authenticator apps like Google Authenticator), SMS codes, and email codes. This post covers setting up TOTP and SMS.
 
 ## MFA Modes in Cognito
 
@@ -18,7 +18,7 @@ Cognito offers three MFA modes:
 - **Optional**: Users can enable MFA but aren't required to. Good for consumer apps where you want to offer it.
 - **Required**: All users must set up MFA. Best for enterprise and high-security applications.
 
-Once you set MFA to "Required," you can't change it back to "Off" without creating a new User Pool. "Optional" gives you more flexibility.
+When you set MFA to "Required," users can't enable or disable MFA methods for themselves - they can only choose a preferred method. "Optional" gives you more flexibility.
 
 ## Enabling MFA with Terraform
 
@@ -104,7 +104,7 @@ aws cognito-idp set-user-pool-mfa-config \
   --user-pool-id us-east-1_XXXXXXXXX \
   --mfa-configuration OPTIONAL \
   --software-token-mfa-configuration Enabled=true \
-  --sms-mfa-configuration "SmsAuthenticationMessage='Your code is {####}',SmsConfiguration={SnsCallerArn=arn:aws:iam::111111111111:role/cognito-sms-role,ExternalId=cognito-sms-external}"
+  --sms-mfa-configuration "SmsAuthenticationMessage=\"Your code is {####}\",SmsConfiguration={SnsCallerArn=arn:aws:iam::111111111111:role/cognito-sms-role,ExternalId=cognito-sms-external,SnsRegion=us-east-1}"
 ```
 
 ## Setting Up TOTP MFA
@@ -123,8 +123,7 @@ async function initiateTOTPSetup() {
 
   // Get the setup URI for QR code generation
   const setupUri = totpSetupDetails.getSetupUri(
-    'MyApp',              // App name shown in authenticator
-    'user@example.com'    // Account identifier
+    'MyApp'               // App name shown in authenticator
   );
 
   console.log('TOTP Setup URI:', setupUri.toString());
@@ -218,7 +217,7 @@ async function confirmMFACode(code) {
 
 ## SMS MFA Setup
 
-SMS MFA sends a code via text message. It's less secure than TOTP (susceptible to SIM-swapping attacks) but more familiar to users:
+SMS MFA sends a code via text message. It's less secure than TOTP (susceptible to SIM-swapping attacks) but more familiar to users. The user must have a `phone_number` attribute before they can use SMS MFA:
 
 ```javascript
 // sms-mfa-setup.js
@@ -296,7 +295,7 @@ async function checkUserMFA(username) {
   });
 
   const response = await client.send(command);
-  console.log('MFA options:', response.MFAOptions);
+  console.log('Enabled MFA settings:', response.UserMFASettingList);
   console.log('Preferred MFA:', response.PreferredMfaSetting);
   return response;
 }
