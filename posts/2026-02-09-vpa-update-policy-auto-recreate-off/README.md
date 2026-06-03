@@ -8,15 +8,16 @@ Description: Configure Vertical Pod Autoscaler update policies to control how re
 
 ---
 
-Vertical Pod Autoscaler can automatically update pod resources, but this requires pod restarts. The updatePolicy field controls when and how VPA applies recommendations. This guide explains the three update modes and when to use each.
+Vertical Pod Autoscaler can automatically update pod resources, but eviction-based updates require pod restarts. The updatePolicy field controls when and how VPA applies recommendations. This guide explains the main update modes and when to use each.
 
 ## VPA Update Modes
 
-VPA supports three update policies:
+VPA supports these commonly used update policies:
 
 - **Off**: Generate recommendations, never update pods
 - **Initial**: Apply recommendations only when pods are created
-- **Auto** (or Recreate): Automatically restart pods to apply new resources
+- **Recreate**: Evict and recreate pods to apply new resources
+- **Auto**: Deprecated alias that currently behaves like Recreate
 
 Choose based on your tolerance for pod disruptions.
 
@@ -80,7 +81,7 @@ Use Initial mode for:
 
 New pods get VPA recommendations, existing pods keep their current resources. When pods restart naturally (deployments, node drains), they get updated resources.
 
-## Auto Mode: Automatic Updates
+## Recreate Mode: Automatic Updates
 
 VPA automatically recreates pods when recommendations change significantly:
 
@@ -96,10 +97,10 @@ spec:
     kind: Deployment
     name: stateless-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 ```
 
-Use Auto mode for:
+Use Recreate mode for:
 
 - Stateless applications that tolerate restarts
 - Deployments with multiple replicas (rolling updates)
@@ -108,9 +109,11 @@ Use Auto mode for:
 
 VPA evicts and recreates pods to apply new resource requests.
 
-## How Auto Mode Works
+`Auto` is deprecated and currently behaves like `Recreate`. Use `Recreate` explicitly for eviction-based updates.
 
-When VPA detects recommendations differ from current resources by more than a threshold (typically 10%):
+## How Recreate Mode Works
+
+When VPA detects recommendations differ significantly from current resources:
 
 1. VPA Updater marks the pod for eviction
 2. Kubernetes evicts the pod
@@ -122,20 +125,21 @@ This respects PodDisruptionBudgets to avoid disrupting services.
 
 ## Controlling Update Aggressiveness
 
-VPA only recreates pods when recommendations change significantly. The threshold is configurable in the VPA Recommender:
+VPA only recreates pods when recommendations change significantly. The updater controls eviction cadence and thresholds:
 
 ```yaml
-# VPA Recommender deployment
+# VPA Updater deployment
 
 args:
-- --recommender-interval=1m
-- --pod-recommendation-min-cpu-millicores=25
-- --pod-recommendation-min-memory-mb=100
+- --updater-interval=1m
+- --pod-update-threshold=0.1
+- --eviction-rate-limit=1
+- --eviction-rate-burst=1
 ```
 
-These settings prevent VPA from reacting to minor usage changes.
+These settings help prevent VPA from reacting too quickly or evicting too many pods at once.
 
-## Setting PodDisruptionBudgets with Auto Mode
+## Setting PodDisruptionBudgets with Recreate Mode
 
 Protect services from excessive disruption:
 
@@ -170,7 +174,7 @@ spec:
     kind: Deployment
     name: multi-container-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -179,11 +183,11 @@ spec:
       mode: "Off"
 ```
 
-This updates the app container automatically but only recommends for the sidecar.
+This updates the app container automatically but leaves the sidecar unchanged.
 
 ## Transitioning Between Modes
 
-Start with Off, move to Initial, then Auto as confidence grows:
+Start with Off, move to Initial, then Recreate as confidence grows:
 
 ```yaml
 # Week 1: Off mode
@@ -194,16 +198,16 @@ updatePolicy:
 updatePolicy:
   updateMode: "Initial"
 
-# Week 3+: Auto mode
+# Week 3+: Recreate mode
 updatePolicy:
-  updateMode: "Auto"
+  updateMode: "Recreate"
 ```
 
 Monitor the impact at each stage before progressing.
 
 ## Real-World Example: Stateless Web App
 
-A stateless web app with 5 replicas can use Auto mode safely:
+A stateless web app with 5 replicas can use Recreate mode safely:
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -217,7 +221,7 @@ spec:
     kind: Deployment
     name: web-app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -305,22 +309,22 @@ kubectl set resources deployment web-app --requests=cpu=500m,memory=1Gi
 
 - Start with Off mode for all workloads
 - Use Initial mode for batch jobs and autoscaled deployments
-- Use Auto mode only for stateless, multi-replica workloads
-- Always set PodDisruptionBudgets with Auto mode
+- Use Recreate mode only for stateless, multi-replica workloads
+- Always set PodDisruptionBudgets with Recreate mode
 - Set minAllowed and maxAllowed in resourcePolicy
-- Monitor eviction rates when using Auto mode
+- Monitor eviction rates when using Recreate mode
 - Document update policy decisions
-- Test Auto mode in staging before production
+- Test Recreate mode in staging before production
 
 ## Common Pitfalls
 
-**Too Aggressive Updates**: Auto mode without PDB can disrupt services. Always set PDB.
+**Too Aggressive Updates**: Recreate mode without PDB can disrupt services. Always set PDB.
 
-**VPA and HPA Conflict**: Don't use VPA Auto mode with HPA on the same resource (CPU or memory). Use VPA Off or Initial mode instead.
+**VPA and HPA Conflict**: Don't use VPA Recreate mode with HPA on the same resource (CPU or memory). Use VPA Off or Initial mode instead.
 
-**Stateful Workloads**: Never use Auto mode for StatefulSets or other stateful workloads. Pod restarts can cause data loss.
+**Stateful Workloads**: Avoid Recreate mode for StatefulSets or other stateful workloads. Pod restarts can cause outages and operational risk.
 
-**Insufficient Replicas**: Auto mode needs multiple replicas to update safely. Single-replica deployments will have downtime.
+**Insufficient Replicas**: Recreate mode needs multiple replicas to update safely. Single-replica deployments will have downtime.
 
 ## VPA Update Mode Decision Tree
 
@@ -330,10 +334,10 @@ Is the workload stateless?
   Yes -> Does it have multiple replicas?
     No -> Use Off or Initial mode
     Yes -> Do you have a PodDisruptionBudget?
-      No -> Create PDB first, then use Auto
+      No -> Create PDB first, then use Recreate
       Yes -> Is it critical?
         Yes -> Use Initial mode
-        No -> Use Auto mode
+        No -> Use Recreate mode
 ```
 
 ## Combining Modes Across Namespaces
@@ -341,7 +345,7 @@ Is the workload stateless?
 Use different modes per environment:
 
 ```yaml
-# Development: Auto mode
+# Development: Recreate mode
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -353,7 +357,7 @@ spec:
     kind: Deployment
     name: app
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 ---
 # Production: Off mode
 apiVersion: autoscaling.k8s.io/v1
@@ -382,4 +386,4 @@ Recommendations continue, but no updates occur.
 
 ## Conclusion
 
-Choose VPA update modes based on workload characteristics and risk tolerance. Off mode is safest and works for all workloads. Initial mode balances automation with safety for pods that restart naturally. Auto mode provides full automation but requires stateless workloads, multiple replicas, and PodDisruptionBudgets. Start conservative with Off mode, validate recommendations, then graduate to Initial or Auto as appropriate. Document your choices and monitor the impact of automatic updates to catch issues early.
+Choose VPA update modes based on workload characteristics and risk tolerance. Off mode is safest and works for all workloads. Initial mode balances automation with safety for pods that restart naturally. Recreate mode provides eviction-based automation but requires stateless workloads, multiple replicas, and PodDisruptionBudgets. Start conservative with Off mode, validate recommendations, then graduate to Initial or Recreate as appropriate. Document your choices and monitor the impact of automatic updates to catch issues early.
