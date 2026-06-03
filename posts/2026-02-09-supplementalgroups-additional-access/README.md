@@ -80,9 +80,9 @@ spec:
     - name: data1
       mountPath: /data1  # Group 6000 (fsGroup)
     - name: data2
-      mountPath: /data2  # Group 7000 (supplementalGroup)
+      mountPath: /data2  # Already owned or permissioned for group 7000
     - name: data3
-      mountPath: /data3  # Group 8000 (supplementalGroup)
+      mountPath: /data3  # Already owned or permissioned for group 8000
   volumes:
   - name: data1
     emptyDir: {}
@@ -94,7 +94,7 @@ spec:
       claimName: group-8000-pvc
 ```
 
-The container can access all three volumes because it belongs to groups 6000, 7000, and 8000 through fsGroup and supplementalGroups.
+The container can access the `fsGroup` volume through group 6000. It can also access the other volumes when their existing ownership or permissions allow groups 7000 and 8000 to read or write the needed paths.
 
 ## Sharing Resources Between Different Pods
 
@@ -110,6 +110,7 @@ spec:
   securityContext:
     runAsUser: 10000
     runAsGroup: 10000
+    fsGroup: 20000
     supplementalGroups: [20000]  # Shared group
     runAsNonRoot: true
   containers:
@@ -133,6 +134,7 @@ spec:
   securityContext:
     runAsUser: 11000
     runAsGroup: 11000
+    fsGroup: 20000
     supplementalGroups: [20000]  # Same shared group
     runAsNonRoot: true
   containers:
@@ -158,7 +160,7 @@ spec:
       claimName: backup-pvc
 ```
 
-Both pods run as different users but share group 20000, allowing the backup pod to read database files.
+Both pods run as different users but share group 20000. The `fsGroup` setting makes supported volumes writable by that group, and `supplementalGroups` keeps the process in the shared group for files that already use group 20000 permissions.
 
 ## Combining with Host Path Volumes
 
@@ -173,7 +175,7 @@ spec:
   securityContext:
     runAsUser: 12000
     runAsGroup: 12000
-    supplementalGroups: [44, 999]  # Common host groups
+    supplementalGroups: [44, 999]  # Example host group IDs; verify on each node
     runAsNonRoot: true
   containers:
   - name: monitoring
@@ -196,11 +198,11 @@ spec:
       type: Directory
 ```
 
-Group 44 might be required for accessing certain log files, and group 999 for the Docker socket. The container belongs to both groups and can access both resources.
+Group 44 might be required for accessing certain log files, and group 999 for the Docker socket on some hosts. These IDs vary by node and distribution, and access to a container runtime socket can grant broad control of the host even when the mount is marked read-only.
 
 ## Limiting Supplemental Groups with Pod Security
 
-Pod Security Standards restrict which supplemental groups pods can use:
+Pod Security Standards do not define an allowlist or numeric range for `supplementalGroups`. If you need to limit which group IDs pods can use, enforce that with an admission policy such as ValidatingAdmissionPolicy, Gatekeeper, or Kyverno. The following example still includes the other fields commonly needed for the Restricted profile:
 
 ```yaml
 apiVersion: v1
@@ -220,7 +222,7 @@ spec:
     runAsUser: 15000
     runAsGroup: 15000
     runAsNonRoot: true
-    supplementalGroups: [15001, 15002]  # Must be > 0
+    supplementalGroups: [15001, 15002]  # Allowed by your admission policy
     seccompProfile:
       type: RuntimeDefault
   containers:
@@ -240,7 +242,7 @@ spec:
     emptyDir: {}
 ```
 
-Restricted standard requires all group IDs to be non-zero, preventing use of privileged groups.
+The Restricted standard requires controls such as non-root execution, dropping capabilities, disabling privilege escalation, and a seccomp profile. It does not, by itself, reject supplemental group 0 or other host-specific privileged groups.
 
 ## Dynamic Group Assignment with Init Containers
 
@@ -252,6 +254,8 @@ kind: Pod
 metadata:
   name: dynamic-groups
 spec:
+  securityContext:
+    supplementalGroups: [30000, 31000]
   initContainers:
   - name: setup
     image: busybox
@@ -274,7 +278,6 @@ spec:
     securityContext:
       runAsUser: 1000
       runAsGroup: 1000
-      supplementalGroups: [30000, 31000]
       runAsNonRoot: true
     volumeMounts:
     - name: shared-data
