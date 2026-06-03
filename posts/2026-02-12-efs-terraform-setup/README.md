@@ -153,7 +153,7 @@ Using `for_each` instead of `count` is important here. With `count`, adding or r
 
 ## File System Policy
 
-Enforce encryption in transit and require access points:
+Enforce encryption in transit and deny root access:
 
 ```hcl
 resource "aws_efs_file_system_policy" "main" {
@@ -167,7 +167,7 @@ resource "aws_efs_file_system_policy" "main" {
         Effect    = "Deny"
         Principal = { AWS = "*" }
         Action    = "*"
-        Resource  = "*"
+        Resource  = aws_efs_file_system.main.arn
         Condition = {
           Bool = {
             "aws:SecureTransport" = "false"
@@ -175,11 +175,11 @@ resource "aws_efs_file_system_policy" "main" {
         }
       },
       {
-        Sid       = "EnforceRootAccess"
+        Sid       = "DenyRootAccess"
         Effect    = "Deny"
         Principal = { AWS = "*" }
         Action    = "elasticfilesystem:ClientRootAccess"
-        Resource  = "*"
+        Resource  = aws_efs_file_system.main.arn
         Condition = {
           Bool = {
             "elasticfilesystem:AccessedViaMountTarget" = "true"
