@@ -43,7 +43,6 @@ export class EtlPipelineStack extends cdk.Stack {
 
     // Data lake buckets
     const rawBucket = new s3.Bucket(this, 'RawDataBucket', {
-      bucketName: 'my-datalake-raw',
       lifecycleRules: [{
         transitions: [{
           storageClass: s3.StorageClass.INFREQUENT_ACCESS,
@@ -53,11 +52,12 @@ export class EtlPipelineStack extends cdk.Stack {
     });
 
     const processedBucket = new s3.Bucket(this, 'ProcessedDataBucket', {
-      bucketName: 'my-datalake-processed',
     });
 
     const failedBucket = new s3.Bucket(this, 'FailedDataBucket', {
-      bucketName: 'my-datalake-failed',
+    });
+
+    const scriptsBucket = new s3.Bucket(this, 'GlueScriptsBucket', {
     });
 
     // Glue database (catalog)
@@ -89,6 +89,7 @@ rawBucket.grantRead(glueRole);
 processedBucket.grantReadWrite(glueRole);
 
 const rawCrawler = new glue.CfnCrawler(this, 'RawDataCrawler', {
+  name: 'raw-data-crawler',
   role: glueRole.roleArn,
   databaseName: 'analytics_db',
   targets: {
@@ -104,6 +105,21 @@ const rawCrawler = new glue.CfnCrawler(this, 'RawDataCrawler', {
     Version: 1.0,
     Grouping: { TableGroupingPolicy: 'CombineCompatibleSchemas' },
   }),
+});
+
+const processedCrawler = new glue.CfnCrawler(this, 'ProcessedDataCrawler', {
+  name: 'processed-data-crawler',
+  role: glueRole.roleArn,
+  databaseName: 'analytics_db',
+  targets: {
+    s3Targets: [{
+      path: `s3://${processedBucket.bucketName}/events/`,
+    }],
+  },
+  schemaChangePolicy: {
+    updateBehavior: 'UPDATE_IN_DATABASE',
+    deleteBehavior: 'LOG',
+  },
 });
 ```
 
@@ -217,10 +233,11 @@ Step Functions ties everything together into a reliable workflow with error hand
   "States": {
     "RunRawCrawler": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::glue:startCrawler.sync",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
       "Parameters": {
         "Name": "raw-data-crawler"
       },
+      "ResultPath": null,
       "Retry": [
         {
           "ErrorEquals": ["States.TaskFailed"],
@@ -229,7 +246,51 @@ Step Functions ties everything together into a reliable workflow with error hand
           "BackoffRate": 2
         }
       ],
-      "Next": "RunETLJob"
+      "Catch": [
+        {
+          "ErrorEquals": ["Glue.CrawlerRunningException"],
+          "Next": "WaitForRawCrawler"
+        }
+      ],
+      "Next": "WaitForRawCrawler"
+    },
+    "WaitForRawCrawler": {
+      "Type": "Wait",
+      "Seconds": 30,
+      "Next": "GetRawCrawlerStatus"
+    },
+    "GetRawCrawlerStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "raw-data-crawler"
+      },
+      "ResultPath": "$.rawCrawler",
+      "Next": "RawCrawlerFinished"
+    },
+    "RawCrawlerFinished": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.rawCrawler.Crawler.State",
+              "StringEquals": "READY"
+            },
+            {
+              "Variable": "$.rawCrawler.Crawler.LastCrawl.Status",
+              "StringEquals": "FAILED"
+            }
+          ],
+          "Next": "HandleCrawlerFailure"
+        },
+        {
+          "Variable": "$.rawCrawler.Crawler.State",
+          "StringEquals": "READY",
+          "Next": "RunETLJob"
+        }
+      ],
+      "Default": "WaitForRawCrawler"
     },
     "RunETLJob": {
       "Type": "Task",
@@ -259,11 +320,56 @@ Step Functions ties everything together into a reliable workflow with error hand
     },
     "RunProcessedCrawler": {
       "Type": "Task",
-      "Resource": "arn:aws:states:::glue:startCrawler.sync",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
       "Parameters": {
         "Name": "processed-data-crawler"
       },
-      "Next": "RunDataQualityCheck"
+      "ResultPath": null,
+      "Catch": [
+        {
+          "ErrorEquals": ["Glue.CrawlerRunningException"],
+          "Next": "WaitForProcessedCrawler"
+        }
+      ],
+      "Next": "WaitForProcessedCrawler"
+    },
+    "WaitForProcessedCrawler": {
+      "Type": "Wait",
+      "Seconds": 30,
+      "Next": "GetProcessedCrawlerStatus"
+    },
+    "GetProcessedCrawlerStatus": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "processed-data-crawler"
+      },
+      "ResultPath": "$.processedCrawler",
+      "Next": "ProcessedCrawlerFinished"
+    },
+    "ProcessedCrawlerFinished": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "And": [
+            {
+              "Variable": "$.processedCrawler.Crawler.State",
+              "StringEquals": "READY"
+            },
+            {
+              "Variable": "$.processedCrawler.Crawler.LastCrawl.Status",
+              "StringEquals": "FAILED"
+            }
+          ],
+          "Next": "HandleCrawlerFailure"
+        },
+        {
+          "Variable": "$.processedCrawler.Crawler.State",
+          "StringEquals": "READY",
+          "Next": "RunDataQualityCheck"
+        }
+      ],
+      "Default": "WaitForProcessedCrawler"
     },
     "RunDataQualityCheck": {
       "Type": "Task",
@@ -299,6 +405,15 @@ Step Functions ties everything together into a reliable workflow with error hand
       },
       "End": true
     },
+    "HandleCrawlerFailure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:us-east-1:123456789:etl-notifications",
+        "Message": "Glue crawler failed"
+      },
+      "End": true
+    },
     "HandleETLFailure": {
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish",
@@ -318,9 +433,15 @@ After transformation, verify the data meets quality standards.
 
 ```javascript
 // lambda/data-quality-check.js
-const { AthenaClient, StartQueryExecutionCommand, GetQueryResultsCommand } = require('@aws-sdk/client-athena');
+const {
+  AthenaClient,
+  GetQueryExecutionCommand,
+  GetQueryResultsCommand,
+  StartQueryExecutionCommand,
+} = require('@aws-sdk/client-athena');
 
 const athena = new AthenaClient({});
+const ATHENA_OUTPUT = process.env.ATHENA_OUTPUT;
 
 exports.handler = async (event) => {
   const checks = [
@@ -339,7 +460,7 @@ exports.handler = async (event) => {
     // Check for duplicate records
     {
       name: 'duplicate_check',
-      query: `SELECT COUNT(*) - COUNT(DISTINCT user_id || event_type || CAST(event_timestamp AS VARCHAR)) as dupes FROM analytics_db.events`,
+      query: `SELECT COUNT(*) - COUNT(DISTINCT CONCAT(CAST(user_id AS VARCHAR), event_type, CAST(event_timestamp AS VARCHAR))) as dupes FROM analytics_db.events`,
       threshold: 0,
     },
   ];
@@ -358,6 +479,38 @@ exports.handler = async (event) => {
   const qualityScore = (passedChecks / checks.length) * 100;
   return { qualityScore, passedChecks, totalChecks: checks.length };
 };
+
+async function runAthenaQuery(query) {
+  const start = await athena.send(new StartQueryExecutionCommand({
+    QueryString: query,
+    QueryExecutionContext: { Database: 'analytics_db' },
+    ResultConfiguration: { OutputLocation: ATHENA_OUTPUT },
+  }));
+
+  const queryExecutionId = start.QueryExecutionId;
+
+  while (true) {
+    const execution = await athena.send(new GetQueryExecutionCommand({
+      QueryExecutionId: queryExecutionId,
+    }));
+
+    const state = execution.QueryExecution.Status.State;
+
+    if (state === 'SUCCEEDED') break;
+    if (state === 'FAILED' || state === 'CANCELLED') {
+      throw new Error(`Athena query ${queryExecutionId} ${state}`);
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+  }
+
+  const results = await athena.send(new GetQueryResultsCommand({
+    QueryExecutionId: queryExecutionId,
+    MaxResults: 2,
+  }));
+
+  return results.ResultSet.Rows[1].Data[0].VarCharValue;
+}
 ```
 
 ## Scheduling the Pipeline
@@ -387,6 +540,8 @@ Track job durations, failure rates, and data volume.
 
 ```typescript
 // Step Functions execution monitoring
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+
 new cloudwatch.Alarm(this, 'ETLFailureAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'AWS/States',
