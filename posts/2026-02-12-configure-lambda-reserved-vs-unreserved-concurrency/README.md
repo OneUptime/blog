@@ -16,20 +16,20 @@ In this guide, you will learn what each concurrency type means, when to use rese
 
 Concurrency in Lambda is the number of function instances processing events simultaneously. Each concurrent invocation runs in its own execution environment.
 
-Your AWS account has a regional concurrency limit, typically 1,000 by default (you can request an increase). This limit is shared across ALL Lambda functions in that region.
+Your AWS account has a regional concurrency limit, often 1,000 by default, though new accounts can start lower (you can request an increase). This limit is shared across ALL Lambda functions in that region.
 
 ```mermaid
 flowchart TD
     A[Account Concurrency Limit: 1000] --> B[Reserved: Function A = 100]
     A --> C[Reserved: Function B = 200]
-    A --> D[Unreserved Pool: 600]
+    A --> D[Unreserved Pool: 700]
     D --> E[Function C: uses from pool]
     D --> F[Function D: uses from pool]
     D --> G[Function E: uses from pool]
-    A --> H[Buffer: 100 always kept unreserved]
+    D --> H[Minimum 100 kept unreserved]
 ```
 
-AWS always keeps 100 units of concurrency unreserved as a safety buffer. So from a 1,000 limit, only 900 are available for reservation.
+AWS requires you to leave at least 100 units of concurrency unreserved for functions without their own reserved concurrency. So from a 1,000 limit, only 900 are available for reservation.
 
 ## Reserved Concurrency
 
@@ -65,19 +65,21 @@ aws lambda put-function-concurrency \
 
 ## Unreserved Concurrency
 
-Unreserved concurrency is the pool shared by all functions that do not have reserved concurrency configured. It equals your account limit minus the sum of all reserved concurrency minus the 100-unit buffer.
+Unreserved concurrency is the pool shared by all functions that do not have reserved concurrency configured. It equals your account limit minus the sum of all reserved concurrency. AWS requires at least 100 concurrency units to remain in this pool.
 
 ```text
-Unreserved Pool = Account Limit - Total Reserved - 100 (buffer)
+Unreserved Pool = Account Limit - Total Reserved
+Total Reservable Across Functions = Account Limit - 100
 ```
 
 For example, with a 1,000 account limit and 300 reserved across various functions:
 
 ```text
-Unreserved Pool = 1000 - 300 - 100 = 600
+Unreserved Pool = 1000 - 300 = 700
+Total Reservable Across Functions = 1000 - 100 = 900
 ```
 
-All functions without reserved concurrency share this 600. First come, first served. If Function C grabs 500 of them during a spike, Functions D and E only have 100 left to split.
+All functions without reserved concurrency share this 700. First come, first served. If Function C grabs 500 of them during a spike, Functions D and E only have 200 left to split.
 
 This is why unreserved concurrency is risky for critical functions. Without reservation, there is no guarantee your function gets the concurrency it needs.
 
@@ -88,11 +90,11 @@ These are often confused, but they are very different.
 | Feature | Reserved Concurrency | Provisioned Concurrency |
 |---------|---------------------|------------------------|
 | Purpose | Limit and guarantee maximum concurrency | Pre-warm execution environments |
-| Cold starts | Does not prevent cold starts | Eliminates cold starts |
+| Cold starts | Does not prevent cold starts | Reduces cold starts for provisioned capacity |
 | Cost | Free to configure | Charges per provisioned instance |
 | Effect | Caps scaling at the reserved number | Pre-initializes N environments |
 
-Provisioned concurrency is a subset of reserved concurrency. If you reserve 100 and provision 50, you have 50 warm instances always ready and can burst up to 100 (with cold starts for the extra 50).
+Provisioned concurrency can be used together with reserved concurrency, but it cannot exceed the reserved concurrency configured for the same function. If you reserve 100 and provision 50, you have 50 warm instances always ready and can burst up to 100 (with cold starts possible for the extra 50). If you do not configure reserved concurrency, provisioned concurrency comes from your account concurrency pool.
 
 ```bash
 # First, reserve concurrency
@@ -125,7 +127,7 @@ aws lambda put-function-concurrency \
   --function-name order-processor --reserved-concurrent-executions 100
 
 # Everything else shares the unreserved pool
-# With a 1000 limit: 1000 - 200 - 150 - 100 - 100(buffer) = 450 unreserved
+# With a 1000 limit: 1000 - 200 - 150 - 100 = 550 unreserved
 ```
 
 ### Strategy 2: Throttle Background Workloads
@@ -158,7 +160,7 @@ from psycopg2 import pool
 
 # Connection pool sized to match reserved concurrency
 # If reserved concurrency = 30, each instance gets 1 connection
-# Total max connections = 30
+# Active Lambda environments can use up to 30 connections
 connection_pool = psycopg2.pool.SimpleConnectionPool(
     minconn=1,
     maxconn=1,  # One connection per Lambda instance
@@ -216,7 +218,7 @@ For a full monitoring dashboard setup, see our guide on [setting up Amazon Manag
 
 ## Common Mistakes
 
-**Over-reserving**: Reserving too much concurrency for individual functions starves the unreserved pool. If your unreserved pool hits zero, any function without a reservation cannot run at all.
+**Over-reserving**: Reserving too much concurrency for individual functions starves the unreserved pool. AWS requires you to leave at least 100 units unreserved, but functions without a reservation can still throttle quickly if they share too small a pool.
 
 **Setting reserved concurrency to zero**: This effectively disables the function. Lambda will throttle every single invocation. This can be useful for emergency shutoffs, but it is a sharp tool.
 
@@ -227,9 +229,9 @@ aws lambda put-function-concurrency \
   --reserved-concurrent-executions 0
 ```
 
-**Forgetting the 100-unit buffer**: AWS reserves 100 units that you cannot allocate. If your account limit is 1,000, you can only reserve 900 across all functions.
+**Forgetting the 100-unit minimum**: AWS requires at least 100 units to remain unreserved. If your account limit is 1,000, you can only reserve 900 across all functions.
 
-**Not requesting limit increases**: The default 1,000 is low for production workloads. Request an increase proactively before you need it.
+**Not requesting limit increases**: A 1,000 concurrency quota is low for many production workloads, and some new accounts can start lower. Request an increase proactively before you need it.
 
 ```bash
 # Request a concurrency limit increase through AWS Support
