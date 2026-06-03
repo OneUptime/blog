@@ -8,7 +8,7 @@ Description: Learn how to use EC2 placement groups to achieve low-latency networ
 
 ---
 
-When milliseconds matter, the physical placement of your EC2 instances makes a real difference. Two instances sitting on the same rack can communicate orders of magnitude faster than two instances in different data centers. EC2 placement groups give you control over where AWS puts your instances relative to each other.
+When milliseconds matter, the physical placement of your EC2 instances makes a real difference. Instances placed close together in the same Availability Zone can communicate with lower latency than instances spread across Availability Zones or Regions. EC2 placement groups give you control over where AWS puts your instances relative to each other.
 
 This guide covers all three types of placement groups, with a focus on optimizing for low latency.
 
@@ -29,7 +29,7 @@ graph TB
     subgraph "Cluster Placement Group"
         direction LR
         A1[Instance] --- A2[Instance] --- A3[Instance]
-        A4[Same rack/network segment]
+        A4[Same high-bandwidth network segment]
     end
 
     subgraph "Spread Placement Group"
@@ -50,7 +50,7 @@ graph TB
 
 ## Creating a Cluster Placement Group
 
-Cluster placement groups place instances on the same underlying hardware, giving you the lowest possible network latency between them. This is ideal for tightly coupled workloads like HPC, real-time data processing, and high-frequency trading.
+Cluster placement groups place instances close together in a single Availability Zone and the same high-bisection bandwidth network segment, giving you the lowest possible network latency between them. This is ideal for tightly coupled workloads like HPC, real-time data processing, and high-frequency trading.
 
 This command creates a cluster placement group:
 
@@ -104,15 +104,15 @@ ENA (Elastic Network Adapter) supports up to 100 Gbps networking on supported in
 
 ## Network Performance in Cluster Groups
 
-Here's what you can expect from network performance in a cluster placement group:
+Here's what you can expect from network bandwidth in a cluster placement group. Actual latency depends on instance type, AMI, driver configuration, packet size, protocol, and application behavior, so measure it with your own workload.
 
-| Instance Type | Network Bandwidth | Latency (within cluster) |
-|---------------|-------------------|--------------------------|
-| c5n.18xlarge  | 100 Gbps          | ~10-25 microseconds      |
-| c5.18xlarge   | 25 Gbps           | ~25-50 microseconds      |
-| m5.4xlarge    | Up to 10 Gbps     | ~50-100 microseconds     |
+| Instance Type | Network Bandwidth |
+|---------------|-------------------|
+| c5n.18xlarge  | 100 Gbps          |
+| c5.18xlarge   | 25 Gbps           |
+| m5.4xlarge    | Up to 10 Gbps     |
 
-Compare this to cross-AZ latency of 1-2 milliseconds - cluster placement groups can be 10-100x faster for inter-instance communication.
+Compare this to cross-AZ communication, which typically has higher latency because traffic leaves the Availability Zone. Cluster placement groups can materially reduce latency for inter-instance communication when the workload is sensitive to network placement.
 
 ## Terraform Configuration
 
@@ -130,19 +130,14 @@ resource "aws_launch_template" "hpc" {
   instance_type = "c5n.18xlarge"
   key_name      = var.key_name
 
-  network_interfaces {
-    associate_public_ip_address = false
-    security_groups             = [aws_security_group.hpc.id]
-  }
+  vpc_security_group_ids = [aws_security_group.hpc.id]
 
   placement {
     group_name = aws_placement_group.cluster.name
   }
 
-  # Enable EFA for even lower latency (HPC workloads)
-  # network_interfaces {
-  #   interface_type = "efa"
-  # }
+  # To enable EFA for HPC workloads, configure a network_interfaces block
+  # with interface_type = "efa" instead of vpc_security_group_ids.
 }
 
 resource "aws_instance" "hpc_node" {
@@ -163,9 +158,9 @@ resource "aws_instance" "hpc_node" {
 
 ## Elastic Fabric Adapter (EFA) for Ultra-Low Latency
 
-If you need the absolute lowest latency possible (sub-microsecond), look into Elastic Fabric Adapter (EFA). EFA is a network interface that bypasses the operating system kernel, providing direct hardware-level communication between instances.
+If you need lower and more consistent latency for HPC or AI/ML workloads, look into Elastic Fabric Adapter (EFA). EFA is a network interface that can bypass the operating system kernel through libfabric, reducing communication overhead between instances.
 
-EFA is only available on specific instance types (c5n.18xlarge, p4d.24xlarge, etc.) and requires a cluster placement group.
+EFA is only available on specific instance types (c5n.18xlarge, p4d.24xlarge, etc.). A cluster placement group is recommended for EFA-enabled clusters because it launches instances into a low-latency group in a single Availability Zone.
 
 This command creates an EFA-enabled network interface:
 
@@ -228,7 +223,7 @@ iperf3 -c <server-private-ip> -t 30 -P 4
 ping -c 100 <server-private-ip> | tail -1
 ```
 
-You should see single-digit microsecond latencies and multi-gigabit throughput between instances in the same cluster placement group.
+You should see lower latency than a comparable non-placement-group or cross-AZ setup, along with multi-gigabit throughput on supported instance types.
 
 ## Summary
 
