@@ -29,7 +29,7 @@ type AdmissionRequest struct {
     SubResource string
     Operation   admissionv1.Operation  // CREATE, UPDATE, DELETE
     Object      runtime.RawExtension    // The object being created/updated
-    OldObject   runtime.RawExtension    // For UPDATE operations
+    OldObject   runtime.RawExtension    // For UPDATE and DELETE operations
     UserInfo    authenticationv1.UserInfo
     Namespace   string
 }
@@ -51,10 +51,12 @@ import (
     "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
+    appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
     "k8s.io/apimachinery/pkg/runtime/serializer"
+    utilruntime "k8s.io/apimachinery/pkg/util/runtime"
     "k8s.io/klog/v2"
 )
 
@@ -64,7 +66,9 @@ var (
 )
 
 func init() {
-    corev1.AddToScheme(scheme)
+    utilruntime.Must(admissionv1.AddToScheme(scheme))
+    utilruntime.Must(appsv1.AddToScheme(scheme))
+    utilruntime.Must(corev1.AddToScheme(scheme))
 }
 
 // Handler interface for admission logic
@@ -222,22 +226,26 @@ func (m *ConfigMapMutator) Handle(req *admissionv1.AdmissionRequest) *admissionv
         return denyResponse("Failed to decode ConfigMap: " + err.Error())
     }
 
-    // Add labels if missing
-    if configMap.Labels == nil {
-        configMap.Labels = make(map[string]string)
-    }
-
-    if _, exists := configMap.Labels["managed-by"]; !exists {
-        configMap.Labels["managed-by"] = "admission-webhook"
+    if _, exists := configMap.Labels["managed-by"]; exists {
+        return &admissionv1.AdmissionResponse{Allowed: true}
     }
 
     // Create JSON patch
-    patches := []map[string]interface{}{
-        {
+    var patches []map[string]interface{}
+    if configMap.Labels == nil {
+        patches = append(patches, map[string]interface{}{
+            "op":   "add",
+            "path": "/metadata/labels",
+            "value": map[string]string{
+                "managed-by": "admission-webhook",
+            },
+        })
+    } else {
+        patches = append(patches, map[string]interface{}{
             "op":    "add",
             "path":  "/metadata/labels/managed-by",
             "value": "admission-webhook",
-        },
+        })
     }
 
     patchBytes, err := json.Marshal(patches)
@@ -256,7 +264,7 @@ func (m *ConfigMapMutator) Handle(req *admissionv1.AdmissionRequest) *admissionv
 
 ## Registering Multiple Webhook Configurations
 
-You need separate ValidatingWebhookConfiguration and MutatingWebhookConfiguration resources for each webhook:
+You need the appropriate ValidatingWebhookConfiguration and MutatingWebhookConfiguration resources for validating and mutating webhooks:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
@@ -310,11 +318,11 @@ type DeploymentValidator struct{}
 func (v *DeploymentValidator) Handle(req *admissionv1.AdmissionRequest) *admissionv1.AdmissionResponse {
     switch req.Operation {
     case admissionv1.Create:
-        return v.handleCreate(req)
+        return &admissionv1.AdmissionResponse{Allowed: true}
     case admissionv1.Update:
         return v.handleUpdate(req)
     case admissionv1.Delete:
-        return v.handleDelete(req)
+        return &admissionv1.AdmissionResponse{Allowed: true}
     default:
         return &admissionv1.AdmissionResponse{Allowed: true}
     }
@@ -325,18 +333,29 @@ func (v *DeploymentValidator) handleUpdate(req *admissionv1.AdmissionRequest) *a
     oldDeploy := &appsv1.Deployment{}
     newDeploy := &appsv1.Deployment{}
 
-    json.Unmarshal(req.OldObject.Raw, oldDeploy)
-    json.Unmarshal(req.Object.Raw, newDeploy)
+    if err := json.Unmarshal(req.OldObject.Raw, oldDeploy); err != nil {
+        return denyResponse("Failed to decode old Deployment: " + err.Error())
+    }
+    if err := json.Unmarshal(req.Object.Raw, newDeploy); err != nil {
+        return denyResponse("Failed to decode new Deployment: " + err.Error())
+    }
 
     // Prevent scaling down below minimum
-    oldReplicas := *oldDeploy.Spec.Replicas
-    newReplicas := *newDeploy.Spec.Replicas
+    oldReplicas := replicasOrDefault(oldDeploy.Spec.Replicas)
+    newReplicas := replicasOrDefault(newDeploy.Spec.Replicas)
 
     if newReplicas < oldReplicas && newReplicas < 2 {
         return denyResponse("Cannot scale deployment below 2 replicas")
     }
 
     return &admissionv1.AdmissionResponse{Allowed: true}
+}
+
+func replicasOrDefault(replicas *int32) int32 {
+    if replicas == nil {
+        return 1
+    }
+    return *replicas
 }
 ```
 
