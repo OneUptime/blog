@@ -22,7 +22,7 @@ graph TD
 
     D --> F[Lambda - Event Processor]
     F --> G[DynamoDB - Customer Profiles]
-    F --> H[Kinesis Firehose]
+    F --> H[Amazon Data Firehose]
     H --> I[S3 Data Lake]
 
     E --> J[Glue ETL Jobs]
@@ -77,6 +77,7 @@ The ingestion endpoint accepts events from all sources:
 
 ```javascript
 // ingestion/handler.js - Unified event ingestion
+const { randomUUID } = require('crypto');
 const { KinesisClient, PutRecordsCommand } = require('@aws-sdk/client-kinesis');
 
 const kinesis = new KinesisClient({});
@@ -99,19 +100,26 @@ exports.handler = async (event) => {
   const enriched = validEvents.map(e => ({
     ...e,
     receivedAt: new Date().toISOString(),
-    eventId: e.eventId || generateId(),
+    eventId: e.eventId || randomUUID(),
   }));
 
-  // Send to Kinesis, partitioned by identity for ordered processing
+  // Send to Kinesis, partitioned by identity so one customer's events map to the same shard
   const records = enriched.map(e => ({
     Data: Buffer.from(JSON.stringify(e)),
     PartitionKey: e.identity.userId || e.identity.anonymousId || e.identity.email,
   }));
 
-  await kinesis.send(new PutRecordsCommand({
-    StreamName: STREAM_NAME,
-    Records: records,
-  }));
+  // PutRecords accepts up to 500 records per request and can partially fail
+  for (const batch of chunk(records, 500)) {
+    const result = await kinesis.send(new PutRecordsCommand({
+      StreamName: STREAM_NAME,
+      Records: batch,
+    }));
+
+    if (result.FailedRecordCount && result.FailedRecordCount > 0) {
+      throw new Error(`Failed to write ${result.FailedRecordCount} records to Kinesis`);
+    }
+  }
 
   return {
     statusCode: 200,
@@ -119,6 +127,14 @@ exports.handler = async (event) => {
     body: JSON.stringify({ accepted: validEvents.length }),
   };
 };
+
+function chunk(items, size) {
+  const batches = [];
+  for (let i = 0; i < items.length; i += size) {
+    batches.push(items.slice(i, i + size));
+  }
+  return batches;
+}
 ```
 
 ## Step 2: Identity Resolution
@@ -249,19 +265,26 @@ exports.handler = async (event) => {
 };
 
 function buildProfileUpdates(evt) {
-  const updates = {};
-
   switch (evt.eventName) {
-    case 'page_view':
-      return {
-        expression: 'ADD totalPageViews :one SET lastSeenAt = :now, lastPage = :page',
-        names: {},
-        values: {
-          ':one': 1,
-          ':now': evt.timestamp,
-          ':page': evt.properties?.page || evt.context?.page?.url,
-        },
+    case 'page_view': {
+      const expression = ['SET lastSeenAt = :now'];
+      const values = {
+        ':one': 1,
+        ':now': evt.timestamp,
       };
+
+      const lastPage = evt.properties?.page || evt.context?.page?.url;
+      if (lastPage) {
+        expression.push('lastPage = :page');
+        values[':page'] = lastPage;
+      }
+
+      return {
+        expression: `ADD totalPageViews :one ${expression.join(', ')}`,
+        names: {},
+        values,
+      };
+    }
 
     case 'purchase':
       return {
@@ -274,16 +297,24 @@ function buildProfileUpdates(evt) {
         },
       };
 
-    case 'signup':
-      return {
-        expression: 'SET email = :email, signupSource = :source, signedUpAt = :now',
-        names: {},
-        values: {
-          ':email': evt.identity?.email,
-          ':source': evt.context?.campaign?.source || 'direct',
-          ':now': evt.timestamp,
-        },
+    case 'signup': {
+      const expression = ['SET signupSource = :source', 'signedUpAt = :now'];
+      const values = {
+        ':source': evt.context?.campaign?.source || 'direct',
+        ':now': evt.timestamp,
       };
+
+      if (evt.identity?.email) {
+        expression.push('email = :email');
+        values[':email'] = evt.identity.email;
+      }
+
+      return {
+        expression: expression.join(', '),
+        names: {},
+        values,
+      };
+    }
 
     default:
       return {
