@@ -19,13 +19,11 @@ graph LR
     Producers[Data Producers] --> KDS[Kinesis Data Streams]
     KDS --> Lambda1[Lambda - Transform]
     Lambda1 --> DDB[(DynamoDB)]
-    Lambda1 --> KDF[Kinesis Firehose]
-    KDF --> S3[(S3 Data Lake)]
     KDS --> Lambda2[Lambda - Alerts]
     Lambda2 --> SNS[SNS Notifications]
 ```
 
-Data flows from producers into Kinesis Data Streams, where multiple consumers process it simultaneously - one for real-time transformations and storage, another for alerting, and Firehose for archiving to S3.
+Data flows from producers into Kinesis Data Streams, where multiple consumers process it simultaneously - one for real-time transformations and storage, another for alerting.
 
 ## Setting Up Kinesis Data Streams
 
@@ -108,7 +106,7 @@ Here's a Python producer for variety:
 import boto3
 import json
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 kinesis = boto3.client('kinesis', region_name='us-east-1')
 
@@ -116,7 +114,7 @@ def send_event(event_type, user_id, data):
     record = {
         'eventType': event_type,
         'userId': user_id,
-        'timestamp': datetime.utcnow().isoformat() + 'Z',
+        'timestamp': datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
         'data': data,
     }
 
@@ -159,6 +157,7 @@ exports.handler = async (event) => {
     processed: 0,
     errors: 0,
   };
+  const batchItemFailures = [];
 
   for (const record of event.Records) {
     try {
@@ -185,12 +184,14 @@ exports.handler = async (event) => {
     } catch (err) {
       console.error('Error processing record:', err);
       results.errors++;
-      // Don't throw - process remaining records
+      batchItemFailures.push({
+        itemIdentifier: record.kinesis.sequenceNumber,
+      });
     }
   }
 
   console.log(`Results: ${JSON.stringify(results)}`);
-  return results;
+  return { batchItemFailures };
 };
 
 async function updateAggregates(event) {
@@ -299,6 +300,17 @@ provider:
         - Effect: Allow
           Action: [sns:Publish]
           Resource: !Ref AlertTopic
+        - Effect: Allow
+          Action:
+            - kinesis:DescribeStream
+            - kinesis:DescribeStreamSummary
+            - kinesis:GetRecords
+            - kinesis:GetShardIterator
+            - kinesis:ListShards
+          Resource: !GetAtt EventsStream.Arn
+        - Effect: Allow
+          Action: [kinesis:SubscribeToShard]
+          Resource: !Sub "${EventsStream.Arn}/consumer/*"
 
 functions:
   transform:
@@ -312,6 +324,7 @@ functions:
           startingPosition: LATEST
           maximumRetryAttempts: 3
           bisectBatchOnFunctionError: true
+          functionResponseType: ReportBatchItemFailures
 
   alerting:
     handler: alert-handler.handler
@@ -369,12 +382,15 @@ Monitor key metrics to ensure your pipeline is healthy:
 
 ```bash
 # Check iterator age (how far behind consumers are)
+START_TIME=$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)
+END_TIME=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
 aws cloudwatch get-metric-statistics \
   --namespace AWS/Kinesis \
   --metric-name GetRecords.IteratorAgeMilliseconds \
   --dimensions Name=StreamName,Value=events-stream \
-  --start-time $(date -u -v-1H +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time "$START_TIME" \
+  --end-time "$END_TIME" \
   --period 300 \
   --statistics Maximum
 ```
