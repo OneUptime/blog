@@ -88,7 +88,7 @@ This checklist should be completed hours or days before the actual migration win
 - [ ] IAM roles and policies in place
 - [ ] Target EC2 instances launched and accessible
 - [ ] EBS volumes provisioned with correct sizes
-- [ ] Load balancer configured (health checks disabled)
+- [ ] Load balancer and target group health checks configured
 - [ ] DNS TTL lowered to 60 seconds (at least 48h before)
 
 ### Data Readiness
@@ -140,7 +140,7 @@ This is the heart of the runbook. Each step needs to be specific, testable, and 
 |------|--------|-------|-----------|--------|
 | 3.1 | Deploy application to target instances | App | 15 min | Deployment successful |
 | 3.2 | Run smoke tests against target | App | 15 min | All tests pass |
-| 3.3 | Enable load balancer health checks | Infra | 5 min | Targets healthy |
+| 3.3 | Register targets with load balancer target group | Infra | 5 min | Targets healthy |
 | 3.4 | Update DNS to point to new LB | Net | 5 min | DNS propagation confirmed |
 | 3.5 | Monitor traffic shift | Lead | 15 min | New env receiving requests |
 ```
@@ -162,9 +162,8 @@ Good step: "Promote RDS read replica rds-orderdb-replica to standalone primary. 
 After cutover, you need to prove everything works. Do not skip this to save time.
 
 ```bash
-# Functional validation script
-
 #!/bin/bash
+# Functional validation script
 
 echo "=== Post-Migration Validation ==="
 echo ""
