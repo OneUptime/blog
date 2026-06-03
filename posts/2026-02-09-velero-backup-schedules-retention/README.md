@@ -25,7 +25,7 @@ Before creating schedules, install Velero with appropriate backup storage config
 
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.1 \
   --bucket my-velero-backups \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
@@ -63,9 +63,10 @@ spec:
     defaultVolumesToFsBackup: false
     snapshotVolumes: true
     # Add labels to track scheduled backups
-    labels:
-      schedule: daily
-      type: full
+    metadata:
+      labels:
+        schedule: daily
+        type: full
 ```
 
 Apply the schedule:
@@ -96,9 +97,10 @@ spec:
     excludedNamespaces:
     - velero
     snapshotVolumes: true
-    labels:
-      schedule: daily
-      type: full
+    metadata:
+      labels:
+        schedule: daily
+        type: full
 ```
 
 The `ttl` field specifies how long to retain backups before automatic deletion. After 30 days (720 hours), Velero automatically deletes the backup and its associated storage.
@@ -124,9 +126,10 @@ spec:
     - production
     - staging
     snapshotVolumes: true
-    labels:
-      schedule: hourly
-      type: incremental
+    metadata:
+      labels:
+        schedule: hourly
+        type: frequent
 
 ---
 apiVersion: velero.io/v1
@@ -145,9 +148,10 @@ spec:
     excludedNamespaces:
     - velero
     snapshotVolumes: true
-    labels:
-      schedule: daily
-      type: full
+    metadata:
+      labels:
+        schedule: daily
+        type: full
 
 ---
 apiVersion: velero.io/v1
@@ -166,9 +170,10 @@ spec:
     excludedNamespaces:
     - velero
     snapshotVolumes: true
-    labels:
-      schedule: weekly
-      type: full
+    metadata:
+      labels:
+        schedule: weekly
+        type: full
 
 ---
 apiVersion: velero.io/v1
@@ -187,9 +192,10 @@ spec:
     excludedNamespaces:
     - velero
     snapshotVolumes: true
-    labels:
-      schedule: monthly
-      type: archive
+    metadata:
+      labels:
+        schedule: monthly
+        type: archive
 ```
 
 This multi-tier strategy provides granular recovery options while managing storage costs.
@@ -214,9 +220,10 @@ spec:
     includedNamespaces:
     - production
     snapshotVolumes: true
-    labels:
-      environment: production
-      schedule: frequent
+    metadata:
+      labels:
+        environment: production
+        schedule: frequent
 
 ---
 apiVersion: velero.io/v1
@@ -234,9 +241,10 @@ spec:
     - development
     - testing
     snapshotVolumes: true
-    labels:
-      environment: development
-      schedule: daily
+    metadata:
+      labels:
+        environment: development
+        schedule: daily
 ```
 
 Production namespaces get more frequent backups with longer retention, while development environments use lighter backup schedules.
@@ -261,8 +269,9 @@ spec:
         backup: required
         type: stateful
     snapshotVolumes: true
-    labels:
-      schedule: stateful-apps
+    metadata:
+      labels:
+        schedule: stateful-apps
 ```
 
 Only resources labeled with `backup: required` and `type: stateful` are included in these backups.
@@ -283,16 +292,16 @@ spec:
     ttl: 168h
     # Backup in specific order
     orderedResources:
-      persistentvolumeclaims: namespaces/production
-      persistentvolumes: ""
-      deployments: namespaces/production
-      services: namespaces/production
+      persistentvolumeclaims: production/app-data,production/db-data
+      persistentvolumes: pvc-87ae0832-18fd-4f40-a2a4-5ed4242680c4,pvc-63be1bb0-90f5-4629-a7db-b8ce61ee29b3
+      deployments: production/api,production/worker
+      services: production/api,production/worker
     includedNamespaces:
     - production
     snapshotVolumes: true
 ```
 
-This configuration backs up PVCs and PVs first, ensuring volumes are captured before dependent deployments and services.
+This configuration gives Velero an explicit object order within each listed resource kind. Use actual object names from your cluster in the `namespace/name` format, and use plain object names for cluster-scoped resources such as persistent volumes.
 
 ## Monitoring Backup Schedule Execution
 
@@ -306,10 +315,10 @@ velero schedule get
 velero schedule describe daily-backup
 
 # List backups created by a schedule
-velero backup get --selector schedule=daily-backup
+velero backup get --selector velero.io/schedule-name=daily-backup
 
 # Check for failed scheduled backups
-velero backup get --selector schedule=daily-backup | grep -i failed
+velero backup get --selector velero.io/schedule-name=daily-backup | grep -i failed
 ```
 
 Monitor backup creation and retention:
@@ -349,7 +358,8 @@ spec:
 
     - alert: VeleroScheduleMissed
       expr: |
-        time() - velero_backup_last_successful_timestamp{schedule!=""} > 86400
+        (time() - velero_backup_last_successful_timestamp{schedule!=""} > 86400)
+        or absent(velero_backup_last_successful_timestamp{schedule!=""})
       for: 1h
       labels:
         severity: critical
@@ -359,7 +369,8 @@ spec:
 
     - alert: VeleroBackupTooOld
       expr: |
-        time() - velero_backup_last_successful_timestamp{schedule!=""} > 172800
+        (time() - velero_backup_last_successful_timestamp{schedule!=""} > 172800)
+        or absent(velero_backup_last_successful_timestamp{schedule!=""})
       labels:
         severity: critical
       annotations:
@@ -389,7 +400,7 @@ Set up alerts for unexpectedly large backups:
 ```yaml
 - alert: VeleroBackupTooLarge
   expr: |
-    velero_backup_total_items > 10000
+    velero_backup_items_total > 10000
   labels:
     severity: warning
   annotations:
@@ -440,11 +451,10 @@ package main
 
 import (
     "context"
-    "time"
+    "sort"
 
     velerov1 "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/client-go/kubernetes/scheme"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -453,7 +463,7 @@ func rotateBackups(ctx context.Context, c client.Client) error {
 
     // Get all backups from daily schedule
     err := c.List(ctx, backupList, client.MatchingLabels{
-        "schedule": "daily-backup",
+        velerov1.ScheduleNameLabel: "daily-backup",
     })
     if err != nil {
         return err
@@ -470,7 +480,17 @@ func rotateBackups(ctx context.Context, c client.Client) error {
 
         // Delete oldest backups
         for i := 0; i < len(backupList.Items)-7; i++ {
-            err := c.Delete(ctx, &backupList.Items[i])
+            request := &velerov1.DeleteBackupRequest{
+                ObjectMeta: metav1.ObjectMeta{
+                    GenerateName: "delete-" + backupList.Items[i].Name + "-",
+                    Namespace:    backupList.Items[i].Namespace,
+                },
+                Spec: velerov1.DeleteBackupRequestSpec{
+                    BackupName: backupList.Items[i].Name,
+                },
+            }
+
+            err := c.Create(ctx, request)
             if err != nil {
                 return err
             }
@@ -507,8 +527,9 @@ spec:
     # Use snapshot for volumes
     snapshotVolumes: true
     defaultVolumesToFsBackup: false
-    labels:
-      schedule: optimized
+    metadata:
+      labels:
+        schedule: optimized
 ```
 
 Excluding ephemeral resources and using volume snapshots improves backup performance.
