@@ -17,16 +17,16 @@ This guide walks through building a production-ready video surveillance system o
 ```mermaid
 graph TD
     A[IP Cameras] -->|RTSP/WebRTC| B[Kinesis Video Streams]
-    B --> C[Lambda - Stream Processor]
-    C --> D[Amazon Rekognition]
+    B --> D[Amazon Rekognition Stream Processor]
+    D --> C[Lambda - Result Processor]
     D --> E[SNS - Alerts]
     B --> F[S3 - Video Archive]
-    D --> G[DynamoDB - Detection Events]
+    C --> G[DynamoDB - Detection Events]
     G --> H[API Gateway]
     H --> I[Dashboard/Mobile App]
 ```
 
-Cameras send video to Kinesis Video Streams. A Lambda function processes the stream, sending frames to Rekognition for face detection, object detection, or person tracking. Results go to DynamoDB for querying, and SNS handles real-time alerts. Archived video lives in S3.
+Cameras send video to Kinesis Video Streams. A Rekognition stream processor consumes the video stream for face search or connected-home label detection such as person, pet, or package detection. A Lambda function processes the Rekognition results, stores events in DynamoDB for querying, and sends real-time alerts through SNS. Archived video lives in S3.
 
 ## Setting Up Kinesis Video Streams
 
@@ -83,6 +83,8 @@ For production deployments, use IoT Greengrass with proper IAM role-based authen
 ## Processing Video with Rekognition
 
 Amazon Rekognition Video can process Kinesis Video Streams directly. You create a stream processor that connects a Kinesis Video Stream to Rekognition.
+
+As of April 30, 2026, Rekognition Streaming Video is no longer available to new AWS customers. Existing accounts that used the feature in the previous 12 months can continue to use it; new deployments should confirm account access or process sampled frames with the Rekognition Image APIs instead.
 
 ```python
 # Create a Rekognition stream processor for face detection
@@ -158,11 +160,18 @@ A Lambda function consumes the Kinesis Data Stream output from Rekognition and t
 import boto3
 import json
 import base64
-from datetime import datetime
+from datetime import datetime, timezone
+from uuid import uuid4
 
 dynamodb = boto3.resource('dynamodb')
 sns = boto3.client('sns')
 events_table = dynamodb.Table('SurveillanceEvents')
+
+def stream_name_from_payload(payload):
+    stream_arn = payload.get('InputInformation', {}).get('KinesisVideo', {}).get('StreamArn', '')
+    if ':stream/' in stream_arn:
+        return stream_arn.split(':stream/', 1)[1].split('/', 1)[0]
+    return 'unknown'
 
 def handler(event, context):
     for record in event['Records']:
@@ -170,6 +179,9 @@ def handler(event, context):
 
         if 'FaceSearchResponse' not in payload:
             continue
+
+        camera = stream_name_from_payload(payload)
+        event_time = int(datetime.now(timezone.utc).timestamp() * 1000)
 
         for face_search in payload['FaceSearchResponse']:
             detected_face = face_search.get('DetectedFace', {})
@@ -182,9 +194,9 @@ def handler(event, context):
                 confidence = best_match['Similarity']
 
                 events_table.put_item(Item={
-                    'eventId': context.aws_request_id,
-                    'timestamp': int(datetime.now().timestamp()),
-                    'camera': payload.get('InputInformation', {}).get('KinesisVideo', {}).get('StreamName', 'unknown'),
+                    'eventId': str(uuid4()),
+                    'timestamp': event_time,
+                    'camera': camera,
                     'eventType': 'KNOWN_PERSON',
                     'personId': person_id,
                     'confidence': str(confidence)
@@ -195,8 +207,8 @@ def handler(event, context):
                     TopicArn='arn:aws:sns:us-east-1:123456789:surveillance-alerts',
                     Subject='Unknown Person Detected',
                     Message=json.dumps({
-                        'camera': payload.get('InputInformation', {}).get('KinesisVideo', {}).get('StreamName'),
-                        'timestamp': datetime.now().isoformat(),
+                        'camera': camera,
+                        'timestamp': datetime.now(timezone.utc).isoformat(),
                         'boundingBox': detected_face.get('BoundingBox', {})
                     })
                 )
@@ -254,6 +266,9 @@ Set up S3 lifecycle policies to move old footage to Glacier or Glacier Deep Arch
     {
       "ID": "ArchiveOldFootage",
       "Status": "Enabled",
+      "Filter": {
+        "Prefix": "archive/"
+      },
       "Transitions": [
         {
           "Days": 30,
@@ -273,11 +288,14 @@ Set up S3 lifecycle policies to move old footage to Glacier or Glacier Deep Arch
 
 An API Gateway backed by Lambda gives you endpoints to query detection events and request video clips.
 
+This example assumes the `SurveillanceEvents` table uses `camera` as the partition key and `timestamp` as a numeric sort key.
+
 ```python
 # API endpoint to query surveillance events
 import boto3
 import json
 from boto3.dynamodb.conditions import Key
+from datetime import datetime, timedelta, timezone
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('SurveillanceEvents')
@@ -288,9 +306,8 @@ def handler(event, context):
     hours = int(params.get('hours', '24'))
 
     # Calculate time range
-    from datetime import datetime, timedelta
-    end_time = int(datetime.now().timestamp())
-    start_time = int((datetime.now() - timedelta(hours=hours)).timestamp())
+    end_time = int(datetime.now(timezone.utc).timestamp() * 1000)
+    start_time = int((datetime.now(timezone.utc) - timedelta(hours=hours)).timestamp() * 1000)
 
     # Query events
     response = table.query(
