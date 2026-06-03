@@ -46,11 +46,9 @@ resource "aws_cognito_user_pool" "main" {
   auto_verified_attributes = ["email"]
   username_attributes       = ["email"]
 
-  # Verification message template
+  # Verification message type
   verification_message_template {
     default_email_option = "CONFIRM_WITH_CODE"
-    email_subject        = "Verify your email for MyApp"
-    email_message        = "Hi! Your verification code is {####}. This code expires in 24 hours."
   }
 
   # Email configuration using Cognito default (dev only)
@@ -60,7 +58,7 @@ resource "aws_cognito_user_pool" "main" {
 }
 ```
 
-The `{####}` placeholder gets replaced with the actual verification code.
+If you customize the email subject or body, the `{####}` placeholder gets replaced with the actual verification code. Custom email subjects and bodies require Amazon SES, which is covered next.
 
 ## Using Amazon SES for Production Email
 
@@ -94,6 +92,12 @@ resource "aws_cognito_user_pool" "main" {
     from_email_address     = "MyApp <noreply@myapp.com>"
     reply_to_email_address = "support@myapp.com"
   }
+
+  verification_message_template {
+    default_email_option = "CONFIRM_WITH_CODE"
+    email_subject        = "Verify your email for MyApp"
+    email_message        = "Hi! Your verification code is {####}. This code expires in 24 hours."
+  }
 }
 ```
 
@@ -114,6 +118,12 @@ resource "aws_cognito_user_pool" "main" {
     default_email_option  = "CONFIRM_WITH_LINK"
     email_subject_by_link = "Verify your email for MyApp"
     email_message_by_link = "Click {##Verify Email##} to confirm your email address."
+  }
+
+  email_configuration {
+    email_sending_account  = "DEVELOPER"
+    source_arn             = aws_ses_email_identity.auth.arn
+    from_email_address     = "MyApp <noreply@myapp.com>"
   }
 }
 ```
