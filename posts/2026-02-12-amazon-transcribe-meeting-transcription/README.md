@@ -81,9 +81,8 @@ def format_meeting_transcript(transcript_data):
     """Convert raw Transcribe output into a readable meeting transcript."""
     results = transcript_data['results']
 
-    # Get speaker segments
-    speaker_labels = results.get('speaker_labels', {})
-    segments = speaker_labels.get('segments', [])
+    # Get speaker segments with transcript text
+    segments = results.get('audio_segments', [])
 
     if not segments:
         # No speaker labels - return plain text
@@ -98,18 +97,7 @@ def format_meeting_transcript(transcript_data):
     for segment in segments:
         speaker = segment['speaker_label']
         start_time = float(segment['start_time'])
-        end_time = float(segment['end_time'])
-
-        # Collect words for this segment
-        words = []
-        for item in segment.get('items', []):
-            if item.get('type') == 'pronunciation':
-                words.append(item['alternatives'][0]['content'])
-            elif item.get('type') == 'punctuation':
-                if words:
-                    words[-1] += item['alternatives'][0]['content']
-
-        text = ' '.join(words)
+        text = segment['transcript']
 
         if speaker != current_speaker:
             # Save previous speaker's text
@@ -161,8 +149,8 @@ print(formatted)
 If your meeting is recorded with separate audio channels (like a conference system where each participant has their own channel), use channel identification for better speaker accuracy.
 
 ```python
-def transcribe_multichannel(job_name, audio_uri, num_channels=2):
-    """Transcribe a multi-channel recording with per-channel speaker ID."""
+def transcribe_multichannel(job_name, audio_uri):
+    """Transcribe a multi-channel recording with channel labels."""
     response = transcribe.start_transcription_job(
         TranscriptionJobName=job_name,
         Media={'MediaFileUri': audio_uri},
@@ -208,7 +196,7 @@ Meeting transcript:
 {transcript_text[:10000]}"""  # Trim if very long
 
     response = bedrock_runtime.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='anthropic.claude-sonnet-4-6',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 2048,
@@ -243,7 +231,7 @@ print(json.dumps(insights, indent=2))
 Here's a full pipeline that handles the entire flow from audio upload to searchable archive.
 
 ```python
-from datetime import datetime
+from datetime import datetime, timezone
 
 class MeetingTranscriptionPipeline:
     """End-to-end meeting transcription and analysis pipeline."""
@@ -356,7 +344,7 @@ class MeetingTranscriptionPipeline:
         """Store meeting results in DynamoDB."""
         self.meetings_table.put_item(Item={
             'meeting_id': meeting_id,
-            'processed_at': datetime.utcnow().isoformat(),
+            'processed_at': datetime.now(timezone.utc).isoformat(),
             'summary': data['insights'].get('summary', ''),
             'action_items': json.dumps(data['insights'].get('action_items', [])),
             'decisions': json.dumps(data['insights'].get('decisions', [])),
