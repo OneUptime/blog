@@ -8,7 +8,7 @@ Description: Learn how to use Athena prepared statements for parameterized queri
 
 ---
 
-If your application constructs Athena SQL queries by concatenating strings with user input, you've got a SQL injection risk. Even if you're sanitizing inputs yourself, it's error-prone and unnecessary. Athena prepared statements let you define a query template with parameter placeholders, then execute it with specific values. The parameters are handled safely by Athena itself, so you don't have to worry about escaping or injection.
+If your application constructs Athena SQL queries by concatenating strings with user input, you've got a SQL injection risk. Even if you're sanitizing inputs yourself, it's error-prone and unnecessary. Athena prepared statements let you define a query template with parameter placeholders, then execute it with specific values. The query template stays separate from the values, so you avoid mixing untrusted input directly into your SQL.
 
 Beyond security, prepared statements make your queries more reusable and your application code cleaner.
 
@@ -40,7 +40,7 @@ aws athena create-prepared-statement \
 aws athena create-prepared-statement \
     --statement-name "search_logs" \
     --work-group "primary" \
-    --query-statement "SELECT timestamp, service, level, message FROM application_logs WHERE service = ? AND level = ? AND timestamp >= ? AND timestamp < ? ORDER BY timestamp DESC LIMIT 1000"
+    --query-statement "SELECT \"timestamp\", service, level, message FROM application_logs WHERE service = ? AND level = ? AND \"timestamp\" >= ? AND \"timestamp\" < ? ORDER BY \"timestamp\" DESC LIMIT 1000"
 
 # Prepared statement for inventory check
 aws athena create-prepared-statement \
@@ -82,20 +82,26 @@ Here's how to use prepared statements from a Python application:
 ```python
 # Python application using Athena prepared statements
 import boto3
+import re
 import time
+from datetime import date, datetime
 
 athena = boto3.client('athena', region_name='us-east-1')
+STATEMENT_NAME_RE = re.compile(r'^[A-Za-z_][A-Za-z0-9_@:]{0,255}$')
 
 def execute_prepared_statement(statement_name, parameters, workgroup='primary'):
     """Execute a prepared statement and return results."""
+    if not STATEMENT_NAME_RE.match(statement_name):
+        raise ValueError('Invalid prepared statement name')
 
-    # Build the EXECUTE query with parameters
-    param_str = ', '.join(format_parameter(p) for p in parameters)
-    query = f"EXECUTE {statement_name} USING {param_str}"
+    # Keep parameter values separate from the query string.
+    execution_parameters = [format_execution_parameter(p) for p in parameters]
+    query = f"EXECUTE {statement_name}"
 
     # Start the query execution
     response = athena.start_query_execution(
         QueryString=query,
+        ExecutionParameters=execution_parameters,
         WorkGroup=workgroup,
         ResultConfiguration={
             'OutputLocation': 's3://my-athena-results/output/'
@@ -127,18 +133,22 @@ def execute_prepared_statement(statement_name, parameters, workgroup='primary'):
     return parse_results(results)
 
 
-def format_parameter(value):
-    """Format a parameter value for the EXECUTE statement."""
+def format_execution_parameter(value):
+    """Format a value for Athena's ExecutionParameters field."""
     if isinstance(value, str):
         # Escape single quotes in string values
         escaped = value.replace("'", "''")
         return f"'{escaped}'"
     elif isinstance(value, (int, float)):
         return str(value)
+    elif isinstance(value, datetime):
+        return f"TIMESTAMP '{value:%Y-%m-%d %H:%M:%S}'"
+    elif isinstance(value, date):
+        return f"DATE '{value:%Y-%m-%d}'"
     elif value is None:
         return 'NULL'
     else:
-        return f"'{value}'"
+        raise TypeError(f'Unsupported parameter type: {type(value).__name__}')
 
 
 def parse_results(results):
@@ -162,7 +172,7 @@ def parse_results(results):
 # Query sales for a specific region and date range
 results = execute_prepared_statement(
     'sales_by_region',
-    ['us-east-1', "DATE '2026-01-01'", "DATE '2026-01-31'"]
+    ['us-east-1', date(2026, 1, 1), date(2026, 1, 31)]
 )
 
 for row in results:
@@ -175,10 +185,11 @@ Here's a Lambda function that exposes Athena prepared statements as an API endpo
 
 ```python
 # Lambda function that serves as an API for Athena prepared statements
-# Prevents SQL injection by never constructing raw SQL from user input
+# Prevents SQL injection by allowing only known statements and passing values separately
 import boto3
 import json
 import time
+from datetime import date, datetime
 
 athena = boto3.client('athena')
 
@@ -223,24 +234,32 @@ def lambda_handler(event, context):
             })
         }
 
-    # Format parameters safely
+    # Format parameters for Athena's ExecutionParameters field
     formatted_params = []
-    for value, param_type in zip(parameters, expected_params):
-        if param_type == 'string':
-            formatted_params.append(f"'{str(value).replace(chr(39), chr(39)+chr(39))}'")
-        elif param_type == 'integer':
-            formatted_params.append(str(int(value)))
-        elif param_type == 'date':
-            formatted_params.append(f"DATE '{value}'")
-        elif param_type == 'timestamp':
-            formatted_params.append(f"TIMESTAMP '{value}'")
+    try:
+        for value, param_type in zip(parameters, expected_params):
+            if param_type == 'string':
+                formatted_params.append(f"'{str(value).replace(chr(39), chr(39)+chr(39))}'")
+            elif param_type == 'integer':
+                formatted_params.append(str(int(value)))
+            elif param_type == 'date':
+                parsed_date = date.fromisoformat(str(value))
+                formatted_params.append(f"DATE '{parsed_date:%Y-%m-%d}'")
+            elif param_type == 'timestamp':
+                parsed_timestamp = datetime.fromisoformat(str(value))
+                formatted_params.append(f"TIMESTAMP '{parsed_timestamp:%Y-%m-%d %H:%M:%S}'")
+    except (TypeError, ValueError):
+        return {
+            'statusCode': 400,
+            'body': json.dumps({'error': 'Invalid parameter value'})
+        }
 
-    param_str = ', '.join(formatted_params)
-    query = f"EXECUTE {statement_name} USING {param_str}"
+    query = f"EXECUTE {statement_name}"
 
     # Execute the query
     execution = athena.start_query_execution(
         QueryString=query,
+        ExecutionParameters=formatted_params,
         WorkGroup='primary',
         ResultConfiguration={
             'OutputLocation': 's3://my-athena-results/api-queries/'
