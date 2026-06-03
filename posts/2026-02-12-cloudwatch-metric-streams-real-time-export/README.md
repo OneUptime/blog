@@ -10,7 +10,7 @@ Description: Learn how to set up CloudWatch Metric Streams to continuously expor
 
 CloudWatch is great for viewing metrics inside AWS, but what if you need those metrics somewhere else? Maybe you're running Datadog, Splunk, or New Relic as your primary monitoring platform, or you want to build a metrics data lake in S3. Traditionally, you'd poll the CloudWatch API to pull metrics out, but that approach is slow, expensive at scale, and hard to keep up to date.
 
-CloudWatch Metric Streams flip the model around. Instead of pulling metrics out, Metric Streams push them to you continuously via Amazon Kinesis Data Firehose. Metrics arrive within 2-3 minutes of being published, the setup is declarative, and you don't have to manage any polling infrastructure.
+CloudWatch Metric Streams flip the model around. Instead of pulling metrics out, Metric Streams push them to you continuously via Amazon Kinesis Data Firehose. Metrics are sent every minute and can arrive at the destination within about 3 minutes when Firehose buffering is configured with the minimum values, the setup is declarative, and you don't have to manage any polling infrastructure.
 
 ## How Metric Streams Work
 
@@ -34,20 +34,23 @@ CloudWatch publishes metrics from all your AWS services as usual. The Metric Str
 
 Let's walk through the full setup: Firehose delivery stream first, then the Metric Stream.
 
-### Step 1: Create an S3 Bucket for Failed Records
+### Step 1: Create S3 Buckets
 
-Firehose needs a backup location for failed deliveries:
+Firehose needs a backup location for failed deliveries. If you're sending metrics to S3 as a data lake, create that destination bucket too:
 
 ```bash
 # Create an S3 bucket for Firehose backup
-
 aws s3 mb s3://my-metrics-backup-bucket --region us-east-1
+
+# Create an S3 bucket for the metrics data lake
+aws s3 mb s3://my-metrics-data-lake --region us-east-1
 ```
 
 ### Step 2: Create the IAM Role for Firehose
 
+Trust policy for Firehose:
+
 ```json
-// Trust policy for Firehose
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -62,21 +65,34 @@ aws s3 mb s3://my-metrics-backup-bucket --region us-east-1
 }
 ```
 
+Permissions policy for Firehose to write to S3:
+
 ```json
-// Permissions policy for Firehose to write to S3
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
       "Action": [
-        "s3:PutObject",
         "s3:GetBucketLocation",
-        "s3:ListBucket"
+        "s3:ListBucket",
+        "s3:ListBucketMultipartUploads"
       ],
       "Resource": [
         "arn:aws:s3:::my-metrics-backup-bucket",
-        "arn:aws:s3:::my-metrics-backup-bucket/*"
+        "arn:aws:s3:::my-metrics-data-lake"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:AbortMultipartUpload",
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-metrics-backup-bucket/*",
+        "arn:aws:s3:::my-metrics-data-lake/*"
       ]
     }
   ]
@@ -135,8 +151,9 @@ aws firehose create-delivery-stream \
 
 ### Step 4: Create the IAM Role for Metric Streams
 
+Trust policy for CloudWatch Metric Streams:
+
 ```json
-// Trust policy for CloudWatch Metric Streams
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -151,8 +168,9 @@ aws firehose create-delivery-stream \
 }
 ```
 
+Permissions policy to allow Metric Stream to write to Firehose:
+
 ```json
-// Permissions policy - allow Metric Stream to write to Firehose
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -215,14 +233,15 @@ aws cloudwatch put-metric-stream \
 
 ## Output Formats
 
-Metric Streams support two output formats:
+Metric Streams support three output formats: JSON, OpenTelemetry 1.0.0, and OpenTelemetry 0.7.0. New OpenTelemetry integrations should usually use OpenTelemetry 1.0.0.
 
 ### JSON Format
 
 Easier to read and debug:
 
+Example JSON output from Metric Stream:
+
 ```json
-// Example JSON output from Metric Stream
 {
   "metric_stream_name": "all-metrics-stream",
   "account_id": "123456789012",
@@ -245,7 +264,7 @@ Easier to read and debug:
 
 ### OpenTelemetry Format
 
-Better for tools that support OTLP natively. Specify it when creating the stream:
+Better for tools that support the OpenTelemetry metric stream format. Specify OpenTelemetry 1.0.0 when creating the stream:
 
 ```bash
 # Use OpenTelemetry 1.0 format
@@ -286,10 +305,17 @@ Resources:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: [s3:PutObject, s3:GetBucketLocation]
-                Resource:
-                  - !GetAtt MetricsBucket.Arn
-                  - !Sub '${MetricsBucket.Arn}/*'
+                Action:
+                  - s3:GetBucketLocation
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                Resource: !GetAtt MetricsBucket.Arn
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub '${MetricsBucket.Arn}/*'
 
   MetricStreamRole:
     Type: AWS::IAM::Role
@@ -340,7 +366,7 @@ Resources:
 
 ## Metric Stream with Additional Statistics
 
-By default, Metric Streams send min, max, sum, and count. You can request additional statistics like percentiles:
+By default, Metric Streams send Minimum, Maximum, Sum, and SampleCount. You can request additional statistics like percentiles:
 
 ```bash
 # Create a stream with additional statistics
@@ -395,8 +421,7 @@ aws cloudwatch delete-metric-streams --names all-metrics-stream
 
 Metric Streams pricing is based on the number of metric updates streamed:
 
-- First 1,000 metric updates per month: free
-- After that: $0.003 per 1,000 metric updates
+- In US East, metric streams are billed at $0.003 per 1,000 metric updates
 
 For an account with 500 metrics each updating every minute, that's roughly 500 x 60 x 24 x 30 = ~21.6 million updates per month, costing about $65.
 
@@ -413,7 +438,7 @@ For broader CloudWatch cost management strategies, check out [reducing CloudWatc
 ## When to Use Metric Streams vs. API Polling
 
 **Use Metric Streams when:**
-- You need near real-time metrics (2-3 minute latency)
+- You need near real-time metrics with latency that depends on Firehose buffering
 - You're exporting many metrics and don't want to manage polling
 - You want a push-based, set-and-forget architecture
 - Your third-party tool has a native Firehose integration
