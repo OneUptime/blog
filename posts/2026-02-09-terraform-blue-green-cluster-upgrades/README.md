@@ -8,11 +8,11 @@ Description: Learn how to implement blue-green Kubernetes cluster upgrades using
 
 ---
 
-Upgrading Kubernetes clusters carries risk. In-place upgrades can cause downtime and are difficult to roll back if issues arise. Blue-green deployments solve this by creating a new cluster alongside the existing one, allowing safe migration and instant rollback. This guide demonstrates how to implement this pattern using Terraform workspaces.
+Upgrading Kubernetes clusters carries risk. In-place upgrades can cause downtime and are difficult to roll back if issues arise. Blue-green deployments solve this by creating a new cluster alongside the existing one, allowing safe migration and fast rollback. This guide demonstrates how to implement this pattern using Terraform workspaces.
 
 ## Understanding Blue-Green Cluster Strategy
 
-Blue-green deployment maintains two identical production environments. The blue environment serves live traffic while you deploy changes to green. After validating green, you switch traffic from blue to green. If problems occur, switching back takes seconds rather than hours of troubleshooting.
+Blue-green deployment maintains two identical production environments. The blue environment serves live traffic while you deploy changes to green. After validating green, you switch traffic from blue to green. If problems occur, switching back is much faster than rebuilding or troubleshooting the upgraded cluster in place, though DNS-based cutovers still depend on TTLs and client caching.
 
 For Kubernetes clusters, this means running two complete clusters. You create a new cluster with the updated version, migrate workloads gradually, validate functionality, then switch traffic. The old cluster remains available for immediate rollback until you're confident in the new version.
 
@@ -30,8 +30,9 @@ terraform {
     bucket         = "company-terraform-state"
     key            = "kubernetes-cluster/terraform.tfstate"
     region         = "us-west-2"
-    dynamodb_table = "terraform-state-lock"
-    # Workspace name is automatically appended to the key
+    use_lockfile         = true
+    workspace_key_prefix = "clusters"
+    # Non-default workspaces use clusters/<workspace>/kubernetes-cluster/terraform.tfstate
   }
 
   required_providers {
@@ -49,8 +50,8 @@ locals {
 
   # Define cluster version per workspace
   cluster_versions = {
-    blue  = "1.28"
-    green = "1.29"
+    blue  = "1.34"
+    green = "1.35"
   }
 
   cluster_version = local.cluster_versions[local.environment]
@@ -82,7 +83,7 @@ resource "aws_eks_cluster" "cluster" {
   vpc_config {
     subnet_ids              = var.subnet_ids
     endpoint_private_access = true
-    endpoint_public_access  = var.environment == "blue" ? true : false
+    endpoint_public_access  = var.public_endpoint
     security_group_ids      = [aws_security_group.cluster.id]
   }
 
@@ -100,6 +101,20 @@ resource "aws_eks_cluster" "cluster" {
     aws_iam_role_policy_attachment.cluster_policy,
     aws_cloudwatch_log_group.cluster
   ]
+}
+
+resource "aws_launch_template" "nodes" {
+  name_prefix = "${var.cluster_name}-nodes-"
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags          = var.tags
+  }
 }
 
 resource "aws_eks_node_group" "workers" {
@@ -158,13 +173,13 @@ variable "workspace_config" {
 
   default = {
     blue = {
-      cluster_version = "1.28"
+      cluster_version = "1.34"
       node_count      = 3
       instance_types  = ["t3.large"]
       public_endpoint = true
     }
     green = {
-      cluster_version = "1.29"
+      cluster_version = "1.35"
       node_count      = 3
       instance_types  = ["t3.large"]
       public_endpoint = false
@@ -185,6 +200,7 @@ module "eks_cluster" {
   cluster_version = local.config.cluster_version
   node_count      = local.config.node_count
   instance_types  = local.config.instance_types
+  public_endpoint = local.config.public_endpoint
 
   subnet_ids  = data.aws_subnets.private.ids
   environment = local.environment
@@ -213,8 +229,8 @@ resource "aws_route53_record" "api" {
   }
 
   alias {
-    name                   = module.eks_cluster.cluster_endpoint
-    zone_id                = module.eks_cluster.cluster_zone_id
+    name                   = aws_lb.ingress.dns_name
+    zone_id                = aws_lb.ingress.zone_id
     evaluate_target_health = true
   }
 }
@@ -243,7 +259,7 @@ output "load_balancer_dns" {
 }
 ```
 
-Weight-based routing enables gradual traffic migration from blue to green, reducing risk during the cutover.
+Weight-based routing enables gradual traffic migration from blue to green, reducing risk during the cutover. Because this is DNS-based routing, changes are also affected by record TTLs and resolver/client caching.
 
 ## Automating Workload Migration
 
@@ -253,17 +269,12 @@ Create helper scripts that migrate workloads between clusters after green is rea
 #!/bin/bash
 # migrate-workloads.sh
 
-BLUE_CONTEXT="blue-cluster"
 GREEN_CONTEXT="green-cluster"
+MANIFEST_DIR="${MANIFEST_DIR:-./manifests}"
 
-# Export resources from blue cluster
-echo "Exporting workloads from blue cluster..."
-kubectl --context=$BLUE_CONTEXT get deployments,services,configmaps,secrets \
-  --all-namespaces -o yaml > blue-resources.yaml
-
-# Apply to green cluster
+# Apply version-controlled application manifests to green cluster
 echo "Applying workloads to green cluster..."
-kubectl --context=$GREEN_CONTEXT apply -f blue-resources.yaml
+kubectl --context=$GREEN_CONTEXT apply -f "$MANIFEST_DIR" --recursive
 
 # Verify pods are running
 echo "Verifying green cluster workloads..."
@@ -307,7 +318,7 @@ resource "null_resource" "health_check" {
       kubectl wait --for=condition=Ready pods --all -n kube-system --timeout=300s
 
       # Run smoke tests
-      kubectl run smoke-test --image=busybox --restart=Never --rm -i \
+      kubectl run smoke-test --image=busybox --restart=Never --rm -i --attach=true \
         --command -- sh -c "echo 'Cluster is healthy'"
 
       # Check metrics server
@@ -389,7 +400,7 @@ done
 echo "Rollback complete. Green cluster remains available for investigation."
 ```
 
-Fast rollback capability provides confidence to attempt upgrades, knowing you can revert quickly if needed.
+Fast rollback capability provides confidence to attempt upgrades, knowing you can revert quickly if needed, subject to DNS propagation and caching behavior.
 
 ## Managing State and Cleanup
 
@@ -418,4 +429,4 @@ echo "Consider renaming green to blue for the next upgrade cycle."
 
 Proper cleanup prevents confusion about which cluster is active and eliminates unnecessary costs.
 
-Blue-green Kubernetes cluster upgrades using Terraform workspaces provide a robust pattern for zero-downtime version updates. By maintaining separate clusters and controlling traffic switching, you gain the ability to validate upgrades thoroughly before fully committing to them. The workspace-based approach keeps infrastructure code DRY while enabling environment-specific configurations. This pattern reduces upgrade risk significantly and provides instant rollback capabilities, making Kubernetes version updates a routine operation rather than a high-stress event.
+Blue-green Kubernetes cluster upgrades using Terraform workspaces provide a robust pattern for zero-downtime version updates. By maintaining separate clusters and controlling traffic switching, you gain the ability to validate upgrades thoroughly before fully committing to them. The workspace-based approach keeps infrastructure code DRY while enabling environment-specific configurations. This pattern reduces upgrade risk significantly and provides fast rollback capabilities, making Kubernetes version updates a routine operation rather than a high-stress event.
