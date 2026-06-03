@@ -8,7 +8,7 @@ Description: Speed up long-distance S3 uploads by enabling Transfer Acceleration
 
 ---
 
-If you're uploading files to an S3 bucket in us-east-1 from an office in Tokyo, or from a mobile app used globally, you're dealing with the physics of long network paths. Your data has to cross oceans, hop through multiple ISPs, and navigate the public internet. S3 Transfer Acceleration solves this by routing your uploads through CloudFront's global network of 400+ edge locations, giving your data an optimized path to S3.
+If you're uploading files to an S3 bucket in us-east-1 from an office in Tokyo, or from a mobile app used globally, you're dealing with the physics of long network paths. Your data has to cross oceans, hop through multiple ISPs, and navigate the public internet. S3 Transfer Acceleration solves this by routing your uploads through CloudFront's globally distributed edge locations, giving your data an optimized path to S3.
 
 The improvement can be dramatic - I've seen 50-300% speedups for cross-continent uploads. For uploads within the same region, the benefit is minimal or zero. Let's set it up and measure the difference.
 
@@ -27,7 +27,7 @@ graph LR
     end
 ```
 
-The key insight: the public internet between you and S3 is replaced by a short hop to a nearby edge location plus a fast trip over AWS's private network.
+The key insight: the long public internet path to S3 is shortened to a hop to a nearby edge location, followed by an optimized network path to S3.
 
 ## Enable Transfer Acceleration
 
@@ -90,10 +90,11 @@ Upload with Transfer Acceleration in Python:
 
 ```python
 import boto3
+from botocore.config import Config
 from boto3.s3.transfer import TransferConfig
 
 # Create an S3 client with Transfer Acceleration enabled
-s3 = boto3.client('s3', config=boto3.session.Config(
+s3 = boto3.client('s3', config=Config(
     s3={'use_accelerate_endpoint': True}
 ))
 
@@ -218,7 +219,7 @@ aws s3 rm "s3://$BUCKET/speed-test/" --recursive 2>/dev/null
 
 Transfer Acceleration isn't free. You pay on top of standard S3 transfer costs:
 
-- **$0.04 per GB** for data transferred through a US/Europe edge location
+- **$0.04 per GB** for data transferred into S3 through a US, Europe, or Japan edge location
 - **$0.08 per GB** for data transferred through other edge locations
 - No charge if Transfer Acceleration doesn't improve performance for a particular upload
 
@@ -227,12 +228,12 @@ That last point is important: AWS only charges for accelerated transfers when th
 Estimate your monthly acceleration cost:
 
 ```bash
-# Example: 500 GB/month of uploads from Asia to US
+# Example: 500 GB/month of uploads through an edge location outside the US, Europe, and Japan
 # $0.08 per GB * 500 GB = $40/month for acceleration
 # Plus standard S3 request costs
 
 # If you're uploading from within the same region,
-# acceleration probably won't help and you won't be charged for it
+# acceleration probably won't help and you may not be charged for it
 ```
 
 ## When Transfer Acceleration Helps
