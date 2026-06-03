@@ -8,7 +8,7 @@ Description: Guide to setting up AWS Control Tower with Terraform for multi-acco
 
 ---
 
-AWS Control Tower automates the setup and governance of a multi-account AWS environment. It builds on AWS Organizations, Service Catalog, and Config to give you a pre-configured landing zone with guardrails that enforce security and compliance policies. While Control Tower's initial setup typically happens through the console, Terraform can manage the ongoing configuration - organizational units, account provisioning, guardrails, and customizations.
+AWS Control Tower automates the setup and governance of a multi-account AWS environment. It builds on AWS Organizations, Service Catalog, and Config to give you a pre-configured landing zone with guardrails that enforce security and compliance policies. While many teams still perform Control Tower's initial setup through the console, Terraform can manage landing zones and the ongoing configuration - organizational units, account provisioning, guardrails, and customizations.
 
 Let's cover how to integrate Terraform with Control Tower for a well-governed multi-account setup.
 
@@ -37,7 +37,7 @@ graph TD
 
 ## Prerequisites
 
-Before using Terraform with Control Tower, you need to set up the landing zone through the AWS console. This is a one-time operation that creates the foundational structure. After that, Terraform takes over for ongoing management.
+The examples below assume you already have a Control Tower landing zone. Many teams create the landing zone through the AWS console first, but current AWS APIs and the Terraform AWS provider can also manage the landing zone resource. After that, Terraform can take over for ongoing management.
 
 Make sure you have:
 
@@ -95,35 +95,34 @@ resource "aws_organizations_organizational_unit" "infrastructure" {
 Control Tower controls (formerly called guardrails) enforce policies across your OUs. Terraform can enable and manage these:
 
 ```hcl
-# Enable mandatory controls on the Workloads OU
+# Enable strongly recommended and elective controls on the Workloads OU
 resource "aws_controltower_control" "disallow_public_s3" {
   control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS_PERIODIC"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 
-resource "aws_controltower_control" "require_mfa_root" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_RESTRICT_ROOT_USER"
+resource "aws_controltower_control" "root_account_mfa" {
+  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_ROOT_ACCOUNT_MFA_ENABLED"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 
 resource "aws_controltower_control" "disallow_internet_access" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_RESTRICT_INTERNET_ACCESS"
+  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_DISALLOW_VPC_INTERNET_ACCESS"
   target_identifier  = aws_organizations_organizational_unit.production.arn
 }
 
 resource "aws_controltower_control" "require_encryption" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_EBS_OPTIMIZED_INSTANCE"
+  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_ENCRYPTED_VOLUMES"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 
-# Strongly recommended: require tags
-resource "aws_controltower_control" "require_tags" {
-  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_TAG_POLICIES_ENABLED"
+resource "aws_controltower_control" "ebs_optimized_instance" {
+  control_identifier = "arn:aws:controltower:us-east-1::control/AWS-GR_EBS_OPTIMIZED_INSTANCE"
   target_identifier  = aws_organizations_organizational_unit.workloads.arn
 }
 ```
 
-Control identifiers vary by region. Check the AWS documentation for the full list of available controls.
+Regional control identifiers are legacy. AWS recommends global Control Catalog ARNs for new automation, and you can retrieve them from the AWS Control Tower console or the Control Catalog APIs.
 
 ## Account Factory with Terraform
 
@@ -143,13 +142,15 @@ module "aft" {
   tf_backend_secondary_region = "us-west-2"
 
   # VCS settings for account customizations
-  vcs_provider                  = "github"
-  account_customizations_repo_name = "myorg/aft-account-customizations"
-  account_request_repo_name       = "myorg/aft-account-request"
+  vcs_provider                                    = "github"
+  account_request_repo_name                       = "myorg/aft-account-request"
+  global_customizations_repo_name                 = "myorg/aft-global-customizations"
+  account_customizations_repo_name                = "myorg/aft-account-customizations"
+  account_provisioning_customizations_repo_name   = "myorg/aft-account-provisioning-customizations"
 
   # Terraform distribution
   terraform_distribution = "oss"
-  terraform_version      = "1.7.0"
+  terraform_version      = "1.6.1"
 
   tags = {
     ManagedBy = "terraform"
@@ -167,7 +168,7 @@ module "production_account" {
   control_tower_parameters = {
     AccountEmail              = "aws-prod@mycompany.com"
     AccountName               = "Production Workload"
-    ManagedOrganizationalUnit = "Workloads/Production"
+    ManagedOrganizationalUnit = "Production (ou-abcd-12345678)"
     SSOUserEmail              = "admin@mycompany.com"
     SSOUserFirstName          = "Admin"
     SSOUserLastName           = "User"
@@ -263,31 +264,16 @@ resource "aws_organizations_policy_attachment" "protect_cloudtrail" {
 
 ## Cross-Account Access Setup
 
-Set up IAM roles for cross-account access from the management account:
+For Control Tower enrolled accounts, use the `AWSControlTowerExecution` role that Control Tower creates in vended accounts:
 
 ```hcl
-# In the child account - role for management account access
-resource "aws_iam_role" "cross_account_admin" {
-  provider = aws.child_account
-  name     = "OrganizationAccountAccessRole"
+provider "aws" {
+  alias  = "production"
+  region = "us-east-1"
 
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Principal = {
-          AWS = "arn:aws:iam::${var.management_account_id}:root"
-        }
-        Action = "sts:AssumeRole"
-        Condition = {
-          Bool = {
-            "aws:MultiFactorAuthPresent" = "true"
-          }
-        }
-      }
-    ]
-  })
+  assume_role {
+    role_arn = "arn:aws:iam::${var.production_account_id}:role/AWSControlTowerExecution"
+  }
 }
 ```
 
@@ -314,10 +300,15 @@ resource "aws_cloudwatch_log_destination_policy" "central" {
         Sid    = "AllowOrganization"
         Effect = "Allow"
         Principal = {
-          AWS = data.aws_organizations_organization.main.roots[0].id
+          AWS = "*"
         }
         Action   = "logs:PutSubscriptionFilter"
         Resource = aws_cloudwatch_log_destination.central.arn
+        Condition = {
+          StringEquals = {
+            "aws:PrincipalOrgID" = data.aws_organizations_organization.main.id
+          }
+        }
       }
     ]
   })
@@ -346,10 +337,15 @@ variable "aft_account_id" {
   description = "AWS account ID for AFT management"
   type        = string
 }
+
+variable "production_account_id" {
+  description = "AWS account ID of the production workload account"
+  type        = string
+}
 ```
 
 ## Summary
 
-Control Tower plus Terraform gives you automated, governed multi-account management. The initial landing zone setup happens through the console, but everything after that - new OUs, guardrails, account provisioning, SCPs - is managed through code. This approach scales well from a handful of accounts to hundreds, and ensures every new account starts with the right security baseline.
+Control Tower plus Terraform gives you automated, governed multi-account management. You can manage the landing zone and everything after that - new OUs, guardrails, account provisioning, SCPs - through code. This approach scales well from a handful of accounts to hundreds, and ensures every new account starts with the right security baseline.
 
 For monitoring your multi-account environment, see our guide on [AWS infrastructure monitoring](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
