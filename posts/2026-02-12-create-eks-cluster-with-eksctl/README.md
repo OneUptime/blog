@@ -8,7 +8,7 @@ Description: Learn how to create and configure an Amazon EKS cluster using eksct
 
 ---
 
-If you've ever tried creating an EKS cluster through the AWS Console or raw CloudFormation templates, you know it's not exactly a walk in the park. There are VPCs to configure, IAM roles to set up, node groups to provision, and about a dozen things that can go wrong along the way. That's where eksctl comes in - it's the official CLI tool from Weaveworks and AWS that turns a complex multi-step process into a single command.
+If you've ever tried creating an EKS cluster through the AWS Console or raw CloudFormation templates, you know it's not exactly a walk in the park. There are VPCs to configure, IAM roles to set up, node groups to provision, and about a dozen things that can go wrong along the way. That's where eksctl comes in - it's the official CLI tool for Amazon EKS that turns a complex multi-step process into a single command.
 
 In this guide, I'll walk you through everything from installing eksctl to creating production-ready EKS clusters with custom configurations.
 
@@ -29,16 +29,19 @@ On macOS, you can install it through Homebrew:
 ```bash
 # Install eksctl using Homebrew on macOS
 
-brew tap weaveworks/tap
-brew install weaveworks/tap/eksctl
+brew tap aws/tap
+brew install aws/tap/eksctl
 ```
 
 On Linux, download the binary directly:
 
 ```bash
 # Download and install eksctl on Linux
-curl --silent --location "https://github.com/weaveworks/eksctl/releases/latest/download/eksctl_$(uname -s)_amd64.tar.gz" | tar xz -C /tmp
-sudo mv /tmp/eksctl /usr/local/bin
+ARCH=amd64
+PLATFORM=$(uname -s)_$ARCH
+curl -sLO "https://github.com/eksctl-io/eksctl/releases/latest/download/eksctl_$PLATFORM.tar.gz"
+tar -xzf eksctl_$PLATFORM.tar.gz -C /tmp && rm eksctl_$PLATFORM.tar.gz
+sudo install -m 0755 /tmp/eksctl /usr/local/bin && rm /tmp/eksctl
 ```
 
 Verify the installation worked:
@@ -73,12 +76,15 @@ kind: ClusterConfig
 metadata:
   name: production-cluster
   region: us-west-2
-  version: "1.29"
+  version: "1.35"
 
 vpc:
   cidr: "10.0.0.0/16"
   nat:
     gateway: HighlyAvailable  # One NAT gateway per AZ
+
+iam:
+  withOIDC: true
 
 managedNodeGroups:
   - name: general-workload
@@ -122,7 +128,7 @@ eksctl create cluster -f cluster-config.yaml
 
 EKS supports two types of node groups, and it's important to understand when to use each one.
 
-**Managed Node Groups** are the recommended option for most workloads. AWS handles the provisioning, updating, and termination of nodes. You get automatic AMI updates and simplified version upgrades.
+**Managed Node Groups** are the recommended option for most workloads. AWS handles the provisioning, updating, and termination of nodes. You get managed node update workflows and simplified version upgrades.
 
 **Self-managed Node Groups** give you full control over the EC2 instances. They're useful when you need custom AMIs or specific instance configurations that managed node groups don't support.
 
@@ -147,6 +153,9 @@ eksctl can also install essential Kubernetes add-ons during cluster creation. Ad
 
 ```yaml
 # Add-ons section in your cluster config
+iam:
+  withOIDC: true
+
 addons:
   - name: vpc-cni
     version: latest
