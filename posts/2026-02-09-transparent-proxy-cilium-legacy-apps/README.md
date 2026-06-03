@@ -4,23 +4,23 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Cilium, Proxy, Legacy Applications, Networking
 
-Description: Configure Cilium transparent proxy to enable legacy applications to communicate with Kubernetes services without code changes, using automatic DNS-based service discovery and traffic redirection.
+Description: Configure CoreDNS rewrites and Cilium redirection features to help legacy applications communicate with Kubernetes services without code changes.
 
 ---
 
-Legacy applications often expect to connect to services using environment variables or static configuration files. They don't understand Kubernetes service discovery or DNS-based lookups. Cilium's transparent proxy feature solves this by automatically intercepting and redirecting traffic to the correct Kubernetes services without requiring application changes.
+Legacy applications often expect to connect to services using environment variables or static configuration files. They don't understand Kubernetes service names or cluster DNS conventions. Combining CoreDNS rewrites with Cilium's eBPF service handling and Local Redirect Policy can solve this by mapping legacy destinations to Kubernetes services without requiring application changes.
 
 ## Understanding Transparent Proxy
 
 A transparent proxy intercepts network traffic without the client knowing a proxy exists. For Kubernetes, this means:
 
-- Applications can use hardcoded IPs or hostnames
-- DNS resolution happens automatically
-- Traffic redirects to the correct pods
+- Applications can use hardcoded IPs or legacy hostnames
+- DNS resolution can be mapped with CoreDNS rewrites
+- Matching IP traffic can be redirected to selected local backend pods
 - No application code changes required
-- Works with applications that can't be containerized properly
+- Works with applications that can run in Kubernetes but cannot easily change their network configuration
 
-Cilium implements this using eBPF at the kernel level, making it extremely efficient and transparent.
+Cilium implements service load balancing and Local Redirect Policy using eBPF in the datapath. Cilium's Layer 7 policy and service mesh features use Envoy when traffic needs application-layer visibility or proxying.
 
 ## Prerequisites
 
@@ -33,7 +33,7 @@ cilium status | grep "KubeProxyReplacement"
 Should show:
 
 ```text
-KubeProxyReplacement:    Strict   [eth0]
+KubeProxyReplacement:    True   [eth0]
 ```
 
 If not, enable it:
@@ -42,27 +42,27 @@ If not, enable it:
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set kubeProxyReplacement=strict
+  --set kubeProxyReplacement=true
 ```
 
 ## Enabling Transparent Proxy Mode
 
-Configure Cilium to enable transparent proxy:
+Configure Cilium to enable Local Redirect Policy and ensure Layer 7 proxy support is available:
 
 ```bash
 helm upgrade cilium cilium/cilium \
   --namespace kube-system \
   --reuse-values \
-  --set enableCiliumEndpointSlice=true \
-  --set hostServices.enabled=true \
-  --set hostServices.protocols=tcp,udp
+  --set localRedirectPolicies.enabled=true \
+  --set l7Proxy=true \
+  --set loadBalancer.l7.backend=envoy
 ```
 
 Key settings:
 
-- `enableCiliumEndpointSlice`: Required for service discovery
-- `hostServices.enabled`: Enables host-level service interception
-- `hostServices.protocols`: Which protocols to intercept
+- `localRedirectPolicies.enabled`: Enables CiliumLocalRedirectPolicy resources
+- `l7Proxy`: Enables Cilium Layer 7 policy and visibility through Envoy
+- `loadBalancer.l7.backend`: Enables L7 service load balancing by way of service annotations
 
 Restart Cilium pods to apply:
 
@@ -156,9 +156,6 @@ kind: Pod
 metadata:
   name: legacy-app
   namespace: production
-  annotations:
-    # Enable transparent proxy for this pod
-    io.cilium/proxy-visibility: "<Egress/80/TCP/HTTP>"
 spec:
   containers:
   - name: app
@@ -173,7 +170,7 @@ spec:
       value: "http://legacy-api.example.com/v1"
 ```
 
-The application code expects to connect to legacy-db.example.com. With transparent proxy and DNS rewriting, it actually connects to database.production.svc.cluster.local.
+The application code expects to connect to legacy-db.example.com. With DNS rewriting, the name is resolved through database.production.svc.cluster.local.
 
 Apply and test:
 
@@ -181,10 +178,10 @@ Apply and test:
 kubectl apply -f legacy-app.yaml
 
 # Check that DNS resolution works
-kubectl exec legacy-app -- nslookup legacy-db.example.com
+kubectl exec -n production legacy-app -- nslookup legacy-db.example.com
 
 # Check connectivity
-kubectl exec legacy-app -- nc -zv legacy-db.example.com 5432
+kubectl exec -n production legacy-app -- nc -zv legacy-db.example.com 5432
 ```
 
 ## Implementing Traffic Redirection
@@ -207,7 +204,7 @@ spec:
       - port: "5432"
         protocol: TCP
   redirectBackend:
-    # Redirect to this Kubernetes service
+    # Redirect to local backend pods selected by these labels
     localEndpointSelector:
       matchLabels:
         app: database
@@ -251,15 +248,14 @@ Combine with Cilium service annotations:
 ```yaml
 metadata:
   annotations:
-    service.cilium.io/lb-l7-enabled: "true"
-    service.cilium.io/lb-l7-protocol: "tcp"
+    service.cilium.io/lb-l7: "enabled"
 ```
 
-This enables Layer 7 awareness for better connection handling.
+This routes service traffic through Envoy when Cilium L7 service load balancing is enabled. Keep `sessionAffinity` for ordinary TCP connection stickiness.
 
 ## Implementing Service Mesh Features for Legacy Apps
 
-Add observability without changing application code:
+Add HTTP observability without changing application code:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -274,33 +270,33 @@ spec:
   egress:
   - toEndpoints:
     - matchLabels:
-        app: database
+        app: api-server
     toPorts:
     - ports:
-      - port: "5432"
+      - port: "80"
         protocol: TCP
       rules:
-        l7proto: "postgres"  # Enable L7 visibility
+        http: [{}]  # Enable HTTP L7 visibility
 ```
 
-This adds Postgres protocol visibility without modifying the legacy app.
+This adds HTTP Layer 7 visibility without modifying the legacy app. For database protocols such as PostgreSQL, use L3/L4 policy and Hubble flow visibility unless you have a supported Cilium L7 parser for that protocol.
 
 View the traffic:
 
 ```bash
-# Enable Hubble for observability
-cilium hubble enable
+# Enable Hubble and Hubble UI for observability
+cilium hubble enable --ui
 
-# Port forward to Hubble UI
-kubectl port-forward -n kube-system svc/hubble-ui 12000:80
+# Open Hubble UI
+cilium hubble ui
 
 # Or use CLI
-cilium hubble observe --from-pod production/legacy-app
+hubble observe --from-pod production/legacy-app
 ```
 
 ## Handling External Service Dependencies
 
-Legacy apps often call external APIs. Define these as Cilium external services:
+Legacy apps often call external APIs. Define DNS-based egress policy for these dependencies:
 
 ```yaml
 apiVersion: cilium.io/v2
@@ -325,7 +321,7 @@ spec:
     toPorts:
     - ports:
       - port: "53"
-        protocol: UDP
+        protocol: ANY
       rules:
         dns:
         - matchPattern: "*"
@@ -386,14 +382,14 @@ kubectl exec -n kube-system cilium-xxxxx -- cilium status
 Look for:
 
 ```text
-KubeProxyReplacement:  Strict
+KubeProxyReplacement:  True
 Host firewall:         Disabled
 ```
 
 ### Verify Service Redirection
 
 ```bash
-kubectl exec -n kube-system cilium-xxxxx -- cilium service list
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg service list
 ```
 
 Should show your services with proper endpoints.
@@ -401,7 +397,7 @@ Should show your services with proper endpoints.
 ### Check BPF Maps
 
 ```bash
-kubectl exec -n kube-system cilium-xxxxx -- cilium bpf lb list
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg bpf lb list
 ```
 
 This shows the actual BPF load balancer configuration.
@@ -409,8 +405,8 @@ This shows the actual BPF load balancer configuration.
 ### Enable Debug Logging
 
 ```bash
-kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint list
-kubectl exec -n kube-system cilium-xxxxx -- cilium endpoint config <endpoint-id> Debug=true
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg endpoint list
+kubectl exec -n kube-system cilium-xxxxx -- cilium-dbg endpoint config <endpoint-id> Debug=true
 ```
 
 Watch logs:
@@ -423,10 +419,10 @@ kubectl logs -n kube-system cilium-xxxxx -f | grep -i redirect
 
 ```bash
 # From legacy app pod
-kubectl exec legacy-app -- ping legacy-db.example.com
-kubectl exec legacy-app -- nslookup legacy-db.example.com
-kubectl exec legacy-app -- curl -v http://legacy-api.example.com
-kubectl exec legacy-app -- tcpdump -i any -n port 5432
+kubectl exec -n production legacy-app -- ping legacy-db.example.com
+kubectl exec -n production legacy-app -- nslookup legacy-db.example.com
+kubectl exec -n production legacy-app -- curl -v http://legacy-api.example.com
+kubectl exec -n production legacy-app -- tcpdump -i any -n port 5432
 ```
 
 ## Performance Considerations
@@ -445,7 +441,7 @@ Benchmark before and after:
 kubectl run fortio --image=fortio/fortio -- load -c 100 -qps 1000 -t 60s http://backend.production.svc.cluster.local
 ```
 
-You should see < 1ms latency overhead from transparent proxy.
+Measure the latency impact in your own environment; eBPF service handling is designed to avoid a userspace proxy in the normal L3/L4 datapath, while Layer 7 policy and L7 service load balancing intentionally proxy matching traffic through Envoy.
 
 ## Security Benefits
 
@@ -456,6 +452,7 @@ apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy
 metadata:
   name: legacy-app-security
+  namespace: production
 spec:
   endpointSelector:
     matchLabels:
@@ -468,13 +465,9 @@ spec:
   - toEndpoints:
     - matchLabels:
         app: cache
-  # Block everything else
-  egressDeny:
-  - toEndpoints:
-    - {}
 ```
 
-This restricts legacy app traffic without modifying the application.
+Because any egress rule that selects an endpoint puts it into egress default-deny mode, this restricts the legacy app to the selected destinations without modifying the application.
 
 ## Best Practices
 
@@ -491,4 +484,4 @@ When using transparent proxy for legacy applications:
 - Gradually migrate to Kubernetes-native service discovery
 - Keep transparent proxy as a temporary solution, not permanent
 
-Transparent proxy with Cilium makes it possible to run legacy applications in Kubernetes without rewriting them. It's a powerful migration tool that lets you modernize infrastructure before modernizing code.
+CoreDNS rewrites and Cilium redirection features make it possible to run legacy applications in Kubernetes without rewriting them. It's a powerful migration tool that lets you modernize infrastructure before modernizing code.
