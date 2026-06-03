@@ -142,6 +142,14 @@ def format_speaker_transcript(transcript_data):
     results = transcript_data['results']
     items = results.get('items', [])
 
+    # speaker_labels segment items only contain timestamps and labels; the text
+    # still comes from the main results['items'] list.
+    words_by_start_time = {
+        item['start_time']: item['alternatives'][0]['content']
+        for item in items
+        if item.get('type') == 'pronunciation'
+    }
+
     # Build speaker segments from the speaker_labels data
     speaker_labels = results.get('speaker_labels', {})
     segments = speaker_labels.get('segments', [])
@@ -154,11 +162,9 @@ def format_speaker_transcript(transcript_data):
         # Get text for this segment's time range
         segment_text = []
         for item in segment.get('items', []):
-            if item.get('type') == 'pronunciation':
-                segment_text.append(item['alternatives'][0]['content'])
-            elif item.get('type') == 'punctuation':
-                if segment_text:
-                    segment_text[-1] += item['alternatives'][0]['content']
+            word = words_by_start_time.get(item.get('start_time'))
+            if word:
+                segment_text.append(word)
 
         text = ' '.join(segment_text)
 
@@ -348,9 +354,6 @@ class TranscriptionPipeline:
             settings['ShowSpeakerLabels'] = True
             settings['MaxSpeakerLabels'] = options.get('max_speakers', 10)
 
-        if options.get('vocabulary'):
-            settings['VocabularyName'] = options['vocabulary']
-
         # Start transcription
         params = {
             'TranscriptionJobName': job_name,
@@ -360,9 +363,16 @@ class TranscriptionPipeline:
 
         if options.get('language'):
             params['LanguageCode'] = options['language']
+            if options.get('vocabulary'):
+                settings['VocabularyName'] = options['vocabulary']
         else:
+            language_options = ['en-US', 'es-US', 'fr-FR']
             params['IdentifyLanguage'] = True
-            params['LanguageOptions'] = ['en-US', 'es-US', 'fr-FR']
+            params['LanguageOptions'] = language_options
+            if options.get('vocabulary'):
+                params['LanguageIdSettings'] = {
+                    language_options[0]: {'VocabularyName': options['vocabulary']}
+                }
 
         if settings:
             params['Settings'] = settings
