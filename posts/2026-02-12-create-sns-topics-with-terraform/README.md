@@ -122,9 +122,11 @@ For webhook-style integrations:
 ```hcl
 # HTTPS endpoint subscription
 resource "aws_sns_topic_subscription" "webhook" {
-  topic_arn            = aws_sns_topic.order_events.arn
-  protocol             = "https"
-  endpoint             = "https://api.example.com/webhooks/orders"
+  topic_arn = aws_sns_topic.order_events.arn
+  protocol  = "https"
+  endpoint  = "https://api.example.com/webhooks/orders"
+
+  # Enable only if your endpoint automatically confirms the subscription
   endpoint_auto_confirms = true
   raw_message_delivery = true
 }
@@ -148,8 +150,6 @@ resource "aws_sns_topic_subscription" "new_orders_only" {
     event_type = ["order_placed", "order_updated"]
   })
 
-  # Filter on message body instead of attributes
-  filter_policy_scope = "MessageBody"
   raw_message_delivery = true
 }
 
@@ -186,20 +186,20 @@ resource "aws_sns_topic" "transactions" {
   }
 }
 
-# FIFO topics can only subscribe to FIFO SQS queues
+# FIFO topics can subscribe to SQS queues; use a FIFO queue for strict end-to-end ordering
 resource "aws_sns_topic_subscription" "transaction_queue" {
   topic_arn            = aws_sns_topic.transactions.arn
   protocol             = "sqs"
-  endpoint             = aws_sqs_queue.transactions.arn  # Must be a FIFO queue
+  endpoint             = aws_sqs_queue.transactions.arn  # Use a FIFO queue for strict ordering
   raw_message_delivery = true
 }
 ```
 
-FIFO topics guarantee message ordering within a message group and prevent duplicate delivery within a 5-minute window. The trade-off is lower throughput - 300 messages per second (or 3,000 with high-throughput mode).
+FIFO topics preserve message ordering within a message group and deduplicate messages within a 5-minute interval. By default, FIFO throughput is scoped at the topic level; for higher throughput, set `fifo_throughput_scope = "MessageGroup"` and spread publishes across many message group IDs.
 
 ## Encryption
 
-Encrypt your topics to protect message contents in transit through SNS:
+Encrypt your topics to protect message contents while SNS stores them:
 
 ```hcl
 # Topic with KMS encryption
@@ -214,7 +214,7 @@ resource "aws_sns_topic" "sensitive" {
 }
 ```
 
-When using KMS encryption, make sure your subscribers have permission to decrypt messages using the KMS key. Otherwise they'll fail silently.
+When using a customer managed KMS key, make sure the key policy lets the SNS service principal use the key to encrypt and decrypt messages, and that publishers have the required KMS permissions. Otherwise, publishes or deliveries can fail.
 
 ## Topic Policy
 
