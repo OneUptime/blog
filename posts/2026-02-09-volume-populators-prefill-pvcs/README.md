@@ -12,7 +12,7 @@ Volume populators allow you to automatically populate persistent volumes with da
 
 ## Understanding Volume Populators
 
-Volume populators work through the dataSourceRef field in PVCs, which can reference custom resources that populate volumes. The populator controller watches for these references and fills volumes before they're bound to pods.
+Volume populators work through the dataSourceRef field in PVCs, which can reference custom resources that populate volumes. The populator controller watches for these references and provisions a populated volume before application pods use the claim.
 
 Key benefits:
 
@@ -23,22 +23,21 @@ Key benefits:
 
 ## Prerequisites
 
-Volume populators require Kubernetes 1.24+ with the AnyVolumeDataSource feature gate (beta in 1.24+, GA in 1.26+).
+Volume populators require Kubernetes 1.24+ with the AnyVolumeDataSource feature gate. The feature is beta from Kubernetes 1.24 through 1.32 and GA in Kubernetes 1.33+.
 
 Verify feature availability:
 
 ```bash
-# Check if volume data sources are available
+# Check whether the PVC field is available in your cluster API
+kubectl explain persistentvolumeclaim.spec.dataSourceRef
 
-kubectl api-resources | grep -i volumepopulator
-
-# Check for VolumePopulator CRD
-kubectl get crd | grep populator
+# After installing the validator, check for the VolumePopulator CRD
+kubectl get crd volumepopulators.populator.storage.k8s.io
 ```
 
 ## Installing a Volume Populator
 
-Let's use the lib-volume-populator library to create a simple HTTP populator:
+Volume populators are external controllers. A production populator is usually built with the lib-volume-populator library and packaged as a purpose-built controller image:
 
 ```yaml
 apiVersion: v1
@@ -61,23 +60,24 @@ spec:
       labels:
         app: http-populator
     spec:
-      serviceAccountName: populator-controller
+      serviceAccountName: http-populator
       containers:
       - name: populator
-        image: example/http-populator:latest
+        image: example/http-populator:v1
         args:
         - --mode=controller
+        - --image-name=example/http-populator:v1
         - --http-endpoint=0.0.0.0:8080
         - --metrics-endpoint=0.0.0.0:8081
 ```
 
-For this example, we'll use a pre-built S3 volume populator:
+For this example, install the volume data source validator first. The validator is not a populator; it registers the VolumePopulator API and emits warning events when a PVC references a data source kind that no installed populator handles.
 
 ```bash
 # Install the volume-data-source-validator
-kubectl apply -f https://github.com/kubernetes-csi/volume-data-source-validator/releases/download/v1.0.0/client-gen.yaml
-kubectl apply -f https://github.com/kubernetes-csi/volume-data-source-validator/releases/download/v1.0.0/crd.yaml
-kubectl apply -f https://github.com/kubernetes-csi/volume-data-source-validator/releases/download/v1.0.0/volume-data-source-validator.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/v1.0.1/client/config/crd/populator.storage.k8s.io_volumepopulators.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/v1.0.1/deploy/kubernetes/rbac-data-source-validator.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/volume-data-source-validator/v1.0.1/deploy/kubernetes/setup-data-source-validator.yaml
 ```
 
 ## Defining a Custom Data Source
@@ -132,6 +132,18 @@ Apply the CRD:
 kubectl apply -f s3source-crd.yaml
 ```
 
+Register the source kind with the validator:
+
+```yaml
+apiVersion: populator.storage.k8s.io/v1beta1
+kind: VolumePopulator
+metadata:
+  name: s3-populator
+sourceKind:
+  group: populator.storage.k8s.io
+  kind: S3Source
+```
+
 ## Creating a Data Source Resource
 
 Create an S3 data source:
@@ -148,7 +160,7 @@ spec:
   region: us-east-1
 ```
 
-Or a Git repository source:
+Or, after creating a matching GitSource CRD and installing a populator that handles it, a Git repository source:
 
 ```yaml
 apiVersion: populator.storage.k8s.io/v1alpha1
@@ -185,14 +197,14 @@ spec:
     name: database-backup
 ```
 
-The volume populator will:
+Most lib-volume-populator based controllers will:
 
 1. Detect the dataSourceRef
-2. Create a temporary PVC
-3. Spin up a populator pod
+2. Create a temporary "prime" PVC
+3. Run the provider-specific population logic, often in a populator pod
 4. Download data from S3
 5. Extract to the volume
-6. Bind the PVC to the populated volume
+6. Clean up temporary resources and make the original PVC usable
 
 Deploy and verify:
 
@@ -220,6 +232,36 @@ kubectl get pvc mysql-data-prefilled
 Here's a basic implementation of an HTTP populator:
 
 ```yaml
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: httpsources.populator.storage.k8s.io
+spec:
+  group: populator.storage.k8s.io
+  names:
+    kind: HTTPSource
+    listKind: HTTPSourceList
+    plural: httpsources
+    singular: httpsource
+  scope: Namespaced
+  versions:
+  - name: v1alpha1
+    served: true
+    storage: true
+    schema:
+      openAPIV3Schema:
+        type: object
+        properties:
+          spec:
+            type: object
+            required:
+            - url
+            properties:
+              url:
+                type: string
+              checksum:
+                type: string
+---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -233,10 +275,19 @@ metadata:
 rules:
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "delete", "patch"]
+- apiGroups: [""]
+  resources: ["persistentvolumes"]
+  verbs: ["get", "list", "watch", "patch"]
 - apiGroups: [""]
   resources: ["pods"]
-  verbs: ["get", "list", "create", "delete"]
+  verbs: ["get", "list", "watch", "create", "delete"]
+- apiGroups: [""]
+  resources: ["events"]
+  verbs: ["create"]
+- apiGroups: ["storage.k8s.io"]
+  resources: ["storageclasses"]
+  verbs: ["get", "list", "watch"]
 - apiGroups: ["populator.storage.k8s.io"]
   resources: ["httpsources"]
   verbs: ["get", "list", "watch"]
@@ -272,51 +323,19 @@ spec:
       serviceAccountName: http-populator
       containers:
       - name: controller
-        image: alpine:latest
-        command:
-        - /bin/sh
-        - -c
-        - |
-          # Simple populator that downloads from URL
-          apk add --no-cache curl jq
-
-          while true; do
-            # Watch for PVCs with HTTPSource dataSourceRef
-            kubectl get pvc -A -o json | \
-            jq -r '.items[] |
-              select(.spec.dataSourceRef.kind == "HTTPSource") |
-              "\(.metadata.namespace)/\(.metadata.name)/\(.spec.dataSourceRef.name)"' | \
-            while IFS=/ read namespace pvc source; do
-              # Get the HTTP URL from the source
-              URL=$(kubectl get httpsource -n $namespace $source -o jsonpath='{.spec.url}')
-
-              # Create populator pod
-              kubectl run -n $namespace populator-$pvc \
-                --image=alpine:latest \
-                --restart=Never \
-                --overrides="{
-                  \"spec\": {
-                    \"containers\": [{
-                      \"name\": \"populator\",
-                      \"image\": \"alpine:latest\",
-                      \"command\": [\"sh\", \"-c\", \"apk add curl && curl -o /data/file $URL\"],
-                      \"volumeMounts\": [{
-                        \"name\": \"data\",
-                        \"mountPath\": \"/data\"
-                      }]
-                    }],
-                    \"volumes\": [{
-                      \"name\": \"data\",
-                      \"persistentVolumeClaim\": {
-                        \"claimName\": \"$pvc\"
-                      }
-                    }]
-                  }
-                }"
-            done
-
-            sleep 10
-          done
+        image: example/http-populator:v1
+        args:
+        - --mode=controller
+        - --image-name=example/http-populator:v1
+        - --http-endpoint=:8080
+---
+apiVersion: populator.storage.k8s.io/v1beta1
+kind: VolumePopulator
+metadata:
+  name: http-populator
+sourceKind:
+  group: populator.storage.k8s.io
+  kind: HTTPSource
 ```
 
 ## Example: Pre-filling with Database Dump
@@ -366,34 +385,20 @@ spec:
       labels:
         app: postgres
     spec:
-      initContainers:
-      - name: restore-dump
-        image: postgres:15
-        command:
-        - /bin/bash
-        - -c
-        - |
-          # Wait for dump file
-          while [ ! -f /data/postgres-dump.sql.gz ]; do
-            echo "Waiting for dump file..."
-            sleep 5
-          done
-
-          # Extract and restore
-          gunzip /data/postgres-dump.sql.gz
-          PGPASSWORD=password psql -h localhost -U postgres < /data/postgres-dump.sql
-        volumeMounts:
-        - name: data
-          mountPath: /data
       containers:
       - name: postgres
         image: postgres:15
         env:
         - name: POSTGRES_PASSWORD
           value: "password"
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
         volumeMounts:
         - name: data
           mountPath: /var/lib/postgresql/data
+        - name: data
+          mountPath: /docker-entrypoint-initdb.d
+          readOnly: true
       volumes:
       - name: data
         persistentVolumeClaim:
@@ -409,7 +414,7 @@ Track population progress:
 kubectl get events --field-selector involvedObject.name=mysql-data-prefilled -w
 
 # Check populator pod logs
-kubectl logs -l app=volume-populator -n volume-populator
+kubectl logs -l app=http-populator -n volume-populator
 
 # Verify data was populated
 kubectl exec -it <app-pod> -- ls -lah /data
