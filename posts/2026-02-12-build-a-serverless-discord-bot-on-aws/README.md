@@ -40,7 +40,7 @@ When a user types a slash command, Discord sends an HTTP POST to your registered
 You will need:
 
 - An AWS account with permissions to create Lambda functions and API Gateway endpoints
-- Node.js 18+ installed locally
+- Node.js 22+ installed locally
 - A Discord account and a server where you have admin permissions
 - The Discord developer portal access
 
@@ -69,12 +69,23 @@ Now write the Lambda handler. This function needs to handle three things: Discor
 import { verifyKey, InteractionType, InteractionResponseType } from 'discord-interactions';
 
 const PUBLIC_KEY = process.env.DISCORD_PUBLIC_KEY;
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 export const handler = async (event) => {
   // Parse the incoming request
-  const signature = event.headers['x-signature-ed25519'];
-  const timestamp = event.headers['x-signature-timestamp'];
-  const body = event.body;
+  const signature = event.headers?.['x-signature-ed25519'];
+  const timestamp = event.headers?.['x-signature-timestamp'];
+  const body = event.isBase64Encoded
+    ? Buffer.from(event.body || '', 'base64').toString('utf8')
+    : event.body;
+
+  if (!signature || !timestamp || !body || !PUBLIC_KEY) {
+    return {
+      statusCode: 401,
+      headers: JSON_HEADERS,
+      body: JSON.stringify({ error: 'Missing signature headers or public key' }),
+    };
+  }
 
   // Verify the request is actually from Discord
   const isValid = await verifyKey(body, signature, timestamp, PUBLIC_KEY);
@@ -82,6 +93,7 @@ export const handler = async (event) => {
   if (!isValid) {
     return {
       statusCode: 401,
+      headers: JSON_HEADERS,
       body: JSON.stringify({ error: 'Invalid request signature' }),
     };
   }
@@ -92,6 +104,7 @@ export const handler = async (event) => {
   if (interaction.type === InteractionType.PING) {
     return {
       statusCode: 200,
+      headers: JSON_HEADERS,
       body: JSON.stringify({ type: InteractionResponseType.PONG }),
     };
   }
@@ -104,6 +117,7 @@ export const handler = async (event) => {
       const userName = interaction.member?.user?.username || 'stranger';
       return {
         statusCode: 200,
+        headers: JSON_HEADERS,
         body: JSON.stringify({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -119,6 +133,7 @@ export const handler = async (event) => {
       const memoryMb = process.env.AWS_LAMBDA_FUNCTION_MEMORY_SIZE;
       return {
         statusCode: 200,
+        headers: JSON_HEADERS,
         body: JSON.stringify({
           type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
           data: {
@@ -132,6 +147,7 @@ export const handler = async (event) => {
   // Fallback for unknown interactions
   return {
     statusCode: 400,
+    headers: JSON_HEADERS,
     body: JSON.stringify({ error: 'Unknown interaction type' }),
   };
 };
@@ -150,7 +166,7 @@ zip -r function.zip index.mjs node_modules/ package.json
 # Create the Lambda function
 aws lambda create-function \
   --function-name discord-bot \
-  --runtime nodejs18.x \
+  --runtime nodejs22.x \
   --handler index.handler \
   --zip-file fileb://function.zip \
   --role arn:aws:iam::YOUR_ACCOUNT_ID:role/lambda-execution-role \
@@ -170,7 +186,7 @@ You need a public HTTPS endpoint that Discord can send requests to. API Gateway 
 aws apigatewayv2 create-api \
   --name discord-bot-api \
   --protocol-type HTTP \
-  --target arn:aws:lambda:us-east-1:YOUR_ACCOUNT_ID:function:discord-bot
+  --target arn:aws:lambda:YOUR_REGION:YOUR_ACCOUNT_ID:function:discord-bot
 
 # Note the API endpoint URL from the output
 ```
@@ -249,6 +265,7 @@ if (name === 'report') {
   // Then use a separate function to send the follow-up
   return {
     statusCode: 200,
+    headers: JSON_HEADERS,
     body: JSON.stringify({
       type: InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
     }),
@@ -256,13 +273,13 @@ if (name === 'report') {
 }
 ```
 
-You would then have a second Lambda function (or the same one triggered asynchronously) that calls the Discord webhook URL to send the actual response.
+You would then have a second Lambda function (or the same one triggered asynchronously) that calls the Discord webhook URL to edit the original response or send a follow-up message.
 
 ## Cost Breakdown
 
 For a bot handling 10,000 interactions per month with an average execution time of 100ms at 128MB:
 
-- **Lambda**: 10,000 requests x 100ms = 1,000 GB-seconds. Well within the free tier.
+- **Lambda**: 10,000 requests x 100ms x 128MB = 125 GB-seconds. Well within the free tier.
 - **API Gateway**: 10,000 requests at HTTP API pricing = about $0.01.
 - **Total**: Effectively free for small to mid-sized Discord servers.
 
