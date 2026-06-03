@@ -20,7 +20,7 @@ variable "namespace" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", var.namespace))
+    condition     = length(var.namespace) <= 63 && can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", var.namespace))
     error_message = "Namespace must consist of lowercase alphanumeric characters or '-', start and end with an alphanumeric character."
   }
 }
@@ -60,7 +60,7 @@ variable "api_image" {
   type        = string
 
   validation {
-    condition     = can(regex("^[a-z0-9./-]+:[a-z0-9._-]+$", var.api_image))
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*/[a-z0-9./_-]+:[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$", var.api_image))
     error_message = "Image must include a registry, repository, and explicit tag (format: registry/repo:tag)."
   }
 
@@ -70,7 +70,7 @@ variable "api_image" {
   }
 
   validation {
-    condition     = can(regex("^[a-z0-9./-]+:v[0-9]+\\.[0-9]+\\.[0-9]+$", var.api_image)) || can(regex("^[a-z0-9./-]+:[a-z0-9]{7,}$", var.api_image))
+    condition     = can(regex("^[a-z0-9][a-z0-9.-]*/[a-z0-9./_-]+:v[0-9]+\\.[0-9]+\\.[0-9]+$", var.api_image)) || can(regex("^[a-z0-9][a-z0-9.-]*/[a-z0-9./_-]+:[a-f0-9]{7,40}$", var.api_image))
     error_message = "Image tag must be semantic version (v1.2.3) or commit hash (at least 7 characters)."
   }
 }
@@ -116,9 +116,9 @@ variable "container_resources" {
   }
 
   validation {
-    condition = (
-      tonumber(regex("^([0-9]+)", var.container_resources.cpu_limit)[0]) >=
-      tonumber(regex("^([0-9]+)", var.container_resources.cpu_request)[0])
+    condition = can(
+      (endswith(var.container_resources.cpu_limit, "m") ? tonumber(trimsuffix(var.container_resources.cpu_limit, "m")) : tonumber(var.container_resources.cpu_limit) * 1000) >=
+      (endswith(var.container_resources.cpu_request, "m") ? tonumber(trimsuffix(var.container_resources.cpu_request, "m")) : tonumber(var.container_resources.cpu_request) * 1000)
     )
     error_message = "CPU limit must be greater than or equal to CPU request."
   }
@@ -204,7 +204,7 @@ variable "allowed_cidrs" {
   validation {
     condition = alltrue([
       for cidr in var.allowed_cidrs :
-      can(regex("^([0-9]{1,3}\\.){3}[0-9]{1,3}/[0-9]{1,2}$", cidr))
+      can(cidrhost(cidr, 0))
     ])
     error_message = "All entries must be valid CIDR notation (e.g., 10.0.0.0/16)."
   }
@@ -271,7 +271,7 @@ variable "labels" {
   validation {
     condition = alltrue([
       for key, value in var.labels :
-      can(regex("^([a-z0-9A-Z]([a-z0-9A-Z._-]*[a-z0-9A-Z])?(/)?)+$", key))
+      can(regex("^([A-Za-z0-9]([A-Za-z0-9._-]{0,61}[A-Za-z0-9])?|([a-z0-9]([-a-z0-9]*[a-z0-9])?\\.)+[a-z0-9]([-a-z0-9]*[a-z0-9])?/[A-Za-z0-9]([A-Za-z0-9._-]{0,61}[A-Za-z0-9])?)$", key))
     ])
     error_message = "Label keys must be valid DNS subdomain with optional prefix."
   }
@@ -320,7 +320,7 @@ variable "deployment_config" {
   })
 
   validation {
-    condition     = can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", var.deployment_config.name))
+    condition     = length(var.deployment_config.name) <= 63 && can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", var.deployment_config.name))
     error_message = "Deployment name must be valid DNS label."
   }
 
@@ -385,7 +385,7 @@ variable "liveness_probe" {
   validation {
     condition = (
       !var.liveness_probe.enabled ||
-      var.liveness_probe.timeout_seconds < var.liveness_probe.period_seconds
+      (var.liveness_probe.timeout_seconds >= 1 && var.liveness_probe.timeout_seconds < var.liveness_probe.period_seconds)
     )
     error_message = "Timeout must be less than period."
   }
@@ -400,7 +400,7 @@ variable "liveness_probe" {
 }
 ```
 
-## Custom Validation Functions
+## Custom Validation Logic
 
 Use local values for reusable validation logic:
 
@@ -408,19 +408,25 @@ Use local values for reusable validation logic:
 locals {
   is_valid_dns_label = {
     for key, ns in var.namespaces :
-    key => can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", ns))
+    key => length(ns) <= 63 && can(regex("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", ns))
   }
 
   all_dns_labels_valid = alltrue(values(local.is_valid_dns_label))
 
-  total_cpu_request = sum([
+  total_cpu_request_cores = sum([
     for service in var.services :
-    tonumber(regex("^([0-9]+)", service.cpu_request)[0])
+    endswith(service.cpu_request, "m") ? tonumber(trimsuffix(service.cpu_request, "m")) / 1000 : tonumber(service.cpu_request)
   ])
 
   total_memory_request_gi = sum([
     for service in var.services :
-    tonumber(regex("^([0-9]+)", service.memory_request)[0])
+    endswith(service.memory_request, "Ki") ? tonumber(trimsuffix(service.memory_request, "Ki")) / 1048576 :
+    endswith(service.memory_request, "Mi") ? tonumber(trimsuffix(service.memory_request, "Mi")) / 1024 :
+    endswith(service.memory_request, "Gi") ? tonumber(trimsuffix(service.memory_request, "Gi")) :
+    endswith(service.memory_request, "Ti") ? tonumber(trimsuffix(service.memory_request, "Ti")) * 1024 :
+    endswith(service.memory_request, "Pi") ? tonumber(trimsuffix(service.memory_request, "Pi")) * 1048576 :
+    endswith(service.memory_request, "Ei") ? tonumber(trimsuffix(service.memory_request, "Ei")) * 1073741824 :
+    tonumber(service.memory_request) / 1073741824
   ])
 }
 
@@ -432,7 +438,7 @@ variable "cluster_capacity" {
   })
 
   validation {
-    condition     = var.cluster_capacity.cpu_cores >= local.total_cpu_request
+    condition     = var.cluster_capacity.cpu_cores >= local.total_cpu_request_cores
     error_message = "Total CPU requests exceed cluster capacity."
   }
 
@@ -515,9 +521,9 @@ cpu_request   = "200m"
 Test validation by running:
 
 ```bash
-terraform validate -var-file=test/invalid-replica-count.tfvars
-terraform validate -var-file=test/invalid-image-tag.tfvars
-terraform validate -var-file=test/valid-config.tfvars
+terraform plan -var-file=test/invalid-replica-count.tfvars
+terraform plan -var-file=test/invalid-image-tag.tfvars
+terraform plan -var-file=test/valid-config.tfvars
 ```
 
 Variable validation is your first line of defense against configuration errors in Kubernetes deployments. By implementing comprehensive validation rules with clear error messages, you catch mistakes early in the development cycle, improve team productivity, and reduce the risk of deploying misconfigured infrastructure to production environments.
