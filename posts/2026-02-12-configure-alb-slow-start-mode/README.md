@@ -121,6 +121,7 @@ The best way to determine your slow start duration is to measure actual warm-up 
 import requests
 import time
 import statistics
+import math
 
 def measure_warmup(url, total_duration=600, interval=5):
     """
@@ -168,7 +169,8 @@ def measure_warmup(url, total_duration=600, interval=5):
         latencies = windows[window]
         if latencies:
             avg = statistics.mean(latencies)
-            p95 = sorted(latencies)[int(len(latencies) * 0.95)] if len(latencies) > 1 else latencies[0]
+            p95_index = max(0, math.ceil(len(latencies) * 0.95) - 1)
+            p95 = sorted(latencies)[p95_index] if len(latencies) > 1 else latencies[0]
             print(f"{window:>4}s-{window+30}s  | {avg:>8.1f}ms  | {p95:>8.1f}ms")
 
 # Run this against a freshly launched instance (bypass the ALB)
@@ -204,21 +206,20 @@ sequenceDiagram
     Note over ALB,New: Slow start complete
 ```
 
-To avoid cascading scale-outs, make sure your scaling cooldown period accounts for the slow start duration:
+To avoid cascading scale-outs, make sure your Auto Scaling instance warm-up period accounts for the slow start duration:
 
 ```bash
-# Set scaling cooldown to be at least as long as slow start duration
+# Set estimated instance warm-up to be at least as long as slow start duration
 aws autoscaling put-scaling-policy \
     --auto-scaling-group-name my-app-asg \
     --policy-name cpu-scaling \
     --policy-type TargetTrackingScaling \
+    --estimated-instance-warmup 300 \
     --target-tracking-configuration '{
         "PredefinedMetricSpecification": {
             "PredefinedMetricType": "ASGAverageCPUUtilization"
         },
-        "TargetValue": 60.0,
-        "ScaleInCooldown": 300,
-        "ScaleOutCooldown": 300
+        "TargetValue": 60.0
     }'
 ```
 
@@ -236,7 +237,7 @@ aws cloudwatch get-metric-statistics \
     --start-time "2026-02-12T00:00:00Z" \
     --end-time "2026-02-12T01:00:00Z" \
     --period 60 \
-    --statistics Average
+    --statistics Sum
 ```
 
 Also monitor target response time to confirm that warm-up is complete before full traffic hits:
@@ -248,17 +249,19 @@ aws cloudwatch get-metric-statistics \
     --metric-name TargetResponseTime \
     --dimensions \
         Name=TargetGroup,Value=targetgroup/my-app-tg/abc123 \
+        Name=LoadBalancer,Value=app/my-alb/def456 \
     --start-time "2026-02-12T00:00:00Z" \
     --end-time "2026-02-12T01:00:00Z" \
     --period 60 \
-    --statistics 'p99'
+    --extended-statistics p99
 ```
 
 ## Limitations
 
-- Slow start only applies when new targets are added to the target group. It does not apply when targets recover from a failed health check.
+- Slow start applies when targets enter healthy state, but newly registered targets enter slow start only when the target group already has at least one healthy target that is not in slow start mode.
+- If a target becomes unhealthy while it is in slow start, it exits slow start. When that target becomes healthy again, it enters slow start again.
 - All targets in a target group share the same slow start duration. You cannot set different durations for different targets.
-- Slow start does not work with the least outstanding requests routing algorithm. If you enable slow start, the ALB uses round-robin during the slow start period.
+- Slow start does not work with the least outstanding requests or weighted random routing algorithms. Use round-robin if you need slow start.
 - Slow start applies per target group, not per listener. If a target group is used by multiple listeners, the slow start setting affects all of them.
 
 ## Best Practices
