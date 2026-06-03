@@ -35,7 +35,8 @@ Here are the key paths SageMaker uses:
 - `/opt/ml/input/data/<channel_name>/` - Training data (downloaded from S3)
 - `/opt/ml/input/config/` - Training configuration (hyperparameters, etc.)
 - `/opt/ml/model/` - Where your training code saves model artifacts
-- `/opt/ml/output/` - Any additional output files
+- `/opt/ml/output/data/` - Any additional output files
+- `/opt/ml/output/failure` - Failure details if training fails
 
 ## Building a Custom Training Container
 
@@ -152,10 +153,6 @@ RUN pip install --no-cache-dir \
 # Copy training code
 COPY train.py /opt/program/train.py
 
-# SageMaker runs the container with "train" as the entrypoint argument
-ENV SAGEMAKER_PROGRAM train.py
-ENV PATH="/opt/program:${PATH}"
-
 WORKDIR /opt/program
 
 # Make the training script executable
@@ -269,7 +266,6 @@ FROM python:3.10-slim
 
 RUN pip install --no-cache-dir \
     flask==3.0.0 \
-    gunicorn==21.2.0 \
     pandas==2.1.0 \
     numpy==1.25.2 \
     scikit-learn==1.3.0 \
@@ -282,8 +278,8 @@ WORKDIR /opt/program
 # SageMaker expects the container to listen on port 8080
 EXPOSE 8080
 
-# Use gunicorn for production
-ENTRYPOINT ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "4", "--timeout", "60", "serve:app"]
+# SageMaker runs the container with "serve" as an argument
+ENTRYPOINT ["python", "/opt/program/serve.py"]
 ```
 
 ## Building and Pushing to ECR
@@ -294,21 +290,28 @@ SageMaker pulls containers from Amazon ECR. Here's how to build and push yours.
 # Set variables
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 REGION=us-east-1
-REPO_NAME=custom-ml-model
+TRAINING_REPO_NAME=custom-ml-model-training
+INFERENCE_REPO_NAME=custom-ml-model
 
-# Create ECR repository
-aws ecr create-repository --repository-name ${REPO_NAME}
+# Create ECR repositories
+aws ecr create-repository --repository-name ${TRAINING_REPO_NAME} --region ${REGION}
+aws ecr create-repository --repository-name ${INFERENCE_REPO_NAME} --region ${REGION}
 
 # Authenticate Docker with ECR
 aws ecr get-login-password --region ${REGION} | \
   docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com
 
+# Build and tag the training image
+docker build -f Dockerfile.training -t ${TRAINING_REPO_NAME}:latest .
+docker tag ${TRAINING_REPO_NAME}:latest ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${TRAINING_REPO_NAME}:latest
+
 # Build and tag the inference image
-docker build -f Dockerfile.inference -t ${REPO_NAME}:latest .
-docker tag ${REPO_NAME}:latest ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:latest
+docker build -f Dockerfile.inference -t ${INFERENCE_REPO_NAME}:latest .
+docker tag ${INFERENCE_REPO_NAME}:latest ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${INFERENCE_REPO_NAME}:latest
 
 # Push to ECR
-docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${REPO_NAME}:latest
+docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${TRAINING_REPO_NAME}:latest
+docker push ${ACCOUNT_ID}.dkr.ecr.${REGION}.amazonaws.com/${INFERENCE_REPO_NAME}:latest
 ```
 
 ## Using Your Custom Container
@@ -317,6 +320,7 @@ Once the container is in ECR, use it like any other SageMaker container.
 
 ```python
 import sagemaker
+import boto3
 from sagemaker.estimator import Estimator
 
 session = sagemaker.Session()
