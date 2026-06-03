@@ -23,7 +23,7 @@ graph TD
     C --> D[Amazon Location Service]
     C --> E[DynamoDB with Geo Library]
     D --> F[Maps & Geocoding]
-    D --> G[Route Calculator]
+    D --> G[Routes API]
     D --> H[Geofence Collection]
     H --> I[EventBridge]
     I --> J[SNS Notifications]
@@ -49,59 +49,47 @@ Resources:
       MapName: AppMap
       Configuration:
         Style: VectorEsriStreets
-      PricingPlan: RequestBasedUsage
-
-  # Place index for geocoding and reverse geocoding
-  PlaceIndex:
-    Type: AWS::Location::PlaceIndex
-    Properties:
-      IndexName: AppPlaceIndex
-      DataSource: Esri
-      PricingPlan: RequestBasedUsage
-
-  # Route calculator for directions
-  RouteCalculator:
-    Type: AWS::Location::RouteCalculator
-    Properties:
-      CalculatorName: AppRouteCalc
-      DataSource: Esri
-      PricingPlan: RequestBasedUsage
 
   # Geofence collection for boundary alerts
   GeofenceCollection:
     Type: AWS::Location::GeofenceCollection
     Properties:
       CollectionName: AppGeofences
-      PricingPlan: RequestBasedUsage
 
   # Tracker for real-time device tracking
   Tracker:
     Type: AWS::Location::Tracker
     Properties:
       TrackerName: AppTracker
-      PricingPlan: RequestBasedUsage
+      EventBridgeEnabled: true
+
+  # Link tracker updates to the geofence collection
+  TrackerConsumer:
+    Type: AWS::Location::TrackerConsumer
+    Properties:
+      TrackerName: !Ref Tracker
+      ConsumerArn: !GetAtt GeofenceCollection.Arn
 ```
 
-This gives us five key resources: a map for rendering, a place index for geocoding, a route calculator for directions, a geofence collection for boundary alerts, and a tracker for real-time device tracking.
+This gives us three key resources: a map for rendering, a geofence collection for boundary alerts, and a tracker for real-time device tracking. Current Places and Routes API calls do not require you to create a place index or route calculator resource.
 
 ## Building the Geo-Query Layer with DynamoDB
 
 DynamoDB does not natively support spatial queries like "find all restaurants within 5 km." But the `dynamodb-geo` library adds this capability by using geohashing. It partitions the earth into grid cells and stores each item with a geohash and hash key, making range queries efficient.
 
-Here is the Lambda function that sets up the geo table and handles queries:
+Here is the Lambda function that uses an existing geo table and handles queries:
 
 ```javascript
 // Lambda function for spatial queries using DynamoDB Geo library
-const ddb = require('aws-sdk/clients/dynamodb');
-const ddbGeo = require('dynamodb-geo');
+const { DynamoDB } = require('@aws-sdk/client-dynamodb');
+const ddbGeo = require('dynamodb-geo-v3');
 
-const dynamoClient = new ddb.DocumentClient();
 const config = new ddbGeo.GeoDataManagerConfiguration(
-  new ddb({ region: 'us-east-1' }),
+  new DynamoDB({ region: 'us-east-1' }),
   'GeoLocations'
 );
 
-// Set the hash key length - 5 works well for city-level precision
+// Tune this for your data density and typical query radius
 config.hashKeyLength = 5;
 
 const geoTableManager = new ddbGeo.GeoDataManager(config);
@@ -120,7 +108,7 @@ exports.putLocation = async (event) => {
         createdAt: { S: new Date().toISOString() }
       }
     }
-  }).promise();
+  });
 
   return {
     statusCode: 200,
@@ -140,12 +128,17 @@ exports.queryRadius = async (event) => {
     }
   });
 
-  const locations = result.map(item => ({
-    name: item.name.S,
-    category: item.category.S,
-    latitude: parseFloat(item.geoJson.S.split(',')[1]),
-    longitude: parseFloat(item.geoJson.S.split(',')[0])
-  }));
+  const locations = result.map(item => {
+    const geoJson = JSON.parse(item.geoJson.S);
+    const [longitude, latitude] = geoJson.coordinates;
+
+    return {
+      name: item.name.S,
+      category: item.category.S,
+      latitude,
+      longitude
+    };
+  });
 
   return {
     statusCode: 200,
@@ -154,7 +147,7 @@ exports.queryRadius = async (event) => {
 };
 ```
 
-The `hashKeyLength` is important. A value of 5 gives you grid cells roughly 5 km across, which is great for city-level queries. If you need finer granularity, increase it.
+The `hashKeyLength` is important. It controls how many leading digits of the 64-bit geohash are used as the DynamoDB partition key. Larger values spread dense data across more partitions, but radius and box queries may need to query more partitions. Tune it around your data density and typical query radius.
 
 ## Geocoding and Reverse Geocoding
 
@@ -162,28 +155,27 @@ Geocoding turns addresses into coordinates. Reverse geocoding does the opposite.
 
 ```javascript
 // Lambda function for geocoding and reverse geocoding
-const { LocationClient, SearchPlaceIndexForTextCommand, SearchPlaceIndexForPositionCommand } = require('@aws-sdk/client-location');
+const { GeoPlacesClient, GeocodeCommand, ReverseGeocodeCommand } = require('@aws-sdk/client-geo-places');
 
-const client = new LocationClient({ region: 'us-east-1' });
+const client = new GeoPlacesClient({ region: 'us-east-1' });
 
 // Convert an address string to latitude/longitude
 exports.geocode = async (event) => {
   const { address } = event.queryStringParameters;
 
-  const command = new SearchPlaceIndexForTextCommand({
-    IndexName: 'AppPlaceIndex',
-    Text: address,
+  const command = new GeocodeCommand({
+    QueryText: address,
     MaxResults: 5
   });
 
   const response = await client.send(command);
 
-  const results = response.Results.map(r => ({
-    label: r.Place.Label,
-    latitude: r.Place.Geometry.Point[1],
-    longitude: r.Place.Geometry.Point[0],
-    municipality: r.Place.Municipality,
-    region: r.Place.Region
+  const results = (response.ResultItems || []).map(result => ({
+    label: result.Title,
+    latitude: result.Position?.[1],
+    longitude: result.Position?.[0],
+    municipality: result.Address?.Locality,
+    region: result.Address?.Region
   }));
 
   return {
@@ -196,9 +188,8 @@ exports.geocode = async (event) => {
 exports.reverseGeocode = async (event) => {
   const { latitude, longitude } = event.queryStringParameters;
 
-  const command = new SearchPlaceIndexForPositionCommand({
-    IndexName: 'AppPlaceIndex',
-    Position: [parseFloat(longitude), parseFloat(latitude)],
+  const command = new ReverseGeocodeCommand({
+    QueryPosition: [parseFloat(longitude), parseFloat(latitude)],
     MaxResults: 1
   });
 
@@ -207,7 +198,7 @@ exports.reverseGeocode = async (event) => {
   return {
     statusCode: 200,
     body: JSON.stringify({
-      address: response.Results[0]?.Place?.Label || 'Unknown location'
+      address: response.ResultItems?.[0]?.Title || 'Unknown location'
     })
   };
 };
@@ -285,37 +276,45 @@ GeofenceEventRule:
     Targets:
       - Arn: !GetAtt NotificationLambda.Arn
         Id: GeofenceNotification
+
+AllowEventBridgeInvokeNotificationLambda:
+  Type: AWS::Lambda::Permission
+  Properties:
+    FunctionName: !Ref NotificationLambda
+    Action: lambda:InvokeFunction
+    Principal: events.amazonaws.com
+    SourceArn: !GetAtt GeofenceEventRule.Arn
 ```
 
 ## Route Calculation
 
-For applications that need driving or walking directions, the route calculator handles it:
+For applications that need driving or walking directions, the Routes API handles it:
 
 ```javascript
 // Calculate route between two points
-const { LocationClient, CalculateRouteCommand } = require('@aws-sdk/client-location');
+const { GeoRoutesClient, CalculateRoutesCommand } = require('@aws-sdk/client-geo-routes');
 
-const client = new LocationClient({ region: 'us-east-1' });
+const client = new GeoRoutesClient({ region: 'us-east-1' });
 
 exports.calculateRoute = async (event) => {
   const { startLat, startLng, endLat, endLng } = event.queryStringParameters;
 
-  const command = new CalculateRouteCommand({
-    CalculatorName: 'AppRouteCalc',
-    DeparturePosition: [parseFloat(startLng), parseFloat(startLat)],
-    DestinationPosition: [parseFloat(endLng), parseFloat(endLat)],
+  const command = new CalculateRoutesCommand({
+    Origin: [parseFloat(startLng), parseFloat(startLat)],
+    Destination: [parseFloat(endLng), parseFloat(endLat)],
     TravelMode: 'Car',
-    IncludeLegGeometry: true
+    LegGeometryFormat: 'Simple'
   });
 
   const response = await client.send(command);
+  const route = response.Routes?.[0];
 
   return {
     statusCode: 200,
     body: JSON.stringify({
-      distanceKm: response.Summary.Distance,
-      durationMinutes: response.Summary.DurationSeconds / 60,
-      legs: response.Legs
+      distanceKm: route?.Summary?.Distance ? route.Summary.Distance / 1000 : 0,
+      durationMinutes: route?.Summary?.Duration ? route.Summary.Duration / 60 : 0,
+      legs: route?.Legs || []
     })
   };
 };
@@ -327,14 +326,9 @@ Once your application is live, you need to monitor API latency, geofence event p
 
 ## Cost Considerations
 
-Amazon Location Service pricing is straightforward:
-- Map tiles: $0.04 per 1,000 tiles
-- Geocoding: $0.50 per 1,000 requests
-- Route calculations: $0.50 per 1,000 requests
-- Geofencing: $0.05 per 1,000 geofence evaluations
-- Tracking: $0.05 per 1,000 position updates
+Amazon Location Service pricing is usage-based and varies by API, requested features, pricing bucket, and monthly volume. The main billable dimensions are map tile or static map requests, Places requests such as geocoding and reverse geocoding, route calculations, tracker position writes and reads, geofence position evaluations, geofence management, and stored geofences.
 
-For a moderate application doing 100,000 map loads, 50,000 geocodes, and 500,000 position updates per month, you are looking at around $60-80/month for the Location Service portion alone. DynamoDB and Lambda costs are on top of that but typically remain low unless you are handling millions of queries.
+For a moderate application doing 100,000 map loads, 50,000 geocodes, and 500,000 position updates per month, use the AWS pricing page or Pricing Calculator for the current Location Service estimate. DynamoDB and Lambda costs are on top of that but typically remain low unless you are handling millions of queries.
 
 ## Wrapping Up
 
