@@ -14,7 +14,7 @@ Security Enhanced Linux (SELinux) provides mandatory access control (MAC) that c
 
 SELinux uses labels to control access between processes and system resources. In Kubernetes, you can assign SELinux labels to pods and containers, which the kernel enforces regardless of the user permissions within the container. This creates a robust security boundary that operates independently of container-level security mechanisms.
 
-When a pod runs with SELinux enabled, the kernel checks every system call against the active policy. Even if an attacker gains root access inside a container, SELinux policies can prevent them from accessing sensitive files, mounting volumes, or executing certain operations.
+When a pod runs with SELinux enabled, the kernel uses SELinux policy decisions for operations covered by SELinux hooks. Even if an attacker gains root access inside a container, SELinux policies can prevent them from accessing sensitive files, mounting volumes, or executing certain operations.
 
 ## Configuring SELinux Options in Pod Security Context
 
@@ -35,14 +35,14 @@ spec:
     image: nginx:1.21
     securityContext:
       seLinuxOptions:
-        level: "s0:c789,c012"
+        level: "s0:c789,c12"
 ```
 
-The `level` field uses Multi-Category Security (MCS) to isolate containers. Each container gets a unique category pair, ensuring that even containers running as the same user cannot access each other's resources.
+The `level` field uses Multi-Category Security (MCS) to isolate containers. If you do not specify a label, the container runtime normally allocates a random SELinux context for each container, ensuring that even containers running as the same user cannot access each other's resources.
 
 ## Implementing Volume Access Control with SELinux
 
-One of the most powerful uses of SELinux in Kubernetes involves controlling volume access. By default, containers might struggle to access volumes due to SELinux restrictions. You can solve this by setting appropriate labels on volumes.
+One of the most powerful uses of SELinux in Kubernetes involves controlling volume access. By default, containers might struggle to access volumes due to SELinux restrictions. You can solve this by setting an appropriate SELinux context for the pod or container.
 
 ```yaml
 apiVersion: v1
@@ -68,11 +68,11 @@ spec:
     emptyDir: {}
 ```
 
-When Kubernetes mounts the volume, it automatically applies the SELinux label from the pod's security context. This ensures the container can read and write to the volume while preventing other pods from accessing it.
+When the volume is prepared for the pod, the container runtime normally relabels the volume contents to match the pod's SELinux context. For supported persistent volumes, Kubernetes can instead use a mount option to apply the label without recursively walking every file. This ensures the container can read and write to the volume while preventing pods with different SELinux labels from accessing it.
 
 ## Using SELinux with Persistent Volumes
 
-Persistent volumes require special consideration with SELinux. You need to ensure that the volume's SELinux context matches what your pods expect. Kubernetes can automatically relabel volumes, but this process has implications.
+Persistent volumes require special consideration with SELinux. You need to ensure that the volume's SELinux context matches what your pods expect. Kubernetes and the container runtime can apply the expected label to volumes, but this process has implications.
 
 ```yaml
 apiVersion: v1
@@ -101,7 +101,7 @@ spec:
       claimName: postgres-pvc
 ```
 
-Kubernetes recursively relabels all files on the volume to match the pod's SELinux context. For large volumes, this relabeling can take significant time during pod startup. You can avoid this delay by pre-labeling volumes or using `FSGroup` policies.
+By default, the container runtime recursively relabels all files on the volume to match the pod's SELinux context. For large volumes, this relabeling can take significant time during pod startup. On supported volume types and CSI drivers that opt in to SELinux mount support, Kubernetes can avoid this delay by mounting the volume with the correct SELinux context; pods can also opt out of mount-option labeling by setting `spec.securityContext.seLinuxChangePolicy` to `Recursive`.
 
 ## Combining SELinux with Other Security Mechanisms
 
@@ -159,7 +159,7 @@ ps -eZ | grep container_t
 ls -Z /var/lib/kubelet/pods/
 ```
 
-Common issues include mismatched labels between pods and volumes, restrictive default policies, or conflicts with PodSecurityPolicies. Understanding the denial messages helps you adjust labels appropriately.
+Common issues include mismatched labels between pods and volumes, restrictive default policies, or admission policies such as Pod Security Admission rejecting an SELinux type that is not allowed by the selected policy level. Understanding the denial messages helps you adjust labels appropriately.
 
 ## Creating Custom SELinux Policies
 
@@ -196,7 +196,7 @@ spec:
           path: /etc/selinux/targeted/policy
 ```
 
-This approach ensures all nodes have consistent SELinux policies that match your workload requirements. You can version control your policies and roll them out systematically across your cluster.
+This approach can help keep nodes consistent, but production policy installation should use the host distribution's SELinux tooling such as `semodule` rather than only copying files into the policy directory. You can version control your policies and roll them out systematically across your cluster.
 
 ## SELinux in Multi-Tenant Environments
 

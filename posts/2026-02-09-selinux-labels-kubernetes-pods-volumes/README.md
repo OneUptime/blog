@@ -62,7 +62,7 @@ spec:
     emptyDir: {}
 ```
 
-The `level` field uses Multi-Category Security (MCS) to isolate containers. Each container gets a unique category pair preventing access to other containers' data.
+The `level` field uses Multi-Category Security (MCS) to isolate containers. Choose a valid category pair for each pod or container that needs an explicit label; when you do not specify one, the container runtime allocates a random SELinux context.
 
 ## Container-Specific SELinux Labels
 
@@ -106,7 +106,7 @@ Each container gets isolated MCS categories preventing cross-container access.
 
 ## Volume SELinux Labels
 
-Set SELinux labels on volumes for proper access:
+Set the pod SELinux label so Kubernetes and the container runtime can label volumes for proper access:
 
 ```yaml
 apiVersion: v1
@@ -135,11 +135,11 @@ spec:
       claimName: postgres-pvc
 ```
 
-When using PersistentVolumes, the CSI driver must support SELinux labeling. Most modern drivers handle this automatically.
+When using PersistentVolumes, Kubernetes normally relies on the container runtime to recursively relabel volume contents. For faster mount-time labeling, the volume plugin or CSI driver must explicitly support SELinux mount options.
 
 ## Persistent Volume Claims with SELinux
 
-Configure PVCs with appropriate access modes for SELinux:
+Configure PVCs with access modes that are compatible with your SELinux relabeling strategy:
 
 ```yaml
 apiVersion: v1
@@ -175,7 +175,7 @@ spec:
       claimName: app-data-pvc
 ```
 
-The CSI driver relabels the volume to match the pod's SELinux context during mount.
+If the Kubernetes version, feature gates, access mode, and storage driver support SELinux mount options, kubelet passes the pod's SELinux context during mount. Otherwise, the container runtime recursively relabels the volume contents.
 
 ## Debugging SELinux Denials
 
@@ -258,7 +258,7 @@ Both fsGroup and SELinux labels apply, providing layered security.
 
 ## HostPath Volumes and SELinux
 
-HostPath volumes require specific SELinux types:
+HostPath volumes are not automatically relabeled by Kubernetes. Infrastructure pods that need broad host access often run with a privileged SELinux type:
 
 ```yaml
 apiVersion: v1
@@ -283,7 +283,7 @@ spec:
       type: Directory
 ```
 
-The `spc_t` type allows access to host resources but should only be used for infrastructure pods.
+The `spc_t` type is used for super-privileged containers and should only be used for trusted infrastructure pods. For less privileged workloads, label the host path with a type that the container policy allows instead of broadening the container domain.
 
 ## StatefulSet with SELinux
 
@@ -307,7 +307,7 @@ spec:
     spec:
       securityContext:
         seLinuxOptions:
-          level: "s0:c1100,c1200"
+          level: "s0:c110,c120"
           type: "container_t"
       containers:
       - name: redis
@@ -327,7 +327,7 @@ spec:
           storage: 10Gi
 ```
 
-Each replica gets the same SELinux level, allowing consistent volume access.
+Each replica gets the same valid SELinux level, allowing consistent access to its own PVC. If replicas share a volume on the same node, they must use compatible SELinux labels or opt into recursive relabeling where supported.
 
 ## Custom SELinux Policies
 
