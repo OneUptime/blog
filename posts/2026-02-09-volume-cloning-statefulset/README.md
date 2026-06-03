@@ -8,7 +8,7 @@ Description: Learn how to leverage volume cloning to rapidly scale StatefulSets 
 
 ---
 
-StatefulSets typically provision empty volumes for each new replica, requiring time-consuming data initialization. Volume cloning enables rapid scaling by duplicating existing volumes with pre-populated data to new replicas.
+StatefulSets typically provision empty volumes for each new replica, requiring time-consuming data initialization. Volume cloning enables rapid scaling by duplicating existing, consistent source volumes with pre-populated data to new replicas.
 
 ## Understanding StatefulSet Volume Cloning
 
@@ -17,20 +17,33 @@ Volume cloning for StatefulSets enables:
 1. Rapid replica scaling with pre-populated data
 2. Consistent initialization across all replicas
 3. Reduced startup time for new pods
-4. Database replication setup automation
+4. Faster database replication setup
 5. Testing with production-like data
 
 This approach works best for read replicas and cache layers.
 
 ## Basic StatefulSet with Volume Cloning
 
-Create a StatefulSet that clones volumes:
+Create the source StatefulSet and PVC that replicas will clone from. The source PVC should be populated from a consistent database backup or from a stopped/quiesced pod before cloning:
 
 ```yaml
 apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-master
+spec:
+  clusterIP: None
+  selector:
+    app: postgres
+    role: master
+  ports:
+  - port: 5432
+    targetPort: 5432
+---
+apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: postgres-master-pvc
+  name: postgres-seed-pvc
 spec:
   accessModes:
     - ReadWriteOnce
@@ -72,7 +85,7 @@ spec:
       volumes:
       - name: data
         persistentVolumeClaim:
-          claimName: postgres-master-pvc
+          claimName: postgres-seed-pvc
 ```
 
 Create replicas with cloned volumes:
@@ -94,9 +107,9 @@ PVC_NAME="postgres-replica-${REPLICA_NUM}-pvc"
 
 echo "=== Creating PostgreSQL Replica $REPLICA_NUM ==="
 
-# Clone master volume
+# Clone the prepared source volume
 
-echo "Cloning master volume..."
+echo "Cloning source volume..."
 
 kubectl apply -f - <<EOF
 apiVersion: v1
@@ -116,7 +129,7 @@ spec:
   storageClassName: fast-ssd
   dataSource:
     kind: PersistentVolumeClaim
-    name: postgres-master-pvc
+    name: postgres-seed-pvc
 EOF
 
 # Wait for clone
@@ -144,6 +157,15 @@ spec:
       value: "password123"
     - name: PGDATA
       value: /var/lib/postgresql/data/pgdata
+    command:
+    - /bin/bash
+    - -c
+    - |
+      touch /var/lib/postgresql/data/pgdata/standby.signal
+      cat > /var/lib/postgresql/data/pgdata/postgresql.auto.conf <<PGCONF
+      primary_conninfo = 'host=postgres-master-0.postgres-master port=5432 user=postgres password=password123'
+      PGCONF
+      exec postgres
     ports:
     - containerPort: 5432
     volumeMounts:
@@ -181,7 +203,7 @@ spec:
         - name: TARGET_REPLICAS
           value: "3"
         - name: MASTER_PVC
-          value: "postgres-master-pvc"
+          value: "postgres-seed-pvc"
         command:
         - /bin/bash
         - -c
@@ -206,7 +228,7 @@ spec:
 
             PVC_NAME="postgres-replica-${i}-pvc"
 
-            # Clone master volume
+            # Clone the prepared source volume
             kubectl apply -f - <<EOF
             apiVersion: v1
             kind: PersistentVolumeClaim
@@ -256,7 +278,7 @@ spec:
                   # Configure as read replica
                   touch /var/lib/postgresql/data/pgdata/standby.signal
                   cat > /var/lib/postgresql/data/pgdata/postgresql.auto.conf <<PGCONF
-                  primary_conninfo = 'host=postgres-master-0 port=5432 user=postgres'
+                  primary_conninfo = 'host=postgres-master-0.postgres-master port=5432 user=postgres password=password123'
                   PGCONF
                   exec postgres
                 ports:
@@ -292,15 +314,15 @@ spec:
           echo "✓ Scaling complete"
 ```
 
-## Redis Cluster Scaling with Cloning
+## Redis Replica Scaling with Cloning
 
-Scale Redis cluster with cloned data:
+Scale Redis replicas with cloned data:
 
 ```yaml
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: scale-redis-cluster
+  name: scale-redis-replicas
 spec:
   template:
     spec:
@@ -310,22 +332,23 @@ spec:
       - name: scaler
         image: bitnami/kubectl:latest
         env:
-        - name: TARGET_NODES
-          value: "6"
+        - name: REPLICAS_PER_MASTER
+          value: "1"
         command:
         - /bin/bash
         - -c
         - |
           set -e
 
-          echo "=== Scaling Redis Cluster ==="
+          echo "=== Scaling Redis Replicas ==="
 
           # Get master nodes
           MASTERS=$(kubectl get pod -l app=redis,role=master \
             -o jsonpath='{.items[*].metadata.name}')
 
           for MASTER in $MASTERS; do
-            MASTER_PVC="${MASTER}-pvc"
+            # Use a seed PVC created from a consistent snapshot of the master.
+            MASTER_PVC="${MASTER}-seed-pvc"
 
             echo "Creating replica for master: $MASTER"
 
@@ -389,7 +412,7 @@ spec:
             echo "✓ Replica created for $MASTER"
           done
 
-          echo "✓ Redis cluster scaled"
+          echo "✓ Redis replicas scaled"
 ```
 
 ## Monitoring Cloned Replica Performance
@@ -435,7 +458,7 @@ done
 
 ## Best Practices
 
-1. **Clone from consistent snapshots** for clean initialization
+1. **Clone from bound, available source PVCs** that are not actively in use, or use PVCs restored from consistent snapshots for clean initialization
 2. **Configure replication** immediately after cloning
 3. **Monitor clone performance** during scaling operations
 4. **Test failover** from replicas to masters
