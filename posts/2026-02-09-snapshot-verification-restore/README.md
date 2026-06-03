@@ -137,7 +137,7 @@ spec:
 EOF
 
 # Wait for pod completion
-if ! kubectl wait -n $NAMESPACE --for=condition=ready \
+if ! kubectl wait -n $NAMESPACE --for=jsonpath='{.status.phase}'=Succeeded \
   pod/verify-${SNAPSHOT_NAME} --timeout=60s; then
   echo "✗ Verification pod failed"
   kubectl logs verify-${SNAPSHOT_NAME} -n $NAMESPACE || true
@@ -414,7 +414,7 @@ echo "=== Failed Verifications ==="
 kubectl get volumesnapshot -o json | jq -r '
   .items[] |
   select(.metadata.annotations."verification-status" == "failed") |
-  "\(.metadata.name)\t\(.metadata.annotations.\"last-verified\")"
+  "\(.metadata.name)\t\(.metadata.annotations."last-verified")"
 ' | column -t -s $'\t'
 ```
 
