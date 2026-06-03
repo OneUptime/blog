@@ -16,7 +16,7 @@ It's an intentional trade-off. Writes become evenly distributed, but reads becom
 
 Write sharding is appropriate when:
 
-- A single partition key value receives more than 1,000 writes per second
+- A single partition key value receives more than 1,000 write capacity units per second
 - You're seeing throttling despite having enough table-level capacity
 - Your access pattern naturally funnels writes to a few keys (counters, leaderboards, popular items)
 - DynamoDB's adaptive capacity can't keep up with your write spikes
@@ -33,8 +33,17 @@ Common scenarios that need sharding:
 The simplest approach: append a random number to the partition key.
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  GetCommand,
+  PutCommand,
+  QueryCommand,
+  UpdateCommand
+} = require('@aws-sdk/lib-dynamodb');
+
+const client = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(client);
 
 const SHARD_COUNT = 20;  // Number of shards
 
@@ -43,7 +52,7 @@ async function writeEvent(eventType, eventData) {
   const shard = Math.floor(Math.random() * SHARD_COUNT);
   const partitionKey = `${eventType}#${shard}`;
 
-  await docClient.put({
+  await docClient.send(new PutCommand({
     TableName: 'Events',
     Item: {
       pk: partitionKey,
@@ -52,7 +61,7 @@ async function writeEvent(eventType, eventData) {
       data: eventData,
       timestamp: new Date().toISOString()
     }
-  }).promise();
+  }));
 }
 
 // Read: query all shards and merge
@@ -69,7 +78,7 @@ async function getEvents(eventType, startTime, endTime) {
         ':end': endTime
       }
     };
-    promises.push(docClient.query(params).promise());
+    promises.push(docClient.send(new QueryCommand(params)));
   }
 
   const results = await Promise.all(promises);
@@ -80,7 +89,7 @@ async function getEvents(eventType, startTime, endTime) {
 }
 ```
 
-With 20 shards, your write throughput capacity for a single logical key is 20x higher (20 x 1,000 WCUs = 20,000 WCUs).
+With 20 shards, your write throughput capacity for a single logical key can be up to 20x higher for 1 KB writes (20 x 1,000 WCUs = 20,000 WCUs), assuming the suffixed keys are distributed evenly and the table has enough capacity.
 
 ## Calculated Sharding
 
@@ -103,14 +112,14 @@ async function logUserAction(eventType, userId, action) {
   const shard = getShard(userId);
   const partitionKey = `${eventType}#${shard}`;
 
-  await docClient.put({
+  await docClient.send(new PutCommand({
     TableName: 'UserActions',
     Item: {
       pk: partitionKey,
       sk: `${userId}#${Date.now()}`,
       action: action
     }
-  }).promise();
+  }));
 }
 
 // Read for a specific user: only need to query one shard
@@ -118,14 +127,14 @@ async function getUserActions(eventType, userId) {
   const shard = getShard(userId);
   const partitionKey = `${eventType}#${shard}`;
 
-  const result = await docClient.query({
+  const result = await docClient.send(new QueryCommand({
     TableName: 'UserActions',
     KeyConditionExpression: 'pk = :pk AND begins_with(sk, :userId)',
     ExpressionAttributeValues: {
       ':pk': partitionKey,
       ':userId': `${userId}#`
     }
-  }).promise();
+  }));
 
   return result.Items;
 }
@@ -144,13 +153,13 @@ const COUNTER_SHARDS = 10;
 async function incrementCounter(counterName) {
   const shard = Math.floor(Math.random() * COUNTER_SHARDS);
 
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Counters',
     Key: { counterId: `${counterName}#${shard}` },
     UpdateExpression: 'ADD #count :inc',
     ExpressionAttributeNames: { '#count': 'count' },
     ExpressionAttributeValues: { ':inc': 1 }
-  }).promise();
+  }));
 }
 
 // Read the total counter value by summing all shards
@@ -159,10 +168,10 @@ async function getCounterValue(counterName) {
 
   for (let i = 0; i < COUNTER_SHARDS; i++) {
     promises.push(
-      docClient.get({
+      docClient.send(new GetCommand({
         TableName: 'Counters',
         Key: { counterId: `${counterName}#${i}` }
-      }).promise()
+      }))
     );
   }
 
@@ -171,26 +180,26 @@ async function getCounterValue(counterName) {
 }
 ```
 
-With 10 shards, you can handle 10,000 increments per second on a single logical counter. The read is still fast since you're doing 10 parallel GetItem operations.
+With 10 shards, you can handle up to 10,000 1 KB increments per second on a single logical counter, assuming the table has enough capacity and the writes are evenly distributed. The read is still fast since you're doing 10 parallel GetItem operations.
 
 ## Choosing the Number of Shards
 
 How many shards should you use? It depends on your peak write throughput:
 
 ```text
-Shards needed = Peak writes per second / 1,000 WCUs per partition
+Shards needed = Peak write WCUs per second / 1,000 WCUs per partition
 ```
 
 Add a buffer for safety:
 
 ```javascript
 // Example calculation
-const peakWritesPerSecond = 5000;
+const peakWriteCapacityUnitsPerSecond = 5000;
 const wCUsPerPartition = 1000;
 const safetyMultiplier = 1.5;
 
 const shards = Math.ceil(
-  (peakWritesPerSecond / wCUsPerPartition) * safetyMultiplier
+  (peakWriteCapacityUnitsPerSecond / wCUsPerPartition) * safetyMultiplier
 );
 // Result: 8 shards
 
@@ -204,21 +213,18 @@ More shards means better write distribution but more complex reads. Don't over-s
 The read pattern for sharded data is called scatter-gather. You scatter queries across all shards and gather the results:
 
 ```javascript
-// Scatter-gather with pagination support
+// Scatter-gather with pagination awareness
 async function scatterGatherQuery(baseKey, shardCount, queryParams) {
   // Scatter: query all shards in parallel
   const promises = Array.from({ length: shardCount }, (_, shard) => {
     const params = {
       ...queryParams,
-      KeyConditionExpression: queryParams.KeyConditionExpression.replace(
-        ':pk', `:pk`
-      ),
       ExpressionAttributeValues: {
         ...queryParams.ExpressionAttributeValues,
         ':pk': `${baseKey}#${shard}`
       }
     };
-    return docClient.query(params).promise();
+    return docClient.send(new QueryCommand(params));
   });
 
   const results = await Promise.all(promises);
@@ -230,7 +236,8 @@ async function scatterGatherQuery(baseKey, shardCount, queryParams) {
     items: allItems,
     count: allItems.length,
     // Track if any shard has more pages
-    hasMore: results.some(r => r.LastEvaluatedKey)
+    hasMore: results.some(r => r.LastEvaluatedKey),
+    lastEvaluatedKeys: results.map(r => r.LastEvaluatedKey || null)
   };
 }
 ```
@@ -254,20 +261,22 @@ function getShardedTimeKey(metricName, intervalMinutes = 5) {
 
 // Write metric data point
 async function writeMetric(metricName, value) {
-  await docClient.put({
+  await docClient.send(new PutCommand({
     TableName: 'Metrics',
     Item: {
       pk: getShardedTimeKey(metricName),
       sk: `${Date.now()}`,
       value: value
     }
-  }).promise();
+  }));
 }
 
 // Read metrics for a time range
 async function readMetrics(metricName, startTime, endTime, intervalMinutes = 5) {
   const buckets = [];
-  let current = new Date(startTime);
+  let current = new Date(
+    Math.floor(new Date(startTime).getTime() / (intervalMinutes * 60000)) * (intervalMinutes * 60000)
+  );
   const end = new Date(endTime);
 
   while (current <= end) {
@@ -280,13 +289,13 @@ async function readMetrics(metricName, startTime, endTime, intervalMinutes = 5) 
   for (const bucket of buckets) {
     for (let shard = 0; shard < SHARD_COUNT; shard++) {
       promises.push(
-        docClient.query({
+        docClient.send(new QueryCommand({
           TableName: 'Metrics',
           KeyConditionExpression: 'pk = :pk',
           ExpressionAttributeValues: {
             ':pk': `${metricName}#${bucket}#${shard}`
           }
-        }).promise()
+        }))
       );
     }
   }
@@ -303,18 +312,18 @@ If your traffic patterns change, you might want to adjust shard counts dynamical
 ```javascript
 // Store shard configuration
 async function setShardCount(logicalKey, count) {
-  await docClient.put({
+  await docClient.send(new PutCommand({
     TableName: 'ShardConfig',
     Item: { key: logicalKey, shardCount: count }
-  }).promise();
+  }));
 }
 
 // Get current shard count
 async function getShardCount(logicalKey) {
-  const result = await docClient.get({
+  const result = await docClient.send(new GetCommand({
     TableName: 'ShardConfig',
     Key: { key: logicalKey }
-  }).promise();
+  }));
   return result.Item?.shardCount || 1;
 }
 ```
