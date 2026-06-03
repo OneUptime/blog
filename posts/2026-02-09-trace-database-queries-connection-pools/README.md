@@ -28,12 +28,14 @@ package database
 
 import (
     "context"
-    "fmt"
     "time"
 
+    "github.com/jackc/pgx/v5"
+    "github.com/jackc/pgx/v5/pgconn"
     "github.com/jackc/pgx/v5/pgxpool"
     "go.opentelemetry.io/otel"
     "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/codes"
     "go.opentelemetry.io/otel/trace"
 )
 
@@ -64,17 +66,16 @@ func NewTracedDB(ctx context.Context, connString string) (*TracedDB, error) {
     return &TracedDB{Pool: pool}, nil
 }
 
-func (db *TracedDB) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+func (db *TracedDB) QueryRowContext(ctx context.Context, query string, args ...any) pgx.Row {
     // Create span for database query
     ctx, span := tracer.Start(ctx, "db.query",
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
-            attribute.String("db.system", "postgresql"),
-            attribute.String("db.operation", "SELECT"),
-            attribute.String("db.statement", query),
+            attribute.String("db.system.name", "postgresql"),
+            attribute.String("db.operation.name", "SELECT"),
+            attribute.String("db.query.text", query),
         ),
     )
-    defer span.End()
 
     // Track connection pool stats
     stats := db.Stat()
@@ -89,9 +90,10 @@ func (db *TracedDB) QueryContext(ctx context.Context, query string, args ...inte
     conn, err := db.Acquire(ctx)
     if err != nil {
         span.RecordError(err)
-        return nil, err
+        span.SetStatus(codes.Error, err.Error())
+        span.End()
+        return errorRow{err: err}
     }
-    defer conn.Release()
 
     acquireDuration := time.Since(acquireStart)
     span.SetAttributes(
@@ -106,37 +108,66 @@ func (db *TracedDB) QueryContext(ctx context.Context, query string, args ...inte
     }
 
     // Execute query
-    queryStart := time.Now()
-    rows, err := conn.Query(ctx, query, args...)
-    queryDuration := time.Since(queryStart)
+    return &tracedRow{
+        Row:        conn.QueryRow(ctx, query, args...),
+        conn:       conn,
+        span:       span,
+        query:      query,
+        queryStart: time.Now(),
+    }
+}
 
-    span.SetAttributes(
+type tracedRow struct {
+    pgx.Row
+    conn       *pgxpool.Conn
+    span       trace.Span
+    query      string
+    queryStart time.Time
+}
+
+func (r *tracedRow) Scan(dest ...any) error {
+    defer r.span.End()
+    defer r.conn.Release()
+
+    err := r.Row.Scan(dest...)
+    queryDuration := time.Since(r.queryStart)
+
+    r.span.SetAttributes(
         attribute.Int64("db.query.duration_ms", queryDuration.Milliseconds()),
     )
 
     if err != nil {
-        span.RecordError(err)
-        return nil, err
+        r.span.RecordError(err)
+        r.span.SetStatus(codes.Error, err.Error())
+        return err
     }
 
     // Record slow query
     if queryDuration > 500*time.Millisecond {
-        span.AddEvent("slow_query", trace.WithAttributes(
+        r.span.AddEvent("slow_query", trace.WithAttributes(
             attribute.Int64("duration_ms", queryDuration.Milliseconds()),
-            attribute.String("query", query),
+            attribute.String("query", r.query),
         ))
     }
 
-    return rows, nil
+    return nil
 }
 
-func (db *TracedDB) ExecContext(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
+type errorRow struct {
+    err error
+}
+
+func (r errorRow) Scan(dest ...any) error {
+    return r.err
+}
+
+func (db *TracedDB) ExecContext(ctx context.Context, query string, args ...any) (pgconn.CommandTag, error) {
     ctx, span := tracer.Start(ctx, "db.exec",
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
-            attribute.String("db.system", "postgresql"),
-            attribute.String("db.operation", "UPDATE"),
-            attribute.String("db.statement", query),
+            attribute.String("db.system.name", "postgresql"),
+            attribute.String("db.operation.name", "UPDATE"),
+            attribute.String("db.query.text", query),
         ),
     )
     defer span.End()
@@ -144,14 +175,16 @@ func (db *TracedDB) ExecContext(ctx context.Context, query string, args ...inter
     conn, err := db.Acquire(ctx)
     if err != nil {
         span.RecordError(err)
-        return nil, err
+        span.SetStatus(codes.Error, err.Error())
+        return pgconn.CommandTag{}, err
     }
     defer conn.Release()
 
     result, err := conn.Exec(ctx, query, args...)
     if err != nil {
         span.RecordError(err)
-        return nil, err
+        span.SetStatus(codes.Error, err.Error())
+        return pgconn.CommandTag{}, err
     }
 
     span.SetAttributes(
@@ -170,7 +203,7 @@ func getUser(ctx context.Context, db *database.TracedDB, userID string) (*User, 
     query := "SELECT id, email, created_at FROM users WHERE id = $1"
 
     var user User
-    err := db.QueryContext(ctx, query, userID).Scan(&user.ID, &user.Email, &user.CreatedAt)
+    err := db.QueryRowContext(ctx, query, userID).Scan(&user.ID, &user.Email, &user.CreatedAt)
     if err != nil {
         return nil, err
     }
@@ -189,8 +222,8 @@ func (db *TracedDB) BeginTx(ctx context.Context) (*TracedTx, error) {
     ctx, span := tracer.Start(ctx, "db.transaction",
         trace.WithSpanKind(trace.SpanKindClient),
         trace.WithAttributes(
-            attribute.String("db.system", "postgresql"),
-            attribute.String("db.operation", "BEGIN"),
+            attribute.String("db.system.name", "postgresql"),
+            attribute.String("db.operation.name", "BEGIN"),
         ),
     )
 
@@ -300,20 +333,13 @@ Query traces for database insights:
 
 ```bash
 # Find slow queries
-curl 'http://tempo:3100/api/search' -d '{
-  "tags": {
-    "db.system": "postgresql",
-    "span.kind": "client"
-  },
-  "minDuration": "500ms"
-}'
+curl -G -s 'http://tempo:3100/api/search' \
+  --data-urlencode 'q={ span.db.system.name = "postgresql" && span:kind = client }' \
+  --data-urlencode 'minDuration=500ms'
 
 # Find connection pool issues
-curl 'http://tempo:3100/api/search' -d '{
-  "tags": {
-    "event.name": "slow_connection_acquisition"
-  }
-}'
+curl -G -s 'http://tempo:3100/api/search' \
+  --data-urlencode 'q={ event:name = "slow_connection_acquisition" }'
 ```
 
 Database query tracing provides complete visibility into data access patterns from Kubernetes pods. By capturing query execution, connection pool behavior, and transaction boundaries, you identify performance bottlenecks and optimize database interactions.
