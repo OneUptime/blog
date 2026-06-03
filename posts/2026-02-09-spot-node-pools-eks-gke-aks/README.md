@@ -18,7 +18,7 @@ Spot instances work differently on each cloud:
 
 **AWS Spot Instances** - Can be interrupted with 2 minutes notice when AWS needs capacity. You receive interruption notices via EC2 metadata and EventBridge events.
 
-**GCP Preemptible VMs** - Run for maximum 24 hours and can be preempted with 30 seconds notice. Preemption notifications come through metadata server.
+**GCP Spot VMs** - Can be preempted when Compute Engine needs capacity. Spot VMs replace the older preemptible VMs, which had a 24-hour maximum runtime. Preemption notifications come through metadata server, and the shutdown period is best effort up to 30 seconds.
 
 **Azure Spot VMs** - Can be evicted when Azure needs capacity or when your max price is exceeded. You get eviction notices through Azure metadata service.
 
@@ -44,7 +44,7 @@ managedNodeGroups:
       - t3.medium
       - t3a.medium
       - t2.medium
-    capacityType: SPOT
+    spot: true
     minSize: 2
     maxSize: 10
     desiredCapacity: 3
@@ -65,7 +65,7 @@ Create the node group:
 eksctl create nodegroup --config-file=spot-nodegroup.yaml
 ```
 
-Using multiple instance types increases availability. EKS automatically picks the best spot price across the types you specify.
+Using multiple instance types increases availability. EKS uses a Spot allocation strategy that optimizes for capacity, or price and capacity on newer Kubernetes versions, across the types you specify.
 
 For Terraform:
 
@@ -106,7 +106,7 @@ resource "aws_eks_node_group" "spot" {
 
 ## Handling Spot Interruptions on EKS
 
-Install AWS Node Termination Handler to handle spot interruptions:
+EKS managed node groups handle Spot rebalancing and interruption draining automatically on a best-effort basis. If you use self-managed node groups or want to handle additional EC2 scheduled events, install AWS Node Termination Handler:
 
 ```bash
 # Install using Helm
@@ -169,10 +169,10 @@ spec:
 
 ## Creating Spot Node Pools on GKE
 
-GKE supports preemptible VMs in node pools. Create a preemptible node pool:
+GKE supports Spot VMs in node pools. Create a Spot VM node pool:
 
 ```bash
-# Create preemptible node pool
+# Create Spot VM node pool
 gcloud container node-pools create spot-pool \
   --cluster=my-cluster \
   --zone=us-central1-a \
@@ -235,7 +235,7 @@ resource "google_container_node_pool" "spot_pool" {
 
 ## Handling Preemptions on GKE
 
-GKE automatically handles preemption notices and drains nodes. However, you should use Pod Disruption Budgets to ensure availability:
+GKE uses graceful node shutdown for Spot VM preemptions. By default, Pods have 15 seconds to shut down before system Pods get the remaining 15 seconds. You should still use Pod Disruption Budgets to reduce voluntary disruption risk:
 
 ```yaml
 apiVersion: policy/v1
@@ -249,7 +249,7 @@ spec:
       app: batch-processor
 ```
 
-This ensures at least 2 pods remain available during node drains.
+This helps keep at least 2 pods available during voluntary node drains, but Spot VM reclamation is involuntary and can exceed your Pod Disruption Budget.
 
 Deploy workloads to spot nodes:
 
@@ -311,8 +311,8 @@ az aks nodepool add \
   --max-count 10 \
   --node-count 3 \
   --node-vm-size Standard_D2s_v3 \
-  --labels workload-type=batch capacity-type=spot \
-  --node-taints spot=true:NoSchedule
+  --labels workload-type=batch \
+  --node-taints kubernetes.azure.com/scalesetpriority=spot:NoSchedule
 ```
 
 The `--spot-max-price -1` setting means you pay up to the current on-demand price, preventing evictions due to price.
@@ -337,11 +337,11 @@ resource "azurerm_kubernetes_cluster_node_pool" "spot" {
 
   node_labels = {
     "workload-type" = "batch"
-    "capacity-type" = "spot"
+    "kubernetes.azure.com/scalesetpriority" = "spot"
   }
 
   node_taints = [
-    "spot=true:NoSchedule"
+    "kubernetes.azure.com/scalesetpriority=spot:NoSchedule"
   ]
 
   tags = {
@@ -353,12 +353,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "spot" {
 
 ## Handling Evictions on AKS
 
-Install the Azure Spot Eviction Handler to process eviction notices:
-
-```bash
-# Install using kubectl
-kubectl apply -f https://raw.githubusercontent.com/Azure/kubernetes-spot-eviction-handler/main/deployment.yaml
-```
+AKS node auto-drain processes Spot VM preempt events by cordoning and draining the affected node on a best-effort basis. Redeploy and Preempt events use the default behavior and do not require extra configuration.
 
 Schedule workloads on spot nodes with tolerations:
 
@@ -378,9 +373,9 @@ spec:
         app: data-processor
     spec:
       tolerations:
-      - key: spot
+      - key: kubernetes.azure.com/scalesetpriority
         operator: Equal
-        value: "true"
+        value: "spot"
         effect: NoSchedule
 
       affinity:
@@ -389,7 +384,7 @@ spec:
           - weight: 100
             preference:
               matchExpressions:
-              - key: capacity-type
+              - key: kubernetes.azure.com/scalesetpriority
                 operator: In
                 values:
                 - spot
