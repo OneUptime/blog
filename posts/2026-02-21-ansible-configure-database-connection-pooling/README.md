@@ -212,8 +212,6 @@ stats_users = pgbouncer_stats
 The user authentication file template.
 
 ```jinja2
-;; templates/userlist.txt.j2
-;; PgBouncer user list - managed by Ansible
 "{{ vault_app_db_user }}" "{{ vault_app_db_password }}"
 "pgbouncer_admin" "{{ vault_pgbouncer_admin_password }}"
 "pgbouncer_stats" "{{ vault_pgbouncer_stats_password }}"
@@ -231,14 +229,29 @@ ProxySQL is the equivalent for MySQL. It provides connection pooling, query rout
   become: true
 
   tasks:
-    - name: Add ProxySQL repository key
-      ansible.builtin.apt_key:
-        url: https://repo.proxysql.com/ProxySQL/proxysql-2.6.x/repo_pub_key
+    - name: Install repository prerequisites
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - gnupg
         state: present
+        update_cache: true
+
+    - name: Create APT keyring directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        mode: "0755"
+
+    - name: Add ProxySQL repository keyring
+      ansible.builtin.get_url:
+        url: https://repo.proxysql.com/ProxySQL/proxysql-2.6.x/repo_pub_key.gpg
+        dest: /etc/apt/keyrings/proxysql-2.6.x-keyring.gpg
+        mode: "0644"
 
     - name: Add ProxySQL repository
       ansible.builtin.apt_repository:
-        repo: "deb https://repo.proxysql.com/ProxySQL/proxysql-2.6.x/{{ ansible_distribution_release }}/ ./"
+        repo: "deb [signed-by=/etc/apt/keyrings/proxysql-2.6.x-keyring.gpg] https://repo.proxysql.com/ProxySQL/proxysql-2.6.x/{{ ansible_distribution_release }}/ ./"
         state: present
         filename: proxysql
 
@@ -268,6 +281,7 @@ Configure ProxySQL through its admin interface.
   vars:
     proxysql_admin_port: 6032
     proxysql_mysql_port: 6033
+    proxysql_backend_pool_size: 30
 
   tasks:
     - name: Add MySQL backend server to ProxySQL
@@ -275,9 +289,10 @@ Configure ProxySQL through its admin interface.
         cmd: >
           mysql -h 127.0.0.1 -P {{ proxysql_admin_port }}
           -u admin -padmin
-          -e "INSERT INTO mysql_servers (hostgroup_id, hostname, port, max_connections)
-              VALUES (0, '{{ mysql_host }}', {{ mysql_port }}, 100)
-              ON DUPLICATE KEY UPDATE max_connections=100;"
+          -e "DELETE FROM mysql_servers
+              WHERE hostgroup_id=0 AND hostname='{{ mysql_host }}' AND port={{ mysql_port }};
+              INSERT INTO mysql_servers (hostgroup_id, hostname, port, max_connections)
+              VALUES (0, '{{ mysql_host }}', {{ mysql_port }}, {{ proxysql_backend_pool_size }});"
       changed_when: true
 
     - name: Add application user to ProxySQL
@@ -285,20 +300,12 @@ Configure ProxySQL through its admin interface.
         cmd: >
           mysql -h 127.0.0.1 -P {{ proxysql_admin_port }}
           -u admin -padmin
-          -e "INSERT INTO mysql_users (username, password, default_hostgroup, max_connections)
-              VALUES ('{{ vault_app_db_user }}', '{{ vault_app_db_password }}', 0, 200)
-              ON DUPLICATE KEY UPDATE password='{{ vault_app_db_password }}';"
+          -e "DELETE FROM mysql_users
+              WHERE username='{{ vault_app_db_user }}';
+              INSERT INTO mysql_users (username, password, default_hostgroup, max_connections)
+              VALUES ('{{ vault_app_db_user }}', '{{ vault_app_db_password }}', 0, 200);"
       changed_when: true
       no_log: true
-
-    - name: Set connection pool size
-      ansible.builtin.command:
-        cmd: >
-          mysql -h 127.0.0.1 -P {{ proxysql_admin_port }}
-          -u admin -padmin
-          -e "UPDATE global_variables SET variable_value='30'
-              WHERE variable_name='mysql-max_connections';"
-      changed_when: true
 
     - name: Load configuration to runtime and save to disk
       ansible.builtin.command:
