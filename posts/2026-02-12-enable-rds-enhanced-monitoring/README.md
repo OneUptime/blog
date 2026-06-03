@@ -64,6 +64,8 @@ aws iam attach-role-policy \
   --policy-arn arn:aws:iam::aws:policy/service-role/AmazonRDSEnhancedMonitoringRole
 ```
 
+The IAM identity that enables Enhanced Monitoring also needs permission to pass this role to RDS (`iam:PassRole`).
+
 ## Enabling Enhanced Monitoring on a New Instance
 
 When creating a new RDS instance, include the monitoring parameters:
@@ -100,7 +102,7 @@ This change takes effect within a few minutes. There's no downtime or restart re
 
 ## Reading Enhanced Monitoring Data
 
-Enhanced Monitoring data goes to CloudWatch Logs in the `/aws/rds/enhanced-monitoring` log group. Each RDS instance gets its own log stream named after the DBI resource ID.
+Enhanced Monitoring data goes to CloudWatch Logs in the `RDSOSMetrics` log group. Each RDS instance gets its own log stream named after the DBI resource ID.
 
 You can view it in the RDS console - select your instance, then click the "Monitoring" tab and switch to "Enhanced monitoring" from the dropdown.
 
@@ -109,16 +111,18 @@ To pull the data programmatically:
 ```python
 import boto3
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 logs_client = boto3.client('logs')
+end_time = datetime.now(timezone.utc)
+start_time = end_time - timedelta(minutes=5)
 
 # Get the latest Enhanced Monitoring data
 response = logs_client.get_log_events(
-    logGroupName='/aws/rds/enhanced-monitoring',
+    logGroupName='RDSOSMetrics',
     logStreamName='db-ABCDEFGHIJKLMNOP',  # Your DBI resource ID
-    startTime=int((datetime.utcnow() - timedelta(minutes=5)).timestamp() * 1000),
-    endTime=int(datetime.utcnow().timestamp() * 1000),
+    startTime=int(start_time.timestamp() * 1000),
+    endTime=int(end_time.timestamp() * 1000),
     limit=10
 )
 
@@ -179,7 +183,7 @@ One of the most useful features is the process list. It shows you the top proces
   "processList": [
     {
       "name": "mysqld",
-      "pid": 1234,
+      "id": 1234,
       "cpuUsedPc": 45.2,
       "memoryUsedPc": 62.1,
       "vss": 8388608,
@@ -187,7 +191,7 @@ One of the most useful features is the process list. It shows you the top proces
     },
     {
       "name": "innobackupex",
-      "pid": 5678,
+      "id": 5678,
       "cpuUsedPc": 30.1,
       "memoryUsedPc": 5.2,
       "vss": 524288,
@@ -204,15 +208,23 @@ In this example, you can immediately see that both the MySQL daemon and a backup
 You can extract specific metrics from Enhanced Monitoring and publish them as custom CloudWatch metrics for alerting:
 
 ```python
+import base64
 import boto3
+import gzip
 import json
 
 cloudwatch = boto3.client('cloudwatch')
 
 def process_enhanced_monitoring(event, context):
-    """Lambda function triggered by Enhanced Monitoring log events."""
-    for record in event['Records']:
-        data = json.loads(record['body'])
+    """Lambda function triggered by a CloudWatch Logs subscription filter."""
+    payload = base64.b64decode(event['awslogs']['data'])
+    logs_data = json.loads(gzip.decompress(payload))
+
+    if logs_data.get('messageType') != 'DATA_MESSAGE':
+        return
+
+    for log_event in logs_data['logEvents']:
+        data = json.loads(log_event['message'])
 
         # Publish CPU wait percentage as a custom metric
         cloudwatch.put_metric_data(
