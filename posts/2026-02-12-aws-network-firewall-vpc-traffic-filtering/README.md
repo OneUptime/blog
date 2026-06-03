@@ -139,7 +139,7 @@ aws network-firewall create-firewall \
   --firewall-name "main-firewall" \
   --firewall-policy-arn "arn:aws:network-firewall:us-east-1:123456789012:firewall-policy/main-policy" \
   --vpc-id vpc-0abc123def456789 \
-  --subnet-mappings SubnetId=subnet-firewall-a SubnetId=subnet-firewall-b
+  --subnet-mappings SubnetId=subnet-0aaa1111bbb2222aa SubnetId=subnet-0bbb2222ccc3333bb
 ```
 
 This creates firewall endpoints in each specified subnet. The endpoints are what you'll route traffic through.
@@ -165,13 +165,13 @@ aws ec2 create-route-table \
 
 # Route traffic destined for the public subnet through the firewall endpoint
 aws ec2 create-route \
-  --route-table-id rtb-igw-edge \
+  --route-table-id rtb-0aaa1111bbb2222aa \
   --destination-cidr-block 10.0.1.0/24 \
-  --vpc-endpoint-id vpce-firewall-endpoint-a
+  --vpc-endpoint-id vpce-0aaa1111bbb2222aa
 
 # Associate the route table with the internet gateway
 aws ec2 associate-route-table \
-  --route-table-id rtb-igw-edge \
+  --route-table-id rtb-0aaa1111bbb2222aa \
   --gateway-id igw-0abc123def456789
 ```
 
@@ -180,17 +180,19 @@ For the public subnet, route internet-bound traffic through the firewall instead
 ```bash
 # Update the public subnet route table
 aws ec2 create-route \
-  --route-table-id rtb-public \
+  --route-table-id rtb-0ccc3333ddd4444cc \
   --destination-cidr-block 0.0.0.0/0 \
-  --vpc-endpoint-id vpce-firewall-endpoint-a
+  --vpc-endpoint-id vpce-0aaa1111bbb2222aa
 ```
+
+In a multi-AZ deployment, repeat the public-subnet route for each AZ and point it at the firewall endpoint in the same AZ to avoid asymmetric routing.
 
 And the firewall subnet needs a route to the IGW for traffic that passes inspection.
 
 ```bash
 # Firewall subnet route table - send inspected traffic to the IGW
 aws ec2 create-route \
-  --route-table-id rtb-firewall \
+  --route-table-id rtb-0ddd4444eee5555dd \
   --destination-cidr-block 0.0.0.0/0 \
   --gateway-id igw-0abc123def456789
 ```
@@ -246,10 +248,25 @@ resource "aws_networkfirewall_firewall" "main" {
 
 ## Logging
 
-Network Firewall supports logging to S3, CloudWatch, or Kinesis Data Firehose. Enable it to see what traffic is being inspected and what actions are being taken.
+Network Firewall supports logging to S3, CloudWatch, or Amazon Data Firehose. Enable it to see what traffic is being inspected and what actions are being taken. When you update logging, AWS requires you to add, remove, or change one `LogDestinationConfig` at a time, so enable flow and alert logs in separate updates.
 
 ```bash
-# Enable flow and alert logging to CloudWatch
+# Enable flow logging to CloudWatch
+aws network-firewall update-logging-configuration \
+  --firewall-name "main-firewall" \
+  --logging-configuration '{
+    "LogDestinationConfigs": [
+      {
+        "LogType": "FLOW",
+        "LogDestinationType": "CloudWatchLogs",
+        "LogDestination": {
+          "logGroup": "/aws/network-firewall/flows"
+        }
+      }
+    ]
+  }'
+
+# Add alert logging to the existing logging configuration
 aws network-firewall update-logging-configuration \
   --firewall-name "main-firewall" \
   --logging-configuration '{
