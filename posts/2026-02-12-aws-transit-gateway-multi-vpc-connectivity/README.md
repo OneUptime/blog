@@ -8,7 +8,7 @@ Description: Set up AWS Transit Gateway to connect multiple VPCs through a centr
 
 ---
 
-When you have three VPCs, VPC peering works fine. Six peering connections and you're done. But when you have ten, twenty, or fifty VPCs, peering becomes unmanageable. Ten VPCs need 45 peering connections for full mesh. Fifty VPCs need 1,225. That's not a network - that's a nightmare.
+When you have three VPCs, VPC peering works fine. Three peering connections and you're done. But when you have ten, twenty, or fifty VPCs, peering becomes unmanageable. Ten VPCs need 45 peering connections for full mesh. Fifty VPCs need 1,225. That's not a network - that's a nightmare.
 
 AWS Transit Gateway solves this. It acts as a central hub that all your VPCs connect to. Each VPC needs one connection to the transit gateway, and it can communicate with every other VPC that's also attached. Ten VPCs? Ten connections. Fifty VPCs? Fifty connections. It scales linearly instead of quadratically.
 
@@ -56,7 +56,7 @@ Let's break down those options:
 - `AutoAcceptSharedAttachments`: Automatically accept attachments from shared accounts (useful with AWS RAM)
 - `DefaultRouteTableAssociation`: New attachments automatically associate with the default route table
 - `DefaultRouteTablePropagation`: New attachments automatically propagate routes to the default route table
-- `DnsSupport`: Enable DNS resolution across attachments
+- `DnsSupport`: Enable resolution of public DNS hostnames to private IP addresses across attached VPCs
 - `VpnEcmpSupport`: Enable equal-cost multi-path routing for VPN connections
 
 The transit gateway takes a few minutes to become available:
@@ -70,7 +70,7 @@ aws ec2 describe-transit-gateways \
 
 ## Attaching VPCs
 
-Each VPC attachment needs at least one subnet per AZ. The transit gateway places an elastic network interface in each specified subnet:
+Each VPC attachment needs at least one subnet, and you can select only one subnet per AZ. To enable traffic from every AZ where your workloads run, select one subnet in each of those AZs. The transit gateway places an elastic network interface in each specified subnet:
 
 ```bash
 # Attach the production VPC
@@ -156,12 +156,30 @@ For more advanced routing (like isolating dev from prod), create custom route ta
 
 ## CloudFormation Template
 
-Here's a complete transit gateway setup:
+Here's a complete transit gateway setup using existing VPCs, subnets, and route tables:
 
 ```yaml
 # transit-gateway.yaml
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Transit Gateway with VPC attachments
+
+Parameters:
+  ProdVpcId:
+    Type: AWS::EC2::VPC::Id
+  ProdTransitSubnet1:
+    Type: AWS::EC2::Subnet::Id
+  ProdTransitSubnet2:
+    Type: AWS::EC2::Subnet::Id
+  ProdPrivateRouteTable:
+    Type: AWS::EC2::RouteTable::Id
+  SharedVpcId:
+    Type: AWS::EC2::VPC::Id
+  SharedTransitSubnet1:
+    Type: AWS::EC2::Subnet::Id
+  SharedTransitSubnet2:
+    Type: AWS::EC2::Subnet::Id
+  SharedPrivateRouteTable:
+    Type: AWS::EC2::RouteTable::Id
 
 Resources:
   TransitGateway:
@@ -191,12 +209,12 @@ Resources:
           Value: prod-attachment
 
   # Route from prod VPC to transit gateway
-  ProdToTGWRoute:
+  ProdToSharedRoute:
     Type: AWS::EC2::Route
     DependsOn: ProdAttachment
     Properties:
       RouteTableId: !Ref ProdPrivateRouteTable
-      DestinationCidrBlock: 10.0.0.0/8
+      DestinationCidrBlock: 172.16.0.0/16
       TransitGatewayId: !Ref TransitGateway
 
   # Attach shared services VPC
@@ -212,6 +230,15 @@ Resources:
         - Key: Name
           Value: shared-attachment
 
+  # Route from shared services VPC back to production
+  SharedToProdRoute:
+    Type: AWS::EC2::Route
+    DependsOn: SharedAttachment
+    Properties:
+      RouteTableId: !Ref SharedPrivateRouteTable
+      DestinationCidrBlock: 10.0.0.0/16
+      TransitGatewayId: !Ref TransitGateway
+
 Outputs:
   TransitGatewayId:
     Value: !Ref TransitGateway
@@ -221,14 +248,14 @@ Outputs:
 
 ## Cost Breakdown
 
-Transit gateway pricing has two components:
+Transit gateway pricing varies by Region, but commonly has two main components:
 
 - **Attachment fee**: $0.05/hour per attachment (~$36/month)
 - **Data processing**: $0.02/GB
 
 With 5 VPCs attached: 5 x $36 = $180/month baseline, plus data processing.
 
-Compare this to VPC peering, which has no hourly fee but charges $0.01/GB for data. The break-even point depends on your traffic volume. For low-traffic scenarios with few VPCs, peering is cheaper. For many VPCs or the need for advanced routing, transit gateway is worth the premium.
+Compare this to VPC peering, which has no hourly fee. Data transfer over VPC peering is free when it stays within the same Availability Zone, while cross-AZ and cross-Region traffic is charged. The break-even point depends on your traffic volume and traffic path. For low-traffic scenarios with few VPCs, peering is cheaper. For many VPCs or the need for advanced routing, transit gateway is worth the premium.
 
 ## VPC Peering vs. Transit Gateway
 
