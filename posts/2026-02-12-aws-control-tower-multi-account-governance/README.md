@@ -53,7 +53,7 @@ You can (and should) add more OUs later.
 
 **Core Accounts** - Control Tower creates two shared accounts:
 
-The Log Archive account receives all CloudTrail logs and Config logs from every account in the organization. The Audit account gets read-only access to all accounts for security reviews.
+The Log Archive account receives CloudTrail logs and AWS Config log files from accounts in the landing zone. The Audit account is a restricted account for security and compliance teams, with cross-account access intended for automated review workflows rather than manual sign-in to every account.
 
 ### Step 2: Configure IAM Identity Center
 
@@ -108,7 +108,7 @@ aws servicecatalog provision-product \
     Key=SSOUserFirstName,Value="Admin" \
     Key=SSOUserLastName,Value="User" \
     Key=SSOUserEmail,Value="admin@company.com" \
-    Key=ManagedOrganizationalUnit,Value="Sandbox"
+    Key=ManagedOrganizationalUnit,Value="Sandbox (ou-abc1-23456789)"
 ```
 
 ## Organizing Your OUs
@@ -141,14 +141,38 @@ To create a new OU:
 # Create a new OU under the organization root
 ROOT_ID=$(aws organizations list-roots --query "Roots[0].Id" --output text)
 
-aws organizations create-organizational-unit \
+OU_ID=$(aws organizations create-organizational-unit \
   --parent-id $ROOT_ID \
-  --name "Workloads"
+  --name "Workloads" \
+  --query "OrganizationalUnit.Id" \
+  --output text)
 
-# Register the new OU with Control Tower
-# This is done through the Control Tower console or API
-aws controltower register-organizational-unit \
-  --organizational-unit-id "ou-abc1-23456789"
+BASELINE_VERSION="4.0"
+
+# Register the new OU with Control Tower by enabling the AWSControlTowerBaseline
+OU_ARN=$(aws organizations describe-organizational-unit \
+  --organizational-unit-id $OU_ID \
+  --query "OrganizationalUnit.Arn" \
+  --output text)
+
+BASELINE_ARN=$(aws controltower list-baselines \
+  --query "baselines[?name=='AWSControlTowerBaseline'].arn" \
+  --output text)
+
+IDENTITY_CENTER_BASELINE_ARN=$(aws controltower list-baselines \
+  --query "baselines[?name=='IdentityCenterBaseline'].arn" \
+  --output text)
+
+IDENTITY_CENTER_ENABLED_BASELINE_ARN=$(aws controltower list-enabled-baselines \
+  --filter baselineIdentifiers=$IDENTITY_CENTER_BASELINE_ARN \
+  --query "enabledBaselines[0].arn" \
+  --output text)
+
+aws controltower enable-baseline \
+  --baseline-identifier $BASELINE_ARN \
+  --baseline-version $BASELINE_VERSION \
+  --target-identifier $OU_ARN \
+  --parameters "[{\"key\":\"IdentityCenterEnabledBaselineArn\",\"value\":\"$IDENTITY_CENTER_ENABLED_BASELINE_ARN\"}]"
 ```
 
 ## Customizing Account Factory
@@ -163,7 +187,7 @@ This lets you automatically:
 - Configure DNS settings
 - Install monitoring agents
 
-The customization blueprint is a CloudFormation template stored in a Service Catalog portfolio:
+The customization blueprint can be a CloudFormation-based Service Catalog product stored in a separate hub account:
 
 ```yaml
 # account-baseline.yaml
@@ -207,8 +231,13 @@ Control Tower detects drift automatically. You can check drift status:
 
 ```bash
 # Check landing zone drift status
-aws controltower list-landing-zones \
-  --query "landingZones[0].driftStatus"
+LANDING_ZONE_ARN=$(aws controltower list-landing-zones \
+  --query "landingZones[0].arn" \
+  --output text)
+
+aws controltower get-landing-zone \
+  --landing-zone-identifier $LANDING_ZONE_ARN \
+  --query "landingZone.driftStatus"
 ```
 
 When drift is detected, you'll see it in the Control Tower dashboard. Most drift can be resolved by re-registering the affected OU or updating the landing zone.
@@ -235,12 +264,12 @@ Wire this to a Lambda function that performs additional setup - things like addi
 
 Control Tower itself is free. But the services it enables are not:
 
-- CloudTrail charges per event (first trail in each region is free for management events)
+- CloudTrail charges for data events, network activity events, and additional copies of management events (the first copy of management events delivered in each region is free)
 - AWS Config charges per configuration item recorded
 - IAM Identity Center is free
 - The Log Archive and Audit accounts will have S3 storage costs
 
-For a small organization with 10-20 accounts, expect roughly $50-100/month in supporting service costs. That's a bargain for the governance it provides.
+For a small organization with 10-20 accounts, the supporting service costs depend heavily on how many resources change, how many governed regions you enable, and whether you log data events or run duplicate trails. Use the AWS Pricing Calculator and Cost Explorer instead of treating Control Tower as a fixed monthly line item.
 
 ## Wrapping Up
 
