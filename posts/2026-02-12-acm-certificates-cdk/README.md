@@ -8,7 +8,7 @@ Description: Provision and manage SSL/TLS certificates with AWS Certificate Mana
 
 ---
 
-SSL/TLS certificates used to be a pain - buying them, installing them, remembering to renew them. AWS Certificate Manager (ACM) makes this mostly painless by providing free public certificates that auto-renew. With CDK, you can provision certificates as part of your infrastructure stack and automatically wire them to your load balancers, CloudFront distributions, and API gateways.
+SSL/TLS certificates used to be a pain - buying them, installing them, remembering to renew them. AWS Certificate Manager (ACM) makes this mostly painless by providing standard public certificates that auto-renew. With CDK, you can provision certificates as part of your infrastructure stack and automatically wire them to your load balancers, CloudFront distributions, and API gateways.
 
 Let's cover the different ways to create and use ACM certificates with CDK.
 
@@ -101,9 +101,7 @@ The `fromDnsMultiZone` method takes a map of domain names to hosted zones, so CD
 
 ## Cross-Region Certificates for CloudFront
 
-CloudFront requires certificates to be in `us-east-1`, regardless of where your stack lives. If your main stack is in another region, you've got a couple of options.
-
-Option 1: Deploy a separate stack in us-east-1:
+CloudFront requires certificates to be in `us-east-1`, regardless of where your stack lives. If your main stack is in another region, deploy a separate certificate stack in `us-east-1`:
 
 ```typescript
 // bin/app.ts - Deploy certificate stack in us-east-1
@@ -126,17 +124,7 @@ const mainStack = new MainStack(app, 'MainStack', {
 mainStack.addDependency(certStack);
 ```
 
-Option 2: Use the `DnsValidatedCertificate` construct (note: this is being phased out but still works):
-
-```typescript
-// Cross-region certificate using DnsValidatedCertificate
-const crossRegionCert = new acm.DnsValidatedCertificate(this, 'CrossRegionCert', {
-  domainName: 'example.com',
-  subjectAlternativeNames: ['*.example.com'],
-  hostedZone: zone,
-  region: 'us-east-1', // Force creation in us-east-1
-});
-```
+You'll still see older examples that use the `DnsValidatedCertificate` construct with a `region` property, but that construct is deprecated in CDK v2. Prefer the separate `us-east-1` stack pattern above for new code.
 
 ## Using Certificates with Resources
 
@@ -216,12 +204,12 @@ While DNS validation is preferred, you might occasionally need email validation:
 const emailCert = new acm.Certificate(this, 'EmailCert', {
   domainName: 'example.com',
   validation: acm.CertificateValidation.fromEmail({
-    'example.com': 'admin@example.com',
+    'example.com': 'example.com',
   }),
 });
 ```
 
-Email validation sends an approval email to domain-specific addresses. It's slower and doesn't auto-renew as smoothly as DNS validation, so avoid it when you can.
+Email validation sends approval emails to common system addresses for the validation domain, such as `admin@example.com` and `webmaster@example.com`. It's slower and requires domain-owner action for renewal, so avoid it when you can.
 
 ## Certificate Transparency Logging
 
