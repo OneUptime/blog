@@ -88,6 +88,7 @@ kubectl exec -it fio-tester -- fio \
   --size=1G \
   --numjobs=4 \
   --runtime=60 \
+  --time_based \
   --group_reporting \
   --filename=/data/testfile
 
@@ -118,6 +119,7 @@ kubectl exec -it fio-tester -- fio \
   --size=1G \
   --numjobs=4 \
   --runtime=60 \
+  --time_based \
   --group_reporting \
   --filename=/data/testfile
 ```
@@ -138,6 +140,7 @@ kubectl exec -it fio-tester -- fio \
   --size=2G \
   --numjobs=1 \
   --runtime=60 \
+  --time_based \
   --group_reporting \
   --filename=/data/testfile
 
@@ -152,6 +155,7 @@ kubectl exec -it fio-tester -- fio \
   --size=2G \
   --numjobs=1 \
   --runtime=60 \
+  --time_based \
   --group_reporting \
   --filename=/data/testfile
 ```
@@ -173,6 +177,7 @@ kubectl exec -it fio-tester -- fio \
   --size=1G \
   --numjobs=4 \
   --runtime=60 \
+  --time_based \
   --group_reporting \
   --filename=/data/testfile
 ```
@@ -183,15 +188,15 @@ kubestr simplifies storage benchmarking with Kubernetes-aware testing.
 
 ```bash
 # Download kubestr
-curl -LO https://github.com/kastenhq/kubestr/releases/download/v0.4.41/kubestr-v0.4.41-linux-amd64.tar.gz
-tar -xvzf kubestr-v0.4.41-linux-amd64.tar.gz
+curl -LO https://github.com/kastenhq/kubestr/releases/download/v0.4.41/kubestr_0.4.41_Linux_amd64.tar.gz
+tar -xvzf kubestr_0.4.41_Linux_amd64.tar.gz
 chmod +x kubestr
 
 # Move to PATH
 sudo mv kubestr /usr/local/bin/
 
 # Verify installation
-kubestr version
+kubestr --help
 ```
 
 ## Benchmarking with kubestr
@@ -206,11 +211,11 @@ kubestr fio -s your-storage-class -z 10Gi
 kubestr fio -s fast-ssd -z 10Gi > fast-ssd-results.txt
 kubestr fio -s standard -z 10Gi > standard-results.txt
 
-# Quick benchmark (shorter duration)
-kubestr fio -s your-storage-class -z 5Gi --quick
+# Run a named predefined test
+kubestr fio -s your-storage-class -z 5Gi -t default-fio
 ```
 
-kubestr automatically creates PVC, runs multiple fio tests, and cleans up resources.
+kubestr automatically creates a PVC, runs the fio test, and cleans up resources.
 
 ## Snapshot Performance Testing
 
@@ -218,14 +223,15 @@ Test snapshot creation and restoration speed.
 
 ```bash
 # Test snapshot capabilities
-kubestr snapshot -s your-storage-class
+kubestr csicheck -s your-storage-class -v your-volume-snapshot-class
 
 # Measure snapshot creation time
 kubectl create -f test-snapshot.yaml
-time kubectl wait --for=condition=ready volumesnapshot/test-snap
+time kubectl wait --for=jsonpath='{.status.readyToUse}'=true volumesnapshot/test-snap
 
 # Measure restore time
-time kubectl apply -f restore-from-snapshot.yaml
+kubectl apply -f restore-from-snapshot.yaml
+time kubectl wait --for=jsonpath='{.status.phase}'=Bound pvc/restored-pvc
 ```
 
 ## Creating Comprehensive Benchmark Suite
@@ -234,6 +240,18 @@ Automate benchmarking across storage classes.
 
 ```yaml
 # benchmark-job.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: benchmark-pvc
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: your-storage-class
+---
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -249,13 +267,13 @@ spec:
         - -c
         - |
           echo "=== Random Read IOPS ===" > /results/benchmark.txt
-          fio --name=rand-read --rw=randread --bs=4k --size=1G --numjobs=4 --runtime=60 --group_reporting --filename=/data/test | grep "IOPS=" >> /results/benchmark.txt
+          fio --name=rand-read --rw=randread --bs=4k --direct=1 --size=1G --numjobs=4 --runtime=60 --time_based --group_reporting --filename=/data/test | grep "IOPS=" >> /results/benchmark.txt
 
-          echo "\n=== Random Write IOPS ===" >> /results/benchmark.txt
-          fio --name=rand-write --rw=randwrite --bs=4k --size=1G --numjobs=4 --runtime=60 --group_reporting --filename=/data/test | grep "IOPS=" >> /results/benchmark.txt
+          printf "\n=== Random Write IOPS ===\n" >> /results/benchmark.txt
+          fio --name=rand-write --rw=randwrite --bs=4k --direct=1 --size=1G --numjobs=4 --runtime=60 --time_based --group_reporting --filename=/data/test | grep "IOPS=" >> /results/benchmark.txt
 
-          echo "\n=== Sequential Read Throughput ===" >> /results/benchmark.txt
-          fio --name=seq-read --rw=read --bs=1M --size=2G --runtime=60 --group_reporting --filename=/data/test | grep "BW=" >> /results/benchmark.txt
+          printf "\n=== Sequential Read Throughput ===\n" >> /results/benchmark.txt
+          fio --name=seq-read --rw=read --bs=1M --direct=1 --size=2G --runtime=60 --time_based --group_reporting --filename=/data/test | grep "BW=" >> /results/benchmark.txt
 
           cat /results/benchmark.txt
         volumeMounts:
@@ -311,6 +329,7 @@ kubectl exec -it fio-tester -- fio \
   --direct=1 \
   --size=1G \
   --runtime=60 \
+  --time_based \
   --percentile_list=50:90:95:99:99.9:99.99 \
   --filename=/data/testfile
 ```
@@ -333,16 +352,17 @@ jobs:
   benchmark:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Configure kubectl
       run: |
         echo "${{ secrets.KUBECONFIG }}" | base64 -d > kubeconfig
-        export KUBECONFIG=kubeconfig
+        echo "KUBECONFIG=$PWD/kubeconfig" >> "$GITHUB_ENV"
 
     - name: Install kubestr
       run: |
-        curl -LO https://github.com/kastenhq/kubestr/releases/download/v0.4.41/kubestr
+        curl -LO https://github.com/kastenhq/kubestr/releases/download/v0.4.41/kubestr_0.4.41_Linux_amd64.tar.gz
+        tar -xvzf kubestr_0.4.41_Linux_amd64.tar.gz
         chmod +x kubestr
 
     - name: Run benchmarks
@@ -350,7 +370,7 @@ jobs:
         ./kubestr fio -s fast-ssd -z 10Gi > results-$(date +%Y%m%d).txt
 
     - name: Upload results
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: benchmark-results
         path: results-*.txt
@@ -384,7 +404,7 @@ kubectl get storageclass
 kubectl describe pvc benchmark-pvc
 
 # fio command not found
-kubectl exec pod -- which fio
+kubectl exec fio-tester -- which fio
 
 # Check pod resources during test
 kubectl top pod fio-tester
