@@ -8,13 +8,13 @@ Description: Learn how to configure Prometheus metrics and distributed tracing i
 
 ---
 
-Observability is critical for operating production systems effectively. Traefik provides built-in support for Prometheus metrics and distributed tracing with Jaeger, Zipkin, and other tracing backends. This guide shows you how to configure comprehensive observability for your Traefik-based ingress.
+Observability is critical for operating production systems effectively. Traefik provides built-in support for Prometheus metrics and OpenTelemetry tracing, which can be exported to Jaeger, Zipkin, and other tracing backends. This guide shows you how to configure comprehensive observability for your Traefik-based ingress.
 
 ## Understanding Traefik Observability
 
 Traefik offers multiple observability features:
 - Prometheus metrics for monitoring request rates, latencies, and errors
-- Distributed tracing for request flow visualization
+- Distributed tracing for request flow visualization with OpenTelemetry
 - Access logs for detailed request information
 - Health checks and dashboard
 
@@ -58,6 +58,11 @@ data:
       metrics:
         address: ":8082"
 
+    # Kubernetes providers
+    providers:
+      kubernetesCRD: {}
+      kubernetesIngress: {}
+
     # API and dashboard
     api:
       dashboard: true
@@ -70,11 +75,23 @@ metadata:
   name: traefik
   namespace: traefik
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: traefik
     spec:
       containers:
       - name: traefik
+        image: traefik:v3
         ports:
+        - name: web
+          containerPort: 80
+        - name: websecure
+          containerPort: 443
         - name: metrics
           containerPort: 8082
         volumeMounts:
@@ -122,9 +139,9 @@ spec:
 
 ## Configuring Distributed Tracing
 
-Enable tracing with Jaeger or Zipkin.
+Enable tracing with OpenTelemetry and send traces to an OTLP-compatible backend or collector.
 
-### Jaeger Tracing
+### OpenTelemetry Tracing to Jaeger
 
 ```yaml
 # traefik-jaeger.yaml
@@ -137,12 +154,10 @@ data:
   traefik.yaml: |
     # Tracing configuration
     tracing:
-      jaeger:
-        samplingServerURL: http://jaeger-agent.observability:5778/sampling
-        localAgentHostPort: jaeger-agent.observability:6831
-        samplingType: const
-        samplingParam: 1.0
-        traceContextHeaderName: uber-trace-id
+      otlp:
+        grpc:
+          endpoint: jaeger.observability:4317
+          insecure: true
 
     # Metrics
     metrics:
@@ -157,18 +172,52 @@ Deploy Jaeger:
 ```bash
 kubectl create namespace observability
 
-kubectl apply -n observability -f \
-  https://raw.githubusercontent.com/jaegertracing/jaeger-operator/main/deploy/crds/jaegertracing.io_jaegers_crd.yaml
-
 kubectl apply -n observability -f - <<EOF
-apiVersion: jaegertracing.io/v1
-kind: Jaeger
+apiVersion: v1
+kind: Service
 metadata:
   name: jaeger
 spec:
-  strategy: allInOne
-  allInOne:
-    image: jaegertracing/all-in-one:latest
+  selector:
+    app: jaeger
+  ports:
+  - name: query
+    port: 16686
+    targetPort: 16686
+  - name: otlp-grpc
+    port: 4317
+    targetPort: 4317
+  - name: otlp-http
+    port: 4318
+    targetPort: 4318
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jaeger
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jaeger
+  template:
+    metadata:
+      labels:
+        app: jaeger
+    spec:
+      containers:
+      - name: jaeger
+        image: jaegertracing/all-in-one:1.76.0
+        env:
+        - name: COLLECTOR_OTLP_ENABLED
+          value: "true"
+        ports:
+        - name: query
+          containerPort: 16686
+        - name: otlp-grpc
+          containerPort: 4317
+        - name: otlp-http
+          containerPort: 4318
 EOF
 ```
 
@@ -184,11 +233,33 @@ metadata:
 data:
   traefik.yaml: |
     tracing:
+      otlp:
+        grpc:
+          endpoint: otel-collector.observability:4317
+          insecure: true
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: observability
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+
+    exporters:
       zipkin:
-        httpEndpoint: http://zipkin.observability:9411/api/v2/spans
-        sameSpan: true
-        id128Bit: true
-        sampleRate: 1.0
+        endpoint: http://zipkin.observability:9411/api/v2/spans
+
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          exporters: [zipkin]
 ```
 
 ## Monitoring Dashboard
@@ -207,35 +278,35 @@ metadata:
 data:
   traefik.json: |
     {
-      "dashboard": {
-        "title": "Traefik Dashboard",
-        "panels": [
-          {
-            "title": "Request Rate",
-            "targets": [
-              {
-                "expr": "rate(traefik_entrypoint_requests_total[5m])"
-              }
-            ]
-          },
-          {
-            "title": "Response Time (p99)",
-            "targets": [
-              {
-                "expr": "histogram_quantile(0.99, rate(traefik_entrypoint_request_duration_seconds_bucket[5m]))"
-              }
-            ]
-          }
-        ]
-      }
+      "title": "Traefik Dashboard",
+      "panels": [
+        {
+          "title": "Request Rate",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "sum(rate(traefik_entrypoint_requests_total[5m])) by (entrypoint)"
+            }
+          ]
+        },
+        {
+          "title": "Response Time (p99)",
+          "type": "timeseries",
+          "targets": [
+            {
+              "expr": "histogram_quantile(0.99, sum(rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) by (le, entrypoint))"
+            }
+          ]
+        }
+      ]
     }
 ```
 
 ## Per-Service Metrics
 
-Add labels to track individual services.
+Use the `service` label that Traefik adds to service-level metrics to track individual services. Kubernetes metadata labels on an `IngressRoute` are not automatically copied into Prometheus metrics.
 
-### IngressRoute with Custom Labels
+### IngressRoute for Service Metrics
 
 ```yaml
 # monitored-ingressroute.yaml
@@ -244,9 +315,6 @@ kind: IngressRoute
 metadata:
   name: monitored-app
   namespace: default
-  labels:
-    environment: production
-    team: platform
 spec:
   entryPoints:
     - websecure
@@ -262,14 +330,14 @@ Query metrics by labels:
 
 ```promql
 # Request rate by service
-rate(traefik_service_requests_total{service="app-service@kubernetes"}[5m])
+sum(rate(traefik_service_requests_total{service=~".*app-service.*@kubernetescrd"}[5m])) by (service)
 
 # 95th percentile latency
 histogram_quantile(0.95,
-  rate(traefik_service_request_duration_seconds_bucket[5m]))
+  sum(rate(traefik_service_request_duration_seconds_bucket[5m])) by (le, service))
 
 # Error rate
-rate(traefik_service_requests_total{code=~"5.."}[5m])
+sum(rate(traefik_service_requests_total{code=~"5.."}[5m])) by (service)
 ```
 
 ## Access Logs
@@ -329,8 +397,9 @@ spec:
     # High error rate
     - alert: TraefikHighErrorRate
       expr: |
-        rate(traefik_entrypoint_requests_total{code=~"5.."}[5m])
-        / rate(traefik_entrypoint_requests_total[5m]) > 0.05
+        sum(rate(traefik_entrypoint_requests_total{code=~"5.."}[5m])) by (entrypoint)
+        /
+        sum(rate(traefik_entrypoint_requests_total[5m])) by (entrypoint) > 0.05
       for: 5m
       annotations:
         summary: "High error rate on {{ $labels.entrypoint }}"
@@ -339,12 +408,12 @@ spec:
     - alert: TraefikHighLatency
       expr: |
         histogram_quantile(0.99,
-          rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) > 1
+          sum(rate(traefik_entrypoint_request_duration_seconds_bucket[5m])) by (le, entrypoint)) > 1
       for: 5m
       annotations:
         summary: "High latency on {{ $labels.entrypoint }}"
 
-    # Service down
+    # Service down, for Traefik services configured with health checks
     - alert: TraefikServiceDown
       expr: traefik_service_server_up == 0
       for: 1m
@@ -369,7 +438,7 @@ curl http://traefik-metrics.traefik:8082/metrics
 curl http://traefik-metrics.traefik:8082/metrics | grep traefik_service_requests_total
 
 # Access Jaeger UI
-kubectl port-forward -n observability svc/jaeger-query 16686:16686
+kubectl port-forward -n observability svc/jaeger 16686:16686
 # Visit http://localhost:16686
 
 # Access Grafana
@@ -387,16 +456,16 @@ sum(rate(traefik_entrypoint_requests_total[5m])) by (entrypoint)
 sum(rate(traefik_entrypoint_requests_total[5m])) by (code)
 
 # Average response time
-avg(rate(traefik_entrypoint_request_duration_seconds_sum[5m]))
+sum(rate(traefik_entrypoint_request_duration_seconds_sum[5m])) by (entrypoint)
   /
-avg(rate(traefik_entrypoint_requests_total[5m]))
+sum(rate(traefik_entrypoint_request_duration_seconds_count[5m])) by (entrypoint)
 
 # Top 5 slowest services
 topk(5,
   histogram_quantile(0.95,
-    rate(traefik_service_request_duration_seconds_bucket[5m])))
+    sum(rate(traefik_service_request_duration_seconds_bucket[5m])) by (le, service)))
 
-# Backend server health
+# Backend server health for services configured with health checks
 traefik_service_server_up
 ```
 
@@ -412,7 +481,7 @@ curl localhost:8082/metrics
 
 **Traces not appearing**: Check Jaeger connectivity:
 ```bash
-kubectl logs -n traefik -l app.kubernetes.io/name=traefik | grep jaeger
+kubectl logs -n traefik -l app.kubernetes.io/name=traefik | grep -i otlp
 ```
 
 **High cardinality**: Limit labels to avoid metric explosion
