@@ -175,7 +175,7 @@ The `traffic_dial_percentage` is incredibly useful for deployments. Set it to 0 
 
 ## Client IP Preservation
 
-When `client_ip_preservation_enabled` is set to `true`, your application sees the actual client IP address instead of the accelerator's IP. This is essential for logging, rate limiting, and geo-targeting. It works with ALB and NLB endpoints but not with EC2 or Elastic IP endpoints.
+When `client_ip_preservation_enabled` is set to `true`, your application sees the actual client IP address instead of the accelerator's IP. This is essential for logging, rate limiting, and geo-targeting. It works with ALB endpoints, EC2 instance endpoints, and NLB endpoints that have security groups, but not with Elastic IP endpoints or NLB endpoints without security groups. It also is not supported for NLB endpoints with TLS listeners.
 
 ## Using EC2 and Elastic IP Endpoints
 
