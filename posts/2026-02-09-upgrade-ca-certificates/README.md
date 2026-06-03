@@ -12,7 +12,7 @@ Certificate Authority certificates are the foundation of Kubernetes cluster secu
 
 ## Understanding Kubernetes Certificates
 
-Kubernetes uses PKI certificates for authentication between components. The cluster CA signs certificates for the API server, etcd, kubelet, and service accounts. Rotating the CA means generating a new CA certificate and gradually migrating all component certificates to trust the new CA.
+Kubernetes uses PKI certificates for authentication between components. The cluster CA signs certificates for the API server, kubelet clients, controller manager, scheduler, and other X.509 clients; kubeadm also creates separate CAs for etcd and the front proxy. Service account tokens are signed with the service account key pair, not the cluster CA. Rotating the CA means generating a new CA certificate and gradually migrating all component certificates to trust the new CA.
 
 Certificate rotation during upgrades is necessary when certificates are approaching expiration, when migrating to stronger cryptographic algorithms, or when compliance requires periodic CA rotation. The process must maintain service continuity throughout.
 
@@ -47,11 +47,14 @@ for cert in /etc/kubernetes/pki/*.crt; do
 done
 
 # Check certificate expiration
-echo "Days until expiration:"
+echo "Expiration status:"
 for cert in /etc/kubernetes/pki/*.crt; do
-  days=$(echo | openssl s_client -connect localhost:6443 -servername kubernetes 2>/dev/null | \
-    openssl x509 -noout -checkend 0 | grep -q "will not expire" && echo "valid" || echo "expired")
-  echo "  $(basename $cert): $days"
+  if openssl x509 -in "$cert" -noout -checkend $((30 * 24 * 60 * 60)); then
+    status="valid for more than 30 days"
+  else
+    status="expires within 30 days or is already expired"
+  fi
+  echo "  $(basename "$cert"): $status"
 done
 ```
 
@@ -67,16 +70,13 @@ BACKUP_DIR="/backups/k8s-certs-$(date +%Y%m%d-%H%M%S)"
 
 echo "Backing up certificates to $BACKUP_DIR..."
 
-mkdir -p $BACKUP_DIR
+sudo mkdir -p "$BACKUP_DIR"
 
 # Backup PKI directory
-sudo cp -r /etc/kubernetes/pki $BACKUP_DIR/
-
-# Backup etcd certificates
-sudo cp -r /etc/kubernetes/pki/etcd $BACKUP_DIR/etcd
+sudo cp -a /etc/kubernetes/pki "$BACKUP_DIR/"
 
 # Create archive
-tar czf $BACKUP_DIR.tar.gz $BACKUP_DIR
+sudo tar czf "$BACKUP_DIR.tar.gz" "$BACKUP_DIR"
 
 echo "Backup complete: $BACKUP_DIR.tar.gz"
 ```
@@ -92,14 +92,17 @@ Create a new CA certificate while keeping the old one temporarily.
 echo "Generating new CA certificate..."
 
 # Generate new CA key
-openssl genrsa -out /etc/kubernetes/pki/ca-new.key 2048
+sudo openssl genrsa -out /etc/kubernetes/pki/ca-new.key 4096
 
 # Generate new CA certificate
-openssl req -x509 -new -nodes \
+sudo openssl req -x509 -new -nodes -sha256 \
   -key /etc/kubernetes/pki/ca-new.key \
   -days 3650 \
   -out /etc/kubernetes/pki/ca-new.crt \
-  -subj "/CN=kubernetes-ca"
+  -subj "/CN=kubernetes-ca" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign" \
+  -addext "subjectKeyIdentifier=hash"
 
 # Verify new certificate
 openssl x509 -in /etc/kubernetes/pki/ca-new.crt -text -noout
@@ -109,7 +112,7 @@ echo "New CA certificate generated"
 
 ## Implementing Certificate Rotation
 
-Use kubeadm to rotate certificates automatically.
+Use kubeadm to renew control plane certificates after the target CA is in place. The `kubeadm certs renew` command renews leaf certificates; it does not renew CA certificates.
 
 ```bash
 #!/bin/bash
@@ -123,8 +126,14 @@ sudo kubeadm certs check-expiration
 # Renew all certificates
 sudo kubeadm certs renew all
 
-# Restart control plane components
-sudo systemctl restart kubelet
+# Restart static Pod control plane components
+sudo mkdir -p /etc/kubernetes/manifests.backup
+for manifest in kube-apiserver.yaml kube-controller-manager.yaml kube-scheduler.yaml; do
+  sudo mv "/etc/kubernetes/manifests/$manifest" /etc/kubernetes/manifests.backup/
+  sleep 20
+  sudo mv "/etc/kubernetes/manifests.backup/$manifest" /etc/kubernetes/manifests/
+  sleep 20
+done
 
 # Wait for components to restart
 sleep 30
@@ -143,28 +152,35 @@ For manual certificate rotation:
 
 CA_CERT="/etc/kubernetes/pki/ca.crt"
 CA_KEY="/etc/kubernetes/pki/ca.key"
+SERVICE_CIDR_IP="10.96.0.1"
+CONTROL_PLANE_DNS="control-plane.example.com"
 
 # Rotate API server certificate
-openssl genrsa -out /etc/kubernetes/pki/apiserver-new.key 2048
+sudo openssl genrsa -out /etc/kubernetes/pki/apiserver-new.key 2048
 
-openssl req -new -key /etc/kubernetes/pki/apiserver-new.key \
+sudo openssl req -new -key /etc/kubernetes/pki/apiserver-new.key \
   -out /etc/kubernetes/pki/apiserver.csr \
-  -subj "/CN=kube-apiserver"
+  -subj "/CN=kube-apiserver" \
+  -addext "subjectAltName=DNS:kubernetes,DNS:kubernetes.default,DNS:kubernetes.default.svc,DNS:$CONTROL_PLANE_DNS,IP:$SERVICE_CIDR_IP" \
+  -addext "extendedKeyUsage=serverAuth"
 
-openssl x509 -req \
+sudo openssl x509 -req \
   -in /etc/kubernetes/pki/apiserver.csr \
   -CA $CA_CERT \
   -CAkey $CA_KEY \
   -CAcreateserial \
   -out /etc/kubernetes/pki/apiserver-new.crt \
-  -days 365
+  -days 365 \
+  -copy_extensions copy
 
-# Update API server manifest to use new certificate
+# Replace API server certificate and key
 sudo mv /etc/kubernetes/pki/apiserver-new.crt /etc/kubernetes/pki/apiserver.crt
 sudo mv /etc/kubernetes/pki/apiserver-new.key /etc/kubernetes/pki/apiserver.key
 
-# Restart API server
-sudo systemctl restart kube-apiserver
+# Restart the static Pod API server
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/
+sleep 20
+sudo mv /etc/kubernetes/kube-apiserver.yaml /etc/kubernetes/manifests/
 ```
 
 ## Updating Trust Chains
@@ -181,20 +197,28 @@ OLD_CA="/etc/kubernetes/pki/ca.crt"
 echo "Updating trust chains..."
 
 # Create combined CA bundle (old + new)
-cat $OLD_CA $NEW_CA > /etc/kubernetes/pki/ca-bundle.crt
+sudo sh -c "cat '$OLD_CA' '$NEW_CA' > /etc/kubernetes/pki/ca-bundle.crt"
 
 # Update kubeconfig files
-for config in ~/.kube/config /etc/kubernetes/admin.conf; do
-  if [ -f "$config" ]; then
-    kubectl config set-cluster kubernetes \
-      --certificate-authority=/etc/kubernetes/pki/ca-bundle.crt \
-      --embed-certs=true \
-      --kubeconfig=$config
-  fi
-done
+if [ -f ~/.kube/config ]; then
+  kubectl config set-cluster kubernetes \
+    --certificate-authority=/etc/kubernetes/pki/ca-bundle.crt \
+    --embed-certs=true \
+    --kubeconfig=~/.kube/config
+fi
 
-# Update kubelet configuration
-sudo sed -i 's|ca.crt|ca-bundle.crt|g' /var/lib/kubelet/config.yaml
+if [ -f /etc/kubernetes/admin.conf ]; then
+  sudo kubectl config set-cluster kubernetes \
+    --certificate-authority=/etc/kubernetes/pki/ca-bundle.crt \
+    --embed-certs=true \
+    --kubeconfig=/etc/kubernetes/admin.conf
+fi
+
+# Update kubelet kubeconfig
+sudo kubectl config set-cluster kubernetes \
+  --certificate-authority=/etc/kubernetes/pki/ca-bundle.crt \
+  --embed-certs=true \
+  --kubeconfig=/etc/kubernetes/kubelet.conf
 sudo systemctl restart kubelet
 
 echo "Trust chains updated"
@@ -225,7 +249,11 @@ for node in $NODES; do
     sudo systemctl stop kubelet
 
     # Update CA certificate
-    sudo cp /tmp/ca-bundle.crt /etc/kubernetes/pki/ca.crt
+    sudo cp /tmp/ca-bundle.crt /etc/kubernetes/pki/ca-bundle.crt
+    sudo kubectl config set-cluster kubernetes \
+      --certificate-authority=/etc/kubernetes/pki/ca-bundle.crt \
+      --embed-certs=true \
+      --kubeconfig=/etc/kubernetes/kubelet.conf
 
     # Regenerate kubelet certificate
     sudo rm /var/lib/kubelet/pki/kubelet-client-current.pem
@@ -289,18 +317,29 @@ kind: Namespace
 metadata:
   name: cert-manager
 ---
-apiVersion: helm.sh/v3
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: jetstack
+  namespace: cert-manager
+spec:
+  interval: 1h
+  url: https://charts.jetstack.io
+---
+apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
   name: cert-manager
   namespace: cert-manager
 spec:
+  interval: 1h
   chart:
     spec:
       chart: cert-manager
       sourceRef:
         kind: HelmRepository
         name: jetstack
+        namespace: cert-manager
       version: v1.14.0
   values:
     installCRDs: true
@@ -355,17 +394,17 @@ spec:
     interval: 1h
     rules:
     - alert: CertificateExpiringSoon
-      expr: (apiserver_client_certificate_expiration_seconds_count{job="apiserver"} < 86400 * 30)
+      expr: histogram_quantile(0.01, sum by (le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="apiserver"}[5m]))) < 86400 * 30
       for: 1h
       annotations:
         summary: "Certificate expiring in less than 30 days"
-        description: "Certificate for {{ $labels.name }} expires in {{ $value | humanizeDuration }}"
+        description: "An API server client certificate expires in {{ $value | humanizeDuration }}."
 
     - alert: CertificateExpired
-      expr: (apiserver_client_certificate_expiration_seconds_count{job="apiserver"} < 0)
+      expr: histogram_quantile(0.01, sum by (le) (rate(apiserver_client_certificate_expiration_seconds_bucket{job="apiserver"}[5m]))) <= 0
       annotations:
         summary: "Certificate has expired"
-        description: "Certificate for {{ $labels.name }} has expired"
+        description: "An API server client certificate has expired."
 ```
 
 Upgrading CA certificates during Kubernetes upgrades requires careful planning and execution. By backing up existing certificates, implementing gradual rotation strategies, maintaining dual trust chains during transitions, and monitoring certificate expiration, you can rotate CA certificates safely without disrupting cluster operations.
