@@ -122,14 +122,9 @@ The `source_code_hash` is important - it tells Terraform to redeploy the functio
 
 You should never hardcode sensitive values. Use variables for configuration and AWS Secrets Manager or SSM Parameter Store for secrets.
 
-This approach uses Terraform variables and data sources to keep secrets out of your code:
+This approach uses Terraform variables and passes the SSM parameter name to the function, so your Lambda code can retrieve the secret at runtime instead of storing the secret value in Terraform state or Lambda environment variables:
 
 ```hcl
-# Fetch secrets from SSM Parameter Store
-data "aws_ssm_parameter" "db_password" {
-  name = "/myapp/production/db_password"
-}
-
 resource "aws_lambda_function" "with_secrets" {
   function_name    = "my-app-function"
   filename         = data.archive_file.lambda_zip.output_path
@@ -140,10 +135,26 @@ resource "aws_lambda_function" "with_secrets" {
 
   environment {
     variables = {
-      DB_HOST     = var.db_host
-      DB_PASSWORD = data.aws_ssm_parameter.db_password.value
+      DB_HOST           = var.db_host
+      DB_PASSWORD_PARAM = var.db_password_parameter_name
     }
   }
+}
+
+resource "aws_iam_role_policy" "lambda_ssm_access" {
+  name = "lambda-ssm-parameter-access"
+  role = aws_iam_role.lambda_exec.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["ssm:GetParameter"]
+        Resource = var.db_password_parameter_arn
+      }
+    ]
+  })
 }
 ```
 
@@ -306,7 +317,7 @@ resource "aws_cloudwatch_log_group" "lambda_logs" {
 
 **Deployment package size.** Lambda has a 50 MB limit for direct uploads and 250 MB unzipped. For larger packages, upload to S3 first and reference it with `s3_bucket` and `s3_key` instead of `filename`.
 
-**Timeout configuration.** The default timeout is 3 seconds, which is too short for most real workloads. Always set an appropriate timeout. And remember, API Gateway has a hard 29-second limit, so Lambda functions behind API Gateway need to be faster than that.
+**Timeout configuration.** The default timeout is 3 seconds, which is too short for most real workloads. Always set an appropriate timeout. And remember, API Gateway has its own integration timeout limits, so Lambda functions behind API Gateway need to return before the gateway timeout. HTTP APIs have a 30-second maximum, while Regional and private REST APIs can request an increase beyond the previous 29-second limit.
 
 ## Wrapping Up
 
