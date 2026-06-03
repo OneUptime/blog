@@ -63,7 +63,7 @@ aws fsx create-file-system \
 
 Key parameters explained:
 
-- **storage-capacity**: Minimum 1200 GB for SCRATCH_2. Must be in increments of 2400 GB.
+- **storage-capacity**: For SCRATCH_2 with SSD storage, valid values are 1200 GiB, 2400 GiB, and increments of 2400 GiB.
 - **storage-type**: SSD for highest performance, HDD for cost-optimized throughput.
 - **ImportPath**: S3 bucket to lazy-load data from. Files appear in the file system but aren't downloaded until accessed.
 - **ExportPath**: Where to write results back to S3.
@@ -110,12 +110,49 @@ aws ec2 authorize-security-group-ingress \
   --port 988 \
   --source-group "sg-0client-instances"
 
+aws ec2 authorize-security-group-ingress \
+  --group-id "$LUSTRE_SG" \
+  --protocol tcp \
+  --port 1018-1023 \
+  --source-group "sg-0client-instances"
+
 # Allow Lustre traffic between file system nodes
+aws ec2 authorize-security-group-ingress \
+  --group-id "$LUSTRE_SG" \
+  --protocol tcp \
+  --port 988 \
+  --source-group "$LUSTRE_SG"
+
 aws ec2 authorize-security-group-ingress \
   --group-id "$LUSTRE_SG" \
   --protocol tcp \
   --port 1018-1023 \
   --source-group "$LUSTRE_SG"
+
+# If your client security group is restrictive, allow callbacks from FSx
+aws ec2 authorize-security-group-ingress \
+  --group-id "sg-0client-instances" \
+  --protocol tcp \
+  --port 988 \
+  --source-group "$LUSTRE_SG"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "sg-0client-instances" \
+  --protocol tcp \
+  --port 1018-1023 \
+  --source-group "$LUSTRE_SG"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "sg-0client-instances" \
+  --protocol tcp \
+  --port 988 \
+  --source-group "sg-0client-instances"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "sg-0client-instances" \
+  --protocol tcp \
+  --port 1018-1023 \
+  --source-group "sg-0client-instances"
 ```
 
 ## Mounting the File System
@@ -145,9 +182,8 @@ For Ubuntu:
 ```bash
 # Install the Lustre client
 wget -O - https://fsx-lustre-client-repo-public-keys.s3.amazonaws.com/fsx-ubuntu-public-key.asc | gpg --dearmor | sudo tee /usr/share/keyrings/fsx-ubuntu-public-key.gpg > /dev/null
-echo "deb [signed-by=/usr/share/keyrings/fsx-ubuntu-public-key.gpg] https://fsx-lustre-client-repo.s3.amazonaws.com/ubuntu focal main" | sudo tee /etc/apt/sources.list.d/fsxlustreclientrepo.list
-sudo apt-get update
-sudo apt-get install -y lustre-client-modules-$(uname -r)
+sudo bash -c 'echo "deb [signed-by=/usr/share/keyrings/fsx-ubuntu-public-key.gpg] https://fsx-lustre-client-repo.s3.amazonaws.com/ubuntu $(lsb_release -cs) main" > /etc/apt/sources.list.d/fsxlustreclientrepo.list && apt-get update'
+sudo apt install -y lustre-client-modules-$(uname -r)
 
 # Mount
 sudo mount -t lustre -o noatime,flock \
@@ -187,7 +223,7 @@ To manually export data back to S3:
 aws fsx create-data-repository-task \
   --file-system-id "fs-0abc123def456789" \
   --type EXPORT_TO_REPOSITORY \
-  --paths "/output/" \
+  --paths "output/" \
   --report '{
     "Enabled": true,
     "Path": "s3://my-data-bucket/reports/",
@@ -244,6 +280,20 @@ resource "aws_security_group" "lustre" {
     to_port   = 1023
     protocol  = "tcp"
     self      = true
+  }
+
+  ingress {
+    from_port = 988
+    to_port   = 988
+    protocol  = "tcp"
+    self      = true
+  }
+
+  ingress {
+    from_port       = 1018
+    to_port         = 1023
+    protocol        = "tcp"
+    security_groups = [var.client_security_group_id]
   }
 
   egress {
