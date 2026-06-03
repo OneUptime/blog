@@ -74,14 +74,14 @@ spec:
         tier: backend
     spec:
       topologySpreadConstraints:
-      # Spread across zones first
+      # Require spreading across zones
       - maxSkew: 1
         topologyKey: topology.kubernetes.io/zone
         whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
             app: api
-      # Then spread across nodes within zones
+      # Prefer spreading across nodes
       - maxSkew: 2
         topologyKey: kubernetes.io/hostname
         whenUnsatisfiable: ScheduleAnyway
@@ -97,7 +97,7 @@ spec:
             memory: 512Mi
 ```
 
-This creates a two-level distribution strategy. First, pods are distributed across zones with strict enforcement. Then, within each zone, pods are spread across nodes with relaxed enforcement using `ScheduleAnyway`.
+This creates a two-level distribution strategy. The scheduler considers both constraints together: pods must satisfy the zone-level constraint, and the hostname-level constraint influences scoring with relaxed enforcement using `ScheduleAnyway`.
 
 ## Understanding WhenUnsatisfiable Options
 
@@ -266,7 +266,7 @@ profiles:
       defaultingType: List
 ```
 
-These defaults apply to all pods unless they define their own constraints. This provides a baseline level of spreading without requiring every workload to specify it.
+These defaults apply to pods that do not define their own constraints and that belong to a Service, ReplicaSet, StatefulSet, or ReplicationController. This provides a baseline level of spreading without requiring every workload to specify it.
 
 ## Monitoring Spread Effectiveness
 
@@ -274,9 +274,11 @@ After implementing spread constraints, verify that pods are actually distributed
 
 ```bash
 # Check pod distribution across zones
-
-kubectl get pods -l app=web -o wide | \
-  awk '{print $7}' | tail -n +2 | sort | uniq -c
+kubectl get pods -l app=web -o jsonpath='{range .items[*]}{.spec.nodeName}{"\n"}{end}' | \
+  while read node; do
+    kubectl get node "$node" -o json | \
+      jq -r '.metadata.labels["topology.kubernetes.io/zone"]'
+  done | sort | uniq -c
 
 # Check pod distribution across nodes
 kubectl get pods -l app=web -o wide | \
@@ -315,7 +317,7 @@ echo "Current skew: (calculate max - min)"
 
 If pods are not spreading as expected, check these common issues:
 
-1. **Insufficient topology domains**: If you have 3 zones but 10 replicas with maxSkew of 1, some pods cannot be scheduled.
+1. **Insufficient eligible topology domains**: If a required spread constraint can only use one zone because other zones lack matching labels, resources, or affinity-compatible nodes, some pods can remain pending.
 2. **Resource constraints**: Nodes in some zones might not have enough resources.
 3. **Conflicting constraints**: Other affinity rules might conflict with spread constraints.
 
