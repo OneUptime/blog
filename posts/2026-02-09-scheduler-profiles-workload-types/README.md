@@ -69,8 +69,8 @@ profiles:
           - name: PodTopologySpread
       score:
         enabled:
-          # Prioritize nodes with most available resources
-          - name: NodeResourcesMostAllocated
+          # Prioritize nodes with higher allocated resources for bin packing
+          - name: NodeResourcesFit
             weight: 5
           # Deprioritize spread concerns
           - name: PodTopologySpread
@@ -78,13 +78,23 @@ profiles:
         disabled:
           # Disable balanced allocation for batch jobs
           - name: NodeResourcesBalancedAllocation
-      # Allow longer scheduling cycles
-      preempt:
+      # Use the default preemption behavior
+      postFilter:
         enabled:
           - name: DefaultPreemption
+    pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: MostAllocated
+            resources:
+              - name: cpu
+                weight: 1
+              - name: memory
+                weight: 1
 ```
 
-This profile uses `NodeResourcesMostAllocated` instead of `NodeResourcesBalancedAllocation`. This plugin prefers nodes that already have high resource utilization, which helps with bin-packing and leaves larger nodes free for jobs that need them.
+This profile configures the `NodeResourcesFit` plugin with the `MostAllocated` scoring strategy instead of using `NodeResourcesBalancedAllocation`. This strategy prefers nodes that already have high resource utilization, which helps with bin-packing and leaves larger nodes free for jobs that need them.
 
 To use this profile, set the scheduler name in your batch job spec:
 
@@ -97,6 +107,7 @@ spec:
   template:
     spec:
       schedulerName: batch-scheduler
+      restartPolicy: OnFailure
       containers:
       - name: processor
         image: data-processor:latest
@@ -135,7 +146,7 @@ profiles:
           # Prefer nodes with images already pulled
           - name: ImageLocality
             weight: 2
-      # Minimize scheduling latency
+      # Use the default binding behavior
       bind:
         enabled:
           - name: DefaultBinder
@@ -179,7 +190,7 @@ spec:
 
 ## Creating a Profile for High-Throughput Data Processing
 
-Data processing workloads often benefit from locality optimizations and can use gang scheduling patterns where all pods in a group need to be scheduled together. Here is a specialized profile:
+Data processing workloads often benefit from locality optimizations. Here is a specialized profile:
 
 ```yaml
 apiVersion: kubescheduler.config.k8s.io/v1
@@ -198,13 +209,23 @@ profiles:
           - name: VolumeBinding
             weight: 5
           # Pack pods on fewer nodes for better data locality
-          - name: NodeResourcesMostAllocated
+          - name: NodeResourcesFit
             weight: 3
           # Respect node affinity for storage-optimized nodes
           - name: NodeAffinity
             weight: 4
           - name: InterPodAffinity
             weight: 2
+    pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: MostAllocated
+            resources:
+              - name: cpu
+                weight: 1
+              - name: memory
+                weight: 1
 ```
 
 This profile prioritizes volume binding and node affinity, which is important for workloads that need access to specific storage resources. The higher weight on `VolumeBinding` ensures that pods are placed near their data.
@@ -274,8 +295,18 @@ profiles:
     plugins:
       score:
         enabled:
-          - name: NodeResourcesMostAllocated
+          - name: NodeResourcesFit
             weight: 5
+    pluginConfig:
+      - name: NodeResourcesFit
+        args:
+          scoringStrategy:
+            type: MostAllocated
+            resources:
+              - name: cpu
+                weight: 1
+              - name: memory
+                weight: 1
   - schedulerName: latency-sensitive-scheduler
     plugins:
       score:
@@ -320,13 +351,13 @@ After deploying custom profiles, monitor their performance using scheduler metri
 
 ```bash
 # View scheduling attempt metrics
-kubectl get --raw /metrics | grep scheduler_scheduling_attempt_duration
+kubectl get --raw /metrics | grep scheduler_scheduling_attempt_duration_seconds
 
 # Check for scheduling failures
 kubectl get --raw /metrics | grep scheduler_schedule_attempts_total
 
-# Monitor queue wait times
-kubectl get --raw /metrics | grep scheduler_queue_incoming_pods_total
+# Monitor pending scheduler queues
+kubectl get --raw /metrics | grep scheduler_pending_pods
 ```
 
 You can also check which scheduler was used for a pod:
