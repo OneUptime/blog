@@ -62,16 +62,20 @@ echo "Reviewing feature gate changes from $CURRENT_VERSION to $TARGET_VERSION...
 cat << EOF
 Feature Gates Graduating to GA in $TARGET_VERSION:
 - ReadWriteOncePod: Now always enabled
-- CSIStorageCapacity: Now always enabled
-- PodSecurity: Now always enabled
+- CustomResourceValidationExpressions: Now always enabled
+- KMSv2: Now always enabled
+- ServiceNodePortStaticSubrange: Now always enabled
 
 Feature Gates Removed (already GA):
-- CronJobTimeZone
-- CSIMigration
+- CSIStorageCapacity
+- PodSecurity
 
 New Alpha Features Available:
-- SELinuxMountReadWriteOncePod
-- StrictCostEnforcementForVAP
+- ServiceAccountTokenJTI
+- ServiceAccountTokenNodeBindingValidation
+- StructuredAuthenticationConfiguration
+- StructuredAuthorizationConfiguration
+- VolumeAttributesClass
 
 Check documentation: https://kubernetes.io/docs/reference/command-line-tools-reference/feature-gates/
 EOF
@@ -88,7 +92,7 @@ When features graduate to GA, adjust your configuration to remove explicit featu
 echo "Removing graduated feature gates from configuration..."
 
 # Update API server manifest
-sudo sed -i '/--feature-gates=.*ReadWriteOncePod/d' \
+sudo perl -0pi -e 's/(--feature-gates=)([^"\n]*)/$1 . join(",", grep { $_ !~ /^ReadWriteOncePod=/ } split(",", $2))/eg' \
   /etc/kubernetes/manifests/kube-apiserver.yaml
 
 # Update kubelet config
@@ -96,7 +100,7 @@ sudo sed -i '/ReadWriteOncePod/d' /var/lib/kubelet/config.yaml
 sudo systemctl restart kubelet
 
 # Update controller manager
-sudo sed -i '/--feature-gates=.*ReadWriteOncePod/d' \
+sudo perl -0pi -e 's/(--feature-gates=)([^"\n]*)/$1 . join(",", grep { $_ !~ /^ReadWriteOncePod=/ } split(",", $2))/eg' \
   /etc/kubernetes/manifests/kube-controller-manager.yaml
 
 echo "Graduated feature gates removed"
@@ -126,13 +130,13 @@ nodes:
     kind: ClusterConfiguration
     apiServer:
       extraArgs:
-        feature-gates: "MyNewFeature=true"
+        feature-gates: "VolumeAttributesClass=true"
     controllerManager:
       extraArgs:
-        feature-gates: "MyNewFeature=true"
+        feature-gates: "VolumeAttributesClass=true"
     scheduler:
       extraArgs:
-        feature-gates: "MyNewFeature=true"
+        feature-gates: "VolumeAttributesClass=true"
 - role: worker
   image: kindest/node:v$TARGET_VERSION
   kubeadmConfigPatches:
@@ -140,7 +144,7 @@ nodes:
     kind: JoinConfiguration
     nodeRegistration:
       kubeletExtraArgs:
-        feature-gates: "MyNewFeature=true"
+        feature-gates: "VolumeAttributesClass=true"
 EOF
 
 # Test your workloads
@@ -162,8 +166,7 @@ echo "Checking for deprecated feature gates..."
 
 # List of deprecated gates in 1.29
 DEPRECATED_GATES=(
-  "DynamicKubeletConfig"
-  "SomeOldFeature"
+  "SkipReadOnlyValidationGCE"
 )
 
 for gate in "${DEPRECATED_GATES[@]}"; do
@@ -193,19 +196,18 @@ apiVersion: kubeadm.k8s.io/v1beta3
 kind: ClusterConfiguration
 apiServer:
   extraArgs:
-    feature-gates: "CSIStorageCapacity=true,ReadWriteOncePod=true"
+    feature-gates: "ReadWriteOncePod=true"
 controllerManager:
   extraArgs:
-    feature-gates: "CSIStorageCapacity=true,ReadWriteOncePod=true"
+    feature-gates: "ReadWriteOncePod=true"
 scheduler:
   extraArgs:
-    feature-gates: "CSIStorageCapacity=true"
+    feature-gates: "ReadWriteOncePod=true"
 ---
-apiVersion: kubeadm.k8s.io/v1beta3
-kind: InitConfiguration
-nodeRegistration:
-  kubeletExtraArgs:
-    feature-gates: "CSIStorageCapacity=true"
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+featureGates:
+  ReadWriteOncePod: true
 ```
 
 Update via configuration files:
@@ -214,7 +216,7 @@ Update via configuration files:
 #!/bin/bash
 # update-feature-gates.sh
 
-FEATURE_GATES="CSIStorageCapacity=true,ReadWriteOncePod=true"
+FEATURE_GATES="ReadWriteOncePod=true"
 
 # Update API server
 sudo sed -i "s/--feature-gates=.*/--feature-gates=$FEATURE_GATES/" \
@@ -223,7 +225,6 @@ sudo sed -i "s/--feature-gates=.*/--feature-gates=$FEATURE_GATES/" \
 # Update kubelet
 cat >> /var/lib/kubelet/config.yaml << EOF
 featureGates:
-  CSIStorageCapacity: true
   ReadWriteOncePod: true
 EOF
 
@@ -251,7 +252,7 @@ kubectl get pods -A --watch
 kubectl get --raw /metrics | grep apiserver_requested_deprecated_apis
 
 # Track feature usage metrics
-kubectl get --raw /metrics | grep feature_enabled
+kubectl get --raw /metrics | grep kubernetes_feature_enabled
 ```
 
 ## Documenting Feature Gate Strategy
@@ -273,7 +274,6 @@ cat > feature-gate-strategy.md << 'EOF'
 - None currently enabled in production
 
 ### Beta Features
-- CSIStorageCapacity: Enabled (graduating to GA in 1.29)
 - ReadWriteOncePod: Enabled (graduating to GA in 1.29)
 
 ## Upgrade Plan to 1.29
