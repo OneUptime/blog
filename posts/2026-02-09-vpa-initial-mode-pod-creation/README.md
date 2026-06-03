@@ -8,13 +8,13 @@ Description: Configure Vertical Pod Autoscaler in Initial mode to apply resource
 
 ---
 
-Vertical Pod Autoscaler's Auto mode continuously updates pod resources by evicting and recreating pods with new resource requests. This can be disruptive for stateful workloads or services that cannot tolerate frequent restarts. Initial mode provides a middle ground by applying VPA recommendations only when pods are first created, either during deployment or after manual deletion.
+Vertical Pod Autoscaler's Recreate mode updates pod resources by evicting and recreating pods with new resource requests. This can be disruptive for stateful workloads or services that cannot tolerate restarts. Initial mode provides a middle ground by applying VPA recommendations only when pods are first created, either during deployment or after manual deletion.
 
 This mode is perfect for workloads that need optimized initial resources but should not be automatically restarted for resource adjustments. It combines the benefits of VPA's resource analysis with the stability of fixed resource allocations once pods are running.
 
 ## Understanding Initial Mode
 
-In Initial mode, VPA watches your workload and calculates recommended resources just like in Auto mode. However, instead of evicting running pods to apply new recommendations, VPA only injects the recommended values into pods when they are first created. Existing pods keep their current resource requests until they are recreated for other reasons.
+In Initial mode, VPA watches your workload and calculates recommended resources just like in Recreate mode. However, instead of evicting running pods to apply new recommendations, VPA only injects the recommended values into pods when they are first created. Existing pods keep their current resource requests until they are recreated for other reasons.
 
 This means you get the benefit of VPA's analysis for sizing new pods correctly, while avoiding the disruption of forcing pod restarts to update resource requests on running pods.
 
@@ -228,19 +228,21 @@ Apply recommendations gradually to limit risk.
 
 NAMESPACE="production"
 DEPLOYMENT="api-server"
-TOTAL_REPLICAS=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o json | \
-  jq '.spec.replicas')
+TOTAL_REPLICAS=$(kubectl get deployment "$DEPLOYMENT" -n "$NAMESPACE" -o json | \
+  jq '.spec.replicas // 1')
 
 # Update one pod at a time
 for i in $(seq 1 $TOTAL_REPLICAS); do
   echo "Updating pod $i of $TOTAL_REPLICAS"
 
   # Delete one pod to trigger recreation with new resources
-  POD=$(kubectl get pods -n $NAMESPACE -l app=api-server -o name | head -1)
-  kubectl delete $POD -n $NAMESPACE
+  POD=$(kubectl get pods -n "$NAMESPACE" -l app=api-server -o name | head -1)
+  kubectl delete "$POD" -n "$NAMESPACE"
 
-  # Wait for pod to be ready
-  kubectl wait --for=condition=Ready pods -l app=api-server -n $NAMESPACE --timeout=120s
+  # Wait for the deleted pod to terminate and the replacement to become ready
+  kubectl wait --for=delete "$POD" -n "$NAMESPACE" --timeout=120s
+  kubectl wait --for=jsonpath='{.status.readyReplicas}'="$TOTAL_REPLICAS" \
+    deployment/"$DEPLOYMENT" -n "$NAMESPACE" --timeout=120s
 
   # Wait before next update
   sleep 30
@@ -279,7 +281,7 @@ spec:
         cpu: 4000m
         memory: 8Gi
 ---
-# Staging: Auto mode for testing
+# Staging: Recreate mode for testing
 apiVersion: autoscaling.k8s.io/v1
 kind: VerticalPodAutoscaler
 metadata:
@@ -291,7 +293,7 @@ spec:
     kind: Deployment
     name: app
   updatePolicy:
-    updateMode: "Auto"  # Aggressive updates for testing
+    updateMode: "Recreate"  # Eviction-based updates for testing
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -303,7 +305,7 @@ spec:
         memory: 4Gi
 ```
 
-Use Auto mode in lower environments to validate recommendations before applying them manually in production.
+Use Recreate mode in lower environments to validate recommendations before applying them manually in production.
 
 ## Transitioning from Off to Initial Mode
 
@@ -366,11 +368,11 @@ spec:
 Even in Initial mode, track pod recreation patterns.
 
 ```bash
-# Monitor pod age
+# Monitor pod creation timestamps
 kubectl get pods -n production -l app=api-server \
-  -o custom-columns=NAME:.metadata.name,AGE:.metadata.creationTimestamp
+  -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp
 
-# Check pod restart reasons
+# Check recent pod creation and start events
 kubectl get events -n production --field-selector involvedObject.kind=Pod \
   --sort-by='.lastTimestamp' | \
   grep -E 'Created|Started'
@@ -389,20 +391,20 @@ Establish a regular cadence for reviewing VPA recommendations and manually apply
 
 Set up alerts for when VPA recommendations diverge significantly from current pod resources. This indicates it may be time to manually apply updates.
 
-Test VPA recommendations in staging or development environments using Auto mode before applying them in production with Initial mode.
+Test VPA recommendations in staging or development environments using Recreate mode before applying them in production with Initial mode.
 
-Document why specific workloads use Initial mode instead of Auto mode. This helps team members understand the reasoning and maintain consistency.
+Document why specific workloads use Initial mode instead of Recreate mode. This helps team members understand the reasoning and maintain consistency.
 
-## When to Use Initial vs Auto Mode
+## When to Use Initial vs Recreate Mode
 
 Use Initial mode for stateful workloads, services with persistent connections, applications with expensive startup costs, or production services requiring high availability.
 
-Use Auto mode for stateless services, development or staging environments, batch processing workloads, or services specifically designed for frequent restarts.
+Use Recreate mode for stateless services, development or staging environments, batch processing workloads, or services specifically designed for frequent restarts.
 
 Use Off mode during initial VPA deployment to observe recommendations before enabling any automatic updates.
 
 ## Conclusion
 
-VPA's Initial mode provides optimized resource allocation for new pods while avoiding the disruption of automatic updates to running pods. This makes it ideal for production workloads that need efficient resource usage but cannot tolerate the pod churn from Auto mode.
+VPA's Initial mode provides optimized resource allocation for new pods while avoiding the disruption of automatic updates to running pods. This makes it ideal for production workloads that need efficient resource usage but cannot tolerate the pod churn from Recreate mode.
 
 By combining Initial mode with periodic manual updates or scheduled maintenance windows, you get the benefits of VPA's resource analysis while maintaining control over when changes are applied. This balanced approach helps you optimize resources without compromising stability or availability.
