@@ -18,14 +18,14 @@ AWS NAT gateways are fully managed. You create one, point routes at it, and forg
 
 Key characteristics:
 - Bandwidth scales automatically up to 100 Gbps
-- Redundant within a single availability zone
+- Redundant within an availability zone, or regional if you use Regional NAT Gateway
 - No OS patching, no maintenance
-- Fixed pricing: ~$0.045/hour + $0.045/GB processed
+- Region-dependent pricing: in US East, about $0.045/hour + $0.045/GB processed, plus standard data transfer and public IPv4 charges
 - Cannot be used as a bastion host
 
 ## NAT Instance: The DIY Option
 
-A NAT instance is just a regular EC2 instance running Amazon Linux with IP forwarding enabled and source/destination check disabled. You manage everything - the OS, the scaling, the monitoring, the failover.
+A NAT instance is just a regular EC2 instance running a current Linux distribution such as AL2023 or Amazon Linux 2, with IP forwarding enabled and source/destination check disabled. You manage everything - the OS, the scaling, the monitoring, the failover.
 
 Key characteristics:
 - Bandwidth limited by instance type
@@ -45,7 +45,7 @@ Feature              NAT Gateway           NAT Instance
 Availability         Redundant in AZ       Single instance
 Bandwidth            Up to 100 Gbps        Instance-dependent
 Maintenance          None (managed)        You handle it
-Cost (baseline)      ~$32/month            t3.nano: ~$3.75/month
+Cost (baseline)      ~$36/month            t3.nano: ~$7.40/month
 Cost (data)          $0.045/GB             Standard EC2 data rates
 Security groups      No (uses NACLs)       Yes
 Port forwarding      No                    Yes
@@ -57,13 +57,13 @@ Scaling              Automatic             Manual
 
 Use a NAT gateway when:
 
-**You need reliability.** NAT gateways are redundant within an AZ and can handle failover automatically. If uptime matters, this is the safe choice.
+**You need reliability.** Zonal NAT gateways are redundant within an AZ, and Regional NAT Gateway can provide multi-AZ availability by default. If uptime matters, this is the safe choice.
 
 **You have significant traffic.** NAT gateways scale to 100 Gbps without intervention. A NAT instance would require careful sizing and possibly manual scaling.
 
 **You don't want operational overhead.** No patching, no monitoring (beyond basic CloudWatch), no recovering from crashes. It just works.
 
-**Your data transfer costs exceed the NAT gateway premium.** Once you're processing enough data, the simplicity premium of the NAT gateway becomes negligible compared to total costs.
+**Your operational costs exceed the NAT gateway premium.** Once you factor in monitoring, patching, failover, and incident response, the managed gateway premium is often cheaper than maintaining NAT instances yourself.
 
 Here's the typical NAT gateway setup:
 
@@ -91,7 +91,7 @@ aws ec2 create-route \
 
 Use a NAT instance when:
 
-**Budget is extremely tight.** A t3.nano costs about $3.75/month compared to $32/month for a NAT gateway. For dev/test environments where you don't care about HA, this saves real money.
+**Budget is extremely tight.** A t3.nano costs about $3.75/month before the public IPv4 charge, compared to about $32/month before public IPv4 charges for a NAT gateway. For dev/test environments where you don't care about HA, this saves real money.
 
 **You need port forwarding.** NAT gateways don't support port forwarding. If you need to forward specific ports, a NAT instance is your only option.
 
@@ -104,7 +104,7 @@ Use a NAT instance when:
 Here's how to create a NAT instance from scratch:
 
 ```bash
-# Step 1: Launch an instance with the Amazon Linux AMI
+# Step 1: Launch an instance with an AL2023 or Amazon Linux 2 AMI
 INSTANCE_ID=$(aws ec2 run-instances \
   --image-id ami-0abcdef1234567890 \
   --instance-type t3.nano \
@@ -129,17 +129,21 @@ Then configure IP forwarding on the instance itself:
 ```bash
 # Run these ON the NAT instance (via SSH or user data)
 
+# Install and enable iptables services
+sudo yum install iptables-services -y
+sudo systemctl enable iptables
+sudo systemctl start iptables
+
 # Enable IP forwarding
-sudo sysctl -w net.ipv4.ip_forward=1
-echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/nat.conf
+echo "net.ipv4.ip_forward=1" | sudo tee /etc/sysctl.d/nat.conf
+sudo sysctl -p /etc/sysctl.d/nat.conf
 
 # Set up iptables NAT rules
 sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-sudo iptables -A FORWARD -i eth0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-sudo iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT
+sudo iptables -F FORWARD
 
 # Save iptables rules so they persist across reboots
-sudo iptables-save | sudo tee /etc/iptables.rules
+sudo service iptables save
 ```
 
 You can automate this with user data:
@@ -148,14 +152,14 @@ You can automate this with user data:
 #!/bin/bash
 # User data script for NAT instance
 yum update -y
-echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.conf
-sysctl -p
+yum install iptables-services -y
+systemctl enable iptables
+systemctl start iptables
+echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/nat.conf
+sysctl -p /etc/sysctl.d/nat.conf
 iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-iptables -A FORWARD -i eth0 -o eth0 -m state --state RELATED,ESTABLISHED -j ACCEPT
-iptables -A FORWARD -i eth0 -o eth0 -j ACCEPT
-iptables-save > /etc/iptables.rules
-echo "iptables-restore < /etc/iptables.rules" >> /etc/rc.local
-chmod +x /etc/rc.local
+iptables -F FORWARD
+service iptables save
 ```
 
 Finally, route private subnet traffic to the NAT instance:
@@ -170,21 +174,21 @@ aws ec2 create-route \
 
 ## Cost Analysis
 
-Let's do the math for different scenarios.
+Let's do the math for different scenarios. These are rough US East examples using 720 hours/month, and they include one public IPv4 address at $0.005/hour for both options.
 
 **Low traffic (10 GB/month):**
-- NAT Gateway: $32 (hourly) + $0.45 (data) = $32.45/month
-- NAT Instance (t3.nano): $3.75/month
+- NAT Gateway: $32 (hourly) + $3.60 (public IPv4) + $0.45 (data) = $36.05/month
+- NAT Instance (t3.nano): $3.75 + $3.60 (public IPv4) = $7.35/month
 - Savings with NAT instance: ~$28.70/month
 
 **Medium traffic (500 GB/month):**
-- NAT Gateway: $32 + $22.50 = $54.50/month
-- NAT Instance (t3.small): $15.18/month
+- NAT Gateway: $32 + $3.60 + $22.50 = $58.10/month
+- NAT Instance (t3.small): $15.18 + $3.60 = $18.78/month
 - Savings with NAT instance: ~$39.32/month
 
 **High traffic (5 TB/month):**
-- NAT Gateway: $32 + $225 = $257/month
-- NAT Instance (c5.large): $62.05/month
+- NAT Gateway: $32 + $3.60 + $225 = $260.60/month
+- NAT Instance (c5.large): $62.05 + $3.60 = $65.65/month
 - Savings with NAT instance: ~$195/month
 
 The savings are significant, especially at scale. But factor in the engineering time to manage, monitor, and troubleshoot the NAT instance. If your team's time costs $150/hour, even a few hours of NAT instance maintenance per month erases the savings.
@@ -222,7 +226,7 @@ For production: always use NAT gateways. The reliability and zero-maintenance fa
 
 For dev/test: NAT instances are fine. Save the money, accept the trade-offs.
 
-For staging: NAT gateway with a single instance (no per-AZ HA). It's a compromise between cost and reliability.
+For staging: a single zonal NAT gateway, or a Regional NAT Gateway where available. It's a compromise between cost and reliability.
 
 For more on the complete VPC networking setup, see [creating a VPC from scratch](https://oneuptime.com/blog/post/2026-02-12-create-vpc-from-scratch-in-aws/view).
 
