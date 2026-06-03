@@ -69,9 +69,13 @@ FAILED: CKV2_AWS_6 - Ensure that S3 bucket has a Public Access Block
 Let's fix the S3 bucket findings. Each fix maps to a specific Terraform configuration:
 
 ```hcl
-# S3 bucket with all security checks passing
+# S3 bucket with the common findings fixed
 resource "aws_s3_bucket" "data" {
   bucket = "my-data-bucket"
+}
+
+resource "aws_s3_bucket" "logs" {
+  bucket = "my-data-bucket-logs"
 }
 
 # Enable versioning
@@ -144,6 +148,10 @@ on:
 jobs:
   checkov:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
     steps:
       - uses: actions/checkout@v4
 
@@ -152,13 +160,13 @@ jobs:
         with:
           directory: terraform/
           framework: terraform
-          output_format: sarif
-          output_file_path: results.sarif
+          output_format: cli,sarif
+          output_file_path: console,results.sarif
           soft_fail: false  # Fail the build on findings
 
       - name: Upload SARIF
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: results.sarif
 ```
@@ -177,7 +185,7 @@ metadata:
   id: "CUSTOM_AWS_1"
   name: "Ensure all resources have required tags"
   severity: "MEDIUM"
-  category: "General"
+  category: "GENERAL_SECURITY"
 
 definition:
   cond_type: "attribute"
@@ -281,14 +289,14 @@ checkov -d . --download-external-modules true
 
 ## Compliance Frameworks
 
-Checkov maps checks to compliance frameworks like CIS, SOC2, HIPAA, and PCI-DSS. Run a scan filtered to a specific framework:
+Checkov maps checks to compliance frameworks like CIS and AWS Foundations Benchmark. To narrow a scan, filter by the Checkov policy IDs or severity levels that match the control set you care about:
 
 ```bash
-# Run only CIS benchmark checks
-checkov -d . --check-type CIS
+# Run only specific checks
+checkov -d . --framework terraform --check CKV_AWS_18,CKV_AWS_19
 
-# Run PCI-DSS checks
-checkov -d . --framework terraform --check-type PCI
+# Run high and critical checks when using the platform integration
+checkov -d . --framework terraform --check HIGH --bc-api-key <api-key>
 ```
 
 This is helpful when you need to demonstrate compliance for audits.
