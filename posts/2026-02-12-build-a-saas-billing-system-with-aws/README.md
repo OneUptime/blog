@@ -73,9 +73,11 @@ The subscription service handles creating, updating, and canceling subscriptions
 ```javascript
 // subscription-service/handler.js - Subscription management
 const Stripe = require('stripe');
-const { DynamoDBDocumentClient, PutCommand, UpdateCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Create a new subscription
 exports.createSubscription = async (event) => {
@@ -93,7 +95,9 @@ exports.createSubscription = async (event) => {
     items: [{ price: priceId }],
     default_payment_method: paymentMethodId,
     payment_behavior: 'default_incomplete',
-    expand: ['latest_invoice.payment_intent'],
+    payment_settings: { save_default_payment_method: 'on_subscription' },
+    metadata: { customerId, planId },
+    expand: ['latest_invoice.confirmation_secret'],
   });
 
   // Save subscription to DynamoDB
@@ -117,7 +121,7 @@ exports.createSubscription = async (event) => {
     statusCode: 200,
     body: JSON.stringify({
       subscriptionId: stripeSubscription.id,
-      clientSecret: stripeSubscription.latest_invoice.payment_intent.client_secret,
+      clientSecret: stripeSubscription.latest_invoice.confirmation_secret.client_secret,
     }),
   };
 };
@@ -176,7 +180,10 @@ The aggregator Lambda processes Kinesis records in batches:
 
 ```javascript
 // usage-metering/aggregator.js - Aggregate usage from Kinesis
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 exports.handler = async (event) => {
   // Group records by customer and metric
@@ -268,13 +275,17 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 const eventBridge = new EventBridgeClient({});
 
 exports.handler = async (event) => {
-  const sig = event.headers['stripe-signature'];
+  const headers = event.headers || {};
+  const sig = headers['stripe-signature'] || headers['Stripe-Signature'];
+  const body = event.rawBody || (event.isBase64Encoded
+    ? Buffer.from(event.body, 'base64')
+    : event.body);
   let stripeEvent;
 
   // Verify webhook signature
   try {
     stripeEvent = stripe.webhooks.constructEvent(
-      event.body,
+      body,
       sig,
       process.env.STRIPE_WEBHOOK_SECRET
     );
@@ -316,12 +327,26 @@ After payment succeeds, update what the customer can access:
 
 ```javascript
 // entitlements/handler.js - Manage feature access based on subscription
+const Stripe = require('stripe');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
 exports.updateEntitlements = async (event) => {
-  const subscription = event.detail;
+  const stripeObject = event.detail;
+  const subscription = stripeObject.object === 'invoice'
+    ? await stripe.subscriptions.retrieve(
+        stripeObject.parent?.subscription_details?.subscription || stripeObject.subscription
+      )
+    : stripeObject;
   const customerId = await getCustomerIdFromStripeId(subscription.customer);
 
   // Get plan features
-  const plan = getPlanFeatures(subscription.plan?.id);
+  const planId = subscription.metadata?.planId
+    || getPlanIdFromPriceId(subscription.items?.data?.[0]?.price?.id);
+  const plan = getPlanFeatures(planId);
 
   // Update entitlements in DynamoDB
   await docClient.send(new PutCommand({
