@@ -51,15 +51,14 @@ spec:
           audience: api
 ```
 
-The kubelet refreshes this token every 48 minutes (80% of 60 minutes):
+The kubelet proactively requests rotation once this token is older than 48 minutes (80% of 60 minutes), or once the token is older than 24 hours, whichever happens first:
 
 ```bash
 # Watch token rotation in action
 kubectl exec -it app-with-rotation -n production -- sh -c '
   while true; do
     TOKEN=$(cat /var/run/secrets/tokens/api-token)
-    PAYLOAD=$(echo $TOKEN | cut -d"." -f2 | base64 -d 2>/dev/null)
-    EXP=$(echo $PAYLOAD | grep -o "\"exp\":[0-9]*" | cut -d":" -f2)
+    EXP=$(python3 -c "import base64, json, sys; payload=sys.argv[1].split(\".\")[1]; payload += \"=\" * (-len(payload) % 4); print(json.loads(base64.urlsafe_b64decode(payload))[\"exp\"])" "$TOKEN")
     NOW=$(date +%s)
     TTL=$((EXP - NOW))
     echo "Token TTL: $TTL seconds"
@@ -68,11 +67,11 @@ kubectl exec -it app-with-rotation -n production -- sh -c '
 '
 ```
 
-You'll see the TTL drop from 3600 to around 720 (20% of lifetime), then jump back to 3600 when rotation occurs.
+You'll see the TTL drop toward around 720 seconds (20% of lifetime), then jump back up when rotation occurs.
 
 ## Implementing Application-Level Token Refresh
 
-Applications must read the token file on each request to get rotated tokens:
+Applications must reload the token file periodically to get rotated tokens:
 
 ```go
 // token-refresh-client.go
@@ -81,7 +80,6 @@ package main
 import (
     "context"
     "fmt"
-    "io/ioutil"
     "time"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -90,7 +88,7 @@ import (
 )
 
 func main() {
-    // Create in-cluster config that reads token file on each request
+    // Create in-cluster config that reloads the token file automatically
     config, err := rest.InClusterConfig()
     if err != nil {
         panic(err.Error())
@@ -116,7 +114,7 @@ func main() {
 }
 ```
 
-The rest.InClusterConfig() automatically handles token refresh by reading the file on each request. No application code changes needed.
+The rest.InClusterConfig() automatically handles token refresh by configuring the mounted token file as the bearer token source. Current client-go versions periodically re-read that file, so no application code changes are needed when you use the official client.
 
 For custom HTTP clients, implement similar behavior:
 
@@ -183,12 +181,13 @@ NAMESPACE="production"
 SERVICE_ACCOUNT="external-api-access"
 TOKEN_FILE="/secure/api-token"
 
-# Generate a new 24-hour token
-NEW_TOKEN=$(kubectl create token $SERVICE_ACCOUNT -n $NAMESPACE --duration=24h)
+# Request a new token with a 24-hour duration
+NEW_TOKEN=$(kubectl create token "$SERVICE_ACCOUNT" -n "$NAMESPACE" --duration=24h)
 
-# Save to secure location
-echo $NEW_TOKEN > $TOKEN_FILE
-chmod 600 $TOKEN_FILE
+# Save to secure location. The API server may issue a token with a shorter or
+# longer lifetime than requested, depending on cluster configuration.
+printf '%s\n' "$NEW_TOKEN" > "$TOKEN_FILE"
+chmod 600 "$TOKEN_FILE"
 
 echo "Token rotated at $(date)"
 ```
@@ -222,19 +221,24 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
-    # Generate a fresh token for this deployment
+    # Generate a fresh token for this deployment after authenticating kubectl
+    # with your CI identity, such as cloud OIDC or a restricted bootstrap credential.
     - name: Generate ServiceAccount Token
       run: |
         kubectl create token cicd-deployer -n cicd --duration=1h > /tmp/token
 
     - name: Deploy Application
       env:
-        KUBE_TOKEN: ${{ secrets.KUBE_TOKEN }}
+        KUBE_SERVER: ${{ secrets.KUBE_SERVER }}
+        KUBE_CA_CERT: ${{ secrets.KUBE_CA_CERT }}
       run: |
         # Use the fresh token
-        export KUBE_TOKEN=$(cat /tmp/token)
+        kubectl config set-cluster target --server="$KUBE_SERVER" --certificate-authority=<(echo "$KUBE_CA_CERT" | base64 -d) --embed-certs=true
+        kubectl config set-credentials cicd-deployer --token="$(cat /tmp/token)"
+        kubectl config set-context target --cluster=target --user=cicd-deployer --namespace=production
+        kubectl config use-context target
         kubectl apply -f k8s/
 
     - name: Cleanup
@@ -242,7 +246,7 @@ jobs:
       run: rm -f /tmp/token
 ```
 
-This generates a new short-lived token for each deployment, avoiding long-lived credentials in CI/CD secrets.
+This uses a new short-lived token for each deployment. The workflow still needs an initial, tightly scoped way to authenticate to the cluster before it can call `kubectl create token`.
 
 ## Rotating Long-Lived Token Secrets
 
@@ -257,15 +261,25 @@ SERVICE_ACCOUNT="legacy-app"
 SECRET_NAME="legacy-app-token"
 
 # Delete the old secret
-kubectl delete secret $SECRET_NAME -n $NAMESPACE
+kubectl delete secret "$SECRET_NAME" -n "$NAMESPACE" --ignore-not-found
 
-# Create a new token secret
-kubectl create secret generic $SECRET_NAME \
-  --namespace=$NAMESPACE \
-  --from-literal=token=$(kubectl create token $SERVICE_ACCOUNT -n $NAMESPACE --duration=8760h)
+# Create a new long-lived service account token secret
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Secret
+metadata:
+  name: $SECRET_NAME
+  namespace: $NAMESPACE
+  annotations:
+    kubernetes.io/service-account.name: $SERVICE_ACCOUNT
+type: kubernetes.io/service-account-token
+EOF
+
+# Wait for the control plane to populate the token
+kubectl wait --for=jsonpath='{.data.token}' "secret/$SECRET_NAME" -n "$NAMESPACE" --timeout=60s
 
 # Restart pods to pick up new token
-kubectl rollout restart deployment -n $NAMESPACE -l app=legacy-app
+kubectl rollout restart deployment -n "$NAMESPACE" -l app=legacy-app
 
 echo "Token secret rotated and pods restarted"
 ```
@@ -284,7 +298,7 @@ import (
     "encoding/base64"
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "os"
     "strings"
     "time"
 )
@@ -296,7 +310,7 @@ type TokenClaims struct {
 
 func getTokenAge(tokenPath string) (time.Duration, error) {
     // Read token file
-    tokenBytes, err := ioutil.ReadFile(tokenPath)
+    tokenBytes, err := os.ReadFile(tokenPath)
     if err != nil {
         return 0, err
     }
@@ -340,7 +354,7 @@ func main() {
 
         fmt.Printf("Token age: %s\n", age.Round(time.Second))
 
-        // Alert if token is too old (should never happen with auto-rotation)
+        // Alert if a one-hour projected token is too old
         if age > 2*time.Hour {
             fmt.Printf("WARNING: Token is older than expected!\n")
         }
@@ -424,7 +438,7 @@ auth = ResilientTokenAuth([
 ])
 ```
 
-This ensures service continuity even if primary token rotation fails.
+This can preserve service continuity if the fallback token is valid for the same audience and has the required permissions.
 
 ## Conclusion
 
