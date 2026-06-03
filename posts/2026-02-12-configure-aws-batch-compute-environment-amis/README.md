@@ -8,7 +8,7 @@ Description: Learn how to configure and customize AMIs for AWS Batch compute env
 
 ---
 
-The AMI (Amazon Machine Image) your AWS Batch compute environment uses determines what software, drivers, and configurations are available on the underlying EC2 instances. By default, Batch uses the Amazon ECS-optimized AMI, which works fine for basic container workloads. But when you need GPU drivers, custom monitoring agents, specific kernel parameters, or pre-loaded datasets, you need a custom AMI.
+The AMI (Amazon Machine Image) your AWS Batch compute environment uses determines what software, drivers, and configurations are available on the underlying EC2 instances. By default, Batch uses a recent AWS Batch-supported Amazon ECS-optimized AMI, which works fine for basic container workloads. But when you need specific GPU driver versions, custom monitoring agents, specific kernel parameters, or pre-loaded datasets on EBS-backed volumes, you need a custom AMI.
 
 This guide covers the AMI configuration options in Batch and walks through building custom AMIs for different workload types.
 
@@ -18,9 +18,12 @@ AWS Batch provides several built-in AMI types through the `ec2Configuration` set
 
 | imageType | Description | Use Case |
 |---|---|---|
-| ECS_AL2 | Amazon Linux 2 with ECS agent | General purpose containers |
-| ECS_AL2_NVIDIA | Amazon Linux 2 with NVIDIA drivers + ECS | GPU workloads |
-| ECS_AL2023 | Amazon Linux 2023 with ECS agent | Newer general purpose |
+| ECS_AL2023 | Amazon Linux 2023 with ECS agent | General purpose containers |
+| ECS_AL2023_NVIDIA | Amazon Linux 2023 with NVIDIA drivers + ECS | GPU workloads |
+| ECS_AL2 | Amazon Linux 2 with ECS agent | Legacy general purpose containers |
+| ECS_AL2_NVIDIA | Amazon Linux 2 with NVIDIA drivers + ECS | Legacy GPU workloads |
+
+AWS Batch changed the default AMI for new Amazon ECS compute environments from Amazon Linux 2 to Amazon Linux 2023 on January 12, 2026. AWS plans to block creation of new Amazon ECS compute environments using Batch-provided Amazon Linux 2 AMIs on June 30, 2026, so prefer the AL2023 image types for new environments.
 
 ```bash
 # Create a compute environment with the NVIDIA AMI
@@ -33,13 +36,13 @@ aws batch create-compute-environment \
     "allocationStrategy": "BEST_FIT_PROGRESSIVE",
     "minvCpus": 0,
     "maxvCpus": 256,
-    "instanceTypes": ["g5", "p3"],
+    "instanceTypes": ["g5", "p4d"],
     "subnets": ["subnet-0abc123"],
     "securityGroupIds": ["sg-0abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
     "ec2Configuration": [
       {
-        "imageType": "ECS_AL2_NVIDIA"
+        "imageType": "ECS_AL2023_NVIDIA"
       }
     ]
   }' \
@@ -53,29 +56,30 @@ For GPU workloads, see our detailed guide on [configuring AWS Batch for GPU work
 
 You need a custom AMI when:
 
-- You need specific driver versions (not the latest NVIDIA driver)
+- You need specific driver versions instead of the Batch-provided GPU AMI
 - Your jobs need software that cannot be installed in the container (kernel modules, system services)
 - You need custom kernel parameters or sysctl settings
 - Security compliance requires a hardened base image
-- You want to pre-load large datasets or models on the instance storage
+- You want to pre-load large datasets or models on AMI-backed EBS volumes
 - You need monitoring agents or log collectors at the host level
 
 ## Building a Custom AMI for Batch
 
 ### Step 1: Start from the Right Base
 
-Always start from an ECS-optimized AMI. The ECS agent and Docker are pre-configured, which Batch requires.
+Start from an ECS-optimized AMI unless you have a specific operating system requirement. The ECS agent and Docker are pre-configured, which Batch requires.
 
 ```bash
 # Find the latest ECS-optimized AMI
 aws ssm get-parameters-by-path \
-  --path /aws/service/ecs/optimized-ami/amazon-linux-2 \
+  --path /aws/service/ecs/optimized-ami/amazon-linux-2023 \
+  --recursive \
   --query 'Parameters[?contains(Name, `recommended`)].{Name:Name,Value:Value}' \
   --output table
 
 # For GPU workloads, find the NVIDIA AMI
 aws ssm get-parameter \
-  --name /aws/service/ecs/optimized-ami/amazon-linux-2/gpu/recommended \
+  --name /aws/service/ecs/optimized-ami/amazon-linux-2023/gpu/recommended \
   --query 'Parameter.Value' --output text | python3 -m json.tool
 ```
 
@@ -84,7 +88,7 @@ aws ssm get-parameter \
 ```bash
 # Get the base AMI ID
 BASE_AMI=$(aws ssm get-parameter \
-  --name /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id \
+  --name /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id \
   --query 'Parameter.Value' --output text)
 
 # Launch an instance to customize
@@ -107,12 +111,12 @@ SSH in and install everything you need.
 ssh -i my-key.pem ec2-user@<instance-ip>
 
 # Example: Install monitoring agent
-sudo yum install -y amazon-cloudwatch-agent
+sudo dnf install -y amazon-cloudwatch-agent
 sudo /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl \
   -a fetch-config -m ec2 -c ssm:AmazonCloudWatch-linux -s
 
 # Example: Install custom security tools
-sudo yum install -y aide tripwire
+sudo dnf install -y aide
 
 # Example: Set custom kernel parameters
 sudo tee -a /etc/sysctl.conf > /dev/null << EOF
@@ -130,8 +134,7 @@ kernel.shmmax = 68719476736
 kernel.shmall = 4294967296
 EOF
 
-# Example: Pre-load a large dataset to instance storage
-# (Only useful if your compute environment uses instances with local storage)
+# Example: Pre-load a large dataset onto the AMI's EBS-backed filesystem
 sudo mkdir -p /data/reference
 # aws s3 sync s3://my-bucket/reference-data/ /data/reference/
 
@@ -158,16 +161,20 @@ sudo tee /etc/docker/daemon.json > /dev/null << EOF
 EOF
 
 # Clean up for AMI creation
-sudo yum clean all
-sudo rm -rf /var/cache/yum
+sudo dnf clean all
+sudo rm -rf /var/cache/dnf
 sudo rm -rf /tmp/*
+
+# Reset ECS agent state before baking the AMI
+sudo systemctl stop ecs
+sudo rm -rf /var/lib/ecs/data/*
 ```
 
 ### Step 4: Create the AMI
 
 ```bash
 # Stop the instance first (ensures clean filesystem state)
-INSTANCE_ID=i-0abc123builder
+INSTANCE_ID=i-0123456789abcdef0
 aws ec2 stop-instances --instance-ids $INSTANCE_ID
 aws ec2 wait instance-stopped --instance-ids $INSTANCE_ID
 
@@ -206,7 +213,7 @@ aws batch create-compute-environment \
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
     "ec2Configuration": [
       {
-        "imageType": "ECS_AL2",
+        "imageType": "ECS_AL2023",
         "imageIdOverride": "'$CUSTOM_AMI'"
       }
     ]
@@ -226,7 +233,7 @@ For repeatable, automated AMI builds, use EC2 Image Builder.
 aws imagebuilder create-image-recipe \
   --name batch-custom-recipe \
   --semantic-version 1.0.0 \
-  --parent-image "arn:aws:imagebuilder:us-east-1:aws:image/amazon-linux-2-ecs-optimized-x86/x.x.x" \
+  --parent-image "arn:aws:imagebuilder:us-east-1:aws:image/amazon-linux-2023-ecs-optimized-x86/x.x.x" \
   --components '[
     {
       "componentArn": "arn:aws:imagebuilder:us-east-1:aws:component/amazon-cloudwatch-agent-linux/x.x.x"
@@ -252,8 +259,8 @@ phases:
         action: ExecuteBash
         inputs:
           commands:
-            - sudo yum install -y htop iotop sysstat
-            - sudo yum install -y amazon-cloudwatch-agent
+            - sudo dnf install -y htop iotop sysstat
+            - sudo dnf install -y amazon-cloudwatch-agent
 
       - name: ConfigureKernel
         action: ExecuteBash
@@ -292,7 +299,7 @@ phases:
 You can specify different AMIs for different instance types in the same compute environment.
 
 ```bash
-# Use GPU AMI for GPU instances and standard AMI for CPU instances
+# Use a GPU AMI for GPU instances and a standard AMI for CPU instances
 aws batch create-compute-environment \
   --compute-environment-name mixed-ami-env \
   --type MANAGED \
@@ -301,18 +308,18 @@ aws batch create-compute-environment \
     "allocationStrategy": "BEST_FIT_PROGRESSIVE",
     "minvCpus": 0,
     "maxvCpus": 512,
-    "instanceTypes": ["m5", "c5", "g5", "p3"],
+    "instanceTypes": ["m5", "c5", "g5", "p4d"],
     "subnets": ["subnet-0abc123"],
     "securityGroupIds": ["sg-0abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
     "ec2Configuration": [
       {
-        "imageType": "ECS_AL2_NVIDIA",
-        "imageIdOverride": "ami-custom-gpu-123"
+        "imageType": "ECS_AL2023_NVIDIA",
+        "imageIdOverride": "ami-0123456789abcdef0"
       },
       {
-        "imageType": "ECS_AL2",
-        "imageIdOverride": "ami-custom-cpu-456"
+        "imageType": "ECS_AL2023",
+        "imageIdOverride": "ami-0fedcba9876543210"
       }
     ]
   }' \
@@ -328,7 +335,7 @@ Custom AMIs need regular updates for security patches and driver updates.
 ```bash
 # Script to check if your AMI is based on an outdated ECS-optimized AMI
 CURRENT_RECOMMENDED=$(aws ssm get-parameter \
-  --name /aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id \
+  --name /aws/service/ecs/optimized-ami/amazon-linux-2023/recommended/image_id \
   --query 'Parameter.Value' --output text)
 
 echo "Current recommended ECS AMI: $CURRENT_RECOMMENDED"
