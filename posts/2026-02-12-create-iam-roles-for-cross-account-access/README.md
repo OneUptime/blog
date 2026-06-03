@@ -79,7 +79,7 @@ aws iam attach-role-policy \
 
 # Or create a more restricted policy
 aws iam put-role-policy \
-  --role-name CrossAccountReadOnly \
+  --role-name CrossAccountAdmin \
   --policy-name ReadOnlyAccess \
   --policy-document '{
     "Version": "2012-10-17",
@@ -292,7 +292,7 @@ When a third party needs cross-account access (a vendor, SaaS provider, etc.), u
 }
 ```
 
-The external ID acts as a shared secret. Even if another customer of the same vendor knows your role ARN, they can't assume it without the external ID.
+The external ID acts as a unique customer identifier, not a secret. Even if another customer of the same vendor knows your role ARN, they can't assume it unless the vendor uses the external ID that matches your trust policy.
 
 ## Console Access via Role Switching
 
