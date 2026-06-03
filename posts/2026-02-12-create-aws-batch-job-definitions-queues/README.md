@@ -26,8 +26,10 @@ aws batch register-job-definition \
   --type container \
   --container-properties '{
     "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/data-processor:latest",
-    "vcpus": 2,
-    "memory": 4096,
+    "resourceRequirements": [
+      {"type": "VCPU", "value": "2"},
+      {"type": "MEMORY", "value": "4096"}
+    ],
     "command": ["python3", "/app/process.py", "Ref::input_file"],
     "environment": [
       {"name": "OUTPUT_BUCKET", "value": "my-output-bucket"},
@@ -73,24 +75,26 @@ aws batch register-job-definition \
       },
       {
         "action": "EXIT",
-        "onExitCode": "0"
+        "onReason": "*"
       }
     ]
   }' \
   --container-properties '{
     "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/data-processor:latest",
-    "vcpus": 2,
-    "memory": 4096,
+    "resourceRequirements": [
+      {"type": "VCPU", "value": "2"},
+      {"type": "MEMORY", "value": "4096"}
+    ],
     "command": ["python3", "/app/process.py"]
   }'
 ```
 
 This retries up to 3 times when:
 - The EC2 host had an issue (spot interruption)
-- Exit code 137 (out of memory - might succeed with a different instance)
+- Exit code 137 (the container was killed, often because of memory pressure)
 - Container image couldn't be pulled (transient ECR issue)
 
-It exits immediately on success (exit code 0).
+For other failures, it exits rather than retrying.
 
 ## Job Definition with Timeout
 
@@ -104,8 +108,10 @@ aws batch register-job-definition \
   --timeout '{"attemptDurationSeconds": 3600}' \
   --container-properties '{
     "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/processor:latest",
-    "vcpus": 4,
-    "memory": 8192,
+    "resourceRequirements": [
+      {"type": "VCPU", "value": "4"},
+      {"type": "MEMORY", "value": "8192"}
+    ],
     "command": ["python3", "/app/run.py"]
   }'
 ```
@@ -121,16 +127,35 @@ For jobs that need sidecar containers (like a log aggregator or service mesh pro
 aws batch register-job-definition \
   --job-definition-name multi-container-job \
   --type container \
-  --container-properties '{
-    "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/main-app:latest",
-    "vcpus": 4,
-    "memory": 8192,
-    "command": ["python3", "/app/run.py"],
-    "environment": [
-      {"name": "REDIS_HOST", "value": "localhost"}
-    ],
-    "dependsOn": [],
-    "essential": true
+  --ecs-properties '{
+    "taskProperties": [
+      {
+        "containers": [
+          {
+            "name": "log-sidecar",
+            "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/log-agent:latest",
+            "essential": false,
+            "resourceRequirements": [
+              {"type": "VCPU", "value": "1"},
+              {"type": "MEMORY", "value": "1024"}
+            ]
+          },
+          {
+            "name": "main-app",
+            "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/main-app:latest",
+            "essential": true,
+            "command": ["python3", "/app/run.py"],
+            "dependsOn": [
+              {"containerName": "log-sidecar", "condition": "START"}
+            ],
+            "resourceRequirements": [
+              {"type": "VCPU", "value": "4"},
+              {"type": "MEMORY", "value": "8192"}
+            ]
+          }
+        ]
+      }
+    ]
   }'
 ```
 
@@ -145,8 +170,10 @@ aws batch register-job-definition \
   --type container \
   --container-properties '{
     "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/processor:latest",
-    "vcpus": 2,
-    "memory": 4096,
+    "resourceRequirements": [
+      {"type": "VCPU", "value": "2"},
+      {"type": "MEMORY", "value": "4096"}
+    ],
     "command": ["python3", "/app/process.py"],
     "volumes": [
       {
@@ -214,7 +241,7 @@ aws batch create-job-queue \
   ]'
 ```
 
-The `compute-environment-order` specifies failover. If the first compute environment is full, Batch tries the second.
+The `compute-environment-order` specifies failover. If the first compute environment is invalid or can't provide a suitable compute resource, Batch tries the second.
 
 ## Job Dependencies
 
@@ -235,7 +262,7 @@ TRANSFORM_JOB=$(aws batch submit-job \
   --job-name transform-data \
   --job-queue standard-jobs \
   --job-definition data-processor \
-  --depends-on "[{\"jobId\": \"$EXTRACT_JOB\", \"type\": \"SEQUENTIAL\"}]" \
+  --depends-on "[{\"jobId\": \"$EXTRACT_JOB\"}]" \
   --container-overrides '{
     "command": ["python3", "/app/transform.py"]
   }' \
@@ -248,7 +275,7 @@ aws batch submit-job \
   --job-name load-data \
   --job-queue standard-jobs \
   --job-definition data-processor \
-  --depends-on "[{\"jobId\": \"$TRANSFORM_JOB\", \"type\": \"SEQUENTIAL\"}]" \
+  --depends-on "[{\"jobId\": \"$TRANSFORM_JOB\"}]" \
   --container-overrides '{
     "command": ["python3", "/app/load.py"]
   }'
@@ -316,8 +343,10 @@ aws batch register-job-definition \
   --type container \
   --container-properties '{
     "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/data-processor:v2",
-    "vcpus": 4,
-    "memory": 16384,
+    "resourceRequirements": [
+      {"type": "VCPU", "value": "4"},
+      {"type": "MEMORY", "value": "16384"}
+    ],
     "command": ["python3", "/app/process.py", "Ref::input_file"]
   }'
 
