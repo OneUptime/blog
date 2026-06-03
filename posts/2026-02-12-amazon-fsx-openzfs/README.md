@@ -21,7 +21,7 @@ Here's what makes it compelling:
 - **Clones**: Writable clones from snapshots in seconds, regardless of data size
 - **Compression**: ZFS compression (LZ4, ZSTD) built in, often improving throughput while saving space
 - **NFS v3 and v4**: Native NFS support for Linux and macOS clients
-- **Up to 1 million IOPS**: For workloads that need serious random I/O performance
+- **Up to 2 million IOPS**: For workloads that need serious random I/O performance
 - **Low latency**: Sub-millisecond latencies for cached data
 
 ## When to Use OpenZFS
@@ -50,8 +50,8 @@ aws fsx create-file-system \
   --file-system-type OPENZFS \
   --storage-capacity 256 \
   --storage-type SSD \
-  --subnet-ids "subnet-0aaa111" \
-  --security-group-ids "sg-0zfs123" \
+  --subnet-ids "subnet-0aaa1110bbb22233" \
+  --security-group-ids "sg-0123abc456def7890" \
   --open-zfs-configuration '{
     "DeploymentType": "SINGLE_AZ_2",
     "ThroughputCapacity": 160,
@@ -79,12 +79,12 @@ aws fsx create-file-system \
   --file-system-type OPENZFS \
   --storage-capacity 512 \
   --storage-type SSD \
-  --subnet-ids "subnet-0aaa111" "subnet-0bbb222" \
-  --security-group-ids "sg-0zfs123" \
+  --subnet-ids "subnet-0aaa1110bbb22233" "subnet-0bbb2220ccc33344" \
+  --security-group-ids "sg-0123abc456def7890" \
   --open-zfs-configuration '{
     "DeploymentType": "MULTI_AZ_1",
     "ThroughputCapacity": 320,
-    "PreferredSubnetId": "subnet-0aaa111",
+    "PreferredSubnetId": "subnet-0aaa1110bbb22233",
     "RootVolumeConfiguration": {
       "DataCompressionType": "ZSTD",
       "NfsExports": [{
@@ -100,9 +100,9 @@ aws fsx create-file-system \
 
 Parameters to note:
 
-- **ThroughputCapacity**: 64, 128, 160, 256, 320, 512, 1024, 2048, 3072, or 4096 MB/s
+- **ThroughputCapacity**: Valid values depend on the deployment type. `SINGLE_AZ_1` supports 64, 128, 256, 512, 1024, 2048, 3072, or 4096 MB/s; `SINGLE_AZ_2` and `MULTI_AZ_1` support 160, 320, 640, 1280, 2560, 3840, 5120, 7680, or 10240 MB/s
 - **DataCompressionType**: `LZ4` (fast, moderate compression), `ZSTD` (better compression, slightly more CPU), or `NONE`
-- **DiskIopsConfiguration**: `AUTOMATIC` (3 IOPS per GB, up to 400,000) or `USER_PROVISIONED`
+- **DiskIopsConfiguration**: `AUTOMATIC` (3 IOPS per GB) or `USER_PROVISIONED`; the maximum provisioned SSD IOPS depends on the deployment type and Region
 
 ## Security Group Setup
 
@@ -113,35 +113,35 @@ OpenZFS needs NFS ports:
 ZFS_SG=$(aws ec2 create-security-group \
   --group-name "fsx-openzfs-sg" \
   --description "Security group for FSx for OpenZFS" \
-  --vpc-id "vpc-0abc123" \
+  --vpc-id "vpc-0abc1234def567890" \
   --query "GroupId" \
   --output text)
 
 # NFS
 aws ec2 authorize-security-group-ingress \
   --group-id "$ZFS_SG" --protocol tcp --port 2049 \
-  --source-group "sg-0clients"
+  --source-group "sg-0abc1234def567890"
 
 aws ec2 authorize-security-group-ingress \
   --group-id "$ZFS_SG" --protocol udp --port 2049 \
-  --source-group "sg-0clients"
+  --source-group "sg-0abc1234def567890"
 
 # NFS mountd and portmapper (for NFSv3)
 aws ec2 authorize-security-group-ingress \
   --group-id "$ZFS_SG" --protocol tcp --port 111 \
-  --source-group "sg-0clients"
+  --source-group "sg-0abc1234def567890"
 
 aws ec2 authorize-security-group-ingress \
   --group-id "$ZFS_SG" --protocol udp --port 111 \
-  --source-group "sg-0clients"
+  --source-group "sg-0abc1234def567890"
 
 aws ec2 authorize-security-group-ingress \
   --group-id "$ZFS_SG" --protocol tcp --port 20001-20003 \
-  --source-group "sg-0clients"
+  --source-group "sg-0abc1234def567890"
 
 aws ec2 authorize-security-group-ingress \
   --group-id "$ZFS_SG" --protocol udp --port 20001-20003 \
-  --source-group "sg-0clients"
+  --source-group "sg-0abc1234def567890"
 ```
 
 ## Creating Child Volumes
@@ -152,14 +152,14 @@ The file system comes with a root volume. Create child volumes for different pur
 # Create a child volume for application data
 aws fsx create-volume \
   --volume-type OPENZFS \
-  --name "app-data" \
+  --name "app_data" \
   --open-zfs-configuration '{
-    "ParentVolumeId": "fsvol-0root123",
+    "ParentVolumeId": "fsvol-0123456789abcdef0",
     "DataCompressionType": "LZ4",
     "NfsExports": [{
       "ClientConfigurations": [{
         "Clients": "10.0.0.0/16",
-        "Options": ["rw", "no_root_squash"]
+        "Options": ["rw", "crossmnt", "no_root_squash"]
       }]
     }],
     "UserAndGroupQuotas": [
@@ -182,13 +182,13 @@ aws fsx create-volume \
   --volume-type OPENZFS \
   --name "database" \
   --open-zfs-configuration '{
-    "ParentVolumeId": "fsvol-0root123",
+    "ParentVolumeId": "fsvol-0123456789abcdef0",
     "DataCompressionType": "NONE",
     "RecordSizeKiB": 8,
     "NfsExports": [{
       "ClientConfigurations": [{
         "Clients": "10.0.1.0/24",
-        "Options": ["rw", "sync", "no_root_squash"]
+        "Options": ["rw", "sync", "crossmnt", "no_root_squash"]
       }]
     }]
   }'
@@ -211,7 +211,7 @@ sudo apt-get install -y nfs-common  # Ubuntu
 
 # Get the DNS name
 DNS_NAME=$(aws fsx describe-file-systems \
-  --file-system-ids "fs-0abc123" \
+  --file-system-ids "fs-0123456789abcdef0" \
   --query "FileSystems[0].DNSName" \
   --output text)
 
@@ -225,7 +225,7 @@ sudo mount -t nfs \
 sudo mkdir -p /mnt/app-data
 sudo mount -t nfs \
   -o nfsvers=4.1,rsize=1048576,wsize=1048576,hard,timeo=600,retrans=2,noresvport \
-  ${DNS_NAME}:/fsx/app-data /mnt/app-data
+  ${DNS_NAME}:/fsx/app_data /mnt/app-data
 ```
 
 On macOS (for developer workstations):
@@ -235,7 +235,7 @@ On macOS (for developer workstations):
 sudo mkdir -p /mnt/zfs
 sudo mount -t nfs \
   -o resvport,nfsvers=4.1 \
-  fs-0abc123.fsx.us-east-1.amazonaws.com:/fsx/ /mnt/zfs
+  fs-0123456789abcdef0.fsx.us-east-1.amazonaws.com:/fsx/ /mnt/zfs
 ```
 
 ## Working with Snapshots
@@ -246,17 +246,17 @@ ZFS snapshots are one of its best features. They're instant, space-efficient, an
 # Create a snapshot
 aws fsx create-snapshot \
   --name "before-deployment-v2.5" \
-  --volume-id "fsvol-0abc123" \
+  --volume-id "fsvol-0abc123def4567890" \
   --tags '[{"Key": "Purpose", "Value": "pre-deployment"}]'
 
 # List snapshots for a volume
 aws fsx describe-snapshots \
-  --filters "Name=volume-id,Values=fsvol-0abc123" \
+  --filters "Name=volume-id,Values=fsvol-0abc123def4567890" \
   --query "Snapshots[].{Name:Name,Created:CreationTime,Id:SnapshotId}" \
   --output table
 ```
 
-Users can access snapshots directly through the `.zfs/snapshot` directory:
+Users can access snapshots directly through the `.zfs/snapshot` directory when the volume export includes `crossmnt`:
 
 ```bash
 # Browse snapshots on the mounted volume
@@ -274,23 +274,23 @@ Clones are writable, instant copies of a snapshot. They share data blocks with t
 # Create a clone from a snapshot
 aws fsx create-volume \
   --volume-type OPENZFS \
-  --name "dev-clone" \
+  --name "dev_clone" \
   --open-zfs-configuration '{
-    "ParentVolumeId": "fsvol-0root123",
+    "ParentVolumeId": "fsvol-0123456789abcdef0",
     "OriginSnapshot": {
-      "SnapshotARN": "arn:aws:fsx:us-east-1:123456789012:snapshot/fss-0snap123",
+      "SnapshotARN": "arn:aws:fsx:us-east-1:123456789012:snapshot/fsvol-0abc123def4567890/fsvolsnap-0abc123def4567890",
       "CopyStrategy": "CLONE"
     },
     "NfsExports": [{
       "ClientConfigurations": [{
         "Clients": "10.0.0.0/16",
-        "Options": ["rw", "no_root_squash"]
+        "Options": ["rw", "crossmnt", "no_root_squash"]
       }]
     }]
   }'
 ```
 
-This is perfect for creating development or testing environments from production data. A 500 GB volume clone takes seconds and initially uses zero additional storage.
+This is perfect for creating development or testing environments from production data. A 500 GB volume clone takes seconds and initially consumes no additional capacity beyond changes written to the clone.
 
 ## Terraform Configuration
 
@@ -330,7 +330,7 @@ resource "aws_fsx_openzfs_volume" "app_data" {
   nfs_exports {
     client_configurations {
       clients = "10.0.0.0/16"
-      options = ["rw", "no_root_squash"]
+      options = ["rw", "crossmnt", "no_root_squash"]
     }
   }
 
@@ -358,11 +358,43 @@ resource "aws_security_group" "zfs" {
   }
 
   ingress {
+    from_port       = 2049
+    to_port         = 2049
+    protocol        = "udp"
+    security_groups = [var.client_security_group_id]
+    description     = "NFS"
+  }
+
+  ingress {
     from_port       = 111
     to_port         = 111
     protocol        = "tcp"
     security_groups = [var.client_security_group_id]
     description     = "Portmapper"
+  }
+
+  ingress {
+    from_port       = 111
+    to_port         = 111
+    protocol        = "udp"
+    security_groups = [var.client_security_group_id]
+    description     = "Portmapper"
+  }
+
+  ingress {
+    from_port       = 20001
+    to_port         = 20003
+    protocol        = "tcp"
+    security_groups = [var.client_security_group_id]
+    description     = "NFS mount, status monitor, and lock daemon"
+  }
+
+  ingress {
+    from_port       = 20001
+    to_port         = 20003
+    protocol        = "udp"
+    security_groups = [var.client_security_group_id]
+    description     = "NFS mount, status monitor, and lock daemon"
   }
 
   egress {
@@ -378,19 +410,17 @@ resource "aws_security_group" "zfs" {
 
 ZFS compression is worth enabling for almost every workload. Here's why:
 
-- **LZ4**: Nearly zero CPU overhead. Compresses typical data 2-3x. Can actually improve throughput because less data needs to be read from disk.
-- **ZSTD**: Moderate CPU overhead. Compresses 3-5x for typical data. Better for cold storage or when storage costs dominate.
+- **LZ4**: Lower compute cost and higher write throughput than ZSTD. It can improve effective throughput because less data needs to be read from disk.
+- **ZSTD**: Higher compression and read throughput than LZ4. Better for workloads where storage efficiency matters more than write throughput.
 
 To check compression effectiveness after loading data:
 
 ```bash
-# On a mounted volume, check compression ratio
-# ZFS reports this through the .zfs interface
-# You can also check via CloudWatch
+# Check compression ratio via CloudWatch
 aws cloudwatch get-metric-statistics \
   --namespace "AWS/FSx" \
-  --metric-name "StorageCapacityUtilization" \
-  --dimensions "Name=FileSystemId,Value=fs-0abc123" \
+  --metric-name "CompressionRatio" \
+  --dimensions "Name=FileSystemId,Value=fs-0123456789abcdef0" \
   --start-time "$(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 3600 \
@@ -403,25 +433,25 @@ Key CloudWatch metrics to watch:
 
 ```bash
 # Create alarms for critical metrics
-# Storage utilization
+# Used storage capacity in bytes
 aws cloudwatch put-metric-alarm \
   --alarm-name "openzfs-storage-high" \
   --namespace "AWS/FSx" \
-  --metric-name "StorageCapacityUtilization" \
-  --dimensions "Name=FileSystemId,Value=fs-0abc123" \
+  --metric-name "UsedStorageCapacity" \
+  --dimensions "Name=FileSystemId,Value=fs-0123456789abcdef0" \
   --statistic Average \
   --period 300 \
   --evaluation-periods 3 \
-  --threshold 85 \
+  --threshold 233646220902 \
   --comparison-operator GreaterThanThreshold \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ops-alerts"
 
-# Throughput utilization
+# Network throughput utilization
 aws cloudwatch put-metric-alarm \
   --alarm-name "openzfs-throughput-high" \
   --namespace "AWS/FSx" \
-  --metric-name "ThroughputUtilization" \
-  --dimensions "Name=FileSystemId,Value=fs-0abc123" \
+  --metric-name "NetworkThroughputUtilization" \
+  --dimensions "Name=FileSystemId,Value=fs-0123456789abcdef0" \
   --statistic Average \
   --period 300 \
   --evaluation-periods 6 \
