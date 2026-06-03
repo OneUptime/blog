@@ -29,7 +29,7 @@ Key characteristics:
 - Replication is **asynchronous** - there's a small delay (replica lag) before replicas have the latest data
 - Replicas are **read-only** - you can't write to them
 - Each replica has its own **endpoint** - you choose which queries go where
-- You can have up to **15 read replicas** for MySQL/MariaDB and **5** for PostgreSQL, Oracle, and SQL Server
+- You can have up to **15 read replicas** for MySQL, MariaDB, PostgreSQL, and Oracle, and **5** for SQL Server
 
 ## Creating a Read Replica
 
@@ -136,8 +136,8 @@ read_engine = create_engine(
 )
 
 class RoutingSession(Session):
-    def get_bind(self, mapper=None, clause=None):
-        if self._flushing or self.is_modified():
+    def get_bind(self, mapper=None, *, clause=None, **kw):
+        if self._flushing or self.new or self.dirty or self.deleted:
             return write_engine
         return read_engine
 
@@ -205,7 +205,7 @@ def create_order(user_id, items):
     write_session.commit()
 
     # Read from PRIMARY, not replica (data might not be replicated yet)
-    return write_session.query(Order).get(order.id)
+    return write_session.get(Order, order.id)
 
 def list_orders(user_id):
     # Read from replica (slight lag is acceptable)
@@ -245,7 +245,7 @@ def get_read_engine():
     return next(engine_cycle)
 ```
 
-Alternatively, use [RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-setup-rds-proxy-connection-pooling/view) with reader endpoints for automatic load balancing.
+Alternatively, if you're using Aurora or an RDS Multi-AZ DB cluster, use [RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-setup-rds-proxy-connection-pooling/view) with reader endpoints for automatic load balancing.
 
 ## Scaling Replicas with Different Sizes
 
