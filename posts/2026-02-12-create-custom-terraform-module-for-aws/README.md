@@ -331,6 +331,35 @@ resource "aws_cloudwatch_log_group" "this" {
   tags              = local.common_tags
 }
 
+# IAM roles for ECS tasks
+data "aws_iam_policy_document" "ecs_tasks" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ecs-tasks.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "execution" {
+  name_prefix        = "${var.name}-exec-"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks.json
+  tags               = local.common_tags
+}
+
+resource "aws_iam_role_policy_attachment" "execution" {
+  role       = aws_iam_role.execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_iam_role" "task" {
+  name_prefix        = "${var.name}-task-"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks.json
+  tags               = local.common_tags
+}
+
 # ECS Task Definition
 resource "aws_ecs_task_definition" "this" {
   family                   = var.name
@@ -364,6 +393,67 @@ resource "aws_ecs_task_definition" "this" {
   }])
 
   tags = local.common_tags
+}
+
+# ECS Service
+resource "aws_ecs_service" "this" {
+  name            = var.name
+  cluster         = aws_ecs_cluster.this.id
+  task_definition = aws_ecs_task_definition.this.arn
+  desired_count   = var.desired_count
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets         = var.subnet_ids
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.this.arn
+    container_name   = var.name
+    container_port   = var.container_port
+  }
+
+  lifecycle {
+    ignore_changes = [
+      desired_count
+    ]
+  }
+
+  depends_on = [
+    aws_lb_listener.http,
+    aws_iam_role_policy_attachment.execution
+  ]
+
+  tags = local.common_tags
+}
+
+resource "aws_appautoscaling_target" "ecs" {
+  count = var.enable_autoscaling ? 1 : 0
+
+  max_capacity       = var.max_capacity
+  min_capacity       = var.min_capacity
+  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.this.name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
+}
+
+resource "aws_appautoscaling_policy" "ecs_cpu" {
+  count = var.enable_autoscaling ? 1 : 0
+
+  name               = "${var.name}-cpu"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.ecs[0].resource_id
+  scalable_dimension = aws_appautoscaling_target.ecs[0].scalable_dimension
+  service_namespace  = aws_appautoscaling_target.ecs[0].service_namespace
+
+  target_tracking_scaling_policy_configuration {
+    predefined_metric_specification {
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
+    }
+
+    target_value = 70
+  }
 }
 ```
 
