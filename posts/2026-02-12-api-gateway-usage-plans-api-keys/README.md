@@ -81,7 +81,7 @@ aws apigateway create-api-key \
 # Create a key with a specific value (useful for migration)
 aws apigateway create-api-key \
   --name "Legacy-Client" \
-  --value "custom-api-key-value-here-min-20-chars" \
+  --value "customapikeyvalue12345" \
   --enabled
 ```
 
@@ -119,7 +119,7 @@ aws apigateway create-usage-plan \
 
 The throttle settings work like a token bucket:
 - `rateLimit` is the steady-state rate (requests per second)
-- `burstLimit` is the maximum concurrent requests before throttling kicks in
+- `burstLimit` is the target burst rate that can be allowed briefly above the steady-state rate
 
 ## Step 4: Associate Keys with Plans
 
@@ -143,7 +143,7 @@ aws apigateway create-usage-plan-key \
 
 ## Complete CloudFormation Setup
 
-Here's everything together in a CloudFormation template:
+Here's the usage plan and API key portion of a CloudFormation template, assuming the `prod` stage already exists:
 
 ```yaml
 Resources:
@@ -156,7 +156,6 @@ Resources:
   # Usage Plans
   FreePlan:
     Type: AWS::ApiGateway::UsagePlan
-    DependsOn: ProdStage
     Properties:
       UsagePlanName: free-tier
       Description: Free tier - limited access
@@ -172,7 +171,6 @@ Resources:
 
   PremiumPlan:
     Type: AWS::ApiGateway::UsagePlan
-    DependsOn: ProdStage
     Properties:
       UsagePlanName: premium-tier
       Description: Premium tier - production access
@@ -189,13 +187,9 @@ Resources:
   # API Keys
   AcmeKey:
     Type: AWS::ApiGateway::ApiKey
-    DependsOn: ProdStage
     Properties:
       Name: acme-corp-key
       Enabled: true
-      StageKeys:
-        - RestApiId: !Ref MyApi
-          StageName: prod
 
   # Link key to plan
   AcmeKeyPlanAssociation:
@@ -281,15 +275,14 @@ def get_plan_usage(usage_plan_id, days=7):
             endDate=end_date,
         )
 
-        total_used = sum(
-            day_usage[0] for day_usage in usage["items"].values()
-        )
+        daily_usage = next(iter(usage["items"].values()), [])
+        total_used = sum(day_usage[0] for day_usage in daily_usage)
 
         report.append({
             "key_name": key["name"],
             "key_id": key["id"],
             "total_requests": total_used,
-            "daily_breakdown": usage["items"],
+            "daily_breakdown": daily_usage,
         })
 
     return sorted(report, key=lambda x: x["total_requests"], reverse=True)
@@ -313,7 +306,7 @@ curl -H "x-api-key: your-api-key-here" \
 # If the quota is exceeded, you get a 429 Too Many Requests
 ```
 
-You can also configure API Gateway to accept the key as a query parameter, but the header approach is more secure and conventional.
+You can also configure API Gateway to get the API key from a Lambda authorizer, but the header approach is the conventional option for client-supplied keys.
 
 ## Handling Rate Limit Responses
 
@@ -347,4 +340,4 @@ For comprehensive monitoring of your API usage patterns and rate limiting effect
 
 ## Wrapping Up
 
-Usage plans and API keys give you a straightforward way to meter and throttle API consumers. They're not a replacement for proper authentication, but they're excellent for controlling access tiers, preventing abuse, and tracking consumption. The setup is declarative - define your tiers, create keys, and associate them. API Gateway handles the enforcement automatically on every request.
+Usage plans and API keys give you a straightforward way to meter and throttle API consumers. They're not a replacement for proper authentication, and AWS applies usage plan throttling and quotas on a best-effort basis rather than as hard cost-control limits, but they're useful for access tiers, abuse reduction, and tracking consumption. The setup is declarative - define your tiers, create keys, and associate them. API Gateway applies the plan automatically on matching requests.
