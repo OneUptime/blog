@@ -48,7 +48,7 @@ aws redshift-serverless create-workgroup \
   --security-group-ids sg-0abc123
 ```
 
-The `base-capacity` is in RPUs. The minimum is 8, and it scales in increments of 8. You only pay for what you use - if no queries are running, you pay nothing for compute.
+The `base-capacity` is in RPUs. The minimum is 4, and it scales in increments of 4 from 4 to 8 RPUs, increments of 8 from 8 to 512 RPUs, and increments of 32 above 512 RPUs in supported Regions. You only pay for what you use - if no queries are running, you pay nothing for compute.
 
 ## CloudFormation Setup
 
@@ -90,7 +90,9 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: redshift.amazonaws.com
+              Service:
+                - redshift.amazonaws.com
+                - redshift-serverless.amazonaws.com
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
@@ -218,7 +220,7 @@ IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftServerlessRole'
 FORMAT AS PARQUET;
 
 -- Check for load errors
-SELECT * FROM stl_load_errors ORDER BY starttime DESC LIMIT 10;
+SELECT * FROM sys_load_error_detail ORDER BY start_time DESC LIMIT 10;
 ```
 
 ## Setting RPU Limits
@@ -233,7 +235,7 @@ aws redshift-serverless update-workgroup \
 
 # Set a usage limit (total RPU-hours per day)
 aws redshift-serverless create-usage-limit \
-  --resource-arn arn:aws:redshift-serverless:us-east-1:123456789012:workgroup/analytics-workgroup \
+  --resource-arn arn:aws:redshift-serverless:us-east-1:123456789012:workgroup/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee \
   --usage-type serverless-compute \
   --amount 60 \
   --period daily \
@@ -311,7 +313,7 @@ aws redshift-serverless get-workgroup \
 
 # List usage limits and current consumption
 aws redshift-serverless list-usage-limits \
-  --resource-arn arn:aws:redshift-serverless:us-east-1:123456789012:workgroup/analytics-workgroup
+  --resource-arn arn:aws:redshift-serverless:us-east-1:123456789012:workgroup/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee
 ```
 
 For dashboards and alerts on your Redshift Serverless performance, check out our post on [data warehouse monitoring](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view).
