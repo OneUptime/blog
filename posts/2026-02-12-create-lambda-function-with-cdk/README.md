@@ -8,7 +8,7 @@ Description: A complete guide to creating Lambda functions with CDK covering cod
 
 ---
 
-Lambda is the bread and butter of serverless on AWS, and CDK makes it genuinely pleasant to work with. The L2 Lambda construct handles execution roles, log groups, and permissions automatically. Pair it with the NodejsFunction or PythonFunction constructs, and CDK even compiles and bundles your code during deployment.
+Lambda is the bread and butter of serverless on AWS, and CDK makes it genuinely pleasant to work with. The L2 Lambda construct handles execution roles and permissions automatically, and you can either use Lambda's default log group or manage one explicitly from CDK. Pair it with the NodejsFunction or PythonFunction constructs, and CDK even compiles and bundles your code during deployment.
 
 Let's walk through everything you need to create, configure, and wire up Lambda functions with CDK.
 
@@ -22,7 +22,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as cdk from 'aws-cdk-lib';
 
 const helloFunction = new lambda.Function(this, 'HelloFunction', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromInline(`
     exports.handler = async (event) => {
@@ -35,7 +35,7 @@ const helloFunction = new lambda.Function(this, 'HelloFunction', {
 });
 ```
 
-CDK automatically creates an execution role with basic Lambda permissions (CloudWatch Logs write access) and a log group. You don't have to think about IAM for the basics.
+CDK automatically creates an execution role with basic Lambda permissions, including CloudWatch Logs write access. By default, Lambda writes to its default `/aws/lambda/<function-name>` log group; if you want CDK to control log retention or removal policy, create the log group explicitly.
 
 ## Lambda with External Code
 
@@ -43,8 +43,10 @@ For real projects, you'll want your Lambda code in separate files.
 
 ```typescript
 // Lambda function with code from a local directory
+import * as logs from 'aws-cdk-lib/aws-logs';
+
 const processOrderFunction = new lambda.Function(this, 'ProcessOrder', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   // CDK zips this directory and uploads it to S3
   code: lambda.Code.fromAsset('lambda/process-order'),
@@ -62,7 +64,9 @@ const processOrderFunction = new lambda.Function(this, 'ProcessOrder', {
   },
 
   // Logging
-  logRetention: logs.RetentionDays.TWO_WEEKS,
+  logGroup: new logs.LogGroup(this, 'ProcessOrderLogGroup', {
+    retention: logs.RetentionDays.TWO_WEEKS,
+  }),
 
   // Tracing
   tracing: lambda.Tracing.ACTIVE,
@@ -97,7 +101,7 @@ const apiHandler = new nodejs.NodejsFunction(this, 'ApiHandler', {
   // Point directly to a TypeScript file
   entry: 'lambda/api/handler.ts',
   handler: 'handler',
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   architecture: lambda.Architecture.ARM_64,
   timeout: cdk.Duration.seconds(10),
   memorySize: 256,
@@ -124,7 +128,7 @@ Layers let you share code and dependencies across multiple functions.
 // Create a shared dependencies layer
 const depsLayer = new lambda.LayerVersion(this, 'DepsLayer', {
   code: lambda.Code.fromAsset('layers/dependencies'),
-  compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
+  compatibleRuntimes: [lambda.Runtime.NODEJS_22_X],
   compatibleArchitectures: [lambda.Architecture.ARM_64],
   description: 'Shared npm dependencies',
 });
@@ -132,13 +136,13 @@ const depsLayer = new lambda.LayerVersion(this, 'DepsLayer', {
 // Create a utilities layer
 const utilsLayer = new lambda.LayerVersion(this, 'UtilsLayer', {
   code: lambda.Code.fromAsset('layers/utils'),
-  compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
+  compatibleRuntimes: [lambda.Runtime.NODEJS_22_X],
   description: 'Shared utility functions',
 });
 
 // Use layers in your functions
 const myFunction = new lambda.Function(this, 'MyFunction', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/my-function'),
   layers: [depsLayer, utilsLayer],
@@ -246,7 +250,7 @@ const dlq = new sqs.Queue(this, 'FunctionDLQ', {
 });
 
 const myFunction = new lambda.Function(this, 'MyFunction', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/handler'),
   deadLetterQueue: dlq,
@@ -262,7 +266,7 @@ For functions that need to access VPC resources like RDS or ElastiCache.
 ```typescript
 // Lambda function deployed inside a VPC
 const vpcFunction = new lambda.Function(this, 'VpcFunction', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/vpc-handler'),
   vpc: vpc,
@@ -289,7 +293,7 @@ Lambda function URLs give you an HTTPS endpoint without API Gateway.
 ```typescript
 // Create a Lambda with a Function URL
 const webHandler = new lambda.Function(this, 'WebHandler', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/web'),
 });
