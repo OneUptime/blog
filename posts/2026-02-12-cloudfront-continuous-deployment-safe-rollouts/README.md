@@ -31,7 +31,7 @@ graph LR
     Stage --> Origin1
 ```
 
-Both distributions share the same domain name and origin. The difference is the configuration (cache behaviors, functions, custom headers, etc.).
+Viewers keep using the same production domain name. CloudFront routes matching requests from the primary distribution to the staging distribution, which has its own CloudFront DNS name and separate cache. The difference is the configuration (cache behaviors, functions, custom headers, origins, etc.).
 
 ## Creating a Staging Distribution
 
@@ -84,22 +84,30 @@ With header-based routing, only requests containing the `aws-cf-cd-staging: true
 
 ## Creating the Staging Distribution
 
-Create a staging distribution that mirrors your production config with the changes you want to test.
+Create a staging distribution that starts as a copy of your production config, then update it with the changes you want to test.
 
-Copy your production config and create a staging distribution:
+Copy your production distribution and create a staging distribution:
 
 ```bash
 # Get your production distribution config
 aws cloudfront get-distribution-config \
   --id E1234567890ABC > prod-config.json
 
-# Modify the config for staging (change what you want to test)
-# Then create the staging distribution
-aws cloudfront create-distribution-with-tags \
-  --distribution-config-with-tags file://staging-config.json
+# Create the staging distribution from the production distribution
+aws cloudfront copy-distribution \
+  --primary-distribution-id E1234567890ABC \
+  --staging \
+  --if-match PROD_ETAG \
+  --caller-reference staging-2026-02-12
+
+# Modify the staging distribution config (change what you want to test)
+aws cloudfront update-distribution \
+  --id E_STAGING_DIST_ID \
+  --if-match STAGING_ETAG \
+  --distribution-config file://staging-config.json
 ```
 
-The staging distribution config should include the continuous deployment policy ID.
+After creating the continuous deployment policy, attach the policy ID to the primary distribution's config.
 
 CloudFormation for the complete setup:
 
@@ -113,6 +121,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
+        ContinuousDeploymentPolicyId: !Ref ContinuousDeploymentPolicy
         DefaultCacheBehavior:
           TargetOriginId: primary-origin
           ViewerProtocolPolicy: redirect-to-https
@@ -139,9 +148,7 @@ Resources:
       ContinuousDeploymentPolicyConfig:
         Enabled: true
         StagingDistributionDnsNames:
-          Items:
-            - !GetAtt StagingDistribution.DomainName
-          Quantity: 1
+          - !GetAtt StagingDistribution.DomainName
         TrafficConfig:
           Type: SingleWeight
           SingleWeightConfig:
@@ -153,7 +160,6 @@ Resources:
       DistributionConfig:
         Enabled: true
         Staging: true
-        ContinuousDeploymentPolicyId: !Ref ContinuousDeploymentPolicy
         DefaultCacheBehavior:
           TargetOriginId: primary-origin
           ViewerProtocolPolicy: redirect-to-https
@@ -174,7 +180,7 @@ Resources:
 
 Once deployed, you can test staging in two ways.
 
-Direct testing with the staging header:
+Direct testing with the staging header when you use a header-based policy:
 
 ```bash
 # Test using the staging header
@@ -253,7 +259,7 @@ aws cloudfront update-continuous-deployment-policy \
   }'
 ```
 
-A typical rollout progression might be: 5% for 30 minutes, 15% for 1 hour, 50% for 1 hour, then promote to 100%.
+A typical rollout progression might be: 5% for 30 minutes, 10% for 1 hour, 15% for 1 hour, then promote to 100%. CloudFront continuous deployment supports weight-based routing up to 15%.
 
 ## Promoting to Production
 
@@ -269,7 +275,7 @@ aws cloudfront update-distribution-with-staging-config \
   --if-match PROD_ETAG,STAGING_ETAG
 ```
 
-This copies the staging distribution's configuration to the production distribution. It's atomic - there's no gap where some edge locations have the old config and others have the new one.
+This copies the staging distribution's configuration to the production distribution, disables the continuous deployment policy, and routes all traffic back to the primary distribution.
 
 ## Rollback Strategy
 
