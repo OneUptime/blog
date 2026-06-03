@@ -10,11 +10,11 @@ Description: Learn how to suspend and resume Kubernetes Jobs to control resource
 
 Kubernetes Jobs can be suspended and resumed on demand, giving you fine-grained control over when work gets processed. This feature lets you pause jobs during high-load periods, stop processing during maintenance windows, or implement custom scheduling logic based on external factors.
 
-Suspending a job stops Kubernetes from creating new pods and deletes any currently running pods. Resuming restarts the job from where it left off, continuing to process remaining work items. This provides a clean way to control resource consumption without losing job state.
+Suspending a job stops Kubernetes from creating new pods and terminates any currently running pods. Resuming restarts the job from the successful completions Kubernetes has already counted, continuing to process remaining work items. This provides a clean way to control resource consumption, as long as interrupted pods handle termination and save any application-level progress they need to keep.
 
 ## Understanding Job Suspension
 
-When you suspend a job, Kubernetes immediately stops creating new pods and terminates any running pods. The job itself remains in the cluster with its progress tracked. When you resume, processing continues from the last successful completion.
+When you suspend a job, Kubernetes stops creating new pods and terminates any running pods that have not already completed, honoring the pods' graceful termination period. The job itself remains in the cluster with successful completions tracked. When you resume, processing continues from the last successful completion.
 
 ```yaml
 apiVersion: batch/v1
@@ -73,16 +73,24 @@ kubectl patch job batch-processor -p '{"spec":{"suspend":false}}'
 kubectl get pods -l job-name=batch-processor -w
 ```
 
-The job resumes from its last completion count. If 37 out of 100 completions were done before suspension, it continues from 37 when resumed.
+The job resumes from its last successful completion count. If 37 out of 100 completions were done before suspension, it continues from 37 when resumed. Pods that were terminated by suspension do not count toward completions, so those work items must be retried or checkpointed by the application.
 
-Resource Management Use Cases
+## Resource Management Use Cases
 
 Suspend jobs during peak hours to preserve resources for critical services:
 
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
+from kubernetes.config.config_exception import ConfigException
 from datetime import datetime
+
+def load_kubernetes_config():
+    """Load in-cluster config when running in a Pod, otherwise use kubeconfig"""
+    try:
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config()
 
 def should_suspend_jobs():
     """Determine if jobs should be suspended based on time"""
@@ -96,7 +104,7 @@ def should_suspend_jobs():
 
 def manage_job_suspension(job_name, namespace='default'):
     """Suspend or resume job based on current time"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     # Get current job
@@ -107,21 +115,19 @@ def manage_job_suspension(job_name, namespace='default'):
 
     if should_suspend and not currently_suspended:
         # Suspend the job
-        job.spec.suspend = True
         batch_v1.patch_namespaced_job(
             name=job_name,
             namespace=namespace,
-            body=job
+            body={"spec": {"suspend": True}}
         )
         print(f"Suspended {job_name} (business hours)")
 
     elif not should_suspend and currently_suspended:
         # Resume the job
-        job.spec.suspend = False
         batch_v1.patch_namespaced_job(
             name=job_name,
             namespace=namespace,
-            body=job
+            body={"spec": {"suspend": False}}
         )
         print(f"Resumed {job_name} (after hours)")
 
@@ -189,8 +195,16 @@ Suspend jobs automatically during scheduled maintenance:
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
-from datetime import datetime, timedelta
+from kubernetes.config.config_exception import ConfigException
+from datetime import datetime
 import pytz
+
+def load_kubernetes_config():
+    """Load in-cluster config when running in a Pod, otherwise use kubeconfig"""
+    try:
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config()
 
 def is_maintenance_window():
     """Check if we're in a maintenance window"""
@@ -205,7 +219,7 @@ def is_maintenance_window():
 
 def suspend_all_batch_jobs(namespace='default'):
     """Suspend all batch jobs in namespace"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     jobs = batch_v1.list_namespaced_job(namespace=namespace)
@@ -223,11 +237,10 @@ def suspend_all_batch_jobs(namespace='default'):
             continue
 
         # Suspend the job
-        job.spec.suspend = True
         batch_v1.patch_namespaced_job(
             name=job.metadata.name,
             namespace=namespace,
-            body=job
+            body={"spec": {"suspend": True}}
         )
         suspended_count += 1
         print(f"Suspended {job.metadata.name}")
@@ -236,7 +249,7 @@ def suspend_all_batch_jobs(namespace='default'):
 
 def resume_all_batch_jobs(namespace='default'):
     """Resume all suspended batch jobs"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     jobs = batch_v1.list_namespaced_job(namespace=namespace)
@@ -247,11 +260,10 @@ def resume_all_batch_jobs(namespace='default'):
         if not job.spec.suspend:
             continue
 
-        job.spec.suspend = False
         batch_v1.patch_namespaced_job(
             name=job.metadata.name,
             namespace=namespace,
-            body=job
+            body={"spec": {"suspend": False}}
         )
         resumed_count += 1
         print(f"Resumed {job.metadata.name}")
@@ -278,6 +290,14 @@ Suspend jobs when spot instance availability is low:
 #!/usr/bin/env python3
 import boto3
 from kubernetes import client, config
+from kubernetes.config.config_exception import ConfigException
+
+def load_kubernetes_config():
+    """Load in-cluster config when running in a Pod, otherwise use kubeconfig"""
+    try:
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config()
 
 def get_spot_price(instance_type='m5.large', region='us-east-1'):
     """Get current spot price for instance type"""
@@ -305,7 +325,7 @@ def should_run_on_spot(max_price=0.05):
 
 def manage_spot_jobs(job_name, namespace='default'):
     """Suspend or resume based on spot pricing"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     job = batch_v1.read_namespaced_job(name=job_name, namespace=namespace)
@@ -314,13 +334,19 @@ def manage_spot_jobs(job_name, namespace='default'):
     currently_suspended = job.spec.suspend or False
 
     if can_run and currently_suspended:
-        job.spec.suspend = False
-        batch_v1.patch_namespaced_job(name=job_name, namespace=namespace, body=job)
+        batch_v1.patch_namespaced_job(
+            name=job_name,
+            namespace=namespace,
+            body={"spec": {"suspend": False}}
+        )
         print(f"Spot price acceptable, resumed {job_name}")
 
     elif not can_run and not currently_suspended:
-        job.spec.suspend = True
-        batch_v1.patch_namespaced_job(name=job_name, namespace=namespace, body=job)
+        batch_v1.patch_namespaced_job(
+            name=job_name,
+            namespace=namespace,
+            body={"spec": {"suspend": True}}
+        )
         print(f"Spot price too high, suspended {job_name}")
 
 if __name__ == "__main__":
@@ -335,6 +361,14 @@ Suspend jobs when the work queue is empty:
 #!/usr/bin/env python3
 import redis
 from kubernetes import client, config
+from kubernetes.config.config_exception import ConfigException
+
+def load_kubernetes_config():
+    """Load in-cluster config when running in a Pod, otherwise use kubeconfig"""
+    try:
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config()
 
 def get_queue_depth(redis_host='redis-queue'):
     """Get number of items in work queue"""
@@ -343,7 +377,7 @@ def get_queue_depth(redis_host='redis-queue'):
 
 def manage_job_by_queue(job_name, namespace='default', min_queue_size=10):
     """Suspend job if queue is too small"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     queue_depth = get_queue_depth()
@@ -353,14 +387,20 @@ def manage_job_by_queue(job_name, namespace='default', min_queue_size=10):
 
     if queue_depth < min_queue_size and not currently_suspended:
         # Queue too small, suspend to save resources
-        job.spec.suspend = True
-        batch_v1.patch_namespaced_job(name=job_name, namespace=namespace, body=job)
+        batch_v1.patch_namespaced_job(
+            name=job_name,
+            namespace=namespace,
+            body={"spec": {"suspend": True}}
+        )
         print(f"Queue depth {queue_depth} < {min_queue_size}, suspended {job_name}")
 
     elif queue_depth >= min_queue_size and currently_suspended:
         # Queue has enough work, resume
-        job.spec.suspend = False
-        batch_v1.patch_namespaced_job(name=job_name, namespace=namespace, body=job)
+        batch_v1.patch_namespaced_job(
+            name=job_name,
+            namespace=namespace,
+            body={"spec": {"suspend": False}}
+        )
         print(f"Queue depth {queue_depth}, resumed {job_name}")
 
     else:
@@ -377,11 +417,30 @@ Suspend low-priority jobs when cluster resources are constrained:
 ```python
 #!/usr/bin/env python3
 from kubernetes import client, config
+from kubernetes.config.config_exception import ConfigException
+
+def load_kubernetes_config():
+    """Load in-cluster config when running in a Pod, otherwise use kubeconfig"""
+    try:
+        config.load_incluster_config()
+    except ConfigException:
+        config.load_kube_config()
+
+def parse_cpu_to_millicores(cpu_value):
+    """Convert Kubernetes CPU quantities to millicores"""
+    if cpu_value.endswith('n'):
+        return int(cpu_value[:-1]) / 1000000
+    if cpu_value.endswith('u'):
+        return int(cpu_value[:-1]) / 1000
+    if cpu_value.endswith('m'):
+        return int(cpu_value[:-1])
+    return float(cpu_value) * 1000
 
 def get_cluster_cpu_usage():
     """Get overall cluster CPU usage percentage"""
-    config.load_kube_config()
+    load_kubernetes_config()
     api = client.CustomObjectsApi()
+    core_v1 = client.CoreV1Api()
 
     # Get node metrics
     metrics = api.list_cluster_custom_object(
@@ -390,25 +449,30 @@ def get_cluster_cpu_usage():
         plural="nodes"
     )
 
-    total_cpu = 0
+    nodes = core_v1.list_node()
+    node_capacity = {
+        node.metadata.name: parse_cpu_to_millicores(node.status.capacity['cpu'])
+        for node in nodes.items
+    }
+
+    total_cpu = sum(node_capacity.values())
     used_cpu = 0
 
     for node_metric in metrics['items']:
-        # Parse CPU usage
-        usage = node_metric['usage']['cpu']
-        # Convert to millicores
-        if usage.endswith('n'):
-            used_cpu += int(usage[:-1]) / 1000000
-        elif usage.endswith('m'):
-            used_cpu += int(usage[:-1])
+        node_name = node_metric['metadata']['name']
+        if node_name not in node_capacity:
+            continue
 
-    # This is simplified - you'd also need node capacity
-    # For demo purposes, assume 80% threshold
-    return used_cpu
+        used_cpu += parse_cpu_to_millicores(node_metric['usage']['cpu'])
+
+    if total_cpu == 0:
+        return 0
+
+    return (used_cpu / total_cpu) * 100
 
 def manage_low_priority_jobs(cpu_threshold=80):
     """Suspend low-priority jobs if CPU usage is high"""
-    config.load_kube_config()
+    load_kubernetes_config()
     batch_v1 = client.BatchV1Api()
 
     cpu_usage = get_cluster_cpu_usage()
@@ -424,20 +488,18 @@ def manage_low_priority_jobs(cpu_threshold=80):
         currently_suspended = job.spec.suspend or False
 
         if high_load and not currently_suspended:
-            job.spec.suspend = True
             batch_v1.patch_namespaced_job(
                 name=job.metadata.name,
                 namespace='default',
-                body=job
+                body={"spec": {"suspend": True}}
             )
             print(f"High load, suspended low-priority job {job.metadata.name}")
 
         elif not high_load and currently_suspended:
-            job.spec.suspend = False
             batch_v1.patch_namespaced_job(
                 name=job.metadata.name,
                 namespace='default',
-                body=job
+                body={"spec": {"suspend": False}}
             )
             print(f"Load normal, resumed low-priority job {job.metadata.name}")
 
