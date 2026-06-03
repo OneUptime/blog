@@ -77,6 +77,7 @@ aws cloudfront create-distribution \
       "Items": ["cdn.example.com", "example.com"]
     },
     "ViewerCertificate": {
+      "CloudFrontDefaultCertificate": false,
       "ACMCertificateArn": "'"$CERT_ARN"'",
       "SSLSupportMethod": "sni-only",
       "MinimumProtocolVersion": "TLSv1.2_2021"
@@ -84,12 +85,12 @@ aws cloudfront create-distribution \
     "DefaultCacheBehavior": {
       "TargetOriginId": "myS3Origin",
       "ViewerProtocolPolicy": "redirect-to-https",
-      "AllowedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]},
-      "CachedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]},
-      "ForwardedValues": {"QueryString": false, "Cookies": {"Forward": "none"}},
-      "MinTTL": 0,
-      "DefaultTTL": 86400,
-      "MaxTTL": 31536000,
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"],
+        "CachedMethods": {"Quantity": 2, "Items": ["GET", "HEAD"]}
+      },
+      "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
       "Compress": true
     },
     "Origins": {
@@ -181,19 +182,9 @@ resource "aws_cloudfront_distribution" "main" {
     cached_methods   = ["GET", "HEAD"]
     target_origin_id = "s3-origin"
     compress         = true
+    cache_policy_id  = "658327ea-f89d-4fab-a63d-7e88639e58f6" # Managed-CachingOptimized
 
     viewer_protocol_policy = "redirect-to-https"
-
-    forwarded_values {
-      query_string = false
-      cookies {
-        forward = "none"
-      }
-    }
-
-    min_ttl     = 0
-    default_ttl = 3600
-    max_ttl     = 86400
   }
 
   viewer_certificate {
@@ -235,6 +226,8 @@ viewer_certificate {
 Always set the minimum protocol version to TLSv1.2 or higher. Older protocols have known vulnerabilities.
 
 Available options:
+- `TLSv1.3_2025` - TLS 1.3 only. Use this only if every client that must connect supports TLS 1.3.
+- `TLSv1.2_2025` - Recommended for modern clients that still need TLS 1.2 support.
 - `TLSv1.2_2021` - Recommended. Supports modern ciphers only.
 - `TLSv1.2_2019` - Slightly broader cipher support.
 - `TLSv1.2_2018` - Broader still but less secure.
@@ -316,14 +309,20 @@ NEW_CERT=$(aws acm request-certificate \
 
 # After validation, update the distribution
 aws cloudfront get-distribution-config \
-  --id E1234567890ABC > dist-config.json
+  --id E1234567890ABC \
+  --query 'DistributionConfig' > dist-config.json
+
+ETAG=$(aws cloudfront get-distribution-config \
+  --id E1234567890ABC \
+  --query 'ETag' \
+  --output text)
 
 # Edit the ViewerCertificate.ACMCertificateArn in dist-config.json
 # Then update
 aws cloudfront update-distribution \
   --id E1234567890ABC \
   --distribution-config file://dist-config.json \
-  --if-match "ETAG_FROM_GET_COMMAND"
+  --if-match "$ETAG"
 ```
 
 ## Troubleshooting
