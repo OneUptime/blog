@@ -46,7 +46,7 @@ aws cognito-identity create-identity-pool \
     --identity-pool-name MyAppIdentityPool \
     --allow-unauthenticated-identities true \
     --cognito-identity-providers \
-        ProviderName=cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX,ClientId=your-app-client-id,ServerSideTokenCheck=true
+        ProviderName=cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX,ClientId=3n4b5urk1ft4fl3mg5e62d9ado,ServerSideTokenCheck=true
 ```
 
 Note the `allow-unauthenticated-identities` flag. When set to true, even users who haven't logged in can get (very limited) AWS credentials. This is useful for things like letting anonymous users upload profile photos during registration.
@@ -69,10 +69,35 @@ Create the trust policy file for authenticated users:
             "Action": "sts:AssumeRoleWithWebIdentity",
             "Condition": {
                 "StringEquals": {
-                    "cognito-identity.amazonaws.com:aud": "us-east-1:your-identity-pool-id"
+                    "cognito-identity.amazonaws.com:aud": "us-east-1:11111111-1111-1111-1111-111111111111"
                 },
                 "ForAnyValue:StringLike": {
                     "cognito-identity.amazonaws.com:amr": "authenticated"
+                }
+            }
+        }
+    ]
+}
+```
+
+Create the trust policy file for unauthenticated users:
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Principal": {
+                "Federated": "cognito-identity.amazonaws.com"
+            },
+            "Action": "sts:AssumeRoleWithWebIdentity",
+            "Condition": {
+                "StringEquals": {
+                    "cognito-identity.amazonaws.com:aud": "us-east-1:11111111-1111-1111-1111-111111111111"
+                },
+                "ForAnyValue:StringLike": {
+                    "cognito-identity.amazonaws.com:amr": "unauthenticated"
                 }
             }
         }
@@ -111,7 +136,7 @@ aws iam put-role-policy \
                     "dynamodb:UpdateItem",
                     "dynamodb:Query"
                 ],
-                "Resource": "arn:aws:dynamodb:us-east-1:123456789:table/UserData",
+                "Resource": "arn:aws:dynamodb:us-east-1:123456789012:table/UserData",
                 "Condition": {
                     "ForAllValues:StringEquals": {
                         "dynamodb:LeadingKeys": ["${cognito-identity.amazonaws.com:sub}"]
@@ -141,7 +166,7 @@ aws iam put-role-policy \
     }'
 ```
 
-Notice the `${cognito-identity.amazonaws.com:sub}` variable in the IAM policy. This is a powerful feature - it scopes the user's access to only their own data in S3 and DynamoDB. Each user can only read and write their own files and records.
+Notice the `${cognito-identity.amazonaws.com:sub}` variable in the IAM policy. This is a powerful feature - it scopes the user's access to only their own data in S3 and to DynamoDB records whose partition key is their identity ID. Each user can only read and write their own files and matching records.
 
 ## Linking Roles to the Identity Pool
 
@@ -149,9 +174,9 @@ Associate both roles with the identity pool:
 
 ```bash
 aws cognito-identity set-identity-pool-roles \
-    --identity-pool-id us-east-1:your-identity-pool-id \
+    --identity-pool-id us-east-1:11111111-1111-1111-1111-111111111111 \
     --roles \
-        authenticated=arn:aws:iam::123456789:role/CognitoAuthRole,unauthenticated=arn:aws:iam::123456789:role/CognitoUnauthRole
+        authenticated=arn:aws:iam::123456789012:role/CognitoAuthRole,unauthenticated=arn:aws:iam::123456789012:role/CognitoUnauthRole
 ```
 
 If you're using Cognito groups and want group-specific IAM roles, see [mapping Cognito groups to IAM roles](https://oneuptime.com/blog/post/2026-02-12-cognito-groups-iam-roles/view) for the Token-based role mapping approach.
@@ -171,7 +196,7 @@ const {
 
 const identityClient = new CognitoIdentityClient({ region: 'us-east-1' });
 
-const IDENTITY_POOL_ID = 'us-east-1:your-identity-pool-id';
+const IDENTITY_POOL_ID = 'us-east-1:11111111-1111-1111-1111-111111111111';
 const USER_POOL_PROVIDER = 'cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX';
 
 // Get credentials for an authenticated user
@@ -195,6 +220,7 @@ async function getAuthenticatedCredentials(idToken) {
     );
 
     return {
+        identityId: IdentityId,
         accessKeyId: Credentials.AccessKeyId,
         secretAccessKey: Credentials.SecretKey,
         sessionToken: Credentials.SessionToken,
@@ -294,9 +320,9 @@ For more on handling token refresh at the Cognito level, see [handling Cognito t
 
 ## Identity ID Consistency
 
-One important detail: each user gets a consistent Identity ID across sessions. The first time a user authenticates through the Identity Pool, Cognito creates an identity and returns an ID like `us-east-1:abc123-def456`. Subsequent authentications return the same ID. This is why you can safely use it as a partition key for user data.
+One important detail: each user gets a consistent Identity ID across sessions. The first time a user authenticates through the Identity Pool, Cognito creates an identity and returns an ID like `us-east-1:88859bc9-0149-4183-bf10-39e36EXAMPLE`. Subsequent authentications return the same ID. This is why you can safely use it as a partition key for user data.
 
-If a user starts as unauthenticated and later logs in, you can merge their identities so they keep access to any data they created before logging in. This requires calling the `MergeDeveloperProviderIdentities` API.
+If a user starts as unauthenticated and later logs in, you can associate their login with the existing unauthenticated identity so they keep access to any data they created before logging in. For developer-authenticated identities, explicit merges use the `MergeDeveloperIdentities` API.
 
 ## Wrapping Up
 
