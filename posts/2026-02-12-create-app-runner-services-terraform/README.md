@@ -10,6 +10,8 @@ Description: Step-by-step guide to deploying AWS App Runner services with Terraf
 
 AWS App Runner is the simplest way to run containers on AWS. You point it at a container image or a source code repository, and it handles load balancing, TLS, scaling, and deployments. There's no ECS task definitions, no ALB configuration, no target groups - just a running service with an HTTPS endpoint.
 
+As of April 30, 2026, AWS App Runner is no longer open to new AWS customers. Existing App Runner customers can continue using the service, including creating new services and resources.
+
 The trade-off is control. You can't customize the load balancer, you can't pick your instance types, and networking options are limited compared to ECS or EKS. But for web APIs and microservices that don't need that level of customization, App Runner is a great fit.
 
 Let's set it up with Terraform.
@@ -210,7 +212,7 @@ The `max_concurrency` setting is important. When an instance hits this threshold
 
 ## VPC Connector
 
-By default, App Runner services can only reach the public internet. To connect to resources in a VPC (like an RDS database or ElastiCache cluster), you need a VPC connector.
+By default, App Runner services send outbound traffic to public endpoints and can't reach private VPC-only resources. To connect to resources in a VPC (like an RDS database or ElastiCache cluster), you need a VPC connector.
 
 This creates a VPC connector and attaches it to the App Runner service:
 
@@ -290,8 +292,9 @@ This associates a custom domain with the App Runner service:
 
 ```hcl
 resource "aws_apprunner_custom_domain_association" "main" {
-  domain_name = "api.example.com"
-  service_arn = aws_apprunner_service.main.arn
+  domain_name          = "api.example.com"
+  service_arn          = aws_apprunner_service.main.arn
+  enable_www_subdomain = false
 }
 
 # Create the validation records in Route 53
@@ -313,7 +316,7 @@ resource "aws_route53_record" "apprunner_cname" {
   zone_id = data.aws_route53_zone.main.zone_id
   name    = "api.example.com"
   type    = "CNAME"
-  records = [aws_apprunner_service.main.service_url]
+  records = [aws_apprunner_custom_domain_association.main.dns_target]
   ttl     = 300
 }
 
