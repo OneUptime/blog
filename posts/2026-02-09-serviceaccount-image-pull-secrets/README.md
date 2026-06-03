@@ -246,7 +246,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: ecr-refresher
-            image: amazon/aws-cli
+            image: your-org/aws-cli-kubectl:latest
             command:
             - /bin/sh
             - -c
@@ -258,12 +258,13 @@ spec:
               kubectl create secret docker-registry ecr-secret \
                 --docker-server=123456789.dkr.ecr.us-east-1.amazonaws.com \
                 --docker-username=AWS \
-                --docker-password=$PASSWORD \
+                --docker-password="$PASSWORD" \
+                -n production \
                 --dry-run=client -o yaml | \
               kubectl apply -f -
 ```
 
-This CronJob refreshes ECR credentials automatically. The ServiceAccount needs RBAC permissions to update secrets.
+This CronJob refreshes ECR credentials automatically. Use an image that includes both the AWS CLI and `kubectl`. The ServiceAccount needs RBAC permissions to create and update secrets.
 
 ## GCR and GAR Integration
 
@@ -281,7 +282,14 @@ kubectl create secret docker-registry gcr-secret \
   --docker-password="$(cat gcr-key.json)" \
   -n production
 
-# For multiple regions
+# Artifact Registry
+kubectl create secret docker-registry artifact-registry-secret \
+  --docker-server=https://us-central1-docker.pkg.dev \
+  --docker-username=_json_key \
+  --docker-password="$(cat gcr-key.json)" \
+  -n production
+
+# For GCR multi-region hostnames
 for region in us asia eu; do
   kubectl create secret docker-registry gcr-${region}-secret \
     --docker-server=${region}.gcr.io \
@@ -306,7 +314,7 @@ kubectl create secret docker-registry harbor-secret \
 # For robot accounts (recommended)
 kubectl create secret docker-registry harbor-robot-secret \
   --docker-server=harbor.example.com \
-  --docker-username=robot$app-puller \
+  --docker-username='robot$app-puller' \
   --docker-password=robot-token \
   -n production
 ```
@@ -397,6 +405,7 @@ kubectl create secret docker-registry $SECRET_NAME \
   --docker-username=myuser \
   --docker-password=$NEW_PASSWORD \
   --docker-email=myuser@example.com \
+  -n $NAMESPACE \
   --dry-run=client -o yaml | \
 kubectl apply -f -
 
@@ -436,7 +445,7 @@ spec:
               "registry.example.com": {
                 "username": "{{ .username }}",
                 "password": "{{ .password }}",
-                "auth": "{{ .auth }}"
+                "auth": "{{ print .username `:` .password | b64enc }}"
               }
             }
           }
