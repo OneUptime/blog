@@ -124,7 +124,7 @@ The VSchema (Vitess Schema) tells Vitess how to route queries to shards. It defi
       "params": {
         "table": "customer_lookup",
         "from": "email",
-        "to": "customer_id"
+        "to": "keyspace_id"
       },
       "owner": "customers"
     }
@@ -173,13 +173,15 @@ The `consistent_lookup_unique` vindex allows looking up customers by email. With
 
 The `orders` and `order_items` tables are sharded by `customer_id`, co-locating them with the parent `customers` table. This means joins between customers, orders, and order_items can be served by a single shard.
 
-The `products` table is marked as `reference`, meaning it is copied to every shard. This is ideal for small lookup tables that are frequently joined with sharded tables.
+The `products` table is marked as `reference`, meaning Vitess treats the copies on every shard as identical. This is ideal for small lookup tables that are frequently joined with sharded tables, as long as you keep those copies in sync.
 
 Apply the VSchema using vtctldclient:
 
 ```bash
-kubectl exec -it $(kubectl get pods -n vitess -l "app=vitess,component=vtctld" -o name | head -1) -n vitess -- \
-  vtctldclient ApplyVSchema --vschema-file /tmp/vschema.json commerce
+VTCTLD_POD=$(kubectl get pods -n vitess -l "app=vitess,component=vtctld" -o jsonpath='{.items[0].metadata.name}')
+kubectl cp vschema.json vitess/${VTCTLD_POD}:/tmp/vschema.json
+kubectl exec -it ${VTCTLD_POD} -n vitess -- \
+  vtctldclient --server localhost:15999 ApplyVSchema --vschema-file /tmp/vschema.json commerce
 ```
 
 ## Database Initialization
@@ -189,7 +191,7 @@ Create the initialization SQL script as a Kubernetes Secret:
 ```sql
 -- init.sql
 CREATE TABLE customers (
-    customer_id BIGINT NOT NULL AUTO_INCREMENT,
+    customer_id BIGINT NOT NULL,
     email VARCHAR(255) NOT NULL,
     name VARCHAR(255) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -197,7 +199,7 @@ CREATE TABLE customers (
 ) ENGINE=InnoDB;
 
 CREATE TABLE orders (
-    order_id BIGINT NOT NULL AUTO_INCREMENT,
+    order_id BIGINT NOT NULL,
     customer_id BIGINT NOT NULL,
     total_amount DECIMAL(10, 2) NOT NULL,
     status ENUM('pending', 'processing', 'shipped', 'delivered', 'cancelled') NOT NULL DEFAULT 'pending',
@@ -206,7 +208,7 @@ CREATE TABLE orders (
 ) ENGINE=InnoDB;
 
 CREATE TABLE order_items (
-    item_id BIGINT NOT NULL AUTO_INCREMENT,
+    item_id BIGINT NOT NULL,
     order_id BIGINT NOT NULL,
     customer_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
@@ -216,7 +218,7 @@ CREATE TABLE order_items (
 ) ENGINE=InnoDB;
 
 CREATE TABLE products (
-    product_id BIGINT NOT NULL AUTO_INCREMENT,
+    product_id BIGINT NOT NULL,
     name VARCHAR(255) NOT NULL,
     price DECIMAL(10, 2) NOT NULL,
     category VARCHAR(100),
@@ -225,8 +227,7 @@ CREATE TABLE products (
 
 CREATE TABLE customer_lookup (
     email VARCHAR(255) NOT NULL,
-    customer_id BIGINT NOT NULL,
-    keyspace_id VARBINARY(128),
+    keyspace_id VARBINARY(10) NOT NULL,
     PRIMARY KEY (email)
 ) ENGINE=InnoDB;
 ```
@@ -269,7 +270,7 @@ Queries work transparently:
 
 ```sql
 -- This is routed to the correct shard based on customer_id
-INSERT INTO customers (email, name) VALUES ('alice@example.com', 'Alice');
+INSERT INTO customers (customer_id, email, name) VALUES (12345, 'alice@example.com', 'Alice');
 
 -- This scatter-gathers across all shards
 SELECT COUNT(*) FROM orders WHERE status = 'pending';
@@ -286,25 +287,25 @@ SELECT * FROM customers WHERE email = 'alice@example.com';
 
 ## Online Resharding
 
-One of Vitess's most powerful features is online resharding, the ability to split or merge shards without downtime. When your 4 shards are running out of capacity, you can split them to 8:
+One of Vitess's most powerful features is online resharding, the ability to split or merge shards without downtime. When your 4 shards are running out of capacity, you can split them to 8. After adding the target shard partitioning and tablet pools to the VitessCluster so the new shards are running, create the VReplication workflow:
 
 ```bash
-# Create the new shards
-vtctldclient Reshard --target-keyspace commerce --workflow split create \
+# Create the VReplication workflow
+vtctldclient --server localhost:15999 Reshard --target-keyspace commerce --workflow split create \
   --source-shards '-40,40-80,80-c0,c0-' \
   --target-shards '-20,20-40,40-60,60-80,80-a0,a0-c0,c0-e0,e0-'
 
 # Monitor the progress
-vtctldclient Reshard --target-keyspace commerce --workflow split show
+vtctldclient --server localhost:15999 Reshard --target-keyspace commerce --workflow split show
 
 # When the copy is complete, switch reads
-vtctldclient Reshard --target-keyspace commerce --workflow split switchtraffic --tablet-types=rdonly,replica
+vtctldclient --server localhost:15999 Reshard --target-keyspace commerce --workflow split switchtraffic --tablet-types=replica
 
 # Then switch writes
-vtctldclient Reshard --target-keyspace commerce --workflow split switchtraffic --tablet-types=primary
+vtctldclient --server localhost:15999 Reshard --target-keyspace commerce --workflow split switchtraffic --tablet-types=primary
 
 # Clean up the old shards
-vtctldclient Reshard --target-keyspace commerce --workflow split complete
+vtctldclient --server localhost:15999 Reshard --target-keyspace commerce --workflow split complete
 ```
 
 The entire process happens online. Applications continue reading and writing throughout the resharding operation.
