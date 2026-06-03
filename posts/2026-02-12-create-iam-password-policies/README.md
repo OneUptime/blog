@@ -8,14 +8,15 @@ Description: Learn how to create and configure IAM password policies in AWS to e
 
 ---
 
-Weak passwords are low-hanging fruit for attackers. AWS lets you define a password policy for your entire account that sets minimum requirements for all IAM users. If you haven't configured one yet, your users can set "password1" as their password and call it a day. Let's fix that.
+Weak passwords are low-hanging fruit for attackers. AWS lets you define a password policy for your entire account that sets minimum requirements for all IAM users. If you haven't configured one yet, your users can still set relatively short passwords, like "Password1", and call it a day. Let's fix that.
 
 ## Default Password Policy
 
-When you create a new AWS account, there's a default password policy that's pretty loose:
+When you create a new AWS account, there's a default password policy that's better than it used to be, but still pretty loose:
 
-- Minimum length: 8 characters
-- No requirement for uppercase, lowercase, numbers, or symbols
+- Minimum length: 8 characters, maximum length: 128 characters
+- At least three of these character types: uppercase, lowercase, numbers, and symbols
+- Not identical to your AWS account name or email address
 - No expiration
 - No reuse prevention
 
@@ -23,7 +24,7 @@ That's not going to pass any security audit. Let's set up something better.
 
 ## Creating a Strong Password Policy via CLI
 
-Here's a password policy that aligns with most compliance frameworks (SOC 2, PCI DSS, HIPAA):
+Here's a conservative password policy that many audit teams will recognize:
 
 ```bash
 # Set a strong password policy for the AWS account
@@ -42,7 +43,7 @@ aws iam update-account-password-policy \
 
 Let me break down each parameter:
 
-- **minimum-password-length 14**: Longer passwords are exponentially harder to crack. NIST recommends at least 8, but 14 gives you a much better margin.
+- **minimum-password-length 14**: Longer passwords are exponentially harder to crack. NIST's current guidance requires at least 8 characters for passwords used with MFA and at least 15 for single-factor passwords, but 14 still aligns with current CIS AWS Foundations password-length guidance.
 - **require-symbols**: At least one special character (!, @, #, etc.)
 - **require-numbers**: At least one digit
 - **require-uppercase-characters**: At least one uppercase letter
@@ -50,7 +51,7 @@ Let me break down each parameter:
 - **allow-users-to-change-password**: Users can change their own passwords without admin help
 - **max-password-age 90**: Passwords expire after 90 days
 - **password-reuse-prevention 24**: Users can't reuse their last 24 passwords
-- **hard-expiry**: When a password expires, the user must contact an admin to reset it (can't just reset it themselves)
+- **hard-expiry**: When a password expires, the user must contact an admin to reset it before they can use the AWS Management Console again. Users with `iam:ChangePassword` permission and active access keys can still reset an expired console password through the CLI or API.
 
 ## Checking the Current Policy
 
@@ -98,6 +99,11 @@ Resources:
           import boto3
           import cfnresponse
 
+          def as_bool(value):
+              if isinstance(value, bool):
+                  return value
+              return str(value).lower() == 'true'
+
           def handler(event, context):
               iam = boto3.client('iam')
               try:
@@ -105,18 +111,18 @@ Resources:
                       props = event['ResourceProperties']
                       iam.update_account_password_policy(
                           MinimumPasswordLength=int(props['MinimumPasswordLength']),
-                          RequireSymbols=props['RequireSymbols'] == 'true',
-                          RequireNumbers=props['RequireNumbers'] == 'true',
-                          RequireUppercaseCharacters=props['RequireUppercaseCharacters'] == 'true',
-                          RequireLowercaseCharacters=props['RequireLowercaseCharacters'] == 'true',
-                          AllowUsersToChangePassword=props['AllowUsersToChangePassword'] == 'true',
+                          RequireSymbols=as_bool(props['RequireSymbols']),
+                          RequireNumbers=as_bool(props['RequireNumbers']),
+                          RequireUppercaseCharacters=as_bool(props['RequireUppercaseCharacters']),
+                          RequireLowercaseCharacters=as_bool(props['RequireLowercaseCharacters']),
+                          AllowUsersToChangePassword=as_bool(props['AllowUsersToChangePassword']),
                           MaxPasswordAge=int(props['MaxPasswordAge']),
                           PasswordReusePrevention=int(props['PasswordReusePrevention']),
-                          HardExpiry=props['HardExpiry'] == 'true'
+                          HardExpiry=as_bool(props['HardExpiry'])
                       )
-                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, {}, 'AccountPasswordPolicy')
               except Exception as e:
-                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)}, 'AccountPasswordPolicy')
 
   PasswordPolicyRole:
     Type: AWS::IAM::Role
@@ -176,7 +182,7 @@ Instead, NIST recommends:
 - No expiration unless there's evidence of compromise
 - Checking passwords against known breached password lists
 
-However, most compliance frameworks (SOC 2, PCI DSS) still require password rotation. So you'll need to balance NIST best practices with your compliance requirements. If you're required to have expiration, set it to 90 days and pair it with MFA enforcement. Check out our guide on [enforcing MFA for IAM users](https://oneuptime.com/blog/post/2026-02-12-enable-enforce-mfa-iam-users/view) for the full MFA setup.
+However, some standards, older benchmark versions, and internal security policies still require password rotation. PCI DSS has conditional rotation requirements, while SOC 2 and HIPAA generally depend on your risk analysis, system description, and committed controls. So you'll need to balance NIST best practices with your compliance requirements. If you're required to have expiration, set it to 90 days and pair it with MFA enforcement. Check out our guide on [enforcing MFA for IAM users](https://oneuptime.com/blog/post/2026-02-12-enable-enforce-mfa-iam-users/view) for the full MFA setup.
 
 ## Monitoring Password Policy Compliance
 
@@ -202,6 +208,7 @@ Want to know which users have old passwords that need rotating? Use the credenti
 ```python
 import boto3
 import csv
+import time
 from io import StringIO
 from datetime import datetime, timezone
 
@@ -209,10 +216,13 @@ from datetime import datetime, timezone
 iam = boto3.client("iam")
 
 # Generate the credential report
-iam.generate_credential_report()
-
-import time
-time.sleep(5)
+for _ in range(10):
+    response = iam.generate_credential_report()
+    if response["State"] == "COMPLETE":
+        break
+    time.sleep(2)
+else:
+    raise TimeoutError("Credential report was not ready")
 
 # Download and parse the report
 report = iam.get_credential_report()
@@ -250,6 +260,7 @@ AWS doesn't send notifications when passwords are about to expire. You'll need t
 ```python
 import boto3
 import csv
+import time
 from io import StringIO
 from datetime import datetime, timezone
 
@@ -262,10 +273,13 @@ def lambda_handler(event, context):
     max_age = policy.get("MaxPasswordAge", 90)
 
     # Generate credential report
-    iam.generate_credential_report()
-
-    import time
-    time.sleep(5)
+    for _ in range(10):
+        response = iam.generate_credential_report()
+        if response["State"] == "COMPLETE":
+            break
+        time.sleep(2)
+    else:
+        raise TimeoutError("Credential report was not ready")
 
     report = iam.get_credential_report()
     content = report["Content"].decode("utf-8")
@@ -316,13 +330,13 @@ def lambda_handler(event, context):
 
 | Framework | Min Length | Rotation | Complexity | MFA Required |
 |-----------|-----------|----------|------------|--------------|
-| SOC 2 | 8+ | 90 days | Yes | Recommended |
-| PCI DSS | 7+ | 90 days | Yes | Yes |
-| HIPAA | 8+ | Periodic | Yes | Recommended |
-| NIST 800-63B | 8+ | No (unless breach) | No | Yes |
-| CIS Benchmark | 14+ | 90 days | Yes | Yes |
+| SOC 2 | Policy-defined | Policy-defined | Policy-defined | Risk-based |
+| PCI DSS | 12+ (8 if the system can't support 12) | Conditional | Yes | Yes |
+| HIPAA | Risk-based | Policy-defined | Policy-defined | Risk-based |
+| NIST 800-63B | 15+ single-factor, 8+ with MFA | No (unless breach) | No | Depends on AAL |
+| CIS Benchmark | 14+ | No current requirement | No current requirement | Yes |
 
-For most organizations, I'd recommend following the CIS AWS Foundations Benchmark: 14-character minimum, 90-day rotation, full complexity requirements, and mandatory MFA.
+For most organizations, I'd recommend following the current CIS AWS Foundations Benchmark direction: 14-character minimum, password reuse prevention, and mandatory MFA for IAM users with console passwords. Add rotation or complexity requirements only when your compliance scope or internal policy requires them.
 
 ## Moving Beyond Passwords
 
