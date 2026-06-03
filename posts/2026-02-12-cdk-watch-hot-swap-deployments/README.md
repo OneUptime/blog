@@ -28,14 +28,15 @@ graph LR
 ```
 
 Hot-swap currently supports:
-- Lambda function code and configuration
-- ECS service task definitions
+- Lambda function code assets, tags, versions, aliases, and limited configuration changes such as descriptions and environment variables
+- ECS service container asset changes
 - Step Functions state machine definitions
-- CodeBuild project source
-- S3 bucket deployments
-- AppSync resolvers and functions
+- CodeBuild project source and environment changes
+- S3 bucket deployment website asset changes
+- AppSync resolver, function, and schema changes
+- API Gateway, EventBridge, DynamoDB, SQS, CloudWatch, and some Bedrock configuration changes
 
-Resources that aren't hot-swappable fall back to a normal CloudFormation deployment.
+Resources that aren't hot-swappable are ignored when you use `--hotswap` by itself. Use `--hotswap-fallback` when you want CDK to fall back to a normal CloudFormation deployment.
 
 ## Basic Hot-Swap Deploy
 
@@ -75,7 +76,7 @@ When you save a file, CDK Watch:
 2. Synthesizes the CDK app
 3. Identifies what changed
 4. Hot-swaps supported resources
-5. Falls back to full deploy for others
+5. Ignores changes that require CloudFormation unless you started it with `--hotswap-fallback`
 
 ## Configuring cdk.json for Watch
 
@@ -140,11 +141,11 @@ export class ApiStack extends cdk.Stack {
 }
 ```
 
-Now when you edit the Lambda code in `lambda/api/index.ts`, CDK Watch detects the change and updates just the Lambda function code. The API Gateway, IAM role, and other resources are untouched.
+Now when you edit the Lambda code in `lambda/api/index.js`, CDK Watch detects the change and updates just the Lambda function code. The API Gateway, IAM role, and other resources are untouched.
 
-```typescript
-// lambda/api/index.ts - Edit this and watch hot-swap in action
-export const handler = async (event: any) => {
+```javascript
+// lambda/api/index.js - Edit this and watch hot-swap in action
+exports.handler = async (event) => {
   // Change this response and save - CDK Watch will deploy in seconds
   return {
     statusCode: 200,
@@ -178,10 +179,10 @@ const handler = new lambda.Function(this, 'Handler', {
 
 ## ECS Hot-Swap
 
-For ECS services, hot-swap updates the task definition and triggers a new deployment:
+For ECS services, hot-swap updates container image asset changes and triggers a new deployment:
 
 ```typescript
-// ECS task definition changes are hot-swappable
+// ECS container asset changes are hot-swappable
 const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
   cpu: 256,
   memoryLimitMiB: 512,
