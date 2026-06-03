@@ -26,7 +26,7 @@ Resources:
   MyInstance:
     Type: AWS::EC2::Instance
     Properties:
-      ImageId: ami-0abc123def456
+      ImageId: '{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}'
       InstanceType: t3.micro
       Tags:
         - Key: Name
@@ -53,7 +53,7 @@ aws cloudformation describe-stacks \
 
 ## Using Parameters
 
-Hard-coding AMI IDs and instance types makes templates inflexible. Parameters let users customize deployments without editing the template.
+Hard-coding instance types or embedding AMI references directly makes templates inflexible. Parameters let users customize deployments without editing the template.
 
 Add parameters for common configuration options:
 
@@ -119,7 +119,7 @@ aws cloudformation create-stack \
 
 ## Adding Network Infrastructure
 
-A production template needs a proper VPC setup. Here's a complete networking stack with public and private subnets.
+A production template needs a proper VPC setup. Here's a networking stack with a public subnet.
 
 Define the VPC, subnets, and routing:
 
@@ -227,6 +227,7 @@ Instance with cfn-init for structured configuration:
 ```yaml
   WebServer:
     Type: AWS::EC2::Instance
+    DependsOn: AttachGateway
     Metadata:
       AWS::CloudFormation::Init:
         configSets:
@@ -239,7 +240,7 @@ Instance with cfn-init for structured configuration:
               nginx: []
               git: []
           services:
-            sysvinit:
+            systemd:
               nginx:
                 enabled: true
                 ensureRunning: true
@@ -334,7 +335,10 @@ aws cloudformation update-stack \
   --stack-name staging-ec2 \
   --template-body file://template.yaml \
   --parameters \
-    ParameterKey=InstanceType,ParameterValue=t3.medium
+    ParameterKey=InstanceType,ParameterValue=t3.medium \
+    ParameterKey=KeyName,UsePreviousValue=true \
+    ParameterKey=Environment,UsePreviousValue=true \
+    ParameterKey=LatestAmiId,UsePreviousValue=true
 
 # Or preview changes with a change set first
 aws cloudformation create-change-set \
@@ -342,7 +346,10 @@ aws cloudformation create-change-set \
   --change-set-name upgrade-instance-type \
   --template-body file://template.yaml \
   --parameters \
-    ParameterKey=InstanceType,ParameterValue=t3.medium
+    ParameterKey=InstanceType,ParameterValue=t3.medium \
+    ParameterKey=KeyName,UsePreviousValue=true \
+    ParameterKey=Environment,UsePreviousValue=true \
+    ParameterKey=LatestAmiId,UsePreviousValue=true
 
 # Review the change set
 aws cloudformation describe-change-set \
