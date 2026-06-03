@@ -61,11 +61,11 @@ aws sagemaker create-notebook-instance \
 
 Let's break down the key parameters:
 
-**Instance type** - Start with `ml.t3.medium` ($0.05/hour) for exploration and data analysis. Move to `ml.t3.xlarge` ($0.20/hour) or `ml.m5.xlarge` ($0.29/hour) when you need more memory. For GPU work, use `ml.g4dn.xlarge` ($0.74/hour).
+**Instance type** - Start with `ml.t3.medium` for exploration and data analysis. Move to `ml.t3.xlarge` or `ml.m5.xlarge` when you need more memory. For GPU work, use `ml.g4dn.xlarge`. Pricing varies by Region, so check the SageMaker pricing page for your Region before you leave anything running.
 
 **Volume size** - The EBS volume for storing notebooks, datasets, and conda environments. 20GB is fine for starting out. You can increase it later but can't decrease it.
 
-**Direct internet access** - Enable this unless your security requirements demand otherwise. Without internet access, you can't install pip packages.
+**Direct internet access** - Enable this unless your security requirements demand otherwise. Without direct internet access, public `pip` installs won't work unless your VPC provides a route to the internet through a NAT gateway or you use a private package repository.
 
 Check the instance status:
 
@@ -151,14 +151,15 @@ if __name__ == '__main__':
     main()
 AUTOSTOP
 
-# Run auto-stop in the background
-nohup python3 /home/ec2-user/SageMaker/auto-stop.py &
+# Run auto-stop in the background as the notebook user
+chown ec2-user:ec2-user /home/ec2-user/SageMaker/auto-stop.py
+sudo -u ec2-user -i bash -c "IDLE_TIME=$IDLE_TIME nohup python3 /home/ec2-user/SageMaker/auto-stop.py > /home/ec2-user/SageMaker/auto-stop.log 2>&1 &"
 
 echo "Auto-stop configured"
 SCRIPT
 
 # Encode the script
-ON_START=$(cat /tmp/on-start.sh | base64)
+ON_START=$(base64 /tmp/on-start.sh | tr -d '\n')
 
 # Create the lifecycle configuration
 aws sagemaker create-notebook-instance-lifecycle-config \
@@ -173,6 +174,8 @@ cat > /tmp/on-create.sh << 'SCRIPT'
 #!/bin/bash
 set -e
 
+sudo -u ec2-user -i <<'EOF'
+
 # Install custom packages in the conda environment
 source activate python3
 
@@ -184,16 +187,14 @@ pip install --quiet \
   optuna \
   mlflow
 
-# Install JupyterLab extensions
-jupyter labextension install @jupyter-widgets/jupyterlab-manager --no-build
-jupyter lab build --minimize=False
-
 source deactivate
+
+EOF
 
 echo "Custom packages installed"
 SCRIPT
 
-ON_CREATE=$(cat /tmp/on-create.sh | base64)
+ON_CREATE=$(base64 /tmp/on-create.sh | tr -d '\n')
 
 # Update the lifecycle config with both scripts
 aws sagemaker create-notebook-instance-lifecycle-config \
