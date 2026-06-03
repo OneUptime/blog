@@ -14,7 +14,7 @@ Pod Security Admission (PSA) is a built-in admission controller that enforces Po
 
 Pod Security Admission replaced Pod Security Policies as the standard way to enforce pod security. It operates at the namespace level and enforces three security profiles: privileged, baseline, and restricted. Each profile defines increasingly strict security requirements for pods.
 
-ServiceAccounts play a role in PSA enforcement. The restricted profile discourages (but doesn't require) automatic ServiceAccount token mounting. It requires dropping all capabilities and running as non-root. Understanding these interactions ensures your ServiceAccount configurations align with security policies.
+ServiceAccounts do not change PSA enforcement directly. PSA evaluates Pods and workload Pod templates, while ServiceAccounts control API identity and token mounting for those Pods. The restricted profile requires dropping all capabilities, running as non-root, and explicitly setting a seccomp profile. Understanding these interactions ensures your ServiceAccount configurations align with security policies.
 
 PSA operates in three modes: enforce blocks non-compliant pods, audit logs violations without blocking, and warn displays warnings for non-compliant pods. You can apply different modes simultaneously to gradually introduce stricter policies.
 
@@ -46,7 +46,7 @@ kubectl get namespace production -o yaml
 
 ## ServiceAccount Configuration for Restricted Standard
 
-Create ServiceAccounts that comply with the restricted standard:
+Create ServiceAccounts for workloads that comply with the restricted standard:
 
 ```yaml
 # restricted-serviceaccount.yaml
@@ -55,7 +55,7 @@ kind: ServiceAccount
 metadata:
   name: restricted-app
   namespace: production
-automountServiceAccountToken: false  # Recommended by restricted profile
+automountServiceAccountToken: false  # Recommended when API access isn't needed
 ```
 
 Deploy a pod that meets restricted requirements:
@@ -130,7 +130,7 @@ Baseline is more permissive than restricted but still enforces basic security.
 
 ## Handling ServiceAccount Token Mounting with PSA
 
-The restricted profile encourages disabling automatic token mounting:
+Disable automatic token mounting when the workload does not need Kubernetes API access:
 
 ```yaml
 # token-mounting-examples.yaml
@@ -146,6 +146,8 @@ spec:
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: app
     image: myapp:latest
@@ -166,6 +168,8 @@ spec:
   securityContext:
     runAsNonRoot: true
     runAsUser: 1000
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: app
     image: api-client:latest
@@ -393,18 +397,15 @@ The webhook can enforce additional ServiceAccount requirements beyond PSA.
 
 ## Monitoring PSA Violations
 
-Track PSA audit events:
+Track PSA audit logs and metrics:
 
 ```bash
-# Query for PSA warnings
-kubectl get events -A | grep "pod-security"
+# Query the API server metrics exposed by kube-apiserver
+kubectl get --raw /metrics | grep "pod_security"
 
-# Check specific namespace violations
-kubectl get events -n production --field-selector reason=PodSecurity
-
-# View audit logs
-kubectl logs -n kube-system -l component=kube-apiserver | \
-  grep "pod-security-webhook"
+# View audit logs from your configured audit backend
+AUDIT_LOG_PATH=/var/log/kubernetes/audit/audit.log
+grep "pod-security.kubernetes.io" "$AUDIT_LOG_PATH"
 ```
 
 Set up alerts for violations:
@@ -420,7 +421,7 @@ spec:
   - name: pod-security
     rules:
     - alert: PSAViolation
-      expr: increase(apiserver_admission_webhook_admission_duration_seconds_count{name="pod-security-webhook",rejected="true"}[5m]) > 0
+      expr: increase(pod_security_evaluations_total{decision="deny"}[5m]) > 0
       annotations:
         summary: "Pod Security Admission violations detected"
 ```
