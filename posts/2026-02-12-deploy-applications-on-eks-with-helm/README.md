@@ -98,7 +98,8 @@ image:
 
 service:
   type: ClusterIP
-  port: 80
+  ports:
+    http: 80
 
 resources:
   requests:
@@ -110,21 +111,19 @@ resources:
 
 ingress:
   enabled: true
+  ingressClassName: alb
   annotations:
-    kubernetes.io/ingress.class: alb
     alb.ingress.kubernetes.io/scheme: internet-facing
     alb.ingress.kubernetes.io/target-type: ip
-  hosts:
-    - host: web.example.com
-      paths:
-        - path: /
-          pathType: Prefix
+  hostname: web.example.com
+  path: /
+  pathType: Prefix
 
 autoscaling:
   enabled: true
   minReplicas: 3
   maxReplicas: 10
-  targetCPUUtilizationPercentage: 70
+  targetCPU: 70
 ```
 
 ```bash
@@ -141,10 +140,10 @@ When you need to change configuration or update the chart version:
 helm upgrade my-nginx bitnami/nginx -n web -f nginx-values.yaml
 
 # Upgrade to a specific chart version
-helm upgrade my-nginx bitnami/nginx -n web --version 15.4.0 -f nginx-values.yaml
+helm upgrade my-nginx bitnami/nginx -n web --version 25.0.0 -f nginx-values.yaml
 ```
 
-Helm performs a rolling update by default, keeping your application available during the upgrade.
+For Deployment-based workloads, Kubernetes performs a rolling update by default, keeping your application available during the upgrade.
 
 ## Rolling Back
 
@@ -202,13 +201,12 @@ spec:
     metadata:
       labels:
         {{- include "my-app.selectorLabels" . | nindent 8 }}
-      annotations:
-        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
     spec:
       serviceAccountName: {{ include "my-app.serviceAccountName" . }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.containerPort }}
           env:
@@ -281,7 +279,7 @@ helm lint my-app/
 helm template my-app my-app/ -f custom-values.yaml
 
 # Dry run against the cluster to validate
-helm install my-app my-app/ --dry-run --debug
+helm install my-app my-app/ --dry-run=server --debug
 ```
 
 ## Environment-Specific Values
@@ -313,9 +311,14 @@ AWS ECR supports OCI-compatible Helm charts. Push your chart to ECR for team-wid
 aws ecr get-login-password --region us-west-2 | \
   helm registry login --username AWS --password-stdin 123456789012.dkr.ecr.us-west-2.amazonaws.com
 
+# Create an ECR repository for the chart
+aws ecr create-repository \
+  --repository-name my-app \
+  --region us-west-2
+
 # Package and push the chart
 helm package my-app/
-helm push my-app-0.1.0.tgz oci://123456789012.dkr.ecr.us-west-2.amazonaws.com/helm-charts
+helm push my-app-0.1.0.tgz oci://123456789012.dkr.ecr.us-west-2.amazonaws.com/
 ```
 
 ## Helm with GitOps
