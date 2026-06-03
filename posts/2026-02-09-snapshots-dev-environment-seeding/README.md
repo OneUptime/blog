@@ -61,11 +61,26 @@ kubectl wait -n $PROD_NAMESPACE \
   --for=jsonpath='{.status.readyToUse}'=true \
   volumesnapshot/prod-seed-$TIMESTAMP --timeout=300s
 
-# Get VolumeSnapshotContent for cross-namespace restore
-CONTENT_NAME=$(kubectl get volumesnapshot prod-seed-$TIMESTAMP -n $PROD_NAMESPACE \
-  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+# Allow the development namespace to restore from this production snapshot.
+# This requires the CrossNamespaceVolumeDataSource feature gate and the
+# Gateway API ReferenceGrant CRD to be installed in the cluster.
+kubectl apply -n $PROD_NAMESPACE -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-dev-restore-$TIMESTAMP
+spec:
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: $DEV_NAMESPACE
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: prod-seed-$TIMESTAMP
+EOF
 
-echo "✓ Snapshot created: $CONTENT_NAME"
+echo "✓ Snapshot created: prod-seed-$TIMESTAMP"
 
 # Step 2: Create dev PVC from snapshot
 echo "Creating development PVC..."
@@ -88,9 +103,10 @@ spec:
     requests:
       storage: $RESTORE_SIZE
   storageClassName: standard
-  dataSource:
-    name: $CONTENT_NAME
-    kind: VolumeSnapshotContent
+  dataSourceRef:
+    name: prod-seed-$TIMESTAMP
+    namespace: $PROD_NAMESPACE
+    kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
 EOF
 
@@ -146,6 +162,8 @@ spec:
 
           # Anonymize customer data
           psql <<EOF
+          CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
           -- Anonymize emails
           UPDATE users
           SET email = 'user' || id || '@example.com'
@@ -183,7 +201,7 @@ spec:
           # Verify sanitization
           echo "Verifying sanitization..."
 
-          PROD_EMAILS=$(psql -t -c "SELECT COUNT(*) FROM users WHERE email NOT LIKE '%@example.com';")
+          PROD_EMAILS=$(psql -At -c "SELECT COUNT(*) FROM users WHERE email NOT LIKE '%@example.com';")
 
           if [ "$PROD_EMAILS" -gt 0 ]; then
             echo "WARNING: $PROD_EMAILS production emails still exist"
@@ -247,14 +265,27 @@ spec:
                 --for=jsonpath='{.status.readyToUse}'=true \
                 volumesnapshot/weekly-refresh-$TIMESTAMP --timeout=300s
 
+              kubectl apply -n production -f - <<EOF
+              apiVersion: gateway.networking.k8s.io/v1beta1
+              kind: ReferenceGrant
+              metadata:
+                name: allow-dev-refresh-$TIMESTAMP
+              spec:
+                from:
+                - group: ""
+                  kind: PersistentVolumeClaim
+                  namespace: development
+                to:
+                - group: snapshot.storage.k8s.io
+                  kind: VolumeSnapshot
+                  name: weekly-refresh-$TIMESTAMP
+              EOF
+
               # Step 3: Delete old dev PVC
               echo "Removing old development data..."
               kubectl delete pvc postgres-pvc -n development
 
               # Step 4: Create new dev PVC from snapshot
-              CONTENT_NAME=$(kubectl get volumesnapshot weekly-refresh-$TIMESTAMP -n production \
-                -o jsonpath='{.status.boundVolumeSnapshotContentName}')
-
               RESTORE_SIZE=$(kubectl get volumesnapshot weekly-refresh-$TIMESTAMP -n production \
                 -o jsonpath='{.status.restoreSize}')
 
@@ -272,9 +303,10 @@ spec:
                   requests:
                     storage: $RESTORE_SIZE
                 storageClassName: standard
-                dataSource:
-                  name: $CONTENT_NAME
-                  kind: VolumeSnapshotContent
+                dataSourceRef:
+                  name: weekly-refresh-$TIMESTAMP
+                  namespace: production
+                  kind: VolumeSnapshot
                   apiGroup: snapshot.storage.k8s.io
               EOF
 
@@ -313,7 +345,14 @@ if [ -z "$DEVELOPER" ]; then
   exit 1
 fi
 
-DEV_NAMESPACE="dev-${DEVELOPER}"
+DEVELOPER_SLUG=$(printf '%s' "$DEVELOPER" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]/-/g; s/^-*//; s/-*$//; s/--*/-/g')
+
+if [ -z "$DEVELOPER_SLUG" ]; then
+  echo "Developer name must contain at least one letter or number"
+  exit 1
+fi
+
+DEV_NAMESPACE="dev-${DEVELOPER_SLUG}"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
 echo "=== Creating Environment for $DEVELOPER ==="
@@ -323,7 +362,7 @@ kubectl create namespace $DEV_NAMESPACE
 
 # Label namespace
 kubectl label namespace $DEV_NAMESPACE \
-  owner=$DEVELOPER \
+  owner=$DEVELOPER_SLUG \
   environment=development \
   auto-cleanup=true \
   ttl=7d
@@ -335,8 +374,21 @@ if [ "$SOURCE_SNAPSHOT" = "latest" ]; then
     -o jsonpath='{.items[-1].metadata.name}')
 fi
 
-CONTENT_NAME=$(kubectl get volumesnapshot $SOURCE_SNAPSHOT -n production \
-  -o jsonpath='{.status.boundVolumeSnapshotContentName}')
+kubectl apply -n production -f - <<EOF
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-${DEVELOPER_SLUG}-restore
+spec:
+  from:
+  - group: ""
+    kind: PersistentVolumeClaim
+    namespace: $DEV_NAMESPACE
+  to:
+  - group: snapshot.storage.k8s.io
+    kind: VolumeSnapshot
+    name: $SOURCE_SNAPSHOT
+EOF
 
 # Create PVC for developer
 echo "Creating data volume..."
@@ -350,7 +402,7 @@ kind: PersistentVolumeClaim
 metadata:
   name: database-pvc
   labels:
-    owner: $DEVELOPER
+    owner: $DEVELOPER_SLUG
     seeded-from: $SOURCE_SNAPSHOT
 spec:
   accessModes:
@@ -359,9 +411,10 @@ spec:
     requests:
       storage: $RESTORE_SIZE
   storageClassName: standard
-  dataSource:
-    name: $CONTENT_NAME
-    kind: VolumeSnapshotContent
+  dataSourceRef:
+    name: $SOURCE_SNAPSHOT
+    namespace: production
+    kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
 EOF
 
@@ -444,24 +497,17 @@ spec:
               echo "=== Cleaning Up Old Development Environments ==="
 
               # Find namespaces with ttl label
-              kubectl get namespace -l auto-cleanup=true -o json | \
-                jq -r '.items[] |
-                  {
-                    name: .metadata.name,
-                    created: .metadata.creationTimestamp,
-                    ttl: .metadata.labels.ttl
-                  }' | \
-                while read -r ns; do
+              kubectl get namespace -l auto-cleanup=true \
+                -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.metadata.creationTimestamp}{"\t"}{.metadata.labels.ttl}{"\n"}{end}' | \
+                while IFS=$'\t' read -r NAME CREATED TTL_LABEL; do
 
-                NAME=$(echo $ns | jq -r '.name')
-                CREATED=$(echo $ns | jq -r '.created')
-                TTL=$(echo $ns | jq -r '.ttl' | sed 's/d//')
+                TTL=${TTL_LABEL%d}
 
                 CREATED_TS=$(date -d "$CREATED" +%s)
                 NOW_TS=$(date +%s)
                 AGE_DAYS=$(( ($NOW_TS - $CREATED_TS) / 86400 ))
 
-                if [ $AGE_DAYS -gt $TTL ]; then
+                if [ "$AGE_DAYS" -gt "$TTL" ]; then
                   echo "Deleting namespace $NAME (age: $AGE_DAYS days, ttl: $TTL days)"
                   kubectl delete namespace $NAME
                 fi
