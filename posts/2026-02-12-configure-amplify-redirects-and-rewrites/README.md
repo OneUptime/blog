@@ -37,9 +37,9 @@ graph LR
 Amplify redirects and rewrites can be configured in two places:
 
 1. **The Amplify console**: Go to "Hosting" then "Rewrites and redirects"
-2. **A JSON file in your project**: Create a `customHttp.yml` or use the `redirects` section in `amplify.yml`
+2. **Infrastructure as code**: Define custom rules on the Amplify app, for example with CloudFormation's `AWS::Amplify::App` `CustomRules` property
 
-For version-controlled, reproducible configurations, use the file-based approach.
+For version-controlled, reproducible configurations, use the infrastructure-as-code approach. The `customHttp.yml` file is for custom headers, and `amplify.yml` is for build settings, not for redirect and rewrite rules.
 
 ## Basic Redirect Rules
 
@@ -123,7 +123,7 @@ This is probably the most common rewrite rule. Single-page applications need all
 ```json
 [
   {
-    "source": "</^[^.]+$|.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>",
+    "source": "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>",
     "target": "/index.html",
     "status": "200",
     "condition": null
@@ -167,7 +167,7 @@ Amplify evaluates redirect and rewrite rules from top to bottom. The first match
     "condition": null
   },
   {
-    "source": "</^[^.]+$|.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>",
+    "source": "</^[^.]+$|\\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>",
     "target": "/index.html",
     "status": "200",
     "condition": null
@@ -200,14 +200,12 @@ Amplify can proxy requests to external services using a 200 rewrite. This is use
 When a user requests `/api/users`, Amplify fetches `https://api.example.com/users` and returns the response as if it came from your domain. The browser never sees the external URL.
 
 **Limitations of proxy rewrites**:
-- Maximum response size is 15MB
-- Timeout is 30 seconds
-- WebSocket connections are not supported through proxy rewrites
+- Reverse proxy targets must use HTTPS
 - The proxy adds latency since the request goes through Amplify's infrastructure
 
 ## Conditional Redirects
 
-You can apply redirects based on HTTP headers, which enables country-based or device-based routing:
+You can apply redirects based on a two-letter country code condition, which enables country-based routing:
 
 ```json
 [
@@ -215,10 +213,7 @@ You can apply redirects based on HTTP headers, which enables country-based or de
     "source": "/",
     "target": "/eu/home",
     "status": "302",
-    "condition": {
-      "key": "CloudFront-Viewer-Country",
-      "value": "DE"
-    }
+    "condition": "<DE>"
   },
   {
     "source": "/",
@@ -229,60 +224,29 @@ You can apply redirects based on HTTP headers, which enables country-based or de
 ]
 ```
 
-This redirects German visitors to `/eu/home` and everyone else to `/us/home`. Amplify evaluates conditions through CloudFront headers.
+This redirects German visitors to `/eu/home` and everyone else to `/us/home`.
 
 ## Trailing Slash Handling
 
-Inconsistent trailing slashes cause duplicate content issues for SEO. Here is how to standardize:
-
-**Remove trailing slashes**:
-
-```json
-[
-  {
-    "source": "/<*>/",
-    "target": "/<*>",
-    "status": "301",
-    "condition": null
-  }
-]
-```
-
-**Add trailing slashes**:
-
-```json
-[
-  {
-    "source": "</^[^.]+[^/]$/>",
-    "target": "/<*>/",
-    "status": "301",
-    "condition": null
-  }
-]
-```
-
-Pick one approach and be consistent across your app.
+Inconsistent trailing slashes can cause duplicate content issues for SEO. Amplify also automatically creates clean URLs by adding a trailing slash when required, such as when `/about.html` is not found and `/about/index.html` exists. Account for that behavior when you choose a URL format for your app.
 
 ## File-Based Configuration
 
-Instead of configuring rules in the console, you can define them in your `amplify.yml`:
+Instead of configuring rules manually in the console, you can define them in infrastructure as code. In CloudFormation, use the `CustomRules` property on the Amplify app:
 
 ```yaml
-# amplify.yml - Redirects section
-
-customHeaders:
-  - pattern: '**/*'
-    headers:
-      - key: 'X-Frame-Options'
-        value: 'DENY'
-
-redirects:
-  - source: /old-blog/<*>
-    target: /blog/<*>
-    status: '301'
-  - source: </^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>
-    target: /index.html
-    status: '200'
+Resources:
+  AmplifyApp:
+    Type: AWS::Amplify::App
+    Properties:
+      Name: my-amplify-app
+      CustomRules:
+        - Source: '/old-blog/<*>'
+          Target: '/blog/<*>'
+          Status: '301'
+        - Source: '</^[^.]+$|\.(?!(css|gif|ico|jpg|js|png|txt|svg|woff|woff2|ttf|map|json|webp)$)([^.]+$)/>'
+          Target: '/index.html'
+          Status: '200'
 ```
 
 This approach is preferable because:
@@ -318,7 +282,7 @@ curl -I https://your-app.amplifyapp.com/some-spa-route
 
 **Case sensitivity**: Amplify redirect rules are case-sensitive. `/About` and `/about` are treated as different paths.
 
-**Maximum rules**: Amplify supports up to 200 redirect and rewrite rules. If you need more, consider handling redirects in your application code or using CloudFront functions.
+**Rule size**: Amplify custom rule fields have length limits. If you need a large redirect set, consider managing it with infrastructure as code and check the current Amplify quotas for your account.
 
 For related Amplify configurations, check out our guide on [setting up custom headers and cache control](https://oneuptime.com/blog/post/2026-02-12-set-up-amplify-custom-headers-and-cache-control/view).
 
