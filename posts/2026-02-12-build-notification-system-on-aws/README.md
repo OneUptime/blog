@@ -69,7 +69,7 @@ exports.handler = async (event) => {
       channels: enabledChannels,
       email: preferences?.email?.S,
       phone: preferences?.phone?.S,
-      deviceToken: preferences?.deviceToken?.S,
+      deviceEndpointArn: preferences?.deviceEndpointArn?.S,
       timestamp: new Date().toISOString(),
     }),
   }));
@@ -84,7 +84,7 @@ function determineChannels(preferences, templateId) {
   const channels = [];
   if (preferences?.emailEnabled?.BOOL !== false) channels.push('email');
   if (preferences?.smsEnabled?.BOOL === true) channels.push('sms');
-  if (preferences?.pushEnabled?.BOOL !== false && preferences?.deviceToken) channels.push('push');
+  if (preferences?.pushEnabled?.BOOL !== false && preferences?.deviceEndpointArn?.S) channels.push('push');
   return channels;
 }
 ```
@@ -206,7 +206,7 @@ const { SNSClient, PublishCommand } = require('@aws-sdk/client-sns');
 const snsClient = new SNSClient({});
 
 async function sendPush(notification) {
-  const { deviceToken, templateId, data } = notification;
+  const { deviceEndpointArn, templateId, data } = notification;
 
   // Build the push payload for both iOS and Android
   const payload = {
@@ -223,16 +223,20 @@ async function sendPush(notification) {
       data: { templateId, ...data },
     }),
     GCM: JSON.stringify({
-      notification: {
-        title: getPushTitle(templateId),
-        body: getPushBody(templateId, data),
+      fcmV1Message: {
+        message: {
+          notification: {
+            title: getPushTitle(templateId),
+            body: getPushBody(templateId, data),
+          },
+          data: { templateId, ...data },
+        },
       },
-      data: { templateId, ...data },
     }),
   };
 
   const result = await snsClient.send(new PublishCommand({
-    TargetArn: deviceToken, // This is the SNS endpoint ARN
+    TargetArn: deviceEndpointArn, // This is the SNS platform endpoint ARN
     Message: JSON.stringify(payload),
     MessageStructure: 'json',
   }));
@@ -324,9 +328,24 @@ SES can send delivery, bounce, and complaint events to SNS. Set this up to track
 // Configure SES event notifications
 const deliveryTopic = new sns.Topic(this, 'EmailDeliveryTopic');
 
+const configurationSet = new ses.ConfigurationSet(this, 'NotificationTracking', {
+  configurationSetName: 'notification-tracking',
+});
+
+configurationSet.addEventDestination('ToSns', {
+  destination: ses.EventDestination.snsTopic(deliveryTopic),
+  events: [
+    ses.EmailSendingEvent.DELIVERY,
+    ses.EmailSendingEvent.BOUNCE,
+    ses.EmailSendingEvent.COMPLAINT,
+    ses.EmailSendingEvent.OPEN,
+    ses.EmailSendingEvent.CLICK,
+  ],
+});
+
 // Lambda to process delivery events
 const deliveryTracker = new lambda.Function(this, 'DeliveryTracker', {
-  runtime: lambda.Runtime.NODEJS_18_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'delivery-tracker.handler',
   code: lambda.Code.fromAsset('lambda'),
 });
