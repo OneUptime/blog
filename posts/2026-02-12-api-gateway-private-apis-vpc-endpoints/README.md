@@ -8,11 +8,11 @@ Description: Learn how to create private API Gateway APIs accessible only from w
 
 ---
 
-Not every API should be exposed to the internet. Internal microservices, admin APIs, and backend-to-backend communication should stay private. API Gateway private APIs are accessible only from within your VPC through interface VPC endpoints. Traffic never leaves the AWS network, and there's no public endpoint to attack.
+Not every API should be exposed to the internet. Internal microservices, admin APIs, and backend-to-backend communication should stay private. API Gateway private APIs are accessible only from within your VPC through interface VPC endpoints. Traffic never leaves the AWS network, and there's no publicly reachable endpoint to attack.
 
 ## Private API vs Public API
 
-A standard API Gateway REST API gets a public endpoint that anyone on the internet can reach (authentication aside). A private API has no public endpoint at all. The only way to reach it is through a VPC endpoint inside your VPC.
+A standard API Gateway REST API gets a public endpoint that anyone on the internet can reach (authentication aside). A private API has no publicly reachable invoke endpoint. The only way to call it is through a VPC endpoint inside your VPC, or through a private network connection to that VPC.
 
 This makes private APIs perfect for:
 - Internal microservice communication
@@ -86,7 +86,7 @@ Create a private API:
 # Create a private REST API
 aws apigateway create-rest-api \
   --name "internal-service-api" \
-  --endpoint-configuration types=PRIVATE,vpcEndpointIds=vpce-0abc123def456 \
+  --endpoint-configuration types=PRIVATE,ipAddressType=dualstack,vpcEndpointIds=vpce-0abc123def456 \
   --policy '{
     "Version": "2012-10-17",
     "Statement": [
@@ -97,7 +97,7 @@ aws apigateway create-rest-api \
         "Resource": "execute-api:/*",
         "Condition": {
           "StringNotEquals": {
-            "aws:sourceVpce": "vpce-0abc123def456"
+            "aws:SourceVpce": "vpce-0abc123def456"
           }
         }
       },
@@ -127,25 +127,35 @@ ROOT_ID=$(aws apigateway get-resources \
   --output text)
 
 # Create a resource
-aws apigateway create-resource \
+RESOURCE_ID=$(aws apigateway create-resource \
   --rest-api-id privateapi123 \
   --parent-id "$ROOT_ID" \
-  --path-part "health"
+  --path-part "health" \
+  --query 'id' \
+  --output text)
 
 # Add a GET method with Lambda integration
 aws apigateway put-method \
   --rest-api-id privateapi123 \
-  --resource-id res456 \
+  --resource-id "$RESOURCE_ID" \
   --http-method GET \
   --authorization-type NONE
 
 aws apigateway put-integration \
   --rest-api-id privateapi123 \
-  --resource-id res456 \
+  --resource-id "$RESOURCE_ID" \
   --http-method GET \
   --type AWS_PROXY \
   --integration-http-method POST \
   --uri "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/arn:aws:lambda:us-east-1:123456789012:function:health-check/invocations"
+
+# Allow API Gateway to invoke the Lambda function
+aws lambda add-permission \
+  --function-name health-check \
+  --statement-id apigateway-privateapi123-health-get \
+  --action lambda:InvokeFunction \
+  --principal apigateway.amazonaws.com \
+  --source-arn "arn:aws:execute-api:us-east-1:123456789012:privateapi123/*/GET/health"
 
 # Deploy
 aws apigateway create-deployment \
@@ -165,6 +175,8 @@ Parameters:
     Type: List<AWS::EC2::Subnet::Id>
   AppSecurityGroupId:
     Type: AWS::EC2::SecurityGroup::Id
+  HealthFunctionArn:
+    Type: String
 
 Resources:
   # VPC Endpoint for API Gateway
@@ -198,6 +210,7 @@ Resources:
       EndpointConfiguration:
         Types:
           - PRIVATE
+        IpAddressType: dualstack
         VpcEndpointIds:
           - !Ref ApiGatewayEndpoint
       Policy:
@@ -209,7 +222,7 @@ Resources:
             Resource: "execute-api:/*"
             Condition:
               StringNotEquals:
-                aws:sourceVpce: !Ref ApiGatewayEndpoint
+                aws:SourceVpce: !Ref ApiGatewayEndpoint
           - Effect: Allow
             Principal: "*"
             Action: execute-api:Invoke
@@ -232,7 +245,15 @@ Resources:
       Integration:
         Type: AWS_PROXY
         IntegrationHttpMethod: POST
-        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HealthFunction.Arn}/invocations"
+        Uri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${HealthFunctionArn}/invocations"
+
+  ApiGatewayInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref HealthFunctionArn
+      Action: lambda:InvokeFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:${AWS::Partition}:execute-api:${AWS::Region}:${AWS::AccountId}:${PrivateApi}/*/GET/health"
 
   ApiDeployment:
     Type: AWS::ApiGateway::Deployment
@@ -333,7 +354,7 @@ You can allow multiple VPCs to access the same private API by listing multiple V
       "Resource": "execute-api:/*",
       "Condition": {
         "StringNotEquals": {
-          "aws:sourceVpce": [
+          "aws:SourceVpce": [
             "vpce-0aaa111",
             "vpce-0bbb222",
             "vpce-0ccc333"
@@ -358,12 +379,12 @@ Each VPC needs its own VPC endpoint for the `execute-api` service, and the priva
 Common issues with private APIs:
 
 1. **DNS not resolving** - Make sure `PrivateDnsEnabled` is true on the VPC endpoint, or use the VPC endpoint URL with a Host header.
-2. **403 Forbidden** - The resource policy doesn't allow your VPC endpoint. Check the `aws:sourceVpce` condition.
+2. **403 Forbidden** - The resource policy doesn't allow your VPC endpoint. Check the `aws:SourceVpce` condition.
 3. **Connection timeout** - The VPC endpoint's security group doesn't allow inbound HTTPS from your resource. Check port 443 rules.
-4. **Can't reach from outside VPC** - That's by design. Private APIs are VPC-only.
+4. **Can't reach from the public internet** - That's by design. Private APIs are callable only through VPC endpoint-backed private connectivity.
 
 For monitoring private API health and latency from within your VPC, check out our post on [internal service monitoring](https://oneuptime.com/blog/post/2026-01-26-restful-api-best-practices/view).
 
 ## Wrapping Up
 
-Private APIs keep your internal services truly internal. No public endpoint means no public attack surface. The setup involves a VPC endpoint, a private API with a resource policy, and the right security group rules. It's more configuration than a public API, but the security benefit is worth it for any service that has no business being exposed to the internet. Use private APIs for microservice communication, admin tools, and any backend-to-backend integration.
+Private APIs keep your internal services truly internal. No publicly reachable endpoint means no public attack surface. The setup involves a VPC endpoint, a private API with a resource policy, and the right security group rules. It's more configuration than a public API, but the security benefit is worth it for any service that has no business being exposed to the internet. Use private APIs for microservice communication, admin tools, and any backend-to-backend integration.
