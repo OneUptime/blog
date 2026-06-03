@@ -37,7 +37,7 @@ aws license-manager create-license-configuration \
   --license-counting-type "Core" \
   --license-count 256 \
   --license-count-hard-limit \
-  --license-rules "allowedTenancies#EC2-DedicatedHost" \
+  --license-rules "#allowedTenancy=EC2-DedicatedHost" \
   --tags "Key=Vendor,Value=Microsoft" "Key=Product,Value=WindowsServer"
 ```
 
@@ -53,7 +53,7 @@ aws license-manager create-license-configuration \
   --license-counting-type "Core" \
   --license-count 64 \
   --license-count-hard-limit \
-  --license-rules "licenseAffinityToHost#14d"
+  --license-rules "#licenseAffinityToHost=14"
 
 # Oracle Database Enterprise (per vCPU)
 aws license-manager create-license-configuration \
@@ -79,9 +79,9 @@ Link your license configurations to AMIs so that any instance launched from that
 ```bash
 # Associate a license configuration with an AMI
 aws license-manager update-license-specifications-for-resource \
-  --resource-arn "arn:aws:ec2:us-east-1::image/ami-windows-server-123" \
+  --resource-arn "arn:aws:ec2:us-east-1::image/ami-0abcdef1234567890" \
   --add-license-specifications \
-    "LicenseConfigurationArn=arn:aws:license-manager:us-east-1:123456789:license-configuration/lic-abc123"
+    "LicenseConfigurationArn=arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
 ```
 
 You can also associate with launch templates for more automated tracking.
@@ -91,11 +91,11 @@ You can also associate with launch templates for more automated tracking.
 aws ec2 create-launch-template \
   --launch-template-name "windows-server-byol" \
   --launch-template-data '{
-    "ImageId": "ami-windows-server-123",
+    "ImageId": "ami-0abcdef1234567890",
     "InstanceType": "m5.xlarge",
     "LicenseSpecifications": [
       {
-        "LicenseConfigurationArn": "arn:aws:license-manager:us-east-1:123456789:license-configuration/lic-abc123"
+        "LicenseConfigurationArn": "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123"
       }
     ]
   }'
@@ -108,10 +108,9 @@ If you're running a multi-account environment with AWS Organizations, you can ma
 ```bash
 # In the management account, update License Manager settings
 aws license-manager update-service-settings \
-  --organization-configuration '{
-    "EnableIntegration": true
-  }' \
-  --enable-cross-accounts-discovery
+  --organization-configuration EnableIntegration=true \
+  --enable-cross-accounts-discovery \
+  --s3-bucket-arn arn:aws:s3:::aws-license-manager-service-example
 ```
 
 This lets you see license usage across all accounts from the management account.
@@ -138,7 +137,7 @@ Once registered, these servers can be associated with license configurations jus
 ```bash
 # Get license configuration usage summary
 aws license-manager get-license-configuration \
-  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789:license-configuration/lic-abc123" \
+  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123" \
   --query "{Name:Name, ConsumedLicenses:ConsumedLicenses, LicenseCount:LicenseCount, Status:Status}"
 
 # List all license configurations with usage
@@ -162,28 +161,29 @@ def check_license_usage(threshold_pct=80):
     client = boto3.client('license-manager')
     sns = boto3.client('sns')
 
-    response = client.list_license_configurations()
-
     alerts = []
-    for config in response['LicenseConfigurations']:
-        name = config['Name']
-        total = config.get('LicenseCount', 0)
-        consumed = config.get('ConsumedLicenses', 0)
+    paginator = client.get_paginator('list_license_configurations')
 
-        if total == 0:
-            continue
+    for page in paginator.paginate():
+        for config in page['LicenseConfigurations']:
+            name = config['Name']
+            total = config.get('LicenseCount', 0)
+            consumed = config.get('ConsumedLicenses', 0)
 
-        utilization = (consumed / total) * 100
+            if total == 0:
+                continue
 
-        print(f"{name}: {consumed}/{total} ({utilization:.1f}%)")
+            utilization = (consumed / total) * 100
 
-        if utilization >= threshold_pct:
-            alerts.append({
-                'name': name,
-                'consumed': consumed,
-                'total': total,
-                'utilization': utilization
-            })
+            print(f"{name}: {consumed}/{total} ({utilization:.1f}%)")
+
+            if utilization >= threshold_pct:
+                alerts.append({
+                    'name': name,
+                    'consumed': consumed,
+                    'total': total,
+                    'utilization': utilization
+                })
 
     if alerts:
         message = "License utilization alerts:\n\n"
@@ -194,7 +194,7 @@ def check_license_usage(threshold_pct=80):
             )
 
         sns.publish(
-            TopicArn='arn:aws:sns:us-east-1:123456789:license-alerts',
+            TopicArn='arn:aws:sns:us-east-1:123456789012:license-alerts',
             Subject='License Utilization Warning',
             Message=message
         )
@@ -212,15 +212,17 @@ check_license_usage(threshold_pct=80)
 # Create an alarm for license utilization
 aws cloudwatch put-metric-alarm \
   --alarm-name "windows-license-utilization" \
-  --namespace "AWS/LicenseManager" \
-  --metric-name "ConsumedLicenses" \
-  --dimensions "Name=LicenseConfigurationId,Value=lic-abc123" \
+  --namespace "AWSLicenseManager/licenseUsage" \
+  --metric-name "LicenseConfigurationUsagePercentage" \
+  --dimensions \
+    "Name=LicenseConfigurationArn,Value=arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123" \
+    "Name=LicenseConfigurationType,Value=Core" \
   --statistic "Maximum" \
   --period 3600 \
-  --threshold 200 \
+  --threshold 80 \
   --comparison-operator "GreaterThanThreshold" \
   --evaluation-periods 1 \
-  --alarm-actions "arn:aws:sns:us-east-1:123456789:license-alerts"
+  --alarm-actions "arn:aws:sns:us-east-1:123456789012:license-alerts"
 ```
 
 ## Enforcement Rules
@@ -230,22 +232,21 @@ License Manager can prevent launches that would violate license terms.
 ```bash
 # Update a license configuration with strict enforcement
 aws license-manager update-license-configuration \
-  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789:license-configuration/lic-abc123" \
+  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123" \
   --license-count 256 \
   --license-count-hard-limit \
   --license-rules \
-    "allowedTenancies#EC2-DedicatedHost" \
-    "allowedInstanceTypes#m5.xlarge#m5.2xlarge#r5.xlarge"
+    "#licenseAffinityToHost=14"
 ```
 
-The `allowedInstanceTypes` rule restricts which instance types can use the license. This is useful for licenses that are priced per core - you don't want someone spinning up a 96-core instance against your 64-core license pool.
+Rules such as `minimumCores`, `maximumCores`, `minimumVcpus`, and `maximumVcpus` can restrict the size of instances that use the license. This is useful for licenses that are priced per core - you don't want someone spinning up a 96-core instance against your 64-core license pool.
 
 ## Generating Compliance Reports
 
 ```bash
 # List license usage by resource
 aws license-manager list-usage-for-license-configuration \
-  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789:license-configuration/lic-abc123" \
+  --license-configuration-arn "arn:aws:license-manager:us-east-1:123456789012:license-configuration:lic-abc123" \
   --query "LicenseConfigurationUsageList[].{Resource:ResourceArn, Type:ResourceType, Consumed:ConsumedLicenses, Account:ResourceOwnerId}" \
   --output table
 ```
