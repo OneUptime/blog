@@ -126,14 +126,9 @@ aws iam create-role \
       {
         "Effect": "Allow",
         "Principal": {
-          "AWS": "arn:aws:iam::111111111111:root"
+          "AWS": "arn:aws:iam::111111111111:role/CodePipelineServiceRole"
         },
-        "Action": "sts:AssumeRole",
-        "Condition": {
-          "StringEquals": {
-            "sts:ExternalId": "codepipeline-deploy"
-          }
-        }
+        "Action": "sts:AssumeRole"
       }
     ]
   }'
@@ -310,6 +305,36 @@ aws deploy create-deployment-group \
   --auto-rollback-configuration enabled=true,events=DEPLOYMENT_FAILURE
 ```
 
+The EC2 instance profile used by the instances in that deployment group also needs permission to read the pipeline artifact bucket and decrypt artifacts with the tools account KMS key:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:GetObjectVersion",
+        "s3:GetBucketVersioning"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-pipeline-artifacts",
+        "arn:aws:s3:::my-pipeline-artifacts/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:DescribeKey"
+      ],
+      "Resource": "arn:aws:kms:us-east-1:111111111111:key/<key-id>"
+    }
+  ]
+}
+```
+
 ## Multi-Account Pipeline
 
 For deploying to multiple accounts (dev, staging, production), extend the pattern:
@@ -317,8 +342,8 @@ For deploying to multiple accounts (dev, staging, production), extend the patter
 ```json
 {
   "stages": [
-    {"name": "Source", "actions": ["..."]},
-    {"name": "Build", "actions": ["..."]},
+    {"name": "Source", "actions": [{"name": "Source", "configuration": {"..." : "..."}}]},
+    {"name": "Build", "actions": [{"name": "Build", "configuration": {"..." : "..."}}]},
     {
       "name": "Deploy-Dev",
       "actions": [{
@@ -328,7 +353,10 @@ For deploying to multiple accounts (dev, staging, production), extend the patter
     },
     {
       "name": "Approve-Staging",
-      "actions": [{"Manual Approval action"}]
+      "actions": [{
+        "name": "ApproveStaging",
+        "actionTypeId": {"category": "Approval", "owner": "AWS", "provider": "Manual", "version": "1"}
+      }]
     },
     {
       "name": "Deploy-Staging",
@@ -339,7 +367,10 @@ For deploying to multiple accounts (dev, staging, production), extend the patter
     },
     {
       "name": "Approve-Production",
-      "actions": [{"Manual Approval action"}]
+      "actions": [{
+        "name": "ApproveProduction",
+        "actionTypeId": {"category": "Approval", "owner": "AWS", "provider": "Manual", "version": "1"}
+      }]
     },
     {
       "name": "Deploy-Production",
