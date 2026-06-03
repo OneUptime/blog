@@ -8,25 +8,25 @@ Description: Learn how to configure and manage ephemeral storage for AWS Fargate
 
 ---
 
-Every Fargate task gets some ephemeral storage by default - 20 GB of it. For many workloads, that's plenty. But if you're processing large files, building artifacts, caching datasets, or running applications that write significant temporary data, 20 GB fills up fast. When it does, your task crashes with a storage error and ECS starts it over, only for the same thing to happen again.
+Every Fargate task on current ECS platform versions gets some ephemeral storage by default - 20 GiB of it. For many workloads, that's plenty. But if you're processing large files, building artifacts, caching datasets, or running applications that write significant temporary data, 20 GiB fills up fast. When it does, your task stops with a storage error and, if it's part of an ECS service, ECS starts it over, only for the same thing to happen again.
 
-Fargate now lets you configure ephemeral storage up to 200 GB per task. Let's look at when you need more, how to configure it, and how to keep tabs on usage.
+Fargate now lets you configure ephemeral storage up to 200 GiB per task. Let's look at when you need more, how to configure it, and how to keep tabs on usage.
 
 ## Default Ephemeral Storage
 
-Every Fargate task gets 20 GB of ephemeral storage. This storage is shared between:
+On Linux platform version 1.4.0 or later, and Windows platform version 1.0.0 or later, every Fargate task gets 20 GiB of ephemeral storage. This storage is shared between:
 
-- The Docker image layers (read-only)
+- The pulled, compressed, and uncompressed container image layers
 - Each container's writable layer
-- Any volumes defined in the task (non-EFS volumes)
+- Any bind mount volumes defined in the task
 
-So if your Docker image is 2 GB, you have about 18 GB left for writable data. If you're running multiple containers in a task, they share that 18 GB.
+So if your Docker image uses 2 GiB, you have about 18 GiB left for writable data. If you're running multiple containers in a task, they share that 18 GiB.
 
 The storage is tied to the task's lifecycle. When the task stops, the storage and all its data are gone. This is truly ephemeral - there's no recovery.
 
 ## When You Need More Storage
 
-Common scenarios that require more than 20 GB:
+Common scenarios that require more than 20 GiB:
 
 - **Data processing** - ETL jobs that download, transform, and upload large datasets
 - **Machine learning** - Model training or inference with large model files
@@ -66,7 +66,7 @@ You configure ephemeral storage in the task definition at the task level:
 }
 ```
 
-The `ephemeralStorage.sizeInGiB` field accepts values from 21 to 200. You can't set it lower than 21 because the default 20 GB is the minimum. Setting it to 21 GB gives you 1 GB more than the default.
+The `ephemeralStorage.sizeInGiB` field accepts values from 21 to 200. You can't set it lower than 21 because the default 20 GiB is the minimum. Setting it to 21 GiB gives you 1 GiB more than the default.
 
 Register the task definition:
 
@@ -110,7 +110,7 @@ const taskDefinition = new ecs.FargateTaskDefinition(this, 'TaskDef', {
 
 ## Sharing Storage Between Containers
 
-When you have multiple containers in a task and they need to share data through ephemeral storage, use Docker volumes:
+When you have multiple containers in a task and they need to share data through ephemeral storage, use an ECS bind mount volume:
 
 ```json
 {
@@ -161,7 +161,7 @@ The downloader writes data to `/data`, completes, and then the processor reads f
 
 ## Monitoring Storage Usage
 
-Ephemeral storage usage isn't directly available as a CloudWatch metric, but you can monitor it from within your containers.
+Ephemeral storage usage is available in CloudWatch Container Insights for Fargate Linux tasks on platform version 1.4.0 or later. If you don't use Container Insights, or you want application-specific dimensions, you can also monitor it from within your containers.
 
 Add a simple monitoring script to your container:
 
@@ -169,7 +169,7 @@ Add a simple monitoring script to your container:
 #!/bin/bash
 # storage-monitor.sh - runs alongside your application
 while true; do
-  # Get disk usage of the writable layer
+  # Get disk usage of the container root filesystem
   USAGE=$(df -h / | awk 'NR==2 {print $5}' | tr -d '%')
   AVAILABLE=$(df -h / | awk 'NR==2 {print $4}')
 
@@ -185,7 +185,7 @@ while true; do
 done
 ```
 
-For a more robust approach, push custom metrics to CloudWatch:
+For a custom metric approach, push your own metrics to CloudWatch:
 
 ```python
 import boto3
@@ -239,9 +239,9 @@ aws cloudwatch put-metric-alarm \
 
 ## Cost Considerations
 
-Ephemeral storage beyond the default 20 GB has an additional cost. The pricing is per GB per hour of task runtime.
+Ephemeral storage beyond the default 20 GB has an additional cost. The pricing is based on the amount of additional storage configured and task runtime.
 
-A quick calculation: if a task uses 100 GB of ephemeral storage (80 GB above the free tier) and runs for 24 hours, the additional storage cost depends on the current per-GB-hour rate in your region. Check the Fargate pricing page for current rates, but it's generally a small fraction of the compute cost.
+A quick calculation: if a task configures 100 GiB of ephemeral storage (80 GiB above the included default) and runs for 24 hours, the additional storage cost depends on the current storage rate in your region. Check the Fargate pricing page for current rates, but it's generally a small fraction of the compute cost.
 
 For batch processing jobs that run for short periods, the cost is minimal. For long-running services, it adds up, so right-size your storage allocation instead of just requesting the maximum.
 
@@ -253,7 +253,7 @@ When should you use ephemeral storage vs Amazon EFS?
 - Data doesn't need to survive task restarts
 - You need fast local I/O performance
 - You're processing temporary files
-- Cost optimization matters (ephemeral is cheaper per GB)
+- You want to avoid persistent storage costs for short-lived scratch data
 
 **Use EFS when:**
 - Data must persist across task restarts
@@ -293,9 +293,9 @@ You can also combine both. Use EFS for persistent data and ephemeral storage for
 
 1. **Clean up temporary files.** Don't let temp files accumulate. Delete them when they're no longer needed.
 
-2. **Right-size your allocation.** Monitor actual usage and set the storage to what you need plus 20-30% headroom. Don't request 200 GB if you only use 30.
+2. **Right-size your allocation.** Monitor actual usage and set the storage to what you need plus 20-30% headroom. Don't request 200 GiB if you only use 30.
 
-3. **Use streaming where possible.** Instead of downloading a 10 GB file to disk and then processing it, stream the data through your application to reduce storage requirements.
+3. **Use streaming where possible.** Instead of downloading a 10 GiB file to disk and then processing it, stream the data through your application to reduce storage requirements.
 
 4. **Monitor storage proactively.** By the time a task crashes from full storage, it's too late. Set up monitoring and alerting at 80-85% usage.
 
@@ -305,4 +305,4 @@ You can also combine both. Use EFS for persistent data and ephemeral storage for
 
 Fargate ephemeral storage is straightforward to configure and solves a real problem for storage-intensive workloads. Just set the `ephemeralStorage` field in your task definition and you're done. The key is to monitor usage, clean up temporary files, and right-size your allocation to balance performance and cost.
 
-For workloads that need persistent storage, combine ephemeral storage with EFS. And for everything else, the default 20 GB is usually plenty. For more on ECS task configuration, see our guide on [deploying multi-container applications on ECS](https://oneuptime.com/blog/post/2026-02-12-deploy-multi-container-applications-ecs/view).
+For workloads that need persistent storage, combine ephemeral storage with EFS. And for everything else, the default 20 GiB is usually plenty. For more on ECS task configuration, see our guide on [deploying multi-container applications on ECS](https://oneuptime.com/blog/post/2026-02-12-deploy-multi-container-applications-ecs/view).
