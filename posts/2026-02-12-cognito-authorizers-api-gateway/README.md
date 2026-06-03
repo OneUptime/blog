@@ -51,9 +51,6 @@ Resources:
         Authorizers:
           CognitoAuthorizer:
             UserPoolArn: !GetAtt UserPool.Arn
-            AuthorizationScopes:
-              - openid
-              - email
 
   GetUsersFunction:
     Type: AWS::Serverless::Function
@@ -125,27 +122,27 @@ This is a common source of confusion. Both tokens are JWTs, but they serve diffe
 
 **Access Token:**
 - Contains authorization information (scopes, groups)
-- Has the `client_id` claim (not `aud`)
+- Has the `client_id` claim, and can include `aud` when resource binding is used
 - `token_use` is "access"
 - Best for: API authorization
 
 Here's which token to use for each authorizer type:
 
 ```javascript
-// For REST API Cognito Authorizer - either token works
+// For REST API Cognito Authorizer without scopes - use the ID token
 // ID token gives you user attributes in claims
 const headers = {
     Authorization: `Bearer ${idToken}`
 };
 
 // For HTTP API JWT Authorizer - access token required for scope checks
-// The authorizer validates against the configured audience
+// The authorizer validates aud, or client_id when aud is absent
 const headers = {
     Authorization: `Bearer ${accessToken}`
 };
 ```
 
-If your HTTP API authorizer checks scopes, you must use the access token because only the access token contains the `scope` claim.
+If your REST API method or HTTP API route checks scopes, you must use the access token because only the access token contains the `scope` claim.
 
 ## Reading Claims in Your Lambda Function
 
@@ -293,7 +290,7 @@ curl https://your-api-id.execute-api.us-east-1.amazonaws.com/prod/users
 
 ## Troubleshooting Common Issues
 
-**"Unauthorized" with a valid token**: Check that you're using the right token type. REST API authorizers accept both ID and access tokens, but HTTP API authorizers need the audience to match. Also verify the token hasn't expired.
+**"Unauthorized" with a valid token**: Check that you're using the right token type. REST API authorizers use ID tokens when no method scopes are configured and access tokens when scopes are configured. HTTP API JWT authorizers require the token's `aud` claim, or `client_id` when `aud` is absent, to match the configured audience. Also verify the token hasn't expired.
 
 **Claims are empty or missing**: Make sure you're reading from the correct path in the event object. REST and HTTP APIs put claims in different locations.
 
