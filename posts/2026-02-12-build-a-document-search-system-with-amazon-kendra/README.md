@@ -44,7 +44,7 @@ Resources:
     Properties:
       Name: DocumentSearchIndex
       Description: Enterprise document search index
-      Edition: ENTERPRISE_EDITION  # or DEVELOPER_EDITION for testing
+      Edition: GEN_AI_ENTERPRISE_EDITION  # or ENTERPRISE_EDITION / DEVELOPER_EDITION
       RoleArn: !GetAtt KendraRole.Arn
       DocumentMetadataConfigurations:
         - Name: department
@@ -102,22 +102,36 @@ kendra = boto3.client('kendra')
 
 def create_s3_data_source(index_id, bucket_name, prefixes=None):
     """Connect an S3 bucket to a Kendra index."""
-    s3_config = {
-        'BucketName': bucket_name,
-        'DocumentsMetadataConfiguration': {
-            'S3Prefix': 'metadata/'
-        }
+    s3_template = {
+        'connectionConfiguration': {
+            'repositoryEndpointMetadata': {
+                'BucketName': bucket_name
+            }
+        },
+        'repositoryConfigurations': {
+            'document': {
+                'fieldMappings': []
+            }
+        },
+        'additionalProperties': {
+            'metadataFilesPrefix': 'metadata/'
+        },
+        'syncMode': 'FULL_CRAWL',
+        'type': 'S3',
+        'version': '1.0.0'
     }
 
     if prefixes:
-        s3_config['InclusionPrefixes'] = prefixes
+        s3_template['additionalProperties']['inclusionPrefixes'] = prefixes
 
     response = kendra.create_data_source(
         IndexId=index_id,
         Name=f's3-{bucket_name}',
-        Type='S3',
+        Type='TEMPLATE',
         Configuration={
-            'S3Configuration': s3_config
+            'TemplateConfiguration': {
+                'Template': s3_template
+            }
         },
         RoleArn='arn:aws:iam::123456789:role/KendraS3Role',
         Schedule='cron(0 */6 * * ? *)',  # Sync every 6 hours
@@ -221,7 +235,11 @@ def handler(event, context):
         'IndexId': INDEX_ID,
         'QueryText': query,
         'PageNumber': page,
-        'PageSize': page_size
+        'PageSize': page_size,
+        'Facets': [
+            {'DocumentAttributeKey': 'department'},
+            {'DocumentAttributeKey': 'document_type'}
+        ]
     }
 
     # Add filters if provided
@@ -270,7 +288,7 @@ def process_kendra_results(response):
 
         if result['Type'] == 'ANSWER':
             # Kendra found a specific answer in a document
-            item['answer'] = result.get('DocumentExcerpt', {}).get('Text', '')
+            item['answer'] = get_additional_text(result, 'AnswerText') or result.get('DocumentExcerpt', {}).get('Text', '')
             item['documentTitle'] = result.get('DocumentTitle', {}).get('Text', '')
             item['documentUri'] = result.get('DocumentURI', '')
 
@@ -283,14 +301,19 @@ def process_kendra_results(response):
             # Include highlighted text sections
             highlights = result.get('DocumentExcerpt', {}).get('Highlights', [])
             item['highlights'] = [
-                {'text': h.get('TopAnswer', False), 'begin': h['BeginOffset'], 'end': h['EndOffset']}
+                {
+                    'begin': h['BeginOffset'],
+                    'end': h['EndOffset'],
+                    'topAnswer': h.get('TopAnswer', False),
+                    'type': h.get('Type')
+                }
                 for h in highlights
             ]
 
         elif result['Type'] == 'QUESTION_ANSWER':
             # FAQ-style Q&A match
-            item['question'] = result.get('DocumentTitle', {}).get('Text', '')
-            item['answer'] = result.get('DocumentExcerpt', {}).get('Text', '')
+            item['question'] = get_additional_text(result, 'QuestionText') or result.get('DocumentTitle', {}).get('Text', '')
+            item['answer'] = get_additional_text(result, 'AnswerText') or result.get('DocumentExcerpt', {}).get('Text', '')
 
         # Extract metadata attributes
         attributes = {}
@@ -314,6 +337,13 @@ def process_kendra_results(response):
         'totalResults': response.get('TotalNumberOfResults', 0),
         'facets': facets
     }
+
+def get_additional_text(result, key):
+    """Extract text fields such as AnswerText or QuestionText from Kendra additional attributes."""
+    for attr in result.get('AdditionalAttributes', []):
+        if attr.get('Key') == key:
+            return attr.get('Value', {}).get('TextWithHighlightsValue', {}).get('Text', '')
+    return ''
 
 def track_search(query, result_count, params):
     """Track search queries for analytics."""
@@ -439,10 +469,10 @@ Search quality degrades silently. Track query success rates (did users click a r
 
 ## Cost Considerations
 
-Kendra is not cheap. Developer Edition starts at $810/month and Enterprise Edition at $1,008/month. On top of that, connectors and document storage add incremental costs. It makes sense for organizations with large document repositories where search quality directly impacts productivity. For smaller use cases, consider OpenSearch as a more cost-effective alternative.
+Kendra is not cheap. GenAI Enterprise Edition starts at about $230/month, Basic Developer Edition at about $810/month, and Basic Enterprise Edition at about $1,008/month before additional storage units, query units, and connector charges. It makes sense for organizations with large document repositories where search quality directly impacts productivity. For smaller use cases, consider OpenSearch as a more cost-effective alternative.
 
 ## Wrapping Up
 
 Amazon Kendra transforms document search from keyword matching to intelligent understanding. Users can ask natural language questions and get specific answers extracted from your documents, not just a list of potentially relevant files. The data source connectors mean your documents stay where they are - Kendra indexes them in place.
 
-Start with your most-searched document repository. Connect it to Kendra, upload your FAQ list, and tune relevance based on user feedback. The ML-powered ranking improves automatically as more queries flow through the system.
+Start with your most-searched document repository. Connect it to Kendra, upload your FAQ list, and tune relevance based on user feedback. The ML-powered ranking improves as you submit click and relevance feedback from users.
