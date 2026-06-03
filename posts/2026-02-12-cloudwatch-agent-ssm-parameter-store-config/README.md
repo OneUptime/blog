@@ -203,8 +203,12 @@ In your launch template, set up the agent to pull config from Parameter Store au
 yum install -y amazon-cloudwatch-agent
 
 # Determine which config to use based on instance tags
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+TOKEN=$(curl -s -X PUT http://169.254.169.254/latest/api/token \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/instance-id)
+REGION=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/placement/region)
 ROLE=$(aws ec2 describe-tags \
   --filters "Name=resource-id,Values=$INSTANCE_ID" "Name=key,Values=Role" \
   --query 'Tags[0].Value' --output text --region $REGION)
@@ -244,7 +248,7 @@ The EC2 instance role needs permission to read from Parameter Store:
 }
 ```
 
-The `AmazonSSMManagedInstanceCore` managed policy includes this permission, along with the other SSM permissions the agent needs.
+The `CloudWatchAgentServerPolicy` managed policy includes this permission for parameters named `AmazonCloudWatch-*`, along with the CloudWatch Logs and metrics permissions the agent needs. If you set `retention_in_days` in the log configuration, the role also needs `logs:PutRetentionPolicy`, which is included in that managed policy. Attach `AmazonSSMManagedInstanceCore` as well if you use Systems Manager Run Command to manage the instance.
 
 ## Version Management
 
