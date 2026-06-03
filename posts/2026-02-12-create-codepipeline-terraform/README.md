@@ -28,7 +28,7 @@ graph LR
 Before creating the pipeline, you need:
 - An S3 bucket for pipeline artifacts
 - An IAM role for CodePipeline
-- A CodeStar connection for GitHub (or a CodeCommit repo)
+- A CodeConnections connection for GitHub (or a CodeCommit repo)
 - A CodeBuild project
 - An ECS service to deploy to
 
@@ -117,9 +117,9 @@ resource "aws_iam_role_policy" "codepipeline" {
       {
         Effect = "Allow"
         Action = [
-          "codestar-connections:UseConnection"
+          "codeconnections:UseConnection"
         ]
-        Resource = aws_codestarconnections_connection.github.arn
+        Resource = aws_codeconnections_connection.github.arn
       },
       {
         Effect = "Allow"
@@ -137,6 +137,7 @@ resource "aws_iam_role_policy" "codepipeline" {
           "ecs:DescribeTasks",
           "ecs:ListTasks",
           "ecs:RegisterTaskDefinition",
+          "ecs:TagResource",
           "ecs:UpdateService"
         ]
         Resource = "*"
@@ -148,6 +149,7 @@ resource "aws_iam_role_policy" "codepipeline" {
         Condition = {
           StringEqualsIfExists = {
             "iam:PassedToService" = [
+              "ecs.amazonaws.com",
               "ecs-tasks.amazonaws.com"
             ]
           }
@@ -167,12 +169,12 @@ resource "aws_iam_role_policy" "codepipeline" {
 
 ## GitHub Connection
 
-CodePipeline V2 uses CodeStar Connections for GitHub integration. The connection needs to be confirmed in the AWS console after creation (this is a one-time manual step).
+CodePipeline uses CodeConnections for GitHub integration. The connection needs to be confirmed in the AWS console after creation (this is a one-time manual step).
 
-This creates a CodeStar connection to GitHub:
+This creates a CodeConnections connection to GitHub:
 
 ```hcl
-resource "aws_codestarconnections_connection" "github" {
+resource "aws_codeconnections_connection" "github" {
   name          = "github-connection"
   provider_type = "GitHub"
 }
@@ -209,7 +211,7 @@ resource "aws_codepipeline" "main" {
       output_artifacts = ["source_output"]
 
       configuration = {
-        ConnectionArn    = aws_codestarconnections_connection.github.arn
+        ConnectionArn    = aws_codeconnections_connection.github.arn
         FullRepositoryId = "my-org/my-app"
         BranchName       = "main"
       }
@@ -299,6 +301,24 @@ Get notified when your pipeline succeeds, fails, or needs approval.
 This sets up notifications for pipeline state changes:
 
 ```hcl
+data "aws_iam_policy_document" "pipeline_notifications" {
+  statement {
+    actions = ["sns:Publish"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["codestar-notifications.amazonaws.com"]
+    }
+
+    resources = [aws_sns_topic.pipeline_approval.arn]
+  }
+}
+
+resource "aws_sns_topic_policy" "pipeline_notifications" {
+  arn    = aws_sns_topic.pipeline_approval.arn
+  policy = data.aws_iam_policy_document.pipeline_notifications.json
+}
+
 resource "aws_codestarnotifications_notification_rule" "pipeline" {
   name        = "my-app-pipeline-notifications"
   resource    = aws_codepipeline.main.arn
@@ -385,22 +405,31 @@ resource "aws_codepipeline" "multi_region" {
 
 ## Triggering the Pipeline
 
-By default, CodePipeline triggers on every push to the configured branch. You can also trigger it with EventBridge for more control.
+By default, CodePipeline triggers on every push to the configured branch. You can use CodePipeline V2 triggers for more control over GitHub, GitLab, Bitbucket, and other CodeConnections source events.
 
-This EventBridge rule triggers the pipeline on tag pushes instead of every commit:
+This V2 trigger starts the pipeline on tag pushes instead of every commit:
 
 ```hcl
-resource "aws_cloudwatch_event_rule" "tag_push" {
-  name = "trigger-pipeline-on-tag"
+resource "aws_codepipeline" "main" {
+  name          = "my-app-pipeline"
+  role_arn      = aws_iam_role.codepipeline.arn
+  pipeline_type = "V2"
 
-  event_pattern = jsonencode({
-    source      = ["aws.codecommit"]
-    detail-type = ["CodeCommit Repository State Change"]
-    detail = {
-      event         = ["referenceCreated"]
-      referenceType = ["tag"]
+  trigger {
+    provider_type = "CodeStarSourceConnection"
+
+    git_configuration {
+      source_action_name = "Source"
+
+      push {
+        tags {
+          includes = ["v*"]
+        }
+      }
     }
-  })
+  }
+
+  # ... artifact store and stages ...
 }
 ```
 
@@ -408,4 +437,4 @@ For more on setting up EventBridge rules, see our guide on [EventBridge rules wi
 
 ## Wrapping Up
 
-CodePipeline in Terraform gives you a reproducible, version-controlled CI/CD setup. The IAM configuration is the most tedious part, but once that's done, adding new stages and actions is straightforward. Remember to complete the CodeStar GitHub connection in the console after the first apply, and use manual approval gates before production deployments. Combined with CodeBuild for the actual build steps, you've got a complete AWS-native CI/CD pipeline.
+CodePipeline in Terraform gives you a reproducible, version-controlled CI/CD setup. The IAM configuration is the most tedious part, but once that's done, adding new stages and actions is straightforward. Remember to complete the CodeConnections GitHub connection in the console after the first apply, and use manual approval gates before production deployments. Combined with CodeBuild for the actual build steps, you've got a complete AWS-native CI/CD pipeline.
