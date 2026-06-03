@@ -92,7 +92,7 @@ spec:
     - name: repo-full-name
 
   resourcetemplates:
-    - apiVersion: tekton.dev/v1beta1
+    - apiVersion: tekton.dev/v1
       kind: PipelineRun
       metadata:
         generateName: $(tt.params.repo-name)-run-
@@ -139,7 +139,7 @@ rules:
     resources: ["eventlisteners", "triggerbindings", "triggertemplates", "triggers"]
     verbs: ["get", "list", "watch"]
   - apiGroups: ["tekton.dev"]
-    resources: ["pipelineruns", "pipelineresources", "taskruns"]
+    resources: ["pipelineruns", "taskruns"]
     verbs: ["create", "get", "list", "watch"]
 
 ---
@@ -253,6 +253,7 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: github-listener
+  namespace: tekton-pipelines
 spec:
   serviceAccountName: tekton-triggers-sa
   triggers:
@@ -306,13 +307,14 @@ spec:
         ref: release-template
 ```
 
-Create PR-specific binding:
+Create event-specific bindings:
 
 ```yaml
 apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: github-pr-binding
+  namespace: tekton-pipelines
 spec:
   params:
     - name: git-repo-url
@@ -320,13 +322,30 @@ spec:
     - name: git-revision
       value: $(body.pull_request.head.sha)
     - name: pr-number
-      value: $(body.pull_request.number)
+      value: $(body.number)
     - name: pr-title
       value: $(body.pull_request.title)
     - name: base-branch
       value: $(body.pull_request.base.ref)
     - name: head-branch
       value: $(body.pull_request.head.ref)
+
+---
+apiVersion: triggers.tekton.dev/v1beta1
+kind: TriggerBinding
+metadata:
+  name: github-release-binding
+  namespace: tekton-pipelines
+spec:
+  params:
+    - name: git-repo-url
+      value: $(body.repository.clone_url)
+    - name: git-revision
+      value: $(body.release.target_commitish)
+    - name: release-tag
+      value: $(body.release.tag_name)
+    - name: release-name
+      value: $(body.release.name)
 ```
 
 ## Using CEL Filters
@@ -338,7 +357,9 @@ apiVersion: triggers.tekton.dev/v1beta1
 kind: EventListener
 metadata:
   name: github-listener
+  namespace: tekton-pipelines
 spec:
+  serviceAccountName: tekton-triggers-sa
   triggers:
     - name: main-branch-only
       interceptors:
@@ -371,17 +392,43 @@ Use overlays to transform data:
 
 ```yaml
 apiVersion: triggers.tekton.dev/v1beta1
+kind: EventListener
+metadata:
+  name: github-listener
+  namespace: tekton-pipelines
+spec:
+  serviceAccountName: tekton-triggers-sa
+  triggers:
+    - name: github-advanced
+      interceptors:
+        - ref:
+            name: cel
+          params:
+            - name: overlays
+              value:
+                - key: short_sha
+                  expression: "body.head_commit.id.truncate(7)"
+                - key: branch_name
+                  expression: "body.ref.split('/')[2]"
+      bindings:
+        - ref: github-advanced-binding
+      template:
+        ref: pipeline-trigger-template
+
+---
+apiVersion: triggers.tekton.dev/v1beta1
 kind: TriggerBinding
 metadata:
   name: github-advanced-binding
+  namespace: tekton-pipelines
 spec:
   params:
     - name: git-repo-url
       value: $(body.repository.clone_url)
     - name: short-sha
-      value: $(body.head_commit.id)
+      value: $(extensions.short_sha)
     - name: image-tag
-      value: $(body.ref)-$(body.head_commit.id)
+      value: $(extensions.branch_name)-$(extensions.short_sha)
     - name: commit-message
       value: $(body.head_commit.message)
     - name: committer
@@ -393,7 +440,7 @@ spec:
 Update commit status from pipeline:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: github-status
@@ -419,8 +466,9 @@ spec:
       script: |
         #!/bin/sh
         curl -X POST \
-          -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Accept: application/vnd.github+json" \
+          -H "X-GitHub-Api-Version: 2026-03-10" \
           https://api.github.com/repos/$(params.repo-full-name)/statuses/$(params.sha) \
           -d '{
             "state": "$(params.state)",
@@ -445,8 +493,13 @@ kubectl logs -f -n tekton-pipelines <eventlistener-pod>
 kubectl get svc el-github-listener -n tekton-pipelines
 
 # Test webhook locally
+# Run the port-forward in one terminal:
+kubectl port-forward -n tekton-pipelines svc/el-github-listener 8080:8080
+
+# Then send a test payload from another terminal:
 curl -X POST http://localhost:8080 \
   -H "Content-Type: application/json" \
+  -H "X-GitHub-Event: push" \
   -d @test-payload.json
 ```
 
