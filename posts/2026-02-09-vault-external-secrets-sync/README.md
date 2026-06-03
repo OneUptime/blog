@@ -44,7 +44,7 @@ Create a SecretStore that defines how to connect to Vault:
 
 ```yaml
 # vault-secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -81,7 +81,7 @@ Define an ExternalSecret that references Vault data:
 
 ```yaml
 # external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-config
@@ -126,7 +126,7 @@ Import all fields from a Vault secret:
 
 ```yaml
 # external-secret-all-fields.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-all-secrets
@@ -149,7 +149,7 @@ Transform secret data during sync:
 
 ```yaml
 # external-secret-template.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-connection-string
@@ -196,7 +196,7 @@ Create a ClusterSecretStore for use across all namespaces:
 
 ```yaml
 # cluster-secretstore.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-cluster-backend
@@ -220,7 +220,7 @@ kubectl apply -f cluster-secretstore.yaml
 
 # Use in any namespace
 cat <<EOF | kubectl apply -f -
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: app-secret
@@ -241,11 +241,29 @@ EOF
 
 ## Syncing Dynamic Database Credentials
 
-Sync rotating database credentials:
+Sync rotating database credentials using the Vault dynamic secret generator:
 
 ```yaml
 # db-credentials-externalsecret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: db-credentials-generator
+  namespace: default
+spec:
+  path: "/database/creds/app-role"
+  method: "GET"
+  resultType: "Data"
+  provider:
+    server: "http://vault.vault.svc.cluster.local:8200"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "app"
+        serviceAccountRef:
+          name: "app-sa"
+---
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: db-credentials
@@ -262,15 +280,12 @@ spec:
       data:
         username: "{{ .username }}"
         password: "{{ .password }}"
-  data:
-  - secretKey: username
-    remoteRef:
-      key: database/creds/app-role
-      property: username
-  - secretKey: password
-    remoteRef:
-      key: database/creds/app-role
-      property: password
+  dataFrom:
+  - sourceRef:
+      generatorRef:
+        apiVersion: generators.external-secrets.io/v1alpha1
+        kind: VaultDynamicSecret
+        name: db-credentials-generator
 ```
 
 ## Using with Deployments
@@ -349,7 +364,7 @@ kubectl get secretstore vault-backend -o yaml
 # 2. Secret path doesn't exist in Vault
 vault kv get secret/app/config
 
-# 3. ServiceAccount lacks permissions
+# 3. ServiceAccount lacks permissions, including TokenReview permissions for Vault Kubernetes auth
 kubectl get sa app-sa -o yaml
 
 # 4. Policy doesn't allow secret access
@@ -358,11 +373,11 @@ vault read auth/kubernetes/role/app
 
 ## Implementing Secret Rotation
 
-Automatically rotate secrets on a schedule:
+Poll Vault for a rotated secret value on a schedule:
 
 ```yaml
 # rotated-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rotated-api-key
