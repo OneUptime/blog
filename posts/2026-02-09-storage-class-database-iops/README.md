@@ -14,7 +14,7 @@ Database performance on Kubernetes depends heavily on storage configuration. The
 
 IOPS measures the number of read and write operations per second. Databases with many small transactions need high IOPS. Throughput measures data transfer rate in MB/s or GB/s. Analytics databases scanning large amounts of data need high throughput. Latency is the time between requesting and receiving data. Latency-sensitive applications require low-latency storage.
 
-Different cloud providers provision storage differently. AWS EBS volumes have IOPS tied to volume size for gp3 volumes, but you can provision specific IOPS for io2 volumes. Google Persistent Disks scale IOPS with disk size. Azure Managed Disks offer different performance tiers.
+Different cloud providers provision storage differently. AWS EBS gp3 volumes let you provision IOPS and throughput independently from volume size, while gp2 volumes scale baseline IOPS with size. Google Persistent Disks scale IOPS with disk size, except for provisioned-performance disk types such as pd-extreme. Azure Managed Disks offer different performance tiers.
 
 ## Creating High-Performance Storage Classes
 
@@ -30,12 +30,12 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  # Baseline IOPS (3000-16000)
+  # Provisioned IOPS (3000 baseline; up to the current gp3 limit)
   iops: "16000"
-  # Throughput in MB/s (125-1000)
+  # Throughput in MiB/s (125 baseline; up to the current gp3 limit)
   throughput: "1000"
   encrypted: "true"
-  # Use io2 for maximum IOPS
+  # Use io2 or io2 Block Express for higher IOPS
   # type: io2
   # iops: "64000"
 allowVolumeExpansion: true
@@ -54,10 +54,11 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: io2
-  iops: "64000"  # Up to 64,000 IOPS
+  iops: "64000"
   encrypted: "true"
-  # Enable multi-attach for shared storage
-  # multiAttach: "true"
+  # Use io2 Block Express for higher per-volume limits on supported instances
+  # blockExpress: "true"
+  # EBS Multi-Attach requires compatible io1/io2 volumes and application-level coordination
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Retain
@@ -105,8 +106,6 @@ parameters:
   type: pd-extreme
   # Provision specific IOPS (up to 120,000)
   provisioned-iops-on-create: "100000"
-  # Provisioned throughput
-  provisioned-throughput-on-create: "2400"
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 ```
@@ -144,9 +143,9 @@ provisioner: disk.csi.azure.com
 parameters:
   skuName: UltraSSD_LRS
   # Provision specific IOPS (100-160,000)
-  diskIOPSReadWrite: "80000"
+  DiskIOPSReadWrite: "80000"
   # Throughput in MB/s
-  diskMBpsReadWrite: "1200"
+  DiskMBpsReadWrite: "1200"
   cachingMode: None
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -170,7 +169,7 @@ parameters:
   # Moderate throughput
   throughput: "500"
   encrypted: "true"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 
@@ -190,7 +189,7 @@ metadata:
   name: postgres
 spec:
   serviceName: postgres
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: postgres
@@ -225,7 +224,7 @@ spec:
       storageClassName: postgres-optimized
       resources:
         requests:
-          # Size determines baseline IOPS for gp3
+          # gp3 IOPS and throughput are configured in the StorageClass
           storage: 500Gi
 ```
 
@@ -245,14 +244,13 @@ parameters:
   iops: "10000"
   throughput: "600"
   encrypted: "true"
-  fsType: xfs  # XFS performs well for MySQL
+  csi.storage.k8s.io/fstype: xfs  # XFS performs well for MySQL
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 
 mountOptions:
   - noatime
   - nodiratime
-  - nobarrier
 ```
 
 ## Optimizing for MongoDB Workloads
@@ -271,7 +269,7 @@ parameters:
   # Very high IOPS for working set
   iops: "32000"
   encrypted: "true"
-  fsType: xfs
+  csi.storage.k8s.io/fstype: xfs
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 
@@ -298,13 +296,13 @@ parameters:
   # Maximum throughput for sequential reads
   throughput: "1000"
   encrypted: "true"
-  fsType: ext4
+  csi.storage.k8s.io/fstype: ext4
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 
 mountOptions:
   - noatime
-  - data=writeback
+  - nodiratime
 ```
 
 ## Benchmarking Storage Performance
@@ -488,15 +486,15 @@ kubectl patch pvc data-postgres-0 -p '{"spec":{"resources":{"requests":{"storage
 # Monitor expansion
 kubectl get pvc data-postgres-0 -w
 
-# For databases, you may need to resize filesystem
-kubectl exec postgres-0 -- resize2fs /dev/nvme1n1
+# CSI volume filesystem expansion is normally handled by kubelet
+kubectl describe pvc data-postgres-0
 ```
 
 ## Best Practices
 
 Follow these guidelines:
 
-1. **Size volumes appropriately** - Larger volumes get more baseline IOPS
+1. **Size volumes appropriately** - Some volume types scale baseline performance with size
 2. **Use provisioned IOPS for predictable workloads** - Avoid throttling
 3. **Enable encryption** - Minimal performance impact on modern instances
 4. **Use appropriate filesystem** - XFS for large files, ext4 for general use
