@@ -18,7 +18,7 @@ The ingress controller watches Ingress resources and translates them into native
 
 ## Basic Configuration
 
-Deploy the ingress controller and create basic routing:
+Deploy the Traefik ingress controller and create basic routing:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -27,7 +27,7 @@ metadata:
   name: example-ingress
   namespace: production
 spec:
-  ingressClassName: nginx
+  ingressClassName: traefik
   rules:
     - host: app.example.com
       http:
