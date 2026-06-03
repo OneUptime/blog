@@ -23,7 +23,7 @@ Maven configuration for the services you need.
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>bom</artifactId>
-            <version>2.25.0</version>
+            <version>2.44.12</version>
             <type>pom</type>
             <scope>import</scope>
         </dependency>
@@ -55,7 +55,7 @@ Gradle configuration.
 ```groovy
 // build.gradle
 dependencies {
-    implementation platform('software.amazon.awssdk:bom:2.25.0')
+    implementation platform('software.amazon.awssdk:bom:2.44.12')
     implementation 'software.amazon.awssdk:s3'
     implementation 'software.amazon.awssdk:dynamodb'
     implementation 'software.amazon.awssdk:dynamodb-enhanced'
@@ -302,18 +302,22 @@ Fine-tune client behavior with the builder.
 
 ```java
 import software.amazon.awssdk.core.client.config.ClientOverrideConfiguration;
-import software.amazon.awssdk.core.retry.RetryPolicy;
+import software.amazon.awssdk.awscore.retry.AwsRetryStrategy;
+import software.amazon.awssdk.retries.StandardRetryStrategy;
 import java.time.Duration;
 import java.net.URI;
+
+StandardRetryStrategy retryStrategy = AwsRetryStrategy.standardRetryStrategy()
+    .toBuilder()
+    .maxAttempts(5)
+    .build();
 
 S3Client s3 = S3Client.builder()
     .region(Region.US_EAST_1)
     .overrideConfiguration(ClientOverrideConfiguration.builder()
         .apiCallTimeout(Duration.ofSeconds(30))
         .apiCallAttemptTimeout(Duration.ofSeconds(10))
-        .retryPolicy(RetryPolicy.builder()
-            .numRetries(5)
-            .build())
+        .retryStrategy(retryStrategy)
         .build())
     .build();
 
