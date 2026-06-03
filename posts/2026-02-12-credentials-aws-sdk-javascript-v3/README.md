@@ -15,10 +15,15 @@ Getting credentials right is the first hurdle with any AWS SDK. The v3 JavaScrip
 When you don't explicitly provide credentials to a client, the SDK automatically searches through a chain of credential sources. It checks them in this order:
 
 1. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
-2. Shared credentials file (`~/.aws/credentials`)
-3. SSO credentials from `~/.aws/config`
-4. Web identity token (for EKS pods)
-5. EC2 instance metadata / ECS task role / Lambda execution role
+2. IAM Identity Center (SSO) credentials from `~/.aws/config`
+3. Shared `config` and `credentials` files, including role profiles
+4. Login credentials cached by the AWS CLI
+5. Process credentials from shared config
+6. Web identity token from AWS STS (for EKS pods)
+7. ECS task role credentials
+8. EC2 instance metadata credentials
+
+Lambda execution roles also provide credentials automatically, so Lambda functions usually do not need explicit credential configuration either.
 
 This means in most environments, you don't need to configure credentials at all.
 
@@ -160,12 +165,16 @@ First, set up SSO in your config file.
 ```ini
 # ~/.aws/config
 [profile my-sso-profile]
-sso_start_url = https://my-company.awsapps.com/start
-sso_region = us-east-1
+sso_session = my-sso
 sso_account_id = 123456789012
 sso_role_name = AdministratorAccess
 region = us-east-1
 output = json
+
+[sso-session my-sso]
+sso_start_url = https://my-company.awsapps.com/start
+sso_region = us-east-1
+sso_registration_scopes = sso:account:access
 ```
 
 Then use it in your code.
@@ -188,18 +197,14 @@ Kubernetes pods running on EKS can use web identity tokens for authentication.
 
 ```javascript
 import { S3Client } from '@aws-sdk/client-s3';
-import { fromWebToken } from '@aws-sdk/credential-providers';
-import { readFileSync } from 'fs';
+import { fromTokenFile } from '@aws-sdk/credential-providers';
 
 // EKS sets these environment variables automatically
 const s3 = new S3Client({
     region: 'us-east-1',
-    credentials: fromWebToken({
+    credentials: fromTokenFile({
         roleArn: process.env.AWS_ROLE_ARN,
-        webIdentityToken: readFileSync(
-            process.env.AWS_WEB_IDENTITY_TOKEN_FILE,
-            'utf-8'
-        )
+        webIdentityTokenFile: process.env.AWS_WEB_IDENTITY_TOKEN_FILE
     })
 });
 ```
@@ -211,28 +216,23 @@ In practice, the default credential chain handles this automatically if the envi
 Temporary credentials expire. The SDK's credential providers handle automatic refresh, but you can also build your own caching.
 
 ```javascript
-import { S3Client } from '@aws-sdk/client-s3';
+function cachedCredentialProvider(underlyingProvider, refreshBufferSeconds = 300) {
+    const refreshBuffer = refreshBufferSeconds * 1000;
+    let cachedCredentials = null;
 
-class CachedCredentialProvider {
-    constructor(underlyingProvider, refreshBufferSeconds = 300) {
-        this.provider = underlyingProvider;
-        this.refreshBuffer = refreshBufferSeconds * 1000;
-        this.cachedCredentials = null;
-    }
-
-    async resolve() {
+    return async () => {
         const now = Date.now();
 
-        if (this.cachedCredentials &&
-            this.cachedCredentials.expiration &&
-            (this.cachedCredentials.expiration.getTime() - now) > this.refreshBuffer) {
-            return this.cachedCredentials;
+        if (cachedCredentials &&
+            cachedCredentials.expiration &&
+            (cachedCredentials.expiration.getTime() - now) > refreshBuffer) {
+            return cachedCredentials;
         }
 
         console.log('Refreshing credentials...');
-        this.cachedCredentials = await this.provider();
-        return this.cachedCredentials;
-    }
+        cachedCredentials = await underlyingProvider();
+        return cachedCredentials;
+    };
 }
 ```
 
