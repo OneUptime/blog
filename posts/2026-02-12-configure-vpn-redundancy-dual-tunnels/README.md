@@ -54,7 +54,7 @@ VPN_ID=$(aws ec2 create-vpn-connection \
     "TunnelOptions": [
       {
         "TunnelInsideCidr": "169.254.10.0/30",
-        "PreSharedKey": "your-strong-psk-tunnel1",
+        "PreSharedKey": "YourStrongPskTunnel1_2026",
         "Phase1LifetimeSeconds": 28800,
         "Phase2LifetimeSeconds": 3600,
         "Phase1EncryptionAlgorithms": [{"Value": "AES256"}],
@@ -67,7 +67,7 @@ VPN_ID=$(aws ec2 create-vpn-connection \
       },
       {
         "TunnelInsideCidr": "169.254.11.0/30",
-        "PreSharedKey": "your-strong-psk-tunnel2",
+        "PreSharedKey": "YourStrongPskTunnel2_2026",
         "Phase1LifetimeSeconds": 28800,
         "Phase2LifetimeSeconds": 3600,
         "Phase1EncryptionAlgorithms": [{"Value": "AES256"}],
@@ -114,6 +114,9 @@ router bgp 65000
   bgp router-id 203.0.113.50
   neighbor 169.254.10.1 remote-as 64512
   neighbor 169.254.11.1 remote-as 64512
+  # Set hold timer for faster failover (default is 180 seconds)
+  neighbor 169.254.10.1 timers 10 30
+  neighbor 169.254.11.1 timers 10 30
 
   address-family ipv4 unicast
     # Advertise your on-premises network
@@ -121,9 +124,6 @@ router bgp 65000
     # Accept routes from AWS
     neighbor 169.254.10.1 activate
     neighbor 169.254.11.1 activate
-    # Set hold timer for faster failover (default is 90 seconds)
-    neighbor 169.254.10.1 timers 10 30
-    neighbor 169.254.11.1 timers 10 30
   exit-address-family
 ```
 
@@ -131,11 +131,11 @@ The `timers 10 30` setting means BGP sends keepalives every 10 seconds and decla
 
 ## Active/Active vs. Active/Passive
 
-**Active/Active**: Both tunnels carry traffic simultaneously. This gives you more bandwidth (up to 2.5 Gbps total with ECMP on transit gateway) and instant failover.
+**Active/Active**: Both tunnels can carry traffic simultaneously when your target gateway and customer gateway support ECMP. This gives you more bandwidth (up to 2.5 Gbps total with two standard tunnels on transit gateway) and faster failover after routing reconverges.
 
 **Active/Passive**: One tunnel is preferred, the other is standby. Traffic only uses the backup when the primary fails.
 
-To prefer one tunnel, use BGP AS path prepending:
+If your customer gateway device does not support asymmetric routing and you need to prefer one tunnel, use BGP AS path prepending:
 
 ```bash
 # FRRouting - make Tunnel 2 less preferred by prepending AS path
@@ -143,7 +143,9 @@ route-map TUNNEL2-OUT permit 10
   set as-path prepend 65000 65000 65000
 
 router bgp 65000
-  neighbor 169.254.11.1 route-map TUNNEL2-OUT out
+  address-family ipv4 unicast
+    neighbor 169.254.11.1 route-map TUNNEL2-OUT out
+  exit-address-family
 ```
 
 This makes Tunnel 2's routes look "longer" (more hops), so AWS prefers Tunnel 1. When Tunnel 1 goes down, Tunnel 2 takes over.
@@ -156,7 +158,7 @@ For even higher redundancy, create two VPN connections, each with their own cust
 # Create a second customer gateway (different router or different WAN link)
 CGW_2=$(aws ec2 create-customer-gateway \
   --type ipsec.1 \
-  --public-ip 203.0.113.51 \
+  --ip-address 203.0.113.51 \
   --bgp-asn 65000 \
   --tag-specifications 'ResourceType=customer-gateway,Tags=[{Key=Name,Value=backup-router}]' \
   --query 'CustomerGateway.CustomerGatewayId' \
