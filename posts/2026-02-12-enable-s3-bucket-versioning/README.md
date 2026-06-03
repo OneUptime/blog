@@ -8,7 +8,7 @@ Description: Learn how to enable and manage S3 bucket versioning to protect agai
 
 ---
 
-Versioning is one of those S3 features that you never think about until you accidentally delete a critical file or overwrite a config with bad data. Then you're scrambling to find a backup that may or may not exist. S3 bucket versioning eliminates this problem entirely by keeping every version of every object ever stored in your bucket.
+Versioning is one of those S3 features that you never think about until you accidentally delete a critical file or overwrite a config with bad data. Then you're scrambling to find a backup that may or may not exist. S3 bucket versioning helps eliminate this problem by keeping multiple versions of objects stored in your bucket.
 
 When versioning is enabled, S3 preserves all versions of an object - including when you overwrite it or delete it. You can retrieve any previous version at any time. It's like having an infinite undo button for your storage.
 
@@ -39,7 +39,7 @@ graph TD
 
 ## Enable Versioning
 
-Enabling versioning is a single command. Once enabled, it takes effect immediately for all new objects.
+Enabling versioning is a single command. Once enabled, it applies to all new objects, but AWS recommends waiting 15 minutes after enabling versioning before issuing write or delete operations while the change propagates.
 
 Enable versioning on an S3 bucket:
 
@@ -120,7 +120,7 @@ diff hello.txt hello-old-version.txt
 
 ## How Deletes Work with Versioning
 
-This is where it gets interesting. When you delete a versioned object, S3 doesn't actually delete anything. It adds a "delete marker" - a zero-byte placeholder that makes the object appear deleted.
+This is where it gets interesting. When you delete a versioned object, S3 doesn't actually delete the existing versions. It adds a "delete marker" - a marker with no object data that makes the object appear deleted.
 
 Understanding delete markers:
 
@@ -161,7 +161,7 @@ aws s3api list-object-versions \
     --prefix hello.txt
 ```
 
-This is the only way to truly remove data from a versioned bucket. Be careful with this operation since it's irreversible.
+This is the manual way to truly remove data from a versioned bucket. Be careful with this operation since it's irreversible.
 
 ## Cost Implications
 
@@ -194,7 +194,7 @@ If old versions are eating too much storage, use lifecycle policies to clean the
 
 ## Lifecycle Policies for Version Management
 
-The best way to control versioning costs is with lifecycle rules that automatically expire old versions.
+The best way to control versioning costs is with lifecycle rules that automatically expire old versions. Note that S3 Lifecycle configurations can't be used with MFA Delete.
 
 Set up lifecycle rules for version cleanup:
 
@@ -255,7 +255,7 @@ aws s3api put-bucket-versioning \
     --mfa "arn:aws:iam::123456789012:mfa/root-account-mfa-device 123456"
 ```
 
-With MFA Delete enabled, even if someone compromises your credentials, they can't permanently delete object versions without the physical MFA device.
+With MFA Delete enabled, even if someone compromises your credentials, they can't permanently delete object versions without the MFA device and current code.
 
 ## Versioning with Replication
 
@@ -265,7 +265,7 @@ Versioning is required for S3 replication. If you're setting up [same-region rep
 
 1. **Enable versioning on production buckets from day one.** The storage cost is worth the protection.
 2. **Always set up lifecycle policies** to expire old versions. Without them, your storage costs will grow indefinitely.
-3. **Use MFA Delete** on buckets with truly critical data.
+3. **Use MFA Delete** on buckets with truly critical data when you can accept managing version cleanup manually instead of using lifecycle rules.
 4. **Don't forget about delete markers.** They accumulate over time and can slow down list operations.
 5. **Monitor version count and storage** as part of your regular cost reviews.
 6. **Consider lifecycle transitions** - move non-current versions to S3-IA or Glacier before expiring them to save money during the retention period.
