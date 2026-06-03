@@ -107,9 +107,8 @@ spec:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 namespace: velero
-bases:
-  - ../../base
 resources:
+  - ../../base
   - backup-schedules.yaml
 ```
 
@@ -164,16 +163,13 @@ spec:
       elements:
       - cluster: production-us-east
         url: https://prod-us-east.k8s.local
-        bucket: velero-backups-us-east
-        schedule: "0 * * * *"
+        overlay: production-us-east
       - cluster: production-eu-west
         url: https://prod-eu-west.k8s.local
-        bucket: velero-backups-eu-west
-        schedule: "0 * * * *"
+        overlay: production-eu-west
       - cluster: staging
         url: https://staging.k8s.local
-        bucket: velero-backups-staging
-        schedule: "0 */4 * * *"
+        overlay: staging
   template:
     metadata:
       name: 'velero-{{cluster}}'
@@ -182,13 +178,7 @@ spec:
       source:
         repoURL: https://github.com/your-org/velero-gitops
         targetRevision: main
-        path: overlays/{{cluster}}
-        helm:
-          parameters:
-          - name: backupStorageLocation.bucket
-            value: '{{bucket}}'
-          - name: schedule.schedule
-            value: '{{schedule}}'
+        path: overlays/{{overlay}}
       destination:
         server: '{{url}}'
         namespace: velero
@@ -323,7 +313,7 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Install tools
       run: |
@@ -331,16 +321,16 @@ jobs:
         curl -s "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
         sudo mv kustomize /usr/local/bin/
 
-        # Install kubeval
-        wget https://github.com/instrumenta/kubeval/releases/latest/download/kubeval-linux-amd64.tar.gz
-        tar xf kubeval-linux-amd64.tar.gz
-        sudo mv kubeval /usr/local/bin/
+        # Install kubeconform
+        wget https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz
+        tar xf kubeconform-linux-amd64.tar.gz
+        sudo mv kubeconform /usr/local/bin/
 
     - name: Validate YAML
       run: |
         for overlay in overlays/*; do
           echo "Validating $overlay"
-          kustomize build $overlay | kubeval --strict
+          kustomize build $overlay | kubeconform -strict -ignore-missing-schemas
         done
 
     - name: Check schedule syntax
@@ -380,9 +370,9 @@ spec:
       serviceAccountName: velero
       containers:
       - name: validate
-        image: velero/velero:latest
+        image: ghcr.io/your-org/velero-tools:latest
         command:
-        - /bin/bash
+        - /bin/sh
         - -c
         - |
           # Verify schedules exist
@@ -415,6 +405,8 @@ spec:
 ## Implementing Change Approval Workflow
 
 Require approval for production changes:
+
+For this workflow, disable automated sync on the production Application so the protected GitHub Actions deployment job controls when ArgoCD syncs production.
 
 ```yaml
 # .github/workflows/deploy-production.yaml
@@ -546,7 +538,7 @@ echo "Rollback initiated. Monitor ArgoCD for sync status."
 
 Store runbooks in the same repository:
 
-```markdown
+````markdown
 # overlays/production/RUNBOOK.md
 
 # Production Velero Disaster Recovery Runbook
@@ -559,7 +551,7 @@ Store runbooks in the same repository:
 ## Making Changes
 1. Create branch from `main`
 2. Edit configurations in `overlays/production/`
-3. Run `kustomize build overlays/production | kubeval`
+3. Run `kustomize build overlays/production | kubeconform -strict -ignore-missing-schemas`
 4. Create pull request
 5. Request review from DR team
 6. Merge after approval
@@ -569,8 +561,8 @@ Store runbooks in the same repository:
 If GitOps is unavailable, apply directly:
 ```bash
 kubectl apply -k overlays/production/
-```bash
-```text
+```
+````
 
 ## Conclusion
 
@@ -579,6 +571,3 @@ GitOps workflows transform Velero backup management from ad-hoc commands to vers
 Start with a simple Git repository structure, integrate with ArgoCD for automated deployment, and build validation into your pull request workflow. As your confidence grows, add policy-as-code generators, multi-cluster management, and automated testing.
 
 Remember that your disaster recovery strategy is only as reliable as your backup configurations. GitOps ensures those configurations are version controlled, tested, and consistently applied across all your clusters.
-
-```bash
-```
