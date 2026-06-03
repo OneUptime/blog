@@ -2,13 +2,13 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, Upgrade
+Tags: Kubernetes, Windows, Upgrade
 
-Description: Step-by-step guide to performing rolling upgrades of Windows nodes in Kubernetes clusters with zero downtime using cordoning, draining, and gradual rollout strategies.
+Description: Step-by-step guide to performing rolling upgrades of Windows nodes in Kubernetes clusters while minimizing downtime using cordoning, draining, and gradual rollout strategies.
 
 ---
 
-Upgrading Windows nodes in production Kubernetes clusters requires careful planning to avoid service disruptions. Windows nodes need patching for security updates, OS upgrades, and kubelet version changes. This guide covers strategies for upgrading Windows nodes without downtime using rolling updates, PodDisruptionBudgets, and proper draining procedures.
+Upgrading Windows nodes in production Kubernetes clusters requires careful planning to avoid service disruptions. Windows nodes need patching for security updates, OS upgrades, and kubelet version changes. This guide covers strategies for upgrading Windows nodes while minimizing downtime using rolling updates, PodDisruptionBudgets, and proper draining procedures.
 
 ## Pre-Upgrade Planning
 
@@ -28,6 +28,8 @@ kubectl get pods -o wide --all-namespaces | grep <node-name>
 # Verify node capacity
 kubectl describe node <node-name> | grep -A 5 Capacity
 ```
+
+Choose a kubelet target version that is supported by your control plane version. The kubelet must not be newer than the kube-apiserver, and you should follow your distribution or managed provider's supported upgrade path.
 
 ## Setting Up PodDisruptionBudgets
 
@@ -84,12 +86,13 @@ kubectl get node <windows-node-name>
 kubectl drain <windows-node-name> \
   --ignore-daemonsets \
   --delete-emptydir-data \
-  --force \
   --grace-period=300
 
 # Monitor pod eviction
 kubectl get pods -o wide --all-namespaces | grep <windows-node-name>
 ```
+
+Use `--force` only when you intentionally want to drain pods that are not managed by a controller such as a Deployment, ReplicaSet, StatefulSet, or Job.
 
 Perform the upgrade on the node:
 
@@ -99,11 +102,13 @@ Perform the upgrade on the node:
 Stop-Service kubelet
 
 # Upgrade kubelet
-$version = "1.28.0"
+$version = "1.35.0"
 Invoke-WebRequest -Uri "https://dl.k8s.io/v$version/bin/windows/amd64/kubelet.exe" `
   -OutFile "C:\k\kubelet.exe"
 
 # Update Windows
+Install-Module -Name PSWindowsUpdate -Force
+Import-Module PSWindowsUpdate
 Install-WindowsUpdate -AcceptAll -AutoReboot
 
 # After reboot, restart kubelet
@@ -145,7 +150,7 @@ foreach ($node in $Nodes) {
 
     # Drain node
     Write-Host "Draining node..."
-    kubectl drain $node --ignore-daemonsets --delete-emptydir-data --force --grace-period=300
+    kubectl drain $node --ignore-daemonsets --delete-emptydir-data --grace-period=300
 
     # Wait for drain to complete
     Start-Sleep -Seconds 30
@@ -237,7 +242,7 @@ Upgrade Windows OS in place:
 ```powershell
 # On Windows node
 # Install Windows Update module
-Install-Module PSWindowsUpdate -Force
+Install-Module -Name PSWindowsUpdate -Force
 
 # Check available updates
 Get-WindowsUpdate
@@ -272,13 +277,13 @@ az aks nodepool upgrade \
   --resource-group myResourceGroup \
   --cluster-name myAKSCluster \
   --name winpool \
-  --kubernetes-version 1.28.0
+  --kubernetes-version 1.35.0
 
 # AWS EKS (update launch template, then roll nodes)
 aws eks update-nodegroup-version \
   --cluster-name my-cluster \
   --nodegroup-name windows-ng \
-  --kubernetes-version 1.28
+  --kubernetes-version 1.35
 ```
 
 ## Monitoring Upgrade Progress
@@ -386,4 +391,4 @@ kubectl top pods -A
 
 ## Conclusion
 
-Upgrading Windows nodes without downtime requires careful orchestration of cordoning, draining, and uncordoning operations. Use PodDisruptionBudgets to ensure minimum availability, upgrade nodes sequentially, and monitor cluster health throughout the process. For large clusters, consider blue-green node upgrades to minimize risk. Always test upgrade procedures in non-production environments first and have rollback plans ready. With proper planning and execution, Windows node upgrades can be performed safely without service disruption.
+Upgrading Windows nodes while minimizing downtime requires careful orchestration of cordoning, draining, and uncordoning operations. Use PodDisruptionBudgets to preserve minimum availability for replicated workloads, upgrade nodes sequentially, and monitor cluster health throughout the process. For large clusters, consider blue-green node upgrades to minimize risk. Always test upgrade procedures in non-production environments first and have rollback plans ready. With proper planning, enough spare capacity, and highly available workloads, Windows node upgrades can be performed safely without service disruption.
