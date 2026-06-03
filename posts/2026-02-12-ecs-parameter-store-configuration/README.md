@@ -85,7 +85,7 @@ The ECS task execution role needs permissions to read from Parameter Store.
         "ssm:GetParametersByPath"
       ],
       "Resource": [
-        "arn:aws:ssm:us-east-1:123456789:parameter/production/myapp/*"
+        "arn:aws:ssm:us-east-1:123456789012:parameter/production/myapp/*"
       ]
     },
     {
@@ -94,7 +94,7 @@ The ECS task execution role needs permissions to read from Parameter Store.
         "kms:Decrypt"
       ],
       "Resource": [
-        "arn:aws:kms:us-east-1:123456789:key/your-kms-key-id"
+        "arn:aws:kms:us-east-1:123456789012:key/your-kms-key-id"
       ],
       "Condition": {
         "StringEquals": {
@@ -123,7 +123,7 @@ In your ECS task definition, use the `secrets` field with `valueFrom` pointing t
 ```json
 {
   "family": "my-app",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
@@ -131,20 +131,20 @@ In your ECS task definition, use the `secrets` field with `valueFrom` pointing t
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
       "essential": true,
       "secrets": [
         {
           "name": "API_URL",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/myapp/api_url"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/production/myapp/api_url"
         },
         {
           "name": "FEATURE_FLAGS",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/myapp/feature_flags"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/production/myapp/feature_flags"
         },
         {
           "name": "API_KEY",
-          "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/myapp/api_key"
+          "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/production/myapp/api_key"
         }
       ],
       "environment": [
@@ -217,18 +217,16 @@ import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 
-// Create parameters
+// Create and import parameters
 const apiUrl = new ssm.StringParameter(this, 'ApiUrl', {
   parameterName: '/production/myapp/api_url',
   stringValue: 'https://api.example.com/v2',
   description: 'External API endpoint',
 });
 
-const apiKey = new ssm.StringParameter(this, 'ApiKey', {
+// Create SecureString parameters outside CloudFormation, then import them.
+const apiKey = ssm.StringParameter.fromSecureStringParameterAttributes(this, 'ApiKey', {
   parameterName: '/production/myapp/api_key',
-  stringValue: 'sk_live_abc123',  // In practice, set this manually
-  type: ssm.ParameterType.SECURE_STRING,
-  description: 'Third-party API key',
 });
 
 // Reference in task definition
@@ -310,9 +308,11 @@ Be aware of these limits:
 |---------|----------|----------|
 | Max parameter value size | 4 KB | 8 KB |
 | Max parameters per account | 10,000 | 100,000 |
-| Max throughput (GetParameter) | 40 TPS | 1,000 TPS |
+| Default throughput (GetParameter, GetParameters, GetParametersByPath) | 40 TPS shared | 40 TPS shared |
 | Cost | Free | $0.05/parameter/month |
 | Parameter policies | No | Yes |
+
+Throughput is configured separately from parameter tier. With higher throughput enabled, `GetParameter` supports up to 10,000 TPS, `GetParameters` supports up to 1,000 TPS, and `GetParametersByPath` supports up to 100 TPS.
 
 If you hit the 4KB limit for a parameter value, consider splitting it into multiple parameters or using S3 for larger configuration files.
 
@@ -342,7 +342,7 @@ You can reference a specific version in your task definition for pinned configur
 ```json
 {
   "name": "API_URL",
-  "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/production/myapp/api_url:3"
+  "valueFrom": "/production/myapp/api_url:3"
 }
 ```
 
