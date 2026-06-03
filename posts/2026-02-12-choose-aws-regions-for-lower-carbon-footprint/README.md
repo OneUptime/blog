@@ -113,7 +113,7 @@ region_criteria = {
     "compliance_requirements": {
         "data_residency": None,  # No restriction
         "certifications_needed": ["SOC2", "ISO27001"],
-        # All AWS regions meet these
+        # Verify required AWS services and regions are in scope
     },
     "service_requirements": [
         "Amazon EKS",
@@ -165,7 +165,7 @@ Use CloudPing or your own measurements to confirm latency from your user base to
 
 ```bash
 # Measure latency to multiple AWS regions from your location
-# Using the AWS EC2 IMDS from an existing instance, or curl from anywhere
+# Using public EC2 regional endpoints from representative user locations
 for region in ca-central-1 eu-north-1 us-west-2 eu-west-1 us-east-1; do
   latency=$(curl -s -o /dev/null -w "%{time_total}" \
     "https://ec2.${region}.amazonaws.com/ping" 2>/dev/null)
@@ -178,11 +178,14 @@ done
 Pricing varies by region. Check that the cost difference does not outweigh the sustainability benefits:
 
 ```bash
-# Compare EC2 pricing across candidate regions
+# Compare EC2 pricing for a candidate product location
+# Change the location value for each candidate region.
+# The --region value selects the Pricing API endpoint, not the product region.
 aws pricing get-products \
   --service-code AmazonEC2 \
   --filters \
     "Type=TERM_MATCH,Field=instanceType,Value=m6g.xlarge" \
+    "Type=TERM_MATCH,Field=location,Value=US West (Oregon)" \
     "Type=TERM_MATCH,Field=operatingSystem,Value=Linux" \
     "Type=TERM_MATCH,Field=tenancy,Value=Shared" \
     "Type=TERM_MATCH,Field=preInstalledSw,Value=NA" \
@@ -276,7 +279,7 @@ For continuous monitoring of your multi-region infrastructure alongside sustaina
 
 ## The Grid Is Getting Greener
 
-An important context: electricity grids worldwide are getting cleaner as more renewable capacity comes online. AWS has a goal of powering its operations with 100% renewable energy. As this happens, the carbon difference between regions will narrow.
+An important context: electricity grids worldwide are getting cleaner as more renewable capacity comes online. Amazon says it matched 100% of the electricity consumed across its global operations, including AWS data centers, with renewable energy in 2023 and 2024. As grids decarbonize and AWS continues adding renewable energy projects, the carbon difference between regions will narrow.
 
 But that transition is not complete yet, and it will not be for years. Making region-aware decisions today has real impact.
 
