@@ -28,14 +28,14 @@ sequenceDiagram
     Note over Client,API Gateway: TLS handshake complete, request proceeds
 ```
 
-API Gateway verifies the client certificate against a truststore you provide. If the certificate isn't signed by a trusted CA or has been revoked, the connection is rejected at the TLS level before any application logic runs.
+API Gateway verifies the client certificate against a truststore you provide. If the certificate isn't signed by a trusted CA, is expired, or uses an unsupported algorithm, the request is denied before any application logic runs. API Gateway doesn't perform native revocation checks; use an authorizer if you need CRL or OCSP validation.
 
 ## Prerequisites
 
 You need:
 1. A custom domain name on API Gateway (mTLS doesn't work with the default execute-api endpoint)
 2. A Certificate Authority (CA) or self-signed CA to issue client certificates
-3. The CA certificate (truststore) uploaded to S3
+3. The CA certificate chain (truststore) uploaded to S3
 
 ## Step 1: Create a Certificate Authority
 
@@ -88,7 +88,7 @@ openssl verify -CAfile ca.pem client.pem
 
 ## Step 3: Upload the Truststore to S3
 
-The truststore is a PEM file containing the CA certificates that API Gateway trusts. Upload it to an S3 bucket.
+The truststore is a PEM file containing the CA certificates that API Gateway trusts. Include the complete chain of trust, starting with the issuing CA and ending at the root CA, then upload it to an S3 bucket.
 
 Upload the CA certificate as a truststore:
 
@@ -115,6 +115,7 @@ aws apigateway create-domain-name \
   --domain-name "api.yourcompany.com" \
   --regional-certificate-arn arn:aws:acm:us-east-1:123456789012:certificate/abc-123 \
   --endpoint-configuration types=REGIONAL \
+  --security-policy TLS_1_2 \
   --mutual-tls-authentication truststoreUri=s3://my-api-truststores/truststore.pem
 
 # To update an existing domain
@@ -131,8 +132,8 @@ For HTTP API:
 aws apigatewayv2 create-domain-name \
   --domain-name "api.yourcompany.com" \
   --domain-name-configurations \
-    CertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/abc-123,EndpointType=REGIONAL \
-  --mutual-tls-authentication truststoreUri=s3://my-api-truststores/truststore.pem
+    CertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/abc-123,EndpointType=REGIONAL,SecurityPolicy=TLS_1_2 \
+  --mutual-tls-authentication TruststoreUri=s3://my-api-truststores/truststore.pem
 ```
 
 ## Step 5: Test the Connection
@@ -148,19 +149,19 @@ curl -v \
 
 # This should fail - no client certificate
 curl -v https://api.yourcompany.com/resource
-# Expected: SSL handshake error
+# Expected: TLS handshake failure or a 403 response
 
 # Test with a certificate not signed by the trusted CA
 curl -v \
   --cert untrusted-client.pem \
   --key untrusted-client.key \
   https://api.yourcompany.com/resource
-# Expected: SSL handshake error
+# Expected: TLS handshake failure or a 403 response
 ```
 
 ## CloudFormation Template
 
-Complete setup with CloudFormation:
+Domain setup with CloudFormation, assuming `truststore.pem` already exists in the bucket and `MyApi` is defined elsewhere:
 
 ```yaml
 Parameters:
@@ -189,6 +190,7 @@ Resources:
       EndpointConfiguration:
         Types:
           - REGIONAL
+      SecurityPolicy: TLS_1_2
       MutualTlsAuthentication:
         TruststoreUri: !Sub "s3://${TruststoreBucket}/truststore.pem"
 
@@ -228,7 +230,7 @@ resource "aws_api_gateway_domain_name" "api" {
 
 When mTLS is enabled, API Gateway passes the client certificate information to your Lambda function. You can use this for fine-grained authorization.
 
-Extract and use client certificate details:
+For a REST API Lambda proxy integration, extract and use client certificate details:
 
 ```python
 import json
@@ -268,6 +270,8 @@ def lambda_handler(event, context):
     }
 ```
 
+For HTTP APIs with payload format version 2.0, the certificate is under `event["requestContext"]["authentication"]["clientCert"]`.
+
 ## Updating the Truststore
 
 When you need to add or remove trusted CAs, update the truststore file in S3.
@@ -284,6 +288,8 @@ aws apigateway update-domain-name \
   --patch-operations \
     op=replace,path=/mutualTlsAuthentication/truststoreVersion,value=new-version-id
 ```
+
+For HTTP APIs, use `aws apigatewayv2 update-domain-name` with `--mutual-tls-authentication TruststoreVersion=new-version-id`.
 
 If you enable S3 versioning on the truststore bucket, you can specify which version to use. This lets you roll back quickly if a truststore update causes issues.
 
