@@ -10,7 +10,7 @@ Description: A comprehensive guide to implementing encryption at rest and in tra
 
 If there's one security practice that should be non-negotiable in your AWS environment, it's encryption. Every piece of data you store should be encrypted at rest. Every byte of data that moves between services should be encrypted in transit. No exceptions.
 
-The good news is that AWS makes this relatively painless. The bad news is that it's still optional in most cases - you have to turn it on. Let's walk through how to encrypt everything.
+The good news is that AWS makes this relatively painless. The bad news is that many stronger encryption settings are still configurable - you have to choose and enforce the right options. Let's walk through how to encrypt everything.
 
 ## The Encryption Landscape on AWS
 
@@ -19,7 +19,7 @@ AWS offers encryption at multiple levels, and understanding which to use where i
 ```mermaid
 graph TB
     A[AWS KMS - Centralized Key Management] --> B[Encryption at Rest]
-    A --> C[Encryption in Transit]
+    C[Encryption in Transit]
     B --> D[S3 Server-Side Encryption]
     B --> E[EBS Volume Encryption]
     B --> F[RDS/DynamoDB Encryption]
@@ -98,7 +98,8 @@ resource "aws_kms_key" "app_data" {
           "kms:Decrypt",
           "kms:ReEncrypt*",
           "kms:GenerateDataKey*",
-          "kms:CreateGrant"
+          "kms:CreateGrant",
+          "kms:DescribeKey"
         ]
         Resource = "*"
         Condition = {
@@ -106,7 +107,7 @@ resource "aws_kms_key" "app_data" {
             "kms:ViaService" = [
               "s3.${var.region}.amazonaws.com",
               "rds.${var.region}.amazonaws.com",
-              "ebs.${var.region}.amazonaws.com"
+              "ec2.${var.region}.amazonaws.com"
             ]
           }
         }
@@ -125,12 +126,17 @@ Separate your key administration from key usage. The people who manage keys shou
 
 ## Encrypting S3 - The Complete Picture
 
-S3 encryption goes beyond just enabling server-side encryption. You need to enforce it via bucket policies and block unencrypted uploads.
+S3 now automatically applies SSE-S3 as a baseline for new object uploads. If you need customer-managed keys, encryption goes beyond just enabling server-side encryption. You need to enforce SSE-KMS via bucket policies and block uploads that use the wrong encryption mode.
 
 This configuration ensures that every object in the bucket must be encrypted, and enforces HTTPS for all access.
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  DataKey:
+    Type: String
+    Description: KMS key ID or ARN for SSE-KMS encryption
+
 Resources:
   EncryptedBucket:
     Type: AWS::S3::Bucket
@@ -147,14 +153,14 @@ Resources:
         IgnorePublicAcls: true
         RestrictPublicBuckets: true
 
-  # Policy that denies unencrypted uploads and non-HTTPS access
+  # Policy that denies the wrong encryption mode and non-HTTPS access
   BucketPolicy:
     Type: AWS::S3::BucketPolicy
     Properties:
       Bucket: !Ref EncryptedBucket
       PolicyDocument:
         Statement:
-          # Deny uploads without encryption
+          # Deny uploads that explicitly use anything other than SSE-KMS
           - Sid: DenyUnencryptedObjectUploads
             Effect: Deny
             Principal: "*"
@@ -173,7 +179,7 @@ Resources:
               - !Sub "${EncryptedBucket.Arn}/*"
             Condition:
               Bool:
-                aws:SecureTransport: false
+                aws:SecureTransport: "false"
 ```
 
 The `BucketKeyEnabled` setting is worth noting - it uses a bucket-level key to reduce the number of KMS API calls, which can save significant money at scale.
@@ -275,13 +281,35 @@ resource "aws_acm_certificate" "app" {
   }
 }
 
+resource "aws_route53_record" "app_cert_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.app.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.app.zone_id
+}
+
+resource "aws_acm_certificate_validation" "app" {
+  certificate_arn         = aws_acm_certificate.app.arn
+  validation_record_fqdns = [for record in aws_route53_record.app_cert_validation : record.fqdn]
+}
+
 # ALB HTTPS listener with modern TLS policy
 resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.app.arn
   port              = 443
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"  # TLS 1.3
-  certificate_arn   = aws_acm_certificate.app.arn
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"  # TLS 1.3 and TLS 1.2 with hybrid post-quantum key exchange
+  certificate_arn   = aws_acm_certificate_validation.app.certificate_arn
 
   default_action {
     type             = "forward"
@@ -350,6 +378,7 @@ You can't manage what you can't measure. Use AWS Config to continuously check fo
 
 ```python
 import boto3
+from botocore.exceptions import ClientError
 
 def find_unencrypted_resources():
     """Scan for common unencrypted resources."""
@@ -357,10 +386,15 @@ def find_unencrypted_resources():
 
     # Check EBS volumes
     ec2 = boto3.client('ec2')
-    volumes = ec2.describe_volumes(
-        Filters=[{'Name': 'encrypted', 'Values': ['false']}]
-    )
-    results['unencrypted_ebs_volumes'] = len(volumes['Volumes'])
+    ebs_paginator = ec2.get_paginator('describe_volumes')
+    unencrypted_ebs = [
+        volume
+        for page in ebs_paginator.paginate(
+            Filters=[{'Name': 'encrypted', 'Values': ['false']}]
+        )
+        for volume in page['Volumes']
+    ]
+    results['unencrypted_ebs_volumes'] = len(unencrypted_ebs)
 
     # Check S3 buckets
     s3 = boto3.client('s3')
@@ -369,16 +403,19 @@ def find_unencrypted_resources():
     for bucket in buckets:
         try:
             s3.get_bucket_encryption(Bucket=bucket['Name'])
-        except s3.exceptions.ClientError:
-            unencrypted_buckets.append(bucket['Name'])
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ServerSideEncryptionConfigurationNotFoundError':
+                unencrypted_buckets.append(bucket['Name'])
+            else:
+                raise
     results['unencrypted_s3_buckets'] = len(unencrypted_buckets)
 
     # Check RDS instances
     rds = boto3.client('rds')
-    instances = rds.describe_db_instances()
     unencrypted_rds = [
         db['DBInstanceIdentifier']
-        for db in instances['DBInstances']
+        for page in rds.get_paginator('describe_db_instances').paginate()
+        for db in page['DBInstances']
         if not db['StorageEncrypted']
     ]
     results['unencrypted_rds_instances'] = len(unencrypted_rds)
@@ -394,8 +431,8 @@ find_unencrypted_resources()
 
 ## The Bottom Line
 
-Encryption everywhere isn't just a best practice - it's quickly becoming a regulatory requirement. With GDPR, HIPAA, SOC 2, and PCI-DSS all requiring encryption, implementing it from day one saves you from painful retrofitting later.
+Encryption everywhere isn't just a best practice - it's quickly becoming a regulatory expectation. GDPR, HIPAA, SOC 2, and PCI-DSS all treat encryption as an important control in different ways, and implementing it from day one saves you from painful retrofitting later.
 
-Start by enabling default EBS encryption and S3 bucket encryption account-wide. Then enforce it with SCPs so nobody can accidentally deploy unencrypted resources. Finally, audit continuously with AWS Config to catch anything that slips through.
+Start by enabling default EBS encryption and configuring SSE-KMS bucket defaults where you need customer-managed keys. Then enforce it with SCPs so nobody can accidentally deploy unencrypted resources. Finally, audit continuously with AWS Config to catch anything that slips through.
 
 For a broader view of how encryption fits into your security posture, check out our guide on [defense in depth on AWS](https://oneuptime.com/blog/post/2026-02-12-defense-in-depth-aws/view) and [data protection best practices on AWS](https://oneuptime.com/blog/post/2026-02-12-data-protection-best-practices-aws/view).
