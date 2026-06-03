@@ -216,16 +216,18 @@ After creating the dataset, trigger the first data import.
 
 ```bash
 # Start the initial data ingestion
+INGESTION_ID="initial-load-$(date +%s)"
+
 aws quicksight create-ingestion \
   --aws-account-id 123456789012 \
   --data-set-id orders-dashboard \
-  --ingestion-id "initial-load-$(date +%s)"
+  --ingestion-id "$INGESTION_ID"
 
 # Monitor ingestion progress
 aws quicksight describe-ingestion \
   --aws-account-id 123456789012 \
   --data-set-id orders-dashboard \
-  --ingestion-id "initial-load-$(date +%s)" \
+  --ingestion-id "$INGESTION_ID" \
   --query 'Ingestion.{Status:IngestionStatus,RowsIngested:RowInfo.RowsIngested,Time:IngestionTimeInSeconds}'
 ```
 
@@ -234,7 +236,7 @@ aws quicksight describe-ingestion \
 For dashboards showing recent data, schedule regular SPICE refreshes.
 
 ```bash
-# Refresh every 4 hours during business hours
+# Refresh daily at 08:00
 aws quicksight create-refresh-schedule \
   --aws-account-id 123456789012 \
   --data-set-id orders-dashboard \
@@ -259,7 +261,7 @@ SPICE is the default recommendation, but direct query mode has its place.
 - You want sub-second dashboard interactions
 
 **Use direct query when:**
-- Data must be real-time (up-to-the-second)
+- Data must reflect the current source database without waiting for a SPICE refresh
 - Dataset is too large for SPICE capacity
 - You need to leverage RDS-specific functions
 
@@ -271,7 +273,7 @@ A few tricks to keep your dashboards snappy:
 
 - **Pre-aggregate in SQL.** Don't pull row-level data if your dashboard only shows aggregates. Summarize in the custom SQL query.
 - **Limit date ranges.** Only pull data you'll actually visualize. A 12-month window is usually enough for operational dashboards.
-- **Use calculated fields wisely.** SPICE pre-computes calculated fields during import, so they're free at query time. In direct query mode, they're computed on every request.
+- **Use calculated fields wisely.** Row-level calculated fields in SPICE are materialized during import, so they're fast at query time. Aggregate calculated fields are still evaluated when the analysis runs, and direct query mode sends work back to the source database.
 - **Create separate datasets for different dashboards.** One giant dataset serving ten dashboards is worse than ten focused datasets.
 
 For monitoring your dashboard refresh health and RDS query performance, you can set up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudwatch-alarms-for-ec2-cpu-and-memory/view) that notify you when ingestion fails or your RDS CPU spikes during refresh windows.
