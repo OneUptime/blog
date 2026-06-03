@@ -14,7 +14,7 @@ You know your AWS bill is high. But do you know exactly what's driving it? Most 
 
 Before drilling into details, get the overall view of your spending by service.
 
-This script pulls your top 10 most expensive services for the last month.
+This script pulls your top 15 most expensive services for the last month.
 
 ```python
 import boto3
@@ -27,27 +27,34 @@ def get_top_services(months=1):
     end_date = datetime.utcnow().strftime("%Y-%m-%d")
     start_date = (datetime.utcnow() - timedelta(days=30 * months)).strftime("%Y-%m-%d")
 
-    response = ce.get_cost_and_usage(
-        TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="MONTHLY",
-        Metrics=["UnblendedCost", "UsageQuantity"],
-        GroupBy=[
-            {"Type": "DIMENSION", "Key": "SERVICE"}
-        ]
-    )
-
     services = []
-    for period in response["ResultsByTime"]:
-        for group in period["Groups"]:
-            service_name = group["Keys"][0]
-            cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
-            usage = float(group["Metrics"]["UsageQuantity"]["Amount"])
-            if cost > 1.0:
+    next_token = None
+    while True:
+        params = {
+            "TimePeriod": {"Start": start_date, "End": end_date},
+            "Granularity": "MONTHLY",
+            "Metrics": ["UnblendedCost"],
+            "GroupBy": [
+                {"Type": "DIMENSION", "Key": "SERVICE"}
+            ]
+        }
+        if next_token:
+            params["NextPageToken"] = next_token
+
+        response = ce.get_cost_and_usage(**params)
+
+        for period in response["ResultsByTime"]:
+            for group in period["Groups"]:
+                service_name = group["Keys"][0]
+                cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
                 services.append({
                     "service": service_name,
-                    "cost": cost,
-                    "usage": usage
+                    "cost": cost
                 })
+
+        next_token = response.get("NextPageToken")
+        if not next_token:
+            break
 
     services.sort(key=lambda x: x["cost"], reverse=True)
 
@@ -62,8 +69,9 @@ def get_top_services(months=1):
         cumulative += pct
         print(f"{i:<5} {svc['service']:<50} ${svc['cost']:>11,.2f} {pct:>9.1f}%")
 
-    print(f"\nTop 5 services account for "
-          f"{sum(s['cost'] for s in services[:5]) / total * 100:.1f}% of total spend")
+    if total > 0:
+        print(f"\nTop 5 services account for "
+              f"{sum(s['cost'] for s in services[:5]) / total * 100:.1f}% of total spend")
 
 get_top_services()
 ```
@@ -72,9 +80,9 @@ In most AWS accounts, the top 5 services account for 80-90% of spending. Focus y
 
 ## Drill Into EC2 Costs
 
-EC2 is usually the biggest cost driver. Break it down by instance type, region, and usage type to understand what you're paying for.
+EC2 is usually the biggest cost driver. Break it down by usage type to understand what you're paying for.
 
-This script breaks down EC2 costs by instance type.
+This script breaks down EC2 costs by usage type.
 
 ```python
 import boto3
@@ -83,38 +91,47 @@ from datetime import datetime, timedelta
 ce = boto3.client("ce")
 
 def analyze_ec2_costs():
-    """Break down EC2 costs by instance type and usage type."""
+    """Break down EC2 costs by usage type."""
     end_date = datetime.utcnow().strftime("%Y-%m-%d")
     start_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    # Get costs by usage type (reveals On-Demand vs Reserved vs Spot)
-    response = ce.get_cost_and_usage(
-        TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="MONTHLY",
-        Metrics=["UnblendedCost", "UsageQuantity"],
-        Filter={
-            "Dimensions": {
-                "Key": "SERVICE",
-                "Values": ["Amazon Elastic Compute Cloud - Compute"]
-            }
-        },
-        GroupBy=[
-            {"Type": "DIMENSION", "Key": "USAGE_TYPE"}
-        ]
-    )
-
     print("\nEC2 Cost Breakdown by Usage Type:")
-    print(f"{'Usage Type':<60} {'Cost':>12} {'Hours':>10}")
+    print(f"{'Usage Type':<60} {'Cost':>12} {'Usage':>10}")
     print("-" * 85)
 
     items = []
-    for period in response["ResultsByTime"]:
-        for group in period["Groups"]:
-            usage_type = group["Keys"][0]
-            cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
-            usage = float(group["Metrics"]["UsageQuantity"]["Amount"])
-            if cost > 0.10:
-                items.append((usage_type, cost, usage))
+    next_token = None
+    while True:
+        params = {
+            "TimePeriod": {"Start": start_date, "End": end_date},
+            "Granularity": "MONTHLY",
+            "Metrics": ["UnblendedCost", "UsageQuantity"],
+            "Filter": {
+                "Dimensions": {
+                    "Key": "SERVICE",
+                    "Values": ["Amazon Elastic Compute Cloud - Compute"]
+                }
+            },
+            "GroupBy": [
+                {"Type": "DIMENSION", "Key": "USAGE_TYPE"}
+            ]
+        }
+        if next_token:
+            params["NextPageToken"] = next_token
+
+        response = ce.get_cost_and_usage(**params)
+
+        for period in response["ResultsByTime"]:
+            for group in period["Groups"]:
+                usage_type = group["Keys"][0]
+                cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
+                usage = float(group["Metrics"]["UsageQuantity"]["Amount"])
+                if cost > 0.10:
+                    items.append((usage_type, cost, usage))
+
+        next_token = response.get("NextPageToken")
+        if not next_token:
+            break
 
     items.sort(key=lambda x: x[1], reverse=True)
     for usage_type, cost, usage in items:
@@ -126,10 +143,10 @@ analyze_ec2_costs()
 The usage types tell you a lot. Look for:
 
 - **BoxUsage**: On-Demand instances. These are the most expensive per hour.
-- **HeavyUsage**: Reserved Instances. You're getting a discount.
 - **SpotUsage**: Spot Instances. Cheapest option.
-- **EBS**: Storage volumes attached to instances.
-- **DataTransfer**: Network traffic. This is often surprisingly expensive.
+- **HostUsage**: Dedicated Hosts.
+- **EBSOptimized**: EBS optimization charges.
+- **Reservation** or **UnusedBox**: Capacity Reservation usage or unused reserved capacity.
 
 ## Find Idle and Underutilized Resources
 
@@ -146,7 +163,8 @@ ec2 = boto3.client("ec2")
 
 def find_idle_instances(cpu_threshold=5, days=14):
     """Find EC2 instances with average CPU below threshold."""
-    instances = ec2.describe_instances(
+    paginator = ec2.get_paginator("describe_instances")
+    pages = paginator.paginate(
         Filters=[{"Name": "instance-state-name", "Values": ["running"]}]
     )
 
@@ -154,40 +172,41 @@ def find_idle_instances(cpu_threshold=5, days=14):
     end_time = datetime.utcnow()
     start_time = end_time - timedelta(days=days)
 
-    for reservation in instances["Reservations"]:
-        for instance in reservation["Instances"]:
-            instance_id = instance["InstanceId"]
-            instance_type = instance["InstanceType"]
+    for page in pages:
+        for reservation in page["Reservations"]:
+            for instance in reservation["Instances"]:
+                instance_id = instance["InstanceId"]
+                instance_type = instance["InstanceType"]
 
-            # Get name tag
-            name = "N/A"
-            for tag in instance.get("Tags", []):
-                if tag["Key"] == "Name":
-                    name = tag["Value"]
+                # Get name tag
+                name = "N/A"
+                for tag in instance.get("Tags", []):
+                    if tag["Key"] == "Name":
+                        name = tag["Value"]
 
-            # Get average CPU
-            cpu_stats = cloudwatch.get_metric_statistics(
-                Namespace="AWS/EC2",
-                MetricName="CPUUtilization",
-                Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
-                StartTime=start_time,
-                EndTime=end_time,
-                Period=86400,  # Daily average
-                Statistics=["Average"]
-            )
+                # Get average CPU
+                cpu_stats = cloudwatch.get_metric_statistics(
+                    Namespace="AWS/EC2",
+                    MetricName="CPUUtilization",
+                    Dimensions=[{"Name": "InstanceId", "Value": instance_id}],
+                    StartTime=start_time,
+                    EndTime=end_time,
+                    Period=86400,  # Daily average
+                    Statistics=["Average"]
+                )
 
-            if cpu_stats["Datapoints"]:
-                avg_cpu = sum(
-                    dp["Average"] for dp in cpu_stats["Datapoints"]
-                ) / len(cpu_stats["Datapoints"])
+                if cpu_stats["Datapoints"]:
+                    avg_cpu = sum(
+                        dp["Average"] for dp in cpu_stats["Datapoints"]
+                    ) / len(cpu_stats["Datapoints"])
 
-                if avg_cpu < cpu_threshold:
-                    idle_instances.append({
-                        "id": instance_id,
-                        "name": name,
-                        "type": instance_type,
-                        "avg_cpu": avg_cpu
-                    })
+                    if avg_cpu < cpu_threshold:
+                        idle_instances.append({
+                            "id": instance_id,
+                            "name": name,
+                            "type": instance_type,
+                            "avg_cpu": avg_cpu
+                        })
 
     print(f"\nIdle Instances (avg CPU < {cpu_threshold}% over {days} days):")
     print(f"{'Instance ID':<22} {'Name':<30} {'Type':<15} {'Avg CPU':>8}")
@@ -214,31 +233,41 @@ def analyze_data_transfer():
     end_date = datetime.utcnow().strftime("%Y-%m-%d")
     start_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    response = ce.get_cost_and_usage(
-        TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="MONTHLY",
-        Metrics=["UnblendedCost"],
-        Filter={
-            "Dimensions": {
-                "Key": "USAGE_TYPE_GROUP",
-                "Values": [
-                    "EC2: Data Transfer - Internet (Out)",
-                    "EC2: Data Transfer - Inter AZ",
-                    "EC2: Data Transfer - Region to Region"
-                ]
-            }
-        },
-        GroupBy=[
-            {"Type": "DIMENSION", "Key": "USAGE_TYPE_GROUP"}
-        ]
-    )
-
     print("\nData Transfer Costs:")
-    for period in response["ResultsByTime"]:
-        for group in period["Groups"]:
-            transfer_type = group["Keys"][0]
-            cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
-            print(f"  {transfer_type}: ${cost:,.2f}")
+    next_token = None
+    while True:
+        params = {
+            "TimePeriod": {"Start": start_date, "End": end_date},
+            "Granularity": "MONTHLY",
+            "Metrics": ["UnblendedCost"],
+            "Filter": {
+                "Dimensions": {
+                    "Key": "USAGE_TYPE_GROUP",
+                    "Values": [
+                        "EC2: Data Transfer - Internet (Out)",
+                        "EC2: Data Transfer - Inter AZ",
+                        "EC2: Data Transfer - Region to Region"
+                    ]
+                }
+            },
+            "GroupBy": [
+                {"Type": "DIMENSION", "Key": "USAGE_TYPE_GROUP"}
+            ]
+        }
+        if next_token:
+            params["NextPageToken"] = next_token
+
+        response = ce.get_cost_and_usage(**params)
+
+        for period in response["ResultsByTime"]:
+            for group in period["Groups"]:
+                transfer_type = group["Keys"][0]
+                cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
+                print(f"  {transfer_type}: ${cost:,.2f}")
+
+        next_token = response.get("NextPageToken")
+        if not next_token:
+            break
 
 analyze_data_transfer()
 ```
@@ -258,21 +287,31 @@ def costs_by_account():
     end_date = datetime.utcnow().strftime("%Y-%m-%d")
     start_date = (datetime.utcnow() - timedelta(days=30)).strftime("%Y-%m-%d")
 
-    response = ce.get_cost_and_usage(
-        TimePeriod={"Start": start_date, "End": end_date},
-        Granularity="MONTHLY",
-        Metrics=["UnblendedCost"],
-        GroupBy=[
-            {"Type": "DIMENSION", "Key": "LINKED_ACCOUNT"}
-        ]
-    )
-
     accounts = []
-    for period in response["ResultsByTime"]:
-        for group in period["Groups"]:
-            account_id = group["Keys"][0]
-            cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
-            accounts.append({"id": account_id, "cost": cost})
+    next_token = None
+    while True:
+        params = {
+            "TimePeriod": {"Start": start_date, "End": end_date},
+            "Granularity": "MONTHLY",
+            "Metrics": ["UnblendedCost"],
+            "GroupBy": [
+                {"Type": "DIMENSION", "Key": "LINKED_ACCOUNT"}
+            ]
+        }
+        if next_token:
+            params["NextPageToken"] = next_token
+
+        response = ce.get_cost_and_usage(**params)
+
+        for period in response["ResultsByTime"]:
+            for group in period["Groups"]:
+                account_id = group["Keys"][0]
+                cost = float(group["Metrics"]["UnblendedCost"]["Amount"])
+                accounts.append({"id": account_id, "cost": cost})
+
+        next_token = response.get("NextPageToken")
+        if not next_token:
+            break
 
     accounts.sort(key=lambda x: x["cost"], reverse=True)
     total = sum(a["cost"] for a in accounts)
@@ -310,18 +349,29 @@ def month_over_month():
     prev_start = (now.replace(day=1) - timedelta(days=1)).replace(day=1).strftime("%Y-%m-%d")
 
     def get_costs(start, end):
-        resp = ce.get_cost_and_usage(
-            TimePeriod={"Start": start, "End": end},
-            Granularity="MONTHLY",
-            Metrics=["UnblendedCost"],
-            GroupBy=[{"Type": "DIMENSION", "Key": "SERVICE"}]
-        )
         costs = {}
-        for period in resp["ResultsByTime"]:
-            for group in period["Groups"]:
-                costs[group["Keys"][0]] = float(
-                    group["Metrics"]["UnblendedCost"]["Amount"]
-                )
+        next_token = None
+        while True:
+            params = {
+                "TimePeriod": {"Start": start, "End": end},
+                "Granularity": "MONTHLY",
+                "Metrics": ["UnblendedCost"],
+                "GroupBy": [{"Type": "DIMENSION", "Key": "SERVICE"}]
+            }
+            if next_token:
+                params["NextPageToken"] = next_token
+
+            resp = ce.get_cost_and_usage(**params)
+
+            for period in resp["ResultsByTime"]:
+                for group in period["Groups"]:
+                    costs[group["Keys"][0]] = float(
+                        group["Metrics"]["UnblendedCost"]["Amount"]
+                    )
+
+            next_token = resp.get("NextPageToken")
+            if not next_token:
+                break
         return costs
 
     prev = get_costs(prev_start, prev_end)
