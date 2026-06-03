@@ -20,9 +20,12 @@ kind: CronJob
 metadata:
   name: daily-database-snapshot
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   # Run daily at 2 AM UTC
   schedule: "0 2 * * *"
+  timeZone: "Etc/UTC"
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 3
   jobTemplate:
@@ -60,7 +63,7 @@ spec:
                   persistentVolumeClaimName: postgres-pvc
               EOF
 
-              echo "Snapshot created successfully"
+              echo "Snapshot object created successfully"
 ```
 
 Create the required RBAC permissions:
@@ -80,9 +83,12 @@ metadata:
 rules:
 - apiGroups: ["snapshot.storage.k8s.io"]
   resources: ["volumesnapshots"]
-  verbs: ["create", "get", "list"]
+  verbs: ["create", "get", "list", "watch", "delete"]
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods"]
   verbs: ["get", "list"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -94,6 +100,28 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: Role
   name: snapshot-creator-role
+subjects:
+- kind: ServiceAccount
+  name: snapshot-creator
+  namespace: production
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: snapshot-class-reader
+rules:
+- apiGroups: ["snapshot.storage.k8s.io"]
+  resources: ["volumesnapshotclasses"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: snapshot-class-reader-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: snapshot-class-reader
 subjects:
 - kind: ServiceAccount
   name: snapshot-creator
@@ -119,14 +147,17 @@ kubectl describe cronjob daily-database-snapshot -n production
 Implement different schedules for different retention needs:
 
 ```yaml
-# Hourly snapshots (keep for 24 hours)
+# Hourly snapshots (label for 24-hour retention)
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: hourly-snapshot
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 * * * *"  # Every hour
+  timeZone: "Etc/UTC"
   successfulJobsHistoryLimit: 24
   failedJobsHistoryLimit: 3
   jobTemplate:
@@ -157,14 +188,17 @@ spec:
                   persistentVolumeClaimName: postgres-pvc
               EOF
 ---
-# Daily snapshots (keep for 7 days)
+# Daily snapshots (label for 7-day retention)
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: daily-snapshot
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 2 * * *"  # Daily at 2 AM
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -193,14 +227,17 @@ spec:
                   persistentVolumeClaimName: postgres-pvc
               EOF
 ---
-# Weekly snapshots (keep for 4 weeks)
+# Weekly snapshots (label for 4-week retention)
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: weekly-snapshot
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 3 * * 0"  # Sundays at 3 AM
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -229,14 +266,17 @@ spec:
                   persistentVolumeClaimName: postgres-pvc
               EOF
 ---
-# Monthly snapshots (keep for 12 months)
+# Monthly snapshots (label for 12-month retention)
 apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: monthly-snapshot
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 4 1 * *"  # First day of month at 4 AM
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -276,8 +316,11 @@ kind: CronJob
 metadata:
   name: validated-snapshot
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 2 * * *"
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -327,8 +370,10 @@ spec:
               # Check for recent failed snapshots
               FAILED_COUNT=$(kubectl get volumesnapshot \
                 -l app=postgres \
-                --field-selector metadata.creationTimestamp>$(date -d '1 hour ago' -Iseconds) \
-                -o json | jq '[.items[] | select(.status.error != null)] | length')
+                -o json | jq '[.items[] |
+                  select(.metadata.creationTimestamp |
+                    fromdateiso8601 > (now - 3600)) |
+                  select(.status.error != null)] | length')
 
               if [ "$FAILED_COUNT" -gt 0 ]; then
                 echo "WARNING: $FAILED_COUNT failed snapshots in the last hour"
@@ -388,8 +433,11 @@ kind: CronJob
 metadata:
   name: multi-pvc-snapshot
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 2 * * *"
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -449,8 +497,11 @@ kind: CronJob
 metadata:
   name: snapshot-with-notification
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 2 * * *"
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -482,7 +533,7 @@ spec:
                 MESSAGE=$2
                 COLOR=$3
 
-                curl -X POST $SLACK_WEBHOOK \
+                curl -X POST "$SLACK_WEBHOOK" \
                   -H 'Content-Type: application/json' \
                   -d "{
                     \"attachments\": [{
@@ -496,7 +547,8 @@ spec:
               }
 
               # Create snapshot
-              ./kubectl apply -f - <<EOF
+              SNAPSHOT_READY=false
+              if ./kubectl apply -f - <<EOF
               apiVersion: snapshot.storage.k8s.io/v1
               kind: VolumeSnapshot
               metadata:
@@ -506,10 +558,17 @@ spec:
                 source:
                   persistentVolumeClaimName: postgres-pvc
               EOF
+              then
+                if ./kubectl wait volumesnapshot "$SNAPSHOT_NAME" \
+                  --for=jsonpath='{.status.readyToUse}'=true \
+                  --timeout=10m; then
+                  SNAPSHOT_READY=true
+                fi
+              fi
 
-              if [ $? -eq 0 ]; then
+              if [ "$SNAPSHOT_READY" = "true" ]; then
                 send_notification "Created" \
-                  "Snapshot $SNAPSHOT_NAME created successfully" \
+                  "Snapshot $SNAPSHOT_NAME is ready to use" \
                   "good"
               else
                 send_notification "Failed" \
@@ -521,7 +580,7 @@ spec:
 
 ## Automated Cleanup CronJob
 
-Remove old snapshots based on retention labels:
+Remove old VolumeSnapshot objects based on retention labels. If your VolumeSnapshotClass uses a `Retain` deletion policy, also clean up the retained VolumeSnapshotContent objects and backend snapshots according to your storage provider's process:
 
 ```yaml
 apiVersion: batch/v1
@@ -529,8 +588,11 @@ kind: CronJob
 metadata:
   name: snapshot-cleanup
   namespace: production
+  labels:
+    backup: snapshot
 spec:
   schedule: "0 3 * * *"  # Run at 3 AM daily
+  timeZone: "Etc/UTC"
   jobTemplate:
     spec:
       template:
@@ -602,13 +664,15 @@ Create a monitoring script:
 echo "=== Snapshot CronJob Status ==="
 echo
 
+NAMESPACE=${NAMESPACE:-production}
+
 # List all snapshot-related CronJobs
-kubectl get cronjob -l backup=snapshot -o wide
+kubectl get cronjob -n "$NAMESPACE" -l backup=snapshot -o wide
 
 echo
 echo "=== Last Job Execution ==="
 
-kubectl get cronjob -o json | \
+kubectl get cronjob -n "$NAMESPACE" -o json | \
   jq -r '.items[] |
     select(.metadata.labels.backup == "snapshot") |
     {
@@ -627,12 +691,18 @@ kubectl get cronjob -o json | \
     echo "  Last run: $LAST"
 
     # Get last job status
-    LAST_JOB=$(kubectl get job -l cronjob=$NAME \
-      --sort-by=.metadata.creationTimestamp \
-      -o jsonpath='{.items[-1].metadata.name}' 2>/dev/null)
+    LAST_JOB=$(kubectl get job -n "$NAMESPACE" -o json | \
+      jq -r --arg name "$NAME" '
+        [.items[] |
+          select(.metadata.ownerReferences[]? |
+            .kind == "CronJob" and .name == $name)] |
+          sort_by(.metadata.creationTimestamp) |
+          last |
+          .metadata.name // empty')
 
     if [ -n "$LAST_JOB" ]; then
-      STATUS=$(kubectl get job $LAST_JOB -o jsonpath='{.status.conditions[0].type}')
+      STATUS=$(kubectl get job -n "$NAMESPACE" "$LAST_JOB" \
+        -o jsonpath='{.status.conditions[0].type}')
       echo "  Last job: $LAST_JOB ($STATUS)"
     fi
     echo
