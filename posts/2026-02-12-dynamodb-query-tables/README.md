@@ -25,8 +25,10 @@ Always use Query when you can. Save Scan for data migrations, analytics exports,
 Every query requires a partition key value. Here's the simplest possible query:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Query all items with a specific partition key
 async function getOrdersByCustomer(customerId) {
@@ -38,7 +40,7 @@ async function getOrdersByCustomer(customerId) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 ```
@@ -89,7 +91,7 @@ async function getRecentOrders(customerId) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 
@@ -105,7 +107,7 @@ async function getOrdersInRange(customerId, startDate, endDate) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 ```
@@ -127,7 +129,7 @@ async function getCustomerOrders(customerId) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 
@@ -142,7 +144,7 @@ async function getMonthlyOrders(customerId, yearMonth) {
     }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 ```
 
@@ -163,7 +165,7 @@ async function getLatestOrders(customerId) {
     Limit: 5                   // Only return 5 items
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 ```
@@ -187,7 +189,7 @@ async function getHighValueOrders(customerId) {
     FilterExpression: 'orderAmount > :minAmount'
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 ```
@@ -196,7 +198,7 @@ If the customer has 1,000 orders and only 50 are over $100, DynamoDB reads all 1
 
 ## Projection: Fetching Only What You Need
 
-Use ProjectionExpression to return only specific attributes. This reduces network transfer and can lower costs if your items are large:
+Use ProjectionExpression to return only specific attributes. This reduces network transfer, but it does not reduce DynamoDB read capacity consumption:
 
 ```javascript
 // Get only order IDs and amounts
@@ -213,7 +215,7 @@ async function getOrderSummaries(customerId) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 ```
@@ -236,7 +238,7 @@ async function getAllOrders(customerId) {
       ExclusiveStartKey: lastKey
     };
 
-    const result = await docClient.query(params).promise();
+    const result = await docClient.send(new QueryCommand(params));
     allItems = allItems.concat(result.Items);
     lastKey = result.LastEvaluatedKey;
   } while (lastKey);
@@ -264,7 +266,7 @@ async function getOrdersPage(customerId, pageSize, startKey) {
     );
   }
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
 
   return {
     items: result.Items,
@@ -292,7 +294,7 @@ async function getOrdersByStatus(status) {
     ExpressionAttributeValues: { ':status': status }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
 }
 ```
@@ -324,7 +326,7 @@ const params = {
   ReturnConsumedCapacity: 'TOTAL'
 };
 
-const result = await docClient.query(params).promise();
+const result = await docClient.send(new QueryCommand(params));
 console.log('Consumed capacity:', result.ConsumedCapacity);
 ```
 
