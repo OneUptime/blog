@@ -32,8 +32,8 @@ Before you start, you'll need:
 The console approach is the fastest way to get started.
 
 1. Open the RDS console and navigate to your Aurora cluster
-2. Click on the cluster, then go to the **Logs & events** tab or the cluster detail page
-3. Under **Actions**, select **Add Auto Scaling Policy**
+2. Click on the cluster, then go to the **Logs & events** tab
+3. In the **Auto scaling policies** section, choose **Add**
 4. Choose your target metric (CPU utilization is the most common)
 5. Set the target value (e.g., 70% CPU utilization)
 6. Set the minimum and maximum number of replicas
@@ -80,9 +80,9 @@ aws application-autoscaling put-scaling-policy \
 
 The cooldown periods (in seconds) prevent the system from thrashing - adding and removing instances too rapidly. Five minutes (300 seconds) is a reasonable default.
 
-## Using a Custom Metric
+## Using a Connections Metric
 
-Sometimes CPU utilization isn't the right metric. Maybe your workload is connection-heavy rather than compute-heavy. You can use a custom CloudWatch metric instead.
+Sometimes CPU utilization isn't the right metric. Maybe your workload is connection-heavy rather than compute-heavy. You can use Aurora's predefined average database connections metric instead.
 
 This example uses the average number of database connections as the scaling trigger:
 
@@ -96,16 +96,8 @@ aws application-autoscaling put-scaling-policy \
   --policy-type TargetTrackingScaling \
   --target-tracking-scaling-policy-configuration '{
     "TargetValue": 500.0,
-    "CustomizedMetricSpecification": {
-      "MetricName": "DatabaseConnections",
-      "Namespace": "AWS/RDS",
-      "Statistic": "Average",
-      "Dimensions": [
-        {
-          "Name": "DBClusterIdentifier",
-          "Value": "my-aurora-cluster"
-        }
-      ]
+    "PredefinedMetricSpecification": {
+      "PredefinedMetricType": "RDSReaderAverageDatabaseConnections"
     },
     "ScaleInCooldown": 300,
     "ScaleOutCooldown": 180
@@ -131,7 +123,7 @@ Resources:
       ScalableDimension: rds:cluster:ReadReplicaCount
       MinCapacity: 1
       MaxCapacity: 8
-      RoleARN: !GetAtt AutoScalingRole.Arn
+      RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/aws-service-role/rds.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_RDSCluster
 
   AuroraScalingPolicy:
     Type: AWS::ApplicationAutoScaling::ScalingPolicy
@@ -145,19 +137,6 @@ Resources:
           PredefinedMetricType: RDSReaderAverageCPUUtilization
         ScaleInCooldown: 300
         ScaleOutCooldown: 300
-
-  AutoScalingRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: application-autoscaling.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonRDSFullAccess
 ```
 
 ## Terraform Configuration
