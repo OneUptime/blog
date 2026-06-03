@@ -71,9 +71,24 @@ aws events put-targets \
     "Arn": "arn:aws:sns:us-east-1:123456789012:aws-health-notifications"
   }]' \
   --region us-east-1
+
+# Allow EventBridge to publish to the SNS topic
+aws sns set-topic-attributes \
+  --topic-arn "arn:aws:sns:us-east-1:123456789012:aws-health-notifications" \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": {"Service": "events.amazonaws.com"},
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789012:aws-health-notifications"
+    }]
+  }' \
+  --region us-east-1
 ```
 
-That's it for basic notifications. Every AWS Health event will now land in your inbox. But raw health events are verbose JSON, so let's make them more readable.
+That's it for basic notifications. Events delivered to that Region will now land in your inbox. To cover all regional AWS Health events in the standard AWS partition with one rule, create the rule in `us-west-2`; for global events, create a rule in `us-east-1`. But raw health events are verbose JSON, so let's make them more readable.
 
 ## Formatted Notifications with Lambda
 
@@ -95,7 +110,7 @@ def lambda_handler(event, context):
     service = detail.get('service', 'Unknown')
     event_type = detail.get('eventTypeCode', 'Unknown')
     category = detail.get('eventTypeCategory', 'Unknown')
-    region = event.get('region', 'Unknown')
+    region = detail.get('eventRegion', 'Unknown')
     start_time = detail.get('startTime', 'N/A')
     status = detail.get('statusCode', 'Unknown')
 
@@ -170,7 +185,7 @@ def lambda_handler(event, context):
     service = detail.get('service', 'Unknown')
     event_type = detail.get('eventTypeCode', 'Unknown')
     category = detail.get('eventTypeCategory', 'unknown')
-    region = event.get('region', 'global')
+    region = detail.get('eventRegion', 'global')
 
     # Color code by severity
     colors = {
@@ -254,7 +269,7 @@ def lambda_handler(event, context):
             "severity": "critical",
             "source": "aws-health-dashboard",
             "component": service,
-            "group": detail.get('region', 'global'),
+            "group": detail.get('eventRegion', 'global'),
             "custom_details": {
                 "event_type": event_type,
                 "category": category,
@@ -287,7 +302,7 @@ aws events put-rule \
     "detail-type": ["AWS Health Event"],
     "detail": {
       "eventTypeCategory": ["issue"],
-      "service": ["EC2", "RDS", "ELB", "LAMBDA", "DYNAMODB"]
+      "service": ["EC2", "RDS", "ELASTICLOADBALANCING", "LAMBDA", "DYNAMODB"]
     }
   }' \
   --region us-east-1
@@ -380,15 +395,32 @@ Resources:
 
 ## Testing Your Setup
 
-AWS doesn't let you generate fake health events, but you can test the pipeline by sending a test event to EventBridge:
+AWS doesn't let you generate fake health events or send customer-generated events with an `aws.health` source, but you can test the pipeline with a temporary EventBridge rule that uses your own source and points to the same target:
 
 ```bash
+# Create a temporary test rule with the same target as your health rule
+aws events put-rule \
+  --name "test-health-notification-pipeline" \
+  --event-pattern '{
+    "source": ["com.yourcompany.aws-health-test"],
+    "detail-type": ["AWS Health Event"]
+  }' \
+  --region us-east-1
+
+aws events put-targets \
+  --rule "test-health-notification-pipeline" \
+  --targets '[{
+    "Id": "sns-health-target",
+    "Arn": "arn:aws:sns:us-east-1:123456789012:aws-health-notifications"
+  }]' \
+  --region us-east-1
+
 # Send a test event to verify your notification pipeline
 aws events put-events \
   --entries '[{
-    "Source": "aws.health",
+    "Source": "com.yourcompany.aws-health-test",
     "DetailType": "AWS Health Event",
-    "Detail": "{\"eventArn\":\"arn:aws:health:us-east-1::event/EC2/TEST/123\",\"service\":\"EC2\",\"eventTypeCode\":\"AWS_EC2_OPERATIONAL_ISSUE\",\"eventTypeCategory\":\"issue\",\"statusCode\":\"open\",\"eventDescription\":[{\"latestDescription\":\"This is a test health event notification.\"}],\"affectedEntities\":[{\"entityValue\":\"i-test123\"}]}"
+    "Detail": "{\"eventArn\":\"arn:aws:health:us-east-1::event/EC2/TEST/123\",\"service\":\"EC2\",\"eventTypeCode\":\"AWS_EC2_OPERATIONAL_ISSUE\",\"eventTypeCategory\":\"issue\",\"statusCode\":\"open\",\"eventRegion\":\"us-east-1\",\"eventDescription\":[{\"latestDescription\":\"This is a test health event notification.\"}],\"affectedEntities\":[{\"entityValue\":\"i-test123\"}]}"
   }]' \
   --region us-east-1
 ```
