@@ -14,7 +14,7 @@ There are a few ways to set this up, each with different tradeoffs. Let's walk t
 
 ## Authorization Options in API Gateway
 
-API Gateway offers three types of authorizers:
+API Gateway offers a few common authorization options:
 
 1. **Cognito User Pool Authorizer** - the simplest option. API Gateway validates the JWT token directly against your Cognito User Pool. No custom code needed.
 2. **Lambda Authorizer (Token-based)** - your own Lambda function validates the token and returns an IAM policy. More flexible but more work.
@@ -81,13 +81,11 @@ When a request hits your API with a Cognito authorizer, here's what happens behi
 sequenceDiagram
     participant Client
     participant APIGW as API Gateway
-    participant Cognito
     participant Lambda as Backend Lambda
 
-    Client->>APIGW: GET /users (Authorization: Bearer <token>)
+    Client->>APIGW: GET /users (Authorization: <token>)
     APIGW->>APIGW: Extract token from header
-    APIGW->>Cognito: Validate JWT signature and claims
-    Cognito-->>APIGW: Token valid
+    APIGW->>APIGW: Validate JWT signature and claims
     APIGW->>Lambda: Forward request with claims
     Lambda-->>APIGW: Response
     APIGW-->>Client: 200 OK
@@ -97,7 +95,7 @@ API Gateway checks:
 - The JWT signature against Cognito's public keys
 - The token hasn't expired
 - The `iss` claim matches the configured User Pool
-- The `token_use` is either "id" or "access"
+- The token type matches the method configuration: ID token when no authorization scopes are configured, or access token when scopes are configured
 
 If validation fails, the client gets a 401 response before your backend code even runs.
 
@@ -155,6 +153,8 @@ aws cognito-idp create-resource-server \
 aws cognito-idp update-user-pool-client \
     --user-pool-id us-east-1_XXXXXXXXX \
     --client-id your-app-client-id \
+    --allowed-o-auth-flows-user-pool-client \
+    --allowed-o-auth-flows "code" \
     --allowed-o-auth-scopes "myapi/read" "myapi/write" "openid" "email"
 ```
 
@@ -176,7 +176,7 @@ aws apigateway update-method \
 
 The built-in Cognito authorizer is convenient but limited. If you need to check group membership, verify custom claims, or add request context based on database lookups, you'll want a Lambda authorizer.
 
-Here's a Lambda authorizer that checks Cognito groups:
+Here's a Lambda authorizer that checks Cognito groups for admin routes:
 
 ```javascript
 const jwt = require('jsonwebtoken');
@@ -188,11 +188,15 @@ const client = jwksClient({
 });
 
 exports.handler = async (event) => {
-    const token = event.authorizationToken.replace('Bearer ', '');
+    const token = event.authorizationToken.replace(/^Bearer\s+/i, '');
 
     try {
         // Decode header to get kid
         const decoded = jwt.decode(token, { complete: true });
+        if (!decoded || !decoded.header || !decoded.header.kid) {
+            throw new Error('Invalid token header');
+        }
+
         const kid = decoded.header.kid;
 
         // Get the signing key
@@ -209,13 +213,24 @@ exports.handler = async (event) => {
             algorithms: ['RS256']
         });
 
+        if (payload.token_use === 'id' && payload.aud !== 'your-app-client-id') {
+            throw new Error('Invalid audience');
+        }
+
+        if (payload.token_use === 'access' && payload.client_id !== 'your-app-client-id') {
+            throw new Error('Invalid client');
+        }
+
+        if (!['id', 'access'].includes(payload.token_use)) {
+            throw new Error('Invalid token use');
+        }
+
         // Check group membership for admin endpoints
         const groups = payload['cognito:groups'] || [];
-        const resource = event.methodArn;
+        const isAdminRoute = event.methodArn.includes('/admin/');
+        const effect = isAdminRoute && !groups.includes('admin') ? 'Deny' : 'Allow';
 
         // Build the IAM policy
-        const effect = 'Allow';
-
         return {
             principalId: payload.sub,
             policyDocument: {
@@ -241,20 +256,23 @@ exports.handler = async (event) => {
 
 ## Making API Calls from the Client
 
-On the client side, attach the Cognito token to every API request.
+On the client side, attach the Cognito token to every API request. Use an ID token for methods without authorization scopes, and an access token for methods that require scopes.
 
 Here's the client-side code for calling your secured API:
 
 ```javascript
+import { fetchAuthSession } from 'aws-amplify/auth';
+
 async function callSecuredAPI(endpoint, method = 'GET', body = null) {
-    // Get a fresh access token
-    const session = await Auth.currentSession();
-    const token = session.getIdToken().getJwtToken();
+    // Get a fresh ID token for a method without authorization scopes.
+    // For scoped methods, use session.tokens.accessToken.toString() instead.
+    const session = await fetchAuthSession();
+    const token = session.tokens.idToken.toString();
 
     const options = {
         method,
         headers: {
-            'Authorization': `Bearer ${token}`,
+            'Authorization': token,
             'Content-Type': 'application/json'
         }
     };
@@ -299,6 +317,26 @@ aws apigateway put-integration \
     --http-method OPTIONS \
     --type MOCK \
     --request-templates '{"application/json": "{\"statusCode\": 200}"}'
+
+aws apigateway put-method-response \
+    --rest-api-id $API_ID \
+    --resource-id $RESOURCE_ID \
+    --http-method OPTIONS \
+    --status-code 200 \
+    --response-parameters \
+        method.response.header.Access-Control-Allow-Headers=true \
+        method.response.header.Access-Control-Allow-Methods=true \
+        method.response.header.Access-Control-Allow-Origin=true
+
+aws apigateway put-integration-response \
+    --rest-api-id $API_ID \
+    --resource-id $RESOURCE_ID \
+    --http-method OPTIONS \
+    --status-code 200 \
+    --response-parameters \
+        method.response.header.Access-Control-Allow-Headers="'Content-Type,Authorization'" \
+        method.response.header.Access-Control-Allow-Methods="'GET,POST,OPTIONS'" \
+        method.response.header.Access-Control-Allow-Origin="'https://example.com'"
 ```
 
 ## Wrapping Up
