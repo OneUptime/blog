@@ -16,7 +16,7 @@ This guide will show you how to use these fields effectively to optimize pod pla
 
 The labelSelector field determines which pods count toward spread calculations. Only pods matching the selector are considered when calculating skew between topology domains. This allows you to create separate spread groups for different applications or versions.
 
-Without labelSelector, the constraint only applies to the pod being scheduled, not considering existing pods. With labelSelector, you can ensure even distribution across your entire application fleet.
+Without labelSelector, no existing pods are selected for the skew calculation. With labelSelector, you can ensure even distribution across your entire application fleet.
 
 ## Basic Topology Spread with labelSelector
 
@@ -52,7 +52,7 @@ spec:
         image: nginx:latest
 ```
 
-This ensures web app pods distribute evenly across zones. With 9 replicas and 3 zones, each zone gets 3 pods. The labelSelector includes all pods with `app: web` in the calculation.
+This ensures web app pods distribute evenly across zones. With 9 replicas, 3 eligible zones, and enough available resources in each zone, each zone gets 3 pods. The labelSelector includes all pods with `app: web` in the calculation.
 
 ## Using matchExpressions for Complex Selectors
 
@@ -80,9 +80,9 @@ This spreads production web and API pods together across zones, treating them as
 
 ## Understanding matchLabelKeys
 
-The matchLabelKeys field (introduced in Kubernetes 1.25) automatically includes pod labels in the selector without explicitly listing them. This is particularly useful for rolling updates where you want to spread pods of the same version together.
+The matchLabelKeys field (introduced as alpha in Kubernetes 1.25 and beta, enabled by default, since Kubernetes 1.27) automatically includes pod labels in the selector without explicitly listing their values. This is particularly useful for rolling updates where you want to spread pods of the same version together.
 
-matchLabelKeys takes label keys from the pod being scheduled and adds them to labelSelector. This creates dynamic grouping based on the incoming pod's labels.
+matchLabelKeys takes label keys from the pod being scheduled and combines those key-value pairs with labelSelector. Since Kubernetes 1.34, the API server explicitly merges those labels into labelSelector; before that, Kubernetes handled the additional matching implicitly. This creates dynamic grouping based on the incoming pod's labels.
 
 ## Using matchLabelKeys for Version-Aware Spreading
 
@@ -147,7 +147,7 @@ topologySpreadConstraints:
   - version
 ```
 
-This creates a two-level distribution: strict spreading across zones, with softer spreading across nodes within each zone.
+This creates a two-level distribution: strict spreading across zones, with a softer preference for spreading across nodes.
 
 ## Spreading by Pod Template Hash
 
@@ -248,7 +248,9 @@ Check why pods aren't spreading as expected:
 
 ```bash
 # View pod distribution across zones
-kubectl get pods -l app=web -o wide | awk '{print $7}' | sort | uniq -c
+for node in $(kubectl get pods -l app=web -o jsonpath='{.items[*].spec.nodeName}'); do
+  kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}'
+done | sort | uniq -c
 
 # Check pod events for spread constraint violations
 kubectl describe pod POD_NAME | grep -A10 Events
@@ -277,13 +279,14 @@ kubectl apply -f deployment-with-spread.yaml
 # Wait for all pods to schedule
 kubectl wait --for=condition=ready pod -l app=web --timeout=300s
 
-# Check distribution
+# Check pod-to-node placement
 kubectl get pods -l app=web \
-  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName,ZONE:.spec.nodeSelector
+  -o custom-columns=NAME:.metadata.name,NODE:.spec.nodeName
 
-# Calculate skew
-kubectl get pods -l app=web -o json | \
-  jq -r '.items[].spec.nodeName' | sort | uniq -c
+# Calculate zone skew
+for node in $(kubectl get pods -l app=web -o jsonpath='{.items[*].spec.nodeName}'); do
+  kubectl get node "$node" -o jsonpath='{.metadata.labels.topology\.kubernetes\.io/zone}{"\n"}'
+done | sort | uniq -c
 ```
 
 ## Best Practices
