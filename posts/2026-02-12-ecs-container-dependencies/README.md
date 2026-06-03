@@ -199,14 +199,6 @@ resource "aws_ecs_task_definition" "api" {
       firelensConfiguration = {
         type = "fluentbit"
       }
-
-      healthCheck = {
-        command     = ["CMD-SHELL", "curl -f http://localhost:2020/api/v1/health || exit 1"]
-        interval    = 5
-        timeout     = 2
-        retries     = 3
-        startPeriod = 10
-      }
     },
 
     # Main application - depends on both init and sidecar
@@ -222,7 +214,7 @@ resource "aws_ecs_task_definition" "api" {
         },
         {
           containerName = "log-router"
-          condition     = "HEALTHY"
+          condition     = "START"
         }
       ]
 
@@ -289,6 +281,8 @@ Good health check patterns for common sidecars:
 }
 ```
 
+For Fluent Bit, the `/api/v1/health` endpoint requires the built-in HTTP server and health check to be enabled in the Fluent Bit configuration.
+
 ## Shutdown Order
 
 Dependencies also affect shutdown order. When a task stops, ECS sends SIGTERM to containers in reverse dependency order. The main application stops first, then the sidecars. This ensures your app finishes its work before the sidecars it depends on go away.
@@ -312,6 +306,8 @@ You can control how long ECS waits between SIGTERM and SIGKILL with the `stopTim
 log-router (START) --> app
 ```
 
+ECS configures this dependency by default for FireLens containers. If you define your own container ordering, keep an explicit dependency so the log router still starts before the application and stops after it.
+
 **Application + proxy + init container:**
 ```text
 config-init (SUCCESS) --> proxy (HEALTHY) --> app
@@ -326,7 +322,7 @@ metrics-agent (START) --> app
 
 ## Troubleshooting
 
-**Task stuck in PROVISIONING**: If a dependency container never becomes healthy, the dependent container never starts, and the task stays in PROVISIONING. Check the sidecar's logs and health check configuration.
+**Dependent container never starts**: If a dependency container never becomes healthy, the dependent container never starts, and the task doesn't progress to its next state. Check the sidecar's logs and health check configuration.
 
 **Init container keeps restarting**: Make sure the init container is `essential: false`. If it's essential and it exits (even successfully), ECS stops the whole task.
 
