@@ -10,7 +10,7 @@ Description: Build reliable ETL pipelines by orchestrating AWS Glue jobs with St
 
 AWS Glue handles the extract-transform-load work. But who orchestrates when Glue jobs run, what happens when they fail, and how they depend on each other? That is where Step Functions comes in.
 
-Step Functions has native Glue integrations that let you start crawlers, run ETL jobs, wait for completion, and handle errors - all without writing a single line of Lambda code. This guide walks through building production-grade ETL workflows.
+Step Functions has native Glue integrations that let you start crawlers, run ETL jobs, wait for Glue jobs to complete, and handle errors - all without writing a single line of Lambda code. This guide walks through building production-grade ETL workflows.
 
 ## Why Step Functions for ETL Orchestration?
 
@@ -42,7 +42,7 @@ graph TD
 
 ## Step 1: Run a Glue Crawler
 
-Crawlers scan your data sources and update the Glue Data Catalog. Step Functions can start a crawler and wait for it to finish using the `.sync` integration pattern.
+Crawlers scan your data sources and update the Glue Data Catalog. Step Functions can start a crawler with the AWS SDK integration and poll the crawler status until it finishes.
 
 ```json
 {
@@ -155,9 +155,9 @@ Most ETL pipelines have jobs that can run simultaneously. Use the Parallel state
 ```json
 {
   "Comment": "ETL pipeline with parallel transform jobs",
-  "StartAt": "RunCrawler",
+  "StartAt": "RunCatalogJob",
   "States": {
-    "RunCrawler": {
+    "RunCatalogJob": {
       "Type": "Task",
       "Resource": "arn:aws:states:::glue:startJobRun.sync",
       "Parameters": {
@@ -284,6 +284,8 @@ The quality check Lambda validates transformed data before loading:
 ```python
 # Data quality check that validates row counts, null ratios, and freshness
 
+import time
+
 import boto3
 
 def handler(event, context):
@@ -337,13 +339,27 @@ def handler(event, context):
     }
 
 def run_athena_query(client, query):
-    # Simplified Athena query execution
     response = client.start_query_execution(
         QueryString=query,
         ResultConfiguration={'OutputLocation': 's3://my-athena-results/'}
     )
-    # Wait for and parse result (simplified)
-    return 0
+    query_execution_id = response['QueryExecutionId']
+
+    while True:
+        status = client.get_query_execution(
+            QueryExecutionId=query_execution_id
+        )['QueryExecution']['Status']['State']
+
+        if status == 'SUCCEEDED':
+            break
+        if status in ('FAILED', 'CANCELLED'):
+            raise RuntimeError(f'Athena query {query_execution_id} ended with status {status}')
+
+        time.sleep(2)
+
+    results = client.get_query_results(QueryExecutionId=query_execution_id)
+    rows = results['ResultSet']['Rows']
+    return int(rows[1]['Data'][0]['VarCharValue'])
 ```
 
 ## Scheduling the Pipeline
@@ -363,7 +379,12 @@ aws events put-targets \
     "Id": "etl-pipeline",
     "Arn": "arn:aws:states:us-east-1:123456789012:stateMachine:etl-pipeline",
     "RoleArn": "arn:aws:iam::123456789012:role/eventbridge-sfn-role",
-    "Input": "{\"processingDate\": \"<aws.scheduler.execution-id>\"}"
+    "InputTransformer": {
+      "InputPathsMap": {
+        "scheduledTime": "$.time"
+      },
+      "InputTemplate": "{\"processingDate\": \"<scheduledTime>\"}"
+    }
   }]'
 ```
 
