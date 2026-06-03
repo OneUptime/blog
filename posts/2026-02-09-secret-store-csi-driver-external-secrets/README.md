@@ -8,7 +8,7 @@ Description: Learn how to use the Secrets Store CSI Driver to mount secrets from
 
 ---
 
-Storing sensitive data like passwords, API keys, and certificates in Kubernetes Secrets creates security risks. These secrets are only base64-encoded by default and accessible to anyone with sufficient RBAC permissions. The Secrets Store CSI Driver solves this by allowing pods to mount secrets directly from external secret management systems, keeping sensitive data out of Kubernetes entirely while making it available to applications.
+Storing sensitive data like passwords, API keys, and certificates in Kubernetes Secrets creates security risks. These secrets are only base64-encoded by default and accessible to anyone with sufficient RBAC permissions. The Secrets Store CSI Driver solves this by allowing pods to mount secrets directly from external secret management systems, keeping sensitive data out of Kubernetes Secret objects unless you explicitly enable syncing.
 
 This guide will show you how to install and configure the Secrets Store CSI Driver to integrate with popular secret backends and mount external secrets as volumes in your pods.
 
@@ -16,7 +16,7 @@ This guide will show you how to install and configure the Secrets Store CSI Driv
 
 The Secrets Store CSI Driver is a Container Storage Interface (CSI) volume driver that connects Kubernetes to external secret stores. Instead of creating Kubernetes Secret objects, secrets remain in external vaults and get mounted into pods as files. The driver supports multiple providers including AWS Secrets Manager, Azure Key Vault, GCP Secret Manager, and HashiCorp Vault.
 
-This approach provides several benefits: secrets never exist in etcd, access is audited in the external system, secret rotation happens automatically, and you leverage enterprise secret management features like encryption and compliance controls.
+This approach provides several benefits: secrets do not exist in etcd unless you sync them to Kubernetes Secrets, access is audited in the external system, secret rotation can be enabled, and you leverage enterprise secret management features like encryption and compliance controls.
 
 ## Installing the Secrets Store CSI Driver
 
@@ -195,13 +195,18 @@ kubectl exec -it deployment/app-with-secrets -n production -- cat /mnt/secrets/d
 For Azure environments, install the Azure provider:
 
 ```bash
+# Add Azure provider Helm repository
+helm repo add csi-secrets-store-provider-azure https://azure.github.io/secrets-store-csi-driver-provider-azure/charts
+helm repo update
+
 # Install Azure provider
 helm install csi-secrets-store-provider-azure \
   csi-secrets-store-provider-azure/csi-secrets-store-provider-azure \
-  --namespace kube-system
+  --namespace kube-system \
+  --set secrets-store-csi-driver.install=false
 
 # Verify installation
-kubectl get pods -n kube-system -l app=csi-secrets-store-provider-azure
+kubectl get pods -n kube-system -l app=secrets-store-provider-azure
 ```
 
 Configure SecretProviderClass for Azure:
@@ -217,8 +222,7 @@ spec:
   provider: azure
   parameters:
     usePodIdentity: "false"
-    useVMManagedIdentity: "false"
-    clientID: ""  # Will use workload identity
+    clientID: "your-workload-identity-client-id"
     keyvaultName: "mykeyvault"
     cloudName: ""
     objects: |
@@ -243,10 +247,16 @@ The pods need Azure AD Workload Identity configured (see earlier post on Azure A
 For HashiCorp Vault, install the provider:
 
 ```bash
+# Add HashiCorp Helm repository
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
+
 # Install Vault provider
-helm install vault-csi-provider hashicorp/vault-csi-provider \
+helm install vault hashicorp/vault \
   --namespace kube-system \
-  --set vault.address="http://vault.vault.svc:8200"
+  --set "server.enabled=false" \
+  --set "injector.enabled=false" \
+  --set "csi.enabled=true"
 ```
 
 Configure SecretProviderClass for Vault:
@@ -297,10 +307,10 @@ Enable automatic rotation to pick up updated secrets without restarting pods:
 ```bash
 # Secret rotation is enabled by default when installing with the flag
 # Verify rotation is enabled
-kubectl get deployment csi-secrets-store -n kube-system -o yaml | grep rotation
+kubectl get daemonset csi-secrets-store -n kube-system -o yaml | grep rotation
 
 # Rotation period is controlled by rotationPollInterval
-# Default is 120 seconds
+# Default is 2 minutes
 ```
 
 When a secret changes in the external vault, the driver automatically updates the mounted files. Applications need to watch the files and reload configuration when they change:
