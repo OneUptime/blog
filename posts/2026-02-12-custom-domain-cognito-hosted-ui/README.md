@@ -16,6 +16,7 @@ Before setting up a custom domain, you need:
 
 - A Cognito User Pool with a working hosted UI
 - A domain name you control
+- A valid DNS A record for the parent domain (for `auth.myapp.com`, `myapp.com` must resolve)
 - An SSL/TLS certificate in AWS Certificate Manager (ACM) - must be in **us-east-1** regardless of your User Pool's region
 - DNS access to create CNAME or alias records
 
@@ -144,9 +145,9 @@ CNAME  auth.myapp.com  -->  d1234abcde.cloudfront.net
 
 Note: CNAME records don't work at the zone apex (e.g., `myapp.com`). Use a subdomain like `auth.myapp.com`.
 
-## Step 5: Update App Client Callback URLs
+## Step 5: Verify App Client Callback URLs
 
-Make sure your app client's callback URLs use the new domain:
+Make sure your app client's callback and logout URLs match the redirect URLs your application uses:
 
 ```hcl
 resource "aws_cognito_user_pool_client" "app" {
@@ -201,7 +202,7 @@ Amplify.configure({
 
 If you have social or enterprise identity providers, update the callback URLs in their configurations:
 
-**Google OAuth**: Update the authorized redirect URI to:
+**Google OAuth**: Update the authorized JavaScript origin to `https://auth.myapp.com` and the authorized redirect URI to:
 ```text
 https://auth.myapp.com/oauth2/idpresponse
 ```
@@ -297,7 +298,7 @@ data "aws_route53_zone" "main" {
 
 **"Domain already exists"** - Each custom domain can only be used by one User Pool. If you're migrating, delete the old domain first.
 
-**SSL errors after setup** - DNS propagation can take up to 48 hours. Check with `dig auth.myapp.com` to verify the CNAME is resolving.
+**SSL errors after setup** - DNS propagation can take up to 48 hours. Check with `dig auth.myapp.com` to verify the A/alias or CNAME record resolves to the Cognito CloudFront distribution.
 
 For styling the hosted UI pages themselves, see [customizing the Cognito hosted UI](https://oneuptime.com/blog/post/2026-02-12-customize-cognito-hosted-ui/view).
 
