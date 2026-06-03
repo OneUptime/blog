@@ -17,8 +17,8 @@ Custom data identifiers let you teach Macie to find your organization's specific
 A custom data identifier has three components:
 
 1. **Regular expression** - The pattern to match. This is the primary detection mechanism.
-2. **Keywords** (optional) - Words that must appear near the regex match. This reduces false positives.
-3. **Maximum match distance** (optional) - How close the keyword must be to the regex match (in characters).
+2. **Keywords** (optional) - Words that must precede the regex match and be within the configured distance. This reduces false positives.
+3. **Maximum match distance** (optional) - How close the end of the keyword must be to the end of the regex match (in characters).
 
 When Macie scans an S3 object, it evaluates custom identifiers alongside the built-in ones. Matches are reported as findings with the severity you define.
 
@@ -60,7 +60,7 @@ aws macie2 create-custom-data-identifier \
       "severity": "HIGH"
     }
   ]' \
-  --tags Key=Team,Value=Security
+  --tags Team=Security
 ```
 
 The severity levels let you escalate based on volume. A single employee ID might be a low-risk issue, but 10 or more in the same file suggests a data dump.
@@ -104,8 +104,8 @@ aws macie2 create-custom-data-identifier \
   --keywords '["patient", "medical", "record", "health", "diagnosis", "treatment"]' \
   --maximum-match-distance 75 \
   --severity-levels '[
-    {"occurrencesThreshold": 1, "severity": "HIGH"},
-    {"occurrencesThreshold": 50, "severity": "CRITICAL"}
+    {"occurrencesThreshold": 1, "severity": "MEDIUM"},
+    {"occurrencesThreshold": 50, "severity": "HIGH"}
   ]'
 ```
 
@@ -119,7 +119,7 @@ aws macie2 create-custom-data-identifier \
   --keywords '["api_key", "token", "secret", "authorization", "bearer"]' \
   --maximum-match-distance 30 \
   --severity-levels '[
-    {"occurrencesThreshold": 1, "severity": "CRITICAL"}
+    {"occurrencesThreshold": 1, "severity": "HIGH"}
   ]'
 ```
 
@@ -135,10 +135,10 @@ aws macie2 test-custom-data-identifier \
   --regex "EMP-[0-9]{6}" \
   --keywords '["employee", "emp_id"]' \
   --maximum-match-distance 50 \
-  --sample-text "The employee with emp_id EMP-123456 was assigned to the project. Another team member EMP-789012 joined later."
+  --sample-text "The employee with emp_id EMP-123456 was assigned to the project. Another employee EMP-789012 joined later."
 ```
 
-The response tells you how many matches were found and where they are. If the count seems wrong, adjust your regex or keywords.
+The response tells you how many matches were found. If the count seems wrong, adjust your regex or keywords.
 
 Test for false positives too:
 
@@ -158,7 +158,7 @@ aws macie2 test-custom-data-identifier \
 ```bash
 # List all custom data identifiers
 aws macie2 list-custom-data-identifiers \
-  --query 'Items[].{Name:Name,Id:Id,CreatedAt:CreatedAt}'
+  --query 'items[].{Name:name,Id:id,CreatedAt:createdAt}'
 ```
 
 ### Get Details
@@ -188,30 +188,30 @@ aws macie2 create-classification-job \
   --job-type SCHEDULED \
   --name "weekly-sensitive-data-scan" \
   --description "Weekly scan for all sensitive data types" \
-  --schedule-frequency-details '{
-    "WeeklySchedule": {
-      "DayOfWeek": "SUNDAY"
+  --schedule-frequency '{
+    "weeklySchedule": {
+      "dayOfWeek": "SUNDAY"
     }
   }' \
   --s3-job-definition '{
-    "BucketDefinitions": [
+    "bucketDefinitions": [
       {
-        "AccountId": "111111111111",
-        "Buckets": [
+        "accountId": "111111111111",
+        "buckets": [
           "production-data-bucket",
           "analytics-data-bucket",
           "user-uploads-bucket"
         ]
       }
     ],
-    "Scoping": {
-      "Includes": {
-        "And": [
+    "scoping": {
+      "includes": {
+        "and": [
           {
-            "SimpleScopeTerm": {
-              "Comparator": "STARTS_WITH",
-              "Key": "OBJECT_KEY",
-              "Values": ["data/", "exports/", "reports/"]
+            "simpleScopeTerm": {
+              "comparator": "STARTS_WITH",
+              "key": "OBJECT_KEY",
+              "values": ["data/", "exports/", "reports/"]
             }
           }
         ]
@@ -233,10 +233,10 @@ aws macie2 create-classification-job \
   --job-type ONE_TIME \
   --name "investigate-data-export" \
   --s3-job-definition '{
-    "BucketDefinitions": [
+    "bucketDefinitions": [
       {
-        "AccountId": "111111111111",
-        "Buckets": ["suspicious-data-export-bucket"]
+        "accountId": "111111111111",
+        "buckets": ["suspicious-data-export-bucket"]
       }
     ]
   }' \
@@ -290,7 +290,7 @@ resource "aws_macie2_classification_job" "weekly_scan" {
     aws_macie2_custom_data_identifier.api_token.id,
   ]
 
-  schedule_frequency_details {
+  schedule_frequency {
     weekly_schedule {
       day_of_week = "SUNDAY"
     }
@@ -314,7 +314,7 @@ This EventBridge rule catches Macie findings from your custom identifiers:
         "customDataIdentifiers": {
           "detections": {
             "name": [{
-              "anything-but": []
+              "exists": true
             }]
           }
         }
@@ -367,7 +367,7 @@ def handler(event, context):
         Message=json.dumps(message, indent=2)
     )
 
-    # For critical findings, add a quarantine tag to the object
+    # For high severity findings, add a quarantine tag to the object
     if severity == 'High':
         s3.put_object_tagging(
             Bucket=bucket,
@@ -404,8 +404,8 @@ Check findings from your classification jobs:
 aws macie2 list-findings \
   --finding-criteria '{
     "criterion": {
-      "classificationDetails.result.customDataIdentifiers.detections.name": {
-        "neq": []
+      "classificationDetails.result.customDataIdentifiers.detections.count": {
+        "gt": 0
       }
     }
   }' \
