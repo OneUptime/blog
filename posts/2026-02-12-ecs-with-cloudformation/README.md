@@ -45,7 +45,9 @@ Parameters:
     AllowedValues: [production, staging, development]
   VpcId:
     Type: AWS::EC2::VPC::Id
-  SubnetIds:
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  PrivateSubnetIds:
     Type: List<AWS::EC2::Subnet::Id>
   ContainerImage:
     Type: String
@@ -76,7 +78,7 @@ Resources:
           Weight: 3
 ```
 
-This cluster uses a mix of Fargate and Fargate Spot. The `Base: 1` ensures at least one task always runs on regular Fargate (for reliability), while the `Weight: 3` on Spot means 75% of additional tasks will use Spot pricing.
+This capacity provider strategy uses a mix of Fargate and Fargate Spot. The `Base: 1` ensures at least one task always runs on regular Fargate (for reliability), while the `Weight: 3` on Spot means 75% of additional tasks will use Spot pricing.
 
 ## IAM Roles
 
@@ -179,7 +181,7 @@ The ECS security group only allows inbound traffic from the ALB. This is a criti
       Type: application
       SecurityGroups:
         - !Ref ALBSecurityGroup
-      Subnets: !Ref SubnetIds
+      Subnets: !Ref PublicSubnetIds
 
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
@@ -270,10 +272,15 @@ The ECS security group only allows inbound traffic from the ALB. This is a criti
       Cluster: !Ref ECSCluster
       TaskDefinition: !Ref TaskDefinition
       DesiredCount: !Ref DesiredCount
-      LaunchType: FARGATE
+      CapacityProviderStrategy:
+        - CapacityProvider: FARGATE
+          Weight: 1
+          Base: 1
+        - CapacityProvider: FARGATE_SPOT
+          Weight: 3
       NetworkConfiguration:
         AwsvpcConfiguration:
-          Subnets: !Ref SubnetIds
+          Subnets: !Ref PrivateSubnetIds
           SecurityGroups:
             - !Ref ECSSecurityGroup
           AssignPublicIp: DISABLED
@@ -346,7 +353,8 @@ aws cloudformation deploy \
   --parameter-overrides \
     EnvironmentName=production \
     VpcId=vpc-abc123 \
-    SubnetIds=subnet-abc123,subnet-def456 \
+    PublicSubnetIds=subnet-abc123,subnet-def456 \
+    PrivateSubnetIds=subnet-ghi789,subnet-jkl012 \
     ContainerImage=123456789012.dkr.ecr.us-east-1.amazonaws.com/app:v1.2.3 \
   --capabilities CAPABILITY_NAMED_IAM
 
