@@ -8,7 +8,7 @@ Description: A thorough guide to configuring health checks in ECS, covering cont
 
 ---
 
-Health checks are the mechanism that keeps your ECS services running reliably. When a container becomes unhealthy, ECS replaces it. When a task fails load balancer health checks, the ALB stops sending traffic to it. Getting health checks right means the difference between self-healing services and midnight pages about containers stuck in restart loops.
+Health checks are the mechanism that keeps your ECS services running reliably. When an essential container becomes unhealthy, ECS replaces the task. When a task fails load balancer health checks, the ALB stops sending traffic to it. Getting health checks right means the difference between self-healing services and midnight pages about containers stuck in restart loops.
 
 The tricky part is that ECS has multiple layers of health checking, and they don't always interact the way you'd expect. Let's untangle all of them.
 
@@ -54,13 +54,13 @@ Here's what each parameter does:
 - **retries** - consecutive failures needed to mark the container as unhealthy (default 3)
 - **startPeriod** - grace period in seconds before health checks start counting failures (default 0)
 
-The `startPeriod` is the most important setting. If your application takes 45 seconds to boot, set this to at least 60. During the start period, health check failures don't count against the retry limit.
+The `startPeriod` is the most important setting. If your application takes 45 seconds to boot, set this to at least 60. During the start period, health check failures don't count against the retry limit. If a health check succeeds during the start period, the container is considered healthy and later failures count normally.
 
 ### Health Check Command Options
 
 You have two command formats:
 
-```json
+```jsonc
 // CMD-SHELL - runs in the container's shell
 "command": ["CMD-SHELL", "curl -f http://localhost:8080/health || exit 1"]
 
@@ -165,7 +165,7 @@ Here's how they work together when both are configured:
 5. Once the ALB marks the target healthy, traffic flows to the task
 6. If either check fails consistently, the task is eventually replaced
 
-The ECS service considers a task healthy only when both container health check AND ALB health check are passing.
+When a service uses a load balancer and an essential container has a health check defined, the ECS service considers a task healthy only when both the container health check AND ALB health check are passing.
 
 ## Health Check Grace Period
 
@@ -184,7 +184,7 @@ aws ecs create-service \
   --load-balancers '[...]'
 ```
 
-During the grace period, ECS ignores ALB health check failures. This gives your application time to:
+During the grace period, ECS ignores unhealthy Elastic Load Balancing, VPC Lattice, and container health check status. This gives your application time to:
 
 - Pull and start the container
 - Initialize database connections
@@ -200,7 +200,7 @@ Set this to at least 2x your application's typical startup time. If your app tak
 
 Symptoms: tasks start, run for a minute, get killed, and new ones start.
 
-The cause is almost always the health check grace period being too short. ECS kills the task before it finishes starting up.
+The cause is often the health check grace period or container health check `startPeriod` being too short. ECS kills the task before it finishes starting up.
 
 ```bash
 # Fix: increase the grace period
@@ -252,9 +252,9 @@ aws elbv2 describe-target-health \
 
 ### Problem: Slow Rolling Deployments
 
-If deployments take forever, the health check interval might be too long. The ALB needs `healthy-threshold` consecutive successful checks before routing traffic.
+If deployments take forever, the health check interval might be too long. For newly registered targets, the ALB only needs one successful health check before routing traffic, regardless of the healthy threshold setting. For a target that was unhealthy and is recovering, the ALB needs `healthy-threshold` consecutive successful checks before routing traffic again.
 
-With the default settings (30s interval, 5 healthy threshold), it takes 150 seconds before a new task starts receiving traffic. Optimize this:
+With the default settings (30s interval, 5 healthy threshold), it can take up to 30 seconds before a newly registered target passes its first health check, while an unhealthy target that recovers takes 150 seconds to return to service. Optimize this:
 
 ```bash
 # Faster health check for quicker deployments
@@ -264,7 +264,7 @@ aws elbv2 modify-target-group \
   --healthy-threshold-count 2
 ```
 
-Now it takes just 20 seconds to mark a target healthy. The trade-off is more health check traffic to your containers.
+Now a newly registered target can pass its first health check in up to 10 seconds, and a recovering unhealthy target takes 20 seconds to return to service. The trade-off is more health check traffic to your containers.
 
 ## Monitoring Health Check Status
 
