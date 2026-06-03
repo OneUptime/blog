@@ -26,24 +26,27 @@ For Istio:
 
 ```bash
 istioctl install --set profile=demo
-kubectl label namespace demo istio-injection=enabled
+kubectl create namespace demo-istio
+kubectl label namespace demo-istio istio-injection=enabled
 ```
 
 For Linkerd:
 
 ```bash
+linkerd install --crds | kubectl apply -f -
 linkerd install | kubectl apply -f -
-kubectl annotate namespace demo linkerd.io/inject=enabled
+kubectl create namespace demo-linkerd
+kubectl annotate namespace demo-linkerd linkerd.io/inject=enabled
 ```
 
 Deploy the same application in both namespaces for accurate comparison.
 
-## Deploying Prometheus Federation
+## Deploying Prometheus Scraping
 
 Set up Prometheus to scrape metrics from both service meshes:
 
 ```yaml
-# prometheus-federated.yaml
+# prometheus-scrape.yaml
 
 apiVersion: v1
 kind: ConfigMap
@@ -56,34 +59,29 @@ data:
       scrape_interval: 15s
     scrape_configs:
     # Scrape Istio metrics
-    - job_name: 'istio-mesh'
-      kubernetes_sd_configs:
-      - role: endpoints
-        namespaces:
-          names:
-          - istio-system
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_service_name]
-        action: keep
-        regex: prometheus
-    # Scrape Linkerd metrics
-    - job_name: 'linkerd-mesh'
+    - job_name: 'istio-envoy'
+      metrics_path: /stats/prometheus
       kubernetes_sd_configs:
       - role: pod
-        namespaces:
-          names:
-          - linkerd
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: '.*-envoy-prom'
+    # Scrape Linkerd metrics
+    - job_name: 'linkerd-proxy'
+      kubernetes_sd_configs:
+      - role: pod
       relabel_configs:
       - source_labels: [__meta_kubernetes_pod_container_port_name]
         action: keep
         regex: admin-http
 ```
 
-Deploy Prometheus:
+Apply the configuration to an existing Prometheus deployment:
 
 ```bash
 kubectl create namespace monitoring
-kubectl apply -f prometheus-federated.yaml
+kubectl apply -f prometheus-scrape.yaml
 ```
 
 ## Creating Unified Grafana Dashboard
@@ -163,9 +161,12 @@ scrape_configs:
 - job_name: 'linkerd-normalized'
   metric_relabel_configs:
   - source_labels: [dst_service]
+    regex: (.+)
     target_label: destination_service
-  - source_labels: [request_total]
-    target_label: istio_requests_total
+  - source_labels: [__name__]
+    regex: request_total
+    target_label: __name__
+    replacement: linkerd_requests_total
 ```
 
 ## Comparing Latency Distribution
@@ -192,13 +193,13 @@ Compare error handling:
 
 ```promql
 # Istio success rate
-sum(rate(istio_requests_total{response_code!~\"5..\"}[5m])) / sum(rate(istio_requests_total[5m]))
+sum(rate(istio_requests_total{response_code!~"5.."}[5m])) / sum(rate(istio_requests_total[5m]))
 
 # Linkerd success rate
-sum(rate(response_total{classification=\"success\"}[5m])) / sum(rate(response_total[5m]))
+sum(rate(response_total{classification="success"}[5m])) / sum(rate(response_total[5m]))
 ```
 
-Linkerd classifies responses as success/failure automatically. Istio requires you to define success based on status codes.
+Linkerd classifies `response_total` responses as success/failure automatically. Istio requires you to define success based on status codes.
 
 ## Analyzing Saturation Metrics
 
@@ -273,11 +274,11 @@ groups:
     annotations:
       summary: "Linkerd P95 latency exceeds 1 second"
   - alert: IstioErrorRateHigh
-    expr: sum(rate(istio_requests_total{response_code=~\"5..\"}[5m])) / sum(rate(istio_requests_total[5m])) > 0.01
+    expr: sum(rate(istio_requests_total{response_code=~"5.."}[5m])) / sum(rate(istio_requests_total[5m])) > 0.01
     annotations:
       summary: "Istio error rate exceeds 1%"
   - alert: LinkerdErrorRateHigh
-    expr: sum(rate(response_total{classification=\"failure\"}[5m])) / sum(rate(response_total[5m])) > 0.01
+    expr: sum(rate(response_total{classification="failure"}[5m])) / sum(rate(response_total[5m])) > 0.01
     annotations:
       summary: "Linkerd error rate exceeds 1%"
 ```
@@ -286,6 +287,6 @@ groups:
 
 Unified observability dashboards comparing Istio and Linkerd golden signals help teams make informed service mesh decisions. Both meshes provide latency, traffic, error, and saturation metrics but with different implementations.
 
-Use Prometheus federation to collect metrics from both meshes. Normalize label names for easier comparison. Build Grafana dashboards showing side-by-side metrics for the four golden signals.
+Use Prometheus scraping or federation to collect metrics from both meshes. Normalize label names for easier comparison. Build Grafana dashboards showing side-by-side metrics for the four golden signals.
 
 Monitor control plane resource usage to understand operational overhead. Set up alerts that fire when either mesh exceeds SLO thresholds. This comprehensive observability approach ensures you can evaluate and operate service meshes effectively.
