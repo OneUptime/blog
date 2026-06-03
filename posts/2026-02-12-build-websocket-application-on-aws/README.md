@@ -47,7 +47,7 @@ First, set up your CDK project and install the necessary packages.
 
 mkdir websocket-app && cd websocket-app
 cdk init app --language typescript
-npm install @aws-cdk/aws-apigatewayv2 @aws-cdk/aws-lambda @aws-cdk/aws-dynamodb
+npm install aws-cdk-lib constructs
 ```
 
 Here's the CDK stack that creates the DynamoDB table and Lambda functions.
@@ -59,10 +59,11 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigatewayv2 from 'aws-cdk-lib/aws-apigatewayv2';
 import { WebSocketLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
+import { Construct } from 'constructs';
 
 export class WebSocketStack extends cdk.Stack {
-  constructor(scope: cdk.App, id: string) {
-    super(scope, id);
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
 
     // DynamoDB table to track active connections
     const connectionsTable = new dynamodb.Table(this, 'ConnectionsTable', {
@@ -73,7 +74,7 @@ export class WebSocketStack extends cdk.Stack {
 
     // Lambda for handling new connections
     const connectHandler = new lambda.Function(this, 'ConnectHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'connect.handler',
       code: lambda.Code.fromAsset('lambda'),
       environment: {
@@ -83,7 +84,7 @@ export class WebSocketStack extends cdk.Stack {
 
     // Lambda for handling disconnections
     const disconnectHandler = new lambda.Function(this, 'DisconnectHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'disconnect.handler',
       code: lambda.Code.fromAsset('lambda'),
       environment: {
@@ -93,7 +94,7 @@ export class WebSocketStack extends cdk.Stack {
 
     // Lambda for handling messages
     const messageHandler = new lambda.Function(this, 'MessageHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'message.handler',
       code: lambda.Code.fromAsset('lambda'),
       environment: {
@@ -108,6 +109,7 @@ export class WebSocketStack extends cdk.Stack {
 
     // Create WebSocket API
     const webSocketApi = new apigatewayv2.WebSocketApi(this, 'WebSocketApi', {
+      routeSelectionExpression: '$request.body.action',
       connectRouteOptions: {
         integration: new WebSocketLambdaIntegration('ConnectIntegration', connectHandler),
       },
@@ -117,6 +119,10 @@ export class WebSocketStack extends cdk.Stack {
       defaultRouteOptions: {
         integration: new WebSocketLambdaIntegration('MessageIntegration', messageHandler),
       },
+    });
+
+    webSocketApi.addRoute('sendMessage', {
+      integration: new WebSocketLambdaIntegration('SendMessageIntegration', messageHandler),
     });
 
     // Deploy the API to a stage
@@ -189,7 +195,7 @@ The message handler is where the real work happens. It reads the incoming messag
 
 ```javascript
 // lambda/message.js
-const { DynamoDBClient, ScanCommand } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBClient, DeleteItemCommand, ScanCommand } = require('@aws-sdk/client-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
 const dynamoClient = new DynamoDBClient({});
@@ -209,7 +215,7 @@ exports.handler = async (event) => {
   });
 
   // Get all active connections
-  const { Items: connections } = await dynamoClient.send(new ScanCommand({
+  const { Items: connections = [] } = await dynamoClient.send(new ScanCommand({
     TableName: process.env.TABLE_NAME,
     ProjectionExpression: 'connectionId',
   }));
@@ -224,8 +230,7 @@ exports.handler = async (event) => {
       }));
     } catch (err) {
       // If the connection is stale, remove it
-      if (err.statusCode === 410) {
-        const { DeleteItemCommand } = require('@aws-sdk/client-dynamodb');
+      if (err.name === 'GoneException' || err.$metadata?.httpStatusCode === 410) {
         await dynamoClient.send(new DeleteItemCommand({
           TableName: process.env.TABLE_NAME,
           Key: { connectionId: { S: connectionId } },
