@@ -104,15 +104,20 @@ The `cognito:groups` claim is an array containing all groups the user belongs to
 
 Now that groups are in the token, you can enforce access control in your API layer. Here's a middleware approach for an Express.js application.
 
-This middleware extracts groups from the JWT and checks authorization:
+This middleware expects an ID token, extracts groups from the JWT, and checks authorization:
 
 ```javascript
 const jwt = require('jsonwebtoken');
 const jwksClient = require('jwks-rsa');
 
+const region = 'us-east-1';
+const userPoolId = 'us-east-1_XXXXXXXXX';
+const appClientId = 'YOUR_APP_CLIENT_ID';
+const issuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
+
 // Configure JWKS client to verify Cognito tokens
 const client = jwksClient({
-    jwksUri: `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX/.well-known/jwks.json`
+    jwksUri: `${issuer}/.well-known/jwks.json`
 });
 
 // Middleware to extract user info from token
@@ -131,8 +136,15 @@ function authenticate(req, res, next) {
         if (err) return res.status(401).json({ error: 'Invalid token' });
 
         const signingKey = key.getPublicKey();
-        jwt.verify(token, signingKey, (err, payload) => {
+        jwt.verify(token, signingKey, {
+            algorithms: ['RS256'],
+            issuer,
+            audience: appClientId
+        }, (err, payload) => {
             if (err) return res.status(401).json({ error: 'Token verification failed' });
+            if (payload.token_use !== 'id') {
+                return res.status(401).json({ error: 'Invalid token type' });
+            }
 
             req.user = {
                 sub: payload.sub,
@@ -201,8 +213,11 @@ Here's how to check groups on the frontend:
 
 ```javascript
 function getUserGroups(idToken) {
-    // Decode the JWT payload (base64)
-    const payload = JSON.parse(atob(idToken.split('.')[1]));
+    // Decode the JWT payload (base64url)
+    const base64Url = idToken.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + (4 - base64.length % 4) % 4, '=');
+    const payload = JSON.parse(atob(padded));
     return payload['cognito:groups'] || [];
 }
 
