@@ -124,7 +124,7 @@ resource "aws_cognito_user_pool" "with_custom_attrs" {
 }
 ```
 
-Custom attributes are accessed as `custom:company`, `custom:role`, etc. in tokens and API calls. Also note: custom attributes can't be removed once created. You can only add new ones.
+Custom attributes are accessed as `custom:company`, `custom:role`, etc. in tokens and API calls. Also note: custom attributes can't be removed or changed once created. You can only add new ones.
 
 ## Email Configuration
 
@@ -227,12 +227,10 @@ resource "aws_cognito_user_pool_client" "backend" {
   generate_secret = true
 
   allowed_oauth_flows                  = ["client_credentials"]
-  allowed_oauth_scopes                 = ["api/read", "api/write"]
+  allowed_oauth_scopes                 = aws_cognito_resource_server.api.scope_identifiers
   allowed_oauth_flows_user_pool_client = true
 
-  explicit_auth_flows = [
-    "ALLOW_REFRESH_TOKEN_AUTH"
-  ]
+  # The client credentials grant only returns access tokens.
 }
 ```
 
@@ -255,7 +253,7 @@ resource "aws_cognito_user_pool_domain" "custom" {
 }
 ```
 
-The hosted UI is at `https://myapp-auth.auth.{region}.amazoncognito.com`. It's basic but functional. Most teams use it for initial development and then build a custom UI.
+The hosted UI domain is `https://myapp-auth.auth.{region}.amazoncognito.com`. The login page is at `https://myapp-auth.auth.{region}.amazoncognito.com/login?response_type=code&client_id={client_id}&redirect_uri={callback_url}`. It's basic but functional. Most teams use it for initial development and then build a custom UI.
 
 ## Social Login (Identity Providers)
 
@@ -312,7 +310,7 @@ resource "aws_cognito_user_pool" "with_triggers" {
     # Run after confirmation to add user to a group
     post_confirmation = aws_lambda_function.post_confirmation.arn
 
-    # Customize the authentication challenge
+    # Run before authentication to allow or deny the request
     pre_authentication = aws_lambda_function.pre_auth.arn
 
     # Run after successful authentication
@@ -326,7 +324,7 @@ resource "aws_cognito_user_pool" "with_triggers" {
   }
 }
 
-# Lambda needs permission to be invoked by Cognito
+# Each Lambda trigger needs permission to be invoked by Cognito
 resource "aws_lambda_permission" "cognito_pre_signup" {
   statement_id  = "AllowCognitoInvoke"
   action        = "lambda:InvokeFunction"
