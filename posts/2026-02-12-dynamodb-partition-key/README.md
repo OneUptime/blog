@@ -26,7 +26,7 @@ graph TD
     H --> C
 ```
 
-Each partition has a throughput limit: 3,000 RCUs and 1,000 WCUs. If too many requests target the same partition, you get throttled - even if the table's overall capacity isn't maxed out.
+Each physical partition is designed to deliver up to 3,000 read capacity units per second and 1,000 write capacity units per second. If too many requests target the same physical partition or a single hot partition key value, you can get throttled - even if the table's overall capacity isn't maxed out.
 
 ## The Golden Rule: High Cardinality
 
@@ -42,7 +42,7 @@ Your partition key should have many distinct values, and requests should be dist
 - `country` - a handful of values, with most traffic hitting "US" or "IN"
 - `date` - today's date gets all the writes while yesterday's gets none
 
-Let's put some numbers to it. If you have a table with 1,000 WCUs and your partition key only has 5 distinct values, each partition handles about 200 WCUs. But if 80% of your traffic hits one value, that partition needs 800 WCUs while its limit might be 1,000. You're dangerously close to throttling.
+Let's put some numbers to it. If you have a table with 1,000 WCUs and your partition key only has 5 distinct values, each key value handles about 200 WCUs under a perfectly even workload. But if 80% of your traffic hits one value, that hot key needs 800 WCUs while a single physical partition is designed for 1,000 WCUs. You're dangerously close to throttling.
 
 ## Analyzing Your Access Patterns
 
@@ -101,13 +101,15 @@ Without a sort key, each partition key value can only have one item. With a sort
 
 ## Anti-Patterns to Avoid
 
-### Using Sequential IDs
+### Using Sequential IDs for One Hot Collection
 
-Auto-incrementing IDs concentrate writes on the latest partition:
+Auto-incrementing values are a problem when they all sit under one partition key, such as a tenant, feed, or log stream, because all recent writes target the same item collection:
 
 ```text
-Bad:  id = 1, 2, 3, 4, 5, ...  (all recent writes go to the same partition range)
-Good: id = UUID                  (writes spread randomly across partitions)
+Bad:  partition_key = "tenant-001"
+      sort_key = 1, 2, 3, 4, 5, ...  (all recent writes target the same partition key)
+Good: partition_key = tenantId#shard  (writes spread across multiple partition key values)
+      sort_key = eventId
 ```
 
 ### Using Timestamps as Partition Keys
