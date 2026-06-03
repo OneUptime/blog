@@ -8,7 +8,7 @@ Description: Complete guide to deploying AWS Network Firewall with Terraform, in
 
 ---
 
-AWS Network Firewall is a managed firewall service that sits in your VPC and inspects traffic at the network level. It supports stateless packet filtering, stateful deep packet inspection, and domain-based filtering. If you need more control than security groups and NACLs provide - like blocking specific domains, inspecting TLS traffic, or applying Suricata rules - Network Firewall is the tool for the job.
+AWS Network Firewall is a managed firewall service that sits in your VPC and inspects traffic at the network level. It supports stateless packet filtering, stateful deep packet inspection, and domain-based filtering. If you need more control than security groups and NACLs provide - like blocking specific domains, inspecting TLS SNI, or applying Suricata rules - Network Firewall is the tool for the job.
 
 Setting it up involves several interconnected resources. Terraform makes this manageable by letting you define everything declaratively.
 
@@ -62,11 +62,11 @@ resource "aws_networkfirewall_rule_group" "stateless" {
     rules_source {
       stateless_rules_and_custom_actions {
 
-        # Allow established TCP traffic
+        # Forward TCP traffic from the VPC to stateful inspection
         stateless_rule {
           priority = 1
           rule_definition {
-            actions = ["aws:pass"]
+            actions = ["aws:forward_to_sfe"]
             match_attributes {
               protocols = [6]  # TCP
               source {
@@ -233,11 +233,6 @@ resource "aws_networkfirewall_firewall_policy" "main" {
     stateful_rule_group_reference {
       resource_arn = aws_networkfirewall_rule_group.suricata.arn
     }
-
-    # Stateful engine options
-    stateful_engine_options {
-      rule_order = "STRICT_ORDER"
-    }
   }
 
   tags = {
@@ -290,13 +285,20 @@ resource "aws_route_table_association" "igw" {
   route_table_id = aws_route_table.igw.id
 }
 
+locals {
+  firewall_endpoints_by_az = {
+    for sync_state in aws_networkfirewall_firewall.main.firewall_status[0].sync_states :
+    sync_state.availability_zone => sync_state.attachment[0].endpoint_id
+  }
+}
+
 # Route public subnet traffic through the firewall endpoint
 # You need one route per AZ pointing to that AZ's firewall endpoint
 resource "aws_route" "igw_to_firewall" {
   count                  = length(var.availability_zones)
   route_table_id         = aws_route_table.igw.id
   destination_cidr_block = aws_subnet.public[count.index].cidr_block
-  vpc_endpoint_id        = tolist(aws_networkfirewall_firewall.main.firewall_status[0].sync_states)[count.index].attachment[0].endpoint_id
+  vpc_endpoint_id        = local.firewall_endpoints_by_az[var.availability_zones[count.index]]
 }
 ```
 
@@ -339,7 +341,7 @@ resource "aws_networkfirewall_logging_configuration" "main" {
 }
 ```
 
-Alert logs capture traffic that matches rules with alert or drop actions. Flow logs capture all traffic passing through the firewall. If you're looking for centralized monitoring across your infrastructure, check out our post on [AWS monitoring strategies](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
+Alert logs capture traffic that matches stateful rules configured to send log messages. Flow logs capture standard network traffic flow records for traffic passing through the firewall. If you're looking for centralized monitoring across your infrastructure, check out our post on [AWS monitoring strategies](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Outputs
 
