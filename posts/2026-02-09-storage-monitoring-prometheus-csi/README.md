@@ -8,15 +8,15 @@ Description: Monitor CSI driver performance and storage health using Prometheus 
 
 ---
 
-CSI drivers expose metrics through Prometheus endpoints that provide visibility into volume operations, capacity utilization, and driver health. Without proper monitoring, storage issues manifest as application failures rather than preventable capacity or performance problems.
+CSI sidecars and some CSI drivers expose metrics through Prometheus endpoints that provide visibility into volume operations and driver health. Kubelet volume stats provide capacity and inode usage for persistent volumes. Without proper monitoring, storage issues manifest as application failures rather than preventable capacity or performance problems.
 
 This guide implements comprehensive storage monitoring through CSI driver metrics, kubelet volume stats, and custom alerts for capacity exhaustion, performance degradation, and provisioning failures.
 
 ## Understanding CSI Metrics
 
-CSI drivers expose metrics at three levels: controller metrics track provisioning and attachment operations, node metrics monitor mounting and volume usage, and sidecar metrics from external-provisioner and external-attacher components track specific operations.
+CSI drivers and sidecars expose metrics at three levels: controller metrics track provisioning and attachment operations, node-side metrics monitor mounting and driver-specific node operations, and sidecar metrics from external-provisioner and external-attacher components track specific operations.
 
-Controller metrics include volume creation/deletion latency, provisioning success/failure rates, and active volume counts. Node metrics track filesystem usage, IOPS, throughput, and mount operation success rates. Sidecar metrics provide detailed visibility into CSI RPC call durations and error rates.
+Controller metrics include volume creation/deletion latency, provisioning success/failure rates, and active volume counts. Kubelet volume stats track filesystem capacity, available bytes, inode usage, and health status for PVCs; IOPS and throughput require CSI driver, storage backend, or node filesystem metrics outside the standard kubelet volume stats series. Sidecar metrics provide detailed visibility into CSI RPC call durations and error rates.
 
 ## Enabling CSI Driver Metrics
 
@@ -59,24 +59,24 @@ spec:
     spec:
       containers:
       - name: csi-provisioner
-        image: registry.k8s.io/sig-storage/csi-provisioner:v3.6.0
+        image: registry.k8s.io/sig-storage/csi-provisioner:v5.2.0
         args:
         - --csi-address=/csi/csi.sock
-        - --metrics-address=:9090
+        - --http-endpoint=:9090
         - --leader-election=true
         ports:
-        - name: metrics
+        - name: provisioner-metrics
           containerPort: 9090
         volumeMounts:
         - name: socket-dir
           mountPath: /csi
       - name: csi-attacher
-        image: registry.k8s.io/sig-storage/csi-attacher:v4.4.0
+        image: registry.k8s.io/sig-storage/csi-attacher:v4.8.0
         args:
         - --csi-address=/csi/csi.sock
-        - --metrics-address=:9091
+        - --http-endpoint=:9091
         ports:
-        - name: metrics
+        - name: attacher-metrics
           containerPort: 9091
         volumeMounts:
         - name: socket-dir
@@ -148,6 +148,8 @@ spec:
     path: /metrics
 ```
 
+The `csi-node` ServiceMonitor assumes your CSI node DaemonSet already has a matching `Service` with `app: csi-node` and a port named `metrics`.
+
 Apply the configurations:
 
 ```bash
@@ -212,40 +214,41 @@ Track volume creation and deletion metrics.
 
 ```promql
 # Provisioning success rate
-rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume",grpc_status_code="OK"}[5m])
-/ rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume"}[5m])
+sum(rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume",grpc_status_code="OK"}[5m]))
+/ sum(rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume"}[5m]))
 
 # Average provisioning latency
-rate(csi_sidecar_operations_seconds_sum{method_name="CreateVolume"}[5m])
-/ rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume"}[5m])
+sum(rate(csi_sidecar_operations_seconds_sum{method_name="CreateVolume"}[5m]))
+/ sum(rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume"}[5m]))
+
+# P99 provisioning latency
+histogram_quantile(0.99,
+  sum(rate(csi_sidecar_operations_seconds_bucket{method_name="CreateVolume"}[5m])) by (le, driver_name, method_name)
+)
 
 # Failed provision attempts
-rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume",grpc_status_code!="OK"}[5m])
+sum(rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume",grpc_status_code!="OK"}[5m]))
 
 # Pending PVC count
 kube_persistentvolumeclaim_status_phase{phase="Pending"}
 ```
 
-## Monitoring Volume Performance
+## Monitoring CSI Operation Performance
 
-Track IOPS and throughput metrics.
+Track CSI operation latency from CSI plugin metrics. For volume IOPS and throughput, use storage backend or driver-specific byte and operation counters because Kubernetes kubelet volume stats do not provide portable per-PVC I/O counters.
 
 ```promql
-# Read IOPS
-rate(kubelet_volume_stats_read_total[5m])
+# CSI plugin operation latency
+sum(rate(csi_plugin_operations_seconds_sum[5m])) by (driver_name, method_name)
+/ sum(rate(csi_plugin_operations_seconds_count[5m])) by (driver_name, method_name)
 
-# Write IOPS
-rate(kubelet_volume_stats_write_total[5m])
+# CSI node publish latency
+sum(rate(csi_plugin_operations_seconds_sum{method_name="NodePublishVolume"}[5m])) by (driver_name)
+/ sum(rate(csi_plugin_operations_seconds_count{method_name="NodePublishVolume"}[5m])) by (driver_name)
 
-# Read throughput (bytes/sec)
-rate(kubelet_volume_stats_read_bytes_total[5m])
-
-# Write throughput (bytes/sec)
-rate(kubelet_volume_stats_write_bytes_total[5m])
-
-# Average operation latency
-rate(kubelet_volume_stats_read_time_seconds_total[5m])
-/ rate(kubelet_volume_stats_read_total[5m])
+# CSI node stage latency
+sum(rate(csi_plugin_operations_seconds_sum{method_name="NodeStageVolume"}[5m])) by (driver_name)
+/ sum(rate(csi_plugin_operations_seconds_count{method_name="NodeStageVolume"}[5m])) by (driver_name)
 ```
 
 ## Creating Storage Alerts
@@ -299,8 +302,8 @@ spec:
     - alert: HighProvisioningFailureRate
       expr: |
         (
-          rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume",grpc_status_code!="OK"}[5m])
-          / rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume"}[5m])
+          sum(rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume",grpc_status_code!="OK"}[5m]))
+          / sum(rate(csi_sidecar_operations_seconds_count{method_name="CreateVolume"}[5m]))
         ) > 0.10
       for: 10m
       labels:
@@ -311,7 +314,7 @@ spec:
     - alert: SlowVolumeProvisioning
       expr: |
         histogram_quantile(0.99,
-          rate(csi_sidecar_operations_seconds_bucket{method_name="CreateVolume"}[5m])
+          sum(rate(csi_sidecar_operations_seconds_bucket{method_name="CreateVolume"}[5m])) by (le, driver_name, method_name)
         ) > 60
       for: 10m
       labels:
@@ -331,18 +334,18 @@ spec:
   - name: storage-performance
     interval: 30s
     rules:
-    - alert: HighVolumeLatency
+    - alert: HighCSIPluginLatency
       expr: |
         (
-          rate(kubelet_volume_stats_read_time_seconds_total[5m])
-          / rate(kubelet_volume_stats_read_total[5m])
+          sum(rate(csi_plugin_operations_seconds_sum[5m])) by (driver_name, method_name)
+          / sum(rate(csi_plugin_operations_seconds_count[5m])) by (driver_name, method_name)
         ) > 0.1
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "High read latency on volume {{ $labels.persistentvolumeclaim }}"
-        description: "Average read latency is {{ $value }}s"
+        summary: "High CSI plugin latency for {{ $labels.method_name }}"
+        description: "Average latency for driver {{ $labels.driver_name }} is {{ $value }}s"
 ```
 
 Apply alerts:
@@ -366,7 +369,7 @@ Create comprehensive Grafana dashboards for storage monitoring.
 # - Total cluster storage capacity and usage
 # - Top volumes by usage percentage
 # - Provisioning success rate and latency
-# - Volume IOPS and throughput
+# - Driver or backend-specific volume IOPS and throughput
 # - Failed mount operations
 # - CSI driver health
 ```
@@ -397,11 +400,11 @@ count(kube_pod_status_phase{namespace="csi-system",phase="Running"})
 
 # RPC call durations
 histogram_quantile(0.99,
-  rate(csi_sidecar_operations_seconds_bucket[5m])
+  sum(rate(csi_sidecar_operations_seconds_bucket[5m])) by (le, driver_name, method_name)
 )
 
 # RPC error rate
-rate(csi_sidecar_operations_seconds_count{grpc_status_code!="OK"}[5m])
+sum(rate(csi_sidecar_operations_seconds_count{grpc_status_code!="OK"}[5m]))
 ```
 
 Comprehensive storage monitoring through CSI metrics and Prometheus enables proactive capacity management and performance optimization. By tracking volume usage, provisioning operations, and I/O performance, you prevent storage-related outages and identify optimization opportunities. The combination of real-time metrics, alerting, and historical trending provides complete visibility into your storage infrastructure.
