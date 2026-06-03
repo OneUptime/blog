@@ -21,12 +21,12 @@ sequenceDiagram
 
     ALB->>gRPC Service: gRPC Health Check Request
     Note over ALB: POST /grpc.health.v1.Health/Check
-    gRPC Service-->>ALB: HealthCheckResponse
+    gRPC Service-->>ALB: HealthCheckResponse + gRPC status
     Note over gRPC Service: status: SERVING
     Note over ALB: gRPC status 0 = Healthy
 ```
 
-The health check response includes a gRPC status code. Status code 0 (OK) means the target is healthy. Any other status code means unhealthy.
+The health check response includes the serving status, and the RPC completes with a gRPC status code. Status code 0 (OK) means the target is healthy when your matcher is configured for `GrpcCode: 0`. Any other status code means unhealthy with that matcher.
 
 ## Prerequisites
 
@@ -34,7 +34,7 @@ Before configuring gRPC health checks, your service needs:
 
 1. HTTP/2 support (gRPC requires it)
 2. The gRPC health checking protocol implemented
-3. TLS configured (ALB requires HTTPS for gRPC backends)
+3. A target group protocol that matches your backend: `HTTP` for plaintext gRPC to the target, or `HTTPS` if you want TLS between the ALB and the target
 
 ### Implementing the Health Check in Your Service
 
@@ -116,11 +116,9 @@ def serve():
         health_pb2.HealthCheckResponse.SERVING
     )
 
-    # Start server with TLS (required for ALB gRPC)
-    server_credentials = grpc.ssl_server_credentials(
-        [(open('server.key', 'rb').read(), open('server.crt', 'rb').read())]
-    )
-    server.add_secure_port('[::]:50051', server_credentials)
+    # Start server with plaintext gRPC for an HTTP target group.
+    # Use add_secure_port instead if your target group protocol is HTTPS.
+    server.add_insecure_port('[::]:50051')
     server.start()
     print("gRPC server started on port 50051")
     server.wait_for_termination()
@@ -155,7 +153,7 @@ Key parameters explained:
 
 | Parameter | Value | Why |
 |-----------|-------|-----|
-| `--protocol` | HTTP | ALB uses HTTP protocol for target groups |
+| `--protocol` | HTTP | ALB uses plaintext HTTP/2 to the targets; use HTTPS here if you want TLS to the targets |
 | `--protocol-version` | GRPC | Tells ALB to use HTTP/2 and gRPC framing |
 | `--health-check-path` | /grpc.health.v1.Health/Check | Standard gRPC health endpoint |
 | `--matcher` | GrpcCode: 0 | gRPC status 0 means OK/healthy |
@@ -171,7 +169,7 @@ aws elbv2 register-targets \
 
 ## Step 3: Configure the ALB Listener
 
-gRPC over ALB requires an HTTPS listener (HTTP/2 requires TLS on the ALB side):
+gRPC over ALB requires an HTTPS listener:
 
 ```bash
 # Create an HTTPS listener for gRPC
@@ -201,17 +199,17 @@ aws elbv2 describe-target-health \
 
 ## Custom Health Check Paths
 
-You can check the health of a specific gRPC service rather than the overall server health:
+You can point the ALB health check at a custom gRPC method instead of the default method:
 
 ```bash
-# Health check for a specific service
+# Health check using the standard gRPC health method
 aws elbv2 modify-target-group \
     --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/grpc-service-tg/abc123 \
     --health-check-path "/grpc.health.v1.Health/Check" \
     --matcher '{"GrpcCode": "0"}'
 ```
 
-The health check request includes a service name parameter. When you use the standard path `/grpc.health.v1.Health/Check`, the ALB checks the overall server health (empty service name). To check a specific service, your health checking implementation needs to respond based on the service name in the request.
+AWS expects gRPC health check paths to use the format `/package.service/method`. When you use the standard path `/grpc.health.v1.Health/Check`, ALB calls the standard health service. If you need to check one specific component, expose a custom health method for that component or make your overall health status reflect that dependency.
 
 ## Using gRPC Status Codes for Health
 
@@ -293,9 +291,9 @@ grpcurl -plaintext localhost:50051 grpc.health.v1.Health/Check
 # }
 ```
 
-**Check 2: Is TLS configured correctly?**
+**Check 2: Does the target group protocol match your server?**
 
-The ALB backend connection to gRPC targets uses HTTP/2 which requires proper TLS on the target. Self-signed certificates are fine for the backend connection.
+If your target group protocol is `HTTP`, the server must accept plaintext gRPC over HTTP/2. If your target group protocol or health check protocol is `HTTPS`, the server must have TLS configured. Self-signed certificates are fine for ALB-to-target HTTPS connections because ALB does not validate target certificates.
 
 **Check 3: Security group rules?**
 
@@ -308,7 +306,7 @@ aws ec2 describe-security-groups \
 
 **Check 4: Is HTTP/2 enabled on your server?**
 
-Some gRPC server configurations default to HTTP/2 with prior knowledge (h2c) rather than TLS-based HTTP/2. The ALB expects TLS-based HTTP/2 for gRPC backends.
+Some gRPC server configurations default to plaintext HTTP/2 with prior knowledge (h2c), while others require TLS for HTTP/2. The ALB target group protocol determines which mode the backend must support.
 
 ### Health Check Timeout
 
@@ -324,4 +322,4 @@ For combining gRPC health checks with gradual traffic shifting during deployment
 
 ## Conclusion
 
-gRPC health checks on ALB work reliably once you get three things right: implement the standard gRPC health checking protocol in your service, configure the target group with GRPC protocol version and the correct health check path, and ensure TLS is properly configured on your backends. The most common issue teams face is targets showing as unhealthy because the health check protocol is not implemented or TLS is not configured. Start with a working health check locally using grpcurl, then move to ALB configuration.
+gRPC health checks on ALB work reliably once you get three things right: implement the standard gRPC health checking protocol in your service, configure the target group with GRPC protocol version and the correct health check path, and make sure the target group protocol matches how your backend serves gRPC. The most common issue teams face is targets showing as unhealthy because the health check protocol is not implemented or the backend protocol does not match the target group. Start with a working health check locally using grpcurl, then move to ALB configuration.
