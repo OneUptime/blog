@@ -27,14 +27,14 @@ Each phase has a cost. With 1000 nodes and 100 pending pods, the scheduler poten
 Before tuning, establish baselines. Check current scheduling latency:
 
 ```bash
-# View scheduler metrics
+# View scheduler metrics. If your cluster exposes kube-scheduler through a Service:
 
-kubectl get --raw /metrics | grep scheduler_
+kubectl get --raw /api/v1/namespaces/kube-system/services/https:kube-scheduler:/proxy/metrics | grep scheduler_
 
 # Key metrics to watch:
 # scheduler_pending_pods - pods waiting to be scheduled
 # scheduler_schedule_attempts_total - total scheduling attempts
-# scheduler_scheduling_duration_seconds - time to schedule pods
+# scheduler_scheduling_attempt_duration_seconds - time for scheduling attempts
 # scheduler_framework_extension_point_duration_seconds - plugin execution time
 ```
 
@@ -84,21 +84,16 @@ The scheduler configuration file lets you control many performance aspects. Crea
 ```yaml
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
-# Control how many nodes to evaluate
-percentageOfNodesToScore: 30  # Only score top 30% of nodes (default: 50%)
-# Control scheduling throughput
+# Control how many feasible nodes to find before scoring
+percentageOfNodesToScore: 30  # Use 0 for the cluster-size-based default
+# Control parallelism inside scheduling algorithms
+parallelism: 16
 profiles:
 - schedulerName: default-scheduler
   plugins:
-    # Optimize filter plugins
-    filter:
-      enabled:
-      - name: NodeResourcesFit
-      - name: NodePorts
-      - name: VolumeBinding
-      - name: PodTopologySpread
-      - name: NodeAffinity
-      - name: TaintToleration
+    multiPoint:
+      disabled:
+      - name: InterPodAffinity  # Expensive at scale
     # Optimize score plugins with weights
     score:
       enabled:
@@ -108,17 +103,11 @@ profiles:
         weight: 1
       - name: NodeResourcesBalancedAllocation
         weight: 1
-      # Disable expensive plugins you don't need
-      disabled:
-      - name: InterPodAffinity  # Expensive at scale
   pluginConfig:
   - name: NodeResourcesFit
     args:
       scoringStrategy:
-        type: LeastAllocated  # Faster than MostAllocated
-  - name: PodTopologySpread
-    args:
-      defaultingType: List  # More efficient than System
+        type: LeastAllocated  # Default strategy; favors nodes with more free resources
 ```
 
 Apply this configuration by updating the scheduler:
@@ -130,14 +119,18 @@ kubectl create configmap scheduler-config \
   --from-file=scheduler-config.yaml \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Update scheduler to use new config
-kubectl patch deployment kube-scheduler -n kube-system \
-  --patch '{"spec":{"template":{"spec":{"containers":[{"name":"kube-scheduler","command":["kube-scheduler","--config=/etc/kubernetes/scheduler-config.yaml"]}]}}}}'
+# For clusters where kube-scheduler is a Deployment, mount the ConfigMap
+# at /etc/kubernetes/scheduler-config.yaml and add:
+# --config=/etc/kubernetes/scheduler-config.yaml
+kubectl edit deployment kube-scheduler -n kube-system
+
+# For kubeadm clusters, kube-scheduler is usually a static Pod. Put the
+# file on the control-plane node and update /etc/kubernetes/manifests/kube-scheduler.yaml.
 ```
 
 ## Reducing Nodes to Score
 
-The most impactful optimization is limiting how many nodes the scheduler scores. By default, the scheduler considers 50% of nodes. For a 1000-node cluster, that's 500 nodes per pod.
+The most impactful optimization is limiting how many feasible nodes the scheduler finds before scoring. By default, Kubernetes calculates this percentage from cluster size: about 50% for a 100-node cluster, about 10% for a 5000-node cluster, with a 5% lower bound for the automatic value.
 
 Reduce this percentage based on your cluster size:
 
@@ -154,7 +147,7 @@ percentageOfNodesToScore: 40
 # percentageOfNodesToScore: 20
 ```
 
-The scheduler still filters all nodes, but only scores the top percentage after filtering. This can reduce scheduling time by 50-70% with minimal impact on placement quality.
+The scheduler does not necessarily filter every node. It stops looking for more feasible nodes once it has found enough nodes for the configured percentage, then scores those feasible nodes. Lower values can improve latency, but avoid values below 10% unless scheduling throughput matters more than placement quality.
 
 ## Optimizing Inter-Pod Affinity
 
@@ -191,7 +184,7 @@ spec:
         image: redis:6.2
 ```
 
-Zone-level topology means the scheduler evaluates 3-5 zones instead of 1000 nodes. That's a massive reduction in work.
+Zone-level topology reduces the number of topology domains the scheduler has to compare for this preference. It can be much cheaper than hostname-level affinity in large clusters, although the scheduler still has to process the relevant pods and nodes.
 
 If you don't need inter-pod affinity, disable the plugin entirely:
 
@@ -201,14 +194,14 @@ kind: KubeSchedulerConfiguration
 profiles:
 - schedulerName: default-scheduler
   plugins:
-    score:
+    multiPoint:
       disabled:
       - name: InterPodAffinity
 ```
 
 ## Caching and Node Updates
 
-The scheduler caches node information to avoid repeated API calls. Tune cache behavior:
+The scheduler caches node information to avoid repeated API calls. Most cache behavior is internal, but your scoring configuration still affects how much work the scheduler does with cached node information:
 
 ```yaml
 apiVersion: kubescheduler.config.k8s.io/v1
@@ -229,20 +222,20 @@ profiles:
           weight: 1
 ```
 
-Monitor cache hit rates:
+Monitor scheduler cache size and event handling:
 
 ```bash
 # Check scheduler metrics
-kubectl get --raw /metrics | grep scheduler_cache
+kubectl get --raw /api/v1/namespaces/kube-system/services/https:kube-scheduler:/proxy/metrics | grep scheduler_cache
 
 # Look for:
-# scheduler_cache_size - number of nodes in cache
-# scheduler_cache_lookups_total - cache access patterns
+# scheduler_cache_size - number of nodes, pods, and assumed pods in the scheduler cache
+# scheduler_event_handling_duration_seconds - event handling latency
 ```
 
 ## Parallel Scheduling
 
-Run multiple scheduler replicas to handle higher pod creation rates:
+Run multiple scheduler replicas for high availability:
 
 ```yaml
 apiVersion: apps/v1
@@ -276,7 +269,7 @@ spec:
             memory: 512Mi
 ```
 
-With leader election, only one scheduler is active at a time, but failover is instant if the leader fails.
+With leader election, only one scheduler replica is active at a time, so this does not increase scheduling throughput. It improves availability because another replica can take over after the leader lease expires.
 
 ## Optimizing for Batch Workloads
 
@@ -286,13 +279,9 @@ If you run many batch jobs, optimize for high pod creation rates:
 apiVersion: kubescheduler.config.k8s.io/v1
 kind: KubeSchedulerConfiguration
 profiles:
+- schedulerName: default-scheduler
 - schedulerName: batch-scheduler
   plugins:
-    # Minimal filtering for faster scheduling
-    filter:
-      enabled:
-      - name: NodeResourcesFit
-      - name: TaintToleration
     # Simple scoring
     score:
       enabled:
@@ -330,7 +319,7 @@ spec:
 
 ## Node Indexing and Filtering
 
-The scheduler maintains indexes on node labels to speed up filtering. Ensure nodes have consistent labels:
+Node labels are central to filtering. Ensure nodes have consistent labels:
 
 ```bash
 # Label nodes systematically
@@ -338,7 +327,7 @@ kubectl label nodes node-1 node-2 node-3 \
   workload-type=general \
   topology.kubernetes.io/zone=us-east-1a
 
-# Avoid one-off labels that fragment the index
+# Avoid one-off labels that make placement rules hard to reason about
 # Bad: node-color=blue, node-color=green, node-color=red (too many values)
 # Good: node-role=worker, node-role=gpu (few distinct values)
 ```
@@ -352,7 +341,7 @@ metadata:
   name: app
 spec:
   nodeSelector:
-    # Good: uses indexed labels
+    # Good: uses consistent labels
     workload-type: general
     topology.kubernetes.io/zone: us-east-1a
   containers:
@@ -385,7 +374,7 @@ data:
 
       # Alert on slow scheduling
       - alert: SlowScheduling
-        expr: histogram_quantile(0.99, scheduler_scheduling_duration_seconds_bucket) > 1
+        expr: histogram_quantile(0.99, scheduler_scheduling_attempt_duration_seconds_bucket) > 1
         for: 5m
         annotations:
           summary: "99th percentile scheduling latency above 1 second"
@@ -411,6 +400,7 @@ kubectl describe pod <pending-pod> | grep -A 20 Events
 
 # Enable scheduler debug logging temporarily
 kubectl edit deployment kube-scheduler -n kube-system
+# Or edit /etc/kubernetes/manifests/kube-scheduler.yaml for static Pod deployments.
 # Add: --v=4 to command args
 
 # View detailed scheduler logs
@@ -418,8 +408,8 @@ kubectl logs -n kube-system -l component=kube-scheduler --tail=1000 | \
   grep "attempted to schedule"
 
 # Check plugin execution time
-kubectl get --raw /metrics | \
-  grep scheduler_framework_extension_point_duration_seconds | \
+kubectl get --raw /api/v1/namespaces/kube-system/services/https:kube-scheduler:/proxy/metrics | \
+  grep scheduler_plugin_execution_duration_seconds | \
   sort -t= -k2 -nr | head -20
 ```
 
@@ -449,7 +439,7 @@ spec:
             memory: 1Gi
 ```
 
-Run the scheduler on nodes with fast CPUs, not just many cores. Single-thread performance matters more than core count.
+Run the scheduler on nodes with adequate CPU. The scheduler uses configurable parallelism inside scheduling algorithms, so both CPU capacity and per-core performance matter during scheduling spikes.
 
 ## Best Practices
 
