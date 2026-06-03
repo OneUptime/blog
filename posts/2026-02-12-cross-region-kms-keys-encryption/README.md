@@ -62,6 +62,7 @@ This replicates the primary key to EU and Asia Pacific regions:
 ```bash
 # Replicate to eu-west-1
 aws kms replicate-key \
+  --region us-east-1 \
   --key-id mrk-abc123def456 \
   --replica-region eu-west-1 \
   --description "Global encryption key - EU replica" \
@@ -69,11 +70,14 @@ aws kms replicate-key \
 
 # Replicate to ap-southeast-1
 aws kms replicate-key \
+  --region us-east-1 \
   --key-id mrk-abc123def456 \
   --replica-region ap-southeast-1 \
   --description "Global encryption key - APAC replica" \
   --tags TagKey=Purpose,TagValue=GlobalEncryption
 ```
+
+Wait until each replica key's state changes from `Creating` to `Enabled` before using it for cryptographic operations.
 
 Create aliases in each replica region too:
 
@@ -338,8 +342,8 @@ for REGION in us-east-1 eu-west-1 ap-southeast-1; do
   aws cloudwatch get-metric-statistics \
     --region $REGION \
     --namespace AWS/KMS \
-    --metric-name NumberOfEncryptRequests \
-    --dimensions Name=KeyId,Value=mrk-abc123def456 \
+    --metric-name SuccessfulRequest \
+    --dimensions Name=KeyArn,Value=arn:aws:kms:$REGION:111111111111:key/mrk-abc123def456 Name=Operation,Value=Encrypt \
     --start-time 2026-02-11T00:00:00Z \
     --end-time 2026-02-12T00:00:00Z \
     --period 86400 \
@@ -354,6 +358,7 @@ If the primary key's region goes down, you can promote a replica to become the n
 ```bash
 # Promote EU replica to primary
 aws kms update-primary-region \
+  --region us-east-1 \
   --key-id mrk-abc123def456 \
   --primary-region eu-west-1
 ```
