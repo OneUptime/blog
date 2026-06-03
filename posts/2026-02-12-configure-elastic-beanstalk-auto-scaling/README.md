@@ -61,11 +61,12 @@ Let's break down what each setting does:
 - **BreachDuration**: How long the metric must exceed the threshold before triggering a scale event (in minutes).
 - **UpperThreshold**: The metric value that triggers scale-out.
 - **LowerThreshold**: The metric value that triggers scale-in.
-- **UpperBreachScaleIncrement**: How many instances to add (positive) or remove (negative) when scaling.
+- **UpperBreachScaleIncrement**: How many instances to add when scaling out.
+- **LowerBreachScaleIncrement**: How many instances to remove when scaling in.
 
 ## Choosing the Right Metric
 
-CPU utilization is the default trigger, and it works well for compute-bound applications. But it's not always the best choice.
+CPU utilization is a common trigger, and it works well for compute-bound applications. But it's not always the best choice. Elastic Beanstalk's default trigger metric is `NetworkOut`, so set the metric explicitly if you want CPU-based scaling.
 
 ### Network-Based Scaling
 
@@ -80,9 +81,9 @@ option_settings:
     Unit: Bytes
     Period: 5
     BreachDuration: 5
-    UpperThreshold: 100000000
+    UpperThreshold: 10000000
     UpperBreachScaleIncrement: 1
-    LowerThreshold: 20000000
+    LowerThreshold: 2000000
     LowerBreachScaleIncrement: -1
 ```
 
@@ -129,10 +130,9 @@ option_settings:
 The instance type you choose directly affects your scaling behavior. Larger instances handle more load per instance, meaning fewer instances but higher per-unit cost.
 
 ```yaml
-# .ebextensions/instances.config - Instance type and launch configuration
+# .ebextensions/instances.config - Instance types and root volume configuration
 option_settings:
   aws:autoscaling:launchconfiguration:
-    InstanceType: t3.medium
     RootVolumeType: gp3
     RootVolumeSize: 20
     RootVolumeIOPS: 3000
@@ -144,7 +144,7 @@ option_settings:
     SpotMaxPrice: 0.05
 ```
 
-Using multiple instance types with Spot instances can reduce costs significantly. Elastic Beanstalk tries the first type and falls back to alternatives if capacity is unavailable.
+Using multiple instance types with Spot instances can reduce costs significantly. Elastic Beanstalk can use the instance types you specify for Spot capacity; if you set `SpotAllocationStrategy` to `capacity-optimized-prioritized`, the order of `InstanceTypes` determines the priority.
 
 ## Scheduled Scaling
 
@@ -174,7 +174,7 @@ Resources:
       Recurrence: "0 20 * * MON-FRI"
 ```
 
-This scales up to 4 instances at 8 AM on weekdays and back down to 2 at 8 PM.
+This scales up to 4 instances at 8 AM UTC on weekdays and back down to 2 at 8 PM UTC.
 
 ## Target Tracking Scaling
 
@@ -189,12 +189,11 @@ Resources:
       AutoScalingGroupName:
         Ref: AWSEBAutoScalingGroup
       PolicyType: TargetTrackingScaling
+      EstimatedInstanceWarmup: 60
       TargetTrackingConfiguration:
         PredefinedMetricSpecification:
           PredefinedMetricType: ASGAverageCPUUtilization
         TargetValue: 60.0
-        ScaleInCooldown: 300
-        ScaleOutCooldown: 60
 ```
 
 Target tracking automatically adjusts the number of instances to keep CPU utilization around 60%. It's less granular than step scaling but easier to maintain.
@@ -212,23 +211,22 @@ option_settings:
 
 A 5-minute cooldown (300 seconds) works for most applications. If your instances take a long time to warm up (Java apps, for example), increase it.
 
-For target tracking policies, you can set separate cooldowns for scale-in and scale-out:
+For EC2 Auto Scaling target tracking policies, use `EstimatedInstanceWarmup` on the scaling policy or default instance warmup on the Auto Scaling group instead of separate scale-in and scale-out cooldown fields:
 
-- **Scale-out cooldown**: Keep short (60-120 seconds) so you respond quickly to load spikes
-- **Scale-in cooldown**: Keep longer (300-600 seconds) to avoid premature termination
+- **Instance warmup**: Set this to the time it takes a new instance to start serving stable traffic
+- **Scale-in behavior**: Target tracking already scales in more gradually when traffic decreases
 
 ## Health Check Grace Period
 
 New instances need time to start up and become healthy. The health check grace period tells the auto scaler not to terminate an instance that appears unhealthy during its startup phase.
 
 ```yaml
-option_settings:
-  aws:autoscaling:asg:
-    # Wait 5 minutes before checking health of new instances
-    Cooldown: 300
-  aws:elasticbeanstalk:environment:
-    # Don't mark new instances unhealthy during startup
-    ServiceRole: aws-elasticbeanstalk-service-role
+Resources:
+  AWSEBAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
 ```
 
 ## Monitoring Auto Scaling
