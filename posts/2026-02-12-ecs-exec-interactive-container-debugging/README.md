@@ -16,7 +16,7 @@ ECS Exec uses AWS Systems Manager (SSM) under the hood to create a secure channe
 
 Before you can use ECS Exec, you need a few things in place:
 
-1. The AWS CLI v2 installed (v1 doesn't support ECS Exec)
+1. The AWS CLI v2.3.6 or later installed, or AWS CLI v1.22.3 or later
 2. The Session Manager plugin for the AWS CLI
 3. Proper IAM permissions on the task role
 4. ECS Exec enabled on the service or task
@@ -24,7 +24,7 @@ Before you can use ECS Exec, you need a few things in place:
 Let's install the Session Manager plugin first.
 
 ```bash
-# macOS installation
+# macOS x86_64 installation
 
 curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac/sessionmanager-bundle.zip" \
   -o "sessionmanager-bundle.zip"
@@ -86,8 +86,15 @@ If you want to log ECS Exec sessions to CloudWatch or S3 (recommended for audit 
     {
       "Effect": "Allow",
       "Action": [
+        "logs:DescribeLogGroups"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "logs:CreateLogStream",
-        "logs:DescribeLogGroups",
+        "logs:DescribeLogStreams",
         "logs:PutLogEvents"
       ],
       "Resource": "arn:aws:logs:*:*:log-group:/ecs/exec-logs:*"
@@ -95,8 +102,21 @@ If you want to log ECS Exec sessions to CloudWatch or S3 (recommended for audit 
     {
       "Effect": "Allow",
       "Action": [
-        "s3:PutObject",
+        "s3:GetBucketLocation"
+      ],
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "s3:GetEncryptionConfiguration"
+      ],
+      "Resource": "arn:aws:s3:::my-exec-logs-bucket"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:PutObject"
       ],
       "Resource": "arn:aws:s3:::my-exec-logs-bucket/*"
     }
@@ -157,7 +177,7 @@ aws ecs update-service \
   --force-new-deployment
 ```
 
-The `--force-new-deployment` flag is important. Existing tasks won't get ECS Exec capabilities - you need to replace them with new tasks that have the SSM agent sidecar injected.
+The `--force-new-deployment` flag is important. Existing tasks won't get ECS Exec capabilities - you need to replace them with new tasks that have the SSM agent started inside the container.
 
 In Terraform:
 
@@ -195,7 +215,7 @@ aws ecs execute-command \
 
 If your task only has one container, you can omit the `--container` flag. The `--interactive` flag is required for shell sessions.
 
-You can also run non-interactive commands.
+You can also run one-off commands through an interactive ECS Exec session.
 
 ```bash
 # Check environment variables
@@ -271,6 +291,8 @@ resource "aws_cloudwatch_log_group" "exec" {
 }
 ```
 
+If you set `kms_key_id`, the task role also needs `kms:Decrypt` on that key, and the user or role running `execute-command` needs `kms:GenerateDataKey`.
+
 ## Troubleshooting Common Issues
 
 **"The execute command failed" error**: This usually means the SSM agent inside the container can't reach the SSM endpoints. Make sure your task's security group allows outbound HTTPS (port 443) to SSM endpoints, or that you have VPC endpoints for SSM set up.
@@ -311,8 +333,14 @@ ECS Exec is a powerful tool, and with great power comes the need for access cont
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": "ecs:ExecuteCommand",
-      "Resource": "arn:aws:ecs:us-east-1:123456789:task/dev-cluster/*",
+      "Action": [
+        "ecs:ExecuteCommand",
+        "ecs:DescribeTasks"
+      ],
+      "Resource": [
+        "arn:aws:ecs:us-east-1:123456789:task/dev-cluster/*",
+        "arn:aws:ecs:us-east-1:123456789:cluster/dev-cluster"
+      ],
       "Condition": {
         "StringEquals": {
           "ecs:container-name": "app"
