@@ -24,18 +24,22 @@ Sentinel is available in Terraform Cloud and Enterprise. Create a sentinel.hcl f
 
 ```hcl
 policy "require-resource-limits" {
+  source            = "./require-resource-limits.sentinel"
   enforcement_level = "hard-mandatory"
 }
 
 policy "prevent-latest-image-tag" {
+  source            = "./prevent-latest-image-tag.sentinel"
   enforcement_level = "hard-mandatory"
 }
 
 policy "require-production-replicas" {
+  source            = "./require-production-replicas.sentinel"
   enforcement_level = "soft-mandatory"
 }
 
 policy "enforce-namespace-labels" {
+  source            = "./enforce-namespace-labels.sentinel"
   enforcement_level = "advisory"
 }
 ```
@@ -51,7 +55,7 @@ import "tfplan/v2" as tfplan
 
 # Find all Kubernetes deployment resources
 deployments = filter tfplan.resource_changes as _, rc {
-  rc.type is "kubernetes_deployment" and
+  (rc.type is "kubernetes_deployment" or rc.type is "kubernetes_deployment_v1") and
   rc.mode is "managed" and
   (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -64,7 +68,9 @@ for deployments as path, deployment {
   containers = spec.template[0].spec[0].container
   
   for containers as idx, container {
-    if "resources" not in keys(container) {
+    resources = container.resources else []
+    
+    if length(resources) is 0 {
       append(violations, {
         "deployment": path,
         "container": idx,
@@ -72,17 +78,16 @@ for deployments as path, deployment {
       })
     } else {
       resources = container.resources[0]
+      requests = resources.requests else {}
+      limits = resources.limits else {}
       
-      if "requests" not in keys(resources) or "limits" not in keys(resources) {
+      if length(requests) is 0 or length(limits) is 0 {
         append(violations, {
           "deployment": path,
           "container": idx,
           "message": "Container must define both requests and limits"
         })
       } else {
-        requests = resources.requests
-        limits = resources.limits
-        
         if "cpu" not in keys(requests) or "memory" not in keys(requests) {
           append(violations, {
             "deployment": path,
@@ -126,7 +131,7 @@ import "strings"
 
 # Get all deployment resources
 deployments = filter tfplan.resource_changes as _, rc {
-  rc.type is "kubernetes_deployment" and
+  (rc.type is "kubernetes_deployment" or rc.type is "kubernetes_deployment_v1") and
   rc.mode is "managed" and
   (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -139,6 +144,8 @@ for deployments as path, deployment {
   
   for containers as idx, container {
     image = container.image
+    image_parts = strings.split(image, "/")
+    image_name = image_parts[length(image_parts) - 1]
     
     # Check if image ends with :latest
     if strings.has_suffix(image, ":latest") {
@@ -151,7 +158,7 @@ for deployments as path, deployment {
     }
     
     # Check if image has no tag
-    if not strings.contains(image, ":") {
+    if image_name not contains ":" {
       append(violations, {
         "deployment": path,
         "container": idx,
@@ -184,7 +191,7 @@ production_namespaces = ["production", "prod"]
 min_replicas = 2
 
 deployments = filter tfplan.resource_changes as _, rc {
-  rc.type is "kubernetes_deployment" and
+  (rc.type is "kubernetes_deployment" or rc.type is "kubernetes_deployment_v1") and
   rc.mode is "managed" and
   (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -192,8 +199,8 @@ deployments = filter tfplan.resource_changes as _, rc {
 violations = []
 
 for deployments as path, deployment {
-  namespace = deployment.change.after.metadata[0].namespace
-  replicas = deployment.change.after.spec[0].replicas
+  namespace = deployment.change.after.metadata[0].namespace else "default"
+  replicas = deployment.change.after.spec[0].replicas else 1
   
   if namespace in production_namespaces and replicas < min_replicas {
     append(violations, {
@@ -226,7 +233,7 @@ import "tfplan/v2" as tfplan
 required_labels = ["team", "environment", "cost-center"]
 
 namespaces = filter tfplan.resource_changes as _, rc {
-  rc.type is "kubernetes_namespace" and
+  (rc.type is "kubernetes_namespace" or rc.type is "kubernetes_namespace_v1") and
   rc.mode is "managed" and
   (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -234,7 +241,7 @@ namespaces = filter tfplan.resource_changes as _, rc {
 violations = []
 
 for namespaces as path, namespace {
-  labels = namespace.change.after.metadata[0].labels
+  labels = namespace.change.after.metadata[0].labels else {}
   
   for required_labels as required_label {
     if required_label not in keys(labels) {
@@ -266,7 +273,7 @@ Block containers running with elevated privileges:
 import "tfplan/v2" as tfplan
 
 deployments = filter tfplan.resource_changes as _, rc {
-  (rc.type is "kubernetes_deployment" or rc.type is "kubernetes_pod") and
+  (rc.type is "kubernetes_deployment" or rc.type is "kubernetes_deployment_v1" or rc.type is "kubernetes_pod" or rc.type is "kubernetes_pod_v1") and
   rc.mode is "managed" and
   (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -278,14 +285,16 @@ for deployments as path, resource {
   
   # Handle both pod and deployment specs
   containers = undefined
-  if resource.type is "kubernetes_deployment" {
+  if resource.type is "kubernetes_deployment" or resource.type is "kubernetes_deployment_v1" {
     containers = spec.template[0].spec[0].container
   } else {
     containers = spec.container
   }
   
   for containers as idx, container {
-    if "security_context" in keys(container) {
+    security_context = container.security_context else []
+    
+    if length(security_context) > 0 {
       security = container.security_context[0]
       
       if "privileged" in keys(security) and security.privileged is true {
@@ -313,13 +322,13 @@ Ensure network policies exist for all namespaces:
 import "tfplan/v2" as tfplan
 
 namespaces = filter tfplan.resource_changes as _, rc {
-  rc.type is "kubernetes_namespace" and
+  (rc.type is "kubernetes_namespace" or rc.type is "kubernetes_namespace_v1") and
   rc.mode is "managed" and
   rc.change.actions contains "create"
 }
 
 network_policies = filter tfplan.resource_changes as _, rc {
-  rc.type is "kubernetes_network_policy" and
+  (rc.type is "kubernetes_network_policy" or rc.type is "kubernetes_network_policy_v1") and
   rc.mode is "managed" and
   rc.change.actions contains "create"
 }
@@ -358,7 +367,7 @@ Require non-default service accounts for workloads:
 import "tfplan/v2" as tfplan
 
 deployments = filter tfplan.resource_changes as _, rc {
-  rc.type is "kubernetes_deployment" and
+  (rc.type is "kubernetes_deployment" or rc.type is "kubernetes_deployment_v1") and
   rc.mode is "managed" and
   (rc.change.actions contains "create" or rc.change.actions contains "update")
 }
@@ -367,8 +376,9 @@ violations = []
 
 for deployments as path, deployment {
   spec = deployment.change.after.spec[0].template[0].spec[0]
+  service_account_name = spec.service_account_name else "default"
   
-  if "service_account_name" not in keys(spec) or spec.service_account_name is "default" {
+  if service_account_name is "" or service_account_name is "default" {
     append(violations, {
       "deployment": path,
       "message": "Deployment must use a non-default service account"
@@ -420,7 +430,7 @@ for all_resources as path, resource {
   }
   
   # Must start and end with alphanumeric
-  if not (strings.matches(name, "^[a-z0-9].*[a-z0-9]$")) {
+  if name not matches "^[a-z0-9]([a-z0-9-]*[a-z0-9])?$" {
     append(violations, {
       "resource": path,
       "name": name,
@@ -440,15 +450,18 @@ Test policies locally using the Sentinel CLI:
 
 ```bash
 # Install Sentinel CLI
-brew install sentinel
+brew tap hashicorp/tap
+brew install hashicorp/tap/sentinel
 
 # Test a policy
 sentinel test require-resource-limits.sentinel
 
-# Apply policy to a plan
+# Create a Terraform plan JSON file for review or mock generation
 terraform plan -out=tfplan.binary
 terraform show -json tfplan.binary > tfplan.json
-sentinel apply -config=sentinel.hcl require-resource-limits.sentinel
+
+# Apply a policy against a local tfplan/v2 mock
+sentinel apply -config=test/require-resource-limits/pass.hcl require-resource-limits.sentinel
 ```
 
 Create test cases:
@@ -488,21 +501,23 @@ Structure your policy repository:
 ```text
 policies/
 ├── sentinel.hcl
-├── security/
-│   ├── prevent-privileged-containers.sentinel
-│   ├── require-service-accounts.sentinel
-│   └── require-network-policies.sentinel
-├── compliance/
-│   ├── require-resource-limits.sentinel
-│   ├── enforce-namespace-labels.sentinel
-│   └── enforce-naming-conventions.sentinel
-├── operations/
-│   ├── prevent-latest-image-tag.sentinel
-│   └── require-production-replicas.sentinel
+├── prevent-privileged-containers.sentinel
+├── require-service-accounts.sentinel
+├── require-network-policies.sentinel
+├── require-resource-limits.sentinel
+├── enforce-namespace-labels.sentinel
+├── enforce-naming-conventions.sentinel
+├── prevent-latest-image-tag.sentinel
+├── require-production-replicas.sentinel
 └── test/
-    ├── security/
-    ├── compliance/
-    └── operations/
+    ├── prevent-privileged-containers/
+    ├── require-service-accounts/
+    ├── require-network-policies/
+    ├── require-resource-limits/
+    ├── enforce-namespace-labels/
+    ├── enforce-naming-conventions/
+    ├── prevent-latest-image-tag/
+    └── require-production-replicas/
 ```
 
 Terraform Sentinel policies provide automated enforcement of organizational standards for Kubernetes deployments. By codifying requirements as policies, you ensure consistent, secure, and compliant infrastructure across all teams and environments, catching violations before they reach production.
