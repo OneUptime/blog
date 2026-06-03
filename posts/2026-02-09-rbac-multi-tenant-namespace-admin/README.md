@@ -10,7 +10,7 @@ Description: Learn how to implement namespace-scoped admin roles in multi-tenant
 
 Managing multi-tenant Kubernetes clusters requires careful attention to access control. You need to give teams administrative control over their namespaces without exposing cluster-wide resources or allowing them to impact other tenants. RBAC provides the tools to create this isolation, but configuring it properly takes planning and attention to detail.
 
-In multi-tenant environments, namespace-scoped admin roles strike a balance between autonomy and security. Teams get the permissions they need to manage their workloads while cluster administrators maintain control over cluster-level resources and policies. This approach prevents privilege escalation and ensures tenant isolation.
+In multi-tenant environments, namespace-scoped admin roles strike a balance between autonomy and security. Teams get the permissions they need to manage their workloads while cluster administrators maintain control over cluster-level resources and policies. This approach helps reduce privilege escalation risk and improves tenant isolation.
 
 ## Understanding Multi-Tenant RBAC Requirements
 
@@ -154,7 +154,7 @@ Repeat this pattern for each tenant namespace. The ClusterRole remains the same,
 
 Even within a namespace, some permissions can be dangerous in multi-tenant environments. Consider these additional restrictions:
 
-**ServiceAccount Token Creation**: Prevent namespace admins from creating service account tokens that could be used outside the cluster:
+**ServiceAccount Token Creation**: Prevent namespace admins from minting service account tokens that could be used outside the cluster. Do not grant the `create` verb on the `serviceaccounts/token` subresource. Also avoid allowing tenants to create or update `kubernetes.io/service-account-token` Secrets unless you explicitly want them to be able to create long-lived ServiceAccount tokens:
 
 ```yaml
 # restricted-namespace-admin.yaml
@@ -173,8 +173,11 @@ rules:
   verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 - apiGroups: [""]
   resources:
-    - serviceaccounts/token
-  verbs: ["get", "list", "watch"]  # No create
+    - secrets
+  verbs: ["get", "list", "watch"]  # No create/update of long-lived service account token Secrets
+
+# Do not include serviceaccounts/token unless token creation is required.
+# Creating TokenRequests uses the create verb on serviceaccounts/token.
 ```
 
 **Role and RoleBinding Management**: Allow namespace admins to create Roles and RoleBindings within their namespace, but prevent them from granting permissions they do not have:
@@ -190,7 +193,7 @@ rules:
 # Admins cannot create RoleBindings with permissions they don't have
 ```
 
-Kubernetes RBAC includes built-in privilege escalation prevention. A user cannot create or update a RoleBinding that references a Role with permissions the user does not have. This automatic protection prevents namespace admins from granting themselves additional privileges.
+Kubernetes RBAC includes built-in privilege escalation prevention. A user cannot create or update a Role or RoleBinding with permissions they do not already have at that scope unless they have the special `escalate` or `bind` verbs. This automatic protection prevents namespace admins from granting themselves additional privileges through RBAC objects.
 
 ## Implementing Resource Quotas and Limit Ranges
 
@@ -256,7 +259,7 @@ Many applications install Custom Resource Definitions. Decide whether namespace 
 For security-sensitive CRDs like cert-manager or external-secrets-operator, you might want to restrict access:
 
 ```yaml
-# Read-only access to certificates
+# Manage namespaced certificate resources
 - apiGroups: ["cert-manager.io"]
   resources:
     - certificates
@@ -274,9 +277,8 @@ Enable audit logging to track what namespace admins do:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-# Log all modifications by namespace admins
+# Log all modifications in tenant namespaces
 - level: RequestResponse
-  users: ["*"]
   namespaces: ["team-alpha", "team-beta"]  # Multi-tenant namespaces
   verbs: ["create", "update", "patch", "delete"]
 # Log RBAC changes at metadata level
