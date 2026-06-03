@@ -26,7 +26,7 @@ helm repo update
 helm install kuberay-operator kuberay/kuberay-operator \
   --namespace ray-system \
   --create-namespace \
-  --version 1.0.0
+  --version 1.6.0
 
 # Verify installation
 kubectl get pods -n ray-system
@@ -46,7 +46,7 @@ metadata:
   namespace: ray
 spec:
   # Ray version
-  rayVersion: '2.9.0'
+  rayVersion: '2.55.1'
 
   # Enable autoscaling
   enableInTreeAutoscaling: true
@@ -55,12 +55,13 @@ spec:
   headGroupSpec:
     rayStartParams:
       dashboard-host: '0.0.0.0'
+      metrics-export-port: '8080'
       block: 'true'
     template:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray:2.9.0-py310
+          image: rayproject/ray-ml:2.55.1-py310
           ports:
           - containerPort: 6379
             name: gcs
@@ -68,6 +69,10 @@ spec:
             name: dashboard
           - containerPort: 10001
             name: client
+          - containerPort: 8000
+            name: serve
+          - containerPort: 8080
+            name: metrics
           resources:
             requests:
               cpu: "2"
@@ -89,12 +94,16 @@ spec:
     maxReplicas: 10
     groupName: worker-group
     rayStartParams:
+      metrics-export-port: '8080'
       block: 'true'
     template:
       spec:
         containers:
         - name: ray-worker
-          image: rayproject/ray:2.9.0-py310
+          image: rayproject/ray-ml:2.55.1-py310
+          ports:
+          - containerPort: 8080
+            name: metrics
           resources:
             requests:
               cpu: "4"
@@ -129,7 +138,7 @@ kubectl create namespace ray
 kubectl apply -f ray-cluster.yaml
 
 # Wait for cluster to be ready
-kubectl wait --for=condition=ready pod -l ray.io/cluster=ray-cluster -n ray --timeout=5m
+kubectl wait --for=condition=Ready pod -l ray.io/cluster=ray-cluster -n ray --timeout=5m
 
 # Check cluster status
 kubectl get rayclusters -n ray
@@ -162,9 +171,8 @@ kind: Ingress
 metadata:
   name: ray-dashboard
   namespace: ray
-  annotations:
-    kubernetes.io/ingress.class: nginx
 spec:
+  ingressClassName: nginx
   rules:
   - host: ray-dashboard.yourdomain.com
     http:
@@ -265,7 +273,7 @@ if __name__ == "__main__":
     scaling_config = ScalingConfig(
         num_workers=4,
         use_gpu=False,
-        resources_per_worker={"CPU": 2, "memory": 4 * 1024**3}
+        resources_per_worker={"CPU": 2}
     )
 
     # Create trainer
@@ -286,8 +294,8 @@ Run the training job:
 
 ```bash
 # Create a job to run the training script
-kubectl run ray-train-job --image=rayproject/ray:2.9.0-py310 -n ray \
-  --command -- python -c "
+kubectl create job ray-train-job --image=rayproject/ray-ml:2.55.1-py310 -n ray \
+  -- python -c "
 import ray
 from ray import train
 from ray.train import ScalingConfig
@@ -327,7 +335,7 @@ def train_model(config):
         loss = torch.randn(1).item()  # Simulated loss
 
         # Report metrics
-        tune.report(loss=loss, epoch=epoch)
+        tune.report({"loss": loss, "epoch": epoch})
 
 if __name__ == "__main__":
     ray.init("ray://ray-cluster-head-svc.ray.svc:10001")
@@ -356,7 +364,7 @@ if __name__ == "__main__":
             num_samples=20,
             scheduler=scheduler
         ),
-        run_config=train.RunConfig(
+        run_config=tune.RunConfig(
             name="tune_experiment",
             storage_path="/tmp/ray_results"
         )
@@ -379,7 +387,7 @@ import ray
 
 # Start Ray Serve
 ray.init("ray://ray-cluster-head-svc.ray.svc:10001")
-serve.start(detached=True)
+serve.start(http_options={"host": "0.0.0.0", "port": 8000})
 
 @serve.deployment(num_replicas=3, ray_actor_options={"num_cpus": 1})
 class ModelPredictor:
@@ -391,7 +399,6 @@ class ModelPredictor:
 
     async def __call__(self, request):
         import torch
-        import json
 
         # Parse request
         data = await request.json()
@@ -404,9 +411,10 @@ class ModelPredictor:
         return {"prediction": prediction.item()}
 
 # Deploy
-ModelPredictor.deploy()
+app = ModelPredictor.bind()
+serve.run(app, route_prefix="/ModelPredictor")
 
-print("Model deployed at http://localhost:8000/ModelPredictor")
+print("Model deployed at http://ray-serve:8000/ModelPredictor")
 ```
 
 Create a service for Ray Serve:
@@ -440,13 +448,13 @@ metadata:
   name: ray-gpu-cluster
   namespace: ray
 spec:
-  rayVersion: '2.9.0'
+  rayVersion: '2.55.1'
   headGroupSpec:
     template:
       spec:
         containers:
         - name: ray-head
-          image: rayproject/ray-ml:2.9.0-gpu
+          image: rayproject/ray-ml:2.55.1-py310-gpu
           resources:
             requests:
               cpu: "2"
@@ -461,12 +469,12 @@ spec:
     maxReplicas: 5
     groupName: gpu-workers
     rayStartParams:
-      resources: '"{\"GPU\": 1}"'
+      num-gpus: "1"
     template:
       spec:
         containers:
         - name: ray-worker
-          image: rayproject/ray-ml:2.9.0-gpu
+          image: rayproject/ray-ml:2.55.1-py310-gpu
           resources:
             requests:
               cpu: "4"
@@ -510,8 +518,8 @@ ray_node_cpu_utilization
 # Memory usage
 ray_node_mem_used / ray_node_mem_total
 
-# Task execution time
-ray_tasks_execution_time_ms
+# Tasks by state
+sum(ray_tasks) by (State)
 
 # Object store memory
 ray_object_store_memory
