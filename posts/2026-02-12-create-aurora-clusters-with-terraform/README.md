@@ -79,7 +79,7 @@ resource "aws_security_group" "aurora" {
 
 ## Basic Aurora Cluster
 
-Here's the cluster configuration with a writer and one reader:
+Here's the cluster configuration for an Aurora PostgreSQL cluster:
 
 ```hcl
 # Aurora PostgreSQL cluster
@@ -123,12 +123,12 @@ resource "aws_rds_cluster" "main" {
 }
 ```
 
-Now add the instances. Aurora separates the cluster definition from the instance definitions:
+Now add the instances. Aurora separates the cluster definition from the instance definitions. You don't designate a permanent writer in Terraform; Aurora manages the writer role and failover automatically.
 
 ```hcl
-# Writer instance
-resource "aws_rds_cluster_instance" "writer" {
-  identifier         = "myapp-aurora-writer"
+# First cluster instance
+resource "aws_rds_cluster_instance" "instance_1" {
+  identifier         = "myapp-aurora-1"
   cluster_identifier = aws_rds_cluster.main.id
   instance_class     = "db.r6g.large"
   engine             = aws_rds_cluster.main.engine
@@ -141,13 +141,13 @@ resource "aws_rds_cluster_instance" "writer" {
   auto_minor_version_upgrade   = true
 
   tags = {
-    Role = "writer"
+    Role = "aurora-instance"
   }
 }
 
-# Reader instance
-resource "aws_rds_cluster_instance" "reader" {
-  identifier         = "myapp-aurora-reader-1"
+# Additional cluster instance
+resource "aws_rds_cluster_instance" "instance_2" {
+  identifier         = "myapp-aurora-2"
   cluster_identifier = aws_rds_cluster.main.id
   instance_class     = "db.r6g.large"
   engine             = aws_rds_cluster.main.engine
@@ -159,7 +159,7 @@ resource "aws_rds_cluster_instance" "reader" {
   auto_minor_version_upgrade   = true
 
   tags = {
-    Role = "reader"
+    Role = "aurora-instance"
   }
 }
 ```
@@ -184,7 +184,7 @@ resource "aws_rds_cluster_instance" "readers" {
   performance_insights_enabled = true
 
   tags = {
-    Role = "reader"
+    Role = "read-capacity"
   }
 }
 ```
@@ -200,6 +200,7 @@ Configure serverless scaling on the cluster and use the `db.serverless` instance
 resource "aws_rds_cluster" "serverless" {
   cluster_identifier = "myapp-serverless"
   engine             = "aurora-postgresql"
+  engine_mode        = "provisioned"
   engine_version     = "16.2"
   database_name      = "myapp"
   master_username    = "dbadmin"
@@ -230,16 +231,16 @@ resource "aws_rds_cluster_instance" "serverless_writer" {
 }
 
 # You can mix serverless and provisioned instances!
-resource "aws_rds_cluster_instance" "serverless_reader" {
-  identifier         = "myapp-serverless-reader"
+resource "aws_rds_cluster_instance" "provisioned_reader" {
+  identifier         = "myapp-provisioned-reader"
   cluster_identifier = aws_rds_cluster.serverless.id
-  instance_class     = "db.serverless"
+  instance_class     = "db.r6g.large"
   engine             = aws_rds_cluster.serverless.engine
   engine_version     = aws_rds_cluster.serverless.engine_version
 }
 ```
 
-The minimum of 0.5 ACU means Aurora can scale almost to zero when idle, which makes it cost-effective for development and staging environments.
+The minimum of 0.5 ACU means Aurora can scale down to a small compute footprint when idle. Newer Aurora versions that support auto-pause can use a 0 ACU minimum, but Aurora PostgreSQL 16.2 uses the 0.5 ACU minimum.
 
 ## Parameter Groups
 
@@ -273,7 +274,7 @@ Reference it in your cluster with `db_cluster_parameter_group_name = aws_rds_clu
 
 For disaster recovery across regions, Aurora supports Global Databases. The primary cluster handles writes, and secondary clusters in other regions provide read access and fast failover.
 
-This creates a global database spanning two regions:
+This starts a global database with a primary cluster. To span regions, add a secondary cluster in another region using a second AWS provider configuration:
 
 ```hcl
 # Global database
