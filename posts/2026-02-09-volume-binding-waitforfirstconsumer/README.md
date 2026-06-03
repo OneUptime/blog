@@ -8,7 +8,7 @@ Description: Learn how to use WaitForFirstConsumer volume binding mode to enable
 
 ---
 
-The volume binding mode controls when Kubernetes provisions and binds a persistent volume to a persistent volume claim. Using WaitForFirstConsumer mode ensures volumes provision in the same availability zone or region as the pod, preventing topology mismatches that cause scheduling failures.
+The volume binding mode controls when Kubernetes provisions and binds a persistent volume to a persistent volume claim. Using WaitForFirstConsumer mode lets Kubernetes provision volumes in topology that matches the pod's scheduling constraints, preventing topology mismatches that cause scheduling failures.
 
 ## The Immediate Binding Problem
 
@@ -18,7 +18,7 @@ This creates a problem: many storage backends only work within a single zone. An
 
 ## How WaitForFirstConsumer Solves This
 
-WaitForFirstConsumer delays volume provisioning until a pod using the PVC is scheduled. The scheduler first selects a node for the pod based on resource requirements, affinity rules, and taints. Only after node selection does Kubernetes provision the volume in the same topology (zone/region) as the selected node.
+WaitForFirstConsumer delays volume provisioning until a pod using the PVC is created and can be scheduled. The scheduler first selects a node for the pod based on resource requirements, affinity rules, and taints. Only after node selection does Kubernetes provision the volume in topology that satisfies the selected node and the pod's scheduling constraints.
 
 This approach aligns pod and volume topology when the scheduler and provisioner can satisfy the constraints, eliminating scheduling failures caused by zone mismatches.
 
@@ -76,7 +76,7 @@ kubectl get pvc app-data -n production
 # app-data   Pending                                      fast-ssd       10s
 ```
 
-The PVC remains in Pending state until a pod references it.
+The PVC remains in Pending state until a schedulable pod references it.
 
 ## Deploying a Pod with the PVC
 
@@ -141,7 +141,7 @@ kubectl get pvc -n production -w
 # app-data   Bound    pvc-a1b2c3d4-e5f6-7890-abcd-ef1234567890   100Gi      RWO            fast-ssd       2m
 ```
 
-The volume provisions in the same zone as the node where the scheduler placed the pod.
+The volume provisions in topology that is compatible with the node where the scheduler placed the pod.
 
 ## Multi-Zone Cluster Example
 
@@ -313,7 +313,7 @@ No nodes in the allowed topology - the allowed topologies in the storage class d
 
 ## Performance Considerations
 
-WaitForFirstConsumer adds a small delay to pod startup because volume provisioning happens synchronously during pod scheduling. For typical cloud storage, expect 10-30 seconds additional delay.
+WaitForFirstConsumer can add a small delay to pod startup because volume provisioning happens after the scheduler selects a node and before the pod can use the volume. For typical cloud storage, expect the delay to vary with the CSI driver and cloud provider.
 
 However, this delay is acceptable compared to the alternative: a pod stuck indefinitely because its volume exists in the wrong zone.
 
@@ -456,4 +456,4 @@ Document your storage class binding modes clearly. Team members need to understa
 
 ## Conclusion
 
-WaitForFirstConsumer volume binding mode eliminates topology mismatch problems in multi-zone Kubernetes clusters. By deferring volume provisioning until pod scheduling, you ensure volumes always land in the correct zone, availability domain, or region. This simple configuration prevents a common class of difficult-to-debug scheduling failures.
+WaitForFirstConsumer volume binding mode eliminates many topology mismatch problems in multi-zone Kubernetes clusters. By deferring volume provisioning until pod scheduling, you let Kubernetes provision volumes in topology that is compatible with the pod's selected node and scheduling constraints. This simple configuration prevents a common class of difficult-to-debug scheduling failures.
