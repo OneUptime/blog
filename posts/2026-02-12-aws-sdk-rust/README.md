@@ -122,7 +122,6 @@ Working with DynamoDB in Rust uses the AttributeValue enum for typed data.
 ```rust
 use aws_sdk_dynamodb::Client;
 use aws_sdk_dynamodb::types::AttributeValue;
-use std::collections::HashMap;
 
 async fn dynamodb_examples(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
     // Put an item
@@ -147,7 +146,8 @@ async fn dynamodb_examples(client: &Client) -> Result<(), Box<dyn std::error::Er
     if let Some(item) = resp.item() {
         let name = item.get("name")
             .and_then(|v| v.as_s().ok())
-            .unwrap_or(&"unknown".to_string());
+            .map(String::as_str)
+            .unwrap_or("unknown");
         println!("Name: {name}");
     }
 
@@ -166,7 +166,8 @@ async fn dynamodb_examples(client: &Client) -> Result<(), Box<dyn std::error::Er
     for item in resp.items() {
         let order_id = item.get("order_id")
             .and_then(|v| v.as_s().ok())
-            .unwrap_or(&"unknown".to_string());
+            .map(String::as_str)
+            .unwrap_or("unknown");
         println!("  Order: {order_id}");
     }
 
@@ -231,7 +232,7 @@ async fn get_object_safe(
             Ok(String::from_utf8(bytes.to_vec())?)
         }
         Err(SdkError::ServiceError(err)) => {
-            match err.err() {
+            match err.into_err() {
                 GetObjectError::NoSuchKey(_) => {
                     println!("Object {key} not found in {bucket}");
                     Err("Object not found".into())
@@ -290,13 +291,11 @@ async fn list_all_objects(
 
 ## Custom Configuration
 
-Configure timeouts, retries, and endpoints.
+Configure custom endpoints.
 
 ```rust
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::Client;
-use aws_sdk_s3::config::Builder;
-use std::time::Duration;
 
 async fn create_configured_client() -> Client {
     let config = aws_config::defaults(BehaviorVersion::latest())
@@ -304,18 +303,13 @@ async fn create_configured_client() -> Client {
         .load()
         .await;
 
-    // Standard client
-    let s3 = Client::new(&config);
-
     // Client with custom endpoint (for LocalStack)
     let local_config = aws_sdk_s3::config::Builder::from(&config)
         .endpoint_url("http://localhost:4566")
         .force_path_style(true)
         .build();
 
-    let local_s3 = Client::from_conf(local_config);
-
-    s3
+    Client::from_conf(local_config)
 }
 ```
 
