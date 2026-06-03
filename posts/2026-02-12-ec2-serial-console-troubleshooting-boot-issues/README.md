@@ -63,7 +63,8 @@ This policy allows serial console access:
       "Effect": "Allow",
       "Action": [
         "ec2:GetSerialConsoleAccessStatus",
-        "ec2:DescribeInstances"
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceTypes"
       ],
       "Resource": "*"
     }
@@ -80,7 +81,7 @@ You can restrict access to specific instances using resource ARNs or conditions:
   "Resource": "arn:aws:ec2:us-east-1:123456789012:instance/*",
   "Condition": {
     "StringEquals": {
-      "ec2:ResourceTag/AllowSerialConsole": "true"
+      "aws:ResourceTag/AllowSerialConsole": "true"
     }
   }
 }
@@ -88,7 +89,7 @@ You can restrict access to specific instances using resource ARNs or conditions:
 
 ## Setting Up a Password for Serial Console Login
 
-The serial console provides a text login prompt, but SSH keys don't work here - you need a password. Set a password for an OS user on your instance before you need the serial console.
+The serial console provides a text login prompt. If you connect through the CLI, the SSH key authenticates to the EC2 Serial Console service, but Linux troubleshooting still requires a password-based OS user. Set a password for an OS user on your instance before you need the serial console.
 
 This sets up a password for the ec2-user account:
 
@@ -97,11 +98,9 @@ This sets up a password for the ec2-user account:
 sudo passwd ec2-user
 # Enter and confirm a strong password
 
-# Ensure password authentication is enabled for the serial console
-# On Amazon Linux 2, this is usually already configured
-sudo grep -r "ttyS0" /etc/securetty
-# Should show ttyS0 - if not, add it:
-echo "ttyS0" | sudo tee -a /etc/securetty
+# If you plan to log in as root, ensure ttyS0 is allowed on
+# distributions that still use /etc/securetty
+sudo grep -q "^ttyS0$" /etc/securetty || echo "ttyS0" | sudo tee -a /etc/securetty
 ```
 
 For Amazon Linux 2 and similar distributions, you also need to ensure getty is running on the serial port:
@@ -132,7 +131,8 @@ You can also connect from the command line using SSH:
 aws ec2-instance-connect send-serial-console-ssh-public-key \
   --instance-id i-1234567890abcdef0 \
   --serial-port 0 \
-  --ssh-public-key file://~/.ssh/id_rsa.pub
+  --ssh-public-key file://~/.ssh/id_rsa.pub \
+  --region us-east-1
 
 # Connect via SSH to the serial console endpoint
 ssh -i ~/.ssh/id_rsa i-1234567890abcdef0.port0@serial-console.ec2-instance-connect.us-east-1.aws
@@ -240,20 +240,22 @@ netfilter-persistent save
 
 To get the most useful output on the serial console, configure your instance's kernel to send output to the serial port.
 
-Add these parameters to the kernel command line in GRUB:
+Add these settings to your GRUB configuration:
 
 ```bash
 # Edit GRUB configuration
 sudo vi /etc/default/grub
 
-# Add or modify the GRUB_CMDLINE_LINUX line
+# Add or modify these GRUB settings
 GRUB_CMDLINE_LINUX="console=tty0 console=ttyS0,115200n8"
+GRUB_TERMINAL="console serial"
+GRUB_SERIAL_COMMAND="serial --speed=115200"
 
 # Regenerate GRUB config
 # Amazon Linux 2:
 sudo grub2-mkconfig -o /boot/grub2/grub.cfg
 
-# Ubuntu:
+# Ubuntu cloud images usually use /etc/default/grub.d/50-cloudimg-settings.cfg:
 sudo update-grub
 ```
 
@@ -283,8 +285,10 @@ resource "aws_instance" "app" {
     # Ensure serial console gets boot output
     if ! grep -q "console=ttyS0" /etc/default/grub; then
       sed -i 's/GRUB_CMDLINE_LINUX="/GRUB_CMDLINE_LINUX="console=ttyS0,115200n8 /' /etc/default/grub
-      grub2-mkconfig -o /boot/grub2/grub.cfg
     fi
+    grep -q '^GRUB_TERMINAL=' /etc/default/grub || echo 'GRUB_TERMINAL="console serial"' >> /etc/default/grub
+    grep -q '^GRUB_SERIAL_COMMAND=' /etc/default/grub || echo 'GRUB_SERIAL_COMMAND="serial --speed=115200"' >> /etc/default/grub
+    grub2-mkconfig -o /boot/grub2/grub.cfg
   EOF
 
   tags = {
