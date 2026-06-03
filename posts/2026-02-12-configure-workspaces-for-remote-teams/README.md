@@ -18,7 +18,7 @@ WorkSpaces supports two streaming protocols:
 
 **PCoIP (PC over IP)**: The original protocol. Works well for most use cases. Better for pixel-heavy workloads like image editing.
 
-**WSP (WorkSpaces Streaming Protocol)**: Newer, based on NICE DCV. Better for variable network conditions, supports webcam passthrough, and works through more firewalls.
+**WSP (WorkSpaces Streaming Protocol), now called Amazon DCV**: Newer, based on Amazon DCV. Better for variable network conditions, supports webcam passthrough, and works through more firewalls.
 
 For remote teams, WSP is almost always the better choice.
 
@@ -27,9 +27,9 @@ For remote teams, WSP is almost always the better choice.
 
 aws workspaces create-workspaces \
     --workspaces '[{
-        "DirectoryId": "d-abc123",
+        "DirectoryId": "d-926722edaf",
         "UserName": "remote.worker",
-        "BundleId": "wsb-wsp-bundle-id",
+        "BundleId": "wsb-0a1b2c3d4",
         "WorkspaceProperties": {
             "RunningMode": "AUTO_STOP",
             "RunningModeAutoStopTimeoutInMinutes": 60,
@@ -57,25 +57,25 @@ import boto3
 user_regions = {
     "us-east": {
         "region": "us-east-1",
-        "directory_id": "d-us-east-123",
+        "directory_id": "d-926722edaf",
         "users": ["alice", "bob", "charlie"]
     },
     "eu-west": {
         "region": "eu-west-1",
-        "directory_id": "d-eu-west-123",
+        "directory_id": "d-926722edae",
         "users": ["david", "emma", "frank"]
     },
     "ap-southeast": {
         "region": "ap-southeast-1",
-        "directory_id": "d-ap-se-123",
+        "directory_id": "d-926722edad",
         "users": ["grace", "henry"]
     }
 }
 
 BUNDLE_MAP = {
-    "us-east-1": "wsb-us-abc123",
-    "eu-west-1": "wsb-eu-abc123",
-    "ap-southeast-1": "wsb-ap-abc123"
+    "us-east-1": "wsb-0a1b2c3d4",
+    "eu-west-1": "wsb-0a1b2c3d5",
+    "ap-southeast-1": "wsb-0a1b2c3d6"
 }
 
 for region_name, config in user_regions.items():
@@ -105,23 +105,23 @@ For this to work, you need a directory in each region. Use AD Connector in each 
 Home internet varies wildly. Some users have gigabit fiber, others are on DSL. Configure WorkSpaces to adapt.
 
 ```bash
-# Modify streaming properties for bandwidth optimization
-aws workspaces modify-workspace-properties \
-    --workspace-id ws-abc123 \
-    --workspace-properties '{
-        "ComputeTypeName": "STANDARD"
+# Prefer UDP for DCV streaming; the client falls back when UDP is unavailable
+aws workspaces modify-streaming-properties \
+    --resource-id d-926722edaf \
+    --streaming-properties '{
+        "StreamingExperiencePreferredProtocol": "UDP"
     }'
 ```
 
 WorkSpaces-level bandwidth settings are limited, but you can configure client-side settings. Provide users with a configuration guide.
 
 ```text
-# Windows client configuration (in registry or group policy)
-# Reduce maximum framerate for slower connections
-HKLM\SOFTWARE\Amazon\WorkSpaces\MaxFrameRate = 15
+# Windows client configuration
+# Use the WorkSpaces client display settings to lower resolution on slow links.
 
-# For WSP connections, the client auto-adapts, but you can set preferences
-# through the WorkSpaces client settings
+# For WSP/DCV connections, the client auto-adapts and can use hardware acceleration.
+# Administrators can enable hardware acceleration with:
+HKCU\SOFTWARE\Amazon Web Services. LLC\Amazon WorkSpaces\EnableHwAcc
 ```
 
 For users with consistently poor connections, consider these approaches:
@@ -142,7 +142,7 @@ Enable MFA through your directory service.
 ```bash
 # Enable MFA with RADIUS for WorkSpaces
 aws ds enable-radius \
-    --directory-id d-abc123 \
+    --directory-id d-926722edaf \
     --radius-settings '{
         "RadiusServers": ["10.0.1.100"],
         "RadiusPort": 1812,
@@ -161,7 +161,7 @@ Control what users can do from their WorkSpace and what data can move between th
 ```bash
 # Create a WorkSpace access properties policy
 aws workspaces modify-workspace-access-properties \
-    --resource-id d-abc123 \
+    --resource-id d-926722edaf \
     --workspace-access-properties '{
         "DeviceTypeWindows": "ALLOW",
         "DeviceTypeOsx": "ALLOW",
@@ -186,8 +186,8 @@ Control data transfer between the local device and the WorkSpace.
 # Computer Configuration > Administrative Templates > Amazon > WSP
 # Configure clipboard redirection: Disabled
 
-# Disable drive redirection (prevent file transfer to local device)
-# Configure drive redirection: Disabled
+# Disable file transfer (prevent file transfer to local device)
+# Configure file transfer: Disabled
 
 # Disable printer redirection
 # Configure printer redirection: Disabled
@@ -201,7 +201,7 @@ Remote teams span time zones. WorkSpaces can inherit the client's time zone.
 
 ```bash
 # Enable client time zone redirection via Group Policy
-# Computer Configuration > Administrative Templates > Amazon
+# Computer Configuration > Administrative Templates > Amazon > WSP
 # Enable time zone redirection: Enabled
 ```
 
@@ -220,7 +220,7 @@ Build a golden image with all required software.
 aws workspaces create-workspace-image \
     --name "RemoteTeamImage-v2" \
     --description "Standard remote team image - VS Code, Slack, Zoom, Office" \
-    --workspace-id ws-reference-123
+    --workspace-id ws-0a1b2c3d4
 ```
 
 ### Using Group Policy for Configuration
@@ -235,10 +235,6 @@ Push configurations through Active Directory Group Policy.
 $proxy = "http://proxy.corp.example.com:8080"
 netsh winhttp set proxy $proxy
 
-# Set default browser
-$regPath = "HKCU:\Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice"
-Set-ItemProperty -Path $regPath -Name "ProgId" -Value "ChromeHTML"
-
 # Install required certificates
 Import-Certificate -FilePath "C:\Certs\corp-ca.cer" -CertStoreLocation "Cert:\LocalMachine\Root"
 ```
@@ -250,7 +246,7 @@ Let users manage basic operations without bothering IT.
 ```bash
 # Enable self-service actions
 aws workspaces modify-selfservice-permissions \
-    --resource-id d-abc123 \
+    --resource-id d-926722edaf \
     --selfservice-permissions '{
         "RestartWorkspace": "ENABLED",
         "IncreaseVolumeSize": "ENABLED",
@@ -296,9 +292,22 @@ def get_usage_metrics(directory_id, days=7):
 def find_unused_workspaces(directory_id, inactive_days=14):
     """Find WorkSpaces that haven't been used recently."""
     response = workspaces_client.describe_workspaces(DirectoryId=directory_id)
+    workspace_ids = [ws['WorkspaceId'] for ws in response['Workspaces']]
+    status_by_workspace = {}
+
+    for i in range(0, len(workspace_ids), 25):
+        batch = workspace_ids[i:i + 25]
+        status_response = workspaces_client.describe_workspaces_connection_status(
+            WorkspaceIds=batch
+        )
+        status_by_workspace.update({
+            item['WorkspaceId']: item
+            for item in status_response['WorkspacesConnectionStatus']
+        })
 
     for ws in response['Workspaces']:
-        last_known = ws.get('LastKnownUserConnectionTimestamp')
+        status = status_by_workspace.get(ws['WorkspaceId'], {})
+        last_known = status.get('LastKnownUserConnectionTimestamp')
         if last_known:
             days_inactive = (datetime.utcnow() - last_known.replace(tzinfo=None)).days
             if days_inactive > inactive_days:
@@ -306,8 +315,8 @@ def find_unused_workspaces(directory_id, inactive_days=14):
         else:
             print(f"Never connected: {ws['UserName']} - {ws['WorkspaceId']}")
 
-get_usage_metrics("d-abc123")
-find_unused_workspaces("d-abc123")
+get_usage_metrics("d-926722edaf")
+find_unused_workspaces("d-926722edaf")
 ```
 
 ## Cost Optimization for Remote Teams
@@ -324,6 +333,6 @@ Remote teams often have unpredictable usage patterns. Optimize costs with these 
 
 ## Wrapping Up
 
-Configuring WorkSpaces for remote teams requires thinking beyond the basic setup. Protocol choice, multi-region deployment, security controls, and bandwidth optimization all matter when users are connecting from home networks around the world. Start with WSP, deploy in regions close to your users, lock down data transfer with appropriate policies, and monitor usage to keep costs under control.
+Configuring WorkSpaces for remote teams requires thinking beyond the basic setup. Protocol choice, multi-region deployment, security controls, and bandwidth optimization all matter when users are connecting from home networks around the world. Start with WSP/DCV, deploy in regions close to your users, lock down data transfer with appropriate policies, and monitor usage to keep costs under control.
 
 For the initial WorkSpaces setup process, refer to our guide on [setting up Amazon WorkSpaces](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-workspaces-for-virtual-desktops/view).
