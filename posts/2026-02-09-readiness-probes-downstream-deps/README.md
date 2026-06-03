@@ -126,7 +126,9 @@ class DependencyChecker:
                 'http://payment-service:8080/health',
                 timeout=self.timeout
             )
-            return response.status_code == 200, None
+            if response.status_code == 200:
+                return True, None
+            return False, f"Status code: {response.status_code}"
         except Exception as e:
             return False, str(e)
 
@@ -258,7 +260,7 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
 
     // Only fail if critical dependencies are down
     ready := true
-    for name, status := range deps {
+    for _, status := range deps {
         if status.Critical && !status.Available {
             ready = false
             break
@@ -329,10 +331,19 @@ var paymentServiceCB = &CircuitBreaker{
     state:        "closed",
 }
 
+var healthCheckClient = &http.Client{
+    Timeout: 3 * time.Second,
+}
+
 func checkPaymentService() bool {
     err := paymentServiceCB.Call(func() error {
-        resp, err := http.Get("http://payment-service/health")
-        if err != nil || resp.StatusCode != 200 {
+        resp, err := healthCheckClient.Get("http://payment-service/health")
+        if err != nil {
+            return err
+        }
+        defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK {
             return fmt.Errorf("unhealthy")
         }
         return nil
