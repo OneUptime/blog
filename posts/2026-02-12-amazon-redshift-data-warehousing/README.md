@@ -14,7 +14,7 @@ This guide covers everything from spinning up a cluster to optimizing your queri
 
 ## Provisioned vs. Serverless
 
-Redshift comes in two flavors. **Provisioned clusters** give you dedicated compute nodes that you manage and pay for by the hour. **Redshift Serverless** automatically provisions and scales compute for you, and you pay per query. If you're just getting started or have unpredictable workloads, [Redshift Serverless](https://oneuptime.com/blog/post/2026-02-12-redshift-serverless/view) is the easier path. For predictable, heavy workloads, provisioned clusters are more cost-effective.
+Redshift comes in two flavors. **Provisioned clusters** give you dedicated compute nodes that you manage and pay for by the hour. **Redshift Serverless** automatically provisions and scales compute for you, and you pay for the compute capacity your workload consumes in RPU-hours. If you're just getting started or have unpredictable workloads, [Redshift Serverless](https://oneuptime.com/blog/post/2026-02-12-redshift-serverless/view) is the easier path. For predictable, heavy workloads, provisioned clusters are more cost-effective.
 
 We'll focus on provisioned clusters here, but most of the SQL and design concepts apply to both.
 
@@ -33,7 +33,7 @@ aws redshift create-cluster \
   --cluster-subnet-group-name my-redshift-subnets \
   --vpc-security-group-ids sg-12345678 \
   --encrypted \
-  --iam-roles "arn:aws:iam::123456789:role/RedshiftS3Access"
+  --iam-roles "arn:aws:iam::123456789012:role/RedshiftS3Access"
 ```
 
 The `ra3` node type separates compute from storage, so you can scale each independently. Your data lives in managed storage (backed by S3), and you only need enough local SSD for caching.
@@ -49,7 +49,7 @@ aws redshift describe-clusters \
 
 ## Connecting to Redshift
 
-Redshift uses a PostgreSQL-compatible wire protocol, so any PostgreSQL client works.
+Redshift uses a PostgreSQL-compatible wire protocol, so many PostgreSQL clients can connect. For supported client connectivity, AWS recommends Amazon Redshift JDBC, ODBC, Python, or RSQL clients.
 
 ```bash
 # Connect using psql
@@ -137,7 +137,7 @@ DISTSTYLE KEY
 DISTKEY (user_id)
 COMPOUND SORTKEY (view_timestamp, user_id);
 
--- Interleaved sort key - useful when you filter by different columns
+-- Interleaved sort key - useful when you filter by different non-date columns
 -- Note: interleaved sort keys are more expensive to maintain
 CREATE TABLE sales (
     sale_id BIGINT IDENTITY(1,1),
@@ -146,7 +146,7 @@ CREATE TABLE sales (
     sale_date DATE,
     revenue DECIMAL(12,2)
 )
-INTERLEAVED SORTKEY (sale_date, region, product_id);
+INTERLEAVED SORTKEY (region, product_id);
 ```
 
 ## A Complete Star Schema Example
@@ -215,7 +215,7 @@ The most efficient way to load data into Redshift is from S3 using the COPY comm
 -- Load data from compressed CSV files in S3
 COPY fact_orders
 FROM 's3://my-data-lake/orders/'
-IAM_ROLE 'arn:aws:iam::123456789:role/RedshiftS3Access'
+IAM_ROLE 'arn:aws:iam::123456789012:role/RedshiftS3Access'
 CSV
 IGNOREHEADER 1
 GZIP
@@ -277,7 +277,7 @@ WHERE unsorted > 5 OR stats_off > 10
 ORDER BY size DESC;
 ```
 
-Run VACUUM and ANALYZE regularly to keep performance optimal.
+Redshift automatically runs background vacuum and analyze operations in many cases, but you can run VACUUM and ANALYZE manually after large deletes, updates, or bulk loads when table maintenance is lagging.
 
 ```sql
 -- Reclaim space and re-sort data after bulk deletes/updates
