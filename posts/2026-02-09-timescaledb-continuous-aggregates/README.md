@@ -18,7 +18,7 @@ Under the hood, a continuous aggregate is a materialized view backed by a hypert
 
 ## Deploying TimescaleDB on Kubernetes
 
-Before we build continuous aggregates, let us deploy TimescaleDB on Kubernetes using the official Helm chart:
+Before we build continuous aggregates, let us deploy TimescaleDB on Kubernetes using the Timescale Helm chart. The chart repository is no longer actively maintained, so check the chart and image versions before using this approach in production:
 
 ```bash
 helm repo add timescale https://charts.timescale.com/
@@ -27,6 +27,7 @@ helm repo update
 helm install timescaledb timescale/timescaledb-single \
   --namespace databases \
   --create-namespace \
+  --set image.tag=pg17.10-ts2.27.1 \
   --set replicaCount=2 \
   --set persistentVolumes.data.size=100Gi \
   --set persistentVolumes.wal.size=20Gi \
@@ -164,9 +165,9 @@ SELECT
     cluster,
     namespace,
     SUM(sample_count) AS sample_count,
-    AVG(avg_cpu) AS avg_cpu,
+    SUM(avg_cpu * sample_count) / NULLIF(SUM(sample_count), 0) AS avg_cpu,
     MAX(max_cpu) AS max_cpu,
-    AVG(avg_memory) AS avg_memory,
+    SUM(avg_memory * sample_count) / NULLIF(SUM(sample_count), 0) AS avg_memory,
     MAX(max_memory) AS max_memory,
     SUM(total_network_rx) AS total_network_rx,
     SUM(total_network_tx) AS total_network_tx
@@ -187,9 +188,9 @@ SELECT
     cluster,
     namespace,
     SUM(sample_count) AS sample_count,
-    AVG(avg_cpu) AS avg_cpu,
+    SUM(avg_cpu * sample_count) / NULLIF(SUM(sample_count), 0) AS avg_cpu,
     MAX(max_cpu) AS max_cpu,
-    AVG(avg_memory) AS avg_memory,
+    SUM(avg_memory * sample_count) / NULLIF(SUM(sample_count), 0) AS avg_memory,
     MAX(max_memory) AS max_memory,
     SUM(total_network_rx) AS total_network_rx,
     SUM(total_network_tx) AS total_network_tx
@@ -248,19 +249,23 @@ ORDER BY bucket, namespace;
 
 ## Real-Time Aggregation with Materialized Flags
 
-By default, continuous aggregates include real-time data from the source hypertable for time ranges that have not yet been materialized. This means your queries always return up-to-date results, at the cost of slightly slower queries for the most recent data:
+In TimescaleDB 2.13 and later, continuous aggregates do not include real-time data from the source hypertable by default. Earlier versions enabled real-time aggregation by default. You can enable it when you want queries to include time ranges that have not yet been materialized, at the cost of slightly slower queries for the most recent data:
 
 ```sql
 -- Check the real-time setting
 SELECT view_name, materialized_only
 FROM timescaledb_information.continuous_aggregates;
 
+-- Enable real-time aggregation
+ALTER MATERIALIZED VIEW namespace_metrics_5min
+SET (timescaledb.materialized_only = false);
+
 -- Disable real-time aggregation for faster queries (only returns materialized data)
 ALTER MATERIALIZED VIEW namespace_metrics_5min
 SET (timescaledb.materialized_only = true);
 ```
 
-For dashboards where near-real-time is acceptable, keeping real-time aggregation enabled is the best approach. For batch reporting where exact performance matters, disabling it and relying solely on materialized data is appropriate.
+For dashboards where near-real-time is required, enabling real-time aggregation is the best approach. For batch reporting where exact performance matters, keeping it disabled and relying solely on materialized data is appropriate.
 
 ## Retention Policies
 
@@ -286,22 +291,37 @@ Monitor your continuous aggregates to ensure they are refreshing on schedule:
 ```sql
 -- Check refresh job status
 SELECT
-    application_name,
-    schedule_interval,
-    last_run_started_at,
-    last_successful_finish,
-    next_start,
-    total_runs,
-    total_failures
-FROM timescaledb_information.jobs
-WHERE application_name LIKE '%continuous%';
+    j.application_name,
+    j.schedule_interval,
+    s.last_run_started_at,
+    s.last_successful_finish,
+    s.next_start,
+    s.total_runs,
+    s.total_failures
+FROM timescaledb_information.jobs j
+JOIN timescaledb_information.job_stats s USING (job_id)
+WHERE j.proc_name = 'policy_refresh_continuous_aggregate';
 
 -- Check materialization lag
+WITH materialized_hypertable AS (
+    SELECT h.id, c.view_name
+    FROM timescaledb_information.continuous_aggregates c
+    JOIN _timescaledb_catalog.hypertable h
+      ON h.schema_name = c.materialization_hypertable_schema
+     AND h.table_name = c.materialization_hypertable_name
+    WHERE c.view_name = 'namespace_metrics_5min'
+)
 SELECT
     view_name,
-    completed_threshold,
-    NOW() - completed_threshold AS lag
-FROM timescaledb_information.continuous_aggregate_stats;
+    COALESCE(
+        _timescaledb_functions.to_timestamp(_timescaledb_functions.cagg_watermark(id)),
+        '-infinity'::timestamptz
+    ) AS materialized_through,
+    NOW() - COALESCE(
+        _timescaledb_functions.to_timestamp(_timescaledb_functions.cagg_watermark(id)),
+        '-infinity'::timestamptz
+    ) AS lag
+FROM materialized_hypertable;
 ```
 
 Set up alerting on these metrics to catch stalled refresh jobs early.
