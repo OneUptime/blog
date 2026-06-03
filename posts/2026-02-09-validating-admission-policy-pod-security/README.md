@@ -28,14 +28,14 @@ ValidatingAdmissionPolicy lets you enforce these standards programmatically whil
 
 Before implementing these policies, ensure you have:
 
-- Kubernetes 1.28 or later (ValidatingAdmissionPolicy is stable)
+- Kubernetes 1.30 or later (ValidatingAdmissionPolicy is stable)
 - kubectl with cluster admin access
 - Understanding of Pod Security contexts
 - Familiarity with CEL expressions (helpful)
 
 ## Implementing Baseline Pod Security Standard
 
-The Baseline standard prevents the most common privilege escalations. Here's a comprehensive policy:
+The Baseline standard prevents the most common privilege escalations. Here's a Pod-focused policy:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
@@ -50,16 +50,14 @@ spec:
       apiVersions: ["v1"]
       operations: ["CREATE", "UPDATE"]
       resources: ["pods"]
-    - apiGroups: ["apps"]
-      apiVersions: ["v1"]
-      operations: ["CREATE", "UPDATE"]
-      resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
   validations:
   # Disallow privileged containers
   - expression: |
-      !has(object.spec.containers.exists(c,
-        has(c.securityContext.privileged) && c.securityContext.privileged == true
-      ))
+      object.spec.containers.all(c,
+        !has(c.securityContext) ||
+        !has(c.securityContext.privileged) ||
+        c.securityContext.privileged == false
+      )
     message: "Privileged containers are not allowed (Baseline)"
 
   # Disallow host namespaces
@@ -75,46 +73,62 @@ spec:
       !has(object.spec.hostIPC) || object.spec.hostIPC == false
     message: "Host IPC namespace is not allowed (Baseline)"
 
-  # Disallow host path volumes except for allowed paths
+  # Disallow host path volumes
   - expression: |
       !has(object.spec.volumes) ||
-      !object.spec.volumes.exists(v,
-        has(v.hostPath) && !v.hostPath.path.startsWith('/var/log')
-      )
-    message: "HostPath volumes are restricted (Baseline)"
+      object.spec.volumes.all(v, !has(v.hostPath))
+    message: "HostPath volumes are not allowed (Baseline)"
 
   # Restrict host ports
   - expression: |
-      !has(object.spec.containers.exists(c,
-        has(c.ports) && c.ports.exists(p, has(p.hostPort) && p.hostPort < 1024)
-      ))
-    message: "Host ports below 1024 are not allowed (Baseline)"
+      object.spec.containers.all(c,
+        !has(c.ports) ||
+        c.ports.all(p, !has(p.hostPort) || p.hostPort == 0)
+      )
+    message: "Host ports are not allowed (Baseline)"
 
-  # Disallow privileged escalation
+  # Additional hardening: disallow privilege escalation
   - expression: |
       object.spec.containers.all(c,
+        !has(c.securityContext) ||
         !has(c.securityContext.allowPrivilegeEscalation) ||
         c.securityContext.allowPrivilegeEscalation == false
       )
-    message: "Privilege escalation must be disabled (Baseline)"
+    message: "Privilege escalation must be disabled"
 
   # Restrict capabilities
   - expression: |
       object.spec.containers.all(c,
+        !has(c.securityContext) ||
+        !has(c.securityContext.capabilities) ||
         !has(c.securityContext.capabilities.add) ||
         c.securityContext.capabilities.add.all(cap,
-          cap in ['NET_BIND_SERVICE']
+          cap in [
+            'AUDIT_WRITE', 'CHOWN', 'DAC_OVERRIDE', 'FOWNER',
+            'FSETID', 'KILL', 'MKNOD', 'NET_BIND_SERVICE',
+            'SETFCAP', 'SETGID', 'SETPCAP', 'SETUID', 'SYS_CHROOT'
+          ]
         )
       )
-    message: "Only NET_BIND_SERVICE capability is allowed (Baseline)"
+    message: "Only Baseline-approved capabilities are allowed"
 
   # Disallow unsafe sysctls
   - expression: |
+      !has(object.spec.securityContext) ||
       !has(object.spec.securityContext.sysctls) ||
       object.spec.securityContext.sysctls.all(s,
-        s.name.startsWith('kernel.shm') ||
-        s.name.startsWith('kernel.msg') ||
-        s.name.startsWith('kernel.sem')
+        s.name in [
+          'kernel.shm_rmid_forced',
+          'net.ipv4.ip_local_port_range',
+          'net.ipv4.ip_unprivileged_port_start',
+          'net.ipv4.tcp_syncookies',
+          'net.ipv4.ping_group_range',
+          'net.ipv4.ip_local_reserved_ports',
+          'net.ipv4.tcp_keepalive_time',
+          'net.ipv4.tcp_fin_timeout',
+          'net.ipv4.tcp_keepalive_intvl',
+          'net.ipv4.tcp_keepalive_probes'
+        ]
       )
     message: "Unsafe sysctls are not allowed (Baseline)"
 ```
@@ -155,13 +169,15 @@ spec:
       operations: ["CREATE", "UPDATE"]
       resources: ["pods"]
   validations:
-  # Include all Baseline validations plus:
+  # Apply this alongside the Baseline policy, or include those validations here.
 
   # Require runAsNonRoot
   - expression: |
+      (has(object.spec.securityContext) &&
       has(object.spec.securityContext.runAsNonRoot) &&
-      object.spec.securityContext.runAsNonRoot == true ||
+      object.spec.securityContext.runAsNonRoot == true) ||
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.runAsNonRoot) &&
         c.securityContext.runAsNonRoot == true
       )
@@ -169,8 +185,12 @@ spec:
 
   # Require non-root UID
   - expression: |
+      (!has(object.spec.securityContext) ||
+      !has(object.spec.securityContext.runAsUser) ||
+      object.spec.securityContext.runAsUser > 0) &&
       object.spec.containers.all(c,
-        has(c.securityContext.runAsUser) &&
+        !has(c.securityContext) ||
+        !has(c.securityContext.runAsUser) ||
         c.securityContext.runAsUser > 0
       )
     message: "Containers must not run as UID 0 (Restricted)"
@@ -178,6 +198,8 @@ spec:
   # Require dropping ALL capabilities
   - expression: |
       object.spec.containers.all(c,
+        has(c.securityContext) &&
+        has(c.securityContext.capabilities) &&
         has(c.securityContext.capabilities.drop) &&
         'ALL' in c.securityContext.capabilities.drop
       )
@@ -187,15 +209,18 @@ spec:
   - expression: |
       !has(object.spec.volumes) ||
       object.spec.volumes.all(v,
-        has(v.configMap) || has(v.downwardAPI) ||
+        has(v.configMap) || has(v.csi) ||
+        has(v.downwardAPI) ||
         has(v.emptyDir) || has(v.projected) ||
-        has(v.secret) || has(v.persistentVolumeClaim)
+        has(v.secret) || has(v.persistentVolumeClaim) ||
+        has(v.ephemeral)
       )
     message: "Only approved volume types are allowed (Restricted)"
 
   # Require read-only root filesystem
   - expression: |
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.readOnlyRootFilesystem) &&
         c.securityContext.readOnlyRootFilesystem == true
       )
@@ -203,9 +228,11 @@ spec:
 
   # Require seccomp profile
   - expression: |
+      (has(object.spec.securityContext) &&
       has(object.spec.securityContext.seccompProfile) &&
-      object.spec.securityContext.seccompProfile.type == 'RuntimeDefault' ||
+      object.spec.securityContext.seccompProfile.type in ['RuntimeDefault', 'Localhost']) ||
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.seccompProfile) &&
         c.securityContext.seccompProfile.type in ['RuntimeDefault', 'Localhost']
       )
@@ -278,24 +305,39 @@ spec:
   validations:
   # Require specific AppArmor profile
   - expression: |
-      has(object.metadata.annotations['container.apparmor.security.beta.kubernetes.io/app']) &&
-      object.metadata.annotations['container.apparmor.security.beta.kubernetes.io/app'].startsWith('localhost/')
+      (has(object.spec.securityContext) &&
+      has(object.spec.securityContext.appArmorProfile) &&
+      object.spec.securityContext.appArmorProfile.type == 'Localhost' &&
+      has(object.spec.securityContext.appArmorProfile.localhostProfile) &&
+      object.spec.securityContext.appArmorProfile.localhostProfile.startsWith('company/')) ||
+      object.spec.containers.all(c,
+        has(c.securityContext) &&
+        has(c.securityContext.appArmorProfile) &&
+        c.securityContext.appArmorProfile.type == 'Localhost' &&
+        has(c.securityContext.appArmorProfile.localhostProfile) &&
+        c.securityContext.appArmorProfile.localhostProfile.startsWith('company/')
+      )
     message: "Custom AppArmor profile is required"
 
   # Enforce resource limits
   - expression: |
       object.spec.containers.all(c,
+        has(c.resources) &&
+        has(c.resources.limits) &&
         has(c.resources.limits.memory) &&
         has(c.resources.limits.cpu) &&
-        int(c.resources.limits.memory.replace('Mi', '')) <= 4096 &&
-        int(c.resources.limits.cpu.replace('m', '')) <= 2000
+        isQuantity(c.resources.limits.memory) &&
+        isQuantity(c.resources.limits.cpu) &&
+        quantity(c.resources.limits.memory).compareTo(quantity('4Gi')) <= 0 &&
+        quantity(c.resources.limits.cpu).compareTo(quantity('2')) <= 0
       )
     message: "Resource limits must be set and within allowed ranges"
 
   # Require specific security labels
   - expression: |
-      has(object.metadata.labels['security-scan']) &&
-      has(object.metadata.labels['security-owner'])
+      has(object.metadata.labels) &&
+      'security-scan' in object.metadata.labels &&
+      'security-owner' in object.metadata.labels
     message: "Security tracking labels are required"
 
   # Block images from untrusted registries
@@ -325,7 +367,7 @@ spec:
         pod-security.kubernetes.io/enforce: restricted
     objectSelector:
       matchExpressions:
-      # Exempt pods with specific annotation
+      # Exempt pods with a specific label
       - key: pod-security.kubernetes.io/exempt
         operator: DoesNotExist
 ```
@@ -348,8 +390,9 @@ spec:
   validations:
   - expression: |
       request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
-      (has(object.spec.securityContext.runAsNonRoot) &&
-       object.spec.securityContext.runAsNonRoot == true)
+      (has(object.spec.securityContext) &&
+      has(object.spec.securityContext.runAsNonRoot) &&
+      object.spec.securityContext.runAsNonRoot == true)
     message: "Must run as non-root unless system service account"
 ```
 
@@ -421,7 +464,7 @@ EOF
 Expected output:
 
 ```text
-Error from server: admission webhook denied the request: Privileged containers are not allowed (Baseline)
+Error from server: ValidatingAdmissionPolicy 'baseline-pod-security' with binding 'baseline-security-binding' denied request: Privileged containers are not allowed (Baseline)
 ```
 
 ## Monitoring and Alerting
@@ -440,9 +483,9 @@ data:
       interval: 30s
       rules:
       - alert: HighPolicyViolationRate
-        expr: rate(apiserver_admission_webhook_rejection_count[5m]) > 10
+        expr: sum(rate(apiserver_request_total{resource="pods",code=~"4.."}[5m])) > 10
         annotations:
-          summary: "High rate of admission policy violations"
+          summary: "High rate of rejected Pod API requests"
 ```
 
 ## Conclusion
