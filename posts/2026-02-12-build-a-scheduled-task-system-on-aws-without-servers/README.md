@@ -34,8 +34,8 @@ graph TD
 You might be wondering why we are using EventBridge Scheduler instead of regular EventBridge rules with schedule expressions. Both work, but Scheduler offers advantages:
 
 - One-time schedules (not just recurring)
-- Built-in retry policies with configurable attempts
-- Dead letter queues for failed invocations
+- Built-in delivery retry policies with configurable attempts
+- Dead letter queues for invocations that cannot be delivered
 - Time zone support (no more UTC-only headaches)
 - Much higher limits (millions of schedules vs. 300 rules per bus)
 
@@ -72,6 +72,12 @@ Resources:
             Statement:
               - Effect: Allow
                 Action: lambda:InvokeFunction
+                Resource: '*'
+        - PolicyName: StartStepFunctions
+          PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action: states:StartExecution
                 Resource: '*'
         - PolicyName: SendToDLQ
           PolicyDocument:
@@ -124,14 +130,14 @@ def create_recurring_task(task_id, schedule_expression, target_lambda_arn, paylo
         FlexibleTimeWindow={'Mode': 'OFF'},
         Target={
             'Arn': target_lambda_arn,
-            'RoleArn': 'arn:aws:iam::123456789:role/SchedulerRole',
+            'RoleArn': 'arn:aws:iam::123456789012:role/SchedulerRole',
             'Input': json.dumps(payload),
             'RetryPolicy': {
                 'MaximumRetryAttempts': 3,
                 'MaximumEventAgeInSeconds': 3600
             },
             'DeadLetterConfig': {
-                'Arn': 'arn:aws:sqs:us-east-1:123456789:scheduler-dlq'
+                'Arn': 'arn:aws:sqs:us-east-1:123456789012:scheduler-dlq'
             }
         }
     )
@@ -145,14 +151,14 @@ def create_one_time_task(task_id, run_at, target_lambda_arn, payload):
         FlexibleTimeWindow={'Mode': 'OFF'},
         Target={
             'Arn': target_lambda_arn,
-            'RoleArn': 'arn:aws:iam::123456789:role/SchedulerRole',
+            'RoleArn': 'arn:aws:iam::123456789012:role/SchedulerRole',
             'Input': json.dumps(payload),
             'RetryPolicy': {
                 'MaximumRetryAttempts': 3,
                 'MaximumEventAgeInSeconds': 7200
             },
             'DeadLetterConfig': {
-                'Arn': 'arn:aws:sqs:us-east-1:123456789:scheduler-dlq'
+                'Arn': 'arn:aws:sqs:us-east-1:123456789012:scheduler-dlq'
             }
         },
         # Auto-delete the schedule after it runs
@@ -163,7 +169,7 @@ def create_one_time_task(task_id, run_at, target_lambda_arn, payload):
 create_recurring_task(
     task_id='daily-sales-report',
     schedule_expression='cron(0 8 * * ? *)',
-    target_lambda_arn='arn:aws:lambda:us-east-1:123456789:function:generate-report',
+    target_lambda_arn='arn:aws:lambda:us-east-1:123456789012:function:generate-report',
     payload={'reportType': 'daily-sales', 'format': 'pdf'},
     timezone='America/New_York'
 )
@@ -172,7 +178,7 @@ create_recurring_task(
 create_recurring_task(
     task_id='weekly-data-cleanup',
     schedule_expression='cron(0 2 ? * SUN *)',
-    target_lambda_arn='arn:aws:lambda:us-east-1:123456789:function:data-cleanup',
+    target_lambda_arn='arn:aws:lambda:us-east-1:123456789012:function:data-cleanup',
     payload={'retentionDays': 90}
 )
 ```
@@ -232,7 +238,7 @@ def handler(event, context):
             'duration': duration,
             'error': str(e)
         }))
-        raise  # Re-raise so Scheduler's retry policy kicks in
+        raise  # Re-raise so Lambda records the async invocation failure
 ```
 
 ## Complex Workflows with Step Functions
@@ -246,7 +252,7 @@ Some scheduled tasks involve multiple steps that depend on each other. Use Step 
   "States": {
     "FetchUsageData": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:fetch-usage",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:fetch-usage",
       "ResultPath": "$.usageData",
       "Retry": [
         {
@@ -260,7 +266,7 @@ Some scheduled tasks involve multiple steps that depend on each other. Use Step 
     },
     "CalculateCharges": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:calculate-charges",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:calculate-charges",
       "ResultPath": "$.charges",
       "Next": "GenerateInvoices"
     },
@@ -268,17 +274,17 @@ Some scheduled tasks involve multiple steps that depend on each other. Use Step 
       "Type": "Map",
       "ItemsPath": "$.charges.customers",
       "MaxConcurrency": 10,
-      "Iterator": {
+      "ItemProcessor": {
         "StartAt": "CreateInvoice",
         "States": {
           "CreateInvoice": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:us-east-1:123456789:function:create-invoice",
+            "Resource": "arn:aws:lambda:us-east-1:123456789012:function:create-invoice",
             "Next": "SendInvoiceEmail"
           },
           "SendInvoiceEmail": {
             "Type": "Task",
-            "Resource": "arn:aws:lambda:us-east-1:123456789:function:send-invoice",
+            "Resource": "arn:aws:lambda:us-east-1:123456789012:function:send-invoice",
             "End": true
           }
         }
@@ -287,7 +293,7 @@ Some scheduled tasks involve multiple steps that depend on each other. Use Step 
     },
     "UpdateBillingRecords": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:update-records",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:update-records",
       "End": true
     }
   }
@@ -304,9 +310,9 @@ scheduler.create_schedule(
     ScheduleExpressionTimezone='UTC',
     FlexibleTimeWindow={'Mode': 'OFF'},
     Target={
-        'Arn': 'arn:aws:states:us-east-1:123456789:stateMachine:billing-workflow',
-        'RoleArn': 'arn:aws:iam::123456789:role/SchedulerRole',
-        'Input': json.dumps({'month': '{{$.time}}'}),
+        'Arn': 'arn:aws:states:us-east-1:123456789012:stateMachine:billing-workflow',
+        'RoleArn': 'arn:aws:iam::123456789012:role/SchedulerRole',
+        'Input': json.dumps({'scheduledTime': '<aws.scheduler.scheduled-time>'}),
         'RetryPolicy': {
             'MaximumRetryAttempts': 2,
             'MaximumEventAgeInSeconds': 3600
@@ -317,7 +323,7 @@ scheduler.create_schedule(
 
 ## Handling Failed Tasks
 
-The DLQ catches tasks that failed after all retry attempts. Process them with a failure handler:
+The Scheduler DLQ catches invocations that EventBridge Scheduler could not deliver after all retry attempts. For Lambda targets, function-code errors after Lambda accepts the event are handled by Lambda's asynchronous invocation retries and should use a Lambda on-failure destination or Lambda DLQ. Process Scheduler DLQ messages with a failure handler:
 
 ```python
 # Lambda to process failed scheduled tasks from the DLQ
@@ -343,7 +349,7 @@ def handler(event, context):
 
         # Alert the team
         sns.publish(
-            TopicArn='arn:aws:sns:us-east-1:123456789:task-failures',
+            TopicArn='arn:aws:sns:us-east-1:123456789012:task-failures',
             Subject='Scheduled Task Failed After Retries',
             Message=json.dumps(body, indent=2)
         )
@@ -355,7 +361,7 @@ def handler(event, context):
 
 Silent failures are the biggest risk with scheduled tasks. A task that stops running is worse than a task that fails loudly. Set up monitoring that detects both failures and missing executions.
 
-Use CloudWatch metric filters to track task execution:
+Use custom CloudWatch metrics to track task execution:
 
 ```python
 # Custom metrics for task execution monitoring
@@ -393,6 +399,6 @@ For a centralized view of all your scheduled tasks - whether they ran, how long 
 
 ## Wrapping Up
 
-Serverless scheduled tasks on AWS are more reliable, more scalable, and cheaper than running cron on servers. EventBridge Scheduler handles the timing, Lambda runs the tasks, Step Functions orchestrates complex workflows, and DLQs catch failures. You get built-in retries, time zone support, and the ability to create millions of schedules.
+Serverless scheduled tasks on AWS are more reliable, more scalable, and cheaper than running cron on servers. EventBridge Scheduler handles the timing, Lambda runs the tasks, Step Functions orchestrates complex workflows, and DLQs catch delivery failures. You get built-in delivery retries, time zone support, and the ability to create millions of schedules.
 
 The total cost for most applications is pennies per day. A task that runs once daily and takes 10 seconds costs less than a fraction of a cent per month in Lambda charges. Compare that to running a t3.small 24/7 just for cron jobs.
