@@ -8,7 +8,7 @@ Description: A practical guide to deploying Amazon Neptune graph database cluste
 
 ---
 
-Amazon Neptune is AWS's fully managed graph database service. If you're building applications that deal with highly connected data - think social networks, fraud detection, recommendation engines, or knowledge graphs - Neptune gives you a purpose-built engine that supports both Gremlin and SPARQL query languages. Setting up a Neptune cluster with Terraform means you can spin up identical graph database environments across staging, testing, and production without manual work.
+Amazon Neptune is AWS's fully managed graph database service. If you're building applications that deal with highly connected data - think social networks, fraud detection, recommendation engines, or knowledge graphs - Neptune gives you a purpose-built engine that supports Gremlin, openCypher, and SPARQL query languages. Setting up a Neptune cluster with Terraform means you can spin up identical graph database environments across staging, testing, and production without manual work.
 
 Let's go through the entire setup.
 
@@ -203,7 +203,7 @@ resource "aws_neptune_cluster" "main" {
 
 Key settings to note:
 
-- **iam_database_authentication_enabled** lets you use IAM credentials instead of passwords, which is the recommended approach
+- **iam_database_authentication_enabled** enables IAM authentication for Neptune database access; Neptune does not use username/password access control
 - **enable_cloudwatch_logs_exports** sends audit logs to CloudWatch for monitoring and compliance
 - **deletion_protection** prevents accidental cluster deletion
 
@@ -221,7 +221,7 @@ resource "aws_neptune_cluster_instance" "writer" {
 
   neptune_parameter_group_name = aws_neptune_parameter_group.main.name
 
-  # Enable performance insights
+  # Enable automatic minor version upgrades
   auto_minor_version_upgrade = true
 
   tags = {
@@ -264,6 +264,7 @@ resource "aws_neptune_cluster" "serverless" {
 
   neptune_subnet_group_name = aws_neptune_subnet_group.main.name
   vpc_security_group_ids    = [aws_security_group.neptune.id]
+  neptune_cluster_parameter_group_name = aws_neptune_cluster_parameter_group.main.name
 
   storage_encrypted = true
   kms_key_arn       = aws_kms_key.neptune.arn
@@ -284,6 +285,7 @@ resource "aws_neptune_cluster_instance" "serverless" {
   cluster_identifier = aws_neptune_cluster.serverless.id
   instance_class     = "db.serverless"
   engine             = "neptune"
+  neptune_parameter_group_name = aws_neptune_parameter_group.main.name
 }
 ```
 
@@ -362,10 +364,10 @@ output "cluster_port" {
 
 ## Loading Data
 
-Once the cluster is running, you can bulk load data from S3 using the Neptune loader API. The IAM role we created earlier handles the S3 access. Create CSV or JSON files in the Neptune format, upload them to S3, and trigger the loader through the cluster endpoint.
+Once the cluster is running, you can bulk load data from S3 using the Neptune loader API. The IAM role we created earlier handles the S3 access. Create CSV files for Gremlin or openCypher property graphs, or RDF files such as Turtle, N-Triples, N-Quads, or RDF/XML for SPARQL, upload them to S3, and trigger the loader through the cluster endpoint.
 
 For monitoring the health of your Neptune cluster and query performance, see our post on [monitoring database infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
 ## Summary
 
-You now have a fully configured Neptune cluster with encryption, IAM authentication, audit logging, and high availability across multiple instances. The graph database is ready for Gremlin or SPARQL queries. Start with provisioned instances if you have predictable workloads, or go serverless if your usage varies significantly throughout the day.
+You now have a fully configured Neptune cluster with encryption, IAM authentication, audit logging, and high availability across multiple instances. The graph database is ready for Gremlin, openCypher, or SPARQL queries. Start with provisioned instances if you have predictable workloads, or go serverless if your usage varies significantly throughout the day.
