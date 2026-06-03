@@ -8,7 +8,7 @@ Description: Complete walkthrough for deploying React single-page applications t
 
 ---
 
-Deploying a React app to S3 and CloudFront is one of the cheapest and most performant ways to host a frontend application. S3 stores your static files, CloudFront serves them from edge locations around the world, and you end up with sub-100ms load times for users everywhere. The whole setup costs pennies for most projects.
+Deploying a React app to S3 and CloudFront is one of the cheapest and most performant ways to host a frontend application. S3 stores your static files, CloudFront serves them from edge locations around the world, and you can get low-latency load times for users in many regions. The whole setup costs pennies for most projects.
 
 Let's go through it step by step.
 
@@ -55,6 +55,7 @@ aws s3 sync build/ s3://my-react-app-production \
   --delete \
   --cache-control "public, max-age=31536000, immutable" \
   --exclude "index.html" \
+  --exclude "asset-manifest.json" \
   --exclude "service-worker.js" \
   --exclude "manifest.json"
 
@@ -62,9 +63,13 @@ aws s3 sync build/ s3://my-react-app-production \
 aws s3 cp build/index.html s3://my-react-app-production/index.html \
   --cache-control "public, max-age=0, must-revalidate"
 
-# Upload manifest with short cache
-aws s3 cp build/manifest.json s3://my-react-app-production/manifest.json \
-  --cache-control "public, max-age=0, must-revalidate"
+# Upload manifests and service worker with no-cache headers if present
+for file in manifest.json asset-manifest.json service-worker.js; do
+  if [ -f "build/$file" ]; then
+    aws s3 cp "build/$file" "s3://my-react-app-production/$file" \
+      --cache-control "public, max-age=0, must-revalidate"
+  fi
+done
 ```
 
 Why the different cache headers? Static assets like JS and CSS bundles have content hashes in their filenames (e.g., `main.a1b2c3d4.js`), so they can be cached forever - the filename changes when the content changes. But `index.html` should never be cached aggressively because it contains the references to those hashed files.
@@ -102,9 +107,13 @@ Create a CloudFront distribution configuration file. This is where you define ca
     "ViewerProtocolPolicy": "redirect-to-https",
     "AllowedMethods": {
       "Quantity": 2,
-      "Items": ["GET", "HEAD"]
+      "Items": ["GET", "HEAD"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
     },
-    "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+    "CachePolicyId": "83da9c7e-98b4-4e11-a168-04f0df8e2c65",
     "Compress": true
   },
   "Origins": {
@@ -136,7 +145,7 @@ Create a CloudFront distribution configuration file. This is where you define ca
 }
 ```
 
-The custom error response is critical for React Router (or any client-side routing). When someone navigates to `/about` directly, S3 returns a 403 because there's no `about` file. The error response redirects this to `index.html`, letting React Router handle the path.
+The custom error response is critical for React Router (or any client-side routing). When someone navigates to `/about` directly, S3 returns a 403 because there's no `about` file. The error response returns `index.html` with a 200 status code, letting React Router handle the path.
 
 Create the distribution:
 
@@ -198,13 +207,20 @@ aws acm request-certificate \
 After validating the certificate, update your CloudFront distribution to use it:
 
 ```bash
+# Get the current distribution ETag
+ETAG=$(aws cloudfront get-distribution-config \
+  --id DISTRIBUTION_ID \
+  --query 'ETag' \
+  --output text)
+
 # Update the distribution with your custom domain and certificate
 aws cloudfront update-distribution \
   --id DISTRIBUTION_ID \
+  --if-match $ETAG \
   --distribution-config file://updated-config.json
 ```
 
-Then add a CNAME record in your DNS pointing `app.yourdomain.com` to your CloudFront distribution domain name.
+Make sure `updated-config.json` includes the `Aliases` entry for `app.yourdomain.com` and a `ViewerCertificate` section with the ACM certificate ARN. Then add a CNAME record in your DNS pointing `app.yourdomain.com` to your CloudFront distribution domain name.
 
 ## Automated Deployment Script
 
@@ -228,21 +244,30 @@ aws s3 sync build/ s3://$BUCKET \
   --cache-control "public, max-age=31536000, immutable" \
   --exclude "index.html" \
   --exclude "asset-manifest.json" \
-  --exclude "manifest.json"
+  --exclude "manifest.json" \
+  --exclude "service-worker.js"
 
 echo "Uploading index.html with no-cache..."
 aws s3 cp build/index.html s3://$BUCKET/index.html \
   --cache-control "public, max-age=0, must-revalidate"
 
+for file in manifest.json asset-manifest.json service-worker.js; do
+  if [ -f "build/$file" ]; then
+    echo "Uploading $file with no-cache..."
+    aws s3 cp "build/$file" "s3://$BUCKET/$file" \
+      --cache-control "public, max-age=0, must-revalidate"
+  fi
+done
+
 echo "Invalidating CloudFront cache..."
 aws cloudfront create-invalidation \
   --distribution-id $DISTRIBUTION_ID \
-  --paths "/index.html" "/manifest.json"
+  --paths "/index.html" "/manifest.json" "/asset-manifest.json" "/service-worker.js"
 
 echo "Deployment complete!"
 ```
 
-Notice we only invalidate `index.html` and `manifest.json`. Since all other assets have content hashes in their filenames, they don't need cache invalidation. This keeps your invalidation costs down (CloudFront gives you 1,000 free invalidation paths per month).
+Notice we only invalidate `index.html`, manifests, and the service worker. Since the remaining assets have content hashes in their filenames, they don't need cache invalidation. This keeps your invalidation costs down (CloudFront gives you 1,000 free invalidation paths per month).
 
 ## CI/CD with GitHub Actions
 
@@ -290,22 +315,31 @@ jobs:
         run: |
           aws s3 sync build/ s3://${{ secrets.S3_BUCKET }} --delete \
             --cache-control "public, max-age=31536000, immutable" \
-            --exclude "index.html"
+            --exclude "index.html" \
+            --exclude "asset-manifest.json" \
+            --exclude "manifest.json" \
+            --exclude "service-worker.js"
           aws s3 cp build/index.html s3://${{ secrets.S3_BUCKET }}/index.html \
             --cache-control "public, max-age=0, must-revalidate"
+          for file in manifest.json asset-manifest.json service-worker.js; do
+            if [ -f "build/$file" ]; then
+              aws s3 cp "build/$file" "s3://${{ secrets.S3_BUCKET }}/$file" \
+                --cache-control "public, max-age=0, must-revalidate"
+            fi
+          done
 
       - name: Invalidate CloudFront
         run: |
           aws cloudfront create-invalidation \
             --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
-            --paths "/index.html"
+            --paths "/index.html" "/manifest.json" "/asset-manifest.json" "/service-worker.js"
 ```
 
 ## Performance Optimization
 
 A few tips to squeeze out even more performance:
 
-**Enable Brotli compression** in your CloudFront distribution. It's smaller than gzip and supported by all modern browsers.
+**Enable Brotli compression** in your CloudFront distribution. It's smaller than gzip and supported by modern browsers over HTTPS.
 
 **Use CloudFront Functions** for things like URL rewrites, security headers, or A/B testing at the edge:
 
@@ -330,4 +364,4 @@ Track your CloudFront distribution metrics in CloudWatch and set up alerts for e
 
 ## Final Thoughts
 
-S3 plus CloudFront is hard to beat for React hosting. It's cheap, fast, and scales infinitely without any intervention. The initial setup takes about 30 minutes, and after that, deployments are just a `sync` command away. For most React apps, this is all you need.
+S3 plus CloudFront is hard to beat for React hosting. It's cheap, fast, and scales to very high traffic without server management. The initial setup takes about 30 minutes, and after that, deployments are just a `sync` command away. For most React apps, this is all you need.
