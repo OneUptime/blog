@@ -32,6 +32,7 @@ graph LR
 Before you start, make sure you have:
 
 - An existing Transit Gateway in your region
+- A CIDR block associated with the Transit Gateway for Connect GRE tunnel endpoints
 - A VPC attachment already connected to the Transit Gateway (this serves as the "transport" attachment)
 - An SD-WAN virtual appliance running in that VPC (Cisco SD-WAN, VMware SD-WAN, Aruba EdgeConnect, or similar)
 - The appliance must support GRE tunneling and BGP
@@ -45,9 +46,9 @@ First, you need a VPC attachment that will act as the transport mechanism. If yo
 
 # Replace with your actual Transit Gateway ID and subnet IDs
 aws ec2 create-transit-gateway-vpc-attachment \
-  --transit-gateway-id tgw-0abc123def456 \
-  --vpc-id vpc-0xyz789abc \
-  --subnet-ids subnet-0aaa111bbb222 \
+  --transit-gateway-id tgw-0abc123def4567890 \
+  --vpc-id vpc-0abc789def1234567 \
+  --subnet-ids subnet-0aaa111bbb222ccc3 \
   --tag-specifications 'ResourceType=transit-gateway-attachment,Tags=[{Key=Name,Value=sdwan-transport}]'
 ```
 
@@ -57,7 +58,7 @@ Now create the Connect attachment, referencing that VPC attachment as the transp
 # Create the Transit Gateway Connect attachment
 # The transport-attachment-id should be your VPC attachment from above
 aws ec2 create-transit-gateway-connect \
-  --transport-transit-gateway-attachment-id tgw-attach-0abc123transport \
+  --transport-transit-gateway-attachment-id tgw-attach-0abc123def4567890 \
   --options Protocol=gre \
   --tag-specifications 'ResourceType=transit-gateway-attachment,Tags=[{Key=Name,Value=sdwan-connect}]'
 ```
@@ -70,14 +71,14 @@ A Connect peer defines the GRE tunnel endpoints and the BGP session parameters. 
 
 ```bash
 # Create a Connect peer with BGP configuration
-# - peer-address: the IP of your SD-WAN appliance (inside the VPC)
-# - transit-gateway-address: the IP Transit Gateway will use inside the GRE tunnel
+# - peer-address: the GRE outer IP of your SD-WAN appliance (inside the VPC)
+# - transit-gateway-address: the GRE outer IP Transit Gateway will use from its TGW CIDR block
 # - bgp-options: your appliance's ASN
 # - inside-cidr-blocks: /29 CIDR for the BGP peering inside the tunnel
 aws ec2 create-transit-gateway-connect-peer \
-  --transit-gateway-attachment-id tgw-attach-0abc123connect \
+  --transit-gateway-attachment-id tgw-attach-0def456abc7890123 \
   --peer-address 10.0.1.50 \
-  --transit-gateway-address 169.254.100.1 \
+  --transit-gateway-address 10.255.0.1 \
   --bgp-options PeerAsn=65000 \
   --inside-cidr-blocks "169.254.100.0/29" \
   --tag-specifications 'ResourceType=transit-gateway-connect-peer,Tags=[{Key=Name,Value=sdwan-peer-1}]'
@@ -86,6 +87,7 @@ aws ec2 create-transit-gateway-connect-peer \
 A few things to note here:
 
 - The `peer-address` is the private IP of your SD-WAN appliance in the VPC
+- The `transit-gateway-address` must come from a CIDR block associated with the Transit Gateway
 - The `inside-cidr-blocks` must be a /29 from the 169.254.0.0/16 link-local range (excluding some reserved ranges)
 - AWS assigns an ASN to the Transit Gateway side automatically, or you can set it when creating the Transit Gateway
 
@@ -101,19 +103,19 @@ Here is an example for a generic Linux-based appliance.
 ```bash
 # Create GRE tunnel interface
 sudo ip tunnel add gre-tgw mode gre \
-  remote 169.254.100.1 \
+  remote 10.255.0.1 \
   local 10.0.1.50 \
   ttl 255
 
 # Assign the BGP peering IP to the tunnel interface
-# Use the peer IP from the inside-cidr-blocks range
-sudo ip addr add 169.254.100.2/29 dev gre-tgw
+# Use the first usable IP from the inside-cidr-blocks range for the appliance
+sudo ip addr add 169.254.100.1/29 dev gre-tgw
 
 # Bring up the tunnel interface
 sudo ip link set gre-tgw up
 
-# Add a route for the Transit Gateway tunnel endpoint through the VPC
-sudo ip route add 169.254.100.1/32 dev gre-tgw
+# Add a route for the Transit Gateway GRE endpoint through the VPC subnet router
+sudo ip route add 10.255.0.1/32 via 10.0.1.1 dev eth0
 ```
 
 For BGP configuration using FRRouting (a common choice on Linux-based appliances):
@@ -122,10 +124,13 @@ For BGP configuration using FRRouting (a common choice on Linux-based appliances
 # FRRouting BGP configuration
 vtysh -c "configure terminal
 router bgp 65000
- neighbor 169.254.100.1 remote-as 64512
- neighbor 169.254.100.1 timers 10 30
+ neighbor 169.254.100.2 remote-as 64512
+ neighbor 169.254.100.2 timers 10 30
+ neighbor 169.254.100.3 remote-as 64512
+ neighbor 169.254.100.3 timers 10 30
  address-family ipv4 unicast
-  neighbor 169.254.100.1 activate
+  neighbor 169.254.100.2 activate
+  neighbor 169.254.100.3 activate
   network 10.0.0.0/16
   network 172.16.0.0/12
  exit-address-family
@@ -134,7 +139,7 @@ exit
 write memory"
 ```
 
-Replace `64512` with the actual ASN of your Transit Gateway.
+Replace `64512` with the actual ASN of your Transit Gateway. The two AWS BGP neighbor addresses are returned in the `BgpConfigurations` section of the Connect peer output.
 
 ## Step 4: Verify the Connection
 
@@ -152,8 +157,8 @@ You want to see `State: available` and `BgpStatus: up`. If BGP is not coming up,
 ```bash
 # Make sure the security group on your appliance allows GRE
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-0abc123 \
-  --ip-permissions IpProtocol=47,FromPort=-1,ToPort=-1,IpRanges='[{CidrIp=0.0.0.0/0,Description="Allow GRE from TGW"}]'
+  --group-id sg-0abc123def4567890 \
+  --ip-permissions IpProtocol=47,IpRanges='[{CidrIp=10.255.0.1/32,Description="Allow GRE from TGW GRE address"}]'
 ```
 
 ## Step 5: Configure Route Tables
@@ -163,8 +168,8 @@ With BGP up, routes should propagate automatically. But you still need to make s
 ```bash
 # Enable route propagation on the Transit Gateway route table
 aws ec2 enable-transit-gateway-route-table-propagation \
-  --transit-gateway-route-table-id tgw-rtb-0abc123 \
-  --transit-gateway-attachment-id tgw-attach-0abc123connect
+  --transit-gateway-route-table-id tgw-rtb-0abc123def4567890 \
+  --transit-gateway-attachment-id tgw-attach-0def456abc7890123
 ```
 
 Verify the routes are showing up:
@@ -172,7 +177,7 @@ Verify the routes are showing up:
 ```bash
 # Check the Transit Gateway route table for propagated routes
 aws ec2 search-transit-gateway-routes \
-  --transit-gateway-route-table-id tgw-rtb-0abc123 \
+  --transit-gateway-route-table-id tgw-rtb-0abc123def4567890 \
   --filters "Name=type,Values=propagated"
 ```
 
