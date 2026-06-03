@@ -32,6 +32,7 @@ metadata:
     department: engineering
     product: ml-platform
     cost-center: CC-ML-001
+  annotations:
     manager: john.doe@example.com
 ```
 
@@ -48,6 +49,10 @@ metadata:
     team: ml-engineering
     component: training
 spec:
+  selector:
+    matchLabels:
+      team: ml-engineering
+      component: training
   template:
     metadata:
       labels:
@@ -76,12 +81,21 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta
 import smtplib
+import os
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.mime.base import MIMEBase
-from email import encoders
 
-KUBECOST_URL = "http://kubecost.kubecost.svc:9090"
+KUBECOST_URL = os.environ.get("KUBECOST_URL", "http://kubecost.kubecost.svc:9090")
+SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.example.com")
+SMTP_USER = os.environ.get("SMTP_USER", "finops@example.com")
+SMTP_PASSWORD = os.environ.get("SMTP_PASSWORD")
+
+def iter_allocations(data):
+    """Yield allocation records from Kubecost allocation sets"""
+    for allocation_set in data.get('data', []):
+        for name, allocation in allocation_set.items():
+            allocation['name'] = name.replace('team=', '', 1)
+            yield allocation
 
 def get_team_costs(start_date, end_date):
     """Fetch team costs for the period"""
@@ -104,11 +118,12 @@ def get_team_costs(start_date, end_date):
         'total_cost': item.get('totalCost', 0),
         'cpu_hours': item.get('cpuCoreRequestAverage', 0) * 24 * 7,
         'memory_gb_hours': item.get('ramByteRequestAverage', 0) / 1024**3 * 24 * 7
-    } for item in data.get('data', [])]
+    } for item in iter_allocations(data)]
 
 def generate_html_report(team_costs, start_date, end_date):
     """Generate HTML report"""
-    df = pd.DataFrame(team_costs)
+    columns = ['team', 'cpu_cost', 'memory_cost', 'storage_cost', 'gpu_cost', 'network_cost', 'total_cost']
+    df = pd.DataFrame(team_costs, columns=columns)
     df = df.sort_values('total_cost', ascending=False)
 
     html = f"""
@@ -178,15 +193,16 @@ def send_email_report(html_content, recipients):
     """Send HTML email report"""
     msg = MIMEMultipart('alternative')
     msg['Subject'] = f"Weekly Kubernetes Cost Showback Report - {datetime.now().strftime('%Y-%m-%d')}"
-    msg['From'] = 'finops@example.com'
+    msg['From'] = SMTP_USER
     msg['To'] = ', '.join(recipients)
 
     html_part = MIMEText(html_content, 'html')
     msg.attach(html_part)
 
-    with smtplib.SMTP('smtp.example.com', 587) as server:
+    with smtplib.SMTP(SMTP_SERVER, 587) as server:
         server.starttls()
-        server.login('finops@example.com', 'password')
+        if SMTP_PASSWORD:
+            server.login(SMTP_USER, SMTP_PASSWORD)
         server.send_message(msg)
 
 def main():
@@ -263,7 +279,7 @@ Create a Grafana dashboard for self-service showback:
       {
         "title": "Cost by Team (Last 30 Days)",
         "targets": [{
-          "expr": "sum(kubecost_allocation_total_cost{}) by (label_team)",
+          "expr": "sum by (label_team) (((container_cpu_allocation * on(instance) group_left() node_cpu_hourly_cost) + (container_memory_allocation_bytes / 1024 / 1024 / 1024 * on(instance) group_left() node_ram_hourly_cost)) * on(namespace) group_left(label_team) kube_namespace_labels) * 24 * 30",
           "legendFormat": "{{ label_team }}"
         }],
         "type": "graph"
@@ -271,7 +287,7 @@ Create a Grafana dashboard for self-service showback:
       {
         "title": "Cost Trend by Team",
         "targets": [{
-          "expr": "sum(kubecost_allocation_total_cost{label_team='$team'}) by (label_team)",
+          "expr": "sum by (label_team) (((container_cpu_allocation * on(instance) group_left() node_cpu_hourly_cost) + (container_memory_allocation_bytes / 1024 / 1024 / 1024 * on(instance) group_left() node_ram_hourly_cost)) * on(namespace) group_left(label_team) kube_namespace_labels{label_team=\"$team\"})",
           "legendFormat": "{{ label_team }}"
         }],
         "type": "graph"
@@ -280,11 +296,11 @@ Create a Grafana dashboard for self-service showback:
         "title": "Resource Utilization vs Request",
         "targets": [
           {
-            "expr": "sum(container_cpu_usage_seconds_total{namespace='$namespace'}) by (pod)",
+            "expr": "sum(rate(container_cpu_usage_seconds_total{namespace=\"$namespace\"}[5m])) by (pod)",
             "legendFormat": "CPU Usage - {{ pod }}"
           },
           {
-            "expr": "sum(kube_pod_container_resource_requests{namespace='$namespace',resource='cpu'}) by (pod)",
+            "expr": "sum(kube_pod_container_resource_requests{namespace=\"$namespace\",resource=\"cpu\"}) by (pod)",
             "legendFormat": "CPU Request - {{ pod }}"
           }
         ],
@@ -296,12 +312,12 @@ Create a Grafana dashboard for self-service showback:
         {
           "name": "team",
           "type": "query",
-          "query": "label_values(kubecost_allocation_total_cost, label_team)"
+          "query": "label_values(kube_namespace_labels, label_team)"
         },
         {
           "name": "namespace",
           "type": "query",
-          "query": "label_values(kube_namespace_labels{label_team='$team'}, namespace)"
+          "query": "label_values(kube_namespace_labels{label_team=\"$team\"}, namespace)"
         }
       ]
     }
@@ -318,11 +334,17 @@ Send daily cost summaries to Slack:
 # slack-daily-digest.py
 
 import requests
-import json
 from datetime import datetime, timedelta
 
 KUBECOST_URL = "http://kubecost.kubecost.svc:9090"
 SLACK_WEBHOOK = "https://hooks.slack.com/services/YOUR/WEBHOOK/URL"
+
+def iter_allocations(data):
+    """Yield allocation records from Kubecost allocation sets"""
+    for allocation_set in data.get('data', []):
+        for name, allocation in allocation_set.items():
+            allocation['name'] = name.replace('team=', '', 1)
+            yield allocation
 
 def get_yesterday_costs():
     """Get costs for yesterday"""
@@ -332,10 +354,10 @@ def get_yesterday_costs():
 
     response = requests.get(
         f'{KUBECOST_URL}/model/allocation',
-        params={'window': f'{start},{end}', 'aggregate': 'label:team'}
+        params={'window': f'{start},{end}', 'aggregate': 'label:team', 'accumulate': 'true'}
     )
 
-    return response.json().get('data', [])
+    return list(iter_allocations(response.json()))
 
 def send_slack_message(team_costs):
     """Send formatted message to Slack"""
@@ -412,28 +434,33 @@ def get_team_recommendations(team_name):
         params={
             'window': '7d',
             'aggregate': 'namespace',
-            'filter': f'label:team:{team_name}'
+            'filter': f'label[team]:"{team_name}"'
         }
     )
 
-    namespaces = [item['name'] for item in response.json().get('data', [])]
+    namespaces = []
+    for allocation_set in response.json().get('data', []):
+        namespaces.extend(name for name in allocation_set.keys() if not name.startswith('__'))
 
     recommendations = []
 
     for namespace in namespaces:
-        # Get savings from recommendations API
+        # Get container request right-sizing recommendations
         rec_response = requests.get(
-            f'{KUBECOST_URL}/model/savings',
-            params={'namespace': namespace}
+            f'{KUBECOST_URL}/model/savings/requestSizingV2',
+            params={'window': '7d', 'filter': f'namespace:"{namespace}"'}
         )
 
-        for rec in rec_response.json().get('data', []):
+        for rec in rec_response.json():
+            savings = rec.get('monthlySavings', {})
+            monthly_savings = savings.get('cpu', 0) + savings.get('memory', 0)
+            recommended = rec.get('recommendedRequest', {})
             recommendations.append({
                 'namespace': namespace,
-                'type': rec.get('savingsType'),
-                'description': rec.get('description'),
-                'monthly_savings': rec.get('monthlySavings', 0),
-                'action': rec.get('recommendedAction')
+                'type': 'Request right-sizing',
+                'description': f"{rec.get('controllerKind')}/{rec.get('controllerName')} container {rec.get('containerName')}",
+                'monthly_savings': monthly_savings,
+                'action': f"Set requests to cpu={recommended.get('cpu')}, memory={recommended.get('memory')}"
             })
 
     return recommendations
