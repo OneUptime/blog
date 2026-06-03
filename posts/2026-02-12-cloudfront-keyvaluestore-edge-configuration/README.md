@@ -34,53 +34,61 @@ Create and populate a KeyValueStore:
 ```bash
 # Create the key-value store
 
-aws cloudfront-keyvaluestore create-key-value-store \
+aws cloudfront create-key-value-store \
   --name "app-config" \
   --comment "Application configuration for edge functions"
 
-# The response includes the ARN and ETag - save both
-# ARN: arn:aws:cloudfront::123456789012:key-value-store/abc-123-def
-# ETag: AAAAAAAAAAAA
+# The response includes the ARN - save it
+# ARN: arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f
+
+# Get the current KVS data ETag before writing keys
+ETAG=$(aws cloudfront-keyvaluestore describe-key-value-store \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
+  --query 'ETag' --output text)
 
 # Put individual keys
 aws cloudfront-keyvaluestore put-key \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
-  --if-match AAAAAAAAAAAA \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
+  --if-match $ETAG \
   --key "maintenance-mode" \
   --value "false"
 
 # Put multiple keys (get the updated ETag after each operation)
 aws cloudfront-keyvaluestore put-key \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
   --if-match BBBBBBBBBBBB \
   --key "feature-dark-mode" \
   --value "true"
 
 aws cloudfront-keyvaluestore put-key \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
   --if-match CCCCCCCCCCCC \
   --key "redirect:/old-page" \
   --value "/new-page"
 ```
 
-You can also import data in bulk from an S3 object.
+You can also import data in bulk from an S3 object when you create the store.
 
 Bulk import from S3:
 
 ```bash
-# Create a JSON file with your key-value pairs
-# Upload to S3 first, then import
-aws cloudfront-keyvaluestore update-keys \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
-  --if-match CURRENT_ETAG \
-  --puts '[
-    {"Key": "maintenance-mode", "Value": "false"},
-    {"Key": "feature-dark-mode", "Value": "true"},
-    {"Key": "feature-new-checkout", "Value": "false"},
-    {"Key": "ab-test-hero-variant", "Value": "B"},
-    {"Key": "redirect:/old-pricing", "Value": "/pricing"},
-    {"Key": "redirect:/old-docs", "Value": "/documentation"}
-  ]'
+# Create a UTF-8 JSON file with your key-value pairs:
+# {
+#   "data": [
+#     {"key": "maintenance-mode", "value": "false"},
+#     {"key": "feature-dark-mode", "value": "true"},
+#     {"key": "feature-new-checkout", "value": "false"},
+#     {"key": "ab-test-hero-variant", "value": "B"},
+#     {"key": "redirect:/old-pricing", "value": "/pricing"},
+#     {"key": "redirect:/old-docs", "value": "/documentation"}
+#   ]
+# }
+#
+# Upload it to S3 first, then import it while creating the store
+aws cloudfront create-key-value-store \
+  --name "app-config" \
+  --comment "Application configuration for edge functions" \
+  --import-source SourceType=S3,SourceARN=arn:aws:s3:::example-bucket/kvs-input.json
 ```
 
 ## Writing CloudFront Functions with KeyValueStore
@@ -207,7 +215,7 @@ aws cloudfront create-function \
     "KeyValueStoreAssociations": {
       "Items": [
         {
-          "KeyValueStoreARN": "arn:aws:cloudfront::123456789012:key-value-store/abc-123-def"
+          "KeyValueStoreARN": "arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f"
         }
       ],
       "Quantity": 1
@@ -285,7 +293,7 @@ Resources:
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6
           FunctionAssociations:
             - EventType: viewer-request
-              FunctionARN: !GetAtt MaintenanceFunction.FunctionARN
+              FunctionARN: !GetAtt MaintenanceFunction.FunctionMetadata.FunctionARN
         Origins:
           - Id: origin
             DomainName: origin.example.com
@@ -302,22 +310,22 @@ Toggle maintenance mode on and off:
 ```bash
 # Turn on maintenance mode
 ETAG=$(aws cloudfront-keyvaluestore describe-key-value-store \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
   --query 'ETag' --output text)
 
 aws cloudfront-keyvaluestore put-key \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
   --if-match $ETAG \
   --key "maintenance-mode" \
   --value "true"
 
 # After maintenance, turn it off
 ETAG=$(aws cloudfront-keyvaluestore describe-key-value-store \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
   --query 'ETag' --output text)
 
 aws cloudfront-keyvaluestore put-key \
-  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/abc-123-def \
+  --kvs-arn arn:aws:cloudfront::123456789012:key-value-store/8aa76c93-3198-462c-aaf6-1a2b3c4d5e6f \
   --if-match $ETAG \
   --key "maintenance-mode" \
   --value "false"
