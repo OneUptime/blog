@@ -52,8 +52,8 @@ variable "name" {
   description = "The name of the namespace"
   type        = string
   validation {
-    condition     = can(regex("^[a-z0-9][a-z0-9-]*[a-z0-9]$", var.name))
-    error_message = "Namespace name must be lowercase alphanumeric with hyphens."
+    condition     = can(regex("^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$", var.name))
+    error_message = "Namespace name must be a valid RFC 1123 DNS label: 1-63 characters, lowercase alphanumeric with hyphens, start with a letter, and end with an alphanumeric character."
   }
 }
 
