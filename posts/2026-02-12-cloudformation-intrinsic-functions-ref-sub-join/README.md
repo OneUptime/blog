@@ -99,9 +99,10 @@ Available pseudo parameters:
 | `AWS::Region` | The region (e.g., us-east-1) |
 | `AWS::StackId` | The stack ID (full ARN) |
 | `AWS::StackName` | The stack name |
-| `AWS::URLSuffix` | The domain suffix (amazonaws.com) |
+| `AWS::URLSuffix` | The domain suffix (for example, amazonaws.com) |
 | `AWS::NoValue` | Used to remove a property conditionally |
 | `AWS::Partition` | The partition (aws, aws-cn, aws-us-gov) |
+| `AWS::NotificationARNs` | The list of notification ARNs for the current stack |
 
 ## Fn::Sub - String Substitution
 
@@ -300,14 +301,14 @@ Outputs:
 
 ## Common Mistakes
 
-**Forgetting quotes around Sub strings.** YAML interprets `${` as a special character. Always quote `!Sub` strings:
+**Forgetting to escape literal Sub variables.** `Fn::Sub` treats `${Name}` as a variable reference. If you need `${Name}` to appear literally in the output, escape it as `${!Name}`:
 
 ```yaml
-# Wrong - YAML parser will choke on this
-BucketName: !Sub ${Environment}-bucket
+# Wrong - CloudFormation looks for a variable named Literal
+Message: !Sub 'Use ${Literal} in the application config'
 
-# Right - quoted string
-BucketName: !Sub '${Environment}-bucket'
+# Right - outputs ${Literal}
+Message: !Sub 'Use ${!Literal} in the application config'
 ```
 
 **Using Ref when you need GetAtt.** `Ref` returns the primary ID, not the ARN or other attributes. Check the docs for what each resource type's `Ref` returns.
