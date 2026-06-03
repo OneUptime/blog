@@ -46,7 +46,6 @@ spec:
       - serviceAccountToken:
           path: api-token
           expirationSeconds: 600  # 10 minutes
-          audience: api
 ```
 
 This token expires after 10 minutes. The kubelet refreshes it at 80% of its lifetime (8 minutes), ensuring the application always has a valid token.
@@ -78,13 +77,12 @@ spec:
       # Critical operations - very short-lived
       - serviceAccountToken:
           path: admin-token
-          expirationSeconds: 300  # 5 minutes
+          expirationSeconds: 600  # 10 minutes
           audience: admin-api
       # Regular operations - short-lived
       - serviceAccountToken:
           path: api-token
           expirationSeconds: 1800  # 30 minutes
-          audience: api
       # Read-only operations - medium-lived
       - serviceAccountToken:
           path: readonly-token
@@ -111,14 +109,14 @@ echo $TOKEN
 # Create a 24-hour token for CI/CD
 kubectl create token cicd-deployer -n cicd --duration=24h
 
-# Create a 5-minute token for temporary access
-kubectl create token debug-account -n production --duration=5m
+# Create a 10-minute token for temporary access
+kubectl create token debug-account -n production --duration=10m
 
-# Maximum allowed duration (varies by cluster, typically 24h)
+# Request a longer duration (the server may return a shorter or longer lifetime)
 kubectl create token app-service-account -n production --duration=24h
 ```
 
-These tokens are bound to the ServiceAccount but not to a specific pod. They expire after the specified duration and cannot be renewed.
+These tokens are bound to the ServiceAccount but not to a specific pod. They expire after the issued duration and cannot be renewed.
 
 ## Verifying Token Expiration Times
 
@@ -131,14 +129,19 @@ Check when a token expires:
 TOKEN_FILE="/var/run/secrets/kubernetes.io/serviceaccount/token"
 
 # Read the token
-TOKEN=$(cat $TOKEN_FILE)
+TOKEN=$(cat "$TOKEN_FILE")
 
 # Decode the JWT payload (second part between dots)
-PAYLOAD=$(echo $TOKEN | cut -d'.' -f2 | base64 -d 2>/dev/null)
+PAYLOAD_B64=$(echo "$TOKEN" | cut -d'.' -f2 | tr '_-' '/+')
+case $((${#PAYLOAD_B64} % 4)) in
+    2) PAYLOAD_B64="${PAYLOAD_B64}==" ;;
+    3) PAYLOAD_B64="${PAYLOAD_B64}=" ;;
+esac
+PAYLOAD=$(echo "$PAYLOAD_B64" | base64 -d 2>/dev/null)
 
 # Extract expiration time
-EXP=$(echo $PAYLOAD | grep -o '"exp":[0-9]*' | cut -d':' -f2)
-IAT=$(echo $PAYLOAD | grep -o '"iat":[0-9]*' | cut -d':' -f2)
+EXP=$(echo "$PAYLOAD" | grep -o '"exp":[0-9]*' | cut -d':' -f2)
+IAT=$(echo "$PAYLOAD" | grep -o '"iat":[0-9]*' | cut -d':' -f2)
 
 # Current time
 NOW=$(date +%s)
@@ -172,78 +175,23 @@ package main
 import (
     "context"
     "fmt"
-    "io/ioutil"
-    "sync"
     "time"
 
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
 
-type TokenManager struct {
-    tokenPath    string
-    currentToken string
-    mutex        sync.RWMutex
-    refreshTicker *time.Ticker
-}
-
-func NewTokenManager(tokenPath string, refreshInterval time.Duration) *TokenManager {
-    tm := &TokenManager{
-        tokenPath: tokenPath,
-        refreshTicker: time.NewTicker(refreshInterval),
-    }
-
-    // Load initial token
-    tm.refresh()
-
-    // Start background refresh
-    go tm.refreshLoop()
-
-    return tm
-}
-
-func (tm *TokenManager) refresh() error {
-    token, err := ioutil.ReadFile(tm.tokenPath)
-    if err != nil {
-        return fmt.Errorf("failed to read token: %v", err)
-    }
-
-    tm.mutex.Lock()
-    tm.currentToken = string(token)
-    tm.mutex.Unlock()
-
-    fmt.Printf("Token refreshed at %s\n", time.Now().Format(time.RFC3339))
-    return nil
-}
-
-func (tm *TokenManager) refreshLoop() {
-    for range tm.refreshTicker.C {
-        if err := tm.refresh(); err != nil {
-            fmt.Printf("Error refreshing token: %v\n", err)
-        }
-    }
-}
-
-func (tm *TokenManager) GetToken() string {
-    tm.mutex.RLock()
-    defer tm.mutex.RUnlock()
-    return tm.currentToken
-}
-
-func (tm *TokenManager) Stop() {
-    tm.refreshTicker.Stop()
-}
-
 func main() {
-    // Refresh token every 30 seconds
-    tm := NewTokenManager("/var/run/secrets/tokens/api-token", 30*time.Second)
-    defer tm.Stop()
+    tokenPath := "/var/run/secrets/tokens/api-token"
 
-    // Use in-cluster config with automatic token refresh
+    // Use in-cluster config and point client-go at the projected token file.
     config, err := rest.InClusterConfig()
     if err != nil {
         panic(err.Error())
     }
+    config.BearerToken = ""
+    config.BearerTokenFile = tokenPath
 
     clientset, err := kubernetes.NewForConfig(config)
     if err != nil {
@@ -265,7 +213,7 @@ func main() {
 }
 ```
 
-This pattern ensures applications always use current tokens.
+This pattern ensures client-go reloads the token from the projected file as Kubernetes rotates it.
 
 ## Python Token Refresh Implementation
 
@@ -357,7 +305,7 @@ import (
     "encoding/base64"
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "os"
     "strings"
     "time"
 )
@@ -370,7 +318,7 @@ type TokenClaims struct {
 }
 
 func parseToken(tokenPath string) (*TokenClaims, error) {
-    tokenBytes, err := ioutil.ReadFile(tokenPath)
+    tokenBytes, err := os.ReadFile(tokenPath)
     if err != nil {
         return nil, err
     }
@@ -444,11 +392,11 @@ func main() {
 
 Choose expiration times based on your threat model:
 
-- High security environments: 5-15 minutes
+- High security environments: 10-15 minutes
 - Standard production workloads: 30 minutes to 2 hours
 - Batch jobs and long-running tasks: 4-8 hours
 - CI/CD pipelines: 1-24 hours
-- Temporary debugging: 5-30 minutes
+- Temporary debugging: 10-30 minutes
 
 Shorter lifetimes provide better security but increase the frequency of rotation. Balance security with operational requirements.
 
@@ -462,7 +410,7 @@ package main
 
 import (
     "fmt"
-    "io/ioutil"
+    "os"
     "time"
 )
 
@@ -475,7 +423,7 @@ type ResilientTokenReader struct {
 
 func (r *ResilientTokenReader) GetToken() (string, error) {
     // Try primary path
-    if token, err := ioutil.ReadFile(r.primaryPath); err == nil {
+    if token, err := os.ReadFile(r.primaryPath); err == nil {
         r.lastGoodToken = string(token)
         r.lastReadTime = time.Now()
         return string(token), nil
@@ -483,7 +431,7 @@ func (r *ResilientTokenReader) GetToken() (string, error) {
 
     // Try fallback path
     if r.fallbackPath != "" {
-        if token, err := ioutil.ReadFile(r.fallbackPath); err == nil {
+        if token, err := os.ReadFile(r.fallbackPath); err == nil {
             r.lastGoodToken = string(token)
             r.lastReadTime = time.Now()
             return string(token), nil
