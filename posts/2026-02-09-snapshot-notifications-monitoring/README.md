@@ -22,10 +22,34 @@ metadata:
   namespace: monitoring
 data:
   exporter.py: |
-    from prometheus_client import start_http_server, Gauge, Counter
+    from prometheus_client import start_http_server, Gauge
+    from kubernetes import client, config
+    from datetime import datetime, timezone
     import time
-    import subprocess
-    import json
+
+    def parse_quantity(value):
+        if not value:
+            return 0
+
+        suffixes = {
+            'Ki': 1024,
+            'Mi': 1024**2,
+            'Gi': 1024**3,
+            'Ti': 1024**4,
+            'Pi': 1024**5,
+            'K': 1000,
+            'M': 1000**2,
+            'G': 1000**3,
+            'T': 1000**4,
+            'P': 1000**5,
+        }
+
+        value = str(value)
+        for suffix, multiplier in suffixes.items():
+            if value.endswith(suffix):
+                return int(float(value[:-len(suffix)]) * multiplier)
+
+        return int(float(value))
 
     # Define metrics
     snapshot_count = Gauge('kubernetes_volumesnapshot_count',
@@ -38,53 +62,104 @@ data:
 
     snapshot_age = Gauge('kubernetes_volumesnapshot_age_seconds',
                         'Age of volume snapshots',
-                        ['namespace', 'snapshot_name'])
+                        ['namespace', 'snapshot_name', 'verified', 'schedule'])
 
-    snapshot_failures = Counter('kubernetes_volumesnapshot_failures_total',
-                               'Total snapshot creation failures',
-                               ['namespace'])
+    snapshot_retention = Gauge('kubernetes_volumesnapshot_retention_days',
+                               'Configured retention policy for volume snapshots',
+                               ['namespace', 'snapshot_name', 'verified', 'schedule'])
+
+    snapshot_failures = Gauge('kubernetes_volumesnapshot_failures',
+                              'Current number of volume snapshots with errors',
+                              ['namespace'])
 
     def collect_metrics():
-        # Get all snapshots
-        result = subprocess.run(
-            ['kubectl', 'get', 'volumesnapshot', '--all-namespaces', '-o', 'json'],
-            capture_output=True, text=True
+        api = client.CustomObjectsApi()
+        snapshots = api.list_cluster_custom_object(
+            group='snapshot.storage.k8s.io',
+            version='v1',
+            plural='volumesnapshots',
         )
-        snapshots = json.loads(result.stdout)
 
         # Reset gauges
         snapshot_count._metrics.clear()
         snapshot_size._metrics.clear()
         snapshot_age._metrics.clear()
+        snapshot_retention._metrics.clear()
+        snapshot_failures._metrics.clear()
 
         for item in snapshots['items']:
             ns = item['metadata']['namespace']
             name = item['metadata']['name']
+            annotations = item['metadata'].get('annotations', {})
             ready = item.get('status', {}).get('readyToUse', False)
+            verified = annotations.get('backup.kubernetes.io/verified', 'false')
+            schedule = annotations.get('backup.kubernetes.io/schedule', 'none')
+            retention_days = int(annotations.get('backup.kubernetes.io/retention-days', '30'))
 
             # Count by status
             status = 'ready' if ready else 'not_ready'
             snapshot_count.labels(namespace=ns, status=status).inc()
 
             # Size
-            restore_size = item.get('status', {}).get('restoreSize', '0Gi')
-            size_gb = int(restore_size.rstrip('Gi'))
-            snapshot_size.labels(namespace=ns, snapshot_name=name).set(size_gb * 1024**3)
+            restore_size = item.get('status', {}).get('restoreSize', '0')
+            snapshot_size.labels(namespace=ns, snapshot_name=name).set(parse_quantity(restore_size))
 
             # Age
             created = item['metadata']['creationTimestamp']
-            # Calculate age (simplified)
-            snapshot_age.labels(namespace=ns, snapshot_name=name).set(0)
+            created_at = datetime.fromisoformat(created.replace('Z', '+00:00'))
+            age_seconds = (datetime.now(timezone.utc) - created_at).total_seconds()
+            snapshot_age.labels(
+                namespace=ns,
+                snapshot_name=name,
+                verified=verified,
+                schedule=schedule,
+            ).set(age_seconds)
+
+            snapshot_retention.labels(
+                namespace=ns,
+                snapshot_name=name,
+                verified=verified,
+                schedule=schedule,
+            ).set(retention_days)
 
             # Failures
             if item.get('status', {}).get('error'):
                 snapshot_failures.labels(namespace=ns).inc()
 
     if __name__ == '__main__':
+        config.load_incluster_config()
         start_http_server(8000)
         while True:
             collect_metrics()
             time.sleep(60)
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: snapshot-metrics-exporter
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: snapshot-metrics-reader
+rules:
+- apiGroups: ["snapshot.storage.k8s.io"]
+  resources: ["volumesnapshots"]
+  verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: snapshot-metrics-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: snapshot-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: snapshot-metrics-exporter
+  namespace: monitoring
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -154,7 +229,7 @@ data:
       rules:
       # Snapshot creation failures
       - alert: SnapshotCreationFailing
-        expr: rate(kubernetes_volumesnapshot_failures_total[5m]) > 0
+        expr: kubernetes_volumesnapshot_failures > 0
         for: 10m
         labels:
           severity: critical
@@ -176,26 +251,27 @@ data:
 
       # High snapshot storage usage
       - alert: HighSnapshotStorage
-        expr: sum(kubernetes_volumesnapshot_size_bytes) / 1024^4 > 1000
+        expr: sum(kubernetes_volumesnapshot_size_bytes) / 1024^4 > 1
         for: 1h
         labels:
           severity: warning
           component: cost
         annotations:
           summary: "High snapshot storage usage"
-          description: "Total snapshot storage exceeds 1TB ({{ $value }}TB)"
+          description: "Total snapshot storage exceeds 1TiB ({{ $value }}TiB)"
 
       # Missing expected snapshots
       - alert: MissingScheduledSnapshot
         expr: |
-          (time() - kubernetes_volumesnapshot_age_seconds{schedule="daily"}) > 172800
+          absent(kubernetes_volumesnapshot_age_seconds{schedule="daily"}) or
+          min(kubernetes_volumesnapshot_age_seconds{schedule="daily"}) > 172800
         for: 1h
         labels:
           severity: critical
           component: backup
         annotations:
           summary: "Scheduled snapshot missing"
-          description: "No daily snapshot created in 48 hours for {{ $labels.snapshot_name }}"
+          description: "No daily snapshot created in 48 hours"
 
       # Snapshot retention violations
       - alert: RetentionPolicyViolation
@@ -216,6 +292,25 @@ data:
 Send snapshot alerts to Slack:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: snapshot-notifier
+  namespace: monitoring
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: snapshot-notifier-reader
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: snapshot-metrics-reader
+subjects:
+- kind: ServiceAccount
+  name: snapshot-notifier
+  namespace: monitoring
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -231,7 +326,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: notifier
-            image: curlimages/curl:latest
+            image: alpine:3.20
             env:
             - name: SLACK_WEBHOOK
               valueFrom:
@@ -242,25 +337,23 @@ spec:
             - /bin/sh
             - -c
             - |
-              # Install kubectl
-              curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-              chmod +x kubectl
+              apk add --no-cache curl jq kubectl
 
               # Gather snapshot statistics
-              TOTAL=$(./kubectl get volumesnapshot --all-namespaces --no-headers | wc -l)
-              READY=$(./kubectl get volumesnapshot --all-namespaces -o json | \
+              TOTAL=$(kubectl get volumesnapshot --all-namespaces --no-headers | wc -l)
+              READY=$(kubectl get volumesnapshot --all-namespaces -o json | \
                 jq '[.items[] | select(.status.readyToUse == true)] | length')
-              FAILED=$(./kubectl get volumesnapshot --all-namespaces -o json | \
+              FAILED=$(kubectl get volumesnapshot --all-namespaces -o json | \
                 jq '[.items[] | select(.status.error != null)] | length')
 
               # Check for issues
               COLOR="good"
-              if [ $FAILED -gt 0 ]; then
+              if [ "$FAILED" -gt 0 ]; then
                 COLOR="danger"
               fi
 
               # Send notification
-              curl -X POST $SLACK_WEBHOOK \
+              curl -X POST "$SLACK_WEBHOOK" \
                 -H 'Content-Type: application/json' \
                 -d "{
                   \"attachments\": [{
@@ -286,6 +379,7 @@ apiVersion: batch/v1
 kind: Job
 metadata:
   name: snapshot-failure-notifier
+  namespace: monitoring
 spec:
   template:
     spec:
@@ -293,7 +387,7 @@ spec:
       restartPolicy: OnFailure
       containers:
       - name: notifier
-        image: alpine:latest
+        image: alpine:3.20
         env:
         - name: SMTP_SERVER
           value: "smtp.gmail.com:587"
@@ -313,21 +407,14 @@ spec:
         - /bin/sh
         - -c
         - |
-          apk add --no-cache curl
-
-          # Install kubectl
-          curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-          chmod +x kubectl
+          apk add --no-cache curl jq kubectl mailx
 
           # Check for failed snapshots
-          FAILED=$(./kubectl get volumesnapshot --all-namespaces -o json | \
+          FAILED=$(kubectl get volumesnapshot --all-namespaces -o json | \
             jq -r '.items[] | select(.status.error != null) |
               "\(.metadata.namespace)/\(.metadata.name): \(.status.error.message)"')
 
           if [ -n "$FAILED" ]; then
-            # Install mail tools
-            apk add --no-cache mailx
-
             # Send email
             echo "$FAILED" | mail -s "ALERT: Volume Snapshot Failures Detected" \
               -S smtp="$SMTP_SERVER" \
@@ -357,35 +444,35 @@ Create a Grafana dashboard for snapshot monitoring:
         "targets": [{
           "expr": "sum(kubernetes_volumesnapshot_count)"
         }],
-        "type": "singlestat"
+        "type": "stat"
       },
       {
-        "title": "Snapshot Creation Rate",
+        "title": "Ready Snapshots",
         "targets": [{
-          "expr": "rate(kubernetes_volumesnapshot_count[1h])"
+          "expr": "sum(kubernetes_volumesnapshot_count{status=\"ready\"})"
         }],
-        "type": "graph"
+        "type": "stat"
       },
       {
         "title": "Failed Snapshots",
         "targets": [{
-          "expr": "kubernetes_volumesnapshot_count{status='not_ready'}"
+          "expr": "sum(kubernetes_volumesnapshot_failures)"
         }],
-        "type": "singlestat"
+        "type": "stat"
       },
       {
         "title": "Total Snapshot Storage",
         "targets": [{
           "expr": "sum(kubernetes_volumesnapshot_size_bytes) / 1024^4"
         }],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Snapshot Age Distribution",
         "targets": [{
-          "expr": "histogram_quantile(0.95, kubernetes_volumesnapshot_age_seconds)"
+          "expr": "max by (namespace, snapshot_name) (kubernetes_volumesnapshot_age_seconds)"
         }],
-        "type": "graph"
+        "type": "timeseries"
       },
       {
         "title": "Snapshots by Namespace",
@@ -408,6 +495,7 @@ apiVersion: batch/v1
 kind: CronJob
 metadata:
   name: snapshot-webhook-notifier
+  namespace: monitoring
 spec:
   schedule: "*/30 * * * *"  # Every 30 minutes
   jobTemplate:
@@ -418,7 +506,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: notifier
-            image: curlimages/curl:latest
+            image: alpine:3.20
             env:
             - name: WEBHOOK_URL
               value: "https://monitoring.company.com/api/snapshots"
@@ -431,15 +519,14 @@ spec:
             - /bin/sh
             - -c
             - |
-              curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-              chmod +x kubectl
+              apk add --no-cache curl kubectl
 
               # Gather metrics
-              SNAPSHOT_DATA=$(./kubectl get volumesnapshot --all-namespaces -o json)
+              SNAPSHOT_DATA=$(kubectl get volumesnapshot --all-namespaces -o json)
 
               # Send to webhook
               echo "$SNAPSHOT_DATA" | \
-                curl -X POST $WEBHOOK_URL \
+                curl -X POST "$WEBHOOK_URL" \
                   -H "Authorization: Bearer $API_KEY" \
                   -H "Content-Type: application/json" \
                   -d @-
@@ -478,12 +565,21 @@ while true; do
 
   # Storage usage
   STORAGE_GB=$(kubectl get volumesnapshot --all-namespaces -o json | \
-    jq '[.items[].status.restoreSize | rtrimstr("Gi") | tonumber] | add // 0')
+    jq '
+      def to_gib:
+        if . == null then 0
+        elif test("Ki$") then (sub("Ki$"; "") | tonumber) / 1048576
+        elif test("Mi$") then (sub("Mi$"; "") | tonumber) / 1024
+        elif test("Gi$") then sub("Gi$"; "") | tonumber
+        elif test("Ti$") then (sub("Ti$"; "") | tonumber) * 1024
+        else tonumber / 1073741824
+        end;
+      [.items[].status.restoreSize | to_gib] | add // 0')
   echo "Storage: ${STORAGE_GB}Gi"
   echo
 
   # Recent failures
-  if [ $FAILED -gt 0 ]; then
+  if [ "$FAILED" -gt 0 ]; then
     echo "Recent Failures:"
     kubectl get volumesnapshot --all-namespaces -o json | \
       jq -r '.items[] | select(.status.error != null) |
