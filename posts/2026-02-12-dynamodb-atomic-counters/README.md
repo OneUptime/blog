@@ -15,8 +15,10 @@ Counting things sounds simple until you have hundreds of concurrent processes tr
 An atomic counter uses DynamoDB's UpdateItem with an arithmetic expression. The increment happens on the server side, so there's no gap between reading and writing:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Atomically increment a page view counter
 async function incrementViewCount(pageId) {
@@ -31,7 +33,7 @@ async function incrementViewCount(pageId) {
     ReturnValues: 'UPDATED_NEW'
   };
 
-  const result = await docClient.update(params).promise();
+  const result = await docClient.send(new UpdateCommand(params));
   return result.Attributes.viewCount;
 }
 ```
@@ -40,15 +42,13 @@ The `if_not_exists(viewCount, :zero)` handles the case where the item or attribu
 
 ## How It Works Internally
 
-When DynamoDB processes an atomic update, it:
+When DynamoDB processes atomic counter updates on the same item, all write requests are applied in the order DynamoDB receives them. Conceptually, each update:
 
-1. Acquires a lock on the item
-2. Reads the current value
-3. Applies the arithmetic
-4. Writes the new value
-5. Releases the lock
+1. Reads the current value
+2. Applies the arithmetic
+3. Writes the new value
 
-All of this happens in a single API call. There's no window where another process can sneak in a conflicting write.
+All of this happens in a single API call. There's no client-side read-modify-write window where another process can sneak in a conflicting write.
 
 ```mermaid
 sequenceDiagram
@@ -58,7 +58,7 @@ sequenceDiagram
 
     P1->>DB: UpdateItem (viewCount + 1)
     P2->>DB: UpdateItem (viewCount + 1)
-    Note over DB: Processes updates sequentially
+    Note over DB: Applies writes in received order
     DB->>P1: viewCount = 101
     DB->>P2: viewCount = 102
 ```
@@ -84,7 +84,7 @@ async function incrementCounter(tableName, key, attribute, amount) {
     ReturnValues: 'UPDATED_NEW'
   };
 
-  const result = await docClient.update(params).promise();
+  const result = await docClient.send(new UpdateCommand(params));
   return result.Attributes[attribute];
 }
 
@@ -116,7 +116,7 @@ async function incrementWithAdd(pageId) {
     ReturnValues: 'UPDATED_NEW'
   };
 
-  const result = await docClient.update(params).promise();
+  const result = await docClient.send(new UpdateCommand(params));
   return result.Attributes.viewCount;
 }
 ```
@@ -142,14 +142,14 @@ async function trackPageView(pageId, userId) {
   );
 
   // Optionally track unique views with a set
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Pages',
     Key: { pageId },
     UpdateExpression: 'ADD uniqueViewers :viewer',
     ExpressionAttributeValues: {
-      ':viewer': docClient.createSet([userId])
+      ':viewer': new Set([userId])
     }
-  }).promise();
+  }));
 
   return viewCount;
 }
@@ -174,13 +174,13 @@ async function decreaseStock(productId, quantity) {
   };
 
   try {
-    const result = await docClient.update(params).promise();
+    const result = await docClient.send(new UpdateCommand(params));
     return {
       success: true,
       remainingStock: result.Attributes.stock
     };
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       return { success: false, reason: 'Insufficient stock' };
     }
     throw error;
@@ -217,13 +217,13 @@ async function checkRateLimit(userId, maxRequests, windowSeconds) {
   };
 
   try {
-    const result = await docClient.update(params).promise();
+    const result = await docClient.send(new UpdateCommand(params));
     return {
       allowed: true,
       remaining: maxRequests - result.Attributes.requestCount
     };
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       return { allowed: false, remaining: 0 };
     }
     throw error;
@@ -243,32 +243,32 @@ Track likes with an atomic counter and a set of user IDs:
 async function toggleLike(postId, userId) {
   // First, try to add the like
   try {
-    await docClient.update({
+    await docClient.send(new UpdateCommand({
       TableName: 'Posts',
       Key: { postId },
       UpdateExpression: 'ADD likeCount :one, likedBy :user',
       ConditionExpression: 'NOT contains(likedBy, :userId)',
       ExpressionAttributeValues: {
         ':one': 1,
-        ':user': docClient.createSet([userId]),
+        ':user': new Set([userId]),
         ':userId': userId
       }
-    }).promise();
+    }));
     return { action: 'liked' };
   } catch (error) {
-    if (error.code !== 'ConditionalCheckFailedException') throw error;
+    if (error.name !== 'ConditionalCheckFailedException') throw error;
   }
 
   // If already liked, remove the like
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Posts',
     Key: { postId },
     UpdateExpression: 'SET likeCount = likeCount - :one DELETE likedBy :user',
     ExpressionAttributeValues: {
       ':one': 1,
-      ':user': docClient.createSet([userId])
+      ':user': new Set([userId])
     }
-  }).promise();
+  }));
   return { action: 'unliked' };
 }
 ```
@@ -298,13 +298,13 @@ async function recordPurchase(productId, amount) {
     ReturnValues: 'ALL_NEW'
   };
 
-  return (await docClient.update(params).promise()).Attributes;
+  return (await docClient.send(new UpdateCommand(params))).Attributes;
 }
 ```
 
 ## Limitations and Trade-offs
 
-Atomic counters are eventually consistent by default. If you write an increment and immediately read the item, you might see the old value. Use `ConsistentRead: true` on GetItem if you need the latest value right after an update.
+Reads after atomic counter updates are eventually consistent by default. If you write an increment and immediately read the item, you might see the old value. Use `ConsistentRead: true` on GetItem if you need the latest value right after an update.
 
 Atomic counters don't support conditional arithmetic in a single expression. You can't say "increment by 1 if less than 100" purely with SET arithmetic. You need a separate ConditionExpression for that.
 
