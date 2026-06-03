@@ -58,7 +58,9 @@ export class DynamoDbStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST, // On-demand
       removalPolicy: cdk.RemovalPolicy.RETAIN,           // Don't delete data on stack removal
-      pointInTimeRecovery: true,                          // Enable PITR for backups
+      pointInTimeRecoverySpecification: {
+        pointInTimeRecoveryEnabled: true,                 // Enable PITR for backups
+      },
     });
   }
 }
@@ -197,7 +199,7 @@ const streamTable = new dynamodb.Table(this, 'StreamTable', {
 Time-to-live automatically deletes expired items, which is great for session data, caches, or temporary records.
 
 ```typescript
-// Enable TTL - items with an expired 'ttl' attribute get deleted automatically
+// Enable TTL - items with an expired 'expiresAt' attribute get deleted automatically
 const ttlTable = new dynamodb.Table(this, 'SessionTable', {
   tableName: 'Sessions',
   partitionKey: {
@@ -210,7 +212,7 @@ const ttlTable = new dynamodb.Table(this, 'SessionTable', {
 });
 ```
 
-The TTL attribute must contain a Unix epoch timestamp (in seconds). DynamoDB checks periodically and deletes items past their expiration. Note that deletion isn't instant - it can take up to 48 hours, though it's usually much faster.
+The TTL attribute must contain a Unix epoch timestamp (in seconds). DynamoDB checks periodically and deletes items past their expiration. Note that deletion isn't instant - expired items are typically deleted within a few days.
 
 ## Granting Permissions
 
@@ -218,9 +220,9 @@ CDK makes IAM permissions easy with grant methods.
 
 ```typescript
 // Grant a Lambda function read/write access to the table
-// listItemsHandler.grantReadData(table);   // Read only
-// createItemHandler.grantWriteData(table);  // Write only
-// adminHandler.grantReadWriteData(table);   // Full access
+// table.grantReadData(listItemsHandler);        // Read only
+// table.grantWriteData(createItemHandler);      // Write only
+// table.grantReadWriteData(adminHandler);       // Full access
 ```
 
 These grant methods create minimal IAM policies automatically - no hand-crafting policy documents needed.
