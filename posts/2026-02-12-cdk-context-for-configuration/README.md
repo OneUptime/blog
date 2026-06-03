@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CDK, TypeScript, Configuration
 
-Description: Learn how to use CDK context values for configuration management, including runtime lookups, cached context, and patterns for environment-specific settings.
+Description: Learn how to use CDK context values for configuration management, including synthesis-time lookups, cached context, and patterns for environment-specific settings.
 
 ---
 
@@ -12,9 +12,9 @@ CDK context is a key-value store that holds configuration data for your CDK app.
 
 Understanding context is important because it affects how your stacks synthesize and whether synthesis requires AWS access. Let's dig in.
 
-## Setting Context Values
+## Sources of Context Values
 
-There are several ways to set context values, listed in order of precedence.
+There are several ways to provide context values to a CDK app.
 
 ### Command Line
 
@@ -28,6 +28,8 @@ cdk deploy -c environment=production -c region=us-west-2
 # Multiple values
 cdk synth -c feature_flags='{"newUi":true,"betaApi":false}'
 ```
+
+Context values passed on the command line are always strings. If you pass structured data like JSON, parse it in your CDK app before using it as an object.
 
 ### cdk.json
 
@@ -150,6 +152,8 @@ cdk context --reset availability-zones:account=111111111111:region=us-east-1
 # List all cached context values
 cdk context
 ```
+
+The `cdk context --reset` and `cdk context --clear` commands only remove cached values from `cdk.context.json`. They do not remove context values from `cdk.json`.
 
 When should you clear the cache? When the underlying AWS resources change. If someone modifies the VPC you're looking up, the cached value becomes stale. Clear the specific entry and re-synthesize.
 
