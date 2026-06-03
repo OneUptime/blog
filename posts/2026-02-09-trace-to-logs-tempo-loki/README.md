@@ -140,28 +140,23 @@ data:
     schema_config:
       configs:
       - from: 2020-05-15
-        store: boltdb-shipper
+        store: tsdb
         object_store: filesystem
-        schema: v11
+        schema: v13
         index:
           prefix: index_
           period: 24h
 
     storage_config:
-      boltdb_shipper:
+      tsdb_shipper:
         active_index_directory: /loki/index
         cache_location: /loki/cache
-        shared_store: filesystem
       filesystem:
         directory: /loki/chunks
 
     limits_config:
-      enforce_metric_name: false
       reject_old_samples: true
       reject_old_samples_max_age: 168h
-
-    chunk_store_config:
-      max_look_back_period: 0s
 
     table_manager:
       retention_deletes_enabled: false
@@ -310,126 +305,170 @@ Example log output with trace context:
 }
 ```
 
-## Configuring Promtail to Ship Logs to Loki
+## Configuring Grafana Alloy to Ship Logs to Loki
 
-Deploy Promtail as a DaemonSet to collect logs and ship them to Loki:
+Deploy Grafana Alloy to collect Kubernetes logs and ship them to Loki:
 
 ```yaml
-# promtail-daemonset.yaml
+# alloy-deployment.yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: promtail-config
+  name: alloy-config
   namespace: observability
 data:
-  promtail.yaml: |
-    server:
-      http_listen_port: 9080
-      grpc_listen_port: 0
+  config.alloy: |
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
 
-    positions:
-      filename: /tmp/positions.yaml
+    discovery.relabel "pod_logs" {
+      targets = discovery.kubernetes.pods.targets
 
-    clients:
-      - url: http://loki.observability.svc.cluster.local:3100/loki/api/v1/push
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "__pod_namespace__"
+      }
 
-    scrape_configs:
-    - job_name: kubernetes-pods
-      kubernetes_sd_configs:
-      - role: pod
-      pipeline_stages:
-      - docker: {}
-      - json:
-          expressions:
-            trace_id: trace_id
-            span_id: span_id
-            level: level
-            message: msg
-      - labels:
-          trace_id:
-          span_id:
-          level:
-      relabel_configs:
-      - source_labels: [__meta_kubernetes_pod_node_name]
-        target_label: node_name
-      - source_labels: [__meta_kubernetes_namespace]
-        target_label: namespace
-      - source_labels: [__meta_kubernetes_pod_name]
-        target_label: pod
-      - source_labels: [__meta_kubernetes_pod_container_name]
-        target_label: container
-      - source_labels: [__meta_kubernetes_pod_label_app]
-        target_label: app
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "__pod_name__"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "__pod_container_name__"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_uid"]
+        target_label  = "__pod_uid__"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_node_name"]
+        target_label  = "node_name"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_container_name"]
+        target_label  = "container"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "app"
+      }
+    }
+
+    loki.source.kubernetes "pod_logs" {
+      targets    = discovery.relabel.pod_logs.output
+      forward_to = [loki.process.pod_logs.receiver]
+    }
+
+    loki.process "pod_logs" {
+      forward_to = [loki.write.default.receiver]
+
+      stage.json {
+        expressions = {
+          trace_id = "trace_id",
+          span_id  = "span_id",
+          level    = "level",
+          message  = "msg",
+        }
+      }
+
+      stage.labels {
+        values = {
+          trace_id = "",
+          span_id  = "",
+          level    = "",
+        }
+      }
+    }
+
+    loki.write "default" {
+      endpoint {
+        url = "http://loki.observability.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
-  name: promtail
+  name: alloy
   namespace: observability
 spec:
+  replicas: 1
   selector:
     matchLabels:
-      app: promtail
+      app: alloy
   template:
     metadata:
       labels:
-        app: promtail
+        app: alloy
     spec:
-      serviceAccountName: promtail
+      serviceAccountName: alloy
       containers:
-      - name: promtail
-        image: grafana/promtail:2.9.3
+      - name: alloy
+        image: grafana/alloy:v1.16.1
         args:
-          - "-config.file=/etc/promtail/promtail.yaml"
+          - "run"
+          - "/etc/alloy/config.alloy"
+          - "--server.http.listen-addr=0.0.0.0:12345"
+          - "--storage.path=/var/lib/alloy/data"
+        ports:
+        - containerPort: 12345
         volumeMounts:
         - name: config
-          mountPath: /etc/promtail
-        - name: varlog
-          mountPath: /var/log
-        - name: varlibdockercontainers
-          mountPath: /var/lib/docker/containers
-          readOnly: true
+          mountPath: /etc/alloy
       volumes:
       - name: config
         configMap:
-          name: promtail-config
-      - name: varlog
-        hostPath:
-          path: /var/log
-      - name: varlibdockercontainers
-        hostPath:
-          path: /var/lib/docker/containers
+          name: alloy-config
 ---
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: promtail
+  name: alloy
   namespace: observability
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: promtail
+  name: alloy
 rules:
 - apiGroups: [""]
   resources:
-  - nodes
   - pods
-  - services
-  - endpoints
+  - namespaces
   verbs: ["get", "list", "watch"]
+- apiGroups: [""]
+  resources:
+  - pods/log
+  verbs: ["get"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: promtail
+  name: alloy
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: promtail
+  name: alloy
 subjects:
 - kind: ServiceAccount
-  name: promtail
+  name: alloy
   namespace: observability
 ```
 
@@ -455,19 +494,19 @@ data:
       uid: tempo
       jsonData:
         httpMethod: GET
-        tracesToLogs:
+        tracesToLogsV2:
           # Enable trace-to-logs linking
           datasourceUid: 'loki'
           # Tags to use for log query
-          tags: ['app', 'namespace', 'pod', 'container']
-          # Map trace tags to Loki labels
-          mappedTags:
+          tags:
             - key: app
               value: app
             - key: namespace
               value: namespace
             - key: pod
               value: pod
+            - key: container
+              value: container
           # Filter logs by trace ID
           filterByTraceID: true
           # Filter logs by span ID
@@ -536,8 +575,6 @@ spec:
         env:
         - name: GF_SECURITY_ADMIN_PASSWORD
           value: "admin"
-        - name: GF_FEATURE_TOGGLES_ENABLE
-          value: "traceToLogs,traceqlEditor"
         volumeMounts:
         - name: datasources
           mountPath: /etc/grafana/provisioning/datasources
