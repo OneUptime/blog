@@ -8,7 +8,7 @@ Description: Learn how to use CloudFormation macros and transforms to extend tem
 
 ---
 
-CloudFormation templates are declarative - you describe what you want, not how to build it. That's usually a strength, but it means there's no way to loop, generate repetitive resources, or add custom logic. Macros and transforms break through that limitation by letting you preprocess templates with custom code before CloudFormation evaluates them.
+CloudFormation templates are declarative - you describe what you want, not how to build it. That's usually a strength, but it means built-in looping and generation features are limited, and complex custom logic doesn't belong directly in the template. Macros and transforms break through that limitation by letting you preprocess templates with custom code before CloudFormation evaluates them.
 
 ## What Are Transforms?
 
@@ -37,7 +37,7 @@ The SAM transform expands simplified serverless resource types into full CloudFo
 
 ## Creating a Custom Macro
 
-Let's build a macro that generates numbered resources - something CloudFormation can't do natively.
+Let's build a macro that generates numbered resources with custom preprocessing logic.
 
 ### Step 1: Create the Lambda function
 
@@ -170,7 +170,7 @@ Resources:
     Properties:
       Type: AWS::SQS::Queue
       Properties:
-        QueueName: !Sub 'processing-queue-{i}'
+        QueueName: processing-queue-{i}
         VisibilityTimeout: 300
 
   # Regular resources work normally alongside macros
@@ -388,7 +388,8 @@ You can also preview the processed template using a change set:
 aws cloudformation create-change-set \
   --stack-name test-macro \
   --template-body file://template-with-macro.yaml \
-  --change-set-name preview
+  --change-set-name preview \
+  --change-set-type CREATE
 
 # The processed template is in the change set
 aws cloudformation get-template \
