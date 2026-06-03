@@ -276,7 +276,7 @@ For token-based authorizers, the cache key is the token itself. For request-base
 A few things to keep in mind with caching:
 
 - The default TTL is 300 seconds (5 minutes). Set it to 0 to disable caching.
-- The cached policy applies to all methods that use the same authorizer. If your policy uses a specific method ARN instead of a wildcard, cached results won't work for other endpoints.
+- The cached policy applies to all methods that use the same authorizer. If your policy uses a specific method ARN instead of a wildcard, other endpoints can be implicitly denied until the cache expires.
 - If a user's permissions change, they won't take effect until the cache expires. For security-sensitive applications, keep the TTL short.
 
 ## Handling Authorization Failures Gracefully
