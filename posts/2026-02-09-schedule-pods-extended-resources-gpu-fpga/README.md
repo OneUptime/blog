@@ -32,7 +32,7 @@ The most common extended resource is NVIDIA GPUs. Install the NVIDIA device plug
 ```bash
 # Deploy NVIDIA device plugin using DaemonSet
 
-kubectl create -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.14.0/nvidia-device-plugin.yml
+kubectl create -f https://raw.githubusercontent.com/NVIDIA/k8s-device-plugin/v0.17.1/deployments/static/nvidia-device-plugin.yml
 
 # Verify the plugin is running
 kubectl get pods -n kube-system -l name=nvidia-device-plugin-ds
@@ -167,12 +167,8 @@ spec:
 Deploy the Intel FPGA device plugin:
 
 ```bash
-# Clone the Intel device plugins repository
-git clone https://github.com/intel/intel-device-plugins-for-kubernetes.git
-cd intel-device-plugins-for-kubernetes
-
-# Deploy FPGA plugin
-kubectl apply -k deployments/fpga_plugin/overlays/af/
+# Deploy FPGA plugin in accelerator function mode
+kubectl apply -k 'https://github.com/intel/intel-device-plugins-for-kubernetes/deployments/fpga_plugin/overlays/af?ref=v0.35.0'
 
 # Verify FPGA resources
 kubectl get nodes -o json | \
@@ -194,12 +190,12 @@ spec:
     image: fpga-inference-engine:v1.0
     resources:
       limits:
-        # FPGA region resource
-        fpga.intel.com/arria10.dcp1.2: 1
+        # FPGA resource advertised by the plugin
+        fpga.intel.com/region-ce48969398f05f33946d560708be108a: 1
         cpu: 2000m
         memory: 4Gi
       requests:
-        fpga.intel.com/arria10.dcp1.2: 1
+        fpga.intel.com/region-ce48969398f05f33946d560708be108a: 1
         cpu: 1000m
         memory: 2Gi
     env:
@@ -267,13 +263,14 @@ package main
 
 import (
     "context"
-    "fmt"
+    "log"
     "net"
     "os"
-    "path"
+    "path/filepath"
     "time"
 
     "google.golang.org/grpc"
+    "google.golang.org/grpc/credentials/insecure"
     pluginapi "k8s.io/kubelet/pkg/apis/deviceplugin/v1beta1"
 )
 
@@ -307,6 +304,11 @@ func (p *CustomDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.Alloc
     responses := pluginapi.AllocateResponse{}
 
     for _, req := range reqs.ContainerRequests {
+        deviceID := ""
+        if len(req.DevicesIDs) > 0 {
+            deviceID = req.DevicesIDs[0]
+        }
+
         response := pluginapi.ContainerAllocateResponse{
             Devices: []*pluginapi.DeviceSpec{
                 {
@@ -317,7 +319,7 @@ func (p *CustomDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.Alloc
                 },
             },
             Envs: map[string]string{
-                "CUSTOM_ACCELERATOR_ID": req.DevicesIDs[0],
+                "CUSTOM_ACCELERATOR_ID": deviceID,
             },
         }
         responses.ContainerResponses = append(responses.ContainerResponses, &response)
@@ -326,8 +328,55 @@ func (p *CustomDevicePlugin) Allocate(ctx context.Context, reqs *pluginapi.Alloc
     return &responses, nil
 }
 
+func (p *CustomDevicePlugin) GetPreferredAllocation(ctx context.Context, req *pluginapi.PreferredAllocationRequest) (*pluginapi.PreferredAllocationResponse, error) {
+    return &pluginapi.PreferredAllocationResponse{}, nil
+}
+
 func (p *CustomDevicePlugin) PreStartContainer(ctx context.Context, req *pluginapi.PreStartContainerRequest) (*pluginapi.PreStartContainerResponse, error) {
     return &pluginapi.PreStartContainerResponse{}, nil
+}
+
+func (p *CustomDevicePlugin) Start() error {
+    _ = os.Remove(socketPath)
+
+    listener, err := net.Listen("unix", socketPath)
+    if err != nil {
+        return err
+    }
+
+    p.server = grpc.NewServer()
+    pluginapi.RegisterDevicePluginServer(p.server, p)
+
+    go func() {
+        if err := p.server.Serve(listener); err != nil {
+            log.Printf("device plugin server stopped: %v", err)
+        }
+    }()
+
+    time.Sleep(1 * time.Second)
+    return p.Register()
+}
+
+func (p *CustomDevicePlugin) Register() error {
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    conn, err := grpc.NewClient(
+        "unix://"+pluginapi.KubeletSocket,
+        grpc.WithTransportCredentials(insecure.NewCredentials()),
+    )
+    if err != nil {
+        return err
+    }
+    defer conn.Close()
+
+    client := pluginapi.NewRegistrationClient(conn)
+    _, err = client.Register(ctx, &pluginapi.RegisterRequest{
+        Version:      pluginapi.Version,
+        Endpoint:     filepath.Base(socketPath),
+        ResourceName: resourceName,
+    })
+    return err
 }
 
 func main() {
@@ -339,7 +388,11 @@ func main() {
     }
 
     // Start the gRPC server
-    plugin.Start()
+    if err := plugin.Start(); err != nil {
+        log.Fatal(err)
+    }
+
+    select {}
 }
 
 func discoverDevices() []*pluginapi.Device {
@@ -384,20 +437,37 @@ spec:
     matchLabels:
       name: nvidia-device-plugin-ds
   template:
+    metadata:
+      labels:
+        name: nvidia-device-plugin-ds
     spec:
+      tolerations:
+      - key: nvidia.com/gpu
+        operator: Exists
+        effect: NoSchedule
+      priorityClassName: "system-node-critical"
       containers:
       - name: nvidia-device-plugin-ctr
-        image: nvcr.io/nvidia/k8s-device-plugin:v0.14.0
+        image: nvcr.io/nvidia/k8s-device-plugin:v0.17.1
         env:
         - name: CONFIG_FILE
           value: /etc/config/config.yaml
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
         volumeMounts:
         - name: device-plugin-config
           mountPath: /etc/config
+        - name: device-plugin
+          mountPath: /var/lib/kubelet/device-plugins
       volumes:
       - name: device-plugin-config
         configMap:
           name: device-plugin-config
+      - name: device-plugin
+        hostPath:
+          path: /var/lib/kubelet/device-plugins
 ```
 
 ## MIG (Multi-Instance GPU) Support
@@ -470,7 +540,6 @@ metadata:
 spec:
   hard:
     requests.nvidia.com/gpu: 16  # Maximum 16 GPUs
-    limits.nvidia.com/gpu: 16
     requests.cpu: "64"
     requests.memory: "256Gi"
 ```
@@ -509,4 +578,3 @@ kubectl describe node <node-name> | grep -A 10 "Allocated resources"
 ```
 
 Extended resources enable Kubernetes to schedule specialized workloads on the right hardware, ensuring GPUs, FPGAs, and custom accelerators are efficiently utilized across your cluster.
-
