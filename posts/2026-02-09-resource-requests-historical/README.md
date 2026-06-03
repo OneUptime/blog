@@ -85,12 +85,12 @@ spec:
           claimName: prometheus-storage
 ```
 
-Configure the kubelet to expose cAdvisor metrics:
+Make sure Prometheus also scrapes kubelet cAdvisor metrics and kube-state-metrics. The pod scrape config above collects annotated application metrics, but the queries below depend on container metrics from the kubelet `/metrics/cadvisor` endpoint and request metrics from kube-state-metrics.
 
 ```bash
-# cAdvisor metrics are available at the kubelet endpoint
+# cAdvisor metrics are available from the kubelet /metrics/cadvisor endpoint
 
-# Ensure your Prometheus scrape config includes kubelet targets
+# Ensure your Prometheus scrape config includes kubelet targets and kube-state-metrics
 ```
 
 ## Analyzing CPU Usage Patterns
@@ -119,13 +119,17 @@ Compare these values against current resource requests:
 ```promql
 # CPU request vs actual usage ratio
 (
-  avg_over_time(rate(container_cpu_usage_seconds_total{container!=""}[5m])[14d:5m])
+  avg by (namespace, pod, container) (
+    avg_over_time(rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[5m])[14d:5m])
+  )
   /
-  avg(kube_pod_container_resource_requests{resource="cpu"}) by (namespace, pod, container)
+  avg by (namespace, pod, container) (
+    kube_pod_container_resource_requests{resource="cpu"}
+  )
 ) * 100
 ```
 
-A ratio below 50% indicates significant overprovisioning. A ratio above 90% suggests you're running close to limits and might need more headroom.
+A ratio below 50% indicates significant overprovisioning. A ratio above 90% suggests you're running close to requests and might need more headroom.
 
 ## Analyzing Memory Usage Patterns
 
@@ -144,9 +148,13 @@ avg_over_time(
 
 # Memory request vs usage
 (
-  avg_over_time(container_memory_working_set_bytes{container!=""}[14d:5m])
+  avg by (namespace, pod, container) (
+    avg_over_time(container_memory_working_set_bytes{container!="", container!="POD"}[14d:5m])
+  )
   /
-  avg(kube_pod_container_resource_requests{resource="memory"}) by (namespace, pod, container)
+  avg by (namespace, pod, container) (
+    kube_pod_container_resource_requests{resource="memory"}
+  )
 ) * 100
 ```
 
@@ -176,7 +184,7 @@ def get_cpu_recommendations():
     # Query P95 CPU usage over lookback period
     query = f'''
     quantile_over_time(0.95,
-      rate(container_cpu_usage_seconds_total{{container!=""}}[5m])
+      rate(container_cpu_usage_seconds_total{{container!="", container!="POD"}}[5m])
     [{LOOKBACK_DAYS}d:5m])
     '''
 
@@ -220,7 +228,7 @@ def get_memory_recommendations():
     # Query P95 memory usage
     query = f'''
     quantile_over_time(0.95,
-      container_memory_working_set_bytes{{container!=""}}
+      container_memory_working_set_bytes{{container!="", container!="POD"}}
     [{LOOKBACK_DAYS}d:5m])
     '''
 
@@ -294,7 +302,7 @@ Run this script weekly to identify optimization opportunities:
 
 ```bash
 python3 analyze-resources.py
-cat resource-recommendations.json | jq '.cpu_recommendations[] | select(.potential_savings | tonumber > 30)'
+jq '.cpu_recommendations[] | select(.potential_savings | gsub("%"; "") | tonumber > 30)' resource-recommendations.json
 ```
 
 ## Applying Resource Request Updates
@@ -326,7 +334,7 @@ Deploy changes gradually using rolling updates. Monitor for increased CPU thrott
 ```bash
 # Watch for CPU throttling
 kubectl exec -it prometheus-pod -n monitoring -- promtool query instant \
-  'rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.1'
+  http://localhost:9090 'rate(container_cpu_cfs_throttled_seconds_total[5m]) > 0.1'
 
 # Watch for OOMKills
 kubectl get events --all-namespaces | grep OOMKilled
@@ -346,7 +354,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: api-server
-  updateMode: "Auto"
+  updatePolicy:
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     - containerName: api
@@ -359,7 +368,7 @@ spec:
       controlledResources: ["cpu", "memory"]
 ```
 
-VPA observes actual usage and periodically updates pod resource requests. It respects the min/max boundaries you configure.
+VPA observes actual usage and periodically updates pod resource requests by recreating pods in this update mode. It respects the min/max boundaries you configure.
 
 ## Handling Workloads with Variable Patterns
 
@@ -410,9 +419,13 @@ spec:
     - alert: CPURequestTooHigh
       expr: |
         (
-          rate(container_cpu_usage_seconds_total{container!=""}[5m])
+          sum by (namespace, pod, container) (
+            rate(container_cpu_usage_seconds_total{container!="", container!="POD"}[5m])
+          )
           /
-          kube_pod_container_resource_requests{resource="cpu"}
+          avg by (namespace, pod, container) (
+            kube_pod_container_resource_requests{resource="cpu"}
+          )
         ) < 0.3
       for: 1h
       labels:
@@ -423,9 +436,13 @@ spec:
     - alert: MemoryRequestTooHigh
       expr: |
         (
-          container_memory_working_set_bytes{container!=""}
+          avg by (namespace, pod, container) (
+            container_memory_working_set_bytes{container!="", container!="POD"}
+          )
           /
-          kube_pod_container_resource_requests{resource="memory"}
+          avg by (namespace, pod, container) (
+            kube_pod_container_resource_requests{resource="memory"}
+          )
         ) < 0.4
       for: 1h
       labels:
