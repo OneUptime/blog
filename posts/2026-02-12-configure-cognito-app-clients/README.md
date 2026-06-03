@@ -288,8 +288,6 @@ resource "aws_cognito_user_pool_client" "m2m" {
     "https://api.myapp.com/write"
   ]
 
-  supported_identity_providers = []  # No user sign-in needed
-
   depends_on = [aws_cognito_resource_server.api]
 }
 ```
@@ -324,7 +322,7 @@ async function getServiceToken() {
 
 ## Prevent User Existence Errors
 
-By default, Cognito returns different error messages for "user not found" vs "wrong password," which lets attackers enumerate valid usernames. Disable this:
+When you create an app client through the API or Terraform without this setting, Cognito returns different error messages for "user not found" vs "wrong password," which lets attackers enumerate valid usernames. Disable this:
 
 ```hcl
 resource "aws_cognito_user_pool_client" "app" {
