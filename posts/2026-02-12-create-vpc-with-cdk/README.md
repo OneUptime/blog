@@ -18,13 +18,14 @@ The simplest VPC creation is a single line. CDK's defaults give you a reasonable
 
 ```typescript
 // Create a VPC with CDK defaults
-// This creates public and private subnets across 3 AZs, plus a NAT gateway
+// This creates public and private subnets across up to 3 AZs,
+// plus one NAT gateway per AZ by default
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 
 const vpc = new ec2.Vpc(this, 'MyVpc');
 ```
 
-That one line creates a VPC with a /16 CIDR block, public subnets, private subnets with egress (via NAT gateway), and route tables. It's a good starting point, but you'll want more control for production.
+That one line creates a VPC with a /16 CIDR block, public subnets, private subnets with egress (via NAT gateways), and route tables. It's a good starting point, but you'll want more control for production. For environment-agnostic stacks, CDK limits the default to 2 AZs unless you specify the stack account and region.
 
 ## Production VPC Configuration
 
@@ -40,6 +41,7 @@ const vpc = new ec2.Vpc(this, 'ProductionVpc', {
   ipAddresses: ec2.IpAddresses.cidr('10.0.0.0/16'),
 
   // Use 3 Availability Zones for high availability
+  // Requires the stack account and region to be specified
   maxAzs: 3,
 
   // NAT gateways for private subnet internet access
