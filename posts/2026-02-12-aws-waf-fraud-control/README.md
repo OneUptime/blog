@@ -53,9 +53,10 @@ This adds the ACFP managed rule group configured for a JSON-based registration e
 ```bash
 aws wafv2 update-web-acl \
   --name my-web-acl \
-  --scope REGIONAL \
+  --scope CLOUDFRONT \
   --id your-web-acl-id \
   --lock-token "your-lock-token" \
+  --region us-east-1 \
   --default-action '{"Allow": {}}' \
   --visibility-config '{
     "SampledRequestsEnabled": true,
@@ -159,13 +160,13 @@ Notice the additional fields - phone numbers and addresses. ACFP can analyze the
 
 ## Terraform Configuration
 
-Here's the full Terraform setup:
+Here's the full Terraform setup. For CloudFront-scoped web ACLs, configure the AWS provider for `us-east-1`:
 
 ```hcl
 resource "aws_wafv2_web_acl" "main" {
   name        = "my-web-acl"
   description = "Web ACL with ACFP"
-  scope       = "REGIONAL"
+  scope       = "CLOUDFRONT"
 
   default_action {
     allow {}
@@ -234,22 +235,22 @@ resource "aws_wafv2_web_acl" "main" {
 
 ## ACFP Rules
 
-Here are the rules included in the ACFP rule group:
+Here are some of the rules included in the ACFP rule group:
 
 | Rule | What It Detects |
 |------|----------------|
-| `UnsortedStolenCredentialCheck` | Email/password found in breach databases |
+| `RiskScoreHigh` | Highly suspicious account creation request |
+| `SignalCredentialCompromised` | Email/password found in AWS's stolen credential database |
 | `VolumetricIpHigh` | Many registration attempts from one IP |
-| `VolumetricSession` | Many registrations in a single session |
+| `VolumetricSessionHigh` | Many registrations in a single session |
 | `VolumetricPhoneNumberHigh` | Same phone number used repeatedly |
 | `VolumetricAddressHigh` | Same address used repeatedly |
-| `AttributeCompromisedCredentials` | Known compromised credential pair |
-| `AttributeUsernameTraversal` | Sequential or patterned usernames |
-| `AttributeEmailDomainHigh` | Many accounts from unusual email domains |
+| `AttributeUsernameTraversalHigh` | High rate of different usernames from one session |
 | `AutomatedBrowser` | Automated browser detected |
 | `BrowserInconsistency` | Browser fingerprint doesn't match claims |
-| `TokenRejected` | Invalid WAF token |
-| `SignalCredentialCompromised` | Credential flagged by multiple signals |
+| `VolumetricIPSuccessfulResponse` | Many successful account creations from one IP |
+| `VolumetricSessionSuccessfulResponse` | Multiple successful account creations in one session |
+| `VolumetricSessionTokenReuseIp` | Same token reused across multiple IP addresses |
 
 ## Customizing Rule Actions
 
@@ -261,7 +262,7 @@ This sets different actions for different ACFP rules based on risk level:
 {
   "RuleActionOverrides": [
     {
-      "Name": "UnsortedStolenCredentialCheck",
+      "Name": "SignalCredentialCompromised",
       "ActionToUse": {"Block": {}}
     },
     {
@@ -281,7 +282,7 @@ This sets different actions for different ACFP rules based on risk level:
       }
     },
     {
-      "Name": "AttributeEmailDomainHigh",
+      "Name": "AttributeUsernameTraversalHigh",
       "ActionToUse": {"Count": {}}
     }
   ]
@@ -302,7 +303,7 @@ Add this script to your signup page:
     src="/<waf-integration-url>/challenge.js" defer></script>
 </head>
 <body>
-  <form id="signup-form" action="/api/register" method="POST">
+  <form id="signup-form">
     <input type="email" name="email" required />
     <input type="password" name="password" required />
     <input type="text" name="phone" />
@@ -310,14 +311,22 @@ Add this script to your signup page:
   </form>
 
   <script>
-    // The WAF SDK automatically handles token generation
-    // and injects it into requests from this page
+    document.getElementById("signup-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const form = new FormData(event.target);
+      await AwsWafIntegration.fetch("/api/register", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(Object.fromEntries(form))
+      });
+    });
   </script>
 </body>
 </html>
 ```
 
-The SDK runs a silent browser challenge in the background and generates a token that ACFP uses to verify the client is a real browser.
+The SDK runs a silent browser challenge in the background and provides a fetch wrapper that includes the AWS WAF token with requests to protected endpoints.
 
 ## Monitoring Registration Fraud
 
@@ -333,16 +342,18 @@ aws cloudwatch get-metric-statistics \
   --start-time 2026-02-11T00:00:00Z \
   --end-time 2026-02-12T00:00:00Z \
   --period 3600 \
-  --statistics Sum
+  --statistics Sum \
+  --region us-east-1
 ```
 
 Review sampled requests:
 
 ```bash
 aws wafv2 get-sampled-requests \
-  --web-acl-arn arn:aws:wafv2:us-east-1:111111111111:regional/webacl/my-web-acl/abc123 \
+  --web-acl-arn arn:aws:wafv2:us-east-1:111111111111:global/webacl/my-web-acl/abc123 \
   --rule-metric-name ACFP \
-  --scope REGIONAL \
+  --scope CLOUDFRONT \
+  --region us-east-1 \
   --time-window '{
     "StartTime": "2026-02-11T00:00:00Z",
     "EndTime": "2026-02-12T00:00:00Z"
@@ -385,7 +396,7 @@ This adds rate limiting specifically for the registration endpoint:
 
 ## Best Practices
 
-**Enable response inspection.** Without it, ACFP can't tell if accounts are actually being created. It needs this feedback loop to detect volumetric patterns accurately.
+**Enable response inspection for CloudFront distributions.** Without it, ACFP can't tell if accounts are actually being created. It needs this feedback loop to detect success and failure patterns accurately.
 
 **Use all available request fields.** The more data you give ACFP (email, phone, address), the better it can detect patterns across fake accounts.
 
@@ -393,6 +404,6 @@ This adds rate limiting specifically for the registration endpoint:
 
 **Block stolen credentials hard.** There's rarely a legitimate reason for someone to register with credentials from a known breach. Block these outright.
 
-**Monitor disposable email domains.** While the `AttributeEmailDomainHigh` rule catches unusual patterns, consider also maintaining your own blocklist of known disposable email services.
+**Monitor disposable email domains.** Consider maintaining your own blocklist of known disposable email services and reviewing ACFP labels for suspicious sign-up patterns.
 
 For login-side protection, also set up [WAF Account Takeover Prevention](https://oneuptime.com/blog/post/2026-02-12-aws-waf-account-takeover-prevention/view) and [WAF Bot Control](https://oneuptime.com/blog/post/2026-02-12-aws-waf-bot-control/view). Track your fraud prevention metrics alongside application health using [OneUptime](https://oneuptime.com).
