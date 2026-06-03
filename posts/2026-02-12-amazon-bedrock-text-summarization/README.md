@@ -36,7 +36,9 @@ def summarize_text(text, style="concise", max_length=200):
     prompt = prompts.get(style, prompts["concise"])
 
     response = bedrock_runtime.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='global.anthropic.claude-sonnet-4-6',
+        contentType='application/json',
+        accept='application/json',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 1024,
@@ -117,7 +119,9 @@ Do not mention that these are section summaries - write it as one cohesive summa
 {combined}"""
 
     response = bedrock_runtime.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='global.anthropic.claude-sonnet-4-6',
+        contentType='application/json',
+        accept='application/json',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 2048,
@@ -167,7 +171,9 @@ Documents:
 {combined}"""
 
     response = bedrock_runtime.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='global.anthropic.claude-sonnet-4-6',
+        contentType='application/json',
+        accept='application/json',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 2048,
@@ -198,7 +204,9 @@ For long documents, streaming the summary as it generates provides a much better
 def summarize_stream(text):
     """Stream a summary as it is generated."""
     response = bedrock_runtime.invoke_model_with_response_stream(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='global.anthropic.claude-sonnet-4-6',
+        contentType='application/json',
+        accept='application/json',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 1024,
@@ -297,7 +305,9 @@ Summary:
 {summary}"""
 
     response = bedrock_runtime.invoke_model(
-        modelId='anthropic.claude-3-sonnet-20240229-v1:0',
+        modelId='global.anthropic.claude-sonnet-4-6',
+        contentType='application/json',
+        accept='application/json',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'max_tokens': 512,
@@ -316,7 +326,7 @@ Temperature matters a lot for summarization. Keep it low - 0.1 to 0.3 - for fact
 
 Always specify the summary format you want. "Summarize this" is vague. "Summarize this as three bullet points focusing on financial impact" gives you consistent, useful results.
 
-For high-volume processing, consider [Bedrock batch inference](https://oneuptime.com/blog/post/2026-02-12-amazon-bedrock-batch-inference/view) instead of real-time API calls. It's more cost-effective and you don't have to worry about rate limits.
+For high-volume processing, consider [Bedrock batch inference](https://oneuptime.com/blog/post/2026-02-12-amazon-bedrock-batch-inference/view) instead of real-time API calls. It's more cost-effective and helps you avoid real-time API rate limits, though batch jobs still have their own service quotas.
 
 If you're also using Bedrock for other NLP tasks, you might find our guide on [text analysis with Amazon Comprehend](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-text-analysis/view) useful for pre-processing steps like language detection and entity extraction before summarization.
 
