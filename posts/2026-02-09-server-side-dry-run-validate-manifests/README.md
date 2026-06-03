@@ -10,7 +10,7 @@ Description: Learn how to use server-side dry run to validate Kubernetes manifes
 
 Server-side dry run sends your resource manifest through the entire admission chain without persisting it to etcd. This catches validation errors, admission webhook rejections, and even RBAC permission issues that client-side validation misses. It's essential for testing changes safely before applying them to production clusters.
 
-Unlike client-side dry run that only validates syntax, server-side dry run runs your manifest through the actual API server, giving you confidence that it will work when you remove the dry run flag.
+Unlike client-side dry run that only builds and prints the object locally, server-side dry run runs your manifest through the actual API server, giving you more confidence that it will work when you remove the dry run flag.
 
 ## Basic Server-Side Dry Run
 
@@ -21,20 +21,20 @@ Use dry run with kubectl:
 
 kubectl apply -f deployment.yaml --dry-run=server
 
-# Client-side dry run (syntax only)
+# Client-side dry run (local object generation)
 kubectl apply -f deployment.yaml --dry-run=client
 ```
 
 The difference:
 
 ```bash
-# Client-side: Only checks YAML syntax
+# Client-side: Prints the object without sending it to the API server
 kubectl apply -f deployment.yaml --dry-run=client
-# Passes even with invalid field values
+# Misses checks that require the live API server
 
 # Server-side: Full validation including webhooks
 kubectl apply -f deployment.yaml --dry-run=server
-# Catches all issues that would occur on real apply
+# Catches API server validation and admission issues before persisting
 ```
 
 ## What Server-Side Dry Run Validates
@@ -47,7 +47,7 @@ Server-side dry run checks:
 4. **Mutating webhooks**: See what mutations would happen
 5. **RBAC permissions**: Whether you can create the resource
 6. **Resource quotas**: Whether namespace has capacity
-7. **Pod security policies**: Security constraint violations
+7. **Pod Security Admission**: Security standard violations
 
 ## Using Dry Run with kubectl
 
@@ -87,6 +87,7 @@ import (
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/utils/ptr"
     "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
@@ -227,21 +228,26 @@ kubectl apply -f deployment.yaml --dry-run=server --as=developer
 In code:
 
 ```go
-func testPermissions(ctx context.Context, k8sClient client.Client, user string) error {
+func testPermissions(ctx context.Context, restConfig *rest.Config, user string) error {
     deployment := &appsv1.Deployment{
         // ... deployment spec
     }
 
     // Impersonate user
-    impersonateConfig := rest.ImpersonationConfig{
+    config := rest.CopyConfig(restConfig)
+    config.Impersonate = rest.ImpersonationConfig{
         UserName: user,
     }
 
     // Create client with impersonation
     // (requires setting up impersonation in your config)
+    impersonatedClient, err := client.New(config, client.Options{})
+    if err != nil {
+        return err
+    }
 
     // Try dry run create
-    err := k8sClient.Create(ctx, deployment, &client.CreateOptions{
+    err = impersonatedClient.Create(ctx, deployment, &client.CreateOptions{
         DryRun: []string{metav1.DryRunAll},
     })
 
@@ -266,10 +272,10 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Setup kubectl
-      uses: azure/setup-kubectl@v3
+      uses: azure/setup-kubectl@v4
 
     - name: Configure kubeconfig
       run: |
@@ -292,7 +298,7 @@ jobs:
 
     - name: Comment on PR
       if: failure()
-      uses: actions/github-script@v6
+      uses: actions/github-script@v9
       with:
         script: |
           github.rest.issues.createComment({
@@ -314,8 +320,8 @@ helm install myapp ./chart --dry-run
 # Combine with kubectl server-side dry run
 helm template myapp ./chart | kubectl apply --dry-run=server -f -
 
-# Or use Helm's experimental server-side dry run
-helm install myapp ./chart --dry-run --dry-run-option=server
+# Or use Helm's server-side dry run
+helm install myapp ./chart --dry-run=server
 ```
 
 ## Catching Webhook Failures
