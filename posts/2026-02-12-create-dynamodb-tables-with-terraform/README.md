@@ -348,7 +348,7 @@ resource "aws_dynamodb_table" "global" {
   }
 
   stream_enabled   = true
-  stream_view_type = "NEW_AND_OLD_IMAGES"  # Required for global tables
+  stream_view_type = "NEW_AND_OLD_IMAGES"  # Required for MREC global table replication
 
   tags = {
     ManagedBy = "terraform"
