@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Cognito, Lambda, Email, Serverless
 
-Description: Implement the Cognito Custom Message Lambda trigger to fully customize verification emails, password reset messages, MFA codes, and admin invitation emails.
+Description: Implement the Cognito Custom Message Lambda trigger to customize verification emails, password reset messages, MFA codes, and admin invitation emails.
 
 ---
 
-Cognito's built-in email templates are limited. You get basic text placeholders, but no HTML templates, no dynamic content, and no per-tenant branding. The Custom Message Lambda trigger gives you full control over every email and SMS message Cognito sends. You can use HTML templates, personalize content, add marketing footers, and change messages based on user attributes.
+Cognito's built-in message templates are limited. You get basic text placeholders, but limited dynamic content and no per-tenant branding. The Custom Message Lambda trigger lets you change the contents and subject of supported email and SMS messages before Cognito sends them. You can use HTML templates for email when your user pool sends email through Amazon SES, personalize content, add marketing footers, and change messages based on user attributes.
 
 ## When the Trigger Fires
 
-The Custom Message trigger fires whenever Cognito needs to send a message. Each scenario has a different trigger source:
+The Custom Message trigger fires before Cognito sends supported verification, invitation, password reset, and MFA messages. Each scenario has a different trigger source:
 
 | Trigger Source | When It Fires |
 |---|---|
@@ -32,8 +32,8 @@ resource "aws_lambda_function" "custom_message" {
   source_code_hash = data.archive_file.custom_message.output_base64sha256
   function_name    = "cognito-custom-message"
   role             = aws_iam_role.custom_message_role.arn
-  handler          = "index.handler"
-  runtime          = "nodejs20.x"
+  handler          = "custom-message.handler"
+  runtime          = "nodejs22.x"
   timeout          = 5
 
   environment {
@@ -55,9 +55,19 @@ resource "aws_lambda_permission" "cognito_custom_message" {
 resource "aws_cognito_user_pool" "main" {
   name = "my-app-user-pool"
 
+  email_configuration {
+    email_sending_account = "DEVELOPER"
+    source_arn            = aws_ses_email_identity.sender.arn
+    from_email_address    = "MyApp <no-reply@myapp.com>"
+  }
+
   lambda_config {
     custom_message = aws_lambda_function.custom_message.arn
   }
+}
+
+resource "aws_ses_email_identity" "sender" {
+  email = "no-reply@myapp.com"
 }
 ```
 
@@ -100,14 +110,21 @@ Here's a full implementation covering all trigger sources:
 
 ```javascript
 // custom-message.mjs
+import {
+  buildVerificationEmail,
+  buildInvitationEmail,
+  buildPasswordResetEmail,
+  buildResendCodeEmail,
+  buildAttributeVerificationEmail,
+  buildMFAEmail
+} from './email-templates.mjs';
+
 const APP_NAME = process.env.APP_NAME || 'MyApp';
-const APP_URL = process.env.APP_URL || 'https://myapp.com';
 
 export const handler = async (event) => {
   const { triggerSource, request, response } = event;
   const name = request.userAttributes.name || 'there';
   const code = request.codeParameter;       // {####} placeholder
-  const link = request.linkParameter;        // {##Click Here##} placeholder
   const username = request.usernameParameter;
 
   switch (triggerSource) {
@@ -424,7 +441,7 @@ There are a few rules the Custom Message trigger must follow:
 
 3. **Keep it fast**: This trigger runs synchronously in the user's flow. Slow responses delay the email delivery.
 
-4. **Email size limits**: SES has a 10MB email size limit, but keep it reasonable for email clients. Under 100KB is a good target.
+4. **Message size limits**: Cognito custom email messages can be up to 20,000 UTF-8 characters and SMS messages can be up to 140 UTF-8 characters, including the verification code.
 
 For other Lambda triggers in the Cognito lifecycle, see [Pre Sign-Up triggers](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view) and [Post Confirmation triggers](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-post-confirmation/view).
 
