@@ -44,7 +44,7 @@ This creates an archive with 90-day retention:
 ```bash
 aws events create-archive \
   --archive-name orders-archive \
-  --event-source-arn arn:aws:events:us-east-1:123456789:event-bus/orders-bus \
+  --event-source-arn arn:aws:events:us-east-1:123456789012:event-bus/orders-bus \
   --retention-days 90 \
   --description "Archive of all order events for debugging"
 ```
@@ -54,7 +54,7 @@ To capture only specific events, add an event pattern:
 ```bash
 aws events create-archive \
   --archive-name failed-orders-archive \
-  --event-source-arn arn:aws:events:us-east-1:123456789:event-bus/orders-bus \
+  --event-source-arn arn:aws:events:us-east-1:123456789012:event-bus/orders-bus \
   --retention-days 180 \
   --event-pattern '{
     "source": ["orders.service"],
@@ -75,7 +75,7 @@ This shows the current state of your archive:
 aws events describe-archive --archive-name orders-archive
 ```
 
-The output includes the archive state (ENABLED, DISABLED, CREATING), event count, size in bytes, and retention configuration. Give it a few minutes after creation to start showing event counts.
+The output includes the archive state (ENABLED, DISABLED, CREATING, UPDATING, CREATE_FAILED, UPDATE_FAILED), event count, size in bytes, and retention configuration. Event count and size have a 24-hour reconciliation period, so they can lag behind recent archive activity.
 
 ## Replaying Events
 
@@ -86,16 +86,16 @@ This replays all events from a 2-hour window:
 ```bash
 aws events start-replay \
   --replay-name debug-replay-2026-02-12 \
-  --event-source-arn arn:aws:events:us-east-1:123456789:event-bus/orders-bus \
+  --event-source-arn arn:aws:events:us-east-1:123456789012:archive/orders-archive \
   --destination '{
-    "Arn": "arn:aws:events:us-east-1:123456789:event-bus/orders-bus"
+    "Arn": "arn:aws:events:us-east-1:123456789012:event-bus/orders-bus"
   }' \
   --event-start-time 2026-02-12T10:00:00Z \
   --event-end-time 2026-02-12T12:00:00Z \
   --description "Replaying events during the incident window"
 ```
 
-Replayed events are sent back to the same bus (or a different one) and processed by your rules as if they were new events. The events include a `replay-name` field so you can distinguish replayed events from live events.
+Replayed events are sent back to the same bus that the archive was created from and processed by your rules as if they were new events. The events include a `replay-name` field so you can distinguish replayed events from live events.
 
 ## Filtering Replayed Events
 
@@ -123,40 +123,39 @@ And modify your existing rules to ignore replays:
 
 This way, replayed events only hit the rules you intend.
 
-## Replay to a Different Bus
+## Replay to a Specific Rule
 
-For safety, replay to a staging or debug bus instead of your production bus. This lets you test without affecting live traffic.
+For safety, send replayed events only to a dedicated debug rule instead of every rule on the bus. This lets you inspect replayed events without triggering consumers that should not run again.
 
-First, create a debug bus with its own rules:
+First, create a debug rule on the source bus:
 
 ```bash
-# Create a debug bus
-
-aws events create-event-bus --name debug-bus
-
 # Create a rule that logs everything
 aws events put-rule \
   --name log-all-debug \
-  --event-bus-name debug-bus \
+  --event-bus-name orders-bus \
   --event-pattern '{"source": [{"prefix": ""}]}'
 
 aws events put-targets \
   --rule log-all-debug \
-  --event-bus-name debug-bus \
+  --event-bus-name orders-bus \
   --targets '[{
     "Id": "debug-logger",
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:debug-logger"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:debug-logger"
   }]'
 ```
 
-Then replay to that bus:
+Then replay only to that rule:
 
 ```bash
 aws events start-replay \
   --replay-name safe-debug-replay \
-  --event-source-arn arn:aws:events:us-east-1:123456789:event-bus/orders-bus \
+  --event-source-arn arn:aws:events:us-east-1:123456789012:archive/orders-archive \
   --destination '{
-    "Arn": "arn:aws:events:us-east-1:123456789:event-bus/debug-bus"
+    "Arn": "arn:aws:events:us-east-1:123456789012:event-bus/orders-bus",
+    "FilterArns": [
+      "arn:aws:events:us-east-1:123456789012:rule/orders-bus/log-all-debug"
+    ]
   }' \
   --event-start-time 2026-02-12T10:00:00Z \
   --event-end-time 2026-02-12T12:00:00Z
@@ -260,22 +259,16 @@ Resources:
             - error
       Description: Failed order events for long-term analysis
 
-  # Debug bus for safe replays
-  DebugBus:
-    Type: AWS::Events::EventBus
-    Properties:
-      Name: orders-debug-bus
-
   DebugLoggerFunction:
     Type: AWS::Serverless::Function
     Properties:
       Handler: debugLogger.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs24.x
       Events:
         DebugEvents:
           Type: EventBridgeRule
           Properties:
-            EventBusName: !Ref DebugBus
+            EventBusName: !Ref OrdersBus
             Pattern:
               source:
                 - prefix: ""
@@ -293,8 +286,8 @@ Track replay progress through the console or CLI:
 aws events describe-replay --replay-name debug-replay-2026-02-12
 ```
 
-This shows the replay state (STARTING, RUNNING, COMPLETED, CANCELLED, FAILED), number of events replayed, and timing information. For ongoing monitoring of your EventBridge setup, see our post on [setting up EventBridge rules](https://oneuptime.com/blog/post/2026-02-12-eventbridge-rules-event-driven-architecture/view).
+This shows the replay state (STARTING, RUNNING, CANCELLING, COMPLETED, CANCELLED, FAILED), the last replayed event time, and timing information. For ongoing monitoring of your EventBridge setup, see our post on [setting up EventBridge rules](https://oneuptime.com/blog/post/2026-02-12-eventbridge-rules-event-driven-architecture/view).
 
 ## Wrapping Up
 
-Archive and replay turn EventBridge from a fire-and-forget system into one with full event history. You can debug production issues by looking at the exact events that caused problems. You can test fixes by replaying those events against your updated code. And you can recover from outages by replaying missed events. The key is setting up archives before you need them - you can't replay events that weren't captured.
+Archive and replay turn EventBridge from a fire-and-forget system into one with replayable event history. You can debug production issues by replaying the events that caused problems to a logging target. You can test fixes by replaying those events against your updated code. And you can recover from outages by replaying missed events. The key is setting up archives before you need them - you can't replay events that weren't captured.
