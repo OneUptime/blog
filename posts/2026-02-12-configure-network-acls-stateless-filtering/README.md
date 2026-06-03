@@ -82,7 +82,7 @@ aws ec2 create-network-acl-entry \
   --ingress
 ```
 
-That last rule is the one most people forget. When your instance makes an outbound connection (like downloading a package from the internet), the response comes back on an ephemeral port between 1024 and 65535. Without that rule, all your outbound connections would succeed on the outbound side but the responses would get dropped on the way back in.
+That last rule is the one most people forget. When your instance makes an outbound connection (like downloading a package from the internet), the response comes back to an ephemeral port chosen by the instance's operating system. AWS documents common ephemeral ranges such as 32768-61000 for many Linux kernels and 1024-65535 for NAT gateways and some AWS services, so 1024-65535 is the broad range people often use when they need to cover mixed clients. Without that rule, all your outbound connections would succeed on the outbound side but the responses would get dropped on the way back in.
 
 ## Outbound Rules
 
@@ -131,7 +131,7 @@ I like to leave gaps between rule numbers so I can insert rules later without re
 - 300-399: Database traffic rules
 - 400-499: Management traffic (SSH, RDP)
 - 500-599: Explicit deny rules for specific IPs or ranges
-- 32766: Catch-all rule (the implicit deny)
+- `*`: Catch-all rule (the implicit deny)
 
 Leaving gaps of 10 between rules within each range gives you room to add rules between existing ones.
 
@@ -202,6 +202,16 @@ resource "aws_network_acl" "web" {
     to_port    = 443
   }
 
+  # Inbound SSH - restrict to your IP
+  ingress {
+    rule_no    = 120
+    protocol   = "tcp"
+    action     = "allow"
+    cidr_block = "203.0.113.50/32"
+    from_port  = 22
+    to_port    = 22
+  }
+
   # Inbound ephemeral ports for return traffic
   ingress {
     rule_no    = 140
@@ -256,7 +266,7 @@ resource "aws_network_acl_association" "web" {
 
 ## Troubleshooting Tips
 
-When traffic isn't flowing and you suspect the NACL, use VPC Flow Logs to confirm. Flow logs show you whether traffic was accepted or rejected, which helps narrow down whether it's the NACL or a security group causing the problem. Check out our guide on enabling flow logs at https://oneuptime.com/blog/post/2026-02-12-enable-and-analyze-vpc-flow-logs/view.
+When traffic isn't flowing and you suspect the NACL, use VPC Flow Logs to confirm. Flow logs show you whether traffic was accepted or rejected by the VPC networking layer, which helps narrow the problem before you compare the NACL and security group rules. Check out our guide on enabling flow logs at https://oneuptime.com/blog/post/2026-02-12-enable-and-analyze-vpc-flow-logs/view.
 
 Common mistakes to watch for:
 

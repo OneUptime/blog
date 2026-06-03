@@ -106,8 +106,8 @@ curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/policies
           {
             "notification": {
               "destination": {
-                "sns": {
-                  "topic_arn": "arn:aws:sns:us-east-1:123456789012:index-deletion-alerts"
+                "custom_webhook": {
+                  "url": "https://hooks.example.com/index-deletion-alerts"
                 }
               },
               "message_template": {
@@ -122,12 +122,10 @@ curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/policies
         "transitions": []
       }
     ],
-    "ism_template": [
-      {
-        "index_patterns": ["app-logs-*"],
-        "priority": 100
-      }
-    ]
+    "ism_template": {
+      "index_patterns": ["app-logs-*"],
+      "priority": 100
+    }
   }
 }'
 ```
@@ -205,8 +203,14 @@ curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/policies
           {
             "shrink": {
               "num_new_shards": 1,
-              "target_alias": "shrunk-indices",
-              "max_shard_size": "50gb",
+              "target_index_name_template": {
+                "source": "{{ctx.index}}-shrunk"
+              },
+              "aliases": [
+                {
+                  "shrunk-indices": {}
+                }
+              ],
               "force_unsafe": false
             }
           }
@@ -243,7 +247,8 @@ Policies don't always execute cleanly. An index might fail to shrink because of 
 curl -s "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/explain/app-logs-000001" | jq '.'
 
 # List all managed indices and their current states
-curl -s "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/explain/*" | jq '.[] | {index: .index, state: .state, action: .action, step: .step}'
+curl -s "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/explain/*" | \
+  jq 'to_entries[] | select(.value.index) | {index: .key, state: .value.state.name, action: .value.action.name, step: .value.step.name}'
 
 # Retry a failed policy execution
 curl -X POST "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/retry/app-logs-000003" \
@@ -278,12 +283,8 @@ When you update a policy, existing managed indices continue using the old versio
 ```bash
 # Update the policy
 curl -X PUT "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/policies/app-logs-policy" \
-  -H 'Content-Type: application/json' -d '{
-  "policy": {
-    "description": "Updated - 60 day cold retention",
-    ...
-  }
-}'
+  -H 'Content-Type: application/json' \
+  -d @app-logs-policy-v2.json
 
 # Apply updated policy to all existing managed indices
 curl -X POST "https://my-domain.us-east-1.es.amazonaws.com/_plugins/_ism/change_policy/app-logs-*" \
