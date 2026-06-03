@@ -82,21 +82,15 @@ aws servicediscovery create-service \
       {
         "Type": "A",
         "TTL": 10
-      },
-      {
-        "Type": "SRV",
-        "TTL": 10
       }
     ]
   }' \
-  --health-check-custom-config '{
-    "FailureThreshold": 1
-  }'
+  --health-check-custom-config '{}'
 ```
 
-The DNS configuration creates A records (for IP addresses) and SRV records (for IP + port). The low TTL of 10 seconds means DNS caches won't hold onto stale records for long when instances change.
+The DNS configuration creates A records for IP addresses. The low TTL of 10 seconds means DNS caches won't hold onto stale records for long when instances change.
 
-The custom health check configuration means you'll manage health status yourself (or let ECS do it). You can also use Route 53 health checks for automatic health monitoring.
+The custom health check configuration means you'll manage health status yourself (or let ECS do it). You can also use Route 53 health checks for automatic health monitoring with public DNS or HTTP namespaces, but not with private DNS namespaces.
 
 ## Registering Service Instances
 
@@ -141,13 +135,6 @@ dig payment-api.myapp.local
 # Returns A records for all healthy instances:
 # payment-api.myapp.local. 10 IN A 10.0.1.5
 # payment-api.myapp.local. 10 IN A 10.0.1.6
-
-# SRV records include port information
-dig SRV payment-api.myapp.local
-
-# Returns:
-# payment-api.myapp.local. 10 IN SRV 1 1 8080 payment-api-001.myapp.local.
-# payment-api.myapp.local. 10 IN SRV 1 1 8080 payment-api-002.myapp.local.
 ```
 
 **API Discovery** - Use the Cloud Map API for more control.
@@ -175,9 +162,7 @@ aws ecs create-service \
   --desired-count 3 \
   --service-registries '[
     {
-      "registryArn": "arn:aws:servicediscovery:us-east-1:123456789012:service/srv-0123456789abcdef0",
-      "containerName": "payment-api",
-      "containerPort": 8080
+      "registryArn": "arn:aws:servicediscovery:us-east-1:123456789012:service/srv-0123456789abcdef0"
     }
   ]' \
   --network-configuration '{
@@ -189,7 +174,7 @@ aws ecs create-service \
   }'
 ```
 
-When ECS launches a task, it registers the task's IP and port with Cloud Map. When a task stops or fails health checks, ECS deregisters it. Other services discover the payment API simply by resolving `payment-api.myapp.local`.
+When ECS launches a task, it registers the task's IP with Cloud Map. When a task stops or fails health checks, ECS deregisters it. Other services discover the payment API simply by resolving `payment-api.myapp.local`.
 
 ## Terraform Configuration
 
@@ -211,17 +196,10 @@ resource "aws_service_discovery_service" "payment" {
       type = "A"
     }
 
-    dns_records {
-      ttl  = 10
-      type = "SRV"
-    }
-
     routing_policy = "MULTIVALUE"
   }
 
-  health_check_custom_config {
-    failure_threshold = 1
-  }
+  health_check_custom_config {}
 }
 
 # ECS service with service discovery
@@ -232,9 +210,7 @@ resource "aws_ecs_service" "payment" {
   desired_count   = 3
 
   service_registries {
-    registry_arn   = aws_service_discovery_service.payment.arn
-    container_name = "payment-api"
-    container_port = 8080
+    registry_arn = aws_service_discovery_service.payment.arn
   }
 
   network_configuration {
