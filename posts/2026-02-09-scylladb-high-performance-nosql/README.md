@@ -8,13 +8,13 @@ Description: Deploy ScyllaDB on Kubernetes for ultra-low latency NoSQL workloads
 
 ---
 
-ScyllaDB delivers exceptional performance for NoSQL workloads by reimplementing Cassandra in C++ with a shard-per-core architecture. On Kubernetes, ScyllaDB provides the scalability of distributed databases with latencies measured in microseconds rather than milliseconds.
+ScyllaDB delivers exceptional performance for NoSQL workloads by reimplementing Cassandra in C++ with a shard-per-core architecture. On Kubernetes, ScyllaDB provides the scalability of distributed databases with predictable low latency when the cluster is sized and tuned correctly.
 
 ## Understanding ScyllaDB Architecture
 
 ScyllaDB uses a shared-nothing architecture where each CPU core operates independently on its own shard. This design eliminates lock contention and enables true thread-level parallelism. Unlike traditional databases that share resources between threads, ScyllaDB assigns memory, disk I/O, and network connections per core.
 
-The database automatically handles data distribution using consistent hashing. When you write data, ScyllaDB determines which nodes should store replicas based on the partition key. Reads query multiple replicas in parallel and return the first response, minimizing latency.
+The database automatically handles data distribution using consistent hashing. When you write data, ScyllaDB determines which nodes should store replicas based on the partition key. Reads contact the number of replicas required by the request's consistency level, with speculative retry available when replicas are slow or unresponsive.
 
 ScyllaDB maintains Cassandra compatibility at the CQL protocol level, allowing applications to migrate from Cassandra without code changes. However, the internal implementation differs significantly, requiring different tuning approaches.
 
@@ -28,14 +28,16 @@ The Scylla Operator manages ScyllaDB clusters on Kubernetes, handling deployment
 helm repo add scylla https://scylla-operator-charts.storage.googleapis.com/stable
 helm repo update
 
+# Install cert-manager for the operator webhooks
+kubectl apply --server-side -f https://raw.githubusercontent.com/scylladb/scylla-operator/v1.21/examples/third-party/cert-manager.yaml
+
 # Create namespace for operator
 kubectl create namespace scylla-operator
 
 # Install the operator
 helm install scylla-operator scylla/scylla-operator \
   --namespace scylla-operator \
-  --create-namespace \
-  --set webhook.enabled=true
+  --create-namespace
 ```
 
 Verify the operator is running:
@@ -65,11 +67,12 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: scylla-nvme
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
-  type: io2
+  type: gp3
   iops: "16000"
   throughput: "1000"
+  csi.storage.k8s.io/fstype: xfs
   encrypted: "true"
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
@@ -130,7 +133,7 @@ spec:
               operator: Equal
               value: scylladb
               effect: NoSchedule
-          podAffinity:
+          podAntiAffinity:
             preferredDuringSchedulingIgnoredDuringExecution:
               - weight: 100
                 podAffinityTerm:
@@ -207,19 +210,12 @@ spec:
   # Developer mode (set to false for production)
   developerMode: false
 
-  # CPU pinning for optimal performance
-  cpuset: true
-
-  # Automatic repairs
+  # Orphaned node cleanup
   automaticOrphanedNodeCleanup: true
-
-  # Sysctls for network tuning
-  sysctls:
-    - "fs.aio-max-nr=1048576"
 
   # Network configuration
   network:
-    hostNetworking: false
+    dnsPolicy: ClusterFirst
 
   # Scylla configuration
   scyllaArgs: "--blocked-reactor-notify-ms 500 --abort-on-lsa-bad-alloc 1 --abort-on-seastar-bad-alloc --abort-on-internal-error 1 --log-to-stdout 1"
@@ -345,7 +341,7 @@ Applications connect to `scylla-client.scylla.svc.cluster.local:9042`.
 
 ## Optimizing Performance Settings
 
-Tune JVM settings for the Scylla pods:
+Tune ScyllaDB startup settings for the Scylla pods:
 
 ```yaml
 # Update ScyllaCluster with performance tuning
@@ -376,14 +372,26 @@ spec:
 Create a backup using Scylla Manager:
 
 ```bash
-# Install Scylla Manager Controller
-kubectl apply -f https://raw.githubusercontent.com/scylladb/scylla-operator/v1.11.0/examples/common/manager.yaml
+# Install Scylla Manager
+helm install scylla-manager scylla/scylla-manager \
+  --create-namespace \
+  --namespace scylla-manager
 
-# Create a backup task
-kubectl exec -it -n scylla-operator scylla-manager-0 -- sctool backup \
-  --cluster scylla-cluster \
-  --location s3:scylla-backups \
-  --retention 7
+# Add a backup task to the ScyllaCluster spec
+kubectl patch scyllacluster scylla-cluster -n scylla --type json -p='[
+  {
+    "op": "add",
+    "path": "/spec/backups",
+    "value": [
+      {
+        "name": "daily-backup",
+        "location": ["s3:scylla-backups"],
+        "retention": 7,
+        "cron": "0 2 * * *"
+      }
+    ]
+  }
+]'
 ```
 
 ## Monitoring ScyllaDB Performance
@@ -429,19 +437,13 @@ kubectl exec -it -n scylla scylla-cluster-us-east-1-us-east-1a-0 -- \
 Scale by adding more members to a rack:
 
 ```bash
-kubectl patch scyllacluster scylla-cluster -n scylla --type merge -p '
-{
-  "spec": {
-    "datacenter": {
-      "racks": [
-        {
-          "name": "us-east-1a",
-          "members": 4
-        }
-      ]
-    }
+kubectl patch scyllacluster scylla-cluster -n scylla --type json -p='[
+  {
+    "op": "replace",
+    "path": "/spec/datacenter/racks/0/members",
+    "value": 4
   }
-}'
+]'
 ```
 
 The operator handles the scaling operation automatically, rebalancing data across the new nodes.
@@ -456,4 +458,4 @@ Monitor repair operations:
 kubectl exec -it -n scylla scylla-cluster-us-east-1-us-east-1a-0 -- nodetool repair
 ```
 
-ScyllaDB on Kubernetes delivers exceptional performance for latency-sensitive NoSQL workloads. The Scylla Operator simplifies operations while maintaining the low-level performance characteristics that make ScyllaDB ideal for high-throughput applications. With proper resource allocation and tuning, ScyllaDB provides consistent sub-millisecond latencies at scale.
+ScyllaDB on Kubernetes delivers exceptional performance for latency-sensitive NoSQL workloads. The Scylla Operator simplifies operations while maintaining the low-level performance characteristics that make ScyllaDB ideal for high-throughput applications. With proper resource allocation and tuning, ScyllaDB provides predictable low latency at scale.
