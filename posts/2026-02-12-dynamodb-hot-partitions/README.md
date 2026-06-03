@@ -28,7 +28,7 @@ graph TD
     style B fill:#ff6666
 ```
 
-DynamoDB has adaptive capacity that can burst beyond the per-partition limit temporarily, but sustained hot traffic overwhelms it.
+DynamoDB has burst and adaptive capacity that can help with uneven traffic, but throttling can still occur if a single partition exceeds 3,000 read units or 1,000 write units per second.
 
 ## Symptoms of Hot Partitions
 
@@ -53,34 +53,46 @@ aws dynamodb update-contributor-insights \
   --contributor-insights-action ENABLE
 ```
 
-After enabling it, check the results:
+After enabling it, check the generated rules:
 
 ```bash
-# View the most accessed keys
+# View the Contributor Insights status and rule names
 aws dynamodb describe-contributor-insights \
   --table-name Orders
+```
+
+Use those rule names in the CloudWatch Contributor Insights console, or call `get-insight-rule-report`, to see the most accessed and most throttled keys:
+
+```bash
+aws cloudwatch get-insight-rule-report \
+  --rule-name "DynamoDBContributorInsights-PKC-Orders-1234567890123" \
+  --start-time 2026-02-11T00:00:00Z \
+  --end-time 2026-02-12T00:00:00Z \
+  --period 300 \
+  --max-contributor-count 10
 ```
 
 In the CloudWatch console, you'll see graphs like "Most accessed items" and "Most throttled items."
 
 ### Step 2: Check CloudWatch Metrics
 
-Look at these metrics at the partition level:
+Look at table and index throttle metrics. DynamoDB does not expose physical-partition metrics directly, but key-range throttle metrics and Contributor Insights help narrow down whether throttling is caused by hot keys:
 
 ```python
 import boto3
+from datetime import datetime, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 
-# Get throttled write events
+# Get write throttle events caused by partition/key-range limits
 response = cloudwatch.get_metric_statistics(
     Namespace='AWS/DynamoDB',
-    MetricName='WriteThrottleEvents',
+    MetricName='WriteKeyRangeThroughputThrottleEvents',
     Dimensions=[
         {'Name': 'TableName', 'Value': 'Orders'}
     ],
-    StartTime='2026-02-11T00:00:00Z',
-    EndTime='2026-02-12T00:00:00Z',
+    StartTime=datetime(2026, 2, 11, tzinfo=timezone.utc),
+    EndTime=datetime(2026, 2, 12, tzinfo=timezone.utc),
     Period=300,  # 5 minute intervals
     Statistics=['Sum']
 )
@@ -112,16 +124,25 @@ Partition key: status = "inactive" -> 10% of all items
 **After (distributed):**
 ```text
 Partition key: userId  -> millions of unique values
-GSI with status as partition key for status-based queries
+GSI designed for status-based queries, with a sort key or shard/bucket if one status gets heavy traffic
 ```
 
-If you need to query by status, create a GSI rather than using status as the primary partition key. For more on key selection, see our post on [choosing the right partition key](https://oneuptime.com/blog/post/2026-02-12-dynamodb-partition-key/view).
+If you need to query by status, create a GSI for that access pattern rather than using status as the primary partition key, but make sure the GSI does not recreate the same hot-key problem. For more on key selection, see our post on [choosing the right partition key](https://oneuptime.com/blog/post/2026-02-12-dynamodb-partition-key/view).
 
 ## Fix 2: Write Sharding
 
 When you can't change the partition key design, write sharding distributes traffic across multiple partitions artificially:
 
 ```javascript
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  GetCommand,
+  UpdateCommand
+} = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
 // Write sharding: append a random suffix to spread writes
 const SHARD_COUNT = 10;
 
@@ -134,13 +155,13 @@ function getShardedKey(baseKey) {
 async function incrementGlobalCounter(counterName, amount) {
   const shardedKey = getShardedKey(counterName);
 
-  await docClient.update({
+  await docClient.send(new UpdateCommand({
     TableName: 'Counters',
     Key: { counterId: shardedKey },
     UpdateExpression: 'ADD #count :amount',
     ExpressionAttributeNames: { '#count': 'count' },
     ExpressionAttributeValues: { ':amount': amount }
-  }).promise();
+  }));
 }
 
 // Read requires fetching all shards and summing
@@ -149,10 +170,10 @@ async function getGlobalCounter(counterName) {
 
   for (let i = 0; i < SHARD_COUNT; i++) {
     promises.push(
-      docClient.get({
+      docClient.send(new GetCommand({
         TableName: 'Counters',
         Key: { counterId: `${counterName}#${i}` }
-      }).promise()
+      }))
     );
   }
 
@@ -168,6 +189,7 @@ Writes are 10x more distributed. Reads are 10x more work. This trade-off is usua
 If reads are causing the hot partition, put a cache in front of DynamoDB:
 
 ```javascript
+const { GetCommand } = require('@aws-sdk/lib-dynamodb');
 const NodeCache = require('node-cache');
 const cache = new NodeCache({ stdTTL: 60 }); // 60-second cache
 
@@ -177,10 +199,10 @@ async function getPopularItem(itemId) {
   if (cached) return cached;
 
   // Cache miss - fetch from DynamoDB
-  const result = await docClient.get({
+  const result = await docClient.send(new GetCommand({
     TableName: 'Items',
     Key: { itemId }
-  }).promise();
+  }));
 
   // Store in cache
   cache.set(itemId, result.Item);
@@ -191,30 +213,30 @@ async function getPopularItem(itemId) {
 For a more robust caching layer, use DynamoDB Accelerator (DAX):
 
 ```javascript
-const AmazonDaxClient = require('amazon-dax-client');
+import { DaxDocument } from '@amazon-dax-sdk/lib-dax';
 
-// DAX client drops in as a replacement for the DynamoDB client
-const dax = new AmazonDaxClient({
+// DAX document client can be used with the same DynamoDB document-style API
+const daxDocClient = new DaxDocument({
   endpoints: ['dax-cluster.abc123.dax-clusters.us-east-1.amazonaws.com:8111'],
   region: 'us-east-1'
 });
-
-const daxDocClient = new AWS.DynamoDB.DocumentClient({ service: dax });
 
 // Same API as regular DynamoDB, but reads go through the cache
 const result = await daxDocClient.get({
   TableName: 'Items',
   Key: { itemId: 'popular-item' }
-}).promise();
+});
 ```
 
-DAX handles cache invalidation automatically. When an item is updated through DAX, the cache is updated too.
+DAX handles cache invalidation automatically for writes that go through DAX. When an item is updated through DAX, the item cache is updated too; writes that bypass DAX can leave cached reads stale until the DAX TTL expires.
 
 ## Fix 4: Time-Based Bucketing
 
 For time-series data where the "current" bucket gets all the traffic:
 
 ```javascript
+const { PutCommand } = require('@aws-sdk/lib-dynamodb');
+
 // Instead of one partition for today, use hourly buckets
 function getTimeBucket() {
   const now = new Date();
@@ -224,24 +246,26 @@ function getTimeBucket() {
 
 // Write to the current hour bucket
 async function logEvent(eventType, data) {
-  await docClient.put({
+  await docClient.send(new PutCommand({
     TableName: 'Events',
     Item: {
       partitionKey: `${eventType}#${getTimeBucket()}`,
       sortKey: `${Date.now()}#${Math.random().toString(36).slice(2)}`,
       data: data
     }
-  }).promise();
+  }));
 }
 ```
 
-Hourly buckets spread writes across 24 partitions per day instead of 1.
+Hourly buckets keep each hot time range smaller and reduce the impact of one daily bucket. If the current hour still receives more than a single partition can handle, combine bucketing with write sharding.
 
 ## Fix 5: Batch and Buffer Writes
 
 If your application generates bursts of writes, buffer them and write in batches:
 
 ```javascript
+const { BatchWriteCommand } = require('@aws-sdk/lib-dynamodb');
+
 class WriteBuffer {
   constructor(tableName, flushInterval = 1000, maxBatchSize = 25) {
     this.tableName = tableName;
@@ -263,26 +287,39 @@ class WriteBuffer {
     if (this.buffer.length === 0) return;
 
     const items = this.buffer.splice(0, this.maxBatchSize);
-    const params = {
-      RequestItems: {
-        [this.tableName]: items.map(item => ({
-          PutRequest: { Item: item }
-        }))
-      }
+    let requestItems = {
+      [this.tableName]: items.map(item => ({
+        PutRequest: { Item: item }
+      }))
     };
 
     try {
-      await docClient.batchWrite(params).promise();
+      let backoffMs = 200;
+
+      while (Object.keys(requestItems).length > 0) {
+        const result = await docClient.send(new BatchWriteCommand({
+          RequestItems: requestItems
+        }));
+
+        requestItems = result.UnprocessedItems || {};
+        if (Object.keys(requestItems).length > 0) {
+          await new Promise(resolve => setTimeout(resolve, backoffMs));
+          backoffMs = Math.min(backoffMs * 2, 5000);
+        }
+      }
     } catch (error) {
       console.error('Batch write failed:', error);
-      // Put items back for retry
-      this.buffer.unshift(...items);
+      const unprocessed = requestItems[this.tableName] || [];
+      const itemsToRetry = unprocessed.length > 0
+        ? unprocessed.map(request => request.PutRequest.Item)
+        : items;
+      this.buffer.unshift(...itemsToRetry);
     }
   }
 }
 ```
 
-Buffering smooths out write spikes and helps DynamoDB's adaptive capacity keep up.
+Buffering smooths out short write spikes, but it does not remove the per-partition limit for sustained writes to one key. For sustained hot writes, combine buffering with a key design change or write sharding.
 
 ## Monitoring and Alerting
 
