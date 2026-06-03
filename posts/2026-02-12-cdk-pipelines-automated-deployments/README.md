@@ -54,9 +54,9 @@ export class PipelineStack extends cdk.Stack {
 
       // Source and build step
       synth: new ShellStep('Synth', {
-        // Pull code from GitHub
-        input: CodePipelineSource.gitHub('myorg/myrepo', 'main', {
-          authentication: cdk.SecretValue.secretsManager('github-token'),
+        // Pull code from GitHub using an AWS CodeConnections connection
+        input: CodePipelineSource.connection('myorg/myrepo', 'main', {
+          connectionArn: 'arn:aws:codeconnections:us-east-1:444444444444:connection/xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
         }),
         // Build commands
         commands: [
@@ -210,7 +210,7 @@ pipeline.addStage(new DeployStage(this, 'Staging', { /* ... */ }), {
       commands: [
         'npm ci',
         'npx cdk synth',
-        'pip install cfn-nag',
+        'gem install cfn-nag',
         'cfn_nag_scan --input-path cdk.out/',
       ],
     }),
@@ -272,9 +272,9 @@ For cross-account deployments, bootstrap target accounts with trust to the pipel
 cdk bootstrap aws://444444444444/us-east-1
 
 # Bootstrap target accounts with trust
-cdk bootstrap aws://111111111111/us-east-1 --trust 444444444444
-cdk bootstrap aws://222222222222/us-east-1 --trust 444444444444
-cdk bootstrap aws://333333333333/us-west-2 --trust 444444444444
+cdk bootstrap aws://111111111111/us-east-1 --trust 444444444444 --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
+cdk bootstrap aws://222222222222/us-east-1 --trust 444444444444 --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
+cdk bootstrap aws://333333333333/us-west-2 --trust 444444444444 --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess
 ```
 
 ## Initial Deployment
