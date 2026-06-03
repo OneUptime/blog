@@ -14,18 +14,18 @@ The circuit breaker monitors your deployment and, if it detects that tasks keep 
 
 ## How the Circuit Breaker Works
 
-The circuit breaker tracks task launch attempts during a deployment. If ECS can't successfully launch and stabilize new tasks after a threshold number of attempts, it marks the deployment as failed. With rollback enabled, it then reverts the service to the previous task definition.
+The circuit breaker tracks task launch and health check failures during a deployment. If ECS can't successfully launch and stabilize new tasks after a threshold number of failures, it marks the deployment as failed. With rollback enabled, it then reverts the service to the last deployment that completed successfully.
 
 The threshold is calculated based on your desired count:
-- For desired count 1-9: the threshold is `min(10, 2 * desired_count)`
-- For desired count 10+: the threshold is `min(200, desired_count)`
+- The threshold is `ceil(0.5 * desired_count)`
+- The minimum threshold is 3 and the maximum threshold is 200
 
-So for a service with 4 desired tasks, ECS will attempt up to 8 launches before triggering the circuit breaker. For a service with 50 tasks, it'll try up to 50 times.
+So for a service with 4 desired tasks, ECS will count up to 3 failures before triggering the circuit breaker. For a service with 50 tasks, it'll count up to 25 failures.
 
 ```mermaid
 graph TD
     A[Update Service with New Task Definition] --> B[ECS Starts Launching New Tasks]
-    B --> C{Tasks Starting Successfully?}
+    B --> C{Tasks Running and Healthy?}
     C -->|Yes| D[Continue Deployment]
     D --> E[Deployment Complete]
     C -->|No - Tasks Failing| F[Increment Failure Counter]
@@ -116,11 +116,11 @@ aws ecs update-service \
 
 ## What Triggers the Circuit Breaker
 
-The circuit breaker kicks in when tasks fail to reach a RUNNING state. Common scenarios include:
+The circuit breaker kicks in when tasks fail to reach a RUNNING state, or when running tasks fail supported health checks during the deployment. Common scenarios include:
 
 **Container crashes on startup**: Your application throws an error and exits immediately. The task goes from PROVISIONING to STOPPED.
 
-**Health check failures**: Tasks start but fail the load balancer health check and get killed by ECS. This counts as a failed launch.
+**Health check failures**: Tasks start but fail Elastic Load Balancing, AWS Cloud Map, or Amazon ECS container health checks and get replaced by ECS. This counts toward the circuit breaker failure threshold.
 
 **Image pull failures**: The container image doesn't exist or the execution role can't access ECR. Tasks fail before they even start.
 
@@ -269,9 +269,9 @@ There are a few things to be aware of:
 
 **No custom thresholds**: You can't configure the failure threshold. AWS determines it based on desired count. This means for services with high desired counts, it might take a while before the circuit breaker triggers.
 
-**No health-based triggers**: The circuit breaker only tracks task launch failures, not application-level health metrics. If your new version starts successfully but returns errors, the circuit breaker won't catch that. For health-based rollbacks, use CodeDeploy with CloudWatch alarms (see our post on [blue/green deployments](https://oneuptime.com/blog/post/2026-02-12-ecs-blue-green-deployments-codedeploy/view)).
+**No application metric triggers in the circuit breaker itself**: The circuit breaker tracks task launch failures and supported health check failures, not application-level metrics. If your new version starts successfully and passes its configured health checks but returns errors, the circuit breaker won't catch that. For metric-based rollbacks, use Amazon ECS deployment alarms or CodeDeploy with CloudWatch alarms (see our post on [blue/green deployments](https://oneuptime.com/blog/post/2026-02-12-ecs-blue-green-deployments-codedeploy/view)).
 
-**Rollback is to the previous version only**: If the previous version was also broken, the rollback won't help. It goes back exactly one version.
+**Rollback is to the last completed deployment only**: If the last completed deployment was also broken, the rollback won't help. ECS rolls back to the most recent deployment that reached the `COMPLETED` state.
 
 **Doesn't work with CODE_DEPLOY controller**: The circuit breaker is for the default ECS deployment controller only. If you're using CodeDeploy, it has its own rollback mechanism.
 
