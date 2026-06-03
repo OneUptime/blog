@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CONFIG, Terraform, Compliance
 
-Description: Learn how to enable and configure AWS Config with Terraform, including managed rules, custom rules, conformance packs, and remediation actions for compliance monitoring.
+Description: Learn how to enable and configure AWS Config with Terraform, including managed rules, conformance packs, and remediation actions for compliance monitoring.
 
 ---
 
@@ -227,7 +227,7 @@ resource "aws_config_config_rule" "root_mfa" {
 
 Enforcing tagging standards is one of Config's most practical uses.
 
-This rule checks that all EC2 instances and RDS databases have required tags:
+This rule checks that all EC2 instances, RDS databases, and S3 buckets have required tags:
 
 ```hcl
 resource "aws_config_config_rule" "required_tags" {
@@ -300,6 +300,35 @@ Config rules can trigger automatic remediation using SSM Automation documents. T
 This auto-enables S3 bucket encryption when Config finds a non-compliant bucket:
 
 ```hcl
+resource "aws_iam_role" "ssm_remediation" {
+  name = "aws-config-ssm-remediation-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "ssm.amazonaws.com"
+      }
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "ssm_remediation_s3_encryption" {
+  name = "enable-s3-bucket-encryption"
+  role = aws_iam_role.ssm_remediation.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "s3:PutEncryptionConfiguration"
+      Resource = "arn:aws:s3:::*"
+    }]
+  })
+}
+
 resource "aws_config_remediation_configuration" "s3_encryption" {
   config_rule_name = aws_config_config_rule.s3_encryption.name
 
@@ -307,6 +336,11 @@ resource "aws_config_remediation_configuration" "s3_encryption" {
   target_type    = "SSM_DOCUMENT"
   target_id      = "AWS-EnableS3BucketEncryption"
   target_version = "1"
+
+  parameter {
+    name         = "AutomationAssumeRole"
+    static_value = aws_iam_role.ssm_remediation.arn
+  }
 
   parameter {
     name           = "BucketName"
@@ -326,9 +360,9 @@ resource "aws_config_remediation_configuration" "s3_encryption" {
 
 ## Conformance Packs
 
-Conformance packs bundle multiple rules together. AWS provides pre-built packs for common frameworks like CIS Benchmarks, PCI DSS, and HIPAA.
+Conformance packs bundle multiple rules together. AWS provides sample packs for common frameworks like CIS Benchmarks, PCI DSS, and HIPAA.
 
-This deploys the CIS AWS Foundations Benchmark conformance pack:
+This deploys a small CIS-style conformance pack with two checks:
 
 ```hcl
 resource "aws_config_conformance_pack" "cis" {
@@ -359,13 +393,17 @@ resource "aws_config_conformance_pack" "cis" {
 
 ## SNS Notifications for Non-Compliant Resources
 
-Get notified when resources fall out of compliance:
+Get notified when resources fall out of compliance by adding an SNS topic to the delivery channel:
 
 ```hcl
-resource "aws_config_delivery_channel" "with_sns" {
+resource "aws_config_delivery_channel" "main" {
   name           = "default"
   s3_bucket_name = aws_s3_bucket.config.bucket
   sns_topic_arn  = aws_sns_topic.config_changes.arn
+
+  snapshot_delivery_properties {
+    delivery_frequency = "Six_Hours"
+  }
 
   depends_on = [aws_config_configuration_recorder.main]
 }
