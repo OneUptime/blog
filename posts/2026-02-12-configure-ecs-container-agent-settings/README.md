@@ -54,11 +54,11 @@ Enabling container metadata lets your application query information about the ta
 # Enable the container metadata file
 ECS_ENABLE_CONTAINER_METADATA=true
 
-# Enable the task metadata endpoint (v4)
-ECS_ENABLE_TASK_ENI_METADATA=true
+# The task metadata endpoint v4 is injected automatically
+# on EC2 Linux instances running ECS agent 1.39.0 or later
 ```
 
-With metadata enabled, your container can access the task metadata endpoint at `http://169.254.170.2/v4/metadata` to get information like the task ARN, cluster name, and container instance ID. This is useful for logging and tracing.
+With the task metadata endpoint available, your container can use the `ECS_CONTAINER_METADATA_URI_V4` environment variable to get information like the task ARN, cluster name, and container instance ID. This is useful for logging and tracing.
 
 ### Container Stop Timeout
 
@@ -79,11 +79,8 @@ After a task stops, the agent keeps the stopped container around for inspection.
 # Wait 1 hour before cleaning up stopped task containers
 ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION=1h
 
-# How often to check for tasks that can be cleaned up
-ECS_TASK_CLEANUP_INTERVAL=10m
-
-# Minimum number of stopped tasks to keep for inspection
-ECS_NUM_IMAGES_DELETE_PER_CYCLE=5
+# Add up to 10 minutes of jitter before task cleanup
+ECS_ENGINE_TASK_CLEANUP_WAIT_DURATION_JITTER=10m
 ```
 
 Keeping stopped containers around for a while is helpful for debugging, but on busy instances it can consume disk space. For production, 1 hour is a reasonable balance.
@@ -105,7 +102,7 @@ ECS_IMAGE_MINIMUM_CLEANUP_AGE=1h
 # Delete up to 5 images per cleanup cycle
 ECS_NUM_IMAGES_DELETE_PER_CYCLE=5
 
-# Remove images when disk usage exceeds 80%
+# Use the default image pull behavior
 ECS_IMAGE_PULL_BEHAVIOR=default
 ```
 
@@ -114,19 +111,18 @@ If you are running many different task definitions with different images, you mi
 ## Networking Configuration
 
 ```bash
-# Enable awsvpc trunking for more ENIs per instance
-ECS_AWSVPC_BLOCK_IMDS=true
+# Enable awsvpc task networking
 ECS_ENABLE_TASK_ENI=true
 
-# Set custom Docker bridge IP (useful to avoid IP conflicts)
-ECS_DOCKER_BRIDGE_IP=172.17.0.1/16
+# Block awsvpc tasks from accessing the instance metadata service
+ECS_AWSVPC_BLOCK_IMDS=true
 ```
 
 The `ECS_AWSVPC_BLOCK_IMDS` setting prevents containers using the awsvpc network mode from accessing the instance metadata service. This is a security best practice because otherwise containers could assume the instance IAM role.
 
 ## Logging Configuration
 
-Control how the agent itself logs and where it sends container logs.
+Control how the agent itself logs.
 
 ```bash
 # Set agent log level (available: debug, info, warn, error, crit)
@@ -135,10 +131,10 @@ ECS_LOGLEVEL=info
 # Set the log file location
 ECS_LOGFILE=/var/log/ecs/ecs-agent.log
 
-# Enable audit logging for task state changes
+# Use the awslogs logging driver for the agent container
 ECS_LOG_DRIVER=awslogs
 
-# Disable sending anonymous usage data
+# Keep task metrics collection enabled
 ECS_DISABLE_METRICS=false
 ```
 
@@ -160,15 +156,14 @@ Resource Limits and Reservations
 Control how much of the instance resources ECS can use for tasks.
 
 ```bash
-# Reserve CPU units for the agent and system processes
+# Subtract 256 MiB from the memory reported to ECS for task placement
 ECS_RESERVED_MEMORY=256
 
-# Set the percentage of memory that can be used by tasks
-# (the rest is reserved for the OS and agent)
+# Mark these host ports as unavailable for task placement
 ECS_RESERVED_PORTS=[22, 2375, 2376, 51678, 51679]
 ```
 
-The `ECS_RESERVED_MEMORY` setting tells the agent to subtract this amount (in MiB) from the total memory reported to ECS. This prevents tasks from consuming all memory and starving the OS and agent.
+The `ECS_RESERVED_MEMORY` setting tells the agent to subtract this amount (in MiB) from the total memory reported to ECS for task placement. This helps prevent tasks from being scheduled against memory you want to leave for the OS and agent.
 
 ## Security Settings
 
@@ -185,8 +180,8 @@ ECS_APPARMOR_CAPABLE=true
 # Block container access to instance metadata
 ECS_AWSVPC_BLOCK_IMDS=true
 
-# Disable the introspection API endpoint
-ECS_DISABLE_INTROSPECTION=false
+# Keep introspection API access blocked from off-host clients
+ECS_ALLOW_OFFHOST_INTROSPECTION_ACCESS=false
 ```
 
 Disabling privileged containers prevents tasks from running with elevated host-level permissions. This is important in multi-tenant clusters or any production environment where you want defense in depth.
