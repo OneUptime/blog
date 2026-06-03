@@ -8,21 +8,21 @@ Description: Learn how to configure Youki, a lightweight OCI runtime written in 
 
 ---
 
-Youki is an OCI-compliant container runtime written in Rust that offers faster startup times and lower memory overhead compared to traditional runtimes. As Kubernetes supports multiple container runtimes through the Container Runtime Interface, you can configure individual pods to use Youki for improved performance, especially in resource-constrained environments or when running large numbers of containers.
+Youki is an OCI-compliant low-level container runtime written in Rust with the potential for faster startup times and lower memory overhead compared to runc in some workloads. As Kubernetes supports runtime handlers through the Container Runtime Interface, you can configure individual pods to use Youki for workloads where the runtime behavior fits your performance and isolation requirements.
 
 This guide walks through installing Youki, integrating it with containerd, and configuring Kubernetes pods to use this lightweight runtime.
 
 ## Why Choose Youki Over Traditional Runtimes
 
-Traditional container runtimes like runc work well but carry overhead from legacy codebases and broader compatibility requirements. Youki leverages Rust's memory safety guarantees and zero-cost abstractions to deliver better performance characteristics.
+Traditional low-level container runtimes like runc work well but can have different performance characteristics from newer implementations. Youki leverages Rust's memory safety guarantees and zero-cost abstractions to deliver competitive performance characteristics.
 
-The benefits become apparent when you run hundreds or thousands of containers on a single node. Youki's smaller memory footprint means more capacity for application workloads. Faster startup times reduce scheduling latency and improve autoscaling responsiveness.
+The benefits can become apparent when you run many short-lived containers on a single node. Youki's own benchmarks show lower create/start/delete time than runc for a simple local container lifecycle test, but Kubernetes pod startup time also depends on image pulls, CNI setup, admission, scheduling, and kubelet behavior.
 
-Security also improves through Rust's memory safety features. Buffer overflows and use-after-free vulnerabilities that plague C-based runtimes become compile-time errors with Youki.
+Security also benefits from Rust's memory safety features. Safe Rust code reduces the risk of common memory safety bugs such as buffer overflows and use-after-free errors, although you should still evaluate the full runtime, dependencies, and any unsafe or FFI code paths.
 
 ## Installing Youki on Your Kubernetes Nodes
 
-Youki requires a Linux system with cgroups v2 support. Modern distributions like Ubuntu 22.04 or later meet this requirement by default. Install the runtime on each node that will run Youki containers.
+Youki requires Linux with kernel 5.3 or later. It supports cgroups through its libcgroups implementation, including v1 and v2 managers, but modern Kubernetes clusters commonly use cgroups v2 with the systemd cgroup driver. Install the runtime on each node that will run Youki containers.
 
 ```bash
 # Install build dependencies
@@ -32,20 +32,25 @@ sudo apt-get install -y \
   build-essential \
   pkg-config \
   libsystemd-dev \
-  libdbus-glib-1-dev \
-  libelf-dev
+  libelf-dev \
+  libseccomp-dev \
+  libclang-dev \
+  libssl-dev
 
 # Install Rust toolchain
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
 
+# Install just, which Youki uses for its documented build tasks
+cargo install just
+
 # Clone and build Youki
-git clone https://github.com/containers/youki.git
+git clone https://github.com/youki-dev/youki.git
 cd youki
-cargo build --release
+just youki-release
 
 # Install the binary
-sudo cp target/release/youki /usr/local/bin/
+sudo cp youki /usr/local/bin/
 sudo chmod +x /usr/local/bin/youki
 
 # Verify installation
@@ -56,10 +61,10 @@ Alternatively, download pre-built binaries from the releases page if you prefer 
 
 ```bash
 # Download pre-built binary
-curl -LO https://github.com/containers/youki/releases/download/v0.3.0/youki_v0.3.0_linux_amd64.tar.gz
+curl -LO https://github.com/youki-dev/youki/releases/download/v0.6.0/youki-0.6.0-x86_64-gnu.tar.gz
 
 # Extract and install
-tar xzf youki_v0.3.0_linux_amd64.tar.gz
+tar xzf youki-0.6.0-x86_64-gnu.tar.gz
 sudo mv youki /usr/local/bin/
 ```
 
@@ -162,11 +167,12 @@ kubectl get pod youki-test
 # Verify runtime from node perspective
 kubectl get pod youki-test -o jsonpath='{.status.containerStatuses[0].containerID}'
 
-# SSH to the node and check with crictl
-sudo crictl inspect <container-id> | grep -i runtime
+# SSH to the node and check the pod sandbox runtime details with crictl
+sudo crictl pods --name youki-test
+sudo crictl inspectp <pod-sandbox-id> | grep -i runtime
 ```
 
-The container ID prefix changes from runc to youki when successfully using the alternative runtime.
+The Kubernetes container ID prefix normally remains the CRI implementation, such as `containerd://`. Use the pod sandbox inspection output, containerd logs, or containerd task/shim details on the node to confirm that the `youki` runtime handler is being used.
 
 ## Performance Benchmarking: Youki vs runc
 
@@ -219,7 +225,7 @@ time kubectl wait --for=condition=ready pod -l app=perf-test --timeout=300s
 # real    0m18.721s  # runc result
 ```
 
-In typical scenarios, Youki shows 30-50% faster pod startup times compared to runc, especially at scale.
+Youki's upstream benchmark shows faster low-level create/start/delete time than runc for a simple local container lifecycle test, but Kubernetes pod startup gains vary by cluster because scheduling, image pulls, CNI setup, and kubelet work can dominate the total time. Treat the results above as example measurements from one environment, not a general guarantee.
 
 ## Configuring Resource Constraints with Youki
 
@@ -260,10 +266,13 @@ kubectl apply -f resource-test.yaml
 # Check actual resource usage on the node
 kubectl top pod resource-constrained
 
-# Verify cgroup constraints
+# Verify cgroup constraints from the container process cgroup
 ssh node-1
-sudo cat /sys/fs/cgroup/kubepods/pod-<pod-uid>/memory.max
-sudo cat /sys/fs/cgroup/kubepods/pod-<pod-uid>/cpu.max
+CONTAINER_ID=$(sudo crictl ps --name stress -q)
+PID=$(sudo crictl inspect "$CONTAINER_ID" | jq -r '.info.pid')
+CGROUP_PATH=$(awk -F: '$1 == "0" {print $3}' /proc/"$PID"/cgroup)
+sudo cat /sys/fs/cgroup"$CGROUP_PATH"/memory.max
+sudo cat /sys/fs/cgroup"$CGROUP_PATH"/cpu.max
 ```
 
 Youki respects resource limits through cgroups v2 just like runc, ensuring workload isolation.
@@ -305,14 +314,13 @@ When pods fail to start with Youki, check containerd logs for runtime errors.
 # View containerd logs
 sudo journalctl -u containerd -n 100 --no-pager | grep -i youki
 
-# Common error: cgroups v1 system
-# Error: Youki requires cgroups v2
-# Solution: Migrate to cgroups v2 or use a compatible kernel
+# Common issue: incompatible cgroup setup or cgroup driver mismatch
+# Solution: use a supported kernel and align containerd and kubelet cgroup drivers
 
 # Check cgroups version
-mount | grep cgroup
+test -f /sys/fs/cgroup/cgroup.controllers && echo "cgroups v2" || echo "cgroups v1 or hybrid"
 
-# If using cgroups v1, add kernel parameter to enable v2
+# If migrating a systemd-based host to cgroups v2, enable the unified hierarchy
 sudo grubby --update-kernel=ALL --args="systemd.unified_cgroup_hierarchy=1"
 sudo reboot
 ```
