@@ -19,7 +19,7 @@ Tyk supports multiple rate limiting strategies:
 **Policy-based limits** - Group keys under policies with shared limits
 **Endpoint-specific limits** - Different limits for different paths
 
-Rate limits are enforced using Redis counters, enabling consistent limits across distributed gateway instances.
+Tyk supports multiple rate limiting algorithms. The default Distributed Rate Limiter divides the configured limit across gateway instances without using Redis for the request counter; Redis-backed algorithms are also available when exact shared counters are required.
 
 ## Basic Rate Limiting in API Definitions
 
@@ -139,29 +139,13 @@ curl http://localhost:8080/tyk/policies \
 curl http://localhost:8080/tyk/policies \
   -H "X-Tyk-Authorization: your-secret-key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "Silver Tier Policy",
-    "id": "silver-tier",
-    "rate": 1000,
-    "per": 60,
-    "quota_max": 10000,
-    "quota_renewal_rate": 86400,
-    "access_rights": {...}
-  }'
+  -d @silver-policy.json
 
 # Bronze tier: 100 req/min
 curl http://localhost:8080/tyk/policies \
   -H "X-Tyk-Authorization: your-secret-key" \
   -H "Content-Type: application/json" \
-  -d '{
-    "name": "Bronze Tier Policy",
-    "id": "bronze-tier",
-    "rate": 100,
-    "per": 60,
-    "quota_max": 1000,
-    "quota_renewal_rate": 86400,
-    "access_rights": {...}
-  }'
+  -d @bronze-policy.json
 ```
 
 Create keys with policies:
@@ -170,6 +154,7 @@ Create keys with policies:
 # Create gold tier key
 curl http://localhost:8080/tyk/keys \
   -H "X-Tyk-Authorization: your-secret-key" \
+  -H "Content-Type: application/json" \
   -d '{
     "apply_policies": ["gold-tier"]
   }'
@@ -198,18 +183,21 @@ Apply different limits to different paths:
             {
               "path": "/search",
               "method": "GET",
+              "enabled": true,
               "rate": 10,
               "per": 60
             },
             {
               "path": "/write",
               "method": "POST",
+              "enabled": true,
               "rate": 5,
               "per": 60
             },
             {
               "path": "/read",
               "method": "GET",
+              "enabled": true,
               "rate": 100,
               "per": 60
             }
@@ -240,9 +228,9 @@ Quota parameters:
 - `quota_renews`: Unix timestamp when quota next resets
 - `quota_remaining`: Current remaining quota
 
-## Burst Allowance
+## Request Throttling
 
-Configure burst limits to handle traffic spikes:
+Configure throttling to queue and retry requests that exceed a rate limit:
 
 ```json
 {
@@ -253,7 +241,7 @@ Configure burst limits to handle traffic spikes:
 }
 ```
 
-This allows up to 10 requests in 1-second bursts, while maintaining 100 req/min average.
+This retries queued requests every 1 second, up to 10 times, before returning a 429 response if capacity does not become available.
 
 ## Rate Limit Response Headers
 
@@ -265,31 +253,45 @@ X-RateLimit-Remaining: 423
 X-RateLimit-Reset: 1672531200
 ```
 
-Configure header names:
+Add supplemental response headers with the response header transform middleware:
 
 ```json
 {
   "response_processors": [
     {
-      "name": "header_injector",
-      "options": {
-        "add_headers": {
-          "X-Custom-Rate-Limit": "$rate_limit",
-          "X-Custom-Rate-Remaining": "$rate_remaining"
+      "name": "header_injector"
+    }
+  ],
+  "version_data": {
+    "not_versioned": true,
+    "versions": {
+      "Default": {
+        "use_extended_paths": true,
+        "extended_paths": {
+          "transform_response_headers": [
+            {
+              "path": "/status",
+              "method": "GET",
+              "add_headers": {
+                "X-Request-Id": "$tyk_context.request_id"
+              },
+              "delete_headers": []
+            }
+          ]
         }
       }
     }
-  ]
+  }
 }
 ```
 
-## Rate Limiting by Client IP
+## Rate Limiting Keyless APIs
 
-Use IP-based rate limiting for keyless APIs:
+Use API-level rate limiting for keyless APIs:
 
 ```json
 {
-  "name": "IP Rate Limited API",
+  "name": "Keyless Rate Limited API",
   "use_keyless": true,
   "enable_ip_blacklisting": false,
   "enable_ip_whitelisting": false,
@@ -304,29 +306,28 @@ Use IP-based rate limiting for keyless APIs:
 }
 ```
 
-## Dynamic Rate Limits via Middleware
+## Custom Rate Limit Keys
 
-Implement custom rate limit logic:
+Use policy metadata to calculate limits against a custom key instead of only the credential ID:
 
-```javascript
-// rate-limit-middleware.js
-function rateLimit(request, session, config) {
-  // Check user tier from metadata
-  var tier = session.meta_data.tier;
-
-  // Set limits based on tier
-  if (tier === "premium") {
-    session.rate = 5000;
-    session.per = 60;
-  } else if (tier === "standard") {
-    session.rate = 1000;
-    session.per = 60;
-  } else {
-    session.rate = 100;
-    session.per = 60;
-  }
-
-  return request, session;
+```json
+{
+  "name": "Developer Plan Policy",
+  "id": "developer-plan",
+  "rate": 1000,
+  "per": 60,
+  "meta_data": {
+    "rate_limit_pattern": "$tyk_meta.DeveloperID|$tyk_meta.PlanID"
+  },
+  "access_rights": {
+    "rate-limited-api": {
+      "api_name": "Rate Limited API",
+      "api_id": "rate-limited-api",
+      "versions": ["Default"],
+      "allowed_urls": []
+    }
+  },
+  "state": "active"
 }
 ```
 
@@ -348,11 +349,11 @@ curl http://localhost:8080/tyk/keys/{key-id} \
 # }
 ```
 
-Monitor rate limit hits in analytics:
+Monitor rate limit hits in gateway logs and analytics:
 
 ```bash
-# Query Redis for rate limit counters
-kubectl exec -it redis-0 -n tyk -- redis-cli KEYS "rate-limit-*"
+# Look for rate-limited responses in gateway logs
+kubectl logs -n tyk deploy/tyk-gateway | grep 'RLT'
 ```
 
 ## Handling Rate Limit Exceeded
@@ -365,19 +366,11 @@ When limits are exceeded, Tyk returns HTTP 429:
 }
 ```
 
-Configure custom error response:
+Customize gateway error responses with error templates:
 
-```json
-{
-  "custom_middleware": {
-    "post": [
-      {
-        "name": "CustomRateLimitError",
-        "path": "middleware/rate_limit_error.js"
-      }
-    ]
-  }
-}
+```text
+templates/error_429.json
+templates/error.json
 ```
 
 ## Testing Rate Limits
@@ -401,7 +394,7 @@ done
 
 ## Rate Limit Analytics
 
-Query rate limit metrics:
+Query key rate and quota state:
 
 ```bash
 # Get key analytics
@@ -434,7 +427,7 @@ data:
 
 ## Best Practices
 
-**Start with conservative limits** - Begin with higher limits and reduce based on monitoring.
+**Start with conservative limits** - Begin with lower limits and increase based on monitoring.
 
 **Use policies for user tiers** - Simplify management by grouping similar users.
 
@@ -446,10 +439,10 @@ data:
 
 **Provide quota APIs** - Let users query their remaining quota programmatically.
 
-**Use Redis persistence** - Ensure rate limit counters survive restarts.
+**Use Redis persistence appropriately** - Ensure key, session, and quota state survive restarts when Redis-backed storage is used.
 
 **Test limit enforcement** - Verify limits work correctly under load.
 
 ## Conclusion
 
-Tyk's rate limiting and quota management provides flexible controls for protecting APIs while enabling tiered access models. By supporting per-API, per-key, and policy-based limits with Redis-backed counters, Tyk enables consistent enforcement across distributed gateway instances. Combined with endpoint-specific limits and quota management, teams can implement sophisticated usage controls that balance protection, fairness, and monetization objectives while maintaining high gateway performance.
+Tyk's rate limiting and quota management provides flexible controls for protecting APIs while enabling tiered access models. By supporting per-API, per-key, and policy-based limits with configurable rate limiting algorithms, Tyk enables enforcement across distributed gateway instances. Combined with endpoint-specific limits and quota management, teams can implement sophisticated usage controls that balance protection, fairness, and monetization objectives while maintaining high gateway performance.
