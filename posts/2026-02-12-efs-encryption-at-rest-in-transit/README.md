@@ -125,23 +125,23 @@ The simplest way to enable encryption in transit is with the EFS mount helper's 
 sudo mount -t efs -o tls fs-0abc123def456789:/ /mnt/efs
 ```
 
-That's it. The mount helper sets up a local stunnel process that handles the TLS connection. All NFS traffic goes through this encrypted tunnel.
+That's it. The mount helper sets up a local proxy that handles the TLS connection (`efs-proxy` in amazon-efs-utils 2.0.0 and later, or `stunnel` in earlier versions). All NFS traffic goes through this encrypted tunnel.
 
 ### What Happens Under the Hood
 
 When you mount with the `tls` option, the mount helper:
 
-1. Starts a `stunnel` process on the instance
-2. The stunnel process listens on a local port
-3. NFS traffic goes to the local stunnel port
-4. Stunnel encrypts it with TLS and forwards it to the EFS mount target
+1. Starts an `efs-proxy` or `stunnel` process on the instance
+2. The proxy process listens on a local port
+3. NFS traffic goes to the local proxy port
+4. The proxy encrypts it with TLS and forwards it to the EFS mount target
 5. The mount target decrypts and processes the NFS request
 
-You can see the stunnel process running:
+You can see the proxy process running:
 
 ```bash
-# Verify stunnel is running for your EFS mount
-ps aux | grep stunnel
+# Verify the TLS proxy is running for your EFS mount
+ps aux | grep -E 'efs-proxy|stunnel'
 ```
 
 ### Enforcing Encryption in Transit
@@ -159,7 +159,7 @@ aws efs put-file-system-policy \
         "Sid": "EnforceEncryptionInTransit",
         "Effect": "Deny",
         "Principal": {"AWS": "*"},
-        "Action": "*",
+        "Action": "elasticfilesystem:Client*",
         "Resource": "*",
         "Condition": {
           "Bool": {
@@ -216,7 +216,7 @@ A common question is whether encryption adds latency. Here's what to expect:
 
 **Encryption at rest**: No measurable performance impact. The encryption/decryption happens at the storage layer and is handled by dedicated hardware. AWS has explicitly stated there's no performance penalty.
 
-**Encryption in transit**: Small impact. The TLS encryption adds CPU overhead on your instances and a slight increase in latency (typically 1-5%). For most workloads, this is negligible. The stunnel process uses some CPU on your instance, so for very high-throughput workloads on small instances, factor in the extra CPU usage.
+**Encryption in transit**: Small impact. The TLS encryption adds CPU overhead on your instances and a slight increase in latency (typically 1-5%). For most workloads, this is negligible. The local proxy process uses some CPU on your instance, so for very high-throughput workloads on small instances, factor in the extra CPU usage.
 
 ```bash
 # Benchmark with and without TLS to compare
@@ -293,7 +293,7 @@ Resources:
             Effect: Deny
             Principal:
               AWS: '*'
-            Action: '*'
+            Action: elasticfilesystem:Client*
             Resource: '*'
             Condition:
               Bool:
