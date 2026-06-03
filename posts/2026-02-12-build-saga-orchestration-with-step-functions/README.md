@@ -198,24 +198,38 @@ def handler(event, context):
 
     reserved_items = []
 
-    for item in items:
-        # Attempt to decrement inventory
-        response = inventory_table.update_item(
-            Key={'productId': item['productId']},
-            UpdateExpression='SET available = available - :qty',
-            ConditionExpression='available >= :qty',
-            ExpressionAttributeValues={':qty': item['quantity']},
-            ReturnValues='UPDATED_NEW'
-        )
-        reserved_items.append(item)
+    try:
+        for item in items:
+            reservation = {
+                'productId': item['productId'],
+                'quantity': item['quantity']
+            }
 
-    # Record the reservation
-    saga_table.put_item(Item={
-        'orderId': order_id,
-        'step': 'inventory',
-        'items': reserved_items,
-        'status': 'reserved'
-    })
+            # Attempt to decrement inventory
+            inventory_table.update_item(
+                Key={'productId': reservation['productId']},
+                UpdateExpression='SET available = available - :qty',
+                ConditionExpression='available >= :qty',
+                ExpressionAttributeValues={':qty': reservation['quantity']},
+                ReturnValues='UPDATED_NEW'
+            )
+            reserved_items.append(reservation)
+
+        # Record the reservation
+        saga_table.put_item(Item={
+            'orderId': order_id,
+            'step': 'inventory',
+            'items': reserved_items,
+            'status': 'reserved'
+        })
+    except Exception:
+        for item in reserved_items:
+            inventory_table.update_item(
+                Key={'productId': item['productId']},
+                UpdateExpression='SET available = available + :qty',
+                ExpressionAttributeValues={':qty': item['quantity']}
+            )
+        raise
 
     return {'reservedItems': reserved_items}
 ```
@@ -314,7 +328,6 @@ aws stepfunctions create-state-machine \
 The IAM role needs permission to invoke the Lambda functions:
 
 ```json
-// IAM policy for the saga state machine to invoke all saga Lambda functions
 {
   "Version": "2012-10-17",
   "Statement": [
