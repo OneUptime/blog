@@ -8,7 +8,7 @@ Description: A practical guide to using the EC2 instance metadata service to dis
 
 ---
 
-Every EC2 instance has access to a special HTTP endpoint that provides information about itself - the Instance Metadata Service (IMDS). It's available at `http://169.254.169.254` and doesn't require authentication. This metadata is essential for scripts, applications, and automation that need to know things like "what region am I in?" or "what's my instance ID?" without hardcoding anything.
+Every EC2 instance has access to a special HTTP endpoint that provides information about itself - the Instance Metadata Service (IMDS). It's available at `http://169.254.169.254`. Depending on your instance metadata options, access either uses simple IMDSv1 HTTP GET requests or an IMDSv2 session token. This metadata is essential for scripts, applications, and automation that need to know things like "what region am I in?" or "what's my instance ID?" without hardcoding anything.
 
 This guide covers what metadata is available, how to access it, and practical ways to use it in your applications.
 
@@ -29,7 +29,7 @@ The metadata is served from a link-local address (169.254.169.254) that's only a
 
 ## Accessing Metadata with curl
 
-The most basic way to access metadata is with curl:
+The most basic way to access metadata is with curl. The examples in this section use IMDSv1-style requests, which work only when IMDSv1 is allowed. If IMDSv2 is required on the instance, use the token pattern in the next section.
 
 ```bash
 # Get the top-level metadata categories
@@ -105,7 +105,7 @@ curl http://169.254.169.254/latest/meta-data/security-groups
 
 There are two versions of the metadata service:
 
-**IMDSv1** - Simple HTTP GET requests. No authentication. This is what we just used above.
+**IMDSv1** - Simple HTTP GET requests. No session token. This is what we just used above.
 
 **IMDSv2** - Requires a session token. More secure because it prevents certain types of attacks (like SSRF).
 
@@ -251,6 +251,7 @@ def get_metadata(path):
     url = f"http://169.254.169.254/latest/meta-data/{path}"
     try:
         response = requests.get(url, timeout=2)
+        response.raise_for_status()
         return response.text
     except requests.exceptions.RequestException:
         return "unknown"
@@ -276,6 +277,16 @@ from flask import Flask, jsonify
 import requests
 
 app = Flask(__name__)
+
+def get_metadata(path):
+    """Fetch a value from the instance metadata service."""
+    url = f"http://169.254.169.254/latest/meta-data/{path}"
+    try:
+        response = requests.get(url, timeout=2)
+        response.raise_for_status()
+        return response.text
+    except requests.exceptions.RequestException:
+        return "unknown"
 
 @app.route('/health')
 def health():
