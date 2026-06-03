@@ -35,6 +35,7 @@ Let us build a restaurant reservation bot as an example. It needs to understand 
 
 ```yaml
 # CloudFormation for Lex V2 bot
+# Assumes BotRole, FulfillmentLambda, and Lambda invoke permission are defined elsewhere.
 
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
@@ -47,6 +48,15 @@ Resources:
       DataPrivacy:
         ChildDirected: false
       IdleSessionTTLInSeconds: 300
+      TestBotAliasSettings:
+        BotAliasLocaleSettings:
+          - LocaleId: en_US
+            BotAliasLocaleSetting:
+              Enabled: true
+              CodeHookSpecification:
+                LambdaCodeHook:
+                  CodeHookInterfaceVersion: "1.0"
+                  LambdaArn: !GetAtt FulfillmentLambda.Arn
       BotLocales:
         - LocaleId: en_US
           NluConfidenceThreshold: 0.70
@@ -64,8 +74,9 @@ Resources:
                 - Name: Date
                   SlotTypeName: AMAZON.Date
                   ValueElicitationSetting:
+                    SlotConstraint: Required
                     PromptSpecification:
-                      MessageGroups:
+                      MessageGroupsList:
                         - Message:
                             PlainTextMessage:
                               Value: "What date would you like to dine?"
@@ -73,8 +84,9 @@ Resources:
                 - Name: Time
                   SlotTypeName: AMAZON.Time
                   ValueElicitationSetting:
+                    SlotConstraint: Required
                     PromptSpecification:
-                      MessageGroups:
+                      MessageGroupsList:
                         - Message:
                             PlainTextMessage:
                               Value: "What time works for you?"
@@ -82,8 +94,9 @@ Resources:
                 - Name: PartySize
                   SlotTypeName: AMAZON.Number
                   ValueElicitationSetting:
+                    SlotConstraint: Required
                     PromptSpecification:
-                      MessageGroups:
+                      MessageGroupsList:
                         - Message:
                             PlainTextMessage:
                               Value: "How many people will be dining?"
@@ -91,8 +104,9 @@ Resources:
                 - Name: Cuisine
                   SlotTypeName: CuisineType
                   ValueElicitationSetting:
+                    SlotConstraint: Required
                     PromptSpecification:
-                      MessageGroups:
+                      MessageGroupsList:
                         - Message:
                             PlainTextMessage:
                               Value: "What type of cuisine do you prefer?"
@@ -106,17 +120,23 @@ Resources:
                   SlotName: PartySize
                 - Priority: 4
                   SlotName: Cuisine
+              FulfillmentCodeHook:
+                Enabled: true
             - Name: CheckReservation
               Description: Check existing reservation status
               SampleUtterances:
                 - Utterance: "Check my reservation"
                 - Utterance: "What is the status of my booking"
                 - Utterance: "Do I have a reservation"
+              FulfillmentCodeHook:
+                Enabled: true
             - Name: CancelReservation
               Description: Cancel an existing reservation
               SampleUtterances:
                 - Utterance: "Cancel my reservation"
                 - Utterance: "I need to cancel my booking"
+              FulfillmentCodeHook:
+                Enabled: true
             - Name: FallbackIntent
               Description: Default intent when nothing matches
               ParentIntentSignature: AMAZON.FallbackIntent
@@ -145,6 +165,8 @@ import boto3
 import json
 import uuid
 from datetime import datetime
+from datetime import timezone
+from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb')
 reservations_table = dynamodb.Table('Reservations')
@@ -196,7 +218,7 @@ def handle_make_reservation(event, slots):
         'partySize': int(party_size),
         'cuisine': cuisine,
         'status': 'CONFIRMED',
-        'createdAt': datetime.utcnow().isoformat()
+        'createdAt': datetime.now(timezone.utc).isoformat()
     })
 
     message = (
@@ -226,8 +248,7 @@ def handle_check_reservation(event, session_id):
     """Look up existing reservations."""
     response = reservations_table.query(
         IndexName='SessionIndex',
-        KeyConditionExpression='sessionId = :sid',
-        ExpressionAttributeValues={':sid': session_id}
+        KeyConditionExpression=Key('sessionId').eq(session_id)
     )
 
     if response['Items']:
@@ -240,6 +261,27 @@ def handle_check_reservation(event, session_id):
         )
     else:
         message = "I could not find any reservations for you. Would you like to make one?"
+
+    return build_response(event, message, 'Close', 'Fulfilled')
+
+def handle_cancel_reservation(event, session_id):
+    """Cancel the most recent reservation for the current session."""
+    response = reservations_table.query(
+        IndexName='SessionIndex',
+        KeyConditionExpression=Key('sessionId').eq(session_id)
+    )
+
+    if response['Items']:
+        res = response['Items'][0]
+        reservations_table.update_item(
+            Key={'reservationId': res['reservationId']},
+            UpdateExpression='SET #status = :status',
+            ExpressionAttributeNames={'#status': 'status'},
+            ExpressionAttributeValues={':status': 'CANCELLED'}
+        )
+        message = f"Reservation {res['reservationId']} has been cancelled."
+    else:
+        message = "I could not find any reservations to cancel."
 
     return build_response(event, message, 'Close', 'Fulfilled')
 
@@ -270,13 +312,16 @@ def build_response(event, message, dialog_action, fulfillment_state):
 
 def build_elicit_response(event, slot_to_elicit, message):
     """Build a response that asks for a specific slot value."""
+    intent = event['sessionState']['intent'].copy()
+    intent['state'] = 'InProgress'
+
     return {
         'sessionState': {
             'dialogAction': {
                 'type': 'ElicitSlot',
                 'slotToElicit': slot_to_elicit
             },
-            'intent': event['sessionState']['intent']
+            'intent': intent
         },
         'messages': [{
             'contentType': 'PlainText',
@@ -287,13 +332,15 @@ def build_elicit_response(event, slot_to_elicit, message):
 
 ## Adding Voice with Polly
 
-Polly converts the text responses to speech. For a more natural experience, use SSML (Speech Synthesis Markup Language) to control pronunciation, pauses, and emphasis:
+Polly converts the text responses to speech. For a more natural experience, use SSML (Speech Synthesis Markup Language) to control pronunciation, pauses, and pacing:
 
 ```python
 # Lambda - Convert text responses to speech using Polly
 import boto3
 import json
 import base64
+import re
+from xml.sax.saxutils import escape
 
 polly = boto3.client('polly')
 
@@ -316,15 +363,15 @@ def text_to_speech(text, voice_id='Joanna', engine='neural'):
 def convert_to_ssml(text):
     """Convert plain text to SSML with natural speech patterns."""
     ssml = '<speak>'
+    text = escape(text)
 
     # Add a brief pause after greetings
     text = text.replace('. ', '.<break time="300ms"/> ')
 
-    # Emphasize reservation IDs
-    import re
+    # Read reservation IDs character by character
     text = re.sub(
         r'Reservation ID: (\w+)',
-        r'Reservation ID: <emphasis level="moderate">\1</emphasis>',
+        r'Reservation ID: <say-as interpret-as="characters">\1</say-as>',
         text
     )
 
@@ -363,9 +410,16 @@ Connect the Lex bot and Polly to a web frontend:
 import boto3
 import json
 import base64
+import gzip
 
 lex = boto3.client('lexv2-runtime')
 polly = boto3.client('polly')
+
+def decode_lex_field(value):
+    """Decode compressed fields returned by recognize_utterance."""
+    if not value:
+        return None
+    return json.loads(gzip.decompress(base64.b64decode(value)))
 
 def handler(event, context):
     body = json.loads(event['body'])
@@ -390,8 +444,16 @@ def handler(event, context):
             localeId='en_US',
             sessionId=session_id,
             requestContentType='audio/l16; rate=16000; channels=1',
+            responseContentType='text/plain; charset=utf-8',
             inputStream=audio_bytes
         )
+        response['messages'] = decode_lex_field(response.get('messages')) or []
+        response['sessionState'] = decode_lex_field(response.get('sessionState')) or {}
+    else:
+        return {
+            'statusCode': 400,
+            'body': json.dumps({'error': 'Unsupported action'})
+        }
 
     # Extract the text response from Lex
     messages = response.get('messages', [])
@@ -423,6 +485,12 @@ Lex and Polly both support multiple languages. Here is how to add multi-language
 
 ```python
 # Multi-language voice interaction
+import base64
+import boto3
+
+lex = boto3.client('lexv2-runtime')
+polly = boto3.client('polly')
+
 LANGUAGE_MAP = {
     'en': {'lexLocale': 'en_US', 'pollyVoice': 'Joanna', 'comprehendLang': 'en'},
     'es': {'lexLocale': 'es_US', 'pollyVoice': 'Lupe', 'comprehendLang': 'es'},
