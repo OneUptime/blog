@@ -10,13 +10,13 @@ Description: Enable AWS Backup Vault Lock to enforce write-once-read-many protec
 
 Compliance frameworks like SEC 17a-4, HIPAA, and SOC 2 often require that backups be immutable - meaning once created, they can't be modified or deleted before a specified retention period expires. AWS Backup Vault Lock provides exactly this capability by enforcing WORM (Write Once, Read Many) protection on your backup vault.
 
-Once vault lock is enabled in compliance mode, nobody can delete recovery points before the minimum retention period - not your backup admins, not your account administrators, not even AWS support. It's about as airtight as it gets.
+Once vault lock is enabled in compliance mode and the cooling-off period has ended, nobody can delete recovery points before their lifecycle retention periods expire - not your backup admins, not your account administrators, not even AWS support. It's about as airtight as it gets.
 
 ## Governance vs. Compliance Mode
 
 AWS Backup Vault Lock offers two modes:
 
-**Governance Mode**: Recovery points can't be deleted by most users, but users with specific IAM permissions (`backup:DeleteRecoveryPoint` with the `backup:vault-lock-governance-bypass` condition key) can override the lock. Think of it as a safety net with an emergency override.
+**Governance Mode**: Recovery points can't be deleted while the lock is active, but users with sufficient IAM permissions can remove or change the vault lock configuration. Think of it as a safety net with an emergency override.
 
 **Compliance Mode**: Once the cooling-off period ends, nobody can delete recovery points or change the vault lock configuration. Period. There's no override, no escape hatch. This is what auditors want to see.
 
@@ -24,7 +24,7 @@ AWS Backup Vault Lock offers two modes:
 graph TD
     A[Enable Vault Lock] --> B{Mode?}
     B -->|Governance| C[Most users blocked]
-    C --> D[IAM override possible]
+    C --> D[Privileged users can remove lock]
     B -->|Compliance| E[Cooling-off period starts]
     E --> F{Cooling-off expired?}
     F -->|No| G[Can still remove lock]
@@ -39,14 +39,14 @@ If you don't already have a vault, create one specifically for locked backups:
 ```bash
 # Create a KMS key for the vault
 
-VAULT_KEY=$(aws kms create-key \
+VAULT_KEY_ARN=$(aws kms create-key \
   --description "Compliance vault encryption" \
-  --query 'KeyMetadata.KeyId' --output text)
+  --query 'KeyMetadata.Arn' --output text)
 
 # Create the vault
 aws backup create-backup-vault \
   --backup-vault-name "compliance-locked-vault" \
-  --encryption-key-arn "arn:aws:kms:us-east-1:123456789012:key/$VAULT_KEY"
+  --encryption-key-arn "$VAULT_KEY_ARN"
 ```
 
 ## Step 2: Enable Vault Lock in Governance Mode
@@ -62,8 +62,8 @@ aws backup put-backup-vault-lock-configuration \
 ```
 
 This sets the rules:
-- **MinRetentionDays**: Recovery points can't be deleted before this many days. Any backup plan targeting this vault must have a retention of at least 30 days.
-- **MaxRetentionDays**: The maximum retention allowed. Backup plans can't keep recovery points longer than 365 days in this vault.
+- **MinRetentionDays**: Future backup and copy jobs targeting this vault must have a lifecycle retention of at least 30 days.
+- **MaxRetentionDays**: The maximum retention allowed. Future backup and copy jobs can't keep recovery points longer than 365 days in this vault.
 
 The absence of `--changeable-for-days` means this is governance mode. You can remove it later if needed.
 
@@ -97,7 +97,7 @@ The `changeable-for-days` parameter is the cooling-off period. During this windo
 Think carefully before enabling compliance mode. Once locked:
 - You can't change the retention settings
 - You can't remove the vault lock
-- You can't delete recovery points before `MinRetentionDays`
+- You can't delete recovery points before their lifecycle retention periods expire
 - You can't delete the vault until all recovery points have naturally expired
 - Not even the root account can override this
 
@@ -127,10 +127,10 @@ After the cooling-off period expires, this command will fail. There's no going b
 
 ## Step 5: Create a Backup Plan Targeting the Locked Vault
 
-Backup plans must respect the vault's retention constraints:
+Backup jobs and copy jobs must respect the vault's retention constraints:
 
 ```bash
-# This plan works - retention is within the vault's min/max range
+# This plan works for this vault - retention is within the vault's min/max range
 aws backup create-backup-plan \
   --backup-plan '{
     "BackupPlanName": "compliance-backups",
@@ -149,7 +149,7 @@ aws backup create-backup-plan \
     ]
   }'
 
-# This would FAIL - retention of 7 days is below the vault's 365-day minimum
+# Jobs using this lifecycle would fail - retention of 7 days is below the vault's 365-day minimum
 # aws backup create-backup-plan \
 #   --backup-plan '{
 #     "Rules": [{
@@ -237,13 +237,15 @@ aws organizations attach-policy \
 Set up monitoring to detect any attempts to tamper with vault lock:
 
 ```bash
-# Create a CloudWatch alarm for unauthorized delete attempts
+# Create an EventBridge rule for unauthorized delete attempts
 aws events put-rule \
   --name "VaultLockTamperAlert" \
+  --state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS \
   --event-pattern '{
     "source": ["aws.backup"],
     "detail-type": ["AWS API Call via CloudTrail"],
     "detail": {
+      "eventSource": ["backup.amazonaws.com"],
       "eventName": [
         "DeleteBackupVaultLockConfiguration",
         "DeleteRecoveryPoint",
