@@ -25,9 +25,10 @@ The critical distinction is between where the binding lives and where the subjec
 Start with a simple example. Create a ServiceAccount in one namespace and grant it permissions in another:
 
 ```bash
-# Create the monitoring namespace and ServiceAccount
+# Create the monitoring namespace, target namespace, and ServiceAccount
 
 kubectl create namespace monitoring
+kubectl create namespace production
 kubectl create serviceaccount prometheus -n monitoring
 ```
 
@@ -128,6 +129,8 @@ When a ServiceAccount needs access to multiple namespaces, create a RoleBinding 
 
 ```bash
 # Grant prometheus access to staging namespace
+kubectl create namespace staging
+
 kubectl create role metrics-reader \
   --verb=get,list,watch \
   --resource=pods,services,endpoints \
@@ -139,6 +142,8 @@ kubectl create rolebinding prometheus-metrics-access \
   --namespace=staging
 
 # Grant prometheus access to development namespace
+kubectl create namespace development
+
 kubectl create role metrics-reader \
   --verb=get,list,watch \
   --resource=pods,services,endpoints \
@@ -270,9 +275,11 @@ Cross-namespace permissions break namespace isolation, so apply them carefully:
 # Find all RoleBindings with cross-namespace subjects
 kubectl get rolebindings --all-namespaces -o json | \
   jq -r '.items[] |
-  select(.subjects[]?.namespace? and
-         .subjects[].namespace != .metadata.namespace) |
-  "\(.metadata.namespace)/\(.metadata.name) references \(.subjects[].namespace)/\(.subjects[].name)"'
+  . as $binding |
+  .subjects[]? |
+  select(.kind == "ServiceAccount" and
+         (.namespace // $binding.metadata.namespace) != $binding.metadata.namespace) |
+  "\($binding.metadata.namespace)/\($binding.metadata.name) references \(.namespace)/\(.name)"'
 ```
 
 **Consider Network Policies**: Combine RBAC with NetworkPolicies to control both API access and network traffic:
@@ -292,7 +299,7 @@ spec:
   - from:
     - namespaceSelector:
         matchLabels:
-          name: monitoring
+          kubernetes.io/metadata.name: monitoring
     ports:
     - protocol: TCP
       port: 8080  # Metrics port
