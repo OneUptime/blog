@@ -16,7 +16,7 @@ This guide shows you how to use the ECS CLI with Docker Compose files, including
 
 The ECS CLI is a separate command-line tool from the AWS CLI that provides higher-level commands for ECS. Its killer feature is the ability to read Docker Compose files and translate them into ECS task definitions and services.
 
-Note: AWS also offers the newer AWS Copilot CLI, which is the recommended tool for new projects. But if you have existing Docker Compose workflows, the ECS CLI is still useful for quick translations and deployments.
+Note: AWS also offers the newer AWS Copilot CLI, but AWS has announced that Copilot CLI will reach end-of-support on June 12, 2026. If you have existing Docker Compose workflows, the ECS CLI is still useful for quick translations and deployments.
 
 ## Installing the ECS CLI
 
@@ -24,7 +24,7 @@ Note: AWS also offers the newer AWS Copilot CLI, which is the recommended tool f
 # Install on macOS
 
 sudo curl -Lo /usr/local/bin/ecs-cli \
-  https://amazon-ecs-cli-linux-amd64-latest
+  https://amazon-ecs-cli.s3.amazonaws.com/ecs-cli-darwin-amd64-latest
 sudo chmod +x /usr/local/bin/ecs-cli
 
 # Verify installation
@@ -65,8 +65,6 @@ services:
     environment:
       - NODE_ENV=production
       - REDIS_HOST=localhost
-    depends_on:
-      - redis
     logging:
       driver: awslogs
       options:
@@ -103,12 +101,15 @@ task_definition:
   services:
     web:
       essential: true
+      depends_on:
+        - container_name: redis
+          condition: START
       cpu_shares: 256
-      mem_limit: 512
+      mem_limit: 512MB
     redis:
       essential: true
       cpu_shares: 256
-      mem_limit: 512
+      mem_limit: 512MB
 
 run_params:
   network_configuration:
@@ -143,7 +144,8 @@ ecs-cli compose \
   --project-name my-app \
   --cluster-config my-config \
   --ecs-profile my-profile \
-  service up
+  service up \
+  --launch-type FARGATE
 
 # Check the status
 ecs-cli compose \
@@ -183,11 +185,11 @@ graph LR
 Key translation rules:
 
 - All services in a Compose file become containers in a single ECS task definition
-- `depends_on` is translated to container dependencies
+- Container dependencies are configured in `ecs-params.yml` under `task_definition.services.<service>.depends_on`
 - `ports` become port mappings
 - `environment` becomes environment variables
 - `volumes` become ECS volumes (EFS for persistent, bind mounts for ephemeral)
-- `logging` driver must be set to `awslogs` for Fargate
+- Use the `awslogs` logging driver for Fargate tasks when you want to retrieve logs with `ecs-cli logs`
 
 ## Supported Docker Compose Features
 
@@ -200,7 +202,7 @@ The ECS CLI supports most Compose v3 features, but not all.
 - `command` and `entrypoint`
 - `working_dir`
 - `logging` (awslogs driver)
-- `depends_on`
+- container dependencies through `ecs-params.yml`
 - `volumes` (limited)
 - `healthcheck`
 - `labels`
@@ -241,7 +243,7 @@ task_definition:
     - name: data
       filesystem_id: fs-abc123
       transit_encryption: ENABLED
-      access_point_id: fsap-def456
+      access_point: fsap-def456
 ```
 
 ## Deploying Updates
@@ -256,7 +258,9 @@ ecs-cli compose \
   --project-name my-app \
   --cluster-config my-config \
   --ecs-profile my-profile \
-  service up --force-deployment
+  service up \
+  --launch-type FARGATE \
+  --force-deployment
 ```
 
 The `--force-deployment` flag ensures a new deployment even if the task definition has not changed (useful when you push a new image with the same tag).
@@ -318,7 +322,7 @@ For a more detailed approach to manual translation, see our guide on [migrating 
 | Tool | Best For |
 |------|----------|
 | ECS CLI | Quick Compose-to-ECS deployments, development environments |
-| AWS Copilot | New production applications, full lifecycle management |
+| AWS Copilot | Existing Copilot applications before migration; AWS support ends June 12, 2026 |
 | CDK | Infrastructure-as-code, complex architectures |
 | CloudFormation | Template-based deployments, enterprise governance |
 | Terraform | Multi-cloud, existing Terraform workflows |
