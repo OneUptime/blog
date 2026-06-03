@@ -45,6 +45,10 @@ This is the simplest approach - register one device at a time with a unique cert
 ### Create a Thing
 
 ```bash
+# Create the thing type if it does not already exist
+aws iot create-thing-type \
+  --thing-type-name "TemperatureSensor"
+
 # Create a thing (device) in IoT Core
 
 aws iot create-thing \
@@ -69,7 +73,7 @@ aws iot create-keys-and-certificate \
   --private-key-outfile private.key
 
 # Note the certificate ARN from the output
-CERT_ARN="arn:aws:iot:us-east-1:123456789:cert/abc123..."
+CERT_ARN="arn:aws:iot:us-east-1:123456789012:cert/abc123..."
 
 # Attach the certificate to the thing
 aws iot attach-thing-principal \
@@ -89,22 +93,22 @@ aws iot create-policy \
       {
         "Effect": "Allow",
         "Action": "iot:Connect",
-        "Resource": "arn:aws:iot:us-east-1:123456789:client/${iot:Connection.Thing.ThingName}"
+        "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}"
       },
       {
         "Effect": "Allow",
         "Action": "iot:Publish",
-        "Resource": "arn:aws:iot:us-east-1:123456789:topic/sensors/${iot:Connection.Thing.ThingName}/*"
+        "Resource": "arn:aws:iot:us-east-1:123456789012:topic/sensors/${iot:Connection.Thing.ThingName}/*"
       },
       {
         "Effect": "Allow",
         "Action": "iot:Subscribe",
-        "Resource": "arn:aws:iot:us-east-1:123456789:topicfilter/commands/${iot:Connection.Thing.ThingName}/*"
+        "Resource": "arn:aws:iot:us-east-1:123456789012:topicfilter/commands/${iot:Connection.Thing.ThingName}/*"
       },
       {
         "Effect": "Allow",
         "Action": "iot:Receive",
-        "Resource": "arn:aws:iot:us-east-1:123456789:topic/commands/${iot:Connection.Thing.ThingName}/*"
+        "Resource": "arn:aws:iot:us-east-1:123456789012:topic/commands/${iot:Connection.Thing.ThingName}/*"
       }
     ]
   }'
@@ -196,46 +200,84 @@ The provisioning template tells IoT Core what to create when a new device connec
 
 ```json
 {
-  "templateBody": {
-    "Parameters": {
-      "AWS::IoT::Certificate::CommonName": {
-        "Type": "String"
-      },
-      "AWS::IoT::Certificate::Id": {
-        "Type": "String"
+  "Parameters": {
+    "AWS::IoT::Certificate::CommonName": {
+      "Type": "String"
+    },
+    "AWS::IoT::Certificate::Id": {
+      "Type": "String"
+    }
+  },
+  "Resources": {
+    "thing": {
+      "Type": "AWS::IoT::Thing",
+      "Properties": {
+        "ThingName": {
+          "Ref": "AWS::IoT::Certificate::CommonName"
+        },
+        "ThingGroups": ["auto-provisioned"],
+        "AttributePayload": {
+          "provisioned_by": "JITP"
+        }
       }
     },
-    "Resources": {
-      "thing": {
-        "Type": "AWS::IoT::Thing",
-        "Properties": {
-          "ThingName": {
-            "Ref": "AWS::IoT::Certificate::CommonName"
-          },
-          "ThingGroups": ["auto-provisioned"],
-          "AttributePayload": {
-            "provisioned_by": "JITP"
-          }
-        }
-      },
-      "certificate": {
-        "Type": "AWS::IoT::Certificate",
-        "Properties": {
-          "CertificateId": {
-            "Ref": "AWS::IoT::Certificate::Id"
-          },
-          "Status": "ACTIVE"
-        }
-      },
-      "policy": {
-        "Type": "AWS::IoT::Policy",
-        "Properties": {
-          "PolicyName": "SensorPolicy"
-        }
+    "certificate": {
+      "Type": "AWS::IoT::Certificate",
+      "Properties": {
+        "CertificateId": {
+          "Ref": "AWS::IoT::Certificate::Id"
+        },
+        "Status": "ACTIVE"
+      }
+    },
+    "policy": {
+      "Type": "AWS::IoT::Policy",
+      "Properties": {
+        "PolicyName": "SensorPolicy"
       }
     }
   }
 }
+```
+
+Create the thing group and JITP provisioning template.
+
+```bash
+aws iot create-thing-group \
+  --thing-group-name "auto-provisioned"
+
+aws iot create-provisioning-template \
+  --template-name "JitpSensorTemplate" \
+  --description "JITP template for sensors" \
+  --provisioning-role-arn "arn:aws:iam::123456789012:role/IoTJitpProvisioningRole" \
+  --template-body file://provisioning-template.json \
+  --type JITP \
+  --enabled
+```
+
+The provisioning role must trust AWS IoT and allow the IoT registration actions needed by the template.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "iot.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+Attach the AWS managed registration policy to the role.
+
+```bash
+aws iam attach-role-policy \
+  --role-name "IoTJitpProvisioningRole" \
+  --policy-arn "arn:aws:iam::aws:policy/service-role/AWSIoTThingsRegistration"
 ```
 
 ### Register the CA with the Template
@@ -247,10 +289,10 @@ aws iot register-ca-certificate \
   --verification-certificate file://verification.pem \
   --set-as-active \
   --allow-auto-registration \
-  --registration-config file://provisioning-template.json
+  --registration-config templateName=JitpSensorTemplate
 ```
 
-Now any device that connects with a certificate signed by this CA will be automatically provisioned.
+Now any device that connects with a certificate signed by this CA and sends the Server Name Indication (SNI) extension will be automatically provisioned.
 
 ## Method 3: Fleet Provisioning
 
@@ -259,11 +301,44 @@ Fleet provisioning is the most scalable approach. Devices use a temporary "claim
 ### Create a Fleet Provisioning Template
 
 ```bash
+# Create the thing group used by the template
+aws iot create-thing-group \
+  --thing-group-name "fleet-sensors"
+
+# Create the IoT policy referenced by the template
+aws iot create-policy \
+  --policy-name "FleetSensorPolicy" \
+  --policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "iot:Connect",
+        "Resource": "arn:aws:iot:us-east-1:123456789012:client/${iot:Connection.Thing.ThingName}"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "iot:Publish",
+        "Resource": "arn:aws:iot:us-east-1:123456789012:topic/sensors/${iot:Connection.Thing.ThingName}/*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "iot:Subscribe",
+        "Resource": "arn:aws:iot:us-east-1:123456789012:topicfilter/commands/${iot:Connection.Thing.ThingName}/*"
+      },
+      {
+        "Effect": "Allow",
+        "Action": "iot:Receive",
+        "Resource": "arn:aws:iot:us-east-1:123456789012:topic/commands/${iot:Connection.Thing.ThingName}/*"
+      }
+    ]
+  }'
+
 # Create the provisioning template
 aws iot create-provisioning-template \
   --template-name "FleetSensorTemplate" \
   --description "Template for mass sensor deployment" \
-  --provisioning-role-arn "arn:aws:iam::123456789:role/IoTFleetProvisioningRole" \
+  --provisioning-role-arn "arn:aws:iam::123456789012:role/IoTFleetProvisioningRole" \
   --template-body '{
     "Parameters": {
       "SerialNumber": {"Type": "String"},
@@ -326,23 +401,23 @@ aws iot create-policy \
         "Effect": "Allow",
         "Action": ["iot:Publish", "iot:Receive"],
         "Resource": [
-          "arn:aws:iot:us-east-1:123456789:topic/$aws/certificates/create/*",
-          "arn:aws:iot:us-east-1:123456789:topic/$aws/provisioning-templates/FleetSensorTemplate/provision/*"
+          "arn:aws:iot:us-east-1:123456789012:topic/$aws/certificates/create/*",
+          "arn:aws:iot:us-east-1:123456789012:topic/$aws/provisioning-templates/FleetSensorTemplate/provision/*"
         ]
       },
       {
         "Effect": "Allow",
         "Action": "iot:Subscribe",
         "Resource": [
-          "arn:aws:iot:us-east-1:123456789:topicfilter/$aws/certificates/create/*",
-          "arn:aws:iot:us-east-1:123456789:topicfilter/$aws/provisioning-templates/FleetSensorTemplate/provision/*"
+          "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/certificates/create/*",
+          "arn:aws:iot:us-east-1:123456789012:topicfilter/$aws/provisioning-templates/FleetSensorTemplate/provision/*"
         ]
       }
     ]
   }'
 
 # Attach policy to claim certificate
-CLAIM_CERT_ARN="arn:aws:iot:us-east-1:123456789:cert/xyz..."
+CLAIM_CERT_ARN="arn:aws:iot:us-east-1:123456789012:cert/xyz..."
 aws iot attach-policy \
   --policy-name "FleetClaimPolicy" \
   --target "$CLAIM_CERT_ARN"
