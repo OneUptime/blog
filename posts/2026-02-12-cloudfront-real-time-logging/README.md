@@ -8,13 +8,13 @@ Description: Step-by-step guide to setting up CloudFront real-time logs using Ki
 
 ---
 
-CloudFront's standard access logs land in S3 with a delay of up to several minutes. When you're debugging a production issue or monitoring traffic in real time, that delay is too long. Real-time logging sends request data to Kinesis Data Streams within seconds, giving you near-instant visibility into what's happening at the edge.
+CloudFront's standard access logs are delivered periodically and usually arrive within an hour, though some log entries can be delayed by up to 24 hours. When you're debugging a production issue or monitoring traffic in real time, that delay is too long. Real-time logging sends request data to Kinesis Data Streams within seconds, giving you near-instant visibility into what's happening at the edge.
 
 ## Standard Logs vs Real-Time Logs
 
-**Standard access logs** are free, go to S3, and have a 5-30 minute delay. They include all requests. Good for historical analysis and compliance.
+**Standard access logs** don't have an additional CloudFront charge, but you still pay for the delivery destination, storage, and access costs. Legacy standard logs go to S3, and standard logging v2 can also deliver to CloudWatch Logs and Firehose. They are best-effort logs for viewer requests. Good for historical analysis and compliance.
 
-**Real-time logs** cost money (Kinesis charges), arrive within seconds, and let you choose which fields to include and sample requests. Good for live monitoring, alerting, and debugging.
+**Real-time logs** cost money (CloudFront real-time log charges plus Kinesis charges), arrive within seconds, and let you choose which fields to include and sample requests. Good for live monitoring, alerting, and debugging.
 
 You can use both simultaneously. Many teams use standard logs for archives and real-time logs for operational monitoring.
 
@@ -67,7 +67,12 @@ CloudFront needs permission to write to your Kinesis stream:
       "Principal": {
         "Service": "cloudfront.amazonaws.com"
       },
-      "Action": "sts:AssumeRole"
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "123456789012"
+        }
+      }
     }
   ]
 }
@@ -130,14 +135,14 @@ aws cloudfront create-realtime-log-config \
     "x-forwarded-for" "cs-uri-query" "x-edge-request-id"
 ```
 
-Available fields include everything from standard logs plus some extras. Here are the most useful ones:
+Each real-time log record can contain up to 40 fields from the available real-time log fields. Here are the most useful ones:
 
 | Field | Description |
 |-------|-------------|
 | timestamp | Request timestamp |
 | c-ip | Client IP |
 | cs-method | HTTP method |
-| cs-uri-stem | URL path |
+| cs-uri-stem | URL path and query string |
 | sc-status | HTTP status code |
 | sc-bytes | Response bytes |
 | time-taken | Total request time in seconds |
@@ -207,7 +212,27 @@ Process logs in real time with a Lambda function:
 
 ```python
 import base64
-import json
+import boto3
+
+cloudwatch = boto3.client('cloudwatch')
+
+LOG_FIELDS = [
+    'timestamp', 'c-ip', 'sc-status', 'sc-bytes', 'cs-method',
+    'cs-protocol', 'cs-host', 'cs-uri-stem', 'x-edge-location',
+    'x-edge-request-id', 'time-taken', 'cs-user-agent',
+    'cs-uri-query', 'x-edge-response-result-type',
+    'x-forwarded-for', 'x-edge-result-type'
+]
+
+def publish_metrics(error_count, slow_requests):
+    """Publish custom CloudWatch metrics."""
+    cloudwatch.put_metric_data(
+        Namespace='CloudFrontRealtimeLogs',
+        MetricData=[
+            {'MetricName': '5xxErrors', 'Value': error_count, 'Unit': 'Count'},
+            {'MetricName': 'SlowRequests', 'Value': slow_requests, 'Unit': 'Count'}
+        ]
+    )
 
 def handler(event, context):
     """Process CloudFront real-time logs from Kinesis."""
@@ -218,16 +243,17 @@ def handler(event, context):
         # Decode the Kinesis record
         payload = base64.b64decode(record['kinesis']['data']).decode('utf-8')
         fields = payload.split('\t')
+        record_data = dict(zip(LOG_FIELDS, fields))
 
-        # Parse relevant fields (order matches your field configuration)
-        timestamp = fields[0]
-        client_ip = fields[1]
-        method = fields[2]
-        uri = fields[3]
-        status = int(fields[4])
-        bytes_sent = int(fields[5])
-        time_taken = float(fields[6])
-        result_type = fields[7]
+        # Parse relevant fields (CloudFront delivers selected fields in its documented field order)
+        timestamp = record_data['timestamp']
+        client_ip = record_data['c-ip']
+        method = record_data['cs-method']
+        uri = record_data['cs-uri-stem']
+        status = int(record_data['sc-status'])
+        bytes_sent = int(record_data['sc-bytes'])
+        time_taken = float(record_data['time-taken'])
+        result_type = record_data['x-edge-result-type']
 
         # Count errors
         if status >= 500:
@@ -258,9 +284,9 @@ aws lambda create-event-source-mapping \
   --maximum-batching-window-in-seconds 5
 ```
 
-### Option C: Direct to OpenSearch
+### Option C: Firehose to OpenSearch
 
-For searchable log analysis, send to OpenSearch via Firehose:
+For searchable log analysis, send to OpenSearch via Firehose. OpenSearch delivery requires each record to be a single-line JSON object, so use a Firehose Lambda transform to convert CloudFront's tab-delimited records to JSON first:
 
 ```bash
 # Create Firehose delivery to OpenSearch
@@ -277,6 +303,16 @@ aws firehose create-delivery-stream \
     "IndexName": "cloudfront-logs",
     "IndexRotationPeriod": "OneDay",
     "BufferingHints": {"IntervalInSeconds": 60, "SizeInMBs": 1},
+    "ProcessingConfiguration": {
+      "Enabled": true,
+      "Processors": [{
+        "Type": "Lambda",
+        "Parameters": [{
+          "ParameterName": "LambdaArn",
+          "ParameterValue": "arn:aws:lambda:us-east-1:123456789012:function:cloudfront-log-transform"
+        }]
+      }]
+    },
     "S3BackupMode": "FailedDocumentsOnly",
     "S3Configuration": {
       "RoleARN": "arn:aws:iam::123456789012:role/FirehoseRole",
