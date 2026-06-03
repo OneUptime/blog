@@ -8,7 +8,7 @@ Description: Learn how to create precise RBAC roles for Kubernetes operators tha
 
 ---
 
-Kubernetes operators extend cluster functionality by managing custom resources. They watch for changes to Custom Resource Definitions, reconcile desired state with actual state, and manage related Kubernetes resources. Operators need specific RBAC permissions to function, but determining the right permissions requires understanding what the operator does at a granular level.
+Kubernetes operators extend cluster functionality by managing custom resources. They watch for changes to custom resource instances, reconcile desired state with actual state, and manage related Kubernetes resources. Operators need specific RBAC permissions to function, but determining the right permissions requires understanding what the operator does at a granular level.
 
 Too many operators receive cluster-admin privileges because it is easier than defining precise permissions. This creates security risks. If an operator is compromised or contains a bug, it can damage the entire cluster. Properly scoped RBAC roles limit blast radius and follow the principle of least privilege.
 
@@ -166,18 +166,31 @@ Operators using admission webhooks or CRD conversion webhooks need additional pe
   resources:
     - validatingwebhookconfigurations
     - mutatingwebhookconfigurations
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
+  verbs: ["get", "update", "patch"]
   resourceNames:
     - application-webhook  # Specific webhook only
+
+# Create cannot be restricted by resourceNames
+- apiGroups: ["admissionregistration.k8s.io"]
+  resources:
+    - validatingwebhookconfigurations
+    - mutatingwebhookconfigurations
+  verbs: ["create"]
 
 # Certificate management for webhook TLS
 - apiGroups: [""]
   resources:
     - secrets
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
+  verbs: ["get", "update", "patch"]
   resourceNames:
     - webhook-server-cert
   # Limit to specific namespace in RoleBinding
+
+# Create cannot be restricted by resourceNames
+- apiGroups: [""]
+  resources:
+    - secrets
+  verbs: ["create"]
 ```
 
 For CRD conversion webhooks:
@@ -209,9 +222,15 @@ High-availability operators use leader election to ensure only one instance reco
 - apiGroups: [""]
   resources:
     - configmaps
-  verbs: ["get", "list", "watch", "create", "update", "patch"]
+  verbs: ["get", "update", "patch"]
   resourceNames:
     - application-operator-leader
+
+# Create cannot be restricted by resourceNames
+- apiGroups: [""]
+  resources:
+    - configmaps
+  verbs: ["create"]
 ```
 
 Create a namespace-scoped RoleBinding for leader election:
