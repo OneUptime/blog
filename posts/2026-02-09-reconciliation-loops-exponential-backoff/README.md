@@ -26,7 +26,6 @@ Here's the core algorithm.
 package main
 
 import (
-    "context"
     "fmt"
     "math"
     "time"
@@ -99,8 +98,6 @@ package main
 
 import (
     "context"
-    "fmt"
-    "time"
 
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
@@ -149,32 +146,42 @@ package main
 
 import (
     "context"
+    "math"
+    "math/rand"
+    "sync"
     "time"
 
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type CustomBackoffReconciler struct {
     client.Client
+    mu           sync.Mutex
     failureCount map[string]int
 }
 
 func (r *CustomBackoffReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    logger := log.FromContext(ctx)
     key := req.NamespacedName.String()
 
     var resource MyResource
     if err := r.Get(ctx, req.NamespacedName, &resource); err != nil {
         // Resource deleted - reset failure count
+        r.mu.Lock()
         delete(r.failureCount, key)
+        r.mu.Unlock()
         return ctrl.Result{}, client.IgnoreNotFound(err)
     }
 
     err := r.reconcileResource(ctx, &resource)
     if err != nil {
         // Increment failure count
+        r.mu.Lock()
         r.failureCount[key]++
         failures := r.failureCount[key]
+        r.mu.Unlock()
 
         // Calculate backoff delay
         delay := r.calculateBackoff(failures)
@@ -185,13 +192,14 @@ func (r *CustomBackoffReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 
         // Requeue with custom delay
         return ctrl.Result{
-            Requeue:      true,
             RequeueAfter: delay,
         }, nil
     }
 
     // Success - reset failure count
+    r.mu.Lock()
     delete(r.failureCount, key)
+    r.mu.Unlock()
     return ctrl.Result{}, nil
 }
 
@@ -201,10 +209,10 @@ func (r *CustomBackoffReconciler) calculateBackoff(failures int) time.Duration {
     maxDelay := 5 * time.Minute
 
     // Exponential with jitter
-    delay := time.Duration(math.Pow(2, float64(failures))) * baseDelay
+    delay := time.Duration(math.Pow(2, float64(failures-1))) * baseDelay
 
     // Add jitter (±20%)
-    jitter := time.Duration(rand.Float64()*0.4-0.2) * delay
+    jitter := time.Duration((rand.Float64()*0.4 - 0.2) * float64(delay))
     delay += jitter
 
     if delay > maxDelay {
@@ -223,6 +231,8 @@ Jitter randomizes delays to prevent all controllers from retrying simultaneously
 package main
 
 import (
+    "fmt"
+    "math"
     "math/rand"
     "time"
 )
@@ -252,8 +262,6 @@ func calculateBackoffWithJitter(attempt int) time.Duration {
 
 // Usage
 func main() {
-    rand.Seed(time.Now().UnixNano())
-
     for attempt := 0; attempt < 10; attempt++ {
         delay := calculateBackoffWithJitter(attempt)
         fmt.Printf("Attempt %d: delay %v\n", attempt, delay)
@@ -274,6 +282,8 @@ import (
     "time"
 
     ctrl "sigs.k8s.io/controller-runtime"
+    "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 var (
@@ -287,6 +297,7 @@ type SmartBackoffReconciler struct {
 }
 
 func (r *SmartBackoffReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    logger := log.FromContext(ctx)
     err := r.reconcileResource(ctx, req)
 
     if err == nil {
@@ -304,7 +315,6 @@ func (r *SmartBackoffReconciler) Reconcile(ctx context.Context, req ctrl.Request
         // Long delay for rate limits
         logger.Info("Rate limited, retrying in 1 minute")
         return ctrl.Result{
-            Requeue:      true,
             RequeueAfter: 1 * time.Minute,
         }, nil
     }
@@ -313,7 +323,6 @@ func (r *SmartBackoffReconciler) Reconcile(ctx context.Context, req ctrl.Request
         // Quick retry for transient errors
         logger.Info("Transient error, retrying in 5 seconds")
         return ctrl.Result{
-            Requeue:      true,
             RequeueAfter: 5 * time.Second,
         }, nil
     }
@@ -326,7 +335,7 @@ func (r *SmartBackoffReconciler) Reconcile(ctx context.Context, req ctrl.Request
 
 ## Circuit Breaker Pattern
 
-Stop retrying when failures persist.
+Stop calling failing dependencies when failures persist.
 
 ```go
 package main
@@ -335,6 +344,10 @@ import (
     "context"
     "sync"
     "time"
+
+    ctrl "sigs.k8s.io/controller-runtime"
+    "sigs.k8s.io/controller-runtime/pkg/client"
+    "sigs.k8s.io/controller-runtime/pkg/log"
 )
 
 type CircuitBreaker struct {
@@ -355,14 +368,16 @@ func NewCircuitBreaker() *CircuitBreaker {
 }
 
 func (cb *CircuitBreaker) IsOpen(key string) bool {
-    cb.mu.RLock()
-    defer cb.mu.RUnlock()
+    cb.mu.Lock()
+    defer cb.mu.Unlock()
 
     failures := cb.failures[key]
     lastFailure := cb.lastFailureTime[key]
 
     // Reset if timeout has passed
     if time.Since(lastFailure) > cb.resetTimeout {
+        delete(cb.failures, key)
+        delete(cb.lastFailureTime, key)
         return false
     }
 
@@ -392,13 +407,13 @@ type CircuitBreakerReconciler struct {
 }
 
 func (r *CircuitBreakerReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
+    logger := log.FromContext(ctx)
     key := req.NamespacedName.String()
 
     // Check circuit breaker
     if r.breaker.IsOpen(key) {
-        logger.Info("Circuit breaker open, not retrying", "key", key)
+        logger.Info("Circuit breaker open, delaying reconciliation", "key", key)
         return ctrl.Result{
-            Requeue:      true,
             RequeueAfter: 1 * time.Minute,
         }, nil
     }
@@ -422,8 +437,11 @@ Track retry attempts and backoff delays.
 package main
 
 import (
+    "context"
+
     "github.com/prometheus/client_golang/prometheus"
     "github.com/prometheus/client_golang/prometheus/promauto"
+    ctrl "sigs.k8s.io/controller-runtime"
 )
 
 var (
@@ -457,7 +475,6 @@ func (r *MetricsReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
         reconciliationBackoffSeconds.WithLabelValues(controllerName).Observe(delay.Seconds())
 
         return ctrl.Result{
-            Requeue:      true,
             RequeueAfter: delay,
         }, nil
     }
@@ -475,7 +492,7 @@ Add jitter to prevent thundering herd problems when many resources fail simultan
 
 Use different backoff strategies for different error types. Rate limits need longer delays than transient network errors.
 
-Implement circuit breakers for persistent failures. If something fails repeatedly, stop retrying and alert operators.
+Implement circuit breakers for persistent failures. If something fails repeatedly, stop calling the failing dependency and alert operators.
 
 Monitor backoff metrics to detect systemic issues. A sudden increase in backoff delays indicates problems.
 
