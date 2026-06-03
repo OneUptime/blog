@@ -66,7 +66,7 @@ response = opensearch.create_domain(
     },
     DomainEndpointOptions={
         'EnforceHTTPS': True,
-        'TLSSecurityPolicy': 'Policy-Min-TLS-1-2-PF-2023-10'
+        'TLSSecurityPolicy': 'Policy-Min-TLS-1-2-PFS-2023-10'
     },
     AdvancedSecurityOptions={
         'Enabled': True,
@@ -322,14 +322,34 @@ Use DynamoDB Streams with a Lambda function to keep OpenSearch in sync with your
 
 ```python
 # Lambda function to sync DynamoDB changes to OpenSearch
-import json
-from opensearchpy import OpenSearch
+from decimal import Decimal
+from boto3.dynamodb.types import TypeDeserializer
+from opensearchpy import OpenSearch, NotFoundError
 
 client = OpenSearch(
     hosts=[{'host': 'your-domain.us-east-1.es.amazonaws.com', 'port': 443}],
     http_auth=('admin', 'password'),
     use_ssl=True
 )
+
+deserializer = TypeDeserializer()
+
+def normalize_value(value):
+    if isinstance(value, Decimal):
+        return int(value) if value == value.to_integral_value() else float(value)
+    if isinstance(value, list):
+        return [normalize_value(item) for item in value]
+    if isinstance(value, set):
+        return [normalize_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: normalize_value(item) for key, item in value.items()}
+    return value
+
+def deserialize_dynamodb(image):
+    return {
+        key: normalize_value(deserializer.deserialize(value))
+        for key, value in image.items()
+    }
 
 def handler(event, context):
     for record in event['Records']:
@@ -347,7 +367,10 @@ def handler(event, context):
         elif record['eventName'] == 'REMOVE':
             # Delete from index
             doc_id = record['dynamodb']['Keys']['id']['S']
-            client.delete(index='products', id=doc_id, ignore=[404])
+            try:
+                client.delete(index='products', id=doc_id)
+            except NotFoundError:
+                pass
 ```
 
 ## Relevance Tuning
