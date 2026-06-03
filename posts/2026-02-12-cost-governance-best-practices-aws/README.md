@@ -32,7 +32,7 @@ graph TB
 
 Tags are how you attribute costs to teams, projects, and environments. Without consistent tagging, cost allocation is impossible.
 
-This sets up tag policies at the organization level and enforces them via Config rules.
+This sets up tag policies at the organization level for supported resource types.
 
 ```hcl
 # Organization-level tag policy
@@ -130,7 +130,7 @@ resource "aws_budgets_budget" "team_budgets" {
 
   cost_filter {
     name   = "TagKeyValue"
-    values = ["user:Team$${each.key}"]
+    values = ["user:Team${"$"}${each.key}"]
   }
 
   notification {
@@ -167,11 +167,11 @@ resource "aws_budgets_budget" "ec2_budget" {
 
 ## Automated Cost Optimization
 
-This Lambda function identifies and reports on idle or underutilized resources.
+This Python script identifies and reports on idle or underutilized resources.
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def find_waste():
     """Identify idle and underutilized AWS resources."""
@@ -181,62 +181,65 @@ def find_waste():
     cloudwatch = boto3.client('cloudwatch')
     ec2 = boto3.client('ec2')
 
-    instances = ec2.describe_instances(
+    instance_pages = ec2.get_paginator('describe_instances').paginate(
         Filters=[{'Name': 'instance-state-name', 'Values': ['running']}]
     )
 
-    for reservation in instances['Reservations']:
-        for instance in reservation['Instances']:
-            instance_id = instance['InstanceId']
-            instance_type = instance['InstanceType']
+    for page in instance_pages:
+        for reservation in page['Reservations']:
+            for instance in reservation['Instances']:
+                instance_id = instance['InstanceId']
+                instance_type = instance['InstanceType']
 
-            # Get average CPU over last 14 days
-            metrics = cloudwatch.get_metric_statistics(
-                Namespace='AWS/EC2',
-                MetricName='CPUUtilization',
-                Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
-                StartTime=datetime.utcnow() - timedelta(days=14),
-                EndTime=datetime.utcnow(),
-                Period=86400,  # Daily average
-                Statistics=['Average']
-            )
+                # Get average CPU over last 14 days
+                now = datetime.now(timezone.utc)
+                metrics = cloudwatch.get_metric_statistics(
+                    Namespace='AWS/EC2',
+                    MetricName='CPUUtilization',
+                    Dimensions=[{'Name': 'InstanceId', 'Value': instance_id}],
+                    StartTime=now - timedelta(days=14),
+                    EndTime=now,
+                    Period=86400,  # Daily average
+                    Statistics=['Average']
+                )
 
-            if metrics['Datapoints']:
-                avg_cpu = sum(d['Average'] for d in metrics['Datapoints']) / len(metrics['Datapoints'])
+                if metrics['Datapoints']:
+                    avg_cpu = sum(d['Average'] for d in metrics['Datapoints']) / len(metrics['Datapoints'])
 
-                if avg_cpu < 5:
-                    findings.append({
-                        'type': 'idle_ec2',
-                        'resource': instance_id,
-                        'detail': f"{instance_type} - avg CPU {avg_cpu:.1f}%",
-                        'recommendation': 'Consider stopping or terminating'
-                    })
-                elif avg_cpu < 20:
-                    findings.append({
-                        'type': 'underutilized_ec2',
-                        'resource': instance_id,
-                        'detail': f"{instance_type} - avg CPU {avg_cpu:.1f}%",
-                        'recommendation': 'Consider downsizing instance type'
-                    })
+                    if avg_cpu < 5:
+                        findings.append({
+                            'type': 'idle_ec2',
+                            'resource': instance_id,
+                            'detail': f"{instance_type} - avg CPU {avg_cpu:.1f}%",
+                            'recommendation': 'Consider stopping or terminating'
+                        })
+                    elif avg_cpu < 20:
+                        findings.append({
+                            'type': 'underutilized_ec2',
+                            'resource': instance_id,
+                            'detail': f"{instance_type} - avg CPU {avg_cpu:.1f}%",
+                            'recommendation': 'Consider downsizing instance type'
+                        })
 
     # Find unattached EBS volumes
-    volumes = ec2.describe_volumes(
+    volume_pages = ec2.get_paginator('describe_volumes').paginate(
         Filters=[{'Name': 'status', 'Values': ['available']}]
     )
 
-    for volume in volumes['Volumes']:
-        size_gb = volume['Size']
-        days_old = (datetime.now(volume['CreateTime'].tzinfo) - volume['CreateTime']).days
-        monthly_cost = size_gb * 0.10  # Approximate gp3 cost
+    for page in volume_pages:
+        for volume in page['Volumes']:
+            size_gb = volume['Size']
+            days_old = (datetime.now(timezone.utc) - volume['CreateTime']).days
+            monthly_cost = size_gb * 0.08  # Approximate gp3 cost in us-east-1
 
-        if days_old > 7:
-            findings.append({
-                'type': 'unattached_ebs',
-                'resource': volume['VolumeId'],
-                'detail': f"{size_gb}GB, unattached for {days_old} days",
-                'estimated_monthly_waste': f"${monthly_cost:.2f}",
-                'recommendation': 'Delete or snapshot and delete'
-            })
+            if days_old > 7:
+                findings.append({
+                    'type': 'unattached_ebs',
+                    'resource': volume['VolumeId'],
+                    'detail': f"{size_gb}GB, unattached for {days_old} days",
+                    'estimated_monthly_waste': f"${monthly_cost:.2f}",
+                    'recommendation': 'Delete or snapshot and delete'
+                })
 
     # Find unused Elastic IPs
     addresses = ec2.describe_addresses()
@@ -251,20 +254,21 @@ def find_waste():
             })
 
     # Find old snapshots
-    snapshots = ec2.describe_snapshots(OwnerIds=['self'])
-    cutoff = datetime.now(snapshots['Snapshots'][0]['StartTime'].tzinfo) - timedelta(days=90) if snapshots['Snapshots'] else None
+    snapshot_pages = ec2.get_paginator('describe_snapshots').paginate(OwnerIds=['self'])
+    cutoff = datetime.now(timezone.utc) - timedelta(days=90)
 
-    for snap in snapshots.get('Snapshots', []):
-        if snap['StartTime'] < cutoff:
-            size_gb = snap['VolumeSize']
-            monthly_cost = size_gb * 0.05  # Snapshot storage cost
-            findings.append({
-                'type': 'old_snapshot',
-                'resource': snap['SnapshotId'],
-                'detail': f"{size_gb}GB, created {snap['StartTime'].strftime('%Y-%m-%d')}",
-                'estimated_monthly_waste': f"${monthly_cost:.2f}",
-                'recommendation': 'Review and delete if no longer needed'
-            })
+    for page in snapshot_pages:
+        for snap in page.get('Snapshots', []):
+            if snap['StartTime'] < cutoff:
+                size_gb = snap['VolumeSize']
+                monthly_cost = size_gb * 0.05  # Approximate EBS snapshot storage cost
+                findings.append({
+                    'type': 'old_snapshot',
+                    'resource': snap['SnapshotId'],
+                    'detail': f"{size_gb}GB, created {snap['StartTime'].strftime('%Y-%m-%d')}",
+                    'estimated_monthly_waste': f"${monthly_cost:.2f}",
+                    'recommendation': 'Review and delete if no longer needed'
+                })
 
     # Summary
     total_waste = sum(
@@ -344,7 +348,10 @@ def analyze_savings_opportunities():
     """Analyze spending patterns for Savings Plan recommendations."""
     ce = boto3.client('ce')
 
-    # Get Savings Plans recommendations
+    # Start a fresh recommendation generation before retrieving recommendations.
+    ce.start_savings_plans_purchase_recommendation_generation()
+
+    # Get Savings Plans recommendations after generation completes.
     recommendations = ce.get_savings_plans_purchase_recommendation(
         SavingsPlansType='COMPUTE_SP',
         TermInYears='ONE_YEAR',
