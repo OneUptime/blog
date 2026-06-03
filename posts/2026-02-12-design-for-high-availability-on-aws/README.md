@@ -27,7 +27,7 @@ Most web applications target three or four nines. Each additional nine gets expo
 
 ## The Foundation: Multi-AZ Everything
 
-Availability Zones (AZs) are physically separate data centers within an AWS region. They have independent power, cooling, and networking. If one AZ goes down, the others stay up. This is your first line of defense.
+Availability Zones (AZs) are physically separate locations within an AWS region, each made up of one or more discrete data centers with redundant power, cooling, and networking. If one AZ goes down, the others are designed to stay up. This is your first line of defense.
 
 ```mermaid
 graph TB
@@ -107,13 +107,20 @@ For even higher availability, use Aurora with read replicas across AZs.
 // Aurora cluster with automatic failover
 const cluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
   engine: rds.DatabaseClusterEngine.auroraPostgres({
-    version: rds.AuroraPostgresEngineVersion.VER_15_4,
+    version: rds.AuroraPostgresEngineVersion.VER_15_17,
   }),
-  instances: 3, // Primary + 2 read replicas
-  instanceProps: {
-    vpc,
+  writer: rds.ClusterInstance.provisioned('writer', {
     instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
-  },
+  }),
+  readers: [
+    rds.ClusterInstance.provisioned('reader1', {
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
+    }),
+    rds.ClusterInstance.provisioned('reader2', {
+      instanceType: ec2.InstanceType.of(ec2.InstanceClass.R6G, ec2.InstanceSize.LARGE),
+    }),
+  ],
+  vpc,
   backup: {
     retention: cdk.Duration.days(14),
   },
@@ -219,7 +226,7 @@ For high availability, your application instances should be stateless. No sessio
 ```javascript
 // Store sessions in Redis instead of local memory
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
+const { RedisStore } = require('connect-redis');
 
 app.use(session({
   store: new RedisStore({ client: redisClient }),
