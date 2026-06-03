@@ -81,7 +81,7 @@ Encryption in transit uses TLS to encrypt all communication between your applica
 
 ### Enabling TLS
 
-Like encryption at rest, TLS must be enabled at creation time:
+For a new replication group, enable TLS at creation time:
 
 ```bash
 # Create a replication group with both encryption types enabled
@@ -195,7 +195,7 @@ aws elasticache create-replication-group \
   --num-cache-clusters 3 \
   --automatic-failover-enabled \
   --transit-encryption-enabled \
-  --auth-token "MyStrongAuthToken123!@#" \
+  --auth-token "MyStrongAuthToken123!#" \
   --cache-subnet-group-name my-cache-subnet-group \
   --security-group-ids sg-cache123
 ```
@@ -203,7 +203,7 @@ aws elasticache create-replication-group \
 The AUTH token requirements:
 - Must be at least 16 characters
 - Must contain printable ASCII characters
-- Cannot contain these characters: `/`, `"`, `@`
+- Only these nonalphanumeric characters are allowed: `!`, `&`, `#`, `$`, `^`, `<`, `>`, `-`
 - Transit encryption must be enabled to use AUTH
 
 ### Connecting with AUTH from Python
@@ -215,7 +215,7 @@ import redis
 redis_client = redis.Redis(
     host='my-auth-redis.abc123.ng.0001.use1.cache.amazonaws.com',
     port=6379,
-    password='MyStrongAuthToken123!@#',
+    password='MyStrongAuthToken123!#',
     ssl=True,
     ssl_cert_reqs='required',
     socket_timeout=5,
@@ -231,11 +231,11 @@ print("Authenticated and connected")
 You can rotate the AUTH token without downtime. ElastiCache supports a two-phase rotation where both the old and new tokens work during the transition:
 
 ```bash
-# Step 1: Set the new AUTH token while keeping the old one active
+# Step 1: Rotate to the new AUTH token while keeping the old one active
 aws elasticache modify-replication-group \
   --replication-group-id my-auth-redis \
-  --auth-token "NewStrongAuthToken456!@#" \
-  --auth-token-update-strategy SET \
+  --auth-token "NewStrongAuthToken456!#" \
+  --auth-token-update-strategy ROTATE \
   --apply-immediately
 
 # Step 2: Update your application to use the new token
@@ -243,8 +243,8 @@ aws elasticache modify-replication-group \
 # Step 3: Remove the old token once all clients are updated
 aws elasticache modify-replication-group \
   --replication-group-id my-auth-redis \
-  --auth-token "NewStrongAuthToken456!@#" \
-  --auth-token-update-strategy ROTATE \
+  --auth-token "NewStrongAuthToken456!#" \
+  --auth-token-update-strategy SET \
   --apply-immediately
 ```
 
@@ -292,17 +292,17 @@ resource "aws_elasticache_replication_group" "redis" {
 
 Encryption does add overhead, but for most workloads it's minimal:
 
-- **Encryption at rest**: Negligible impact. The encryption/decryption happens at the storage layer and is hardware-accelerated.
-- **Encryption in transit**: Adds about 5-10% latency overhead due to TLS handshakes and encryption processing. The impact is more noticeable for workloads with many small operations.
+- **Encryption at rest**: Minimal steady-state impact, but backup and node sync operations can be affected. Benchmark your own workload to quantify it.
+- **Encryption in transit**: Adds some overhead due to TLS handshakes and encryption processing. The impact is more noticeable for workloads with many short-lived connections.
 
 If TLS overhead is a concern, benchmark your specific workload with and without TLS to quantify the impact.
 
 ## Migrating an Unencrypted Cluster to Encrypted
 
-Since you can't add encryption to an existing cluster, you need to create a new encrypted cluster and migrate data. The safest approach:
+Since you can't add at-rest encryption to an existing cluster, you need to create a new encrypted cluster and migrate data. The safest approach:
 
-1. Create the new encrypted replication group
-2. Use the Redis `MIGRATE` command or a tool like `redis-shake` to copy data
+1. Create a manual backup of the existing replication group
+2. Restore the backup into a new replication group with at-rest encryption enabled
 3. Update your application to point to the new cluster
 4. Delete the old unencrypted cluster
 
