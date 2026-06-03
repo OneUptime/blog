@@ -59,11 +59,11 @@ Launch a basic instance:
 ```bash
 # Launch a single t3.micro instance
 aws ec2 run-instances \
-  --image-id ami-0abc123def456 \
+  --image-id ami-0abcdef1234567890 \
   --instance-type t3.micro \
   --key-name my-key \
-  --security-group-ids sg-0abc123 \
-  --subnet-id subnet-0abc123 \
+  --security-group-ids sg-0abcdef1234567890 \
+  --subnet-id subnet-0abcdef1234567890 \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=my-server}]'
 ```
 
@@ -72,11 +72,11 @@ Launch with more options:
 ```bash
 # Launch with user data, IAM profile, and specific EBS config
 aws ec2 run-instances \
-  --image-id ami-0abc123def456 \
+  --image-id ami-0abcdef1234567890 \
   --instance-type t3.medium \
   --key-name my-key \
-  --security-group-ids sg-0abc123 \
-  --subnet-id subnet-0abc123 \
+  --security-group-ids sg-0abcdef1234567890 \
+  --subnet-id subnet-0abcdef1234567890 \
   --iam-instance-profile Name=my-instance-profile \
   --user-data file://setup.sh \
   --block-device-mappings '[{
@@ -141,32 +141,32 @@ Basic lifecycle management:
 
 ```bash
 # Stop an instance
-aws ec2 stop-instances --instance-ids i-0abc123
+aws ec2 stop-instances --instance-ids i-0abcdef1234567890
 
 # Stop multiple instances at once
-aws ec2 stop-instances --instance-ids i-0abc123 i-0def456 i-0ghi789
+aws ec2 stop-instances --instance-ids i-0abcdef1234567890 i-0123456789abcdef0 i-0fedcba9876543210
 
 # Start an instance
-aws ec2 start-instances --instance-ids i-0abc123
+aws ec2 start-instances --instance-ids i-0abcdef1234567890
 
 # Reboot an instance (no state change, just restarts)
-aws ec2 reboot-instances --instance-ids i-0abc123
+aws ec2 reboot-instances --instance-ids i-0abcdef1234567890
 
 # Terminate an instance (permanent deletion)
-aws ec2 terminate-instances --instance-ids i-0abc123
+aws ec2 terminate-instances --instance-ids i-0abcdef1234567890
 ```
 
 Wait for state changes to complete:
 
 ```bash
 # Wait for instance to be fully running
-aws ec2 start-instances --instance-ids i-0abc123
-aws ec2 wait instance-running --instance-ids i-0abc123
+aws ec2 start-instances --instance-ids i-0abcdef1234567890
+aws ec2 wait instance-running --instance-ids i-0abcdef1234567890
 echo "Instance is now running"
 
 # Wait for instance to stop
-aws ec2 stop-instances --instance-ids i-0abc123
-aws ec2 wait instance-stopped --instance-ids i-0abc123
+aws ec2 stop-instances --instance-ids i-0abcdef1234567890
+aws ec2 wait instance-stopped --instance-ids i-0abcdef1234567890
 echo "Instance has stopped"
 ```
 
@@ -176,20 +176,20 @@ Change instance attributes without recreating them:
 
 ```bash
 # Change instance type (must be stopped first)
-aws ec2 stop-instances --instance-ids i-0abc123
-aws ec2 wait instance-stopped --instance-ids i-0abc123
+aws ec2 stop-instances --instance-ids i-0abcdef1234567890
+aws ec2 wait instance-stopped --instance-ids i-0abcdef1234567890
 aws ec2 modify-instance-attribute \
-  --instance-id i-0abc123 \
+  --instance-id i-0abcdef1234567890 \
   --instance-type "{\"Value\": \"t3.large\"}"
-aws ec2 start-instances --instance-ids i-0abc123
+aws ec2 start-instances --instance-ids i-0abcdef1234567890
 
-# Enable/disable termination protection
+# Enable termination protection
 aws ec2 modify-instance-attribute \
-  --instance-id i-0abc123 \
+  --instance-id i-0abcdef1234567890 \
   --disable-api-termination
 
 # Enable detailed monitoring
-aws ec2 monitor-instances --instance-ids i-0abc123
+aws ec2 monitor-instances --instance-ids i-0abcdef1234567890
 ```
 
 ## Working with Security Groups
@@ -201,25 +201,25 @@ Manage security group rules from the CLI:
 aws ec2 create-security-group \
   --group-name web-server-sg \
   --description "Web server security group" \
-  --vpc-id vpc-0abc123
+  --vpc-id vpc-0abcdef1234567890
 
 # Add an inbound rule
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-0abc123 \
+  --group-id sg-0abcdef1234567890 \
   --protocol tcp \
   --port 443 \
   --cidr 0.0.0.0/0
 
 # Remove an inbound rule
 aws ec2 revoke-security-group-ingress \
-  --group-id sg-0abc123 \
+  --group-id sg-0abcdef1234567890 \
   --protocol tcp \
   --port 22 \
   --cidr 0.0.0.0/0
 
 # List rules for a security group
 aws ec2 describe-security-groups \
-  --group-ids sg-0abc123 \
+  --group-ids sg-0abcdef1234567890 \
   --query 'SecurityGroups[].IpPermissions'
 ```
 
@@ -230,7 +230,7 @@ Create snapshots of your instances for backup or duplication:
 ```bash
 # Create an AMI from a running instance
 aws ec2 create-image \
-  --instance-id i-0abc123 \
+  --instance-id i-0abcdef1234567890 \
   --name "web-server-backup-$(date +%Y%m%d)" \
   --description "Weekly backup of web server" \
   --no-reboot
@@ -242,7 +242,7 @@ aws ec2 describe-images \
   --output table
 
 # Delete old AMIs
-aws ec2 deregister-image --image-id ami-0abc123
+aws ec2 deregister-image --image-id ami-0123456789abcdef0
 ```
 
 ## Useful Automation Scripts
@@ -269,7 +269,7 @@ else
 fi
 ```
 
-Find and clean up unattached EBS volumes:
+Find unattached EBS volumes:
 
 ```bash
 #!/bin/bash
@@ -284,7 +284,7 @@ aws ec2 describe-volumes \
   --output table
 ```
 
-Get a cost estimate based on running instances:
+Count running instances by type for cost review:
 
 ```bash
 #!/bin/bash
@@ -303,14 +303,13 @@ Connect to instances in different ways:
 # Traditional SSH with key
 ssh -i my-key.pem ec2-user@<public-ip>
 
-# SSH with instance ID (requires SSH config setup)
-aws ec2-instance-connect send-ssh-public-key \
-  --instance-id i-0abc123 \
-  --instance-os-user ec2-user \
-  --ssh-public-key file://~/.ssh/id_rsa.pub
+# EC2 Instance Connect with instance ID
+aws ec2-instance-connect ssh \
+  --instance-id i-0abcdef1234567890 \
+  --os-user ec2-user
 
-# Session Manager (no SSH key needed, no public IP required)
-aws ssm start-session --target i-0abc123
+# Session Manager (requires Session Manager setup; no SSH key or public IP required)
+aws ssm start-session --target i-0abcdef1234567890
 ```
 
 Session Manager is the recommended approach since it doesn't require opening port 22 or managing SSH keys.
