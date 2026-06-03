@@ -14,7 +14,7 @@ A scheduling gate keeps a pod in "SchedulingGated" state, preventing the schedul
 
 ## Understanding Scheduling Gates
 
-Scheduling gates were introduced in Kubernetes 1.26. They let you:
+Scheduling gates were introduced as an alpha feature in Kubernetes 1.26 and became stable in Kubernetes 1.30. They let you:
 
 - Wait for external systems to be ready
 - Require manual approval before scheduling
@@ -136,31 +136,35 @@ func (c *GateController) processGatedPods(ctx context.Context) {
             continue
         }
 
-        for i, gate := range pod.Spec.SchedulingGates {
-            switch gate.Name {
-            case "example.com/database-ready":
-                if c.isDatabaseReady(pod.Namespace) {
-                    c.removeGate(&pod, i)
-                }
-            case "example.com/storage-provisioned":
-                if c.isStorageReady(&pod) {
-                    c.removeGate(&pod, i)
-                }
-            case "example.com/config-validated":
-                if c.isConfigValid(&pod) {
-                    c.removeGate(&pod, i)
-                }
+        remainingGates := pod.Spec.SchedulingGates[:0]
+        for _, gate := range pod.Spec.SchedulingGates {
+            if c.shouldRemoveGate(&pod, gate) {
+                continue
             }
+            remainingGates = append(remainingGates, gate)
+        }
+
+        if len(remainingGates) != len(pod.Spec.SchedulingGates) {
+            pod.Spec.SchedulingGates = remainingGates
+            c.updatePodGates(&pod)
         }
     }
 }
 
-func (c *GateController) removeGate(pod *corev1.Pod, index int) {
-    pod.Spec.SchedulingGates = append(
-        pod.Spec.SchedulingGates[:index],
-        pod.Spec.SchedulingGates[index+1:]...,
-    )
+func (c *GateController) shouldRemoveGate(pod *corev1.Pod, gate corev1.PodSchedulingGate) bool {
+    switch gate.Name {
+    case "example.com/database-ready":
+        return c.isDatabaseReady(pod.Namespace)
+    case "example.com/storage-provisioned":
+        return c.isStorageReady(pod)
+    case "example.com/config-validated":
+        return c.isConfigValid(pod)
+    default:
+        return false
+    }
+}
 
+func (c *GateController) updatePodGates(pod *corev1.Pod) {
     _, err := c.clientset.CoreV1().Pods(pod.Namespace).Update(
         context.Background(),
         pod,
@@ -373,6 +377,9 @@ spec:
     matchLabels:
       app: api-server
   template:
+    metadata:
+      labels:
+        app: api-server
     spec:
       schedulingGates:
       - name: example.com/migration-complete
@@ -390,15 +397,15 @@ Track pods waiting on gates:
 ```bash
 # Count gated pods
 kubectl get pods --all-namespaces --field-selector status.phase=Pending -o json | \
-  jq '[.items[] | select(.spec.schedulingGates != null)] | length'
+  jq '[.items[] | select((.spec.schedulingGates // []) | length > 0)] | length'
 
 # List gated pods with their gates
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.spec.schedulingGates != null) | {namespace: .metadata.namespace, name: .metadata.name, gates: .spec.schedulingGates}'
+  jq -r '.items[] | select((.spec.schedulingGates // []) | length > 0) | {namespace: .metadata.namespace, name: .metadata.name, gates: .spec.schedulingGates}'
 
 # Find pods waiting longest
 kubectl get pods --all-namespaces --field-selector status.phase=Pending -o json | \
-  jq -r '.items[] | select(.spec.schedulingGates != null) | {name: .metadata.name, age: .metadata.creationTimestamp}'
+  jq -r '.items[] | select((.spec.schedulingGates // []) | length > 0) | {name: .metadata.name, age: .metadata.creationTimestamp}'
 ```
 
 ## Best Practices
@@ -413,4 +420,3 @@ kubectl get pods --all-namespaces --field-selector status.phase=Pending -o json 
 8. **Clean Up**: Delete gated pods that will never be approved
 
 Scheduling gates provide fine-grained control over when pods begin scheduling, enabling integration with external systems, manual approval workflows, and complex orchestration scenarios that go beyond standard Kubernetes scheduling mechanisms.
-
