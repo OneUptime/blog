@@ -49,8 +49,14 @@ kind: Deployment
 metadata:
   name: web-application
 spec:
+  selector:
+    matchLabels:
+      app: web-application
   replicas: 3
   template:
+    metadata:
+      labels:
+        app: web-application
     spec:
       terminationGracePeriodSeconds: 60
       containers:
@@ -74,11 +80,13 @@ For Google Kubernetes Engine (GKE), create a new node pool using the gcloud CLI:
 
 ```bash
 # Create new node pool with updated Kubernetes version
+TARGET_VERSION="1.34"
+
 gcloud container node-pools create new-pool \
   --cluster=production-cluster \
   --machine-type=n1-standard-4 \
   --num-nodes=3 \
-  --node-version=1.28.5-gke.1000 \
+  --node-version="${TARGET_VERSION}" \
   --enable-autorepair \
   --enable-autoupgrade \
   --disk-size=100 \
@@ -97,21 +105,24 @@ eksctl create nodegroup \
   --nodes=3 \
   --nodes-min=3 \
   --nodes-max=6 \
-  --version=1.28 \
   --managed
 ```
+
+Managed EKS node groups inherit the Kubernetes version from the cluster control plane when they are created, so upgrade the control plane before creating a replacement managed node group for a version rotation.
 
 For Azure AKS, create a new node pool using the Azure CLI:
 
 ```bash
 # Create new node pool with specific Kubernetes version
+TARGET_VERSION="1.34"
+
 az aks nodepool add \
   --resource-group production-rg \
   --cluster-name production-cluster \
   --name newpool \
   --node-count 3 \
-  --kubernetes-version 1.28.5 \
-  --mode System
+  --kubernetes-version "${TARGET_VERSION}" \
+  --mode User
 ```
 
 After creating the new node pool, verify that nodes are healthy and ready before proceeding with workload migration.
@@ -147,11 +158,10 @@ Next, drain the node with appropriate flags to respect Pod Disruption Budgets an
 kubectl drain old-node-1 \
   --ignore-daemonsets \
   --delete-emptydir-data \
-  --grace-period=60 \
   --timeout=600s
 ```
 
-The drain command evicts pods from the node, respecting termination grace periods and Pod Disruption Budgets. The timeout ensures the operation does not hang indefinitely if issues occur.
+The drain command evicts pods from the node, respecting each pod's configured termination grace period and Pod Disruption Budgets. The timeout ensures the operation does not hang indefinitely if issues occur.
 
 Monitor the migration progress carefully:
 
@@ -178,8 +188,14 @@ metadata:
   name: database
 spec:
   replicas: 3
+  selector:
+    matchLabels:
+      app: database
   serviceName: database
   template:
+    metadata:
+      labels:
+        app: database
     spec:
       affinity:
         podAntiAffinity:
@@ -238,11 +254,12 @@ for NODE in $OLD_NODES; do
   kubectl drain $NODE \
     --ignore-daemonsets \
     --delete-emptydir-data \
-    --grace-period=60 \
     --timeout=$DRAIN_TIMEOUT
 
-  # Verify all pods have migrated
-  POD_COUNT=$(kubectl get pods --all-namespaces --field-selector spec.nodeName=$(basename $NODE) --no-headers | wc -l)
+  # Verify all non-DaemonSet pods have migrated
+  POD_COUNT=$(kubectl get pods --all-namespaces \
+    --field-selector spec.nodeName=$(basename $NODE) \
+    -o jsonpath='{range .items[?(@.metadata.ownerReferences[0].kind!="DaemonSet")]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}' | wc -l)
 
   if [ $POD_COUNT -eq 0 ]; then
     echo "$NODE successfully drained"
@@ -291,14 +308,14 @@ Throughout the node pool rotation process, monitor cluster health and applicatio
 Use Prometheus queries to monitor pod lifecycle events during rotation:
 
 ```promql
-# Track pod creation rate during rotation
-rate(kube_pod_created[5m])
+# Track pods created during the last five minutes
+count(kube_pod_created > time() - 300)
 
 # Monitor pod scheduling latency
-histogram_quantile(0.99, rate(scheduler_scheduling_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum(rate(scheduler_scheduling_attempt_duration_seconds_bucket[5m])) by (le))
 
 # Track failed pod scheduling attempts
-rate(kube_pod_failed[5m])
+sum(rate(scheduler_schedule_attempts_total{result="unschedulable"}[5m]))
 ```
 
 After completing the rotation, validate that all applications are running on the new node pool and functioning correctly. Verify that no pods remain on old nodes and that cluster resources are properly balanced.
