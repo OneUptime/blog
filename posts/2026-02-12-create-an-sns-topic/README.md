@@ -18,15 +18,15 @@ Before creating a topic, decide which type you need.
 
 **Standard topics** provide best-effort ordering and at-least-once delivery. Messages might arrive out of order and could be delivered more than once. They support virtually unlimited throughput.
 
-**FIFO topics** guarantee strict ordering and exactly-once delivery, but have a throughput limit of 300 messages per second (or 3000 with batching). FIFO topic names must end with `.fifo`.
+**FIFO topics** preserve ordering within each message group and support exactly-once delivery when the FIFO deduplication conditions are met. By default, FIFO topics have a throughput limit of 3,000 messages per second or 20 MB per second, whichever comes first. FIFO topic names must end with `.fifo`.
 
 ```mermaid
 flowchart TD
     A[Choose Topic Type] --> B{Need strict ordering?}
     B -->|Yes| C[FIFO Topic]
     B -->|No| D[Standard Topic]
-    C --> E[300 msg/sec limit]
-    C --> F[Exactly-once delivery]
+    C --> E[3000 msg/sec default limit]
+    C --> F[Exactly-once delivery support]
     D --> G[Unlimited throughput]
     D --> H[At-least-once delivery]
 ```
