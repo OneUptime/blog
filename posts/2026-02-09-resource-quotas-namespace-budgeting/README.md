@@ -190,9 +190,9 @@ spec:
     type: Container
 ```
 
-LimitRanges prevent individual pods from consuming too much. They also provide defaults for pods without explicit resources, which is required when quotas are active.
+LimitRanges prevent individual containers from consuming too much. They also provide defaults for pods without explicit resources, which is required when CPU or memory quotas are active.
 
-Without LimitRanges, teams must set requests on all pods, or pod creation fails with quota errors.
+Without LimitRanges, teams must set the requested or limited resources on all pods, or pod creation fails with quota errors.
 
 ## Monitoring Quota Usage
 
@@ -333,39 +333,38 @@ This ensures consistent quota policies across all team namespaces.
 
 ## Quota Hierarchies with Policies
 
-Use admission controllers like OPA or Kyverno to enforce quota policies:
+Use admission controllers like OPA or Kyverno to create baseline quota policies:
 
 ```yaml
 apiVersion: kyverno.io/v1
 kind: ClusterPolicy
 metadata:
-  name: require-resource-quota
+  name: add-namespace-quota
 spec:
-  validationFailureAction: enforce
   rules:
-  - name: check-quota-exists
+  - name: generate-resourcequota
     match:
-      resources:
-        kinds:
-        - Namespace
-    validate:
-      message: "All namespaces must have a ResourceQuota"
-      pattern:
-        metadata:
-          name: "*"
-    context:
-    - name: quotaCount
-      apiCall:
-        urlPath: "/api/v1/namespaces/{{request.object.metadata.name}}/resourcequotas"
-        jmesPath: "items | length(@)"
-    preconditions:
-      all:
-      - key: "{{ quotaCount }}"
-        operator: GreaterThan
-        value: 0
+      any:
+      - resources:
+          kinds:
+          - Namespace
+    generate:
+      apiVersion: v1
+      kind: ResourceQuota
+      name: default-resourcequota
+      synchronize: true
+      namespace: "{{request.object.metadata.name}}"
+      data:
+        spec:
+          hard:
+            requests.cpu: "4"
+            requests.memory: "16Gi"
+            limits.cpu: "8"
+            limits.memory: "32Gi"
+            pods: "100"
 ```
 
-This policy ensures every namespace has at least one ResourceQuota, preventing uncontrolled resource consumption.
+This policy generates a default ResourceQuota for each new namespace, preventing uncontrolled resource consumption.
 
 ## Cost Allocation and Chargeback
 
@@ -428,11 +427,10 @@ Look for quota-related errors in events. Common issues include:
 Quota appears stuck after deleting pods:
 
 ```bash
-# Force quota resync
-kubectl annotate resourcequota compute-quota -n team-backend \
-  kubectl.kubernetes.io/last-applied-configuration-
+# Check whether quota usage catches up after the controller resync period
+kubectl describe resourcequota compute-quota -n team-backend
 ```
 
-If this fails, check the quota controller logs for errors.
+If usage remains incorrect beyond the controller's quota sync period, check the quota controller logs for errors.
 
 Resource quotas provide essential guardrails for multi-tenant Kubernetes clusters. They prevent resource exhaustion, enable fair sharing, and support cost allocation without requiring complex admission webhooks or third-party tools.
