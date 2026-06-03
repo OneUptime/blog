@@ -12,7 +12,7 @@ When your Lambda function breaks at 2 AM, CloudWatch Logs is your first stop. It
 
 ## How Lambda Logging Works
 
-Every Lambda function automatically gets a CloudWatch Log Group named `/aws/lambda/function-name`. Each invocation writes to a log stream within that group. Lambda also adds platform messages: START (with request ID), END (with duration and memory), and REPORT (with billed duration and max memory used).
+By default, every Lambda function writes to a CloudWatch Log Group named `/aws/lambda/function-name`. You can also configure a custom log group. Each invocation writes to a log stream within that group. Lambda also adds platform messages: START (with request ID), END, and REPORT (with duration, billed duration, memory size, and max memory used).
 
 A typical log stream looks like:
 
@@ -57,7 +57,7 @@ class Logger {
       ...data,
     };
 
-    // Use console methods that map to CloudWatch log levels
+    // Lambda can assign levels to console output when structured JSON logging is enabled
     switch (level) {
       case 'ERROR':
         console.error(JSON.stringify(entry));
@@ -204,8 +204,6 @@ This CDK configuration creates a metric filter and alarm for Lambda errors:
 import * as cdk from 'aws-cdk-lib';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
-import * as cw_actions from 'aws-cdk-lib/aws-cloudwatch-actions';
-import * as sns from 'aws-cdk-lib/aws-sns';
 import { Construct } from 'constructs';
 
 export class LogAlarmStack extends cdk.Stack {
@@ -219,7 +217,7 @@ export class LogAlarmStack extends cdk.Stack {
     // Metric filter for errors
     const errorMetric = new logs.MetricFilter(this, 'ErrorMetric', {
       logGroup,
-      filterPattern: logs.FilterPattern.literal('"level":"ERROR"'),
+      filterPattern: logs.FilterPattern.stringValue('$.level', '=', 'ERROR'),
       metricNamespace: 'MyApp/Lambda',
       metricName: 'ErrorCount',
       metricValue: '1',
@@ -239,7 +237,7 @@ export class LogAlarmStack extends cdk.Stack {
     // Metric filter for slow queries
     const slowQueryMetric = new logs.MetricFilter(this, 'SlowQueryMetric', {
       logGroup,
-      filterPattern: logs.FilterPattern.literal('"message":"Database query slow"'),
+      filterPattern: logs.FilterPattern.stringValue('$.message', '=', 'Database query slow'),
       metricNamespace: 'MyApp/Lambda',
       metricName: 'SlowQueryCount',
     });
@@ -247,7 +245,7 @@ export class LogAlarmStack extends cdk.Stack {
     // Metric filter for specific business events
     const failedPaymentMetric = new logs.MetricFilter(this, 'FailedPayment', {
       logGroup,
-      filterPattern: logs.FilterPattern.literal('"message":"Payment failed"'),
+      filterPattern: logs.FilterPattern.stringValue('$.message', '=', 'Payment failed'),
       metricNamespace: 'MyApp/Business',
       metricName: 'FailedPayments',
     });
@@ -261,11 +259,15 @@ By default, Lambda log groups retain logs forever. That gets expensive. Set a re
 
 ```typescript
 // Set retention when creating the function
+const logGroup = new logs.LogGroup(this, 'HandlerLogs', {
+  retention: logs.RetentionDays.TWO_WEEKS,
+});
+
 const fn = new lambda.Function(this, 'Handler', {
   runtime: lambda.Runtime.NODEJS_20_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/handler'),
-  logRetention: logs.RetentionDays.TWO_WEEKS,
+  logGroup,
 });
 ```
 
@@ -284,7 +286,7 @@ For cost optimization, consider:
 
 ## Debugging Timeouts
 
-Lambda timeouts produce no error in your function code - the runtime just kills the process. You see the REPORT line with a duration equal to the configured timeout.
+Lambda timeouts produce no catchable error in your function code - the runtime stops the invocation. You see a timeout message and a REPORT line with a duration near the configured timeout.
 
 To debug timeouts, add timing to your code:
 
@@ -337,7 +339,7 @@ If cold starts are too frequent or too slow, consider:
 - Reducing package size (fewer dependencies = faster init)
 - Increasing memory (more memory = more CPU = faster init)
 - Using provisioned concurrency for critical functions
-- Moving initialization code outside the handler
+- Keeping reusable clients outside the handler, while lazy-loading nonessential initialization work
 
 ## Correlation Across Services
 
