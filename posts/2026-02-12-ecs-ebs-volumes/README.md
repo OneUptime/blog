@@ -14,13 +14,13 @@ This feature landed in 2024 and closes a big gap that previously pushed people t
 
 ## How EBS Volumes Work with ECS
 
-Unlike EFS (which is a network file system), EBS volumes are block storage devices. Each volume attaches to exactly one task at a time. When the task stops, the volume can be retained or deleted based on your configuration.
+Unlike EFS (which is a network file system), EBS volumes are block storage devices. Each volume attaches to exactly one task at a time. When a standalone task stops, the volume can be retained or deleted based on your configuration. Volumes attached to service-managed tasks are always deleted when the task terminates.
 
 ECS manages the lifecycle for you:
 1. When a task starts, ECS creates and attaches an EBS volume
 2. The volume is available as a mount point in your container
 3. When the task stops, ECS detaches the volume
-4. Based on your policy, it either deletes the volume or retains it
+4. For standalone tasks, based on your policy, it either deletes the volume or retains it. For service-managed tasks, ECS deletes the volume.
 
 ## Task Definition with EBS Volume
 
@@ -33,8 +33,8 @@ Here's a task definition that configures a managed EBS volume.
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "1024",
   "memory": "2048",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::123456789:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/ecsTaskRole",
   "volumes": [
     {
       "name": "data-volume",
@@ -84,7 +84,7 @@ aws ecs create-service \
     {
       "name": "data-volume",
       "managedEBSVolume": {
-        "roleArn": "arn:aws:iam::123456789:role/ecsInfrastructureRole",
+        "roleArn": "arn:aws:iam::123456789012:role/ecsInfrastructureRole",
         "sizeInGiB": 100,
         "volumeType": "gp3",
         "iops": 3000,
@@ -121,7 +121,7 @@ resource "aws_ecs_service" "database" {
       iops           = 3000
       throughput     = 125
       encrypted      = true
-      filesystem_type = "ext4"
+      file_system_type = "ext4"
 
       # Optional: use a KMS key for encryption
       kms_key_id = aws_kms_key.ebs.arn
@@ -171,18 +171,24 @@ Choose the right EBS volume type for your workload:
 
 **gp3 (General Purpose SSD)** - Default choice. 3,000 IOPS and 125 MB/s throughput baseline, scalable independently. Good for databases and general workloads.
 
-**io2 (Provisioned IOPS SSD)** - When you need consistent, high IOPS. Up to 64,000 IOPS. For latency-sensitive databases.
+**io2 (Provisioned IOPS SSD)** - When you need consistent, high IOPS. Up to 256,000 IOPS. For latency-sensitive databases.
 
-**st1 (Throughput Optimized HDD)** - Sequential read/write heavy workloads. Lower cost per GB but no random I/O performance. Good for log processing or data warehousing.
+**st1 (Throughput Optimized HDD)** - Sequential read/write heavy workloads. Lower cost per GB but not designed for small, random I/O. Good for log processing or data warehousing.
 
 ```bash
 # High-performance volume for a production database
 aws ecs create-service \
+  --cluster my-cluster \
+  --service-name prod-db-service \
+  --task-definition database-task:1 \
+  --desired-count 1 \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[subnet-abc123],securityGroups=[sg-abc123]}" \
   --volume-configurations '[
     {
       "name": "data-volume",
       "managedEBSVolume": {
-        "roleArn": "arn:aws:iam::123456789:role/ecsInfrastructureRole",
+        "roleArn": "arn:aws:iam::123456789012:role/ecsInfrastructureRole",
         "sizeInGiB": 500,
         "volumeType": "io2",
         "iops": 10000,
@@ -205,11 +211,17 @@ aws ec2 create-snapshot \
 
 # Use a snapshot as the source for a new service's volume
 aws ecs create-service \
+  --cluster my-cluster \
+  --service-name restored-db-service \
+  --task-definition database-task:1 \
+  --desired-count 1 \
+  --launch-type FARGATE \
+  --network-configuration "awsvpcConfiguration={subnets=[subnet-abc123],securityGroups=[sg-abc123]}" \
   --volume-configurations '[
     {
       "name": "data-volume",
       "managedEBSVolume": {
-        "roleArn": "arn:aws:iam::123456789:role/ecsInfrastructureRole",
+        "roleArn": "arn:aws:iam::123456789012:role/ecsInfrastructureRole",
         "snapshotId": "snap-0abc123def456",
         "volumeType": "gp3",
         "sizeInGiB": 100,
@@ -228,7 +240,7 @@ aws ecs create-service \
 | Performance | High IOPS, low latency | Higher latency, shared throughput |
 | Use case | Databases, caches | File sharing, content management |
 | Pricing | Per GB provisioned + IOPS | Per GB used |
-| Persistence | Configurable | Always persistent |
+| Persistence | Configurable for standalone tasks; deleted on service-managed task termination | Always persistent |
 | Mount type | Block device | NFS mount |
 
 Use EBS when you need:
