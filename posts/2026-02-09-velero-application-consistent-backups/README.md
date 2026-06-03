@@ -37,20 +37,19 @@ spec:
       labels:
         app: postgres
       annotations:
-        # Start backup mode
+        # Flush dirty buffers before the snapshot
         pre.hook.backup.velero.io/command: >-
           ["/bin/bash", "-c",
-          "psql -U postgres -c \"SELECT pg_start_backup('velero_backup', true);\" &&
-          echo 'Backup mode started at $(date)' > /var/lib/postgresql/data/backup.log"]
+          "psql -U postgres -v ON_ERROR_STOP=1 -c \"CHECKPOINT;\" -c \"SELECT pg_switch_wal();\" &&
+          echo 'Snapshot checkpoint completed at $(date)' > /var/lib/postgresql/data/backup.log"]
         pre.hook.backup.velero.io/container: postgres
         pre.hook.backup.velero.io/timeout: 5m
         pre.hook.backup.velero.io/on-error: Fail
 
-        # Stop backup mode
+        # Record snapshot completion
         post.hook.backup.velero.io/command: >-
           ["/bin/bash", "-c",
-          "psql -U postgres -c \"SELECT pg_stop_backup();\" &&
-          echo 'Backup mode stopped at $(date)' >> /var/lib/postgresql/data/backup.log"]
+          "echo 'Snapshot completed at $(date)' >> /var/lib/postgresql/data/backup.log"]
         post.hook.backup.velero.io/container: postgres
         post.hook.backup.velero.io/timeout: 2m
         post.hook.backup.velero.io/on-error: Continue
@@ -77,7 +76,7 @@ spec:
           storage: 50Gi
 ```
 
-This configuration puts PostgreSQL into backup mode, ensuring consistent snapshots.
+This configuration forces PostgreSQL to checkpoint before Velero snapshots the volume. For PostgreSQL 15 and later, the older `pg_start_backup()` and `pg_stop_backup()` functions have been renamed and the non-exclusive backup API requires a continuous database connection plus the returned backup label files, so use PostgreSQL-native tooling such as `pg_basebackup` or pgBackRest for full physical base backups.
 
 ## Creating MySQL Application-Consistent Backups
 
@@ -103,7 +102,8 @@ spec:
         # Flush and lock tables
         pre.hook.backup.velero.io/command: >-
           ["/bin/bash", "-c",
-          "mysql -u root -p$MYSQL_ROOT_PASSWORD -e 'FLUSH TABLES WITH READ LOCK; SYSTEM echo locked > /tmp/mysql-locked;' &&
+          "nohup mysql -u root -p$MYSQL_ROOT_PASSWORD -e 'FLUSH TABLES WITH READ LOCK; DO SLEEP(86400);' >/tmp/mysql-backup-lock.log 2>&1 &
+          echo $! > /tmp/mysql-backup-lock.pid &&
           sleep 2"]
         pre.hook.backup.velero.io/container: mysql
         pre.hook.backup.velero.io/timeout: 3m
@@ -111,8 +111,8 @@ spec:
         # Unlock tables
         post.hook.backup.velero.io/command: >-
           ["/bin/bash", "-c",
-          "mysql -u root -p$MYSQL_ROOT_PASSWORD -e 'UNLOCK TABLES;' &&
-          rm -f /tmp/mysql-locked"]
+          "if [ -f /tmp/mysql-backup-lock.pid ]; then kill $(cat /tmp/mysql-backup-lock.pid) || true; fi &&
+          rm -f /tmp/mysql-backup-lock.pid /tmp/mysql-backup-lock.log"]
         post.hook.backup.velero.io/container: mysql
         post.hook.backup.velero.io/timeout: 1m
     spec:
@@ -221,9 +221,7 @@ spec:
           - -c
           - |
             echo "Starting PostgreSQL backup preparation..."
-            psql -U postgres -c "SELECT pg_start_backup('velero_backup', true);"
-            echo "Waiting for checkpoint..."
-            sleep 5
+            psql -U postgres -v ON_ERROR_STOP=1 -c "CHECKPOINT;" -c "SELECT pg_switch_wal();"
             echo "PostgreSQL ready for backup"
           onError: Fail
           timeout: 5m
@@ -234,8 +232,7 @@ spec:
           - /bin/bash
           - -c
           - |
-            echo "Completing PostgreSQL backup..."
-            psql -U postgres -c "SELECT pg_stop_backup();"
+            echo "Completing PostgreSQL backup hook..."
             echo "PostgreSQL backup complete"
           onError: Continue
           timeout: 2m
@@ -255,7 +252,8 @@ spec:
           - -c
           - |
             echo "Flushing MySQL tables..."
-            mysql -u root -p$MYSQL_ROOT_PASSWORD -e "FLUSH TABLES WITH READ LOCK;"
+            nohup mysql -u root -p$MYSQL_ROOT_PASSWORD -e "FLUSH TABLES WITH READ LOCK; DO SLEEP(86400);" >/tmp/mysql-backup-lock.log 2>&1 &
+            echo $! > /tmp/mysql-backup-lock.pid
             sleep 2
           onError: Fail
           timeout: 3m
@@ -267,7 +265,8 @@ spec:
           - -c
           - |
             echo "Unlocking MySQL tables..."
-            mysql -u root -p$MYSQL_ROOT_PASSWORD -e "UNLOCK TABLES;"
+            if [ -f /tmp/mysql-backup-lock.pid ]; then kill $(cat /tmp/mysql-backup-lock.pid) || true; fi
+            rm -f /tmp/mysql-backup-lock.pid /tmp/mysql-backup-lock.log
           onError: Continue
           timeout: 1m
 
@@ -321,35 +320,15 @@ data:
 
     echo "$(date): Starting PostgreSQL backup preparation"
 
-    # Check if already in backup mode
-    if psql -U postgres -t -c "SELECT pg_is_in_backup();" | grep -q t; then
-      echo "Already in backup mode, stopping previous backup"
-      psql -U postgres -c "SELECT pg_stop_backup();"
-      sleep 2
-    fi
+    # Flush dirty buffers before the volume snapshot
+    psql -U postgres -v ON_ERROR_STOP=1 -c "CHECKPOINT;" -c "SELECT pg_switch_wal();"
 
-    # Start backup mode
-    psql -U postgres -c "SELECT pg_start_backup('velero_backup', true);"
-
-    # Wait for checkpoint
-    sleep 5
-
-    # Verify backup mode
-    if psql -U postgres -t -c "SELECT pg_is_in_backup();" | grep -q t; then
-      echo "$(date): PostgreSQL ready for backup"
-      exit 0
-    else
-      echo "$(date): Failed to enter backup mode"
-      exit 1
-    fi
+    echo "$(date): PostgreSQL ready for backup"
 
   postgres-post-backup.sh: |
     #!/bin/bash
 
     echo "$(date): Finalizing PostgreSQL backup"
-
-    # Stop backup mode
-    psql -U postgres -c "SELECT pg_stop_backup();"
 
     echo "$(date): Backup finalized successfully"
 
@@ -359,8 +338,9 @@ data:
 
     echo "$(date): Preparing MySQL for backup"
 
-    # Flush all tables
-    mysql -u root -p$MYSQL_ROOT_PASSWORD -e "FLUSH TABLES WITH READ LOCK;"
+    # Flush all tables and keep the client session open so the global read lock remains active
+    nohup mysql -u root -p$MYSQL_ROOT_PASSWORD -e "FLUSH TABLES WITH READ LOCK; DO SLEEP(86400);" >/tmp/mysql-backup-lock.log 2>&1 &
+    echo $! > /tmp/mysql-backup-lock.pid
 
     # Create backup marker
     echo "$(date): MySQL locked" > /tmp/mysql-backup-marker
@@ -375,9 +355,11 @@ data:
 
     echo "$(date): Unlocking MySQL"
 
-    mysql -u root -p$MYSQL_ROOT_PASSWORD -e "UNLOCK TABLES;"
+    if [ -f /tmp/mysql-backup-lock.pid ]; then
+      kill "$(cat /tmp/mysql-backup-lock.pid)" || true
+    fi
 
-    rm -f /tmp/mysql-backup-marker
+    rm -f /tmp/mysql-backup-marker /tmp/mysql-backup-lock.pid /tmp/mysql-backup-lock.log
 
     echo "$(date): MySQL backup complete"
 
@@ -440,7 +422,7 @@ velero backup describe consistent-app-backup | grep -A 10 "Hooks"
 kubectl logs -n velero -l name=velero | grep -E "hook|executing"
 ```
 
-Create alerts for hook failures:
+Create alerts for backup failures that can include hook errors:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -453,14 +435,14 @@ spec:
   - name: backup-consistency
     interval: 30s
     rules:
-    - alert: BackupHookFailed
+    - alert: VeleroBackupFailed
       expr: |
         increase(velero_backup_failure_total[10m]) > 0
       labels:
         severity: critical
       annotations:
-        summary: "Backup hook execution failed"
-        description: "Application-consistent backup hook has failed"
+        summary: "Velero backup failed"
+        description: "A Velero backup has failed; check backup details for hook errors"
 
     - alert: BackupHookTimeout
       expr: |
@@ -488,18 +470,18 @@ velero restore create --from-backup test-consistency \
   --wait
 
 # Verify database integrity
-kubectl exec -n production-test deployment/postgres -- \
+kubectl exec -n production-test statefulset/postgres -- \
   psql -U postgres -c "SELECT pg_is_in_recovery();"
 
 # Check for corruption
-kubectl exec -n production-test deployment/postgres -- \
+kubectl exec -n production-test statefulset/postgres -- \
   pg_dump -U postgres -d mydb > /tmp/test-dump.sql
 
 # Compare record counts
-ORIGINAL_COUNT=$(kubectl exec -n production deployment/postgres -- \
+ORIGINAL_COUNT=$(kubectl exec -n production statefulset/postgres -- \
   psql -U postgres -d mydb -t -c "SELECT COUNT(*) FROM users;")
 
-RESTORED_COUNT=$(kubectl exec -n production-test deployment/postgres -- \
+RESTORED_COUNT=$(kubectl exec -n production-test statefulset/postgres -- \
   psql -U postgres -d mydb -t -c "SELECT COUNT(*) FROM users;")
 
 echo "Original: $ORIGINAL_COUNT, Restored: $RESTORED_COUNT"
@@ -519,19 +501,19 @@ RETRY_DELAY=5
 for i in $(seq 1 $MAX_RETRIES); do
   echo "Attempt $i of $MAX_RETRIES"
 
-  if psql -U postgres -c "SELECT pg_start_backup('velero_backup', true);"; then
-    echo "Backup mode started successfully"
+  if psql -U postgres -v ON_ERROR_STOP=1 -c "CHECKPOINT;" -c "SELECT pg_switch_wal();"; then
+    echo "Checkpoint completed successfully"
     exit 0
   fi
 
-  echo "Failed to start backup mode, retrying in $RETRY_DELAY seconds..."
+  echo "Failed to checkpoint database, retrying in $RETRY_DELAY seconds..."
   sleep $RETRY_DELAY
 done
 
-echo "Failed to start backup mode after $MAX_RETRIES attempts"
+echo "Failed to checkpoint database after $MAX_RETRIES attempts"
 exit 1
 ```
 
 ## Conclusion
 
-Application-consistent backups using Velero pre-backup hooks ensure data integrity for stateful applications and databases. Implement hooks that quiesce applications, flush buffers, and create consistent snapshots before backup operations begin. Use post-backup hooks to resume normal operations and minimize application disruption. Store reusable hook scripts in ConfigMaps for maintainability, monitor hook execution for failures and performance issues, and regularly test restored applications to validate consistency. Well-designed consistency hooks transform Velero from a simple resource backup tool into a comprehensive disaster recovery solution that protects your most critical stateful workloads with guaranteed data integrity.
+Application-consistent backups using Velero pre-backup hooks help preserve data integrity for stateful applications and databases. Implement hooks that quiesce applications, flush buffers, and create consistent snapshots before backup operations begin. Use post-backup hooks to resume normal operations and minimize application disruption. Store reusable hook scripts in ConfigMaps for maintainability, monitor hook execution for failures and performance issues, and regularly test restored applications to validate consistency. Well-designed consistency hooks transform Velero from a simple resource backup tool into a more comprehensive disaster recovery solution that protects your most critical stateful workloads.
