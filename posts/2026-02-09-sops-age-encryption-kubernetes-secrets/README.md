@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Encryption, GitOps
 
-Description: Learn how to use Mozilla SOPS with Age encryption to securely store Kubernetes secrets in Git repositories, enabling GitOps workflows with encrypted configuration files.
+Description: Learn how to use SOPS with Age encryption to securely store Kubernetes secrets in Git repositories, enabling GitOps workflows with encrypted configuration files.
 
 ---
 
@@ -24,8 +24,8 @@ Install Age:
 brew install age
 
 # Linux
-wget https://github.com/FiloSottile/age/releases/download/v1.1.1/age-v1.1.1-linux-amd64.tar.gz
-tar xzf age-v1.1.1-linux-amd64.tar.gz
+wget https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-linux-amd64.tar.gz
+tar xzf age-v1.3.1-linux-amd64.tar.gz
 sudo mv age/age /usr/local/bin/
 sudo mv age/age-keygen /usr/local/bin/
 
@@ -40,9 +40,9 @@ Install SOPS:
 brew install sops
 
 # Linux
-wget https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
-chmod +x sops-v3.8.1.linux.amd64
-sudo mv sops-v3.8.1.linux.amd64 /usr/local/bin/sops
+wget https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
+chmod +x sops-v3.13.0.linux.amd64
+sudo mv sops-v3.13.0.linux.amd64 /usr/local/bin/sops
 
 # Verify
 sops --version
@@ -78,8 +78,10 @@ Store the private key securely (this decrypts your secrets):
 
 ```bash
 # Move to secure location
+mkdir -p ~/.config/sops/age
 mv key.txt ~/.config/sops/age/keys.txt
 chmod 600 ~/.config/sops/age/keys.txt
+export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
 ```
 
 ## Creating and Encrypting a Kubernetes Secret
@@ -139,7 +141,7 @@ sops:
     lastmodified: "2026-02-09T10:00:00Z"
     mac: ENC[AES256_GCM,data:...,tag:...,type:str]
     pgp: []
-    version: 3.8.1
+    version: 3.13.0
 ```
 
 Notice that SOPS:
@@ -170,7 +172,7 @@ sops --decrypt secret.enc.yaml > secret.yaml
 sops --decrypt secret.enc.yaml | kubectl apply -f -
 ```
 
-SOPS automatically uses the private key from `~/.config/sops/age/keys.txt`.
+SOPS uses the private key from `SOPS_AGE_KEY_FILE`. On Linux, it also looks in `~/.config/sops/age/keys.txt` by default when `XDG_CONFIG_HOME` is not set.
 
 ## Using .sops.yaml for Configuration
 
@@ -228,7 +230,7 @@ Encrypt only sensitive fields:
 # .sops.yaml
 creation_rules:
   - path_regex: .*\.yaml$
-    encrypted_regex: ^(password|apiKey|token|secret)$
+    encrypted_regex: ^(.*password.*|.*api[_-]?key.*|.*token.*|.*secret.*)$
     age: age1ql3z7hjy54pw3hyww5ayyfg7zqgvc7w3j2elw8zmrj2kg5sfn9aqmcac8p
 ```
 
@@ -268,7 +270,7 @@ This makes it easier to review non-sensitive changes in Git diffs.
 
 ## Integrating with ArgoCD
 
-Install SOPS plugin for ArgoCD:
+Enable Kustomize exec plugins in ArgoCD:
 
 ```yaml
 # argocd-cm.yaml
@@ -289,7 +291,7 @@ kubectl create secret generic sops-age \
   --from-file=keys.txt=$HOME/.config/sops/age/keys.txt
 ```
 
-Configure ArgoCD to use SOPS:
+Configure ArgoCD repo-server with the SOPS binary and Age key:
 
 ```yaml
 # argocd-repo-server patch
@@ -302,6 +304,8 @@ spec:
   template:
     spec:
       volumes:
+      - name: custom-tools
+        emptyDir: {}
       - name: sops-age
         secret:
           secretName: sops-age
@@ -312,7 +316,7 @@ spec:
         - sh
         - -c
         - |
-          wget -O /custom-tools/sops https://github.com/getsops/sops/releases/download/v3.8.1/sops-v3.8.1.linux.amd64
+          wget -O /custom-tools/sops https://github.com/getsops/sops/releases/download/v3.13.0/sops-v3.13.0.linux.amd64
           chmod +x /custom-tools/sops
         volumeMounts:
         - name: custom-tools
@@ -337,10 +341,9 @@ Use a custom plugin or use ksops with Kustomize.
 Install KSOPS (Kustomize SOPS plugin):
 
 ```bash
-# Install as Kustomize plugin
-mkdir -p $HOME/.config/kustomize/plugin/viaduct.ai/v1/ksops
-wget https://github.com/viaduct-ai/kustomize-sops/releases/download/v4.3.1/ksops_4.3.1_Linux_x86_64.tar.gz
-tar -xzf ksops_4.3.1_Linux_x86_64.tar.gz -C $HOME/.config/kustomize/plugin/viaduct.ai/v1/ksops
+# Install KSOPS and make sure it is available on PATH
+wget -qcO - https://raw.githubusercontent.com/viaduct-ai/kustomize-sops/master/scripts/install-ksops-archive.sh | bash
+command -v ksops
 ```
 
 Create Kustomize configuration:
@@ -365,6 +368,10 @@ apiVersion: viaduct.ai/v1
 kind: ksops
 metadata:
   name: secret-generator
+  annotations:
+    config.kubernetes.io/function: |
+      exec:
+        path: ksops
 files:
   - secret.enc.yaml
 ```
@@ -372,7 +379,7 @@ files:
 Build with Kustomize:
 
 ```bash
-kustomize build --enable-alpha-plugins .
+kustomize build --enable-alpha-plugins --enable-exec .
 ```
 
 KSOPS automatically decrypts SOPS-encrypted files during build.
