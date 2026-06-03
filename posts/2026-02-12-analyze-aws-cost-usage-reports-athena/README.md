@@ -64,8 +64,11 @@ CREATE EXTERNAL TABLE IF NOT EXISTS cur_db.cost_and_usage (
   product_region STRING,
   pricing_term STRING,
   pricing_unit STRING,
+  pricing_public_on_demand_cost DOUBLE,
   reservation_reservation_a_r_n STRING,
+  reservation_effective_cost DOUBLE,
   savings_plan_savings_plan_a_r_n STRING,
+  savings_plan_savings_plan_effective_cost DOUBLE,
   resource_tags_user_environment STRING,
   resource_tags_user_team STRING,
   resource_tags_user_project STRING
@@ -88,12 +91,16 @@ SELECT
   product_region AS region,
   resource_tags_user_environment AS environment,
   resource_tags_user_team AS team,
-  SUM(line_item_unblended_cost) AS total_cost
+  SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) AS total_cost
 FROM cur_db.cost_and_usage
 WHERE
   line_item_usage_start_date >= DATE '2026-02-01'
   AND line_item_resource_id != ''
-  AND line_item_line_item_type = 'Usage'
+  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
 GROUP BY 1, 2, 3, 4, 5, 6
 ORDER BY total_cost DESC
 LIMIT 20;
@@ -108,13 +115,21 @@ Track how costs change day by day for each service.
 SELECT
   DATE(line_item_usage_start_date) AS usage_date,
   line_item_product_code AS service,
-  SUM(line_item_unblended_cost) AS daily_cost
+  SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) AS daily_cost
 FROM cur_db.cost_and_usage
 WHERE
   line_item_usage_start_date >= CURRENT_DATE - INTERVAL '30' DAY
-  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage')
+  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
 GROUP BY 1, 2
-HAVING SUM(line_item_unblended_cost) > 1.0
+HAVING SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) > 1.0
 ORDER BY 1 DESC, 3 DESC;
 ```
 
@@ -125,20 +140,37 @@ See how much each team is spending. This requires that you've activated the team
 ```sql
 -- Monthly costs by team
 SELECT
-  COALESCE(resource_tags_user_team, 'Untagged') AS team,
+  COALESCE(NULLIF(resource_tags_user_team, ''), 'Untagged') AS team,
   line_item_product_code AS service,
-  SUM(line_item_unblended_cost) AS total_cost,
-  ROUND(SUM(line_item_unblended_cost) / (
-    SELECT SUM(line_item_unblended_cost)
+  SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) AS total_cost,
+  ROUND(SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) / (
+    SELECT SUM(CASE
+      WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+      WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+      ELSE line_item_unblended_cost
+    END)
     FROM cur_db.cost_and_usage
     WHERE line_item_usage_start_date >= DATE '2026-02-01'
+      AND line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
   ) * 100, 2) AS pct_of_total
 FROM cur_db.cost_and_usage
 WHERE
   line_item_usage_start_date >= DATE '2026-02-01'
-  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage')
+  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
 GROUP BY 1, 2
-HAVING SUM(line_item_unblended_cost) > 10
+HAVING SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) > 10
 ORDER BY team, total_cost DESC;
 ```
 
@@ -151,20 +183,29 @@ See which instance types you're running and how much each costs.
 SELECT
   REGEXP_EXTRACT(line_item_usage_type, ':(.+)$', 1) AS instance_type,
   CASE
-    WHEN savings_plan_savings_plan_a_r_n != '' THEN 'Savings Plan'
-    WHEN reservation_reservation_a_r_n != '' THEN 'Reserved'
+    WHEN COALESCE(savings_plan_savings_plan_a_r_n, '') != '' THEN 'Savings Plan'
+    WHEN COALESCE(reservation_reservation_a_r_n, '') != '' THEN 'Reserved'
     WHEN line_item_usage_type LIKE '%Spot%' THEN 'Spot'
     ELSE 'On-Demand'
   END AS pricing_model,
   COUNT(DISTINCT line_item_resource_id) AS instance_count,
   SUM(line_item_usage_amount) AS total_hours,
-  SUM(line_item_unblended_cost) AS total_cost,
-  ROUND(SUM(line_item_unblended_cost) / NULLIF(SUM(line_item_usage_amount), 0), 4) AS cost_per_hour
+  SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) AS total_cost,
+  ROUND(SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) / NULLIF(SUM(line_item_usage_amount), 0), 4) AS cost_per_hour
 FROM cur_db.cost_and_usage
 WHERE
   line_item_product_code = 'AmazonEC2'
   AND line_item_usage_type LIKE '%BoxUsage%'
   AND line_item_usage_start_date >= DATE '2026-02-01'
+  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
 GROUP BY 1, 2
 ORDER BY total_cost DESC;
 ```
@@ -204,16 +245,23 @@ Find how much you're spending on resources without proper tags. This helps drive
 SELECT
   line_item_product_code AS service,
   COUNT(DISTINCT line_item_resource_id) AS untagged_resources,
-  SUM(line_item_unblended_cost) AS untagged_cost
+  SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) AS untagged_cost
 FROM cur_db.cost_and_usage
 WHERE
   line_item_usage_start_date >= DATE '2026-02-01'
   AND line_item_resource_id != ''
   AND (resource_tags_user_team IS NULL OR resource_tags_user_team = '')
-  AND line_item_line_item_type = 'Usage'
-  AND line_item_unblended_cost > 0
+  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
 GROUP BY 1
-HAVING SUM(line_item_unblended_cost) > 10
+HAVING SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) > 10
 ORDER BY untagged_cost DESC;
 ```
 
@@ -225,21 +273,30 @@ Calculate how much your reservations and Savings Plans are actually saving you.
 -- Savings from Savings Plans and Reserved Instances
 SELECT
   CASE
-    WHEN savings_plan_savings_plan_a_r_n != '' THEN 'Savings Plan'
-    WHEN reservation_reservation_a_r_n != '' THEN 'Reserved Instance'
+    WHEN COALESCE(savings_plan_savings_plan_a_r_n, '') != '' THEN 'Savings Plan'
+    WHEN COALESCE(reservation_reservation_a_r_n, '') != '' THEN 'Reserved Instance'
     ELSE 'On-Demand'
   END AS pricing_model,
-  SUM(line_item_unblended_cost) AS actual_cost,
   SUM(CASE
-    WHEN line_item_line_item_type = 'SavingsPlanNegation' THEN -line_item_unblended_cost
-    WHEN line_item_line_item_type = 'DiscountedUsage' THEN
-      CAST(line_item_unblended_rate AS DOUBLE) * line_item_usage_amount - line_item_unblended_cost
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) AS actual_cost,
+  SUM(CASE
+    WHEN line_item_line_item_type IN ('SavingsPlanCoveredUsage', 'DiscountedUsage') THEN GREATEST(
+      COALESCE(pricing_public_on_demand_cost, line_item_unblended_cost) - CASE
+        WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+        ELSE COALESCE(reservation_effective_cost, line_item_unblended_cost)
+      END,
+      0
+    )
     ELSE 0
   END) AS estimated_savings
 FROM cur_db.cost_and_usage
 WHERE
   line_item_usage_start_date >= DATE '2026-02-01'
   AND line_item_product_code = 'AmazonEC2'
+  AND line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
 GROUP BY 1
 ORDER BY actual_cost DESC;
 ```
@@ -248,7 +305,7 @@ ORDER BY actual_cost DESC;
 
 CUR data can be large, and Athena charges $5 per TB scanned. Here are tips to keep costs down.
 
-**Use date filters**: Always filter on `line_item_usage_start_date`. CUR data is partitioned by date, so this dramatically reduces the amount of data scanned.
+**Use date filters**: Always filter on `line_item_usage_start_date` so your queries only include the period you care about. If your table has partition columns such as `year`, `month`, or `billing_month`, filter on those too so Athena can skip partitions and reduce the amount of data scanned.
 
 **Use Parquet format**: If you haven't already, switch your CUR to Parquet. It's columnar, so Athena only reads the columns your query references.
 
@@ -275,9 +332,13 @@ CREATE OR REPLACE VIEW cur_db.daily_service_costs AS
 SELECT
   DATE(line_item_usage_start_date) AS usage_date,
   line_item_product_code AS service,
-  SUM(line_item_unblended_cost) AS daily_cost
+  SUM(CASE
+    WHEN line_item_line_item_type = 'SavingsPlanCoveredUsage' THEN COALESCE(savings_plan_savings_plan_effective_cost, line_item_unblended_cost)
+    WHEN line_item_line_item_type = 'DiscountedUsage' THEN COALESCE(reservation_effective_cost, line_item_unblended_cost)
+    ELSE line_item_unblended_cost
+  END) AS daily_cost
 FROM cur_db.cost_and_usage
-WHERE line_item_line_item_type IN ('Usage', 'DiscountedUsage')
+WHERE line_item_line_item_type IN ('Usage', 'DiscountedUsage', 'SavingsPlanCoveredUsage')
 GROUP BY 1, 2;
 ```
 
