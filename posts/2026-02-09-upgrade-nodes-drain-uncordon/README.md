@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Upgrade, Cluster Administration
 
-Description: Learn how to perform rolling upgrades of Kubernetes cluster nodes with minimal downtime using drain and uncordon operations, ensuring pod migration and service continuity during maintenance.
+Description: Learn how to perform rolling upgrades of Kubernetes cluster nodes with minimal downtime using drain and uncordon operations, helping pod migration and service continuity during maintenance.
 
 ---
 
-Upgrading Kubernetes nodes requires careful orchestration to maintain service availability. The drain and uncordon workflow safely migrates workloads off a node, performs the upgrade, and returns the node to service. This rolling upgrade approach enables zero-downtime cluster upgrades by processing one node at a time while ensuring pod availability.
+Upgrading Kubernetes nodes requires careful orchestration to maintain service availability. The drain and uncordon workflow safely evicts workloads from a node, performs the upgrade, and returns the node to service. This rolling upgrade approach helps minimize downtime by processing one node at a time while respecting pod availability.
 
 This guide demonstrates how to upgrade cluster nodes using drain and uncordon for safe, controlled upgrades.
 
 ## Understanding Drain and Uncordon
 
-**Drain**: Safely evict all pods from a node and mark it unschedulable
+**Drain**: Safely evict eligible pods from a node and mark it unschedulable
 - Cordon: Mark node as unschedulable (no new pods)
 - Evict: Gracefully terminate existing pods
 - Migrate: Scheduler places pods on other nodes
@@ -34,7 +34,7 @@ kubectl get nodes
 kubectl get pods --all-namespaces
 
 # 2. Verify cluster version
-kubectl version --short
+kubectl version
 
 # 3. Check upgrade path (must upgrade one minor version at a time)
 # 1.26 -> 1.27 -> 1.28 (valid)
@@ -91,7 +91,7 @@ sudo apt-mark unhold kubeadm
 
 # Upgrade kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.28.0-00
+sudo apt-get install -y kubeadm='1.28.x-*'
 
 # Hold kubeadm at new version
 sudo apt-mark hold kubeadm
@@ -107,7 +107,7 @@ kubeadm version
 sudo kubeadm upgrade plan
 
 # Apply upgrade (only on first control plane node)
-sudo kubeadm upgrade apply v1.28.0
+sudo kubeadm upgrade apply v1.28.x
 
 # For additional control plane nodes, use:
 # sudo kubeadm upgrade node
@@ -121,7 +121,7 @@ sudo apt-mark unhold kubelet kubectl
 
 # Upgrade packages
 sudo apt-get update
-sudo apt-get install -y kubelet=1.28.0-00 kubectl=1.28.0-00
+sudo apt-get install -y kubelet='1.28.x-*' kubectl='1.28.x-*'
 
 # Hold packages
 sudo apt-mark hold kubelet kubectl
@@ -132,7 +132,7 @@ sudo systemctl restart kubelet
 
 # Verify
 sudo systemctl status kubelet
-kubectl version --short
+kubectl version
 ```
 
 ### Step 5: Uncordon Node
@@ -182,7 +182,7 @@ ssh worker-1
 # Upgrade kubeadm
 sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.28.0-00
+sudo apt-get install -y kubeadm='1.28.x-*'
 sudo apt-mark hold kubeadm
 
 # Upgrade node configuration
@@ -190,7 +190,7 @@ sudo kubeadm upgrade node
 
 # Upgrade kubelet and kubectl
 sudo apt-mark unhold kubelet kubectl
-sudo apt-get install -y kubelet=1.28.0-00 kubectl=1.28.0-00
+sudo apt-get install -y kubelet='1.28.x-*' kubectl='1.28.x-*'
 sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
@@ -290,7 +290,7 @@ VERSION=$2
 
 if [ -z "$NODE" ] || [ -z "$VERSION" ]; then
   echo "Usage: $0 <node-name> <kubernetes-version>"
-  echo "Example: $0 worker-1 1.28.0"
+  echo "Example: $0 worker-1 1.28.15"
   exit 1
 fi
 
@@ -303,7 +303,7 @@ echo "=== Upgrading $NODE to $VERSION ==="
 ssh $NODE << EOF
   sudo apt-mark unhold kubeadm kubelet kubectl
   sudo apt-get update
-  sudo apt-get install -y kubeadm=${VERSION}-00 kubelet=${VERSION}-00 kubectl=${VERSION}-00
+  sudo apt-get install -y kubeadm="${VERSION}-*" kubelet="${VERSION}-*" kubectl="${VERSION}-*"
   sudo apt-mark hold kubeadm kubelet kubectl
   sudo kubeadm upgrade node
   sudo systemctl daemon-reload
@@ -324,7 +324,7 @@ Usage:
 
 ```bash
 chmod +x upgrade-worker-node.sh
-./upgrade-worker-node.sh worker-1 1.28.0
+./upgrade-worker-node.sh worker-1 1.28.15
 ```
 
 ## Monitoring Upgrade Progress
@@ -338,8 +338,8 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo
 # Watch pod distribution
 kubectl get pods --all-namespaces -o wide --sort-by=.spec.nodeName
 
-# Check cluster health
-kubectl get componentstatuses
+# Check API server readiness
+kubectl get --raw='/readyz?verbose'
 kubectl get pods -n kube-system
 
 # Verify control plane
@@ -353,7 +353,7 @@ Create a dashboard script:
 # upgrade-status.sh
 
 echo "=== Node Versions ==="
-kubectl get nodes -o custom-columns=NAME:.metadata.name,STATUS:.status.conditions[-1].type,VERSION:.status.nodeInfo.kubeletVersion
+kubectl get nodes -o custom-columns=NAME:.metadata.name,READY:.status.conditions[?(@.type==\"Ready\")].status,VERSION:.status.nodeInfo.kubeletVersion
 
 echo -e "\n=== Pod Distribution ==="
 for node in $(kubectl get nodes -o name | cut -d'/' -f2); do
@@ -379,7 +379,7 @@ If upgrade fails:
 # On worker node, downgrade packages
 ssh worker-1
 sudo apt-mark unhold kubelet kubectl
-sudo apt-get install -y kubelet=1.27.0-00 kubectl=1.27.0-00
+sudo apt-get install -y kubelet='1.27.x-*' kubectl='1.27.x-*'
 sudo apt-mark hold kubelet kubectl
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
@@ -414,9 +414,9 @@ Full procedure for upgrading cluster:
 # 1. Backup cluster state
 # 2. Upgrade control-plane-1
 kubectl drain control-plane-1 --ignore-daemonsets --delete-emptydir-data
-ssh control-plane-1 "sudo apt-get update && sudo apt-get install -y kubeadm=1.28.0-00"
-ssh control-plane-1 "sudo kubeadm upgrade apply v1.28.0"
-ssh control-plane-1 "sudo apt-get install -y kubelet=1.28.0-00 kubectl=1.28.0-00"
+ssh control-plane-1 "sudo apt-get update && sudo apt-get install -y kubeadm='1.28.x-*'"
+ssh control-plane-1 "sudo kubeadm upgrade apply v1.28.x"
+ssh control-plane-1 "sudo apt-get install -y kubelet='1.28.x-*' kubectl='1.28.x-*'"
 ssh control-plane-1 "sudo systemctl restart kubelet"
 kubectl uncordon control-plane-1
 
@@ -424,7 +424,7 @@ kubectl uncordon control-plane-1
 
 # 4. Upgrade each worker node
 for node in worker-1 worker-2 worker-3; do
-  ./upgrade-worker-node.sh $node 1.28.0
+  ./upgrade-worker-node.sh $node 1.28.15
   sleep 60  # Wait between nodes
 done
 
@@ -433,7 +433,7 @@ kubectl get nodes -o custom-columns=NAME:.metadata.name,VERSION:.status.nodeInfo
 
 # 6. Verify cluster health
 kubectl get pods --all-namespaces
-kubectl get componentstatuses
+kubectl get --raw='/readyz?verbose'
 ```
 
-Safely upgrading Kubernetes nodes requires careful use of drain and uncordon operations to migrate workloads without service disruption. Upgrade nodes one at a time, verify cluster health between upgrades, respect PodDisruptionBudgets, and maintain detailed runbooks for your specific cluster topology and workload requirements.
+Safely upgrading Kubernetes nodes requires careful use of drain and uncordon operations to evict and reschedule workloads while minimizing service disruption. Upgrade nodes one at a time, verify cluster health between upgrades, respect PodDisruptionBudgets, and maintain detailed runbooks for your specific cluster topology and workload requirements.
