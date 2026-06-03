@@ -77,6 +77,12 @@ aws organizations create-organizational-unit \
 aws organizations create-organizational-unit \
     --parent-id "$PROD_OU_ID" \
     --name "Infrastructure"
+
+# Get the Workloads OU ID
+WORKLOADS_OU_ID=$(aws organizations list-organizational-units-for-parent \
+    --parent-id "$PROD_OU_ID" \
+    --query "OrganizationalUnits[?Name=='Workloads'].Id" \
+    --output text)
 ```
 
 Move accounts into OUs:
@@ -100,7 +106,7 @@ aws organizations enable-policy-type \
     --policy-type "SERVICE_CONTROL_POLICY"
 ```
 
-By default, every account has a "FullAWSAccess" SCP attached that allows everything. As you add restrictive SCPs, they work as an intersection - an action must be allowed by both the SCP AND the IAM policy to be permitted.
+By default, every root, OU, and account has a "FullAWSAccess" SCP attached that allows everything. As you add restrictive SCPs, they work as an intersection - an action must be allowed by both the SCP AND the IAM policy to be permitted.
 
 ## Essential SCPs
 
@@ -221,10 +227,10 @@ aws organizations create-policy \
 ### Require Encryption
 
 ```bash
-# Require S3 server-side encryption for all new objects
+# Require clients to request S3 server-side encryption for new objects
 aws organizations create-policy \
     --name "RequireS3Encryption" \
-    --description "Deny S3 PutObject without encryption" \
+    --description "Deny S3 PutObject without an approved encryption header" \
     --type "SERVICE_CONTROL_POLICY" \
     --content '{
         "Version": "2012-10-17",
@@ -240,9 +246,6 @@ aws organizations create-policy \
                             "AES256",
                             "aws:kms"
                         ]
-                    },
-                    "Null": {
-                        "s3:x-amz-server-side-encryption": "false"
                     }
                 }
             }
@@ -253,34 +256,27 @@ aws organizations create-policy \
 ### Deny Public S3 Access
 
 ```bash
-# Prevent making S3 buckets or objects public
+# Prevent public ACLs and changes to bucket-level Block Public Access settings
 aws organizations create-policy \
     --name "DenyPublicS3" \
-    --description "Block all public access to S3 buckets" \
+    --description "Block public ACLs and bucket-level Block Public Access changes" \
     --type "SERVICE_CONTROL_POLICY" \
     --content '{
         "Version": "2012-10-17",
         "Statement": [
             {
-                "Sid": "DenyPublicBucketAccess",
+                "Sid": "DenyChangingPublicAccessBlock",
                 "Effect": "Deny",
-                "Action": [
-                    "s3:PutBucketPublicAccessBlock",
-                    "s3:DeletePublicAccessBlock"
-                ],
-                "Resource": "*",
-                "Condition": {
-                    "StringNotEquals": {
-                        "aws:PrincipalOrgID": "${aws:PrincipalOrgID}"
-                    }
-                }
+                "Action": "s3:PutBucketPublicAccessBlock",
+                "Resource": "*"
             },
             {
                 "Sid": "DenyPublicACLs",
                 "Effect": "Deny",
                 "Action": [
                     "s3:PutBucketAcl",
-                    "s3:PutObjectAcl"
+                    "s3:PutObjectAcl",
+                    "s3:PutObject"
                 ],
                 "Resource": "*",
                 "Condition": {
@@ -344,15 +340,15 @@ aws ec2 run-instances --region ap-southeast-2 --image-id ami-12345 --instance-ty
 Check what SCPs are in effect for a specific account:
 
 ```bash
-# List all SCPs attached to an account (inherited and directly attached)
+# List SCPs directly attached to an account
 aws organizations list-policies-for-target \
     --target-id "111122223333" \
     --filter "SERVICE_CONTROL_POLICY"
 
-# See the effective policy (the combined result of all SCPs)
-aws organizations describe-effective-policy \
-    --policy-type "SERVICE_CONTROL_POLICY" \
-    --target-id "111122223333"
+# To understand inherited SCPs, list the account's parents and check
+# directly attached SCPs at each OU and root in the account path
+aws organizations list-parents \
+    --child-id "111122223333"
 ```
 
 ## SCP Best Practices
@@ -367,7 +363,7 @@ aws organizations describe-effective-policy \
 {
     "Condition": {
         "ArnNotLike": {
-            "aws:PrincipalARN": "arn:aws:iam::*:role/BreakGlassRole"
+            "aws:PrincipalArn": "arn:aws:iam::*:role/BreakGlassRole"
         }
     }
 }
