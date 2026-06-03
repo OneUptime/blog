@@ -276,7 +276,7 @@ spec:
             mode: 0444  # World-readable for public key
 ```
 
-The defaultMode applies to all files unless overridden. Use restrictive permissions (0400 or 0600) for sensitive credentials.
+The defaultMode applies to all files unless overridden. Use restrictive permissions (0400 or 0600) for sensitive credentials when the container user can read those files.
 
 ## Dynamic Token Paths for Multi-Tenant Applications
 
@@ -324,7 +324,7 @@ spec:
             path: tenant-b/db-connection
 ```
 
-Each tenant gets isolated credentials in their own directory.
+Each tenant gets separate credential paths in their own directory.
 
 ## Projected Volumes for Sidecar Containers
 
@@ -397,12 +397,11 @@ package main
 
 import (
     "fmt"
-    "io/ioutil"
     "os"
 )
 
 func readToken(path string) (string, error) {
-    token, err := ioutil.ReadFile(path)
+    token, err := os.ReadFile(path)
     if err != nil {
         return "", err
     }
