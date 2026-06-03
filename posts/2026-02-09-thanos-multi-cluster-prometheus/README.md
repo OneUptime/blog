@@ -69,8 +69,8 @@ spec:
           requests:
             storage: 50Gi
   thanos:
-    image: quay.io/thanos/thanos:v0.34.0
-    version: v0.34.0
+    image: quay.io/thanos/thanos:v0.41.0
+    version: v0.41.0
     objectStorageConfig:
       name: thanos-objstore-config
       key: objstore.yml
@@ -90,6 +90,18 @@ The `externalLabels` field adds cluster and region labels to all metrics, making
 The Thanos Query component provides a unified query interface across all your Prometheus instances and historical data in object storage.
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-query-endpoints
+  namespace: monitoring
+data:
+  endpoints.yml: |
+    endpoints:
+    - address: dnssrv+_grpc._tcp.prometheus-operated.monitoring.svc.cluster.local
+    - address: dnssrv+_grpc._tcp.thanos-store.monitoring.svc.cluster.local
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -107,15 +119,17 @@ spec:
     spec:
       containers:
       - name: thanos-query
-        image: quay.io/thanos/thanos:v0.34.0
+        image: quay.io/thanos/thanos:v0.41.0
         args:
         - query
         - --http-address=0.0.0.0:9090
         - --grpc-address=0.0.0.0:10901
-        - --store=dnssrv+_grpc._tcp.prometheus-operated.monitoring.svc.cluster.local
-        - --store=dnssrv+_grpc._tcp.thanos-store.monitoring.svc.cluster.local
+        - --endpoint.sd-config-file=/etc/thanos-query/endpoints.yml
         - --query.replica-label=replica
         - --query.replica-label=prometheus_replica
+        volumeMounts:
+        - name: endpoint-config
+          mountPath: /etc/thanos-query
         ports:
         - containerPort: 9090
           name: http
@@ -131,6 +145,10 @@ spec:
             path: /-/ready
             port: http
           initialDelaySeconds: 15
+      volumes:
+      - name: endpoint-config
+        configMap:
+          name: thanos-query-endpoints
 
 ---
 apiVersion: v1
@@ -150,7 +168,7 @@ spec:
     name: grpc
 ```
 
-The `--store` flags tell Thanos Query where to find metric sources. The DNS-based service discovery automatically finds all Prometheus sidecars and Store Gateways in the cluster.
+The `--endpoint.sd-config-file` flag tells Thanos Query where to find metric sources. The DNS-based service discovery resolves the named Prometheus sidecar and Store Gateway services in the cluster.
 
 ## Connecting Multiple Clusters
 
@@ -159,6 +177,22 @@ To query metrics across multiple clusters, you need to make Thanos sidecars from
 Option 1 is using a shared Thanos Query deployment in a management cluster:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-query-global-endpoints
+  namespace: monitoring
+data:
+  endpoints.yml: |
+    endpoints:
+    # Cluster 1 Prometheus
+    - address: cluster1-prometheus-sidecar.monitoring.svc.cluster1.local:10901
+    # Cluster 2 Prometheus
+    - address: cluster2-prometheus-sidecar.monitoring.svc.cluster2.local:10901
+    # Store Gateway (historical data)
+    - address: thanos-store.monitoring.svc.cluster.local:10901
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -176,22 +210,24 @@ spec:
     spec:
       containers:
       - name: thanos-query
-        image: quay.io/thanos/thanos:v0.34.0
+        image: quay.io/thanos/thanos:v0.41.0
         args:
         - query
         - --http-address=0.0.0.0:9090
         - --grpc-address=0.0.0.0:10901
-        # Cluster 1 Prometheus
-        - --store=cluster1-prometheus-sidecar.monitoring.svc.cluster1.local:10901
-        # Cluster 2 Prometheus
-        - --store=cluster2-prometheus-sidecar.monitoring.svc.cluster2.local:10901
-        # Store Gateway (historical data)
-        - --store=thanos-store.monitoring.svc.cluster.local:10901
+        - --endpoint.sd-config-file=/etc/thanos-query/endpoints.yml
         - --query.replica-label=replica
         - --query.auto-downsampling
+        volumeMounts:
+        - name: endpoint-config
+          mountPath: /etc/thanos-query
+      volumes:
+      - name: endpoint-config
+        configMap:
+          name: thanos-query-global-endpoints
 ```
 
-Option 2 is exposing each cluster's Thanos sidecar via ingress:
+Option 2 is exposing each cluster's Thanos sidecar via a gRPC-capable ingress:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -201,6 +237,7 @@ metadata:
   namespace: monitoring
   annotations:
     cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/backend-protocol: "GRPC"
 spec:
   ingressClassName: nginx
   tls:
@@ -225,9 +262,14 @@ Then configure the global query to use the public endpoints:
 ```yaml
 args:
 - query
-- --store=thanos-cluster1.example.com:443
-- --store=thanos-cluster2.example.com:443
-- --store=thanos-cluster3.example.com:443
+- --grpc-client-tls-secure
+- --endpoint.sd-config-file=/etc/thanos-query/endpoints.yml
+
+# /etc/thanos-query/endpoints.yml
+endpoints:
+- address: thanos-cluster1.example.com:443
+- address: thanos-cluster2.example.com:443
+- address: thanos-cluster3.example.com:443
 ```
 
 ## Deploying Thanos Store Gateway
@@ -253,7 +295,7 @@ spec:
     spec:
       containers:
       - name: thanos-store
-        image: quay.io/thanos/thanos:v0.34.0
+        image: quay.io/thanos/thanos:v0.41.0
         args:
         - store
         - --data-dir=/var/thanos/store
@@ -332,7 +374,7 @@ spec:
     spec:
       containers:
       - name: thanos-compact
-        image: quay.io/thanos/thanos:v0.34.0
+        image: quay.io/thanos/thanos:v0.41.0
         args:
         - compact
         - --data-dir=/var/thanos/compact
