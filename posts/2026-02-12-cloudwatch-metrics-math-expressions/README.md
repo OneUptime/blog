@@ -34,7 +34,7 @@ e3 = RATE(m1)         # Rate of change per second
 This is probably the most common use case. Instead of looking at error count and total request count separately, calculate the error rate:
 
 ```bash
-# Create a dashboard widget showing error rate percentage
+# Fetch error rate percentage
 aws cloudwatch get-metric-data \
   --metric-data-queries '[
     {
@@ -172,18 +172,18 @@ Metrics Math supports a solid set of functions:
 ABS(m1)           # Absolute value
 CEIL(m1)          # Round up
 FLOOR(m1)         # Round down
-MAX(m1, m2)       # Maximum of two metrics at each data point
-MIN(m1, m2)       # Minimum of two metrics at each data point
+MAX([m1, m2])     # Maximum of two metrics at each data point
+MIN([m1, m2])     # Minimum of two metrics at each data point
 ```
 
 ### Statistical Functions
 
 ```text
-AVG(m1)           # Average across the search expression results
-SUM(m1)           # Sum across search expression results
-MIN(m1)           # Minimum across search expression results
-MAX(m1)           # Maximum across search expression results
-STDDEV(m1)        # Standard deviation
+AVG(m1)           # Average of all data points in one metric
+SUM(METRICS())    # Sum all graphed metrics at each data point
+MIN(METRICS())    # Minimum across graphed metrics at each data point
+MAX(METRICS())    # Maximum across graphed metrics at each data point
+STDDEV(m1)        # Standard deviation of all data points in one metric
 ```
 
 ### Time Functions
@@ -259,7 +259,8 @@ aws cloudwatch put-metric-alarm \
     {
       "Id": "error_rate",
       "Expression": "IF(requests > 0, errors / requests * 100, 0)",
-      "Label": "Error Rate"
+      "Label": "Error Rate",
+      "ReturnData": true
     }
   ]' \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
@@ -316,7 +317,8 @@ aws cloudwatch put-metric-alarm \
     },
     {
       "Id": "ad1",
-      "Expression": "ANOMALY_DETECTION_BAND(error_rate, 2)"
+      "Expression": "ANOMALY_DETECTION_BAND(error_rate, 2)",
+      "ReturnData": false
     }
   ]' \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
@@ -327,7 +329,6 @@ aws cloudwatch put-metric-alarm \
 Here's a dashboard source JSON that uses math expressions:
 
 ```json
-// Dashboard widget showing multiple derived metrics
 {
   "widgets": [
     {
@@ -362,14 +363,14 @@ Here's a dashboard source JSON that uses math expressions:
 
 ### Comparing Time Periods
 
-Use `METRICS()` with time offsets to compare current metrics to the same time last week:
+CloudWatch metric math does not have a time-offset argument for `METRICS()`. To compare current metrics to the same time last week, query the same metric over two different time ranges:
 
 ```text
 # Current week's requests
-m1 = RequestCount (current)
+aws cloudwatch get-metric-data --start-time 2026-02-12T00:00:00Z --end-time 2026-02-12T12:00:00Z ...
 
-# Last week's requests using METRICS with offset
-e1 = METRICS("m1") with period offset of 604800 seconds (7 days)
+# Last week's requests
+aws cloudwatch get-metric-data --start-time 2026-02-05T00:00:00Z --end-time 2026-02-05T12:00:00Z ...
 ```
 
 ### Filling Missing Data
@@ -398,13 +399,13 @@ SEARCH('{AWS/ApiGateway, ApiName} MetricName="Count"', 'Sum', 300)
 
 ## Best Practices
 
-**Use IF() for division.** Any expression that divides metrics should handle the zero case. `IF(denominator > 0, numerator/denominator, 0)` prevents NaN values that can break alarms.
+**Use IF() for division.** Any expression that divides metrics should handle the zero case. `IF(denominator > 0, numerator/denominator, 0)` prevents divide-by-zero data points from being dropped and disrupting alarms.
 
 **Set ReturnData correctly.** Only return the final computed metric when you're using expressions in alarms or when you want a clean API response. Set `ReturnData: false` on intermediate metrics.
 
 **Keep expressions readable.** Complex nested expressions are hard to debug. Break them into multiple named expressions when possible.
 
-**Watch the metric resolution.** All metrics in an expression must use the same period. If you mix 1-minute and 5-minute metrics, you'll get unexpected results.
+**Watch the metric resolution.** Use compatible periods and resolutions for the metrics in an expression. If you mix 1-minute and 5-minute metrics, you can get sparse or unexpected results.
 
 For more on building effective dashboards with these expressions, check out our guide on [CloudWatch dashboards with Terraform](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-dashboards-terraform/view).
 
