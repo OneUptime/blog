@@ -73,7 +73,7 @@ Before configuring your application, verify basic connectivity from the EC2 inst
 SSH into your EC2 instance and test the connection to the RDS endpoint.
 
 ```bash
-# Test if the port is reachable (install nmap if needed)
+# Test if the port is reachable (install nmap-ncat if needed)
 nc -zv my-db.abc123.us-east-1.rds.amazonaws.com 5432
 
 # Expected output:
@@ -101,7 +101,7 @@ sudo dnf install postgresql15 -y
 # MySQL client
 sudo dnf install mariadb105 -y
 
-# Or install specific MySQL client
+# Or install the Oracle MySQL client if you have the MySQL Community repository configured
 sudo dnf install mysql-community-client -y
 ```
 
@@ -148,6 +148,7 @@ GRANT rds_iam TO iam_user;
 
 -- MySQL
 CREATE USER 'iam_user'@'%' IDENTIFIED WITH AWSAuthenticationPlugin AS 'RDS';
+ALTER USER 'iam_user'@'%' REQUIRE SSL;
 GRANT SELECT, INSERT, UPDATE, DELETE ON myappdb.* TO 'iam_user'@'%';
 ```
 
@@ -162,7 +163,7 @@ Attach this policy to the EC2 instance's IAM role.
     {
       "Effect": "Allow",
       "Action": "rds-db:connect",
-      "Resource": "arn:aws:rds-db:us-east-1:123456789:dbuser:dbi-abc123/iam_user"
+      "Resource": "arn:aws:rds-db:us-east-1:123456789012:dbuser:db-ABCDEFGHIJKLMNOP/iam_user"
     }
   ]
 }
@@ -170,23 +171,19 @@ Attach this policy to the EC2 instance's IAM role.
 
 ### Connect with IAM Token
 
-This script generates a temporary token and connects to PostgreSQL.
+This script generates a temporary token and connects to PostgreSQL. Download the RDS CA bundle first and replace `/path/to/global-bundle.pem` with its location.
 
 ```bash
 # Generate auth token
-TOKEN=$(aws rds generate-db-auth-token \
-  --hostname my-db.abc123.us-east-1.rds.amazonaws.com \
+export RDSHOST="my-db.abc123.us-east-1.rds.amazonaws.com"
+export PGPASSWORD=$(aws rds generate-db-auth-token \
+  --hostname $RDSHOST \
   --port 5432 \
   --username iam_user \
   --region us-east-1)
 
 # Connect with the token as password
-PGPASSWORD=$TOKEN psql \
-  -h my-db.abc123.us-east-1.rds.amazonaws.com \
-  -p 5432 \
-  -U iam_user \
-  -d myappdb \
-  --no-password
+psql "host=$RDSHOST port=5432 sslmode=verify-full sslrootcert=/path/to/global-bundle.pem dbname=myappdb user=iam_user"
 ```
 
 ## Application Connection Examples
@@ -287,6 +284,7 @@ This Python code retrieves database credentials from Secrets Manager.
 ```python
 import json
 import boto3
+import psycopg2
 
 def get_db_credentials(secret_name):
     client = boto3.client('secretsmanager', region_name='us-east-1')
