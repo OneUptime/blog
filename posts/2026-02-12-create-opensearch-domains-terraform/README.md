@@ -107,7 +107,7 @@ resource "aws_opensearch_domain" "production" {
     rollback_on_disable = "NO_ROLLBACK"
 
     maintenance_schedule {
-      start_at = "2026-03-01T00:00:00Z"
+      start_at = "2026-07-05T00:00:00Z"
       duration {
         value = 2
         unit  = "HOURS"
@@ -189,6 +189,8 @@ resource "aws_opensearch_domain" "vpc" {
   tags = {
     Environment = "production"
   }
+
+  depends_on = [aws_iam_service_linked_role.opensearch]
 }
 
 resource "aws_security_group" "opensearch" {
@@ -301,9 +303,9 @@ variable "opensearch_master_password" {
 
 ## Snapshot Configuration
 
-OpenSearch takes automated snapshots daily. You can also configure manual snapshot repositories.
+OpenSearch Service takes automated snapshots automatically. For OpenSearch and Elasticsearch 5.3 or later, it takes hourly automated snapshots and retains them for 14 days. You can also configure manual snapshot repositories.
 
-This configures the automated snapshot timing:
+This shows a domain that relies on the default automated snapshots:
 
 ```hcl
 resource "aws_opensearch_domain" "with_snapshots" {
@@ -311,10 +313,6 @@ resource "aws_opensearch_domain" "with_snapshots" {
 
   domain_name    = "production-search"
   engine_version = "OpenSearch_2.11"
-
-  snapshot_options {
-    automated_snapshot_start_hour = 3  # 3 AM UTC
-  }
 
   cluster_config {
     instance_type  = "r6g.large.search"
@@ -366,8 +364,8 @@ resource "aws_cloudwatch_metric_alarm" "low_storage" {
   namespace           = "AWS/ES"
   period              = 300
   statistic           = "Minimum"
-  threshold           = 10000  # 10 GB in MB
-  alarm_description   = "OpenSearch free storage below 10 GB"
+  threshold           = 10240  # 10 GiB in MiB
+  alarm_description   = "OpenSearch free storage below 10 GiB"
 
   dimensions = {
     DomainName = aws_opensearch_domain.production.domain_name
