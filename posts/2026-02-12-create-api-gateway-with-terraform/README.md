@@ -124,6 +124,16 @@ resource "aws_api_gateway_stage" "prod" {
 
   access_log_settings {
     destination_arn = aws_cloudwatch_log_group.api_logs.arn
+    format = jsonencode({
+      requestId      = "$context.requestId"
+      ip             = "$context.identity.sourceIp"
+      requestTime    = "$context.requestTime"
+      httpMethod     = "$context.httpMethod"
+      resourcePath   = "$context.resourcePath"
+      status         = "$context.status"
+      protocol       = "$context.protocol"
+      responseLength = "$context.responseLength"
+    })
   }
 }
 ```
@@ -197,6 +207,15 @@ resource "aws_apigatewayv2_stage" "prod" {
       responseLength = "$context.responseLength"
     })
   }
+}
+
+# Allow API Gateway to invoke the Lambda function
+resource "aws_lambda_permission" "http_api_gateway" {
+  statement_id  = "AllowHTTPAPIGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.api_handler.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.http_api.execution_arn}/*/*"
 }
 ```
 
