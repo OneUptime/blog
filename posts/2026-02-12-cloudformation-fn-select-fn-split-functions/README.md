@@ -58,7 +58,7 @@ Resources:
       AvailabilityZone: !Select [2, !GetAZs '']
 ```
 
-`!GetAZs ''` returns all availability zones in the current region as a list. Different regions have different numbers of AZs, so be careful with high indices - selecting index 5 in a region with only 3 AZs will fail.
+`!GetAZs ''` returns availability zones for the current region as a list. AWS notes that it returns only Availability Zones with a default subnet unless none of the Availability Zones have a default subnet, in which case all Availability Zones are returned. Different accounts and regions can return different numbers of AZs, so be careful with high indices - selecting index 5 when the returned list has only 3 AZs will fail.
 
 ## Select with Static Lists
 
@@ -227,11 +227,18 @@ Resources:
   Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: !Select
-        - !If [IsProduction, 2, 0]
-        - - t3.micro
-          - t3.small
-          - t3.large
+      InstanceType: !If
+        - IsProduction
+        - Fn::Select:
+            - 2
+            - - t3.micro
+              - t3.small
+              - t3.large
+        - Fn::Select:
+            - 0
+            - - t3.micro
+              - t3.small
+              - t3.large
 ```
 
 When the condition is true (production), it selects index 2 (`t3.large`). Otherwise, index 0 (`t3.micro`). Though for this particular case, a simple `!If [IsProduction, t3.large, t3.micro]` would be cleaner. The Select pattern shines when you have more than two options.
@@ -262,7 +269,7 @@ But when you import a value from another stack or receive it as a plain `String`
 **Index out of bounds.** If you select an index that doesn't exist, the stack creation fails. There's no graceful fallback. Always ensure the list is long enough.
 
 ```yaml
-# This will FAIL if the region has fewer than 4 AZs
+# This will FAIL if GetAZs returns fewer than 4 AZs
 BadExample:
   AvailabilityZone: !Select [3, !GetAZs '']
 ```
