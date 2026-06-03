@@ -14,7 +14,7 @@ This guide covers creating Web ACLs, using AWS managed rule groups, writing cust
 
 ## Web ACL Structure
 
-A Web ACL is basically an ordered list of rules. Each incoming request is evaluated against these rules in priority order. Each rule can COUNT, ALLOW, or BLOCK the request. If no rule matches, the default action applies.
+A Web ACL is basically an ordered list of rules. Each incoming request is evaluated against these rules in priority order. Each rule can COUNT, ALLOW, or BLOCK the request. If no terminating rule action applies, the default action applies.
 
 ```mermaid
 graph TD
@@ -31,7 +31,7 @@ graph TD
 
 ## Basic Web ACL with Managed Rules
 
-AWS provides pre-built rule groups that cover the most common threats. The AWSManagedRulesCommonRuleSet alone catches SQL injection, XSS, and other OWASP Top 10 attack vectors.
+AWS provides pre-built rule groups that cover the most common threats. The AWSManagedRulesCommonRuleSet catches XSS and other high-risk vulnerabilities described in OWASP publications such as the OWASP Top 10. Add AWSManagedRulesSQLiRuleSet for SQL injection protection.
 
 This creates a Web ACL with the core AWS managed rule groups:
 
@@ -39,7 +39,7 @@ This creates a Web ACL with the core AWS managed rule groups:
 resource "aws_wafv2_web_acl" "main" {
   name        = "production-web-acl"
   description = "Production WAF rules"
-  scope       = "REGIONAL"  # Use "CLOUDFRONT" for CloudFront distributions
+  scope       = "REGIONAL"  # Use "CLOUDFRONT" for CloudFront distributions and manage it from us-east-1
 
   default_action {
     allow {}
@@ -345,9 +345,9 @@ rule {
   statement {
     not_statement {
       statement {
-        byte_match_statement {
-          search_string         = ""
-          positional_constraint = "CONTAINS"
+        size_constraint_statement {
+          comparison_operator = "GT"
+          size                = 0
           field_to_match {
             single_header {
               name = "x-api-key"
@@ -372,7 +372,7 @@ rule {
 
 ## Associating the Web ACL
 
-After creating the Web ACL, associate it with your ALB, API Gateway, or other supported resource.
+After creating the Web ACL, associate it with your ALB, API Gateway, or other supported resource. For CloudFront distributions, set `web_acl_id` on the CloudFront distribution instead of using `aws_wafv2_web_acl_association`.
 
 This attaches the Web ACL to an Application Load Balancer:
 
