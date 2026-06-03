@@ -12,11 +12,11 @@ IPv4 addresses are a finite resource, and AWS charges for public IPv4 addresses 
 
 ## Understanding IPv6 in AWS
 
-AWS implements IPv6 as a dual-stack setup. Your instances get both IPv4 and IPv6 addresses and can communicate over either protocol. Unlike IPv4 private addresses, IPv6 addresses in AWS are globally unique and publicly routable by default. There's no concept of "private" IPv6 addresses in the traditional sense, though you can control access with security groups and NACLs.
+AWS commonly implements IPv6 as a dual-stack setup. Your instances can get both IPv4 and IPv6 addresses and communicate over either protocol. Public IPv6 addresses in AWS are globally unique and publicly routable, and AWS also supports private IPv6 ranges that are not advertised on the internet. In either case, you control access with security groups, NACLs, and routing.
 
 Key differences from IPv4:
 - IPv6 addresses are /128 per instance (from your VPC's /56 block)
-- No need for NAT - IPv6 addresses are globally routable
+- No need for NAT for public IPv6 - use routing and security controls instead
 - Security groups and NACLs control access instead of NAT
 - Egress-only internet gateways replace NAT gateways for outbound-only IPv6
 
@@ -136,10 +136,10 @@ aws ec2 run-instances \
   --key-name my-key \
   --subnet-id subnet-0abc123def456 \
   --security-group-ids sg-0abc123def456 \
-  --network-interfaces "DeviceIndex=0,SubnetId=subnet-0abc123def456,Groups=sg-0abc123def456,Ipv6AddressCount=1"
+  --ipv6-address-count 1
 ```
 
-The `Ipv6AddressCount=1` parameter tells AWS to assign one IPv6 address. You can assign multiple IPv6 addresses if needed (up to the instance type's limit).
+The `--ipv6-address-count 1` parameter tells AWS to assign one IPv6 address. You can assign multiple IPv6 addresses if needed (up to the instance type's limit).
 
 To assign a specific IPv6 address:
 
@@ -149,7 +149,9 @@ aws ec2 run-instances \
   --image-id ami-0abc123def456 \
   --instance-type t3.medium \
   --key-name my-key \
-  --network-interfaces "DeviceIndex=0,SubnetId=subnet-0abc123def456,Groups=sg-0abc123def456,Ipv6Addresses=[{Ipv6Address=2600:1f18:abc:de01::100}]"
+  --subnet-id subnet-0abc123def456 \
+  --security-group-ids sg-0abc123def456 \
+  --ipv6-addresses Ipv6Address=2600:1f18:abc:de01::100
 ```
 
 ## Step 6: Verify IPv6 Connectivity
@@ -238,6 +240,11 @@ resource "aws_route_table" "public" {
   }
 }
 
+resource "aws_route_table_association" "public" {
+  subnet_id      = aws_subnet.public.id
+  route_table_id = aws_route_table.public.id
+}
+
 resource "aws_instance" "ipv6_instance" {
   ami           = "ami-0abc123def456"
   instance_type = "t3.medium"
@@ -253,7 +260,7 @@ For more Terraform patterns with EC2, check out our guide on [creating EC2 insta
 
 ## IPv6-Only Instances
 
-AWS also supports IPv6-only instances, which don't get any IPv4 address at all. This is useful for backend services that only need to communicate with other IPv6-enabled resources.
+AWS also supports IPv6-only instances, which don't get any IPv4 address at all. They must be launched into an IPv6-only subnet on a Nitro-based instance type. This is useful for backend services that only need to communicate with other IPv6-enabled resources.
 
 Launch an IPv6-only instance:
 
@@ -262,11 +269,13 @@ Launch an IPv6-only instance:
 aws ec2 run-instances \
   --image-id ami-0abc123def456 \
   --instance-type t3.medium \
-  --network-interfaces "DeviceIndex=0,SubnetId=subnet-0abc123def456,Groups=sg-0abc123,Ipv6AddressCount=1,AssociatePublicIpAddress=false" \
-  --metadata-options "HttpProtocolIpv6=enabled"
+  --subnet-id subnet-0abc123ipv6only \
+  --security-group-ids sg-0abc123 \
+  --ipv6-address-count 1 \
+  --metadata-options "HttpEndpoint=enabled,HttpProtocolIpv6=enabled"
 ```
 
-Note the `HttpProtocolIpv6=enabled` flag - this lets the instance metadata service work over IPv6, which is essential since the instance won't have IPv4 to reach the metadata endpoint at 169.254.169.254.
+Note the `HttpProtocolIpv6=enabled` flag - this lets the instance metadata service work over IPv6 at `fd00:ec2::254`, which is essential since the instance won't have IPv4 to reach the metadata endpoint at 169.254.169.254.
 
 ## Troubleshooting IPv6 Connectivity
 
