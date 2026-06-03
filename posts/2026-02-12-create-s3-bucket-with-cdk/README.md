@@ -14,16 +14,16 @@ Let's cover everything from the basics to advanced bucket configurations.
 
 ## The Basic Bucket
 
-Creating an S3 bucket with CDK is one line of code. CDK sets secure defaults - public access is blocked, encryption is enabled with S3-managed keys.
+Creating an S3 bucket with CDK is one line of code. New S3 buckets block public access by default, and CDK configures server-side encryption with S3-managed keys.
 
 ```typescript
-// The simplest bucket creation - CDK sets secure defaults
+// The simplest bucket creation
 import * as s3 from 'aws-cdk-lib/aws-s3';
 
 const bucket = new s3.Bucket(this, 'MyBucket');
 ```
 
-That's it. Public access is blocked, server-side encryption is enabled, and the bucket name is auto-generated with a unique suffix. But you'll usually want more configuration.
+That's it. Public access is blocked by S3 defaults, server-side encryption is enabled, and the bucket name is auto-generated with a unique suffix. But you'll usually want more configuration.
 
 ## Production Data Bucket
 
@@ -37,7 +37,7 @@ import * as kms from 'aws-cdk-lib/aws-kms';
 
 // Create a KMS key for encryption
 const encryptionKey = new kms.Key(this, 'BucketKey', {
-  alias: 'data-bucket-key',
+  alias: 'alias/data-bucket-key',
   enableKeyRotation: true,
   removalPolicy: cdk.RemovalPolicy.RETAIN,
 });
@@ -129,16 +129,12 @@ const dataBucket = new s3.Bucket(this, 'DataBucket', {
 
 ## Static Website Hosting
 
-For hosting static websites or single-page applications.
+For storing static website or single-page application assets behind CloudFront.
 
 ```typescript
-// S3 bucket configured for static website hosting with CloudFront
+// Private S3 bucket for static assets served through CloudFront
 const websiteBucket = new s3.Bucket(this, 'WebsiteBucket', {
-  // Static website hosting doesn't use the S3 REST API
-  websiteIndexDocument: 'index.html',
-  websiteErrorDocument: 'error.html',
-
-  // Block direct public access - serve through CloudFront instead
+  // Block direct public access - use a CloudFront S3 origin with OAC/OAI
   blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
 
   // Allow cleanup for non-production
@@ -209,29 +205,29 @@ uploadBucket.addEventNotification(
 
 ## Granting Access
 
-CDK's grant methods are the easiest way to manage bucket permissions.
+CDK's grants helper is the easiest way to manage bucket permissions.
 
 ```typescript
 // Grant different levels of access to different principals
 const bucket = new s3.Bucket(this, 'Bucket');
 
 // Read-only access for a Lambda function
-bucket.grantRead(readOnlyFunction);
+bucket.grants.read(readOnlyFunction);
 
 // Write-only access for an uploader function
-bucket.grantWrite(uploaderFunction);
+bucket.grants.write(uploaderFunction);
 
 // Full read/write access for an admin function
-bucket.grantReadWrite(adminFunction);
+bucket.grants.readWrite(adminFunction);
 
 // Specific object path access
-bucket.grantRead(reportFunction, 'reports/*');
+bucket.grants.read(reportFunction, 'reports/*');
 
 // Grant put (upload) access
-bucket.grantPut(uploadFunction);
+bucket.grants.put(uploadFunction);
 
 // Grant delete access
-bucket.grantDelete(cleanupFunction);
+bucket.grants.delete(cleanupFunction);
 ```
 
 ## Bucket Policies
@@ -260,7 +256,7 @@ sharedBucket.addToResourcePolicy(new iam.PolicyStatement({
   ],
 }));
 
-// Deny unencrypted uploads
+// Deny uploads that don't request SSE-KMS
 sharedBucket.addToResourcePolicy(new iam.PolicyStatement({
   effect: iam.Effect.DENY,
   principals: [new iam.AnyPrincipal()],
@@ -321,4 +317,4 @@ const bucket = new s3.Bucket(this, 'AppBucket', {
 });
 ```
 
-S3 buckets are straightforward with CDK, but the secure defaults and grant methods save you from a lot of common mistakes. For using S3 with Lambda event processing, see the post on [creating a Lambda function with CDK](https://oneuptime.com/blog/post/2026-02-12-create-lambda-function-with-cdk/view). For understanding how CDK L2 constructs set these defaults, check out [CDK L2 constructs for common AWS resources](https://oneuptime.com/blog/post/2026-02-12-cdk-l2-constructs-common-aws-resources/view).
+S3 buckets are straightforward with CDK, but the secure defaults and grants helper save you from a lot of common mistakes. For using S3 with Lambda event processing, see the post on [creating a Lambda function with CDK](https://oneuptime.com/blog/post/2026-02-12-create-lambda-function-with-cdk/view). For understanding how CDK L2 constructs set these defaults, check out [CDK L2 constructs for common AWS resources](https://oneuptime.com/blog/post/2026-02-12-cdk-l2-constructs-common-aws-resources/view).
