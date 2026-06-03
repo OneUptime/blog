@@ -132,8 +132,12 @@ async function uploadLargeFile(filePath, bucket, key) {
 
   // Track progress
   upload.on('httpUploadProgress', (progress) => {
-    const percent = Math.round((progress.loaded / progress.total) * 100);
-    console.log(`Upload progress: ${percent}%`);
+    if (progress.total) {
+      const percent = Math.round((progress.loaded / progress.total) * 100);
+      console.log(`Upload progress: ${percent}%`);
+    } else {
+      console.log(`Uploaded ${progress.loaded} bytes`);
+    }
   });
 
   const result = await upload.done();
@@ -296,13 +300,20 @@ async function getUploadUrl(bucket, key, contentType) {
 }
 ```
 
+When uploading with this URL, send the same `Content-Type` header value that you used when signing the URL.
+
 ## Error Handling
 
 V3 throws specific error classes that you can catch.
 
 ```javascript
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
-import { S3ServiceException } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  GetObjectCommand,
+  NoSuchBucket,
+  NoSuchKey,
+  S3ServiceException,
+} from '@aws-sdk/client-s3';
 
 const s3 = new S3Client({ region: 'us-east-1' });
 
@@ -312,15 +323,18 @@ async function safeDownload(bucket, key) {
     const response = await s3.send(command);
     return await response.Body.transformToString();
   } catch (error) {
-    if (error.name === 'NoSuchKey') {
+    if (error instanceof NoSuchKey) {
       console.log(`Object not found: ${key}`);
       return null;
     }
-    if (error.name === 'NoSuchBucket') {
+    if (error instanceof NoSuchBucket) {
       console.log(`Bucket not found: ${bucket}`);
       return null;
     }
-    if (error.$metadata?.httpStatusCode === 403) {
+    if (
+      error instanceof S3ServiceException &&
+      error.$metadata?.httpStatusCode === 403
+    ) {
       console.log('Access denied');
       return null;
     }
@@ -335,14 +349,14 @@ async function safeDownload(bucket, key) {
 V3's middleware stack lets you intercept and modify requests and responses.
 
 ```javascript
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client } from '@aws-sdk/client-s3';
 
 const s3 = new S3Client({ region: 'us-east-1' });
 
 // Add logging middleware
 s3.middlewareStack.add(
-  (next) => async (args) => {
-    console.log(`S3 Request: ${args.constructor.name}`, {
+  (next, context) => async (args) => {
+    console.log(`S3 Request: ${context.commandName}`, {
       bucket: args.input.Bucket,
       key: args.input.Key,
     });
@@ -352,7 +366,7 @@ s3.middlewareStack.add(
     console.log(`S3 Response: ${result.output.$metadata.httpStatusCode} (${duration}ms)`);
     return result;
   },
-  { step: 'initialize', name: 'loggingMiddleware' }
+  { step: 'build', name: 'loggingMiddleware' }
 );
 ```
 
