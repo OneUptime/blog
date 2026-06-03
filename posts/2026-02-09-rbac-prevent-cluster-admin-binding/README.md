@@ -45,7 +45,7 @@ kubectl create clusterrolebinding test-escalation \
 
 The API server checks if the requesting user has all permissions in the target role before allowing the binding creation.
 
-However, this protection only works if the initial RBAC configuration is correct. If a user already has a subset of dangerous permissions, they might still escalate.
+However, this protection only works if the initial RBAC configuration is correct. If a user has explicit `bind` permission on the target role, or `escalate` permission that lets them create roles with permissions they do not already hold, they might still escalate.
 
 ## Restricting ClusterRoleBinding Creation
 
@@ -73,9 +73,7 @@ kubectl get clusterroles -o json | \
   .metadata.name'
 ```
 
-Expected results:
-- `cluster-admin` (full access role)
-- `system:*` roles (system components)
+Expected results typically include `cluster-admin` (full access role). Some clusters or distributions may also include `system:*` or controller roles for system components.
 
 Any custom role in this output needs review.
 
@@ -165,10 +163,14 @@ def deny_response(uid, message):
     })
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8443, ssl_context='adhoc')
+    app.run(
+        host='0.0.0.0',
+        port=8443,
+        ssl_context=('/tls/tls.crt', '/tls/tls.key')
+    )
 ```
 
-Deploy the webhook:
+After deploying the webhook server as a Service with a certificate signed by the CA in `caBundle`, configure the webhook:
 
 ```yaml
 # cluster-admin-protector-webhook.yaml
@@ -217,16 +219,8 @@ rules:
   - group: "rbac.authorization.k8s.io"
     resources: ["clusterrolebindings"]
   verbs: ["create", "update", "patch", "delete"]
-
-# Log failed attempts specifically
-- level: Metadata
-  resources:
-  - group: "rbac.authorization.k8s.io"
-    resources: ["clusterrolebindings"]
   omitStages:
   - RequestReceived
-  responseStatus:
-    code: 403
 ```
 
 Query for unauthorized attempts:
@@ -247,14 +241,13 @@ jq 'select(.objectRef.resource=="clusterrolebindings" and
 Alert on suspicious activity:
 
 ```yaml
-# Prometheus alert
+# Prometheus alert for webhook rejections
 - alert: ClusterAdminBindingAttempt
   expr: |
-    apiserver_audit_event_total{
-      objectRef_resource="clusterrolebindings",
-      verb="create",
-      requestObject_roleRef_name="cluster-admin",
-      responseStatus_code="403"
+    apiserver_admission_webhook_rejection_count{
+      name="cluster-admin.protector.example.com",
+      type="validating",
+      error_type="no_error"
     } > 0
   annotations:
     summary: "Unauthorized cluster-admin binding attempt detected"
@@ -271,8 +264,10 @@ Audit existing ServiceAccount cluster-admin bindings:
 kubectl get clusterrolebindings -o json | \
   jq -r '.items[] |
   select(.roleRef.name=="cluster-admin") |
-  select(.subjects[]?.kind=="ServiceAccount") |
-  {binding: .metadata.name, sa: .subjects[]?}'
+  .metadata.name as $binding |
+  .subjects[]? |
+  select(.kind=="ServiceAccount") |
+  {binding: $binding, serviceAccount: "\(.namespace)/\(.name)"}'
 ```
 
 Review each binding. Common legitimate uses:
@@ -368,7 +363,9 @@ echo "### Current Cluster-Admin Bindings ###"
 kubectl get clusterrolebindings -o json | \
   jq -r '.items[] |
   select(.roleRef.name=="cluster-admin") |
-  "\(.metadata.name) | \(.subjects[]?.kind) | \(.subjects[]?.name // .subjects[]?.namespace + "/" + .subjects[]?.name)"'
+  .metadata.name as $binding |
+  .subjects[]? |
+  "\($binding) | \(.kind) | \(if .kind == "ServiceAccount" then "\(.namespace)/\(.name)" else .name end)"'
 
 echo ""
 echo "### Emergency Bindings ###"
@@ -394,7 +391,7 @@ Run monthly:
 
 Document approved alternative patterns:
 
-```markdown
+````markdown
 # RBAC Best Practices
 
 ## ❌ Never Use Cluster-Admin
@@ -402,7 +399,7 @@ Document approved alternative patterns:
 kubectl create clusterrolebinding dev-admin \
   --clusterrole=cluster-admin \
   --user=developer@company.com
-```bash
+```
 
 ## ✅ Use Namespace-Scoped Roles
 ```bash
@@ -410,7 +407,7 @@ kubectl create rolebinding dev-admin \
   --clusterrole=admin \
   --user=developer@company.com \
   --namespace=development
-```bash
+```
 
 ## ✅ Create Custom Roles with Minimal Permissions
 ```yaml
@@ -422,12 +419,9 @@ rules:
 - apiGroups: ["apps"]
   resources: ["deployments"]
   verbs: ["get", "list", "create", "update", "patch"]
-```bash
-```text
+```
+````
 
 Train teams during onboarding to avoid requesting cluster-admin.
 
 Preventing cluster-admin bindings requires multiple defensive layers. Built-in privilege escalation prevention provides baseline protection. Admission webhooks enforce policy at admission time. Audit logging and monitoring detect unauthorized attempts. Break-glass procedures handle emergencies without permanent excessive permissions. Together, these controls ensure cluster-admin remains restricted to legitimate platform administrators.
-
-```bash
-```
