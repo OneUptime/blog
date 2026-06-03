@@ -64,17 +64,14 @@ Configure IAM for Vault pods:
 }
 ```
 
-Attach to Vault service account:
+Attach to the Vault service account. If you deploy with the official Helm chart, put the annotation in the chart values:
 
 ```yaml
-# vault-serviceaccount.yaml
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: vault
-  namespace: vault
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/vault-kms-role
+# vault-values.yaml
+server:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/vault-kms-role
 ```
 
 ## Configuring Vault for AWS KMS
@@ -97,6 +94,7 @@ server:
         ui = true
 
         listener "tcp" {
+          # Configure tls_cert_file and tls_key_file for production.
           tls_disable = 1
           address = "[::]:8200"
           cluster_address = "[::]:8201"
@@ -119,6 +117,7 @@ Deploy Vault with auto-unseal:
 ```bash
 helm install vault hashicorp/vault \
   --namespace vault \
+  --create-namespace \
   --values vault-values.yaml
 ```
 
@@ -129,8 +128,6 @@ Initialize Vault once with auto-unseal configured:
 ```bash
 # Initialize (only creates recovery keys, no unseal keys)
 kubectl -n vault exec -it vault-0 -- vault operator init \
-  -key-shares=5 \
-  -key-threshold=3 \
   -recovery-shares=5 \
   -recovery-threshold=3 \
   -format=json > vault-recovery-keys.json
@@ -170,6 +167,13 @@ gcloud kms keys add-iam-policy-binding vault-unseal \
   --keyring=vault-keyring \
   --member=serviceAccount:vault@project-id.iam.gserviceaccount.com \
   --role=roles/cloudkms.cryptoKeyEncrypterDecrypter
+
+# Vault also needs cloudkms.cryptoKeys.get to read key metadata.
+gcloud kms keys add-iam-policy-binding vault-unseal \
+  --location=global \
+  --keyring=vault-keyring \
+  --member=serviceAccount:vault@project-id.iam.gserviceaccount.com \
+  --role=roles/cloudkms.viewer
 ```
 
 Vault configuration for GCP KMS:
@@ -204,7 +208,7 @@ az keyvault key create \
 az keyvault set-policy \
   --name vault-unseal-kv \
   --object-id <vault-managed-identity-id> \
-  --key-permissions encrypt decrypt
+  --key-permissions get encrypt decrypt
 ```
 
 Vault configuration for Azure:
@@ -249,14 +253,13 @@ helm upgrade vault hashicorp/vault \
   --namespace vault \
   --values vault-values-with-autounseal.yaml
 
-# Step 3: Migrate seal
-kubectl -n vault exec -it vault-0 -- vault operator unseal-migrate \
-  -type=awskms
+# Step 3: Migrate seal by unsealing with the migrate flag
+kubectl -n vault exec -it vault-0 -- vault operator unseal -migrate
 
 # Provide your existing unseal keys when prompted
 
-# Step 4: Restart Vault pods
-kubectl -n vault rollout restart statefulset vault
+# Step 4: Repeat until the required unseal key threshold is met
+kubectl -n vault exec -it vault-0 -- vault operator unseal -migrate
 
 # Verify migration
 kubectl -n vault exec vault-0 -- vault status
@@ -270,7 +273,7 @@ Use recovery keys for emergency operations:
 ```bash
 # Generate root token using recovery keys
 kubectl -n vault exec -it vault-0 -- vault operator generate-root \
-  -init -recovery-key
+  -init
 
 # Follow prompts and provide recovery key shares
 
