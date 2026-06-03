@@ -61,19 +61,6 @@ KMS key policy:
         "kms:DescribeKey"
       ],
       "Resource": "*"
-    },
-    {
-      "Sid": "Allow CloudWatch Logs",
-      "Effect": "Allow",
-      "Principal": {
-        "Service": "logs.amazonaws.com"
-      },
-      "Action": [
-        "kms:Decrypt",
-        "kms:Encrypt",
-        "kms:GenerateDataKey"
-      ],
-      "Resource": "*"
     }
   ]
 }
@@ -144,7 +131,27 @@ az storage account create \
   --resource-group velero-backups-rg \
   --location eastus \
   --sku Standard_GRS \
-  --kind StorageV2
+  --kind StorageV2 \
+  --assign-identity
+
+# Grant the storage account identity access to the Key Vault key
+STORAGE_PRINCIPAL_ID=$(az storage account show \
+  --name velerobackupstorage \
+  --resource-group velero-backups-rg \
+  --query identity.principalId \
+  --output tsv)
+
+KEY_VAULT_RESOURCE_ID=$(az keyvault show \
+  --name velero-backup-vault \
+  --resource-group velero-backups-rg \
+  --query id \
+  --output tsv)
+
+az role assignment create \
+  --assignee-object-id "$STORAGE_PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
+  --role "Key Vault Crypto Service Encryption User" \
+  --scope "$KEY_VAULT_RESOURCE_ID"
 
 # Enable encryption with Key Vault key
 az storage account update \
@@ -152,7 +159,8 @@ az storage account update \
   --resource-group velero-backups-rg \
   --encryption-key-source Microsoft.Keyvault \
   --encryption-key-vault https://velero-backup-vault.vault.azure.net/ \
-  --encryption-key-name velero-encryption-key
+  --encryption-key-name velero-encryption-key \
+  --encryption-key-version ""
 ```
 
 ## Installing Velero with Azure Key Vault Encryption
@@ -165,12 +173,6 @@ az ad sp create-for-rbac \
   --name velero-backup-sp \
   --role Contributor \
   --scopes /subscriptions/<subscription-id>/resourceGroups/velero-backups-rg
-
-# Grant Key Vault permissions
-az keyvault set-policy \
-  --name velero-backup-vault \
-  --spn <service-principal-app-id> \
-  --key-permissions get unwrapKey wrapKey
 ```
 
 Create credentials file:
@@ -203,17 +205,19 @@ storageAccount=velerobackupstorage \
 Configure Restic encryption for file-level backups:
 
 ```bash
-# Velero automatically encrypts Restic repositories
+# Create the repository password before the first file-system backup
 # Generate secure repository password
 openssl rand -base64 32 > restic-password
 
-# Create secret
-kubectl create secret generic restic-repo-credentials \
+# Create or update Velero's repository credentials secret
+kubectl create secret generic velero-repo-credentials \
   --namespace velero \
-  --from-file=repository-password=restic-password
+  --from-file=repository-password=restic-password \
+  --dry-run=client \
+  -o yaml | kubectl apply -f -
 ```
 
-Velero uses this password to encrypt all Restic backup data before uploading to storage.
+Velero uses this password for file-system backup repositories before uploading data to storage. Configure it before the first backup that creates the repository; changing it later prevents Velero from opening older repositories. In current Velero releases, the Restic path is deprecated in favor of Kopia for new file-system backup installations.
 
 ## Configuring Encryption for Multi-Cloud Backups
 
@@ -275,11 +279,13 @@ aws kms enable-key-rotation --key-id <key-id>
 # Check rotation status
 aws kms get-key-rotation-status --key-id <key-id>
 
-# Manual key rotation (create new key version)
+# Rotate key material on demand
+aws kms rotate-key-on-demand --key-id <key-id>
+
+# If replacing the KMS key instead, create a new key and move the alias
 aws kms create-key \
   --description "Velero backup encryption key v2"
 
-# Update key alias to point to new key
 aws kms update-alias \
   --alias-name alias/velero-backups \
   --target-key-id <new-key-id>
@@ -294,12 +300,12 @@ az keyvault key create \
   --name velero-encryption-key \
   --protection software
 
-# Azure automatically uses the latest version
+# Azure Storage uses the latest version when encryption-key-version is empty
 ```
 
 ## Monitoring Encryption Key Usage
 
-Track KMS key usage with CloudWatch:
+Track KMS key usage with Prometheus metrics from your AWS exporter:
 
 ```yaml
 apiVersion: monitoring.coreos.com/v1
@@ -331,17 +337,17 @@ spec:
         description: "KMS is experiencing {{ $value }} errors per second"
 ```
 
-Enable CloudWatch logging for KMS:
+Enable CloudTrail logging for KMS API activity:
 
 ```bash
-# Create CloudWatch log group
-aws logs create-log-group --log-group-name /aws/kms/velero-backups
+# Create a CloudTrail trail for management events
+aws cloudtrail create-trail \
+  --name velero-kms-audit \
+  --s3-bucket-name <cloudtrail-log-bucket>
 
-# Enable KMS logging
-aws kms put-key-policy \
-  --key-id <key-id> \
-  --policy-name default \
-  --policy file://kms-logging-policy.json
+# Start logging CloudTrail events
+aws cloudtrail start-logging \
+  --name velero-kms-audit
 ```
 
 ## Auditing Encryption Key Access
@@ -356,7 +362,7 @@ aws cloudtrail lookup-events \
   --query 'Events[*].[EventTime,Username,EventName]' \
   --output table
 
-# Get key usage statistics
+# Review the key policy
 aws kms get-key-policy \
   --key-id <key-id> \
   --policy-name default
@@ -372,11 +378,11 @@ az monitor diagnostic-settings create \
   --logs '[{"category": "AuditEvent", "enabled": true}]' \
   --workspace <log-analytics-workspace-id>
 
-# Query key access
-az monitor activity-log list \
-  --resource-group velero-backups-rg \
-  --offset 7d \
-  --query "[?contains(resourceId, 'velero-backup-vault')]"
+# Query Key Vault audit logs in Log Analytics
+az monitor log-analytics query \
+  --workspace <log-analytics-workspace-id> \
+  --analytics-query "AzureDiagnostics | where ResourceProvider == 'MICROSOFT.KEYVAULT' | where Category == 'AuditEvent' | take 50" \
+  --timespan P7D
 ```
 
 ## Testing Encrypted Backup Restoration
@@ -421,11 +427,17 @@ spec:
     bucket: velero-compliance-backups
   config:
     region: us-east-1
-    # Use FIPS-validated encryption
+    # Use AWS KMS server-side encryption
     serverSideEncryption: aws:kms
     kmsKeyId: alias/pci-compliant-key
-    # Enable bucket versioning
-    enableBucketVersioning: "true"
+```
+
+Enable bucket versioning separately on the S3 bucket:
+
+```bash
+aws s3api put-bucket-versioning \
+  --bucket velero-compliance-backups \
+  --versioning-configuration Status=Enabled
 ```
 
 ## Handling Key Deletion and Recovery
