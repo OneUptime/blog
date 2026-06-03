@@ -14,7 +14,7 @@ Many teams make the mistake of treating all containers in a pod equally or negle
 
 ## Understanding Pod Resource Allocation
 
-In Kubernetes, resource requests and limits apply at the container level, not the pod level. The pod's total resource requirements are the sum of all container requests. The scheduler uses these aggregated requests to make placement decisions.
+In Kubernetes, resource requests and limits are most commonly set at the container level. Kubernetes also supports pod-level resource specifications in newer clusters, but container-level settings are still what let you size a sidecar separately from the main application. The pod's total resource requirements are the sum of all container requests. The scheduler uses these aggregated requests to make placement decisions.
 
 Each container in a pod can specify CPU and memory requests (minimum guaranteed resources) and limits (maximum allowed resources). When containers in the same pod compete for resources, Kubernetes uses these values to determine resource allocation and throttling behavior.
 
@@ -210,11 +210,11 @@ spec:
           secretName: app-certs
 ```
 
-This example shows a realistic multi-sidecar deployment with appropriately sized resources for each container's role. The total pod requests 1.507 CPU and 1.54Gi memory, with limits at 3.15 CPU and 3.15Gi memory.
+This example shows a realistic multi-sidecar deployment with appropriately sized resources for each container's role. The total pod requests 1.375 CPU and 1504Mi memory, with limits at 2.9 CPU and 3008Mi memory.
 
 ## Quality of Service Classes
 
-Kubernetes assigns QoS classes based on resource configuration, which affects how pods are scheduled and evicted under resource pressure. Understanding this helps you configure sidecars appropriately.
+Kubernetes assigns QoS classes based on resource configuration, which affects eviction behavior under resource pressure. Scheduling still primarily uses resource requests, so understanding both requests and QoS helps you configure sidecars appropriately.
 
 ```yaml
 # Guaranteed QoS - requests equal limits for all containers
@@ -293,7 +293,7 @@ spec:
             cpu: "200m"
 ```
 
-Guaranteed QoS pods have the highest priority and are last to be evicted. For critical applications with sidecars, setting requests equal to limits ensures predictable performance and maximum protection from eviction.
+Guaranteed QoS pods are least likely to be evicted under node resource pressure. For critical applications with sidecars, setting requests equal to limits ensures predictable resource ceilings and the strongest QoS protection from resource-pressure eviction.
 
 Burstable QoS allows containers to use extra resources when available while still guaranteeing minimum resources. This works well for applications with variable load where sidecars need flexibility.
 
@@ -313,7 +313,7 @@ spec:
     kind: Deployment
     name: web-app-with-sidecar
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
   resourcePolicy:
     containerPolicies:
     # Application container policy
@@ -327,7 +327,7 @@ spec:
       controlledResources:
       - cpu
       - memory
-      mode: Auto
+      controlledValues: RequestsOnly
 
     # Sidecar container policy with different bounds
     - containerName: log-forwarder
@@ -340,7 +340,7 @@ spec:
       controlledResources:
       - cpu
       - memory
-      mode: Auto
+      controlledValues: RequestsOnly
 
     # Envoy proxy with more aggressive scaling
     - containerName: envoy-proxy
@@ -353,10 +353,10 @@ spec:
       controlledResources:
       - cpu
       - memory
-      mode: Auto
+      controlledValues: RequestsOnly
 ```
 
-VPA monitors actual resource usage and adjusts requests accordingly. Setting different policies per container ensures each sidecar scales appropriately based on its actual needs.
+VPA monitors actual resource usage and adjusts requests accordingly. Using `Recreate` applies recommendations by recreating pods, while `controlledValues: RequestsOnly` leaves existing limits unchanged. Setting different policies per container ensures each sidecar scales appropriately based on its actual needs.
 
 Resource Quotas and Limit Ranges
 
@@ -419,6 +419,9 @@ metadata:
   namespace: monitoring
 data:
   prometheus.yml: |
+    rule_files:
+    - /etc/prometheus/alerts.yml
+
     scrape_configs:
     - job_name: 'kubernetes-pods'
       kubernetes_sd_configs:
@@ -461,24 +464,24 @@ data:
         annotations:
           summary: "Sidecar {{ $labels.container }} experiencing CPU throttling"
 
-      # Alert when application impacted by sidecar
-      - alert: ApplicationResourceStarvation
+      # Alert when application and sidecar containers are both under memory pressure
+      - alert: ApplicationAndSidecarMemoryPressure
         expr: |
           (
             container_memory_usage_bytes{container="application"}
             / container_spec_memory_limit_bytes{container="application"}
-          ) < 0.5
-          and
+          ) > 0.8
+          and on(namespace, pod)
           (
             container_memory_usage_bytes{container=~".*-sidecar|envoy.*"}
             / container_spec_memory_limit_bytes{container=~".*-sidecar|envoy.*"}
           ) > 0.9
         for: 5m
         annotations:
-          summary: "Application may be starved due to sidecar resource usage"
+          summary: "Application and sidecar containers are both near memory limits"
 ```
 
-These Prometheus rules help identify when sidecars are under-resourced or when they're impacting the main application.
+These Prometheus rules help identify when sidecars are under-resourced or when both application and sidecar containers are under memory pressure.
 
 ## Optimizing Istio Sidecar Resources
 
