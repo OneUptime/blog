@@ -32,8 +32,14 @@ aws cloudfront create-distribution \
       "ViewerProtocolPolicy": "redirect-to-https",
       "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
       "Compress": true,
-      "AllowedMethods": ["GET", "HEAD"],
-      "CachedMethods": ["GET", "HEAD"]
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"]
+        }
+      }
     },
     "Origins": {
       "Quantity": 1,
@@ -54,20 +60,23 @@ aws cloudfront create-distribution \
 Enable IPv6 on an existing distribution:
 
 ```bash
-# Get the current config
-aws cloudfront get-distribution-config --id E1234567890ABC > config.json
+# Get the current ETag and config
+ETAG=$(aws cloudfront get-distribution-config --id E1234567890ABC --query 'ETag' --output text)
+aws cloudfront get-distribution-config \
+  --id E1234567890ABC \
+  --query 'DistributionConfig' > config.json
 
 # Update IsIPV6Enabled to true in the config
 # Then apply the update
 aws cloudfront update-distribution \
   --id E1234567890ABC \
-  --if-match CURRENT_ETAG \
+  --if-match "$ETAG" \
   --distribution-config file://updated-config.json
 ```
 
 ## DNS Configuration for Dual-Stack
 
-When using a custom domain with your CloudFront distribution, you need both A and AAAA alias records in Route 53.
+When using Route 53 alias records for a custom domain with your CloudFront distribution, you need both A and AAAA alias records.
 
 Create dual-stack DNS records in Route 53:
 
@@ -107,7 +116,7 @@ aws route53 change-resource-record-sets \
 
 The hosted zone ID `Z2FDTNDATAQYW2` is the fixed CloudFront hosted zone ID. It's the same for all CloudFront distributions.
 
-If you only create an A record without an AAAA record, IPv6-native users won't be able to resolve your domain. Make sure you always create both.
+If you only create an A record without an AAAA record, IPv6-native users won't be able to resolve your domain to a CloudFront IPv6 address. Make sure you always create both for Route 53 alias records.
 
 ## CloudFormation Template
 
@@ -248,28 +257,28 @@ function handler(event) {
 
 ## Security Group Considerations for Origins
 
-If your origin is behind a security group (EC2, ALB, etc.), make sure the security group allows traffic from CloudFront's IPv6 ranges.
+If your custom origin is behind a security group (EC2, ALB, etc.), make sure the security group allows traffic from CloudFront's origin-facing IP ranges for the origin IP address type you configure.
 
-CloudFront uses a published list of IP ranges. You can fetch them and update security groups:
+CloudFront uses a published list of origin-facing IP ranges. You can fetch them and update security groups:
 
 ```bash
-# Fetch CloudFront IP ranges
+# Fetch CloudFront origin-facing IP ranges
 curl -s https://ip-ranges.amazonaws.com/ip-ranges.json | \
   python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 # IPv4 ranges
 for prefix in data['prefixes']:
-    if prefix['service'] == 'CLOUDFRONT':
+    if prefix['service'] == 'CLOUDFRONT_ORIGIN_FACING':
         print(f\"IPv4: {prefix['ip_prefix']}\")
 # IPv6 ranges
 for prefix in data['ipv6_prefixes']:
-    if prefix['service'] == 'CLOUDFRONT':
+    if prefix['service'] == 'CLOUDFRONT_ORIGIN_FACING':
         print(f\"IPv6: {prefix['ipv6_prefix']}\")
 "
 ```
 
-For origins that CloudFront connects to, note that CloudFront-to-origin connections use IPv4 by default. Even when users connect to CloudFront over IPv6, CloudFront typically connects to your origin over IPv4. If your origin only has IPv6, make sure to configure it appropriately.
+For custom origins, CloudFront-to-origin connections use IPv4 by default. Even when users connect to CloudFront over IPv6, CloudFront connects to your origin over IPv4 unless you configure the origin for IPv6-only or dual-stack origin connectivity. If your custom origin only has IPv6, set the origin IP address type to IPv6.
 
 ## Monitoring IPv6 Traffic
 
@@ -316,10 +325,10 @@ print(f"IPv6: {ipv6_count} ({ipv6_count/total*100:.1f}%)")
 
 **DNS not returning AAAA records**: Make sure you created the AAAA alias record in Route 53 and that IPv6 is enabled on the distribution.
 
-**IPv6 clients can't connect**: Verify your ACM certificate is valid and your origin allows traffic from CloudFront IP ranges.
+**IPv6 clients can't connect**: Verify your ACM certificate is valid, your distribution has IPv6 enabled, and your DNS has an AAAA record for the CloudFront alias. If you also enabled IPv6 or dual-stack origin connectivity, verify that your origin allows traffic from CloudFront's origin-facing IPv6 ranges.
 
 **CloudFront Functions breaking on IPv6**: Test your functions with both IPv4 and IPv6 addresses in the viewer IP field.
 
 **WAF rules not matching IPv6**: If you use AWS WAF with your distribution, make sure your IP set rules include IPv6 CIDRs where appropriate.
 
-Dual-stack is a straightforward configuration that's worth enabling on every CloudFront distribution. There's no downside - IPv4 users are unaffected, and IPv6 users get a better experience. For more CloudFront optimization, see our guide on [Origin Shield](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-shield-cache-optimization/view).
+Dual-stack is a straightforward configuration that's worth enabling for most CloudFront distributions. IPv4 users are unaffected, and IPv6 users get a better experience. One important exception: if you use signed URLs or signed cookies with a custom policy that restricts access by `IpAddress`, AWS recommends not enabling IPv6 for that distribution. For more CloudFront optimization, see our guide on [Origin Shield](https://oneuptime.com/blog/post/2026-02-12-cloudfront-origin-shield-cache-optimization/view).
