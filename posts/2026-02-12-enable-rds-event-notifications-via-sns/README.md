@@ -110,7 +110,7 @@ Here's a breakdown of the most important event categories by source type:
 
 | Category | What It Covers |
 |---|---|
-| availability | Instance started, stopped, or restarted |
+| availability | Instance shutdown, restart, or availability-impacting storage conditions |
 | failover | Multi-AZ failover started or completed |
 | failure | Instance failure or storage issue |
 | maintenance | Maintenance applied, pending maintenance |
@@ -118,7 +118,8 @@ Here's a breakdown of the most important event categories by source type:
 | creation | Instance created |
 | deletion | Instance deleted |
 | recovery | Instance recovery from snapshot or point-in-time |
-| notification | Exceeding storage, approaching limits |
+| low storage | Allocated storage exhausted or approaching storage-full thresholds |
+| notification | Instance started/stopped, best-practice warnings, and general notices |
 
 ### DB Cluster Events (Aurora)
 
