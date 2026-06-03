@@ -8,7 +8,7 @@ Description: Learn how to deploy Thanos Query Frontend with Memcached to cache K
 
 ---
 
-Thanos Query Frontend sits between Grafana and Thanos Querier, caching query results and splitting large queries into parallel smaller queries. This reduces load on Prometheus and object storage while improving dashboard performance by 10-100x for repeated queries.
+Thanos Query Frontend sits between Grafana and Thanos Querier, caching query results and splitting large queries into parallel smaller queries. This reduces load on Prometheus and object storage while significantly improving dashboard performance for repeated queries.
 
 This guide covers deploying and configuring Query Frontend for production use.
 
@@ -18,7 +18,7 @@ Query Frontend provides three key features:
 
 1. **Result caching**: Stores query results in Memcached for instant retrieval
 2. **Query splitting**: Breaks large time range queries into parallel sub-queries
-3. **Query queuing**: Prevents overload by queuing excess queries
+3. **Parallelism limits and retries**: Controls query fan-out and retries failed downstream requests
 
 For dashboards that query the same metrics repeatedly, caching provides massive speedups. The first load might take 5 seconds, subsequent loads return in 50ms.
 
@@ -108,7 +108,7 @@ spec:
           # Query splitting configuration
           - --query-range.split-interval=24h
           - --query-range.max-retries-per-request=5
-          - --query-frontend.max-outstanding-requests=2000
+          - --query-range.max-query-parallelism=32
           # Result caching with Memcached
           - --query-range.response-cache-config-file=/etc/thanos/cache-config.yml
           # Query stats logging
@@ -188,7 +188,7 @@ data:
         queryTimeout: 300s
 ```
 
-All Grafana queries now go through Query Frontend, benefiting from caching and splitting.
+Grafana queries now go through Query Frontend. Range queries benefit from the cache and splitting configured above.
 
 ## Configuring Index Cache for Store Gateway
 
@@ -218,24 +218,27 @@ args:
   - --data-dir=/data
   - --objstore.config-file=/etc/thanos/objstore.yml
   - --index-cache.config-file=/etc/thanos/index-cache.yml
-  - --index-cache-size=0  # Use Memcached instead of in-memory
   - --chunk-pool-size=2GB
 ```
 
 ## Optimizing Cache TTL
 
-Configure cache time-to-live based on data freshness needs:
+Configure cache time-to-live and freshness based on data needs:
 
 ```yaml
 query-frontend:
   args:
-    # Cache instant queries for 1 minute
-    - --query-frontend.instant-query.cache-ttl=1m
-    # Cache range queries for different durations based on age
-    - --query-frontend.range-query.cache-ttl=5m
+    # Do not cache query_range responses that include the most recent minute
+    - --query-range.response-cache-max-freshness=1m
+  cache-config.yml: |
+    type: MEMCACHED
+    config:
+      addresses:
+        - dnssrv+_memcached._tcp.memcached.monitoring.svc.cluster.local
+      expiration: 24h
 ```
 
-Recent data changes frequently, so cache for shorter periods. Historical data is immutable, so cache longer.
+Recent data changes frequently, so avoid caching the freshest responses. Historical data is immutable, so a longer Memcached expiration can be useful.
 
 ## Query Splitting Configuration
 
@@ -246,9 +249,9 @@ args:
   # Split queries into 12-hour intervals
   - --query-range.split-interval=12h
   # Align splits to reduce cache misses
-  - --query-range.align-range-with-step=true
+  - --query-range.align-range-with-step
   # Maximum parallelism
-  - --query-frontend.max-outstanding-requests=4000
+  - --query-range.max-query-parallelism=32
 ```
 
 Smaller split intervals increase parallelism but create more sub-queries. Find the balance for your cluster size.
@@ -260,20 +263,20 @@ Track cache effectiveness:
 ```promql
 # Cache hit rate
 
-sum(rate(thanos_query_frontend_queries_total{result="hit"}[5m])) /
-sum(rate(thanos_query_frontend_queries_total[5m]))
+sum(rate(cortex_cache_hits_total{name="memcache",tripperware="query_range"}[5m])) /
+sum(rate(cortex_cache_fetched_keys_total{name="memcache",tripperware="query_range"}[5m]))
 
 # Cache miss rate
-sum(rate(thanos_query_frontend_queries_total{result="miss"}[5m])) /
-sum(rate(thanos_query_frontend_queries_total[5m]))
-
-# Query splitting effectiveness
-histogram_quantile(0.99,
-  rate(thanos_query_frontend_split_queries_total_bucket[5m])
+1 - (
+  sum(rate(cortex_cache_hits_total{name="memcache",tripperware="query_range"}[5m])) /
+  sum(rate(cortex_cache_fetched_keys_total{name="memcache",tripperware="query_range"}[5m]))
 )
 
-# Request queue depth
-thanos_query_frontend_queue_length
+# Split query rate
+sum(rate(thanos_frontend_split_queries_total{tripperware="query_range"}[5m]))
+
+# Retry rate
+sum(rate(cortex_query_frontend_retries_count{tripperware="query_range"}[5m]))
 ```
 
 ## Creating Dashboards for Cache Metrics
@@ -288,21 +291,21 @@ Build a Grafana dashboard to monitor Query Frontend:
       {
         "title": "Cache Hit Rate",
         "targets": [{
-          "expr": "sum(rate(thanos_query_frontend_queries_total{result=\"hit\"}[5m])) / sum(rate(thanos_query_frontend_queries_total[5m]))"
+          "expr": "sum(rate(cortex_cache_hits_total{name=\"memcache\",tripperware=\"query_range\"}[5m])) / sum(rate(cortex_cache_fetched_keys_total{name=\"memcache\",tripperware=\"query_range\"}[5m]))"
         }],
         "type": "graph"
       },
       {
-        "title": "Query Latency",
+        "title": "Query Volume",
         "targets": [{
-          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{handler=\"query_range\"}[5m]))"
+          "expr": "sum(rate(thanos_query_frontend_queries_total{op=\"query_range\"}[5m]))"
         }],
         "type": "graph"
       },
       {
-        "title": "Memcached Operations",
+        "title": "Memcached Keys Fetched",
         "targets": [{
-          "expr": "rate(thanos_memcached_operations_total[5m])"
+          "expr": "sum(rate(cortex_cache_fetched_keys_total{name=\"memcache\",tripperware=\"query_range\"}[5m]))"
         }],
         "type": "graph"
       }
@@ -328,8 +331,8 @@ spec:
     - alert: LowCacheHitRate
       expr: |
         (
-          sum(rate(thanos_query_frontend_queries_total{result="hit"}[10m])) /
-          sum(rate(thanos_query_frontend_queries_total[10m]))
+          sum(rate(cortex_cache_hits_total{name="memcache",tripperware="query_range"}[10m])) /
+          sum(rate(cortex_cache_fetched_keys_total{name="memcache",tripperware="query_range"}[10m]))
         ) < 0.3
       for: 15m
       labels:
@@ -347,26 +350,24 @@ spec:
       annotations:
         summary: "Memcached instance down"
 
-    - alert: HighQueryLatency
+    - alert: HighRetryRate
       expr: |
-        histogram_quantile(0.99,
-          rate(http_request_duration_seconds_bucket{handler="query_range"}[5m])
-        ) > 30
+        sum(rate(cortex_query_frontend_retries_count{tripperware="query_range"}[5m])) > 1
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "High query latency through frontend"
-        description: "P99 latency is {{ $value }}s"
+        summary: "High query retry rate through frontend"
+        description: "Query Frontend is retrying {{ $value }} downstream requests per second"
 
-    - alert: QueryQueueBacklog
+    - alert: CacheWriteBacklog
       expr: |
-        thanos_query_frontend_queue_length > 100
+        cortex_cache_background_queue_length{name="memcache",tripperware="query_range"} > 100
       for: 5m
       labels:
         severity: warning
       annotations:
-        summary: "Large query queue backlog"
+        summary: "Large cache write backlog"
 ```
 
 ## Scaling Memcached
@@ -387,22 +388,12 @@ Total cache: 5 replicas × 4GB = 20GB cache space.
 
 ## Using Multiple Cache Layers
 
-Configure separate caches for different query types:
+Configure separate caches for range queries and label or series requests:
 
 ```yaml
-# Fast cache for recent data
-- name: recent-cache
-  config:
-    type: MEMCACHED
-    config:
-      addresses: ["memcached-recent:11211"]
-
-# Larger cache for historical data
-- name: historical-cache
-  config:
-    type: MEMCACHED
-    config:
-      addresses: ["memcached-historical:11211"]
+args:
+  - --query-range.response-cache-config-file=/etc/thanos/range-cache.yml
+  - --labels.response-cache-config-file=/etc/thanos/labels-cache.yml
 ```
 
 ## Debugging Cache Misses
@@ -411,22 +402,22 @@ Investigate why queries aren't hitting cache:
 
 ```bash
 # Check Memcached stats
-kubectl exec -n monitoring memcached-0 -- memcached-tool localhost:11211 stats
+kubectl exec -n monitoring memcached-0 -- sh -c 'printf "stats\r\n" | nc localhost 11211'
 
 # View Query Frontend logs
 kubectl logs -n monitoring deployment/thanos-query-frontend | grep -i cache
 
-# Check for cache key collisions
-kubectl logs -n monitoring deployment/thanos-query-frontend | grep "cache_key"
+# Check for values too large for Memcached
+sum(rate(cortex_memcache_client_set_skip_total[5m]))
 ```
 
 ## Performance Benchmarks
 
-Typical improvements with Query Frontend:
+Possible improvements with Query Frontend:
 
 - **First query**: 5-10 seconds (cache miss)
 - **Cached query**: 50-200ms (cache hit)
-- **95th percentile improvement**: 20-50x faster
-- **Backend load reduction**: 60-90% fewer queries to Querier
+- **95th percentile improvement**: Much faster for repeated dashboards
+- **Backend load reduction**: Fewer repeated range queries to Querier
 
 Thanos Query Frontend with Memcached transforms dashboard performance, especially for dashboards that refresh frequently or are viewed by many users simultaneously.
