@@ -12,15 +12,15 @@ Seccomp (secure computing mode) is a Linux kernel feature that filters system ca
 
 Implementing seccomp in Kubernetes adds a critical security layer that operates at the kernel level, below the container runtime. Even if an attacker compromises your application, seccomp prevents them from making dangerous syscalls that could lead to privilege escalation or host compromise.
 
-## Understanding seccomp modes
+## Understanding seccomp profile types
 
-Seccomp operates in several modes:
+Kubernetes supports several seccomp profile types:
 
-**Disabled**: No filtering (insecure, default for some container runtimes)
+**Unconfined**: No seccomp filtering. This is the Kubernetes default unless seccomp defaulting is enabled on the kubelet.
 
 **RuntimeDefault**: Uses the container runtime's default profile (good baseline)
 
-**Localhost**: Uses a custom profile from the host filesystem (maximum control)
+**Localhost**: Uses a custom profile from the node filesystem (maximum control)
 
 Most deployments should use RuntimeDefault as a minimum, with Localhost for specialized needs.
 
@@ -213,10 +213,9 @@ spec:
 
 ## Auditing syscall usage
 
-Before creating restrictive profiles, audit what syscalls your application uses:
+Before creating restrictive profiles, audit what syscalls your application uses. This audit profile logs syscalls without blocking them:
 
-```yaml
-# Audit profile - logs violations without blocking
+```json
 {
   "defaultAction": "SCMP_ACT_LOG",
   "architectures": ["SCMP_ARCH_X86_64"]
@@ -275,7 +274,7 @@ Error: Operation not permitted
 Check container logs for more specific information:
 
 ```bash
-kubectl logs pod-name container-name
+kubectl logs pod-name -c container-name
 ```
 
 If legitimate functionality breaks, update the profile to allow the required syscalls. Always verify that the syscalls are actually needed before allowing them.
@@ -303,13 +302,13 @@ Understanding syscalls helps build appropriate profiles:
 - `open`, `openat`, `close`, `read`, `write`, `stat`, `fstat`
 
 **Network operations**:
-- `socket`, `bind`, `listen`, `accept`, `connect`, `send`, `recv`
+- `socket`, `bind`, `listen`, `accept`, `connect`, `sendto`, `recvfrom`
 
 **Memory operations**:
 - `mmap`, `mprotect`, `munmap`, `brk`
 
 **Process operations**:
-- `fork`, `clone`, `execve`, `wait`, `exit`
+- `fork`, `clone`, `execve`, `wait4`, `waitid`, `exit`
 
 **Dangerous operations** (usually blocked):
 - `mount`, `umount` - Filesystem mounting
@@ -381,45 +380,21 @@ Web servers can use quite restrictive profiles:
 }
 ```
 
-This minimal profile is sufficient for Nginx or similar web servers.
+This profile is a starting point for a minimal web server profile. Nginx and similar web servers often need additional syscalls depending on their version, modules, TLS configuration, and base image, so audit and test before using it.
 
 ## Monitoring seccomp effectiveness
 
-Track seccomp violations to ensure profiles work correctly:
+Track seccomp violations through kernel audit logs to ensure profiles work correctly:
 
-```yaml
-# ServiceMonitor for seccomp metrics
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: seccomp-violations
-spec:
-  selector:
-    matchLabels:
-      app: node-exporter
-  endpoints:
-  - port: metrics
+```bash
+# View recent seccomp audit events
+sudo ausearch -m SECCOMP
+
+# Or follow kernel logs on systems that write audit messages there
+sudo dmesg --follow | grep SECCOMP
 ```
 
-Create alerts for unexpected violations:
-
-```yaml
-# PrometheusRule
-apiVersion: monitoring.coreos.com/v1
-kind: PrometheusRule
-metadata:
-  name: seccomp-alerts
-spec:
-  groups:
-  - name: seccomp
-    rules:
-    - alert: SeccompViolation
-      expr: |
-        rate(seccomp_violations_total[5m]) > 0
-      annotations:
-        summary: "Seccomp profile blocking syscalls"
-        description: "Application attempting blocked syscalls"
-```
+Create alerts from your log pipeline for unexpected `SECCOMP` audit events. Node exporter does not expose a built-in `seccomp_violations_total` metric, so Prometheus alerts require a custom exporter or log-derived metric.
 
 Investigate violations promptly - they may indicate attacks or overly restrictive profiles.
 
