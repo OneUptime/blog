@@ -45,6 +45,14 @@ Add a health check controller if you don't have one already. Load balancers and 
 
 ```java
 // src/main/java/com/yourapp/controller/HealthController.java
+import java.time.Instant;
+import java.util.HashMap;
+import java.util.Map;
+
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RestController;
+
 @RestController
 public class HealthController {
 
@@ -127,6 +135,7 @@ RUN mvn clean package -DskipTests
 
 FROM eclipse-temurin:17-jre-jammy
 WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
 COPY --from=build /app/target/*.jar app.jar
 
 # JVM settings for container environments
@@ -201,6 +210,9 @@ Here's a task definition that allocates 1 vCPU and 2GB of memory, which is a rea
 Use the CLI to register the task and create a service:
 
 ```bash
+# Create the CloudWatch Logs group used by the task definition
+aws logs create-log-group --log-group-name /ecs/spring-app
+
 # Register the task definition
 aws ecs register-task-definition --cli-input-json file://task-definition.json
 
@@ -214,6 +226,7 @@ aws ecs create-service \
   --task-definition spring-app \
   --desired-count 2 \
   --launch-type FARGATE \
+  --load-balancers targetGroupArn=arn:aws:elasticloadbalancing:us-east-1:ACCOUNT_ID:targetgroup/spring-app/abc123,containerName=spring-app,containerPort=8080 \
   --network-configuration "awsvpcConfiguration={subnets=[subnet-xxx],securityGroups=[sg-xxx],assignPublicIp=ENABLED}"
 ```
 
@@ -233,6 +246,7 @@ yum install -y java-17-amazon-corretto
 useradd -r -s /bin/false springapp
 
 # Download the JAR from S3
+mkdir -p /opt/spring-app
 aws s3 cp s3://my-deploy-bucket/spring-app/app.jar /opt/spring-app/app.jar
 chown springapp:springapp /opt/spring-app/app.jar
 
@@ -314,7 +328,7 @@ artifacts:
 
 Regardless of deployment method, you need solid monitoring. Spring Boot Actuator gives you metrics that integrate well with CloudWatch.
 
-Add the Micrometer CloudWatch dependency to your `pom.xml`:
+If you're using Spring Cloud AWS for the CloudWatch registry, add the Micrometer CloudWatch dependency to your `pom.xml`:
 
 ```xml
 <dependency>
@@ -328,11 +342,16 @@ Then configure it to push metrics:
 ```yaml
 # application-production.yml
 management:
-  metrics:
-    export:
-      cloudwatch:
+  cloudwatch:
+    metrics:
+      export:
         namespace: SpringApp
         step: 1m
+
+spring:
+  cloud:
+    aws:
+      cloudwatch:
         enabled: true
 ```
 
