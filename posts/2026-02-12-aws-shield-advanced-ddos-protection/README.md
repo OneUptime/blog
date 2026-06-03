@@ -8,9 +8,9 @@ Description: A complete guide to configuring AWS Shield Advanced for DDoS protec
 
 ---
 
-DDoS attacks aren't a matter of "if" but "when." AWS Shield Standard gives you basic protection for free, but if you're running anything business-critical, you need Shield Advanced. It provides enhanced detection, real-time visibility, and access to the AWS DDoS Response Team (DRT) when things go sideways.
+DDoS attacks aren't a matter of "if" but "when." AWS Shield Standard gives you basic protection for free, but if you're running anything business-critical, you need Shield Advanced. It provides enhanced detection, real-time visibility, and access to the AWS Shield Response Team (SRT) when things go sideways.
 
-Shield Advanced costs $3,000/month plus data transfer fees, so it's not a casual decision. But if you're protecting revenue-generating applications, that cost is a rounding error compared to the damage a sustained DDoS attack can cause. Let's walk through how to set it up properly.
+Shield Advanced costs $3,000/month per organization plus data transfer fees, so it's not a casual decision. But if you're protecting revenue-generating applications, that cost is a rounding error compared to the damage a sustained DDoS attack can cause. Let's walk through how to set it up properly.
 
 ## What Shield Advanced Actually Gives You
 
@@ -18,12 +18,12 @@ Before diving into configuration, here's what you're paying for beyond the free 
 
 - **Enhanced detection** with traffic baselining specific to your resources
 - **Advanced mitigation** for layer 3, 4, and 7 attacks
-- **DDoS Response Team access** - actual AWS engineers who'll help you during an attack
+- **Shield Response Team access** - actual AWS engineers who'll help you during an attack
 - **Cost protection** - credits for scaling charges caused by DDoS attacks
 - **Real-time metrics and reports** through CloudWatch
-- **WAF integration** at no additional WAF cost for protected resources
+- **WAF integration** with standard AWS WAF costs covered for protected resources, within AWS's documented limits
 
-Shield Advanced protects CloudFront distributions, Route 53 hosted zones, Application Load Balancers, Elastic IPs, and Global Accelerator endpoints.
+Shield Advanced protects CloudFront distributions, Route 53 hosted zones, Global Accelerator standard accelerators, Elastic IPs, Application Load Balancers, and Classic Load Balancers. Network Load Balancers and EC2 instances are protected through associated Elastic IPs.
 
 ## Subscribing to Shield Advanced
 
@@ -38,12 +38,9 @@ aws shield create-subscription
 aws shield describe-subscription
 ```
 
-If you're running a multi-account setup with AWS Organizations, you can enable Shield Advanced across all accounts from the management account.
+If you're running a multi-account setup with AWS Organizations, use AWS Firewall Manager to automate Shield Advanced subscriptions and protections where supported. Firewall Manager supports Shield Advanced policies for protected resource types except Route 53 hosted zones and Global Accelerator standard accelerators.
 
 ```bash
-# From the management account, enable for the organization
-aws shield enable-proactive-engagement
-
 # List all member accounts
 aws organizations list-accounts \
   --query 'Accounts[*].{Id:Id,Name:Name}' \
@@ -100,7 +97,7 @@ First, create Route 53 health checks for your protected resources.
 aws route53 create-health-check \
   --caller-reference "prod-app-$(date +%s)" \
   --health-check-config '{
-    "IPAddress": "203.0.113.10",
+    "FullyQualifiedDomainName": "app.example.com",
     "Port": 443,
     "Type": "HTTPS",
     "ResourcePath": "/health",
@@ -175,12 +172,12 @@ resource "aws_shield_protection_group" "all" {
 }
 ```
 
-## Configuring DRT Access
+## Configuring SRT Access
 
-The DDoS Response Team can only help you if they have access to your resources. You need to grant them an IAM role and optionally share your WAF logs.
+The Shield Response Team can only help you if they have access to your resources. You need to grant them an IAM role and optionally share additional logs outside of your WAF web ACL logs.
 
 ```bash
-# Create the IAM role for DRT
+# Create the IAM role for SRT
 aws iam create-role \
   --role-name AWSDDoSResponseTeamRole \
   --assume-role-policy-document '{
@@ -201,12 +198,12 @@ aws iam attach-role-policy \
   --role-name AWSDDoSResponseTeamRole \
   --policy-arn arn:aws:iam::aws:policy/service-role/AWSShieldDRTAccessPolicy
 
-# Grant DRT access to your account
+# Grant SRT access to your account
 aws shield associate-drt-role \
   --role-arn "arn:aws:iam::123456789012:role/AWSDDoSResponseTeamRole"
 ```
 
-If you want the DRT to proactively engage when your health checks fail (highly recommended), enable proactive engagement.
+If you want the SRT to proactively engage when your health checks fail during a detected event (highly recommended), enable proactive engagement.
 
 ```bash
 # Set up emergency contacts first
@@ -282,7 +279,7 @@ The aggregation setting matters. Use `SUM` when traffic is distributed across re
 
 One of Shield Advanced's underappreciated features is cost protection. If a DDoS attack causes your resources to scale up, you can request credits for those charges.
 
-This covers scaling costs for CloudFront, Route 53, ALB, NLB, EC2, and ECS. To qualify, the resource must be protected by Shield Advanced at the time of the attack. Credits aren't automatic - you need to request them through AWS Support with the attack details.
+This covers specific increased-utilization charges, including Shield Advanced data transfer out, CloudFront requests and data transfer out, Route 53 queries, Global Accelerator standard accelerator data transfer, ALB load balancer capacity units, and instance costs for protected EC2 instances created by an auto-scaling policy in response to the attack. To qualify, the resource must be protected by Shield Advanced before the attack starts. For applicable CloudFront and ALB resources, you must also have a WAF web ACL with a rate-based rule in block mode. Credits aren't automatic - you need to request them through AWS Support with the attack details.
 
 ## Best Practices
 
@@ -290,7 +287,7 @@ A few things I've learned from running Shield Advanced in production:
 
 1. **Protect all public-facing resources**, not just your main load balancer. Attackers will find your weakest entry point.
 2. **Always configure health checks.** The difference in detection time is significant.
-3. **Enable proactive engagement.** The DRT can start mitigating before you even notice.
+3. **Enable proactive engagement.** The SRT can start troubleshooting before you even notice.
 4. **Keep emergency contacts updated.** Stale contacts mean missed notifications.
 5. **Review attack summaries monthly.** Even mitigated attacks tell you about threat patterns.
 
@@ -298,4 +295,4 @@ For complementary protection at the application layer, consider pairing Shield A
 
 ## Wrapping Up
 
-Shield Advanced isn't cheap, but for production workloads that can't afford downtime, it's worth every penny. The combination of enhanced detection, DRT access, and cost protection gives you a safety net that's hard to replicate on your own. Set it up properly with health checks and proactive engagement, and you'll sleep better at night knowing there's a team of DDoS experts backing you up.
+Shield Advanced isn't cheap, but for production workloads that can't afford downtime, it's worth every penny. The combination of enhanced detection, SRT access, and cost protection gives you a safety net that's hard to replicate on your own. Set it up properly with health checks and proactive engagement, and you'll sleep better at night knowing there's a team of DDoS experts backing you up.
