@@ -138,7 +138,7 @@ func checkPermission(
     clientset *kubernetes.Clientset,
     username string,
     groups []string,
-    verb, resource, namespace string,
+    verb, apiGroup, resource, namespace string,
 ) (bool, error) {
     // Create a SubjectAccessReview request
     sar := &authorizationv1.SubjectAccessReview{
@@ -148,6 +148,7 @@ func checkPermission(
             ResourceAttributes: &authorizationv1.ResourceAttributes{
                 Namespace: namespace,
                 Verb:      verb,      // get, list, create, update, delete, etc.
+                Group:     apiGroup,  // "" for core API group, "apps" for deployments, etc.
                 Resource:  resource,  // pods, deployments, services, etc.
             },
         },
@@ -173,6 +174,7 @@ func checkUserCanListPods(clientset *kubernetes.Clientset, username string, grou
         username,
         groups,
         "list",      // verb
+        "",          // API group (core)
         "pods",      // resource
         "default",   // namespace
     )
@@ -248,9 +250,10 @@ func webhookHandler(clientset *kubernetes.Clientset) http.HandlerFunc {
             clientset,
             userInfo.Username,
             userInfo.Groups,
-            "create",     // verb from request
-            "databases",  // custom resource
-            "default",    // namespace from request
+            "create",              // verb from request
+            "stable.example.com",  // API group for the custom resource
+            "databases",           // custom resource
+            "default",             // namespace from request
         )
 
         if err != nil {
@@ -315,7 +318,7 @@ func checkNamespacedPermission(
     clientset *kubernetes.Clientset,
     namespace, username string,
     groups []string,
-    verb, resource string,
+    verb, apiGroup, resource string,
 ) (bool, error) {
     lsar := &authorizationv1.LocalSubjectAccessReview{
         ObjectMeta: metav1.ObjectMeta{
@@ -327,6 +330,7 @@ func checkNamespacedPermission(
             ResourceAttributes: &authorizationv1.ResourceAttributes{
                 Namespace: namespace,
                 Verb:      verb,
+                Group:     apiGroup,
                 Resource:  resource,
             },
         },
@@ -352,6 +356,7 @@ Efficiently check multiple permissions:
 ```go
 type PermissionCheck struct {
     Verb      string
+    APIGroup  string
     Resource  string
     Namespace string
 }
@@ -365,13 +370,14 @@ func checkMultiplePermissions(
     results := make(map[string]bool)
 
     for _, check := range checks {
-        key := fmt.Sprintf("%s:%s:%s", check.Verb, check.Resource, check.Namespace)
+        key := fmt.Sprintf("%s:%s:%s:%s", check.Verb, check.APIGroup, check.Resource, check.Namespace)
 
         allowed, err := checkPermission(
             clientset,
             username,
             groups,
             check.Verb,
+            check.APIGroup,
             check.Resource,
             check.Namespace,
         )
@@ -387,9 +393,9 @@ func checkMultiplePermissions(
 
 // Usage:
 checks := []PermissionCheck{
-    {Verb: "get", Resource: "pods", Namespace: "default"},
-    {Verb: "list", Resource: "deployments", Namespace: "default"},
-    {Verb: "create", Resource: "services", Namespace: "production"},
+    {Verb: "get", APIGroup: "", Resource: "pods", Namespace: "default"},
+    {Verb: "list", APIGroup: "apps", Resource: "deployments", Namespace: "default"},
+    {Verb: "create", APIGroup: "", Resource: "services", Namespace: "production"},
 }
 
 results, _ := checkMultiplePermissions(clientset, "alice", []string{"developers"}, checks)
@@ -457,9 +463,9 @@ func checkPermissionCached(
     cache *AuthzCache,
     username string,
     groups []string,
-    verb, resource, namespace string,
+    verb, apiGroup, resource, namespace string,
 ) (bool, error) {
-    key := fmt.Sprintf("%s:%v:%s:%s:%s", username, groups, verb, resource, namespace)
+    key := fmt.Sprintf("%s:%v:%s:%s:%s:%s", username, groups, verb, apiGroup, resource, namespace)
 
     // Check cache first
     if allowed, found := cache.Check(key); found {
@@ -467,7 +473,7 @@ func checkPermissionCached(
     }
 
     // Call API
-    allowed, err := checkPermission(clientset, username, groups, verb, resource, namespace)
+    allowed, err := checkPermission(clientset, username, groups, verb, apiGroup, resource, namespace)
     if err != nil {
         return false, err
     }
