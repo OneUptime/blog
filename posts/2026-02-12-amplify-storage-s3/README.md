@@ -14,7 +14,7 @@ Let's build a complete file management system using Amplify Storage.
 
 ## Setting Up Storage
 
-Add storage to your Amplify project.
+Add storage to your Amplify Gen 1 CLI project. Amplify Gen 1 is in maintenance mode, so new projects should evaluate Amplify Gen 2, but the CLI workflow below remains valid for existing Gen 1 projects.
 
 Configure storage with the CLI:
 
@@ -32,7 +32,7 @@ amplify add storage
 amplify push
 ```
 
-This creates an S3 bucket with IAM policies that restrict authenticated users to their own files.
+This creates an S3 bucket with IAM policies for the selected access patterns. Amplify Gen 1 storage uses `public/`, `protected/{identityId}/`, and `private/{identityId}/` S3 prefixes for guest, protected, and private files.
 
 ## Basic File Operations
 
@@ -50,17 +50,17 @@ import {
 } from 'aws-amplify/storage';
 
 // Upload a file
-async function upload(key, file) {
+async function upload(path, file) {
     try {
         const result = await uploadData({
-            key,
+            path,
             data: file,
             options: {
                 contentType: file.type,
             },
         }).result;
 
-        console.log('Uploaded:', result.key);
+        console.log('Uploaded:', result.path);
         return result;
     } catch (error) {
         console.error('Upload failed:', error);
@@ -69,9 +69,9 @@ async function upload(key, file) {
 }
 
 // Download a file
-async function download(key) {
+async function download(path) {
     try {
-        const result = await downloadData({ key }).result;
+        const result = await downloadData({ path }).result;
         const blob = await result.body.blob();
         return blob;
     } catch (error) {
@@ -81,9 +81,9 @@ async function download(key) {
 }
 
 // Get a signed URL for a file
-async function getSignedUrl(key) {
+async function getSignedUrl(path) {
     const result = await getUrl({
-        key,
+        path,
         options: {
             expiresIn: 3600, // URL valid for 1 hour
         },
@@ -92,9 +92,9 @@ async function getSignedUrl(key) {
 }
 
 // List files
-async function listFiles(prefix = '') {
+async function listFiles(path = 'public/') {
     const result = await list({
-        prefix,
+        path,
         options: {
             listAll: true, // Get all files (not just first page)
         },
@@ -103,9 +103,9 @@ async function listFiles(prefix = '') {
 }
 
 // Delete a file
-async function deleteFile(key) {
-    await remove({ key });
-    console.log('Deleted:', key);
+async function deleteFile(path) {
+    await remove({ path });
+    console.log('Deleted:', path);
 }
 ```
 
@@ -116,9 +116,12 @@ For large files, you'll want to show upload progress to the user.
 Here's how to track upload progress:
 
 ```javascript
-function uploadWithProgress(key, file, onProgress) {
+import { useState } from 'react';
+import { uploadData, isCancelError } from 'aws-amplify/storage';
+
+function uploadWithProgress(path, file, onProgress) {
     const uploadTask = uploadData({
-        key,
+        path,
         data: file,
         options: {
             contentType: file.type,
@@ -149,15 +152,15 @@ function FileUploader() {
         const file = event.target.files[0];
         if (!file) return;
 
-        const key = `uploads/${Date.now()}-${file.name}`;
-        const task = uploadWithProgress(key, file, setProgress);
+        const path = `public/uploads/${Date.now()}-${file.name}`;
+        const task = uploadWithProgress(path, file, setProgress);
         setUploadTask(task);
 
         try {
             await task.result;
             console.log('Upload complete!');
         } catch (error) {
-            if (error.name === 'CancelledError') {
+            if (isCancelError(error)) {
                 console.log('Upload was cancelled');
             } else {
                 console.error('Upload failed:', error);
@@ -186,56 +189,43 @@ function FileUploader() {
 
 ## Access Levels
 
-Amplify Storage supports three access levels that control who can see what:
+Amplify Storage supports three access level paths that control who can see what:
 
-- **guest** - anyone can read (no authentication required)
-- **protected** - authenticated users can read anyone's files, write only their own
-- **private** - users can only access their own files
+- **guest** - stored under `public/`; anyone with app access can read based on your storage permissions
+- **protected** - stored under `protected/{identityId}/`; authenticated users can read anyone's files, but write only their own
+- **private** - stored under `private/{identityId}/`; users can only access their own files
 
 Here's how to use each level:
 
 ```javascript
-// Upload to different access levels
+// Upload to different access level paths
 async function uploadPublicFile(key, file) {
     return uploadData({
-        key,
+        path: `public/${key}`,
         data: file,
-        options: {
-            accessLevel: 'guest',
-        },
     }).result;
 }
 
 async function uploadProtectedFile(key, file) {
     // Other users can read this, but only the owner can modify
     return uploadData({
-        key,
+        path: ({ identityId }) => `protected/${identityId}/${key}`,
         data: file,
-        options: {
-            accessLevel: 'protected',
-        },
     }).result;
 }
 
 async function uploadPrivateFile(key, file) {
     // Only the uploading user can access this
     return uploadData({
-        key,
+        path: ({ identityId }) => `private/${identityId}/${key}`,
         data: file,
-        options: {
-            accessLevel: 'private',
-        },
     }).result;
 }
 
 // Access another user's protected files
 async function getOtherUserFile(key, targetIdentityId) {
     const result = await getUrl({
-        key,
-        options: {
-            accessLevel: 'protected',
-            targetIdentityId, // The other user's Cognito identity ID
-        },
+        path: `protected/${targetIdentityId}/${key}`,
     });
     return result.url.toString();
 }
@@ -263,19 +253,17 @@ function ImageGallery() {
     async function loadImages() {
         try {
             const result = await list({
-                prefix: 'photos/',
-                options: { accessLevel: 'private' },
+                path: ({ identityId }) => `private/${identityId}/photos/`,
             });
 
             // Get signed URLs for each image
             const imageUrls = await Promise.all(
                 result.items.map(async (item) => {
                     const url = await getUrl({
-                        key: item.key,
-                        options: { accessLevel: 'private' },
+                        path: item.path,
                     });
                     return {
-                        key: item.key,
+                        path: item.path,
                         url: url.url.toString(),
                         size: item.size,
                         lastModified: item.lastModified,
@@ -307,12 +295,11 @@ function ImageGallery() {
 
         setUploading(true);
         try {
-            const key = `photos/${Date.now()}-${file.name}`;
+            const path = ({ identityId }) => `private/${identityId}/photos/${Date.now()}-${file.name}`;
             await uploadData({
-                key,
+                path,
                 data: file,
                 options: {
-                    accessLevel: 'private',
                     contentType: file.type,
                 },
             }).result;
@@ -325,13 +312,12 @@ function ImageGallery() {
         }
     }
 
-    async function handleDelete(key) {
+    async function handleDelete(path) {
         try {
             await remove({
-                key,
-                options: { accessLevel: 'private' },
+                path,
             });
-            setImages(images.filter(img => img.key !== key));
+            setImages(images.filter(img => img.path !== path));
         } catch (error) {
             console.error('Delete failed:', error);
         }
@@ -350,13 +336,13 @@ function ImageGallery() {
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
                 {images.map((img) => (
-                    <div key={img.key}>
+                    <div key={img.path}>
                         <img
                             src={img.url}
-                            alt={img.key}
+                            alt={img.path}
                             style={{ width: '100%', height: 200, objectFit: 'cover' }}
                         />
-                        <button onClick={() => handleDelete(img.key)}>Delete</button>
+                        <button onClick={() => handleDelete(img.path)}>Delete</button>
                     </div>
                 ))}
             </div>
@@ -385,7 +371,7 @@ The Lambda function receives S3 events:
 
 ```javascript
 // amplify/backend/function/S3TriggerHandler/src/index.js
-const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { S3Client, GetObjectCommand, PutObjectCommand } = require('@aws-sdk/client-s3');
 const sharp = require('sharp');
 
 const s3 = new S3Client({});
@@ -397,8 +383,8 @@ exports.handler = async (event) => {
 
         console.log(`Processing: ${bucket}/${key}`);
 
-        // Only process images in the uploads prefix
-        if (!key.startsWith('private/') || !key.match(/\.(jpg|jpeg|png|webp)$/i)) {
+        // Only process private images and skip thumbnails created by this function
+        if (!key.startsWith('private/') || key.includes('/thumbnails/') || !key.match(/\.(jpg|jpeg|png|webp)$/i)) {
             continue;
         }
 
@@ -443,4 +429,4 @@ For the authentication setup that makes this all work, see [using Amplify Authen
 
 ## Wrapping Up
 
-Amplify Storage makes S3 feel like a simple file system. The access level model (guest, protected, private) handles the most common authorization patterns without you writing IAM policies. Upload progress, signed URLs, and file listing all work through clean APIs. For more complex scenarios - like cross-user file sharing or fine-grained permissions - you can always drop down to the S3 SDK directly while still using Amplify for the authentication layer.
+Amplify Storage makes S3 feel like a simple file system. The path model for guest, protected, and private files handles the most common authorization patterns without you writing IAM policies. Upload progress, signed URLs, and file listing all work through clean APIs. For more complex scenarios - like cross-user file sharing or fine-grained permissions - you can always drop down to the S3 SDK directly while still using Amplify for the authentication layer.
