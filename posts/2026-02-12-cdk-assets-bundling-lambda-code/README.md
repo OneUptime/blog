@@ -52,6 +52,7 @@ For Node.js Lambda functions, the `NodejsFunction` construct is a game-changer. 
 // NodejsFunction automatically bundles TypeScript with esbuild
 import * as nodejs from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as cdk from 'aws-cdk-lib';
 
 const apiHandler = new nodejs.NodejsFunction(this, 'ApiHandler', {
   // Points to lambda/api-handler/index.ts by convention
@@ -67,8 +68,6 @@ const apiHandler = new nodejs.NodejsFunction(this, 'ApiHandler', {
     minify: true,
     // Generate source maps for debugging
     sourceMap: true,
-    // Tree-shake unused code
-    treeShaking: true,
     // Target Node.js 20
     target: 'node20',
     // Externalize AWS SDK (available in Lambda runtime)
@@ -93,6 +92,7 @@ Here's what the Lambda source file might look like.
 ```typescript
 // lambda/api-handler/index.ts
 // This TypeScript file is compiled and bundled by CDK automatically
+import type { APIGatewayProxyEvent } from 'aws-lambda';
 import { DynamoDBClient, GetItemCommand } from '@aws-sdk/client-dynamodb';
 
 const client = new DynamoDBClient({});
@@ -125,6 +125,8 @@ npm install @aws-cdk/aws-lambda-python-alpha
 ```typescript
 // PythonFunction installs pip dependencies automatically
 import * as python from '@aws-cdk/aws-lambda-python-alpha';
+import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as cdk from 'aws-cdk-lib';
 
 const dataProcessor = new python.PythonFunction(this, 'DataProcessor', {
   // Points to the directory containing index.py and requirements.txt
@@ -161,7 +163,7 @@ const goFunction = new lambda.Function(this, 'GoFunction', {
   code: lambda.Code.fromAsset('./lambda/go-handler', {
     bundling: {
       // Use a Go Docker image for building
-      image: lambda.Runtime.PROVIDED_AL2023.bundlingImage,
+      image: cdk.DockerImage.fromRegistry('public.ecr.aws/docker/library/golang:1'),
       command: [
         'bash', '-c', [
           'export GOCACHE=/tmp/go-cache',
@@ -228,7 +230,7 @@ const apiFunction = new lambda.Function(this, 'ApiFunction', {
       '*.test.js',
       '*.spec.ts',
       '__tests__',
-      'node_modules/aws-sdk',  // Available in Lambda runtime
+      'node_modules/@aws-sdk/**',  // AWS SDK for JavaScript v3 is available in Node.js 20
       '.git',
       'README.md',
       'tsconfig.json',
@@ -245,10 +247,12 @@ CDK calculates a content hash of each asset. If the hash hasn't changed, the ass
 ```typescript
 // Control asset hashing behavior
 const code = lambda.Code.fromAsset('./lambda/handler', {
-  // Hash based on content (default) or by path modification time
+  // Hash based on source content (default)
   assetHashType: cdk.AssetHashType.SOURCE,
+});
 
-  // Or provide a custom hash
+// Or provide a custom hash
+const versionedCode = lambda.Code.fromAsset('./lambda/handler', {
   assetHash: 'v1.2.3',  // Useful for versioned builds
 });
 ```
@@ -267,7 +271,7 @@ const sharedLayer = new lambda.LayerVersion(this, 'SharedLayer', {
         'bash', '-c',
         'mkdir -p /asset-output/nodejs && ' +
         'cp -r /asset-input/* /asset-output/nodejs/ && ' +
-        'cd /asset-output/nodejs && npm ci --production',
+        'cd /asset-output/nodejs && npm ci --omit=dev',
       ],
     },
   }),
