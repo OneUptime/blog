@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Serverless, Lambda, API Gateway, DynamoDB
 
-Description: Build a complete serverless REST API on AWS using API Gateway, Lambda, and DynamoDB with authentication, validation, error handling, and CI/CD deployment.
+Description: Build a complete serverless REST API on AWS using API Gateway, Lambda, and DynamoDB with authentication, validation, error handling, and deployment.
 
 ---
 
@@ -19,10 +19,9 @@ Here's the flow of a request through the system:
 ```mermaid
 graph LR
     Client[Client] --> APIGW[API Gateway]
+    APIGW --> Auth[JWT Authorizer]
     APIGW --> Lambda[Lambda Functions]
     Lambda --> DDB[(DynamoDB)]
-    Lambda --> SM[Secrets Manager]
-    APIGW --> Auth[Lambda Authorizer]
 ```
 
 ## Project Setup
@@ -37,7 +36,7 @@ cd serverless-api
 npm init -y
 
 # Install dependencies
-npm install uuid
+npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
 npm install -D serverless serverless-offline
 ```
 
@@ -51,11 +50,13 @@ service: serverless-rest-api
 
 provider:
   name: aws
-  runtime: nodejs20.x
+  runtime: nodejs22.x
   region: us-east-1
   stage: ${opt:stage, 'dev'}
   memorySize: 256
   timeout: 10
+  httpApi:
+    cors: true
   environment:
     ITEMS_TABLE: ${self:service}-items-${self:provider.stage}
     STAGE: ${self:provider.stage}
@@ -192,7 +193,7 @@ Now implement the CRUD handlers:
 
 ```javascript
 // src/handlers/items.js
-const { v4: uuidv4 } = require('uuid');
+const { randomUUID } = require('crypto');
 const {
   GetCommand,
   PutCommand,
@@ -274,7 +275,7 @@ module.exports.create = async (event) => {
     }
 
     const item = {
-      id: uuidv4(),
+      id: randomUUID(),
       name: body.name,
       description: body.description || '',
       status: body.status || 'active',
@@ -384,7 +385,7 @@ npx serverless deploy function -f createItem
 
 ## Adding Authentication
 
-Protect your API with a JWT authorizer:
+Protect your API with a JWT authorizer, then attach it to each route you want to protect:
 
 ```yaml
 # Add to serverless.yml
@@ -397,6 +398,15 @@ provider:
         issuerUrl: https://cognito-idp.us-east-1.amazonaws.com/YOUR_USER_POOL_ID
         audience:
           - YOUR_CLIENT_ID
+
+functions:
+  listItems:
+    events:
+      - httpApi:
+          path: /items
+          method: GET
+          authorizer:
+            name: jwtAuthorizer
 ```
 
 ## Monitoring
