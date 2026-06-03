@@ -10,11 +10,11 @@ Description: Master kubectl rollback commands to revert Kubernetes deployments t
 
 Your latest deployment introduced a critical bug. You need to roll back immediately, but not just to the previous version. You need to go back two releases to the last known stable state because the previous release also had issues.
 
-Kubernetes maintains deployment history and lets you roll back to any previous revision.
+Kubernetes maintains deployment history and lets you roll back to any retained previous revision.
 
 ## Understanding Deployment Revisions
 
-Every time you update a deployment, Kubernetes creates a new ReplicaSet and increments the revision number. The deployment keeps a history of previous ReplicaSets, allowing you to roll back.
+Every time you update a deployment's pod template, Kubernetes creates a new ReplicaSet and increments the revision number. Other changes, such as scaling the deployment, do not create a new revision. The deployment keeps a history of previous ReplicaSets, allowing you to roll back.
 
 Check your deployment's revision history:
 
@@ -31,15 +31,16 @@ REVISION  CHANGE-CAUSE
 4         Update to v1.3.0
 ```
 
-The CHANGE-CAUSE column shows why each revision was created. To populate this, add the `kubernetes.io/change-cause` annotation when deploying:
+The CHANGE-CAUSE column shows why each revision was created. To populate this, add the `kubernetes.io/change-cause` annotation before creating the revision:
 
 ```bash
-kubectl apply -f deployment.yaml \
-  --record
-
-# Or annotate directly
+# Annotate before changing the pod template
 kubectl annotate deployment/api-server \
-  kubernetes.io/change-cause="Update to v1.3.0 with new features"
+  kubernetes.io/change-cause="Update to v1.3.0 with new features" \
+  --overwrite
+
+kubectl set image deployment/api-server \
+  api=myregistry.io/api-server:v1.3.0
 ```
 
 ## Viewing Specific Revision Details
@@ -104,10 +105,10 @@ REVISION  CHANGE-CAUSE
 1         Initial deployment
 3         Update to v1.2.0
 4         Update to v1.3.0
-5         Rolled back to revision 2
+5         Update to v1.1.0
 ```
 
-Notice that revision 2 is now gone, replaced by revision 5 which is a copy of revision 2.
+Notice that revision 2 is now gone, replaced by revision 5 which is a copy of revision 2's pod template.
 
 ## Revision History Limits
 
@@ -134,11 +135,11 @@ spec:
         image: myregistry.io/api-server:v1.3.0
 ```
 
-Default is 10. Setting it to 0 prevents rollbacks:
+Default is 10. Setting it to 0 removes old ReplicaSets after a rollout completes, which prevents undoing that rollout:
 
 ```yaml
 spec:
-  revisionHistoryLimit: 0  # No rollback capability
+  revisionHistoryLimit: 0  # No old ReplicaSets retained for rollback
 ```
 
 Setting it higher keeps more history but consumes more resources:
@@ -290,15 +291,14 @@ Common rollback failure causes:
 Annotate deployments with meaningful change causes:
 
 ```bash
-# Option 1: Use --record flag (deprecated but still works)
-kubectl set image deployment/api-server api=myregistry.io/api-server:v1.4.0 --record
-
-# Option 2: Manually annotate
+# Option 1: Manually annotate before changing the pod template
 kubectl annotate deployment/api-server \
   kubernetes.io/change-cause="Deploy v1.4.0: Fix critical authentication bug" \
   --overwrite
 
-# Option 3: Add to deployment YAML
+kubectl set image deployment/api-server api=myregistry.io/api-server:v1.4.0
+
+# Option 2: Add to deployment YAML
 kubectl apply -f - <<EOF
 apiVersion: apps/v1
 kind: Deployment
@@ -369,26 +369,23 @@ This creates a manual "rollback" job that appears in GitLab's UI.
 
 ## Monitoring Rollback Events
 
-Create alerts for rollbacks:
+Create alerts for rollbacks if your monitoring stack exports Kubernetes Events as Prometheus metrics:
 
 ```yaml
-# Prometheus alert for rollbacks
+# Prometheus alert for rollback events
 groups:
 - name: deployment_alerts
   rules:
   - alert: DeploymentRolledBack
     expr: |
-      kube_deployment_status_observed_generation
-        !=
-      kube_deployment_metadata_generation
-    for: 5m
+      increase(kubernetes_events_total{reason="DeploymentRollback", involved_object_kind="Deployment"}[5m]) > 0
     labels:
       severity: warning
     annotations:
       summary: "Deployment {{ $labels.deployment }} rolled back"
 ```
 
-Track rollback frequency in your metrics:
+Metric names and labels vary by event exporter. You can also query rollback events directly:
 
 ```bash
 # Query rollback events
@@ -445,11 +442,12 @@ Sometimes rolling forward is better than rolling back:
 
 ```bash
 # Quick forward fix
+kubectl annotate deployment/api-server \
+  kubernetes.io/change-cause="Hotfix v1.5.1: Fix crash in new feature" \
+  --overwrite
+
 kubectl set image deployment/api-server \
   api=myregistry.io/api-server:v1.5.1
-
-kubectl annotate deployment/api-server \
-  kubernetes.io/change-cause="Hotfix v1.5.1: Fix crash in new feature"
 ```
 
 ## Conclusion
