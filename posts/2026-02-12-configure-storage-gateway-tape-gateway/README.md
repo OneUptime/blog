@@ -14,7 +14,7 @@ Your backup admins don't need to learn anything new. Veritas NetBackup, Veeam, C
 
 ## How Tape Gateway Works
 
-Tape Gateway emulates a standard tape library with a media changer and tape drives. When your backup software writes to a virtual tape, the data goes to the gateway's local cache first and then uploads asynchronously to S3. When you "eject" a tape (archive it), it moves to either S3 Glacier Flexible Retrieval or S3 Glacier Deep Archive, depending on the pool you configure.
+Tape Gateway emulates a standard tape library with one media changer and 10 tape drives. When your backup software writes to a virtual tape, the data goes to the gateway's local cache first and then uploads asynchronously to S3. When you "eject" a tape (archive it), it moves to either S3 Glacier Flexible Retrieval or S3 Glacier Deep Archive, depending on the pool you configure.
 
 ```mermaid
 graph TD
@@ -56,7 +56,7 @@ aws storagegateway add-upload-buffer \
   --disk-ids "disk-buffer001"
 ```
 
-Size the cache disk to hold at least the amount of data in your largest backup job. The upload buffer should be at least 150 GB. If your backup jobs generate data faster than your network can upload, you'll need a larger upload buffer to avoid throttling.
+AWS requires at least 150 GiB for cache storage and at least 150 GiB for the upload buffer. Size the cache to cover the working set you need for low-latency reads and pending uploads. If your backup jobs generate data faster than your network can upload, you'll need a larger upload buffer to avoid throttling.
 
 ## Step 2: Create Virtual Tapes
 
@@ -106,8 +106,8 @@ sudo systemctl enable iscsid
 sudo iscsiadm --mode discovery --type sendtargets \
   --portal 10.0.1.100:3260
 
-# You'll see multiple targets - one for the media changer
-# and multiple for tape drives. Connect to all of them.
+# You'll see 11 targets - one for the media changer
+# and 10 for tape drives. Connect to all of them.
 
 # Connect to the media changer
 sudo iscsiadm --mode node \
@@ -166,12 +166,6 @@ The key thing is that your backup software sees this as a normal tape library. N
 Running out of tapes during a backup job is annoying. You can enable automatic tape creation so the gateway creates new tapes as needed:
 
 ```bash
-# Enable automatic tape creation
-aws storagegateway create-tape-pool \
-  --pool-name "AutoTapePool" \
-  --storage-class "GLACIER" \
-  --retention-lock-type "NONE"
-
 # Configure automatic tape creation rules
 aws storagegateway update-automatic-tape-creation-policy \
   --gateway-arn arn:aws:storagegateway:us-east-1:123456789012:gateway/sgw-12345678 \
@@ -183,7 +177,7 @@ aws storagegateway update-automatic-tape-creation-policy \
   }]'
 ```
 
-This keeps a minimum of 5 tapes available at all times. When the count drops below 5 (because tapes are in use or archived), the gateway automatically creates new ones.
+This keeps a minimum of 5 available tapes with the `AUTO` barcode prefix. AWS counts tapes in the import/export slot as available; when a tape is imported from that slot into a drive or storage slot and the count drops below 5, the gateway automatically creates new ones.
 
 ## Step 6: Archive and Retrieve Tapes
 
@@ -207,10 +201,10 @@ Retrieval time depends on the archive tier: Glacier Flexible Retrieval takes 3-5
 
 ## Step 7: Enable WORM and Retention Policies
 
-For compliance requirements, you can configure tape pools with write-once-read-many (WORM) protection:
+For compliance requirements, you can configure tape retention lock on custom tape pools. If you also need write-once-read-many (WORM) tapes, create the tapes with `--worm` or set `Worm` to `true` in your automatic tape creation rule.
 
 ```bash
-# Create a WORM tape pool with governance-mode retention
+# Create a custom tape pool with governance-mode retention lock
 aws storagegateway create-tape-pool \
   --pool-name "ComplianceTapePool" \
   --storage-class "GLACIER" \
@@ -243,7 +237,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "TapeGW-CacheDirty-Warning" \
   --metric-name CachePercentDirty \
   --namespace "AWS/StorageGateway" \
-  --statistic Average \
+  --statistic Sum \
   --period 300 \
   --threshold 80 \
   --comparison-operator GreaterThanThreshold \
@@ -256,6 +250,6 @@ A high CachePercentDirty value means the gateway has a backlog of data waiting t
 
 ## Cost Comparison
 
-Here's why Tape Gateway often makes financial sense. A single physical tape drive costs $3,000-10,000. Media costs $20-50 per tape. Offsite storage fees add up quickly. With Tape Gateway, you pay S3 storage rates (around $0.023/GB for standard, $0.0036/GB for Glacier, and $0.00099/GB for Deep Archive) plus the cost of running the gateway VM. For most organizations, the break-even point comes within the first year.
+Here's why Tape Gateway often makes financial sense. A single physical tape drive costs $3,000-10,000. Media costs $20-50 per tape. Offsite storage fees add up quickly. With Tape Gateway, you pay virtual tape storage rates for the storage class you use (around $0.023/GB-month for S3 Standard in the VTL, $0.0036/GB-month for S3 Glacier Flexible Retrieval, and $0.00099/GB-month for S3 Glacier Deep Archive in US East), data-written and retrieval charges where applicable, plus the cost of running the gateway VM. For most organizations, the break-even point comes within the first year.
 
 Tape Gateway lets you modernize your backup infrastructure incrementally, without ripping and replacing your backup software or retraining your team. That's a pretty compelling value proposition.
