@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Tyk, API Gateway, Kubernetes
 
-Description: Learn how to deploy Tyk API Gateway on Kubernetes with Redis as the configuration and analytics backend, enabling scalable API management with real-time rate limiting and session storage.
+Description: Learn how to deploy Tyk API Gateway on Kubernetes with Redis for distributed rate limiting, session storage, and analytics buffering, enabling scalable API management.
 
 ---
 
-Tyk Gateway uses Redis as its primary datastore for API definitions, rate limiting counters, session tokens, and analytics data. This architecture enables horizontal scaling of gateway nodes while maintaining consistent state across the cluster. Redis provides the low-latency data access required for high-throughput API gateways without sacrificing consistency.
+Tyk Gateway uses Redis for distributed rate limiting counters, session tokens, and analytics buffering. In open source file-based deployments, API definitions are stored on disk in the Gateway's `app_path`. This architecture enables horizontal scaling of gateway nodes while maintaining consistent shared state for keys and rate limits across the cluster. Redis provides the low-latency data access required for high-throughput API gateways.
 
 ## Understanding Tyk Architecture
 
@@ -20,9 +20,9 @@ Tyk consists of several components:
 
 **Tyk Pump** - Analytics processor that moves data from Redis to long-term storage.
 
-**Redis** - Stores API definitions, rate limit counters, and analytics buffer.
+**Redis** - Stores rate limit counters, session data, and the analytics buffer.
 
-For production deployments, Gateway and Redis are the minimum required components.
+For basic open source Gateway deployments, Gateway and Redis are the minimum required components.
 
 ## Deploying Redis for Tyk
 
@@ -41,7 +41,7 @@ data:
     appendonly yes
     appendfsync everysec
     maxmemory 2gb
-    maxmemory-policy allkeys-lru
+    maxmemory-policy noeviction
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -217,7 +217,7 @@ spec:
     spec:
       containers:
       - name: tyk-gateway
-        image: tykio/tyk-gateway:v5.2
+        image: docker.tyk.io/tyk-gateway/tyk-gateway:v5.2
         ports:
         - containerPort: 8080
           name: http
@@ -286,26 +286,32 @@ Use Tyk's Helm chart for simplified deployment:
 helm repo add tyk-helm https://helm.tyk.io/public/helm/charts/
 helm repo update
 
+helm upgrade tyk-redis oci://registry-1.docker.io/bitnamicharts/redis \
+  -n tyk --create-namespace --install \
+  --set master.persistence.enabled=true \
+  --set master.persistence.size=20Gi
+
 # Create values file
 cat > tyk-values.yaml <<EOF
-gateway:
-  kind: Deployment
-  replicaCount: 3
-  service:
-    type: LoadBalancer
+global:
+  secrets:
+    APISecret: your-secret-key-change-me
+  redis:
+    addrs:
+    - tyk-redis-master.tyk.svc.cluster.local:6379
+    passSecret:
+      name: tyk-redis
+      keyName: redis-password
 
-redis:
-  shards: 1
-  useSSL: false
-
-  storage:
-    master:
-      persistence:
-        enabled: true
-        size: 20Gi
+tyk-gateway:
+  gateway:
+    kind: Deployment
+    replicaCount: 3
+    service:
+      type: LoadBalancer
 EOF
 
-helm install tyk tyk-helm/tyk-oss \
+helm install tyk-oss tyk-helm/tyk-oss \
   -n tyk --create-namespace \
   -f tyk-values.yaml
 ```
@@ -359,6 +365,7 @@ kubectl port-forward -n tyk svc/tyk-gateway 8080:8080
 
 # Create API
 curl http://localhost:8080/tyk/apis \
+  -X POST \
   -H "X-Tyk-Authorization: your-secret-key-change-me" \
   -H "Content-Type: application/json" \
   -d @api-definition.json
@@ -367,6 +374,8 @@ curl http://localhost:8080/tyk/apis \
 curl http://localhost:8080/tyk/reload \
   -H "X-Tyk-Authorization: your-secret-key-change-me"
 ```
+
+In a multi-replica Kubernetes deployment, the Gateway API writes to the node that receives the request. Use file-based ConfigMaps, Tyk Operator, or update each Gateway pod before reloading the cluster.
 
 ## Managing APIs via Kubernetes ConfigMaps
 
@@ -412,8 +421,9 @@ volumes:
 Deploy Redis cluster for production:
 
 ```bash
-helm install redis bitnami/redis-cluster \
+helm install redis oci://registry-1.docker.io/bitnamicharts/redis-cluster \
   -n tyk \
+  --create-namespace \
   --set cluster.nodes=6 \
   --set cluster.replicas=1 \
   --set persistence.enabled=true \
@@ -423,16 +433,14 @@ helm install redis bitnami/redis-cluster \
 Update Tyk configuration:
 
 ```json
-"storage": {
-  "type": "redis",
-  "host": "redis-cluster.tyk.svc.cluster.local",
-  "port": 6379,
-  "enable_cluster": true,
-  "addrs": [
-    "redis-cluster-0.redis-cluster-headless.tyk.svc.cluster.local:6379",
-    "redis-cluster-1.redis-cluster-headless.tyk.svc.cluster.local:6379",
-    "redis-cluster-2.redis-cluster-headless.tyk.svc.cluster.local:6379"
-  ]
+{
+  "storage": {
+    "type": "redis",
+    "enable_cluster": true,
+    "addrs": [
+      "redis-redis-cluster.tyk.svc.cluster.local:6379"
+    ]
+  }
 }
 ```
 
@@ -441,7 +449,7 @@ Update Tyk configuration:
 Test API access:
 
 ```bash
-TYK_GATEWAY=$(kubectl get svc tyk-gateway -n tyk -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+TYK_GATEWAY=$(kubectl get svc tyk-gateway -n tyk -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Health check
 curl http://${TYK_GATEWAY}:8080/hello
@@ -452,12 +460,16 @@ curl http://${TYK_GATEWAY}:8080/api/test
 
 ## Monitoring Tyk and Redis
 
-Enable Prometheus metrics:
+For Gateway v5.13 and later, enable OpenTelemetry metrics and export them to an OpenTelemetry Collector that can expose metrics to Prometheus:
 
 ```json
-"enable_analytics": true,
-"analytics_config": {
-  "type": "prometheus"
+{
+  "opentelemetry": {
+    "metrics": {
+      "enabled": true,
+      "endpoint": "otel-collector:4317"
+    }
+  }
 }
 ```
 
