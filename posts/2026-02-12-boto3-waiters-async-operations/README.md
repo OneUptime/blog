@@ -92,7 +92,6 @@ By default, waiters use sensible polling intervals and maximum retry counts. But
 This configuration changes how long the waiter polls and how often it checks.
 
 ```python
-from botocore.config import Config
 import boto3
 
 ec2 = boto3.client('ec2')
@@ -151,7 +150,7 @@ This pattern ensures you don't try to upload to a bucket that hasn't finished cr
 import boto3
 from botocore.exceptions import WaiterError
 
-s3 = boto3.client('s3')
+s3 = boto3.client('s3', region_name='us-west-2')
 bucket_name = 'my-new-bucket-12345'
 
 # Create a bucket
@@ -185,11 +184,11 @@ This custom waiter checks the status of a CloudFormation stack.
 
 ```python
 import boto3
-import botocore.waiter
-import json
+from botocore.exceptions import WaiterError
+from botocore.waiter import WaiterModel, create_waiter_with_client
 
 # Define a custom waiter model
-waiter_model = botocore.waiter.WaiterModel({
+waiter_model = WaiterModel({
     'version': 2,
     'waiters': {
         'StackCreateComplete': {
@@ -214,6 +213,12 @@ waiter_model = botocore.waiter.WaiterModel({
                     'expected': 'ROLLBACK_COMPLETE',
                     'argument': 'Stacks[].StackStatus',
                     'state': 'failure'
+                },
+                {
+                    'matcher': 'pathAny',
+                    'expected': 'ROLLBACK_FAILED',
+                    'argument': 'Stacks[].StackStatus',
+                    'state': 'failure'
                 }
             ]
         }
@@ -221,7 +226,7 @@ waiter_model = botocore.waiter.WaiterModel({
 })
 
 cf = boto3.client('cloudformation')
-custom_waiter = botocore.waiter.create_waiter_with_client(
+custom_waiter = create_waiter_with_client(
     'StackCreateComplete', waiter_model, cf
 )
 
@@ -229,7 +234,7 @@ custom_waiter = botocore.waiter.create_waiter_with_client(
 try:
     custom_waiter.wait(StackName='my-stack')
     print("Stack creation complete")
-except botocore.exceptions.WaiterError as e:
+except WaiterError as e:
     print(f"Stack creation failed: {e}")
 ```
 
