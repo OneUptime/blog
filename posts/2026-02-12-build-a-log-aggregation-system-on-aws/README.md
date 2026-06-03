@@ -16,14 +16,15 @@ This guide covers building a log aggregation pipeline that collects logs from mu
 
 ```mermaid
 graph LR
-    A[Application Logs] --> D[Kinesis Data Firehose]
-    B[CloudWatch Logs] --> D
-    C[VPC Flow Logs] --> D
+    A[Application Logs] --> B[CloudWatch Logs]
+    C[VPC Flow Logs] --> B
 
+    B --> D[Kinesis Data Firehose]
     D --> E[Lambda - Transform]
-    E --> F[OpenSearch]
     E --> G[S3 - Long-term Archive]
 
+    G --> K[Lambda - Indexer]
+    K --> F[OpenSearch]
     F --> H[OpenSearch Dashboards]
     F --> I[Alerting]
 
@@ -73,19 +74,20 @@ Different sources require different collection methods.
 **From Lambda functions** - Logs go to CloudWatch automatically. Subscribe the log groups to your pipeline:
 
 ```bash
-# Create a subscription filter to forward Lambda logs to Kinesis
+# Create a subscription filter to forward Lambda logs to Firehose
 
 aws logs put-subscription-filter \
   --log-group-name "/aws/lambda/my-function" \
-  --filter-name "forward-to-kinesis" \
+  --filter-name "forward-to-firehose" \
   --filter-pattern "" \
-  --destination-arn arn:aws:firehose:us-east-1:123456789:deliverystream/log-pipeline
+  --destination-arn arn:aws:firehose:us-east-1:123456789012:deliverystream/log-pipeline \
+  --role-arn arn:aws:iam::123456789012:role/CWLtoFirehoseRole
 ```
 
-**From containers (ECS/EKS)** - Use Fluent Bit as a sidecar or daemon:
+**From containers (ECS/EKS)** - Use Fluent Bit as a sidecar or daemon to send logs to CloudWatch Logs, then subscribe those log groups to Firehose:
 
 ```yaml
-# Fluent Bit configuration for ECS
+# Fluent Bit configuration for ECS/EKS
 [SERVICE]
     Flush         5
     Log_Level     info
@@ -96,10 +98,12 @@ aws logs put-subscription-filter \
     Port          24224
 
 [OUTPUT]
-    Name          kinesis_firehose
+    Name          cloudwatch_logs
     Match         *
     region        us-east-1
-    delivery_stream log-pipeline
+    log_group_name /containers/my-service
+    log_stream_prefix from-fluent-bit-
+    auto_create_group On
 ```
 
 **From API Gateway** - Enable access logging:
@@ -109,14 +113,14 @@ aws apigatewayv2 update-stage \
   --api-id abc123 \
   --stage-name prod \
   --access-log-settings '{
-    "DestinationArn": "arn:aws:logs:us-east-1:123456789:log-group:/apigateway/my-api",
+    "DestinationArn": "arn:aws:logs:us-east-1:123456789012:log-group:/apigateway/my-api",
     "Format": "{\"requestId\":\"$context.requestId\",\"ip\":\"$context.identity.sourceIp\",\"method\":\"$context.httpMethod\",\"path\":\"$context.path\",\"status\":\"$context.status\",\"latency\":\"$context.responseLatency\"}"
   }'
 ```
 
 ## Step 2: Kinesis Data Firehose Pipeline
 
-Firehose is the backbone of the pipeline. It buffers, transforms, and delivers logs to multiple destinations:
+Firehose is the backbone of the archive pipeline. It buffers CloudWatch Logs subscription records, decompresses them, transforms them, and delivers normalized logs to S3:
 
 ```bash
 # Create the Firehose delivery stream
@@ -124,7 +128,7 @@ aws firehose create-delivery-stream \
   --delivery-stream-name log-pipeline \
   --delivery-stream-type DirectPut \
   --extended-s3-destination-configuration '{
-    "RoleARN": "arn:aws:iam::123456789:role/firehose-role",
+    "RoleARN": "arn:aws:iam::123456789012:role/firehose-role",
     "BucketARN": "arn:aws:s3:::log-archive-bucket",
     "Prefix": "logs/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/",
     "ErrorOutputPrefix": "errors/",
@@ -135,13 +139,29 @@ aws firehose create-delivery-stream \
     "CompressionFormat": "GZIP",
     "ProcessingConfiguration": {
       "Enabled": true,
-      "Processors": [{
-        "Type": "Lambda",
-        "Parameters": [{
-          "ParameterName": "LambdaArn",
-          "ParameterValue": "arn:aws:lambda:us-east-1:123456789:function:log-transformer"
-        }]
-      }]
+      "Processors": [
+        {
+          "Type": "Decompression",
+          "Parameters": [{
+            "ParameterName": "CompressionFormat",
+            "ParameterValue": "GZIP"
+          }]
+        },
+        {
+          "Type": "CloudWatchLogProcessing",
+          "Parameters": [{
+            "ParameterName": "DataMessageExtraction",
+            "ParameterValue": "true"
+          }]
+        },
+        {
+          "Type": "Lambda",
+          "Parameters": [{
+            "ParameterName": "LambdaArn",
+            "ParameterValue": "arn:aws:lambda:us-east-1:123456789012:function:log-transformer"
+          }]
+        }
+      ]
     }
   }'
 ```
@@ -209,14 +229,17 @@ function normalizeLevel(level) {
 }
 ```
 
-## Step 4: OpenSearch for Real-Time Search
+## Step 4: OpenSearch for Near-Real-Time Search
 
-Send logs to OpenSearch for interactive search and dashboards:
+Index archived log objects into OpenSearch for interactive search and dashboards. Configure this Lambda as an S3 event notification on the log archive prefix:
 
 ```javascript
 // opensearch-indexer/handler.js - Index logs into OpenSearch
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 const { Client } = require('@opensearch-project/opensearch');
+const zlib = require('zlib');
 
+const s3 = new S3Client({});
 const client = new Client({
   node: process.env.OPENSEARCH_ENDPOINT,
 });
@@ -225,16 +248,31 @@ exports.handler = async (event) => {
   const bulkBody = [];
 
   for (const record of event.Records) {
-    const log = JSON.parse(Buffer.from(record.kinesis.data, 'base64').toString());
+    const bucket = record.s3.bucket.name;
+    const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
+    const response = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+    let body = Buffer.from(await response.Body.transformToByteArray());
 
-    // Use daily indices for easy lifecycle management
-    const indexDate = log.timestamp.substring(0, 10).replace(/-/g, '.');
-    const indexName = `logs-${indexDate}`;
+    try {
+      body = zlib.gunzipSync(body);
+    } catch {
+      // The object was not gzip-compressed.
+    }
 
-    bulkBody.push(
-      { index: { _index: indexName } },
-      log
-    );
+    const lines = body.toString('utf-8').trim().split('\n').filter(Boolean);
+
+    for (const line of lines) {
+      const log = JSON.parse(line);
+
+      // Use daily indices for easy lifecycle management
+      const indexDate = log.timestamp.substring(0, 10).replace(/-/g, '.');
+      const indexName = `logs-${indexDate}`;
+
+      bulkBody.push(
+        { index: { _index: indexName } },
+        log
+      );
+    }
   }
 
   if (bulkBody.length > 0) {
@@ -252,7 +290,7 @@ Set up index lifecycle management to control storage costs:
 
 ```bash
 # Create an index lifecycle policy
-# Keep hot indices for 7 days, warm for 30 days, delete after 90 days
+# Keep hot indices for 7 days, mark older indices read-only, delete after 90 days
 curl -X PUT "${OPENSEARCH_ENDPOINT}/_plugins/_ism/policies/log-lifecycle" \
   -H 'Content-Type: application/json' \
   -d '{
@@ -389,4 +427,4 @@ For more on metrics, see our guide on [building a metrics collection system on A
 
 ## Wrapping Up
 
-A centralized log aggregation system is foundational infrastructure. Without it, debugging production issues turns into a guessing game. The architecture in this guide handles logs from any source, normalizes them into a consistent format, provides real-time search through OpenSearch, and keeps long-term archives in S3 for compliance and ad-hoc analysis. Start with your most critical services and expand from there.
+A centralized log aggregation system is foundational infrastructure. Without it, debugging production issues turns into a guessing game. The architecture in this guide handles logs from any source, normalizes them into a consistent format, provides near-real-time search through OpenSearch, and keeps long-term archives in S3 for compliance and ad-hoc analysis. Start with your most critical services and expand from there.
