@@ -12,26 +12,26 @@ Service mesh architectures require robust authentication mechanisms to secure co
 
 ## Understanding JWT/OIDC Authentication in Service Mesh
 
-Service meshes use identity proxies to handle authentication and authorization between services. When integrated with Vault, each service can authenticate using JWT tokens issued by the service mesh control plane. Vault verifies these tokens and grants access to secrets based on the service identity.
+Service meshes use identity proxies to handle authentication and authorization between services. When integrated with Vault, each service can authenticate using projected Kubernetes service account JWTs while the mesh continues to provide workload identity for service-to-service mTLS. Vault verifies these tokens and grants access to secrets based on the service account identity.
 
-The JWT/OIDC auth method in Vault validates JSON Web Tokens signed by a trusted identity provider. In a service mesh context, the identity provider is typically the service mesh control plane itself, which issues workload identities to each service.
+The JWT/OIDC auth method in Vault validates JSON Web Tokens signed by a trusted identity provider. In this Kubernetes service mesh context, the identity provider is the Kubernetes API server, which signs service account tokens for workloads.
 
 ## Configuring Vault JWT Auth for Istio
 
-Istio uses SPIFFE identities and issues JWT tokens that can be validated by Vault. First, enable the JWT auth method in Vault:
+Istio uses SPIFFE identities for mesh mTLS, but applications usually authenticate to Vault with Kubernetes projected service account JWTs. First, enable the JWT auth method in Vault and configure it to use the Kubernetes API server's OIDC discovery metadata:
 
 ```bash
 # Enable JWT auth method
 
 vault auth enable jwt
 
-# Configure JWT auth with Istio's JWKS endpoint
+# Configure JWT auth with Kubernetes OIDC discovery
 vault write auth/jwt/config \
-    jwks_url="http://istio-pilot.istio-system:8080/jwks" \
-    bound_issuer="https://kubernetes.default.svc.cluster.local"
+    oidc_discovery_url="https://kubernetes.default.svc.cluster.local" \
+    oidc_discovery_ca_pem=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 ```
 
-The JWKS (JSON Web Key Set) endpoint provides the public keys used to verify JWT signatures. Istio's pilot component exposes this endpoint for token validation.
+The OIDC discovery document points Vault to the JWKS (JSON Web Key Set) endpoint that provides the public keys used to verify Kubernetes service account token signatures.
 
 ## Creating Role Mappings for Service Identities
 
@@ -43,21 +43,21 @@ vault write auth/jwt/role/orders-service \
     role_type="jwt" \
     bound_audiences="vault" \
     user_claim="sub" \
-    bound_subject="spiffe://cluster.local/ns/production/sa/orders" \
-    policies="orders-secrets" \
-    ttl=1h
+    bound_subject="system:serviceaccount:production:orders" \
+    token_policies="orders-secrets" \
+    token_ttl=1h
 
 # Create a role for the payments service
 vault write auth/jwt/role/payments-service \
     role_type="jwt" \
     bound_audiences="vault" \
     user_claim="sub" \
-    bound_subject="spiffe://cluster.local/ns/production/sa/payments" \
-    policies="payments-secrets" \
-    ttl=1h
+    bound_subject="system:serviceaccount:production:payments" \
+    token_policies="payments-secrets" \
+    token_ttl=1h
 ```
 
-The `bound_subject` parameter matches the SPIFFE identity issued by Istio. The `bound_audiences` parameter ensures tokens are intended for Vault.
+The `bound_subject` parameter matches the Kubernetes service account identity in the token's `sub` claim. The `bound_audiences` parameter ensures tokens are intended for Vault.
 
 ## Implementing OIDC Discovery for Dynamic Configuration
 
@@ -65,10 +65,10 @@ For environments where JWKS URLs change, use OIDC discovery to automatically fet
 
 ```bash
 # Configure JWT auth with OIDC discovery URL
+ISSUER="$(kubectl get --raw /.well-known/openid-configuration | jq -r '.issuer')"
+
 vault write auth/jwt/config \
-    oidc_discovery_url="https://kubernetes.default.svc.cluster.local" \
-    oidc_discovery_ca_pem=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt \
-    bound_issuer="https://kubernetes.default.svc.cluster.local"
+    oidc_discovery_url="$ISSUER"
 ```
 
 OIDC discovery automatically fetches the JWKS URL and issuer information from the discovery endpoint, reducing manual configuration.
@@ -82,13 +82,14 @@ package main
 
 import (
     "fmt"
-    "io/ioutil"
+    "os"
+
     "github.com/hashicorp/vault/api"
 )
 
 func authenticateWithVault() (*api.Client, error) {
-    // Read JWT token from Istio's mounted volume
-    jwtToken, err := ioutil.ReadFile("/var/run/secrets/tokens/vault-token")
+    // Read JWT token from the projected Kubernetes service account volume
+    jwtToken, err := os.ReadFile("/var/run/secrets/tokens/vault-token")
     if err != nil {
         return nil, fmt.Errorf("failed to read JWT token: %w", err)
     }
@@ -110,6 +111,9 @@ func authenticateWithVault() (*api.Client, error) {
     secret, err := client.Logical().Write("auth/jwt/login", loginData)
     if err != nil {
         return nil, fmt.Errorf("failed to authenticate: %w", err)
+    }
+    if secret == nil || secret.Auth == nil {
+        return nil, fmt.Errorf("Vault login returned no auth information")
     }
 
     // Set the token for future requests
@@ -136,6 +140,7 @@ metadata:
   namespace: production
 spec:
   serviceAccountName: orders
+  automountServiceAccountToken: false
   containers:
   - name: orders
     image: orders:latest
@@ -186,9 +191,9 @@ vault policy write orders-secrets orders-policy.hcl
 vault policy write payments-secrets payments-policy.hcl
 ```
 
-## Implementing Token Renewal and Rotation
+## Implementing Token Refresh and Rotation
 
-JWT tokens have limited lifetimes. Implement token renewal to maintain continuous access:
+JWT tokens have limited lifetimes. Re-read the projected token and re-authenticate with Vault to maintain continuous access:
 
 ```go
 func renewToken(client *api.Client) {
@@ -199,7 +204,7 @@ func renewToken(client *api.Client) {
         select {
         case <-ticker.C:
             // Read fresh JWT token
-            jwtToken, err := ioutil.ReadFile("/var/run/secrets/tokens/vault-token")
+            jwtToken, err := os.ReadFile("/var/run/secrets/tokens/vault-token")
             if err != nil {
                 log.Printf("Failed to read JWT token: %v", err)
                 continue
@@ -216,9 +221,13 @@ func renewToken(client *api.Client) {
                 log.Printf("Failed to re-authenticate: %v", err)
                 continue
             }
+            if secret == nil || secret.Auth == nil {
+                log.Printf("Vault login returned no auth information")
+                continue
+            }
 
             client.SetToken(secret.Auth.ClientToken)
-            log.Println("Successfully renewed Vault token")
+            log.Println("Successfully refreshed Vault token")
         }
     }
 }
@@ -226,22 +235,22 @@ func renewToken(client *api.Client) {
 
 ## Configuring Linkerd Integration
 
-For Linkerd service mesh, the process is similar but uses Linkerd's identity provider:
+For Linkerd service mesh, the process is similar when the application presents a Kubernetes projected service account token to Vault. Linkerd's mTLS identity is still based on the workload's service account, but the JWT that Vault validates is the Kubernetes token mounted into the pod:
 
 ```bash
-# Configure JWT auth for Linkerd
+# Configure JWT auth with Kubernetes OIDC discovery
 vault write auth/jwt/config \
-    jwks_url="http://linkerd-identity.linkerd:8080/.well-known/jwks" \
-    bound_issuer="https://linkerd.linkerd.svc.cluster.local"
+    oidc_discovery_url="https://kubernetes.default.svc.cluster.local" \
+    oidc_discovery_ca_pem=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
-# Create role for Linkerd service identity
+# Create role for the Kubernetes service account used by the meshed workload
 vault write auth/jwt/role/orders-linkerd \
     role_type="jwt" \
     bound_audiences="vault" \
     user_claim="sub" \
-    bound_subject="orders.production.serviceaccount.identity.linkerd.cluster.local" \
-    policies="orders-secrets" \
-    ttl=1h
+    bound_subject="system:serviceaccount:production:orders" \
+    token_policies="orders-secrets" \
+    token_ttl=1h
 ```
 
 ## Monitoring and Troubleshooting
@@ -265,11 +274,11 @@ Common issues include incorrect audience claims, expired tokens, and misconfigur
 ```bash
 # Decode JWT token to inspect claims
 kubectl exec -n production orders-service -- cat /var/run/secrets/tokens/vault-token | \
-    cut -d. -f2 | base64 -d | jq .
+    jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson'
 ```
 
 ## Conclusion
 
-Integrating Vault JWT/OIDC authentication with service meshes provides secure, identity-based access to secrets. By leveraging workload identities issued by the service mesh, you eliminate the need for static credentials while maintaining fine-grained access control. This approach scales well in dynamic microservice environments where services frequently scale up and down.
+Integrating Vault JWT/OIDC authentication with service meshes provides secure, identity-based access to secrets. By leveraging projected Kubernetes service account tokens for Vault authentication alongside mesh workload identity for service-to-service traffic, you eliminate the need for static credentials while maintaining fine-grained access control. This approach scales well in dynamic microservice environments where services frequently scale up and down.
 
 The combination of service mesh identities and Vault's authentication mechanisms creates a robust security foundation for modern cloud-native applications.
