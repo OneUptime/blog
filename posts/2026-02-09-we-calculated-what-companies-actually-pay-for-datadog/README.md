@@ -18,9 +18,9 @@ Datadog charges across multiple dimensions simultaneously:
 
 | Dimension | What You Pay For | Where It Bites |
 |-----------|-----------------|----------------|
-| Infrastructure | Per host/month | Auto-scaling, Kubernetes pods |
+| Infrastructure | Per host/month | Auto-scaling, Kubernetes nodes |
 | APM | Per host + span volume | Microservices multiply this |
-| Logs | Per GB ingested + indexed | Default verbosity destroys budgets |
+| Logs | Per GB ingested + per indexed event | Default verbosity destroys budgets |
 | Custom Metrics | Per metric series | Cardinality explosion |
 | Synthetics | Per test run | Frequent testing adds up |
 | RUM | Per session | Traffic spikes = bill spikes |
@@ -36,29 +36,30 @@ Here's a realistic scenario for a mid-size SaaS company:
 - 50 hosts × $15/host = $750
 - APM for 50 hosts × $31/host = $1,550
 - 100GB logs × $0.10/GB (ingest) = $10
-- 15-day retention × 100GB × $1.70/GB = $1,700
+- 1B indexed log events × $1.70/1M events (15-day retention) = $1,700
 
 **Monthly estimate: ~$4,000**
 
 **What actually happens:**
 
 1. **Kubernetes = Host Multiplication**
-   - 50 "hosts" in Kubernetes might be 200+ pods
-   - Datadog counts containers, not nodes
-   - New cost: 200 × $15 = $3,000
+   - 50 Kubernetes nodes might run 500+ monitored containers
+   - Datadog counts Kubernetes nodes as infrastructure hosts, then separately bills monitored containers above the included allowance
+   - New cost: 50 × $15 plus container overages
 
 2. **APM Trace Volume**
-   - 100 requests/second × 86,400 seconds × 30 days = 259M+ traces
-   - Even at 10% sampling: 25.9M traces
-   - Ingestion alone: thousands extra
+   - 100 requests/second × 86,400 seconds × 30 days = 259M+ requests
+   - At 10 spans/request, that's 2.59B spans before sampling
+   - Extra indexed spans and ingested span volume can add hundreds or thousands depending on retention filters and span size
 
 3. **Log Explosion**
    - Default logging: easily 500GB-1TB/month
-   - 500GB indexed × $1.70 = $850... but that's per 15-day period
-   - Compliance requires 90 days: multiply by 6
+   - If 500GB/day corresponds to 500M indexed events/day, that's 15B indexed events/month
+   - At 15-day retention, 15B × $1.70/1M = $25,500/month for indexing, before ingestion
+   - Longer retention raises the indexed-event price or moves you into custom/Flex retention terms
 
 4. **Custom Metrics Cardinality**
-   - 100 base metrics × 50 hosts × 5 tags with 10 values each
+   - 100 base metrics × 50 hosts × 3 high-cardinality tags with 10 values each
    - Total metric series: 100 × 50 × 10 × 10 × 10 = 5,000,000
    - Custom metrics pricing kicks in hard
 
@@ -83,9 +84,9 @@ The consistent 4-5x variance isn't coincidence. It's the pricing model working a
 
 ### Trap 1: The Container Tax
 
-In Kubernetes, you pay for every container running the Datadog agent. A 3-replica deployment across 4 microservices isn't 4 hosts-it's 12.
+In Kubernetes, Datadog infrastructure hosts are nodes, but container monitoring includes only a plan-specific container allowance per host. A 3-replica deployment across 4 microservices isn't 4 monitored containers-it's 12, before sidecars.
 
-**Real example:** One company with "20 services" had 340 billable units after accounting for replicas, sidecars, and init containers.
+**Real example:** One company with "20 services" had 340 monitored containers after accounting for replicas and sidecars.
 
 ### Trap 2: The Cardinality Bomb
 
@@ -97,21 +98,21 @@ Add `customer_id` as a tag? You've just multiplied by your customer count.
 
 ### Trap 3: The Log Indexing Trap
 
-Log ingestion costs ($0.10/GB) seem cheap. Indexing costs ($1.70/GB/15 days) don't seem bad.
+Log ingestion costs ($0.10/GB) seem cheap. Indexing costs ($1.70 per 1M indexed events at 15-day retention) don't seem bad.
 
 But indexing is required for searching. And 15-day retention means you're paying continuously.
 
-**Real example:** 500GB/day × $1.70 × (90 days / 15 days) = $51,000/month just for log retention.
+**Real example:** 500M indexed events/day × 30 days × $1.70/1M events = $25,500/month just for 15-day log indexing, plus ingestion.
 
 Many companies don't realize they're paying for 15-day rolling windows until the first bill.
 
 ### Trap 4: The APM Host Redefinition
 
-APM pricing is "per host." But Datadog counts any container sending traces as a host.
+APM pricing is "per host." In non-Fargate container environments, that means the underlying host running the Datadog Agent, not every pod. But Fargate tasks, serverless traced invocations, indexed spans, and ingested span volume are separate billing dimensions.
 
-A serverless function? That's a host. A Kubernetes pod? That's a host. Auto-scaling? Every new instance is a new host for that billing period.
+A serverless function? That's active-function and traced-invocation billing. A Kubernetes pod on EC2? That's usually part of the underlying APM host plus span-volume billing. Auto-scaling? Every new node, Fargate task, or serverless invocation can change the bill.
 
-**Real example:** During Black Friday, one company auto-scaled from 100 to 800 pods. Their APM bill for November was 8x normal.
+**Real example:** During Black Friday, one company auto-scaled from 100 to 800 Fargate tasks. Their task-based APM usage for November increased sharply.
 
 ### Trap 5: The Integration Multiplier
 
@@ -127,16 +128,19 @@ Here's a calculator based on our data:
 Base monthly cost = (
   (hosts × $15) +
   (hosts × $31 if APM) +
+  (billable_container_overages × $1) +
   (log_gb_per_day × 30 × $0.10) +
-  (log_gb_per_day × 30 × $1.70 × (retention_days / 15)) +
-  (custom_metrics × $0.05 over 100/host allowance)
+  (indexed_log_events_per_month / 1,000,000 × indexed_log_retention_price) +
+  (max(custom_metrics - hosts × 100, 0) × $0.05) +
+  (extra_indexed_spans / 1,000,000 × indexed_span_retention_price) +
+  (extra_ingested_span_gb × $0.10)
 )
 
 Reality multiplier = base × 3.5
 ```
 
 The 3.5x reality multiplier accounts for:
-- Container multiplication in Kubernetes
+- Container overages in Kubernetes
 - Trace/span volume growth
 - Integration metric expansion
 - Cardinality growth over time
@@ -150,9 +154,9 @@ OpenTelemetry + a vendor-neutral backend changes the math entirely:
 | Factor | Datadog Model | OTel + Open Backend |
 |--------|---------------|---------------------|
 | Data ownership | Vendor lock-in | Your data, your format |
-| Host counting | Per container | Per node or none |
-| Log pricing | Per GB indexed | Storage cost only |
-| Custom metrics | Per series | No cardinality limits |
+| Host counting | Per host plus container overages | Per node or none |
+| Log pricing | Per GB ingested + per indexed event | Storage and compute cost |
+| Custom metrics | Per series | No vendor per-series fees |
 | Scaling cost | Linear+ | Sub-linear |
 
 With OpenTelemetry, you instrument once and send data anywhere. With an open-source backend like [OneUptime](https://oneuptime.com), you pay for infrastructure, not per-metric.
@@ -168,7 +172,7 @@ Even with managed open-source options, you're looking at 80-90% cost reduction.
 
 Before signing or renewing:
 
-1. **Count containers, not services**: `kubectl get pods -A | wc -l`
+1. **Count containers, not services**: `kubectl get pods -A -o jsonpath='{range .items[*]}{range .spec.containers[*]}x{"\n"}{end}{end}' | wc -l`
 2. **Calculate trace volume**: requests/sec × 86400 × 30 × avg_spans_per_request
 3. **Measure log volume**: Check your current log aggregator or estimate 1-10KB per request
 4. **Audit metric cardinality**: Multiply base metrics × hosts × (tag value combinations)
