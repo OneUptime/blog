@@ -18,12 +18,12 @@ Every time an EC2 instance, Lambda function, or any other resource in your VPC m
 
 ```mermaid
 graph LR
-    A[EC2 Instance] -->|DNS Query| B[Route 53 Resolver]
-    B --> C[DNS Firewall]
-    C -->|Allowed| D[Internet DNS]
-    C -->|Blocked| E[Block Response]
-    C -->|Alert| D
-    C -->|Logged| F[CloudWatch/S3]
+    A[EC2 Instance] -->|DNS Query| B[DNS Firewall]
+    B -->|Allowed| C[Route 53 Resolver]
+    C --> D[Internet DNS]
+    B -->|Blocked| E[Block Response]
+    B -->|Alert| C
+    B -->|Logged| F[CloudWatch/S3]
 ```
 
 ## Step 1: Create Domain Lists
@@ -148,7 +148,7 @@ aws route53resolver create-firewall-rule \
 The `block-response` can be:
 - `NXDOMAIN` - Domain doesn't exist (most common)
 - `NODATA` - Domain exists but no records
-- `OVERRIDE` - Return a custom IP (useful for redirect pages)
+- `OVERRIDE` - Return a custom CNAME response (useful for redirect pages)
 
 For override responses:
 
@@ -193,7 +193,7 @@ This enables DNS query logging for the VPC and sends it to CloudWatch:
 # Create a query log config
 aws route53resolver create-resolver-query-log-config \
   --name "dns-firewall-logs" \
-  --destination-arn arn:aws:logs:us-east-1:111111111111:log-group:/aws/route53/dns-firewall
+  --destination-arn arn:aws:logs:us-east-1:111111111111:log-group:/aws/route53/dns-firewall:*
 
 # Associate with VPC
 aws route53resolver associate-resolver-query-log-config \
@@ -270,16 +270,16 @@ aws cloudwatch put-metric-alarm \
 
 ## Fail Open vs Fail Closed
 
-An important decision: what happens if DNS Firewall can't evaluate a query (service disruption or latency)? By default, it fails open - queries are allowed through. For high-security environments, you can set it to fail closed.
+An important decision: what happens if DNS Firewall can't evaluate a query (service disruption or latency)? By default, fail open is disabled, which means it fails closed. For environments that prioritize availability over strict DNS enforcement during a DNS Firewall failure, you can set it to fail open.
 
 ```bash
-# Set fail-close mode for a VPC
+# Set fail-open mode for a VPC
 aws route53resolver update-firewall-config \
   --resource-id vpc-12345678 \
-  --firewall-fail-open DISABLED
+  --firewall-fail-open ENABLED
 ```
 
-Be careful with fail-closed. If DNS Firewall has an issue, all DNS resolution in the VPC stops. That means everything breaks.
+Be careful with fail-open. If DNS Firewall has an issue, queries are allowed through instead of being filtered.
 
 ## Best Practices
 
