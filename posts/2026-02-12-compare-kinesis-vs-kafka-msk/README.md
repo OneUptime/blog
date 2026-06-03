@@ -42,16 +42,16 @@ Here's a side-by-side breakdown of the key differences.
 |---------|---------------------|------------|
 | Protocol | AWS API | Kafka protocol |
 | Scaling unit | Shards | Brokers + partitions |
-| Max message size | 1 MB | 1 MB (configurable to higher) |
+| Max message size | Up to 10 MiB per record/request | About 1 MiB default (configurable higher; MSK Serverless supports up to 8 MiB) |
 | Max retention | 365 days | Unlimited (disk-based) |
-| Default retention | 24 hours | 7 days |
+| Default retention | 24 hours | Configured on MSK; Apache Kafka defaults are commonly 7 days when unset |
 | Consumer model | GetRecords / Enhanced Fan-Out | Consumer groups |
 | Ordering | Per shard | Per partition |
 | Exactly-once | No (at-least-once) | Yes (with transactions) |
 | Serverless option | Yes (On-Demand mode) | Yes (MSK Serverless) |
 | Ecosystem | AWS-native | Full Kafka ecosystem |
 | Client libraries | AWS SDK, KPL/KCL | Any Kafka client |
-| Multi-region | Cross-region replication | MirrorMaker 2 |
+| Multi-region | Cross-region replication patterns | MSK Replicator / MirrorMaker 2 |
 
 ## Throughput and Performance
 
@@ -77,7 +77,7 @@ record_count = 0
 
 for _ in range(100):
     records = [
-        {'Data': json.dumps({'id': i, 'ts': time.time()}) + '\n', 'PartitionKey': str(i % 100)}
+        {'Data': (json.dumps({'id': i, 'ts': time.time()}) + '\n').encode('utf-8'), 'PartitionKey': str(i % 100)}
         for i in range(500)
     ]
     response = kinesis.put_records(StreamName='benchmark-stream', Records=records)
@@ -119,7 +119,7 @@ print(f"Throughput: {record_count/elapsed:.0f} records/sec")
 # Typical result: 50,000-200,000+ records/sec depending on broker config
 ```
 
-Kafka generally delivers higher throughput per dollar because it uses client-side batching more aggressively and doesn't have per-shard API limits. Kinesis caps each shard at 1,000 records/sec and 1 MB/sec regardless of how efficient your batching is.
+Kafka generally delivers higher throughput per dollar because it uses client-side batching more aggressively and doesn't have per-shard API limits. Kinesis caps each shard's sustained write throughput at 1,000 records/sec and 1 MB/sec regardless of how efficient your batching is.
 
 ## Cost Comparison
 
@@ -132,13 +132,13 @@ Shards needed: 10 (10 MB/sec / 1 MB per shard)
 Shard-hours: 10 shards x 730 hours = 7,300 shard-hours
 Shard cost: 7,300 x $0.015 = $109.50/month
 
-PUT payload units: 10 MB/sec = ~86,400,000 PUT units/day
-Monthly PUTs: ~2.6 billion
-PUT cost: 2,600 x $0.014 = $36.40/month
+PUT payload units: 10 MB/sec = ~35,400,000 PUT units/day
+Monthly PUTs: ~1.06 billion
+PUT cost: 1,062 x $0.014 = $14.87/month
 
-Extended retention (168h): 10 shards x $0.023 x 730 = $167.90/month
+Extended retention (168h): 10 shards x $0.020 x 730 = $146.00/month
 
-Total: ~$314/month
+Total: ~$270/month
 ```
 
 ### MSK Cost
@@ -148,10 +148,10 @@ Brokers: 3 (minimum for production)
 Instance type: kafka.m5.large
 Broker cost: 3 x $0.21/hour x 730 = $459.90/month
 
-Storage: 500 GB per broker (for 168h retention at 10 MB/sec)
-Storage cost: 1,500 GB x $0.10 = $150/month
+Storage: ~6 TB per broker (for 168h retention at 10 MB/sec with replication factor 3)
+Storage cost: ~18,144 GB x $0.10 = $1,814/month
 
-Total: ~$610/month
+Total: ~$2,274/month
 ```
 
 For this workload, Kinesis is cheaper. But the equation flips at higher throughput because MSK broker cost stays relatively fixed while Kinesis shard costs scale linearly.
@@ -214,7 +214,7 @@ Pick Kinesis when:
 - You're heavily invested in AWS-native services (Lambda, Firehose)
 - Your throughput is moderate (under 50 MB/sec)
 - You need quick setup with minimal configuration
-- You want to use Kinesis Data Analytics for SQL-based processing
+- You want to use Amazon Managed Service for Apache Flink for SQL-based stream processing
 
 ## When to Choose MSK
 
