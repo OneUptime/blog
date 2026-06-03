@@ -77,13 +77,7 @@ resource "aws_security_group" "database" {
   }
 
   # No egress rules needed for most databases
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = []  # No outbound access
-    description = "No outbound access"
-  }
+  egress = []
 }
 ```
 
