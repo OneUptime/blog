@@ -55,6 +55,7 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 
 export class OrderProcessingStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
@@ -106,13 +107,13 @@ export class OrderProcessingStack extends cdk.Stack {
 
     // Lambda functions for each service
     const paymentHandler = new lambda.Function(this, 'PaymentHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'payment.handler',
       code: lambda.Code.fromAsset('lambda'),
     });
 
     const inventoryHandler = new lambda.Function(this, 'InventoryHandler', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'inventory.handler',
       code: lambda.Code.fromAsset('lambda'),
     });
@@ -187,7 +188,7 @@ exports.handler = async (event) => {
     const snsMessage = JSON.parse(record.body);
     const orderEvent = JSON.parse(snsMessage.Message);
 
-    if (orderEvent.eventType !== 'ORDER_PLACED') return;
+    if (orderEvent.eventType !== 'ORDER_PLACED') continue;
 
     console.log(`Processing payment for order ${orderEvent.orderId}`);
 
@@ -219,7 +220,7 @@ exports.handler = async (event) => {
     const snsMessage = JSON.parse(record.body);
     const orderEvent = JSON.parse(snsMessage.Message);
 
-    if (orderEvent.eventType !== 'ORDER_PLACED') return;
+    if (orderEvent.eventType !== 'ORDER_PLACED') continue;
 
     console.log(`Reserving inventory for order ${orderEvent.orderId}`);
 
