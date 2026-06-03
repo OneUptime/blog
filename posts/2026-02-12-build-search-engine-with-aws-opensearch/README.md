@@ -87,12 +87,11 @@ Before indexing data, define your mappings. This tells OpenSearch how to analyze
         "type": "text",
         "analyzer": "custom_analyzer",
         "fields": {
-          "keyword": { "type": "keyword" },
-          "autocomplete": {
-            "type": "text",
-            "analyzer": "edge_ngram_analyzer"
-          }
+          "keyword": { "type": "keyword" }
         }
+      },
+      "titleSuggest": {
+        "type": "search_as_you_type"
       },
       "description": {
         "type": "text",
@@ -148,6 +147,7 @@ exports.handler = async (event) => {
       const newImage = record.dynamodb.NewImage;
       const document = {
         title: newImage.title.S,
+        titleSuggest: newImage.title.S,
         description: newImage.description.S,
         category: newImage.category.S,
         price: parseFloat(newImage.price.N),
@@ -254,10 +254,10 @@ exports.handler = async (event) => {
   if (category) {
     searchBody.query.bool.filter.push({ term: { category } });
   }
-  if (minPrice || maxPrice) {
+  if (minPrice !== null || maxPrice !== null) {
     const rangeFilter = { range: { price: {} } };
-    if (minPrice) rangeFilter.range.price.gte = minPrice;
-    if (maxPrice) rangeFilter.range.price.lte = maxPrice;
+    if (minPrice !== null) rangeFilter.range.price.gte = minPrice;
+    if (maxPrice !== null) rangeFilter.range.price.lte = maxPrice;
     searchBody.query.bool.filter.push(rangeFilter);
   }
 
@@ -303,7 +303,7 @@ async function autocomplete(prefix) {
         multi_match: {
           query: prefix,
           type: 'bool_prefix',
-          fields: ['title', 'title._2gram', 'title._3gram'],
+          fields: ['titleSuggest', 'titleSuggest._2gram', 'titleSuggest._3gram'],
         },
       },
       _source: ['title', 'category'],
