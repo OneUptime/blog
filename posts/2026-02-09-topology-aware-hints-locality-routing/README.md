@@ -4,22 +4,22 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Networking, Performance
 
-Description: Enable topology-aware hints in Kubernetes to automatically route service traffic to endpoints in the same zone or region.
+Description: Enable topology-aware hints in Kubernetes to automatically route service traffic to endpoints in the same zone.
 
 ---
 
-Topology-aware hints allow Kubernetes to route service traffic based on network topology, preferring endpoints in the same zone, region, or other topology domain as the client. This reduces cross-zone network traffic costs and latency without sacrificing availability. When local endpoints are unhealthy or unavailable, traffic automatically falls back to other zones.
+Topology-aware hints allow Kubernetes to route service traffic based on network topology, preferring endpoints in the same zone as the client. This reduces cross-zone network traffic costs and latency without sacrificing availability. When local endpoints are unavailable or hints cannot be applied safely, traffic falls back to cluster-wide routing.
 
 ## Understanding Topology Aware Routing
 
 Cloud providers charge for data transfer between availability zones. In AWS, cross-zone traffic costs $0.01-0.02 per GB. For high-traffic services, this adds up quickly. A service handling 10TB of monthly cross-zone traffic pays $100-200 just for network transfer.
 
-Topology-aware hints solve this by adding zone preference information to EndpointSlices. When kube-proxy or your CNI selects an endpoint for a connection, it prefers endpoints in the same zone as the client pod.
+Topology-aware hints solve this by adding zone preference information to EndpointSlices. When kube-proxy or another EndpointSlice consumer selects an endpoint for a connection, it prefers endpoints in the same zone as the client pod.
 
 The system maintains the following behavior:
 
 1. Route to same-zone endpoints when available
-2. Fall back to other zones if same-zone endpoints are unhealthy
+2. Fall back to cluster-wide routing if same-zone hints are unavailable or incomplete
 3. Distribute load evenly within the preferred zone
 4. Automatically rebalance when topology changes
 
@@ -92,7 +92,7 @@ kubectl apply -f topology-aware-service.yaml
 Check the EndpointSlices for topology hints:
 
 ```bash
-kubectl get endpointslices -l kubernetes.io/service-name=api-service -o yaml
+kubectl get endpointslices -n production -l kubernetes.io/service-name=api-service -o yaml
 ```
 
 Look for the hints section in each endpoint:
@@ -135,6 +135,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: client-zone-a
+  namespace: production
 spec:
   nodeSelector:
     topology.kubernetes.io/zone: us-east-1a
@@ -148,6 +149,7 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: client-zone-b
+  namespace: production
 spec:
   nodeSelector:
     topology.kubernetes.io/zone: us-east-1b
@@ -169,12 +171,12 @@ Make requests and check which endpoints respond:
 ```bash
 # From zone A client
 for i in {1..20}; do
-  kubectl exec client-zone-a -- curl -s http://api-service:8080/hostname
+  kubectl exec -n production client-zone-a -- curl -s http://api-service:8080/hostname
 done | sort | uniq -c
 
 # From zone B client
 for i in {1..20}; do
-  kubectl exec client-zone-b -- curl -s http://api-service:8080/hostname
+  kubectl exec -n production client-zone-b -- curl -s http://api-service:8080/hostname
 done | sort | uniq -c
 ```
 
@@ -185,14 +187,14 @@ You should see clients predominantly hitting endpoints in their own zone.
 Topology-aware hints with `Auto` mode have specific requirements:
 
 1. **Balanced endpoint distribution**: Each zone should have similar endpoint counts
-2. **Sufficient CPU resources**: Endpoint slice controller needs CPU headroom
+2. **Node topology and CPU information**: Nodes need `topology.kubernetes.io/zone` labels and allocatable CPU values
 3. **Even traffic distribution**: Service should see traffic from all zones
-4. **Minimum endpoints per zone**: At least 2 endpoints per zone recommended
+4. **Minimum endpoints per zone**: At least 3 endpoints per zone recommended
 
 The controller automatically disables hints if these conditions aren't met. Check the EndpointSlice events:
 
 ```bash
-kubectl describe endpointslice api-service-abc123
+kubectl describe endpointslice -n production api-service-abc123
 ```
 
 Look for messages like:
@@ -266,7 +268,7 @@ var (
             Name: "api_requests_total",
             Help: "Total API requests",
         },
-        []string{"client_zone", "server_zone"},
+        []string{"client_zone", "server_zone", "route_locality"},
     )
 )
 
@@ -278,7 +280,12 @@ func handler(w http.ResponseWriter, r *http.Request) {
     clientZone := r.Header.Get("X-Client-Zone")
     serverZone := os.Getenv("AVAILABILITY_ZONE")
 
-    requestsTotal.WithLabelValues(clientZone, serverZone).Inc()
+    routeLocality := "cross_zone"
+    if clientZone == serverZone {
+        routeLocality = "same_zone"
+    }
+
+    requestsTotal.WithLabelValues(clientZone, serverZone, routeLocality).Inc()
 
     w.Write([]byte("Hello from " + serverZone))
 }
@@ -294,7 +301,7 @@ Query these metrics to see traffic patterns:
 
 ```promql
 # Same-zone traffic percentage
-sum(rate(api_requests_total{client_zone=server_zone}[5m])) /
+sum(rate(api_requests_total{route_locality="same_zone"}[5m])) /
 sum(rate(api_requests_total[5m])) * 100
 ```
 
@@ -321,49 +328,45 @@ For a large cluster with 50 services, that's $8,550/month saved.
 
 ## Fallback Behavior
 
-When same-zone endpoints become unhealthy, traffic automatically routes to other zones:
+When same-zone endpoints become unavailable, kube-proxy falls back to endpoints from other zones if there are no usable hints for the client's zone:
 
 ```bash
 # Simulate zone failure by cordoning all nodes in zone A
 kubectl cordon -l topology.kubernetes.io/zone=us-east-1a
 
-# Delete pods in zone A to force rescheduling elsewhere
-kubectl delete pods -l app=api-server --field-selector spec.nodeName=node-in-zone-a
+# Delete pods on each zone A node to force rescheduling elsewhere
+for node in $(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o name); do
+  kubectl delete pods -n production -l app=api-server --field-selector spec.nodeName=${node#node/}
+done
 ```
 
 Watch traffic shift to other zones:
 
 ```bash
 # Monitor which zones serve requests
-kubectl exec client-zone-a -- sh -c 'for i in $(seq 1 100); do curl -s http://api-service:8080/zone; done' | sort | uniq -c
+kubectl exec -n production client-zone-a -- sh -c 'for i in $(seq 1 100); do curl -s http://api-service:8080/zone; done' | sort | uniq -c
 ```
 
 You'll see requests now going to zones B and C.
 
 ## Multi-Region Topology
 
-Extend topology awareness to regions using custom topology keys:
+Topology-aware routing allocates hints to zones, not arbitrary custom topology keys. In a multi-region cluster, use topology spread constraints to keep Pods balanced across regions and zones, but do not expect `service.kubernetes.io/topology-mode: Auto` to create a same-region fallback hierarchy.
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: global-service
-  annotations:
-    service.kubernetes.io/topology-mode: Auto
-spec:
-  selector:
-    app: global-app
-  ports:
-  - port: 8080
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: global-app
 spec:
   replicas: 30
+  selector:
+    matchLabels:
+      app: global-app
   template:
+    metadata:
+      labels:
+        app: global-app
     spec:
       topologySpreadConstraints:
       # Spread across regions first
@@ -382,7 +385,7 @@ spec:
             app: global-app
 ```
 
-This creates a hierarchy: prefer same-zone, fall back to same-region, finally use any available endpoint.
+This improves placement, while topology-aware routing still uses zone hints for Service traffic.
 
 ## Disabling Topology Hints
 
