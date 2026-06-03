@@ -31,7 +31,7 @@ The ALB sits in public subnets (at least 2 AZs required), and it routes traffic 
 
 First, you need the ALB itself. It requires at least two subnets in different Availability Zones.
 
-This command creates an internet-facing ALB across two public subnets:
+This command creates an internet-facing ALB across three public subnets:
 
 ```bash
 # Create the ALB
@@ -82,8 +82,7 @@ Your EC2 instances' security group should only accept traffic from the ALB:
 aws ec2 authorize-security-group-ingress \
   --group-id $INSTANCE_SG \
   --protocol tcp --port 80 \
-  --source-group $ALB_SG \
-  --description "HTTP from ALB"
+  --source-group $ALB_SG
 ```
 
 ## Creating a Target Group
@@ -293,7 +292,7 @@ aws elbv2 modify-load-balancer-attributes \
     Key=access_logs.s3.prefix,Value=web-alb
 ```
 
-The S3 bucket needs a specific bucket policy to allow the ALB to write logs. Check the AWS documentation for the ELB account ID for your region.
+The S3 bucket needs a specific bucket policy to allow the ALB to write logs. Check the AWS documentation for the current log delivery service principal and required bucket policy.
 
 ## Connection Draining
 
