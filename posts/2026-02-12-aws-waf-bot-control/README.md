@@ -64,7 +64,7 @@ aws wafv2 update-web-acl \
           "Name": "AWSManagedRulesBotControlRuleSet",
           "ManagedRuleGroupConfigs": [
             {
-              "AWSManagedRulesBotControlRuleSetProperty": {
+              "AWSManagedRulesBotControlRuleSet": {
                 "InspectionLevel": "COMMON"
               }
             }
@@ -85,7 +85,7 @@ For targeted bot control, change `COMMON` to `TARGETED`:
 
 ```json
 {
-  "AWSManagedRulesBotControlRuleSetProperty": {
+  "AWSManagedRulesBotControlRuleSet": {
     "InspectionLevel": "TARGETED"
   }
 }
@@ -162,20 +162,20 @@ Bot Control classifies bots into categories. Understanding these helps you confi
 
 | Category | Examples | Default Action |
 |----------|----------|---------------|
-| CategoryVerifiedSearchEngine | Googlebot, Bingbot | Allow |
-| CategoryVerifiedSocialMedia | Facebook, Twitter crawlers | Allow |
-| CategoryVerifiedScraping | Price comparison | Count |
+| CategorySearchEngine | Googlebot, Bingbot | Block for unverified bots; verified bots are labeled and not blocked by this rule |
+| CategorySocialMedia | Facebook, Twitter crawlers | Block for unverified bots; verified bots are labeled and not blocked by this rule |
+| CategoryScrapingFramework | Scraping frameworks | Block |
 | CategoryHttpLibrary | python-requests, curl | Block |
-| CategoryAdvertising | Ad bots | Count |
-| CategorySecurity | Security scanners | Count |
-| CategorySeo | SEO tools | Count |
+| CategoryAdvertising | Ad bots | Block |
+| CategorySecurity | Security scanners | Block |
+| CategorySeo | SEO tools | Block |
 | SignalAutomatedBrowser | Headless Chrome, Selenium | Block |
 | SignalKnownBotDataCenter | Requests from known bot hosting | Block |
 | SignalNonBrowserUserAgent | Non-browser user agents | Block |
 
 ## Customizing Actions Per Category
 
-You probably don't want to block everything. Search engines should be allowed, SEO tools might be fine, but automated browsers should be challenged.
+You probably don't want to block everything. Verified search engines should be allowed, SEO tools might be fine, but automated browsers should be challenged.
 
 This overrides specific Bot Control rules to use different actions:
 
@@ -189,20 +189,12 @@ This overrides specific Bot Control rules to use different actions:
       "Name": "AWSManagedRulesBotControlRuleSet",
       "ManagedRuleGroupConfigs": [
         {
-          "AWSManagedRulesBotControlRuleSetProperty": {
+          "AWSManagedRulesBotControlRuleSet": {
             "InspectionLevel": "TARGETED"
           }
         }
       ],
       "RuleActionOverrides": [
-        {
-          "Name": "CategoryVerifiedSearchEngine",
-          "ActionToUse": {"Allow": {}}
-        },
-        {
-          "Name": "CategoryVerifiedSocialMedia",
-          "ActionToUse": {"Allow": {}}
-        },
         {
           "Name": "CategorySeo",
           "ActionToUse": {"Count": {}}
@@ -306,17 +298,22 @@ aws wafv2 put-logging-configuration \
   --logging-configuration '{
     "ResourceArn": "arn:aws:wafv2:us-east-1:111111111111:regional/webacl/my-web-acl/abc123",
     "LogDestinationConfigs": [
-      "arn:aws:s3:::my-waf-logs-bucket"
+      "arn:aws:s3:::aws-waf-logs-my-bucket"
     ],
     "LoggingFilter": {
-      "DefaultBehavior": "KEEP",
+      "DefaultBehavior": "DROP",
       "Filters": [
         {
           "Behavior": "KEEP",
           "Conditions": [
             {
               "LabelNameCondition": {
-                "LabelName": "awswaf:managed:aws:bot-control:"
+                "LabelName": "awswaf:managed:aws:bot-control:CategoryHttpLibrary"
+              }
+            },
+            {
+              "LabelNameCondition": {
+                "LabelName": "awswaf:managed:aws:bot-control:SignalAutomatedBrowser"
               }
             }
           ],
@@ -331,7 +328,7 @@ aws wafv2 put-logging-configuration \
 
 **Start in count mode.** Set all Bot Control rules to count first. Monitor for a week to see what's being flagged. Only switch to block after you've confirmed there are no false positives.
 
-**Don't block verified search engines.** This seems obvious, but it happens. Always allow `CategoryVerifiedSearchEngine`.
+**Don't block verified search engines.** This seems obvious, but it happens. Bot Control labels verified bots with `awswaf:managed:aws:bot-control:bot:verified`; add an allow rule for that label if other rules in your web ACL might block them.
 
 **Use targeted mode for sensitive endpoints.** Login pages, checkout flows, and APIs benefit from the deeper analysis. Static content pages probably don't need it.
 
