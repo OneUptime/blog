@@ -90,11 +90,11 @@ Here's how they compare:
 Feature             | Multi-AZ Instance    | Multi-AZ Cluster
 --------------------|----------------------|---------------------
 Standby instances   | 1 (not readable)     | 2 (readable)
-Failover time       | 60-120 seconds       | ~35 seconds
+Failover time       | 60-120 seconds       | Under 35 seconds
 Read traffic        | Primary only         | Writer + 2 readers
 Replication         | Synchronous          | Semi-synchronous
 Engine support      | All engines          | MySQL, PostgreSQL
-Storage             | EBS                  | Optimized local SSD
+Storage             | gp3/io1/io2 EBS      | gp3/io1/io2
 ```
 
 ### Creating a Multi-AZ Cluster
@@ -139,7 +139,7 @@ aws rds describe-db-instances \
 
 You should test failover before you need it in production. RDS lets you trigger a manual failover.
 
-This command forces a failover to the standby instance.
+For a Multi-AZ DB instance deployment, this command forces a failover to the standby instance.
 
 ```bash
 # Force a failover
@@ -148,13 +148,20 @@ aws rds reboot-db-instance \
   --force-failover
 ```
 
+For a Multi-AZ DB cluster, use the cluster failover command instead.
+
+```bash
+aws rds failover-db-cluster \
+  --db-cluster-identifier my-ha-cluster
+```
+
 During the failover:
 1. The primary becomes unavailable
 2. DNS is updated to point to the standby
 3. The standby becomes the new primary
 4. The old primary is recovered and becomes the new standby
 
-Time the failover. It should take 1-2 minutes for Multi-AZ Instance and about 35 seconds for Multi-AZ Cluster.
+Time the failover. It should take 1-2 minutes for Multi-AZ Instance and typically under 35 seconds for Multi-AZ Cluster.
 
 ## Application Considerations
 
@@ -199,7 +206,7 @@ def connect_with_retry(config, max_retries=5, base_delay=1):
 db_config = {
     'host': 'my-ha-db.abc123.us-east-1.rds.amazonaws.com',
     'port': 5432,
-    'database': 'myappdb',
+    'dbname': 'myappdb',
     'user': 'admin',
     'password': 'YourStrongPassword123!',
     'connect_timeout': 5
@@ -244,10 +251,10 @@ Manual maintenance operations like instance class changes and OS patching are pe
 
 ## Cost Impact
 
-Multi-AZ roughly doubles your RDS compute cost because you're paying for two instances. Storage costs also increase since data is replicated. For a db.r6g.large in us-east-1:
+Multi-AZ roughly doubles your RDS compute cost because you're paying for two instances. Storage costs also increase since data is replicated. For a db.r6g.large in us-east-1, check the current Amazon RDS pricing page for exact on-demand rates:
 
-- **Single-AZ**: ~$0.26/hour ($190/month)
-- **Multi-AZ Instance**: ~$0.52/hour ($380/month)
+- **Single-AZ**: One DB instance hour plus storage
+- **Multi-AZ Instance**: Two DB instance hours plus replicated storage
 
 Is it worth it? If your application generates revenue or serves users who expect availability, absolutely. Two minutes of downtime during a failover is far better than hours of downtime while you manually recover a failed instance.
 
@@ -255,9 +262,9 @@ Is it worth it? If your application generates revenue or serves users who expect
 
 Set up CloudWatch alerts for failover events. Use [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) or CloudWatch to monitor these event types:
 
-- `RDS-EVENT-0049`: Multi-AZ failover started
-- `RDS-EVENT-0050`: Multi-AZ failover completed
-- `RDS-EVENT-0051`: Multi-AZ failover completed (not a customer-initiated event)
+- `RDS-EVENT-0013`: Multi-AZ instance failover started
+- `RDS-EVENT-0015`: Multi-AZ failover to standby complete - DNS propagation may take a few minutes
+- `RDS-EVENT-0071`: Completed failover to DB instance (for DB clusters)
 
 ## Wrapping Up
 
