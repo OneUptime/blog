@@ -21,7 +21,8 @@ Install Terraform and configure AWS credentials:
 ```bash
 # Install Terraform (macOS with Homebrew)
 
-brew install terraform
+brew tap hashicorp/tap
+brew install hashicorp/tap/terraform
 
 # Configure AWS credentials
 aws configure
@@ -67,7 +68,7 @@ data "aws_ami" "amazon_linux" {
 
   filter {
     name   = "name"
-    values = ["al2023-ami-*-x86_64"]
+    values = ["al2023-ami-2023.*-kernel-*-x86_64"]
   }
 
   filter {
@@ -103,16 +104,21 @@ Terraform will show you exactly what it's going to create and ask for confirmati
 
 ## Adding a Security Group
 
-A bare instance without a security group isn't very useful. Let's add one that allows SSH and HTTP access.
+A default security group is restrictive and not very useful for a web server. Let's add a custom one that allows SSH and HTTP access.
 
 Define a security group alongside the instance:
 
 ```hcl
+# Look up the default VPC for this simple example
+data "aws_vpc" "default" {
+  default = true
+}
+
 # Security group allowing SSH and HTTP
 resource "aws_security_group" "web_sg" {
   name        = "web-server-sg"
   description = "Allow SSH and HTTP inbound traffic"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = data.aws_vpc.default.id
 
   ingress {
     description = "SSH from anywhere"
@@ -159,7 +165,7 @@ resource "aws_instance" "web" {
 
 For a production setup, you should define the whole network stack rather than relying on the default VPC.
 
-Here's a complete VPC with public and private subnets:
+Here's a complete VPC with a public subnet:
 
 ```hcl
 # VPC
@@ -375,16 +381,16 @@ Configure remote state with S3 backend:
 ```hcl
 terraform {
   backend "s3" {
-    bucket         = "my-terraform-state-bucket"
-    key            = "ec2/terraform.tfstate"
-    region         = "us-east-1"
-    dynamodb_table = "terraform-lock"
-    encrypt        = true
+    bucket       = "my-terraform-state-bucket"
+    key          = "ec2/terraform.tfstate"
+    region       = "us-east-1"
+    use_lockfile = true
+    encrypt      = true
   }
 }
 ```
 
-This ensures everyone on the team works with the same state, and the DynamoDB table prevents concurrent modifications.
+This ensures everyone on the team works with the same state, and the S3 lock file prevents concurrent modifications.
 
 ## Lifecycle Rules
 
@@ -404,7 +410,7 @@ resource "aws_instance" "web" {
     # Create replacement before destroying old one
     create_before_destroy = true
 
-    # Prevent accidental deletion
+    # Prevent accidental deletion (remove this before planned replacements)
     prevent_destroy = true
   }
 
@@ -412,7 +418,7 @@ resource "aws_instance" "web" {
 }
 ```
 
-The `create_before_destroy` option is especially useful for zero-downtime updates - Terraform will spin up the new instance before terminating the old one.
+The `create_before_destroy` option is useful for replacement workflows because Terraform will spin up the new instance before terminating the old one. For zero-downtime updates, pair this with load balancing or another traffic cutover mechanism.
 
 ## Cleaning Up
 
