@@ -22,13 +22,15 @@ This is a crucial distinction. Savings Plans decouple your commitment from speci
 
 ## Types of Savings Plans
 
-There are three types:
+There are four types:
 
 **Compute Savings Plans** - The most flexible. Your commitment applies to any EC2 instance in any region, any instance family, any OS, any tenancy. Also applies to Fargate and Lambda. Discounts up to 66%.
 
 **EC2 Instance Savings Plans** - Committed to a specific instance family in a specific region (e.g., m5 in us-east-1), but flexible on size, OS, and tenancy. Discounts up to 72%.
 
-**SageMaker Savings Plans** - For ML workloads on SageMaker. Not relevant to this discussion.
+**Database Savings Plans** - For database workloads across services such as RDS, Aurora, DynamoDB, ElastiCache, DocumentDB, Neptune, Timestream, Keyspaces, DMS, and OpenSearch Service. Not relevant to this discussion.
+
+**SageMaker AI Savings Plans** - For ML workloads on SageMaker AI. Not relevant to this discussion.
 
 Here's a comparison table:
 
@@ -59,7 +61,7 @@ Savings Plans are the better choice in most scenarios. Here's when:
 
 RIs still make sense in specific situations:
 
-**Maximum savings on stable workloads** - Standard RIs with All Upfront payment give the absolute best discount.
+**Maximum savings on stable workloads** - Standard RIs with All Upfront payment are among the deepest discounts available.
 
 **Capacity reservations** - Zonal RIs guarantee capacity in a specific AZ. Savings Plans don't include capacity reservations (though you can buy them separately).
 
@@ -103,7 +105,7 @@ The commitment is in dollars per hour. A $10/hour commitment means you're paying
 
 The biggest mistake people make is over-committing. Here's how to figure out the right amount.
 
-Pull your hourly On-Demand spend for the last 60 days:
+Pull your daily compute spend for the last 60 days:
 
 ```bash
 # Get daily compute costs
@@ -125,9 +127,9 @@ For example, if your minimum daily EC2 spend is $240, your minimum hourly rate i
 
 ## How Discounts Are Applied
 
-Savings Plans apply discounts automatically. AWS processes your hourly usage and applies the Savings Plan rate to the most expensive instances first (to maximize your savings).
+Savings Plans apply discounts automatically. AWS processes your hourly usage after Reserved Instances are applied, applies EC2 Instance Savings Plans before Compute Savings Plans, and then applies Savings Plans to the eligible usage with the highest savings percentage first.
 
-Here's an example of how a $5/hour Compute Savings Plan gets applied:
+Here's an example of usage that is fully covered by Compute Savings Plan rates:
 
 ```text
 Hourly usage:
@@ -140,7 +142,7 @@ Total with SP:   $0.456/hr
 Savings:         $0.298/hr (39.5%)
 ```
 
-The SP discount is applied starting with the highest hourly rate instances, squeezing out the maximum savings from your commitment.
+The SP discount is applied starting with the highest savings percentage, squeezing out the maximum savings from your commitment.
 
 ## Comparing Total Cost Over 1 Year
 
@@ -167,7 +169,7 @@ Standard RI (No Upfront):
   Savings: $2,452.80 (29%)
 ```
 
-The All Upfront Standard RI gives the deepest discount, but the Savings Plans give comparable savings with much more flexibility.
+The All Upfront Standard RI gives one of the deepest discounts, but the Savings Plans give comparable savings with much more flexibility.
 
 ## Monitoring Savings Plan Utilization
 
