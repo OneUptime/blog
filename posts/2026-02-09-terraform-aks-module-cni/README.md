@@ -8,19 +8,19 @@ Description: A complete guide to deploying Azure Kubernetes Service clusters wit
 
 ---
 
-Azure Kubernetes Service (AKS) supports two primary networking models: kubenet and Azure CNI. While kubenet is simpler, Azure CNI assigns real Azure VNet IP addresses to every pod, enabling direct communication between pods and other Azure resources without NAT. This is essential for workloads that need to interact with Azure services through private endpoints, VNet peering, or network security groups at the pod level. This guide demonstrates how to deploy AKS with Azure CNI using Terraform modules, covering network planning, cluster configuration, and production hardening.
+Azure Kubernetes Service (AKS) supports multiple networking options, including legacy kubenet and Azure CNI modes. While kubenet is simpler, Azure CNI flat networking assigns real Azure VNet IP addresses to every pod, enabling direct communication between pods and other Azure resources without NAT. This is useful for workloads that need to interact with Azure services through private endpoints, VNet peering, or subnet-level network security groups. This guide demonstrates how to deploy AKS with Azure CNI using Terraform modules, covering network planning, cluster configuration, and production hardening.
 
 ## Azure CNI vs Kubenet
 
-With kubenet, pods get IP addresses from a virtual network space that is separate from the Azure VNet. Pod-to-pod communication across nodes requires user-defined routes (UDRs), and pods appear to external Azure resources as the node's IP address through NAT.
+With kubenet, pods get IP addresses from a virtual network space that is separate from the Azure VNet. Pod-to-pod communication across nodes uses routes managed by AKS or by a user-defined route table, and pods appear to external Azure resources as the node's IP address through NAT. Kubenet is scheduled for retirement in AKS on March 31, 2028, so use Azure CNI for new production designs.
 
-With Azure CNI, every pod gets an IP address directly from the Azure VNet subnet. Pods are fully addressable within the VNet, can be targeted by network security groups, and can communicate directly with other VNet resources and peered networks. The tradeoff is that Azure CNI requires more IP addresses because every pod consumes a real VNet IP.
+With Azure CNI flat networking, every pod gets an IP address directly from an Azure VNet subnet. Pods are fully addressable within the VNet, are subject to subnet-level network security groups and route tables, and can communicate directly with other VNet resources and peered networks. The tradeoff is that Azure CNI requires more IP addresses because every pod consumes a real VNet IP.
 
 ## IP Address Planning
 
-Before deploying, plan your IP address space carefully. Each node in an Azure CNI cluster reserves IP addresses for the maximum number of pods it can run. The default is 30 pods per node. For a node pool with 5 nodes, you need at least 5 (nodes) x 30 (pods) + 5 (node IPs) = 155 IP addresses, plus addresses for services and headroom for scaling.
+Before deploying, plan your IP address space carefully. Each node in an Azure CNI node subnet cluster reserves IP addresses for the maximum number of pods it can run. The default is 30 pods per node. For a node pool with 5 nodes, you need at least 5 (nodes) x 30 (pods) + 5 (node IPs) = 155 IP addresses, plus headroom for upgrade surge nodes, internal load balancer front-end IPs, and scaling.
 
-A `/22` subnet (1,022 usable IPs) is a good starting point for small to medium clusters. For larger clusters, use a `/20` or larger.
+A `/22` subnet (1,019 usable IPs in Azure after reserved addresses) is a good starting point for small to medium clusters. For larger clusters, use a `/20` or larger.
 
 ## Step 1: Define the VNet and Subnets
 
@@ -54,7 +54,7 @@ resource "azurerm_subnet" "aks_internal_lb" {
 }
 ```
 
-The `aks-nodes` subnet hosts pod and node IPs. The `aks-internal-lb` subnet is for internal load balancers used by Kubernetes services of type LoadBalancer with the internal annotation.
+The `aks-nodes` subnet hosts pod and node IPs. Internal load balancer front-end IPs are allocated from the node subnet by default; use the `aks-internal-lb` subnet only if you configure the Kubernetes internal load balancer subnet annotation and grant the cluster identity permissions on that subnet.
 
 ## Step 2: Create an AKS Terraform Module
 
@@ -81,7 +81,7 @@ variable "resource_group_name" {
 variable "kubernetes_version" {
   type        = string
   description = "Kubernetes version"
-  default     = "1.29"
+  default     = "1.35"
 }
 
 variable "subnet_id" {
@@ -153,7 +153,7 @@ resource "azurerm_kubernetes_cluster" "main" {
     os_disk_size_gb     = 128
     os_disk_type        = "Managed"
     type                = "VirtualMachineScaleSets"
-    enable_auto_scaling = true
+    auto_scaling_enabled  = true
     min_count           = var.default_node_pool_count
     max_count           = var.default_node_pool_count * 3
 
@@ -177,8 +177,7 @@ resource "azurerm_kubernetes_cluster" "main" {
   }
 
   azure_active_directory_role_based_access_control {
-    managed                = true
-    azure_rbac_enabled     = true
+    azure_rbac_enabled = true
   }
 
   oms_agent {
@@ -235,7 +234,7 @@ module "aks" {
   cluster_name          = "production-aks"
   location              = azurerm_resource_group.main.location
   resource_group_name   = azurerm_resource_group.main.name
-  kubernetes_version    = "1.29"
+  kubernetes_version    = "1.35"
   subnet_id             = azurerm_subnet.aks_nodes.id
   service_cidr          = "10.1.0.0/16"
   dns_service_ip        = "10.1.0.10"
@@ -259,7 +258,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "workload" {
   vnet_subnet_id        = azurerm_subnet.aks_nodes.id
   max_pods              = 50
   os_disk_size_gb       = 256
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   min_count             = 3
   max_count             = 20
 
@@ -277,7 +276,7 @@ resource "azurerm_kubernetes_cluster_node_pool" "gpu" {
   node_count            = 0
   vnet_subnet_id        = azurerm_subnet.aks_nodes.id
   max_pods              = 30
-  enable_auto_scaling   = true
+  auto_scaling_enabled  = true
   min_count             = 0
   max_count             = 4
 
@@ -327,7 +326,7 @@ spec:
           protocol: TCP
 ```
 
-Because Azure CNI assigns VNet IPs to pods, these network policies are enforced by Azure's network infrastructure, not just iptables rules on the nodes.
+Because Azure CNI assigns VNet IPs to pods, the pod IPs are visible on the VNet. Network policy enforcement is still handled by the configured AKS network policy engine, such as Azure Network Policy Manager, Calico, or Cilium.
 
 ## Step 6: Private Cluster Configuration
 
@@ -340,23 +339,19 @@ resource "azurerm_kubernetes_cluster" "main" {
   private_cluster_enabled             = true
   private_dns_zone_id                 = "System"
   private_cluster_public_fqdn_enabled = false
-
-  api_server_access_profile {
-    authorized_ip_ranges = []
-  }
 }
 ```
 
-With a private cluster, the API server gets a private IP within your VNet. You will need a jumpbox, VPN gateway, or Azure Bastion to access the cluster.
+With a private cluster, the API server is exposed through a private endpoint in your VNet. You will need a jumpbox, VPN gateway, or Azure Bastion to access the cluster. API server authorized IP ranges apply only to the public API server endpoint, not to the private endpoint.
 
 ## Troubleshooting Azure CNI
 
 **IP exhaustion**: If pods are stuck in Pending with "failed to allocate IP" errors, your subnet is running out of IP addresses. Either reduce `max_pods` per node or use a larger subnet.
 
-**Slow pod startup**: Azure CNI assigns IPs through the Azure networking stack, which can be slower than kubenet. Use the `azure-cni-overlay` network plugin for better IP efficiency while retaining VNet integration.
+**Slow pod startup**: Azure CNI assigns IPs through the Azure networking stack, which can be slower than kubenet. Consider Azure CNI Overlay for better IP efficiency if your workloads don't require directly routable pod IPs.
 
-**Cross-subnet communication**: If pods cannot reach resources in peered VNets, check that the VNet peering is configured with "Allow forwarded traffic" and that UDRs are not blocking pod CIDR ranges.
+**Cross-subnet communication**: If pods cannot reach resources in peered VNets, check that the VNet peering is configured with "Allow forwarded traffic" and that UDRs are not blocking the AKS node subnet ranges.
 
 ## Conclusion
 
-Deploying AKS with Azure CNI via Terraform modules gives you a repeatable, version-controlled infrastructure setup with enterprise-grade networking. Azure CNI provides true VNet integration for your pods, enabling network security groups, private endpoints, and VNet peering at the pod level. Plan your IP address space carefully, use multiple node pools for workload isolation, enable network policies for microsegmentation, and consider private cluster mode for security-sensitive environments. With the module pattern shown here, you can deploy consistent AKS clusters across development, staging, and production environments by simply changing input variables.
+Deploying AKS with Azure CNI via Terraform modules gives you a repeatable, version-controlled infrastructure setup with enterprise-grade networking. Azure CNI flat networking provides true VNet integration for your pods, enabling direct pod connectivity with private endpoints and peered networks while applying subnet-level network controls. Plan your IP address space carefully, use multiple node pools for workload isolation, enable network policies for microsegmentation, and consider private cluster mode for security-sensitive environments. With the module pattern shown here, you can deploy consistent AKS clusters across development, staging, and production environments by simply changing input variables.
