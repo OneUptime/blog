@@ -16,7 +16,7 @@ This is how you build a secure, public-facing API that talks to private backends
 
 A VPC Link is a connection between API Gateway and a private resource inside your VPC. The traffic stays within the AWS network - it never touches the public internet.
 
-For REST APIs, VPC Links connect to Network Load Balancers (NLBs). For HTTP APIs, they connect to Application Load Balancers (ALBs), NLBs, or AWS Cloud Map services. The HTTP API version is newer and more flexible.
+For REST APIs, VPC Links V2 connect to Application Load Balancers (ALBs) or Network Load Balancers (NLBs). For HTTP APIs, they connect to ALBs, NLBs, or AWS Cloud Map services. Older REST API VPC Links V1 only support NLBs, but VPC Links V2 are the recommended option.
 
 Here's the flow:
 
@@ -40,13 +40,13 @@ The key thing to understand: API Gateway creates ENIs (Elastic Network Interface
 
 You'll need:
 - A VPC with private subnets
-- A Network Load Balancer (for REST API) or Application Load Balancer (for HTTP API) in those subnets
+- An Application Load Balancer or Network Load Balancer in those subnets
 - A backend service registered as a target (ECS, EC2, etc.)
 - An API Gateway API
 
 ## Setting Up a VPC Link for REST APIs
 
-REST APIs require an NLB as the VPC Link target. Let's set up the full stack.
+This REST API example uses an NLB as the private integration target. Let's set up the full stack.
 
 ### Step 1: Create the Network Load Balancer
 
@@ -88,17 +88,17 @@ Resources:
 
 ### Step 2: Create the VPC Link
 
-This command creates a VPC Link pointing to your NLB:
+This command creates a VPC Link V2 in your private subnets:
 
 ```bash
 # Create the VPC Link (REST API)
-
-aws apigateway create-vpc-link \
+aws apigatewayv2 create-vpc-link \
   --name my-api-vpc-link \
-  --target-arns arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/api-backend-nlb/abc123
+  --subnet-ids subnet-abc123 subnet-def456 \
+  --security-group-ids sg-abc123
 
 # Check the status (it takes a few minutes to become AVAILABLE)
-aws apigateway get-vpc-link \
+aws apigatewayv2 get-vpc-link \
   --vpc-link-id abc123
 ```
 
@@ -116,7 +116,8 @@ aws apigateway put-integration \
   --http-method GET \
   --type HTTP_PROXY \
   --integration-http-method GET \
-  --uri 'http://api-backend-nlb-abc123.elb.us-east-1.amazonaws.com/api/orders' \
+  --integration-target arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/net/api-backend-nlb/abc123/def456 \
+  --uri 'http://api.internal.example.com/api/orders' \
   --connection-type VPC_LINK \
   --connection-id abc123
 ```
@@ -130,14 +131,14 @@ HTTP APIs support ALBs, NLBs, and Cloud Map - and the setup is simpler.
 This command creates a VPC Link for an HTTP API using specific subnets and security groups:
 
 ```bash
-# Create VPC Link for HTTP API (different from REST API VPC Links)
+# Create VPC Link for HTTP API
 aws apigatewayv2 create-vpc-link \
   --name my-http-api-vpc-link \
   --subnet-ids subnet-abc123 subnet-def456 \
   --security-group-ids sg-abc123
 ```
 
-Notice the difference: HTTP API VPC Links specify subnets and security groups directly, while REST API VPC Links point to an NLB.
+This is the same VPC Links V2 model used for the REST API example above: you specify subnets and security groups for the link, then point each private integration at an ALB listener, NLB listener, or Cloud Map service.
 
 ### Configure the Route Integration
 
@@ -151,6 +152,12 @@ aws apigatewayv2 create-integration \
   --connection-type VPC_LINK \
   --connection-id abc123 \
   --payload-format-version 1.0
+
+# Attach the returned integration ID to a route
+aws apigatewayv2 create-route \
+  --api-id a1b2c3d4e5 \
+  --route-key 'GET /api/orders' \
+  --target integrations/ghi789
 ```
 
 ## Complete CDK Example
@@ -263,6 +270,7 @@ vpcLinkSg.addEgressRule(
 );
 
 // Allow ALB to receive from VPC Link
+const albSecurityGroup = alb.connections.securityGroups[0];
 albSecurityGroup.addIngressRule(
   vpcLinkSg,
   ec2.Port.tcp(80),
@@ -309,7 +317,7 @@ Then set a resource policy on your API to restrict access:
       "Resource": "arn:aws:execute-api:us-east-1:123456789012:a1b2c3d4e5/*",
       "Condition": {
         "StringNotEquals": {
-          "aws:sourceVpce": "vpce-abc123"
+          "aws:SourceVpce": "vpce-abc123"
         }
       }
     },
@@ -325,14 +333,14 @@ Then set a resource policy on your API to restrict access:
 
 ## Troubleshooting
 
-**VPC Link stuck in PENDING** - Check that your NLB is active and healthy. If the NLB has no healthy targets, the VPC Link might not transition to AVAILABLE.
+**VPC Link stuck in PENDING** - Check that the selected subnets are in supported Availability Zones and that API Gateway can create ENIs in those subnets. VPC Link creation usually takes a few minutes before the status changes to `AVAILABLE`.
 
 **502 Bad Gateway errors** - This usually means the VPC Link can reach the NLB/ALB but your backend isn't responding properly. Check security groups and make sure the backend target group has healthy targets.
 
-**Timeouts** - API Gateway has a 30-second timeout for REST APIs and a configurable timeout for HTTP APIs. Make sure your backend responds within that window.
+**Timeouts** - API Gateway's default integration timeout is 29 seconds. REST APIs can increase it above 29 seconds for Regional and private APIs, while HTTP API private integration timeouts must be between 50 milliseconds and 29 seconds. Make sure your backend responds within that window.
 
 **Cannot reach private DNS** - If your backend uses private DNS names, make sure DNS resolution is enabled in your VPC and the VPC Link subnets can resolve those names.
 
 ## Wrapping Up
 
-VPC Links are the standard way to connect API Gateway to private backends. They keep traffic off the public internet while giving your customers a clean, public API endpoint. Use NLB-based VPC Links for REST APIs and ALB/NLB-based links for HTTP APIs. Combined with proper security group configuration, you get a secure, performant connection between your public API and private services.
+VPC Links are the standard way to connect API Gateway to private backends. They keep traffic off the public internet while giving your customers a clean, public API endpoint. Use VPC Links V2 with ALB or NLB private integrations for REST APIs, and ALB, NLB, or Cloud Map private integrations for HTTP APIs. Combined with proper security group configuration, you get a secure, performant connection between your public API and private services.
