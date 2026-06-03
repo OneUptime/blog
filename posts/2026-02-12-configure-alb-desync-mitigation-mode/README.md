@@ -44,8 +44,8 @@ This is the default setting. The ALB allows requests that are not RFC-compliant 
 
 - **Compliant**: Fully RFC-compliant requests. Always forwarded.
 - **Acceptable**: Not fully compliant but not known to cause desync. Forwarded.
-- **Ambiguous**: Could potentially cause desync. Forwarded but monitored.
-- **Severe**: Known desync attack patterns. Blocked.
+- **Ambiguous**: Could potentially cause desync. Forwarded in defensive mode, but the ALB closes the client and target connections.
+- **Severe**: Known desync attack patterns. Blocked in defensive and strictest modes; forwarded in monitor mode.
 
 ### Strictest Mode
 
@@ -65,7 +65,7 @@ graph TD
 
     D -->|All Modes| G[Forwarded]
     E -->|Monitor| H[Forwarded + Logged]
-    E -->|Defensive| I[Forwarded + Logged]
+    E -->|Defensive| I[Forwarded + Logged + Connections Closed]
     E -->|Strictest| J[Blocked]
     F -->|Monitor| K[Forwarded + Logged]
     F -->|Defensive| L[Blocked]
@@ -161,7 +161,7 @@ aws elbv2 modify-load-balancer-attributes \
 
 ### Step 2: Analyze Access Logs
 
-Enable ALB access logs and look for the `classification` field. This tells you how each request was classified.
+Enable ALB access logs and look for the `classification` and `classification_reason` fields. Non-compliant requests show `Acceptable`, `Ambiguous`, or `Severe`; compliant requests show `-`.
 
 ```bash
 # Enable access logs
@@ -177,27 +177,30 @@ Then query the logs to understand your traffic:
 
 ```python
 import gzip
-import csv
+import shlex
 from collections import Counter
 
 def analyze_desync_classifications(log_file):
     """
     Analyze ALB access logs for desync classifications.
-    The classification field is the last field in the log entry.
+    The classification field is field 28 in the documented log format.
     """
     classifications = Counter()
     ambiguous_requests = []
 
     with gzip.open(log_file, 'rt') as f:
         for line in f:
-            fields = line.strip().split(' ')
-            # Classification is one of the last fields
-            # Look for: Compliant, Acceptable, Ambiguous, Severe
-            for field in fields:
-                if field in ('Compliant', 'Acceptable', 'Ambiguous', 'Severe'):
-                    classifications[field] += 1
-                    if field in ('Ambiguous', 'Severe'):
-                        ambiguous_requests.append(line.strip())
+            fields = shlex.split(line.strip())
+            if len(fields) < 28:
+                continue
+
+            classification = fields[27]
+            if classification == '-':
+                classification = 'Compliant'
+
+            classifications[classification] += 1
+            if classification in ('Ambiguous', 'Severe'):
+                ambiguous_requests.append(line.strip())
 
     print("Request Classifications:")
     for classification, count in classifications.most_common():
@@ -225,7 +228,7 @@ If you find Ambiguous or Acceptable requests from legitimate clients, fix the cl
 
 ### Step 4: Switch to Strictest Mode
 
-Once you have confirmed that all legitimate traffic is classified as Compliant, switch to strictest mode:
+Once you have confirmed that all legitimate traffic is compliant, switch to strictest mode:
 
 ```bash
 aws elbv2 modify-load-balancer-attributes \
@@ -273,13 +276,13 @@ WAF catches known attack patterns at the application layer, while desync mitigat
 
 ## What About HTTP/2?
 
-HTTP/2 uses a different framing mechanism (binary frames instead of text-based headers), which eliminates the ambiguity that makes desync attacks possible. However, the connection between your ALB and your backend is typically HTTP/1.1, so desync protection is still relevant for the backend connection.
+HTTP/2 uses a different framing mechanism (binary frames instead of text-based headers), which reduces the HTTP/1.x parsing ambiguity that desync attacks exploit. However, Application Load Balancers use HTTP/1.1 on backend connections by default, so desync protection is still relevant for the backend connection.
 
-If your clients all support HTTP/2 and your ALB is configured for it, the front-end connection is safe from desync. But the back-end connection still benefits from desync mitigation.
+If your clients all support HTTP/2 and your ALB is configured for it, the front-end connection avoids many HTTP/1.x request-boundary issues. But the back-end connection still benefits from desync mitigation unless your target group is configured to use HTTP/2 or gRPC and your targets support it.
 
 ## Performance Impact
 
-The performance impact of desync mitigation is negligible. The ALB already parses HTTP headers for routing purposes. The desync classification adds minimal overhead to this existing parsing. Even in strictest mode, the latency impact is typically less than 1 millisecond per request.
+The performance impact of desync mitigation is typically small. The ALB already parses HTTP headers for routing purposes, and the desync classification adds to this existing parsing. AWS does not publish a fixed latency guarantee, so measure the impact in your own workload.
 
 ## Best Practices
 
