@@ -46,11 +46,14 @@ graph TD
 
 ```hcl
 resource "aws_lambda_function" "api" {
-  function_name = "api-handler"
-  runtime       = "nodejs20.x"
-  handler       = "index.handler"
-  memory_size   = 1769  # 1 vCPU equivalent
-  timeout       = 30
+  function_name    = "api-handler"
+  runtime          = "nodejs22.x"
+  handler          = "index.handler"
+  role             = aws_iam_role.lambda.arn
+  filename         = "function.zip"
+  source_code_hash = filebase64sha256("function.zip")
+  memory_size      = 1769  # 1 vCPU equivalent
+  timeout          = 30
 
   # Use ARM for better price-performance
   architectures = ["arm64"]
@@ -61,7 +64,7 @@ resource "aws_lambda_function" "api" {
     }
   }
 
-  # Enable SnapStart for Java functions
+  # For Java, Python, or .NET functions, use a matching runtime before enabling SnapStart
   # snap_start {
   #   apply_on = "PublishedVersions"
   # }
@@ -89,7 +92,7 @@ resource "aws_instance" "app" {
 }
 ```
 
-AWS Compute Optimizer analyzes your CloudWatch metrics and recommends better instance types. Check it regularly.
+After you opt in, AWS Compute Optimizer analyzes your CloudWatch metrics and recommends better instance types. Check it regularly.
 
 ### Storage Selection
 
@@ -231,7 +234,7 @@ resource "aws_cloudfront_distribution" "main" {
     origin_request_policy_id = aws_cloudfront_origin_request_policy.main.id
 
     viewer_protocol_policy = "redirect-to-https"
-    compress               = true  # enable gzip/brotli compression
+    compress               = true  # allow automatic compression; enable gzip/Brotli in the cache policy
   }
 
   viewer_certificate {
@@ -249,10 +252,10 @@ resource "aws_cloudfront_distribution" "main" {
 
 ## Network Optimization
 
-**VPC Endpoints** reduce latency for AWS service calls by keeping traffic on the AWS network:
+**VPC Endpoints** provide reliable private connectivity for AWS service calls without requiring an internet gateway or NAT gateway:
 
 ```hcl
-# Gateway endpoint for S3 - free and reduces latency
+# Gateway endpoint for S3 - no additional endpoint charge
 resource "aws_vpc_endpoint" "s3" {
   vpc_id       = aws_vpc.main.id
   service_name = "com.amazonaws.${var.region}.s3"
@@ -260,7 +263,7 @@ resource "aws_vpc_endpoint" "s3" {
   route_table_ids = aws_route_table.private[*].id
 }
 
-# Gateway endpoint for DynamoDB - also free
+# Gateway endpoint for DynamoDB - also no additional endpoint charge
 resource "aws_vpc_endpoint" "dynamodb" {
   vpc_id       = aws_vpc.main.id
   service_name = "com.amazonaws.${var.region}.dynamodb"
@@ -291,7 +294,7 @@ resource "aws_xray_sampling_rule" "main" {
   resource_arn   = "*"
 }
 
-# CloudWatch custom metrics for application performance
+# CloudWatch alarm for an ALB service metric
 resource "aws_cloudwatch_metric_alarm" "latency_p99" {
   alarm_name          = "api-latency-p99"
   comparison_operator = "GreaterThanThreshold"
