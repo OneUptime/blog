@@ -8,15 +8,15 @@ Description: Learn how to configure IPVS scheduling algorithms in Kubernetes for
 
 ---
 
-IPVS (IP Virtual Server) provides more sophisticated load balancing than the traditional iptables mode in Kubernetes. When you configure kube-proxy to use IPVS, you gain access to multiple scheduling algorithms that can dramatically improve traffic distribution and application performance. This guide shows you how to choose and configure the right algorithm for your workload.
+IPVS (IP Virtual Server) provides more sophisticated load balancing than the traditional iptables mode in Kubernetes. When you configure kube-proxy to use IPVS, you gain access to multiple scheduling algorithms that can improve traffic distribution for some workloads. This guide shows you how to choose and configure the right algorithm for your workload. Note that current Kubernetes documentation marks IPVS proxy mode as deprecated and recommends nftables mode for new Linux clusters that can use it.
 
 ## Understanding IPVS Scheduling Algorithms
 
 IPVS is a transport-layer load balancer built into the Linux kernel. Unlike iptables, which processes rules sequentially, IPVS uses hash tables for O(1) lookup complexity. This makes it much faster when you have hundreds or thousands of services.
 
-IPVS supports ten scheduling algorithms, but Kubernetes commonly uses five: round-robin (rr), least connection (lc), destination hashing (dh), source hashing (sh), and shortest expected delay (sed). Each algorithm optimizes for different traffic patterns and application requirements.
+IPVS supports several scheduling algorithms, including round-robin (rr), weighted round-robin (wrr), least connection (lc), weighted least connection (wlc), locality-based least connection (lblc), locality-based least connection with replication (lblcr), destination hashing (dh), source hashing (sh), shortest expected delay (sed), never queue (nq), and Maglev hashing (mh). Each algorithm optimizes for different traffic patterns and application requirements.
 
-The round-robin algorithm distributes connections evenly across backends. Least connection sends new connections to the backend with the fewest active connections. Source hashing ensures requests from the same client IP always go to the same backend, which is crucial for session affinity.
+The round-robin algorithm distributes connections evenly across backends. Least connection sends new connections to the backend with the fewest active connections. Source hashing maps requests from the same client IP to the same backend while the backend set is stable, which can help with session affinity.
 
 ## Enabling IPVS Mode in kube-proxy
 
@@ -48,7 +48,7 @@ nf_conntrack
 EOF
 ```
 
-Next, configure kube-proxy to use IPVS. If you're using kubeadm, create a ConfigMap:
+Next, configure kube-proxy to use IPVS. If you're using kubeadm, edit the existing kube-proxy ConfigMap:
 
 ```yaml
 apiVersion: v1
@@ -63,8 +63,6 @@ data:
     mode: "ipvs"
     ipvs:
       scheduler: "rr"
-      excludeCIDRs:
-      - "10.96.0.10/32"  # Exclude cluster DNS
       strictARP: true
       syncPeriod: 30s
       minSyncPeriod: 5s
@@ -98,7 +96,7 @@ spec:
     app: web
   ports:
   - port: 80
-    targetPort: 8080
+    targetPort: 80
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -118,7 +116,7 @@ spec:
       - name: nginx
         image: nginx:1.21
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ```
 
 Verify IPVS is working correctly:
@@ -132,9 +130,9 @@ ipvsadm -Ln
 
 # Expected output shows your service with rr scheduler:
 # TCP  10.96.100.50:80 rr
-#   -> 10.244.1.10:8080  Masq    1      0          0
-#   -> 10.244.2.15:8080  Masq    1      0          0
-#   -> 10.244.3.20:8080  Masq    1      0          0
+#   -> 10.244.1.10:80  Masq    1      0          0
+#   -> 10.244.2.15:80  Masq    1      0          0
+#   -> 10.244.3.20:80  Masq    1      0          0
 ```
 
 The `rr` indicator confirms round-robin scheduling is active. Each connection will go to the next backend in sequence.
@@ -201,13 +199,13 @@ Monitor the connection distribution to verify it's balanced:
 # Watch IPVS statistics
 watch -n 1 'ipvsadm -Ln --stats'
 
-# The InActConn column shows active connections per backend
-# With lc, new connections go to the backend with lowest count
+# The ActiveConn column shows active connections per backend
+# With lc, new connections go to the backend with the fewest active connections
 ```
 
 ## Implementing Source Hashing for Session Affinity
 
-Source hashing ensures all connections from the same client IP go to the same backend. This is critical for applications that maintain session state in memory:
+Source hashing maps connections from the same client IP to the same backend while the backend set is stable. This can help applications that maintain session state in memory:
 
 ```yaml
 apiVersion: v1
@@ -225,7 +223,7 @@ data:
       strictARP: true
 ```
 
-Source hashing is perfect for sticky sessions:
+Source hashing can be useful for sticky sessions:
 
 ```yaml
 apiVersion: v1
@@ -266,11 +264,11 @@ spec:
         - containerPort: 8080
 ```
 
-Combining IPVS source hashing with Kubernetes sessionAffinity provides two layers of stickiness. The IPVS layer works at the kernel level for maximum performance, while sessionAffinity provides application-level control.
+Combining IPVS source hashing with Kubernetes sessionAffinity is usually unnecessary. In IPVS mode, Kubernetes `sessionAffinity: ClientIP` is implemented by kube-proxy as IPVS persistence with the configured timeout, so use it when you need Kubernetes-managed stickiness.
 
 ## Using Destination Hashing for Cache Efficiency
 
-Destination hashing distributes traffic based on the destination IP. This is useful when you have multiple services and want to ensure requests to the same service endpoint always hit the same backend:
+Destination hashing distributes traffic based on the destination IP. For a normal ClusterIP Service, the destination is usually the Service virtual IP, so this scheduler is most useful only in specialized IPVS setups where the destination address varies:
 
 ```yaml
 apiVersion: v1
@@ -288,7 +286,7 @@ data:
       strictARP: true
 ```
 
-Destination hashing is particularly effective for caching proxies where cache hit rates improve when the same destination consistently routes to the same backend.
+Destination hashing can be useful for caching proxy designs where cache hit rates improve when the same destination consistently routes to the same backend, but test it carefully with Kubernetes Services because a single Service virtual IP can concentrate traffic on one backend.
 
 ## Weighted Round-Robin for Heterogeneous Backends
 
@@ -310,7 +308,7 @@ data:
       strictARP: true
 ```
 
-Unfortunately, Kubernetes doesn't provide a native way to set per-pod weights for IPVS. The weights are automatically determined based on pod readiness and resource requests. Pods with higher resource requests may receive proportionally more traffic.
+Unfortunately, Kubernetes doesn't provide a native way to set per-pod weights for IPVS. kube-proxy programs Service endpoints with equal weights, so weighted round-robin behaves like regular round-robin unless weights are changed outside Kubernetes.
 
 You can manually adjust weights using ipvsadm, though this isn't recommended in production as kube-proxy will overwrite your changes:
 
@@ -319,7 +317,7 @@ You can manually adjust weights using ipvsadm, though this isn't recommended in 
 ipvsadm -Ln
 
 # Manually set weight for a specific backend (temporary)
-ipvsadm -e -t 10.96.100.50:80 -r 10.244.1.10:8080 -w 100 -m
+ipvsadm -e -t 10.96.100.50:80 -r 10.244.1.10:8080 -w 10 -m
 
 # This gives the backend 10x more traffic than others with default weight 1
 ```
