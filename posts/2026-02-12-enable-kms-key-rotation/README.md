@@ -8,13 +8,13 @@ Description: Learn how to enable and manage automatic key rotation for AWS KMS c
 
 ---
 
-Key rotation is one of those security practices that everyone agrees on but few implement well. The idea is simple: periodically replace cryptographic key material so that even if old material is compromised, the blast radius is limited. AWS KMS makes this surprisingly painless for symmetric keys - you flip a switch and it handles everything. But there are nuances worth understanding.
+Key rotation is one of those security practices that everyone agrees on but few implement well. The idea is simple: periodically replace cryptographic key material so that even if old material is compromised, the blast radius is limited. AWS KMS makes this surprisingly painless for symmetric encryption keys with key material that AWS KMS generates - you flip a switch and it handles everything. But there are nuances worth understanding.
 
 Let's walk through enabling automatic rotation, understanding what actually happens behind the scenes, and handling the cases where automatic rotation doesn't work.
 
 ## What KMS Key Rotation Actually Does
 
-When you enable automatic rotation on a symmetric CMK, KMS generates new cryptographic material annually. But here's the important part - it doesn't re-encrypt your existing data. Instead:
+When you enable automatic rotation on a symmetric encryption customer managed KMS key with key material that AWS KMS generates, KMS generates new cryptographic material annually by default. But here's the important part - it doesn't re-encrypt your existing data. Instead:
 
 - New encrypt operations use the new key material
 - Old key material is preserved indefinitely for decrypting existing data
@@ -77,6 +77,8 @@ The output shows you when the next rotation will happen.
 In Terraform, enabling rotation is a single attribute on the key resource.
 
 ```hcl
+data "aws_caller_identity" "current" {}
+
 resource "aws_kms_key" "database" {
   description             = "Production database encryption key"
   enable_key_rotation     = true
@@ -116,15 +118,17 @@ Automatic rotation has some limitations you should know about:
 
 **Asymmetric keys** can't be automatically rotated. If you're using RSA or ECC keys for signing or encryption, you need manual rotation.
 
-**Imported key material** can't be automatically rotated. If you imported your own key material, you'll need a manual process.
+**Imported key material** can't be automatically rotated. Symmetric encryption keys with imported key material support on-demand rotation after you import new key material into a pending rotation state. Other imported key types need a manual process.
 
 **HMAC keys** don't support automatic rotation either.
 
-For all of these cases, you need a manual rotation strategy, which we'll cover next.
+**Keys in custom key stores** don't support automatic or on-demand rotation.
+
+For asymmetric keys, HMAC keys, and keys in custom key stores, you need a manual rotation strategy, which we'll cover next.
 
 ## Manual Key Rotation
 
-Manual rotation means creating a new key and pointing your alias to it. This is what you do for asymmetric keys or when you need immediate rotation (say, after a suspected compromise).
+Manual rotation means creating a new key and pointing your alias to it. This is what you do for asymmetric keys, HMAC keys, or keys in custom key stores.
 
 ```bash
 # Step 1: Create a new key
@@ -157,7 +161,7 @@ The important thing with manual rotation is keeping the old key around for decry
 
 ## Automating Manual Rotation with Lambda
 
-For keys that don't support automatic rotation, you can build a Lambda function to handle it on a schedule.
+For keys that don't support automatic or on-demand rotation, you can build a Lambda function to handle it on a schedule.
 
 ```python
 import boto3
@@ -239,10 +243,20 @@ Schedule it with EventBridge to run quarterly or at whatever cadence your compli
 
 ```bash
 # Create an EventBridge rule to trigger rotation every 90 days
-aws events put-rule \
+RULE_ARN=$(aws events put-rule \
   --name "kms-manual-rotation" \
   --schedule-expression "rate(90 days)" \
-  --state ENABLED
+  --state ENABLED \
+  --query 'RuleArn' \
+  --output text)
+
+# Allow EventBridge to invoke the Lambda function
+aws lambda add-permission \
+  --function-name "kms-key-rotation" \
+  --statement-id "kms-manual-rotation" \
+  --action "lambda:InvokeFunction" \
+  --principal "events.amazonaws.com" \
+  --source-arn "$RULE_ARN"
 
 # Add the Lambda as a target
 aws events put-targets \
@@ -284,7 +298,7 @@ aws configservice put-config-rule \
 
 ## On-Demand Rotation
 
-Sometimes you can't wait for the next scheduled rotation - maybe there's been a security incident. KMS now supports on-demand rotation for symmetric keys.
+Sometimes you can't wait for the next scheduled rotation - maybe there's been a security incident. KMS now supports on-demand rotation for customer managed symmetric encryption keys. For symmetric encryption keys with imported key material, you need to import new key material first so it is ready for rotation.
 
 ```bash
 # Trigger immediate rotation
@@ -292,13 +306,13 @@ aws kms rotate-key-on-demand \
   --key-id alias/production-database
 ```
 
-This creates new backing key material immediately while preserving the old material for decryption. It's the same as automatic rotation, just triggered manually.
+For keys with key material that AWS KMS generates, this creates new backing key material immediately while preserving the old material for decryption. It's the same as automatic rotation, just triggered manually.
 
 ## Best Practices
 
-1. **Enable rotation on every symmetric CMK.** There's no cost and no operational impact. There's no reason not to.
+1. **Enable rotation on every eligible symmetric CMK.** There's no operational impact, but AWS KMS charges a capped additional monthly fee for the first and second rotations of customer managed keys.
 2. **Use 365-day rotation for most keys.** Shorter periods add no meaningful security benefit for symmetric keys in KMS.
-3. **Don't delete old key material.** KMS handles this automatically for automatic rotation. For manual rotation, keep old keys disabled but not deleted.
+3. **Don't delete old key material.** KMS handles this automatically for automatic rotation. For manual rotation, keep old keys enabled as long as you need them for decryption or signature verification, and disable them only after you are sure nothing depends on them.
 4. **Monitor with Config rules.** Catch any keys that were created without rotation enabled.
 5. **Document your manual rotation process.** For asymmetric keys, make sure the process is repeatable and tested.
 
@@ -306,4 +320,4 @@ For the full picture on managing your KMS keys, check out our guide on [creating
 
 ## Wrapping Up
 
-KMS key rotation is one of the easiest security wins on AWS. For symmetric keys, it's a single setting with zero application impact. For asymmetric keys, a little automation goes a long way. The key thing to remember is that rotation doesn't re-encrypt existing data - it just ensures new operations use fresh key material. That's by design, and it's what makes rotation so painless to enable.
+KMS key rotation is one of the easiest security wins on AWS. For eligible symmetric keys, it's a single setting with zero application impact. For asymmetric keys, a little automation goes a long way. The key thing to remember is that rotation doesn't re-encrypt existing data - it just ensures new operations use fresh key material. That's by design, and it's what makes rotation so painless to enable.
