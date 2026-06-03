@@ -54,9 +54,10 @@ aws managedblockchain create-network \
   --name "TradeFinanceNetwork" \
   --framework HYPERLEDGER_FABRIC \
   --framework-version 2.2 \
+  --framework-configuration "Fabric={Edition=STANDARD}" \
   --voting-policy "ApprovalThresholdPolicy={ThresholdPercentage=50,ProposalDurationInHours=24,ThresholdComparator=GREATER_THAN}" \
   --member-configuration \
-    "Name=BankAlpha,Description=Primary banking partner,FrameworkConfiguration={Fabric={AdminUsername=bankadmin,AdminPassword=Str0ngP@ss!}}"
+    "Name=BankAlpha,Description=Primary banking partner,FrameworkConfiguration={Fabric={AdminUsername=bankadmin,AdminPassword=Str0ngPass1}}"
 ```
 
 Save the `NetworkId` and `MemberId` from the response.
@@ -86,24 +87,27 @@ aws managedblockchain create-node \
 Create a VPC endpoint so your applications can reach the blockchain network:
 
 ```bash
+# Get the VPC endpoint service name for this network
+VPC_ENDPOINT_SERVICE_NAME=$(aws managedblockchain get-network \
+  --network-id $NETWORK_ID \
+  --query 'Network.VpcEndpointServiceName' \
+  --output text)
+
 # Create interface VPC endpoint for Managed Blockchain
 aws ec2 create-vpc-endpoint \
   --vpc-id $VPC_ID \
-  --service-name com.amazonaws.us-east-1.managedblockchain.$NETWORK_ID \
+  --service-name $VPC_ENDPOINT_SERVICE_NAME \
   --vpc-endpoint-type Interface \
   --subnet-ids $SUBNET_1 $SUBNET_2 \
-  --security-group-ids $SECURITY_GROUP_ID
+  --security-group-ids $SECURITY_GROUP_ID \
+  --private-dns-enabled
 ```
 
-Your security group needs these inbound rules:
+Your VPC endpoint security group needs inbound rules for the ports returned by `get-network`, `get-member`, and `get-node`:
 
 | Port | Protocol | Purpose |
 |------|----------|---------|
-| 443 | TCP | Certificate Authority |
-| 30001 | TCP | Ordering Service |
-| 30002 | TCP | CA endpoint |
-| 30003 | TCP | Peer endpoint |
-| 30004 | TCP | Peer event hub |
+| 30000-34000 | TCP | Ordering service, CA endpoint, peer endpoint, and peer event services |
 
 ## Option 2: Self-Managed Fabric on EC2
 
@@ -118,11 +122,11 @@ You need separate instances for each component. Here is a minimal setup:
 aws ec2 run-instances \
   --image-id ami-0abcdef1234567890 \
   --instance-type t3.medium \
-  --count 3 \
+  --count 4 \
   --key-name my-fabric-key \
   --subnet-id $SUBNET_ID \
   --security-group-ids $SG_ID \
-  --tag-specifications 'ResourceType=instance,Tags=[{Key=Role,Value=fabric-peer},{Key=Name,Value=Peer1}]'
+  --tag-specifications 'ResourceType=instance,Tags=[{Key=Role,Value=fabric},{Key=Name,Value=FabricNode}]'
 ```
 
 Plan your instances like this:
@@ -146,7 +150,9 @@ sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-
 sudo chmod +x /usr/local/bin/docker-compose
 
 # Download Hyperledger Fabric binaries and Docker images
-curl -sSL https://bit.ly/2ysbOFE | bash -s -- 2.5.0 1.5.5
+curl -sSLO https://raw.githubusercontent.com/hyperledger/fabric/main/scripts/install-fabric.sh
+chmod +x install-fabric.sh
+./install-fabric.sh --fabric-version 2.5.15 --ca-version 1.5.15 docker binary
 ```
 
 ### Generate Cryptographic Material
@@ -185,7 +191,7 @@ Generate the certificates:
 ./bin/cryptogen generate --config=crypto-config.yaml --output=crypto-config
 ```
 
-### Create the Genesis Block and Channel Configuration
+### Create the Channel Genesis Block and Channel Configuration
 
 ```yaml
 # configtx.yaml - network and channel configuration (abbreviated)
@@ -210,17 +216,13 @@ Organizations:
         Port: 7051
 ```
 
-Generate the genesis block and channel transaction:
+Generate the channel genesis block. Fabric 2.5 uses the channel participation API instead of creating application channels through a system channel:
 
 ```bash
-# Create the genesis block for the orderer
-./bin/configtxgen -profile TwoOrgsOrdererGenesis \
-  -channelID system-channel \
-  -outputBlock ./channel-artifacts/genesis.block
-
-# Create the channel creation transaction
+# Create the channel genesis block
+export FABRIC_CFG_PATH=$PWD
 ./bin/configtxgen -profile TwoOrgsChannel \
-  -outputCreateChannelTx ./channel-artifacts/channel.tx \
+  -outputBlock ./channel-artifacts/tradechannel.block \
   -channelID tradechannel
 ```
 
@@ -231,22 +233,28 @@ Generate the genesis block and channel transaction:
 version: '3.7'
 services:
   orderer.example.com:
-    image: hyperledger/fabric-orderer:2.5.0
+    image: hyperledger/fabric-orderer:2.5.15
     environment:
       - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0
       - ORDERER_GENERAL_LISTENPORT=7050
-      - ORDERER_GENERAL_GENESISMETHOD=file
-      - ORDERER_GENERAL_GENESISFILE=/var/hyperledger/orderer/genesis.block
+      - ORDERER_GENERAL_BOOTSTRAPMETHOD=none
       - ORDERER_GENERAL_LOCALMSPID=OrdererMSP
       - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp
       - ORDERER_GENERAL_TLS_ENABLED=true
       - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
       - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
       - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+      - ORDERER_CHANNELPARTICIPATION_ENABLED=true
+      - ORDERER_ADMIN_LISTENADDRESS=0.0.0.0:7053
+      - ORDERER_ADMIN_TLS_ENABLED=true
+      - ORDERER_ADMIN_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_ADMIN_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_ADMIN_TLS_CLIENTAUTHREQUIRED=true
+      - ORDERER_ADMIN_TLS_CLIENTROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
     ports:
       - 7050:7050
+      - 7053:7053
     volumes:
-      - ./channel-artifacts/genesis.block:/var/hyperledger/orderer/genesis.block
       - ./crypto-config/ordererOrganizations/orderer.example.com/orderers/orderer.orderer.example.com/msp:/var/hyperledger/orderer/msp
       - ./crypto-config/ordererOrganizations/orderer.example.com/orderers/orderer.orderer.example.com/tls:/var/hyperledger/orderer/tls
 ```
@@ -261,20 +269,25 @@ docker-compose -f docker-compose.yaml up -d
 ### Create and Join a Channel
 
 ```bash
-# Create the channel
-peer channel create -o orderer.example.com:7050 \
+# Join the orderer to the channel using the channel participation API
+osnadmin channel join \
+  --channelID tradechannel \
+  --config-block ./channel-artifacts/tradechannel.block \
+  -o orderer.example.com:7053 \
+  --ca-file $ORDERER_ADMIN_CA \
+  --client-cert $ORDERER_ADMIN_CLIENT_CERT \
+  --client-key $ORDERER_ADMIN_CLIENT_KEY
+
+# Fetch the channel's genesis block for the peer
+peer channel fetch 0 tradechannel.block \
+  -o orderer.example.com:7050 \
   -c tradechannel \
-  -f ./channel-artifacts/channel.tx \
   --tls --cafile $ORDERER_CA
 
 # Join peer0 of Org1 to the channel
 peer channel join -b tradechannel.block
 
-# Update anchor peers for Org1
-peer channel update -o orderer.example.com:7050 \
-  -c tradechannel \
-  -f ./channel-artifacts/Org1MSPanchors.tx \
-  --tls --cafile $ORDERER_CA
+# Repeat the fetch and join steps for the other peers
 ```
 
 ## Deploying Chaincode
@@ -307,6 +320,10 @@ peer lifecycle chaincode commit \
   --name trade \
   --version 1.0 \
   --sequence 1 \
+  --peerAddresses peer0.org1.example.com:7051 \
+  --tlsRootCertFiles $ORG1_PEER_TLS_CA \
+  --peerAddresses peer0.org2.example.com:7051 \
+  --tlsRootCertFiles $ORG2_PEER_TLS_CA \
   --tls --cafile $ORDERER_CA \
   -o orderer.example.com:7050
 ```
@@ -321,7 +338,7 @@ Running Fabric in production on AWS means thinking about:
 
 **Monitoring** - Push Fabric metrics to CloudWatch using the CloudWatch agent. Track block commit times, endorsement latency, and chaincode execution duration. For comprehensive monitoring, consider [OneUptime](https://oneuptime.com) to correlate blockchain metrics with application performance.
 
-**Security** - Use AWS PrivateLink for cross-account communication. Store private keys in AWS CloudHSM or KMS. Rotate certificates before they expire.
+**Security** - Use AWS PrivateLink for cross-account communication. Store private keys in AWS CloudHSM or encrypted secrets storage, and use KMS for encryption at rest where supported. Rotate certificates before they expire.
 
 ## Managed vs. Self-Managed: Which to Choose?
 
