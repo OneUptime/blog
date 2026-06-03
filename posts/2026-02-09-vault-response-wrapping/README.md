@@ -14,7 +14,7 @@ HashiCorp Vault response wrapping provides a secure mechanism for distributing s
 
 Response wrapping creates a cubbyhole token that stores the response data. The cubbyhole is tied to the wrapping token, which can be used exactly once within a specified TTL. After unwrapping, both the token and cubbyhole are destroyed automatically.
 
-This provides several security benefits. The actual secret never appears in logs or transit. You can detect if someone intercepts and uses the token before the intended recipient. The wrapping token has a short TTL, limiting the window of opportunity for attackers.
+This provides several security benefits. The actual secret is not exposed during the distribution step. You can detect if someone intercepts and uses the token before the intended recipient. The wrapping token has a short TTL, limiting the window of opportunity for attackers.
 
 Response wrapping is ideal for secret bootstrapping, CI/CD pipelines, automated provisioning systems, and any scenario where secrets must traverse untrusted networks.
 
@@ -82,12 +82,15 @@ package main
 
 import (
     "fmt"
+    "sync"
     "time"
+
     "github.com/hashicorp/vault/api"
 )
 
 type SecretDistributor struct {
     client *api.Client
+    mu     sync.Mutex
 }
 
 func NewSecretDistributor(vaultAddr, token string) (*SecretDistributor, error) {
@@ -108,6 +111,12 @@ func NewSecretDistributor(vaultAddr, token string) (*SecretDistributor, error) {
 
 // WrapSecret reads a secret and returns a wrapped token
 func (sd *SecretDistributor) WrapSecret(path string, ttl time.Duration) (string, error) {
+    sd.mu.Lock()
+    defer sd.mu.Unlock()
+
+    originalWrap := sd.client.CurrentWrappingLookupFunc()
+    defer sd.client.SetWrappingLookupFunc(originalWrap)
+
     // Set wrap TTL
     sd.client.SetWrappingLookupFunc(func(operation, path string) string {
         return ttl.String()
@@ -128,6 +137,12 @@ func (sd *SecretDistributor) WrapSecret(path string, ttl time.Duration) (string,
 
 // UnwrapSecret unwraps a token and returns the secret
 func (sd *SecretDistributor) UnwrapSecret(wrappedToken string) (*api.Secret, error) {
+    sd.mu.Lock()
+    defer sd.mu.Unlock()
+
+    originalToken := sd.client.Token()
+    defer sd.client.SetToken(originalToken)
+
     // Set the wrapping token
     sd.client.SetToken(wrappedToken)
 
@@ -142,10 +157,8 @@ func (sd *SecretDistributor) UnwrapSecret(wrappedToken string) (*api.Secret, err
 
 // LookupWrappingToken returns info about a wrapping token without unwrapping
 func (sd *SecretDistributor) LookupWrappingToken(wrappedToken string) (*api.Secret, error) {
-    originalToken := sd.client.Token()
-    defer sd.client.SetToken(originalToken)
-
-    sd.client.SetToken(wrappedToken)
+    sd.mu.Lock()
+    defer sd.mu.Unlock()
 
     secret, err := sd.client.Logical().Write("sys/wrapping/lookup", map[string]interface{}{
         "token": wrappedToken,
@@ -159,6 +172,9 @@ func (sd *SecretDistributor) LookupWrappingToken(wrappedToken string) (*api.Secr
 
 // RewrapToken creates a new wrapping token from an existing one
 func (sd *SecretDistributor) RewrapToken(wrappedToken string) (string, error) {
+    sd.mu.Lock()
+    defer sd.mu.Unlock()
+
     secret, err := sd.client.Logical().Write("sys/wrapping/rewrap", map[string]interface{}{
         "token": wrappedToken,
     })
@@ -199,7 +215,7 @@ func (ps *PipelineService) PrepareJobSecrets(jobID string) (string, error) {
     }
 
     // Store wrapped token in job configuration
-    // The token itself is safe to store or transmit
+    // Treat the token as a sensitive bearer token, but it is safer to transmit briefly than the secret itself
     return wrappedToken, nil
 }
 ```
@@ -239,7 +255,7 @@ func (job *CIJob) LoadSecrets(wrappedToken string) error {
 
 ## Implementing Wrapped Token Distribution via Kubernetes Secrets
 
-Store wrapped tokens in Kubernetes Secrets for pod consumption:
+Store a wrapped token in a Kubernetes Secret for pod consumption. For multiple replicas, generate one wrapped token per pod because each wrapping token can be unwrapped only once:
 
 ```yaml
 apiVersion: v1
@@ -257,7 +273,7 @@ metadata:
   name: myapp
   namespace: production
 spec:
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: myapp
@@ -268,7 +284,8 @@ spec:
     spec:
       initContainers:
       - name: unwrap-secrets
-        image: vault:1.15
+        # Use an image that includes the Vault CLI and jq.
+        image: custom-vault-jq:1.21
         command:
         - sh
         - -c
@@ -315,13 +332,17 @@ package main
 import (
     "encoding/json"
     "net/http"
+    "os"
+    "sync"
     "time"
+
     "github.com/gorilla/mux"
     "github.com/hashicorp/vault/api"
 )
 
 type TokenDistributionService struct {
     vaultClient *api.Client
+    mu          sync.Mutex
 }
 
 type WrapRequest struct {
@@ -349,6 +370,12 @@ func (tds *TokenDistributionService) HandleWrapRequest(w http.ResponseWriter, r 
         http.Error(w, "Invalid TTL", http.StatusBadRequest)
         return
     }
+
+    tds.mu.Lock()
+    defer tds.mu.Unlock()
+
+    originalWrap := tds.vaultClient.CurrentWrappingLookupFunc()
+    defer tds.vaultClient.SetWrappingLookupFunc(originalWrap)
 
     // Set wrap TTL
     tds.vaultClient.SetWrappingLookupFunc(func(operation, path string) string {
@@ -406,15 +433,15 @@ func main() {
 Monitor for wrapped token misuse using audit logs:
 
 ```bash
-# Enable detailed audit logging
-vault audit enable file file_path=/vault/logs/audit.log log_raw=true
+# Enable file audit logging
+vault audit enable file file_path=/vault/logs/audit.log
 
 # Query for wrapped token operations
 kubectl exec -n vault-system vault-0 -- cat /vault/logs/audit.log | \
     jq 'select(.request.path == "sys/wrapping/unwrap" or .request.path == "sys/wrapping/lookup")'
 ```
 
-Set up alerts for suspicious activity:
+If you export custom metrics from Vault audit logs, set up alerts for suspicious activity:
 
 ```yaml
 apiVersion: v1
@@ -469,7 +496,10 @@ def safe_secret_delivery(vault_client, secret_path, max_attempts=3):
         except DeliveryError as e:
             if attempt < max_attempts - 1:
                 # Rewrap for another attempt
-                rewrap_response = vault_client.sys.rewrap(wrapped_token)
+                rewrap_response = vault_client.write(
+                    'sys/wrapping/rewrap',
+                    token=wrapped_token
+                )
                 wrapped_token = rewrap_response['wrap_info']['token']
                 time.sleep(60)  # Wait before retry
             else:
