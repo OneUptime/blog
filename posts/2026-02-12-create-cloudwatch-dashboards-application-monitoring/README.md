@@ -282,7 +282,7 @@ After building many dashboards, here are patterns that consistently work well:
 
 ## Automatic Dashboard Refresh
 
-CloudWatch dashboards auto-refresh at configurable intervals (10 seconds, 1 minute, 2 minutes, 5 minutes, 15 minutes, or 1 hour). For an ops dashboard displayed on a wall monitor, set it to 1-minute refresh. For dashboards you check occasionally, the default is fine.
+CloudWatch dashboards auto-refresh at configurable intervals (10 seconds, 1 minute, 2 minutes, 5 minutes, or 15 minutes). For an ops dashboard displayed on a wall monitor, set it to 1-minute refresh. For dashboards you check occasionally, the default is fine.
 
 ## Wrapping Up
 
