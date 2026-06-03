@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Rust, Deployment, ECS, Lambda
 
-Description: Learn how to deploy Rust web applications and APIs to AWS using ECS Fargate, Lambda, and EC2 with optimized container builds and production configurations.
+Description: Learn how to deploy Rust web applications and APIs to AWS using ECS Fargate and Lambda with optimized container builds and production configurations.
 
 ---
 
-Rust applications are exceptionally well-suited for AWS deployments. Like Go, Rust compiles to a single binary with no runtime dependencies. But Rust takes it further with zero-cost abstractions and memory safety guarantees that eliminate entire categories of production bugs. The result is blazing fast applications that use minimal resources, which translates directly to lower AWS bills.
+Rust applications are exceptionally well-suited for AWS deployments. Like Go, Rust can compile to a single binary with minimal runtime dependencies. But Rust takes it further with zero-cost abstractions and memory safety guarantees that eliminate entire categories of production bugs. The result is blazing fast applications that use minimal resources, which translates directly to lower AWS bills.
 
 Let's look at how to get Rust web applications running on AWS.
 
@@ -33,6 +33,7 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json"] }
+num_cpus = "1"
 ```
 
 Here's the main application code with structured logging and graceful configuration:
@@ -120,11 +121,12 @@ RUN cargo chef cook --release --recipe-path recipe.json
 COPY . .
 RUN cargo build --release
 
-# Runtime image - use scratch for minimum size
+# Runtime image - use slim Debian for a small runtime image
 FROM debian:bookworm-slim AS runtime
 
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user
@@ -208,6 +210,8 @@ Rust apps are extremely memory efficient. You can often get away with 256MB of m
 # Create cluster and service
 aws ecs create-cluster --cluster-name rust-cluster
 
+aws logs create-log-group --log-group-name /ecs/rust-app --region us-east-1
+
 aws ecs register-task-definition --cli-input-json file://task-definition.json
 
 aws ecs create-service \
@@ -221,20 +225,20 @@ aws ecs create-service \
 
 ## Option 2: AWS Lambda
 
-Rust on Lambda gives you extremely fast cold starts, often under 10ms. Use the `lambda_http` crate for HTTP-based Lambda functions.
+Rust on Lambda can give you very fast cold starts, especially for small functions. Use the `lambda_http` crate for HTTP-based Lambda functions.
 
 Add Lambda dependencies:
 
 ```toml
 # Cargo.toml for Lambda
 [dependencies]
-lambda_http = "0.11"
-lambda_runtime = "0.11"
+lambda_http = "1"
+lambda_runtime = "1"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["macros"] }
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["json"] }
 ```
 
 Write the Lambda handler:
@@ -333,8 +337,11 @@ jobs:
 
       - name: Build and push
         run: |
-          docker build -t ${{ steps.ecr.outputs.registry }}/rust-app:${{ github.sha }} .
+          docker build \
+            -t ${{ steps.ecr.outputs.registry }}/rust-app:${{ github.sha }} \
+            -t ${{ steps.ecr.outputs.registry }}/rust-app:latest .
           docker push ${{ steps.ecr.outputs.registry }}/rust-app:${{ github.sha }}
+          docker push ${{ steps.ecr.outputs.registry }}/rust-app:latest
 
       - name: Deploy to ECS
         run: |
@@ -351,12 +358,14 @@ Rust gives you fine-grained control over performance. A few tips for AWS deploym
 Tune your thread pool based on the Fargate vCPU allocation:
 
 ```rust
+use std::time::Duration;
+
 // Configure based on available CPUs
 HttpServer::new(|| {
     App::new()
         .route("/", web::get().to(index))
 })
-.workers(num_cpus::get())  // Matches Fargate vCPU allocation
+.workers(num_cpus::get())  // Uses available logical CPUs
 .backlog(2048)
 .keep_alive(Duration::from_secs(75))
 .bind("0.0.0.0:8080")?
