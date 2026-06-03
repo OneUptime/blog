@@ -14,7 +14,7 @@ Kubernetes cluster upgrades bring new features and security improvements, but th
 
 Kubernetes has evolved its service account token handling significantly. Early versions used long-lived tokens stored as secrets, but recent versions use projected volumes with short-lived tokens that automatically rotate.
 
-The BoundServiceAccountTokenVolume feature became stable in Kubernetes 1.21 and is now enabled by default. This feature projects service account tokens into pods using the TokenRequest API instead of static secrets. These tokens have bounded lifetimes and are audience-bound for improved security.
+The BoundServiceAccountTokenVolume feature became stable in Kubernetes 1.22 and is now enabled by default. This feature projects service account tokens into pods using the TokenRequest API instead of static secrets. These tokens have bounded lifetimes and are audience-bound for improved security.
 
 ## Symptoms of Token Mount Failures
 
@@ -63,9 +63,9 @@ kubectl describe pod my-app-pod -n production | grep -A 10 Mounts
 # Check the actual token file
 kubectl exec my-app-pod -n production -- ls -la /var/run/secrets/kubernetes.io/serviceaccount/
 
-# View token contents (non-sensitive metadata)
-kubectl exec my-app-pod -n production -- cat /var/run/secrets/kubernetes.io/serviceaccount/token | \
-  cut -d '.' -f 2 | base64 -d | jq .
+# View token payload (claims are metadata, but handle the token as sensitive)
+TOKEN=$(kubectl exec my-app-pod -n production -- cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+TOKEN="$TOKEN" python3 -c 'import base64,json,os; p=os.environ["TOKEN"].split(".")[1]; p += "=" * (-len(p) % 4); print(json.dumps(json.loads(base64.urlsafe_b64decode(p)), indent=2))'
 ```
 
 The token should show an expiration time (exp claim) and audience (aud claim). If these fields are missing or incorrect, token projection isn't working properly.
@@ -163,8 +163,8 @@ Kubernetes automatically populates this secret with a token. The token doesn't r
 # Verify secret was populated
 kubectl get secret legacy-app-sa-token -n production -o jsonpath='{.data.token}' | base64 -d
 
-# Check token validity
-kubectl exec test-pod -- curl -k https://kubernetes.default.svc/api/v1/namespaces/default \
+# Check API authentication; RBAC may still reject specific resources
+kubectl exec test-pod -n production -- curl -k https://kubernetes.default.svc/api \
   --header "Authorization: Bearer $(kubectl get secret legacy-app-sa-token -n production -o jsonpath='{.data.token}' | base64 -d)"
 ```
 
@@ -207,7 +207,6 @@ volumes:
     - serviceAccountToken:
         path: token
         expirationSeconds: 3600
-        audience: "kubernetes.default.svc"
 - name: custom-api-token
   projected:
     sources:
@@ -229,14 +228,14 @@ kubectl create token my-app-sa -n production --duration=600s
 kubectl get --raw /apis/authentication.k8s.io/v1
 ```
 
-If the TokenRequest API isn't available, your cluster might have feature gates incorrectly configured. Check the API server configuration.
+If the TokenRequest API isn't available, your cluster might have service account issuer, signing key, or API server configuration issues. Check the API server configuration.
 
 ```bash
 # Check API server pod (if using kubeadm)
-kubectl get pod -n kube-system kube-apiserver-* -o yaml | grep feature-gates
+kubectl get pods -n kube-system -l component=kube-apiserver -o yaml | grep feature-gates
 
 # Check API server logs for errors
-kubectl logs -n kube-system kube-apiserver-* --tail=100 | grep -i token
+kubectl logs -n kube-system -l component=kube-apiserver --tail=100 | grep -i token
 ```
 
 ## AutomountServiceAccountToken Setting
@@ -335,9 +334,9 @@ package main
 import (
     "context"
     "fmt"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
-    "k8s.io/client-go/tools/clientcmd"
 )
 
 func main() {
