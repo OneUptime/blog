@@ -12,7 +12,7 @@ The TokenRequest API provides programmatic access to create ServiceAccount token
 
 ## Understanding the TokenRequest API
 
-The TokenRequest API is a Kubernetes resource that creates bound ServiceAccount tokens. Unlike legacy token secrets that live indefinitely, TokenRequest generates tokens with specific properties: they expire after a set duration, they're bound to specific audiences, and they can include pod information for additional security.
+The TokenRequest API is a ServiceAccount subresource that creates bound ServiceAccount tokens. Unlike legacy token secrets that live indefinitely, TokenRequest generates tokens with specific properties: they expire after a server-approved duration, they're bound to specific audiences, and they can include pod information for additional security.
 
 This API is what the kubelet uses internally to provision tokens for pods. By using it directly, you gain the same security benefits in CI/CD pipelines, operator controllers, and external integrations.
 
@@ -69,7 +69,7 @@ import (
     "k8s.io/client-go/rest"
 )
 
-func requestToken(clientset *kubernetes.Clientset, namespace, serviceAccount string) (string, error) {
+func requestToken(clientset *kubernetes.Clientset, namespace, serviceAccount string) (string, time.Time, error) {
     ctx := context.Background()
 
     // Create TokenRequest
@@ -89,10 +89,10 @@ func requestToken(clientset *kubernetes.Clientset, namespace, serviceAccount str
         metav1.CreateOptions{},
     )
     if err != nil {
-        return "", fmt.Errorf("failed to request token: %v", err)
+        return "", time.Time{}, fmt.Errorf("failed to request token: %v", err)
     }
 
-    return resp.Status.Token, nil
+    return resp.Status.Token, resp.Status.ExpirationTimestamp.Time, nil
 }
 
 func main() {
@@ -108,13 +108,13 @@ func main() {
     }
 
     // Request a token
-    token, err := requestToken(clientset, "production", "app-service-account")
+    token, expiration, err := requestToken(clientset, "production", "app-service-account")
     if err != nil {
         panic(err.Error())
     }
 
     fmt.Printf("Token received (length: %d)\n", len(token))
-    fmt.Printf("Token expires at: %s\n", time.Now().Add(1*time.Hour).Format(time.RFC3339))
+    fmt.Printf("Token expires at: %s\n", expiration.Format(time.RFC3339))
 
     // Use the token for API requests
     // ...
@@ -130,7 +130,6 @@ For Python applications:
 ```python
 # token_request.py
 from kubernetes import client, config
-from datetime import datetime, timedelta
 
 def request_token(namespace, service_account, expiration_seconds=3600, audience="api"):
     """Request a ServiceAccount token using the TokenRequest API"""
@@ -155,11 +154,11 @@ def request_token(namespace, service_account, expiration_seconds=3600, audience=
         body=token_request
     )
 
-    return response.status.token
+    return response.status.token, response.status.expiration_timestamp
 
 def main():
     # Request a 2-hour token
-    token = request_token(
+    token, expiration = request_token(
         namespace="production",
         service_account="app-service-account",
         expiration_seconds=7200,
@@ -167,7 +166,6 @@ def main():
     )
 
     print(f"Token received (length: {len(token)})")
-    expiration = datetime.now() + timedelta(hours=2)
     print(f"Token expires at: {expiration.isoformat()}")
 
     # Use the token
@@ -232,7 +230,7 @@ func requestPodBoundToken(clientset *kubernetes.Clientset, podName string) (stri
                 Kind:       "Pod",
                 APIVersion: "v1",
                 Name:       podName,
-                UID:        "", // Filled by API server
+                UID:        "", // Optional; set the pod UID to bind to a specific object instance
             },
         },
     }
@@ -263,12 +261,14 @@ package main
 
 import (
     "context"
+    "fmt"
     "sync"
     "time"
 
     authv1 "k8s.io/api/authentication/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
+    "k8s.io/client-go/rest"
 )
 
 type TokenCache struct {
@@ -388,7 +388,7 @@ func createWorkloadToken(clientset *kubernetes.Clientset, pod *corev1.Pod) (stri
                 Kind:       "Pod",
                 APIVersion: "v1",
                 Name:       pod.Name,
-                UID:        string(pod.UID),
+                UID:        pod.UID,
             },
         },
     }
@@ -445,7 +445,7 @@ kubectl rollout status deployment/my-app
 echo "Deployment complete"
 ```
 
-The token expires after one hour, limiting the window for misuse.
+The requested token lifetime is one hour, limiting the window for misuse. The API server may issue a token with a shorter or longer lifetime depending on cluster configuration.
 
 ## RBAC for TokenRequest
 
@@ -487,7 +487,7 @@ This allows the operator to request tokens for specific ServiceAccounts only.
 Track token request activity:
 
 ```bash
-# Enable audit logging for TokenRequest
+# Add TokenRequest events to your kube-apiserver audit policy
 cat >> audit-policy.yaml <<EOF
 apiVersion: audit.k8s.io/v1
 kind: Policy
@@ -499,7 +499,10 @@ rules:
   verbs: ["create"]
 EOF
 
-# Query audit logs
+# Start kube-apiserver with --audit-policy-file and an audit backend,
+# such as --audit-log-path or an audit webhook.
+
+# Query audit logs if your audit backend writes to apiserver logs
 kubectl logs -n kube-system -l component=kube-apiserver | \
   grep "serviceaccounts/token"
 ```
