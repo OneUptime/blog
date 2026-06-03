@@ -17,7 +17,7 @@ Start with a new Angular project and install the necessary packages.
 Install dependencies:
 
 ```bash
-ng new cognito-angular-app --routing --style=scss
+ng new cognito-angular-app --routing --style=scss --no-standalone --file-name-style-guide=2016
 cd cognito-angular-app
 
 # Install the AWS Cognito SDK
@@ -42,6 +42,8 @@ export const environment = {
 };
 ```
 
+For this direct browser integration, use a Cognito app client without a client secret and enable the `ALLOW_USER_PASSWORD_AUTH` and `ALLOW_REFRESH_TOKEN_AUTH` authentication flows. If your app client has a secret, Cognito requires a `SECRET_HASH` parameter, which you shouldn't calculate in a browser app.
+
 ## Auth Service
 
 The auth service is the core of the integration. It wraps Cognito SDK calls and manages token state.
@@ -58,8 +60,6 @@ import {
     SignUpCommand,
     ConfirmSignUpCommand,
     GlobalSignOutCommand,
-    ForgotPasswordCommand,
-    ConfirmForgotPasswordCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 import { jwtDecode } from 'jwt-decode';
 import { environment } from '../../environments/environment';
@@ -407,11 +407,12 @@ Register the interceptor in your app module:
 
 ```typescript
 // src/app/app.module.ts
-import { HTTP_INTERCEPTORS } from '@angular/common/http';
+import { HTTP_INTERCEPTORS, provideHttpClient, withInterceptorsFromDi } from '@angular/common/http';
 import { AuthInterceptor } from './interceptors/auth.interceptor';
 
 @NgModule({
     providers: [
+        provideHttpClient(withInterceptorsFromDi()),
         {
             provide: HTTP_INTERCEPTORS,
             useClass: AuthInterceptor,
