@@ -10,7 +10,7 @@ Description: Comprehensive guide to securing Amazon MSK clusters with TLS encryp
 
 Running Kafka in production means taking security seriously. Amazon MSK gives you multiple layers of security - encryption, authentication, authorization, and network controls. The challenge is figuring out which mechanisms to use and how they fit together.
 
-This post covers every security option MSK offers and when to use each one. By the end, you'll have a locked-down cluster that meets enterprise security requirements.
+This post covers the main security options MSK offers and when to use each one. By the end, you'll have a locked-down cluster that meets enterprise security requirements.
 
 ## Security Layers Overview
 
@@ -198,17 +198,21 @@ First, store credentials in AWS Secrets Manager.
 # Create a secret for the Kafka user
 aws secretsmanager create-secret \
   --name AmazonMSK_producer-user \
+  --kms-key-id arn:aws:kms:us-east-1:123456789:key/my-cmk \
   --secret-string '{
     "username": "producer-app",
     "password": "SecurePassword123!"
   }'
 ```
 
+MSK requires SCRAM secrets to use a customer-managed KMS key. Secrets encrypted with the default Secrets Manager KMS key can't be associated with an MSK cluster.
+
 Enable SASL/SCRAM on the cluster.
 
 ```bash
 aws kafka update-security \
   --cluster-arn arn:aws:kafka:us-east-1:123456789:cluster/secure-kafka/abc-123 \
+  --current-version <current-cluster-version> \
   --client-authentication '{
     "Sasl": {
       "Scram": {"Enabled": true}
