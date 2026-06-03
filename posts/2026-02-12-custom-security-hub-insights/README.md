@@ -65,7 +65,7 @@ aws securityhub create-insight \
   --filters '{
     "ComplianceStatus": [{"Value": "FAILED", "Comparison": "EQUALS"}],
     "RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}],
-    "ProductName": [{"Value": "Security Hub", "Comparison": "EQUALS"}]
+    "ProductName": [{"Value": "Security Hub CSPM", "Comparison": "EQUALS"}]
   }' \
   --group-by-attribute "GeneratorId"
 ```
@@ -122,7 +122,7 @@ aws securityhub create-insight \
 
 ### Unresolved Findings by Age
 
-Track how long findings go unaddressed. Group by creation date to see if old findings are piling up.
+Track how long findings go unaddressed. Filter by creation date to see which accounts have old findings piling up.
 
 ```bash
 aws securityhub create-insight \
@@ -131,7 +131,7 @@ aws securityhub create-insight \
     "SeverityLabel": [{"Value": "CRITICAL", "Comparison": "EQUALS"}],
     "RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}],
     "WorkflowStatus": [{"Value": "NEW", "Comparison": "EQUALS"}],
-    "CreatedAt": [{"DateRange": {"Value": 30, "Unit": "DAYS"}}]
+    "CreatedAt": [{"DateRange": {"Value": 30, "Unit": "DAYS", "Comparison": "OLDER_THAN"}}]
   }' \
   --group-by-attribute "AwsAccountId"
 ```
@@ -177,7 +177,7 @@ List, update, and delete your insights.
 ```bash
 # List all custom insights
 aws securityhub get-insights \
-  --query 'Insights[?starts_with(InsightArn, `arn:aws:securityhub`)].{Name:Name,ARN:InsightArn}'
+  --query 'Insights[?contains(InsightArn, `/custom/`)].{Name:Name,ARN:InsightArn}'
 
 # Get results for a specific insight
 aws securityhub get-insight-results \
@@ -292,7 +292,7 @@ resource "aws_securityhub_insight" "failing_controls" {
     }
     product_name {
       comparison = "EQUALS"
-      value      = "Security Hub"
+      value      = "Security Hub CSPM"
     }
   }
 }
