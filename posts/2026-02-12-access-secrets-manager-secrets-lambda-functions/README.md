@@ -10,7 +10,7 @@ Description: Learn how to securely retrieve secrets from AWS Secrets Manager in 
 
 Lambda functions need secrets - database passwords, API keys, tokens. Hard-coding them in environment variables (even encrypted ones) is a bad practice because anyone with Lambda:GetFunction permission can read them. Secrets Manager is the right place for sensitive configuration, but how you retrieve secrets in Lambda matters a lot for performance and cost.
 
-This guide covers three approaches: direct SDK calls, the Lambda Extension for caching, and environment variable injection. Each has different tradeoffs around latency, cost, and complexity.
+This guide covers two approaches: direct SDK calls and the Lambda Extension for caching. Each has different tradeoffs around latency, cost, and complexity.
 
 ## The Simple Approach: Direct SDK Calls
 
@@ -82,7 +82,7 @@ exports.handler = async (event) => {
 };
 ```
 
-The problem with this approach? Every cold start makes a Secrets Manager API call, adding 50-200ms of latency. For warm invocations, you can cache the secret in a module-level variable, but that means the secret lives in memory between invocations.
+The problem with this approach? This version makes a Secrets Manager API call on every invocation, adding latency and cost. You can cache the secret in a module-level variable so warm invocations reuse it, but that means the secret lives in memory between invocations.
 
 ## Caching Secrets Properly
 
@@ -136,13 +136,13 @@ def lambda_handler(event, context):
     return {'statusCode': 200}
 ```
 
-The key optimization here is fetching the secret during module initialization (outside the handler). This runs during the cold start's init phase, which has its own timeout separate from the handler timeout.
+The key optimization here is fetching the secret during module initialization (outside the handler). This runs during the cold start's init phase, so the fetch happens once per execution environment instead of on every invocation.
 
 ## Using the AWS Parameters and Secrets Lambda Extension
 
 AWS provides a Lambda extension that handles caching for you. It runs as a local HTTP server on port 2773, and your function fetches secrets through it instead of calling Secrets Manager directly.
 
-The extension caches secrets automatically and handles refreshing when rotation occurs.
+The extension caches secrets automatically and retrieves a fresh value after the configured TTL expires. It does not detect rotation and refresh the cache before the TTL expires.
 
 First, add the extension layer to your Lambda function.
 
@@ -150,7 +150,7 @@ First, add the extension layer to your Lambda function.
 # Add the extension layer (use the correct ARN for your region)
 aws lambda update-function-configuration \
   --function-name my-function \
-  --layers "arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:11"
+  --layers "arn:aws:lambda:us-east-1:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:80"
 ```
 
 Then update your function code to use the local HTTP endpoint.
@@ -186,7 +186,7 @@ def lambda_handler(event, context):
     }
 ```
 
-The extension adds about 50MB to your function's memory usage and a small amount of cold start time, but it simplifies caching significantly. It's worth it for functions that access multiple secrets.
+The extension adds some resource overhead and a small amount of cold start time, but it simplifies caching significantly. It's worth it for functions that access multiple secrets.
 
 ## IAM Permissions
 
@@ -225,11 +225,11 @@ Your Lambda execution role needs permission to access Secrets Manager.
 }
 ```
 
-Don't forget the KMS permission. Secrets Manager encrypts secrets with KMS, so your Lambda needs to decrypt them.
+Don't forget the KMS permission when the secret uses a customer managed KMS key. Secrets Manager uses KMS to protect secret values, and `GetSecretValue` requires decrypt permission for the key that protects the secret.
 
 ## Terraform Setup
 
-Here's a complete Terraform configuration for a Lambda function with Secrets Manager access.
+Here's a Terraform configuration for a Lambda function with Secrets Manager access.
 
 ```hcl
 # Lambda execution role
@@ -274,6 +274,10 @@ resource "aws_iam_role_policy" "secrets_access" {
   })
 }
 
+data "aws_ssm_parameter" "parameters_secrets_extension" {
+  name = "/aws/service/aws-parameters-and-secrets-lambda-extension/x86/latest"
+}
+
 # Lambda function with the extension layer
 resource "aws_lambda_function" "app" {
   filename         = "function.zip"
@@ -285,7 +289,7 @@ resource "aws_lambda_function" "app" {
   memory_size      = 256
 
   layers = [
-    "arn:aws:lambda:${data.aws_region.current.name}:177933569100:layer:AWS-Parameters-and-Secrets-Lambda-Extension:11"
+    data.aws_ssm_parameter.parameters_secrets_extension.value
   ]
 
   environment {
@@ -355,4 +359,4 @@ For more on secret rotation, see our guide on [automatic secret rotation](https:
 
 ## Wrapping Up
 
-The right approach depends on your function's usage pattern. For simple, low-traffic functions, direct SDK calls with manual caching work fine. For anything in production with consistent traffic, the Lambda Extension is the best option since it handles caching, refresh, and rotation automatically. Either way, always scope IAM permissions tightly to just the secrets your function needs, and don't forget the KMS decrypt permission.
+The right approach depends on your function's usage pattern. For simple, low-traffic functions, direct SDK calls with manual caching work fine. For anything in production with consistent traffic, the Lambda Extension is the best option since it handles caching and refreshes values after the TTL expires. Either way, always scope IAM permissions tightly to just the secrets your function needs, and include KMS decrypt permission when your secret uses a customer managed KMS key.
