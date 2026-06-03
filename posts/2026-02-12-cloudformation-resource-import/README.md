@@ -8,11 +8,11 @@ Description: Learn how to import existing AWS resources into CloudFormation stac
 
 ---
 
-You've got AWS resources created by hand - maybe a production database someone built through the Console years ago, or an S3 bucket that predates your CloudFormation adoption. Resource import lets you bring these existing resources under CloudFormation management without recreating them. No downtime, no data migration, no risk.
+You've got AWS resources created by hand - maybe a production database someone built through the Console years ago, or an S3 bucket that predates your CloudFormation adoption. Resource import lets you bring these existing resources under CloudFormation management without recreating them. No downtime or data migration, as long as your import template matches the existing resources.
 
 ## What is Resource Import?
 
-Resource import adds an existing AWS resource to a CloudFormation stack. CloudFormation starts managing the resource as if it created it. The resource isn't modified, moved, or recreated - CloudFormation just starts tracking it.
+Resource import adds an existing AWS resource to a CloudFormation stack. CloudFormation starts managing the resource as if it created it. When the template matches the existing resource, the resource isn't modified, moved, or recreated - CloudFormation just starts tracking it.
 
 ```mermaid
 graph LR
@@ -66,7 +66,7 @@ Resources:
       # Don't include MasterUserPassword for imports
 ```
 
-Important: The properties in your template should match the current state of the resource. If they don't match, CloudFormation might try to update the resource to match the template after the import.
+Important: The properties in your template should match the current state of the resource. For RDS DB instances, if the template configuration doesn't match the actual configuration, CloudFormation applies the changes in the template during the import operation.
 
 ### Step 2: Create an import change set
 
@@ -251,7 +251,7 @@ aws cloudformation create-change-set \
 
 ## Getting the Template Right
 
-The tricky part of importing is making your template match the existing resource. If properties don't match, CloudFormation may try to update the resource after import.
+The tricky part of importing is making your template match the existing resource. For RDS DB instances, if properties don't match, CloudFormation may apply the template's changes during import.
 
 Use the AWS CLI to get the current resource configuration:
 
