@@ -17,8 +17,15 @@ This isn't just about clean code. It can genuinely reduce your costs and improve
 A ProjectionExpression is a comma-separated list of attribute names to include in the response:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  BatchGetCommand,
+  DynamoDBDocumentClient,
+  GetCommand,
+  QueryCommand
+} = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Only return name and email from each user
 async function getUserSummaries(orgId) {
@@ -34,7 +41,7 @@ async function getUserSummaries(orgId) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   return result.Items;
   // Returns: [{ userId: "u1", name: "Jane", email: "jane@co.com" }, ...]
 }
@@ -94,7 +101,7 @@ This is useful when you have list attributes with many elements but only need th
 
 ## Using ProjectionExpressions with GetItem
 
-ProjectionExpressions work with all read operations - GetItem, Query, Scan, and BatchGetItem:
+ProjectionExpressions work with the core read operations - GetItem, Query, Scan, and BatchGetItem:
 
 ```javascript
 // GetItem with projection
@@ -106,7 +113,7 @@ async function getUserEmail(userId) {
     ExpressionAttributeNames: { '#name': 'name' }
   };
 
-  const result = await docClient.get(params).promise();
+  const result = await docClient.send(new GetCommand(params));
   return result.Item;
 }
 
@@ -122,7 +129,7 @@ async function getUserEmails(userIds) {
     }
   };
 
-  const result = await docClient.batchGet(params).promise();
+  const result = await docClient.send(new BatchGetCommand(params));
   return result.Responses.Users;
 }
 ```
@@ -144,7 +151,7 @@ async function listProducts(categoryId) {
     // Skips: fullDescription, specifications, reviews, inventory, etc.
   };
 
-  return (await docClient.query(params).promise()).Items;
+  return (await docClient.send(new QueryCommand(params))).Items;
 }
 
 // Detail endpoint - return everything
@@ -155,7 +162,7 @@ async function getProductDetail(productId) {
     // No ProjectionExpression - returns all attributes
   };
 
-  return (await docClient.get(params).promise()).Item;
+  return (await docClient.send(new GetCommand(params))).Item;
 }
 ```
 
@@ -172,7 +179,7 @@ async function userExists(userId) {
     ProjectionExpression: 'userId'  // Minimal projection
   };
 
-  const result = await docClient.get(params).promise();
+  const result = await docClient.send(new GetCommand(params));
   return !!result.Item;
 }
 ```
@@ -196,7 +203,7 @@ async function getCustomerSpend(customerId) {
       ExclusiveStartKey: lastKey
     };
 
-    const result = await docClient.query(params).promise();
+    const result = await docClient.send(new QueryCommand(params));
 
     for (const item of result.Items) {
       totalSpend += item.orderAmount;
@@ -224,6 +231,7 @@ aws dynamodb update-table \
   --table-name Products \
   --attribute-definitions \
     AttributeName=categoryId,AttributeType=S \
+    AttributeName=price,AttributeType=N \
   --global-secondary-index-updates '[
     {
       "Create": {
@@ -314,7 +322,7 @@ const params = {
 
 ## Performance Impact
 
-For items under 4KB, the RCU savings from projection are negligible on the base table. The real benefit is reduced network transfer. If you're fetching thousands of items in a loop, projecting only what you need can cut response times significantly.
+For base table reads, projection does not reduce RCU consumption even when items are over 4KB. The real benefit is reduced network transfer. If you're fetching thousands of items in a loop, projecting only what you need can cut response times significantly.
 
 Use [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) to monitor your DynamoDB latency and throughput. If you see high latency on read operations, check whether large items and full-attribute fetches are contributing.
 
