@@ -22,7 +22,7 @@ cd cognito-vue-app
 
 # Install Cognito SDK and JWT decoder
 
-npm install @aws-sdk/client-cognito-identity-provider jwt-decode
+npm install @aws-sdk/client-cognito-identity-provider jwt-decode axios
 ```
 
 Create a config file for your Cognito settings:
@@ -35,6 +35,8 @@ export const cognitoConfig = {
     clientId: 'your-app-client-id'
 };
 ```
+
+Use a public user pool app client without a client secret, and enable the `USER_PASSWORD_AUTH` and `REFRESH_TOKEN_AUTH` authentication flows. If refresh token rotation is enabled on the app client, use Cognito's `GetTokensFromRefreshToken` API instead of `REFRESH_TOKEN_AUTH`.
 
 ## Auth Store with Pinia
 
@@ -205,25 +207,29 @@ export const useAuthStore = defineStore('auth', () => {
         return null;
     }
 
-    function getAccessToken(): string | null {
+    async function getAccessToken(): Promise<string | null> {
         const tokens = getStoredTokens();
         if (!tokens) return null;
 
         if (tokens.expiresAt - Date.now() < 5 * 60 * 1000) {
-            refreshSession();
+            return refreshSession();
         }
         return tokens.accessToken;
     }
 
     // Initialize - check for stored session
-    function init() {
+    async function init() {
         const tokens = getStoredTokens();
         if (tokens?.idToken) {
-            const decoded: any = jwtDecode(tokens.idToken);
-            if (decoded.exp * 1000 > Date.now()) {
-                user.value = parseUserFromToken(tokens.idToken);
-            } else if (tokens.refreshToken) {
-                refreshSession();
+            try {
+                const decoded: any = jwtDecode(tokens.idToken);
+                if (decoded.exp * 1000 > Date.now()) {
+                    user.value = parseUserFromToken(tokens.idToken);
+                } else if (tokens.refreshToken) {
+                    await refreshSession();
+                }
+            } catch {
+                clearTokens();
             }
         }
         isLoading.value = false;
@@ -264,9 +270,9 @@ app.use(router);
 
 // Initialize auth state before mounting
 const authStore = useAuthStore();
-authStore.init();
-
-app.mount('#app');
+authStore.init().finally(() => {
+    app.mount('#app');
+});
 ```
 
 ## Router Guards
@@ -409,8 +415,8 @@ export function useApi(): AxiosInstance {
     });
 
     // Attach token to requests
-    api.interceptors.request.use((config) => {
-        const token = authStore.getAccessToken();
+    api.interceptors.request.use(async (config) => {
+        const token = await authStore.getAccessToken();
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
