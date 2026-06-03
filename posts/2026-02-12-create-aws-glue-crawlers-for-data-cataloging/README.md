@@ -142,8 +142,10 @@ recrawl_policy = {
 ```
 
 - `CRAWL_EVERYTHING` - Re-scans all data on every run. Thorough but slow and expensive.
-- `CRAWL_NEW_FOLDERS_ONLY` - Only scans new S3 prefixes. Fast and cheap for append-only data.
-- `CRAWL_EVENT_MODE` - Triggered by S3 events. Most efficient for real-time updates.
+- `CRAWL_NEW_FOLDERS_ONLY` - After the first full crawl, only scans new S3 folders and adds new partitions. Fast and cheap for append-only data with a stable schema.
+- `CRAWL_EVENT_MODE` - Uses S3 event notifications from an SQS queue to identify changed folders instead of listing the full target on each run.
+
+When you use `CRAWL_NEW_FOLDERS_ONLY`, AWS Glue forces both schema update and delete behavior to `LOG`. Incremental crawls don't detect modifications or deletions of existing partitions, so switch back to `CRAWL_EVERYTHING` for major schema changes.
 
 ## IAM Role for Crawlers
 
@@ -218,12 +220,15 @@ while True:
     print(f"State: {state}")
 
     if state == 'READY':
-        # Check the last crawl results
+        # Check the last crawl status
         last_crawl = status['Crawler'].get('LastCrawl', {})
         print(f"Status: {last_crawl.get('Status')}")
-        print(f"Tables created: {last_crawl.get('TablesCreated', 0)}")
-        print(f"Tables updated: {last_crawl.get('TablesUpdated', 0)}")
-        print(f"Tables deleted: {last_crawl.get('TablesDeleted', 0)}")
+
+        metrics = glue.get_crawler_metrics(CrawlerNameList=['sales-data-crawler'])
+        crawler_metrics = metrics['CrawlerMetricsList'][0]
+        print(f"Tables created: {crawler_metrics.get('TablesCreated', 0)}")
+        print(f"Tables updated: {crawler_metrics.get('TablesUpdated', 0)}")
+        print(f"Tables deleted: {crawler_metrics.get('TablesDeleted', 0)}")
         break
 
     time.sleep(30)
@@ -246,7 +251,7 @@ Common schedules:
 - `cron(0 */4 * * ? *)` - Every 4 hours
 - `cron(0 0 ? * MON *)` - Weekly on Monday
 
-For real-time catalog updates, use event-based crawling with S3 event notifications instead of a schedule.
+To reduce S3 listing for frequently changing data, use event-based crawling with S3 event notifications. The crawler still runs manually or on a schedule, but after the first full crawl it consumes events from SQS to identify what changed.
 
 ## Classifiers
 
@@ -309,14 +314,14 @@ configuration = {
 }
 ```
 
-Without this, you might end up with dozens of tables when you expected one.
+If compatible schemas aren't grouped into a single schema for the S3 path, you might end up with more tables than you expected.
 
 ## Monitoring Crawlers
 
-Check crawler metrics in CloudWatch:
+Check crawler metrics with the Glue API:
 
 ```python
-# List recent crawler runs and their results
+# Fetch crawler-level metrics
 runs = glue.get_crawler_metrics(CrawlerNameList=['sales-data-crawler'])
 
 for metric in runs['CrawlerMetricsList']:
@@ -328,13 +333,13 @@ for metric in runs['CrawlerMetricsList']:
     print(f"  Tables deleted: {metric['TablesDeleted']}")
 ```
 
-Set up CloudWatch alarms for crawler failures so you know when your catalog stops updating.
+Set up EventBridge rules for Glue Crawler State Change and Glue Scheduled Crawler Invocation Failure events so you know when your catalog stops updating.
 
 ## Best Practices
 
 **Use exclusion patterns** to skip temporary files, staging directories, and other non-data paths. This speeds up crawling and prevents junk tables.
 
-**Set appropriate recrawl policies.** If your data is append-only (new files are added but old ones don't change), use `CRAWL_NEW_FOLDERS_ONLY`. It's dramatically faster.
+**Set appropriate recrawl policies.** If your data is append-only with new partition folders and a stable schema, use `CRAWL_NEW_FOLDERS_ONLY`. It's dramatically faster.
 
 **Don't over-crawl.** Running a crawler every 5 minutes on a dataset that changes daily wastes money and Glue resources.
 
