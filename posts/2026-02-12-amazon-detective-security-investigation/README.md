@@ -14,11 +14,11 @@ Amazon Detective automates that investigation process. It ingests data from Clou
 
 ## Prerequisites
 
-Before enabling Detective, you need these data sources active:
+Before enabling Detective for a GuardDuty-centered workflow, set up these pieces:
 
-- **GuardDuty** must be enabled (Detective uses GuardDuty findings as starting points)
-- **CloudTrail** must be logging management events (this is on by default)
-- **VPC Flow Logs** are optional but strongly recommended for network analysis
+- **GuardDuty** should be enabled (Detective ingests GuardDuty findings when both services are enabled)
+- **CloudTrail** management events and **VPC Flow Logs** are included in Detective's core data source package
+- **EKS audit logs** and AWS security findings are optional data source packages
 
 Detective costs are based on the volume of data ingested. It's billed per GB with a 30-day free trial.
 
@@ -38,26 +38,27 @@ The response gives you the graph ARN, which you'll need for all subsequent opera
 ```bash
 # Verify the graph is active
 aws detective list-graphs \
-  --query 'GraphList[*].{Arn:Arn,Status:Status,Created:CreatedTime}'
+  --query 'GraphList[*].{Arn:Arn,Created:CreatedTime}'
 ```
 
 ## Terraform Configuration
 
 ```hcl
-# Enable GuardDuty first (required for Detective)
+# Enable GuardDuty first for finding-driven investigations
 resource "aws_guardduty_detector" "main" {
   enable = true
+}
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-  }
+resource "aws_guardduty_detector_feature" "s3_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
 }
 
 # Enable Detective
@@ -80,7 +81,7 @@ aws detective enable-organization-admin-account \
 
 # From the admin account, invite member accounts
 aws detective create-members \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123" \
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef" \
   --accounts '[
     {"AccountId": "333344445555", "EmailAddress": "team1@example.com"},
     {"AccountId": "444455556666", "EmailAddress": "team2@example.com"}
@@ -92,7 +93,7 @@ Member accounts need to accept the invitation.
 ```bash
 # From a member account, accept the invitation
 aws detective accept-invitation \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123"
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef"
 ```
 
 Or auto-enable for all organization members.
@@ -104,7 +105,7 @@ resource "aws_detective_organization_admin_account" "main" {
 
 resource "aws_detective_organization_configuration" "main" {
   auto_enable = true
-  graph_arn   = aws_detective_graph.main.id
+  graph_arn   = aws_detective_graph.main.graph_arn
 }
 ```
 
@@ -140,12 +141,12 @@ aws guardduty list-findings \
   --max-results 5
 ```
 
-Once you have a finding ARN, start the investigation in Detective. While the Detective console provides the richest investigation experience, you can also query the API.
+Once you identify the IAM user or role involved in the finding, start the investigation in Detective. While the Detective console provides the richest investigation experience, you can also query the API.
 
 ```bash
-# Get investigation details for a finding
+# Start an IAM investigation
 aws detective start-investigation \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123" \
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef" \
   --entity-arn "arn:aws:iam::123456789012:user/suspicious-user" \
   --scope-start-time "2026-02-11T00:00:00Z" \
   --scope-end-time "2026-02-12T00:00:00Z"
@@ -156,8 +157,8 @@ The investigation returns a comprehensive analysis of the entity's behavior duri
 ```bash
 # Check investigation status and results
 aws detective get-investigation \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123" \
-  --investigation-id "investigation-id-here"
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef" \
+  --investigation-id "123456789012345678901"
 ```
 
 ## Entity Profiling
@@ -174,20 +175,20 @@ For an IAM role, the profile includes:
 ```bash
 # List investigations for review
 aws detective list-investigations \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123" \
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef" \
   --filter-criteria '{
     "Status": {"Value": "RUNNING"}
   }'
 
 # Get indicators of compromise
 aws detective list-indicators \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123" \
-  --investigation-id "investigation-id-here"
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef" \
+  --investigation-id "123456789012345678901"
 ```
 
 ## Automated Investigation Workflow
 
-Combine GuardDuty, Detective, and Step Functions for an automated investigation pipeline.
+Combine GuardDuty, Detective, EventBridge, and Lambda for an automated investigation pipeline.
 
 ```python
 import boto3
@@ -197,7 +198,7 @@ detective = boto3.client('detective')
 guardduty = boto3.client('guardduty')
 sns = boto3.client('sns')
 
-GRAPH_ARN = 'arn:aws:detective:us-east-1:222233334444:graph/abc123'
+GRAPH_ARN = 'arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef'
 ALERT_TOPIC = 'arn:aws:sns:us-east-1:123456789012:security-investigations'
 
 
@@ -217,20 +218,16 @@ def lambda_handler(event, context):
     resource = detail.get('resource', {})
     entity_arn = None
 
-    # Check for IAM-related findings
+    # Detective investigations support IAM users and IAM roles.
     if 'accessKeyDetails' in resource:
-        user_name = resource['accessKeyDetails'].get('userName')
-        if user_name:
+        access_key = resource['accessKeyDetails']
+        user_name = access_key.get('userName')
+        user_type = access_key.get('userType')
+        if user_name and user_type == 'IAMUser':
             entity_arn = f"arn:aws:iam::{account_id}:user/{user_name}"
 
-    # Check for EC2-related findings
-    if 'instanceDetails' in resource:
-        instance_id = resource['instanceDetails'].get('instanceId')
-        if instance_id:
-            entity_arn = f"arn:aws:ec2:{event['region']}:{account_id}:instance/{instance_id}"
-
     if not entity_arn:
-        print("Could not determine entity to investigate")
+        print("Could not determine an IAM user entity to investigate")
         return {'action': 'no_entity'}
 
     # Start the investigation
@@ -290,17 +287,18 @@ resource "aws_cloudwatch_event_target" "investigate" {
 ## Data Sources and Costs
 
 Detective ingests data from these sources:
-- **CloudTrail management events** (always included)
-- **VPC Flow Logs** (recommended for network analysis)
-- **GuardDuty findings** (required)
-- **EKS audit logs** (optional, for container workloads)
+- **CloudTrail logs** (core package)
+- **VPC Flow Logs** (core package)
+- **GuardDuty findings** (core package for accounts enrolled in GuardDuty)
+- **EKS audit logs** (optional source package, for container workloads)
+- **AWS security findings** (optional source package, from Security Hub CSPM)
 
 Costs scale with data volume. The first 30 days are free, then you're billed per GB ingested. Check your current usage.
 
 ```bash
 # Check Detective usage
 aws detective list-datasource-packages \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123"
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef"
 ```
 
 ## Optional Data Source Packages
@@ -310,7 +308,7 @@ Enable additional data sources for deeper investigation capabilities.
 ```bash
 # Enable EKS audit log analysis
 aws detective update-datasource-packages \
-  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph/abc123" \
+  --graph-arn "arn:aws:detective:us-east-1:222233334444:graph:1234567890abcdef1234567890abcdef" \
   --datasource-packages '["EKS_AUDIT"]'
 ```
 
