@@ -16,13 +16,13 @@ It's self-service, but governed. Developers get what they need fast, and the org
 
 The basic flow:
 
-1. **Platform team** creates CloudFormation templates (called "products") that define approved infrastructure patterns
+1. **Platform team** creates products backed by CloudFormation templates that define approved infrastructure patterns
 2. Products get organized into **portfolios** (like a curated menu)
 3. Portfolios are shared with specific **IAM roles/users** or AWS accounts
 4. **Developers** browse the catalog, pick a product, fill in parameters, and deploy
 5. Service Catalog provisions the resources using the platform team's CloudFormation template, with the platform team's permissions
 
-The key insight: developers don't need direct CloudFormation or AWS permissions. Service Catalog provisions on their behalf using a launch role controlled by the platform team.
+The key insight: developers don't need direct CloudFormation permissions or permissions to create the underlying AWS resources. They do still need AWS Service Catalog end-user permissions. Service Catalog provisions on their behalf using a launch role controlled by the platform team.
 
 ```mermaid
 graph LR
@@ -124,7 +124,7 @@ Resources:
       DBInstanceIdentifier: !Sub "${Environment}-${DatabaseName}"
       DBName: !Ref DatabaseName
       Engine: postgres
-      EngineVersion: "15.4"
+      EngineVersion: "15"
       DBInstanceClass: !FindInMap [InstanceSizeMap, !Ref InstanceSize, Class]
       AllocatedStorage: !FindInMap [InstanceSizeMap, !Ref InstanceSize, Storage]
       MasterUsername: !Sub "admin_${DatabaseName}"
@@ -210,29 +210,37 @@ aws iam create-role \
 # Attach the necessary policies
 aws iam attach-role-policy \
   --role-name "ServiceCatalogLaunchRole" \
+  --policy-arn "arn:aws:iam::aws:policy/AWSCloudFormationFullAccess"
+
+aws iam attach-role-policy \
+  --role-name "ServiceCatalogLaunchRole" \
   --policy-arn "arn:aws:iam::aws:policy/AmazonRDSFullAccess"
 
 aws iam attach-role-policy \
   --role-name "ServiceCatalogLaunchRole" \
-  --policy-arn "arn:aws:iam::aws:policy/AmazonVPCReadOnlyAccess"
+  --policy-arn "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+
+aws iam attach-role-policy \
+  --role-name "ServiceCatalogLaunchRole" \
+  --policy-arn "arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess"
 
 # Create the launch constraint
 aws servicecatalog create-constraint \
   --portfolio-id "port-xyz789" \
   --product-id "prod-abc123" \
   --type "LAUNCH" \
-  --parameters '{"RoleArn": "arn:aws:iam::123456789:role/ServiceCatalogLaunchRole"}'
+  --parameters '{"RoleArn": "arn:aws:iam::123456789012:role/ServiceCatalogLaunchRole"}'
 ```
 
 ## Step 5: Grant Access to Developers
 
-Share the portfolio with specific IAM roles, groups, or the entire organization.
+Share the portfolio with specific IAM roles, groups, or accounts/OUs in AWS Organizations.
 
 ```bash
 # Grant access to a specific IAM role
 aws servicecatalog associate-principal-with-portfolio \
   --portfolio-id "port-xyz789" \
-  --principal-arn "arn:aws:iam::123456789:role/DeveloperRole" \
+  --principal-arn "arn:aws:iam::123456789012:role/DeveloperRole" \
   --principal-type "IAM"
 
 # Or share with an entire OU
@@ -272,7 +280,16 @@ aws servicecatalog provision-product \
 # Check provisioning status
 aws servicecatalog describe-provisioned-product \
   --name "team-alpha-userdb" \
-  --query "{Status:ProvisionedProductDetail.Status, Outputs:ProvisionedProductDetail.Outputs}"
+  --query "ProvisionedProductDetail.Status"
+
+# Get CloudFormation outputs from the latest provisioning record
+aws servicecatalog describe-record \
+  --id "$(aws servicecatalog describe-provisioned-product \
+    --name "team-alpha-userdb" \
+    --query "ProvisionedProductDetail.LastRecordId" \
+    --output text)" \
+  --query "RecordOutputs[].{Key:OutputKey,Value:OutputValue}" \
+  --output table
 ```
 
 ## Adding Template Constraints
