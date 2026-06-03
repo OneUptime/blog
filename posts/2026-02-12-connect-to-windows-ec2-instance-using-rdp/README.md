@@ -38,8 +38,11 @@ The password won't be available immediately because Windows needs time to run Sy
 In the EC2 console:
 
 1. Select your Windows instance
-2. Click "Actions" > "Security" > "Get Windows password"
-3. You'll see a page asking for your key pair
+2. Click "Connect"
+3. Open the "RDP client" tab
+4. Choose the default Administrator username for your AMI's operating system language (for English AMIs, this is "Administrator")
+5. Click "Get password"
+6. You'll see a page asking for your key pair
 
 You need to provide the private key that matches the key pair assigned during launch. Either:
 
@@ -49,7 +52,7 @@ You need to provide the private key that matches the key pair assigned during la
 Click "Decrypt password." You'll see:
 
 - **Public DNS** - the hostname for connecting
-- **Username** - Administrator
+- **Username** - the administrator account name you selected
 - **Password** - the decrypted password (copy this immediately)
 
 Save this password somewhere secure. You won't be able to retrieve it through the console again after you change it. A password manager is ideal for this.
@@ -82,7 +85,7 @@ Experience tab: Choose your connection speed for optimal performance
 
 ### From macOS
 
-Download "Microsoft Remote Desktop" from the Mac App Store. Then:
+Download "Windows App" (previously named "Microsoft Remote Desktop") from the Mac App Store. Then:
 
 1. Click the "+" button and select "Add PC"
 2. Enter the public DNS or IP as the PC name
@@ -211,7 +214,7 @@ query session
 
 ### "The certificate is not from a trusted authority"
 
-This is normal. EC2 Windows instances use self-signed certificates. It's safe to click "Yes" or "Continue" to accept the certificate.
+This is expected because EC2 Windows instances use self-signed certificates. If you trust that you're connecting to the right instance, click "Yes" or "Continue" to accept the certificate. For higher assurance, compare the certificate thumbprint shown by the RDP client with the `RDPCERTIFICATE-THUMBPRINT` value in the instance system log.
 
 ### RDP Disconnects Frequently
 
@@ -223,7 +226,7 @@ This is normal. EC2 Windows instances use self-signed certificates. It's safe to
 ## Security Recommendations
 
 1. **Restrict RDP access** - Never open port 3389 to 0.0.0.0/0. Restrict to your IP or use a VPN.
-2. **Change the default port** - Move RDP to a non-standard port to avoid automated scanners.
+2. **Don't rely on a non-standard port alone** - If you change the RDP port, also update Windows Firewall and the security group. AWS Fleet Manager Remote Desktop expects the default RDP port 3389.
 3. **Enable Network Level Authentication (NLA)** - This is on by default in modern Windows Server versions.
 4. **Use strong passwords** - Especially important since RDP is a common brute-force target.
 5. **Consider AWS Fleet Manager** - For a more secure approach, use AWS Systems Manager Fleet Manager to access Windows instances through the console without opening port 3389.
