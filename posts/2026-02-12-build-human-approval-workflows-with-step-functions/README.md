@@ -184,9 +184,10 @@ Set up an API Gateway endpoint that the approve/reject links point to:
 # API Gateway Lambda handler that processes approve/reject decisions
 import boto3
 import json
+from datetime import datetime, timezone
 
 def handler(event, context):
-    params = event.get('queryStringParameters', {})
+    params = event.get('queryStringParameters') or {}
     token = params.get('token')
     action = params.get('action')
 
@@ -206,7 +207,7 @@ def handler(event, context):
                 output=json.dumps({
                     'approved': True,
                     'approvedBy': 'team-lead@example.com',
-                    'approvedAt': str(context.get_remaining_time_in_millis())
+                    'approvedAt': datetime.now(timezone.utc).isoformat()
                 })
             )
             message = 'Deployment approved! The deployment will proceed.'
@@ -243,12 +244,26 @@ Email works fine, but many teams prefer Slack. Here is how to send an approval r
 
 ```python
 # Send an interactive approval message to Slack with approve/reject buttons
+import boto3
 import requests
 import json
 import os
+import uuid
 
 def send_slack_approval(task_token, deployment, channel='#deployments'):
     slack_token = os.environ['SLACK_BOT_TOKEN']
+    approval_id = str(uuid.uuid4())
+
+    # Store the full task token server-side. Slack button values are limited to
+    # 2,000 characters, while Step Functions task tokens can be up to 2,048.
+    dynamodb = boto3.resource('dynamodb')
+    table = dynamodb.Table('approval-requests')
+    table.put_item(Item={
+        'approvalId': approval_id,
+        'taskToken': task_token,
+        'deployment': deployment,
+        'status': 'pending'
+    })
 
     payload = {
         'channel': channel,
@@ -272,14 +287,14 @@ def send_slack_approval(task_token, deployment, channel='#deployments'):
                         'text': {'type': 'plain_text', 'text': 'Approve'},
                         'style': 'primary',
                         'action_id': 'approve_deployment',
-                        'value': task_token
+                        'value': approval_id
                     },
                     {
                         'type': 'button',
                         'text': {'type': 'plain_text', 'text': 'Reject'},
                         'style': 'danger',
                         'action_id': 'reject_deployment',
-                        'value': task_token
+                        'value': approval_id
                     }
                 ]
             }
@@ -293,7 +308,7 @@ def send_slack_approval(task_token, deployment, channel='#deployments'):
     )
 ```
 
-The Slack interaction handler (triggered by button clicks) calls `send_task_success` or `send_task_failure` just like the API Gateway handler.
+The Slack interaction handler (triggered by button clicks) looks up the task token from the approval ID, then calls `send_task_success` or `send_task_failure` just like the API Gateway handler.
 
 ## Multi-Level Approvals
 
