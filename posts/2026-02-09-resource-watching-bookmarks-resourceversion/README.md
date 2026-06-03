@@ -26,9 +26,9 @@ resourceVersion: "12345678"
 
 ResourceVersion types:
 
-- **Specific version**: Watch from a specific point in time
-- **0**: Watch from the beginning (all existing resources + future changes)
-- **Empty**: Watch from now (only future changes, skip existing resources)
+- **Specific non-zero version**: Watch changes after that exact resource version
+- **0**: Start at any available resource version, usually the newest one, with synthetic `ADDED` events for existing resources followed by future changes
+- **Unset**: Start at the most recent consistent resource version, with synthetic `ADDED` events for existing resources followed by future changes
 
 ## Basic Watch Implementation
 
@@ -44,14 +44,13 @@ import (
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
-    "k8s.io/client-go/tools/cache"
 )
 
 func watchPods(clientset *kubernetes.Clientset) {
     ctx := context.Background()
 
     watcher, err := clientset.CoreV1().Pods("default").Watch(ctx, metav1.ListOptions{
-        // Start from now, skip existing pods
+        // Start at the most recent resource version and receive existing pods as ADDED events
         ResourceVersion: "",
     })
     if err != nil {
@@ -60,14 +59,15 @@ func watchPods(clientset *kubernetes.Clientset) {
     defer watcher.Stop()
 
     for event := range watcher.ResultChan() {
-        pod := event.Object.(*corev1.Pod)
-
         switch event.Type {
         case "ADDED":
+            pod := event.Object.(*corev1.Pod)
             fmt.Printf("Pod added: %s\n", pod.Name)
         case "MODIFIED":
+            pod := event.Object.(*corev1.Pod)
             fmt.Printf("Pod modified: %s\n", pod.Name)
         case "DELETED":
+            pod := event.Object.(*corev1.Pod)
             fmt.Printf("Pod deleted: %s\n", pod.Name)
         case "ERROR":
             fmt.Printf("Watch error: %v\n", event.Object)
@@ -87,7 +87,8 @@ func watchWithResume(clientset *kubernetes.Clientset) {
 
     for {
         watcher, err := clientset.CoreV1().Pods("default").Watch(ctx, metav1.ListOptions{
-            ResourceVersion: lastResourceVersion,
+            ResourceVersion:     lastResourceVersion,
+            AllowWatchBookmarks: true,
         })
         if err != nil {
             fmt.Printf("Watch failed: %v, retrying...\n", err)
@@ -111,8 +112,8 @@ func watchWithResume(clientset *kubernetes.Clientset) {
 
             case "BOOKMARK":
                 // Bookmark event with updated resource version
-                bookmark := event.Object.(*corev1.Pod)
-                lastResourceVersion = bookmark.ResourceVersion
+                meta := event.Object.(metav1.Object)
+                lastResourceVersion = meta.GetResourceVersion()
                 fmt.Printf("Bookmark received, RV: %s\n", lastResourceVersion)
             }
         }
@@ -144,7 +145,7 @@ func watchWithBookmarks(clientset *kubernetes.Clientset) {
     for event := range watcher.ResultChan() {
         switch event.Type {
         case "BOOKMARK":
-            // API server sends periodic bookmarks with current RV
+            // API server may send bookmarks with current RV
             meta := event.Object.(metav1.Object)
             lastResourceVersion = meta.GetResourceVersion()
 
@@ -158,7 +159,7 @@ func watchWithBookmarks(clientset *kubernetes.Clientset) {
             lastResourceVersion = pod.ResourceVersion
             saveResourceVersion(lastResourceVersion)
 
-            handleEvent(event.Type, pod)
+            handleEvent(string(event.Type), pod)
         }
     }
 }
@@ -181,7 +182,6 @@ import (
     "time"
 
     corev1 "k8s.io/api/core/v1"
-    "k8s.io/apimachinery/pkg/labels"
     "k8s.io/client-go/informers"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/tools/cache"
@@ -195,7 +195,7 @@ func useInformer(clientset *kubernetes.Clientset) {
     podInformer := factory.Core().V1().Pods().Informer()
 
     // Add event handlers
-    podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+    _, err := podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
         AddFunc: func(obj interface{}) {
             pod := obj.(*corev1.Pod)
             fmt.Printf("Pod added: %s\n", pod.Name)
@@ -205,10 +205,17 @@ func useInformer(clientset *kubernetes.Clientset) {
             fmt.Printf("Pod updated: %s\n", pod.Name)
         },
         DeleteFunc: func(obj interface{}) {
-            pod := obj.(*corev1.Pod)
+            pod, ok := obj.(*corev1.Pod)
+            if !ok {
+                tombstone := obj.(cache.DeletedFinalStateUnknown)
+                pod = tombstone.Obj.(*corev1.Pod)
+            }
             fmt.Printf("Pod deleted: %s\n", pod.Name)
         },
     })
+    if err != nil {
+        panic(err)
+    }
 
     // Start informer
     stopCh := make(chan struct{})
@@ -328,7 +335,7 @@ func watchOnce(ctx context.Context, clientset *kubernetes.Clientset, lastRV *str
             *lastRV = pod.ResourceVersion
 
             // Process event
-            handleEvent(event.Type, pod)
+            handleEvent(string(event.Type), pod)
 
         case "ERROR":
             // Watch expired or encountered error
@@ -369,8 +376,14 @@ func watchWithFilters(clientset *kubernetes.Clientset) {
     defer watcher.Stop()
 
     for event := range watcher.ResultChan() {
-        pod := event.Object.(*corev1.Pod)
-        fmt.Printf("%s: %s\n", event.Type, pod.Name)
+        switch event.Type {
+        case "ADDED", "MODIFIED", "DELETED":
+            pod := event.Object.(*corev1.Pod)
+            fmt.Printf("%s: %s\n", event.Type, pod.Name)
+        case "BOOKMARK":
+            meta := event.Object.(metav1.Object)
+            fmt.Printf("Bookmark: RV=%s\n", meta.GetResourceVersion())
+        }
     }
 }
 ```
@@ -429,7 +442,11 @@ func persistentWatch(clientset *kubernetes.Clientset) {
 
     for {
         select {
-        case event := <-watcher.ResultChan():
+        case event, ok := <-watcher.ResultChan():
+            if !ok {
+                return
+            }
+
             switch event.Type {
             case "BOOKMARK":
                 meta := event.Object.(metav1.Object)
@@ -438,7 +455,7 @@ func persistentWatch(clientset *kubernetes.Clientset) {
             case "ADDED", "MODIFIED", "DELETED":
                 pod := event.Object.(*corev1.Pod)
                 currentRV = pod.ResourceVersion
-                handleEvent(event.Type, pod)
+                handleEvent(string(event.Type), pod)
             }
 
         case <-ticker.C:
@@ -560,7 +577,7 @@ Controller-runtime handles resource versions, bookmarks, and reconnections autom
 
 ## Best Practices
 
-Always use bookmarks in production watches to enable efficient resume.
+Request bookmarks in production watches to enable efficient resume, but do not assume the API server will send them at a specific interval.
 
 Persist resource versions regularly to recover watch progress after restarts.
 
