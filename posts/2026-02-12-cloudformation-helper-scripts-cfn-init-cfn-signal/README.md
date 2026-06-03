@@ -58,7 +58,7 @@ Resources:
             yum:
               httpd: []
               php: []
-              mysql: []
+              mariadb105-server: []
 
         configure:
           files:
@@ -107,9 +107,26 @@ Resources:
               owner: root
               group: root
 
+            /etc/systemd/system/cfn-hup.service:
+              content: |
+                [Unit]
+                Description=cfn-hup daemon
+
+                [Service]
+                ExecStart=/opt/aws/bin/cfn-hup -v --no-daemon
+
+                [Install]
+                WantedBy=multi-user.target
+              mode: "000644"
+              owner: root
+              group: root
+
         start_services:
+          commands:
+            01_reload_systemd:
+              command: systemctl daemon-reload
           services:
-            sysvinit:
+            systemd:
               httpd:
                 enabled: true
                 ensureRunning: true
@@ -121,22 +138,24 @@ Resources:
                 files:
                   - /etc/cfn/cfn-hup.conf
                   - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+                  - /etc/systemd/system/cfn-hup.service
 
     Properties:
       ImageId: !Ref LatestAmiId
       InstanceType: t3.micro
       UserData:
         Fn::Base64: !Sub |
-          #!/bin/bash -xe
+          #!/bin/bash -x
           # Run cfn-init to process the metadata
           /opt/aws/bin/cfn-init -v \
             --stack ${AWS::StackName} \
             --resource WebServerInstance \
             --configsets default \
             --region ${AWS::Region}
+          CFN_INIT_EXIT_CODE=$?
 
           # Signal whether cfn-init succeeded or failed
-          /opt/aws/bin/cfn-signal -e $? \
+          /opt/aws/bin/cfn-signal -e $CFN_INIT_EXIT_CODE \
             --stack ${AWS::StackName} \
             --resource WebServerInstance \
             --region ${AWS::Region}
@@ -211,12 +230,21 @@ There are two ways to use cfn-signal. The simpler approach uses the exit code fr
 For more complex scenarios, you might want to run additional health checks before signaling.
 
 ```bash
-#!/bin/bash -xe
+#!/bin/bash -x
 # Run cfn-init first
 /opt/aws/bin/cfn-init -v \
   --stack ${AWS::StackName} \
   --resource WebServerInstance \
   --region ${AWS::Region}
+CFN_INIT_EXIT_CODE=$?
+
+if [ "$CFN_INIT_EXIT_CODE" -ne 0 ]; then
+  /opt/aws/bin/cfn-signal -e $CFN_INIT_EXIT_CODE \
+    --stack ${AWS::StackName} \
+    --resource WebServerInstance \
+    --region ${AWS::Region}
+  exit $CFN_INIT_EXIT_CODE
+fi
 
 # Run a health check before signaling success
 MAX_RETRIES=30
