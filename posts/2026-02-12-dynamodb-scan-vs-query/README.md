@@ -17,8 +17,11 @@ That said, Scan isn't evil. There are legitimate use cases for it. The problem i
 A Query operation targets a specific partition. You provide a partition key value, and DynamoDB goes directly to that partition and reads only the items there. If you also specify a sort key condition, it narrows the read even further.
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+
+const client = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(client);
 
 // Query: reads items from ONE partition
 async function getCustomerOrders(customerId) {
@@ -30,7 +33,7 @@ async function getCustomerOrders(customerId) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   console.log(`Read ${result.Count} items, scanned ${result.ScannedCount} items`);
   return result.Items;
 }
@@ -40,7 +43,7 @@ Key characteristics of Query:
 - Requires a partition key value
 - Reads from a single partition
 - Returns items in sort key order
-- Supports sort key conditions (=, <, >, between, begins_with)
+- Supports sort key conditions (=, <, <=, >, >=, between, begins_with)
 - Up to 1MB of data per call
 - Single-digit millisecond latency
 
@@ -49,18 +52,27 @@ Key characteristics of Query:
 A Scan reads every item in the table (or index), sequentially moving through all partitions. It then optionally applies a filter to the results.
 
 ```javascript
-// Scan: reads EVERY item in the table
+// Scan: paginates through every item in the table
 async function getAllActiveUsers() {
-  const params = {
-    TableName: 'Users',
-    FilterExpression: '#status = :active',
-    ExpressionAttributeNames: { '#status': 'status' },
-    ExpressionAttributeValues: { ':active': 'active' }
-  };
+  let items = [];
+  let lastKey = undefined;
 
-  const result = await docClient.scan(params).promise();
-  console.log(`Returned ${result.Count} items, scanned ${result.ScannedCount} items`);
-  return result.Items;
+  do {
+    const params = {
+      TableName: 'Users',
+      FilterExpression: '#status = :active',
+      ExpressionAttributeNames: { '#status': 'status' },
+      ExpressionAttributeValues: { ':active': 'active' },
+      ExclusiveStartKey: lastKey
+    };
+
+    const result = await docClient.send(new ScanCommand(params));
+    console.log(`Returned ${result.Count} items, scanned ${result.ScannedCount} items`);
+    items = items.concat(result.Items);
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+
+  return items;
 }
 ```
 
@@ -80,7 +92,7 @@ Let's put real numbers to this. Consider a table with 1 million items, each 1KB 
 ```text
 Items read: 25
 Data read: 25 KB
-RCUs consumed: ~7 (eventually consistent)
+Read units consumed: ~13 (eventually consistent)
 Cost: negligible
 Latency: ~5ms
 ```
@@ -89,8 +101,8 @@ Latency: ~5ms
 ```text
 Items read: 1,000,000 (reads everything first)
 Data read: ~1 GB
-RCUs consumed: ~125,000 (eventually consistent)
-Cost: ~$0.03125
+Read units consumed: ~500,000 (eventually consistent)
+Cost: ~$0.0625 in US East (N. Virginia) on-demand pricing
 Latency: several seconds to minutes
 ```
 
@@ -158,7 +170,7 @@ async function exportTable(tableName) {
       ExclusiveStartKey: lastKey
     };
 
-    const result = await docClient.scan(params).promise();
+    const result = await docClient.send(new ScanCommand(params));
     items = items.concat(result.Items);
     lastKey = result.LastEvaluatedKey;
   } while (lastKey);
@@ -176,10 +188,20 @@ If your table has fewer than a few thousand items and doesn't grow much, Scan is
 ```javascript
 // Configuration table with 50 items - Scan is fine
 async function getAllConfigs() {
-  const result = await docClient.scan({
-    TableName: 'AppConfig'
-  }).promise();
-  return result.Items;
+  let items = [];
+  let lastKey = undefined;
+
+  do {
+    const result = await docClient.send(new ScanCommand({
+      TableName: 'AppConfig',
+      ExclusiveStartKey: lastKey
+    }));
+
+    items = items.concat(result.Items);
+    lastKey = result.LastEvaluatedKey;
+  } while (lastKey);
+
+  return items;
 }
 ```
 
@@ -194,12 +216,12 @@ async function analyzeOrderStatuses() {
   let lastKey = undefined;
 
   do {
-    const result = await docClient.scan({
+    const result = await docClient.send(new ScanCommand({
       TableName: 'Orders',
       ProjectionExpression: '#s',
       ExpressionAttributeNames: { '#s': 'status' },
       ExclusiveStartKey: lastKey
-    }).promise();
+    }));
 
     for (const item of result.Items) {
       statusCounts[item.status] = (statusCounts[item.status] || 0) + 1;
@@ -240,7 +262,7 @@ async function scanSegment(tableName, segment, totalSegments) {
       ExclusiveStartKey: lastKey
     };
 
-    const result = await docClient.scan(params).promise();
+    const result = await docClient.send(new ScanCommand(params));
     items = items.concat(result.Items);
     lastKey = result.LastEvaluatedKey;
   } while (lastKey);
@@ -249,7 +271,9 @@ async function scanSegment(tableName, segment, totalSegments) {
 }
 
 // Run with 4 parallel segments
-const allItems = await parallelScan('Orders', 4);
+(async () => {
+  const allItems = await parallelScan('Orders', 4);
+})();
 ```
 
 Parallel scan is faster but consumes more throughput. Make sure your table has enough capacity.
@@ -317,11 +341,11 @@ async function rateLimitedScan(tableName) {
   let totalProcessed = 0;
 
   do {
-    const result = await docClient.scan({
+    const result = await docClient.send(new ScanCommand({
       TableName: tableName,
       Limit: 100,  // Read only 100 items per call
       ExclusiveStartKey: lastKey
-    }).promise();
+    }));
 
     // Process batch
     await processBatch(result.Items);
@@ -344,8 +368,10 @@ async function rateLimitedScan(tableName) {
 Track `ScannedCount` vs `Count` in your operations to identify inefficient queries. If `ScannedCount` is much larger than `Count`, your filters are doing too much work:
 
 ```javascript
-const result = await docClient.query(params).promise();
-const efficiency = (result.Count / result.ScannedCount * 100).toFixed(1);
+const result = await docClient.send(new QueryCommand(params));
+const efficiency = result.ScannedCount === 0
+  ? '100.0'
+  : (result.Count / result.ScannedCount * 100).toFixed(1);
 console.log(`Query efficiency: ${efficiency}% (${result.Count}/${result.ScannedCount})`);
 ```
 
