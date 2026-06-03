@@ -8,7 +8,7 @@ Description: Step-by-step guide to deploying Amazon DocumentDB clusters with Ter
 
 ---
 
-Amazon DocumentDB is AWS's managed document database service that's compatible with MongoDB 3.6, 4.0, and 5.0. If you're running MongoDB workloads and want to offload the operational burden of managing replica sets, backups, and patching, DocumentDB is worth considering. It uses a cluster architecture similar to Aurora - a shared storage layer with separate compute instances for reads and writes.
+Amazon DocumentDB is AWS's managed document database service that's compatible with MongoDB 3.6, 4.0, 5.0, and 8.0. Version 3.6 reached end of standard support in March 2026, so use a current engine version for new production clusters. If you're running MongoDB workloads and want to offload the operational burden of managing replica sets, backups, and patching, DocumentDB is worth considering. It uses a cluster architecture similar to Aurora - a shared storage layer with separate compute instances for reads and writes.
 
 Setting up a DocumentDB cluster through the console takes a while and is error-prone. Let's do it properly with Terraform.
 
@@ -96,7 +96,7 @@ resource "aws_docdb_cluster_parameter_group" "main" {
     value = "enabled"
   }
 
-  # Enable change streams
+  # Set change stream log retention
   parameter {
     name  = "change_stream_log_retention_duration"
     value = "10800"  # 3 hours in seconds
@@ -127,10 +127,11 @@ resource "aws_docdb_cluster" "main" {
   cluster_identifier = "app-docdb-cluster"
   engine             = "docdb"
   engine_version     = "5.0.0"
+  availability_zones = var.availability_zones
 
   # Credentials
   master_username = "docdbadmin"
-  master_password = var.master_password
+  master_password = random_password.docdb.result
 
   # Networking
   db_subnet_group_name   = aws_docdb_subnet_group.main.name
@@ -179,16 +180,13 @@ resource "aws_docdb_cluster_instance" "instances" {
   instance_class     = var.instance_class
   engine             = "docdb"
 
-  auto_minor_version_upgrade = true
-
   tags = {
     Name = "docdb-instance-${count.index}"
-    Role = count.index == 0 ? "writer" : "reader"
   }
 }
 ```
 
-For production, use at least 3 instances across different availability zones. The first instance becomes the writer, and the rest serve reads. Common instance classes for DocumentDB are `db.r6g.large` for moderate workloads and `db.r6g.xlarge` for heavier ones.
+For production, use at least 3 instances across different availability zones. DocumentDB manages which instance is the writer and which instances serve reads, and those roles can change during failover. Common instance classes for DocumentDB are `db.r6g.large` for moderate workloads and `db.r6g.xlarge` for heavier ones.
 
 ## Connecting to DocumentDB
 
@@ -312,17 +310,16 @@ variable "private_subnet_ids" {
   type = list(string)
 }
 
+variable "availability_zones" {
+  type = list(string)
+}
+
 variable "vpc_id" {
   type = string
 }
 
 variable "app_security_group_id" {
   type = string
-}
-
-variable "master_password" {
-  type      = string
-  sensitive = true
 }
 
 variable "instance_count" {
