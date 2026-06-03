@@ -14,7 +14,7 @@ In this guide, we'll walk through setting up Sigstore Policy Controller and conf
 
 ## What is Sigstore Policy Controller?
 
-Sigstore Policy Controller is a Kubernetes admission controller that validates container images against signatures stored in transparency logs. It integrates with Sigstore's ecosystem, including Cosign for signing and Rekor for transparency logging. The controller intercepts pod creation requests and blocks any images that don't meet your signature verification policies.
+Sigstore Policy Controller is a Kubernetes admission controller that validates container images against signatures and attestations created by Cosign. It integrates with Sigstore's ecosystem, including Rekor for transparency logging, and by default verifies against Sigstore's public trust roots. The controller intercepts pod creation requests and blocks any images that don't meet your signature verification policies.
 
 Unlike traditional approaches that rely on manual verification or trust-on-first-use models, Policy Controller enforces cryptographic verification at admission time, ensuring that only approved images run in your cluster.
 
@@ -39,7 +39,7 @@ helm repo add sigstore https://sigstore.github.io/helm-charts
 helm repo update
 ```
 
-Install the Policy Controller with default settings:
+Install the Policy Controller with the default namespace opt-in settings:
 
 ```bash
 # Create a namespace for policy controller
@@ -47,14 +47,10 @@ kubectl create namespace cosign-system
 
 # Install policy controller
 helm install policy-controller sigstore/policy-controller \
-  --namespace cosign-system \
-  --set webhook.enabled=true \
-  --set webhook.namespaceSelector.matchExpressions[0].key=policy.sigstore.dev/include \
-  --set webhook.namespaceSelector.matchExpressions[0].operator=In \
-  --set webhook.namespaceSelector.matchExpressions[0].values[0]="true"
+  --namespace cosign-system
 ```
 
-This configuration enables the webhook and sets up namespace selectors so you can opt-in specific namespaces for verification.
+This configuration installs the webhook with the default namespace selector so you can opt-in specific namespaces for verification.
 
 Verify the installation:
 
@@ -197,12 +193,12 @@ spec:
       url: https://fulcio.sigstore.dev
     attestations:
     - name: must-have-slsa
-      predicateType: https://slsa.dev/provenance/v0.2
+      predicateType: https://slsa.dev/provenance/v1
       policy:
         type: cue
         data: |
-          predicateType: "https://slsa.dev/provenance/v0.2"
-          predicate: buildType: "https://cloudbuild.googleapis.com/CloudBuildYaml@v1"
+          predicateType: "https://slsa.dev/provenance/v1"
+          predicate: buildDefinition: buildType: "https://cloud.google.com/build/gcb-buildtypes/google-worker/v1"
 ```
 
 This configuration requires images to have SLSA provenance attestations that prove they were built using a specific build system.
@@ -243,7 +239,7 @@ spec:
       url: https://fulcio.sigstore.dev
 ```
 
-In warning mode, unsigned images will be allowed to run, but violations will be logged in the policy controller logs and as Kubernetes events.
+In warning mode, unsigned images will be allowed to run, but the admission request will receive a warning instead of being blocked.
 
 ## Best Practices
 
