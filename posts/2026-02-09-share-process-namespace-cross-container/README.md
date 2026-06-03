@@ -42,9 +42,9 @@ Now both containers can see each other's processes.
 Verify process sharing:
 
 ```bash
-# Exec into the app container
+# Exec into the debugger container
 
-kubectl exec -it shared-process-pod -c app -- ps aux
+kubectl exec -it shared-process-pod -c debugger -- ps ax
 
 # You'll see processes from both containers
 ```
@@ -85,11 +85,11 @@ ps aux | grep myapp
 # Attach strace to the process
 strace -p <PID>
 
-# Generate thread dump
+# Generate a core dump
 gcore -o /tmp/core <PID>
 ```
 
-This lets you debug production issues without adding debugging tools to your application container or restarting pods.
+This lets you debug production issues without adding debugging tools to your application container image.
 
 ## Monitoring Application Processes
 
@@ -167,7 +167,7 @@ spec:
       kill -HUP $APP_PID
 
       # Keep container running
-      sleep infinity
+      sleep 3600
 ```
 
 This enables coordination patterns where one container controls another's lifecycle.
@@ -253,8 +253,8 @@ spec:
           echo "App process died, logging state"
 
           # Collect diagnostic info
-          ps aux > /tmp/processes.txt
-          dmesg > /tmp/kernel.log
+          ps > /tmp/processes.txt
+          cat /proc/meminfo > /tmp/meminfo.txt
 
           # Could send alerts here
           echo "App crashed at $(date)"
@@ -302,6 +302,7 @@ Audit process access:
 apiVersion: v1
 kind: Pod
 metadata:
+  name: audit-shared-pod
   annotations:
     audit: "high"
 spec:
@@ -320,7 +321,7 @@ spec:
         ps aux > /var/log/process-audit.log
 
         # Log any unexpected processes
-        ps aux | grep -v "app\|auditor\|pause" | \
+        ps aux | grep -Ev "app|auditor|pause" | \
           logger -t process-audit
 
         sleep 60
@@ -331,9 +332,9 @@ spec:
 
 When shareProcessNamespace is enabled, your application is no longer PID 1. This affects signal handling and zombie process reaping.
 
-The pause container becomes PID 1 and handles SIGTERM for the entire pod. Your application receives SIGTERM from Kubernetes, but zombie processes are reaped by the pause container instead of your application.
+The pause container becomes PID 1 for the shared process namespace. Commands that signal PID 1, such as `kill -HUP 1`, signal the pod sandbox instead of your application. Orphaned child processes are adopted by PID 1, so applications that depend on PID 1 behavior need extra testing.
 
-If your application depends on being PID 1, use an init system:
+If your application needs reliable child process reaping or signal forwarding, use an init wrapper as the container command:
 
 ```yaml
 apiVersion: v1
@@ -351,7 +352,7 @@ spec:
     - /app/start.sh
 ```
 
-dumb-init acts as a minimal init system, reaping zombies and forwarding signals correctly.
+dumb-init acts as a minimal init wrapper for the application process, reaping its child processes and forwarding signals correctly.
 
 ## Troubleshooting Process Issues
 
@@ -427,6 +428,9 @@ spec:
   - name: system-tools
     image: nicolaka/netshoot
     command: ['sleep', 'infinity']
+    securityContext:
+      capabilities:
+        add: ['NET_ADMIN', 'NET_RAW']
 ```
 
 Debug the Java application:
@@ -459,8 +463,8 @@ JAVA_PID=$(pgrep java)
 # Monitor network connections
 lsof -p $JAVA_PID -i
 
-# Capture network traffic for this process
-tcpdump -i any -p $JAVA_PID
+# Capture network traffic for the application port
+tcpdump -i any port 8080
 ```
 
 ## Performance Monitoring Pattern
