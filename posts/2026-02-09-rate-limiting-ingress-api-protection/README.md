@@ -16,7 +16,7 @@ Different ingress controllers provide various rate limiting capabilities, from s
 
 ## Rate Limiting with NGINX Ingress Controller
 
-NGINX Ingress Controller provides robust rate limiting through annotations that configure limits per IP address, per service, or using custom keys. The rate limiting uses a leaky bucket algorithm that allows controlled bursts while enforcing average rate limits.
+NGINX Ingress Controller provides robust rate limiting through annotations that configure limits per IP address. Custom keys require controller-level NGINX snippets or an external rate limit service. The rate limiting uses a leaky bucket algorithm that allows controlled bursts while enforcing average rate limits.
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -30,7 +30,7 @@ metadata:
     # Allow burst of 20 requests
     nginx.ingress.kubernetes.io/limit-burst-multiplier: "2"
     # Return 429 Too Many Requests when exceeded
-    nginx.ingress.kubernetes.io/limit-connections: "10"
+    nginx.ingress.kubernetes.io/limit-req-status-code: "429"
 spec:
   ingressClassName: nginx
   rules:
@@ -53,6 +53,16 @@ The `limit-burst-multiplier` annotation defines how many requests can arrive in 
 For more sophisticated rate limiting based on request headers or paths:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ingress-nginx-controller
+  namespace: ingress-nginx
+data:
+  allow-snippet-annotations: "true"
+  http-snippet: |
+    limit_req_zone $http_x_api_key zone=api_key_limit:10m rate=100r/s;
+---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -60,11 +70,8 @@ metadata:
   namespace: production
   annotations:
     # Rate limit using API key header instead of IP
-    nginx.ingress.kubernetes.io/limit-rate-after: "100"
-    nginx.ingress.kubernetes.io/limit-rate: "500"
-    # Custom rate limit zone
+    nginx.ingress.kubernetes.io/limit-req-status-code: "429"
     nginx.ingress.kubernetes.io/configuration-snippet: |
-      limit_req_zone $http_x_api_key zone=api_key_limit:10m rate=100r/s;
       limit_req zone=api_key_limit burst=20 nodelay;
 spec:
   ingressClassName: nginx
@@ -81,14 +88,14 @@ spec:
               number: 8080
 ```
 
-This configuration creates a custom rate limit zone based on the `X-API-Key` header rather than IP address, useful for APIs that authenticate clients via API keys.
+This configuration creates a custom rate limit zone in the ingress-nginx controller ConfigMap based on the `X-API-Key` header rather than IP address, then applies that zone to the Ingress. Snippet annotations must be enabled on the controller before this works.
 
 ## Rate Limiting with Traefik Ingress
 
 Traefik provides rate limiting through middleware that you attach to ingress routes. Traefik's approach offers flexible configuration through separate middleware objects.
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit-api
@@ -129,7 +136,7 @@ This configuration limits requests to an average of 100 per second with bursts o
 For header-based rate limiting:
 
 ```yaml
-apiVersion: traefik.containo.us/v1alpha1
+apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:
   name: rate-limit-by-token
@@ -281,6 +288,12 @@ spec:
           value: "tcp"
         - name: REDIS_URL
           value: "redis:6379"
+        - name: RUNTIME_ROOT
+          value: "/data"
+        - name: RUNTIME_SUBDIRECTORY
+          value: "ratelimit"
+        - name: RUNTIME_APPDIRECTORY
+          value: "config"
         volumeMounts:
         - name: config
           mountPath: /data/ratelimit/config
@@ -290,7 +303,7 @@ spec:
           name: ratelimit-config
 ```
 
-This deployment runs the Envoy rate limit service that maintains distributed counters in Redis, providing consistent rate limiting across all gateway instances.
+This deployment runs the Envoy rate limit service, loads descriptor configuration from the mounted ConfigMap, and uses Redis for shared counters. A complete distributed setup also needs a Redis service and an EnvoyFilter that points the ingress gateway at this rate limit service.
 
 ## Path-Specific Rate Limits
 
@@ -356,20 +369,9 @@ metadata:
   namespace: production
   annotations:
     nginx.ingress.kubernetes.io/limit-rps: "10"
-    nginx.ingress.kubernetes.io/configuration-snippet: |
-      location / {
-        limit_req zone=default burst=20 nodelay;
-        limit_req_status 429;
-        add_header X-RateLimit-Limit 10 always;
-        add_header X-RateLimit-Remaining $limit_req_remaining always;
-        add_header Retry-After 60 always;
-      }
-
-      error_page 429 = @ratelimit;
-      location @ratelimit {
-        default_type application/json;
-        return 429 '{"error":"Rate limit exceeded","message":"Too many requests. Please retry after 60 seconds.","limit":10,"period":"second"}';
-      }
+    nginx.ingress.kubernetes.io/limit-req-status-code: "429"
+    nginx.ingress.kubernetes.io/custom-http-errors: "429"
+    nginx.ingress.kubernetes.io/default-backend: rate-limit-errors
 spec:
   ingressClassName: nginx
   rules:
@@ -385,7 +387,7 @@ spec:
               number: 8080
 ```
 
-This configuration adds rate limit headers to all responses and returns structured JSON error messages when limits are exceeded, helping API consumers understand and handle rate limits gracefully.
+This configuration returns 429 for rejected requests and routes those responses to a custom `rate-limit-errors` default backend. That backend should return the structured JSON body, helping API consumers understand and handle rate limits gracefully.
 
 ## Monitoring Rate Limit Effectiveness
 
@@ -409,11 +411,11 @@ Set up Prometheus queries to track rate limiting:
 rate(nginx_ingress_controller_requests{status="429"}[5m])
 
 # Percentage of requests rate limited
-rate(nginx_ingress_controller_requests{status="429"}[5m]) /
-rate(nginx_ingress_controller_requests[5m]) * 100
+sum(rate(nginx_ingress_controller_requests{status="429"}[5m])) /
+sum(rate(nginx_ingress_controller_requests[5m])) * 100
 
-# Top IPs being rate limited
-topk(10, sum by (remote_addr) (
+# Top ingresses returning 429 responses
+topk(10, sum by (namespace, ingress) (
   rate(nginx_ingress_controller_requests{status="429"}[5m])
 ))
 ```
@@ -442,17 +444,17 @@ data:
           summary: "High rate of rate limit rejections"
           description: "{{ $value }} requests per second are being rate limited"
 
-      - alert: SingleIPExcessiveRateLimit
+      - alert: IngressExcessiveRateLimit
         expr: |
-          sum by (remote_addr) (
+          sum by (namespace, ingress) (
             rate(nginx_ingress_controller_requests{status="429"}[5m])
           ) > 5
         for: 5m
         labels:
           severity: info
         annotations:
-          summary: "Single IP hitting rate limits excessively"
-          description: "IP {{ $labels.remote_addr }} is being rate limited at {{ $value }} req/s"
+          summary: "Ingress hitting rate limits excessively"
+          description: "Ingress {{ $labels.namespace }}/{{ $labels.ingress }} is returning 429 responses at {{ $value }} req/s"
 ```
 
 Review rate limit logs regularly to identify patterns and adjust limits:
@@ -461,7 +463,7 @@ Review rate limit logs regularly to identify patterns and adjust limits:
 # Analyze rate limited IPs over the last hour
 kubectl logs -n ingress-nginx deployment/ingress-nginx-controller --since=1h | \
   grep "limiting requests" | \
-  awk '{print $NF}' | \
+  sed -n 's/.*client: \([^,]*\),.*/\1/p' | \
   sort | uniq -c | sort -rn | head -20
 
 # Check rate limit timing patterns
