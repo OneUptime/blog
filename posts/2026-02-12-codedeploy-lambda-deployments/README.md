@@ -8,7 +8,7 @@ Description: Learn how to use AWS CodeDeploy to safely deploy Lambda functions w
 
 ---
 
-Deploying Lambda functions with a simple `aws lambda update-function-code` is quick but risky. The moment you update, 100% of traffic hits the new version. If there's a bug, every invocation fails until you push a fix. There's no gradual rollout, no testing in production, and no instant rollback.
+Deploying Lambda functions with a simple `aws lambda update-function-code` is quick but risky when your triggers invoke the unqualified function or `$LATEST`. The moment you update, 100% of that traffic hits the new code. If there's a bug, every invocation fails until you push a fix. There's no gradual rollout, no testing in production, and no instant rollback.
 
 AWS CodeDeploy brings blue/green deployment capabilities to Lambda. You can shift traffic incrementally between Lambda versions, run validation hooks, and automatically roll back if CloudWatch alarms fire. It's a much safer way to release serverless code.
 
@@ -81,7 +81,7 @@ aws iam create-role \
 # Attach the managed policy
 aws iam attach-role-policy \
   --role-name CodeDeployLambdaRole \
-  --policy-arn arn:aws:iam::aws:policy/AWSCodeDeployRoleForLambda
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSCodeDeployRoleForLambda
 ```
 
 ## Step 3: Create the CodeDeploy Application
@@ -186,15 +186,17 @@ aws cloudwatch put-metric-alarm \
 
 Validation hooks are Lambda functions that CodeDeploy calls during the deployment. They let you run tests against the new version before and after traffic shifts.
 
-Here's a pre-traffic hook that invokes the new version and checks the response:
+Here's a pre-traffic hook that invokes the new version and checks the response. Set `TARGET_VERSION` to the AppSpec `TargetVersion` before the hook runs.
 
 ```python
 # pre_traffic_hook.py - Validates the new Lambda version before traffic shifts
 import json
+import os
 import boto3
 
 codedeploy = boto3.client('codedeploy')
 lambda_client = boto3.client('lambda')
+target_version = os.environ['TARGET_VERSION']
 
 def handler(event, context):
     deployment_id = event['DeploymentId']
@@ -206,7 +208,7 @@ def handler(event, context):
         # Invoke the new version directly to test it
         response = lambda_client.invoke(
             FunctionName='my-function',
-            Qualifier='live',  # This will hit the weighted alias
+            Qualifier=target_version,
             Payload=json.dumps({
                 'test': True,
                 'path': '/health'
@@ -257,8 +259,8 @@ Resources:
         TargetVersion: "2"
 
 Hooks:
-  - BeforeAllowTraffic: "arn:aws:lambda:us-east-1:123456789:function:pre-traffic-hook"
-  - AfterAllowTraffic: "arn:aws:lambda:us-east-1:123456789:function:post-traffic-hook"
+  - BeforeAllowTraffic: "arn:aws:lambda:us-east-1:123456789012:function:CodeDeployHook_preTrafficHook"
+  - AfterAllowTraffic: "arn:aws:lambda:us-east-1:123456789012:function:CodeDeployHook_postTrafficHook"
 ```
 
 Now trigger the deployment:
@@ -278,7 +280,7 @@ aws deploy create-deployment \
   --revision '{
     "revisionType": "AppSpecContent",
     "appSpecContent": {
-      "content": "{\"version\":0.0,\"Resources\":[{\"MyFunction\":{\"Type\":\"AWS::Lambda::Function\",\"Properties\":{\"Name\":\"my-function\",\"Alias\":\"live\",\"CurrentVersion\":\"1\",\"TargetVersion\":\"'$NEW_VERSION'\"}}}]}"
+      "content": "{\"version\":0.0,\"Resources\":[{\"MyFunction\":{\"Type\":\"AWS::Lambda::Function\",\"Properties\":{\"Name\":\"my-function\",\"Alias\":\"live\",\"CurrentVersion\":\"1\",\"TargetVersion\":\"'$NEW_VERSION'\"}}}],\"Hooks\":[{\"BeforeAllowTraffic\":\"arn:aws:lambda:us-east-1:123456789012:function:CodeDeployHook_preTrafficHook\"},{\"AfterAllowTraffic\":\"arn:aws:lambda:us-east-1:123456789012:function:CodeDeployHook_postTrafficHook\"}]}"
     }
   }'
 ```
