@@ -14,7 +14,7 @@ Let's walk through the most common admin operations and how to use them effectiv
 
 ## Setting Up Admin Access
 
-Admin APIs require AWS credentials with the right IAM permissions. Here's the minimum IAM policy your backend service needs.
+Admin APIs require AWS credentials with the right IAM permissions. Here's an example scoped IAM policy for the operations in this guide.
 
 Create an IAM policy for Cognito admin operations:
 
@@ -73,7 +73,7 @@ const USER_POOL_ID = 'us-east-1_XXXXXXXXX';
 
 The admin create user API lets you create accounts on behalf of users. This is useful for invitation-based systems where you don't want public sign-ups.
 
-Create a user and send them an invitation email:
+Create a user without sending an invitation email:
 
 ```javascript
 async function createUser(email, name, tempPassword = null) {
@@ -85,12 +85,13 @@ async function createUser(email, name, tempPassword = null) {
             { Name: 'email_verified', Value: 'true' },
             { Name: 'name', Value: name }
         ],
+        // Omit MessageAction to send the default invitation message
         // SUPPRESS = don't send invitation email
-        // RESEND = send invitation email
+        // RESEND = resend an invitation to an existing user
         MessageAction: 'SUPPRESS'
     };
 
-    // If you want Cognito to generate a temp password
+    // If you want to provide your own temp password
     if (tempPassword) {
         params.TemporaryPassword = tempPassword;
     }
@@ -279,9 +280,9 @@ Disabled users can't sign in but their data remains intact. When you enable them
 
 ## Searching and Listing Users
 
-Cognito lets you search users by attributes. This is useful for admin dashboards.
+Cognito lets you search users by supported standard attributes. Custom attributes aren't searchable with server-side `ListUsers` filters, so search those in your own database or with a client-side filter after retrieving users.
 
-Search and list users with pagination:
+Search and list users:
 
 ```javascript
 async function searchUsers(filter, limit = 20) {
@@ -313,11 +314,8 @@ const usersByEmail = await searchUsers('email = "john@example.com"');
 // Find by name (prefix match)
 const usersByName = await searchUsers('name ^= "John"');
 
-// Find by custom attribute
-const usersByDept = await searchUsers('custom:department = "Engineering"');
-
 // Find confirmed users
-const confirmedUsers = await searchUsers('status = "Confirmed"');
+const confirmedUsers = await searchUsers('cognito:user_status = "CONFIRMED"');
 ```
 
 ## Listing All Users with Pagination
@@ -386,6 +384,10 @@ Here's how to expose these operations through an Express API, protected by admin
 const express = require('express');
 const router = express.Router();
 
+function escapeCognitoFilterValue(value) {
+    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 // Middleware: require admin group
 function requireAdmin(req, res, next) {
     const groups = req.user.groups || [];
@@ -401,7 +403,7 @@ router.use(requireAdmin);
 router.get('/users', async (req, res) => {
     try {
         const filter = req.query.search
-            ? `email ^= "${req.query.search}"`
+            ? `email ^= "${escapeCognitoFilterValue(req.query.search)}"`
             : undefined;
         const users = await searchUsers(filter);
         res.json({ users });
