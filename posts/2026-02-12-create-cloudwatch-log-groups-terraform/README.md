@@ -8,7 +8,7 @@ Description: Step-by-step guide to creating and configuring AWS CloudWatch Log G
 
 ---
 
-CloudWatch Log Groups are where your AWS logs live. Whether it's Lambda function output, ECS container logs, or VPC flow logs, they all end up in a log group somewhere. Creating them manually through the console is quick for testing, but for production infrastructure you want Terraform handling this so your log groups have consistent naming, retention policies, and encryption from day one.
+CloudWatch Log Groups are where your AWS logs live. Whether it's Lambda function output, ECS container logs, or VPC flow logs configured for CloudWatch Logs, they all end up in a log group somewhere. Creating them manually through the console is quick for testing, but for production infrastructure you want Terraform handling this so your log groups have consistent naming, retention policies, and encryption from day one.
 
 This guide walks through creating log groups, setting up retention, encrypting logs with KMS, configuring metric filters, and subscription filters for log forwarding.
 
@@ -63,7 +63,7 @@ resource "aws_kms_key" "log_encryption" {
         Sid    = "AllowCloudWatchLogs"
         Effect = "Allow"
         Principal = {
-          Service = "logs.${data.aws_region.current.name}.amazonaws.com"
+          Service = "logs.${data.aws_region.current.region}.amazonaws.com"
         }
         Action = [
           "kms:Encrypt",
@@ -76,7 +76,7 @@ resource "aws_kms_key" "log_encryption" {
         Resource = "*"
         Condition = {
           ArnLike = {
-            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:*"
+            "kms:EncryptionContext:aws:logs:arn" = "arn:aws:logs:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:log-group:*"
           }
         }
       }
@@ -290,6 +290,8 @@ resource "aws_cloudwatch_log_group" "ecs_app" {
   retention_in_days = 30
 }
 
+data "aws_region" "current" {}
+
 # Reference in your ECS task definition
 resource "aws_ecs_task_definition" "app" {
   family                = "my-service"
@@ -303,7 +305,7 @@ resource "aws_ecs_task_definition" "app" {
         logDriver = "awslogs"
         options = {
           "awslogs-group"         = aws_cloudwatch_log_group.ecs_app.name
-          "awslogs-region"        = "us-east-1"
+          "awslogs-region"        = data.aws_region.current.region
           "awslogs-stream-prefix" = "ecs"
         }
       }
