@@ -14,7 +14,7 @@ This pattern allows you to standardize monitoring across heterogeneous applicati
 
 ## Understanding Sidecar-Based Health Monitoring
 
-Traditional Kubernetes health checks are limited to basic HTTP, TCP, or command execution probes. While these work for simple scenarios, complex applications often need deeper health validation, custom logic, or integration with external monitoring systems.
+Traditional Kubernetes health checks support HTTP, TCP, gRPC, or command execution probes. While these work for simple scenarios, complex applications often need deeper health validation, custom logic, or integration with external monitoring systems.
 
 Sidecar health monitors run continuously alongside your application, performing sophisticated checks like database connectivity validation, queue depth monitoring, or custom business logic validation. They can aggregate multiple signals and make intelligent decisions about application health.
 
@@ -188,14 +188,12 @@ data:
     import (
         "context"
         "database/sql"
-        "encoding/json"
-        "fmt"
         "log"
         "net/http"
         "os"
         "time"
 
-        "github.com/go-redis/redis/v8"
+        "github.com/redis/go-redis/v9"
         _ "github.com/lib/pq"
         "github.com/prometheus/client_golang/prometheus"
         "github.com/prometheus/client_golang/prometheus/promhttp"
@@ -412,15 +410,16 @@ spec:
             cpu: "1000m"
 
       - name: health-monitor
-        image: golang:1.21-alpine
+        image: golang:1.26-alpine
         command:
         - sh
         - -c
         - |
           apk add --no-cache git
-          cd /app
+          mkdir -p /tmp/health-checker
+          cd /tmp/health-checker
           go mod init health-checker
-          go get github.com/go-redis/redis/v8
+          go get github.com/redis/go-redis/v9
           go get github.com/lib/pq
           go get github.com/prometheus/client_golang/prometheus
           go get github.com/prometheus/client_golang/prometheus/promhttp
@@ -480,9 +479,7 @@ data:
 
     while true; do
       # Check application health
-      if response=$(curl -s -w "%{http_code}" -o /tmp/health.json "$APP_HEALTH_URL"); then
-        http_code=$(tail -n1 <<< "$response")
-
+      if http_code=$(curl -s -w "%{http_code}" -o /tmp/health.json "$APP_HEALTH_URL"); then
         if [ "$http_code" = "200" ]; then
           health_value=1
           status="healthy"
@@ -555,10 +552,13 @@ spec:
             cpu: "500m"
 
       - name: health-reporter
-        image: alpine:3.18
+        image: alpine:3.23
         command:
         - sh
-        - /config/reporter.sh
+        - -c
+        - |
+          apk add --no-cache curl
+          /config/reporter.sh
         env:
         - name: POD_NAME
           valueFrom:
