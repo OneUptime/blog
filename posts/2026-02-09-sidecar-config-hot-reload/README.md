@@ -14,11 +14,23 @@ This is a comprehensive guide covering the implementation patterns and best prac
 
 This pattern is essential for modern Kubernetes deployments where separation of concerns, modularity, and maintainability are priorities. By using this approach, you can build more resilient and flexible applications that are easier to operate and scale.
 
+Native sidecar containers are defined as restartable init containers with `restartPolicy: Always`, which is enabled by default in Kubernetes v1.29 and stable in Kubernetes v1.33.
+
 ## Basic Implementation
 
 Here's a foundational example showing the core pattern:
 
 ```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: example-config
+  namespace: default
+data:
+  config.yaml: |
+    server:
+      port: 8080
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -34,11 +46,32 @@ spec:
       labels:
         app: example
     spec:
+      initContainers:
+      - name: config-reloader
+        image: alpine:3.20
+        restartPolicy: Always
+        command:
+        - sh
+        - -c
+        - |
+          apk add --no-cache curl inotify-tools
+          while inotifywait -e modify,create,delete,move /etc/config; do
+            curl -fsS -X POST http://127.0.0.1:8080/reload || true
+          done
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
       containers:
       - name: app
         image: myapp:latest
         ports:
         - containerPort: 8080
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+        env:
+        - name: CONFIG_PATH
+          value: "/etc/config/config.yaml"
         resources:
           requests:
             memory: "256Mi"
@@ -46,6 +79,10 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+      volumes:
+      - name: config
+        configMap:
+          name: example-config
 ```
 
 ## Advanced Configuration
@@ -53,6 +90,11 @@ spec:
 Building on the basics, here's a more sophisticated implementation:
 
 ```yaml
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-service-account
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -84,6 +126,21 @@ spec:
         prometheus.io/port: "9090"
     spec:
       serviceAccountName: app-service-account
+      initContainers:
+      - name: config-reloader
+        image: alpine:3.20
+        restartPolicy: Always
+        command:
+        - sh
+        - -c
+        - |
+          apk add --no-cache curl inotify-tools
+          while inotifywait -e modify,create,delete,move /etc/config; do
+            curl -fsS -X POST http://127.0.0.1:8080/reload || true
+          done
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
       containers:
       - name: main
         image: myapp:latest
@@ -116,11 +173,16 @@ import (
     "net/http"
     "os"
     "os/signal"
+    "sync/atomic"
     "syscall"
     "time"
 )
 
+var lastReloadUnix int64
+
 func main() {
+    reloadConfig()
+
     server := &http.Server{
         Addr:    ":8080",
         Handler: setupRoutes(),
@@ -150,6 +212,7 @@ func setupRoutes() http.Handler {
     mux := http.NewServeMux()
     mux.HandleFunc("/health", healthHandler)
     mux.HandleFunc("/ready", readinessHandler)
+    mux.HandleFunc("/reload", reloadHandler)
     return mux
 }
 
@@ -162,6 +225,32 @@ func readinessHandler(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusOK)
     fmt.Fprintf(w, "Ready")
 }
+
+func reloadHandler(w http.ResponseWriter, r *http.Request) {
+    if r.Method != http.MethodPost {
+        http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+        return
+    }
+
+    reloadConfig()
+    w.WriteHeader(http.StatusOK)
+    fmt.Fprintf(w, "Reloaded")
+}
+
+func reloadConfig() {
+    configPath := os.Getenv("CONFIG_PATH")
+    if configPath == "" {
+        configPath = "/etc/config/config.yaml"
+    }
+
+    if _, err := os.ReadFile(configPath); err != nil {
+        log.Printf("Config reload failed: %v", err)
+        return
+    }
+
+    atomic.StoreInt64(&lastReloadUnix, time.Now().Unix())
+    log.Printf("Config reloaded from %s", configPath)
+}
 ```
 
 ## Implementation with Python
@@ -170,10 +259,13 @@ Python equivalent implementation:
 
 ```python
 from flask import Flask, jsonify
+import os
 import signal
 import sys
+import time
 
 app = Flask(__name__)
+last_reload = None
 
 @app.route('/health')
 def health():
@@ -183,11 +275,24 @@ def health():
 def ready():
     return jsonify({"status": "ready"}), 200
 
+@app.route('/reload', methods=['POST'])
+def reload():
+    reload_config()
+    return jsonify({"status": "reloaded", "lastReload": last_reload}), 200
+
+def reload_config():
+    global last_reload
+    config_path = os.environ.get("CONFIG_PATH", "/etc/config/config.yaml")
+    with open(config_path, "r", encoding="utf-8") as config_file:
+        config_file.read()
+    last_reload = int(time.time())
+
 def graceful_shutdown(signum, frame):
     print("Shutting down gracefully...")
     sys.exit(0)
 
 if __name__ == '__main__':
+    reload_config()
     signal.signal(signal.SIGTERM, graceful_shutdown)
     signal.signal(signal.SIGINT, graceful_shutdown)
     app.run(host='0.0.0.0', port=8080)
@@ -261,6 +366,8 @@ Implement proper health checks to enable Kubernetes self-healing capabilities.
 
 Use ConfigMaps and Secrets for configuration rather than embedding it in images.
 
+Mount ConfigMaps as directories rather than `subPath` volume mounts when you need updates to appear in a running pod.
+
 Apply pod disruption budgets to maintain availability during updates.
 
 This pattern provides a robust foundation for building scalable, maintainable Kubernetes applications. By following these practices and adapting the examples to your specific needs, you can implement reliable solutions that serve your applications effectively.
@@ -301,8 +408,8 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v6
+      - uses: azure/k8s-set-context@v5
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
