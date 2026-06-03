@@ -26,7 +26,7 @@ graph LR
     style C fill:#f9a825,stroke:#333
 ```
 
-The queue acts as a buffer. When traffic spikes beyond what your backend can handle, messages pile up in the queue. As traffic drops, the backend catches up. No lost requests, no overloaded services.
+The queue acts as a buffer. When traffic spikes beyond what your backend can handle, messages pile up in the queue. As traffic drops, the backend catches up. Accepted requests are buffered instead of immediately overloading your services.
 
 ## When to Use This Pattern
 
@@ -41,7 +41,7 @@ It's not the right choice when you need synchronous responses - users aren't goi
 
 ## Setting Up SQS
 
-SQS is the obvious choice for the queue. Standard queues give you near-unlimited throughput. FIFO queues guarantee ordering but cap at 3000 messages per second with batching.
+SQS is the obvious choice for the queue. Standard queues give you near-unlimited throughput with at-least-once delivery. FIFO queues guarantee ordering and support 3000 messages per second with batching by default, with higher throughput available when you enable high throughput mode.
 
 ```typescript
 // CDK stack
@@ -50,6 +50,8 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as apigateway from 'aws-cdk-lib/aws-apigateway';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 
 export class LoadLevelingStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
@@ -62,17 +64,27 @@ export class LoadLevelingStack extends cdk.Stack {
 
     // Main queue with sensible defaults
     const processingQueue = new sqs.Queue(this, 'ProcessingQueue', {
-      visibilityTimeout: cdk.Duration.seconds(90), // 6x the consumer timeout
+      visibilityTimeout: cdk.Duration.seconds(95), // 6x the consumer timeout + batching window
       retentionPeriod: cdk.Duration.days(4),
       deadLetterQueue: {
         queue: dlq,
-        maxReceiveCount: 3,
+        maxReceiveCount: 5,
       },
+    });
+
+    const ordersTable = new dynamodb.Table(this, 'OrdersTable', {
+      partitionKey: { name: 'orderId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+    });
+
+    const orderStatusTable = new dynamodb.Table(this, 'OrderStatusTable', {
+      partitionKey: { name: 'orderId', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
     });
 
     // Producer: accepts requests and puts them on the queue
     const producer = new lambda.Function(this, 'Producer', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'producer.handler',
       code: lambda.Code.fromAsset('lambda'),
       environment: {
@@ -84,21 +96,26 @@ export class LoadLevelingStack extends cdk.Stack {
 
     // Consumer: processes messages at a controlled rate
     const consumer = new lambda.Function(this, 'Consumer', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'consumer.handler',
       code: lambda.Code.fromAsset('lambda'),
       timeout: cdk.Duration.seconds(15),
       reservedConcurrentExecutions: 10, // Limit concurrency to protect backend
       environment: {
-        DB_CONNECTION_STRING: process.env.DB_CONNECTION_STRING || '',
+        ORDERS_TABLE: ordersTable.tableName,
+        ORDER_STATUS_TABLE: orderStatusTable.tableName,
       },
     });
+
+    ordersTable.grantWriteData(consumer);
+    orderStatusTable.grantWriteData(consumer);
 
     // Connect consumer to queue
     consumer.addEventSource(new lambdaEventSources.SqsEventSource(processingQueue, {
       batchSize: 10,
       maxBatchingWindow: cdk.Duration.seconds(5),
       maxConcurrency: 10,
+      reportBatchItemFailures: true,
     }));
 
     // API Gateway in front of the producer
@@ -120,13 +137,21 @@ const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const sqsClient = new SQSClient({});
 
 exports.handler = async (event) => {
-  const body = JSON.parse(event.body);
-
-  // Validate the request
-  if (!body.orderId || !body.items || body.items.length === 0) {
+  let body;
+  try {
+    body = JSON.parse(event.body || '{}');
+  } catch (error) {
     return {
       statusCode: 400,
-      body: JSON.stringify({ error: 'Invalid order: orderId and items required' }),
+      body: JSON.stringify({ error: 'Invalid JSON body' }),
+    };
+  }
+
+  // Validate the request
+  if (!body.orderId || !body.userId || !Array.isArray(body.items) || body.items.length === 0) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ error: 'Invalid order: orderId, userId, and items required' }),
     };
   }
 
@@ -167,7 +192,7 @@ exports.handler = async (event) => {
 
 ## The Consumer
 
-The consumer processes messages at whatever rate the backend can handle. The key control is `reservedConcurrentExecutions` on the Lambda - this caps how many messages are processed simultaneously.
+The consumer processes messages at whatever rate the backend can handle. The key control is `reservedConcurrentExecutions` on the Lambda - this caps how many concurrent function invocations can process batches at the same time.
 
 ```javascript
 // lambda/consumer.js
@@ -199,7 +224,7 @@ exports.handler = async (event) => {
 async function processOrder(order) {
   // Write to database
   await dynamoClient.send(new PutItemCommand({
-    TableName: 'Orders',
+    TableName: process.env.ORDERS_TABLE,
     Item: {
       orderId: { S: order.orderId },
       userId: { S: order.userId },
@@ -212,7 +237,7 @@ async function processOrder(order) {
 
   // Update order status
   await dynamoClient.send(new UpdateItemCommand({
-    TableName: 'OrderStatus',
+    TableName: process.env.ORDER_STATUS_TABLE,
     Key: { orderId: { S: order.orderId } },
     UpdateExpression: 'SET #status = :status, processedAt = :time',
     ExpressionAttributeNames: { '#status': 'status' },
@@ -278,7 +303,7 @@ For a full observability setup, check out [building a logging and monitoring sta
 
 ## Scaling the Consumer
 
-Instead of a fixed concurrency limit, you can scale the consumer based on queue depth. When the backlog grows, process faster.
+Instead of a fixed concurrency limit, you can let the consumer scale higher as queue depth grows. If you use a higher event source `maxConcurrency`, set the function's reserved concurrency at least as high or remove the reserved concurrency limit.
 
 ```typescript
 // Auto scaling based on queue depth using Lambda's SQS scaling
@@ -294,4 +319,4 @@ Lambda automatically scales the number of queue pollers based on queue depth, so
 
 ## Summary
 
-Queue-based load leveling is one of the most useful architectural patterns for handling unpredictable traffic. SQS sits between your producers and consumers, absorbing bursts and letting your backend process work at a sustainable rate. The pattern is simple but powerful - your system stays healthy during traffic spikes, and no requests get dropped. Just remember that it introduces asynchronous processing, so design your API responses accordingly.
+Queue-based load leveling is one of the most useful architectural patterns for handling unpredictable traffic. SQS sits between your producers and consumers, absorbing bursts and letting your backend process work at a sustainable rate. The pattern is simple but powerful - your system stays healthy during traffic spikes, and accepted requests are buffered for asynchronous processing. Just remember that it introduces asynchronous processing, so design your API responses accordingly.
