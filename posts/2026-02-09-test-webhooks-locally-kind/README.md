@@ -1,14 +1,14 @@
-# How to Test Kubernetes Webhooks Locally with kind and Port Forwarding
+# How to Test Kubernetes Webhooks Locally with kind and Host Network Access
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Webhook, Kind, Testing
 
-Description: Learn how to test admission webhooks locally using kind clusters and port forwarding, enabling rapid development iteration without deploying to remote clusters.
+Description: Learn how to test admission webhooks locally using kind clusters and host network access, enabling rapid development iteration without deploying to remote clusters.
 
 ---
 
-Testing Kubernetes webhooks typically requires deploying them to a cluster with proper TLS certificates, which slows down development. Using kind (Kubernetes in Docker) with port forwarding, you can run your webhook server locally on your development machine while the kind cluster calls it, dramatically speeding up the development cycle.
+Testing Kubernetes webhooks typically requires deploying them to a cluster with proper TLS certificates, which slows down development. Using kind (Kubernetes in Docker) with host network access, you can run your webhook server locally on your development machine while the kind cluster calls it, dramatically speeding up the development cycle.
 
 This approach lets you use debuggers, hot reload code changes, and see logs directly in your terminal, making webhook development much more productive.
 
@@ -21,7 +21,7 @@ Install kind and create a cluster:
 
 brew install kind  # macOS
 # or
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.31.0/kind-linux-amd64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -41,7 +41,6 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
     "io"
     "log"
     "net/http"
@@ -59,6 +58,7 @@ var (
 )
 
 func init() {
+    admissionv1.AddToScheme(scheme)
     corev1.AddToScheme(scheme)
 }
 
@@ -74,6 +74,10 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
         http.Error(w, "failed to decode request", http.StatusBadRequest)
         return
     }
+    if review.Request == nil {
+        http.Error(w, "missing admission request", http.StatusBadRequest)
+        return
+    }
 
     log.Printf("Received webhook request for: %s/%s",
         review.Request.Namespace,
@@ -86,22 +90,25 @@ func handleValidate(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    // Simple validation: ensure pod has at least one container
-    allowed := len(pod.Spec.Containers) > 0
+    // Simple validation: require a development-only label
+    allowed := pod.Labels["webhook-test"] == "enabled"
     message := "Pod is valid"
     if !allowed {
-        message = "Pod must have at least one container"
+        message = "Pod must have label webhook-test=enabled"
     }
 
-    review.Response = &admissionv1.AdmissionResponse{
-        UID:     review.Request.UID,
-        Allowed: allowed,
-        Result: &metav1.Status{
-            Message: message,
+    responseReview := &admissionv1.AdmissionReview{
+        TypeMeta: review.TypeMeta,
+        Response: &admissionv1.AdmissionResponse{
+            UID:     review.Request.UID,
+            Allowed: allowed,
+            Result: &metav1.Status{
+                Message: message,
+            },
         },
     }
 
-    responseBytes, err := json.Marshal(review)
+    responseBytes, err := json.Marshal(responseReview)
     if err != nil {
         http.Error(w, "failed to marshal response", http.StatusInternalServerError)
         return
@@ -117,7 +124,7 @@ func main() {
     http.HandleFunc("/validate", handleValidate)
 
     log.Println("Webhook server starting on :8443")
-    // For local development, we'll use HTTP instead of HTTPS
+    // This HTTP version is only for local curl tests before wiring Kubernetes to the webhook.
     if err := http.ListenAndServe(":8443", nil); err != nil {
         log.Fatal(err)
     }
@@ -127,36 +134,18 @@ func main() {
 Run it locally:
 
 ```bash
+go mod init webhook-dev
+go get k8s.io/api k8s.io/apimachinery
 go run main.go
 ```
 
 ## Using Host Network Access
 
-Kind clusters need to access your host machine. Use the special DNS name `host.docker.internal` on Docker Desktop, or configure kind to allow host access:
-
-Create a kind config that maps your local port:
-
-```yaml
-# kind-config.yaml
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-nodes:
-- role: control-plane
-  extraPortMappings:
-  - containerPort: 8443
-    hostPort: 8443
-    protocol: TCP
-```
-
-Create cluster with config:
-
-```bash
-kind create cluster --name webhook-dev --config kind-config.yaml
-```
+Kind clusters need to access your host machine. For cluster-to-host traffic, do not use `extraPortMappings`; those map host ports into kind nodes and can conflict with the webhook server listening on your host. Use the special DNS name `host.docker.internal` on Docker Desktop, or use the kind Docker network gateway IP on Linux.
 
 ## Creating a Webhook Service Pointing to Host
 
-Create a Service and Endpoints that point to your host machine:
+Create a Service and EndpointSlice that point to your host machine:
 
 ```yaml
 # webhook-service.yaml
@@ -168,23 +157,29 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-  - port: 443
+  - name: https
+    port: 443
     targetPort: 8443
     protocol: TCP
 ---
-apiVersion: v1
-kind: Endpoints
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
 metadata:
-  name: webhook-service
+  name: webhook-service-1
   namespace: default
-subsets:
+  labels:
+    kubernetes.io/service-name: webhook-service
+    endpointslice.kubernetes.io/managed-by: manual
+addressType: IPv4
+ports:
+- name: https
+  port: 8443
+  protocol: TCP
+endpoints:
 - addresses:
-  # Use host.docker.internal for Docker Desktop
-  # Or use kind cluster's gateway IP
-  - ip: 172.18.0.1  # kind network gateway IP
-  ports:
-  - port: 8443
-    protocol: TCP
+  # Use the IP that host.docker.internal resolves to on Docker Desktop,
+  # or use the kind cluster's gateway IP on Linux.
+  - "172.18.0.1"  # kind network gateway IP
 ```
 
 Find the kind network gateway IP:
@@ -195,6 +190,9 @@ docker network ls | grep kind
 
 # Inspect network to find gateway
 docker network inspect kind | grep Gateway
+
+# On Docker Desktop, resolve host.docker.internal from the control-plane node
+docker exec webhook-dev-control-plane getent hosts host.docker.internal
 ```
 
 Apply the service:
@@ -212,7 +210,9 @@ Generate a self-signed certificate for local testing:
 
 # Generate CA key and certificate
 openssl req -x509 -newkey rsa:4096 -keyout ca.key -out ca.crt -days 365 -nodes \
-  -subj "/CN=webhook-ca"
+  -subj "/CN=webhook-ca" \
+  -addext "basicConstraints=critical,CA:TRUE" \
+  -addext "keyUsage=critical,keyCertSign,cRLSign"
 
 # Generate server key
 openssl genrsa -out server.key 2048
@@ -221,9 +221,16 @@ openssl genrsa -out server.key 2048
 openssl req -new -key server.key -out server.csr \
   -subj "/CN=webhook-service.default.svc"
 
+# Add Subject Alternative Names for the Kubernetes Service DNS names
+cat > server.ext <<EOF
+subjectAltName=DNS:webhook-service.default.svc,DNS:webhook-service.default.svc.cluster.local
+keyUsage=digitalSignature,keyEncipherment
+extendedKeyUsage=serverAuth
+EOF
+
 # Create server certificate
 openssl x509 -req -in server.csr -CA ca.crt -CAkey ca.key -CAcreateserial \
-  -out server.crt -days 365
+  -out server.crt -days 365 -extfile server.ext
 
 # Get base64 encoded CA for webhook config
 cat ca.crt | base64 | tr -d '\n'
@@ -286,7 +293,7 @@ Create a test pod:
 
 ```bash
 # Valid pod - should succeed
-kubectl run test-pod --image=nginx
+kubectl run test-pod --image=nginx --labels webhook-test=enabled
 
 # Check webhook server logs
 # You should see the validation request
@@ -301,13 +308,15 @@ For easier certificate management, use cert-manager:
 
 ```bash
 # Install cert-manager
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Wait for cert-manager to be ready
 kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager --timeout=300s
+kubectl wait --for=condition=Available deployment/cert-manager-webhook -n cert-manager --timeout=300s
+kubectl wait --for=condition=Available deployment/cert-manager-cainjector -n cert-manager --timeout=300s
 ```
 
-Create a self-signed issuer:
+Create a self-signed root CA and a CA issuer:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -321,6 +330,27 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
+  name: webhook-ca
+  namespace: default
+spec:
+  isCA: true
+  commonName: webhook-ca
+  secretName: webhook-ca
+  issuerRef:
+    name: selfsigned-issuer
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: webhook-ca-issuer
+  namespace: default
+spec:
+  ca:
+    secretName: webhook-ca
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
   name: webhook-cert
   namespace: default
 spec:
@@ -329,7 +359,7 @@ spec:
   - webhook-service.default.svc
   - webhook-service.default.svc.cluster.local
   issuerRef:
-    name: selfsigned-issuer
+    name: webhook-ca-issuer
 ```
 
 Use the certificate in your local server:
@@ -347,7 +377,7 @@ Use a tool like `air` for hot reloading:
 
 ```bash
 # Install air
-go install github.com/cosmtrek/air@latest
+go install github.com/air-verse/air@latest
 
 # Create .air.toml config
 cat > .air.toml <<EOF
@@ -395,20 +425,24 @@ apiVersion: v1
 kind: Pod
 metadata:
   name: valid-pod
+  labels:
+    webhook-test: enabled
 spec:
   containers:
   - name: nginx
     image: nginx
 EOF
 
-# Test 2: Pod without containers (should be denied if your webhook validates this)
+# Test 2: Pod without the required label (should be denied)
 kubectl apply -f - <<EOF
 apiVersion: v1
 kind: Pod
 metadata:
   name: invalid-pod
 spec:
-  containers: []
+  containers:
+  - name: nginx
+    image: nginx
 EOF
 
 # Test 3: Update operation
@@ -430,7 +464,7 @@ Check kind cluster logs if webhook isn't being called:
 
 ```bash
 # API server logs
-docker exec webhook-dev-control-plane cat /var/log/kubernetes/kube-apiserver.log | grep webhook
+kubectl -n kube-system logs kube-apiserver-webhook-dev-control-plane | grep webhook
 
 # Look for webhook call errors
 kubectl get events --all-namespaces | grep webhook
