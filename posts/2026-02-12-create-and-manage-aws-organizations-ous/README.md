@@ -14,7 +14,7 @@ Let's design an OU structure that works and walk through the mechanics of creati
 
 ## Why OUs Matter
 
-Without OUs, you'd have a flat list of accounts under your organization root. Every SCP would apply to every account, and you'd have no way to give production accounts stricter controls than development accounts.
+Without OUs, you'd have a flat list of accounts under your organization root. Root-level SCPs would apply to every account, and you'd have to attach account-specific SCPs one by one to give production accounts stricter controls than development accounts.
 
 OUs give you:
 - **Grouped policy application** - Attach an SCP to an OU and it applies to all accounts within it
@@ -122,19 +122,21 @@ aws organizations create-organizational-unit \
 
 ## Creating Accounts in OUs
 
-You can create new accounts directly in an OU:
+With the AWS CLI, create the account, wait for completion, then move it into the OU:
 
 ```bash
-# Create a new account in the Production OU
+# Create a new account
 PROD_OU_ID=$(aws organizations list-organizational-units-for-parent \
   --parent-id $WORKLOADS_ID \
   --query "OrganizationalUnits[?Name=='Production'].Id" \
   --output text)
 
-aws organizations create-account \
+CREATE_ACCOUNT_REQUEST_ID=$(aws organizations create-account \
   --email app1-prod@company.com \
   --account-name "App1 Production" \
-  --role-name OrganizationAccountAccessRole
+  --role-name OrganizationAccountAccessRole \
+  --query 'CreateAccountStatus.Id' \
+  --output text)
 ```
 
 The `--role-name` parameter creates a role in the new account that the management account can assume. This is how you bootstrap access to new accounts.
@@ -144,7 +146,21 @@ Check the status of account creation:
 ```bash
 # Check if account creation completed
 aws organizations describe-create-account-status \
-  --create-account-request-id car-abc123
+  --create-account-request-id $CREATE_ACCOUNT_REQUEST_ID
+```
+
+After the status is `SUCCEEDED`, capture the new account ID and move it into the Production OU:
+
+```bash
+APP1_PROD_ACCOUNT_ID=$(aws organizations describe-create-account-status \
+  --create-account-request-id $CREATE_ACCOUNT_REQUEST_ID \
+  --query 'CreateAccountStatus.AccountId' \
+  --output text)
+
+aws organizations move-account \
+  --account-id $APP1_PROD_ACCOUNT_ID \
+  --source-parent-id $ROOT_ID \
+  --destination-parent-id $PROD_OU_ID
 ```
 
 ## Moving Accounts Between OUs
@@ -155,8 +171,8 @@ If an account is in the wrong OU, move it:
 # Move an account from one OU to another
 aws organizations move-account \
   --account-id 123456789012 \
-  --source-parent-id ou-root-development \
-  --destination-parent-id ou-root-production
+  --source-parent-id ou-a1b2-development \
+  --destination-parent-id ou-a1b2-production
 ```
 
 When you move an account, it immediately inherits the SCPs of the new OU and loses the SCPs from the old OU. Plan moves carefully - sudden policy changes can break running applications.
@@ -265,7 +281,7 @@ aws organizations list-accounts
 
 # Get details about a specific OU
 aws organizations describe-organizational-unit \
-  --organizational-unit-id ou-root-production
+  --organizational-unit-id ou-a1b2-production
 
 # List SCPs attached to an OU
 aws organizations list-policies-for-target \
@@ -280,7 +296,7 @@ Tags help with cost allocation and automation:
 ```bash
 # Tag an OU
 aws organizations tag-resource \
-  --resource-id ou-root-production \
+  --resource-id ou-a1b2-production \
   --tags Key=Environment,Value=production Key=CostCenter,Value=platform
 
 # Tag an account
