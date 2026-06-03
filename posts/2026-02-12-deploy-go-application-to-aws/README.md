@@ -22,6 +22,7 @@ package main
 
 import (
     "encoding/json"
+    "flag"
     "log"
     "net/http"
     "os"
@@ -37,6 +38,24 @@ func main() {
     port := os.Getenv("PORT")
     if port == "" {
         port = "8080"
+    }
+
+    healthCheck := flag.Bool("health-check", false, "run a local health check and exit")
+    flag.Parse()
+
+    if *healthCheck {
+        client := http.Client{Timeout: 2 * time.Second}
+        resp, err := client.Get("http://127.0.0.1:" + port + "/health")
+        if err != nil {
+            log.Printf("Health check failed: %v", err)
+            os.Exit(1)
+        }
+        defer resp.Body.Close()
+        if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+            log.Printf("Health check failed with status: %s", resp.Status)
+            os.Exit(1)
+        }
+        return
     }
 
     mux := http.NewServeMux()
@@ -78,12 +97,12 @@ ECS Fargate is the most common way to deploy Go services on AWS. You get contain
 
 ### Dockerfile
 
-Go binaries are self-contained, so your final Docker image can be incredibly small. This multi-stage build produces an image under 15MB:
+This build creates a static Go binary, so your final Docker image can be incredibly small. This multi-stage build produces an image under 15MB:
 
 ```dockerfile
 # Dockerfile
 
-FROM golang:1.22-alpine AS builder
+FROM golang:1.26-alpine AS builder
 
 WORKDIR /app
 
@@ -112,7 +131,7 @@ EXPOSE 8080
 ENTRYPOINT ["/server"]
 ```
 
-Using `scratch` as the base image means there's literally nothing in the container except your binary and CA certificates. No shell, no package manager, no attack surface.
+Using `scratch` as the base image means there's literally nothing in the container except your binary and CA certificates. No shell, no package manager, and a much smaller OS-level attack surface.
 
 ### Build and Push to ECR
 
@@ -169,7 +188,8 @@ Go apps are lightweight, so you can get away with minimal CPU and memory. This a
         "command": ["CMD", "/server", "-health-check"],
         "interval": 30,
         "timeout": 5,
-        "retries": 3
+        "retries": 3,
+        "startPeriod": 10
       }
     }
   ]
@@ -185,6 +205,9 @@ aws ecs create-cluster --cluster-name go-cluster
 # Register task definition
 aws ecs register-task-definition --cli-input-json file://task-definition.json
 
+# Create the CloudWatch Logs group used by the awslogs driver
+aws logs create-log-group --log-group-name /ecs/go-app --region us-east-1
+
 # Create service
 aws ecs create-service \
   --cluster go-cluster \
@@ -197,7 +220,7 @@ aws ecs create-service \
 
 ## Option 2: AWS Lambda
 
-Go's fast startup time makes it one of the best languages for Lambda. Cold starts are typically under 100ms.
+Go's fast startup time makes it a good fit for Lambda. Cold start latency varies by package size, initialization work, memory setting, architecture, and networking, but small Go functions usually keep initialization overhead low.
 
 Write a Lambda handler:
 
@@ -297,8 +320,8 @@ aws s3 cp s3://my-deploy-bucket/go-app/server /opt/go-app/server
 chmod +x /opt/go-app/server
 chown -R goapp:goapp /opt/go-app
 
-# Install and start the systemd service
-cp /opt/go-app/go-app.service /etc/systemd/system/
+# Download, install, and start the systemd service
+aws s3 cp s3://my-deploy-bucket/go-app/go-app.service /etc/systemd/system/go-app.service
 systemctl daemon-reload
 systemctl enable go-app
 systemctl start go-app
@@ -324,7 +347,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26'
 
       - name: Run tests
         run: go test ./...
@@ -342,7 +365,10 @@ jobs:
 
       - name: Build and push
         run: |
-          docker build -t ${{ steps.ecr.outputs.registry }}/go-app:${{ github.sha }} .
+          docker build \
+            -t ${{ steps.ecr.outputs.registry }}/go-app:latest \
+            -t ${{ steps.ecr.outputs.registry }}/go-app:${{ github.sha }} .
+          docker push ${{ steps.ecr.outputs.registry }}/go-app:latest
           docker push ${{ steps.ecr.outputs.registry }}/go-app:${{ github.sha }}
 
       - name: Update ECS service
@@ -392,4 +418,4 @@ Go's built-in `expvar` package and libraries like Prometheus client work well fo
 
 ## Summary
 
-Go's compiled binaries, fast startup, and low memory footprint make it ideal for AWS deployment. ECS Fargate with scratch-based containers gives you the best balance of simplicity and control. Lambda is perfect for event-driven workloads with near-zero cold starts. Pick the approach that matches your team's workflow and your application's requirements, and you'll have a production-ready Go service in no time.
+Go's compiled binaries, fast startup, and low memory footprint make it ideal for AWS deployment. ECS Fargate with scratch-based containers gives you the best balance of simplicity and control. Lambda is perfect for event-driven workloads where low initialization overhead matters. Pick the approach that matches your team's workflow and your application's requirements, and you'll have a production-ready Go service in no time.
