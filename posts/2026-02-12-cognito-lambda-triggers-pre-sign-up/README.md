@@ -31,8 +31,8 @@ resource "aws_lambda_function" "pre_signup" {
   function_name    = "cognito-pre-signup"
   role             = aws_iam_role.lambda_role.arn
   handler          = "index.handler"
-  runtime          = "nodejs20.x"
-  timeout          = 5  # Keep it short - sign-up UX suffers with long waits
+  runtime          = "nodejs22.x"
+  timeout          = 5  # Cognito triggers must respond within 5 seconds
 }
 
 # Allow Cognito to invoke the Lambda
@@ -126,7 +126,10 @@ export const handler = async (event) => {
     throw new Error('Email is required');
   }
 
-  const domain = email.split('@')[1].toLowerCase();
+  const domain = email.split('@')[1]?.toLowerCase();
+  if (!domain) {
+    throw new Error('Please use a valid email address to sign up.');
+  }
 
   // Option A: Allowlist approach
   if (ALLOWED_DOMAINS.length > 0 && !ALLOWED_DOMAINS.includes(domain)) {
@@ -152,17 +155,15 @@ export const handler = async (event) => {
   const { triggerSource, request } = event;
   const email = request.userAttributes.email || '';
 
-  // Auto-confirm admin-created users
+  // Cognito ignores autoConfirmUser and autoVerifyEmail for AdminCreateUser
   if (triggerSource === 'PreSignUp_AdminCreateUser') {
-    event.response.autoConfirmUser = true;
-    event.response.autoVerifyEmail = true;
     return event;
   }
 
   // Auto-confirm users from federated providers
   if (triggerSource === 'PreSignUp_ExternalProvider') {
     event.response.autoConfirmUser = true;
-    event.response.autoVerifyEmail = true;
+    if (email) event.response.autoVerifyEmail = true;
     return event;
   }
 
@@ -301,7 +302,7 @@ Prevent abuse by limiting sign-ups from the same IP:
 
 ```javascript
 // rate-limit.mjs
-import { DynamoDBClient, UpdateItemCommand, GetItemCommand } from '@aws-sdk/client-dynamodb';
+import { DynamoDBClient, UpdateItemCommand } from '@aws-sdk/client-dynamodb';
 
 const dynamodb = new DynamoDBClient({});
 const TABLE_NAME = process.env.RATE_LIMIT_TABLE;
@@ -312,22 +313,7 @@ export const handler = async (event) => {
   const ip = event.request.clientMetadata?.sourceIp || 'unknown';
   const hourKey = new Date().toISOString().slice(0, 13); // "2026-02-12T15"
 
-  const getCommand = new GetItemCommand({
-    TableName: TABLE_NAME,
-    Key: {
-      pk: { S: `IP#${ip}` },
-      sk: { S: `HOUR#${hourKey}` }
-    }
-  });
-
-  const result = await dynamodb.send(getCommand);
-  const count = result.Item?.count?.N ? parseInt(result.Item.count.N) : 0;
-
-  if (count >= MAX_SIGNUPS_PER_HOUR) {
-    throw new Error('Too many sign-up attempts. Please try again later.');
-  }
-
-  // Increment the counter
+  // Increment only if the current hourly count is still below the limit
   const updateCommand = new UpdateItemCommand({
     TableName: TABLE_NAME,
     Key: {
@@ -335,17 +321,27 @@ export const handler = async (event) => {
       sk: { S: `HOUR#${hourKey}` }
     },
     UpdateExpression: 'ADD #count :inc SET #ttl = :ttl',
+    ConditionExpression: 'attribute_not_exists(#count) OR #count < :limit',
     ExpressionAttributeNames: {
       '#count': 'count',
       '#ttl': 'ttl'
     },
     ExpressionAttributeValues: {
       ':inc': { N: '1' },
+      ':limit': { N: String(MAX_SIGNUPS_PER_HOUR) },
       ':ttl': { N: String(Math.floor(Date.now() / 1000) + 7200) }
     }
   });
 
-  await dynamodb.send(updateCommand);
+  try {
+    await dynamodb.send(updateCommand);
+  } catch (error) {
+    if (error.name === 'ConditionalCheckFailedException') {
+      throw new Error('Too many sign-up attempts. Please try again later.');
+    }
+    throw error;
+  }
+
   return event;
 };
 ```
@@ -368,4 +364,4 @@ For the trigger that fires after sign-up confirmation, see [Cognito Lambda trigg
 
 ## Summary
 
-The Pre Sign-Up trigger is your gatekeeper. It can block unwanted registrations, auto-confirm trusted users, link federated identities, and validate data - all before a user account is created. Keep the Lambda fast (under 5 seconds) to avoid degrading the sign-up experience, and make sure error messages are clear so users know what went wrong. This trigger, combined with Post Confirmation, gives you full control over the user registration lifecycle.
+The Pre Sign-Up trigger is your gatekeeper. It can block unwanted registrations, auto-confirm trusted users, link federated identities, and validate data - all before a user account is created. Keep the Lambda fast because Cognito requires triggers to respond within 5 seconds, and make sure error messages are clear so users know what went wrong. This trigger, combined with Post Confirmation, gives you full control over the user registration lifecycle.
