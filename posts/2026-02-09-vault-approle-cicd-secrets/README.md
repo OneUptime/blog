@@ -8,7 +8,7 @@ Description: Learn how to implement Vault AppRole authentication for secure secr
 
 ---
 
-CI/CD pipelines need secrets to deploy applications, but storing long-lived credentials in pipeline configurations is risky. Vault's AppRole auth method provides machine authentication suitable for CI/CD, using short-lived role IDs and secret IDs to obtain time-limited tokens. This guide shows you how to integrate AppRole with popular CI/CD systems.
+CI/CD pipelines need secrets to deploy applications, but storing long-lived credentials in pipeline configurations is risky. Vault's AppRole auth method provides machine authentication suitable for CI/CD, using a RoleID and short-lived SecretID to obtain time-limited tokens. This guide shows you how to integrate AppRole with popular CI/CD systems.
 
 ## Understanding AppRole Authentication
 
@@ -62,10 +62,7 @@ path "secret/data/kubernetes/config" {
   capabilities = ["read"]
 }
 
-# Cannot modify secrets
-path "secret/data/*" {
-  capabilities = ["deny"]
-}
+# No write capabilities are granted, so the pipeline cannot modify secrets
 EOF
 ```
 
@@ -85,7 +82,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Get Vault Token
         id: vault-token
@@ -141,7 +138,9 @@ package main
 import (
     "encoding/json"
     "net/http"
-    "github.com/hashicorp/vault/api"
+    "os"
+
+    vault "github.com/hashicorp/vault/api"
 )
 
 type SecretIDRequest struct {
@@ -150,6 +149,14 @@ type SecretIDRequest struct {
 
 type SecretIDResponse struct {
     SecretID string `json:"secret_id"`
+}
+
+func validateToken(token string) bool {
+    return token == "Bearer "+os.Getenv("ISSUER_TOKEN")
+}
+
+func getVaultToken() string {
+    return os.Getenv("VAULT_TOKEN")
 }
 
 func handleSecretID(w http.ResponseWriter, r *http.Request) {
@@ -161,20 +168,33 @@ func handleSecretID(w http.ResponseWriter, r *http.Request) {
     }
 
     var req SecretIDRequest
-    json.NewDecoder(r.Body).Decode(&req)
+    if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+        http.Error(w, "Invalid request body", http.StatusBadRequest)
+        return
+    }
+
+    metadata, err := json.Marshal(map[string]string{
+        "issued_to": "ci-cd-pipeline",
+        "job_id":    r.Header.Get("X-Job-ID"),
+    })
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
 
     // Connect to Vault
-    client, _ := vault.NewClient(vault.DefaultConfig())
+    client, err := vault.NewClient(vault.DefaultConfig())
+    if err != nil {
+        http.Error(w, err.Error(), http.StatusInternalServerError)
+        return
+    }
     client.SetToken(getVaultToken())
 
     // Generate secret ID
     secret, err := client.Logical().Write(
         "auth/approle/role/"+req.Role+"/secret-id",
         map[string]interface{}{
-            "metadata": map[string]string{
-                "issued_to": "ci-cd-pipeline",
-                "job_id":    r.Header.Get("X-Job-ID"),
-            },
+            "metadata": string(metadata),
         },
     )
     if err != nil {
@@ -225,12 +245,15 @@ deploy:
 
     # Get secrets
     - vault kv get -field=api_key secret/app/config > api_key.txt
-    - vault read -field=password database/creds/deploy-role > db_password.txt
+    - |
+      DB_CREDS=$(vault read -format=json database/creds/deploy-role)
+      echo "$DB_CREDS" | jq -r '.data.username' > db_user.txt
+      echo "$DB_CREDS" | jq -r '.data.password' > db_password.txt
 
     # Deploy using secrets
     - ./deploy.sh
-  only:
-    - main
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 ```
 
 ## Using with Jenkins
@@ -276,11 +299,15 @@ pipeline {
 
                     // Get secrets
                     withEnv(["VAULT_TOKEN=${vaultToken}"]) {
-                        sh '''
-                            vault kv get -field=config secret/app/config > config.json
-                            vault read -field=username database/creds/deploy-role > db_user.txt
-                            vault read -field=password database/creds/deploy-role > db_pass.txt
-                        '''
+                        sh 'vault kv get -field=config secret/app/config > config.json'
+
+                        def dbCredsResponse = sh(
+                            script: 'vault read -format=json database/creds/deploy-role',
+                            returnStdout: true
+                        ).trim()
+                        def dbCreds = readJSON(text: dbCredsResponse).data
+                        writeFile file: 'db_user.txt', text: dbCreds.username
+                        writeFile file: 'db_pass.txt', text: dbCreds.password
                     }
 
                     // Deploy
@@ -344,7 +371,7 @@ cat /vault/logs/audit.log | \
 
 # Count failed attempts
 cat /vault/logs/audit.log | \
-  jq 'select(.request.path == "auth/approle/login" and .error != "") |
+  jq 'select(.request.path == "auth/approle/login" and (.error // "") != "") |
       .request.data.role_id' | sort | uniq -c
 
 # Track secret ID generation
