@@ -26,7 +26,7 @@ In PagerDuty, create a service for your AWS infrastructure (or use an existing o
 4. For the integration, select "Amazon CloudWatch" from the integration list
 5. Copy the Integration URL - you'll need this
 
-The integration URL looks like: `https://events.pagerduty.com/integration/abc123def456/enqueue`
+The integration URL looks like: `https://events.pagerduty.com/x-ere/YOUR_INTEGRATION_KEY_HERE`
 
 ### Step 2: Create an SNS Topic
 
@@ -43,7 +43,7 @@ aws sns create-topic --name pagerduty-alerts
 aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:pagerduty-alerts \
   --protocol https \
-  --notification-endpoint "https://events.pagerduty.com/integration/abc123def456/enqueue"
+  --notification-endpoint "https://events.pagerduty.com/x-ere/YOUR_INTEGRATION_KEY_HERE"
 ```
 
 PagerDuty automatically confirms the SNS subscription. You can verify it:
@@ -67,7 +67,7 @@ aws cloudwatch put-metric-alarm \
   --namespace "AWS/ApiGateway" \
   --statistic Average \
   --period 300 \
-  --threshold 5 \
+  --threshold 0.05 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 2 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:pagerduty-alerts \
@@ -88,8 +88,18 @@ aws cloudwatch describe-alarms --alarm-names "ExistingAlarm" \
   --query "MetricAlarms[0]"
 
 # Then update it with the additional action
+# put-metric-alarm overwrites the alarm, so include the original metric,
+# threshold, comparison, period, evaluation, and dimension settings too.
 aws cloudwatch put-metric-alarm \
   --alarm-name "ExistingAlarm" \
+  --metric-name "5XXError" \
+  --namespace "AWS/ApiGateway" \
+  --statistic Average \
+  --period 300 \
+  --threshold 0.05 \
+  --comparison-operator GreaterThanThreshold \
+  --evaluation-periods 2 \
+  --dimensions Name=ApiName,Value=production-api \
   --alarm-actions \
     arn:aws:sns:us-east-1:123456789012:pagerduty-alerts \
     arn:aws:sns:us-east-1:123456789012:email-alerts \
@@ -117,17 +127,18 @@ aws events put-rule \
   --state ENABLED
 ```
 
-Then set PagerDuty as the target. You'll need an EventBridge API destination:
+Then set PagerDuty as the target. You'll need an EventBridge API destination and a target input transformer that sends the payload PagerDuty's Events API v2 expects:
 
 ```bash
-# Create a connection for PagerDuty authentication
+# Create a connection. PagerDuty Events API v2 uses routing_key in the JSON body,
+# so the connection does not need to carry a PagerDuty REST API token.
 aws events create-connection \
   --name "pagerduty-connection" \
   --authorization-type API_KEY \
   --auth-parameters '{
     "ApiKeyAuthParameters": {
-      "ApiKeyName": "Authorization",
-      "ApiKeyValue": "Token token=YOUR_PAGERDUTY_API_KEY"
+      "ApiKeyName": "X-EventBridge-Connection",
+      "ApiKeyValue": "unused"
     }
   }'
 
@@ -137,7 +148,30 @@ aws events create-api-destination \
   --connection-arn arn:aws:events:us-east-1:123456789012:connection/pagerduty-connection \
   --http-method POST \
   --invocation-endpoint "https://events.pagerduty.com/v2/enqueue"
+
+# Attach the API destination to the rule.
+# The role must allow events:InvokeApiDestination on the API destination ARN.
+aws events put-targets \
+  --rule "CloudWatch-to-PagerDuty" \
+  --targets '[
+    {
+      "Id": "pagerduty-events",
+      "Arn": "arn:aws:events:us-east-1:123456789012:api-destination/pagerduty-events/abc123",
+      "RoleArn": "arn:aws:iam::123456789012:role/EventBridgeInvokeApiDestinationRole",
+      "InputTransformer": {
+        "InputPathsMap": {
+          "alarm": "$.detail.alarmName",
+          "reason": "$.detail.state.reason",
+          "region": "$.region",
+          "time": "$.time"
+        },
+        "InputTemplate": "{\"routing_key\":\"YOUR_PAGERDUTY_ROUTING_KEY\",\"event_action\":\"trigger\",\"dedup_key\":\"<alarm>\",\"payload\":{\"summary\":\"<alarm>: <reason>\",\"source\":\"aws-cloudwatch-<region>\",\"severity\":\"critical\",\"timestamp\":\"<time>\",\"custom_details\":{\"reason\":\"<reason>\"}}}"
+      }
+    }
+  ]'
 ```
+
+To auto-resolve incidents with the EventBridge approach, create a companion rule that matches `"value": ["OK"]` and uses the same `dedup_key` with `"event_action": "resolve"`.
 
 ## Method 3: Lambda for Custom Formatting
 
@@ -271,6 +305,9 @@ Resources:
       EvaluationPeriods: 2
       Threshold: 10
       ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: production-api
       AlarmActions:
         - !Ref PagerDutyTopic
       OKActions:
@@ -288,6 +325,9 @@ Resources:
       EvaluationPeriods: 3
       Threshold: 5000
       ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: ApiName
+          Value: production-api
       AlarmActions:
         - !Ref PagerDutyTopic
       OKActions:
