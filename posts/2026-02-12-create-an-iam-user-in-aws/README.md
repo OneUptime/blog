@@ -34,7 +34,7 @@ The root user is the account owner - you should almost never use it for day-to-d
 Head to the IAM console and click "Users" in the left sidebar, then "Create user."
 
 **Step 1: User details**
-Enter a username. A good convention is `firstname.lastname` or the person's email. Check "Provide user access to the AWS Management Console" if they need to log in to the web console.
+Enter a username. A good convention is `firstname.lastname` or another non-sensitive identifier. Check "Provide user access to the AWS Management Console" if they need to log in to the web console.
 
 **Step 2: Permissions**
 You've got three options: add the user to a group (recommended), copy permissions from an existing user, or attach policies directly. Groups are the way to go - we'll cover that more in a bit.
@@ -146,6 +146,12 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: IAM User Creation
 
 Resources:
+  DeveloperGroup:
+    Type: AWS::IAM::Group
+    Properties:
+      GroupName: developers
+      Path: /developers/
+
   DeveloperUser:
     Type: AWS::IAM::User
     Properties:
@@ -185,6 +191,12 @@ resource "aws_iam_user" "developer" {
     Department = "Engineering"
     Team       = "Backend"
   }
+}
+
+# Create a group for developers
+resource "aws_iam_group" "developers" {
+  name = "developers"
+  path = "/developers/"
 }
 
 # Create a login profile for console access
