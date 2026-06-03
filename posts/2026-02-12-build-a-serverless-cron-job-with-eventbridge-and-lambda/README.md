@@ -35,28 +35,36 @@ graph LR
 
 import boto3
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 dynamodb = boto3.resource('dynamodb')
 
 def handler(event, context):
-    print(f"Cron job triggered at {datetime.utcnow().isoformat()}")
+    print(f"Cron job triggered at {datetime.now(timezone.utc).isoformat()}")
 
     # Example: Clean up expired sessions
     table = dynamodb.Table('user-sessions')
-    cutoff = (datetime.utcnow() - timedelta(days=7)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
 
     # Scan for expired items
-    response = table.scan(
-        FilterExpression='expiresAt < :cutoff',
-        ExpressionAttributeValues={':cutoff': cutoff},
-        ProjectionExpression='sessionId'
-    )
-
     deleted_count = 0
-    for item in response['Items']:
-        table.delete_item(Key={'sessionId': item['sessionId']})
-        deleted_count += 1
+    scan_kwargs = {
+        'FilterExpression': 'expiresAt < :cutoff',
+        'ExpressionAttributeValues': {':cutoff': cutoff},
+        'ProjectionExpression': 'sessionId'
+    }
+
+    while True:
+        response = table.scan(**scan_kwargs)
+
+        for item in response['Items']:
+            table.delete_item(Key={'sessionId': item['sessionId']})
+            deleted_count += 1
+
+        if 'LastEvaluatedKey' not in response:
+            break
+
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
     print(f"Deleted {deleted_count} expired sessions")
 
@@ -176,22 +184,31 @@ Here is a complete cron job that generates and emails a daily report:
 # Daily report generator - sends summary email via SES
 import boto3
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 ses = boto3.client('ses')
 dynamodb = boto3.resource('dynamodb')
 
 def handler(event, context):
-    yesterday = (datetime.utcnow() - timedelta(days=1)).strftime('%Y-%m-%d')
+    yesterday = (datetime.now(timezone.utc) - timedelta(days=1)).strftime('%Y-%m-%d')
 
     # Gather metrics from DynamoDB
     orders_table = dynamodb.Table('orders')
-    response = orders_table.scan(
-        FilterExpression='orderDate = :date',
-        ExpressionAttributeValues={':date': yesterday}
-    )
+    orders = []
+    scan_kwargs = {
+        'FilterExpression': 'orderDate = :date',
+        'ExpressionAttributeValues': {':date': yesterday}
+    }
 
-    orders = response['Items']
+    while True:
+        response = orders_table.scan(**scan_kwargs)
+        orders.extend(response['Items'])
+
+        if 'LastEvaluatedKey' not in response:
+            break
+
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+
     total_revenue = sum(float(o.get('amount', 0)) for o in orders)
     order_count = len(orders)
 
@@ -224,8 +241,10 @@ def handler(event, context):
 ```python
 # Health check cron that runs every 5 minutes and alerts on failures
 import boto3
-import requests
 import json
+from socket import timeout as SocketTimeout
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 sns = boto3.client('sns')
 
@@ -240,17 +259,30 @@ def handler(event, context):
 
     for endpoint in ENDPOINTS:
         try:
-            response = requests.get(endpoint['url'], timeout=10)
-            if response.status_code != 200:
+            with urlopen(endpoint['url'], timeout=10) as response:
+                status = response.status
+
+            if status != 200:
                 failures.append({
                     'name': endpoint['name'],
-                    'status': response.status_code,
+                    'status': status,
                     'error': 'Non-200 status code'
                 })
-        except requests.exceptions.Timeout:
+        except HTTPError as e:
+            failures.append({
+                'name': endpoint['name'],
+                'status': e.code,
+                'error': 'Non-200 status code'
+            })
+        except (TimeoutError, SocketTimeout):
             failures.append({
                 'name': endpoint['name'],
                 'error': 'Request timed out'
+            })
+        except URLError as e:
+            failures.append({
+                'name': endpoint['name'],
+                'error': str(e.reason)
             })
         except Exception as e:
             failures.append({
@@ -313,7 +345,7 @@ aws cloudwatch put-metric-alarm \
   --treat-missing-data breaching
 ```
 
-The key is `--treat-missing-data breaching`. Without this, CloudWatch treats missing data as "not breaching" and the alarm never fires.
+The key is `--treat-missing-data breaching`. Without this, CloudWatch uses the default `missing` behavior, so an alarm with no recent data can move to `INSUFFICIENT_DATA` instead of `ALARM`.
 
 ## EventBridge Scheduler (Alternative)
 
