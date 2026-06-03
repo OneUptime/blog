@@ -31,7 +31,7 @@ First, create a manifest file that describes your S3 data.
     "format": "CSV",
     "delimiter": ",",
     "textqualifier": "\"",
-    "containsHeader": "TRUE"
+    "containsHeader": "true"
   }
 }
 ```
@@ -91,9 +91,9 @@ aws quicksight create-data-set \
           {"Name": "product", "Type": "STRING"},
           {"Name": "category", "Type": "STRING"},
           {"Name": "region", "Type": "STRING"},
-          {"Name": "units_sold", "Type": "INTEGER"},
-          {"Name": "revenue", "Type": "DECIMAL"},
-          {"Name": "cost", "Type": "DECIMAL"}
+          {"Name": "units_sold", "Type": "STRING"},
+          {"Name": "revenue", "Type": "STRING"},
+          {"Name": "cost", "Type": "STRING"}
         ],
         "UploadSettings": {
           "Format": "CSV",
@@ -118,11 +118,29 @@ aws quicksight create-data-set \
           }
         },
         {
+          "CastColumnTypeOperation": {
+            "ColumnName": "units_sold",
+            "NewColumnType": "INTEGER"
+          }
+        },
+        {
+          "CastColumnTypeOperation": {
+            "ColumnName": "revenue",
+            "NewColumnType": "DECIMAL"
+          }
+        },
+        {
+          "CastColumnTypeOperation": {
+            "ColumnName": "cost",
+            "NewColumnType": "DECIMAL"
+          }
+        },
+        {
           "CreateColumnsOperation": {
             "Columns": [{
               "ColumnName": "profit",
               "ColumnId": "profit",
-              "Expression": "revenue - cost"
+              "Expression": "{revenue} - {cost}"
             }]
           }
         },
@@ -131,7 +149,7 @@ aws quicksight create-data-set \
             "Columns": [{
               "ColumnName": "profit_margin",
               "ColumnId": "profit_margin",
-              "Expression": "(revenue - cost) / revenue * 100"
+              "Expression": "({revenue} - {cost}) / {revenue} * 100"
             }]
           }
         }
@@ -192,6 +210,15 @@ aws glue create-table \
     ],
     "TableType": "EXTERNAL_TABLE"
   }'
+```
+
+If your data is already partitioned in S3, register the partitions in the Glue Data Catalog before querying the table.
+
+```bash
+aws athena start-query-execution \
+  --query-string "MSCK REPAIR TABLE sales_events" \
+  --query-execution-context Database=analytics \
+  --result-configuration OutputLocation=s3://my-analytics-bucket/athena-results/
 ```
 
 Now create a QuickSight dataset using a custom SQL query against Athena.
@@ -277,6 +304,7 @@ aws quicksight create-refresh-schedule \
     "ScheduleId": "daily-7am",
     "ScheduleFrequency": {
       "Interval": "DAILY",
+      "Timezone": "UTC",
       "TimeOfTheDay": "07:00"
     },
     "RefreshType": "FULL_REFRESH"
@@ -290,11 +318,11 @@ Here's a quick decision framework:
 | Factor | Direct S3 | Athena + S3 |
 |--------|-----------|-------------|
 | File format | CSV, TSV, JSON | Any (Parquet, ORC, CSV, JSON) |
-| Data size | Under 10 GB | Any size |
+| Data size | Within SPICE quotas | Large datasets; SPICE quotas still apply unless you use direct query |
 | Need SQL transforms | No | Yes |
 | Partitioned data | No | Yes |
-| Query cost | Free (SPICE import) | Per-query Athena cost |
-| Schema evolution | Manual | Handled by Glue |
+| Query cost | No Athena query cost | Athena query cost when QuickSight runs Athena queries or refreshes SPICE |
+| Schema evolution | Manual | Managed in the Glue Data Catalog |
 
 For most production use cases, the Athena approach is more flexible. You get SQL transformations, support for columnar formats like Parquet, and partition pruning for cost-efficient queries. The direct S3 approach is great for quick, one-off analyses or small reference datasets.
 
