@@ -10,13 +10,13 @@ Description: Build multi-step form workflows using AWS Step Functions and API Ga
 
 Multi-step forms are everywhere. Insurance applications, job applications, onboarding wizards, checkout flows. They all share the same backend challenge: you need to persist state across multiple submissions, validate at each step, and handle users who abandon partway through or come back days later.
 
-Most teams build this with a database table to track form state and a bunch of API endpoints to handle each step. It works, but it is messy. AWS Step Functions offers a cleaner approach. Each form submission advances a state machine execution, the state is managed for you, and you can add timeouts, retries, and branching logic declaratively.
+Most teams build this with a database table to track form state and a bunch of API endpoints to handle each step. It works, but it is messy. AWS Step Functions offers a cleaner approach. Each form submission advances a state machine execution, the workflow state is managed for you, and you can add timeouts, retries, and branching logic declaratively.
 
 In this guide, you will build a multi-step form backend using Step Functions with API Gateway as the entry point.
 
 ## Architecture Overview
 
-The pattern uses Step Functions' callback pattern. Each step pauses the execution and waits for the user to submit the next form section. API Gateway receives the submission and sends a task token to resume the execution.
+The pattern uses Step Functions' callback pattern. Each step pauses the execution and waits for the user to submit the next form section. The step handler stores the task token, and the API submit handler looks it up to resume the execution.
 
 ```mermaid
 sequenceDiagram
@@ -28,19 +28,24 @@ sequenceDiagram
     User->>APIGW: POST /form/start
     APIGW->>Lambda: Start Execution
     Lambda->>SF: StartExecution
-    SF-->>Lambda: executionArn + taskToken
-    Lambda-->>APIGW: Return executionId + taskToken
-    APIGW-->>User: 200 OK (executionId, taskToken)
+    SF-->>Lambda: executionArn + startDate
+    SF->>Lambda: Invoke step handler with taskToken
+    Lambda-->>SF: Store token and return
+    Lambda-->>APIGW: Return formId + executionArn
+    APIGW-->>User: 200 OK (formId, executionArn)
 
-    User->>APIGW: POST /form/step2 (taskToken + data)
-    APIGW->>Lambda: Process Step 2
+    User->>APIGW: POST /form/submit (formId + data)
+    APIGW->>Lambda: Process current step
+    Lambda->>Lambda: Look up stored taskToken
     Lambda->>SF: SendTaskSuccess(taskToken, data)
-    SF-->>Lambda: Next taskToken
-    Lambda-->>APIGW: Return next taskToken
-    APIGW-->>User: 200 OK (nextTaskToken)
+    SF-->>Lambda: Empty 200 response
+    SF->>Lambda: Invoke next step handler with new taskToken
+    Lambda-->>SF: Store token and return
+    Lambda-->>APIGW: Return step completed
+    APIGW-->>User: 200 OK
 
-    User->>APIGW: POST /form/step3 (taskToken + data)
-    APIGW->>Lambda: Process Step 3
+    User->>APIGW: POST /form/submit (formId + data)
+    APIGW->>Lambda: Process current step
     Lambda->>SF: SendTaskSuccess(taskToken, data)
     SF->>Lambda: Process Complete - run final action
 ```
@@ -120,7 +125,7 @@ Key design decisions here:
 
 - **waitForTaskToken**: Each collection step pauses and waits for the user to submit data via a task token callback.
 - **TimeoutSeconds**: 86400 (24 hours) gives users a full day to complete each step. Adjust based on your requirements.
-- **Catch blocks**: Validation failures loop back to the same step so the user can correct their input.
+- **Catch blocks**: Task failures and timeouts can route the execution to recovery or cleanup states.
 
 ## Step 2: Create the API Endpoints
 
@@ -190,8 +195,8 @@ def lambda_handler(event, context):
 
     print(f"Form {form_id} waiting at step: {step}")
 
-    # This function does not return to Step Functions
-    # The execution stays paused until SendTaskSuccess is called
+    # After this function returns, the execution stays paused
+    # until SendTaskSuccess is called with the stored token.
 ```
 
 ```python
@@ -230,12 +235,8 @@ def lambda_handler(event, context):
     # Validate the step data
     errors = validate_step(current_step, step_data)
     if errors:
-        # Send failure to loop back
-        sfn.send_task_failure(
-            taskToken=task_token,
-            error='ValidationError',
-            cause=json.dumps(errors)
-        )
+        # Do not close the task token on validation errors.
+        # The execution remains paused at the same step so the user can retry.
         return {
             'statusCode': 400,
             'body': json.dumps({'errors': errors})
@@ -351,24 +352,34 @@ import boto3
 import json
 
 sfn = boto3.client('stepfunctions')
+dynamodb = boto3.resource('dynamodb')
+table = dynamodb.Table('form-task-tokens')
 
 def lambda_handler(event, context):
     """Get the current status of a form execution."""
 
     form_id = event['pathParameters']['formId']
     execution_arn = f"arn:aws:states:us-east-1:123456789012:execution:insurance-form:{form_id}"
+    token_response = table.get_item(Key={'formId': form_id})
+    token_item = token_response.get('Item', {})
 
     try:
         response = sfn.describe_execution(executionArn=execution_arn)
 
+        body = {
+            'formId': form_id,
+            'status': response['status'],
+            'startDate': str(response['startDate']),
+            'executionInput': json.loads(response.get('input', '{}')),
+            'currentStep': token_item.get('currentStep'),
+        }
+
+        if token_item.get('formData'):
+            body['formData'] = json.loads(token_item['formData'])
+
         return {
             'statusCode': 200,
-            'body': json.dumps({
-                'formId': form_id,
-                'status': response['status'],
-                'startDate': str(response['startDate']),
-                'currentInput': json.loads(response.get('input', '{}')),
-            })
+            'body': json.dumps(body)
         }
     except sfn.exceptions.ExecutionDoesNotExist:
         return {
@@ -379,12 +390,12 @@ def lambda_handler(event, context):
 
 ## Cost Considerations
 
-Step Functions Standard Workflows charge per state transition. For a 4-step form, each submission triggers roughly 2-3 state transitions (task start, validation, next task). At $0.025 per 1,000 transitions, 10,000 form completions cost about $1.50 in Step Functions charges.
+Step Functions Standard Workflows charge per state transition. For this form, a successful completion uses roughly 5-6 state transitions depending on which validation and final states you include. At $0.025 per 1,000 transitions in US East, 10,000 form completions cost about $1.25-$1.50 in Step Functions charges before the free tier.
 
-If cost is a concern, consider Step Functions Express Workflows for forms that must be completed in a single session (under 5 minutes).
+If cost is a concern, consider Step Functions Express Workflows for forms that must be completed in a single session (under 5 minutes) and do not need the callback task-token pattern.
 
 For monitoring your form workflow, check out our guide on [monitoring API endpoints with CloudWatch Synthetics](https://oneuptime.com/blog/post/2026-02-12-monitor-api-endpoints-with-cloudwatch-synthetics/view).
 
 ## Wrapping Up
 
-Step Functions provides a natural fit for multi-step form workflows. Each step maps to a state, validation logic is explicit, timeouts handle abandonment, and the entire form state is managed by AWS. You do not need to build your own state machine in application code. The callback pattern with task tokens is the key enabler - it lets your workflow pause indefinitely until the user submits the next step. Add API Gateway in front, and you have a fully serverless form backend.
+Step Functions provides a natural fit for multi-step form workflows. Each step maps to a state, validation logic is explicit, timeouts handle abandonment, and the workflow state is managed by AWS. You do not need to build your own state machine in application code. The callback pattern with task tokens is the key enabler - it lets a Standard Workflow pause until the user submits the next step or the task reaches its configured timeout. Add API Gateway in front, and you have a fully serverless form backend.
