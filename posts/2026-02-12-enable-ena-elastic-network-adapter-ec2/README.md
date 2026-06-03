@@ -44,7 +44,7 @@ If the output is `true`, you're already good. If it returns `false` or nothing, 
 You can also check from inside the instance itself. SSH in and run:
 
 ```bash
-# Check if the ENA module is loaded in the kernel
+# Check if the ENA module is available for the running kernel
 modinfo ena
 ```
 
@@ -56,7 +56,7 @@ There are a few things you need to sort out before flipping the switch:
 
 1. Your instance type must support ENA. Most current-generation types do.
 2. The instance must be running a supported operating system with ENA driver support.
-3. You need to stop the instance before enabling the ENA attribute (it can't be done while running).
+3. For EBS-backed instances, you need to stop the instance before enabling the ENA attribute (it can't be done while running).
 4. Make sure you have a recent version of the AWS CLI installed.
 
 Let's verify the instance type supports ENA:
@@ -68,6 +68,8 @@ aws ec2 describe-instance-types \
   --query 'InstanceTypes[].NetworkInfo.EnaSupport'
 ```
 
+The output will be `required`, `supported`, or `unsupported`.
+
 ## Installing the ENA Driver
 
 If your Linux instance doesn't have the ENA driver, you'll need to install it. On Amazon Linux 2, it's typically pre-installed, but on other distributions you might need to compile it.
@@ -76,13 +78,13 @@ First, install the build dependencies on your instance:
 
 ```bash
 # Install kernel headers and development tools (Amazon Linux / RHEL)
-sudo yum install -y gcc kernel-devel-$(uname -r) git
+sudo yum install -y gcc make kernel-devel-$(uname -r) git
 
 # For Ubuntu/Debian
 # sudo apt-get install -y build-essential linux-headers-$(uname -r) git
 ```
 
-Then clone and build the ENA driver:
+Then clone, build, install, and load the ENA driver:
 
 ```bash
 # Clone the ENA driver repository
@@ -94,10 +96,18 @@ cd amzn-drivers/kernel/linux/ena
 # Compile the driver
 make
 
-# Install the module
-sudo make install
+# Install the module into the kernel module tree
+sudo mkdir -p /lib/modules/$(uname -r)/updates
+sudo cp ena.ko /lib/modules/$(uname -r)/updates/
+sudo depmod -a
 
-# Load the module
+# Rebuild initramfs so the driver can load at boot
+sudo dracut -f -v
+
+# For Ubuntu/Debian, use this instead of dracut:
+# sudo update-initramfs -u -k all
+
+# Load the installed module
 sudo modprobe ena
 ```
 
@@ -112,7 +122,7 @@ You should see `ena` in the output along with its size and dependencies.
 
 ## Enabling ENA Support on the Instance
 
-Now comes the actual enablement. You need to stop the instance first - this isn't something you can toggle on a running instance.
+Now comes the actual enablement. For an EBS-backed instance, you need to stop the instance first - this isn't something you can toggle on a running instance. Instance store-backed instances use a different AMI registration flow because they can't be stopped.
 
 Here's the full process:
 
@@ -166,7 +176,7 @@ ethtool -i eth0
 
 The output should show `driver: ena` instead of something like `vif` or `ixgbevf`.
 
-You can also check the maximum possible MTU, since ENA supports jumbo frames:
+You can also check the current MTU, since ENA-capable current-generation instance types support jumbo frames:
 
 ```bash
 # Check the maximum MTU supported
@@ -180,7 +190,7 @@ ENA supports MTU up to 9001 bytes (jumbo frames), which is useful for reducing o
 sudo ip link set dev eth0 mtu 9001
 ```
 
-Keep in mind that jumbo frames only work for traffic within the VPC. Traffic going to the internet or through VPC peering connections will still use the standard 1500 byte MTU.
+Keep in mind that jumbo frames should be used carefully for traffic that leaves the VPC. Traffic over an internet gateway or VPN connection is limited to 1500 MTU, while inter-Region VPC peering is limited to 8500 MTU.
 
 ## Troubleshooting Common Issues
 
@@ -210,6 +220,6 @@ For monitoring your network performance after enabling ENA, you'll want solid ob
 
 ## Wrapping Up
 
-Enabling ENA is one of those straightforward changes that can have a big impact on your EC2 networking performance. The process boils down to: install the driver, stop the instance, enable the attribute, and start it back up. For new instances on modern instance types, ENA is already there waiting for you - just make sure your AMI has the driver included.
+Enabling ENA is one of those straightforward changes that can have a big impact on your EC2 networking performance. The process boils down to: make sure the driver is installed or available, stop the instance if it's EBS-backed, enable the attribute, and start it back up. For new instances on modern instance types, ENA is already there waiting for you - just make sure your AMI has the driver included.
 
 If you're running any kind of data-intensive workload, distributed system, or high-traffic application, ENA should be at the top of your optimization checklist.
