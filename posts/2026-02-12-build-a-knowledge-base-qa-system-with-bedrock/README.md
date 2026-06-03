@@ -40,9 +40,27 @@ Bedrock Knowledge Bases connect to an S3 data source, process documents automati
 import boto3
 import json
 import time
+from opensearchpy import AWSV4SignerAuth, OpenSearch, RequestsHttpConnection
 
 bedrock_agent = boto3.client('bedrock-agent')
 oss_client = boto3.client('opensearchserverless')
+sts_client = boto3.client('sts')
+
+IDENTITY = sts_client.get_caller_identity()
+ACCOUNT_ID = IDENTITY['Account']
+REGION = boto3.Session().region_name or 'us-east-1'
+VECTOR_INDEX_NAME = 'knowledge-base-index'
+VECTOR_FIELD = 'embedding'
+TEXT_FIELD = 'text'
+METADATA_FIELD = 'metadata'
+
+def current_iam_principal_arn():
+    """Return the IAM role/user ARN that signs OpenSearch Serverless requests."""
+    caller_arn = IDENTITY['Arn']
+    if ':assumed-role/' in caller_arn:
+        role_name = caller_arn.split(':assumed-role/', 1)[1].split('/', 1)[0]
+        return f'arn:aws:iam::{ACCOUNT_ID}:role/{role_name}'
+    return caller_arn
 
 def create_knowledge_base(name, description, s3_bucket, s3_prefix=''):
     """Create a Bedrock Knowledge Base with automatic document processing."""
@@ -52,28 +70,29 @@ def create_knowledge_base(name, description, s3_bucket, s3_prefix=''):
     collection_arn = collection['arn']
 
     # Wait for collection to be active
-    wait_for_collection(collection['id'])
+    collection_details = wait_for_collection(collection['id'])
+    create_vector_index(collection_details['collectionEndpoint'], VECTOR_INDEX_NAME)
 
     # Step 2: Create the Knowledge Base
     kb_response = bedrock_agent.create_knowledge_base(
         name=name,
         description=description,
-        roleArn='arn:aws:iam::123456789:role/BedrockKBRole',
+        roleArn=f'arn:aws:iam::{ACCOUNT_ID}:role/BedrockKBRole',
         knowledgeBaseConfiguration={
             'type': 'VECTOR',
             'vectorKnowledgeBaseConfiguration': {
-                'embeddingModelArn': 'arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0'
+                'embeddingModelArn': f'arn:aws:bedrock:{REGION}::foundation-model/amazon.titan-embed-text-v2:0'
             }
         },
         storageConfiguration={
             'type': 'OPENSEARCH_SERVERLESS',
             'opensearchServerlessConfiguration': {
                 'collectionArn': collection_arn,
-                'vectorIndexName': 'knowledge-base-index',
+                'vectorIndexName': VECTOR_INDEX_NAME,
                 'fieldMapping': {
-                    'vectorField': 'embedding',
-                    'textField': 'text',
-                    'metadataField': 'metadata'
+                    'vectorField': VECTOR_FIELD,
+                    'textField': TEXT_FIELD,
+                    'metadataField': METADATA_FIELD
                 }
             }
         }
@@ -150,8 +169,9 @@ def create_vector_collection(name):
                 {'ResourceType': 'index', 'Resource': [f'index/{name}/*'], 'Permission': ['aoss:*']}
             ],
             'Principal': [
-                'arn:aws:iam::123456789:role/BedrockKBRole',
-                'arn:aws:iam::123456789:role/LambdaRole'
+                f'arn:aws:iam::{ACCOUNT_ID}:role/BedrockKBRole',
+                f'arn:aws:iam::{ACCOUNT_ID}:role/LambdaRole',
+                current_iam_principal_arn()
             ]
         }])
     )
@@ -169,10 +189,49 @@ def wait_for_collection(collection_id):
         response = oss_client.batch_get_collection(ids=[collection_id])
         status = response['collectionDetails'][0]['status']
         if status == 'ACTIVE':
-            return
+            return response['collectionDetails'][0]
         if status == 'FAILED':
             raise Exception('Collection creation failed')
         time.sleep(10)
+
+def create_vector_index(collection_endpoint, index_name):
+    """Create the OpenSearch Serverless vector index required by Bedrock."""
+    host = collection_endpoint.replace('https://', '')
+    credentials = boto3.Session().get_credentials()
+    auth = AWSV4SignerAuth(credentials, REGION, 'aoss')
+
+    client = OpenSearch(
+        hosts=[{'host': host, 'port': 443}],
+        http_auth=auth,
+        use_ssl=True,
+        verify_certs=True,
+        connection_class=RequestsHttpConnection
+    )
+
+    if client.indices.exists(index=index_name):
+        return
+
+    client.indices.create(
+        index=index_name,
+        body={
+            'settings': {'index.knn': True},
+            'mappings': {
+                'properties': {
+                    VECTOR_FIELD: {
+                        'type': 'knn_vector',
+                        'dimension': 1024,
+                        'method': {
+                            'name': 'hnsw',
+                            'engine': 'faiss',
+                            'space_type': 'l2'
+                        }
+                    },
+                    TEXT_FIELD: {'type': 'text'},
+                    METADATA_FIELD: {'type': 'text', 'index': False}
+                }
+            }
+        }
+    )
 ```
 
 ## Querying the Knowledge Base
@@ -254,7 +313,7 @@ def extract_citations(response):
             citations.append({
                 'text': reference.get('content', {}).get('text', '')[:200],
                 'source': s3_location.get('uri', ''),
-                'score': reference.get('metadata', {}).get('score', 0)
+                'metadata': reference.get('metadata', {})
             })
 
     return citations
@@ -367,11 +426,22 @@ Wire this up with S3 notifications:
 
 ```yaml
 # CloudFormation for automatic document sync
-  DocumentSyncTrigger:
-    Type: AWS::Lambda::EventSourceMapping
+  SyncLambdaPermission:
+    Type: AWS::Lambda::Permission
     Properties:
-      EventSourceArn: !GetAtt DocumentBucket.Arn
+      Action: lambda:InvokeFunction
       FunctionName: !Ref SyncLambda
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+
+  DocumentBucket:
+    Type: AWS::S3::Bucket
+    DependsOn: SyncLambdaPermission
+    Properties:
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt SyncLambda.Arn
 
   SyncRule:
     Type: AWS::Events::Rule
@@ -380,6 +450,14 @@ Wire this up with S3 notifications:
       Targets:
         - Arn: !GetAtt SyncLambda.Arn
           Id: PeriodicSync
+
+  PeriodicSyncPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref SyncLambda
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt SyncRule.Arn
 ```
 
 ## Multi-Turn Conversations
@@ -394,10 +472,9 @@ def conversational_qa(event, context):
     query = body['query']
     session_id = body.get('sessionId')  # Pass this back from previous response
 
-    response = bedrock_agent_runtime.retrieve_and_generate(
-        input={'text': query},
-        sessionId=session_id,  # Continue the conversation
-        retrieveAndGenerateConfiguration={
+    params = {
+        'input': {'text': query},
+        'retrieveAndGenerateConfiguration': {
             'type': 'KNOWLEDGE_BASE',
             'knowledgeBaseConfiguration': {
                 'knowledgeBaseId': KNOWLEDGE_BASE_ID,
@@ -409,7 +486,12 @@ def conversational_qa(event, context):
                 }
             }
         }
-    )
+    }
+
+    if session_id:
+        params['sessionId'] = session_id
+
+    response = bedrock_agent_runtime.retrieve_and_generate(**params)
 
     return {
         'statusCode': 200,
