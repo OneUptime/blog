@@ -12,11 +12,11 @@ Terraform stores infrastructure state in a state file that tracks resource mappi
 
 ## Understanding State Locking
 
-State locking prevents multiple Terraform processes from modifying state simultaneously. When you run terraform apply, Terraform acquires a lock on the state. Other operations wait until the lock releases. This prevents race conditions and state corruption.
+State locking prevents multiple Terraform processes from modifying state simultaneously. When you run an operation that can write state, such as terraform apply, Terraform acquires a lock on the state. Other operations fail to acquire the lock or wait until the lock releases if you configure a lock timeout. This prevents race conditions and state corruption.
 
-## Configuring S3 Backend with DynamoDB Locking
+## Configuring S3 Backend with Native Locking
 
-AWS S3 with DynamoDB provides a robust backend for Terraform state:
+AWS S3 with native S3 lockfiles provides a robust backend for Terraform state:
 
 ```hcl
 # backend.tf
@@ -27,7 +27,7 @@ terraform {
     key            = "kubernetes/production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
     
     # Optional: use workspaces
     workspace_key_prefix = "workspaces"
@@ -35,7 +35,7 @@ terraform {
 }
 ```
 
-Create the S3 bucket and DynamoDB table:
+Create the S3 bucket:
 
 ```hcl
 # bootstrap/main.tf
@@ -78,23 +78,8 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   restrict_public_buckets = true
 }
 
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-lock"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
-
 output "s3_bucket_name" {
   value = aws_s3_bucket.terraform_state.id
-}
-
-output "dynamodb_table_name" {
-  value = aws_dynamodb_table.terraform_locks.name
 }
 ```
 
@@ -111,7 +96,7 @@ terraform {
     key            = "kubernetes/production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-lock"
+    use_lockfile   = true
   }
 }
 EOF
@@ -136,6 +121,7 @@ terraform {
     storage_account_name = "terraformstate"
     container_name       = "tfstate"
     key                  = "kubernetes.terraform.tfstate"
+    use_cli              = true
     use_azuread_auth     = true
   }
 }
@@ -155,7 +141,8 @@ az storage account create \
 
 az storage container create \
   --name tfstate \
-  --account-name terraformstate
+  --account-name terraformstate \
+  --auth-mode login
 ```
 
 ## Google Cloud Storage Backend
@@ -226,12 +213,12 @@ If a process crashes while holding a lock, you may need to manually unlock:
 terraform force-unlock <lock-id>
 ```
 
-Check DynamoDB for lock details:
+For S3 native locking, the lock object uses a `.tflock` suffix:
 
 ```bash
-aws dynamodb scan \
-  --table-name terraform-state-lock \
-  --region us-east-1
+aws s3api head-object \
+  --bucket my-terraform-state \
+  --key kubernetes/production/terraform.tfstate.tflock
 ```
 
 ## State File Security
@@ -261,23 +248,26 @@ resource "aws_iam_policy" "terraform_state" {
       {
         Effect = "Allow"
         Action = [
-          "s3:ListBucket",
-          "s3:GetObject",
-          "s3:PutObject"
+          "s3:ListBucket"
         ]
-        Resource = [
-          aws_s3_bucket.terraform_state.arn,
-          "${aws_s3_bucket.terraform_state.arn}/*"
-        ]
+        Resource = aws_s3_bucket.terraform_state.arn
       },
       {
         Effect = "Allow"
         Action = [
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
+          "s3:GetObject",
+          "s3:PutObject"
         ]
-        Resource = aws_dynamodb_table.terraform_locks.arn
+        Resource = "${aws_s3_bucket.terraform_state.arn}/kubernetes/production/terraform.tfstate"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.terraform_state.arn}/kubernetes/production/terraform.tfstate.tflock"
       }
     ]
   })
@@ -337,7 +327,7 @@ on:
 
 env:
   AWS_REGION: us-east-1
-  TF_VERSION: 1.6.0
+  TF_VERSION: 1.15.0
 
 jobs:
   terraform:
