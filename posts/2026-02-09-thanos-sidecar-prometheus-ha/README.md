@@ -59,9 +59,15 @@ spec:
           - --storage.tsdb.max-block-duration=2h
           - --web.enable-lifecycle
           - --web.enable-admin-api
+          - --enable-feature=expand-external-labels
         ports:
         - containerPort: 9090
           name: http
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         volumeMounts:
         - name: config
           mountPath: /etc/prometheus
@@ -79,17 +85,11 @@ spec:
           - --http-address=0.0.0.0:10902
           - --objstore.config-file=/etc/thanos/objstore.yml
           - --reloader.config-file=/etc/prometheus/prometheus.yml
-          - --reloader.config-envsubst-file=/etc/prometheus-shared/prometheus.yml
         ports:
         - containerPort: 10901
           name: grpc
         - containerPort: 10902
           name: http
-        env:
-        - name: POD_NAME
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
         volumeMounts:
         - name: data
           mountPath: /prometheus
@@ -220,8 +220,8 @@ spec:
           - --grpc-address=0.0.0.0:10901
           - --query.replica-label=prometheus_replica
           - --query.replica-label=replica
-          - --store=dnssrv+_grpc._tcp.prometheus-thanos-sidecar.monitoring.svc.cluster.local
-          - --store=dnssrv+_grpc._tcp.thanos-store-gateway.monitoring.svc.cluster.local
+          - --endpoint=dnssrv+_grpc._tcp.prometheus-thanos-sidecar.monitoring.svc.cluster.local
+          - --endpoint=dnssrv+_grpc._tcp.thanos-store-gateway.monitoring.svc.cluster.local
         ports:
         - containerPort: 10902
           name: http
@@ -268,7 +268,7 @@ data:
     global:
       external_labels:
         cluster: main
-        prometheus_replica: $(POD_NAME)  # Envsubst by sidecar reloader
+        prometheus_replica: $POD_NAME
 
     scrape_configs:
     - job_name: 'kubernetes-pods'
@@ -276,7 +276,7 @@ data:
       - role: pod
 ```
 
-The sidecar reloader substitutes $(POD_NAME) with the actual pod name, enabling de-duplication.
+Prometheus expands $POD_NAME to the actual pod name, enabling de-duplication.
 
 ## Deploying Thanos Store Gateway
 
