@@ -28,8 +28,8 @@ graph TB
 
 1. **Maximum Resiliency**: Four connections across two Direct Connect locations. Survives the complete failure of any single location.
 2. **High Resiliency**: Two connections at two separate Direct Connect locations. Survives a single location failure.
-3. **Development and Test**: Single connection, no redundancy. Only appropriate for non-production workloads.
-4. **Classic**: Two connections at the same location. Protects against individual connection failures but not location-level events.
+3. **Development and Test**: Separate connections terminating on separate devices in one Direct Connect location. Only appropriate for non-production workloads because it does not protect against location-level events.
+4. **Classic**: A connection ordered outside the Resiliency Toolkit. It can be paired with redundant connections, but the model itself does not provide resiliency or redundancy.
 
 For production workloads, you want at minimum the High Resiliency model.
 
@@ -76,7 +76,8 @@ aws directconnect create-transit-virtual-interface \
     "authKey": "bgp-auth-key-primary",
     "amazonAddress": "169.254.100.1/30",
     "customerAddress": "169.254.100.2/30",
-    "directConnectGatewayId": "dx-gw-0123456789abcdef0"
+    "addressFamily": "ipv4",
+    "directConnectGatewayId": "f07aff53-9814-41bd-8c09-aad589c88e87"
   }'
 
 # Secondary VIF on second connection
@@ -90,7 +91,8 @@ aws directconnect create-transit-virtual-interface \
     "authKey": "bgp-auth-key-secondary",
     "amazonAddress": "169.254.200.1/30",
     "customerAddress": "169.254.200.2/30",
-    "directConnectGatewayId": "dx-gw-0123456789abcdef0"
+    "addressFamily": "ipv4",
+    "directConnectGatewayId": "f07aff53-9814-41bd-8c09-aad589c88e87"
   }'
 ```
 
@@ -170,15 +172,15 @@ You need to test your failover before you actually need it. AWS provides a way t
 Test failover by bringing down the primary BGP session:
 
 ```bash
-# Start a BFD (Bidirectional Forwarding Detection) test
-# by requesting a maintenance event on the primary connection
+# Start a virtual interface failover test by bringing down
+# the primary BGP peering session
 aws directconnect start-bgp-failover-test \
   --virtual-interface-id dxvif-primary123 \
   --bgp-peers 169.254.100.1 \
   --test-duration-in-minutes 5
 
 # Monitor the test
-aws directconnect describe-virtual-interface-test-history \
+aws directconnect list-virtual-interface-test-history \
   --virtual-interface-id dxvif-primary123
 ```
 
@@ -203,9 +205,9 @@ interface GigabitEthernet0/0
 
 AWS supports BFD on Direct Connect with an interval of 300ms and a multiplier of 3, meaning failure is detected in roughly 900ms. That's a massive improvement over the default 90-second BGP hold timer.
 
-## CloudFormation for the Full Stack
+## CloudFormation for the Direct Connect Resources
 
-Here's a comprehensive CloudFormation setup.
+Here's a CloudFormation setup for the Direct Connect gateway and virtual interfaces.
 
 CloudFormation template for resilient Direct Connect:
 
@@ -219,25 +221,30 @@ Parameters:
   SecondaryConnectionId:
     Type: String
   OnPremisesAsn:
-    Type: Number
-    Default: 65000
+    Type: String
+    Default: '65000'
 
 Resources:
   DirectConnectGateway:
     Type: AWS::DirectConnect::DirectConnectGateway
     Properties:
-      Name: resilient-dx-gateway
-      AmazonSideAsn: 64512
+      DirectConnectGatewayName: resilient-dx-gateway
+      AmazonSideAsn: '64512'
 
   PrimaryVIF:
     Type: AWS::DirectConnect::TransitVirtualInterface
     Properties:
       ConnectionId: !Ref PrimaryConnectionId
-      DirectConnectGatewayId: !Ref DirectConnectGateway
+      DirectConnectGatewayId: !GetAtt DirectConnectGateway.DirectConnectGatewayId
       VirtualInterfaceName: primary-transit-vif
-      Asn: !Ref OnPremisesAsn
       Vlan: 100
       Mtu: 8500
+      BgpPeers:
+        - AddressFamily: ipv4
+          Asn: !Ref OnPremisesAsn
+          AuthKey: bgp-auth-key-primary
+          AmazonAddress: 169.254.100.1/30
+          CustomerAddress: 169.254.100.2/30
       Tags:
         - Key: Role
           Value: Primary
@@ -246,11 +253,16 @@ Resources:
     Type: AWS::DirectConnect::TransitVirtualInterface
     Properties:
       ConnectionId: !Ref SecondaryConnectionId
-      DirectConnectGatewayId: !Ref DirectConnectGateway
+      DirectConnectGatewayId: !GetAtt DirectConnectGateway.DirectConnectGatewayId
       VirtualInterfaceName: secondary-transit-vif
-      Asn: !Ref OnPremisesAsn
       Vlan: 200
       Mtu: 8500
+      BgpPeers:
+        - AddressFamily: ipv4
+          Asn: !Ref OnPremisesAsn
+          AuthKey: bgp-auth-key-secondary
+          AmazonAddress: 169.254.200.1/30
+          CustomerAddress: 169.254.200.2/30
       Tags:
         - Key: Role
           Value: Secondary
