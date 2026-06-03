@@ -109,7 +109,7 @@ print(f"Batch job started: {job_arn}")
 
 ## IAM Permissions
 
-Your batch inference role needs specific permissions. Here's the IAM policy.
+Your batch inference role needs a trust policy that lets Amazon Bedrock assume it.
 
 ```json
 {
@@ -117,23 +117,47 @@ Your batch inference role needs specific permissions. Here's the IAM policy.
     "Statement": [
         {
             "Effect": "Allow",
-            "Action": [
-                "bedrock:InvokeModel"
-            ],
-            "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.claude-3-sonnet-20240229-v1:0"
-        },
+            "Principal": {
+                "Service": "bedrock.amazonaws.com"
+            },
+            "Action": "sts:AssumeRole",
+            "Condition": {
+                "StringEquals": {
+                    "aws:SourceAccount": "123456789012"
+                },
+                "ArnEquals": {
+                    "aws:SourceArn": "arn:aws:bedrock:us-east-1:123456789012:model-invocation-job/*"
+                }
+            }
+        }
+    ]
+}
+```
+
+Then attach permissions that let the role read the input data and write the output data.
+
+```json
+{
+    "Version": "2012-10-17",
+    "Statement": [
         {
+            "Sid": "ReadInput",
             "Effect": "Allow",
             "Action": [
-                "s3:GetObject",
-                "s3:ListBucket"
+                "s3:GetObject"
             ],
-            "Resource": [
-                "arn:aws:s3:::my-bedrock-batch-bucket",
-                "arn:aws:s3:::my-bedrock-batch-bucket/batch-jobs/input/*"
-            ]
+            "Resource": "arn:aws:s3:::my-bedrock-batch-bucket/batch-jobs/input/*"
         },
         {
+            "Sid": "ListBucket",
+            "Effect": "Allow",
+            "Action": [
+                "s3:ListBucket"
+            ],
+            "Resource": "arn:aws:s3:::my-bedrock-batch-bucket"
+        },
+        {
+            "Sid": "WriteOutput",
             "Effect": "Allow",
             "Action": [
                 "s3:PutObject"
@@ -143,6 +167,8 @@ Your batch inference role needs specific permissions. Here's the IAM policy.
     ]
 }
 ```
+
+The IAM identity that runs the script also needs permission to create and inspect Bedrock batch jobs, plus `iam:PassRole` for the service role.
 
 ## Monitoring Job Progress
 
@@ -160,15 +186,14 @@ def monitor_batch_job(job_arn):
 
         print(f"[{job_name}] Status: {status}")
 
-        if status == 'Completed':
+        if status in ['Completed', 'PartiallyCompleted']:
             output_uri = response['outputDataConfig']['s3OutputDataConfig']['s3Uri']
             print(f"Job complete! Output at: {output_uri}")
 
-            # Print stats if available
-            if 'stats' in response:
-                stats = response['stats']
-                print(f"  Processed: {stats.get('inputTokenCount', 'N/A')} input tokens")
-                print(f"  Generated: {stats.get('outputTokenCount', 'N/A')} output tokens")
+            print(f"  Total records: {response.get('totalRecordCount', 'N/A')}")
+            print(f"  Processed:     {response.get('processedRecordCount', 'N/A')}")
+            print(f"  Successful:    {response.get('successRecordCount', 'N/A')}")
+            print(f"  Errors:        {response.get('errorRecordCount', 'N/A')}")
 
             return response
 
@@ -179,6 +204,10 @@ def monitor_batch_job(job_arn):
 
         elif status in ['Stopping', 'Stopped']:
             print("Job was stopped")
+            return response
+
+        elif status == 'Expired':
+            print("Job expired before it started. Submit a new job request.")
             return response
 
         # Poll every 30 seconds
