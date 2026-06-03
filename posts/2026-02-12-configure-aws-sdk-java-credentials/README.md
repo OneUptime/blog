@@ -14,13 +14,12 @@ Credential configuration is the first thing you need to get right with the AWS S
 
 When you create a client without specifying credentials, the SDK searches through a chain of providers in this order:
 
-1. Java system properties (`aws.accessKeyId`, `aws.secretAccessKey`)
-2. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`)
-3. Web identity token (for EKS)
-4. Shared credentials file (`~/.aws/credentials`)
-5. AWS config file (`~/.aws/config`)
-6. ECS container credentials
-7. EC2 instance profile credentials
+1. Java system properties (`aws.accessKeyId`, `aws.secretAccessKey`, `aws.sessionToken`)
+2. Environment variables (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`)
+3. Web identity token and IAM role ARN (for EKS)
+4. Shared credentials and config files (`~/.aws/credentials`, `~/.aws/config`)
+5. ECS container credentials
+6. EC2 instance profile credentials
 
 For most applications, you don't need to configure anything explicitly.
 
@@ -54,6 +53,7 @@ export AWS_REGION=us-east-1
 
 ```java
 import software.amazon.awssdk.auth.credentials.EnvironmentVariableCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
 // Explicitly use environment variables (usually not needed since it's in the chain)
@@ -82,6 +82,7 @@ Using a specific profile from the credentials file.
 
 ```java
 import software.amazon.awssdk.auth.credentials.ProfileCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
 // Use the default profile
@@ -105,6 +106,7 @@ You can provide credentials directly. This should only be used in tests, never i
 import software.amazon.awssdk.auth.credentials.StaticCredentialsProvider;
 import software.amazon.awssdk.auth.credentials.AwsBasicCredentials;
 import software.amazon.awssdk.auth.credentials.AwsSessionCredentials;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 
 // Basic credentials (long-term - NOT recommended for production)
@@ -136,6 +138,8 @@ S3Client s3Temp = S3Client.builder()
 Role assumption is the recommended pattern for cross-account access and production deployments.
 
 ```java
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -167,6 +171,8 @@ S3Client s3CrossAccount = S3Client.builder()
 Sometimes you need to assume one role and then assume another from there.
 
 ```java
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.auth.StsAssumeRoleCredentialsProvider;
 import software.amazon.awssdk.services.sts.model.AssumeRoleRequest;
@@ -209,6 +215,8 @@ When running on EC2, the SDK automatically picks up the instance's IAM role. No 
 
 ```java
 import software.amazon.awssdk.auth.credentials.InstanceProfileCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 
 // Explicitly use instance profile credentials (usually auto-detected)
 S3Client s3 = S3Client.builder()
@@ -223,6 +231,8 @@ Similarly, ECS tasks get credentials from their task role automatically.
 
 ```java
 import software.amazon.awssdk.auth.credentials.ContainerCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
 
 S3Client s3 = S3Client.builder()
     .region(Region.US_EAST_1)
@@ -235,6 +245,7 @@ S3Client s3 = S3Client.builder()
 Test your credential configuration by calling STS GetCallerIdentity.
 
 ```java
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sts.StsClient;
 import software.amazon.awssdk.services.sts.model.GetCallerIdentityResponse;
 
@@ -257,6 +268,7 @@ If you're using Spring Boot, the AWS SDK integrates cleanly with dependency inje
 ```java
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
