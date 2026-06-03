@@ -10,7 +10,7 @@ Description: Build CloudWatch Synthetics canaries with Node.js to proactively mo
 
 CloudWatch Synthetics lets you create canaries - automated scripts that run on a schedule to monitor your endpoints and APIs. Think of them as automated health checks that continuously verify your application is working correctly. Instead of waiting for users to report problems, canaries detect issues proactively.
 
-Node.js is one of the two supported runtimes for Synthetics canaries (Python being the other). The Node.js runtime includes the Synthetics library, Puppeteer for browser automation, and the AWS SDK. You can write canaries that check API endpoints, navigate through web applications, verify SSL certificates, and more.
+Node.js is one of the supported languages for Synthetics canaries. The Node.js Puppeteer runtime includes the Synthetics library, Puppeteer for browser automation, and the AWS SDK. You can write canaries that check API endpoints, navigate through web applications, verify SSL certificates, and more.
 
 This guide walks through creating canaries with Node.js, from simple heartbeat checks to complex multi-step browser workflows.
 
@@ -37,8 +37,8 @@ The simplest canary checks if a URL returns a successful response.
 
 ```javascript
 // heartbeat-canary.js
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const heartbeatCanary = async function () {
   // Configure the heartbeat check
@@ -91,6 +91,7 @@ zip -r canary-code.zip nodejs/
 
 # Create an S3 bucket for canary artifacts
 aws s3 mb s3://my-canary-artifacts-123456
+aws s3 cp canary-code.zip s3://my-canary-artifacts-123456/canary-code.zip
 
 # Create the canary
 aws synthetics create-canary \
@@ -98,7 +99,7 @@ aws synthetics create-canary \
   --artifact-s3-location "s3://my-canary-artifacts-123456/heartbeat/" \
   --execution-role-arn arn:aws:iam::123456789012:role/canary-execution-role \
   --schedule '{"Expression": "rate(5 minutes)"}' \
-  --runtime-version syn-nodejs-puppeteer-6.1 \
+  --runtime-version syn-nodejs-puppeteer-15.1 \
   --code '{"S3Bucket": "my-canary-artifacts-123456", "S3Key": "canary-code.zip", "Handler": "heartbeat-canary.handler"}' \
   --run-config '{"TimeoutInSeconds": 60, "MemoryInMBs": 960}'
 
@@ -118,11 +119,19 @@ The canary execution role needs permissions to write to S3, publish CloudWatch m
       "Effect": "Allow",
       "Action": [
         "s3:PutObject",
-        "s3:GetObject",
-        "s3:GetBucketLocation"
+        "s3:GetObject"
       ],
       "Resource": [
         "arn:aws:s3:::my-canary-artifacts-123456/*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetBucketLocation"
+      ],
+      "Resource": [
+        "arn:aws:s3:::my-canary-artifacts-123456"
       ]
     },
     {
@@ -164,9 +173,8 @@ API canaries make HTTP requests and validate the response body, headers, and sta
 
 ```javascript
 // api-canary.js
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
-const https = require('https');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const apiCanary = async function () {
   // Test 1: Check the orders API endpoint
@@ -197,13 +205,14 @@ async function testOrdersEndpoint() {
   await synthetics.executeHttpStep(
     'Verify Orders API',
     requestOptions,
-    (response, body) => {
+    async (response) => {
       // Verify status code
       if (response.statusCode !== 200) {
         throw new Error(`Orders API returned ${response.statusCode}`);
       }
 
       // Parse and validate response body
+      const body = await getResponseBody(response);
       const data = JSON.parse(body);
 
       if (!Array.isArray(data.orders)) {
@@ -249,11 +258,12 @@ async function testUserProfileEndpoint() {
   await synthetics.executeHttpStep(
     'Verify User Profile API',
     requestOptions,
-    (response, body) => {
+    async (response) => {
       if (response.statusCode !== 200) {
         throw new Error(`Profile API returned ${response.statusCode}`);
       }
 
+      const body = await getResponseBody(response);
       const data = JSON.parse(body);
       if (!data.profile || !data.profile.email) {
         throw new Error('Profile response missing expected fields');
@@ -295,6 +305,17 @@ async function testResponseTime() {
   );
 }
 
+function getResponseBody(response) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    response.on('data', (chunk) => {
+      body += chunk;
+    });
+    response.on('end', () => resolve(body));
+    response.on('error', reject);
+  });
+}
+
 exports.handler = async () => {
   return await apiCanary();
 };
@@ -306,8 +327,8 @@ Browser canaries use Puppeteer to simulate real user interactions: clicking butt
 
 ```javascript
 // browser-canary.js
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
 
 const browserCanary = async function () {
   // Launch the browser and navigate to the login page
@@ -343,14 +364,14 @@ const browserCanary = async function () {
     // Type password
     await page.type('#password', process.env.TEST_PASSWORD || 'test-password');
 
-    // Click the login button
-    await page.click('#login-button');
-
-    // Wait for navigation after login
-    await page.waitForNavigation({
-      waitUntil: 'networkidle0',
-      timeout: 15000,
-    });
+    // Click the login button and wait for navigation after login
+    await Promise.all([
+      page.waitForNavigation({
+        waitUntil: 'networkidle0',
+        timeout: 15000,
+      }),
+      page.click('#login-button'),
+    ]);
 
     await synthetics.takeScreenshot('after-login', 'dashboard');
     log.info('Login form submitted');
@@ -453,7 +474,7 @@ For sensitive secrets, store them in Secrets Manager and fetch them in your cana
 
 **Use meaningful step names**: Step names appear in CloudWatch metrics and logs. Make them descriptive enough to identify the failure point.
 
-**Set appropriate timeouts**: Default timeout is 60 seconds. Increase it for complex browser workflows. Decrease it for simple API checks to detect slowdowns faster.
+**Set appropriate timeouts**: If you do not set a timeout, CloudWatch chooses one based on the canary frequency. Increase it for complex browser workflows. Decrease it for simple API checks to detect slowdowns faster.
 
 **Monitor canary costs**: Each canary run costs money (Lambda invocation + S3 storage). A canary running every minute costs more than one running every 5 minutes. Choose the frequency based on how quickly you need to detect issues.
 
