@@ -71,7 +71,7 @@ resource "aws_cloudfront_distribution" "website" {
 
     # Use a managed cache policy
     cache_policy_id          = "658327ea-f89d-4fab-a63d-7e88639e58f6" # CachingOptimized
-    origin_request_policy_id = "88a5eaf4-2f7a-4f8b-9c46-8c48c0a17bf1" # CORS-S3Origin
+    origin_request_policy_id = "88a5eaf4-2fd4-4709-b370-b4c650ea3fcf" # CORS-S3Origin
 
     compress = true
   }
@@ -106,7 +106,7 @@ resource "aws_cloudfront_distribution" "website" {
 }
 ```
 
-The `custom_error_response` blocks are essential for single-page applications. When a user refreshes on `/dashboard`, S3 returns a 404 because there's no `dashboard` object. These rules redirect 403 and 404 errors back to `index.html`, letting your client-side router handle the path.
+The `custom_error_response` blocks are essential for single-page applications. When a user refreshes on `/dashboard`, S3 returns a 403 or 404 because there's no `dashboard` object. These rules return `index.html` with a 200 response for those errors, letting your client-side router handle the path.
 
 ## S3 Bucket Policy for CloudFront
 
@@ -143,7 +143,7 @@ resource "aws_s3_bucket_policy" "website" {
 
 For production, you'll want a custom domain with an SSL certificate. CloudFront requires the ACM certificate to be in `us-east-1`, regardless of where your other resources are.
 
-This sets up a custom domain with a validated ACM certificate:
+This sets up a custom domain with a DNS-validated ACM certificate:
 
 ```hcl
 # ACM certificate must be in us-east-1 for CloudFront
@@ -162,6 +162,34 @@ resource "aws_acm_certificate" "cdn" {
   }
 }
 
+data "aws_route53_zone" "example" {
+  name         = "example.com"
+  private_zone = false
+}
+
+resource "aws_route53_record" "cdn_validation" {
+  for_each = {
+    for dvo in aws_acm_certificate.cdn.domain_validation_options : dvo.domain_name => {
+      name   = dvo.resource_record_name
+      record = dvo.resource_record_value
+      type   = dvo.resource_record_type
+    }
+  }
+
+  allow_overwrite = true
+  name            = each.value.name
+  records         = [each.value.record]
+  ttl             = 60
+  type            = each.value.type
+  zone_id         = data.aws_route53_zone.example.zone_id
+}
+
+resource "aws_acm_certificate_validation" "cdn" {
+  provider                = aws.us_east_1
+  certificate_arn         = aws_acm_certificate.cdn.arn
+  validation_record_fqdns = [for record in aws_route53_record.cdn_validation : record.fqdn]
+}
+
 # Update the distribution to use custom domain
 resource "aws_cloudfront_distribution" "website_custom" {
   # ... same as above, but add:
@@ -169,7 +197,7 @@ resource "aws_cloudfront_distribution" "website_custom" {
   aliases = ["cdn.example.com"]
 
   viewer_certificate {
-    acm_certificate_arn      = aws_acm_certificate.cdn.arn
+    acm_certificate_arn      = aws_acm_certificate_validation.cdn.certificate_arn
     ssl_support_method       = "sni-only"
     minimum_protocol_version = "TLSv1.2_2021"
   }
@@ -184,7 +212,7 @@ For a detailed guide on certificate management, see our post on [managing ACM ce
 
 You can also put CloudFront in front of your API to improve performance globally. This is useful for APIs that serve users across multiple regions.
 
-This sets up CloudFront with an API Gateway or ALB origin:
+This sets up CloudFront with an API Gateway or internet-facing ALB origin:
 
 ```hcl
 # CloudFront in front of an API
@@ -194,7 +222,7 @@ resource "aws_cloudfront_distribution" "api" {
   comment         = "API CDN"
 
   origin {
-    domain_name = "api.internal.example.com"
+    domain_name = "api.example.com"
     origin_id   = "api-origin"
 
     custom_origin_config {
@@ -251,7 +279,7 @@ resource "aws_cloudfront_distribution" "multi" {
 
   # API backend
   origin {
-    domain_name = "api.internal.example.com"
+    domain_name = "api.example.com"
     origin_id   = "api-backend"
 
     custom_origin_config {
