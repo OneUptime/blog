@@ -15,9 +15,9 @@ TopoLVM is a CSI driver that dynamically provisions persistent volumes using LVM
 TopoLVM uses Linux LVM to create logical volumes on demand. Key features:
 
 - **Topology-aware scheduling** - Pods scheduled where storage exists
-- **Thin provisioning** - Efficient disk space usage
+- **Thin provisioning** - Efficient disk space usage with a configured thin pool
 - **Volume expansion** - Grow volumes without downtime
-- **Snapshots** - LVM snapshot support
+- **Snapshots** - LVM thin snapshot support
 - **Multiple volume groups** - Different storage tiers
 
 ## Prerequisites
@@ -49,6 +49,10 @@ sudo vgdisplay topolvm-vg
 Install using Helm:
 
 ```bash
+# Install cert-manager CRDs if you want to install cert-manager with the TopoLVM chart
+CERT_MANAGER_VERSION=v1.17.4
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/${CERT_MANAGER_VERSION}/cert-manager.crds.yaml
+
 # Add TopoLVM Helm repository
 helm repo add topolvm https://topolvm.github.io/topolvm
 helm repo update
@@ -57,6 +61,7 @@ helm repo update
 helm install topolvm topolvm/topolvm \
   --namespace topolvm-system \
   --create-namespace \
+  --set cert-manager.enabled=true \
   --set lvmd.deviceClasses[0].name=ssd \
   --set lvmd.deviceClasses[0].volume-group=topolvm-vg \
   --set lvmd.deviceClasses[0].default=true \
@@ -66,15 +71,21 @@ helm install topolvm topolvm/topolvm \
 kubectl get pods -n topolvm-system
 
 # Expected pods:
-# topolvm-controller (1 replica)
+# topolvm-controller
 # topolvm-node (DaemonSet on storage nodes)
-# topolvm-scheduler (webhook for scheduling)
+# topolvm-lvmd-0 (DaemonSet on storage nodes)
 ```
 
 Or install using kubectl:
 
 ```bash
-kubectl apply -f https://github.com/topolvm/topolvm/releases/latest/download/manifests.yaml
+kubectl create namespace topolvm-system --dry-run=client -o yaml | kubectl apply -f -
+helm template --include-crds --namespace=topolvm-system topolvm topolvm/topolvm \
+  --set cert-manager.enabled=true \
+  --set lvmd.deviceClasses[0].name=ssd \
+  --set lvmd.deviceClasses[0].volume-group=topolvm-vg \
+  --set lvmd.deviceClasses[0].default=true \
+  --set lvmd.deviceClasses[0].spare-gb=10 | kubectl apply -f -
 ```
 
 ## Configuring Storage Classes
@@ -86,9 +97,9 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: topolvm-ssd
-provisioner: topolvm.cybozu.com
+provisioner: topolvm.io
 parameters:
-  "topolvm.cybozu.com/device-class": "ssd"
+  "topolvm.io/device-class": "ssd"
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 reclaimPolicy: Delete
@@ -102,9 +113,9 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: topolvm-fast
-provisioner: topolvm.cybozu.com
+provisioner: topolvm.io
 parameters:
-  "topolvm.cybozu.com/device-class": "nvme"
+  "topolvm.io/device-class": "nvme"
   "csi.storage.k8s.io/fstype": "ext4"
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -114,21 +125,20 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: topolvm-standard
-provisioner: topolvm.cybozu.com
+provisioner: topolvm.io
 parameters:
-  "topolvm.cybozu.com/device-class": "hdd"
+  "topolvm.io/device-class": "hdd"
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 ---
-# Thin-provisioned storage
+# Thin-provisioned storage (requires an lvmd thin device class backed by a pre-created thin pool)
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: topolvm-thin
-provisioner: topolvm.cybozu.com
+provisioner: topolvm.io
 parameters:
-  "topolvm.cybozu.com/device-class": "ssd"
-  "topolvm.cybozu.com/lvcreate-options": "-T"
+  "topolvm.io/device-class": "thin"
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
 ```
@@ -251,7 +261,7 @@ spec:
           mountPath: /var/lib/postgresql/data
 ```
 
-Each replica gets scheduled on nodes with available storage:
+Each replica gets scheduled on a node with available storage:
 
 ```bash
 kubectl apply -f postgres-statefulset.yaml
@@ -259,7 +269,7 @@ kubectl apply -f postgres-statefulset.yaml
 # Watch pod scheduling
 kubectl get pods -l app=postgres -o wide -w
 
-# Each pod is on a different node with available storage capacity
+# Pods are placed on nodes with available storage capacity
 ```
 
 ## Volume Expansion
@@ -289,11 +299,11 @@ apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
   name: topolvm-snapshot
-driver: topolvm.cybozu.com
+driver: topolvm.io
 deletionPolicy: Delete
 ```
 
-Take a snapshot:
+Take a snapshot of a PVC created from a thin-provisioned device class:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -303,7 +313,7 @@ metadata:
 spec:
   volumeSnapshotClassName: topolvm-snapshot
   source:
-    persistentVolumeClaimName: mysql-data-pvc
+    persistentVolumeClaimName: mysql-thin-data-pvc
 ```
 
 Restore from snapshot:
@@ -316,8 +326,8 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  storageClassName: topolvm-ssd
-  dataSource:
+  storageClassName: topolvm-thin
+  dataSourceRef:
     name: mysql-snapshot
     kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
@@ -347,8 +357,7 @@ Monitor from Kubernetes:
 # Check TopoLVM node capacity
 kubectl get nodes -o json | jq '.items[] | {
   name: .metadata.name,
-  capacity: .status.capacity."topolvm.cybozu.com/capacity",
-  allocatable: .status.allocatable."topolvm.cybozu.com/capacity"
+  capacity: .metadata.annotations."capacity.topolvm.io/ssd"
 }'
 
 # View TopoLVM controller logs
@@ -379,8 +388,8 @@ ssh node1 sudo vgs
 # 3. Pod not scheduled
 kubectl describe pod mysql-xxxxx
 
-# Check scheduler logs
-kubectl logs -n topolvm-system -l app.kubernetes.io/component=scheduler
+# Check controller logs
+kubectl logs -n topolvm-system -l app.kubernetes.io/component=controller
 
 # 4. Expansion failed
 # Check LVM capacity
