@@ -12,11 +12,14 @@ Guessing resource requests leads to waste or instability. Vertical Pod Autoscale
 
 ## What Is VPA Recommendation Mode?
 
-VPA has three update modes:
+VPA supports several update modes:
 
 - **Off**: Generate recommendations only, don't update pods
 - **Initial**: Set resources when pods are created, don't update running pods
-- **Auto**: Automatically update running pods (requires restart)
+- **Recreate**: Update pods by evicting and recreating them when recommendations differ significantly
+- **InPlaceOrRecreate**: Try in-place resource updates, then fall back to recreation if needed
+- **InPlace**: Try only in-place resource updates without evicting pods
+- **Auto**: Deprecated alias for Recreate in current VPA releases
 
 Recommendation mode (Off) is safest for production. You get sizing suggestions without surprise pod restarts.
 
@@ -34,7 +37,7 @@ This deploys three components:
 
 - Recommender: Watches usage and generates recommendations
 - Updater: Updates pod resources (not used in Off mode)
-- Admission Controller: Applies recommendations at pod creation
+- Admission Controller: Applies recommendations at pod creation when the update mode allows it
 
 Verify installation:
 
@@ -100,17 +103,17 @@ Recommendation:
 Key fields:
 
 - **Target**: Recommended requests for typical usage
-- **Lower Bound**: Minimum requests to avoid performance issues
-- **Upper Bound**: Maximum requests for peak usage
+- **Lower Bound**: Minimum recommended requests; running below this is likely to affect performance or availability
+- **Upper Bound**: Highest recommended requests; resources above this are likely wasted
 - **Uncapped Target**: Recommendation without any resource constraints
 
 ## Understanding VPA Recommendations
 
-VPA bases recommendations on percentiles of observed usage:
+VPA bases recommendations on historical and current usage, including peaks, variance, and OOM events. With the default recommender, the core estimates are percentile-based:
 
-- **Target**: P50-P90 usage (covers typical load)
-- **Lower Bound**: P5 usage (minimum needed)
-- **Upper Bound**: P95-P99 usage (handles spikes)
+- **Target**: P90 usage by default
+- **Lower Bound**: P50 usage by default
+- **Upper Bound**: P95 usage by default
 
 Use Target for normal workloads, Upper Bound for latency-sensitive apps.
 
@@ -245,12 +248,13 @@ Create a script to compare current requests against VPA recommendations:
 #!/bin/bash
 NAMESPACE=$1
 VPA_NAME=$2
+DEPLOYMENT_NAME=$3
 
 # Get current requests
-CURRENT=$(kubectl get deployment -n $NAMESPACE -o json | jq -r '.items[0].spec.template.spec.containers[0].resources.requests')
+CURRENT=$(kubectl get deployment "$DEPLOYMENT_NAME" -n "$NAMESPACE" -o json | jq -r '.spec.template.spec.containers[0].resources.requests')
 
 # Get VPA target
-TARGET=$(kubectl get vpa $VPA_NAME -n $NAMESPACE -o json | jq -r '.status.recommendation.containerRecommendations[0].target')
+TARGET=$(kubectl get vpa "$VPA_NAME" -n "$NAMESPACE" -o json | jq -r '.status.recommendation.containerRecommendations[0].target')
 
 echo "Current: $CURRENT"
 echo "VPA Target: $TARGET"
@@ -259,7 +263,7 @@ echo "VPA Target: $TARGET"
 Run it:
 
 ```bash
-./compare-vpa.sh production web-app-vpa
+./compare-vpa.sh production web-app-vpa web-app
 ```
 
 ## Monitoring VPA Recommendation Quality
@@ -274,7 +278,7 @@ Stable recommendations indicate VPA has learned the workload. Constantly changin
 
 ## VPA for Batch Jobs
 
-VPA can recommend resources for Jobs and CronJobs:
+VPA can recommend resources for Jobs:
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -291,7 +295,7 @@ spec:
     updateMode: "Off"
 ```
 
-VPA learns from job executions and recommends resources for future runs.
+VPA learns from pods created by that Job and recommends resources for remaining or retried pods.
 
 ## Exporting VPA Recommendations
 
