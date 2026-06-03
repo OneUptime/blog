@@ -189,7 +189,7 @@ resource "kubernetes_pod_disruption_budget_v1" "app" {
   }
 
   spec {
-    min_available = 2
+    min_available = "2"
 
     selector {
       match_labels = {
@@ -322,9 +322,6 @@ resource "kubernetes_ingress_v1" "app" {
     namespace = var.environment
 
     annotations = merge(
-      {
-        "kubernetes.io/ingress.class" = "nginx"
-      },
       var.enable_tls ? {
         "cert-manager.io/cluster-issuer" = "letsencrypt-prod"
       } : {}
@@ -332,6 +329,8 @@ resource "kubernetes_ingress_v1" "app" {
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     dynamic "rule" {
       for_each = [1]
       content {
@@ -458,24 +457,27 @@ locals {
     [{
       name  = "app"
       image = "myapp/app:v1.0"
-      port {
+      ports = [{
         container_port = 8080
-      }
+      }]
+      volume_mounts = []
     }],
     var.enable_service_mesh ? [{
       name  = "envoy"
       image = "envoyproxy/envoy:v1.24.0"
-      port {
+      ports = [{
         container_port = 15001
-      }
+      }]
+      volume_mounts = []
     }] : [],
     var.enable_log_shipper ? [{
       name  = "fluent-bit"
       image = "fluent/fluent-bit:2.0"
-      volume_mount {
+      ports = []
+      volume_mounts = [{
         name       = "logs"
         mount_path = "/var/log"
-      }
+      }]
     }] : []
   )
 }
@@ -510,14 +512,14 @@ resource "kubernetes_deployment" "app" {
             image = container.value.image
 
             dynamic "port" {
-              for_each = try([container.value.port], [])
+              for_each = container.value.ports
               content {
                 container_port = port.value.container_port
               }
             }
 
             dynamic "volume_mount" {
-              for_each = try([container.value.volume_mount], [])
+              for_each = container.value.volume_mounts
               content {
                 name       = volume_mount.value.name
                 mount_path = volume_mount.value.mount_path
