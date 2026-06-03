@@ -10,7 +10,7 @@ Description: A comprehensive guide to setting up AWS Outposts to run native AWS 
 
 Sometimes the cloud is too far away. When you need single-digit millisecond latency to your users or workloads, or when regulatory requirements demand that data stays in a specific physical location, the standard approach of "just put it in an AWS region" doesn't work. AWS Outposts solves this by bringing AWS infrastructure into your own data center.
 
-Outposts is essentially a rack (or partial rack) of AWS-designed hardware that gets installed in your facility. It runs the same AWS services you're used to - EC2, EBS, ECS, RDS, S3, and more - but the compute and storage are physically in your building. It's managed by AWS, connected back to an AWS region, and you use the same APIs, same console, same CloudFormation templates.
+Outposts is essentially a rack of AWS-designed hardware that gets installed in your facility. It runs supported AWS services you're used to - EC2, EBS, ECS, RDS, S3, and more - but the compute and storage are physically in your building. It's managed by AWS, connected back to an AWS region, and you use the same APIs, same console, same CloudFormation templates.
 
 Let's go through how to plan for, order, and set up an Outpost.
 
@@ -29,7 +29,7 @@ If your problem is just "migrating to the cloud is hard," Outposts probably isn'
 
 AWS offers two form factors:
 
-1. **Outposts Rack** - Full 42U racks or partial racks with multiple compute and storage options. This is the original Outposts product.
+1. **Outposts Rack** - Full 42U racks with multiple compute and storage options. This is the original Outposts product.
 2. **Outposts Servers** - 1U or 2U servers for smaller deployments where you don't need a full rack. Good for retail stores, branch offices, or small factory floors.
 
 For this guide, we'll focus on the rack form factor since it supports the widest range of services.
@@ -38,9 +38,9 @@ For this guide, we'll focus on the rack form factor since it supports the widest
 
 Your data center needs to meet specific requirements before AWS will ship hardware. Here's the checklist:
 
-- **Power**: 5-15 kW per rack depending on configuration
+- **Power**: 5, 10, or 15 kVA power configurations per rack depending on configuration
 - **Cooling**: Sufficient HVAC capacity for the heat output
-- **Network**: A minimum 1 Gbps connection to the parent AWS region (10 Gbps recommended). This is called the "service link."
+- **Network**: 1 Gbps, 10 Gbps, 40 Gbps, or 100 Gbps uplinks, with redundant service link connectivity of at least 500 Mbps per compute rack recommended. This is called the "service link."
 - **Physical space**: Standard 42U rack footprint, 600mm wide x 1200mm deep
 - **Physical security**: AWS requires adequate facility security
 
@@ -61,13 +61,20 @@ aws outposts list-catalog-items \
 You'll see options ranging from configurations with a few dozen vCPUs to hundreds of vCPUs with terabytes of storage. Pick the capacity that matches your workload.
 
 ```bash
-# Create an Outpost order
+# Create the Outpost resource
 aws outposts create-outpost \
   --name "factory-floor-outpost" \
   --description "Manufacturing floor compute" \
-  --site-id "your-site-id" \
+  --site-id "os-0abcdef1234567890" \
   --availability-zone "us-east-1a" \
   --supported-hardware-type "RACK"
+
+# Place an order for a catalog item on that Outpost
+aws outposts create-order \
+  --outpost-identifier "op-0abcdef1234567890" \
+  --line-items "CatalogItemId=OR-ABC1234,Quantity=1" \
+  --payment-option "NO_UPFRONT" \
+  --payment-term "THREE_YEARS"
 ```
 
 After ordering, AWS ships the hardware, sends a team to install it, and connects it to your network. The whole process takes a few weeks.
@@ -103,7 +110,7 @@ Outposts extend your VPC. You create subnets that specifically target your Outpo
 aws ec2 create-subnet \
   --vpc-id "vpc-xyz789" \
   --cidr-block "10.0.100.0/24" \
-  --outpost-arn "arn:aws:outposts:us-east-1:123456789:outpost/op-abc123" \
+  --outpost-arn "arn:aws:outposts:us-east-1:123456789012:outpost/op-0abcdef1234567890" \
   --availability-zone "us-east-1a" \
   --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=outpost-subnet}]'
 ```
@@ -132,7 +139,7 @@ aws outposts list-outposts \
   echo "Outpost: $id"
   aws ec2 describe-instance-type-offerings \
     --location-type "outpost" \
-    --filters "Name=location,Values=$id" \
+    --filters "Name=location,Values=arn:aws:outposts:us-east-1:123456789012:outpost/$id" \
     --query "InstanceTypeOfferings[].InstanceType" \
     --output table
 done
@@ -147,10 +154,9 @@ Beyond EC2, you can run several services on Outposts:
 ```bash
 # Create an ECS cluster on the Outpost
 aws ecs create-cluster \
-  --cluster-name "factory-containers" \
-  --capacity-providers "FARGATE"
+  --cluster-name "factory-containers"
 
-# Tasks will run on EC2 instances in the Outpost subnet
+# Fargate is not available on Outposts, so tasks run on EC2 instances in the Outpost subnet
 ```
 
 **Amazon RDS** for local databases:
@@ -161,10 +167,16 @@ aws rds create-db-instance \
   --db-instance-identifier "factory-db" \
   --db-instance-class "db.m5.large" \
   --engine "mysql" \
+  --availability-zone "us-east-1a" \
+  --vpc-security-group-ids "sg-abc123" \
   --master-username "admin" \
-  --master-user-password "your-password" \
+  --manage-master-user-password \
   --db-subnet-group-name "outpost-db-subnet-group" \
-  --allocated-storage 100
+  --allocated-storage 100 \
+  --backup-retention-period 3 \
+  --backup-target "outposts" \
+  --storage-encrypted \
+  --kms-key-id "alias/aws/rds"
 ```
 
 **Amazon S3 on Outposts** for local object storage:
@@ -173,12 +185,13 @@ aws rds create-db-instance \
 # Create an S3 bucket on the Outpost
 aws s3control create-bucket \
   --bucket "factory-data" \
-  --outpost-id "op-abc123"
+  --outpost-id "op-0abcdef1234567890"
 
 # Use S3 access points for data access
 aws s3control create-access-point \
+  --account-id "123456789012" \
   --name "factory-data-ap" \
-  --bucket "arn:aws:s3-outposts:us-east-1:123456789:outpost/op-abc123/bucket/factory-data" \
+  --bucket "arn:aws:s3-outposts:us-east-1:123456789012:outpost/op-0abcdef1234567890/bucket/factory-data" \
   --vpc-configuration "VpcId=vpc-xyz789"
 ```
 
@@ -189,7 +202,7 @@ Outposts send metrics to CloudWatch in the parent region. You can monitor capaci
 ```bash
 # Check Outpost capacity
 aws outposts get-outpost-instance-types \
-  --outpost-id "op-abc123" \
+  --outpost-id "op-0abcdef1234567890" \
   --query "InstanceTypeItems[].InstanceType"
 ```
 
@@ -208,7 +221,7 @@ The service link is critical, so plan for redundancy. Use multiple ISPs or AWS D
 
 ## Cost Model
 
-Outposts uses a subscription model. You commit to a 3-year term and pay either all upfront, partial upfront, or no upfront. There are no per-instance charges - you're paying for the physical hardware capacity. EC2 instances, EBS volumes, and other services running on the Outpost don't incur separate compute charges, though you still pay for things like data transfer to the region.
+Outposts rack capacity uses a subscription model. You commit to a 3-year term and pay either all upfront, partial upfront, or no upfront. You're paying for the physical EC2 and storage capacity rather than on-demand EC2 instance hours. Managed services such as RDS on Outposts can still have service-specific management charges, and you can still pay for related resources such as snapshots, public IP addresses, or data transfer paths that aren't included with the rack.
 
 This makes capacity planning important. You're paying for the full rack whether you use 10% or 100% of it.
 
