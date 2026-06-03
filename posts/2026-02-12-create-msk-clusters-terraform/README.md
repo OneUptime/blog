@@ -36,11 +36,6 @@ resource "aws_msk_cluster" "main" {
     storage_info {
       ebs_storage_info {
         volume_size = 100  # GB per broker
-
-        provisioned_throughput {
-          enabled           = true
-          volume_throughput  = 250  # MiB/s
-        }
       }
     }
 
@@ -123,7 +118,7 @@ Key configuration choices:
 
 Kafka uses several ports for different protocols. Configure the security group based on your authentication method.
 
-This security group allows both plaintext and TLS Kafka traffic plus ZooKeeper:
+This security group allows TLS, SASL/SCRAM, and IAM Kafka traffic plus ZooKeeper:
 
 ```hcl
 resource "aws_security_group" "msk" {
@@ -236,12 +231,35 @@ resource "aws_secretsmanager_secret_version" "kafka_user" {
   })
 }
 
+data "aws_iam_policy_document" "kafka_user" {
+  statement {
+    sid    = "AWSKafkaResourcePolicy"
+    effect = "Allow"
+
+    principals {
+      type        = "Service"
+      identifiers = ["kafka.amazonaws.com"]
+    }
+
+    actions   = ["secretsmanager:getSecretValue"]
+    resources = [aws_secretsmanager_secret.kafka_user.arn]
+  }
+}
+
+resource "aws_secretsmanager_secret_policy" "kafka_user" {
+  secret_arn = aws_secretsmanager_secret.kafka_user.arn
+  policy     = data.aws_iam_policy_document.kafka_user.json
+}
+
 # Associate the secret with the MSK cluster
 resource "aws_msk_scram_secret_association" "main" {
   cluster_arn     = aws_msk_cluster.with_auth.arn
   secret_arn_list = [aws_secretsmanager_secret.kafka_user.arn]
 
-  depends_on = [aws_secretsmanager_secret_version.kafka_user]
+  depends_on = [
+    aws_secretsmanager_secret_policy.kafka_user,
+    aws_secretsmanager_secret_version.kafka_user,
+  ]
 }
 ```
 
@@ -295,15 +313,24 @@ resource "aws_iam_policy" "kafka_producer" {
       {
         Effect = "Allow"
         Action = [
-          "kafka-cluster:Connect",
+          "kafka-cluster:Connect"
+        ]
+        Resource = aws_msk_cluster.iam_auth.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "kafka-cluster:DescribeTopic",
-          "kafka-cluster:WriteData",
+          "kafka-cluster:WriteData"
+        ]
+        Resource = "${replace(aws_msk_cluster.iam_auth.arn, ":cluster/", ":topic/")}/*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
           "kafka-cluster:DescribeGroup"
         ]
-        Resource = [
-          aws_msk_cluster.iam_auth.arn,
-          "${aws_msk_cluster.iam_auth.arn}/*"
-        ]
+        Resource = "${replace(aws_msk_cluster.iam_auth.arn, ":cluster/", ":group/")}/*"
       }
     ]
   })
@@ -343,7 +370,7 @@ MSK Serverless is simpler to set up but only supports IAM authentication and has
 
 ## CloudWatch Monitoring
 
-MSK publishes metrics at three levels of detail. Enhanced monitoring gives you per-broker and per-topic metrics.
+MSK publishes metrics at several levels of detail. Enhanced monitoring gives you per-broker and per-topic metrics.
 
 This enables enhanced monitoring and sets up key alarms:
 
@@ -385,9 +412,11 @@ resource "aws_cloudwatch_log_group" "msk" {
   retention_in_days = 14
 }
 
-# Alarm on under-replicated partitions
+# Alarm on under-replicated partitions per broker
 resource "aws_cloudwatch_metric_alarm" "under_replicated" {
-  alarm_name          = "msk-under-replicated-partitions"
+  for_each = toset(["1", "2", "3"])
+
+  alarm_name          = "msk-under-replicated-partitions-broker-${each.key}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "UnderReplicatedPartitions"
@@ -399,14 +428,17 @@ resource "aws_cloudwatch_metric_alarm" "under_replicated" {
 
   dimensions = {
     "Cluster Name" = aws_msk_cluster.monitored.cluster_name
+    "Broker ID"    = each.key
   }
 
   alarm_actions = [var.sns_topic_arn]
 }
 
-# Alarm on high disk usage
+# Alarm on high disk usage per broker
 resource "aws_cloudwatch_metric_alarm" "disk_usage" {
-  alarm_name          = "msk-high-disk-usage"
+  for_each = toset(["1", "2", "3"])
+
+  alarm_name          = "msk-high-disk-usage-broker-${each.key}"
   comparison_operator = "GreaterThanThreshold"
   evaluation_periods  = 1
   metric_name         = "KafkaDataLogsDiskUsed"
@@ -418,6 +450,7 @@ resource "aws_cloudwatch_metric_alarm" "disk_usage" {
 
   dimensions = {
     "Cluster Name" = aws_msk_cluster.monitored.cluster_name
+    "Broker ID"    = each.key
   }
 
   alarm_actions = [var.sns_topic_arn]
