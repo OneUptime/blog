@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Amazon Rekognition, Video Analysis, Computer Vision
 
-Description: Learn how to analyze video content with Amazon Rekognition for label detection, face tracking, content moderation, and text extraction from video streams.
+Description: Learn how to analyze video content with Amazon Rekognition for label detection, face detection, content moderation, and text extraction from stored videos.
 
 ---
 
-Video analysis with Amazon Rekognition lets you extract insights from stored videos and live streams without building your own computer vision pipeline. You can detect objects and activities, track people across frames, find inappropriate content, and extract text - all through API calls. The service handles the frame-by-frame processing, so you don't have to worry about extracting frames, running inference, or stitching results together.
+Video analysis with Amazon Rekognition lets you extract insights from stored videos and live streams without building your own computer vision pipeline. You can detect objects and activities, detect faces over time, find inappropriate content, and extract text from stored videos - all through API calls. The service handles the frame-by-frame processing, so you don't have to worry about extracting frames, running inference, or stitching results together.
 
 Rekognition Video works in two modes: stored video analysis (for files in S3) and streaming video analysis (for live feeds via Kinesis Video Streams). Let's cover both.
 
@@ -51,7 +51,7 @@ def start_label_detection(bucket, key, sns_topic_arn=None, role_arn=None):
 
 ## Getting Results
 
-Rekognition returns results paginated. Each label detection includes a timestamp so you know exactly when in the video each object appears.
+Rekognition returns results paginated. Each label detection includes a timestamp so you know approximately when in the video each object appears.
 
 ```python
 def get_label_results(job_id):
@@ -114,11 +114,11 @@ for timestamp in sorted(list(results.keys()))[:10]:
 
 ## Face Detection in Videos
 
-Track faces throughout a video, including their attributes at each appearance.
+Detect faces throughout a video, including their attributes at each appearance.
 
 ```python
 def analyze_video_faces(bucket, key):
-    """Detect and track faces throughout a video."""
+    """Detect faces throughout a video."""
     # Start face detection job
     response = rekognition.start_face_detection(
         Video={'S3Object': {'Bucket': bucket, 'Name': key}},
@@ -344,7 +344,7 @@ def create_stream_processor(
 
 ## Building a Video Analysis Pipeline
 
-Here's a complete pipeline that processes uploaded videos with multiple analysis types.
+Here's a pipeline that starts multiple analysis types for uploaded videos and waits for them to complete.
 
 ```python
 class VideoAnalysisPipeline:
@@ -375,6 +375,13 @@ class VideoAnalysisPipeline:
             )
             jobs['moderation'] = resp['JobId']
 
+        if 'faces' in analyses:
+            resp = self.rekognition.start_face_detection(
+                Video={'S3Object': {'Bucket': bucket, 'Name': key}},
+                FaceAttributes='ALL'
+            )
+            jobs['faces'] = resp['JobId']
+
         if 'text' in analyses:
             resp = self.rekognition.start_text_detection(
                 Video={'S3Object': {'Bucket': bucket, 'Name': key}}
@@ -395,6 +402,7 @@ class VideoAnalysisPipeline:
         """Wait for a specific job type to complete."""
         get_methods = {
             'labels': self.rekognition.get_label_detection,
+            'faces': self.rekognition.get_face_detection,
             'moderation': self.rekognition.get_content_moderation,
             'text': self.rekognition.get_text_detection
         }
