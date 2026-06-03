@@ -8,7 +8,7 @@ Description: Learn how to build a demand forecasting system using Amazon Forecas
 
 ---
 
-Demand forecasting is a problem that nearly every business faces. Whether you are predicting inventory levels, staffing needs, server capacity, or sales volume, getting an accurate forecast means the difference between being prepared and scrambling. Amazon Forecast is a fully managed service that takes historical time-series data and produces forecasts using the same machine learning technology that Amazon uses for its own retail demand planning.
+Demand forecasting is a problem that nearly every business faces. Whether you are predicting inventory levels, staffing needs, server capacity, or sales volume, getting an accurate forecast means the difference between being prepared and scrambling. Amazon Forecast is a fully managed service that takes historical time-series data and produces forecasts using the same machine learning technology that Amazon uses for its own retail demand planning. As of July 29, 2024, Amazon Forecast is no longer available to new AWS customers; existing customers can continue using the service normally.
 
 This guide walks through building a demand forecasting system from data preparation to generating and consuming forecasts.
 
@@ -31,7 +31,7 @@ You provide historical data, Forecast trains a predictor, and then you query it 
 Amazon Forecast expects data in a specific format. The minimum required dataset is the Target Time Series, which contains your historical values.
 
 ```csv
-item_id,timestamp,target_value
+item_id,timestamp,demand
 product-001,2025-01-01,150
 product-001,2025-01-02,165
 product-001,2025-01-03,142
@@ -78,29 +78,29 @@ import boto3
 
 forecast = boto3.client('forecast')
 
-# Create dataset group
-forecast.create_dataset_group(
-    DatasetGroupName='product-demand-forecasting',
-    Domain='RETAIL',  # Options: RETAIL, CUSTOM, INVENTORY_PLANNING, etc.
-    DatasetArns=[]
-)
-
 # Create dataset schema
 schema = {
     'Attributes': [
         {'AttributeName': 'item_id', 'AttributeType': 'string'},
         {'AttributeName': 'timestamp', 'AttributeType': 'timestamp'},
-        {'AttributeName': 'target_value', 'AttributeType': 'float'}
+        {'AttributeName': 'demand', 'AttributeType': 'float'}
     ]
 }
 
 # Create dataset
-forecast.create_dataset(
-    DatasetName='product-demand-target',
+dataset_response = forecast.create_dataset(
+    DatasetName='product_demand_target',
     Domain='RETAIL',
     DatasetType='TARGET_TIME_SERIES',
     DataFrequency='D',  # Daily data
     Schema=schema
+)
+
+# Create dataset group and add the dataset to it
+forecast.create_dataset_group(
+    DatasetGroupName='product_demand_forecasting',
+    Domain='RETAIL',  # Options: RETAIL, CUSTOM, INVENTORY_PLANNING, etc.
+    DatasetArns=[dataset_response['DatasetArn']]
 )
 ```
 
@@ -114,12 +114,12 @@ import time
 forecast = boto3.client('forecast')
 
 response = forecast.create_dataset_import_job(
-    DatasetImportJobName='initial-import-2025',
-    DatasetArn='arn:aws:forecast:us-east-1:123456789:dataset/product-demand-target',
+    DatasetImportJobName='initial_import_2025',
+    DatasetArn='arn:aws:forecast:us-east-1:123456789012:dataset/product_demand_target',
     DataSource={
         'S3Config': {
             'Path': 's3://my-forecast-data/data/target_time_series.csv',
-            'RoleArn': 'arn:aws:iam::123456789:role/ForecastS3AccessRole'
+            'RoleArn': 'arn:aws:iam::123456789012:role/ForecastS3AccessRole'
         }
     },
     TimestampFormat='yyyy-MM-dd'
@@ -147,12 +147,11 @@ The predictor is the trained model. Amazon Forecast can automatically select the
 ```python
 # Train a predictor with AutoML
 forecast.create_auto_predictor(
-    PredictorName='product-demand-predictor-v1',
+    PredictorName='product_demand_predictor_v1',
     ForecastHorizon=30,  # Predict 30 days ahead
     ForecastFrequency='D',
-    ForecastDimensions=['item_id'],
     DataConfig={
-        'DatasetGroupArn': 'arn:aws:forecast:us-east-1:123456789:dataset-group/product-demand-forecasting'
+        'DatasetGroupArn': 'arn:aws:forecast:us-east-1:123456789012:dataset-group/product_demand_forecasting'
     },
     ExplainPredictor=True  # Enable Forecast Explainability
 )
@@ -167,7 +166,7 @@ Once training is complete, check the accuracy metrics:
 ```python
 # Get predictor accuracy metrics
 metrics = forecast.get_accuracy_metrics(
-    PredictorArn='arn:aws:forecast:us-east-1:123456789:predictor/product-demand-predictor-v1'
+    PredictorArn='arn:aws:forecast:us-east-1:123456789012:predictor/product_demand_predictor_v1'
 )
 
 for window in metrics['PredictorEvaluationResults']:
@@ -193,8 +192,8 @@ Key metrics to watch:
 forecast_client = boto3.client('forecast')
 
 response = forecast_client.create_forecast(
-    ForecastName='product-demand-jan-2026',
-    PredictorArn='arn:aws:forecast:us-east-1:123456789:predictor/product-demand-predictor-v1',
+    ForecastName='product_demand_jan_2026',
+    PredictorArn='arn:aws:forecast:us-east-1:123456789012:predictor/product_demand_predictor_v1',
     ForecastTypes=['0.10', '0.50', '0.90']  # Quantiles
 )
 
@@ -248,12 +247,12 @@ forecast = boto3.client('forecast')
 
 def export_forecast(forecast_arn, bucket, prefix):
     response = forecast.create_forecast_export_job(
-        ForecastExportJobName='weekly-export',
+        ForecastExportJobName='weekly_export',
         ForecastArn=forecast_arn,
         Destination={
             'S3Config': {
                 'Path': f's3://{bucket}/{prefix}/',
-                'RoleArn': 'arn:aws:iam::123456789:role/ForecastExportRole'
+                'RoleArn': 'arn:aws:iam::123456789012:role/ForecastExportRole'
             }
         }
     )
@@ -278,15 +277,18 @@ product-001,2025-01-03,19.99,1
 
 Amazon Forecast automatically learns the relationship between these factors and your target values.
 
+For forward-looking related time series such as planned prices or promotions, include values through the forecast horizon so Forecast can use them when generating future predictions.
+
 ## Cost Considerations
 
 Amazon Forecast pricing is based on:
+- Imported data
 - Training hours (varies by data size and number of algorithms tested)
-- Forecast storage
-- Number of forecast queries
+- Generated forecast data points
+- Forecast explanations, if enabled
 - Data storage
 
-For a typical use case with a few thousand items and daily data, expect training costs of $10-50 per run. Forecast queries are cheap at $0.60 per 1000 units. The biggest cost driver is running AutoML on large datasets, so consider using a specific algorithm once you know what works for your data.
+Training is charged per infrastructure hour, and generated forecasts are charged per 1,000 forecast data points based on the number of time series, quantiles, and forecast horizon time points. The legacy `$0.60 per 1,000 time series` charge applies to forecasts generated from predictors trained with the legacy `CreatePredictor` API, not to the AutoPredictor flow shown here. Use the AWS Pricing Calculator for an accurate estimate for your dataset size, forecast horizon, quantiles, and explainability settings.
 
 Monitor your forecast pipeline health alongside your other systems. For comprehensive observability across your forecasting infrastructure and beyond, tools like [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-time-series-dashboard-for-iot-on-aws/view) can help you track pipeline execution and catch failures early.
 
