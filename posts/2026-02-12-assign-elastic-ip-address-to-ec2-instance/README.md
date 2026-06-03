@@ -71,7 +71,7 @@ aws ec2 associate-address \
     --instance-id i-0123456789abcdef0
 ```
 
-If the instance already has a public IP, the association replaces it. If you want to reassociate an EIP that's already attached to another instance, add `--allow-reassociation`:
+If the instance already has a public IP, the association replaces it. Reassociation is automatic by default; if you want the command to fail when the EIP is already attached to another resource, use `--no-allow-reassociation`. To be explicit when moving an Elastic IP from one instance to another, you can include `--allow-reassociation`:
 
 ```bash
 # Move an Elastic IP from one instance to another
@@ -111,7 +111,7 @@ Elastic IP pricing changed in February 2024. Here's what you need to know:
 
 **Elastic IPs associated with running instances**: $0.005 per hour (roughly $3.60/month per EIP). This applies to ALL public IPv4 addresses on AWS, not just Elastic IPs.
 
-**Elastic IPs NOT associated with any instance**: Additional charge on top of the base rate. AWS charges more for idle Elastic IPs to discourage hoarding.
+**Elastic IPs NOT associated with any instance**: $0.005 per hour. AWS now charges the same hourly public IPv4 rate for idle Elastic IPs and in-use public IPv4 addresses.
 
 **Elastic IPs on stopped instances**: Also incur the idle charge. If you stop an instance, its Elastic IP keeps costing you.
 
@@ -138,7 +138,7 @@ aws ec2 release-address \
     --allocation-id eipalloc-0123456789abcdef0
 ```
 
-Once released, the IP address goes back into Amazon's pool. You can't get the same IP back, so only release it if you're sure you don't need it.
+Once released, the IP address goes back into Amazon's pool. You might be able to recover it if it hasn't been allocated to another AWS account yet, but don't count on getting the same IP back. Only release it if you're sure you don't need it.
 
 ## Using Elastic IPs for DNS
 
@@ -177,7 +177,7 @@ aws ec2 associate-address \
     --network-interface-id eni-0123456789abcdef0
 ```
 
-When you associate with an ENI, you can move the entire network interface (with its Elastic IP, private IP, and security groups) from one instance to another. This is useful for high-availability setups where a failover instance needs to take over the exact network identity of the failed instance.
+When you associate with a secondary ENI, you can move the entire network interface (with its Elastic IP, private IP, and security groups) from one instance to another in the same Availability Zone. This is useful for high-availability setups where a failover instance needs to take over the exact network identity of the failed instance.
 
 ## Failover Pattern
 
