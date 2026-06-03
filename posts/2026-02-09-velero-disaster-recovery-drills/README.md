@@ -39,10 +39,10 @@ echo "Operator: $USER"
 
 echo ""
 echo "Step 1: Checking latest backup..."
-LATEST_BACKUP=$(velero backup get -o json | jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')
+LATEST_BACKUP=$(velero backup get -o json | jq -r '.items | map(select(.status.phase == "Completed")) | sort_by(.metadata.creationTimestamp) | last | .metadata.name // empty')
 
 if [ -z "$LATEST_BACKUP" ]; then
-  echo "ERROR: No backups found"
+  echo "ERROR: No completed backups found"
   exit 1
 fi
 
@@ -118,7 +118,8 @@ spec:
           serviceAccountName: velero
           containers:
           - name: dr-drill
-            image: velero/velero:latest
+            # Use a purpose-built image that includes bash, jq, kubectl, and the Velero CLI.
+            image: your-registry/velero-drill-runner:latest
             command:
             - /bin/bash
             - -c
@@ -127,7 +128,12 @@ spec:
 
               # Get latest production backup
               BACKUP=$(velero backup get -l environment=production -o json | \
-                jq -r '.items | sort_by(.metadata.creationTimestamp) | last | .metadata.name')
+                jq -r '.items | map(select(.status.phase == "Completed")) | sort_by(.metadata.creationTimestamp) | last | .metadata.name // empty')
+
+              if [ -z "$BACKUP" ]; then
+                echo "ERROR: No completed production backups found"
+                exit 1
+              fi
 
               echo "Testing backup: $BACKUP"
 
@@ -223,7 +229,7 @@ class DRDrill:
         if phase != 'Completed':
             raise Exception(f"Backup status is {phase}, not Completed")
 
-        self.results['backup_items'] = backup_data['status']['totalItems']
+        self.results['backup_items'] = backup_data.get('status', {}).get('progress', {}).get('totalItems', 0)
         print(f"✓ Backup verified: {self.results['backup_items']} items")
 
     def create_test_namespace(self):
@@ -545,25 +551,27 @@ jobs:
   dr-drill:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Configure kubectl
       run: |
         echo "${{ secrets.KUBECONFIG }}" > kubeconfig
-        export KUBECONFIG=kubeconfig
+        chmod 600 kubeconfig
+        echo "KUBECONFIG=${{ github.workspace }}/kubeconfig" >> "$GITHUB_ENV"
 
     - name: Install Velero CLI
       run: |
-        wget https://github.com/vmware-tanzu/velero/releases/latest/download/velero-linux-amd64.tar.gz
-        tar -xvf velero-linux-amd64.tar.gz
-        sudo mv velero-linux-amd64/velero /usr/local/bin/
+        VELERO_VERSION=$(curl -s https://api.github.com/repos/velero-io/velero/releases/latest | jq -r .tag_name)
+        curl -LO "https://github.com/velero-io/velero/releases/download/${VELERO_VERSION}/velero-${VELERO_VERSION}-linux-amd64.tar.gz"
+        tar -xvf "velero-${VELERO_VERSION}-linux-amd64.tar.gz"
+        sudo mv "velero-${VELERO_VERSION}-linux-amd64/velero" /usr/local/bin/
 
     - name: Run DR Drill
       run: |
         ./scripts/dr-drill.sh production dr-test-$(date +%s)
 
     - name: Upload Drill Report
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: dr-drill-report
         path: /tmp/dr-drill-*.txt
