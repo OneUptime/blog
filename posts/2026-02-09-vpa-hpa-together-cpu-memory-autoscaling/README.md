@@ -75,7 +75,7 @@ HPA handles traffic-based scaling, VPA recommends memory sizing.
 
 ## VPA in Recommendation Mode with HPA
 
-Always use VPA updateMode Off or Initial with HPA, never Auto:
+For a low-disruption setup with HPA, use VPA updateMode Off or Initial. Avoid Auto, which is deprecated; use explicit update modes such as Recreate or InPlaceOrRecreate only after confirming the VPA and HPA are not targeting the same resource metric:
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -88,7 +88,7 @@ spec:
     kind: Deployment
     name: app
   updatePolicy:
-    updateMode: "Off"  # Critical: Never use Auto with HPA
+    updateMode: "Off"  # Recommendation only; Auto is deprecated
 ```
 
 Review VPA recommendations periodically and apply manually during maintenance windows.
@@ -232,7 +232,7 @@ Watch for conflicts:
 kubectl get hpa app-hpa -n production --watch
 
 # Monitor events
-kubectl get events -n production --sort-by='.lastTimestamp'
+kubectl get events -n production --sort-by='.metadata.creationTimestamp'
 ```
 
 ## Applying VPA Recommendations with HPA
@@ -280,7 +280,7 @@ When HPA scales up, new pods get VPA's recommended memory requests. Existing pod
 
 ## Best Practices
 
-- Never use VPA Auto mode with HPA
+- Avoid deprecated VPA Auto mode; use explicit VPA update modes
 - Split metrics: HPA on CPU or custom metrics, VPA on memory
 - Use VPA Off mode with periodic manual updates
 - Or use VPA Initial mode to set resources for new pods
@@ -301,6 +301,12 @@ kind: HorizontalPodAutoscaler
 metadata:
   name: app-hpa
 spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app
+  minReplicas: 2
+  maxReplicas: 10
   metrics:
   - type: Resource
     resource:
@@ -314,8 +320,12 @@ kind: VerticalPodAutoscaler
 metadata:
   name: app-vpa
 spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: app
   updatePolicy:
-    updateMode: "Auto"  # Bad: Conflicts with HPA
+    updateMode: "Auto"  # Bad: deprecated and conflicts with HPA on CPU
   resourcePolicy:
     containerPolicies:
     - containerName: app
@@ -326,10 +336,10 @@ This causes scaling thrash.
 
 ## Alternative: KEDA for Advanced Autoscaling
 
-For complex scaling scenarios, consider KEDA (Kubernetes Event Driven Autoscaling):
+For complex horizontal scaling scenarios, consider KEDA (Kubernetes Event Driven Autoscaling):
 
 - Scales on diverse event sources (Kafka, Redis, Prometheus)
-- Better separation of concerns than HPA+VPA
+- Separates event-driven horizontal scaling from VPA resource sizing
 - Handles both scale-to-zero and scale-up
 
 ```yaml
@@ -346,9 +356,8 @@ spec:
   - type: prometheus
     metadata:
       serverAddress: http://prometheus:9090
-      metricName: http_requests_per_second
       threshold: '100'
-      query: rate(http_requests_total[1m])
+      query: sum(rate(http_requests_total[1m]))
 ```
 
 ## Real-World Example: E-commerce API
@@ -463,4 +472,4 @@ HPA handles traffic spikes, VPA recommends memory sizing, PDB ensures availabili
 
 ## Conclusion
 
-VPA and HPA can coexist if configured carefully. Use HPA for horizontal scaling based on CPU or custom metrics, and VPA in Off or Initial mode for memory sizing. Never use VPA Auto mode with HPA, and avoid targeting the same metric with both autoscalers. Monitor both systems for conflicts, apply VPA recommendations manually during maintenance windows, and test configurations thoroughly in staging. The combination provides both traffic-responsive scaling and data-driven resource sizing.
+VPA and HPA can coexist if configured carefully. Use HPA for horizontal scaling based on CPU or custom metrics, and VPA in Off or Initial mode for memory sizing. Avoid deprecated VPA Auto mode, and avoid targeting the same metric with both autoscalers. Monitor both systems for conflicts, apply VPA recommendations manually during maintenance windows, and test configurations thoroughly in staging. The combination provides both traffic-responsive scaling and data-driven resource sizing.
