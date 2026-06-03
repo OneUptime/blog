@@ -16,7 +16,7 @@ IRSA works through OIDC token exchange. Your EKS cluster exposes an OIDC endpoin
 
 The flow works like this: the pod reads its ServiceAccount token from the mounted volume. The AWS SDK detects the token and environment variables injected by the IRSA webhook. The SDK calls AWS STS AssumeRoleWithWebIdentity with the token. AWS validates the token and returns temporary credentials. The pod uses these credentials to access AWS services.
 
-This provides several benefits. No static credentials means no credentials to rotate or secure. Permissions are defined in IAM policies, leveraging existing AWS tooling. Tokens expire automatically, limiting exposure. Audit trails in CloudTrail show which pod accessed which resource.
+This provides several benefits. No static credentials means no credentials to rotate or secure. Permissions are defined in IAM policies, leveraging existing AWS tooling. Tokens expire automatically, limiting exposure. Audit trails in CloudTrail show which IAM role and ServiceAccount identity accessed AWS resources.
 
 ## Setting Up IRSA Prerequisites
 
@@ -107,7 +107,7 @@ metadata:
     eks.amazonaws.com/token-expiration: "86400"
 ```
 
-The role-arn annotation tells the IRSA webhook which IAM role to use. The sts-regional-endpoints annotation improves performance by using regional STS endpoints. The token-expiration controls credential lifetime.
+The role-arn annotation tells the IRSA webhook which IAM role to use. The sts-regional-endpoints annotation improves performance by using regional STS endpoints. The token-expiration controls the projected ServiceAccount token lifetime. STS credentials are temporary and default to one hour unless you configure a different session duration within the role's maximum session duration.
 
 Apply the ServiceAccount:
 
@@ -376,6 +376,12 @@ aws iam create-role \
     --assume-role-policy-document file://cross-account-trust-policy.json \
     --profile target-account
 
+# Attach permissions to the target account role
+aws iam attach-role-policy \
+    --role-name cross-account-s3-access \
+    --policy-arn arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess \
+    --profile target-account
+
 # Grant the source role permission to assume the target role
 cat > assume-role-policy.json <<EOF
 {
@@ -458,7 +464,7 @@ aws cloudtrail lookup-events \
 
 Follow the principle of least privilege:
 
-```bash
+```text
 # Good: Specific resource access
 {
   "Effect": "Allow",
@@ -482,16 +488,18 @@ Use condition keys to further restrict access:
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": "s3:GetObject",
-      "Resource": "arn:aws:s3:::my-bucket/*",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::my-bucket",
       "Condition": {
-        "StringEquals": {
-          "aws:SourceAccount": "123456789012"
-        },
-        "IpAddress": {
-          "aws:SourceIp": ["10.0.0.0/8"]
+        "StringLike": {
+          "s3:prefix": ["app-data/*"]
         }
       }
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::my-bucket/app-data/*"
     }
   ]
 }
