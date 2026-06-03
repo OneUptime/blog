@@ -14,7 +14,7 @@ cfn-lint is an open-source tool that validates CloudFormation templates against 
 
 ## Installing cfn-lint
 
-The easiest way to install cfn-lint is through pip. It works on Python 3.8 and above.
+The easiest way to install cfn-lint is through pip. It works on Python 3.10 through 3.14.
 
 ```bash
 # Install cfn-lint via pip
@@ -32,11 +32,14 @@ If you prefer using Homebrew on macOS, that works too.
 brew install cfn-lint
 ```
 
-For Docker users, there's an official image available.
+For Docker users, the cfn-lint repository includes a Dockerfile you can build from source.
 
 ```bash
-# Run cfn-lint from Docker
-docker run --rm -v $(pwd):/data cfn-lint /data/template.yaml
+# Build the cfn-lint image from the cfn-lint source tree
+docker build --tag cfn-lint:latest .
+
+# Run cfn-lint from Docker in your template repository
+docker run --rm -v $(pwd):/data cfn-lint:latest /data/template.yaml
 ```
 
 ## Basic Usage
@@ -82,11 +85,11 @@ When you run cfn-lint against this template, you'll get clear error messages.
 ```bash
 # Running cfn-lint shows the errors with line numbers
 $ cfn-lint bad-template.yaml
-E3002 Invalid Property Resources/MyBucket/Properties/InvalidProperty
+E3002 Additional properties are not allowed ('InvalidProperty' was unexpected)
   bad-template.yaml:11:7
 
-E3003 Property ImageId missing at Resources/MyInstance
-  bad-template.yaml:14:5
+E3673 'ImageId' is a required property
+  bad-template.yaml:15:5
 ```
 
 Each error comes with a rule ID (like E3002), a description, and the exact location in your file. The prefix tells you the severity - E for errors, W for warnings, and I for informational messages.
@@ -117,7 +120,7 @@ cfn-lint --list-rules | grep E30
 
 ## Configuring cfn-lint
 
-For projects with specific requirements, you can create a configuration file. cfn-lint looks for `.cfnlintrc` in your project root.
+For projects with specific requirements, you can create a configuration file. cfn-lint looks for `.cfnlintrc`, `.cfnlintrc.yaml`, or `.cfnlintrc.yml` in the current working directory, and then for `~/.cfnlintrc`.
 
 ```yaml
 # .cfnlintrc - cfn-lint configuration file
@@ -155,28 +158,29 @@ Resources:
       cfn-lint:
         config:
           ignore_checks:
-            - W3045  # Suppress specific warning
+            - W3045  # Suppress legacy AccessControl warning
     Properties:
-      BucketName: my-hardcoded-bucket-name
+      AccessControl: Private
 ```
 
 ## Writing Custom Rules
 
-One of cfn-lint's most powerful features is the ability to write custom rules. This lets you enforce organization-specific standards. Custom rules are Python classes that extend the CloudFormationLintRule base class.
+One of cfn-lint's most powerful features is the ability to add custom checks. This lets you enforce organization-specific standards. For advanced checks, you can append Python rule classes that extend the CloudFormationLintRule base class.
 
 ```python
 # custom-rules/require_tags.py
-# Custom rule that requires specific tags on all taggable resources
+# Custom rule that requires specific tags on selected taggable resources
 from cfnlint.rules import CloudFormationLintRule, RuleMatch
 
 class RequireTags(CloudFormationLintRule):
     id = "E9001"
     shortdesc = "Required tags missing"
-    description = "All taggable resources must have Name and Environment tags"
+    description = "Selected taggable resources must have Name, Environment, and Team tags"
     source_url = "https://example.com/tagging-policy"
     tags = ["custom", "tags"]
 
     REQUIRED_TAGS = ["Name", "Environment", "Team"]
+    TAGGABLE_RESOURCE_TYPES = {"AWS::S3::Bucket", "AWS::EC2::Instance"}
 
     def match(self, cfn):
         matches = []
@@ -184,6 +188,9 @@ class RequireTags(CloudFormationLintRule):
 
         for resource_name, resource_obj in resources.items():
             resource_type = resource_obj.get("Type", "")
+            if resource_type not in self.TAGGABLE_RESOURCE_TYPES:
+                continue
+
             properties = resource_obj.get("Properties", {})
             tags = properties.get("Tags", [])
 
@@ -253,19 +260,22 @@ jobs:
         run: pip install cfn-lint
 
       - name: Run cfn-lint
-        run: cfn-lint cloudformation/**/*.yaml
+        run: |
+          shopt -s globstar
+          cfn-lint cloudformation/**/*.yaml
 ```
 
 For more complex setups, you can output results in SARIF format, which integrates directly with GitHub's code scanning.
 
 ```bash
 # Generate SARIF output for GitHub code scanning
-cfn-lint templates/*.yaml -f sarif -o results.sarif
+pip install "cfn-lint[sarif]"
+cfn-lint templates/*.yaml -f sarif --output-file results.sarif
 ```
 
 ## Common Gotchas
 
-There are a few things that trip people up when using cfn-lint. First, intrinsic functions like `!Ref` and `!Sub` are evaluated during linting. cfn-lint understands these and traces values through references. But it can't resolve dynamic values from SSM Parameter Store or imported values from other stacks.
+There are a few things that trip people up when using cfn-lint. First, intrinsic functions like `!Ref` and `!Sub` are evaluated on a best-effort basis during linting. cfn-lint understands these and traces many values through references. But it can't resolve dynamic values from SSM Parameter Store or imported values from other stacks.
 
 Second, if you're using CloudFormation macros or transforms (like AWS::Serverless), you'll need the corresponding transform support. cfn-lint handles SAM transforms natively, but custom macros won't be expanded.
 
