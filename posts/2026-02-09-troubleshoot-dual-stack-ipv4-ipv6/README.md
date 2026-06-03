@@ -12,7 +12,7 @@ Dual-stack networking allows Kubernetes clusters to support both IPv4 and IPv6 s
 
 ## Understanding Dual-Stack Networking
 
-In dual-stack mode, pods and services receive both IPv4 and IPv6 addresses. This allows gradual migration from IPv4 to IPv6 while maintaining backward compatibility. The CNI plugin, kube-proxy, and services must all support dual-stack for it to function properly.
+In dual-stack mode, pods receive both IPv4 and IPv6 addresses, and services can receive both IPv4 and IPv6 cluster IPs when configured for dual-stack. This allows gradual migration from IPv4 to IPv6 while maintaining backward compatibility. The CNI plugin, kube-proxy, and services must all support dual-stack for it to function properly.
 
 ## Verifying Dual-Stack Configuration
 
@@ -27,15 +27,16 @@ kubectl cluster-info dump | grep -i "service-cluster-ip-range\|cluster-cidr"
 # --service-cluster-ip-range=10.96.0.0/12,fd00:1234::/112
 # --cluster-cidr=10.244.0.0/16,fd00:5678::/48
 
-# Check feature gate
-kubectl get nodes -o yaml | grep -A 5 "kubeletConfigKey"
+# Kubernetes dual-stack is stable and enabled by default in current releases.
+# On bare-metal clusters, also verify kubelet node IP configuration:
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{" "}{end}{"\n"}{end}'
 ```
 
 Verify your nodes support dual-stack:
 
 ```bash
 # Check node addresses
-kubectl get nodes -o custom-columns='NAME:.metadata.name,IPv4:.status.addresses[?(@.type=="InternalIP")].address,IPv6:.status.addresses[1].address'
+kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{range .status.addresses[?(@.type=="InternalIP")]}{.address}{" "}{end}{"\n"}{end}'
 
 # Check pod CIDR allocations
 kubectl get nodes -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.podCIDR}{"\t"}{.spec.podCIDRs}{"\n"}{end}'
@@ -123,11 +124,11 @@ Check service IP family configuration:
 kubectl get svc my-dualstack-service -o yaml
 
 # Check ClusterIPs
-kubectl get svc my-dualstack-service -o jsonpath='{.spec.clusterIPs}'
+kubectl get svc my-dualstack-service -o json | jq '.spec.clusterIPs'
 # Should show: ["10.96.100.50", "fd00:1234::50"]
 
 # Verify IP families
-kubectl get svc my-dualstack-service -o jsonpath='{.spec.ipFamilies}'
+kubectl get svc my-dualstack-service -o json | jq '.spec.ipFamilies'
 # Should show: ["IPv4", "IPv6"]
 ```
 
@@ -139,10 +140,10 @@ SERVICE_IPV4=$(kubectl get svc my-dualstack-service -o jsonpath='{.spec.clusterI
 SERVICE_IPV6=$(kubectl get svc my-dualstack-service -o jsonpath='{.spec.clusterIPs[1]}')
 
 # Test IPv4 service access
-kubectl exec dualstack-debug -- curl http://$SERVICE_IPV4
+kubectl exec dualstack-debug -- curl "http://$SERVICE_IPV4/"
 
 # Test IPv6 service access (note brackets for IPv6 in URLs)
-kubectl exec dualstack-debug -- curl http://[$SERVICE_IPV6]
+kubectl exec dualstack-debug -- curl "http://[$SERVICE_IPV6]/"
 ```
 
 ## CNI Plugin Configuration
@@ -223,7 +224,7 @@ kube-proxy must handle both address families:
 
 ```bash
 # Check kube-proxy configuration
-kubectl -n kube-system get cm kube-proxy -o yaml | grep -i "cluster-cidr\|service-cluster-ip-range"
+kubectl -n kube-system get cm kube-proxy -o yaml | grep -i "clusterCIDR\|cluster-cidr"
 
 # View kube-proxy logs
 kubectl -n kube-system logs -l k8s-app=kube-proxy --tail=100 | grep -i ipv6
@@ -233,11 +234,8 @@ For IPVS mode, verify virtual servers for both families:
 
 ```bash
 # SSH to a node
-# Check IPv4 virtual servers
-sudo ipvsadm -L -n -t
-
-# Check IPv6 virtual servers
-sudo ipvsadm -L -n -t -6
+# List virtual servers; IPv6 services appear with bracketed addresses
+sudo ipvsadm -L -n
 ```
 
 ## Node-Level Troubleshooting
@@ -351,15 +349,15 @@ kubectl get nodes -o jsonpath='{.items[0].spec.podCIDRs}'
 # --cluster-cidr=10.244.0.0/16,fd00:5678::/48
 ```
 
-### Issue 2: IPv6 Connectivity Works, IPv4 Does Not
+### Issue 2: Service Resolves to an Unexpected Address Family
 
 ```bash
-# Check IP family preference in service
-kubectl get svc my-service -o jsonpath='{.spec.ipFamilies[0]}'
+# Check IP family order in service
+kubectl get svc my-service -o json | jq '.spec.ipFamilyPolicy, .spec.ipFamilies, .spec.clusterIPs'
 
-# If IPv6 is first, clients might prefer it
-# Reorder IP families if needed:
-kubectl patch svc my-service -p '{"spec":{"ipFamilies":["IPv4","IPv6"]}}'
+# The first family is the primary family and controls the legacy clusterIP field.
+# You can add or remove a secondary family, but you cannot change the primary
+# family of an existing service. Recreate the service if the primary family is wrong.
 ```
 
 ### Issue 3: External IPv6 Traffic Cannot Reach Pods
