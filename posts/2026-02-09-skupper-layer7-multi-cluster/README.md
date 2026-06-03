@@ -24,16 +24,16 @@ This enables service-to-service communication without pod IP accessibility or DN
 
 ## Installing Skupper CLI
 
-Install the skupper command-line tool:
+Install the skupper command-line tool. The examples in this guide use the Skupper v1 CLI:
 
 ```bash
 # Linux
 
-curl -fL https://github.com/skupperproject/skupper/releases/download/1.5.0/skupper-cli-1.5.0-linux-amd64.tgz | tar -xzf -
+curl -fL https://github.com/skupperproject/skupper/releases/download/1.9.5/skupper-cli-1.9.5-linux-amd64.tgz | tar -xzf -
 sudo install skupper /usr/local/bin/
 
 # macOS
-curl -fL https://github.com/skupperproject/skupper/releases/download/1.5.0/skupper-cli-1.5.0-mac-amd64.tgz | tar -xzf -
+curl -fL https://github.com/skupperproject/skupper/releases/download/1.9.5/skupper-cli-1.9.5-mac-amd64.tgz | tar -xzf -
 sudo install skupper /usr/local/bin/
 
 # Verify
@@ -235,7 +235,7 @@ kubectl exec -it deployment/frontend -- curl http://api-service:8080
 
 ## Working with Headless Services
 
-Expose a headless service for direct pod access:
+Expose a StatefulSet through a headless service for direct pod access:
 
 ```yaml
 apiVersion: v1
@@ -261,7 +261,7 @@ kubectl apply -f database-headless.yaml --context cluster-2
 Expose with Skupper:
 
 ```bash
-skupper expose service/database --headless
+skupper expose statefulset/database --headless --port 5432
 ```
 
 Skupper creates proxy pods for each backend pod endpoint.
@@ -285,14 +285,14 @@ Deploy the same service in multiple clusters for redundancy:
 ```bash
 # In cluster-1
 kubectl apply -f api-deployment.yaml
-skupper expose deployment/api --port 8080
+skupper expose deployment/api --port 8080 --protocol http
 
 # In cluster-2
 kubectl apply -f api-deployment.yaml
-skupper expose deployment/api --port 8080
+skupper expose deployment/api --port 8080 --protocol http
 ```
 
-Skupper automatically load-balances requests across all instances in all clusters.
+Skupper automatically load-balances HTTP requests across all instances in all clusters.
 
 Check service targets:
 
@@ -364,9 +364,6 @@ spec:
   - Ingress
   ingress:
   - from:
-    - namespaceSelector:
-        matchLabels:
-          name: default
     - podSelector:
         matchLabels:
           application: skupper-router
@@ -379,7 +376,7 @@ This allows only Skupper routers to access backend pods.
 
 ## Creating Site-to-Site Connections
 
-For three clusters, create a mesh topology:
+For three clusters, create a connected topology:
 
 ```bash
 # Cluster-1 creates token
@@ -396,7 +393,7 @@ skupper link create ~/token-cluster1.yaml --name link-to-cluster1
 skupper link create ~/token-cluster2.yaml --name link-to-cluster2
 ```
 
-This creates a fully connected mesh where all clusters can reach services in any other cluster.
+This creates a connected network where all clusters can reach services in any other cluster. To create a fully connected mesh, add a direct link for every pair of clusters.
 
 ## Handling Connection Failures
 
@@ -425,16 +422,32 @@ skupper link status
 Skupper works alongside service meshes like Istio:
 
 ```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        sidecar.istio.io/inject: "false"
+    spec:
+      containers:
+      - name: backend
+        image: backend:v1
+        ports:
+        - containerPort: 8080
+---
 apiVersion: v1
 kind: Service
 metadata:
   name: backend
   namespace: default
-  labels:
-    app: backend
-  annotations:
-    # Disable Istio sidecar injection for Skupper proxy
-    sidecar.istio.io/inject: "false"
 spec:
   selector:
     app: backend
