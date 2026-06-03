@@ -33,7 +33,7 @@ kubectl describe ingress my-ingress -n my-namespace
 
 The `describe` output shows important information including the backend services, any configuration errors, and the IP address assigned to the Ingress.
 
-Common configuration mistakes include typos in service names, incorrect service ports, missing hosts or paths, and wrong namespaces (the Ingress must be in the same namespace as the backend service).
+Common configuration mistakes include typos in service names, incorrect service ports, missing paths, unexpected catch-all host rules, and wrong namespaces (the Ingress must be in the same namespace as the backend service).
 
 Verify your basic Ingress configuration:
 
@@ -101,13 +101,13 @@ Verify the backend service works independently of the Ingress:
 kubectl get svc my-service -n my-namespace
 
 # Check service endpoints
-kubectl get endpoints my-service -n my-namespace
+kubectl get endpointslice -n my-namespace -l kubernetes.io/service-name=my-service
 
 # The endpoints list should show pod IPs
 # If empty, your service selector doesn't match any pods
 
 # Test service from within the cluster
-kubectl run curl-test --rm -it --image=curlimages/curl -- \
+kubectl run curl-test --rm -it --image=curlimages/curl --command -- \
   curl -v http://my-service.my-namespace.svc.cluster.local
 ```
 
@@ -119,19 +119,19 @@ An Ingress cannot forward to services without endpoints:
 
 ```bash
 # Check if service has endpoints
-kubectl get endpoints my-service -n my-namespace -o yaml
+kubectl get endpointslice -n my-namespace -l kubernetes.io/service-name=my-service -o yaml
 
 # Example healthy output:
-# subsets:
+# endpoints:
 # - addresses:
-#   - ip: 10.244.1.5
-#     targetRef:
-#       name: my-pod
-#   ports:
-#   - port: 8080
-#     protocol: TCP
+#   - 10.244.1.5
+#   targetRef:
+#     name: my-pod
+# ports:
+# - port: 8080
+#   protocol: TCP
 
-# If subsets is empty or missing, fix the service selector
+# If endpoints is empty or missing, fix the service selector
 kubectl get svc my-service -n my-namespace -o yaml | grep -A5 selector
 kubectl get pods -n my-namespace --show-labels
 ```
@@ -147,7 +147,7 @@ Test if the Ingress controller can reach the backend pods:
 kubectl get pods -n my-namespace -o wide | grep my-app
 
 # Access the Ingress controller pod
-kubectl exec -it -n ingress-nginx ingress-nginx-controller-xxx -- bash
+kubectl exec -it -n ingress-nginx ingress-nginx-controller-xxx -- sh
 
 # Inside controller pod, test connectivity to backend pod
 curl -v http://10.244.1.5:8080
@@ -171,7 +171,7 @@ kubectl get ingress my-ingress -n my-namespace -o yaml | grep -A5 paths
 
 Path types affect matching behavior:
 
-- `Prefix` matches the path prefix (e.g., `/api` matches `/api/users`)
+- `Prefix` matches by path element prefix (e.g., `/api` matches `/api/users`, but not `/apiv2`)
 - `Exact` requires an exact match (e.g., `/api` does NOT match `/api/users`)
 - `ImplementationSpecific` depends on the Ingress controller
 
@@ -219,14 +219,16 @@ kind: Ingress
 metadata:
   name: my-ingress
   annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
     nginx.ingress.kubernetes.io/rewrite-target: /app/$1
 spec:
+  ingressClassName: nginx
   rules:
   - host: myapp.example.com
     http:
       paths:
       - path: /(.*)
-        pathType: Prefix
+        pathType: ImplementationSpecific
         backend:
           service:
             name: my-service
@@ -250,7 +252,7 @@ kubectl get secret my-tls-secret -n my-namespace -o jsonpath='{.data.tls\.crt}' 
   base64 -d | openssl x509 -text -noout | grep -A2 Validity
 ```
 
-If the TLS secret is missing or the certificate is invalid, HTTPS requests fail.
+If the TLS secret is missing or the certificate is invalid, HTTPS requests may fail certificate validation.
 
 ## Examining Controller Configuration
 
@@ -281,17 +283,18 @@ The generated configuration shows exactly how the controller interprets your Ing
 Most Ingress controllers have a default backend for unmatched requests:
 
 ```bash
-# Test without Host header (should hit default backend)
+# Test without Host header (should hit the default backend if no rule matches)
 curl -v http://ingress-controller-ip/
 
-# If you get 404 or 502 instead of default backend response,
-# the controller might not be configured properly
+# ingress-nginx's default backend returns 404 for /
+# and 200 for /healthz
+curl -v http://ingress-controller-ip/healthz
 
-# Check default backend configuration
-kubectl get deployment -n ingress-nginx ingress-nginx-defaultbackend
+# Check for a custom default backend if one is configured
+kubectl describe deployment -n ingress-nginx ingress-nginx-controller | grep default-backend
 ```
 
-If even the default backend fails, the Ingress controller has fundamental problems.
+If even the default backend health check fails, the Ingress controller has fundamental problems.
 
 ## Analyzing Network Policies
 
@@ -354,7 +357,7 @@ Sometimes external access fails while internal access works:
 
 ```bash
 # Create test pod
-kubectl run test-pod --rm -it --image=curlimages/curl -- sh
+kubectl run test-pod --rm -it --image=curlimages/curl --command -- sh
 
 # Test Ingress controller service from inside cluster
 curl -v -H "Host: myapp.example.com" http://ingress-nginx-controller.ingress-nginx.svc.cluster.local
