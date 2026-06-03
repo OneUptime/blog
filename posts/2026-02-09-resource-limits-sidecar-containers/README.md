@@ -31,7 +31,7 @@ Without proper limits:
 - Resource waste from over-provisioning
 - OOMKilled sidecars break functionality
 
-Pods are scheduled based on the sum of all container requests.
+Pods are scheduled based on the sum of regular container requests, with init container requests accounted for separately.
 
 ## Basic Sidecar Resource Configuration
 
@@ -139,7 +139,7 @@ Prometheus exporters are lightweight:
 ```yaml
 containers:
 - name: metrics-exporter
-  image: prom/node-exporter:latest
+  image: prom/statsd-exporter:latest
   resources:
     requests:
       cpu: "25m"
@@ -149,7 +149,7 @@ containers:
       memory: "128Mi"
 ```
 
-They scrape occasionally and buffer minimal data.
+They are scraped periodically and buffer minimal data.
 
 ## Init Containers for Sidecars
 
@@ -181,11 +181,11 @@ containers:
       memory: "128Mi"
 ```
 
-Remember: effective pod request is max(init, sum of app containers).
+Remember: effective pod request is the higher of the largest regular init container request and the sum of app container requests. Kubernetes-native sidecars defined in `initContainers` with `restartPolicy: Always` are added to the app container request sum.
 
-## Burstable vs Guaranteed for Sidecars
+## Burstable vs Guaranteed for Pods with Sidecars
 
-Most sidecars should be Burstable (requests < limits) to allow bursts without wasting resources:
+QoS class is assigned to the whole pod, not to individual containers. Most pods with sidecars should be Burstable (requests < limits) to allow bursts without wasting resources:
 
 ```yaml
 # Burstable sidecar
@@ -200,7 +200,7 @@ containers:
       memory: "512Mi"
 ```
 
-Critical sidecars (service mesh in high-traffic services) can be Guaranteed:
+Pods with critical sidecars (service mesh in high-traffic services) can be Guaranteed if every container sets CPU and memory requests equal to limits:
 
 ```yaml
 # Guaranteed sidecar
@@ -295,7 +295,7 @@ containers:
 Sidecars with low CPU limits can throttle and add latency. Monitor throttling:
 
 ```bash
-kubectl exec app-abc -- cat /sys/fs/cgroup/cpu/cpu.stat
+kubectl exec app-abc -c envoy -- sh -c 'cat /sys/fs/cgroup/cpu.stat 2>/dev/null || cat /sys/fs/cgroup/cpu/cpu.stat'
 ```
 
 Look for `nr_throttled` and `throttled_time`. If high, increase CPU limits.
@@ -362,9 +362,9 @@ spec:
         cpu: "200m"
         memory: "256Mi"
   - name: prometheus-exporter
-    image: prom/jmx-exporter:latest
+    image: prom/statsd-exporter:latest
     ports:
-    - containerPort: 9404
+    - containerPort: 9102
     resources:
       requests:
         cpu: "25m"
