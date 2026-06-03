@@ -8,7 +8,7 @@ Description: Complete guide to setting up and configuring Amazon Kinesis Data St
 
 ---
 
-Amazon Kinesis Data Streams is AWS's service for real-time data streaming. It sits at the center of many event-driven architectures, handling everything from clickstream data to IoT sensor readings to application logs. Getting the configuration right matters - underprovision and you'll drop data, overprovision and you'll waste money.
+Amazon Kinesis Data Streams is AWS's service for real-time data streaming. It sits at the center of many event-driven architectures, handling everything from clickstream data to IoT sensor readings to application logs. Getting the configuration right matters - underprovision and your producers will get throttled, overprovision and you'll waste money.
 
 Let's go through setting up a stream, tuning it for your workload, and keeping it healthy in production.
 
@@ -104,7 +104,7 @@ aws kinesis register-stream-consumer \
   --consumer-name analytics-processor
 ```
 
-The tradeoff is cost. Enhanced fan-out charges per consumer-shard-hour plus per GB of data retrieved. It's worth it when you have 3+ consumers reading from the same stream.
+The tradeoff is cost. Enhanced fan-out charges per consumer-shard-hour plus per GB of data retrieved. It's worth considering when multiple independent consumers need dedicated read throughput from the same stream.
 
 ## Encryption
 
@@ -134,9 +134,9 @@ aws kinesis update-shard-count \
   --scaling-type UNIFORM_SCALING
 ```
 
-Shard splits and merges take time - usually a few seconds per shard. During the resharding, your stream continues to accept records, but your consumers need to handle the transition. Most Kinesis client libraries handle this automatically.
+Shard splits and merges take time, and larger scaling operations can take a few minutes to complete. During the resharding, your stream continues to accept records, but your consumers need to handle the transition. Most Kinesis client libraries handle this automatically.
 
-Keep in mind that you can only double or halve the shard count in a single operation, and you're limited to certain resharding operations per 24-hour period.
+Keep in mind that, by default, you cannot scale up to more than double your current shard count or scale down below half your current shard count in a single operation, and you're limited to certain resharding operations per 24-hour period.
 
 ## Monitoring with CloudWatch
 
@@ -145,14 +145,14 @@ Kinesis publishes several important metrics to CloudWatch. Here are the ones you
 This creates CloudWatch alarms for critical Kinesis metrics.
 
 ```bash
-# Alarm when write throughput exceeds 80% of capacity
+# Alarm when write throttling is sustained
 aws cloudwatch put-metric-alarm \
   --alarm-name kinesis-write-throttle-warning \
   --metric-name WriteProvisionedThroughputExceeded \
   --namespace AWS/Kinesis \
   --statistic Sum \
   --period 300 \
-  --threshold 100 \
+  --threshold 0 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 2 \
   --dimensions Name=StreamName,Value=user-events \
@@ -229,7 +229,7 @@ A few things I've learned from running Kinesis in production:
 1. **Start with on-demand mode** if you're not sure about your throughput patterns. Switch to provisioned once you understand your baseline.
 2. **Use partition keys wisely.** Hot partition keys create hot shards. Distribute your keys evenly - don't use something like country code where one value dominates.
 3. **Monitor iterator age religiously.** If it's growing, your consumers can't keep up and you need to scale either the stream or the consumer.
-4. **Set up dead letter queues** for records that fail processing. Don't lose data just because a single record is malformed.
+4. **Set up dead letter queues in your consumers** for records that fail processing. Don't lose data just because a single record is malformed.
 5. **Use enhanced fan-out** when you have multiple independent consumers reading the same stream.
 
 For the next step, check out our guide on [putting records into Kinesis Data Streams](https://oneuptime.com/blog/post/2026-02-12-put-records-into-kinesis-data-streams/view) to start sending data to your newly configured stream.
