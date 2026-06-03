@@ -19,7 +19,7 @@ In this guide, you'll learn how to configure refresh intervals, implement automa
 The `refreshInterval` field in ExternalSecret resources controls how often ESO checks the external secret manager for changes. When a change is detected, ESO updates the corresponding Kubernetes Secret.
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -51,7 +51,7 @@ Different secrets have different rotation needs:
 ```yaml
 # High-security secrets - frequent rotation
 
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: admin-credentials
@@ -69,7 +69,7 @@ spec:
       key: production/admin-password
 ---
 # API keys - moderate rotation
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-keys
@@ -86,7 +86,7 @@ spec:
       key: production/api-keys
 ---
 # TLS certificates - infrequent rotation
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: tls-cert
@@ -98,7 +98,8 @@ spec:
     kind: SecretStore
   target:
     name: tls-cert
-    type: kubernetes.io/tls
+    template:
+      type: kubernetes.io/tls
   data:
   - secretKey: tls.crt
     remoteRef:
@@ -156,7 +157,7 @@ When External Secrets Operator updates `api-keys` or `database-credentials`, Rel
 
 ## Implementing Database Credential Rotation
 
-Database credentials require careful rotation to avoid downtime. Use a two-phase approach:
+Database credentials require careful rotation to avoid downtime. Use a two-phase approach, and make sure the old credentials remain valid until the rollout has completed. For many databases, that means creating a new user or role rather than changing the password for the user currently serving production traffic.
 
 ### Phase 1: Create New Credentials
 
@@ -168,9 +169,9 @@ vault kv put secret/production/database \
   username=dbuser \
   password=OldPassword123
 
-# Add new credentials while keeping old ones valid
+# Store new credentials after creating dbuser_v2 in the database
 vault kv put secret/production/database \
-  username=dbuser \
+  username=dbuser_v2 \
   password=NewPassword456
 ```
 
@@ -179,7 +180,7 @@ vault kv put secret/production/database \
 ExternalSecret configuration:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -273,31 +274,45 @@ vault write database/roles/app-role \
 ExternalSecret with refresh interval shorter than TTL:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: generators.external-secrets.io/v1alpha1
+kind: VaultDynamicSecret
+metadata:
+  name: postgres-dynamic-creds
+  namespace: production
+spec:
+  path: "/database/creds/app-role"
+  method: "GET"
+  resultType: "Data"
+  provider:
+    server: "https://vault.example.com"
+    path: "secret"
+    version: "v2"
+    auth:
+      kubernetes:
+        mountPath: "kubernetes"
+        role: "external-secrets-operator"
+        serviceAccountRef:
+          name: "external-secrets"
+---
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: postgres-dynamic-creds
   namespace: production
 spec:
   refreshInterval: 30m  # Refresh before 1h expiration
-  secretStoreRef:
-    name: vault-backend
-    kind: SecretStore
   target:
     name: postgres-dynamic-creds
     creationPolicy: Owner
-  data:
-  - secretKey: username
-    remoteRef:
-      key: database/creds/app-role
-      property: username
-  - secretKey: password
-    remoteRef:
-      key: database/creds/app-role
-      property: password
+  dataFrom:
+  - sourceRef:
+      generatorRef:
+        apiVersion: generators.external-secrets.io/v1alpha1
+        kind: VaultDynamicSecret
+        name: postgres-dynamic-creds
 ```
 
-This generates new credentials every 30 minutes, ensuring they're always valid.
+This requests new credentials every 30 minutes, before the 1-hour TTL expires. Pair it with a pod restart or application reload so workloads stop using credentials before Vault revokes them.
 
 ## Rotating API Keys with Canary Deployment
 
@@ -366,7 +381,7 @@ After verifying the canary works, promote the new key to production.
 TLS certificates require coordination between cert rotation and ingress updates:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: tls-certificate
@@ -378,8 +393,9 @@ spec:
     kind: SecretStore
   target:
     name: tls-certificate
-    type: kubernetes.io/tls
     creationPolicy: Owner
+    template:
+      type: kubernetes.io/tls
   data:
   - secretKey: tls.crt
     remoteRef:
@@ -454,14 +470,14 @@ data:
           summary: "External Secret sync failing"
           description: "ExternalSecret {{ $labels.name }} in {{ $labels.namespace }} has failed to sync for 5 minutes"
 
-      - alert: ExternalSecretStale
-        expr: (time() - externalsecret_sync_last_success_time) > 3600
+      - alert: ExternalSecretNotReady
+        expr: externalsecret_status_condition{condition="Ready",status="False"} == 1
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "External Secret not refreshed"
-          description: "ExternalSecret {{ $labels.name }} hasn't synced successfully in over 1 hour"
+          summary: "External Secret not ready"
+          description: "ExternalSecret {{ $labels.name }} in {{ $labels.namespace }} has not been ready for 10 minutes"
 ```
 
 ## Testing Secret Rotation
@@ -482,9 +498,9 @@ echo "Current secret value: $CURRENT"
 # Update secret in Vault (or your secret manager)
 vault kv put secret/production/api-keys api_key="NewAPIKey123"
 
-# Wait for refresh interval
-echo "Waiting for refresh interval..."
-sleep 60
+# Trigger a refresh and wait for ESO to reconcile
+kubectl annotate externalsecret $EXTERNAL_SECRET -n $NAMESPACE force-sync="$(date +%s)" --overwrite
+kubectl wait externalsecret $EXTERNAL_SECRET -n $NAMESPACE --for=condition=Ready --timeout=2m
 
 # Get new secret value
 NEW=$(kubectl get secret $SECRET_NAME -n $NAMESPACE -o jsonpath='{.data.api_key}' | base64 -d)
@@ -498,9 +514,8 @@ else
   exit 1
 fi
 
-# Check if pods restarted (if using Reloader)
-RESTARTS=$(kubectl get deployment api-consumer -n $NAMESPACE -o jsonpath='{.status.updatedReplicas}')
-echo "Pods restarted: $RESTARTS"
+# Check rollout status (if using Reloader)
+kubectl rollout status deployment/api-consumer -n $NAMESPACE --timeout=5m
 ```
 
 ## Best Practices
