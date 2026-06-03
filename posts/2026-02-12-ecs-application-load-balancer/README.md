@@ -14,7 +14,7 @@ This guide walks through the full setup, from creating the ALB to configuring ro
 
 ## How ALB Works with ECS
 
-When you attach an ALB to an ECS service, ECS automatically registers and deregisters task IPs (for Fargate) or instance IPs with dynamic ports (for EC2) with the ALB's target group. As tasks scale up, they get registered. As they scale down or fail health checks, they get deregistered.
+When you attach an ALB to an ECS service, ECS automatically registers and deregisters task IPs (for Fargate) or container instances with dynamic host ports (for EC2) with the ALB's target group. As tasks scale up, they get registered. As they scale down or fail health checks, they get deregistered.
 
 ```mermaid
 graph TD
@@ -37,25 +37,25 @@ You need separate security groups for the ALB and the ECS tasks.
 aws ec2 create-security-group \
   --group-name alb-sg \
   --description "ALB security group" \
-  --vpc-id vpc-12345678
+  --vpc-id vpc-0abc123def4567890
 
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-alb123 \
+  --group-id sg-0a1b2c3d4e5f67890 \
   --protocol tcp --port 80 --cidr 0.0.0.0/0
 
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-alb123 \
+  --group-id sg-0a1b2c3d4e5f67890 \
   --protocol tcp --port 443 --cidr 0.0.0.0/0
 
 # Security group for ECS tasks - only allows traffic from the ALB
 aws ec2 create-security-group \
   --group-name ecs-tasks-sg \
   --description "ECS tasks security group" \
-  --vpc-id vpc-12345678
+  --vpc-id vpc-0abc123def4567890
 
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-ecs456 \
-  --protocol tcp --port 8080 --source-group sg-alb123
+  --group-id sg-0123456789abcdef0 \
+  --protocol tcp --port 8080 --source-group sg-0a1b2c3d4e5f67890
 ```
 
 The key security principle: the ECS tasks should only accept traffic from the ALB, never directly from the internet.
@@ -66,8 +66,8 @@ The key security principle: the ECS tasks should only accept traffic from the AL
 # Create the ALB in public subnets
 aws elbv2 create-load-balancer \
   --name my-ecs-alb \
-  --subnets subnet-public-1 subnet-public-2 \
-  --security-groups sg-alb123 \
+  --subnets subnet-0abc123def4567890 subnet-0123456789abcdef0 \
+  --security-groups sg-0a1b2c3d4e5f67890 \
   --scheme internet-facing \
   --type application \
   --ip-address-type ipv4
@@ -85,7 +85,7 @@ aws elbv2 create-target-group \
   --name api-service-tg \
   --protocol HTTP \
   --port 8080 \
-  --vpc-id vpc-12345678 \
+  --vpc-id vpc-0abc123def4567890 \
   --target-type ip \
   --health-check-path /health \
   --health-check-protocol HTTP \
@@ -100,7 +100,7 @@ aws elbv2 create-target-group \
   --name web-service-tg \
   --protocol HTTP \
   --port 80 \
-  --vpc-id vpc-12345678 \
+  --vpc-id vpc-0abc123def4567890 \
   --target-type instance \
   --health-check-path /health \
   --health-check-protocol HTTP
@@ -121,7 +121,7 @@ Listeners define what the ALB listens for and where to route traffic.
 ```bash
 # HTTP listener on port 80 - redirect everything to HTTPS
 aws elbv2 create-listener \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/my-ecs-alb/abc123 \
+  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-ecs-alb/50dc6c495c0c9188 \
   --protocol HTTP \
   --port 80 \
   --default-actions '[{
@@ -135,18 +135,18 @@ aws elbv2 create-listener \
 
 # HTTPS listener on port 443
 aws elbv2 create-listener \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/my-ecs-alb/abc123 \
+  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-ecs-alb/50dc6c495c0c9188 \
   --protocol HTTPS \
   --port 443 \
   --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
-  --certificates CertificateArn=arn:aws:acm:us-east-1:123456789:certificate/cert-id \
+  --certificates CertificateArn=arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012 \
   --default-actions '[{
     "Type": "forward",
-    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-service-tg/def456"
+    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-service-tg/73e2d6bc24d8a067"
   }]'
 ```
 
-The SSL certificate should be created in AWS Certificate Manager (ACM). It's free for ALB use.
+The SSL certificate should be created in AWS Certificate Manager (ACM). Public ACM certificates are free for ALB use.
 
 ## Step 5: Add Path-Based Routing Rules
 
@@ -155,7 +155,7 @@ Route different URL paths to different services sharing the same ALB.
 ```bash
 # Route /api/* to the API service target group
 aws elbv2 create-rule \
-  --listener-arn arn:aws:elasticloadbalancing:us-east-1:123456789:listener/app/my-ecs-alb/abc123/listener456 \
+  --listener-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/my-ecs-alb/50dc6c495c0c9188/f2f7dc8efc522ab2 \
   --priority 10 \
   --conditions '[{
     "Field": "path-pattern",
@@ -163,12 +163,12 @@ aws elbv2 create-rule \
   }]' \
   --actions '[{
     "Type": "forward",
-    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-service-tg/def456"
+    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-service-tg/73e2d6bc24d8a067"
   }]'
 
 # Route /admin/* to an admin service target group
 aws elbv2 create-rule \
-  --listener-arn arn:aws:elasticloadbalancing:us-east-1:123456789:listener/app/my-ecs-alb/abc123/listener456 \
+  --listener-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/my-ecs-alb/50dc6c495c0c9188/f2f7dc8efc522ab2 \
   --priority 20 \
   --conditions '[{
     "Field": "path-pattern",
@@ -176,7 +176,7 @@ aws elbv2 create-rule \
   }]' \
   --actions '[{
     "Type": "forward",
-    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/admin-service-tg/ghi789"
+    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/admin-service-tg/a1b2c3d4e5f67890"
   }]'
 ```
 
@@ -185,7 +185,7 @@ You can also route based on hostname for multi-tenant setups.
 ```bash
 # Host-based routing - route based on the domain name
 aws elbv2 create-rule \
-  --listener-arn arn:aws:elasticloadbalancing:us-east-1:123456789:listener/app/my-ecs-alb/abc123/listener456 \
+  --listener-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:listener/app/my-ecs-alb/50dc6c495c0c9188/f2f7dc8efc522ab2 \
   --priority 5 \
   --conditions '[{
     "Field": "host-header",
@@ -193,7 +193,7 @@ aws elbv2 create-rule \
   }]' \
   --actions '[{
     "Type": "forward",
-    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-service-tg/def456"
+    "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-service-tg/73e2d6bc24d8a067"
   }]'
 ```
 
@@ -211,13 +211,13 @@ aws ecs create-service \
   --launch-type FARGATE \
   --network-configuration '{
     "awsvpcConfiguration": {
-      "subnets": ["subnet-private-1", "subnet-private-2"],
-      "securityGroups": ["sg-ecs456"],
+      "subnets": ["subnet-0fedcba9876543210", "subnet-00112233445566778"],
+      "securityGroups": ["sg-0123456789abcdef0"],
       "assignPublicIp": "DISABLED"
     }
   }' \
   --load-balancers '[{
-    "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-service-tg/def456",
+    "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-service-tg/73e2d6bc24d8a067",
     "containerName": "api",
     "containerPort": 8080
   }]' \
@@ -238,7 +238,7 @@ If your application stores session state in memory (which you should avoid, but 
 ```bash
 # Enable sticky sessions on the target group
 aws elbv2 modify-target-group-attributes \
-  --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-service-tg/def456 \
+  --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-service-tg/73e2d6bc24d8a067 \
   --attributes \
     Key=stickiness.enabled,Value=true \
     Key=stickiness.type,Value=lb_cookie \
@@ -252,7 +252,7 @@ When tasks are deregistered (during deployments or scale-down), the ALB needs ti
 ```bash
 # Set deregistration delay (default is 300 seconds, which is often too long)
 aws elbv2 modify-target-group-attributes \
-  --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-service-tg/def456 \
+  --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/api-service-tg/73e2d6bc24d8a067 \
   --attributes Key=deregistration_delay.timeout_seconds,Value=30
 ```
 
@@ -273,8 +273,8 @@ aws cloudwatch put-metric-alarm \
   --threshold 50 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
-  --dimensions Name=LoadBalancer,Value=app/my-ecs-alb/abc123 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+  --dimensions Name=LoadBalancer,Value=app/my-ecs-alb/50dc6c495c0c9188 \
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 
 # Alarm on unhealthy targets
 aws cloudwatch put-metric-alarm \
@@ -287,9 +287,9 @@ aws cloudwatch put-metric-alarm \
   --comparison-operator GreaterThanOrEqualToThreshold \
   --evaluation-periods 2 \
   --dimensions \
-    Name=TargetGroup,Value=targetgroup/api-service-tg/def456 \
-    Name=LoadBalancer,Value=app/my-ecs-alb/abc123 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:alerts
+    Name=TargetGroup,Value=targetgroup/api-service-tg/73e2d6bc24d8a067 \
+    Name=LoadBalancer,Value=app/my-ecs-alb/50dc6c495c0c9188 \
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:alerts
 ```
 
 For a comprehensive monitoring setup, check out how to [configure ECS health checks](https://oneuptime.com/blog/post/2026-02-12-ecs-health-checks/view) alongside your ALB.
