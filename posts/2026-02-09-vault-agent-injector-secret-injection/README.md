@@ -22,9 +22,12 @@ Deploy Vault with the injector enabled:
 
 ```bash
 # Install Vault with injector
+helm repo add hashicorp https://helm.releases.hashicorp.com
+helm repo update
 
 helm install vault hashicorp/vault \
   --namespace vault \
+  --create-namespace \
   --set "injector.enabled=true" \
   --set "injector.replicas=1"
 
@@ -113,9 +116,9 @@ spec:
 
 The template uses Go templating syntax to format secrets as environment variable exports.
 
-## Injecting Secrets as Environment Variables
+## Rendering Secrets for Environment Variables
 
-While file-based injection is preferred, you can inject to environment:
+While file-based injection is preferred, you can render a file with environment variable exports and source it before starting the application:
 
 ```yaml
 # app-env-secrets.yaml
@@ -138,8 +141,8 @@ spec:
         vault.hashicorp.com/role: "app"
         vault.hashicorp.com/agent-inject-template-config: |
           {{ with secret "secret/data/app/config" }}
-          DATABASE_URL={{ .Data.data.database_url }}
-          API_KEY={{ .Data.data.api_key }}
+          export DATABASE_URL="{{ .Data.data.database_url }}"
+          export API_KEY="{{ .Data.data.api_key }}"
           {{ end }}
     spec:
       serviceAccountName: app-sa
@@ -208,7 +211,7 @@ metadata:
     vault.hashicorp.com/agent-requests-mem: "64Mi"
 
     # Vault address (if different from default)
-    vault.hashicorp.com/agent-inject-address: "https://vault.company.com"
+    vault.hashicorp.com/service: "https://vault.company.com"
 
     # CA certificate
     vault.hashicorp.com/ca-cert: "/vault/tls/ca.crt"
@@ -221,7 +224,7 @@ metadata:
     vault.hashicorp.com/preserve-secret-case: "true"
 
     # Secret file permissions
-    vault.hashicorp.com/agent-inject-perms: "0644"
+    vault.hashicorp.com/agent-inject-perms-database: "0644"
 
     # Inject secret
     vault.hashicorp.com/agent-inject-secret-database: "secret/data/app/database"
@@ -268,16 +271,11 @@ metadata:
       {{- end -}}
 
     # TLS certificates
-    vault.hashicorp.com/agent-inject-secret-tls.crt: "pki/issue/app-role"
-    vault.hashicorp.com/agent-inject-template-tls.crt: |
-      {{- with secret "pki/issue/app-role" "common_name=app.example.com" -}}
-      {{ .Data.certificate }}
-      {{- end -}}
-
-    vault.hashicorp.com/agent-inject-secret-tls.key: "pki/issue/app-role"
-    vault.hashicorp.com/agent-inject-template-tls.key: |
-      {{- with secret "pki/issue/app-role" "common_name=app.example.com" -}}
-      {{ .Data.private_key }}
+    vault.hashicorp.com/agent-inject-secret-tls: "pki/issue/app-role"
+    vault.hashicorp.com/agent-inject-template-tls: |
+      {{- with pkiCert "pki/issue/app-role" "common_name=app.example.com" -}}
+      {{ .Cert | writeToFile "/vault/secrets/tls.crt" "vault" "vault" "0644" }}
+      {{ .Key | writeToFile "/vault/secrets/tls.key" "vault" "vault" "0600" }}
       {{- end -}}
 ```
 
@@ -318,12 +316,13 @@ injector:
   replicas: 2
 
   # Webhook failure policy
-  failurePolicy: Fail  # or Ignore to allow pods without injection
+  webhook:
+    failurePolicy: Fail  # or Ignore to allow pods without injection
 
-  # Namespace selector
-  namespaceSelector:
-    matchLabels:
-      vault-injection: enabled
+    # Namespace selector
+    namespaceSelector:
+      matchLabels:
+        vault-injection: enabled
 
   # Resource limits
   resources:
@@ -334,13 +333,10 @@ injector:
       memory: 256Mi
       cpu: 100m
 
-  # Specific Vault address
-  externalVaultAddr: "https://vault.company.com:8200"
-
   # Image configuration
   image:
     repository: "hashicorp/vault-k8s"
-    tag: "latest"
+    tag: "1.7.2"
 
   # Log level
   logLevel: "info"
@@ -348,6 +344,10 @@ injector:
   # Metrics
   metrics:
     enabled: true
+
+# Specific Vault address
+global:
+  externalVaultAddr: "https://vault.company.com:8200"
 ```
 
 Apply with Helm:
@@ -441,7 +441,7 @@ Implement secure injection patterns:
 metadata:
   annotations:
     # Use strict file permissions
-    vault.hashicorp.com/agent-inject-perms: "0600"
+    vault.hashicorp.com/agent-inject-perms-config: "0600"
 
     # Run as non-root
     vault.hashicorp.com/agent-run-as-user: "1000"
