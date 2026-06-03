@@ -12,9 +12,9 @@ Kubernetes Services should seamlessly route traffic to their backend pods, but m
 
 ## Understanding Service Routing
 
-Kubernetes Services act as stable endpoints that load balance traffic across pods. When you create a service, Kubernetes watches for pods matching the service's selector and automatically creates Endpoints objects listing the pod IPs and ports. kube-proxy on each node configures iptables or IPVS rules to route traffic from the service's cluster IP to these endpoint IPs.
+Kubernetes Services act as stable endpoints that load balance traffic across pods. When you create a service, Kubernetes watches for pods matching the service's selector and automatically creates EndpointSlice objects listing the pod IPs and ports. kube-proxy on each node uses EndpointSlices to configure service routing rules, such as iptables or IPVS rules, that route traffic from the service's cluster IP to these endpoint IPs.
 
-Routing breaks when any step in this chain fails. The selector might not match any pods. Pods might be running but not ready. Endpoints might be created but network policies block traffic. Or kube-proxy might fail to update routing rules. Each failure mode requires different diagnosis and remediation.
+Routing breaks when any step in this chain fails. The selector might not match any pods. Pods might be running but not ready. EndpointSlices might be created but network policies block traffic. Or kube-proxy might fail to update routing rules. Each failure mode requires different diagnosis and remediation.
 
 ## Verifying Service Configuration
 
@@ -85,6 +85,10 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
+      tier: frontend
   template:
     metadata:
       labels:
@@ -105,38 +109,38 @@ kubectl apply -f deployment.yaml
 kubectl rollout status deployment/myapp
 ```
 
-## Inspecting Endpoints
+## Inspecting EndpointSlices
 
-Check if endpoints were created for the service:
+Check if EndpointSlices were created for the service:
 
 ```bash
-# Get endpoints for the service
-kubectl get endpoints myapp-service
+# Get EndpointSlices for the service
+kubectl get endpointslices -l kubernetes.io/service-name=myapp-service
 
 # Output shows backend pod IPs and ports:
-# NAME             ENDPOINTS                           AGE
-# myapp-service    10.244.1.5:8080,10.244.2.8:8080    5m
+# NAME                  ADDRESSTYPE   PORTS   ENDPOINTS
+# myapp-service-abcd    IPv4          8080    10.244.1.5,10.244.2.8
 
-# No endpoints means no pods match the selector
+# No endpoints in the EndpointSlice means no pods match the selector
 ```
 
 Detailed endpoint information:
 
 ```bash
-# Describe endpoints
-kubectl describe endpoints myapp-service
+# Describe EndpointSlices
+kubectl describe endpointslice -l kubernetes.io/service-name=myapp-service
 
 # Shows:
 # - List of addresses (pod IPs)
 # - Ports
-# - Whether addresses are ready or not ready
+# - Endpoint conditions such as ready, serving, and terminating
 ```
 
-If endpoints list is empty, pods either don't exist, don't match the selector, or aren't ready.
+If the EndpointSlice endpoints list is empty, pods either don't exist or don't match the selector. If endpoints are present but their conditions show they are not ready, the service will not route to them by default.
 
 ## Verifying Pod Readiness
 
-Services only route to ready pods. Check readiness status:
+Services route to ready pods by default. Check readiness status:
 
 ```bash
 # Get pod status
@@ -171,7 +175,13 @@ kind: Deployment
 metadata:
   name: myapp
 spec:
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       containers:
       - name: app
@@ -203,7 +213,7 @@ Test if the service routes traffic correctly:
 
 ```bash
 # Create a test pod
-kubectl run test-pod --image=nicolaka/netshoot -it --rm -- /bin/bash
+kubectl run test-pod --image=nicolaka/netshoot -it --rm --restart=Never --command -- /bin/bash
 
 # From inside the test pod, try to reach the service
 curl http://myapp-service
@@ -355,7 +365,7 @@ Check iptables rules on a node:
 kubectl debug node/<node-name> -it --image=nicolaka/netshoot
 
 # Check iptables rules for your service
-iptables -t nat -L -n | grep myapp-service
+iptables-save | grep myapp-service
 
 # Should show KUBE-SVC-XXX chain
 # If no rules exist, kube-proxy isn't updating iptables
@@ -367,13 +377,13 @@ Test service access from various points to narrow down the issue:
 
 ```bash
 # Test from within a pod in the same namespace
-kubectl run test-same-ns --image=nicolaka/netshoot -it --rm -- curl http://myapp-service
+kubectl run test-same-ns --image=nicolaka/netshoot -it --rm --restart=Never --command -- curl http://myapp-service
 
 # Test from a pod in different namespace
-kubectl run test-diff-ns -n other-namespace --image=nicolaka/netshoot -it --rm -- curl http://myapp-service.default.svc.cluster.local
+kubectl run test-diff-ns -n other-namespace --image=nicolaka/netshoot -it --rm --restart=Never --command -- curl http://myapp-service.default.svc.cluster.local
 
 # Test from host network
-kubectl run test-host --image=nicolaka/netshoot --restart=Never --overrides='{"spec":{"hostNetwork":true}}' -- curl http://myapp-service
+kubectl run test-host --image=nicolaka/netshoot -it --rm --restart=Never --overrides='{"spec":{"hostNetwork":true}}' --command -- curl http://myapp-service
 ```
 
 If service works from some locations but not others, the issue is namespace-specific or involves network policies.
@@ -388,7 +398,7 @@ Different service types have different requirements:
 # Cannot reach from outside without port-forward or ingress
 
 # Test must be from inside cluster
-kubectl run test --image=nicolaka/netshoot -it --rm -- curl http://myapp-service
+kubectl run test --image=nicolaka/netshoot -it --rm --restart=Never --command -- curl http://myapp-service
 ```
 
 **NodePort Services**:
@@ -405,11 +415,11 @@ curl http://$NODE_IP:$NODEPORT
 
 **LoadBalancer Services**:
 ```bash
-# Get external IP
-EXTERNAL_IP=$(kubectl get service myapp-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+# Get external IP or hostname
+EXTERNAL_ADDR=$(kubectl get service myapp-service -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 
 # Test external access
-curl http://$EXTERNAL_IP
+curl http://$EXTERNAL_ADDR
 
 # If external IP is pending, check cloud provider integration
 kubectl describe service myapp-service
@@ -424,7 +434,7 @@ Check kube-proxy metrics for service routing stats:
 kubectl port-forward -n kube-system pod/<kube-proxy-pod> 10249:10249
 
 # Get metrics
-curl http://localhost:10249/metrics | grep myapp-service
+curl http://localhost:10249/metrics | grep kubeproxy_sync_proxy_rules
 
 # Look for:
 # - kubeproxy_sync_proxy_rules_duration_seconds
@@ -435,7 +445,7 @@ Use service monitors in Prometheus to track request success rates and latencies.
 
 ## Common Issues and Solutions
 
-**Issue**: Service has no endpoints
+**Issue**: Service has no EndpointSlice endpoints
 **Solution**: Verify pod labels match service selector exactly
 
 **Issue**: Pods exist but service returns connection refused
@@ -467,8 +477,8 @@ curl http://<service-cluster-ip>
 # Check iptables rules
 iptables-save | grep myapp-service
 
-# Check for kube-proxy socket
-ls -l /var/run/kube-proxy
+# Check kube-proxy logs on the host filesystem if your node writes them there
+ls -l /host/var/log/kube-proxy.log
 
 # View active connections
 ss -tulpn | grep :80
@@ -476,4 +486,4 @@ ss -tulpn | grep :80
 
 ## Conclusion
 
-Kubernetes service routing failures stem from misconfigurations in labels, selectors, ports, or network policies, or from kube-proxy issues. Start troubleshooting by verifying services have endpoints, checking that pod labels match service selectors, and confirming pods are ready. Test connectivity from different locations to isolate the problem scope. Examine network policies that might block traffic, and verify kube-proxy is functioning correctly. Most service routing issues resolve once you identify whether the problem is configuration, pod readiness, or network policy, giving you a clear path to resolution.
+Kubernetes service routing failures stem from misconfigurations in labels, selectors, ports, or network policies, or from kube-proxy issues. Start troubleshooting by verifying services have EndpointSlice endpoints, checking that pod labels match service selectors, and confirming pods are ready. Test connectivity from different locations to isolate the problem scope. Examine network policies that might block traffic, and verify kube-proxy is functioning correctly. Most service routing issues resolve once you identify whether the problem is configuration, pod readiness, or network policy, giving you a clear path to resolution.
