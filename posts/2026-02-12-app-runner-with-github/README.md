@@ -8,9 +8,11 @@ Description: Learn how to connect AWS App Runner to your GitHub repository for a
 
 ---
 
-App Runner's GitHub integration takes things a step further than the ECR workflow. Instead of building Docker images yourself and pushing them to a registry, you connect App Runner directly to your GitHub repository. When you push code, App Runner pulls the source, builds the container, and deploys it. No CI/CD pipeline, no container registry management, no build servers.
+For existing App Runner customers, App Runner's GitHub integration takes things a step further than the ECR workflow. Instead of building Docker images yourself and pushing them to a registry, you connect App Runner directly to your GitHub repository. When you push code, App Runner pulls the source, builds the container, and deploys it. No CI/CD pipeline, no container registry management, no build servers.
 
-This is the lowest-effort path from code to production on AWS. Let's set it up.
+For existing App Runner customers, this is the lowest-effort path from code to production on AWS. Let's set it up.
+
+Note: AWS App Runner is no longer open to new AWS customers. Existing App Runner customers can continue using the service and creating new resources, but AWS recommends ECS Express Mode for new workloads.
 
 ## How the GitHub Integration Works
 
@@ -25,7 +27,7 @@ graph LR
     E --> F[Route traffic]
 ```
 
-App Runner uses an AWS-managed GitHub connection to watch your repository. When it detects a change on the configured branch, it pulls the code, builds a container image using your Dockerfile (or a managed runtime), and deploys it.
+App Runner uses an AWS-managed GitHub connection to watch your repository. When it detects a change on the configured branch and source directory, it pulls the code, builds a container image with a managed runtime, and deploys it.
 
 ## Step 1: Create a GitHub Connection
 
@@ -51,48 +53,25 @@ Once authorized, the connection status changes to `AVAILABLE`.
 
 ```bash
 # Verify the connection is ready
-aws apprunner describe-connection \
+aws apprunner list-connections \
   --connection-name my-github-connection \
-  --query "Connection.{name:ConnectionName, status:Status}"
+  --query "ConnectionSummaryList[0].{name:ConnectionName, status:Status}"
 ```
 
 ## Step 2: Prepare Your Repository
 
-App Runner supports two build approaches:
+App Runner's GitHub source integration uses managed runtimes. If you need a Dockerfile, build and push the image to ECR and use App Runner's image-based workflow instead.
 
-### Option A: Using a Dockerfile
+### Using a Managed Runtime
 
-If your repository has a Dockerfile, App Runner uses it to build the image. This gives you full control over the build process.
-
-```dockerfile
-# Dockerfile
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci
-COPY . .
-RUN npm run build
-
-FROM node:20-alpine
-WORKDIR /app
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY package*.json ./
-EXPOSE 8080
-USER node
-CMD ["node", "dist/server.js"]
-```
-
-### Option B: Using a Managed Runtime
-
-For supported runtimes (Node.js, Python, Java, .NET, Go, PHP, Ruby), you can skip the Dockerfile entirely and use App Runner's managed build. You configure the build and start commands in the service configuration or in an `apprunner.yaml` file.
+For supported managed runtimes such as Node.js 22 or Python 3.11, you can skip the Dockerfile entirely and use App Runner's managed build. You configure the build and start commands in the service configuration or in an `apprunner.yaml` file.
 
 Create an `apprunner.yaml` in your repo root:
 
 ```yaml
 # apprunner.yaml
 version: 1.0
-runtime: nodejs18
+runtime: nodejs22
 
 build:
   commands:
@@ -121,53 +100,47 @@ Now create the service pointing to your GitHub repository:
 aws apprunner create-service \
   --service-name my-webapp \
   --source-configuration '{
-    "codeRepository": {
-      "repositoryUrl": "https://github.com/myorg/my-webapp",
-      "sourceCodeVersion": {
-        "type": "BRANCH",
-        "value": "main"
+    "CodeRepository": {
+      "RepositoryUrl": "https://github.com/myorg/my-webapp",
+      "SourceCodeVersion": {
+        "Type": "BRANCH",
+        "Value": "main"
       },
-      "codeConfiguration": {
-        "configurationSource": "REPOSITORY",
-        "codeConfigurationValues": {
-          "runtime": "NODEJS_18",
-          "buildCommand": "npm ci && npm run build",
-          "startCommand": "node dist/server.js",
-          "port": "8080",
-          "runtimeEnvironmentVariables": {
-            "NODE_ENV": "production"
-          }
-        }
+      "CodeConfiguration": {
+        "ConfigurationSource": "REPOSITORY"
       }
     },
-    "autoDeploymentsEnabled": true,
-    "authenticationConfiguration": {
-      "connectionArn": "arn:aws:apprunner:us-east-1:123456789012:connection/my-github-connection/abc123"
+    "AutoDeploymentsEnabled": true,
+    "AuthenticationConfiguration": {
+      "ConnectionArn": "arn:aws:apprunner:us-east-1:123456789012:connection/my-github-connection/abc123"
     }
   }' \
   --instance-configuration '{
-    "cpu": "1024",
-    "memory": "2048"
+    "Cpu": "1024",
+    "Memory": "2048"
   }' \
   --health-check-configuration '{
-    "protocol": "HTTP",
-    "path": "/health",
-    "interval": 10,
-    "timeout": 5,
-    "healthyThreshold": 1,
-    "unhealthyThreshold": 5
+    "Protocol": "HTTP",
+    "Path": "/health",
+    "Interval": 10,
+    "Timeout": 5,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 5
   }'
 ```
 
-If you're using a Dockerfile instead of a managed runtime, change `configurationSource` to `"API"` and omit the runtime/build/start commands:
+If you're configuring the managed runtime through the API instead of an `apprunner.yaml` file, change `ConfigurationSource` to `"API"` and provide the runtime/build/start commands:
 
 ```bash
-# For Dockerfile-based builds
-"codeConfiguration": {
-  "configurationSource": "API",
-  "codeConfigurationValues": {
-    "runtime": "DOCKER",
-    "runtimeEnvironmentVariables": {
+# For API-based managed runtime configuration
+"CodeConfiguration": {
+  "ConfigurationSource": "API",
+  "CodeConfigurationValues": {
+    "Runtime": "NODEJS_22",
+    "BuildCommand": "npm ci && npm run build",
+    "StartCommand": "node dist/server.js",
+    "Port": "8080",
+    "RuntimeEnvironmentVariables": {
       "NODE_ENV": "production"
     }
   }
@@ -185,25 +158,25 @@ aws apprunner describe-service \
   --query "Service.{status:Status, url:ServiceUrl, created:CreatedAt}"
 ```
 
-The first deployment takes a few minutes since App Runner needs to build the container from scratch. Subsequent deployments are faster thanks to Docker layer caching.
+The first deployment takes a few minutes since App Runner needs to build and deploy the container. Subsequent deployment times depend on the size and complexity of your application build.
 
 ## Branch-Based Deployments
 
 You can configure which branch triggers deployments:
 
 ```json
-"sourceCodeVersion": {
-  "type": "BRANCH",
-  "value": "main"
+"SourceCodeVersion": {
+  "Type": "BRANCH",
+  "Value": "main"
 }
 ```
 
 For a staging environment, point to a different branch:
 
 ```json
-"sourceCodeVersion": {
-  "type": "BRANCH",
-  "value": "staging"
+"SourceCodeVersion": {
+  "Type": "BRANCH",
+  "Value": "staging"
 }
 ```
 
@@ -216,7 +189,7 @@ Manage different environments by combining environment variables with the `appru
 ```yaml
 # apprunner.yaml - the build config is the same for all environments
 version: 1.0
-runtime: nodejs18
+runtime: nodejs22
 
 build:
   commands:
@@ -235,24 +208,24 @@ Then override environment-specific values in the service configuration:
 
 ```bash
 # Production service
-"runtimeEnvironmentVariables": {
+"RuntimeEnvironmentVariables": {
   "NODE_ENV": "production",
   "LOG_LEVEL": "warn",
   "CACHE_TTL": "3600"
 }
 
 # Staging service
-"runtimeEnvironmentVariables": {
+"RuntimeEnvironmentVariables": {
   "NODE_ENV": "staging",
   "LOG_LEVEL": "debug",
   "CACHE_TTL": "60"
 }
 ```
 
-Secrets should always come from Secrets Manager or Parameter Store, not from environment variables:
+Secrets should always come from Secrets Manager or Parameter Store, not from plaintext environment variable values:
 
 ```bash
-"runtimeEnvironmentSecrets": {
+"RuntimeEnvironmentSecrets": {
   "DATABASE_URL": "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-url",
   "API_KEY": "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api-key"
 }
@@ -269,19 +242,16 @@ aws apprunner list-operations \
   --query "OperationSummaryList[0:5].{type:Type, status:Status, started:StartedAt, ended:EndedAt}"
 ```
 
-If a build fails, check the CloudWatch logs. App Runner creates log groups for both the build process and the running application:
+If a build fails, check the CloudWatch logs. App Runner creates log groups for service activity and the running application:
 
-- Build logs: `/aws/apprunner/{service-name}/{service-id}/build`
+- Service and deployment logs: `/aws/apprunner/{service-name}/{service-id}/service`
 - Application logs: `/aws/apprunner/{service-name}/{service-id}/application`
 
 ```bash
 # Check recent build logs
-aws logs get-log-events \
-  --log-group-name "/aws/apprunner/my-webapp/abc123/build" \
-  --log-stream-name $(aws logs describe-log-streams \
-    --log-group-name "/aws/apprunner/my-webapp/abc123/build" \
-    --order-by LastEventTime --descending --limit 1 \
-    --query "logStreams[0].logStreamName" --output text) \
+aws logs filter-log-events \
+  --log-group-name "/aws/apprunner/my-webapp/abc123/service" \
+  --log-stream-name-prefix "deployment/" \
   --limit 50
 ```
 
@@ -291,9 +261,9 @@ Common build failures and their fixes:
 
 **Missing dependencies:** Your build command installs dependencies, but a package fails to install. Check that your `package-lock.json` (or equivalent) is committed to the repository.
 
-**Out of memory during build:** Large build processes can exhaust memory. Optimize your build or increase the instance size. App Runner uses the instance configuration for both build and runtime.
+**Out of memory during build:** Large build processes can exhaust memory. Optimize your build, reduce memory-heavy build steps, or move the heavy build work to a separate CI step that produces an image for ECR.
 
-**Dockerfile issues:** If using a Dockerfile, make sure it works locally with `docker build .` before pushing. Common issues include missing files in the build context and incorrect COPY paths.
+**Runtime configuration issues:** If using a managed runtime, make sure the runtime, build command, start command, and port match your application. Common issues include missing lock files, incorrect working directories, and a start command that does not listen on the configured port.
 
 **Build timeout:** App Runner has a build timeout. If your build is complex (compiling native modules, running tests), it might time out. Simplify the build or move heavy work to a separate CI step.
 
@@ -316,6 +286,6 @@ For the ECR approach, see our guide on [setting up App Runner with ECR](https://
 
 ## Wrapping Up
 
-The App Runner GitHub integration is the fastest path from code to a running web service on AWS. Push to your branch, and App Runner handles the build, deployment, scaling, and TLS. For teams that want to focus on writing code rather than managing infrastructure, it's an excellent choice.
+For existing App Runner customers, the App Runner GitHub integration is the fastest path from code to a running web service on AWS. Push to your branch, and App Runner handles the build, deployment, scaling, and TLS. For teams that want to focus on writing code rather than managing infrastructure, it's an excellent choice.
 
 Just remember that this simplicity comes with tradeoffs. You get less control over the build process, limited customization options, and fewer deployment strategies compared to a full CI/CD pipeline with ECR. Pick the approach that matches your team's needs and complexity requirements.
