@@ -26,7 +26,7 @@ That said, if your application was built specifically for MySQL 8.x features, st
 
 ### Engine and Version
 
-In the RDS console, click "Create database," choose Standard create, and select **MariaDB**. Choose the latest 10.11.x or 11.x version. MariaDB's LTS versions (like 10.11) are good choices for production.
+In the RDS console, click "Create database," choose Standard create, and select **MariaDB**. Choose a current supported version such as 10.11.x, 11.4.x, or 11.8.x. MariaDB's LTS versions are good choices for production.
 
 ### Template and Instance Class
 
@@ -51,7 +51,7 @@ Configure identifiers and credentials:
 MariaDB storage configuration is identical to MySQL. Use gp3 for most workloads.
 
 - **Dev/test**: 20-50 GB, gp3 with default IOPS
-- **Production**: Size based on data, gp3 with adjusted IOPS if needed
+- **Production**: Size based on data, gp3 with adjusted IOPS if needed. For MariaDB, provisioned gp3 IOPS and throughput are available only at 400 GiB and above; smaller gp3 volumes use the baseline performance.
 - Enable storage autoscaling
 
 ### Connectivity and Security
@@ -87,13 +87,13 @@ aws rds create-db-instance \
   --db-instance-identifier my-app-mariadb \
   --db-instance-class db.r6g.large \
   --engine mariadb \
-  --engine-version 10.11.6 \
+  --engine-version 10.11.16 \
   --master-username admin \
   --master-user-password 'YourStrongPassword123!' \
-  --allocated-storage 100 \
+  --allocated-storage 400 \
   --storage-type gp3 \
-  --iops 6000 \
-  --storage-throughput 250 \
+  --iops 12000 \
+  --storage-throughput 500 \
   --multi-az \
   --db-name myappdb \
   --vpc-security-group-ids sg-0abc123def456789 \
@@ -155,9 +155,9 @@ FLUSH PRIVILEGES;
 
 ### Thread Pool Tuning
 
-MariaDB's thread pool is enabled by default on RDS. You can tune it through parameter groups.
+MariaDB's thread pool is available on RDS. You can enable and tune it through parameter groups.
 
-These parameter group settings optimize the thread pool for high-concurrency workloads.
+These parameter group settings enable and tune the thread pool for high-concurrency workloads.
 
 ```text
 thread_handling = pool-of-threads
@@ -168,22 +168,29 @@ thread_pool_idle_timeout = 60
 
 ### Audit Plugin
 
-MariaDB on RDS supports the server audit plugin for compliance logging.
+MariaDB on RDS supports the MariaDB Audit Plugin for compliance logging.
 
-This enables audit logging through a custom parameter group.
+This enables audit logging through a custom option group.
 
 ```bash
-# Create a custom parameter group
-aws rds create-db-parameter-group \
-  --db-parameter-group-name mariadb-audit \
-  --db-parameter-group-family mariadb10.11 \
-  --description "MariaDB with audit logging"
+# Create a custom option group
+aws rds create-option-group \
+  --option-group-name mariadb-audit \
+  --engine-name mariadb \
+  --major-engine-version 10.11 \
+  --option-group-description "MariaDB with audit logging"
 
-# Enable the audit plugin
-aws rds modify-db-parameter-group \
-  --db-parameter-group-name mariadb-audit \
-  --parameters "ParameterName=server_audit_logging,ParameterValue=1,ApplyMethod=immediate" \
-               "ParameterName=server_audit_events,ParameterValue=CONNECT,QUERY_DDL,ApplyMethod=immediate"
+# Add the audit plugin
+aws rds add-option-to-option-group \
+  --option-group-name mariadb-audit \
+  --options '[{"OptionName":"MARIADB_AUDIT_PLUGIN","OptionSettings":[{"Name":"SERVER_AUDIT_EVENTS","Value":"CONNECT,QUERY_DDL"}]}]' \
+  --apply-immediately
+
+# Attach the option group to the DB instance
+aws rds modify-db-instance \
+  --db-instance-identifier my-app-mariadb \
+  --option-group-name mariadb-audit \
+  --apply-immediately
 ```
 
 ### System Versioned Tables
@@ -225,7 +232,7 @@ Monitor these MariaDB-specific metrics alongside the standard RDS metrics:
 
 - **Threads_running**: Active threads executing queries
 - **Threadpool_threads**: Total threads in the pool
-- **Innodb_buffer_pool_hit_rate**: Should be above 99%
+- **Innodb_buffer_pool_read_requests** and **Innodb_buffer_pool_reads**: Use these to calculate buffer pool hit rate, which should usually be above 99%
 - **Slow_queries**: Count of queries exceeding `long_query_time`
 
 Set up comprehensive monitoring with [CloudWatch alerting](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to catch issues early.
