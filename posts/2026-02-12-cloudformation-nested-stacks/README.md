@@ -214,10 +214,15 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_IAM
 ```
 
-Or use `aws cloudformation package` to automate the upload:
+Or use `aws cloudformation package` to automate the upload. For this workflow, the parent template's `TemplateURL` values must use local paths instead of S3 URLs:
+
+```yaml
+TemplateURL: templates/network.yaml
+TemplateURL: templates/application.yaml
+```
 
 ```bash
-# Package uploads local references to S3 and rewrites URLs
+# Package uploads local TemplateURL references to S3 and rewrites URLs
 aws cloudformation package \
   --template-file main.yaml \
   --s3-bucket my-templates-bucket \
