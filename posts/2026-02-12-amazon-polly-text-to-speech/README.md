@@ -64,9 +64,11 @@ def list_voices(language_code=None, engine=None):
     if engine:
         params['Engine'] = engine
 
-    response = polly.describe_voices(**params)
+    paginator = polly.get_paginator('describe_voices')
+    voices = []
+    for page in paginator.paginate(**params):
+        voices.extend(page['Voices'])
 
-    voices = response['Voices']
     for voice in sorted(voices, key=lambda v: v['LanguageCode']):
         engines = ', '.join(voice['SupportedEngines'])
         print(f"  {voice['Id']:15s} {voice['LanguageCode']:8s} "
@@ -108,30 +110,30 @@ def synthesize_ssml(ssml_text, voice_id='Joanna', output_format='mp3'):
 ssml = """
 <speak>
     <p>
-        &lt;s&gt;Good morning, team.&lt;/s&gt;
-        &lt;s&gt;Here is your daily infrastructure report.&lt;/s&gt;
+        <s>Good morning, team.</s>
+        <s>Here is your daily infrastructure report.</s>
     </p>
 
     <break time="500ms"/>
 
     <p>
-        &lt;s&gt;All <emphasis level="strong">critical</emphasis> services are operational.&lt;/s&gt;
-        &lt;s&gt;Uptime across all regions is
-           <prosody rate="slow">ninety nine point nine nine percent</prosody>.&lt;/s&gt;
+        <s>All critical services are operational.</s>
+        <s>Uptime across all regions is
+           <prosody rate="slow">ninety nine point nine nine percent</prosody>.</s>
     </p>
 
     <break time="300ms"/>
 
     <p>
-        &lt;s&gt;There were <say-as interpret-as="cardinal">3</say-as> minor incidents
+        <s>There were <say-as interpret-as="cardinal">3</say-as> minor incidents
            in the past <say-as interpret-as="cardinal">24</say-as> hours,
-           all resolved within SLA.&lt;/s&gt;
+           all resolved within SLA.</s>
     </p>
 
     <break time="500ms"/>
 
     <p>
-        &lt;s&gt;<prosody volume="soft">End of report.</prosody>&lt;/s&gt;
+        <s><prosody volume="soft">End of report.</prosody></s>
     </p>
 </speak>
 """
@@ -159,7 +161,7 @@ volume_example = '''<speak>
     <prosody volume="soft">This is quiet.</prosody>
 </speak>'''
 
-# Emphasis
+# Emphasis (standard voices only)
 emphasis_example = '''<speak>
     This is <emphasis level="strong">very important</emphasis>.
 </speak>'''
@@ -173,11 +175,11 @@ format_example = '''<speak>
 
 # Phonetic pronunciation
 phoneme_example = '''<speak>
-    You say <phoneme alphabet="ipa" ph="tomeito">tomato</phoneme>,
-    I say <phoneme alphabet="ipa" ph="tomato">tomato</phoneme>.
+    You say <phoneme alphabet="ipa" ph="təˈmeɪtoʊ">tomato</phoneme>,
+    I say <phoneme alphabet="ipa" ph="təˈmɑːtoʊ">tomato</phoneme>.
 </speak>'''
 
-# Whispered speech
+# Whispered speech (standard voices only)
 whisper_example = '''<speak>
     <amazon:effect name="whispered">This is a secret.</amazon:effect>
 </speak>'''
@@ -185,7 +187,7 @@ whisper_example = '''<speak>
 
 ## Long-Form Audio Generation
 
-For content longer than Polly's 3,000 character limit (or 6,000 for SSML), you need to split the text into chunks and concatenate the audio.
+For content longer than the SynthesizeSpeech API's 6,000-character total input limit, with no more than 3,000 billed characters, you need to split the text into chunks and concatenate the audio.
 
 ```python
 def synthesize_long_text(text, voice_id='Joanna', max_chars=2900):
@@ -352,8 +354,8 @@ class AudioContentPipeline:
         text = re.sub(r'#{1,6}\s', '', text)  # Headers
         text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Bold
         text = re.sub(r'\*(.*?)\*', r'\1', text)  # Italic
+        text = re.sub(r'`{3}[\s\S]*?`{3}', 'Code block omitted.', text)  # Code blocks
         text = re.sub(r'`(.*?)`', r'\1', text)  # Inline code
-        text = re.sub(r'```[\s\S]*?```', 'Code block omitted.', text)  # Code blocks
         text = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', text)  # Links
         text = re.sub(r'!\[.*?\]\(.*?\)', '', text)  # Images
 
@@ -370,7 +372,7 @@ pipeline.generate_audio('blog-post-123', article_text, voice_id='Matthew')
 
 ## Speech Marks for Synchronization
 
-Polly can generate speech marks that tell you exactly when each word, sentence, or SSML tag is spoken. This is essential for building synchronized experiences like karaoke-style text highlighting or lip-syncing animations.
+Polly can generate speech marks that tell you exactly when each word or sentence starts, or when a custom SSML `<mark>` element is reached. This is essential for building synchronized experiences like karaoke-style text highlighting or lip-syncing animations.
 
 ```python
 def get_speech_marks(text, voice_id='Joanna'):
