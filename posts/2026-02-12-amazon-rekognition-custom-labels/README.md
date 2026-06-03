@@ -8,7 +8,7 @@ Description: Train custom image classification and object detection models with 
 
 ---
 
-The built-in Rekognition features are great for generic detection - finding cars, people, text, and common objects. But what if you need to identify specific product defects on a manufacturing line? Or distinguish between your company's different product models? Or classify medical images? That's where Rekognition Custom Labels comes in.
+The built-in Rekognition features are great for generic detection - finding cars, people, text, and common objects. But what if you need to identify specific product defects on a manufacturing line? Or distinguish between your company's different product models? Or classify specialized domain images? That's where Rekognition Custom Labels comes in.
 
 Custom Labels lets you train your own computer vision models by uploading labeled images. You don't need any ML expertise - Rekognition handles the model architecture, training, and optimization. You just provide images and labels. The resulting model can do image classification (what is this?) or object detection (where is this in the image?).
 
@@ -32,7 +32,7 @@ graph LR
 
 Good training data is the single biggest factor in model quality. Here are the guidelines:
 
-- Minimum 10 images per label, but aim for at least 50-100
+- AWS allows very small datasets, but aim for at least 50-100 images per label
 - Images should represent the real conditions your model will encounter
 - Include variations in lighting, angle, and background
 - Balance your dataset - similar numbers of images per label
@@ -182,7 +182,13 @@ dataset_response = rekognition.create_dataset(
 dataset_arn = dataset_response['DatasetArn']
 print(f"Dataset created: {dataset_arn}")
 
-# Also create a test dataset (Rekognition can auto-split if you prefer)
+# Also create a test dataset if you have a separate test manifest
+s3.upload_file(
+    'test_manifest.jsonl',
+    'training-data',
+    'manifests/test.manifest'
+)
+
 test_dataset_response = rekognition.create_dataset(
     ProjectArn=project_arn,
     DatasetType='TEST',
@@ -309,6 +315,9 @@ stop_model(model_arn)
 Here's a Lambda function that uses your custom model to inspect images uploaded to S3.
 
 ```python
+import boto3
+import os
+
 def lambda_handler(event, context):
     """Inspect uploaded product images using Custom Labels."""
     rekognition = boto3.client('rekognition')
