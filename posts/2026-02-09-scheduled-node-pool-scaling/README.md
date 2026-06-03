@@ -13,14 +13,14 @@ Non-production environments often run 24/7 despite only being used during busine
 ## Calculating Non-Production Waste
 
 Development and staging environments typically operate:
-- 40 hours/week during business hours
-- 128 hours/week remaining (76% waste)
+- 50 hours/week during business hours
+- 118 hours/week remaining (70% waste)
 
 Scheduled scaling during off-hours recovers this waste.
 
 ## Implementing CronJob-Based Scaling
 
-Create scale-down and scale-up CronJobs:
+Create scale-down and scale-up CronJobs with an image that includes both `kubectl` and the AWS CLI:
 
 ```yaml
 # scale-down-cronjob.yaml
@@ -32,6 +32,7 @@ metadata:
   namespace: kube-system
 spec:
   schedule: "0 18 * * 1-5"  # 6 PM Mon-Fri
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
@@ -39,7 +40,7 @@ spec:
           serviceAccountName: node-scaler
           containers:
           - name: scaler
-            image: bitnami/kubectl:latest
+            image: your-registry/kubectl-awscli:latest
             command:
             - /bin/bash
             - -c
@@ -61,7 +62,8 @@ metadata:
   name: scale-up-dev
   namespace: kube-system
 spec:
-  schedule: "0 7 * * 1-5"  # 7 AM Mon-Fri
+  schedule: "0 8 * * 1-5"  # 8 AM Mon-Fri
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
@@ -69,7 +71,7 @@ spec:
           serviceAccountName: node-scaler
           containers:
           - name: scaler
-            image: bitnami/kubectl:latest
+            image: your-registry/kubectl-awscli:latest
             command:
             - /bin/bash
             - -c
@@ -105,7 +107,10 @@ metadata:
 rules:
 - apiGroups: ["apps"]
   resources: ["deployments", "statefulsets"]
-  verbs: ["get", "list", "patch", "update"]
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources: ["deployments/scale", "statefulsets/scale"]
+  verbs: ["get", "patch", "update"]
 - apiGroups: [""]
   resources: ["nodes"]
   verbs: ["get", "list"]
@@ -144,7 +149,7 @@ spec:
   - type: cron
     metadata:
       timezone: America/New_York
-      start: 0 7 * * 1-5      # Scale up at 7 AM weekdays
+      start: 0 8 * * 1-5      # Scale up at 8 AM weekdays
       end: 0 18 * * 1-5        # Scale down at 6 PM weekdays
       desiredReplicas: "5"
 ```
@@ -162,6 +167,7 @@ metadata:
   namespace: kube-system
 spec:
   schedule: "0 18 * * 5"  # Friday 6 PM
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
@@ -169,7 +175,7 @@ spec:
           serviceAccountName: node-scaler
           containers:
           - name: shutdown
-            image: bitnami/kubectl:latest
+            image: your-registry/kubectl-awscli:latest
             command:
             - /bin/bash
             - -c
@@ -193,7 +199,8 @@ metadata:
   name: monday-startup
   namespace: kube-system
 spec:
-  schedule: "0 7 * * 1"  # Monday 7 AM
+  schedule: "0 8 * * 1"  # Monday 8 AM
+  timeZone: America/New_York
   jobTemplate:
     spec:
       template:
@@ -201,7 +208,7 @@ spec:
           serviceAccountName: node-scaler
           containers:
           - name: startup
-            image: bitnami/kubectl:latest
+            image: your-registry/kubectl-awscli:latest
             command:
             - /bin/bash
             - -c
@@ -213,8 +220,9 @@ spec:
 
               sleep 120
 
-              # Restore deployments from ConfigMap
-              kubectl apply -f /config/dev-deployments.yaml
+              # Scale deployments back up
+              kubectl scale deployment api --replicas=3 -n development
+              kubectl scale deployment frontend --replicas=2 -n development
 
               echo "Monday startup completed"
           restartPolicy: OnFailure
