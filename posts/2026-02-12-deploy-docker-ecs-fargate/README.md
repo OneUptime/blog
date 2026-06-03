@@ -36,6 +36,8 @@ app.listen(PORT, () => {
 });
 ```
 
+Make sure your `package.json` lists `express` as a dependency and commit the generated `package-lock.json`, because the Dockerfile uses `npm ci`.
+
 And the Dockerfile.
 
 ```dockerfile
@@ -44,7 +46,7 @@ And the Dockerfile.
 FROM node:20-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 FROM node:20-alpine
 WORKDIR /app
@@ -74,18 +76,18 @@ aws ecr create-repository \
 ```bash
 # Get the ECR login token and authenticate Docker
 aws ecr get-login-password --region us-east-1 | \
-  docker login --username AWS --password-stdin 123456789.dkr.ecr.us-east-1.amazonaws.com
+  docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
 # Build the image
 docker build -t my-api:1.0.0 .
 
 # Tag it for ECR
-docker tag my-api:1.0.0 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:1.0.0
-docker tag my-api:1.0.0 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:latest
+docker tag my-api:1.0.0 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:1.0.0
+docker tag my-api:1.0.0 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:latest
 
 # Push to ECR
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:1.0.0
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:latest
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:1.0.0
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:latest
 ```
 
 ## Step 3: Create the ECS Cluster
@@ -118,12 +120,12 @@ Save this as `task-definition.json`.
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::123456789:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/ecsTaskRole",
   "containerDefinitions": [
     {
       "name": "api",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:1.0.0",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:1.0.0",
       "essential": true,
       "portMappings": [
         {
@@ -155,6 +157,8 @@ Save this as `task-definition.json`.
 }
 ```
 
+The execution role must exist and include the permissions needed to pull from ECR and write logs to CloudWatch Logs. The task role is for permissions your application code needs at runtime.
+
 Register it.
 
 ```bash
@@ -164,21 +168,34 @@ aws ecs register-task-definition --cli-input-json file://task-definition.json
 
 ## Step 6: Set Up Networking
 
-Create a security group that allows inbound traffic on port 8080.
+Create security groups for the ALB and the Fargate tasks.
 
 ```bash
+# Create a security group for the ALB
+aws ec2 create-security-group \
+  --group-name my-api-alb-sg \
+  --description "Security group for the API load balancer" \
+  --vpc-id vpc-12345678
+
+# Allow HTTP traffic to the ALB
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-0abc123def4567890 \
+  --protocol tcp \
+  --port 80 \
+  --cidr 0.0.0.0/0
+
 # Create a security group for the Fargate tasks
 aws ec2 create-security-group \
   --group-name ecs-api-sg \
   --description "Security group for ECS API tasks" \
   --vpc-id vpc-12345678
 
-# Allow inbound traffic on port 8080
+# Allow only the ALB to reach the tasks on port 8080
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-newgroup123 \
+  --group-id sg-0123456789abcdef0 \
   --protocol tcp \
   --port 8080 \
-  --cidr 10.0.0.0/16
+  --source-group sg-0abc123def4567890
 ```
 
 ## Step 7: Create an ALB
@@ -190,7 +207,7 @@ For production, put an Application Load Balancer in front of your tasks.
 aws elbv2 create-load-balancer \
   --name my-api-alb \
   --subnets subnet-abc123 subnet-def456 \
-  --security-groups sg-alb-group \
+  --security-groups sg-0abc123def4567890 \
   --scheme internet-facing \
   --type application
 
@@ -208,15 +225,15 @@ aws elbv2 create-target-group \
 
 # Create a listener
 aws elbv2 create-listener \
-  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/my-api-alb/abc123 \
+  --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-api-alb/abc123 \
   --protocol HTTP \
   --port 80 \
-  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/my-api-targets/def456
+  --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/my-api-targets/def456
 ```
 
 ## Step 8: Create the Service
 
-Now bring it all together with an ECS service.
+Now bring it all together with an ECS service. With `assignPublicIp` disabled, use private subnets that can reach ECR and CloudWatch Logs through a NAT gateway or the required VPC endpoints.
 
 ```bash
 # Create the service with ALB integration
@@ -229,13 +246,13 @@ aws ecs create-service \
   --network-configuration '{
     "awsvpcConfiguration": {
       "subnets": ["subnet-abc123", "subnet-def456"],
-      "securityGroups": ["sg-newgroup123"],
+      "securityGroups": ["sg-0123456789abcdef0"],
       "assignPublicIp": "DISABLED"
     }
   }' \
   --load-balancers '[
     {
-      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/my-api-targets/def456",
+      "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/my-api-targets/def456",
       "containerName": "api",
       "containerPort": 8080
     }
@@ -286,8 +303,8 @@ When you have a new version, the workflow is:
 ```bash
 # Build and push the new image
 docker build -t my-api:1.1.0 .
-docker tag my-api:1.1.0 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:1.1.0
-docker push 123456789.dkr.ecr.us-east-1.amazonaws.com/my-api:1.1.0
+docker tag my-api:1.1.0 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:1.1.0
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:1.1.0
 
 # Update the task definition with the new image tag
 # (edit task-definition.json to reference my-api:1.1.0)
@@ -312,7 +329,7 @@ For a service running 2 Fargate tasks with 0.25 vCPU and 512 MB memory:
 - Per month (2 tasks, 24/7): roughly $17-18
 - Plus ALB: roughly $16/month base + data processing charges
 
-That's a production-ready API with load balancing, health checks, and auto-restart for under $35/month. Compare that with running and managing EC2 instances yourself. For a detailed comparison, see our post on [choosing between Fargate and EC2](https://oneuptime.com/blog/post/2026-02-12-choose-ecs-fargate-ec2/view).
+That's a production-ready API with load balancing, health checks, and auto-restart for around $35/month before data processing charges. Compare that with running and managing EC2 instances yourself. For a detailed comparison, see our post on [choosing between Fargate and EC2](https://oneuptime.com/blog/post/2026-02-12-choose-ecs-fargate-ec2/view).
 
 ## Wrapping Up
 
