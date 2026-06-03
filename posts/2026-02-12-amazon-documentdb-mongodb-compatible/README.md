@@ -14,7 +14,7 @@ Amazon DocumentDB is AWS's managed document database that's compatible with the 
 
 DocumentDB uses a storage architecture similar to Amazon Aurora. Your data is automatically replicated six ways across three availability zones, and storage grows automatically up to 128 TB. You don't provision storage or worry about running out of disk space.
 
-The compatibility is with MongoDB 3.6, 4.0, and 5.0 APIs. This means your existing MongoDB drivers and tools will work, but not every MongoDB feature is supported. Notably, DocumentDB doesn't support client-side field-level encryption, the `$graphLookup` aggregation stage in all scenarios, or MongoDB's change streams in exactly the same way.
+The compatibility is with MongoDB 4.0, 5.0, and 8.0 APIs. Older Amazon DocumentDB 3.6 clusters are now in Extended Support after the March 30, 2026 standard support end date. This means your existing MongoDB drivers and tools will work, but not every MongoDB feature is supported. Notably, DocumentDB doesn't support the `$graphLookup` aggregation stage, retryable writes, or MongoDB's change streams in exactly the same way.
 
 That said, for the vast majority of CRUD operations, aggregation pipelines, and indexing strategies, your MongoDB code will run on DocumentDB without changes.
 
@@ -93,15 +93,16 @@ DocumentDB requires TLS by default. You need to download the AWS CA certificate 
 wget https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
 ```
 
-Connect using the mongo shell.
+Connect using `mongosh`.
 
 ```bash
-# Connect to DocumentDB with TLS using the mongo shell
-mongo --tls \
+# Connect to DocumentDB with TLS using mongosh
+mongosh --tls \
   --host my-docdb-cluster.cluster-xxxxx.us-east-1.docdb.amazonaws.com:27017 \
   --tlsCAFile global-bundle.pem \
   --username dbadmin \
-  --password 'YourSecurePassword123!'
+  --password 'YourSecurePassword123!' \
+  --retryWrites false
 ```
 
 Here's a Python connection example using PyMongo.
@@ -119,7 +120,7 @@ cluster_endpoint = 'my-docdb-cluster.cluster-xxxxx.us-east-1.docdb.amazonaws.com
 # Build the connection string with TLS
 connection_string = (
     f'mongodb://{username}:{password}@{cluster_endpoint}:27017/'
-    f'?tls=true&tlsCAFile=global-bundle.pem&retryWrites=false'
+    f'?tls=true&tlsCAFile=global-bundle.pem&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false'
 )
 
 client = pymongo.MongoClient(connection_string)
@@ -136,12 +137,8 @@ For Node.js applications, the setup is similar.
 ```javascript
 // Connect to DocumentDB from Node.js
 const { MongoClient } = require('mongodb');
-const fs = require('fs');
 
-// Read the CA certificate
-const ca = [fs.readFileSync('global-bundle.pem')];
-
-const uri = 'mongodb://dbadmin:YourSecurePassword123!@my-docdb-cluster.cluster-xxxxx.us-east-1.docdb.amazonaws.com:27017/?tls=true&retryWrites=false';
+const uri = 'mongodb://dbadmin:YourSecurePassword123!@my-docdb-cluster.cluster-xxxxx.us-east-1.docdb.amazonaws.com:27017/?tls=true&replicaSet=rs0&readPreference=secondaryPreferred&retryWrites=false';
 
 const client = new MongoClient(uri, {
   tls: true,
@@ -169,7 +166,7 @@ aws docdb create-db-cluster-parameter-group \
   --db-parameter-group-family docdb5.0 \
   --description "Custom DocumentDB parameters"
 
-# Enable change streams (disabled by default)
+# Set change stream log retention (default is 3 hours)
 aws docdb modify-db-cluster-parameter-group \
   --db-cluster-parameter-group-name my-docdb-params \
   --parameters "ParameterName=change_stream_log_retention_duration,ParameterValue=10800,ApplyMethod=immediate"
@@ -183,7 +180,8 @@ aws docdb modify-db-cluster-parameter-group \
 # Apply the parameter group to your cluster
 aws docdb modify-db-cluster \
   --db-cluster-identifier my-docdb-cluster \
-  --db-cluster-parameter-group-name my-docdb-params
+  --db-cluster-parameter-group-name my-docdb-params \
+  --enable-cloudwatch-logs-exports profiler
 ```
 
 ## Creating Indexes
