@@ -19,8 +19,8 @@ CloudFormation deletes resources in reverse dependency order. If any resource ca
 - ENIs (Elastic Network Interfaces) attached to active resources
 - IAM roles still in use
 - VPCs with active dependencies
-- Resources protected by `DeletionPolicy: Retain`
-- Resources manually deleted but still in CloudFormation's state
+- Stack termination protection
+- Resources modified outside of CloudFormation
 
 ## Diagnosing the Failure
 
@@ -47,26 +47,31 @@ This is the most common deletion failure. CloudFormation won't delete a bucket t
 # Remove all objects from the bucket
 aws s3 rm s3://my-app-bucket --recursive
 
-# If versioning is enabled, you also need to delete version markers
+# If versioning is enabled, you also need to delete object versions
 aws s3api list-object-versions \
   --bucket my-app-bucket \
-  --query 'Versions[*].{Key:Key,VersionId:VersionId}' \
-  --output json > versions.json
+  --max-items 1000 \
+  --query '{Objects: not_null(Versions, `[]`)[].{Key:Key,VersionId:VersionId}}' \
+  --output json > versions-to-delete.json
 
-# Delete all versions
+# Delete the listed versions
 aws s3api delete-objects \
   --bucket my-app-bucket \
-  --delete '{"Objects": '"$(cat versions.json)"'}'
+  --delete file://versions-to-delete.json
 
 # Also delete any delete markers
 aws s3api list-object-versions \
   --bucket my-app-bucket \
-  --query 'DeleteMarkers[*].{Key:Key,VersionId:VersionId}' \
-  --output json > markers.json
+  --max-items 1000 \
+  --query '{Objects: not_null(DeleteMarkers, `[]`)[].{Key:Key,VersionId:VersionId}}' \
+  --output json > markers-to-delete.json
 
 aws s3api delete-objects \
   --bucket my-app-bucket \
-  --delete '{"Objects": '"$(cat markers.json)"'}'
+  --delete file://markers-to-delete.json
+
+# Repeat the version and delete-marker steps until both lists are empty.
+# S3 DeleteObjects accepts up to 1,000 objects per request.
 
 # Now retry the stack deletion
 aws cloudformation delete-stack --stack-name my-stuck-stack
@@ -99,7 +104,7 @@ Remove or reassign the dependent resources, then retry deletion.
 
 ## Stuck ENIs (Elastic Network Interfaces)
 
-Lambda functions in VPCs create ENIs that can linger after the function is deleted. CloudFormation tries to delete the subnet or security group but can't because of the orphaned ENI.
+Lambda functions in VPCs create Hyperplane ENIs that can linger after the function's VPC configuration is removed or the function is deleted. CloudFormation tries to delete the subnet or security group but can't while an ENI still uses it.
 
 **Error message**: "The subnet has dependencies and cannot be deleted" or "DependencyViolation"
 
@@ -109,9 +114,9 @@ Lambda functions in VPCs create ENIs that can linger after the function is delet
 # Find orphaned ENIs in the subnet
 aws ec2 describe-network-interfaces \
   --filters Name=subnet-id,Values=subnet-0abc123 \
-  --query 'NetworkInterfaces[*].{Id:NetworkInterfaceId,Status:Status,Description:Description}'
+  --query 'NetworkInterfaces[*].{Id:NetworkInterfaceId,Status:Status,Type:InterfaceType,RequesterManaged:RequesterManaged,Attachment:Attachment.AttachmentId,Description:Description}'
 
-# Detach and delete orphaned ENIs
+# Detach and delete customer-managed ENIs that are no longer needed
 aws ec2 detach-network-interface \
   --attachment-id eni-attach-0abc123 \
   --force
@@ -120,7 +125,7 @@ aws ec2 delete-network-interface \
   --network-interface-id eni-0abc123
 ```
 
-Wait a few minutes after cleaning up ENIs, then retry the stack deletion.
+For Lambda-managed ENIs, remove the Lambda VPC configuration or delete the function and wait for Lambda to clean up the ENI. AWS says this can take up to 20 minutes, and the execution role must still have the permissions Lambda needs to delete the ENI. Wait a few minutes after cleaning up ENIs, then retry the stack deletion.
 
 ## VPC Dependencies
 
@@ -170,7 +175,7 @@ aws iam delete-role-policy --role-name MyAppRole --policy-name MyInlinePolicy
 
 ## The Nuclear Option: Retain and Skip
 
-When you can't fix the underlying issue, you can force deletion by retaining the problematic resources:
+When you can't fix the underlying issue and the stack is already in `DELETE_FAILED`, you can force deletion by retaining the problematic resources:
 
 ```bash
 # Delete the stack but skip resources that can't be deleted
@@ -197,6 +202,8 @@ Here's a script that handles common deletion failures:
 set -euo pipefail
 
 STACK_NAME="${1:?Usage: force-delete-stack.sh STACK_NAME}"
+TMP_DIR=$(mktemp -d)
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "Attempting to delete stack: $STACK_NAME"
 
@@ -236,6 +243,27 @@ for RESOURCE in $FAILED_RESOURCES; do
       --output text)
     echo "Emptying S3 bucket: $BUCKET"
     aws s3 rm "s3://$BUCKET" --recursive 2>/dev/null || true
+
+    for KIND in Versions DeleteMarkers; do
+      while :; do
+        DELETE_FILE="$TMP_DIR/$BUCKET-$KIND.json"
+        QUERY="{Objects: not_null($KIND, \`[]\`)[].{Key:Key,VersionId:VersionId}}"
+
+        aws s3api list-object-versions \
+          --bucket "$BUCKET" \
+          --max-items 1000 \
+          --query "$QUERY" \
+          --output json > "$DELETE_FILE"
+
+        if ! grep -q '"Key"' "$DELETE_FILE"; then
+          break
+        fi
+
+        aws s3api delete-objects \
+          --bucket "$BUCKET" \
+          --delete "file://$DELETE_FILE" >/dev/null
+      done
+    done
   fi
 done
 
