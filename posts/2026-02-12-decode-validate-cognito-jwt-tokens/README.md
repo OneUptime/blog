@@ -18,7 +18,7 @@ A JWT has three parts separated by dots: header, payload, and signature. Each pa
 
 Here's what a decoded Cognito ID token looks like:
 
-```json
+```jsonc
 // Header
 {
     "kid": "abcdef1234567890",
@@ -40,7 +40,7 @@ Here's what a decoded Cognito ID token looks like:
 }
 ```
 
-The access token looks similar but has different claims - it includes `scope` and `client_id` instead of user attributes, and its `token_use` is "access" instead of "id".
+The access token looks similar but has different claims - it includes `scope`, `client_id`, and group membership instead of ordinary user attributes like `email`, and its `token_use` is "access" instead of "id". Access tokens can also include an `aud` claim when you request a resource binding from Cognito.
 
 ## The Validation Steps
 
@@ -55,7 +55,7 @@ graph TD
     E --> F[Verify signature]
     F --> G[Check expiration - exp claim]
     G --> H[Verify issuer - iss claim]
-    H --> I[Verify audience - aud claim]
+    H --> I[Verify audience/client - aud or client_id claim]
     I --> J[Check token_use claim]
     J --> K[Token is valid]
 ```
@@ -63,7 +63,7 @@ graph TD
 1. **Verify the signature** using the public key from Cognito's JWKS endpoint
 2. **Check the expiration** (`exp` claim)
 3. **Verify the issuer** (`iss` claim matches your user pool)
-4. **Verify the audience** (`aud` claim matches your app client ID)
+4. **Verify the audience or client** (`aud` claim matches your app client ID for ID tokens; `client_id` matches your app client ID for access tokens)
 5. **Check the token use** (`token_use` matches what you expect)
 
 ## Step 1: Fetch the JSON Web Key Set (JWKS)
@@ -113,7 +113,7 @@ async function getJWKS() {
 
 ## Step 2: Full Validation with jsonwebtoken and jwks-rsa
 
-The most common Node.js approach uses the `jsonwebtoken` and `jwks-rsa` libraries together. This handles signature verification, expiration checks, and claim validation.
+A common Node.js approach uses the `jsonwebtoken` and `jwks-rsa` libraries together. This handles signature verification, expiration checks, and claim validation.
 
 Install the dependencies:
 
@@ -162,18 +162,24 @@ async function validateCognitoToken(token, tokenUse = 'id') {
     const publicKey = await getSigningKey(decoded.header.kid);
 
     // Step 3: Verify signature and standard claims
-    const payload = jwt.verify(token, publicKey, {
+    const verifyOptions = {
         issuer: `https://cognito-idp.${REGION}.amazonaws.com/${USER_POOL_ID}`,
         algorithms: ['RS256'],
-        maxAge: '1h'
-    });
+        clockTolerance: 30
+    };
+
+    if (tokenUse === 'id') {
+        verifyOptions.audience = APP_CLIENT_ID;
+    }
+
+    const payload = jwt.verify(token, publicKey, verifyOptions);
 
     // Step 4: Verify token_use
     if (payload.token_use !== tokenUse) {
         throw new Error(`Expected ${tokenUse} token but got ${payload.token_use}`);
     }
 
-    // Step 5: Verify audience (only for ID tokens - access tokens use client_id)
+    // Step 5: Verify audience/client (ID tokens use aud; access tokens use client_id)
     if (tokenUse === 'id' && payload.aud !== APP_CLIENT_ID) {
         throw new Error('Token audience does not match app client');
     }
@@ -265,6 +271,7 @@ def get_jwks():
         return _jwks_cache
 
     response = requests.get(JWKS_URL)
+    response.raise_for_status()
     _jwks_cache = response.json()
     _jwks_cache_time = now
     return _jwks_cache
@@ -290,12 +297,19 @@ def validate_cognito_token(token, token_use='access'):
 
     # Verify and decode the token
     try:
+        decode_options = {'leeway': 30}
+        audience = APP_CLIENT_ID if token_use == 'id' else None
+
+        if token_use == 'access':
+            decode_options['verify_aud'] = False
+
         payload = jwt.decode(
             token,
             key,
             algorithms=['RS256'],
-            audience=APP_CLIENT_ID if token_use == 'id' else None,
+            audience=audience,
             issuer=ISSUER,
+            options=decode_options,
         )
     except JWTError as e:
         raise ValueError(f'Token verification failed: {str(e)}')
