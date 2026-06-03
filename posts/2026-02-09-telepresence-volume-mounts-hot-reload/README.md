@@ -14,9 +14,9 @@ With Telepresence volume mounts and hot-reloading configured correctly, you can 
 
 ## Understanding Telepresence Volume Mounts
 
-Telepresence intercepts traffic to a Kubernetes service and redirects it to a process running on your local machine. Volume mounts extend this capability by making Kubernetes volumes accessible locally, and more importantly, by allowing you to mount local directories into the remote context.
+Telepresence intercepts traffic to a Kubernetes service and redirects it to a process running on your local machine. Volume mounts extend this capability by making the volumes that are mounted in the targeted Kubernetes workload accessible to the local process.
 
-This bidirectional mounting enables several powerful scenarios including running local code that reads from Kubernetes ConfigMaps and Secrets, accessing Persistent Volumes from your local environment, and most importantly, hot-reloading local code changes without rebuilding containers.
+This enables several powerful scenarios including running local code that reads from Kubernetes ConfigMaps and Secrets, accessing Persistent Volumes from your local environment, and most importantly, hot-reloading local code changes without rebuilding containers.
 
 The key is that your local process runs with access to both local files and remote Kubernetes resources, creating a hybrid environment that feels local but behaves like it's running in the cluster.
 
@@ -27,11 +27,8 @@ First, install Telepresence and set up the cluster-side components:
 ```bash
 # Install Telepresence CLI
 
-# For macOS
-brew install datawire/blackbird/telepresence
-
-# For Linux
-sudo curl -fL https://app.getambassador.io/download/tel2/linux/amd64/latest/telepresence \
+# For Linux (AMD64)
+sudo curl -fL https://github.com/telepresenceio/telepresence/releases/latest/download/telepresence-linux-amd64 \
   -o /usr/local/bin/telepresence
 sudo chmod a+x /usr/local/bin/telepresence
 
@@ -64,7 +61,6 @@ logLevels:
   rootDaemon: info
 
 intercept:
-  appProtocolStrategy: http2Probe
   defaultPort: 8080
 ```
 
@@ -114,13 +110,6 @@ app.listen(PORT, () => {
     console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
-// Hot module replacement support for development
-if (module.hot) {
-    module.hot.accept();
-    module.hot.dispose(() => {
-        console.log('Module disposed for hot reload');
-    });
-}
 ```
 
 Create a package.json with hot-reloading configuration:
@@ -220,30 +209,30 @@ spec:
     protocol: TCP
 ```
 
-Create a Telepresence intercept configuration:
+If you prefer Docker Compose, create a Telepresence Compose configuration for the local handler:
 
 ```yaml
-# telepresence-intercept.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: telepresence-config
-data:
-  intercept.yaml: |
-    workloads:
-    - name: api-service
-      intercepts:
-      - handler: api-dev
-        patterns:
-        - name: volume-mount
-          localMount: ./local-app
-          remoteMount: /app
-        - name: config-mount
-          localMount: ./config
-          remoteMount: /app/config
-        global:
-          - name: backend-service
-            namespace: development
+# compose.yaml
+x-tele:
+  connections:
+    - namespace: development
+
+services:
+  api-dev:
+    image: node:20
+    working_dir: /app
+    command: npm run dev
+    volumes:
+      - ./:/app
+    ports:
+      - "8080:8080"
+    x-tele:
+      type: intercept
+      name: api-service
+      workload: api-service
+      service: api-service
+      ports:
+        - "8080:80"
 ```
 
 Start the intercept with volume mounts:
@@ -252,21 +241,25 @@ Start the intercept with volume mounts:
 # Navigate to your project directory
 cd ~/projects/api-service
 
-# Start intercept with volume mounts
+# Start intercept with volume mounts. Mounted pod volumes are exposed under $TELEPRESENCE_ROOT.
 telepresence intercept api-service \
   --namespace development \
-  --port 8080 \
-  --mount=true \
-  --docker-run \
-  --mount-to=/telepresence-root
+  --port 8080:80 \
+  --mount=/tmp/telepresence-mounts
 
-# Alternative: Manual intercept with specific mount points
+# Alternative: run the local handler in Docker after connecting with a Docker-based daemon
+telepresence connect --docker
 telepresence intercept api-service \
   --namespace development \
-  --port 8080:8080 \
+  --port 8080:80 \
   --env-file=.env.telepresence \
-  --mount=/tmp/telepresence-mounts \
-  --docker-mount=/tmp/telepresence-mounts:/telepresence-root
+  --env-syntax=sh:export \
+  --mount=true \
+  --docker-run -- \
+  -v "$(pwd):/app" \
+  -w /app \
+  node:20 \
+  npm run dev
 ```
 
 ## Creating a Development Startup Script
@@ -287,6 +280,12 @@ SERVICE="api-service"
 PORT="8080"
 LOCAL_DIR="$(pwd)"
 
+cleanup() {
+    telepresence leave $SERVICE 2>/dev/null || true
+}
+
+trap cleanup EXIT
+
 # Check if Telepresence is connected
 if ! telepresence status | grep -q "Connected"; then
     echo "Connecting to Kubernetes cluster..."
@@ -297,9 +296,9 @@ fi
 echo "Extracting environment variables..."
 telepresence intercept $SERVICE \
   --namespace $NAMESPACE \
-  --port $PORT \
+  --port $PORT:80 \
   --env-file .env.telepresence \
-  --preview-url=false
+  --env-syntax sh:export
 
 # Start local development server with hot reload
 echo "Starting local server with hot reload..."
@@ -310,11 +309,8 @@ echo "Press Ctrl+C to stop"
 echo ""
 
 # Load environment and start with nodemon
-export $(cat .env.telepresence | xargs)
+. .env.telepresence
 npm run dev
-
-# Cleanup on exit
-trap "telepresence leave $SERVICE" EXIT
 ```
 
 Make the script executable and use it:
@@ -371,12 +367,12 @@ Start Python development with Telepresence:
 
 telepresence intercept api-service \
   --namespace development \
-  --port 8080 \
-  --env-file .env.telepresence
+  --port 8080:80 \
+  --env-file .env.telepresence \
+  --env-syntax sh:export
 
-# Use watchdog for file watching with Flask
-export $(cat .env.telepresence | xargs)
-export FLASK_ENV=development
+# Enable Flask debug mode for the development server
+. .env.telepresence
 export FLASK_DEBUG=1
 
 python app.py
@@ -390,7 +386,7 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-  bin = "./tmp/main"
+  entrypoint = ["./tmp/main"]
   cmd = "go build -o ./tmp/main ."
   delay = 1000
   exclude_dir = ["tmp", "vendor"]
@@ -425,14 +421,15 @@ tmp_dir = "tmp"
 # start-dev-go.sh
 
 # Install Air if not present
-which air || go install github.com/cosmtrek/air@latest
+which air || go install github.com/air-verse/air@latest
 
 telepresence intercept api-service \
   --namespace development \
-  --port 8080 \
-  --env-file .env.telepresence
+  --port 8080:80 \
+  --env-file .env.telepresence \
+  --env-syntax sh:export
 
-export $(cat .env.telepresence | xargs)
+. .env.telepresence
 air
 ```
 
@@ -442,18 +439,28 @@ Configure selective volume mounts for optimal performance:
 
 ```bash
 # Mount only specific directories
+telepresence connect --docker
 telepresence intercept api-service \
   --namespace development \
-  --port 8080 \
+  --port 8080:80 \
   --mount=false \
   --docker-run \
-  --docker-mount="$(pwd)/src:/app/src:cached" \
-  --docker-mount="$(pwd)/config:/app/config:ro" \
-  -- npm run dev
+  -- \
+  -v "$(pwd)/src:/app/src:cached" \
+  -v "$(pwd)/config:/app/config:ro" \
+  -w /app \
+  node:20 \
+  npm run dev
+```
 
-# Use docker-compose for complex setups
-# docker-compose.yml
-version: '3.8'
+Use Telepresence Compose for complex setups:
+
+```yaml
+# compose.yaml
+x-tele:
+  connections:
+    - namespace: development
+
 services:
   app:
     build: .
@@ -464,23 +471,23 @@ services:
     environment:
       - NODE_ENV=development
     command: npm run dev
-    network_mode: "host"
+    x-tele:
+      type: intercept
+      name: api-service
+      workload: api-service
+      service: api-service
+      ports:
+        - "8080:80"
 
 volumes:
   node_modules:
 ```
 
-Start with docker-compose and Telepresence:
+Start with Telepresence Compose:
 
 ```bash
-# Establish intercept
-telepresence intercept api-service \
-  --namespace development \
-  --port 8080 \
-  --docker-run
-
-# Run with docker-compose
-docker-compose up
+# Run the Compose project and create the configured intercept
+telepresence compose up
 ```
 
 ## Monitoring and Debugging Intercepts
@@ -513,7 +520,7 @@ telepresence gather-logs
 # Test connectivity to remote services
 telepresence intercept api-service \
   --namespace development \
-  --port 8080
+  --port 8080:80
 
 # In another terminal, test access to cluster services
 curl http://backend-service.development.svc.cluster.local
@@ -563,13 +570,14 @@ telepresence connect
 log "Starting intercept for $SERVICE_NAME..."
 telepresence intercept $SERVICE_NAME \
   --namespace $NAMESPACE \
-  --port $PORT:$PORT \
+  --port $PORT:80 \
   --env-file .env.telepresence \
+  --env-syntax sh:export \
   --mount=true
 
 # Export environment variables
 log "Loading environment from cluster..."
-export $(grep -v '^#' .env.telepresence | xargs)
+. .env.telepresence
 
 # Start development server
 log "Starting development server with hot-reload..."
