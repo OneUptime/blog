@@ -33,7 +33,7 @@ Before setting up Multi-Attach, make sure you have:
 
 ## Step 1: Create a Multi-Attach Enabled Volume
 
-You must enable Multi-Attach at volume creation time. You can't enable it on an existing volume.
+You can enable Multi-Attach when you create the volume. For io2 volumes, you can also enable it later with `modify-volume`, but only while the volume is detached. For io1 volumes, enable it at creation time.
 
 Create an io2 volume with Multi-Attach enabled:
 
@@ -97,8 +97,8 @@ GFS2 (Global File System 2) is a solid choice that's well-supported on Linux. He
 Install and configure GFS2 on all instances that share the volume:
 
 ```bash
-# Install required packages on each instance (Amazon Linux 2 / RHEL)
-sudo yum install -y gfs2-utils dlm pacemaker corosync pcs fence-agents
+# Install required packages on each instance (RHEL-compatible systems)
+sudo yum install -y gfs2-utils dlm pacemaker corosync pcs fence-agents-aws
 
 # Start the cluster services
 sudo systemctl enable pcsd
@@ -128,6 +128,9 @@ sudo pcs status
 Set up the DLM (Distributed Lock Manager) resource, which GFS2 depends on:
 
 ```bash
+# Configure STONITH/fencing for EC2 before creating DLM resources.
+# The DLM monitor uses on-fail=fence, so an unfenced cluster is not safe for GFS2.
+
 # Create the DLM resource
 sudo pcs resource create dlm ocf:pacemaker:controld \
     op monitor interval=30s on-fail=fence \
@@ -159,27 +162,34 @@ If you don't want the complexity of GFS2, there are simpler patterns that still 
 For a read-only shared volume pattern (one writer, many readers):
 
 ```bash
+sudo mkdir -p /data
+
 # On the writer instance - mount read-write
 sudo mount -o rw /dev/nvme1n1 /data
 
 # On reader instances - mount read-only
 sudo mount -o ro /dev/nvme1n1 /data
 
-# After the writer updates data, readers need to remount
-sudo mount -o remount,ro /dev/nvme1n1 /data
+# After the writer is done and unmounted, readers need to unmount and mount again
+sudo umount /data
+sudo mount -o ro /dev/nvme1n1 /data
 ```
 
 This pattern works for scenarios like distributing large reference datasets or configuration files.
 
 ## Step 4: Make the Mount Persistent
 
-Add the mount to fstab on each instance:
+For GFS2, let Pacemaker manage the mount instead of adding it directly to `/etc/fstab`:
 
 ```bash
-# For GFS2
-echo "/dev/nvme1n1 /shared gfs2 defaults,noatime,_netdev 0 0" | sudo tee -a /etc/fstab
+# Create a cloned Filesystem resource for GFS2
+sudo pcs resource create sharedfs ocf:heartbeat:Filesystem \
+    device="/dev/nvme1n1" directory="/shared" fstype="gfs2" options="noatime" \
+    op monitor interval=10s on-fail=fence \
+    clone interleave=true
 
-# The _netdev option ensures the mount waits for the network (and cluster) to be ready
+# Verify the resource is running
+sudo pcs status
 ```
 
 ## Monitoring Multi-Attach Volumes
@@ -219,12 +229,12 @@ A high queue length on a shared volume means you're hitting the IOPS ceiling. Ei
 
 Before you design your architecture around Multi-Attach, be aware of these constraints:
 
-1. **io1/io2 only** - No support for gp3 or other volume types
+1. **io1/io2 only** - No support for gp3 or other volume types; io1 Multi-Attach is available only in selected Regions, while io2 Multi-Attach is available in Regions that support io2
 2. **Same AZ only** - Can't span across Availability Zones
 3. **16 instances max** - You can attach to up to 16 instances
 4. **No boot volumes** - Multi-Attach volumes can't be used as root devices
 5. **Nitro instances only** - Older instance generations don't support it
-6. **No I/O fencing by default** - You need to handle data integrity yourself
+6. **I/O fencing support varies** - io2 Multi-Attach supports NVMe reservations for I/O fencing, but your application or cluster still needs to use fencing and write ordering correctly
 7. **Shared IOPS budget** - All instances share the provisioned IOPS
 
 ## Alternatives to Consider
