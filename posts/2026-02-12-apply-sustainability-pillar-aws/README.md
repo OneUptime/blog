@@ -163,10 +163,13 @@ resource "aws_launch_template" "app" {
 
 # Graviton-based RDS
 resource "aws_db_instance" "main" {
-  identifier     = "app-db"
-  engine         = "postgres"
-  engine_version = "15.4"
-  instance_class = "db.r7g.large"  # Graviton3 database instance
+  identifier                  = "app-db"
+  allocated_storage           = 100
+  engine                      = "postgres"
+  engine_version              = "15.17"
+  instance_class              = "db.r7g.large"  # Graviton3 database instance
+  username                    = "app_admin"
+  manage_master_user_password = true
 
   multi_az          = true
   storage_encrypted = true
@@ -183,11 +186,14 @@ resource "aws_elasticache_replication_group" "main" {
 
 # ARM-based Lambda functions
 resource "aws_lambda_function" "api" {
-  function_name = "api-handler"
-  runtime       = "nodejs20.x"
-  handler       = "index.handler"
-  architectures = ["arm64"]  # Graviton2
-  memory_size   = 512
+  function_name    = "api-handler"
+  role             = aws_iam_role.lambda.arn
+  filename         = "lambda.zip"
+  source_code_hash = filebase64sha256("lambda.zip")
+  runtime          = "nodejs20.x"
+  handler          = "index.handler"
+  architectures    = ["arm64"]  # Graviton2
+  memory_size      = 512
 }
 ```
 
@@ -254,7 +260,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "efficient" {
 
     transition {
       days          = 90
-      storage_class = "GLACIER_IR"  # instant retrieval, lower carbon
+      storage_class = "GLACIER_IR"  # instant retrieval, lower storage cost
     }
 
     transition {
@@ -270,7 +276,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "efficient" {
 }
 ```
 
-**Compress data in transit and at rest:**
+**Compress data in transit:**
 
 ```hcl
 # Enable CloudFront compression
@@ -278,7 +284,8 @@ resource "aws_cloudfront_distribution" "main" {
   enabled = true
 
   default_cache_behavior {
-    compress = true  # enables gzip and brotli compression
+    compress = true  # enables automatic gzip compression
+    # Brotli is enabled through a cache policy that includes Accept-Encoding: br.
     # This reduces bytes transferred by 60-80% for text content
 
     target_origin_id       = "origin"
