@@ -153,7 +153,7 @@ echo "Store unseal keys and root token in secure vault/password manager"
 
 ## Unsealing Vault Nodes
 
-Each Vault node must be unsealed after initialization or restart:
+Each Vault node must be unsealed after initialization, after it has joined the Raft cluster, or after restart:
 
 ```bash
 # Unseal vault-0
@@ -164,7 +164,7 @@ kubectl -n vault exec -it vault-0 -- vault operator unseal $UNSEAL_KEY_3
 # Check status
 kubectl -n vault exec -it vault-0 -- vault status
 
-# Unseal remaining nodes
+# With retry_join configured, unseal remaining nodes
 for pod in vault-1 vault-2; do
   echo "Unsealing $pod"
   kubectl -n vault exec -it $pod -- vault operator unseal $UNSEAL_KEY_1
@@ -190,20 +190,26 @@ kubectl -n vault exec -it vault-0 -- vault operator raft list-peers
 # vault-2    vault-2.vault-internal:8201    follower    true
 ```
 
-If nodes don't auto-join:
+If nodes don't auto-join, join each standby before unsealing it:
 
 ```bash
-# Manually join from each standby
+# Manually join from each standby, then unseal it
 kubectl -n vault exec -it vault-1 -- \
   vault operator raft join http://vault-0.vault-internal:8200
+kubectl -n vault exec -it vault-1 -- vault operator unseal $UNSEAL_KEY_1
+kubectl -n vault exec -it vault-1 -- vault operator unseal $UNSEAL_KEY_2
+kubectl -n vault exec -it vault-1 -- vault operator unseal $UNSEAL_KEY_3
 
 kubectl -n vault exec -it vault-2 -- \
   vault operator raft join http://vault-0.vault-internal:8200
+kubectl -n vault exec -it vault-2 -- vault operator unseal $UNSEAL_KEY_1
+kubectl -n vault exec -it vault-2 -- vault operator unseal $UNSEAL_KEY_2
+kubectl -n vault exec -it vault-2 -- vault operator unseal $UNSEAL_KEY_3
 ```
 
 ## Configuring Services for HA Access
 
-Create services for accessing Vault:
+The Helm chart creates services for accessing Vault when HA mode is enabled. If you need to create equivalent services manually, use:
 
 ```yaml
 # vault-services.yaml
@@ -280,11 +286,13 @@ Verify failover works correctly:
 for pod in vault-0 vault-1 vault-2; do
   echo -n "$pod: "
   kubectl -n vault exec $pod -- vault status -format=json 2>/dev/null | \
-    jq -r '.ha_enabled, .is_self'
+    jq -r '.ha_enabled, .ha_mode'
 done
 
-# Write a test secret to active node
+# Enable a KV secrets engine, then write a test secret to the active node
 kubectl -n vault exec -it vault-0 -- vault login $ROOT_TOKEN
+kubectl -n vault exec -it vault-0 -- \
+  vault secrets enable -path=secret kv-v2
 kubectl -n vault exec -it vault-0 -- \
   vault kv put secret/test-ha value=testing
 
@@ -333,13 +341,13 @@ for pod in vault-0 vault-1 vault-2; do
 
   SEALED=$(echo $STATUS | jq -r '.sealed')
   HA_ENABLED=$(echo $STATUS | jq -r '.ha_enabled')
-  IS_LEADER=$(echo $STATUS | jq -r '.is_self')
+  HA_MODE=$(echo $STATUS | jq -r '.ha_mode // "n/a"')
 
   echo "Sealed: $SEALED"
   echo "HA Enabled: $HA_ENABLED"
 
   if [ "$HA_ENABLED" = "true" ]; then
-    echo "Leader: $IS_LEADER"
+    echo "HA Mode: $HA_MODE"
   fi
 
   echo
@@ -360,27 +368,27 @@ chmod +x vault-ha-status.sh
 
 ## Configuring Health Checks
 
-Add liveness and readiness probes:
+Readiness probes are enabled by default in the Helm chart. Enable liveness probes explicitly if required:
 
 ```yaml
-# Already included in Helm chart, but for reference:
-livenessProbe:
-  httpGet:
+server:
+  livenessProbe:
+    enabled: true
     path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
+    initialDelaySeconds: 60
+    periodSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
     port: 8200
-  initialDelaySeconds: 60
-  periodSeconds: 5
-  successThreshold: 1
-  failureThreshold: 3
 
-readinessProbe:
-  httpGet:
+  readinessProbe:
+    enabled: true
     path: /v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204
+    initialDelaySeconds: 10
+    periodSeconds: 5
+    successThreshold: 1
+    failureThreshold: 3
     port: 8200
-  initialDelaySeconds: 10
-  periodSeconds: 5
-  successThreshold: 1
-  failureThreshold: 3
 ```
 
 ## Backing Up Vault Data
@@ -397,14 +405,18 @@ BACKUP_FILE="$BACKUP_DIR/vault-snapshot-$TIMESTAMP.snap"
 
 mkdir -p $BACKUP_DIR
 
+ACTIVE_POD=$(kubectl -n vault get pod \
+  -l app.kubernetes.io/name=vault,component=server,vault-active=true \
+  -o jsonpath='{.items[0].metadata.name}')
+
 # Take snapshot from active node
-kubectl -n vault exec vault-0 -- vault operator raft snapshot save /tmp/snapshot.snap
+kubectl -n vault exec $ACTIVE_POD -- vault operator raft snapshot save /tmp/snapshot.snap
 
 # Copy snapshot from pod
-kubectl -n vault cp vault-0:/tmp/snapshot.snap $BACKUP_FILE
+kubectl -n vault cp $ACTIVE_POD:/tmp/snapshot.snap $BACKUP_FILE
 
 # Clean up
-kubectl -n vault exec vault-0 -- rm /tmp/snapshot.snap
+kubectl -n vault exec $ACTIVE_POD -- rm /tmp/snapshot.snap
 
 # Verify snapshot
 if [ -f "$BACKUP_FILE" ]; then
@@ -439,7 +451,7 @@ spec:
             image: hashicorp/vault:latest
             env:
             - name: VAULT_ADDR
-              value: "http://vault:8200"
+              value: "http://vault-active:8200"
             - name: VAULT_TOKEN
               valueFrom:
                 secretKeyRef:
@@ -492,13 +504,18 @@ server:
       config: |
         # ... previous config ...
 
-        # Performance tuning
         max_entry_size = 1048576
-        autopilot {
-          cleanup_dead_servers = true
-          last_contact_threshold = "10s"
-          max_trailing_logs = 1000
-        }
+```
+
+Configure Autopilot settings after the cluster is initialized and unsealed:
+
+```bash
+kubectl -n vault exec -it vault-0 -- vault operator raft autopilot set-config \
+  -cleanup-dead-servers=true \
+  -min-quorum=3 \
+  -last-contact-threshold=10s \
+  -dead-server-last-contact-threshold=24h \
+  -max-trailing-logs=1000
 ```
 
 Deploying Vault with high availability on Kubernetes ensures your secrets management system remains operational during node failures, maintenance, and scaling events. The Raft integrated storage eliminates external dependencies while providing strong consistency and automatic leader election. Combined with proper monitoring and backup procedures, this setup provides production-grade secret management for your Kubernetes workloads.
