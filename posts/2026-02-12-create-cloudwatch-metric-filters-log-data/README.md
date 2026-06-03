@@ -30,7 +30,7 @@ sequenceDiagram
     CM->>AL: Evaluate alarm threshold
 ```
 
-Metric filters are evaluated in near-real-time as log events arrive. There's typically a few seconds of delay, which is fine for most monitoring use cases.
+Metric filters are evaluated as log events arrive, and CloudWatch aggregates and reports metric values every minute. That delay is fine for most monitoring use cases.
 
 ## Creating a Simple Pattern-Based Metric Filter
 
@@ -52,11 +52,11 @@ Breaking this down:
 - `metricName`: The name of the custom metric to publish.
 - `metricNamespace`: The namespace to publish under.
 - `metricValue`: The value to publish for each match. Here, we're counting, so each match adds 1.
-- `defaultValue`: The value to publish when no matches occur in a period. Setting this to 0 means the metric always has data points, which is important for ALARM-to-OK transitions.
+- `defaultValue`: The value to publish when logs are ingested but no matches occur in a period. Setting this to 0 helps avoid spotty metrics, which is important for ALARM-to-OK transitions.
 
 ## Filter Pattern Syntax
 
-CloudWatch supports two types of filter patterns: simple text patterns and JSON-based patterns. Let's look at both.
+CloudWatch supports several filter pattern styles, including simple text patterns, JSON-based patterns, space-delimited patterns, and limited regular expressions. Let's look at the first two.
 
 ### Simple text patterns
 
@@ -95,7 +95,7 @@ If your logs are JSON-formatted (and they should be), you get much more powerful
 { $.statusCode = 500 || $.statusCode = 502 || $.statusCode = 503 }
 
 # Check if a field exists
-{ $.errorMessage IS TRUE }
+{ $.errorMessage = * }
 
 # Wildcard matching on string values
 { $.endpoint = "/api/orders*" }
@@ -226,7 +226,6 @@ aws logs put-metric-filter \
       "metricName": "ErrorCount",
       "metricNamespace": "MyApp/Production",
       "metricValue": "1",
-      "defaultValue": 0,
       "dimensions": {
         "Service": "$.service",
         "Environment": "$.environment"
@@ -254,9 +253,9 @@ This returns the actual log events that match your pattern, so you can verify it
 
 ## Metric Filter Limitations
 
-There are some things to know about metric filter limitations. Each log group supports up to 100 metric filters. Each metric filter can create up to 3 metric transformations. The filter pattern can be up to 1024 characters long. And metric filters only process new log events - they don't backfill historical data.
+There are some things to know about metric filter limitations. Each log group supports up to 100 metric filters. Each metric filter has one metric transformation. The filter pattern can be up to 1024 characters long. And metric filters only process new log events - they don't backfill historical data.
 
-Also, metric filters don't support regex. If you need regex-level pattern matching, you might want to use Logs Insights queries instead (see our [Logs Insights query syntax guide](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-logs-insights-query-syntax/view)) or stream your logs to Lambda for custom processing.
+Also, metric filters support only a limited regular expression syntax, with quotas on regex use per log group and filter pattern. If you need richer query-time regex or ad hoc analysis, you might want to use Logs Insights queries instead (see our [Logs Insights query syntax guide](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-logs-insights-query-syntax/view)) or stream your logs to Lambda for custom processing.
 
 ## Common Patterns
 
