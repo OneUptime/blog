@@ -18,7 +18,7 @@ When Kubernetes decides to terminate a pod, it follows a specific sequence:
 
 1. Pod status changes to Terminating
 2. PreStop hook executes (if configured)
-3. SIGTERM signal is sent to containers
+3. SIGTERM signal is sent to containers (unless the image or pod config defines a different stop signal)
 4. Kubernetes waits up to terminationGracePeriodSeconds
 5. If containers are still running, SIGKILL is sent
 
@@ -93,7 +93,7 @@ Set terminationGracePeriodSeconds to 45 or higher.
 
 ## Handling SIGTERM in Applications
 
-Applications must handle SIGTERM signals to shut down gracefully. Here is how to do it in different languages.
+Applications must handle the container stop signal to shut down gracefully. For most Linux containers this is SIGTERM. Here is how to do it in different languages.
 
 Node.js example:
 
@@ -314,7 +314,6 @@ spec:
             path: /health/live
             port: 8080
           periodSeconds: 10
-      terminationGracePeriodSeconds: 90
 ```
 
 Matching application code handles the signals:
@@ -421,21 +420,21 @@ Watch pod termination events:
 kubectl get events --watch --field-selector reason=Killing
 ```
 
-Check if pods are being forcefully killed (SIGKILL sent):
+Check whether pods remain in Terminating until the grace period expires:
 
 ```bash
-kubectl get events | grep "Container.*will be stopped"
+kubectl get pod my-pod --watch
 ```
 
-If you see "Container will be stopped after grace period", pods are not shutting down within the grace period.
+Kubernetes events are best-effort and event messages can change, so do not rely on a specific event message to detect SIGKILL. If a pod stays in Terminating until the configured grace period expires, the application or its PreStop hook is probably not completing shutdown in time.
 
 View pod termination logs:
 
 ```bash
-kubectl logs -f my-pod --previous
+kubectl logs -f my-pod
 ```
 
-The `--previous` flag shows logs from the terminated container.
+Use `--previous` only when you need logs from a previously terminated container instance, such as after a container restart.
 
 Track termination duration:
 
