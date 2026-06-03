@@ -62,7 +62,7 @@ aws elbv2 modify-target-group-attributes \
     Key=stickiness.lb_cookie.duration_seconds,Value=3600
 ```
 
-The duration controls how long the cookie is valid. After it expires, the next request gets routed to any healthy target.
+The duration controls how long the ALB should keep routing requests from that client to the same target. The ALB resets the expiry of its generated cookies after each request. If the configured stickiness duration elapses or the cookie expires, the next request gets routed to any healthy target.
 
 Common duration values:
 - **300** (5 minutes) - Short sessions, good for shopping flows
@@ -84,7 +84,7 @@ aws elbv2 modify-target-group-attributes \
     Key=stickiness.app_cookie.duration_seconds,Value=3600
 ```
 
-With application-based stickiness, the ALB creates its own cookie (`AWSALBAPP`) that maps to the target, but it uses your application's cookie as the trigger. When your application removes or changes its session cookie, the stickiness is broken.
+With application-based stickiness, the ALB creates its own encrypted application cookie with an `AWSALBAPP-` prefix that maps to the target, but it uses your application's cookie as the trigger. Clients must send both cookies back to maintain stickiness. When your application removes its session cookie, the stickiness process starts over.
 
 ## Terraform Configuration
 
@@ -234,7 +234,7 @@ If you must use sticky sessions, keep the duration as short as possible and plan
 Watch these CloudWatch metrics to catch stickiness-related issues:
 
 ```bash
-# Check for uneven request distribution
+# Check the average request count per target
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ApplicationELB \
   --metric-name RequestCountPerTarget \
@@ -242,10 +242,10 @@ aws cloudwatch get-metric-statistics \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
-  --statistics Average
+  --statistics Sum
 ```
 
-For end-to-end monitoring of your ALB's behavior with sticky sessions, including request distribution across targets and session-related errors, set up monitoring that tracks per-target metrics. See [configuring health checks](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) for more on monitoring your load balancer setup.
+For end-to-end monitoring of your ALB's behavior with sticky sessions, including request distribution across specific targets and session-related errors, combine ALB metrics with access logs or application-level per-instance metrics. See [configuring health checks](https://oneuptime.com/blog/post/2026-02-12-configure-health-checks-ec2-load-balancer/view) for more on monitoring your load balancer setup.
 
 ## Summary
 
