@@ -19,12 +19,12 @@ Before upgrading, verify cluster health and backup critical data.
 ```bash
 # Check current cluster version
 
-kubectl version --short
+kubectl version
 kubectl get nodes
 
 # Verify control plane health
 kubectl get pods -n kube-system
-kubectl get componentstatuses  # Deprecated but still useful
+kubectl get --raw='/readyz?verbose'
 
 # Check for deprecated APIs
 pluto detect-all-in-cluster --target-versions k8s=v1.28.0
@@ -33,14 +33,15 @@ pluto detect-all-in-cluster --target-versions k8s=v1.28.0
 # https://kubernetes.io/docs/setup/release/notes/
 
 # Backup etcd
-ETCDCTL_API=3 etcdctl snapshot save /backup/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db \
+SNAPSHOT="/backup/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db"
+ETCDCTL_API=3 etcdctl snapshot save "$SNAPSHOT" \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
+  --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+  --key=/etc/kubernetes/pki/etcd/healthcheck-client.key
 
 # Verify backup
-ETCDCTL_API=3 etcdctl snapshot status /backup/etcd-snapshot-*.db --write-out=table
+ETCDCTL_API=3 etcdctl snapshot status "$SNAPSHOT" --write-out=table
 ```
 
 ## Upgrading kubeadm on First Control Plane Node
@@ -48,13 +49,15 @@ ETCDCTL_API=3 etcdctl snapshot status /backup/etcd-snapshot-*.db --write-out=tab
 Start by upgrading kubeadm itself.
 
 ```bash
-# On Ubuntu/Debian - check available versions
+# On Ubuntu/Debian - first point pkgs.k8s.io at the target minor release, then check available versions
+sudo sed -i 's|core:/stable:/v1.27|core:/stable:/v1.28|' /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
 apt-cache madison kubeadm | grep 1.28
 
 # Upgrade kubeadm to target version
 sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.28.4-00
+sudo apt-get install -y kubeadm='1.28.4-*'
 sudo apt-mark hold kubeadm
 
 # Verify kubeadm version
@@ -120,7 +123,7 @@ kubectl drain <control-plane-node-name> --ignore-daemonsets --delete-emptydir-da
 # Upgrade kubelet and kubectl
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get update
-sudo apt-get install -y kubelet=1.28.4-00 kubectl=1.28.4-00
+sudo apt-get install -y kubelet='1.28.4-*' kubectl='1.28.4-*'
 sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
@@ -146,9 +149,10 @@ For high-availability clusters with multiple control plane nodes, upgrade remain
 ssh control-plane-02
 
 # Upgrade kubeadm
+sudo sed -i 's|core:/stable:/v1.27|core:/stable:/v1.28|' /etc/apt/sources.list.d/kubernetes.list
 sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y kubeadm=1.28.4-00
+sudo apt-get install -y kubeadm='1.28.4-*'
 sudo apt-mark hold kubeadm
 
 # Apply upgrade (different command for additional nodes)
@@ -160,7 +164,7 @@ kubectl drain control-plane-02 --ignore-daemonsets --delete-emptydir-data
 # Upgrade kubelet and kubectl
 sudo apt-mark unhold kubelet kubectl
 sudo apt-get update
-sudo apt-get install -y kubelet=1.28.4-00 kubectl=1.28.4-00
+sudo apt-get install -y kubelet='1.28.4-*' kubectl='1.28.4-*'
 sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
@@ -191,15 +195,15 @@ kubectl get pods -n kube-system -o jsonpath='{range .items[*]}{.metadata.name}{"
 kubectl version
 
 # Verify etcd health
-kubectl exec -n kube-system etcd-<node-name> -- etcdctl \
+kubectl exec -n kube-system etcd-<node-name> -- sh -c 'ETCDCTL_API=3 etcdctl \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/peer.crt \
-  --key=/etc/kubernetes/pki/etcd/peer.key \
-  endpoint health
+  --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+  --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+  endpoint health'
 
 # Test cluster functionality
-kubectl run test-pod --image=nginx:1.25 --rm -it -- /bin/bash
+kubectl run test-pod --image=busybox:1.36 --restart=Never --rm -it --command -- echo ok
 ```
 
 ## Handling Upgrade Failures
@@ -218,16 +222,20 @@ kubectl logs -n kube-system kube-scheduler-<node-name>
 # Check for issues in upgrade preflight
 sudo kubeadm upgrade apply v1.28.4 --dry-run
 
-# If needed, restore etcd backup
+# If needed, restore etcd backup for a single-member stacked etcd cluster
 sudo systemctl stop kubelet
-sudo systemctl stop etcd
+sudo mkdir -p /etc/kubernetes/manifests.disabled
+sudo mv /etc/kubernetes/manifests/etcd.yaml /etc/kubernetes/manifests.disabled/
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /etc/kubernetes/manifests.disabled/
 
 # Restore etcd snapshot
-ETCDCTL_API=3 etcdctl snapshot restore /backup/etcd-snapshot-20260209.db \
+sudo etcdutl snapshot restore /backup/etcd-snapshot-20260209.db \
   --data-dir=/var/lib/etcd-restore
 
 # Update etcd manifest to use restored data
-sudo sed -i 's|/var/lib/etcd|/var/lib/etcd-restore|' /etc/kubernetes/manifests/etcd.yaml
+sudo sed -i 's|/var/lib/etcd|/var/lib/etcd-restore|' /etc/kubernetes/manifests.disabled/etcd.yaml
+sudo mv /etc/kubernetes/manifests.disabled/etcd.yaml /etc/kubernetes/manifests/
+sudo mv /etc/kubernetes/manifests.disabled/kube-apiserver.yaml /etc/kubernetes/manifests/
 
 sudo systemctl start kubelet
 ```
@@ -275,6 +283,7 @@ Create a script for repeatable upgrades.
 set -e
 
 TARGET_VERSION="${1:-1.28.4}"
+TARGET_MINOR="$(echo "$TARGET_VERSION" | awk -F. '{print $1"."$2}')"
 BACKUP_DIR="/backup/kubernetes"
 
 mkdir -p $BACKUP_DIR
@@ -287,14 +296,15 @@ echo "Backing up etcd..."
 ETCDCTL_API=3 etcdctl snapshot save ${BACKUP_DIR}/etcd-snapshot-$(date +%Y%m%d-%H%M%S).db \
   --endpoints=https://127.0.0.1:2379 \
   --cacert=/etc/kubernetes/pki/etcd/ca.crt \
-  --cert=/etc/kubernetes/pki/etcd/server.crt \
-  --key=/etc/kubernetes/pki/etcd/server.key
+  --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+  --key=/etc/kubernetes/pki/etcd/healthcheck-client.key
 
 # Upgrade kubeadm
 echo "Upgrading kubeadm..."
+sudo sed -i -E "s|core:/stable:/v[0-9]+\\.[0-9]+|core:/stable:/v${TARGET_MINOR}|" /etc/apt/sources.list.d/kubernetes.list
 sudo apt-mark unhold kubeadm
 sudo apt-get update -qq
-sudo apt-get install -y kubeadm=${TARGET_VERSION}-00
+sudo apt-get install -y kubeadm="${TARGET_VERSION}-*"
 sudo apt-mark hold kubeadm
 
 # Check upgrade plan
@@ -314,7 +324,7 @@ sudo kubeadm upgrade apply v${TARGET_VERSION} -y
 # Upgrade kubelet and kubectl
 echo "Upgrading kubelet and kubectl..."
 sudo apt-mark unhold kubelet kubectl
-sudo apt-get install -y kubelet=${TARGET_VERSION}-00 kubectl=${TARGET_VERSION}-00
+sudo apt-get install -y kubelet="${TARGET_VERSION}-*" kubectl="${TARGET_VERSION}-*"
 sudo apt-mark hold kubelet kubectl
 
 sudo systemctl daemon-reload
