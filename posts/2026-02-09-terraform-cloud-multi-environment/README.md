@@ -76,12 +76,12 @@ ORG="your-org-name"
 TOKEN="your-tfc-token"
 
 for ENV in development staging production; do
-  curl \
+  WORKSPACE_ID=$(curl -s \
     --header "Authorization: Bearer $TOKEN" \
     --header "Content-Type: application/vnd.api+json" \
     --request POST \
     --data @- \
-    https://app.terraform.io/api/v2/organizations/$ORG/workspaces <<JSON
+    https://app.terraform.io/api/v2/organizations/$ORG/workspaces <<JSON | jq -r '.data.id'
 {
   "data": {
     "type": "workspaces",
@@ -102,6 +102,21 @@ for ENV in development staging production; do
       "structured-run-output-enabled": true
     }
   }
+}
+JSON
+)
+
+  curl \
+    --header "Authorization: Bearer $TOKEN" \
+    --header "Content-Type: application/vnd.api+json" \
+    --request POST \
+    --data @- \
+    https://app.terraform.io/api/v2/workspaces/$WORKSPACE_ID/relationships/tags <<JSON
+{
+  "data": [
+    {"type": "tags", "attributes": {"name": "kubernetes"}},
+    {"type": "tags", "attributes": {"name": "eks"}}
+  ]
 }
 JSON
 done
@@ -292,6 +307,7 @@ provider "aws" {
     tags = {
       Environment = var.environment
       ManagedBy   = "terraform"
+      Owner       = "platform-team"
       Workspace   = terraform.workspace
     }
   }
@@ -444,7 +460,7 @@ curl \
 JSON
 ```
 
-Now when staging completes successfully, production workspace queues a speculative plan automatically.
+Now when staging completes a successful apply, the production workspace queues a run automatically. Because production has auto-apply disabled, the apply still requires manual approval.
 
 ## Implementing Team Access Controls
 
@@ -550,7 +566,7 @@ import "tfplan/v2" as tfplan
 required_tags = ["Environment", "ManagedBy", "Owner"]
 
 validate_tags = func(resource) {
-  tags = resource.change.after.tags
+  tags = resource.change.after.tags_all
 
   for required_tags as tag {
     if tag not in keys(tags) {
@@ -607,7 +623,7 @@ JSON
 
 ## Implementing Cost Estimation
 
-Enable cost estimation for production workspace:
+Enable cost estimation for the organization:
 
 ```bash
 curl \
@@ -615,19 +631,19 @@ curl \
   --header "Content-Type: application/vnd.api+json" \
   --request PATCH \
   --data @- \
-  https://app.terraform.io/api/v2/workspaces/$PROD_WS_ID <<'JSON'
+  https://app.terraform.io/api/v2/organizations/$ORG <<'JSON'
 {
   "data": {
-    "type": "workspaces",
+    "type": "organizations",
     "attributes": {
-      "assessments-enabled": true
+      "cost-estimation-enabled": true
     }
   }
 }
 JSON
 ```
 
-This shows cost estimates for infrastructure changes before applying them.
+When enabled, Terraform Cloud shows cost estimates for supported infrastructure changes before applying them.
 
 ## Summary
 
