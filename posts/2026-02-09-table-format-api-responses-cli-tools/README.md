@@ -18,7 +18,7 @@ The Table format is an alternative representation of Kubernetes resources optimi
 - **Rows**: Data for each resource, pre-formatted for display
 - **Resource metadata**: Still included for reference
 
-This means you do not need to write custom formatting logic for each resource type.
+This means you do not need to write custom formatting logic for each resource type that serves a Table response.
 
 ## Requesting Table Format
 
@@ -26,9 +26,14 @@ Add an `Accept` header to request table format:
 
 ```bash
 # Request pods in table format
+kubectl proxy --port=8001 &
+PROXY_PID=$!
+sleep 1
 
-kubectl get --raw /api/v1/namespaces/default/pods \
-    -H "Accept: application/json;as=Table;v=v1;g=meta.k8s.io"
+curl -H "Accept: application/json;as=Table;v=v1;g=meta.k8s.io" \
+    http://127.0.0.1:8001/api/v1/namespaces/default/pods
+
+kill "$PROXY_PID"
 ```
 
 The response looks like this:
@@ -75,8 +80,8 @@ The response looks like this:
     {
       "cells": ["nginx", "1/1", "Running", 0, "2h"],
       "object": {
-        "kind": "Pod",
-        "apiVersion": "v1",
+        "kind": "PartialObjectMetadata",
+        "apiVersion": "meta.k8s.io/v1",
         "metadata": {
           "name": "nginx",
           "namespace": "default"
@@ -101,8 +106,6 @@ import (
     "text/tabwriter"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-    "k8s.io/apimachinery/pkg/runtime"
-    "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
     "k8s.io/client-go/tools/clientcmd"
@@ -184,20 +187,23 @@ Run this program to see pod output formatted just like `kubectl get pods`.
 
 ## Working with Different Resource Types
 
-The table format works for any resource type:
+The table format works for many resource types:
 
 ```go
 func getResourceTable(client rest.Interface, gvr schema.GroupVersionResource, namespace string) (*metav1.Table, error) {
     request := client.Get().
         SetHeader("Accept", "application/json;as=Table;v=v1;g=meta.k8s.io")
 
-    if namespace != "" {
-        request = request.Namespace(namespace)
-    }
-
     if gvr.Group != "" {
-        request = request.AbsPath("/apis", gvr.Group, gvr.Version, "namespaces", namespace, gvr.Resource)
+        if namespace != "" {
+            request = request.AbsPath("/apis", gvr.Group, gvr.Version, "namespaces", namespace, gvr.Resource)
+        } else {
+            request = request.AbsPath("/apis", gvr.Group, gvr.Version, gvr.Resource)
+        }
     } else {
+        if namespace != "" {
+            request = request.Namespace(namespace)
+        }
         request = request.Resource(gvr.Resource)
     }
 
@@ -229,6 +235,13 @@ table, _ = getResourceTable(client, gvr, "default")
 You can request full object data along with the table:
 
 ```go
+import (
+    "encoding/json"
+    "fmt"
+
+    corev1 "k8s.io/api/core/v1"
+)
+
 func getTableWithObjects(client rest.Interface, namespace string) (*metav1.Table, error) {
     // Add IncludeObject parameter
     result := client.Get().
@@ -239,14 +252,21 @@ func getTableWithObjects(client rest.Interface, namespace string) (*metav1.Table
         Do(context.TODO())
 
     table := &metav1.Table{}
-    result.Into(table)
+    if err := result.Into(table); err != nil {
+        return nil, err
+    }
 
     // Now each row has the full object
     for _, row := range table.Rows {
-        if row.Object.Object != nil {
-            // Access the full pod object
-            pod := row.Object.Object.(*corev1.Pod)
-            fmt.Printf("Pod: %s, Image: %s\n", pod.Name, pod.Spec.Containers[0].Image)
+        if row.Object.Raw != nil {
+            // Decode the full pod object using your client's runtime scheme
+            pod := &corev1.Pod{}
+            if err := json.Unmarshal(row.Object.Raw, pod); err != nil {
+                return nil, err
+            }
+            if len(pod.Spec.Containers) > 0 {
+                fmt.Printf("Pod: %s, Image: %s\n", pod.Name, pod.Spec.Containers[0].Image)
+            }
         }
     }
 
@@ -269,7 +289,9 @@ func getFilteredTable(client rest.Interface, namespace string) (*metav1.Table, e
         Do(context.TODO())
 
     table := &metav1.Table{}
-    result.Into(table)
+    if err := result.Into(table); err != nil {
+        return nil, err
+    }
     return table, nil
 }
 ```
@@ -366,19 +388,32 @@ func printWideTable(table *metav1.Table, wide bool) {
 
 ## Building a Generic Resource Lister
 
-Create a reusable function for any resource:
+Create a reusable function for resources that serve Table responses:
 
 ```go
+import (
+    "context"
+
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "k8s.io/client-go/kubernetes/scheme"
+    "k8s.io/client-go/rest"
+)
+
 func listResource(config *rest.Config, gvr schema.GroupVersionResource, namespace string, selector string) error {
-    client, err := kubernetes.NewForConfig(config)
-    if err != nil {
-        return err
+    cfg := rest.CopyConfig(config)
+    gv := schema.GroupVersion{Group: gvr.Group, Version: gvr.Version}
+    cfg.GroupVersion = &gv
+    cfg.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
+    if gvr.Group == "" {
+        cfg.APIPath = "/api"
+    } else {
+        cfg.APIPath = "/apis"
     }
 
-    restClient := client.CoreV1().RESTClient()
-    if gvr.Group != "" {
-        // For non-core resources, use discovery to get the right client
-        restClient = client.AppsV1().RESTClient()
+    restClient, err := rest.RESTClientFor(cfg)
+    if err != nil {
+        return err
     }
 
     request := restClient.Get().
@@ -415,7 +450,7 @@ listResource(config, schema.GroupVersionResource{Group: "apps", Version: "v1", R
 
 1. **Use table format for display**: It is the standard way kubectl formats output
 
-2. **Cache column definitions**: Column definitions do not change, so cache them
+2. **Cache column definitions carefully**: Column definitions are stable for the same resource type during a run, so cache them per resource type and API version
 
 3. **Handle priority levels**: Support wide output using column priority
 
@@ -425,16 +460,18 @@ listResource(config, schema.GroupVersionResource{Group: "apps", Version: "v1", R
 
 6. **Include objects when needed**: Use `includeObject` to access full resource data
 
-7. **Handle empty results gracefully**: Display a message when no resources match
+7. **Provide a fallback media type**: Add `application/json` to the `Accept` header if your client must handle APIs that do not serve Table responses
+
+8. **Handle empty results gracefully**: Display a message when no resources match
 
 ## Advantages of Table Format
 
 1. **Consistency**: Your tool looks like kubectl
 2. **Server-side formatting**: API server handles formatting logic
-3. **Extensibility**: Works with custom resources automatically
+3. **Extensibility**: Works with custom resources and extension APIs that serve Table responses
 4. **Efficiency**: Less data transfer than full objects
 5. **Maintainability**: No custom formatting code to maintain
 
 ## Conclusion
 
-The Kubernetes Table format API provides a powerful way to build CLI tools with kubectl-like output without implementing custom formatting for each resource type. By requesting tables from the API server, you get pre-formatted, human-readable data with column definitions and priority levels already defined. This approach makes building custom Kubernetes CLI tools much simpler while maintaining consistency with standard kubectl output. Whether you are building internal tools, specialized operators, or debugging utilities, the table format API gives you professional-looking output with minimal effort.
+The Kubernetes Table format API provides a powerful way to build CLI tools with kubectl-like output without implementing custom formatting for each resource type that supports Table responses. By requesting tables from the API server, you get pre-formatted, human-readable data with column definitions and priority levels already defined. This approach makes building custom Kubernetes CLI tools much simpler while maintaining consistency with standard kubectl output. Whether you are building internal tools, specialized operators, or debugging utilities, the table format API gives you professional-looking output with minimal effort.
