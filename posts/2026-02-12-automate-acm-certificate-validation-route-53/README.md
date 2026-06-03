@@ -55,14 +55,27 @@ echo "Certificate ARN: $CERT_ARN"
 
 # Step 2: Wait for the validation options to become available
 echo "Waiting for validation options..."
-sleep 10
+for attempt in {1..30}; do
+  VALIDATION_OPTIONS=$(aws acm describe-certificate \
+    --region "$REGION" \
+    --certificate-arn "$CERT_ARN" \
+    --query 'Certificate.DomainValidationOptions[?ResourceRecord].ResourceRecord' \
+    --output json)
 
-# Step 3: Get all validation records
-VALIDATION_OPTIONS=$(aws acm describe-certificate \
-  --region "$REGION" \
-  --certificate-arn "$CERT_ARN" \
-  --query 'Certificate.DomainValidationOptions[*].ResourceRecord' \
-  --output json)
+  RECORD_COUNT=$(echo "$VALIDATION_OPTIONS" | jq 'length')
+  if [ "$RECORD_COUNT" -gt 0 ]; then
+    break
+  fi
+
+  sleep 5
+done
+
+if [ "${RECORD_COUNT:-0}" -eq 0 ]; then
+  echo "Validation records were not available in time"
+  exit 1
+fi
+
+# Step 3: Use all validation records
 
 # Step 4: Build the Route 53 change batch
 CHANGES="[]"
@@ -128,18 +141,18 @@ resource "aws_acm_certificate" "main" {
 # Automatically create validation records
 resource "aws_route53_record" "validation" {
   for_each = {
-    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+    for dvo in aws_acm_certificate.main.domain_validation_options : trimprefix(dvo.domain_name, "*.") => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
-    }
+    }...
   }
 
   allow_overwrite = true
-  name            = each.value.name
-  records         = [each.value.record]
+  name            = each.value[0].name
+  records         = [each.value[0].record]
   ttl             = 60
-  type            = each.value.type
+  type            = each.value[0].type
   zone_id         = data.aws_route53_zone.main.zone_id
 }
 
@@ -149,7 +162,7 @@ resource "aws_acm_certificate_validation" "main" {
   validation_record_fqdns = [for record in aws_route53_record.validation : record.fqdn]
 
   timeouts {
-    create = "10m"
+    create = "45m"
   }
 }
 
@@ -169,11 +182,11 @@ resource "aws_lb_listener" "https" {
 
 A few things to note about the Terraform approach:
 
-The `for_each` on `domain_validation_options` handles deduplication automatically. A wildcard certificate (`*.example.com`) and the apex (`example.com`) share the same validation record, and `for_each` with domain name as the key handles this correctly.
+The `for_each` on `domain_validation_options` groups wildcard and apex names by the base domain. A wildcard certificate (`*.example.com`) and the apex (`example.com`) share the same validation record, so grouping prevents Terraform from trying to manage the same Route 53 record twice.
 
 `allow_overwrite = true` prevents errors if the validation record already exists from a previous certificate.
 
-The `timeouts` block on the validation resource gives DNS time to propagate. The default might be too short in some cases.
+The `timeouts` block on the validation resource controls how long Terraform waits for ACM to issue the certificate. The default is 45 minutes, and you can override it if you need a different wait limit.
 
 ## CloudFormation Approach
 
@@ -277,18 +290,18 @@ resource "aws_route53_record" "validation" {
   provider = aws.dns_account
 
   for_each = {
-    for dvo in aws_acm_certificate.main.domain_validation_options : dvo.domain_name => {
+    for dvo in aws_acm_certificate.main.domain_validation_options : trimprefix(dvo.domain_name, "*.") => {
       name   = dvo.resource_record_name
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
-    }
+    }...
   }
 
   allow_overwrite = true
-  name            = each.value.name
-  records         = [each.value.record]
+  name            = each.value[0].name
+  records         = [each.value[0].record]
   ttl             = 60
-  type            = each.value.type
+  type            = each.value[0].type
   zone_id         = var.hosted_zone_id
 }
 ```
@@ -318,11 +331,19 @@ def provision_certificate(domain, sans, hosted_zone_id):
     print(f"Requested certificate: {cert_arn}")
 
     # Wait for validation options to be available
-    time.sleep(10)
+    validation_options = []
+    for _ in range(30):
+        cert_details = acm.describe_certificate(CertificateArn=cert_arn)
+        validation_options = [
+            option for option in cert_details['Certificate']['DomainValidationOptions']
+            if 'ResourceRecord' in option
+        ]
+        if validation_options:
+            break
+        time.sleep(5)
 
-    # Get validation records
-    cert_details = acm.describe_certificate(CertificateArn=cert_arn)
-    validation_options = cert_details['Certificate']['DomainValidationOptions']
+    if not validation_options:
+        raise TimeoutError('Validation records were not available in time')
 
     # Create Route 53 validation records
     changes = []
