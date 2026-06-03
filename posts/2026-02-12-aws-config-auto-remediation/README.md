@@ -142,9 +142,9 @@ schemaVersion: '0.3'
 description: Tag non-compliant resources for tracking
 assumeRole: '{{ AutomationAssumeRole }}'
 parameters:
-  ResourceId:
+  ResourceArn:
     type: String
-    description: The resource ID to tag
+    description: The ARN of the resource to tag
   AutomationAssumeRole:
     type: String
     description: The ARN of the role to assume
@@ -155,7 +155,7 @@ mainSteps:
       Service: resourcegroupstaggingapi
       Api: TagResources
       ResourceARNList:
-        - '{{ ResourceId }}'
+        - '{{ ResourceArn }}'
       Tags:
         Remediation-Required: 'true'
         Detected-Date: '{{ global:DATE }}'
@@ -165,7 +165,7 @@ mainSteps:
 
 Here are some of the most useful Config rules paired with their remediation actions:
 
-**Security Group Too Permissive**: Use the `AWS-DisablePublicAccessForSecurityGroup` SSM document to automatically revoke overly permissive ingress rules.
+**Security Group Too Permissive**: Use the `AWS-DisablePublicAccessForSecurityGroup` SSM document for public SSH/RDP access, or `AWSConfigRemediation-RemoveUnrestrictedSourceIngressRules` to remove ingress rules that allow traffic from all source addresses.
 
 **EBS Volumes Unencrypted**: While you can't encrypt an existing EBS volume in place, you can trigger a Lambda function to snapshot it, create an encrypted copy, and swap it.
 
@@ -195,7 +195,7 @@ Route this to an SNS topic so your team gets notified when something can't be fi
 
 **Start with detection only**. Before enabling auto remediation, run your Config rules in detection mode for a week or two. This helps you understand the scope of non-compliance and avoid surprise remediations that might break production.
 
-**Use exclusions wisely**. Some resources might be intentionally non-compliant for valid reasons. Use resource exclusions or tagging-based exceptions to prevent unwanted remediation.
+**Use exclusions wisely**. Some resources might be intentionally non-compliant for valid reasons. Use remediation exceptions, or build tag-aware logic into custom rules or SSM documents, to prevent unwanted remediation.
 
 **Scope your IAM roles tightly**. The remediation role needs permission to modify resources, but don't give it more access than necessary. If you're only remediating S3 encryption, the role shouldn't have EC2 permissions.
 
@@ -207,7 +207,7 @@ Route this to an SNS topic so your team gets notified when something can't be fi
 
 You'll want visibility into what's being remediated and how often. AWS Config provides a compliance timeline for each resource, which shows you when it went non-compliant and when it was remediated. For broader monitoring of your AWS infrastructure, consider setting up [CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-cdk/view) to track remediation metrics.
 
-CloudWatch metrics like `RemediationExecutionSuccessful` and `RemediationExecutionFailed` give you aggregate data across all your rules. Build a dashboard from these metrics so your security team has a single pane of glass.
+For aggregate visibility, send the SSM Automation status events above to CloudWatch metrics or logs, and use the AWS Config remediation execution status APIs for rule-specific troubleshooting. Build a dashboard from those signals so your security team has a single pane of glass.
 
 ## Wrapping Up
 
