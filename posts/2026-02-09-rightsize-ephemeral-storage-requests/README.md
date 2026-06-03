@@ -14,13 +14,13 @@ This guide covers how to measure ephemeral storage usage, set appropriate reques
 
 ## Understanding Ephemeral Storage in Kubernetes
 
-Ephemeral storage encompasses several writable areas in a container:
+Ephemeral storage encompasses several writable areas in and around a container:
 
 - **Container logs**: Written to /var/log/pods by the container runtime
 - **Container writable layer**: Modified files in the container filesystem
 - **emptyDir volumes**: Temporary volumes shared between containers
-- **ConfigMap and Secret volumes**: Mounted configuration data
-- **Container image layers**: Read-only layers (counted toward usage)
+- **Kubernetes-managed files**: Files mapped into the pod, such as /etc/hosts and projected configuration data
+- **Container image storage**: Image layers consume node local storage and can contribute to node disk pressure
 
 The kubelet monitors ephemeral storage usage and evicts pods when:
 - Pod exceeds its ephemeral-storage limit
@@ -39,10 +39,10 @@ kubectl get nodes --no-headers | while read node _; do
   kubectl describe node $node | grep -A 5 "Allocated resources"
 done
 
-# View pod-level storage usage (requires metrics-server)
+# View pod-level storage usage from the kubelet Summary API
 kubectl get --raw /api/v1/nodes/<node-name>/proxy/stats/summary | jq '.pods[] | {namespace: .podRef.namespace, name: .podRef.name, ephemeralStorage: .ephemeral_storage}'
 
-# Check specific pod's storage usage
+# Check filesystem capacity visible inside a specific pod
 kubectl exec <pod-name> -- df -h /
 ```
 
@@ -56,8 +56,8 @@ sudo du -sh /var/lib/kubelet/pods/*
 # Check container logs size
 sudo du -sh /var/log/pods/*
 
-# Check container writable layers
-sudo du -sh /var/lib/containerd/io.containerd.content.v1.content/blobs/*
+# Check containerd overlay snapshot usage (runtime and snapshotter dependent)
+sudo du -sh /var/lib/containerd/io.containerd.snapshotter.v1.overlayfs/snapshots/*
 ```
 
 ## Setting Ephemeral Storage Requests and Limits
@@ -83,7 +83,7 @@ spec:
 
 The kubelet enforces these limits by monitoring:
 ```text
-Total ephemeral usage = writable layer + logs + emptyDir volumes
+Total local ephemeral usage = writable layer + pod logs + disk-backed emptyDir volumes + Kubernetes-managed files
 ```
 
 ## Sizing for Container Logs
@@ -124,7 +124,13 @@ kind: Deployment
 metadata:
   name: web-app
 spec:
+  selector:
+    matchLabels:
+      app: web-app
   template:
+    metadata:
+      labels:
+        app: web-app
     spec:
       containers:
       - name: app
@@ -152,12 +158,12 @@ spec:
         - name: logs
           mountPath: /var/log/nginx
       volumes:
-      - name: emptyDir
+      - name: logs
         emptyDir:
           sizeLimit: "2Gi"
 ```
 
-Better yet, send logs to stdout/stderr and let the container runtime handle rotation:
+Better yet, send logs to stdout/stderr and let the kubelet handle rotation:
 
 ```yaml
 # app-stdout-logging.yaml
@@ -166,7 +172,13 @@ kind: Deployment
 metadata:
   name: app-stdout-logs
 spec:
+  selector:
+    matchLabels:
+      app: app-stdout-logs
   template:
+    metadata:
+      labels:
+        app: app-stdout-logs
     spec:
       containers:
       - name: app
@@ -182,35 +194,29 @@ spec:
             ephemeral-storage: "1Gi"
 ```
 
-## Configuring containerd Log Rotation
+## Configuring Kubelet Log Rotation
 
-Configure the container runtime to rotate logs automatically:
+Configure the kubelet to rotate container logs automatically:
 
-```toml
-# /etc/containerd/config.toml
-version = 2
-
-[plugins."io.containerd.grpc.v1.cri".containerd]
-  [plugins."io.containerd.grpc.v1.cri".containerd.default_runtime]
-    [plugins."io.containerd.grpc.v1.cri".containerd.default_runtime.options]
-      # Maximum log file size before rotation
-      max_container_log_line_size = 16384
-
-[plugins."io.containerd.grpc.v1.cri"]
-  # Enable log rotation
-  max_container_log_size = "10Mi"
-  max_container_log_files = 5
+```yaml
+# /var/lib/kubelet/config.yaml
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+containerLogMaxSize: "10Mi"
+containerLogMaxFiles: 5
+containerLogMaxWorkers: 1
+containerLogMonitorInterval: "10s"
 ```
 
-Restart containerd to apply:
+Restart kubelet to apply:
 
 ```bash
-sudo systemctl restart containerd
+sudo systemctl restart kubelet
 ```
 
 ## Managing emptyDir Volume Size
 
-emptyDir volumes count toward ephemeral storage. Set explicit size limits:
+Disk-backed emptyDir volumes count toward ephemeral storage. Set explicit size limits:
 
 ```yaml
 # emptydir-with-limit.yaml
@@ -242,7 +248,7 @@ spec:
       medium: Memory  # Use tmpfs (RAM) for cache
 ```
 
-The `sizeLimit` prevents a single emptyDir from consuming all ephemeral storage.
+The `sizeLimit` prevents a single disk-backed emptyDir from consuming all ephemeral storage. For `medium: Memory`, usage is charged to memory rather than local ephemeral storage.
 
 ## Handling Temporary Files
 
@@ -255,7 +261,13 @@ kind: Deployment
 metadata:
   name: batch-processor
 spec:
+  selector:
+    matchLabels:
+      app: batch-processor
   template:
+    metadata:
+      labels:
+        app: batch-processor
     spec:
       containers:
       - name: processor
@@ -268,17 +280,19 @@ spec:
         volumeMounts:
         - name: temp
           mountPath: /tmp
-      initContainers:
-      - name: cleanup-old-temp
+      - name: temp-cleaner
         image: busybox:latest
         command:
         - sh
         - -c
         - |
-          # Clean temp files older than 1 day
-          find /tmp -type f -mtime +1 -delete
-          # Clean empty directories
-          find /tmp -type d -empty -delete
+          while true; do
+            # Clean temp files older than 1 day
+            find /tmp -type f -mtime +1 -delete
+            # Clean empty directories
+            find /tmp -mindepth 1 -type d -empty -delete
+            sleep 3600
+          done
         volumeMounts:
         - name: temp
           mountPath: /tmp
@@ -288,7 +302,7 @@ spec:
           sizeLimit: "3Gi"
 ```
 
-Or use a sidecar for continuous cleanup:
+For a smaller sidecar snippet:
 
 ```yaml
 # continuous-temp-cleanup.yaml
@@ -328,39 +342,36 @@ data:
       rules:
       - alert: HighEphemeralStorageUsage
         expr: |
-          (kubelet_volume_stats_used_bytes{volume_type="ephemeral"} /
-           kubelet_volume_stats_capacity_bytes{volume_type="ephemeral"}) > 0.8
+          sum by (namespace, pod) (kubelet_container_log_filesystem_used_bytes) > 800 * 1024 * 1024
         for: 5m
         labels:
           severity: warning
         annotations:
-          summary: "High ephemeral storage usage"
-          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} using {{ $value | humanizePercentage }} of ephemeral storage"
+          summary: "High container log storage usage"
+          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} container logs are using {{ $value | humanize1024 }}B"
 
-      - alert: EphemeralStorageNearLimit
+      - alert: LocalStorageEvictions
         expr: |
-          kubelet_volume_stats_used_bytes{volume_type="ephemeral"} /
-          kubelet_volume_stats_capacity_bytes{volume_type="ephemeral"} > 0.9
+          increase(kubelet_evictions{eviction_signal=~"nodefs.available|nodefs.inodesFree|imagefs.available|imagefs.inodesFree"}[10m]) > 0
         for: 2m
         labels:
           severity: critical
         annotations:
-          summary: "Ephemeral storage near limit"
-          description: "Pod {{ $labels.namespace }}/{{ $labels.pod }} at {{ $value | humanizePercentage }} of ephemeral storage limit"
+          summary: "Local storage eviction detected"
+          description: "Kubelet reported local storage pressure evictions on this node"
 ```
 
 Query storage metrics in Prometheus:
 
 ```promql
-# Current ephemeral storage usage per pod
-kubelet_volume_stats_used_bytes{volume_type="ephemeral"}
+# Current container log usage per pod
+sum by (namespace, pod) (kubelet_container_log_filesystem_used_bytes)
 
-# Storage usage percentage
-kubelet_volume_stats_used_bytes{volume_type="ephemeral"} /
-kubelet_volume_stats_capacity_bytes{volume_type="ephemeral"} * 100
+# Pods with the most container log usage
+topk(10, sum by (namespace, pod) (kubelet_container_log_filesystem_used_bytes))
 
-# Pods using most ephemeral storage
-topk(10, kubelet_volume_stats_used_bytes{volume_type="ephemeral"})
+# Local storage pressure evictions
+increase(kubelet_evictions{eviction_signal=~"nodefs.available|nodefs.inodesFree|imagefs.available|imagefs.inodesFree"}[10m])
 ```
 
 ## Preventing Node Disk Pressure
@@ -426,7 +437,7 @@ Follow this process to determine appropriate ephemeral storage sizes:
 ```bash
 # Run application for 24-48 hours
 # Collect storage metrics every 15 minutes
-kubectl exec <pod> -- du -sh /
+kubectl get --raw /api/v1/nodes/<node-name>/proxy/stats/summary | jq '.pods[] | select(.podRef.name=="<pod>") | .ephemeral_storage'
 ```
 
 2. **Calculate P95 usage**:
