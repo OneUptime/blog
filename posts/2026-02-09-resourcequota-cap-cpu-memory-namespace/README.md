@@ -97,7 +97,7 @@ Shows current usage, hard limits, and whether quota is exceeded.
 Pods that would exceed quota are rejected:
 
 ```bash
-kubectl run test --image=nginx --requests=cpu=5 -n development
+kubectl run test --image=nginx -n development --overrides='{"spec":{"containers":[{"name":"test","image":"nginx","resources":{"requests":{"cpu":"5"}}}]}}'
 # Error: exceeded quota: compute-quota, requested: requests.cpu=5, used: requests.cpu=6, limited: requests.cpu=10
 
 ```
@@ -250,7 +250,7 @@ spec:
 
 ## Quotas for Extended Resources
 
-Quota custom resources like GPUs:
+Quota extended resources like GPUs:
 
 ```yaml
 apiVersion: v1
@@ -329,7 +329,7 @@ Export quota metrics with kube-state-metrics:
 
 ```promql
 # Quota usage percentage
-(kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) * 100
+100 * kube_resourcequota{type="used"} / ignoring(type) (kube_resourcequota{type="hard"} > 0)
 ```
 
 Alert when quotas are near limits:
@@ -337,7 +337,7 @@ Alert when quotas are near limits:
 ```yaml
 # Prometheus alert
 - alert: QuotaNearLimit
-  expr: (kube_resourcequota{type="used"} / kube_resourcequota{type="hard"}) > 0.9
+  expr: 100 * kube_resourcequota{type="used"} / ignoring(type) (kube_resourcequota{type="hard"} > 0) > 90
   for: 10m
   annotations:
     summary: "ResourceQuota {{ $labels.resource }} in namespace {{ $labels.namespace }} is at {{ $value }}%"
