@@ -32,8 +32,8 @@ resource "aws_sqs_queue" "orders" {
   # Maximum is 14 days (1209600)
   message_retention_seconds = 86400  # 1 day
 
-  # Maximum message size in bytes (max 256 KB)
-  max_message_size = 262144
+  # Maximum message size in bytes (max 1 MiB)
+  max_message_size = 1048576
 
   # Long polling - wait up to 20 seconds for messages
   # This reduces empty responses and API costs
@@ -94,7 +94,7 @@ resource "aws_sqs_queue" "orders" {
   }
 }
 
-# Allow the DLQ to accept messages back from the main queue
+# Allow the main queue to use this queue as its DLQ
 resource "aws_sqs_queue_redrive_allow_policy" "orders_dlq" {
   queue_url = aws_sqs_queue.orders_dlq.id
 
@@ -145,7 +145,7 @@ resource "aws_sqs_queue" "transactions_dlq" {
 
 Important: a FIFO DLQ must also be a FIFO queue. You can't mix standard and FIFO for redrive policies.
 
-The `deduplication_scope = "messageGroup"` and `fifo_throughput_limit = "perMessageGroupId"` settings enable high-throughput mode. This gives you up to 3,000 messages per second per message group, compared to 300 messages per second without it.
+The `deduplication_scope = "messageGroup"` and `fifo_throughput_limit = "perMessageGroupId"` settings enable high-throughput mode. This raises the FIFO throughput quota beyond the default 300 API calls per second per API action. The exact quota depends on the AWS Region and whether you use batching.
 
 ## Encryption
 
@@ -274,7 +274,7 @@ SQS provides useful CloudWatch metrics out of the box. The ones you should alway
 
 - **ApproximateNumberOfMessagesVisible** - messages waiting to be processed
 - **ApproximateAgeOfOldestMessage** - how long the oldest message has been waiting
-- **NumberOfMessagesSent** to the DLQ - indicates processing failures
+- **ApproximateNumberOfMessagesVisible** on the DLQ - indicates messages waiting for investigation
 
 If the oldest message age keeps growing, your consumers aren't keeping up. If your DLQ is getting messages, something's failing repeatedly. Both are worth alerting on.
 
