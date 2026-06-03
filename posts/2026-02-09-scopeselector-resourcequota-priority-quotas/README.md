@@ -4,19 +4,19 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, ResourceQuota, Priority Class
 
-Description: Configure ResourceQuota with scopeSelector to create separate resource budgets for different priority classes, QoS tiers, and workload types within the same namespace.
+Description: Configure ResourceQuota with scopeSelector to create separate resource budgets for different priority classes, QoS scopes, and workload types within the same namespace.
 
 ---
 
-Not all workloads are equal. Production workloads need guaranteed resources while batch jobs can use whatever is left. The scopeSelector field in ResourceQuota lets you create separate budgets based on priority class, QoS class, or termination state. This guide shows you how to implement priority-based quotas.
+Not all workloads are equal. Production workloads need predictable resource budgets while batch jobs can use whatever is left. The scopeSelector field in ResourceQuota lets you create separate budgets based on priority class, BestEffort vs non-BestEffort QoS, or whether a pod has an active deadline. This guide shows you how to implement priority-based quotas.
 
 ## What Is scopeSelector?
 
 The scopeSelector field filters which pods a ResourceQuota applies to. You can create multiple quotas in one namespace, each targeting different pod characteristics:
 
 - Priority class (high, medium, low)
-- QoS class (Guaranteed, Burstable, BestEffort)
-- Termination state (Terminating vs NotTerminating)
+- QoS scope (BestEffort vs NotBestEffort)
+- Active deadline state (Terminating vs NotTerminating)
 
 This enables fine-grained resource allocation within a single namespace.
 
@@ -120,14 +120,14 @@ This pod consumes from the high-priority quota.
 
 ## QoS-Based Quotas
 
-Create quotas based on QoS class:
+Create quotas based on QoS class. ResourceQuota scopes can distinguish BestEffort pods from NotBestEffort pods. NotBestEffort includes both Guaranteed and Burstable pods:
 
 ```yaml
-# Guaranteed QoS gets most resources
+# Guaranteed and Burstable pods get resource quota
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: guaranteed-quota
+  name: not-besteffort-quota
   namespace: production
 spec:
   hard:
@@ -135,27 +135,8 @@ spec:
     requests.memory: "80Gi"
   scopeSelector:
     matchExpressions:
-    - operator: In
-      scopeName: QoS
-      values:
-      - Guaranteed
----
-# Burstable QoS gets fewer resources
-apiVersion: v1
-kind: ResourceQuota
-metadata:
-  name: burstable-quota
-  namespace: production
-spec:
-  hard:
-    requests.cpu: "20"
-    requests.memory: "40Gi"
-  scopeSelector:
-    matchExpressions:
-    - operator: In
-      scopeName: QoS
-      values:
-      - Burstable
+    - operator: Exists
+      scopeName: NotBestEffort
 ---
 # BestEffort gets minimal resources
 apiVersion: v1
@@ -168,20 +149,18 @@ spec:
     pods: "10"
   scopeSelector:
     matchExpressions:
-    - operator: In
-      scopeName: QoS
-      values:
-      - BestEffort
+    - operator: Exists
+      scopeName: BestEffort
 ```
 
 Note: BestEffort pods have no resource requests, so you can only quota their count.
 
 ## Terminating vs NotTerminating Scopes
 
-Separate quotas for normal pods vs terminating pods:
+Separate quotas for pods without an active deadline and pods with an active deadline:
 
 ```yaml
-# Active pods
+# Pods without spec.activeDeadlineSeconds
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -193,12 +172,10 @@ spec:
     requests.memory: "100Gi"
   scopeSelector:
     matchExpressions:
-    - operator: In
-      scopeName: TerminationState
-      values:
-      - NotTerminating
+    - operator: Exists
+      scopeName: NotTerminating
 ---
-# Terminating pods (being deleted)
+# Pods with spec.activeDeadlineSeconds set
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -210,13 +187,11 @@ spec:
     requests.memory: "20Gi"
   scopeSelector:
     matchExpressions:
-    - operator: In
-      scopeName: TerminationState
-      values:
-      - Terminating
+    - operator: Exists
+      scopeName: Terminating
 ```
 
-This ensures terminating pods don't consume too much quota during graceful shutdown.
+In ResourceQuota, the Terminating scope means pods with `.spec.activeDeadlineSeconds` set. It does not mean pods currently being deleted during graceful shutdown.
 
 ## Combining Multiple Scopes
 
@@ -226,7 +201,7 @@ Use multiple match expressions:
 apiVersion: v1
 kind: ResourceQuota
 metadata:
-  name: high-guaranteed-quota
+  name: high-not-besteffort-quota
   namespace: production
 spec:
   hard:
@@ -238,20 +213,18 @@ spec:
       scopeName: PriorityClass
       values:
       - high
-    - operator: In
-      scopeName: QoS
-      values:
-      - Guaranteed
+    - operator: Exists
+      scopeName: NotBestEffort
 ```
 
-This quota only applies to pods that are both high priority AND Guaranteed QoS.
+This quota only applies to pods that are both high priority AND not BestEffort.
 
 ## Real-World Example: Mixed Workload Namespace
 
 A namespace running web apps, batch jobs, and experiments:
 
 ```yaml
-# Production web apps: high priority, Guaranteed QoS
+# Production web apps: high priority
 apiVersion: v1
 kind: ResourceQuota
 metadata:
@@ -302,6 +275,8 @@ spec:
       scopeName: PriorityClass
       values:
       - low
+    - operator: Exists
+      scopeName: BestEffort
 ```
 
 ## Monitoring Scoped Quotas
@@ -315,7 +290,7 @@ kubectl get resourcequota -n production
 Output shows each quota separately:
 
 ```text
-NAME              AGE   REQUEST
+NAME              AGE   REQUEST                                                     LIMIT
 high-priority     1d    requests.cpu: 20/30, requests.memory: 40Gi/60Gi
 low-priority      1d    requests.cpu: 5/10, requests.memory: 8Gi/20Gi
 ```
@@ -331,9 +306,9 @@ kubectl describe resourcequota high-priority -n production
 If a pod doesn't specify priorityClassName:
 
 - It gets the default priority class (if one is marked `globalDefault: true`)
-- If no default exists, it has priority 0 and doesn't match any scoped quota
+- If no default exists, it has priority 0 and doesn't match PriorityClass-scoped quotas that select specific class names
 
-Always set a global default priority class:
+Set a global default priority class if you want pods without `priorityClassName` to consume one of your PriorityClass-scoped quotas:
 
 ```yaml
 apiVersion: scheduling.k8s.io/v1
@@ -358,13 +333,13 @@ description: "Default priority"
 
 ## Troubleshooting Scoped Quotas
 
-**Pod Rejected Despite Available Quota**: Check if the pod's priority class matches a quota:
+**Pod Rejected Despite Available Quota**: Check if the pod's priority class matches the quota you expect:
 
 ```bash
 kubectl get pod failing-pod -o yaml | grep priorityClassName
 ```
 
-If it doesn't match any scopeSelector, the pod can't use any quota.
+If it doesn't match a scopeSelector, that scoped quota won't track the pod. A pod is rejected when a matching quota would be exceeded, or when the ResourceQuota admission configuration requires a matching quota for a limited resource.
 
 **Wrong Quota Applied**: Verify the pod's QoS class:
 
@@ -372,18 +347,18 @@ If it doesn't match any scopeSelector, the pod can't use any quota.
 kubectl get pod my-app -o jsonpath='{.status.qosClass}'
 ```
 
-The QoS class determines which QoS-scoped quota applies.
+The QoS class determines whether the pod matches a BestEffort or NotBestEffort quota.
 
 **Quota Not Enforced**: Ensure the scopeSelector values match exactly:
 
 ```yaml
-# Wrong
+# Wrong: PriorityClass names are case-sensitive
 scopeSelector:
   matchExpressions:
   - operator: In
     scopeName: PriorityClass
     values:
-    - "high"  # String literal
+    - High
 
 # Correct
 scopeSelector:
@@ -391,7 +366,7 @@ scopeSelector:
   - operator: In
     scopeName: PriorityClass
     values:
-    - high  # Plain value
+    - high
 ```
 
 ## Advanced: Per-Team Priority Quotas
@@ -458,8 +433,10 @@ ScopeSelector supports these operators:
 
 - **In**: Value must be in the list
 - **NotIn**: Value must not be in the list
-- **Exists**: Scope must exist (value ignored)
+- **Exists**: Scope must exist (omit values)
 - **DoesNotExist**: Scope must not exist
+
+For `BestEffort`, `NotBestEffort`, `Terminating`, and `NotTerminating`, use `operator: Exists` and omit `values`.
 
 Example using NotIn:
 
@@ -503,4 +480,4 @@ kubectl delete resourcequota old-quota -n production
 
 ## Conclusion
 
-ScopeSelector enables sophisticated resource allocation within namespaces. Use priority-based quotas to guarantee resources for production workloads while allowing batch jobs and experiments to use remaining capacity. Combine with QoS-based quotas for even finer control. Define clear priority classes, document their semantics, and monitor quota usage per scope. Scoped quotas turn namespaces into multi-tenant environments with customizable resource allocation policies.
+ScopeSelector enables sophisticated resource allocation within namespaces. Use priority-based quotas to reserve quota budget for production workloads while allowing batch jobs and experiments to use remaining capacity. Combine with BestEffort and NotBestEffort scopes for finer control. Define clear priority classes, document their semantics, and monitor quota usage per scope. Scoped quotas turn namespaces into multi-tenant environments with customizable resource allocation policies.
