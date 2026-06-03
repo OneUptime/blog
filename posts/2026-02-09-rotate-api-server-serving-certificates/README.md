@@ -8,7 +8,7 @@ Description: Learn how to safely rotate Kubernetes API server serving certificat
 
 ---
 
-The API server serving certificate secures HTTPS connections between clients and the API server. This certificate expires after one year by default and must be rotated manually to prevent cluster access failures. Understanding how to generate, validate, and rotate API server certificates safely is critical for maintaining cluster availability.
+The API server serving certificate secures HTTPS connections between clients and the API server. In kubeadm-managed clusters, this certificate expires after one year by default and must be renewed before expiration unless it is renewed during regular kubeadm upgrades or by other automation. Understanding how to generate, validate, and rotate API server certificates safely is critical for maintaining cluster availability.
 
 This guide walks through the complete process of rotating API server serving certificates with minimal downtime.
 
@@ -75,8 +75,10 @@ After renewal:
 
 ```bash
 # Restart API server (required for new cert to take effect)
-# The API server is a static pod, so moving/touching the manifest triggers restart
-sudo touch /etc/kubernetes/manifests/kube-apiserver.yaml
+# Static pods are restarted by temporarily removing and restoring their manifests
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/kube-apiserver.yaml
+sleep 20
+sudo mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/kube-apiserver.yaml
 
 # Wait for API server to restart
 kubectl get pods -n kube-system -w
@@ -161,7 +163,7 @@ sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout | grep -A 1
 # Add new SANs using kubeadm
 # Create patch file
 cat > kubeadm-config-patch.yaml <<EOF
-apiVersion: kubeadm.k8s.io/v1beta3
+apiVersion: kubeadm.k8s.io/v1beta4
 kind: ClusterConfiguration
 apiServer:
   certSANs:
@@ -175,6 +177,10 @@ apiServer:
   - "10.0.0.10"
   - "192.168.1.100"  # New IP
 EOF
+
+# Move the existing certificate and key first; kubeadm skips generation if both files already exist
+sudo mv /etc/kubernetes/pki/apiserver.crt /etc/kubernetes/pki/apiserver.crt.old
+sudo mv /etc/kubernetes/pki/apiserver.key /etc/kubernetes/pki/apiserver.key.old
 
 # Generate new certificate with additional SANs
 sudo kubeadm init phase certs apiserver --config kubeadm-config-patch.yaml
@@ -205,7 +211,7 @@ Create a systemd timer for automatic renewal:
 
 ```bash
 # Create renewal script
-cat > /usr/local/bin/renew-k8s-certs.sh <<'EOF'
+sudo tee /usr/local/bin/renew-k8s-certs.sh >/dev/null <<'EOF'
 #!/bin/bash
 set -e
 
@@ -231,15 +237,17 @@ log "Renewing certificates ($DAYS_LEFT days remaining)"
 kubeadm certs renew all 2>&1 | tee -a $LOG_FILE
 
 # Restart API server
-touch /etc/kubernetes/manifests/kube-apiserver.yaml
+mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/kube-apiserver.yaml
+sleep 20
+mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/kube-apiserver.yaml
 
 log "Certificate renewal complete"
 EOF
 
-chmod +x /usr/local/bin/renew-k8s-certs.sh
+sudo chmod +x /usr/local/bin/renew-k8s-certs.sh
 
 # Create systemd service
-cat > /etc/systemd/system/k8s-cert-renewal.service <<EOF
+sudo tee /etc/systemd/system/k8s-cert-renewal.service >/dev/null <<EOF
 [Unit]
 Description=Kubernetes Certificate Renewal
 After=network.target
@@ -250,7 +258,7 @@ ExecStart=/usr/local/bin/renew-k8s-certs.sh
 EOF
 
 # Create systemd timer
-cat > /etc/systemd/system/k8s-cert-renewal.timer <<EOF
+sudo tee /etc/systemd/system/k8s-cert-renewal.timer >/dev/null <<EOF
 [Unit]
 Description=Kubernetes Certificate Renewal Timer
 
@@ -273,10 +281,10 @@ sudo systemctl list-timers k8s-cert-renewal.timer
 
 ## Updating Client Configurations
 
-After rotating certificates, update kubeconfig files:
+After rotating kubeconfig client certificates, update the local kubeconfig files that use them:
 
 ```bash
-# Update admin.conf
+# Update admin.conf if it was not already renewed with "kubeadm certs renew all"
 sudo kubeadm certs renew admin.conf
 
 # Copy new config
@@ -292,7 +300,7 @@ sudo kubeadm kubeconfig user --client-name=myuser > /tmp/myuser.kubeconfig
 
 ## Monitoring Certificate Expiration
 
-Set up monitoring for certificate expiration:
+Set up monitoring for certificate expiration, for example when probing the API endpoint with Prometheus Blackbox Exporter:
 
 ```yaml
 # cert-expiry-monitor.yaml
@@ -308,23 +316,23 @@ data:
       rules:
       - alert: APIServerCertExpiringSoon
         expr: |
-          (apiserver_client_certificate_expiration_seconds - time()) / 86400 < 30
+          (probe_ssl_earliest_cert_expiry{job="kubernetes-apiserver"} - time()) / 86400 < 30
         for: 24h
         labels:
           severity: warning
         annotations:
           summary: "API server certificate expiring soon"
-          description: "API server certificate expires in {{ $value | humanizeDuration }}"
+          description: "API server serving certificate expires in {{ $value }} days"
 
       - alert: APIServerCertExpiringCritical
         expr: |
-          (apiserver_client_certificate_expiration_seconds - time()) / 86400 < 7
+          (probe_ssl_earliest_cert_expiry{job="kubernetes-apiserver"} - time()) / 86400 < 7
         for: 1h
         labels:
           severity: critical
         annotations:
           summary: "API server certificate expiring very soon"
-          description: "API server certificate expires in {{ $value | humanizeDuration }}"
+          description: "API server serving certificate expires in {{ $value }} days"
 ```
 
 Create a monitoring script:
@@ -373,7 +381,9 @@ sudo cp /etc/kubernetes/admin.conf ~/.kube/config
 # Verify SANs include all access points
 sudo openssl x509 -in /etc/kubernetes/pki/apiserver.crt -text -noout | grep -A 10 "Subject Alternative Name"
 
-# Regenerate with correct SANs
+# Move the existing apiserver.crt and apiserver.key first, then regenerate with correct SANs
+sudo mv /etc/kubernetes/pki/apiserver.crt /etc/kubernetes/pki/apiserver.crt.old
+sudo mv /etc/kubernetes/pki/apiserver.key /etc/kubernetes/pki/apiserver.key.old
 sudo kubeadm init phase certs apiserver --config kubeadm-config.yaml
 ```
 
@@ -419,7 +429,9 @@ sudo cp -r /etc/kubernetes/pki /etc/kubernetes/pki.backup
 sudo kubeadm certs renew all
 
 # 4. Restart API server
-sudo touch /etc/kubernetes/manifests/kube-apiserver.yaml
+sudo mv /etc/kubernetes/manifests/kube-apiserver.yaml /tmp/kube-apiserver.yaml
+sleep 20
+sudo mv /tmp/kube-apiserver.yaml /etc/kubernetes/manifests/kube-apiserver.yaml
 
 # 5. Update kubeconfig
 sudo cp /etc/kubernetes/admin.conf ~/.kube/config
