@@ -44,7 +44,6 @@ Uber's zap library provides fast, structured logging:
 package main
 
 import (
-    "context"
     "os"
 
     "go.uber.org/zap"
@@ -123,7 +122,13 @@ metadata:
   name: go-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: go-app
   template:
+    metadata:
+      labels:
+        app: go-app
     spec:
       containers:
       - name: app
@@ -153,6 +158,8 @@ Log HTTP requests with comprehensive context:
 package middleware
 
 import (
+    "crypto/rand"
+    "encoding/hex"
     "net/http"
     "time"
 
@@ -226,8 +233,11 @@ func LoggingMiddleware(logger *zap.Logger) func(http.Handler) http.Handler {
 }
 
 func generateRequestID() string {
-    // Implementation details
-    return "req_" + randomString(16)
+    bytes := make([]byte, 16)
+    if _, err := rand.Read(bytes); err != nil {
+        return "req_" + hex.EncodeToString([]byte(time.Now().Format(time.RFC3339Nano)))
+    }
+    return "req_" + hex.EncodeToString(bytes)
 }
 ```
 
@@ -375,7 +385,7 @@ import (
     "github.com/sirupsen/logrus"
 )
 
-func initLogrus() *logrus.Logger {
+func initLogrus() *logrus.Entry {
     logger := logrus.New()
 
     // JSON formatting
@@ -395,13 +405,11 @@ func initLogrus() *logrus.Logger {
     logger.SetLevel(logrus.InfoLevel)
 
     // Add default fields
-    logger.WithFields(logrus.Fields{
+    return logger.WithFields(logrus.Fields{
         "namespace": os.Getenv("NAMESPACE"),
         "pod":       os.Getenv("POD_NAME"),
         "service":   "my-service",
     })
-
-    return logger
 }
 
 func main() {
@@ -466,7 +474,8 @@ Reduce log volume while maintaining visibility:
 func initSampledLogger() *zap.Logger {
     config := zap.NewProductionConfig()
 
-    // Sample debug and info logs (1 out of every 100)
+    // After the first 100 entries with the same level and message in a second,
+    // log every 100th matching entry.
     config.Sampling = &zap.SamplingConfig{
         Initial:    100,
         Thereafter: 100,
