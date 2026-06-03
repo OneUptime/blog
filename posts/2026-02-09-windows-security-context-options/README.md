@@ -14,7 +14,7 @@ Windows containers have unique security requirements that differ from Linux cont
 
 Windows containers support a subset of standard security context fields plus Windows-specific options. Unlike Linux where UID/GID define identity, Windows uses user account names and security identifiers (SIDs). Windows containers can run as LocalSystem, NetworkService, or custom user accounts.
 
-The security context for Windows containers focuses on user identity, credential management, and host process capabilities. These controls integrate with Windows security subsystems including Active Directory and Windows Defender.
+The security context for Windows containers focuses on user identity, credential management, and host process capabilities. These controls integrate with Windows security subsystems such as Active Directory, while endpoint protection such as Microsoft Defender Antivirus is configured separately on Windows nodes.
 
 ## Running as Specific Windows Users
 
@@ -26,6 +26,8 @@ kind: Pod
 metadata:
   name: windows-user-demo
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
@@ -38,7 +40,7 @@ spec:
     args:
     - |
       Write-Output "Running as: $(whoami)"
-      Write-Output "User SID: $((Get-LocalUser $(whoami)).SID)"
+      whoami /user
       Start-Sleep -Seconds 3600
 ```
 
@@ -78,6 +80,8 @@ kind: Pod
 metadata:
   name: gmsa-demo
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
@@ -89,16 +93,16 @@ spec:
     command: ["powershell", "-Command"]
     args:
     - |
-      # Container authenticates to AD as GMSA account
-      Write-Output "Authenticated as: $(whoami)"
+      # Container uses the GMSA for domain network authentication
+      Write-Output "Process user: $(whoami)"
 
-      # Can access domain resources
-      Get-ADUser -Identity WebAppSVC
+      # Verify domain connectivity or access domain resources required by the app
+      nltest /parentdomain
 
       Start-Sleep -Seconds 3600
 ```
 
-GMSA credentials are stored in CRDs that reference Active Directory accounts. Containers using GMSA can authenticate to domain resources without embedding credentials.
+GMSA credential specs are stored in CRDs that reference Active Directory accounts. The credential spec does not contain secret data; containers using GMSA can authenticate to domain resources without embedding credentials in the image or Pod spec.
 
 ## Configuring GMSA Credential Specs
 
@@ -113,10 +117,18 @@ credspec:
   ActiveDirectoryConfig:
     GroupManagedServiceAccounts:
     - Name: WebAppSVC
+      Scope: EXAMPLE
+    - Name: WebAppSVC
       Scope: example.com
-    HostAccountConfig:
-      PluginGUID: "{859E1386-BDB4-49E8-85C7-3070B13920E1}"
-      PortableCCGVersion: "1"
+  CmsPlugins:
+  - ActiveDirectory
+  DomainJoinConfig:
+    DnsName: example.com
+    DnsTreeName: example.com
+    Guid: 244818ae-87ac-4fcd-92ec-e79e5252348a
+    MachineAccountName: WebAppSVC
+    NetBiosName: EXAMPLE
+    Sid: S-1-5-21-2126449477-2524075714-3094792973
 ```
 
 Reference this credential spec in pod specifications to enable AD authentication.
@@ -131,6 +143,8 @@ kind: Pod
 metadata:
   name: host-process-demo
 spec:
+  os:
+    name: windows
   hostNetwork: true
   nodeSelector:
     kubernetes.io/os: windows
@@ -177,6 +191,8 @@ spec:
         reviewer: "security-team"
         review-date: "2026-02-09"
     spec:
+      os:
+        name: windows
       hostNetwork: true
       nodeSelector:
         kubernetes.io/os: windows
@@ -201,27 +217,25 @@ kind: Pod
 metadata:
   name: secure-windows-app
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
+    runAsNonRoot: true
     windowsOptions:
       runAsUserName: "ContainerUser"
       gmsaCredentialSpecName: app-gmsa
   containers:
   - name: app
     image: mycompany/secure-app:latest
-    securityContext:
-      allowPrivilegeEscalation: false
-      capabilities:
-        drop:
-        - ALL
     resources:
       limits:
         memory: "2Gi"
         cpu: "1000m"
 ```
 
-This configuration runs as a dedicated user with GMSA authentication and prevents privilege escalation.
+This configuration runs as a dedicated non-administrator user with GMSA authentication. Linux-specific controls such as `allowPrivilegeEscalation` and POSIX capabilities are not used for Windows Pods.
 
 ## Windows Container User Management
 
@@ -238,7 +252,7 @@ net localgroup IIS_IUSRS containerapp /add
 # Set directory permissions
 icacls C:\inetpub\wwwroot /grant containerapp:M
 
-# Remove unnecessary privileges
+# Remove from Administrators if the account was added earlier
 net localgroup Administrators containerapp /delete
 ```
 
@@ -246,32 +260,16 @@ Follow least privilege principles by creating users with minimal necessary permi
 
 ## Windows Defender Integration
 
-Windows containers can integrate with Windows Defender:
+Configure Microsoft Defender Antivirus on Windows nodes rather than through per-Pod `windowsOptions` fields:
 
-```yaml
-apiVersion: v1
-kind: Pod
-metadata:
-  name: defender-protected
-spec:
-  nodeSelector:
-    kubernetes.io/os: windows
-  containers:
-  - name: app
-    image: myapp:latest
-    volumeMounts:
-    - name: defender-exclusions
-      mountPath: C:\ProgramData\DefenderExclusions
-    securityContext:
-      windowsOptions:
-        runAsUserName: "ContainerUser"
-  volumes:
-  - name: defender-exclusions
-    configMap:
-      name: defender-config
+```powershell
+# Run on the Windows node with administrative privileges
+Add-MpPreference -ExclusionPath "C:\var\lib\kubelet"
+Add-MpPreference -ExclusionPath "C:\ProgramData\containerd"
+Get-MpPreference | Select-Object -ExpandProperty ExclusionPath
 ```
 
-Configure Windows Defender to scan container filesystems while excluding performance-sensitive paths.
+Configure Defender exclusions deliberately on the node for performance-sensitive Kubernetes and container runtime paths.
 
 ## Troubleshooting Windows Security Context
 
@@ -283,6 +281,8 @@ kind: Pod
 metadata:
   name: windows-debug
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
@@ -332,16 +332,17 @@ metadata:
   name: compliant-windows-pod
   namespace: windows-apps
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
+    runAsNonRoot: true
     windowsOptions:
       runAsUserName: "ContainerUser"
   containers:
   - name: app
     image: myapp:latest
-    securityContext:
-      allowPrivilegeEscalation: false
 ```
 
 Baseline standard permits most Windows container configurations while blocking obviously dangerous settings.
@@ -356,6 +357,8 @@ kind: Pod
 metadata:
   name: performance-tuned
 spec:
+  os:
+    name: windows
   nodeSelector:
     kubernetes.io/os: windows
   securityContext:
@@ -377,4 +380,4 @@ Windows containers generally require more resources than equivalent Linux contai
 
 ## Conclusion
 
-Windows container security in Kubernetes involves unique considerations around user identity, Active Directory integration, and host process capabilities. Use runAsUserName to specify non-admin accounts, leverage GMSA for Active Directory authentication, and restrict host process containers to necessary infrastructure components. Build container images with dedicated user accounts and proper permissions. While Windows containers don't support all Linux security features, combining runAsUserName with allowPrivilegeEscalation controls and resource limits creates secure Windows workloads. Understand the differences between Windows and Linux security models to apply appropriate protections. Regular security reviews ensure Windows container configurations remain secure as your environment evolves.
+Windows container security in Kubernetes involves unique considerations around user identity, Active Directory integration, and host process capabilities. Use runAsUserName to specify non-admin accounts, leverage GMSA for Active Directory authentication, and restrict host process containers to necessary infrastructure components. Build container images with dedicated user accounts and proper permissions. While Windows containers don't support all Linux security features, combining runAsUserName, runAsNonRoot, Pod Security Admission, and resource limits creates secure Windows workloads. Understand the differences between Windows and Linux security models to apply appropriate protections. Regular security reviews ensure Windows container configurations remain secure as your environment evolves.
