@@ -42,7 +42,7 @@ Create a dedicated namespace:
 kubectl create namespace yugabyte
 ```
 
-Define zone-specific storage classes for optimal performance:
+Define AWS EBS CSI storage classes with delayed volume binding so volumes are provisioned in the same zone as the scheduled pod:
 
 ```yaml
 # yugabyte-storage-classes.yaml
@@ -51,8 +51,9 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: yugabyte-ssd
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
+  csi.storage.k8s.io/fstype: xfs
   type: gp3
   iops: "3000"
   throughput: "125"
@@ -64,8 +65,9 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: yugabyte-high-iops
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
+  csi.storage.k8s.io/fstype: xfs
   type: io2
   iops: "10000"
   encrypted: "true"
@@ -144,7 +146,7 @@ spec:
                       - database
       containers:
         - name: yb-master
-          image: yugabytedb/yugabyte:2.19.3.0-b140
+          image: yugabytedb/yugabyte:2025.2.3.0-b149
           imagePullPolicy: IfNotPresent
           env:
             - name: POD_IP
@@ -191,7 +193,7 @@ spec:
             failureThreshold: 3
           readinessProbe:
             httpGet:
-              path: /api/v1/is-leader
+              path: /api/v1/health
               port: 7000
             initialDelaySeconds: 10
             periodSeconds: 5
@@ -242,8 +244,6 @@ spec:
       port: 9100
     - name: cassandra
       port: 9042
-    - name: redis
-      port: 6379
     - name: postgres
       port: 5433
   selector:
@@ -290,7 +290,7 @@ spec:
                       - database
       containers:
         - name: yb-tserver
-          image: yugabytedb/yugabyte:2.19.3.0-b140
+          image: yugabytedb/yugabyte:2025.2.3.0-b149
           imagePullPolicy: IfNotPresent
           env:
             - name: POD_IP
@@ -322,8 +322,6 @@ spec:
               name: rpc-port
             - containerPort: 9042
               name: cassandra
-            - containerPort: 6379
-              name: redis
             - containerPort: 5433
               name: postgres
           volumeMounts:
@@ -386,12 +384,12 @@ kubectl exec -it yb-master-0 -n yugabyte -- bash
 
 # Configure preferred zones
 /home/yugabyte/bin/yb-admin \
-  --master_addresses yb-master-0.yb-masters.yugabyte.svc.cluster.local:7100 \
+  --master_addresses yb-master-0.yb-masters.yugabyte.svc.cluster.local:7100,yb-master-1.yb-masters.yugabyte.svc.cluster.local:7100,yb-master-2.yb-masters.yugabyte.svc.cluster.local:7100 \
   modify_placement_info \
-  aws.us-east-1a,aws.us-east-1b,aws.us-east-1c 3
+  aws.us-east-1.us-east-1a,aws.us-east-1.us-east-1b,aws.us-east-1.us-east-1c 3
 ```
 
-This ensures YugabyteDB maintains one replica in each zone.
+This ensures YugabyteDB maintains one replica in each zone. For this policy to be effective, make sure each YB-Master and YB-TServer process is started with `--placement_cloud`, `--placement_region`, and `--placement_zone` values that match the zone where Kubernetes schedules that pod.
 
 ## Creating Service for Client Access
 
@@ -440,13 +438,14 @@ kubectl get pod yb-tserver-0 -n yugabyte \
 # Cordon all nodes in one zone
 kubectl cordon $(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o name)
 
-# Delete pods in that zone
-kubectl delete pod -l app=yb-tserver -n yugabyte \
-  --field-selector spec.nodeName=$(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o name | head -1)
+# Delete tablet server pods running on nodes in that zone
+for node in $(kubectl get nodes -l topology.kubernetes.io/zone=us-east-1a -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'); do
+  kubectl delete pod -l app=yb-tserver -n yugabyte --field-selector spec.nodeName=$node
+done
 
 # Verify cluster health
 kubectl exec -it yb-tserver-1 -n yugabyte -- \
-  /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.yugabyte.svc.cluster.local:7100 \
+  /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.yugabyte.svc.cluster.local:7100,yb-master-1.yb-masters.yugabyte.svc.cluster.local:7100,yb-master-2.yb-masters.yugabyte.svc.cluster.local:7100 \
   get_universe_config
 ```
 
@@ -454,18 +453,18 @@ The cluster should continue operating with reduced capacity but no data loss.
 
 ## Monitoring Multi-Zone Performance
 
-Check replication lag across zones:
+Check master health:
 
 ```bash
 kubectl exec -it yb-master-0 -n yugabyte -- \
-  curl -s http://localhost:7000/api/v1/health-check | jq .
+  curl -s http://localhost:7000/api/v1/health | jq .
 ```
 
 Monitor tablet distribution:
 
 ```bash
 kubectl exec -it yb-master-0 -n yugabyte -- \
-  /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.yugabyte.svc.cluster.local:7100 \
+  /home/yugabyte/bin/yb-admin --master_addresses yb-master-0.yb-masters.yugabyte.svc.cluster.local:7100,yb-master-1.yb-masters.yugabyte.svc.cluster.local:7100,yb-master-2.yb-masters.yugabyte.svc.cluster.local:7100 \
   list_all_tablet_servers
 ```
 
@@ -475,6 +474,19 @@ Create a CronJob for regular backups:
 
 ```yaml
 # yugabyte-backup-cronjob.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backup-pvc
+  namespace: yugabyte
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: yugabyte-ssd
+  resources:
+    requests:
+      storage: 100Gi
+---
 apiVersion: batch/v1
 kind: CronJob
 metadata:
@@ -489,7 +501,7 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: yugabytedb/yugabyte:2.19.3.0-b140
+              image: yugabytedb/yugabyte:2025.2.3.0-b149
               command:
                 - sh
                 - -c
