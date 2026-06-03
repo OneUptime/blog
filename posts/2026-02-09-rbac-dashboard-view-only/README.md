@@ -16,7 +16,7 @@ The default Dashboard installation includes roles that grant extensive permissio
 
 Kubernetes Dashboard needs several permissions to display information:
 
-**Core Resources**: Pods, Services, ConfigMaps, Secrets (metadata only), Events, Namespaces
+**Core Resources**: Pods, Services, ConfigMaps, Events, Namespaces
 
 **Workload Resources**: Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs, CronJobs
 
@@ -55,11 +55,8 @@ rules:
     - replicationcontrollers
   verbs: ["get", "list", "watch"]
 
-# Secrets - metadata only, no data
-- apiGroups: [""]
-  resources:
-    - secrets
-  verbs: ["list"]  # Only list, no get (prevents reading secret data)
+# Secrets are intentionally omitted. Kubernetes RBAC cannot grant
+# metadata-only access to Secrets; list or get can expose Secret data.
 
 # Workload resources
 - apiGroups: ["apps"]
@@ -164,11 +161,8 @@ rules:
     - persistentvolumeclaims
   verbs: ["get", "list", "watch"]
 
-# Secrets - list only
-- apiGroups: [""]
-  resources:
-    - secrets
-  verbs: ["list"]
+# Secrets are intentionally omitted. Kubernetes RBAC cannot grant
+# metadata-only access to Secrets; list or get can expose Secret data.
 
 # Configuration resources
 - apiGroups: [""]
@@ -207,7 +201,11 @@ Get the ServiceAccount token for Dashboard login:
 ```bash
 # Create a token (Kubernetes 1.24+)
 kubectl create token dashboard-viewer -n kubernetes-dashboard --duration=87600h
+```
 
+The API server can issue a token with a shorter or longer lifetime than the requested `--duration`, depending on its ServiceAccount token configuration.
+
+```bash
 # For long-lived tokens, create a Secret
 kubectl apply -f - <<EOF
 apiVersion: v1
@@ -228,18 +226,14 @@ Use this token to log into the Dashboard with view-only access.
 
 ## Restricting Secret Data Access
 
-The configuration above allows listing secrets but not reading their data. When users view secrets in the Dashboard, they see names and metadata but not the actual values:
+The configuration above omits Secrets entirely. In Kubernetes RBAC, granting `list` or `get` on Secrets can expose Secret data through the API, so there is no safe metadata-only Secret rule to add to a read-only Dashboard role:
 
 ```yaml
-# Enhanced secret restrictions
-- apiGroups: [""]
-  resources:
-    - secrets
-  verbs: ["list"]  # Can see secret names
-# No "get" verb means cannot read secret values
+# Do not grant read verbs on secrets in a view-only role
+# list or get can expose Secret data through the Kubernetes API
 ```
 
-If you want to completely hide secrets from view:
+If you want to hide secrets from view:
 
 ```yaml
 # Remove secrets from rules entirely
@@ -343,17 +337,17 @@ kubectl auth can-i delete pods --as=system:serviceaccount:kubernetes-dashboard:d
 # Should return: no
 
 kubectl auth can-i get secrets --as=system:serviceaccount:kubernetes-dashboard:dashboard-viewer
-# Should return: no (if you restricted secret data access)
+# Should return: no
 
 kubectl auth can-i list secrets --as=system:serviceaccount:kubernetes-dashboard:dashboard-viewer
-# Should return: yes (can list secret names)
+# Should return: no
 ```
 
 Log into the Dashboard with the viewer token and verify:
 
 - Can view all resources
 - Cannot delete or edit anything
-- Cannot see secret data values
+- Cannot list or view Secrets
 - Cannot create new resources
 
 ## Implementing Dashboard Access Auditing
@@ -399,9 +393,9 @@ spec:
       - name: kubernetes-dashboard
         args:
           - --auto-generate-certificates
-          - --enable-skip-login=false  # Require authentication
-          - --token-ttl=43200  # 12-hour token expiration
 ```
+
+For Dashboard v7 and later, the old `--enable-skip-login` flag is not supported and the login screen cannot be disabled. For older Dashboard v2 installations, do not enable `--enable-skip-login` on shared or production clusters, and configure any login token TTL only if your installed Dashboard version supports that flag.
 
 **Limit Network Access**: Use NetworkPolicy to restrict Dashboard access:
 
@@ -456,7 +450,7 @@ spec:
       labels:
         app: custom-viewer
     spec:
-      serviceAccountName: dashboard-viewer
+      serviceAccountName: dashboard-viewer  # Create this ServiceAccount in the monitoring namespace
       containers:
       - name: viewer
         image: company/custom-viewer:latest
