@@ -8,19 +8,19 @@ Description: Learn how to implement HashiCorp Vault seal wrap functionality for 
 
 ---
 
-HashiCorp Vault seal wrap provides an additional layer of encryption protection for highly sensitive data. While Vault encrypts all data at rest using its barrier, seal wrap adds FIPS 140-2 compliant encryption using the seal mechanism itself. This creates defense-in-depth protection for your most critical secrets. This guide explains how to configure and use seal wrap in Kubernetes deployments.
+HashiCorp Vault Enterprise and HCP Vault Dedicated seal wrap provides an additional layer of encryption protection for highly sensitive data. While Vault encrypts all data at rest using its barrier, seal wrap can add FIPS 140-2/3-aligned encryption using a supported seal mechanism. This creates defense-in-depth protection for your most critical secrets. This guide explains how to configure and use seal wrap in Kubernetes deployments.
 
 ## Understanding Seal Wrap
 
-Vault normally encrypts data using its encryption barrier, which uses AES-256-GCM. When seal wrap is enabled for specific paths, Vault adds another encryption layer using the seal key before writing to storage. This means data protected by seal wrap requires both the encryption key and the seal key to decrypt.
+Vault normally encrypts data using its encryption barrier, which uses AES-256-GCM. When seal wrap is enabled for a mount, Vault adds another encryption layer using the seal mechanism before writing selected values to storage. This means data protected by seal wrap requires both Vault's barrier key material and access to the configured seal to decrypt.
 
-The seal key never leaves the seal mechanism (HSM, cloud KMS, or auto-unseal provider). Even if an attacker compromises Vault's storage backend and encryption keys, they cannot decrypt seal-wrapped data without access to the seal.
+The seal key material is managed by the seal mechanism (HSM, cloud KMS, or auto-unseal provider). Even if an attacker compromises Vault's storage backend and barrier keys, they cannot decrypt seal-wrapped data without access to the seal.
 
-Seal wrap is particularly valuable for compliance requirements like FIPS 140-2, PCI-DSS, and HIPAA, where regulations mandate hardware-backed encryption for sensitive data.
+Seal wrap is particularly valuable for compliance requirements like FIPS 140-2/3, PCI-DSS, and HIPAA, especially when your deployment requires a FIPS-certified HSM or a supported cloud KMS for sensitive data.
 
 ## Configuring Auto-Unseal for Seal Wrap
 
-Seal wrap requires auto-unseal configuration. Here's how to set up auto-unseal with AWS KMS in Kubernetes:
+Seal wrap requires Vault Enterprise or HCP Vault Dedicated and a supported auto seal. Here's how to set up auto-unseal with AWS KMS in Kubernetes:
 
 ```yaml
 apiVersion: v1
@@ -80,12 +80,8 @@ seal "azurekeyvault" {
 Enable seal wrap when mounting secrets engines:
 
 ```bash
-# Enable KV v2 with seal wrap
-
-vault secrets enable -path=sensitive-data kv-v2
-
-# Enable seal wrap for specific paths
-vault secrets tune -seal-wrap=true sensitive-data
+# Enable KV v2 with seal wrap at mount time
+vault secrets enable -path=sensitive-data -seal-wrap kv-v2
 
 # Verify seal wrap is enabled
 vault secrets list -detailed
@@ -106,8 +102,7 @@ The Transit secrets engine benefits significantly from seal wrap:
 
 ```bash
 # Enable Transit with seal wrap
-vault secrets enable transit
-vault secrets tune -seal-wrap=true transit
+vault secrets enable -seal-wrap transit
 
 # Create encryption key with seal wrap
 vault write transit/keys/payment-data \
@@ -115,16 +110,15 @@ vault write transit/keys/payment-data \
     allow_plaintext_backup=false
 ```
 
-All encryption keys in the Transit engine are now protected by seal wrap. This ensures private keys never exist unprotected in storage.
+Transit key material and policy data stored by the engine are now protected by seal wrap. This ensures encryption keys do not exist unprotected in storage.
 
 ## Using Seal Wrap with PKI Secrets Engine
 
-Protect certificate private keys with seal wrap:
+Protect CA private keys with seal wrap:
 
 ```bash
 # Enable PKI with seal wrap
-vault secrets enable pki
-vault secrets tune -seal-wrap=true pki
+vault secrets enable -seal-wrap pki
 
 # Generate root CA
 vault write pki/root/generate/internal \
@@ -143,7 +137,7 @@ vault write pki/roles/example-dot-com \
     max_ttl=72h
 ```
 
-Now all private keys for issued certificates are protected by seal wrap.
+Now CA issuer keys stored by the PKI engine are protected by seal wrap. Leaf certificate private keys generated through `pki/issue/*` are returned to the client and are not stored by Vault.
 
 ## Implementing Seal Wrap in Application Code
 
@@ -211,12 +205,12 @@ func writeSealWrappedSecret(vaultAddr, token, path string, data map[string]inter
 }
 ```
 
-## Configuring Seal Wrap Policies
+## Configuring Access Policies
 
-Create policies that enforce seal wrap usage:
+Create policies that restrict access to seal-wrapped mounts:
 
 ```hcl
-# Policy requiring seal-wrapped storage
+# Policy for the seal-wrapped KV v2 mount
 path "sensitive-data/data/*" {
   capabilities = ["create", "read", "update", "delete"]
   required_parameters = ["data"]
@@ -251,63 +245,70 @@ vault write auth/kubernetes/role/secure-app \
 
 ## Migrating Existing Data to Seal Wrap
 
-Enable seal wrap for existing mounts requires migration:
+Seal wrap must be enabled when a secrets engine is mounted, so existing unwrapped mounts require migration to a new seal-wrapped mount:
 
 ```bash
-# First, enable seal wrap on the mount
-vault secrets tune -seal-wrap=true secret/
+# Enable a new seal-wrapped mount
+vault secrets enable -path=sensitive-data -seal-wrap kv-v2
 
-# Force rewrap of all data
-vault operator rekey -target=recovery -init
+# Copy data from the old mount to the new mount
+vault kv get -format=json secret/app | \
+    jq '.data.data' > app.json
+vault kv put sensitive-data/app @app.json
 ```
 
-For KV v2, you can read and rewrite secrets to apply seal wrap:
+For KV v2, you can recursively copy secrets from an existing mount into the new seal-wrapped mount:
 
 ```python
 import hvac
 import time
 
-def migrate_to_seal_wrap(client, mount_path):
-    # List all secrets
-    secrets = client.secrets.kv.v2.list_secrets(path="", mount_point=mount_path)
+def migrate_to_seal_wrap(client, source_mount, destination_mount, path=""):
+    # List all secrets under the current prefix
+    secrets = client.secrets.kv.v2.list_secrets(path=path, mount_point=source_mount)
 
-    for secret_key in secrets['data']['keys']:
+    for secret_key in secrets["data"]["keys"]:
+        full_path = f"{path}{secret_key}"
+        if secret_key.endswith("/"):
+            migrate_to_seal_wrap(client, source_mount, destination_mount, full_path)
+            continue
+
         try:
             # Read secret
             secret = client.secrets.kv.v2.read_secret_version(
-                path=secret_key.rstrip('/'),
-                mount_point=mount_path
+                path=full_path,
+                mount_point=source_mount
             )
 
-            # Rewrite secret (will be seal-wrapped)
+            # Write to the seal-wrapped destination mount
             client.secrets.kv.v2.create_or_update_secret(
-                path=secret_key.rstrip('/'),
-                secret=secret['data']['data'],
-                mount_point=mount_path
+                path=full_path,
+                secret=secret["data"]["data"],
+                mount_point=destination_mount
             )
 
-            print(f"Migrated {secret_key}")
+            print(f"Migrated {full_path}")
             time.sleep(0.1)  # Rate limiting
 
         except Exception as e:
-            print(f"Failed to migrate {secret_key}: {e}")
+            print(f"Failed to migrate {full_path}: {e}")
 
 # Usage
-client = hvac.Client(url='http://vault:8200', token='root-token')
-migrate_to_seal_wrap(client, 'sensitive-data')
+client = hvac.Client(url="http://vault:8200", token="root-token")
+migrate_to_seal_wrap(client, "secret", "sensitive-data")
 ```
 
 ## Monitoring Seal Wrap Operations
 
-Track seal wrap operations with audit logs:
+Track access to seal-wrapped mounts with audit logs:
 
 ```bash
 # Enable audit logging
 vault audit enable file file_path=/vault/logs/audit.log
 
-# Query seal wrap operations
+# Query requests to known seal-wrapped mounts
 kubectl exec -n vault-system vault-0 -- cat /vault/logs/audit.log | \
-    jq 'select(.request.mount_type != null and .request.seal_wrap == true)'
+    jq 'select((.request.path? // "") as $p | ($p | startswith("sensitive-data/")) or ($p | startswith("transit/")) or ($p | startswith("pki/")))'
 ```
 
 Set up Prometheus alerts for seal issues:
@@ -331,12 +332,12 @@ data:
         annotations:
           summary: "Vault is sealed"
 
-      - alert: VaultAutoUnsealFailure
-        expr: rate(vault_core_auto_unseal_failures_total[5m]) > 0
+      - alert: VaultMetricsMissing
+        expr: absent(vault_core_unsealed)
         labels:
           severity: critical
         annotations:
-          summary: "Auto-unseal failing"
+          summary: "Vault telemetry is unavailable"
 ```
 
 ## Handling Seal Wrap in Disaster Recovery
@@ -344,14 +345,17 @@ data:
 Document seal wrap requirements for DR procedures:
 
 ```bash
-# Backup must include seal configuration
+# Back up Vault storage
 vault operator raft snapshot save backup.snap
 
-# When restoring, seal configuration must match
+# Store the seal configuration securely outside the snapshot
+kubectl get configmap vault-config -n vault-system -o yaml > vault-config-backup.yaml
+
+# When restoring, the seal configuration must match
 vault operator raft snapshot restore backup.snap
 
-# If using different KMS, update seal configuration
-vault seal migrate -config=/vault/config/new-seal.hcl
+# If changing KMS or seal types, update the seal stanza and follow the seal migration procedure
+vault operator unseal -migrate
 ```
 
 Create a disaster recovery runbook:
@@ -386,15 +390,14 @@ data:
 
 ## Performance Considerations
 
-Seal wrap adds minimal overhead. Benchmark typical operations:
+Seal wrap adds backend-dependent overhead. Benchmark typical operations:
 
 ```bash
 # Without seal wrap
 vault secrets enable -path=normal kv-v2
 
 # With seal wrap
-vault secrets enable -path=wrapped kv-v2
-vault secrets tune -seal-wrap=true wrapped
+vault secrets enable -path=wrapped -seal-wrap kv-v2
 
 # Benchmark writes
 time for i in {1..1000}; do
@@ -406,13 +409,13 @@ time for i in {1..1000}; do
 done
 ```
 
-Typical overhead is 5-10% for write operations and negligible for reads.
+The overhead depends on the seal backend and latency to the HSM or KMS. Remote seals can be much slower for values that must be wrapped or unwrapped, although Vault caches unwrapped values in memory while they remain protected by the encryption barrier.
 
 ## Best Practices
 
-Enable seal wrap for secrets engines storing sensitive data: KV paths with PII or credentials, Transit encryption keys, PKI private keys, and database root credentials.
+Enable seal wrap for secrets engines storing sensitive data: KV paths with PII or credentials, Transit encryption keys, PKI CA private keys, and database root credentials.
 
-Always use auto-unseal in production when using seal wrap. Manual unsealing defeats the purpose of seal wrap protection.
+Always use a supported auto seal in production when using seal wrap. Shamir seals do not support seal wrap.
 
 Document which paths use seal wrap in your organization's security policies. This ensures teams understand protection levels for different data.
 
@@ -422,6 +425,6 @@ Monitor KMS/HSM availability closely. If the seal provider is unavailable, Vault
 
 ## Conclusion
 
-Seal wrap provides defense-in-depth encryption for Vault's most sensitive data. By leveraging hardware-backed encryption through auto-unseal providers, you gain FIPS 140-2 compliance and protection against storage backend compromise. While seal wrap adds a small performance overhead, the security benefits make it essential for production deployments handling highly sensitive information.
+Seal wrap provides defense-in-depth encryption for Vault's most sensitive data. By leveraging supported auto-unseal providers, you can meet FIPS 140-2/3-oriented requirements and improve protection against storage backend compromise. While seal wrap adds performance overhead that depends on the seal backend, the security benefits make it important for production deployments handling highly sensitive information.
 
 Implement seal wrap for critical paths in your Vault deployment to meet compliance requirements and strengthen your overall security posture.
