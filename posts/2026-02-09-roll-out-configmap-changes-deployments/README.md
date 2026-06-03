@@ -8,13 +8,13 @@ Description: Learn how to automatically trigger deployment rollouts when ConfigM
 
 ---
 
-You update a ConfigMap with new configuration, but your pods keep running with the old values. Kubernetes doesn't automatically restart pods when ConfigMaps change. You need to manually delete pods or trigger a rollout to pick up the new configuration.
+You update a ConfigMap with new configuration, but your pods keep running with the old values. Kubernetes doesn't automatically restart pods when ConfigMaps change, and ConfigMaps consumed as environment variables require a pod restart. You need to manually delete pods or trigger a rollout to pick up the new environment variable values.
 
 Several strategies can automate this process, ensuring ConfigMap changes trigger immediate rollouts.
 
 ## The ConfigMap Update Problem
 
-When you update a ConfigMap, existing pods don't automatically reload:
+When you update a ConfigMap, existing pods that consume it as environment variables don't automatically reload:
 
 ```bash
 # Update ConfigMap
@@ -28,7 +28,7 @@ kubectl exec app-pod -- env | grep LOG_LEVEL
 # Output: LOG_LEVEL=info (old value)
 ```
 
-Pods only get the new config when they restart. You must manually trigger a rollout or delete pods.
+Pods only get new environment variable values when they restart. You must manually trigger a rollout or delete pods.
 
 ## Strategy 1: ConfigMap Hash Annotation
 
@@ -141,8 +141,6 @@ spec:
     metadata:
       labels:
         app: web-app
-      annotations:
-        reloader.stakater.com/match: "true"
     spec:
       containers:
       - name: web
@@ -240,8 +238,8 @@ data:
 kubectl apply -f app-config-v2.yaml
 
 # Update deployment to use new version
-kubectl set env deployment/web-app \
-  --from=configmap/app-config-v2
+kubectl patch deployment web-app --type='json' \
+  -p='[{"op":"replace","path":"/spec/template/spec/containers/0/envFrom/0/configMapRef/name","value":"app-config-v2"}]'
 ```
 
 This approach keeps old ConfigMaps for easy rollback.
@@ -259,9 +257,10 @@ let config = {};
 // Load config
 function loadConfig() {
   try {
-    const configPath = '/etc/config/app.json';
-    const data = fs.readFileSync(configPath, 'utf8');
-    config = JSON.parse(data);
+    config = {
+      LOG_LEVEL: fs.readFileSync('/etc/config/LOG_LEVEL', 'utf8').trim(),
+      CACHE_TTL: fs.readFileSync('/etc/config/CACHE_TTL', 'utf8').trim()
+    };
     console.log('Configuration loaded:', config);
   } catch (err) {
     console.error('Error loading config:', err);
@@ -270,7 +269,7 @@ function loadConfig() {
 
 // Watch for changes
 fs.watch('/etc/config', (eventType, filename) => {
-  if (filename === 'app.json') {
+  if (filename === 'LOG_LEVEL' || filename === 'CACHE_TTL') {
     console.log('Config file changed, reloading...');
     loadConfig();
   }
@@ -305,7 +304,7 @@ spec:
       name: app-config
 ```
 
-With this approach, updating the ConfigMap updates the mounted file, and your application reloads automatically.
+With this approach, updating the ConfigMap eventually updates the mounted files, and your application reloads automatically. Don't mount the ConfigMap with `subPath`, because `subPath` volume mounts do not receive ConfigMap updates.
 
 ## Monitoring ConfigMap Changes
 
@@ -328,7 +327,7 @@ groups:
   rules:
   - alert: ConfigMapUpdated
     expr: |
-      changes(kube_configmap_info[5m]) > 0
+      changes(kube_configmap_metadata_resource_version[5m]) > 0
     labels:
       severity: info
     annotations:
@@ -349,8 +348,8 @@ kubectl apply -f app-config-new.yaml
 # If issues arise, rollback
 kubectl apply -f app-config-backup-20260209-100000.yaml
 
-# Trigger deployment rollback
-kubectl rollout undo deployment/web-app
+# Restart pods so environment variables are refreshed
+kubectl rollout restart deployment/web-app
 ```
 
 ## Best Practices
