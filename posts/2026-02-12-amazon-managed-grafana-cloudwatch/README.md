@@ -33,31 +33,38 @@ Before we dive into setup, here's why you might want Grafana:
 aws grafana create-workspace \
   --account-access-type CURRENT_ACCOUNT \
   --authentication-providers AWS_SSO \
-  --permission-type SERVICE_MANAGED \
+  --permission-type CUSTOMER_MANAGED \
+  --workspace-role-arn arn:aws:iam::123456789012:role/AmazonGrafanaWorkspaceRole \
   --workspace-name "production-monitoring" \
-  --workspace-description "Production infrastructure monitoring" \
-  --workspace-data-sources CLOUDWATCH XRAY \
-  --workspace-notification-destinations SNS
+  --workspace-description "Production infrastructure monitoring"
 ```
 
-Note that `authentication-providers` is set to `AWS_SSO` (IAM Identity Center). This is the recommended auth method. You can also use SAML if your organization uses a different identity provider.
+Note that `authentication-providers` is set to `AWS_SSO` (IAM Identity Center). This is the recommended auth method. You can also use SAML if your organization uses a different identity provider. When you create a workspace with the AWS CLI, use `CUSTOMER_MANAGED` permissions and provide a workspace role ARN that trusts `grafana.amazonaws.com`.
 
 ### Step 2: Set Up IAM Identity Center Users
 
 If you haven't already, enable IAM Identity Center and create users who will access Grafana:
 
 ```bash
-# Associate SSO users with the Grafana workspace
-aws grafana update-workspace-authentication \
+# Grant a user the Editor role in the Grafana workspace
+aws grafana update-permissions \
   --workspace-id g-abc123def4 \
-  --authentication-providers AWS_SSO
+  --update-instruction-batch '[
+    {
+      "action": "ADD",
+      "role": "EDITOR",
+      "users": [
+        {"id": "user-id-from-sso", "type": "SSO_USER"}
+      ]
+    }
+  ]'
 ```
 
 Then in the Grafana workspace settings, assign users as either Viewers, Editors, or Admins.
 
 ### Step 3: Configure the CloudWatch Data Source
 
-Amazon Managed Grafana can automatically configure CloudWatch as a data source if you selected it during workspace creation. To verify or add it manually:
+Amazon Managed Grafana can automatically configure CloudWatch as a data source if you create the workspace in the console with service-managed permissions and enable CloudWatch from the Data sources tab. To verify or add it manually:
 
 1. Log into your Grafana workspace URL
 2. Go to Configuration > Data Sources
@@ -65,19 +72,20 @@ Amazon Managed Grafana can automatically configure CloudWatch as a data source i
 4. Select "CloudWatch"
 5. Configure the authentication (service-managed role is simplest)
 
-The service-managed IAM role is created automatically and includes permissions to read CloudWatch metrics, logs, and X-Ray data.
+The service-managed IAM role is created automatically in console-created service-managed workspaces and includes the AWS managed policies needed for the selected data sources, such as `AmazonGrafanaCloudWatchAccess` for CloudWatch and `AWSXrayReadOnlyAccess` for X-Ray.
 
 For cross-account access, you'll need to configure assume-role ARNs:
 
+IAM role in the target account for cross-account Grafana access:
+
 ```json
-// IAM role in the target account for cross-account Grafana access
 {
   "Version": "2012-10-17",
   "Statement": [
     {
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::SOURCE_ACCOUNT:role/AmazonGrafanaServiceRole"
+        "AWS": "arn:aws:iam::SOURCE_ACCOUNT:role/AmazonGrafanaWorkspaceRole"
       },
       "Action": "sts:AssumeRole"
     }
@@ -217,13 +225,13 @@ Grafana also supports CloudWatch Logs Insights queries:
 5. Write a Logs Insights query
 
 ```sql
--- Example: Error rate over time from application logs
+# Example: Error rate over time from application logs
 filter @message like /ERROR/
 | stats count(*) as error_count by bin(5m)
 ```
 
 ```sql
--- Example: Slowest Lambda invocations
+# Example: Slowest Lambda invocations
 filter @type = "REPORT"
 | stats max(@duration) as max_duration, avg(@duration) as avg_duration by bin(5m)
 ```
@@ -239,7 +247,8 @@ X-Ray data gives you trace analytics directly in Grafana:
 3. Query types include:
    - Trace List: show individual traces
    - Trace Statistics: aggregate trace data
-   - Trace Map: show service dependencies
+   - Trace Analytics: show root cause, URL, HTTP status code, and end-user impact tables
+   - Insights: show X-Ray insights
 
 ```text
 # X-Ray query to find slow traces
@@ -269,10 +278,8 @@ resource "aws_grafana_workspace" "production" {
   description              = "Production infrastructure monitoring"
   account_access_type      = "CURRENT_ACCOUNT"
   authentication_providers = ["AWS_SSO"]
-  permission_type          = "SERVICE_MANAGED"
+  permission_type          = "CUSTOMER_MANAGED"
   role_arn                 = aws_iam_role.grafana.arn
-
-  data_sources = ["CLOUDWATCH", "XRAY"]
 
   configuration = jsonencode({
     plugins = {
@@ -300,7 +307,12 @@ resource "aws_iam_role" "grafana" {
 
 resource "aws_iam_role_policy_attachment" "grafana_cloudwatch" {
   role       = aws_iam_role.grafana.name
-  policy_arn = "arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess"
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonGrafanaCloudWatchAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "grafana_xray" {
+  role       = aws_iam_role.grafana.name
+  policy_arn = "arn:aws:iam::aws:policy/AWSXrayReadOnlyAccess"
 }
 
 resource "aws_grafana_role_association" "admin" {
