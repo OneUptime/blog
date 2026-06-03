@@ -8,7 +8,7 @@ Description: Learn how to implement pre-snapshot hooks to ensure application-con
 
 ---
 
-Pre-snapshot hooks execute commands before creating volume snapshots to ensure applications are in a consistent state. This coordination prevents data corruption and ensures clean restores by flushing buffers, quiescing writes, and synchronizing state.
+Pre-snapshot hooks execute commands before creating volume snapshots to help applications reach a recoverable state. This coordination reduces restore risk by flushing buffers, quiescing writes when the application supports it, and synchronizing state.
 
 ## Understanding Pre-Snapshot Hooks
 
@@ -20,11 +20,11 @@ Pre-snapshot hooks perform critical tasks:
 4. Record application state metadata
 5. Signal readiness for snapshot creation
 
-Without hooks, snapshots may capture inconsistent application state, leading to corruption during restore operations.
+Without hooks, snapshots may capture application state that requires crash recovery or application-specific repair during restore operations.
 
 ## Init Container Approach for Pre-Hooks
 
-Use an init container to prepare the application before snapshot creation:
+Use an init container to prepare the application before snapshot creation. These examples assume the VolumeSnapshot CRDs, snapshot controller, and CSI snapshotter are installed in the cluster. PostgreSQL `CHECKPOINT` requires a superuser or a role with `pg_checkpoint` privileges:
 
 ```yaml
 apiVersion: batch/v1
@@ -63,16 +63,13 @@ spec:
           set -e
           echo "=== Pre-snapshot hook ==="
 
-          # Checkpoint and flush data
+          # Checkpoint and flush PostgreSQL data.
+          # The PVC snapshot must include PGDATA and WAL atomically.
           echo "Executing checkpoint..."
           psql -c "CHECKPOINT;"
 
-          # Start backup mode
-          echo "Starting backup mode..."
-          psql -c "SELECT pg_start_backup('k8s-snapshot', false, false);"
-
           # Write state file
-          echo "backup_started" > /hooks/backup_state
+          echo "checkpoint_complete" > /hooks/backup_state
           date > /hooks/backup_timestamp
 
           echo "✓ Pre-hook complete"
@@ -116,14 +113,9 @@ spec:
 
           sleep 10
 
-          # Post-hook: Stop backup mode
+          # Post-hook: Record completion. Add application-specific cleanup
+          # here if your pre-hook paused writes or changed application state.
           echo "=== Post-snapshot hook ==="
-          apt-get update && apt-get install -y postgresql-client
-          export PGHOST=postgres-service
-          export PGUSER=postgres
-          export PGPASSWORD=$(cat /var/run/secrets/postgres/password)
-
-          psql -c "SELECT pg_stop_backup(false);"
           echo "✓ Post-hook complete"
 ```
 
@@ -198,12 +190,11 @@ spec:
             case "$COMMAND" in
               start-backup)
                 echo "Received start-backup signal"
-                psql -c "SELECT pg_start_backup('sidecar-backup', false, false);"
+                psql -c "CHECKPOINT;"
                 echo "ready" > /backup-hooks/status
                 ;;
               stop-backup)
                 echo "Received stop-backup signal"
-                psql -c "SELECT pg_stop_backup(false);"
                 echo "complete" > /backup-hooks/status
                 ;;
               *)
@@ -297,7 +288,7 @@ data:
                 password=os.getenv('PGPASSWORD')
             )
             cur = conn.cursor()
-            cur.execute("SELECT pg_start_backup('http-backup', false, false);")
+            cur.execute("CHECKPOINT;")
             conn.commit()
             cur.close()
             conn.close()
@@ -314,7 +305,7 @@ data:
                 password=os.getenv('PGPASSWORD')
             )
             cur = conn.cursor()
-            cur.execute("SELECT pg_stop_backup(false);")
+            cur.execute("SELECT pg_switch_wal();")
             conn.commit()
             cur.close()
             conn.close()
@@ -449,7 +440,7 @@ spec:
 
 ## Custom Resource for Hook Management
 
-Define a custom resource for snapshot hooks:
+Define a custom resource for snapshot hooks. A CRD stores the hook configuration; you still need a controller or backup operator to execute the hooks and create the snapshots:
 
 ```yaml
 apiVersion: apiextensions.k8s.io/v1
@@ -493,6 +484,8 @@ spec:
                         type: array
                         items:
                           type: string
+                  timeoutSeconds:
+                    type: integer
   scope: Namespaced
   names:
     plural: snapshothooks
@@ -512,14 +505,14 @@ spec:
       command:
       - psql
       - -c
-      - SELECT pg_start_backup('custom-resource-backup', false, false);
+      - CHECKPOINT;
     timeoutSeconds: 30
   postHook:
     exec:
       command:
       - psql
       - -c
-      - SELECT pg_stop_backup(false);
+      - SELECT pg_switch_wal();
     timeoutSeconds: 30
 ```
 
@@ -573,7 +566,7 @@ spec:
             echo "=== Cleanup ==="
             if [ $HOOK_FAILED -eq 0 ]; then
               echo "Executing post-hook"
-              timeout $HOOK_TIMEOUT psql -c "SELECT pg_stop_backup(false);" || {
+              timeout $HOOK_TIMEOUT psql -c "SELECT pg_switch_wal();" || {
                 echo "WARNING: Post-hook failed"
               }
             fi
@@ -582,7 +575,7 @@ spec:
           trap cleanup EXIT
 
           echo "=== Executing pre-hook ==="
-          if ! timeout $HOOK_TIMEOUT psql -c "SELECT pg_start_backup('backup-${TIMESTAMP}', false, false);"; then
+          if ! timeout $HOOK_TIMEOUT psql -c "CHECKPOINT;"; then
             echo "ERROR: Pre-hook failed or timed out"
             HOOK_FAILED=1
             exit 1
