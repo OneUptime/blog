@@ -285,7 +285,7 @@ If you're managing IAM at scale, you should also have monitoring in place to cat
 
 **Circular dependencies.** If a policy references a resource that also depends on the role, you'll get a cycle error. Break the cycle by using ARN strings instead of resource references where needed.
 
-**Forgetting to handle policy size limits.** IAM policies have a 6,144 character limit for inline policies and 10,240 for managed policies. If your policy is getting too big, split it into multiple policies.
+**Forgetting to handle policy size limits.** IAM role inline policies have a 10,240 character aggregate limit, and customer managed policies have a 6,144 character limit per policy. If your policy is getting too big, split it into multiple policies.
 
 **Not using `path` for organization.** IAM roles and policies support a `path` parameter (like `/app/lambda/`) that helps organize resources. It's optional but useful at scale.
 
