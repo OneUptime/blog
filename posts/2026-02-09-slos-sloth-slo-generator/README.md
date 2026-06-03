@@ -39,7 +39,8 @@ Install Sloth Kubernetes operator for automated SLO management.
 ```bash
 # Install with Helm
 helm repo add sloth https://slok.github.io/sloth
-helm install sloth-controller sloth/sloth --namespace monitoring
+helm repo update
+helm install sloth-controller sloth/sloth --namespace monitoring --create-namespace
 ```
 
 ## Defining Your First SLO
@@ -147,10 +148,16 @@ spec:
       sli:
         events:
           errorQuery: |
-            sum(rate(http_server_requests_seconds_bucket{
-              service="api",
-              le="0.5"
-            }[{{.window}}]))
+            (
+              sum(rate(http_server_requests_seconds_count{
+                service="api"
+              }[{{.window}}]))
+              -
+              sum(rate(http_server_requests_seconds_bucket{
+                service="api",
+                le="0.5"
+              }[{{.window}}]))
+            )
           totalQuery: |
             sum(rate(http_server_requests_seconds_count{
               service="api"
@@ -198,15 +205,19 @@ spec:
         labels:
           severity: "page"
     # Latency SLO
-    - name: "requests-latency-p95"
+    - name: "requests-latency-1s"
       objective: 99.5
-      description: "95th percentile latency under 1 second"
+      description: "99.5% of requests complete within 1 second"
       sli:
         events:
           errorQuery: |
-            sum(rate(payment_request_duration_seconds_bucket{
-              le="1.0"
-            }[{{.window}}]))
+            (
+              sum(rate(payment_request_duration_seconds_count[{{.window}}]))
+              -
+              sum(rate(payment_request_duration_seconds_bucket{
+                le="1.0"
+              }[{{.window}}]))
+            )
           totalQuery: |
             sum(rate(payment_request_duration_seconds_count[{{.window}}]))
       alerting:
@@ -322,7 +333,7 @@ Track error budget consumption with Grafana dashboards.
       "title": "Error Budget Remaining",
       "targets": [
         {
-          "expr": "1 - (slo:period_error_budget_remaining:ratio{sloth_service=\"api-service\"})"
+          "expr": "slo:period_error_budget_remaining:ratio{sloth_service=\"api-service\"}"
         }
       ],
       "thresholds": [
@@ -335,7 +346,7 @@ Track error budget consumption with Grafana dashboards.
       "title": "SLI vs SLO",
       "targets": [
         {
-          "expr": "slo:sli_error:ratio_rate30d{sloth_service=\"api-service\"}",
+          "expr": "1 - slo:sli_error:ratio_rate30d{sloth_service=\"api-service\"}",
           "legendFormat": "Current SLI"
         },
         {
@@ -404,16 +415,18 @@ spec:
     spec:
       containers:
       - name: check-slo
-        image: curlimages/curl
+        image: alpine:3.20
         command:
         - sh
         - -c
         - |
+          apk add --no-cache curl jq bc >/dev/null
+
           ERROR_BUDGET=$(curl -s http://prometheus:9090/api/v1/query \
             --data-urlencode 'query=slo:period_error_budget_remaining:ratio{sloth_service="api-service"}' \
             | jq -r '.data.result[0].value[1]')
 
-          if (( $(echo "$ERROR_BUDGET < 0.2" | bc -l) )); then
+          if [ "$(echo "$ERROR_BUDGET < 0.2" | bc -l)" -eq 1 ]; then
             echo "Error budget depleted, blocking deployment"
             exit 1
           fi
