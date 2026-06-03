@@ -53,6 +53,10 @@ spec:
           value: "elasticsearch.logging.svc.cluster.local"
         - name: FLUENT_ELASTICSEARCH_PORT
           value: "9200"
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
 
       volumes:
       - name: logs
@@ -134,6 +138,15 @@ spec:
       - name: filebeat
         image: docker.elastic.co/beats/filebeat:8.11.0
         args: ["-c", "/etc/filebeat.yml", "-e"]
+        env:
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: POD_NAMESPACE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.namespace
         volumeMounts:
         - name: logs
           mountPath: /var/log/app
@@ -160,21 +173,21 @@ metadata:
 data:
   filebeat.yml: |
     filebeat.inputs:
-    - type: log
+    - type: filestream
+      id: myapp-logs
       enabled: true
       paths:
         - /var/log/app/*.log
       fields:
         app: myapp
         environment: production
+        pod_name: ${POD_NAME}
+        namespace: ${POD_NAMESPACE}
       fields_under_root: true
 
-    processors:
-    - add_kubernetes_metadata:
-        host: ${HOSTNAME}
-        matchers:
-        - logs_path:
-            logs_path: "/var/log/app/"
+    setup.ilm.enabled: false
+    setup.template.name: "app-logs"
+    setup.template.pattern: "app-logs-*"
 
     output.elasticsearch:
       hosts: ["elasticsearch.logging:9200"]
@@ -195,6 +208,11 @@ containers:
 
 - name: vector
   image: timberio/vector:0.34.0-alpine
+  env:
+  - name: POD_NAME
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.name
   volumeMounts:
   - name: logs
     mountPath: /var/log/app
@@ -320,7 +338,7 @@ data:
 
     /(?P<method>\w+) (?P<path>[^ ]+) .* (?P<status>\d+) (?P<duration>\d+)ms/ {
       request_count[$method][$status]++
-      request_duration_ms = $duration
+      request_duration_ms = float($duration)
     }
 ```
 
@@ -335,12 +353,15 @@ Ensure your applications emit structured logs that sidecars can parse effectivel
 package main
 
 import (
+    "errors"
+
     "go.uber.org/zap"
 )
 
 func main() {
     logger, _ := zap.NewProduction()
     defer logger.Sync()
+    err := errors.New("connection refused")
 
     logger.Info("Application started",
         zap.String("version", "1.0.0"),
@@ -609,7 +630,7 @@ spec:
     interval: 30s
     rules:
     - alert: FluentdHighBufferUsage
-      expr: fluentd_output_status_buffer_total_bytes / fluentd_output_status_buffer_limit_bytes > 0.8
+      expr: 1 - fluentd_output_status_buffer_available_space_ratio > 0.8
       for: 5m
       labels:
         severity: warning
