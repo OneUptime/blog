@@ -8,7 +8,7 @@ Description: Set up AWS Nitro Enclaves to process sensitive data in isolated com
 
 ---
 
-Here's a hard problem: you need to process sensitive data - credit card numbers, medical records, encryption keys - but you can't trust the host machine. Even if the EC2 instance is compromised, even if someone has root access, the sensitive data needs to stay protected. Traditional security approaches don't solve this because they all ultimately trust the operating system.
+Here's a hard problem: you need to process sensitive data - credit card numbers, medical records, encryption keys - but you don't want to trust the host machine with plaintext processing. Even if someone has root access on the parent EC2 instance, the sensitive data needs to stay protected once it is inside the isolated processor. Traditional security approaches don't solve this because they all ultimately trust the operating system.
 
 AWS Nitro Enclaves provides an isolated compute environment (an enclave) that runs alongside your EC2 instance but is completely separated from it. The host instance can't SSH into the enclave, can't inspect its memory, and can't access its data. Even AWS operators can't reach into it. The only communication channel is a narrow, pre-defined vsock connection. This is confidential computing.
 
@@ -42,10 +42,10 @@ Key properties:
 ## Prerequisites
 
 Not all instance types support Nitro Enclaves. You need:
-- An instance with at least 4 vCPUs (enclave needs dedicated cores)
-- A Nitro-based instance type (c5, m5, r5, c6g, m6g, etc.)
+- A supported instance type with enough vCPUs and memory for both the parent and the enclave (this tutorial uses `m5.xlarge`, which has 4 vCPUs)
+- A Nitro-based instance type and supported size (for example, `c5.xlarge`, `m5.xlarge`, `r5.xlarge`, `c6g.large`, `m6g.large`, or larger supported sizes)
 - The instance must NOT be a bare metal type
-- Amazon Linux 2, Ubuntu, or other supported AMI
+- A Linux or Windows parent instance; these commands use Amazon Linux 2, and the enclave itself must run Linux
 
 ## Step 1: Launch an Enclave-Enabled Instance
 
@@ -84,9 +84,14 @@ sudo yum install aws-nitro-enclaves-cli-devel -y
 # Add your user to the ne group
 sudo usermod -aG ne ec2-user
 
-# Start the allocator service
-sudo systemctl start nitro-enclaves-allocator.service
-sudo systemctl enable nitro-enclaves-allocator.service
+# Add your user to the docker group
+sudo usermod -aG docker ec2-user
+
+# Log out and reconnect so the group changes take effect
+
+# Start the allocator and Docker services
+sudo systemctl enable --now nitro-enclaves-allocator.service
+sudo systemctl enable --now docker
 ```
 
 ## Step 3: Configure Enclave Resources
@@ -273,12 +278,14 @@ result = send_to_enclave({
 
 print(f"Token: {result['token']}")
 print(f"Last four: {result['last_four']}")
-# The full card number never existed on the parent instance
+# In production, send encrypted data and decrypt it inside the enclave
 ```
 
 ## KMS Integration with Attestation
 
 The real power comes from integrating with KMS using attestation. You can create KMS key policies that only allow the enclave (verified by its PCR measurements) to decrypt data.
+
+Before using Nitro Enclaves with KMS, encrypt sensitive data before sending it to the parent instance or enclave. With attested KMS calls, KMS returns plaintext encrypted to the enclave's public key from the attestation document, so the parent instance does not receive the decrypted plaintext.
 
 This KMS key policy allows decryption only from a verified enclave:
 
@@ -304,7 +311,7 @@ This KMS key policy allows decryption only from a verified enclave:
 }
 ```
 
-This means even if someone compromises the host instance and has the IAM role, they can't decrypt the data because they can't produce valid attestation documents from inside the enclave.
+This means even if someone compromises the host instance and has the IAM role, they can't make KMS return decrypted plaintext to the parent because the policy requires a valid attestation document from the expected enclave image.
 
 ## Terminating the Enclave
 
