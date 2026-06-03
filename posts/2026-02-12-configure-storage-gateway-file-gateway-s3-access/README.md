@@ -77,15 +77,12 @@ aws s3api put-bucket-lifecycle-configuration \
       "Transitions": [{
         "Days": 30,
         "StorageClass": "STANDARD_IA"
-      }, {
-        "Days": 90,
-        "StorageClass": "GLACIER_IR"
       }]
     }]
   }'
 ```
 
-The lifecycle rules help manage costs. Data older than 30 days moves to Infrequent Access (cheaper but same retrieval speed), and after 90 days to Glacier Instant Retrieval (even cheaper, still fast to access).
+The lifecycle rule helps manage costs. Data older than 30 days moves to Infrequent Access (cheaper for long-lived, less frequently accessed data while still providing millisecond access).
 
 ## Step 2: Create an IAM Role for the File Share
 
@@ -114,16 +111,29 @@ aws iam put-role-policy \
       {
         "Effect": "Allow",
         "Action": [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
+          "s3:GetAccelerateConfiguration",
+          "s3:GetBucketLocation",
+          "s3:GetBucketVersioning",
           "s3:ListBucket",
-          "s3:GetBucketLocation"
+          "s3:ListBucketVersions",
+          "s3:ListBucketMultipartUploads"
         ],
-        "Resource": [
-          "arn:aws:s3:::my-file-gateway-data",
-          "arn:aws:s3:::my-file-gateway-data/*"
-        ]
+        "Resource": "arn:aws:s3:::my-file-gateway-data"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:AbortMultipartUpload",
+          "s3:DeleteObject",
+          "s3:DeleteObjectVersion",
+          "s3:GetObject",
+          "s3:GetObjectAcl",
+          "s3:GetObjectVersion",
+          "s3:ListMultipartUploadParts",
+          "s3:PutObject",
+          "s3:PutObjectAcl"
+        ],
+        "Resource": "arn:aws:s3:::my-file-gateway-data/*"
       }
     ]
   }'
@@ -175,9 +185,7 @@ aws storagegateway create-smb-file-share \
   --role arn:aws:iam::123456789012:role/FileGatewayS3Role \
   --location-arn arn:aws:s3:::my-file-gateway-data \
   --default-storage-class S3_STANDARD \
-  --authentication "GuestAccess" \
-  --valid-user-list '[]' \
-  --invalid-user-list '[]'
+  --authentication "GuestAccess"
 ```
 
 For production environments, use Active Directory authentication instead of guest access. You can join the gateway to your AD domain:
