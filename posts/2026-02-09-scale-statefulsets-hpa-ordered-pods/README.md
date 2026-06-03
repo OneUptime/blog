@@ -8,7 +8,7 @@ Description: Learn how to configure HPA for StatefulSets while managing the chal
 
 ---
 
-HPA traditionally targets Deployments with stateless pods that can scale up and down freely. StatefulSets add complexity with ordered pod creation, stable network identities, and persistent storage. Autoscaling StatefulSets requires understanding these constraints and configuring HPA to work within them.
+HPA is often used with Deployments and stateless pods that can scale up and down freely, but it can target any workload that implements the scale subresource, including StatefulSets. StatefulSets add complexity with ordered pod creation, stable network identities, and persistent storage. Autoscaling StatefulSets requires understanding these constraints and configuring HPA to work within them.
 
 ## StatefulSet Scaling Characteristics
 
@@ -17,7 +17,7 @@ StatefulSets create pods sequentially with predictable names:
 - Pods are numbered: `app-0`, `app-1`, `app-2`
 - Scaling up creates pods in order: 0, then 1, then 2
 - Scaling down removes pods in reverse order: 2, then 1, then 0
-- Each pod has a persistent volume that survives pod deletion
+- Each pod gets its own persistent volume when you use `volumeClaimTemplates`, and that volume survives pod deletion by default
 
 This ordering matters for distributed systems like databases, message queues, and consensus-based applications where initialization order affects cluster formation.
 
@@ -97,20 +97,20 @@ spec:
       stabilizationWindowSeconds: 60
       policies:
       - type: Pods
-        value: 1  # Add only 1 pod at a time
-        periodSeconds: 300  # Wait 5 minutes between additions
+        value: 1  # Add at most 1 pod per policy window
+        periodSeconds: 300  # Limit scale-up over a 5-minute window
     scaleDown:
-      stabilizationWindowSeconds: 600  # Wait 10 minutes before scaling down
+      stabilizationWindowSeconds: 600  # Consider the last 10 minutes of recommendations before scaling down
       policies:
       - type: Pods
-        value: 1  # Remove only 1 pod at a time
-        periodSeconds: 600  # Wait 10 minutes between removals
+        value: 1  # Remove at most 1 pod per policy window
+        periodSeconds: 600  # Limit scale-down over a 10-minute window
 ```
 
 The critical differences from Deployment HPA:
 
-- **Slower scaling**: Add only 1 pod every 5 minutes to allow cluster membership updates
-- **Longer stabilization**: Wait 10 minutes before scale-down to ensure the cluster is stable
+- **Slower scaling**: Limit scale-up to 1 pod per 5-minute window to allow cluster membership updates
+- **Longer stabilization**: Use a 10-minute scale-down stabilization window so the HPA considers recent recommendations before reducing replicas
 - **Conservative policies**: StatefulSet workloads typically can't handle rapid scaling
 
 ## Handling Pod Initialization Order
@@ -169,7 +169,7 @@ spec:
             memory: 1Gi
 ```
 
-The readiness probe ensures each pod joins the ZooKeeper ensemble before the next pod starts. This prevents split-brain scenarios during scale-up.
+The readiness probe ensures each pod is serving requests before the next pod starts. For production ZooKeeper clusters, use a readiness check that also verifies the server's ensemble role or quorum health before marking the pod Ready; `ruok` alone only confirms that the local server is running in a non-error state.
 
 ## Using PodManagementPolicy for Parallel Scaling
 
@@ -201,7 +201,7 @@ spec:
             memory: 512Mi
 ```
 
-With Parallel, HPA can scale faster since pods start simultaneously. Use this when:
+With Parallel, HPA scale events can complete faster because the StatefulSet controller can create or terminate the target pods simultaneously. Use this when:
 
 - Pods don't need to form a cluster in specific order
 - Each pod operates independently
@@ -265,7 +265,7 @@ This uses MongoDB-specific metrics exported via Prometheus. Scale-down is extrem
 
 ## Handling Persistent Volume Cleanup
 
-When HPA scales down a StatefulSet, PersistentVolumeClaims are not deleted automatically:
+When HPA scales down a StatefulSet, PersistentVolumeClaims are retained by default unless you explicitly configure `.spec.persistentVolumeClaimRetentionPolicy.whenScaled: Delete`:
 
 ```bash
 # After scaling from 5 to 3 replicas
@@ -284,9 +284,9 @@ data-mongodb-3    Bound    pvc-abc...                                 100Gi  # O
 data-mongodb-4    Bound    pvc-def...                                 100Gi  # Orphaned
 ```
 
-Pods 3 and 4 are deleted but their PVCs remain. If HPA scales back up to 5, pods 3 and 4 reconnect to their old PVCs with existing data.
+Pods 3 and 4 are deleted but their PVCs remain with the default `Retain` policy. If HPA scales back up to 5, pods 3 and 4 reconnect to their old PVCs with existing data.
 
-To clean up orphaned PVCs automatically, use a cleanup controller:
+To clean up retained PVCs automatically without changing the StatefulSet retention policy, use a cleanup controller:
 
 ```yaml
 apiVersion: batch/v1
@@ -349,11 +349,12 @@ groups:
   - alert: SlowStatefulSetScaling
     expr: |
       (time() - kube_pod_created{pod=~"cassandra-[0-9]+"}) > 600
-      and kube_pod_status_phase{pod=~"cassandra-[0-9]+",phase!="Running"} == 1
+      and on(namespace, pod)
+      kube_pod_status_ready{pod=~"cassandra-[0-9]+",condition="true"} == 0
     for: 5m
     annotations:
       summary: "StatefulSet pod {{ $labels.pod }} taking too long to start"
-      description: "Pod has been in non-Running state for over 10 minutes"
+      description: "Pod has not become Ready within 10 minutes of creation"
 ```
 
 ## Best Practices
