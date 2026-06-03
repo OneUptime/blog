@@ -14,7 +14,7 @@ Sequential processing is simple but slow. When you have independent tasks that d
 
 Before diving in, understand the difference:
 
-- **Parallel state** - Runs a fixed set of different branches simultaneously. Use this when you have 2-10 distinct tasks that can run at the same time.
+- **Parallel state** - Runs a fixed set of different branches simultaneously. Use this when you have a small, known set of distinct tasks that can run at the same time.
 - **Map state** - Runs the same set of steps against each item in an array. Use this when you have a dynamic list of items that all need the same processing.
 
 ```mermaid
@@ -176,7 +176,7 @@ Map state is perfect for processing arrays. Here is an example that processes a 
 Key settings for Map state:
 
 - **ItemsPath** - JSONPath to the array in the input
-- **MaxConcurrency** - How many items to process simultaneously (0 = unlimited)
+- **MaxConcurrency** - How many items to process simultaneously (0 = no additional limit; Inline Map still supports up to 40 concurrent iterations)
 - **ItemProcessor** - The state machine to run for each item
 
 ### Controlling Concurrency
@@ -301,7 +301,7 @@ Real pipelines often combine both. Here is an ETL pipeline that fetches data fro
     "TransformRecords": {
       "Type": "Map",
       "ItemsPath": "$.mergedRecords",
-      "MaxConcurrency": 50,
+      "MaxConcurrency": 40,
       "ItemProcessor": {
         "ProcessorConfig": {"Mode": "INLINE"},
         "StartAt": "TransformRecord",
@@ -331,7 +331,7 @@ Real pipelines often combine both. Here is an ETL pipeline that fetches data fro
 
 ### Tolerate Partial Failures in Map
 
-By default, a Map state fails if any iteration fails. For batch processing where some failures are acceptable, use `ToleratedFailurePercentage`:
+By default, an Inline Map state fails if any iteration fails. For batch processing where some failures are acceptable, use a Distributed Map with `ToleratedFailurePercentage`:
 
 ```json
 {
@@ -341,7 +341,10 @@ By default, a Map state fails if any iteration fails. For batch processing where
     "MaxConcurrency": 20,
     "ToleratedFailurePercentage": 10,
     "ItemProcessor": {
-      "ProcessorConfig": {"Mode": "INLINE"},
+      "ProcessorConfig": {
+        "Mode": "DISTRIBUTED",
+        "ExecutionType": "STANDARD"
+      },
       "StartAt": "ProcessRecord",
       "States": {
         "ProcessRecord": {
@@ -368,7 +371,7 @@ Add retry logic inside the Map processor to handle transient failures:
     "Resource": "arn:aws:lambda:us-east-1:123456789012:function:process-record",
     "Retry": [
       {
-        "ErrorEquals": ["TooManyRequestsException", "ServiceUnavailableException"],
+        "ErrorEquals": ["Lambda.ServiceException", "Lambda.SdkClientException", "Lambda.TooManyRequestsException"],
         "IntervalSeconds": 1,
         "MaxAttempts": 5,
         "BackoffRate": 2.0
@@ -383,8 +386,8 @@ Add retry logic inside the Map processor to handle transient failures:
 
 1. **Right-size MaxConcurrency** - Match it to what your downstream systems can handle, not what Step Functions can do
 2. **Keep Lambda payloads small** - Step Functions has a 256KB payload limit per state. For large data, pass S3 references instead
-3. **Use Express Workflows for high-volume maps** - If each map iteration is under 5 minutes and you have thousands of items, consider [Express Workflows](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-express-workflows-for-high-volume-events/view)
-4. **For massive datasets, use Distributed Map** - When your array has millions of items, check out our guide on [Step Functions Distributed Map](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-distributed-map-for-large-scale-processing/view)
+3. **Use Express Workflows for high-volume maps** - If the workflow can complete within 5 minutes and you have high event volume, consider [Express Workflows](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-express-workflows-for-high-volume-events/view)
+4. **For massive datasets, use Distributed Map** - When your dataset has millions of items, check out our guide on [Step Functions Distributed Map](https://oneuptime.com/blog/post/2026-02-12-use-step-functions-distributed-map-for-large-scale-processing/view)
 
 ## Wrapping Up
 
