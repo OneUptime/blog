@@ -211,6 +211,13 @@ This policy prevents anyone from manually deleting recovery points, which is gre
 For disaster recovery, you'll want copies of your backups in another region. Add a `copy_action` block to your backup rule:
 
 ```hcl
+# KMS key in the DR region for the destination vault
+resource "aws_kms_key" "backup_dr" {
+  provider            = aws.dr_region
+  description         = "KMS key for DR backup vault encryption"
+  enable_key_rotation = true
+}
+
 # Vault in the DR region
 resource "aws_backup_vault" "dr" {
   provider    = aws.dr_region
@@ -291,7 +298,7 @@ output "plan_id" {
 
 ## Monitoring Your Backups
 
-You should set up monitoring for backup failures. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) for broader strategies, but here's a quick CloudWatch alarm for backup job failures:
+You should set up monitoring for backup failures. Check out our post on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view) for broader strategies, but here's a quick CloudWatch alarm for backup job failures in a specific vault and resource type:
 
 ```hcl
 resource "aws_cloudwatch_metric_alarm" "backup_failures" {
@@ -303,8 +310,13 @@ resource "aws_cloudwatch_metric_alarm" "backup_failures" {
   period              = 86400  # 24 hours
   statistic           = "Sum"
   threshold           = 0
-  alarm_description   = "Alert when any backup job fails"
+  alarm_description   = "Alert when an RDS backup job fails in the main backup vault"
   alarm_actions       = [aws_sns_topic.alerts.arn]
+
+  dimensions = {
+    BackupVaultName = aws_backup_vault.main.name
+    ResourceType    = "RDS"
+  }
 }
 ```
 
