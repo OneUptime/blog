@@ -16,7 +16,7 @@ In this post, we'll walk through setting up Neptune from scratch, connecting to 
 
 If you've ever tried running Neo4j or JanusGraph on your own EC2 instances, you know the pain. You end up babysitting storage, managing backups, handling failover, and worrying about patching. Neptune takes all of that off your plate.
 
-Neptune supports two query languages - Gremlin (for property graphs) and SPARQL (for RDF graphs). You don't have to pick one at cluster creation time, but your data model will naturally lean toward one or the other. If you're building application features like "friends of friends" or "products similar to X," Gremlin is typically the better fit. If you're working with ontologies and linked data, SPARQL is your go-to.
+Neptune supports three query languages - Gremlin and openCypher (for property graphs) and SPARQL (for RDF graphs). You don't have to pick one at cluster creation time, but your data model will naturally lean toward one or the other. If you're building application features like "friends of friends" or "products similar to X," Gremlin or openCypher is typically the better fit. If you're working with ontologies and linked data, SPARQL is your go-to.
 
 For more on querying Neptune with these languages, check out our posts on [querying with Gremlin](https://oneuptime.com/blog/post/2026-02-12-query-neptune-gremlin/view) and [querying with SPARQL](https://oneuptime.com/blog/post/2026-02-12-query-neptune-sparql/view).
 
@@ -28,7 +28,7 @@ Before you create a Neptune cluster, you need a few things in place:
 - An IAM role with Neptune permissions
 - Security groups that allow traffic on port 8182 (Neptune's default port)
 
-Neptune doesn't have a public endpoint. It lives entirely inside your VPC, which is great for security but means you'll need a bastion host, VPN, or VPC endpoint to connect from outside.
+By default, Neptune endpoints are accessible only inside your VPC. Neptune public endpoints are available on supported engine releases, but you must explicitly enable them and use IAM authentication, so most production deployments still use a bastion host, VPN, or private network path to connect from outside.
 
 ## Creating a Neptune Cluster with the AWS CLI
 
@@ -115,6 +115,8 @@ Resources:
       DBClusterIdentifier: production-neptune
       StorageEncrypted: true
       BackupRetentionPeriod: 14
+      DeletionProtection: true
+      IamAuthEnabled: true
       DBSubnetGroupName: !Ref NeptuneSubnetGroup
       VpcSecurityGroupIds:
         - !Ref NeptuneSecurityGroup
@@ -141,16 +143,16 @@ To test connectivity from an EC2 instance in the same VPC, you can use curl.
 
 ```bash
 # Quick health check against the Neptune endpoint
-curl -X POST https://my-neptune-cluster.cluster-xxxxx.us-east-1.neptune.amazonaws.com:8182/status
+curl -G https://my-neptune-cluster.cluster-xxxxx.us-east-1.neptune.amazonaws.com:8182/status
 ```
 
 For Gremlin queries, you can use the Gremlin console. Install it on your bastion host.
 
 ```bash
 # Download and extract the Gremlin console
-wget https://archive.apache.org/dist/tinkerpop/3.6.2/apache-tinkerpop-gremlin-console-3.6.2-bin.zip
-unzip apache-tinkerpop-gremlin-console-3.6.2-bin.zip
-cd apache-tinkerpop-gremlin-console-3.6.2
+wget https://archive.apache.org/dist/tinkerpop/3.7.2/apache-tinkerpop-gremlin-console-3.7.2-bin.zip
+unzip apache-tinkerpop-gremlin-console-3.7.2-bin.zip
+cd apache-tinkerpop-gremlin-console-3.7.2
 ```
 
 Create a connection configuration file for Neptune.
@@ -160,7 +162,7 @@ Create a connection configuration file for Neptune.
 hosts: [my-neptune-cluster.cluster-xxxxx.us-east-1.neptune.amazonaws.com]
 port: 8182
 connectionPool: { enableSsl: true }
-serializer: { className: org.apache.tinkerpop.gremlin.driver.ser.GraphBinaryMessageSerializerV1,
+serializer: { className: org.apache.tinkerpop.gremlin.util.ser.GraphBinaryMessageSerializerV1,
                config: { serializeResultToString: true }}
 ```
 
@@ -207,7 +209,7 @@ Setting up alarms on these metrics is straightforward and something you should d
 
 There are a few things that trip people up when they're getting started with Neptune.
 
-First, Neptune doesn't support cross-region replication natively. If you need multi-region, you'll have to build your own replication pipeline using Neptune streams and Lambda.
+First, multi-region deployments need deliberate planning. Neptune Global Database supports cross-region replication for low-latency global reads and disaster recovery, but writes still happen in the primary region and secondary regions are read-only.
 
 Second, instance sizing matters more than you'd think. Neptune keeps frequently accessed data in a buffer cache, and if your dataset outgrows that cache, query performance falls off a cliff. Start with db.r5.large for development, but plan on db.r5.2xlarge or bigger for production.
 
@@ -229,4 +231,4 @@ curl -X POST \
 
 ## Wrapping Up
 
-Neptune is a solid choice when your data is naturally graph-shaped. The setup is straightforward if you've worked with other managed AWS databases, but the VPC-only access and the choice between Gremlin and SPARQL add some decisions you need to make early. Get your networking right, pick the correct instance size, and enable IAM auth before you go to production. Everything else can be tuned as you learn your workload's patterns.
+Neptune is a solid choice when your data is naturally graph-shaped. The setup is straightforward if you've worked with other managed AWS databases, but the networking model and the choice between Gremlin, openCypher, and SPARQL add some decisions you need to make early. Get your networking right, pick the correct instance size, and enable IAM auth before you go to production. Everything else can be tuned as you learn your workload's patterns.
