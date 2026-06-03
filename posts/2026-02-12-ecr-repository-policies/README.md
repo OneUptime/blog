@@ -37,7 +37,7 @@ aws ecr set-repository-policy \
         "Sid": "AllowPull",
         "Effect": "Allow",
         "Principal": {
-          "AWS": "arn:aws:iam::987654321:root"
+          "AWS": "arn:aws:iam::987654321098:root"
         },
         "Action": [
           "ecr:GetDownloadUrlForLayer",
@@ -62,7 +62,7 @@ resource "aws_ecr_repository_policy" "allow_pull" {
         Sid    = "AllowPullFromProduction"
         Effect = "Allow"
         Principal = {
-          AWS = "arn:aws:iam::987654321:root"
+          AWS = "arn:aws:iam::987654321098:root"
         }
         Action = [
           "ecr:GetDownloadUrlForLayer",
@@ -91,8 +91,8 @@ resource "aws_ecr_repository_policy" "cicd_access" {
         Effect = "Allow"
         Principal = {
           AWS = [
-            "arn:aws:iam::123456789:role/github-actions-role",
-            "arn:aws:iam::123456789:role/jenkins-build-role"
+            "arn:aws:iam::123456789012:role/github-actions-role",
+            "arn:aws:iam::123456789012:role/jenkins-build-role"
           ]
         }
         Action = [
@@ -225,8 +225,8 @@ resource "aws_ecr_repository_policy" "restrict_push" {
         Condition = {
           StringNotLike = {
             "aws:PrincipalArn" = [
-              "arn:aws:iam::123456789:role/github-actions-role",
-              "arn:aws:iam::123456789:role/codebuild-role"
+              "arn:aws:iam::123456789012:role/github-actions-role",
+              "arn:aws:iam::123456789012:role/codebuild-role"
             ]
           }
         }
@@ -258,8 +258,8 @@ resource "aws_ecr_repository_policy" "lambda_access" {
           "ecr:BatchGetImage"
         ]
         Condition = {
-          StringLike = {
-            "aws:sourceArn" = "arn:aws:lambda:us-east-1:123456789:function:*"
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:lambda:us-east-1:123456789012:function:*"
           }
         }
       }
@@ -311,7 +311,7 @@ aws ecr delete-repository-policy \
 
 **Forgetting GetAuthorizationToken**: Even with a repository policy granting pull access, the pulling role still needs `ecr:GetAuthorizationToken` in its IAM policy. This is needed to get the Docker login credentials.
 
-**Using Principal: "*" without conditions**: This makes your repository publicly accessible. Always add a condition like `aws:PrincipalOrgID` or `aws:PrincipalArn`.
+**Using Principal: "*" without conditions**: This allows any authenticated AWS principal with the required ECR authorization permissions to access the repository actions in the policy. Always add a condition like `aws:PrincipalOrgID` or `aws:PrincipalArn`.
 
 **Not testing cross-account access**: After setting up a repository policy, test the pull from the target account. The IAM role in the target account also needs ECR permissions in its own IAM policy.
 
