@@ -162,6 +162,10 @@ sequenceDiagram
 ### Setting Up AWS DMS for Continuous Replication
 
 ```bash
+# Before creating the DMS task for PostgreSQL CDC, enable logical replication on
+# the source database (for example, wal_level=logical, max_replication_slots > 1,
+# and max_wal_senders > 1).
+
 # Create a DMS replication instance
 aws dms create-replication-instance \
     --replication-instance-identifier migration-ri \
@@ -233,8 +237,8 @@ aws globalaccelerator create-listener \
     --protocol TCP
 
 # Create endpoint groups - one for on-prem (via NLB), one for AWS
-# Initially, all traffic goes to on-prem endpoint group with weight 100
-# During cutover, shift weight to AWS endpoint group
+# Initially, give the on-prem NLB endpoint weight 255 and the AWS endpoint weight 0
+# During cutover, shift endpoint weights or use endpoint group traffic dials
 ```
 
 Global Accelerator uses anycast IPs that do not change, so there is no DNS propagation delay.
@@ -245,18 +249,9 @@ If you control the client applications or use a reverse proxy, you can implement
 
 ```nginx
 # Nginx configuration for gradual cutover
-upstream onprem_backend {
-    server 10.0.1.50:8080;
-}
-
-upstream aws_backend {
-    server internal-alb-123.us-east-1.elb.amazonaws.com:443;
-}
-
-# Split traffic using a map directive
 split_clients "${remote_addr}" $backend {
-    10%   aws_backend;     # Start with 10% to AWS
-    *     onprem_backend;  # Rest to on-premises
+    10%   https://internal-alb-123.us-east-1.elb.amazonaws.com;  # Start with 10% to AWS
+    *     http://10.0.1.50:8080;                                 # Rest to on-premises
 }
 
 server {
@@ -264,7 +259,7 @@ server {
     server_name app.example.com;
 
     location / {
-        proxy_pass http://$backend;
+        proxy_pass $backend;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
