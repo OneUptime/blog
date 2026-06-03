@@ -20,7 +20,7 @@ Submariner is a CNCF sandbox project that enables direct networking between pods
 2. **Service Discovery**: DNS-based discovery of services in remote clusters
 3. **Network Encryption**: Secure tunnels using WireGuard or IPsec
 4. **Multi-Cloud Support**: Works across any network topology
-5. **NetworkPolicy Federation**: Extend security policies across clusters
+5. **NetworkPolicy Awareness**: Works with Kubernetes NetworkPolicy objects, with caveats
 
 Unlike mesh solutions that require sidecars, Submariner operates at the infrastructure level, making it transparent to applications.
 
@@ -32,7 +32,7 @@ Submariner consists of several components:
 **Gateway Engine**: Establishes tunnels between clusters (runs on gateway nodes)
 **Route Agent**: Configures routing on all nodes (runs as DaemonSet)
 **Lighthouse**: Provides cross-cluster service discovery (DNS)
-**Globalnet**: Handles overlapping pod CIDR ranges (optional)
+**Globalnet**: Handles overlapping pod and service CIDR ranges (optional)
 
 The Gateway Engine on designated nodes creates encrypted tunnels to peer clusters, while Route Agents ensure all nodes can route traffic to remote clusters.
 
@@ -43,9 +43,9 @@ Before deploying Submariner, you need:
 ### Network Requirements
 
 - **Non-overlapping Pod CIDRs**: Each cluster must use different pod IP ranges (unless using Globalnet)
-- **Non-overlapping Service CIDRs**: Service IP ranges should not conflict
+- **Non-overlapping Service CIDRs**: Service IP ranges should not conflict unless using Globalnet
 - **Gateway Connectivity**: Gateway nodes need public IPs or a way to reach each other
-- **Open Ports**: UDP/4500 (IPsec NAT-T) or UDP/4800 (WireGuard) and UDP/4490 (VXLAN)
+- **Open Ports**: UDP/4500 for the inter-cluster dataplane, UDP/4490 for NAT discovery, and UDP/4800 for the intra-cluster VXLAN path between nodes and the gateway
 
 ### Cluster Configuration
 
@@ -104,11 +104,10 @@ The broker doesn't handle data plane traffic, only control plane metadata.
 
 ### Extract Broker Information
 
-After deploying the broker, extract the broker-info.subm file:
+After deploying the broker, use the generated broker-info.subm file:
 
 ```bash
-subctl show connections --kubeconfig ~/.kube/config \
-  --context cluster-a > /tmp/broker-info.subm
+ls broker-info.subm
 ```
 
 This file contains credentials and connection information needed by other clusters.
@@ -126,16 +125,14 @@ subctl join broker-info.subm \
   --kubeconfig ~/.kube/config \
   --clusterid cluster-a \
   --cable-driver wireguard \
-  --natt=false \
-  --enable-globalnet=false
+  --globalnet=false
 ```
 
 Let me explain the flags:
 
 - `--clusterid`: Unique identifier for this cluster
 - `--cable-driver`: Tunnel technology (wireguard or libreswan for IPsec)
-- `--natt`: Enable NAT traversal if gateways are behind NAT
-- `--enable-globalnet`: Required only if pod CIDRs overlap
+- `--globalnet`: Required only if pod or service CIDRs overlap and the broker was deployed with Globalnet
 
 ### Join Cluster B
 
@@ -146,8 +143,7 @@ subctl join broker-info.subm \
   --kubeconfig ~/.kube/config \
   --clusterid cluster-b \
   --cable-driver wireguard \
-  --natt=false \
-  --enable-globalnet=false
+  --globalnet=false
 ```
 
 ### Designate Gateway Nodes
@@ -224,7 +220,7 @@ Lighthouse provides DNS-based service discovery across clusters.
 Lighthouse is automatically deployed when you join clusters, but verify it's running:
 
 ```bash
-kubectl get pods -n submariner-operator -l app=submariner-lighthouse
+kubectl get pods -n submariner-operator
 ```
 
 ### Export Services for Discovery
@@ -233,14 +229,14 @@ Services are not automatically available across clusters. You must explicitly ex
 
 ```bash
 # In cluster A, export the nginx service
-kubectl label service nginx submariner.io/export=true -n default
+subctl export service --namespace default nginx
 ```
 
 This makes the service discoverable from other clusters.
 
 ### Create ServiceExport Resources
 
-Alternatively, use ServiceExport resources:
+Alternatively, create the ServiceExport resource directly:
 
 ```yaml
 apiVersion: multicluster.x-k8s.io/v1alpha1
@@ -308,7 +304,7 @@ subctl deploy-broker --globalnet
 subctl join broker-info.subm \
   --clusterid cluster-a \
   --cable-driver wireguard \
-  --enable-globalnet \
+  --globalnet \
   --globalnet-cidr 242.0.0.0/16
 ```
 
@@ -318,7 +314,7 @@ Globalnet assigns a unique global CIDR to each cluster and performs NAT at the g
 
 ```bash
 # Export service with global IP
-kubectl label service nginx submariner.io/export=true
+subctl export service --namespace default nginx
 
 # Check assigned global IP
 kubectl get globalingressip nginx -n default
@@ -337,11 +333,8 @@ Run multiple gateways for redundancy:
 kubectl label node gateway-1 submariner.io/gateway=true
 kubectl label node gateway-2 submariner.io/gateway=true
 
-# Configure gateway count
-subctl join broker-info.subm \
-  --clusterid cluster-a \
-  --cable-driver wireguard \
-  --gateway-count 2
+# Verify designated gateway nodes
+kubectl get nodes --selector=submariner.io/gateway=true
 ```
 
 ### Use IPsec Instead of WireGuard
@@ -351,8 +344,7 @@ For environments where WireGuard is unavailable:
 ```bash
 subctl join broker-info.subm \
   --clusterid cluster-a \
-  --cable-driver libreswan \
-  --ipsec-psk-from secret:submariner-operator/submariner-ipsec-psk
+  --cable-driver libreswan
 ```
 
 IPsec provides similar security but with different performance characteristics.
@@ -364,49 +356,41 @@ When gateways are behind NAT:
 ```bash
 subctl join broker-info.subm \
   --clusterid cluster-a \
-  --cable-driver wireguard \
+  --cable-driver libreswan \
   --natt \
-  --natt-port 4501
+  --nattport 4501
 ```
 
-This enables UDP encapsulation for traversing NAT devices.
+This configures IPsec NAT traversal on UDP port 4501.
 
-## Federating Network Policies
+## Using Kubernetes NetworkPolicies
 
-Extend Kubernetes NetworkPolicies across clusters using Submariner's policy federation.
+Kubernetes NetworkPolicies still apply to Submariner traffic, but Submariner does not add a separate federated policy API. To control remote traffic, write standard Kubernetes NetworkPolicy rules that match remote pod or service IP ranges.
 
-### Create Cross-Cluster Network Policy
+### Create a NetworkPolicy for Remote Traffic
 
 ```yaml
-apiVersion: submarine.io/v1alpha1
+apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-from-cluster-b
+  name: allow-from-cluster-b-cidr
   namespace: default
 spec:
   podSelector:
     matchLabels:
       app: nginx
+  policyTypes:
+  - Ingress
   ingress:
   - from:
-    - clusterSelector:
-        matchLabels:
-          cluster: cluster-b
+    - ipBlock:
+        cidr: 10.245.0.0/16
     ports:
     - protocol: TCP
       port: 80
 ```
 
-This policy allows traffic to nginx pods only from pods in cluster-b.
-
-### Apply Cluster Labels
-
-Label clusters for policy matching:
-
-```bash
-# In cluster B
-kubectl label cluster cluster-b cluster=cluster-b
-```
+This policy allows traffic to nginx pods from the pod CIDR used by cluster B.
 
 ## Monitoring and Troubleshooting
 
@@ -442,7 +426,7 @@ kubectl logs -n submariner-operator -l app=submariner-gateway
 subctl diagnose all
 
 # Check firewall rules
-subctl diagnose firewall inter-cluster
+subctl diagnose firewall inter-cluster --context cluster-a --remotecontext cluster-b
 
 # Verify deployment
 subctl show all
@@ -452,11 +436,11 @@ subctl show all
 
 **Tunnel not establishing**:
 - Verify gateway nodes can reach each other
-- Check firewall rules allow UDP/4500 or UDP/4800
+- Check firewall rules allow UDP/4500, UDP/4490, and UDP/4800 where required
 - Review gateway logs for errors
 
 **DNS resolution fails**:
-- Ensure services are exported with submariner.io/export=true
+- Ensure services are exported with a ServiceExport resource, for example by running `subctl export service`
 - Check lighthouse-coredns pods are running
 - Verify CoreDNS configuration includes lighthouse plugin
 
@@ -469,43 +453,31 @@ subctl show all
 
 ### Gateway Resource Allocation
 
-Gateways handle all cross-cluster traffic, so size appropriately:
+Gateways handle all cross-cluster traffic, so size gateway nodes appropriately and monitor throughput:
 
-```yaml
-apiVersion: submariner.io/v1alpha1
-kind: Gateway
-metadata:
-  name: gateway
-spec:
-  replicas: 2
-  resources:
-    requests:
-      cpu: "2"
-      memory: "2Gi"
-    limits:
-      cpu: "4"
-      memory: "4Gi"
+```bash
+kubectl get gateway -n submariner-operator
 ```
+
+Submariner also exposes gateway metrics such as `submariner_gateway_rx_bytes` and `submariner_gateway_tx_bytes` for monitoring.
 
 ### WireGuard vs IPsec Performance
 
-WireGuard typically offers better performance:
+WireGuard often performs well and is simpler to operate, but measure both drivers in your environment:
 
-- **WireGuard**: 20-30% less CPU overhead, simpler codebase
+- **WireGuard**: Modern tunnel implementation with a smaller codebase
 - **IPsec**: More mature, better compatibility with legacy systems
 
 Choose based on your performance requirements and environment constraints.
 
 ### Multiple Gateway Nodes
 
-Distribute load across multiple gateways:
+Designate multiple gateway-capable nodes for failover:
 
 ```bash
-# Configure 3 gateway nodes for high throughput
-subctl join broker-info.subm \
-  --clusterid cluster-a \
-  --cable-driver wireguard \
-  --gateway-count 3
+kubectl label node gateway-1 submariner.io/gateway=true
+kubectl label node gateway-2 submariner.io/gateway=true
+kubectl label node gateway-3 submariner.io/gateway=true
 ```
 
 ## Real-World Use Cases
@@ -520,13 +492,18 @@ apiVersion: v1
 kind: Service
 metadata:
   name: postgres
-  labels:
-    submariner.io/export: "true"
 spec:
   selector:
     app: postgres
   ports:
   - port: 5432
+
+---
+apiVersion: multicluster.x-k8s.io/v1alpha1
+kind: ServiceExport
+metadata:
+  name: postgres
+  namespace: default
 
 ---
 # In cluster B (us-west): Application
@@ -535,7 +512,13 @@ kind: Deployment
 metadata:
   name: webapp
 spec:
+  selector:
+    matchLabels:
+      app: webapp
   template:
+    metadata:
+      labels:
+        app: webapp
     spec:
       containers:
       - name: app
@@ -551,7 +534,7 @@ Maintain active-passive clusters:
 
 ```bash
 # Primary cluster exports all services
-kubectl label service myapp submariner.io/export=true -n production
+subctl export service --namespace production myapp
 
 # DR cluster can immediately access services if primary fails
 # Update DNS to point to DR cluster gateway
