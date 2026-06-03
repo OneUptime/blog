@@ -8,7 +8,7 @@ Description: Learn how to create, manage, and automate EBS snapshots for reliabl
 
 ---
 
-EBS snapshots are point-in-time copies of your volumes stored in Amazon S3. They're the primary backup mechanism for EBS-backed EC2 instances and are essential for disaster recovery, data protection, and creating new volumes. Snapshots are incremental - after the first full snapshot, subsequent ones only store the blocks that changed, which saves both time and money.
+EBS snapshots are point-in-time copies of your volumes stored in Amazon S3. They're the primary backup mechanism for EBS-backed EC2 instances and are essential for disaster recovery, data protection, and creating new volumes. Snapshots are incremental - after the first full snapshot of the written data blocks, subsequent ones only store the blocks that changed, which saves both time and money.
 
 This guide covers creating snapshots manually and automatically, ensuring data consistency, and managing snapshot costs.
 
@@ -18,13 +18,13 @@ When you create a snapshot:
 
 1. AWS captures the state of the volume at that moment
 2. The snapshot is stored in S3 (you don't see it in your S3 buckets - it's managed internally)
-3. The first snapshot copies all data blocks
+3. The first snapshot copies all data blocks that were written to the volume
 4. Subsequent snapshots only copy changed blocks (incremental)
 5. Each snapshot is independently restorable - you don't need the chain
 
 ```mermaid
 flowchart LR
-    V[EBS Volume<br/>100 GB] --> S1[Snapshot 1<br/>Full: 100 GB stored]
+    V[EBS Volume<br/>100 GB] --> S1[Snapshot 1<br/>Full: written data stored]
     V --> S2[Snapshot 2<br/>Incremental: 5 GB changed]
     V --> S3[Snapshot 3<br/>Incremental: 3 GB changed]
     S1 --> R1[Restore: Full volume]
@@ -85,9 +85,9 @@ Stop or freeze the database before taking the snapshot:
 
 VOLUME_ID="vol-0123456789abcdef0"
 
-# Freeze the database (prevent writes temporarily)
-echo "Freezing database..."
-sudo -u postgres psql -c "SELECT pg_start_backup('snapshot_backup', true);"
+# Stop PostgreSQL so all database files are consistent on disk
+echo "Stopping database..."
+sudo systemctl stop postgresql
 
 # Sync filesystem
 sync
@@ -102,14 +102,14 @@ SNAP_ID=$(aws ec2 create-snapshot \
 
 echo "Snapshot initiated: $SNAP_ID"
 
-# Unfreeze the database immediately (don't wait for snapshot to complete)
-echo "Unfreezing database..."
-sudo -u postgres psql -c "SELECT pg_stop_backup();"
+# Start PostgreSQL immediately (don't wait for snapshot to complete)
+echo "Starting database..."
+sudo systemctl start postgresql
 
-echo "Database unfrozen. Snapshot $SNAP_ID completing in background."
+echo "Database started. Snapshot $SNAP_ID completing in background."
 ```
 
-You don't need to wait for the snapshot to finish before unfreezing. The point-in-time capture happens at initiation.
+You don't need to wait for the snapshot to finish before restarting the database. The point-in-time capture happens at initiation.
 
 ### For Filesystems
 
@@ -258,8 +258,8 @@ Snapshot pricing is based on the actual data stored, not the volume size:
 - **Standard storage**: ~$0.05 per GB-month
 - **Archive tier**: ~$0.0125 per GB-month (for long-term retention)
 
-Because snapshots are incremental, the cost is usually much less than the volume size. A 100 GB volume that changes 5 GB per day would cost roughly:
-- First snapshot: $5.00/month (100 GB)
+Because snapshots are incremental, the cost is usually much less than the volume size. A 100 GB volume with 60 GB of written data that changes 5 GB per day would cost roughly:
+- First snapshot: $3.00/month (60 GB)
 - Each daily incremental: $0.25/month (5 GB)
 
 ### Archive Old Snapshots
@@ -284,13 +284,13 @@ aws ec2 describe-snapshots \
     --query 'Snapshots | sort_by(@, &StartTime) | [*].[SnapshotId,VolumeSize,StartTime,Description]' \
     --output table
 
-# Calculate total snapshot storage
+# Show total source volume size represented by your snapshots
+# Note: VolumeSize is not the exact billable snapshot storage size.
 aws ec2 describe-snapshots \
     --owner-ids self \
     --query 'Snapshots[*].VolumeSize' \
     --output text | tr '\t' '\n' | awk '{sum += $1} END {
-        printf "Total snapshot storage: %d GB\n", sum
-        printf "Estimated cost: $%.2f/month\n", sum * 0.05
+        printf "Total source volume size represented: %d GB\n", sum
     }'
 ```
 
