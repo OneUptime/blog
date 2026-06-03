@@ -73,21 +73,21 @@ aws ec2 authorize-security-group-ingress \
   --group-id $DB_SG \
   --protocol tcp \
   --port 5432 \
-  --source-group sg-web-tier
+  --source-group sg-0123abcd
 
 # Allow API tier
 aws ec2 authorize-security-group-ingress \
   --group-id $DB_SG \
   --protocol tcp \
   --port 5432 \
-  --source-group sg-api-tier
+  --source-group sg-0456abcd
 
 # Allow worker tier
 aws ec2 authorize-security-group-ingress \
   --group-id $DB_SG \
   --protocol tcp \
   --port 5432 \
-  --source-group sg-worker-tier
+  --source-group sg-0789abcd
 ```
 
 Each application tier has its own security group, making it clear who has database access. If you need to revoke access for the worker tier, you remove one rule without affecting the others.
@@ -102,7 +102,7 @@ aws ec2 authorize-security-group-ingress \
   --group-id $DB_SG \
   --protocol tcp \
   --port 5432 \
-  --source-group sg-lambda-functions
+  --source-group sg-0123efab
 ```
 
 For a deep dive on Lambda and RDS connectivity, check out [connecting to RDS from Lambda](https://oneuptime.com/blog/post/2026-02-12-connect-rds-instance-from-lambda-function/view).
@@ -117,12 +117,23 @@ aws ec2 authorize-security-group-ingress \
   --group-id $DB_SG \
   --protocol tcp \
   --port 5432 \
-  --source-group sg-bastion-host
+  --source-group sg-0123bcde
 ```
 
 ## Cross-VPC Access Through VPC Peering
 
-When your application is in a different VPC connected through peering, you need to use CIDR blocks instead of security group references (security group references don't work across VPCs by default).
+When your application is in a different VPC connected through peering, you can reference the application's security group if the VPC peering connection is active and both VPCs are in the same Region. For cross-Region peering, or when you intentionally want a CIDR-based rule, use CIDR blocks instead.
+
+This rule allows access from an application security group in a peered VPC.
+
+```bash
+# Allow from a source security group in a peered VPC
+aws ec2 authorize-security-group-ingress \
+  --group-id $DB_SG \
+  --protocol tcp \
+  --port 5432 \
+  --source-group sg-0123cdef
+```
 
 This rule allows access from the application VPC's CIDR range.
 
@@ -182,7 +193,7 @@ aws ec2 authorize-security-group-ingress \
 
 If you're using Terraform, here's how to define security groups for RDS.
 
-This Terraform configuration creates application and database security groups with proper references.
+This Terraform configuration creates application and database security groups with the database allowing inbound traffic from the application security group.
 
 ```hcl
 # Application security group
@@ -190,14 +201,6 @@ resource "aws_security_group" "app" {
   name_prefix = "app-"
   vpc_id      = aws_vpc.main.id
   description = "Application servers"
-
-  # Allow outbound to database
-  egress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.db.id]
-  }
 
   tags = {
     Name = "app-sg"
@@ -230,7 +233,7 @@ resource "aws_db_instance" "main" {
 }
 ```
 
-Note: Terraform has a chicken-and-egg problem when two security groups reference each other. Use `aws_security_group_rule` resources instead of inline rules to avoid circular dependencies.
+Note: Terraform has a chicken-and-egg problem when two security groups reference each other inline. Use `aws_vpc_security_group_ingress_rule` and `aws_vpc_security_group_egress_rule` resources instead of inline rules to avoid circular dependencies.
 
 This approach avoids circular dependency issues in Terraform.
 
@@ -247,22 +250,20 @@ resource "aws_security_group" "db" {
   description = "RDS database instances"
 }
 
-resource "aws_security_group_rule" "db_from_app" {
-  type                     = "ingress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.db.id
-  source_security_group_id = aws_security_group.app.id
+resource "aws_vpc_security_group_ingress_rule" "db_from_app" {
+  security_group_id            = aws_security_group.db.id
+  referenced_security_group_id = aws_security_group.app.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 
-resource "aws_security_group_rule" "app_to_db" {
-  type                     = "egress"
-  from_port                = 5432
-  to_port                  = 5432
-  protocol                 = "tcp"
-  security_group_id        = aws_security_group.app.id
-  source_security_group_id = aws_security_group.db.id
+resource "aws_vpc_security_group_egress_rule" "app_to_db" {
+  security_group_id            = aws_security_group.app.id
+  referenced_security_group_id = aws_security_group.db.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -280,7 +281,7 @@ aws rds describe-db-instances \
 
 # For each security group, list its rules
 aws ec2 describe-security-groups \
-  --group-ids sg-db-123 \
+  --group-ids sg-0123defa \
   --query 'SecurityGroups[*].IpPermissions[*].{Port:FromPort,Source:IpRanges[*].CidrIp,SourceSG:UserIdGroupPairs[*].GroupId}' \
   --output json
 ```
