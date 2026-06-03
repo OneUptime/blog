@@ -14,7 +14,7 @@ This guide breaks down Bedrock pricing, compares the major models, and gives you
 
 ## How Bedrock Pricing Works
 
-Bedrock uses token-based pricing for on-demand inference. You pay separately for input tokens (what you send to the model) and output tokens (what the model generates). Input tokens are always cheaper than output tokens, usually by a factor of 3-5x.
+Bedrock uses token-based pricing for on-demand inference. You pay separately for input tokens (what you send to the model) and output tokens (what the model generates). Input tokens are usually cheaper than output tokens, often by a factor of 3-5x, though some models price input and output tokens the same.
 
 There are three pricing models:
 
@@ -141,6 +141,13 @@ graph TD
 The smartest approach is using different models for different tasks within the same application. Route simple queries to cheap models and complex ones to expensive models.
 
 ```python
+import json
+
+import boto3
+
+bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-east-1')
+
+
 def smart_route(query, context_length=0):
     """Route queries to the most cost-effective model based on complexity."""
 
@@ -192,6 +199,11 @@ Beyond model selection, you can cut costs by reducing how many tokens you use pe
 
 ```python
 import hashlib
+import time
+
+import boto3
+
+dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
 
 def cached_invoke(prompt, cache_table='bedrock-cache'):
     """Check cache before invoking the model."""
@@ -253,18 +265,26 @@ def should_use_provisioned(
         return False
 ```
 
-## Monitoring Costs
+## Monitoring Usage
 
-Track your spending with CloudWatch metrics and set up billing alerts so there are no surprises.
+Track token usage with CloudWatch metrics and set up AWS Budgets or billing alerts so there are no surprises.
 
 ```python
-# Set up a CloudWatch alarm for Bedrock spending
+import boto3
+
+# Set up a CloudWatch alarm for daily Bedrock input token usage
 cloudwatch = boto3.client('cloudwatch', region_name='us-east-1')
 
 cloudwatch.put_metric_alarm(
-    AlarmName='bedrock-daily-spend-alert',
-    MetricName='InvocationModelInputTokens',
+    AlarmName='bedrock-daily-input-token-alert',
+    MetricName='InputTokenCount',
     Namespace='AWS/Bedrock',
+    Dimensions=[
+        {
+            'Name': 'ModelId',
+            'Value': 'anthropic.claude-3-haiku-20240307-v1:0'
+        }
+    ],
     Statistic='Sum',
     Period=86400,  # 24 hours
     EvaluationPeriods=1,
