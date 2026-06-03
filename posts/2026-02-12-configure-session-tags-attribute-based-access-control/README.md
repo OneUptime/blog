@@ -43,6 +43,10 @@ aws s3api put-bucket-tagging \
     ]
   }'
 
+aws s3api put-bucket-abac \
+  --bucket project-alpha-data \
+  --abac-status Status=Enabled
+
 aws s3api put-bucket-tagging \
   --bucket project-beta-data \
   --tagging '{
@@ -51,6 +55,10 @@ aws s3api put-bucket-tagging \
       {"Key": "Department", "Value": "engineering"}
     ]
   }'
+
+aws s3api put-bucket-abac \
+  --bucket project-beta-data \
+  --abac-status Status=Enabled
 
 # Tag EC2 instances
 aws ec2 create-tags \
@@ -131,7 +139,7 @@ Here's where ABAC gets powerful. This single policy handles access for every pro
       "Resource": "*",
       "Condition": {
         "StringEquals": {
-          "s3:ResourceTag/Project": "${aws:PrincipalTag/Project}"
+          "s3:BucketTag/Project": "${aws:PrincipalTag/Project}"
         }
       }
     },
@@ -139,11 +147,10 @@ Here's where ABAC gets powerful. This single policy handles access for every pro
       "Sid": "EC2AccessMatchingProject",
       "Effect": "Allow",
       "Action": [
-        "ec2:DescribeInstances",
         "ec2:StartInstances",
         "ec2:StopInstances"
       ],
-      "Resource": "*",
+      "Resource": "arn:aws:ec2:*:123456789012:instance/*",
       "Condition": {
         "StringEquals": {
           "ec2:ResourceTag/Project": "${aws:PrincipalTag/Project}"
@@ -160,15 +167,18 @@ Here's where ABAC gets powerful. This single policy handles access for every pro
         "dynamodb:Query",
         "dynamodb:Scan"
       ],
-      "Resource": "*",
+      "Resource": [
+        "arn:aws:dynamodb:*:123456789012:table/*",
+        "arn:aws:dynamodb:*:123456789012:table/*/index/*"
+      ],
       "Condition": {
         "StringEquals": {
-          "dynamodb:ResourceTag/Project": "${aws:PrincipalTag/Project}"
+          "aws:ResourceTag/Project": "${aws:PrincipalTag/Project}"
         }
       }
     },
     {
-      "Sid": "ReadOnlyForDepartment",
+      "Sid": "ReadOnlyForTaggedSessions",
       "Effect": "Allow",
       "Action": [
         "s3:ListAllMyBuckets",
@@ -177,8 +187,8 @@ Here's where ABAC gets powerful. This single policy handles access for every pro
       ],
       "Resource": "*",
       "Condition": {
-        "StringEquals": {
-          "aws:PrincipalTag/Department": "${aws:PrincipalTag/Department}"
+        "Null": {
+          "aws:PrincipalTag/Project": "false"
         }
       }
     }
@@ -186,7 +196,7 @@ Here's where ABAC gets powerful. This single policy handles access for every pro
 }
 ```
 
-The magic is `${aws:PrincipalTag/Project}`. This resolves to whatever value the session tag "Project" holds. If the user assumed the role with `Project=alpha`, they can only access resources tagged with `Project=alpha`.
+The magic is `${aws:PrincipalTag/Project}`. This resolves to whatever value the session tag "Project" holds. If the user assumed the role with `Project=alpha`, the tag-aware statements only allow matching S3 bucket data access, EC2 start/stop actions, and DynamoDB table or index access for resources tagged with `Project=alpha`.
 
 ### Step 4: Assume the Role with Tags
 
@@ -244,7 +254,7 @@ https://aws.amazon.com/SAML/Attributes/PrincipalTag:Department -> user.departmen
 https://aws.amazon.com/SAML/Attributes/PrincipalTag:Team       -> user.team
 ```
 
-The trust policy needs to allow the transitive tag keys:
+The trust policy needs to allow session tags:
 
 ```json
 {
@@ -335,15 +345,16 @@ ABAC is great for cost management too. Require that users tag resources they cre
 }
 ```
 
-This ensures that any resource a user creates is automatically tagged with their project, keeping costs attributable.
+This ensures that create requests include a project tag matching the user's session tag, keeping costs attributable.
 
 ## Limitations
 
 - Not all AWS services support resource tags in condition keys (check the service documentation)
-- S3 bucket-level tagging works differently than object-level tagging
+- S3 bucket-level tagging works differently than object-level tagging, and general purpose buckets must have bucket ABAC enabled before bucket tag conditions apply
+- DynamoDB ABAC is enabled by default for most accounts, but older unaudited accounts might need to enable it before table and index tag conditions are evaluated
 - Tag propagation can have eventual consistency delays
 - Maximum 50 session tags per `AssumeRole` call
-- Tag keys are case-sensitive
+- Session tag keys are not case-sensitive, but case is preserved; standardize tag casing because AWS resource tag behavior varies by service
 
 ## ABAC vs RBAC
 
