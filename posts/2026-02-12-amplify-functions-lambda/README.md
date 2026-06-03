@@ -85,13 +85,17 @@ Now your function is accessible via HTTP. Amplify sets up API Gateway with the p
 From your frontend, calling it looks like this:
 
 ```javascript
-import { API } from 'aws-amplify';
+import { get } from 'aws-amplify/api';
 
 // Call the REST endpoint
 async function fetchOrder(orderId) {
   try {
-    const response = await API.get('orderApi', `/orders/${orderId}`);
-    return response;
+    const restOperation = get({
+      apiName: 'orderApi',
+      path: `/orders/${orderId}`
+    });
+    const { body } = await restOperation.response;
+    return await body.json();
   } catch (error) {
     console.error('Failed to fetch order:', error);
   }
@@ -188,7 +192,7 @@ Process files when they're uploaded to a storage bucket:
 exports.handler = async (event) => {
   for (const record of event.Records) {
     const bucket = record.s3.bucket.name;
-    const key = decodeURIComponent(record.s3.object.key);
+    const key = decodeURIComponent(record.s3.object.key.replace(/\+/g, ' '));
 
     console.log(`File uploaded: ${key} in ${bucket}`);
 
@@ -245,24 +249,27 @@ amplify update function
 Here's a function that reads from DynamoDB and writes to S3:
 
 ```javascript
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB.DocumentClient();
-const s3 = new AWS.S3();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { PutObjectCommand, S3Client } = require('@aws-sdk/client-s3');
+
+const dynamodb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const s3 = new S3Client({});
 
 exports.handler = async (event) => {
   // Read from DynamoDB - table name comes from environment variables
-  const data = await dynamodb.scan({
+  const data = await dynamodb.send(new ScanCommand({
     TableName: process.env.STORAGE_ORDERSTABLE_NAME
-  }).promise();
+  }));
 
   // Generate a report and save to S3
   const report = generateReport(data.Items);
-  await s3.putObject({
+  await s3.send(new PutObjectCommand({
     Bucket: process.env.STORAGE_REPORTSBUCKET_NAME,
     Key: `reports/${Date.now()}.json`,
     Body: JSON.stringify(report),
     ContentType: 'application/json'
-  }).promise();
+  }));
 
   return { statusCode: 200, body: 'Report generated' };
 };
@@ -272,32 +279,25 @@ exports.handler = async (event) => {
 
 You can add environment variables to your function through the CLI or by editing the CloudFormation template.
 
-For secrets, use the `amplify update function` command or set them in the `parameters.json` file:
+For secrets, use the `amplify update function` command and choose "Secret values configuration." Amplify stores those values in AWS Systems Manager Parameter Store as `SecureString` parameters instead of saving them locally.
 
-```json
-{
-  "STRIPE_SECRET_KEY": "sk_live_...",
-  "SENDGRID_API_KEY": "SG..."
-}
-```
-
-A better approach for secrets is to use AWS Systems Manager Parameter Store:
+In the function, Amplify provides the Parameter Store name as an environment variable. Fetch the decrypted value at runtime:
 
 ```javascript
-const AWS = require('aws-sdk');
-const ssm = new AWS.SSM();
+const { GetParameterCommand, SSMClient } = require('@aws-sdk/client-ssm');
+const ssm = new SSMClient({});
 
 // Fetch a secret from Parameter Store at runtime
 async function getSecret(name) {
-  const result = await ssm.getParameter({
+  const result = await ssm.send(new GetParameterCommand({
     Name: name,
     WithDecryption: true
-  }).promise();
+  }));
   return result.Parameter.Value;
 }
 
 exports.handler = async (event) => {
-  const apiKey = await getSecret('/myapp/stripe-key');
+  const apiKey = await getSecret(process.env.STRIPE_SECRET_KEY);
   // Use the key...
 };
 ```
@@ -332,8 +332,8 @@ Create a test event file to simulate different scenarios:
 Lambda functions log to CloudWatch automatically. You can view logs through the AWS Console or the CLI:
 
 ```bash
-# Tail the logs for your function
-amplify console function processOrder
+# Open the Lambda console for your functions
+amplify function console
 ```
 
 For production monitoring, you'll want more than just logs. Track invocation counts, error rates, cold starts, and duration. Setting up alerts through [OneUptime](https://oneuptime.com/blog/post/2026-02-06-aws-cloudwatch-logs-exporter-opentelemetry-collector/view) can help you catch issues before they affect users.
@@ -342,7 +342,7 @@ For production monitoring, you'll want more than just logs. Track invocation cou
 
 **Cold starts** are real. If your function hasn't been invoked in a while, there's a delay while AWS spins up a new execution environment. For latency-sensitive endpoints, consider provisioned concurrency.
 
-**Timeouts** catch people off guard. The default timeout for Amplify functions is 25 seconds. If your function does heavy processing, increase it in the CloudFormation template.
+**Timeouts** catch people off guard. Lambda's default timeout is 3 seconds, and you can configure it up to 15 minutes. If your function does heavy processing, increase it in the CloudFormation template.
 
 **Package size matters.** Keep your dependencies lean. Large packages increase cold start times. Use webpack or esbuild to bundle only what you need.
 
