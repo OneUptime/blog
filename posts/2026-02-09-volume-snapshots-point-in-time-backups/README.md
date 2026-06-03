@@ -41,13 +41,13 @@ If the CRDs are not installed, apply them:
 
 ```bash
 # Install snapshot CRDs (v1 API)
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
 # Deploy the snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/release-8.2/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 ```
 
 ## Creating a VolumeSnapshotClass
@@ -63,8 +63,6 @@ driver: csi.example.com  # Replace with your CSI driver name
 deletionPolicy: Delete   # Delete or Retain
 parameters:
   # Driver-specific parameters
-  # For AWS EBS CSI driver:
-  # encrypted: "true"
   # For GCE PD CSI driver:
   # storage-locations: us-central1
 ```
@@ -78,8 +76,6 @@ metadata:
   name: ebs-snapshot-class
 driver: ebs.csi.aws.com
 deletionPolicy: Delete
-parameters:
-  encrypted: "true"
 ```
 
 For Google Cloud persistent disk snapshots:
@@ -259,7 +255,7 @@ metadata:
 rules:
 - apiGroups: ["snapshot.storage.k8s.io"]
   resources: ["volumesnapshots"]
-  verbs: ["create", "get", "list"]
+  verbs: ["create", "get", "list", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -368,14 +364,11 @@ spec:
 
 ## Verifying Snapshot Integrity
 
-Always verify your snapshots can be restored. Create a test namespace:
+Always verify your snapshots can be restored. Create a test PVC from the snapshot:
 
 ```bash
-# Create test namespace
-kubectl create namespace snapshot-test
-
 # Restore from snapshot (covered in detail in next article)
-kubectl apply -n snapshot-test -f - <<EOF
+kubectl apply -f - <<EOF
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -393,10 +386,39 @@ spec:
   storageClassName: standard
 EOF
 
+# Start a temporary MySQL pod on the restored PVC
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mysql-verify
+spec:
+  containers:
+  - name: mysql
+    image: mysql:8.0
+    env:
+    - name: MYSQL_ROOT_PASSWORD
+      value: "password123"
+    ports:
+    - containerPort: 3306
+    volumeMounts:
+    - name: mysql-storage
+      mountPath: /var/lib/mysql
+  volumes:
+  - name: mysql-storage
+    persistentVolumeClaim:
+      claimName: mysql-restored
+  restartPolicy: Never
+EOF
+
+kubectl wait --for=condition=ready pod/mysql-verify --timeout=120s
+
 # Verify data integrity
-kubectl run -n snapshot-test mysql-verify --rm -it --restart=Never \
-  --image=mysql:8.0 -- mysql -h mysql-service -uroot -ppassword123 \
+kubectl exec mysql-verify -- mysql -uroot -ppassword123 \
   -e "USE testdb; SELECT * FROM users;"
+
+kubectl delete pod mysql-verify
+kubectl delete pvc mysql-restored
 ```
 
 VolumeSnapshots provide a powerful, storage-agnostic way to protect your Kubernetes data. By implementing automated snapshot schedules and retention policies, you ensure your stateful applications have reliable point-in-time backups for disaster recovery scenarios.
