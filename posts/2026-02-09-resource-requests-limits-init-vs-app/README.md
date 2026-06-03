@@ -12,7 +12,7 @@ Init containers run before app containers, but how do their resource requests af
 
 ## How Init Container Resources Work
 
-Init containers run sequentially before app containers. At any moment, either init containers OR app containers are running, never both. Kubernetes uses this fact to calculate the pod's effective resource request.
+Regular init containers run sequentially before app containers. At any moment, either regular init containers OR app containers are running, never both. Kubernetes uses this fact to calculate the pod's effective resource request.
 
 The effective request is the maximum of:
 
@@ -142,7 +142,7 @@ Resource Limits for Init Containers
 
 Limits work the same way as requests. The effective limit is:
 
-- Max of all app container limits
+- Sum of all app container limits
 - Max of any single init container limit
 
 ```yaml
@@ -170,7 +170,7 @@ containers:
 
 Effective limit: max(2, 1 + 0.5) = 2 CPU, max(4Gi, 2Gi + 1Gi) = 4Gi
 
-The pod can use up to 2 CPU and 4Gi at any moment.
+The pod's effective limit is 2 CPU and 4Gi. Each container is still capped by its own limit.
 
 ## QoS Class with Init Containers
 
@@ -339,7 +339,7 @@ The process init container dominates memory allocation.
 
 ## Sidecar Init Containers
 
-Kubernetes 1.28+ supports sidecar init containers that run alongside app containers. They use different resource calculation:
+Kubernetes supports sidecar init containers that run alongside app containers through the `SidecarContainers` feature gate. The feature is enabled by default since Kubernetes 1.29 and stable in Kubernetes 1.33. They use different resource calculation:
 
 ```yaml
 initContainers:
@@ -358,7 +358,7 @@ containers:
       memory: "2Gi"
 ```
 
-Sidecar init containers add to app container totals:
+Sidecar init containers add to the non-init container total, unless another regular init container has a larger request:
 Effective request: 1 + 0.2 = 1.2 CPU, 2Gi + 256Mi = 2.25Gi
 
 ## Monitoring Init Container Resource Usage
@@ -383,7 +383,7 @@ container_memory_working_set_bytes{container="init-container-name"}
 - Monitor init container actual usage
 - Document why init containers need specific resources
 - Test init container performance with different request values
-- Use sidecar init containers (1.28+) when init logic needs to run alongside the app
+- Use sidecar init containers when init logic needs to run alongside the app
 - Avoid setting init requests higher than necessary
 
 ## Real-World Example: Config Hydration
