@@ -79,10 +79,10 @@ One thing to keep in mind: once you enable versioning, you can't fully disable i
 
 Every S3 bucket should have encryption enabled. AWS now encrypts buckets by default with SSE-S3, but you might want to use your own KMS key for compliance reasons.
 
-This configuration sets up AES256 encryption and ensures all uploads are encrypted:
+This configuration sets up SSE-KMS encryption and ensures all uploads are encrypted:
 
 ```hcl
-# Enable server-side encryption using AES256
+# Enable server-side encryption using AWS KMS
 resource "aws_s3_bucket_server_side_encryption_configuration" "my_bucket_encryption" {
   bucket = aws_s3_bucket.my_bucket.id
 
@@ -121,7 +121,7 @@ resource "aws_s3_bucket_public_access_block" "my_bucket_public_access" {
 
 S3 lifecycle rules let you automatically transition objects to cheaper storage classes or delete them after a certain period. This saves money on storage costs over time.
 
-These rules move objects to Infrequent Access after 30 days, Glacier after 90 days, and delete them after a year:
+These rules move eligible current objects to Infrequent Access after 30 days, Glacier after 90 days, expire current objects after a year, and permanently delete noncurrent versions after a year:
 
 ```hcl
 # Lifecycle rules to save on storage costs
@@ -132,6 +132,8 @@ resource "aws_s3_bucket_lifecycle_configuration" "my_bucket_lifecycle" {
   rule {
     id     = "transition-to-ia"
     status = "Enabled"
+
+    filter {}
 
     transition {
       days          = 30
@@ -146,12 +148,18 @@ resource "aws_s3_bucket_lifecycle_configuration" "my_bucket_lifecycle" {
     expiration {
       days = 365
     }
+
+    noncurrent_version_expiration {
+      noncurrent_days = 365
+    }
   }
 
   # Clean up incomplete multipart uploads after 7 days
   rule {
     id     = "abort-incomplete-uploads"
     status = "Enabled"
+
+    filter {}
 
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
@@ -168,7 +176,7 @@ That `abort_incomplete_multipart_upload` rule is one people often forget. Incomp
 
 Sometimes you need to grant cross-account access or enforce specific conditions on how objects are accessed. Bucket policies handle that.
 
-This policy requires all uploads to use SSL/TLS, refusing any unencrypted connections:
+This policy requires all access to use SSL/TLS, refusing any unencrypted connections:
 
 ```hcl
 # Enforce SSL-only access
@@ -252,7 +260,7 @@ resource "aws_s3_bucket" "this" {
 
 ## Putting It All Together
 
-Here's a complete, production-ready S3 bucket module that combines everything we've covered:
+Here's a production-ready S3 bucket module that combines the core settings we've covered:
 
 ```hcl
 # Complete production-ready S3 bucket
@@ -298,7 +306,7 @@ A few things that trip people up with S3 and Terraform:
 
 **Bucket naming conflicts.** S3 bucket names are globally unique across all AWS accounts. If someone else has your name, you're out of luck. Use a naming convention that includes your organization and environment.
 
-**Forgetting `depends_on`.** Some S3 resources have implicit ordering requirements. Lifecycle configurations, for example, require versioning to be enabled first. Terraform usually figures this out, but not always.
+**Forgetting `depends_on`.** Some S3 resources have implicit ordering requirements. Lifecycle configurations that manage noncurrent versions, for example, should wait for versioning to be enabled first. Terraform usually figures this out, but not always.
 
 **State drift.** If someone modifies a bucket through the console, Terraform won't know until the next plan. Run `terraform plan` regularly to catch drift early. For monitoring state drift and infrastructure health, consider setting up proper [monitoring for your AWS infrastructure](https://oneuptime.com/blog/post/2026-01-21-loki-vs-cloudwatch/view).
 
