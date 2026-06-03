@@ -25,7 +25,7 @@ pip install boto3
 aws configure
 ```
 
-Boto3 looks for credentials in this order: environment variables, shared credentials file (`~/.aws/credentials`), IAM role (on EC2/Lambda). For production, always use IAM roles.
+Boto3 looks for credentials through a provider chain that includes explicitly passed credentials, environment variables, assume-role and IAM Identity Center providers, the shared credentials file (`~/.aws/credentials`), the AWS config file (`~/.aws/config`), container credentials, and instance metadata credentials for EC2 roles. For production, prefer IAM roles or other short-lived, role-based credentials instead of long-lived access keys.
 
 ## Client vs Resource
 
