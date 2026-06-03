@@ -62,7 +62,8 @@ spec:
     app: api
     version: stable
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ---
 # Shadow version - receives mirrored traffic
@@ -95,12 +96,16 @@ apiVersion: v1
 kind: Service
 metadata:
   name: api-shadow
+  labels:
+    app: api
+    version: shadow
 spec:
   selector:
     app: api
     version: shadow
   ports:
-  - port: 80
+  - name: http
+    port: 80
     targetPort: 8080
 ```
 
@@ -109,13 +114,15 @@ spec:
 Istio provides built-in traffic mirroring:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-mirror
 spec:
   hosts:
   - api.example.com
+  gateways:
+  - api-gateway  # Gateway serving api.example.com
   http:
   - match:
     - uri:
@@ -148,15 +155,15 @@ Test it:
 curl https://api.example.com/users/123
 
 # Check stable version handled it
-kubectl logs -l app=api,version=stable | grep "GET /users/123"
+kubectl logs -l app=api,version=stable --tail=-1 | grep "GET /users/123"
 
 # Check shadow version also received it
-kubectl logs -l app=api,version=shadow | grep "GET /users/123"
+kubectl logs -l app=api,version=shadow --tail=-1 | grep "GET /users/123"
 ```
 
 ## Traffic Mirroring with Nginx Ingress
 
-Nginx doesn't have built-in mirroring, but you can use a sidecar proxy:
+The community NGINX Ingress controller supports mirroring with annotations such as `nginx.ingress.kubernetes.io/mirror-target`. You can also use an NGINX sidecar proxy when you need application-local control:
 
 ```yaml
 apiVersion: apps/v1
@@ -169,11 +176,13 @@ spec:
     matchLabels:
       app: api
       version: stable
+      mirror-proxy: enabled
   template:
     metadata:
       labels:
         app: api
         version: stable
+        mirror-proxy: enabled
     spec:
       containers:
       # Main application
@@ -184,9 +193,10 @@ spec:
 
       # Mirroring proxy sidecar
       - name: mirror-proxy
-        image: nginx:1.21
+        image: nginx:1.27
         ports:
-        - containerPort: 80
+        - name: http
+          containerPort: 80
         volumeMounts:
         - name: nginx-config
           mountPath: /etc/nginx/nginx.conf
@@ -196,6 +206,20 @@ spec:
       - name: nginx-config
         configMap:
           name: mirror-proxy-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-stable-with-mirror
+spec:
+  selector:
+    app: api
+    version: stable
+    mirror-proxy: enabled
+  ports:
+  - name: http
+    port: 80
+    targetPort: http
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -242,13 +266,15 @@ data:
 Mirror only a percentage of traffic to reduce load on shadow version:
 
 ```yaml
-apiVersion: networking.istio.io/v1beta1
+apiVersion: networking.istio.io/v1
 kind: VirtualService
 metadata:
   name: api-mirror
 spec:
   hosts:
   - api.example.com
+  gateways:
+  - api-gateway
   http:
   - match:
     - uri:
@@ -282,7 +308,9 @@ const app = express();
 
 app.use((req, res, next) => {
   // Check if this is a mirrored request
-  const isMirrored = req.headers['x-mirrored-request'] === 'true';
+  const isMirrored =
+    process.env.SHADOW_MODE === 'true' ||
+    req.headers['x-mirrored-request'] === 'true';
 
   if (isMirrored) {
     // Capture response for logging
@@ -319,8 +347,8 @@ Collect and compare logs from stable and shadow versions:
 
 ```bash
 # Extract responses from both versions for the same request
-stable_response=$(kubectl logs -l version=stable | grep "GET /users/123" | jq .response)
-shadow_response=$(kubectl logs -l version=shadow | grep "GET /users/123" | jq .response)
+stable_response=$(kubectl logs -l version=stable --tail=-1 | grep "GET /users/123" | jq -r .response)
+shadow_response=$(kubectl logs -l version=shadow --tail=-1 | grep "GET /users/123" | jq -r .response)
 
 # Compare
 diff <(echo "$stable_response") <(echo "$shadow_response")
@@ -372,12 +400,11 @@ async function compareResponses() {
   // Query logs from the last minute
   const results = await client.search({
     index: 'application-logs-*',
-    body: {
-      query: {
-        range: {
-          timestamp: {
-            gte: 'now-1m'
-          }
+    size: 1000,
+    query: {
+      range: {
+        timestamp: {
+          gte: 'now-1m'
         }
       }
     }
@@ -385,7 +412,7 @@ async function compareResponses() {
 
   // Group by request ID
   const requests = {};
-  results.body.hits.hits.forEach(hit => {
+  results.hits.hits.forEach(hit => {
     const log = hit._source;
     const requestId = log.requestId;
 
@@ -510,7 +537,8 @@ spec:
       app: api
       version: shadow
   endpoints:
-  - port: metrics
+  - port: http
+    path: /metrics
     interval: 30s
 ```
 
@@ -522,9 +550,9 @@ groups:
   rules:
   - alert: ShadowVersionErrorRate
     expr: |
-      rate(http_requests_total{version="shadow",status=~"5.."}[5m])
+      sum(rate(http_requests_total{version="shadow",status=~"5.."}[5m]))
         /
-      rate(http_requests_total{version="shadow"}[5m])
+      sum(rate(http_requests_total{version="shadow"}[5m]))
       > 0.01
     for: 5m
     labels:
@@ -535,7 +563,9 @@ groups:
   - alert: ShadowVersionLatency
     expr: |
       histogram_quantile(0.99,
-        rate(http_request_duration_seconds_bucket{version="shadow"}[5m])
+        sum by (le) (
+          rate(http_request_duration_seconds_bucket{version="shadow"}[5m])
+        )
       ) > 1.0
     for: 5m
     labels:
