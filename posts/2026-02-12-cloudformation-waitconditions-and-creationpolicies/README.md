@@ -47,6 +47,7 @@ Resources:
 
           # Do your setup work
           yum update -y
+          yum install -y aws-cfn-bootstrap
           yum install -y httpd
           systemctl start httpd
           systemctl enable httpd
@@ -99,10 +100,11 @@ Resources:
             #!/bin/bash -xe
 
             # Install and configure your application
-            /opt/aws/bin/cfn-init -v \
-              --stack ${AWS::StackName} \
-              --resource MyLaunchTemplate \
-              --region ${AWS::Region}
+            yum update -y
+            yum install -y aws-cfn-bootstrap
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
 
             # Each instance sends its own signal
             /opt/aws/bin/cfn-signal -e $? \
@@ -148,14 +150,12 @@ Resources:
 
           # Do your setup work
           yum update -y
+          yum install -y aws-cfn-bootstrap
           yum install -y httpd
           systemctl start httpd
 
           # Signal using the WaitConditionHandle URL
-          /opt/aws/bin/cfn-signal -e $? \
-            --stack ${AWS::StackName} \
-            --resource WaitCondition \
-            --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? "${WaitHandle}"
 
   # This resource waits for the WaitCondition before creating
   DependentResource:
@@ -223,7 +223,7 @@ Outputs:
     Value: !GetAtt WaitCondition.Data
 ```
 
-If a signal was sent with `"UniqueId": "server1"` and `"Data": "10.0.1.50"`, you could extract it with `Fn::Select` and `Fn::GetAtt`.
+If a signal was sent with `"UniqueId": "server1"` and `"Data": "10.0.1.50"`, `!GetAtt WaitCondition.Data` returns a JSON object like `{"server1":"10.0.1.50"}`.
 
 ## When to Use Which
 
