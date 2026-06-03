@@ -48,9 +48,13 @@ kubernetes-tests/
 │   └── integration_test.go
 └── fixtures/
     ├── manifests/
-    │   └── deployment.yaml
+    │   ├── deployment.yaml
+    │   └── service.yaml
     └── helm/
-        └── values.yaml
+        └── mychart/
+            ├── Chart.yaml
+            ├── values.yaml
+            └── templates/
 ```
 
 ## Writing Basic Kubernetes Resource Tests
@@ -62,6 +66,7 @@ Create a test for a Kubernetes deployment:
 package test
 
 import (
+    "context"
     "fmt"
     "path/filepath"
     "strings"
@@ -78,9 +83,10 @@ import (
 
 func TestKubernetesDeployment(t *testing.T) {
     t.Parallel()
+    ctx := context.Background()
 
     // Generate unique namespace for test isolation
-    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueId()))
+    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueID()))
 
     // Path to Kubernetes manifest
     manifestPath := filepath.Join("..", "fixtures", "manifests", "deployment.yaml")
@@ -89,26 +95,26 @@ func TestKubernetesDeployment(t *testing.T) {
     options := k8s.NewKubectlOptions("", "", namespaceName)
 
     // Create namespace
-    k8s.CreateNamespace(t, options, namespaceName)
+    k8s.CreateNamespaceContext(t, ctx, options, namespaceName)
 
     // Ensure cleanup runs even if test fails
-    defer k8s.DeleteNamespace(t, options, namespaceName)
+    defer k8s.DeleteNamespaceContext(t, ctx, options, namespaceName)
 
     // Apply the manifest
-    k8s.KubectlApply(t, options, manifestPath)
+    k8s.KubectlApplyContext(t, ctx, options, manifestPath)
 
     // Wait for deployment to be ready
-    k8s.WaitUntilDeploymentAvailable(t, options, "test-app", 60, 2*time.Second)
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, options, "test-app", 60, 2*time.Second)
 
     // Get deployment
-    deployment := k8s.GetDeployment(t, options, "test-app")
+    deployment := k8s.GetDeploymentContext(t, ctx, options, "test-app")
 
     // Validate deployment configuration
     assert.Equal(t, int32(3), *deployment.Spec.Replicas, "Expected 3 replicas")
     assert.Equal(t, "test-app", deployment.Name)
 
     // Get pods for the deployment
-    pods := k8s.ListPods(t, options, metav1.ListOptions{
+    pods := k8s.ListPodsContext(t, ctx, options, metav1.ListOptions{
         LabelSelector: "app=test-app",
     })
 
@@ -130,22 +136,23 @@ func TestKubernetesDeployment(t *testing.T) {
 
 func TestKubernetesService(t *testing.T) {
     t.Parallel()
+    ctx := context.Background()
 
-    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueId()))
+    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueID()))
     manifestPath := filepath.Join("..", "fixtures", "manifests")
 
     options := k8s.NewKubectlOptions("", "", namespaceName)
-    k8s.CreateNamespace(t, options, namespaceName)
-    defer k8s.DeleteNamespace(t, options, namespaceName)
+    k8s.CreateNamespaceContext(t, ctx, options, namespaceName)
+    defer k8s.DeleteNamespaceContext(t, ctx, options, namespaceName)
 
     // Apply all manifests in directory
-    k8s.KubectlApply(t, options, manifestPath)
+    k8s.KubectlApplyContext(t, ctx, options, manifestPath)
 
     // Wait for service to be available
-    k8s.WaitUntilServiceAvailable(t, options, "test-app-service", 10, 2*time.Second)
+    k8s.WaitUntilServiceAvailableContext(t, ctx, options, "test-app-service", 10, 2*time.Second)
 
     // Get service
-    service := k8s.GetService(t, options, "test-app-service")
+    service := k8s.GetServiceContext(t, ctx, options, "test-app-service")
 
     // Validate service configuration
     assert.Equal(t, "test-app-service", service.Name)
@@ -167,16 +174,16 @@ spec:
     command: ["sleep", "3600"]
 `, testPodName)
 
-    // Write manifest to temp file and apply
-    k8s.KubectlApplyFromString(t, options, podManifest)
-    defer k8s.RunKubectl(t, options, "delete", "pod", testPodName)
+    // Apply the inline manifest
+    k8s.KubectlApplyFromStringContext(t, ctx, options, podManifest)
+    defer k8s.RunKubectlContext(t, ctx, options, "delete", "pod", testPodName)
 
     // Wait for test pod
-    k8s.WaitUntilPodAvailable(t, options, testPodName, 10, 2*time.Second)
+    k8s.WaitUntilPodAvailableContext(t, ctx, options, testPodName, 10, 2*time.Second)
 
     // Test service connectivity
     serviceURL := fmt.Sprintf("http://test-app-service.%s.svc.cluster.local", namespaceName)
-    output, err := k8s.RunKubectlAndGetOutputE(t, options,
+    output, err := k8s.RunKubectlAndGetOutputContextE(t, ctx, options,
         "exec", testPodName, "--", "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", serviceURL)
 
     require.NoError(t, err, "Failed to execute curl in test pod")
@@ -193,6 +200,7 @@ Create tests for Helm chart deployments:
 package test
 
 import (
+    "context"
     "fmt"
     "path/filepath"
     "strings"
@@ -203,20 +211,21 @@ import (
     "github.com/gruntwork-io/terratest/modules/k8s"
     "github.com/gruntwork-io/terratest/modules/random"
     "github.com/stretchr/testify/assert"
-    "github.com/stretchr/testify/require"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func TestHelmChartDeployment(t *testing.T) {
     t.Parallel()
+    ctx := context.Background()
 
-    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueId()))
+    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueID()))
     releaseName := "test-release"
     chartPath := filepath.Join("..", "fixtures", "helm", "mychart")
 
     // Setup kubectl options
     kubectlOptions := k8s.NewKubectlOptions("", "", namespaceName)
-    k8s.CreateNamespace(t, kubectlOptions, namespaceName)
-    defer k8s.DeleteNamespace(t, kubectlOptions, namespaceName)
+    k8s.CreateNamespaceContext(t, ctx, kubectlOptions, namespaceName)
+    defer k8s.DeleteNamespaceContext(t, ctx, kubectlOptions, namespaceName)
 
     // Setup Helm options
     helmOptions := &helm.Options{
@@ -228,15 +237,15 @@ func TestHelmChartDeployment(t *testing.T) {
     }
 
     // Deploy Helm chart
-    helm.Install(t, helmOptions, chartPath, releaseName)
-    defer helm.Delete(t, helmOptions, releaseName, true)
+    helm.InstallContext(t, ctx, helmOptions, chartPath, releaseName)
+    defer helm.DeleteContext(t, ctx, helmOptions, releaseName, true)
 
     // Wait for deployment
     deploymentName := fmt.Sprintf("%s-mychart", releaseName)
-    k8s.WaitUntilDeploymentAvailable(t, kubectlOptions, deploymentName, 60, 2*time.Second)
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, kubectlOptions, deploymentName, 60, 2*time.Second)
 
     // Get deployment and validate
-    deployment := k8s.GetDeployment(t, kubectlOptions, deploymentName)
+    deployment := k8s.GetDeploymentContext(t, ctx, kubectlOptions, deploymentName)
     assert.Equal(t, int32(2), *deployment.Spec.Replicas)
 
     // Validate image tag
@@ -246,14 +255,15 @@ func TestHelmChartDeployment(t *testing.T) {
 
 func TestHelmChartUpgrade(t *testing.T) {
     t.Parallel()
+    ctx := context.Background()
 
-    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueId()))
+    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueID()))
     releaseName := "upgrade-test"
     chartPath := filepath.Join("..", "fixtures", "helm", "mychart")
 
     kubectlOptions := k8s.NewKubectlOptions("", "", namespaceName)
-    k8s.CreateNamespace(t, kubectlOptions, namespaceName)
-    defer k8s.DeleteNamespace(t, kubectlOptions, namespaceName)
+    k8s.CreateNamespaceContext(t, ctx, kubectlOptions, namespaceName)
+    defer k8s.DeleteNamespaceContext(t, ctx, kubectlOptions, namespaceName)
 
     // Initial deployment
     helmOptions := &helm.Options{
@@ -263,14 +273,14 @@ func TestHelmChartUpgrade(t *testing.T) {
         },
     }
 
-    helm.Install(t, helmOptions, chartPath, releaseName)
-    defer helm.Delete(t, helmOptions, releaseName, true)
+    helm.InstallContext(t, ctx, helmOptions, chartPath, releaseName)
+    defer helm.DeleteContext(t, ctx, helmOptions, releaseName, true)
 
     deploymentName := fmt.Sprintf("%s-mychart", releaseName)
-    k8s.WaitUntilDeploymentAvailable(t, kubectlOptions, deploymentName, 60, 2*time.Second)
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, kubectlOptions, deploymentName, 60, 2*time.Second)
 
     // Verify initial state
-    deployment := k8s.GetDeployment(t, kubectlOptions, deploymentName)
+    deployment := k8s.GetDeploymentContext(t, ctx, kubectlOptions, deploymentName)
     assert.Equal(t, int32(2), *deployment.Spec.Replicas)
 
     // Upgrade with new replica count
@@ -281,17 +291,17 @@ func TestHelmChartUpgrade(t *testing.T) {
         },
     }
 
-    helm.Upgrade(t, upgradeOptions, chartPath, releaseName)
+    helm.UpgradeContext(t, ctx, upgradeOptions, chartPath, releaseName)
 
     // Wait for upgrade to complete
-    k8s.WaitUntilDeploymentAvailable(t, kubectlOptions, deploymentName, 60, 2*time.Second)
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, kubectlOptions, deploymentName, 60, 2*time.Second)
 
     // Verify upgraded state
-    upgradedDeployment := k8s.GetDeployment(t, kubectlOptions, deploymentName)
+    upgradedDeployment := k8s.GetDeploymentContext(t, ctx, kubectlOptions, deploymentName)
     assert.Equal(t, int32(4), *upgradedDeployment.Spec.Replicas)
 
     // Verify all pods are running
-    pods := k8s.ListPods(t, kubectlOptions, metav1.ListOptions{
+    pods := k8s.ListPodsContext(t, ctx, kubectlOptions, metav1.ListOptions{
         LabelSelector: fmt.Sprintf("app.kubernetes.io/instance=%s", releaseName),
     })
     assert.Equal(t, 4, len(pods), "Expected 4 pods after upgrade")
@@ -307,6 +317,7 @@ Create comprehensive integration tests that validate multiple components:
 package test
 
 import (
+    "context"
     "fmt"
     "path/filepath"
     "strings"
@@ -322,12 +333,13 @@ import (
 
 func TestFullApplicationStack(t *testing.T) {
     t.Parallel()
+    ctx := context.Background()
 
-    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueId()))
+    namespaceName := fmt.Sprintf("test-%s", strings.ToLower(random.UniqueID()))
     kubectlOptions := k8s.NewKubectlOptions("", "", namespaceName)
 
-    k8s.CreateNamespace(t, kubectlOptions, namespaceName)
-    defer k8s.DeleteNamespace(t, kubectlOptions, namespaceName)
+    k8s.CreateNamespaceContext(t, ctx, kubectlOptions, namespaceName)
+    defer k8s.DeleteNamespaceContext(t, ctx, kubectlOptions, namespaceName)
 
     // Deploy database
     dbChartPath := filepath.Join("..", "fixtures", "helm", "database")
@@ -340,11 +352,11 @@ func TestFullApplicationStack(t *testing.T) {
         },
     }
 
-    helm.Install(t, dbHelmOptions, dbChartPath, dbRelease)
-    defer helm.Delete(t, dbHelmOptions, dbRelease, true)
+    helm.InstallContext(t, ctx, dbHelmOptions, dbChartPath, dbRelease)
+    defer helm.DeleteContext(t, ctx, dbHelmOptions, dbRelease, true)
 
     // Wait for database to be ready
-    k8s.WaitUntilServiceAvailable(t, kubectlOptions, fmt.Sprintf("%s-database", dbRelease),
+    k8s.WaitUntilServiceAvailableContext(t, ctx, kubectlOptions, fmt.Sprintf("%s-database", dbRelease),
         60, 2*time.Second)
 
     // Deploy application
@@ -358,24 +370,24 @@ func TestFullApplicationStack(t *testing.T) {
         },
     }
 
-    helm.Install(t, appHelmOptions, appChartPath, appRelease)
-    defer helm.Delete(t, appHelmOptions, appRelease, true)
+    helm.InstallContext(t, ctx, appHelmOptions, appChartPath, appRelease)
+    defer helm.DeleteContext(t, ctx, appHelmOptions, appRelease, true)
 
     // Wait for application
     appDeployment := fmt.Sprintf("%s-application", appRelease)
-    k8s.WaitUntilDeploymentAvailable(t, kubectlOptions, appDeployment, 120, 2*time.Second)
+    k8s.WaitUntilDeploymentAvailableContext(t, ctx, kubectlOptions, appDeployment, 120, 2*time.Second)
 
     // Test application connectivity
-    testConnectivity(t, kubectlOptions, appRelease, namespaceName)
+    testConnectivity(t, ctx, kubectlOptions, appRelease, namespaceName)
 
     // Test database connection
-    testDatabaseConnection(t, kubectlOptions, appRelease, dbRelease)
+    testDatabaseConnection(t, ctx, kubectlOptions, appRelease)
 
     // Test application functionality
-    testApplicationEndpoints(t, kubectlOptions, appRelease, namespaceName)
+    testApplicationEndpoints(t, ctx, kubectlOptions, appRelease, namespaceName)
 }
 
-func testConnectivity(t *testing.T, options *k8s.KubectlOptions, appRelease, namespace string) {
+func testConnectivity(t *testing.T, ctx context.Context, options *k8s.KubectlOptions, appRelease, namespace string) {
     // Create test pod
     testPod := "connectivity-test"
     podManifest := fmt.Sprintf(`
@@ -390,23 +402,23 @@ spec:
     command: ["sleep", "3600"]
 `, testPod)
 
-    k8s.KubectlApplyFromString(t, options, podManifest)
-    defer k8s.RunKubectl(t, options, "delete", "pod", testPod)
+    k8s.KubectlApplyFromStringContext(t, ctx, options, podManifest)
+    defer k8s.RunKubectlContext(t, ctx, options, "delete", "pod", testPod)
 
-    k8s.WaitUntilPodAvailable(t, options, testPod, 30, 2*time.Second)
+    k8s.WaitUntilPodAvailableContext(t, ctx, options, testPod, 30, 2*time.Second)
 
     // Test HTTP connectivity
     serviceURL := fmt.Sprintf("http://%s-application.%s.svc.cluster.local", appRelease, namespace)
-    output, err := k8s.RunKubectlAndGetOutputE(t, options,
+    output, err := k8s.RunKubectlAndGetOutputContextE(t, ctx, options,
         "exec", testPod, "--", "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", serviceURL)
 
     require.NoError(t, err)
     require.Equal(t, "200", strings.TrimSpace(output))
 }
 
-func testDatabaseConnection(t *testing.T, options *k8s.KubectlOptions, appRelease, dbRelease string) {
+func testDatabaseConnection(t *testing.T, ctx context.Context, options *k8s.KubectlOptions, appRelease string) {
     // Get application pods
-    pods := k8s.ListPods(t, options, metav1.ListOptions{
+    pods := k8s.ListPodsContext(t, ctx, options, metav1.ListOptions{
         LabelSelector: fmt.Sprintf("app.kubernetes.io/instance=%s", appRelease),
     })
 
@@ -414,13 +426,13 @@ func testDatabaseConnection(t *testing.T, options *k8s.KubectlOptions, appReleas
 
     // Check logs for database connection
     for _, pod := range pods {
-        logs := k8s.GetPodLogs(t, options, &pod, "")
+        logs := k8s.GetPodLogsContext(t, ctx, options, &pod, "")
         require.Contains(t, logs, "Database connected successfully",
             "Application should connect to database")
     }
 }
 
-func testApplicationEndpoints(t *testing.T, options *k8s.KubectlOptions, appRelease, namespace string) {
+func testApplicationEndpoints(t *testing.T, ctx context.Context, options *k8s.KubectlOptions, appRelease, namespace string) {
     testPod := "endpoint-test"
     podManifest := fmt.Sprintf(`
 apiVersion: v1
@@ -434,9 +446,9 @@ spec:
     command: ["sleep", "3600"]
 `, testPod)
 
-    k8s.KubectlApplyFromString(t, options, podManifest)
-    defer k8s.RunKubectl(t, options, "delete", "pod", testPod)
-    k8s.WaitUntilPodAvailable(t, options, testPod, 30, 2*time.Second)
+    k8s.KubectlApplyFromStringContext(t, ctx, options, podManifest)
+    defer k8s.RunKubectlContext(t, ctx, options, "delete", "pod", testPod)
+    k8s.WaitUntilPodAvailableContext(t, ctx, options, testPod, 30, 2*time.Second)
 
     baseURL := fmt.Sprintf("http://%s-application.%s.svc.cluster.local", appRelease, namespace)
 
@@ -448,7 +460,7 @@ spec:
 
     for _, endpoint := range endpoints {
         url := baseURL + endpoint
-        output, err := k8s.RunKubectlAndGetOutputE(t, options,
+        output, err := k8s.RunKubectlAndGetOutputContextE(t, ctx, options,
             "exec", testPod, "--", "curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", url)
 
         require.NoError(t, err, fmt.Sprintf("Failed to test endpoint %s", endpoint))
@@ -480,37 +492,35 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Set up Go
-        uses: actions/setup-go@v4
+        uses: actions/setup-go@v6
         with:
-          go-version: '1.21'
+          go-version: '1.25'
 
       - name: Create Kind cluster
-        uses: helm/kind-action@v1.5.0
+        uses: helm/kind-action@v1
         with:
           cluster_name: terratest
 
       - name: Install Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4.3.0
 
       - name: Download dependencies
-        run: |
-          cd test
-          go mod download
+        run: go mod download
 
       - name: Run tests
         run: |
-          cd test
-          go test -v -timeout 30m -parallel 4 ./...
+          set -o pipefail
+          go test -v -timeout 30m -parallel 4 ./test 2>&1 | tee test-results.txt
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-results
-          path: test/*.xml
+          path: test-results.txt
 ```
 
 ## Creating Helper Functions
@@ -522,6 +532,7 @@ Build reusable helper functions for common test patterns:
 package test
 
 import (
+    "context"
     "fmt"
     "testing"
     "time"
@@ -529,14 +540,17 @@ import (
     "github.com/gruntwork-io/terratest/modules/k8s"
     "github.com/gruntwork-io/terratest/modules/retry"
     "github.com/stretchr/testify/require"
+    corev1 "k8s.io/api/core/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // WaitForPodsReady waits for all pods matching selector to be ready
 func WaitForPodsReady(t *testing.T, options *k8s.KubectlOptions, selector string, timeout time.Duration) {
+    ctx := context.Background()
     message := fmt.Sprintf("Waiting for pods with selector %s to be ready", selector)
 
     retry.DoWithRetry(t, message, int(timeout.Seconds()/2), 2*time.Second, func() (string, error) {
-        pods := k8s.ListPods(t, options, metav1.ListOptions{
+        pods := k8s.ListPodsContext(t, ctx, options, metav1.ListOptions{
             LabelSelector: selector,
         })
 
@@ -562,13 +576,14 @@ func WaitForPodsReady(t *testing.T, options *k8s.KubectlOptions, selector string
 
 // GetPodLogs retrieves logs from all pods matching selector
 func GetPodLogs(t *testing.T, options *k8s.KubectlOptions, selector string) []string {
-    pods := k8s.ListPods(t, options, metav1.ListOptions{
+    ctx := context.Background()
+    pods := k8s.ListPodsContext(t, ctx, options, metav1.ListOptions{
         LabelSelector: selector,
     })
 
     var allLogs []string
     for _, pod := range pods {
-        logs := k8s.GetPodLogs(t, options, &pod, "")
+        logs := k8s.GetPodLogsContext(t, ctx, options, &pod, "")
         allLogs = append(allLogs, logs)
     }
 
@@ -577,8 +592,9 @@ func GetPodLogs(t *testing.T, options *k8s.KubectlOptions, selector string) []st
 
 // ExecuteInPod runs a command in a pod and returns output
 func ExecuteInPod(t *testing.T, options *k8s.KubectlOptions, podName string, command []string) string {
+    ctx := context.Background()
     args := append([]string{"exec", podName, "--"}, command...)
-    output, err := k8s.RunKubectlAndGetOutputE(t, options, args...)
+    output, err := k8s.RunKubectlAndGetOutputContextE(t, ctx, options, args...)
     require.NoError(t, err)
     return output
 }
