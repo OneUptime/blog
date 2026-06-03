@@ -61,13 +61,12 @@ data:
         add:
           headers:
           - "X-Gateway:Kong-Sidecar"
-          - "X-Request-ID:$(uuid)"
 
     - name: cors
       service: local-app
       config:
         origins:
-        - "*"
+        - "https://app.example.com"
         methods:
         - GET
         - POST
@@ -111,11 +110,16 @@ spec:
           value: "0.0.0.0:8000"
         - name: KONG_ADMIN_LISTEN
           value: "127.0.0.1:8001"
+        - name: KONG_STATUS_LISTEN
+          value: "0.0.0.0:8100"
         - name: KONG_LOG_LEVEL
           value: "info"
         ports:
         - containerPort: 8000
           name: proxy
+          protocol: TCP
+        - containerPort: 8100
+          name: status
           protocol: TCP
         volumeMounts:
         - name: kong-config
@@ -130,7 +134,7 @@ spec:
         livenessProbe:
           httpGet:
             path: /status
-            port: 8000
+            port: 8100
           initialDelaySeconds: 10
           periodSeconds: 10
 
@@ -270,6 +274,11 @@ data:
                     fill_interval: 60s
                   filter_enabled:
                     runtime_key: local_rate_limit_enabled
+                    default_value:
+                      numerator: 100
+                      denominator: HUNDRED
+                  filter_enforced:
+                    runtime_key: local_rate_limit_enforced
                     default_value:
                       numerator: 100
                       denominator: HUNDRED
@@ -697,6 +706,9 @@ spec:
       containers:
       - name: varnish-cache
         image: varnish:7.4-alpine
+        env:
+        - name: VARNISH_HTTP_PORT
+          value: "8000"
         ports:
         - containerPort: 8000
         volumeMounts:
