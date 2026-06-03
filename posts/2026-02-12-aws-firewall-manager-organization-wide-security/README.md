@@ -8,7 +8,7 @@ Description: Learn how to use AWS Firewall Manager to centrally manage firewall 
 
 ---
 
-Managing security across a single AWS account is hard enough. When you've got dozens or hundreds of accounts under an AWS Organization, it turns into a full-time job. That's exactly the problem AWS Firewall Manager solves. It lets you define security policies once and have them automatically applied across every account and resource in your organization.
+Managing security across a single AWS account is hard enough. When you've got dozens or hundreds of accounts under an AWS Organization, it turns into a full-time job. That's exactly the problem AWS Firewall Manager solves. It lets you define security policies once and have them automatically applied across matching accounts and supported resources in your organization.
 
 In this post, we'll walk through setting up Firewall Manager from scratch, creating policies for different use cases, and making sure your organization stays secure without chasing individual accounts.
 
@@ -97,22 +97,20 @@ Deploy this as a StackSet to hit every account and region at once.
 
 The most common Firewall Manager use case is deploying AWS WAF rules across all your web-facing resources. Let's create a policy that blocks common attack patterns.
 
-This policy creates a WAF rule group and applies it to all ALBs across your organization:
+This policy creates a WAF web ACL that uses the AWS managed common rule set and applies it to all ALBs across your organization:
 
 ```json
 {
   "PolicyName": "OrgWideWAFPolicy",
   "RemediationEnabled": true,
   "ResourceType": "AWS::ElasticLoadBalancingV2::LoadBalancer",
-  "ResourceTypeList": [
-    "AWS::ElasticLoadBalancingV2::LoadBalancer"
-  ],
   "SecurityServicePolicyData": {
-    "Type": "WAF",
-    "ManagedServiceData": "{\"type\":\"WAF\",\"ruleGroups\":[{\"id\":\"aws-managed-rules-common-rule-set\",\"overrideAction\":{\"type\":\"COUNT\"}}],\"defaultAction\":{\"type\":\"ALLOW\"}}"
+    "Type": "WAFV2",
+    "ManagedServiceData": "{\"type\":\"WAFV2\",\"preProcessRuleGroups\":[{\"ruleGroupType\":\"ManagedRuleGroup\",\"managedRuleGroupIdentifier\":{\"vendorName\":\"AWS\",\"managedRuleGroupName\":\"AWSManagedRulesCommonRuleSet\"},\"overrideAction\":{\"type\":\"COUNT\"},\"excludeRules\":[],\"sampledRequestsEnabled\":true}],\"postProcessRuleGroups\":[],\"defaultAction\":{\"type\":\"ALLOW\"},\"overrideCustomerWebACLAssociation\":false,\"sampledRequestsEnabledForDefaultActions\":true}"
   },
+  "ExcludeResourceTags": false,
   "IncludeMap": {
-    "ORGUNIT": ["ou-abc1-23456789"]
+    "ORG_UNIT": ["ou-abc1-23456789"]
   }
 }
 ```
@@ -134,7 +132,24 @@ Firewall Manager can also manage security groups. There are three types of secur
 2. **Content audit** - Check that existing security groups meet your rules
 3. **Usage audit** - Find unused or redundant security groups
 
-Here's how to create a content audit policy that flags any security group allowing SSH from 0.0.0.0/0:
+Here's how to create a content audit policy that flags any security group allowing SSH from 0.0.0.0/0. First, create an audit security group in the Firewall Manager administrator account with the SSH sources you allow:
+
+```bash
+AUDIT_SG_ID=$(aws ec2 create-security-group \
+  --group-name fms-ssh-audit \
+  --description "Firewall Manager SSH audit security group" \
+  --vpc-id vpc-0123456789abcdef0 \
+  --query GroupId \
+  --output text)
+
+aws ec2 authorize-security-group-ingress \
+  --group-id "$AUDIT_SG_ID" \
+  --ip-permissions '[
+    {"IpProtocol":"tcp","FromPort":22,"ToPort":22,"IpRanges":[{"CidrIp":"10.0.0.0/8"},{"CidrIp":"172.16.0.0/12"},{"CidrIp":"192.168.0.0/16"}]}
+  ]'
+```
+
+Then reference that audit security group in the Firewall Manager policy:
 
 ```bash
 # Create a security group audit policy
@@ -144,10 +159,11 @@ aws fms put-policy --policy '{
   "ResourceType": "AWS::EC2::SecurityGroup",
   "SecurityServicePolicyData": {
     "Type": "SECURITY_GROUPS_CONTENT_AUDIT",
-    "ManagedServiceData": "{\"type\":\"SECURITY_GROUPS_CONTENT_AUDIT\",\"securityGroupAction\":{\"type\":\"ALLOW\"},\"securityRules\":[{\"ipProtocol\":\"tcp\",\"fromPort\":22,\"toPort\":22,\"prefixListIds\":[],\"ipRanges\":[\"10.0.0.0/8\",\"172.16.0.0/12\",\"192.168.0.0/16\"]}]}"
+    "ManagedServiceData": "{\"type\":\"SECURITY_GROUPS_CONTENT_AUDIT\",\"securityGroups\":[{\"id\":\"sg-0123456789abcdef0\"}],\"securityGroupAction\":{\"type\":\"ALLOW\"}}"
   },
+  "ExcludeResourceTags": false,
   "IncludeMap": {
-    "ORGUNIT": ["ou-abc1-23456789"]
+    "ORG_UNIT": ["ou-abc1-23456789"]
   }
 }'
 ```
@@ -165,6 +181,7 @@ This policy subscribes resources to Shield Advanced across all accounts:
 aws fms put-policy --policy '{
   "PolicyName": "ShieldAdvancedAll",
   "RemediationEnabled": true,
+  "ResourceType": "ResourceTypeList",
   "ResourceTypeList": [
     "AWS::ElasticLoadBalancingV2::LoadBalancer",
     "AWS::EC2::EIP"
@@ -174,7 +191,7 @@ aws fms put-policy --policy '{
   },
   "ExcludeResourceTags": false,
   "IncludeMap": {
-    "ORGUNIT": ["ou-abc1-23456789"]
+    "ORG_UNIT": ["ou-abc1-23456789"]
   }
 }'
 ```
@@ -188,17 +205,17 @@ You can also query compliance programmatically:
 ```bash
 # Check compliance status for a specific policy
 aws fms get-compliance-detail \
-  --policy-id "policy-abc123" \
+  --policy-id "a1b2c3d4-5678-90ab-cdef-EXAMPLE11111" \
   --member-account "987654321098"
 ```
 
-For a broader view, list all non-compliant resources:
+For a broader view, list compliance status across member accounts:
 
 ```bash
-# List all policies and their compliance status
+# List member account compliance status for a policy
 aws fms list-compliance-status \
-  --policy-id "policy-abc123" \
-  --max-results 100
+  --policy-id "a1b2c3d4-5678-90ab-cdef-EXAMPLE11111" \
+  --max-items 100
 ```
 
 ## Scope and Resource Targeting
