@@ -12,7 +12,7 @@ Getting CloudFront's cache configuration right is the difference between a CDN t
 
 ## How Cache Behaviors Work
 
-Every CloudFront distribution has a default cache behavior and can have up to 25 additional behaviors. When a request comes in, CloudFront checks the URL path against each behavior's path pattern in order. The first match wins. If nothing matches, the default behavior handles it.
+Every CloudFront distribution has a default cache behavior and can have up to 75 cache behaviors by default. When a request comes in, CloudFront checks the URL path against each behavior's path pattern in order. The first match wins. If nothing matches, the default behavior handles it.
 
 ```mermaid
 graph TD
@@ -55,8 +55,14 @@ Then edit the `CacheBehaviors` section. Here's a practical example with three be
         "PathPattern": "/api/*",
         "TargetOriginId": "api-origin",
         "ViewerProtocolPolicy": "https-only",
-        "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
-        "CachedMethods": ["GET", "HEAD"],
+        "AllowedMethods": {
+          "Quantity": 7,
+          "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
         "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
         "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3",
         "Compress": true
@@ -65,8 +71,14 @@ Then edit the `CacheBehaviors` section. Here's a practical example with three be
         "PathPattern": "/static/*",
         "TargetOriginId": "s3-origin",
         "ViewerProtocolPolicy": "redirect-to-https",
-        "AllowedMethods": ["GET", "HEAD"],
-        "CachedMethods": ["GET", "HEAD"],
+        "AllowedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
         "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
         "Compress": true
       },
@@ -74,8 +86,14 @@ Then edit the `CacheBehaviors` section. Here's a practical example with three be
         "PathPattern": "/ws/*",
         "TargetOriginId": "api-origin",
         "ViewerProtocolPolicy": "https-only",
-        "AllowedMethods": ["GET", "HEAD"],
-        "CachedMethods": ["GET", "HEAD"],
+        "AllowedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
         "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
       }
     ]
@@ -115,9 +133,9 @@ Key managed policies:
 | CachingOptimizedForUncompressedObjects | b2884449-e4de-46a7-ac36-70bc7f1ddd6d | Already compressed files |
 | Elemental-MediaPackage | 08627262-05a9-4f76-9ded-b50ca2e3a84f | Media streaming |
 
-**CachingOptimized** is the go-to for static content. It includes query strings in the cache key but not headers or cookies, and enables gzip and Brotli compression. TTL defaults to 24 hours.
+**CachingOptimized** is the go-to for static content. It doesn't include query strings or cookies in the cache key, and the only header it includes is the normalized `Accept-Encoding` header for gzip and Brotli variants. TTL defaults to 24 hours.
 
-**CachingDisabled** passes everything through to the origin without caching. Use this for API endpoints and dynamic content.
+**CachingDisabled** sets minimum, default, and maximum TTLs to zero so CloudFront doesn't cache responses. Use this for API endpoints and dynamic content, and attach an origin request policy if the origin needs headers, cookies, or query strings.
 
 ## Creating Custom Cache Policies
 
@@ -156,7 +174,7 @@ aws cloudfront create-cache-policy \
   }'
 ```
 
-This policy caches content separately based on the `Accept-Language` header and the `page` and `sort` query parameters. Everything else is ignored for caching purposes.
+This policy caches content separately based on the `Accept-Language` header and the `page` and `sort` query parameters. Everything else is ignored for caching purposes and isn't forwarded to the origin unless an origin request policy includes it.
 
 Here's another common pattern - caching that respects a session cookie:
 
