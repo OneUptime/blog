@@ -53,9 +53,9 @@ graph TB
     end
 ```
 
-**SQS** is strictly one-to-one. Each message is processed by exactly one consumer. If you need multiple consumers, you need multiple queues.
+**SQS** is point-to-point. Each message is delivered to one consumer at a time, although standard queues use at-least-once delivery, so consumers still need to handle occasional duplicates. If you need multiple independent consumers to process the same message, you need multiple queues.
 
-**SNS** is one-to-many. Every subscriber gets every message (unless you use filtering). It doesn't store messages - if a subscriber is down, the message is lost unless the subscriber is an SQS queue.
+**SNS** is one-to-many. Every subscriber gets every message (unless you use filtering). Standard topics don't store messages for replay - if a subscriber is down after SNS exhausts its retries, the message is lost unless you use a durable subscriber like an SQS queue. FIFO topics can optionally archive messages for replay.
 
 **EventBridge** is also one-to-many, but with content-based routing. You define rules that match specific patterns in the event payload, and only matching targets receive the event.
 
@@ -67,12 +67,12 @@ Here's a detailed breakdown of the features that matter most.
 
 | Feature | SQS | SNS | EventBridge | Amazon MQ |
 |---|---|---|---|---|
-| Max message size | 256 KB | 256 KB | 256 KB | Varies (broker dependent) |
-| Message retention | Up to 14 days | No retention | 24 hours (replay) | Configurable |
+| Max message size | 1 MiB | 256 KB | 1 MB | Varies (broker dependent) |
+| Message retention | Up to 14 days | No retention for standard topics; FIFO archive up to 365 days | Archive retention is configurable | Configurable |
 | Ordering | FIFO queues only | FIFO topics only | No ordering guarantee | Yes |
 | Deduplication | FIFO queues | FIFO topics | No built-in | Yes |
 | Dead letter queue | Yes | Yes (via SQS) | Yes | Yes |
-| Message filtering | No (client-side) | Attribute filtering | Content-based rules | Selectors |
+| Message filtering | No (client-side) | Attribute or message-body filtering | Content-based rules | Selectors |
 | Protocol support | AWS SDK/HTTP | AWS SDK/HTTP | AWS SDK/HTTP | AMQP, STOMP, MQTT, JMS |
 | Max throughput | Nearly unlimited | Varies by region | Varies by region | Instance-dependent |
 | Pricing model | Per request | Per publish + delivery | Per event | Per hour + storage |
@@ -98,7 +98,7 @@ sqs = boto3.client("sqs")
 # Producer sends a message
 
 sqs.send_message(
-    QueueUrl="https://sqs.us-east-1.amazonaws.com/123456789/orders",
+    QueueUrl="https://sqs.us-east-1.amazonaws.com/123456789012/orders",
     MessageBody=json.dumps({
         "order_id": "ORD-123",
         "customer": "jane@example.com",
@@ -136,7 +136,7 @@ sns = boto3.client("sns")
 
 # Publish to a topic - all subscribers get the message
 sns.publish(
-    TopicArn="arn:aws:sns:us-east-1:123456789:order-events",
+    TopicArn="arn:aws:sns:us-east-1:123456789012:order-events",
     Message=json.dumps({
         "order_id": "ORD-123",
         "event": "order_placed",
@@ -206,13 +206,13 @@ For migration guidance, see [migrating from self-managed RabbitMQ to Amazon MQ](
 
 Pricing is often the deciding factor, so let's compare.
 
-**SQS**: $0.40 per million requests (Standard), $0.50 per million (FIFO). First million requests per month are free.
+**SQS**: In many US regions, $0.40 per million requests (Standard), $0.50 per million (FIFO). First million requests per month are free. Larger payloads are billed in 64 KB chunks.
 
-**SNS**: $0.50 per million publishes. Delivery costs vary by protocol - SQS delivery is free, HTTP is $0.60/million, SMS varies by country.
+**SNS**: Standard topic pricing is based on API requests and deliveries. Delivery costs vary by protocol - there is no per-message notification delivery charge for SQS and Lambda subscriptions, although data transfer charges can still apply. SMS varies by country.
 
-**EventBridge**: $1.00 per million events published. No charge for rules evaluation.
+**EventBridge**: $1.00 per million custom, partner, or opt-in data events ingested in many US regions. AWS management events are free to ingest, and delivery to services in the same account is free.
 
-**Amazon MQ**: Hourly broker instance cost ($0.13-$1.04/hour depending on instance) plus storage ($0.10/GB/month). No per-message cost, which makes it cheaper at very high throughput.
+**Amazon MQ**: Hourly broker instance cost plus storage and data transfer. There is no per-message API request charge, which can make it cheaper at very high steady throughput.
 
 For low to moderate throughput, SQS and SNS are cheapest. For very high throughput with a steady baseline, Amazon MQ can actually be more economical since you pay per hour, not per message.
 
