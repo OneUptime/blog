@@ -35,14 +35,14 @@ helm install kubearmor kubearmor/kubearmor \
   --set kubearmorRelay.enabled=true
 ```
 
-The relay component forwards security events to external logging systems. Verify the installation:
+The relay component exposes KubeArmor events for the karmor client and integrations. Verify the installation:
 
 ```bash
 # Check that KubeArmor pods are running
 kubectl get pods -n kubearmor
 
-# View KubeArmor status
-kubectl get kubearmor -n kubearmor
+# View KubeArmor workloads
+kubectl get daemonset,deployment -n kubearmor
 ```
 
 ## Understanding KubeArmor Policies
@@ -52,6 +52,8 @@ KubeArmor uses KubeArmorPolicy custom resources to define security rules. Polici
 - **Audit**: Log violations without blocking (useful for testing)
 - **Block**: Prevent violations and log them
 - **Allow**: Explicitly permit specific actions
+
+KubeArmor defines the action at the policy level. Individual match entries describe the files, processes, protocols, or syscalls the policy matches.
 
 Let's create a basic policy that prevents containers from executing shells, a common attack vector.
 
@@ -78,13 +80,9 @@ spec:
   process:
     matchPaths:
       - path: /bin/bash
-        action: Block
       - path: /bin/sh
-        action: Block
       - path: /usr/bin/bash
-        action: Block
       - path: /usr/bin/sh
-        action: Block
 ```
 
 Apply the policy:
@@ -105,6 +103,11 @@ kubectl exec -it web-server-pod -n production -- /bin/bash
 
 Protect sensitive files and directories from unauthorized access. This policy prevents containers from reading SSL certificates except for authorized processes:
 
+```bash
+# Make unmatched file accesses in the namespace block when using Allow policies
+kubectl annotate ns production kubearmor-file-posture=block --overwrite
+```
+
 ```yaml
 # file-access-policy.yaml
 apiVersion: security.kubearmor.com/v1
@@ -117,7 +120,7 @@ spec:
     matchLabels:
       tier: frontend
 
-  action: Block
+  action: Allow
 
   file:
     matchDirectories:
@@ -127,14 +130,13 @@ spec:
         # Only nginx process can access
         fromSource:
           - path: /usr/sbin/nginx
-            action: Allow
 ```
 
 This creates a whitelist approach where only nginx can read SSL certificates, blocking all other processes.
 
 ## Monitoring Network Connections
 
-Prevent containers from making unexpected outbound connections, which could indicate data exfiltration or command-and-control communication:
+Prevent high-risk tools from opening TCP connections, which could indicate data exfiltration or command-and-control communication:
 
 ```yaml
 # network-policy.yaml
@@ -152,23 +154,16 @@ spec:
 
   network:
     matchProtocols:
-      # Block all outbound connections except DNS and HTTPS
+      # Block TCP sockets created by curl and wget
       - protocol: tcp
         fromSource:
           - path: /usr/bin/curl
-            action: Block
           - path: /usr/bin/wget
-            action: Block
-
-      # Allow DNS
-      - protocol: udp
-        port: 53
-        action: Allow
 ```
 
 ## Restricting System Calls
 
-Advanced policies can restrict dangerous system calls that might be used for privilege escalation:
+Advanced policies can audit dangerous system calls that might be used for privilege escalation. KubeArmor currently supports syscall monitoring in audit mode, even if a different action is specified:
 
 ```yaml
 # syscall-policy.yaml
@@ -182,11 +177,11 @@ spec:
     matchLabels:
       security: high
 
-  action: Block
+  action: Audit
 
   syscalls:
     matchSyscalls:
-      # Block privilege escalation syscalls
+      # Audit privilege escalation syscalls
       - syscall:
           - setuid
           - setgid
@@ -194,23 +189,21 @@ spec:
           - setregid
           - setresuid
           - setresgid
-        action: Block
 
-      # Block kernel module loading
+      # Audit kernel module loading
       - syscall:
           - init_module
           - finit_module
           - delete_module
-        action: Block
 ```
 
 ## Viewing Security Events
 
-KubeArmor generates detailed security events that you can query using kubectl or forward to your SIEM:
+KubeArmor generates detailed security events that you can query using karmor or forward to your SIEM:
 
 ```bash
 # Install karmor CLI tool
-curl -sfL https://raw.githubusercontent.com/kubearmor/kubearmor-client/main/install.sh | sh
+curl -sfL http://get.kubearmor.io/ | sh -s
 
 # View real-time security logs
 karmor logs --namespace production
@@ -219,30 +212,26 @@ karmor logs --namespace production
 karmor logs --namespace production --logFilter=policy
 
 # Export logs in JSON format
-karmor logs --json --logFile=/tmp/security-events.json
+karmor logs --json --logPath=/tmp/security-events.json
 ```
 
 ## Integrating with Observability Tools
 
-Forward KubeArmor events to your existing monitoring stack. Configure the relay to send events to Prometheus:
+Forward KubeArmor events to your existing monitoring stack. Configure the relay to write alerts and logs to stdout so your cluster log collector can scrape them:
 
 ```yaml
-# Install with Prometheus integration
+# Install with relay stdout logging
 helm upgrade kubearmor kubearmor/kubearmor \
   --namespace kubearmor \
   --set kubearmorRelay.enabled=true \
-  --set kubearmorRelay.prometheus.enabled=true \
-  --set kubearmorRelay.prometheus.port=9090
+  --set kubearmorRelay.enableStdoutAlerts=true \
+  --set kubearmorRelay.enableStdoutLogs=true
 ```
 
-Query metrics using PromQL:
+Then collect the relay logs with your existing logging pipeline:
 
-```promql
-# Count of blocked actions by policy
-rate(kubearmor_policy_blocked_total[5m])
-
-# Alert on unusual number of violations
-sum(rate(kubearmor_alerts_total[5m])) > 10
+```bash
+kubectl logs -n kubearmor -l kubearmor-app=kubearmor-relay
 ```
 
 ## Testing Policies Safely
@@ -265,14 +254,13 @@ spec:
   process:
     matchPaths:
       - path: /bin/ls
-        action: Block
 EOF
 
 # Monitor audit logs for a period
 karmor logs --namespace staging --logFilter=policy
 
 # If no legitimate blocks, change to Block mode
-kubectl patch kubearmor test-policy -n staging \
+kubectl patch kubearmorpolicy test-policy -n staging \
   --type=merge -p '{"spec":{"action":"Block"}}'
 ```
 
