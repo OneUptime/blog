@@ -162,7 +162,7 @@ resource "aws_db_instance" "production" {
   maintenance_window        = "Mon:04:00-Mon:05:00"
   copy_tags_to_snapshot     = true
   delete_automated_backups  = false
-  final_snapshot_identifier = "myapp-prod-final-${formatdate("YYYY-MM-DD", timestamp())}"
+  final_snapshot_identifier = "myapp-prod-final-snapshot"
 
   # Monitoring
   monitoring_interval          = 60
@@ -183,7 +183,7 @@ resource "aws_db_instance" "production" {
 }
 ```
 
-The `manage_master_user_password = true` option is relatively new and fantastic - it tells RDS to manage the master password in Secrets Manager automatically. No more worrying about password rotation.
+The `manage_master_user_password = true` option is relatively new and fantastic - it tells RDS to manage the master password in Secrets Manager automatically. No more putting the master password in Terraform state, and rotation can be handled through RDS and Secrets Manager instead.
 
 ## Parameter Groups
 
@@ -205,14 +205,16 @@ resource "aws_db_parameter_group" "postgres16" {
 
   # Connection limits
   parameter {
-    name  = "max_connections"
-    value = "200"
+    name         = "max_connections"
+    value        = "200"
+    apply_method = "pending-reboot"
   }
 
   # Enable query statistics
   parameter {
-    name  = "shared_preload_libraries"
-    value = "pg_stat_statements"
+    name         = "shared_preload_libraries"
+    value        = "pg_stat_statements"
+    apply_method = "pending-reboot"
   }
 
   # Logging configuration
