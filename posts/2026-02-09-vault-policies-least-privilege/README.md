@@ -34,7 +34,12 @@ EOF
 vault policy write service-admin - <<EOF
 # Full access to service secrets
 path "secret/data/myservice/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
+}
+
+# List KV v2 secret names under the service path
+path "secret/metadata/myservice/*" {
+  capabilities = ["list"]
 }
 
 # Cannot access other services
@@ -64,10 +69,15 @@ path "secret/data/app/prod/api-key" {
 
 # Wildcard match - all secrets under this path
 path "secret/data/app/prod/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
 }
 
-# Recursive wildcard - deep path matching
+# KV v2 list access uses the metadata path
+path "secret/metadata/app/prod/*" {
+  capabilities = ["list"]
+}
+
+# Single-segment wildcard
 path "secret/data/team-a/+/config" {
   capabilities = ["read"]
 }
@@ -75,8 +85,8 @@ path "secret/data/team-a/+/config" {
 #          secret/data/team-a/dev/config
 #          secret/data/team-a/staging/config
 
-# Glob pattern matching
-path "secret/data/app-*/database" {
+# Prefix glob matching
+path "secret/data/app-*" {
   capabilities = ["read"]
 }
 # Matches: secret/data/app-1/database
@@ -92,12 +102,20 @@ Create dynamic policies based on identity:
 vault policy write user-specific - <<EOF
 # Each user can only access their own secrets
 path "secret/data/users/{{identity.entity.name}}/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
+}
+
+path "secret/metadata/users/{{identity.entity.name}}/*" {
+  capabilities = ["list"]
 }
 
 # Service accounts can access team secrets
 path "secret/data/{{identity.entity.metadata.team}}/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+path "secret/metadata/{{identity.entity.metadata.team}}/*" {
+  capabilities = ["list"]
 }
 EOF
 ```
@@ -185,7 +203,11 @@ EOF
 vault policy write dev-access - <<EOF
 # Dev secrets with write access
 path "secret/data/dev/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
+}
+
+path "secret/metadata/dev/*" {
+  capabilities = ["list"]
 }
 
 # Read-only staging for testing
@@ -212,30 +234,24 @@ path "transit/encrypt/sensitive-data" {
   required_parameters = ["context"]
 }
 
-# Must provide TTL for dynamic secrets
-path "database/creds/limited" {
-  capabilities = ["read"]
-  required_parameters = ["ttl"]
+# Must provide default_ttl when creating database roles
+path "database/roles/limited" {
+  capabilities = ["create", "update"]
+  required_parameters = ["default_ttl"]
 }
 EOF
 ```
 
 ## Implementing Time-Based Access
 
-Restrict access by time:
+Restrict access by time with Sentinel:
 
 ```bash
-vault policy write business-hours - <<EOF
-# Only accessible during business hours
+# ACL policies cannot express business-hour conditions directly.
+# Use Sentinel (Vault Enterprise) for time-based rules, and keep the ACL narrow:
+vault policy write business-hours-base - <<EOF
 path "secret/data/business/*" {
   capabilities = ["read"]
-
-  # Access only 9 AM to 5 PM UTC
-  allowed_parameters = {
-    "*" = []
-  }
-
-  # Note: Time-based access control requires Sentinel (Enterprise)
 }
 EOF
 ```
@@ -247,19 +263,34 @@ Define administrative access levels:
 ```bash
 # Vault administrator
 vault policy write vault-admin - <<EOF
-# Manage auth methods
+# Enable, disable, and tune auth methods
+path "sys/auth/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+# List auth methods
+path "sys/auth" {
+  capabilities = ["read"]
+}
+
+# Manage auth method configuration
 path "auth/*" {
   capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
 
-# Manage policies
-path "sys/policies/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+# List policies
+path "sys/policies/acl" {
+  capabilities = ["list"]
 }
 
-# View audit logs
+# Manage policies
+path "sys/policies/acl/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+# List enabled audit devices
 path "sys/audit" {
-  capabilities = ["read", "list"]
+  capabilities = ["read", "sudo"]
 }
 
 # Cannot access secret data
@@ -277,7 +308,12 @@ path "secret/*" {
 
 # Manage secret engines
 path "sys/mounts/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+# List secret engines
+path "sys/mounts" {
+  capabilities = ["read"]
 }
 
 # Cannot change auth or policies
@@ -285,7 +321,11 @@ path "auth/*" {
   capabilities = ["deny"]
 }
 
-path "sys/policies/*" {
+path "sys/policies/acl" {
+  capabilities = ["deny"]
+}
+
+path "sys/policies/acl/*" {
   capabilities = ["deny"]
 }
 EOF
@@ -306,10 +346,6 @@ vault token capabilities secret/data/myapp/config
 
 # Test with specific token
 vault token capabilities <token> secret/data/myapp/config
-
-# Simulate policy evaluation
-vault policy test app-read-only \
-  "path=secret/data/myapp/config capability=read"
 ```
 
 ## Attaching Policies to Auth Methods
@@ -378,7 +414,10 @@ EOF
 # Pattern 2: Role-based access
 vault policy write role-developer - <<EOF
 path "secret/data/dev/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
+}
+path "secret/metadata/dev/*" {
+  capabilities = ["list"]
 }
 path "secret/data/staging/*" {
   capabilities = ["read"]
