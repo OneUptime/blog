@@ -8,7 +8,7 @@ Description: Learn how to build a fully serverless GraphQL API using AWS AppSync
 
 ---
 
-REST APIs have served us well, but GraphQL offers something genuinely better for many use cases: clients get exactly the data they ask for, nothing more and nothing less. AWS AppSync is a managed GraphQL service that connects directly to DynamoDB, Lambda, and other data sources. You can build a complete API without writing server code, and it comes with built-in real-time subscriptions and offline support.
+REST APIs have served us well, but GraphQL offers something genuinely better for many use cases: clients get exactly the data they ask for, nothing more and nothing less. AWS AppSync is a managed GraphQL service that connects directly to DynamoDB, Lambda, and other data sources. You can build a complete API without writing server code, and it comes with built-in real-time subscriptions and offline support when paired with clients such as Amplify DataStore.
 
 This guide covers building a production-grade GraphQL API with AppSync and DynamoDB.
 
@@ -164,6 +164,8 @@ Here is a JavaScript resolver for the `getTask` query:
 
 ```javascript
 // Request mapping for getTask query
+import { util } from '@aws-appsync/utils';
+
 export function request(ctx) {
   return {
     operation: 'GetItem',
@@ -187,6 +189,8 @@ The `createTask` mutation resolver:
 
 ```javascript
 // Request mapping for createTask mutation
+import { util } from '@aws-appsync/utils';
+
 export function request(ctx) {
   const id = util.autoId();
   const now = util.time.nowISO8601();
@@ -225,6 +229,8 @@ For listing tasks with filtering and pagination:
 
 ```javascript
 // Request mapping for listTasks query with filtering
+import { util } from '@aws-appsync/utils';
+
 export function request(ctx) {
   const args = ctx.args;
 
@@ -273,6 +279,8 @@ When a client queries a task and its comments, AppSync resolves the nested `comm
 
 ```javascript
 // Resolver for Task.comments field
+import { util } from '@aws-appsync/utils';
+
 export function request(ctx) {
   return {
     operation: 'Query',
@@ -296,16 +304,19 @@ This is one of the big wins of GraphQL: the client decides whether to fetch comm
 
 ## Authorization
 
-AppSync supports multiple authorization modes. You can use Cognito User Pools, API Keys, IAM, or OIDC. For fine-grained access control, use the `@auth` directive in your schema or implement authorization logic in resolvers.
+AppSync supports multiple authorization modes. You can use Cognito User Pools, API Keys, IAM, OIDC, or Lambda authorization. For fine-grained access control, use AppSync authorization directives such as `@aws_cognito_user_pools` or Amplify GraphQL Transformer directives such as `@auth`, or implement authorization logic in resolvers.
 
 ```javascript
-// Authorization check in resolver
+// Authorization check in a pipeline function after a GetItem function
+import { util } from '@aws-appsync/utils';
+
 export function request(ctx) {
   const callerUserId = ctx.identity.sub;
+  const groups = ctx.identity.claims['cognito:groups'] || [];
 
   // Only allow task assignee or admin to update
   if (ctx.prev.result.assigneeId !== callerUserId &&
-      !ctx.identity.groups.includes('admin')) {
+      !groups.includes('admin')) {
     util.unauthorized();
   }
 
@@ -332,11 +343,13 @@ export function request(ctx) {
 
 AppSync subscriptions use WebSockets. When a client subscribes, they receive real-time updates whenever the subscribed mutation fires. No additional infrastructure needed.
 
-On the client side with the Amplify library:
+On the client side with the Amplify JavaScript library:
 
 ```javascript
 // Subscribe to real-time task updates
-import { API, graphqlOperation } from 'aws-amplify';
+import { generateClient } from 'aws-amplify/api';
+
+const client = generateClient();
 
 const onUpdateTaskSubscription = `
   subscription OnUpdateTask($id: ID) {
@@ -350,11 +363,12 @@ const onUpdateTaskSubscription = `
 `;
 
 // Subscribe to changes for a specific task
-const subscription = API.graphql(
-  graphqlOperation(onUpdateTaskSubscription, { id: 'task-123' })
-).subscribe({
+const subscription = client.graphql({
+  query: onUpdateTaskSubscription,
+  variables: { id: 'task-123' }
+}).subscribe({
   next: (data) => {
-    console.log('Task updated:', data.value.data.onUpdateTask);
+    console.log('Task updated:', data.data.onUpdateTask);
     // Update UI
   },
   error: (error) => {
@@ -419,4 +433,4 @@ AppSync integrates with CloudWatch for logging and X-Ray for tracing. Enable bot
 
 ## Wrapping Up
 
-AppSync with DynamoDB gives you a powerful combination for building GraphQL APIs. You get the flexibility of GraphQL queries, the performance of DynamoDB, real-time subscriptions over WebSockets, and fine-grained authorization, all without managing servers. The JavaScript resolver pipeline makes it straightforward to implement complex data fetching patterns, and Lambda resolvers handle the cases where you need custom business logic. Start with the schema, design your DynamoDB access patterns to match, and build resolvers that connect the two.
+AppSync with DynamoDB gives you a powerful combination for building GraphQL APIs. You get the flexibility of GraphQL queries, the performance of DynamoDB, real-time subscriptions over WebSockets, and fine-grained authorization, all without managing servers. The JavaScript resolver runtime makes it straightforward to implement complex data fetching patterns, and Lambda resolvers handle the cases where you need custom business logic. Start with the schema, design your DynamoDB access patterns to match, and build resolvers that connect the two.
