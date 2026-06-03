@@ -8,13 +8,13 @@ Description: Discover how to configure subdomain and hostname fields in Kubernet
 
 ---
 
-In Kubernetes, every pod gets a default DNS name based on its IP address, but this isn't always practical for applications that need stable, human-readable identities. The `hostname` and `subdomain` fields in the pod specification allow you to create custom DNS names that remain consistent across pod restarts and make service discovery more intuitive.
+In Kubernetes, pods can get DNS names based on their IP address, but this isn't always practical for applications that need stable, human-readable identities. The `hostname` and `subdomain` fields in the pod specification allow you to create custom DNS names that remain consistent when pods are recreated with the same identity and make service discovery more intuitive.
 
 These fields are particularly useful for StatefulSets, clustered applications, and any workload that requires pods to discover each other by name rather than through service load balancing.
 
 ## Understanding Pod DNS Naming
 
-By default, Kubernetes assigns DNS names to pods in the format `pod-ip-address.namespace.pod.cluster.local`. For example, a pod with IP 10.244.1.5 in the default namespace gets:
+Some Kubernetes DNS implementations provide IP-based DNS names for pods in the format `pod-ip-address.namespace.pod.cluster.local`. For example, a pod with IP 10.244.1.5 in the default namespace might get:
 
 ```text
 10-244-1-5.default.pod.cluster.local
@@ -45,7 +45,7 @@ Inside this pod, running `hostname` will return `webapp-01`. However, for this h
 
 ## Using subdomain for DNS Resolution
 
-The `subdomain` field must match the name of a headless service (a service with `clusterIP: None`). This creates a fully qualified domain name (FQDN) for the pod:
+The `subdomain` field must match the name of a headless service (a service with `clusterIP: None`) in the same namespace. This creates a fully qualified domain name (FQDN) for the pod:
 
 ```yaml
 # Headless service for DNS
@@ -86,6 +86,8 @@ With this configuration, the pod is accessible at:
 ```text
 webapp-01.webapp-cluster.production.svc.cluster.local
 ```
+
+The pod must be Ready for this DNS record to be published, unless the headless service sets `publishNotReadyAddresses: true`.
 
 Other pods can resolve this name:
 
@@ -184,7 +186,7 @@ spec:
       claimName: postgres-replica-01-pvc
 ```
 
-The replica can now connect to the primary using a stable DNS name that doesn't change even if the primary pod is rescheduled to a different node.
+The replica can now connect to the primary using a stable DNS name that doesn't change if the primary pod is recreated with the same hostname and subdomain.
 
 ## Integration with StatefulSets
 
@@ -270,7 +272,6 @@ import (
     "fmt"
     "net"
     "os"
-    "strings"
 )
 
 func discoverPeers() ([]string, error) {
@@ -280,12 +281,14 @@ func discoverPeers() ([]string, error) {
         return nil, err
     }
 
-    // Extract StatefulSet index from hostname (e.g., "redis-0" -> 0)
-    parts := strings.Split(hostname, "-")
+    fmt.Printf("Discovering peers for %s\n", hostname)
 
     // Build FQDN for peer discovery
     subdomain := "redis-cluster"
     namespace := os.Getenv("POD_NAMESPACE")
+    if namespace == "" {
+        namespace = "default"
+    }
 
     var peers []string
     for i := 0; i < 3; i++ {
@@ -362,7 +365,7 @@ spec:
     image: myapp:1.0
 ```
 
-This pod can resolve both its own DNS name and the custom host aliases, useful for hybrid cloud or migration scenarios.
+If a matching headless service named `app-cluster` exists in the same namespace, this pod can resolve both its own DNS name and the custom host aliases, useful for hybrid cloud or migration scenarios.
 
 ## Best Practices
 
