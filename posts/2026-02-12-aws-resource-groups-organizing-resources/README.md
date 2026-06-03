@@ -14,7 +14,7 @@ AWS Resource Groups solve this by letting you create logical groupings of resour
 
 ## Types of Resource Groups
 
-There are two types of resource groups:
+For query-based resource groups, there are two query types:
 
 **Tag-based groups** collect resources that share specific tags. This is the most flexible and common approach. If you've been tagging your resources consistently (and you should be), you can slice and dice your infrastructure any way you want.
 
@@ -92,7 +92,7 @@ Once you've created a group, you can list its members:
 ```bash
 # List all resources in a group
 aws resource-groups list-group-resources \
-  --group-name "production-resources" \
+  --group "production-resources" \
   --query "Resources[].Identifier.{Type:ResourceType,ARN:ResourceArn}" \
   --output table
 ```
@@ -102,7 +102,7 @@ This is really useful for auditing. Want to know how many production resources y
 ```bash
 # Count resources by type in a group
 aws resource-groups list-group-resources \
-  --group-name "production-resources" \
+  --group "production-resources" \
   --query "Resources[].Identifier.ResourceType" \
   --output json | python3 -c "
 import json, sys
@@ -164,11 +164,11 @@ Resource Groups and Systems Manager
 
 Resource Groups integrate directly with AWS Systems Manager. You can use a resource group as a target for Systems Manager operations like:
 
-- **Run Command** - Execute commands on all instances in a group
-- **Patch Manager** - Apply patches to a group of instances
+- **Run Command** - Execute commands on managed nodes in a group
+- **Patch Manager** - Apply patches to a group of managed nodes
 - **Maintenance Windows** - Schedule maintenance for grouped resources
 
-For example, to run a command on all production instances:
+For example, to run a command on all production managed nodes in a resource group named `production-compute`:
 
 ```bash
 # Run a command targeting a resource group
@@ -176,15 +176,15 @@ aws ssm send-command \
   --document-name "AWS-RunShellScript" \
   --targets "Key=resource-groups:Name,Values=production-compute" \
   --parameters '{"commands": ["uptime", "free -m", "df -h"]}' \
-  --comment "Check system health on production instances"
+  --comment "Check system health on production managed nodes"
 ```
 
-Resource Groups with AWS Config
+AWS Config with Matching Tags
 
-AWS Config can use Resource Groups to scope its rules. Instead of evaluating compliance for all resources, you can evaluate only resources in a specific group:
+AWS Config rules can use the same tags as your resource groups to scope rule evaluations. Instead of evaluating compliance for all resources, you can evaluate only resources tagged for a specific environment:
 
 ```bash
-# Config rule scoped to a resource group
+# Config rule scoped to production-tagged resources
 aws configservice put-config-rule \
   --config-rule '{
     "ConfigRuleName": "prod-instances-must-be-encrypted",
