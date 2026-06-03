@@ -21,7 +21,7 @@ This DNS server handles:
 - Resolution of private hosted zone records in Route 53
 - Resolution of instance hostnames within the VPC (like ip-10-0-1-5.ec2.internal)
 
-Two VPC attributes control whether DNS works at all.
+Two VPC attributes control DNS support and DNS hostnames in the VPC.
 
 ```bash
 # Check current DNS settings for your VPC
@@ -37,7 +37,7 @@ aws ec2 describe-vpc-attribute \
 
 **enableDnsSupport** - Must be `true` for the VPC DNS server to work. If you set this to `false`, instances won't be able to resolve any DNS names using the Amazon-provided DNS.
 
-**enableDnsHostnames** - When `true`, instances with public IPs get public DNS hostnames (like ec2-52-1-2-3.compute-1.amazonaws.com). You need this enabled if you want to use Route 53 private hosted zones.
+**enableDnsHostnames** - When `true`, instances with public IPs get public DNS hostnames (like ec2-52-1-2-3.compute-1.amazonaws.com). You need this and `enableDnsSupport` enabled if you want to use Route 53 private hosted zones.
 
 ```bash
 # Enable both DNS attributes
@@ -61,7 +61,7 @@ The DHCP option set controls which DNS servers your instances use. The default o
 aws ec2 create-dhcp-options \
   --dhcp-configurations \
     "Key=domain-name,Values=mycompany.internal" \
-    "Key=domain-name-servers,Values=10.0.0.2,10.1.0.2"
+    "Key=domain-name-servers,Values=10.1.0.10,10.1.0.11"
 
 # Associate the DHCP option set with your VPC
 aws ec2 associate-dhcp-options \
@@ -71,7 +71,7 @@ aws ec2 associate-dhcp-options \
 
 For a deeper dive into DHCP option sets, check out https://oneuptime.com/blog/post/2026-02-12-dhcp-option-sets-in-vpc/view.
 
-One important detail: when you use a custom domain-name-servers value instead of "AmazonProvidedDNS", you lose the ability to resolve Route 53 private hosted zones through the Amazon DNS server directly. You'd need Route 53 Resolver endpoints to bridge that gap.
+One important detail: when you point instances only at custom DNS servers instead of "AmazonProvidedDNS" or the VPC resolver address, you lose the ability to resolve Route 53 private hosted zones through the Amazon DNS server directly. You'd need conditional forwarding from your DNS servers to the VPC resolver, or Route 53 Resolver endpoints to bridge that gap.
 
 ## Route 53 Resolver
 
@@ -92,13 +92,13 @@ aws ec2 create-security-group \
 
 # Allow DNS traffic (TCP and UDP port 53)
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-resolver \
+  --group-id sg-0123456789abcdef0 \
   --protocol tcp \
   --port 53 \
   --cidr 10.0.0.0/8
 
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-resolver \
+  --group-id sg-0123456789abcdef0 \
   --protocol udp \
   --port 53 \
   --cidr 10.0.0.0/8
@@ -109,9 +109,10 @@ Create an inbound resolver endpoint so on-premises servers can resolve AWS priva
 ```bash
 # Create an inbound resolver endpoint
 aws route53resolver create-resolver-endpoint \
+  --creator-request-id "inbound-from-onprem-2026-02-12" \
   --name "inbound-from-onprem" \
   --direction INBOUND \
-  --security-group-ids sg-resolver \
+  --security-group-ids sg-0123456789abcdef0 \
   --ip-addresses SubnetId=subnet-0abc123,Ip=10.0.1.10 SubnetId=subnet-0def456,Ip=10.0.2.10
 ```
 
@@ -120,13 +121,15 @@ Create an outbound resolver endpoint with forwarding rules to send certain domai
 ```bash
 # Create an outbound resolver endpoint
 aws route53resolver create-resolver-endpoint \
+  --creator-request-id "outbound-to-onprem-2026-02-12" \
   --name "outbound-to-onprem" \
   --direction OUTBOUND \
-  --security-group-ids sg-resolver \
+  --security-group-ids sg-0123456789abcdef0 \
   --ip-addresses SubnetId=subnet-0abc123 SubnetId=subnet-0def456
 
 # Create a forwarding rule for your on-premises domain
 aws route53resolver create-resolver-rule \
+  --creator-request-id "forward-to-onprem-2026-02-12" \
   --name "forward-to-onprem" \
   --rule-type FORWARD \
   --domain-name "corp.example.com" \
@@ -157,7 +160,7 @@ The key insight is that resolver endpoints are the bridge. Without them, there's
 
 ## DNS Resolution Across Peered VPCs
 
-When you peer two VPCs, DNS resolution doesn't automatically work across the peering connection. You need to enable DNS resolution for the peering connection.
+When you peer two VPCs, public DNS hostnames don't automatically resolve to private IP addresses across the peering connection. You need to enable DNS resolution for the peering connection.
 
 ```bash
 # Enable DNS resolution for a VPC peering connection
@@ -167,7 +170,7 @@ aws ec2 modify-vpc-peering-connection-options \
   --accepter-peering-connection-options '{"AllowDnsResolutionFromRemoteVpc": true}'
 ```
 
-Once enabled, instances in VPC A can resolve the private DNS hostnames of instances in VPC B to their private IPs instead of their public IPs.
+Once enabled, instances in VPC A can resolve the public DNS hostnames of instances in VPC B to their private IPs instead of their public IPs. Both VPCs must have DNS hostnames and DNS resolution enabled; if the VPCs are in different accounts, each account owner must update its side of the peering options.
 
 ## Terraform Configuration
 
@@ -221,6 +224,11 @@ resource "aws_route53_resolver_rule" "forward_to_onprem" {
     ip   = "192.168.1.11"
     port = 53
   }
+}
+
+resource "aws_route53_resolver_rule_association" "forward_to_onprem" {
+  resolver_rule_id = aws_route53_resolver_rule.forward_to_onprem.id
+  vpc_id           = aws_vpc.main.id
 }
 ```
 
