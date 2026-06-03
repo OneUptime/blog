@@ -10,7 +10,7 @@ Description: Learn how to set up ECS service discovery with AWS Cloud Map so you
 
 When you're running microservices on ECS, one of the first challenges is figuring out how services talk to each other. You could put everything behind load balancers, but that adds cost and latency for internal traffic. A cleaner approach is service discovery - letting ECS automatically register and deregister tasks in a DNS namespace so services can find each other by name.
 
-AWS Cloud Map is the service discovery backbone for ECS. It maintains a registry of service instances and makes them available through DNS queries or the Cloud Map API. When an ECS task starts, it registers itself. When it stops, it gets removed. Your services just query a DNS name and get back healthy endpoints.
+AWS Cloud Map is the service discovery backbone for ECS. It maintains a registry of service instances and makes them available through DNS queries or the Cloud Map API. When an ECS task starts, it registers itself. When it stops, it gets removed. Your services just query a DNS name and get back available endpoints.
 
 ## How It Works
 
@@ -111,7 +111,7 @@ resource "aws_ecs_service" "api" {
 }
 ```
 
-The `failure_threshold = 1` in the health check config means a task gets deregistered after one failed health check. ECS manages this automatically - you don't need to configure custom health checkers.
+The `health_check_custom_config` block lets ECS manage Cloud Map health on your behalf using task state and container health checks. `failure_threshold` is kept at `1` for compatibility, and Cloud Map now always treats this value as `1`. You don't need to configure custom health checkers for ECS-managed service discovery.
 
 ## Using SRV Records
 
@@ -200,7 +200,7 @@ const response = await axios.get('http://api.production.local:8080/users');
 
 ## CloudFormation Full Example
 
-Here's a complete CloudFormation template that sets up two services that discover each other.
+Here's a focused CloudFormation example showing the namespace, two discovery services, and one ECS service linked to Cloud Map.
 
 ```yaml
 Resources:
@@ -262,9 +262,9 @@ Resources:
 
 One thing to watch out for is DNS caching. Cloud Map records have a TTL (time to live) that determines how long resolvers cache the results. If a task goes down and you have a high TTL, clients might still try to connect to the old IP.
 
-Set your TTL low - 10 seconds is a good default. Some DNS resolvers (including the one in your VPC) might not respect very low TTLs, but 10 seconds is generally honored.
+Set your TTL low - 10 seconds is a good default. Some client-side DNS caches might not respect very low TTLs, but 10 seconds is generally honored.
 
-Also, many HTTP clients and language runtimes cache DNS results themselves. Make sure your application respects TTL values. In Java, for example, the JVM caches DNS results indefinitely by default - you'll need to set `networkaddress.cache.ttl` in your security properties.
+Also, many HTTP clients and language runtimes cache DNS results themselves. Make sure your application respects TTL values. In Java, for example, DNS cache behavior is controlled by the `networkaddress.cache.ttl` security property; a value of `-1` means cache forever, and the default is implementation-specific when no security manager is installed. Set an explicit value if your service needs predictable DNS refreshes.
 
 ```java
 // Java - prevent infinite DNS caching
@@ -297,7 +297,7 @@ If services can't discover each other, check these things:
 
 1. **Security groups** - Make sure the calling service's security group allows outbound traffic and the target service's security group allows inbound on the right port.
 2. **VPC DNS settings** - `enableDnsSupport` and `enableDnsHostnames` must both be true on your VPC.
-3. **Namespace VPC** - The Cloud Map namespace must be in the same VPC as your services, or you need VPC peering.
-4. **Task health** - Only healthy tasks get registered. Check that your container health checks are passing.
+3. **Namespace VPC** - The Cloud Map private hosted zone must be associated with the VPC where clients resolve the name. For services in another VPC, associate the hosted zone with that VPC or configure Route 53 Resolver forwarding, and make sure the VPCs have network connectivity.
+4. **Task health** - ECS updates Cloud Map health from task state and container health checks. Check that your tasks are running and that container health checks are passing.
 
 Service discovery with Cloud Map is one of those features that simplifies your architecture once it's set up. No more load balancer per service, no more hardcoded endpoints, and no more stale configurations. Your services just find each other by name.
