@@ -8,13 +8,13 @@ Description: Learn how to implement distributed tracing for gRPC calls across Ku
 
 ---
 
-gRPC provides efficient service-to-service communication in Kubernetes microservice architectures, but debugging distributed gRPC calls requires proper tracing instrumentation. OpenTelemetry offers comprehensive gRPC support through interceptors that automatically capture request metadata, timing information, and error details across service boundaries.
+gRPC provides efficient service-to-service communication in Kubernetes microservice architectures, but debugging distributed gRPC calls requires proper tracing instrumentation. OpenTelemetry offers comprehensive gRPC support through stats handlers that automatically capture request metadata, timing information, and error details across service boundaries.
 
-Tracing gRPC calls provides visibility into synchronous and streaming RPC patterns. You can track unary requests, server streaming, client streaming, and bidirectional streaming operations. Proper instrumentation captures method names, status codes, message sizes, and propagates trace context through gRPC metadata.
+Tracing gRPC calls provides visibility into synchronous and streaming RPC patterns. You can track unary requests, server streaming, client streaming, and bidirectional streaming operations. Proper instrumentation captures method names, status codes, optional message size events, and propagates trace context through gRPC metadata.
 
 ## Understanding gRPC Trace Propagation
 
-gRPC trace propagation works through metadata headers. OpenTelemetry interceptors inject trace context into outgoing gRPC requests and extract context from incoming requests. The W3C Trace Context standard defines the propagation format using traceparent and tracestate headers.
+gRPC trace propagation works through metadata headers. OpenTelemetry instrumentation injects trace context into outgoing gRPC requests and extracts context from incoming requests. The W3C Trace Context standard defines the propagation format using traceparent and tracestate headers.
 
 Each gRPC call creates a span representing the RPC operation. Client spans capture the caller's perspective with timing and request details. Server spans record the service handler's execution. Together, these spans form a complete picture of distributed gRPC communication.
 
@@ -33,7 +33,10 @@ import (
 
     "google.golang.org/grpc"
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/propagation"
+    "go.opentelemetry.io/otel/sdk/resource"
     "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
@@ -41,9 +44,16 @@ import (
 )
 
 func initTracer() *trace.TracerProvider {
-    exporter, err := otlptracegrpc.New(context.Background(),
-        otlptracegrpc.WithEndpoint("otel-collector:4317"),
-        otlptracegrpc.WithInsecure(),
+    ctx := context.Background()
+
+    exporter, err := otlptracegrpc.New(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    res, err := resource.New(ctx,
+        resource.WithFromEnv(),
+        resource.WithTelemetrySDK(),
     )
     if err != nil {
         log.Fatal(err)
@@ -51,8 +61,13 @@ func initTracer() *trace.TracerProvider {
 
     tp := trace.NewTracerProvider(
         trace.WithBatcher(exporter),
+        trace.WithResource(res),
     )
     otel.SetTracerProvider(tp)
+    otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+        propagation.TraceContext{},
+        propagation.Baggage{},
+    ))
     return tp
 }
 
@@ -61,7 +76,7 @@ type paymentServer struct {
 }
 
 func (s *paymentServer) ProcessPayment(ctx context.Context, req *pb.PaymentRequest) (*pb.PaymentResponse, error) {
-    // Trace context automatically extracted by interceptor
+    // Trace context automatically extracted by instrumentation
     tracer := otel.Tracer("payment-service")
     
     // Create child span for business logic
@@ -89,10 +104,11 @@ func main() {
         log.Fatalf("Failed to listen: %v", err)
     }
 
-    // Create gRPC server with OpenTelemetry interceptors
+    // Create gRPC server with OpenTelemetry instrumentation
     server := grpc.NewServer(
-        grpc.UnaryInterceptor(otelgrpc.UnaryServerInterceptor()),
-        grpc.StreamInterceptor(otelgrpc.StreamServerInterceptor()),
+        grpc.StatsHandler(otelgrpc.NewServerHandler(
+            otelgrpc.WithMessageEvents(otelgrpc.ReceivedEvents, otelgrpc.SentEvents),
+        )),
     )
 
     pb.RegisterPaymentServiceServer(server, &paymentServer{})
@@ -117,21 +133,55 @@ import (
 
     "google.golang.org/grpc"
     "google.golang.org/grpc/credentials/insecure"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+    "go.opentelemetry.io/otel/propagation"
+    "go.opentelemetry.io/otel/sdk/resource"
+    "go.opentelemetry.io/otel/sdk/trace"
     "go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc"
 
     pb "example.com/payment/proto"
 )
 
+func initTracer() *trace.TracerProvider {
+    ctx := context.Background()
+
+    exporter, err := otlptracegrpc.New(ctx)
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    res, err := resource.New(ctx,
+        resource.WithFromEnv(),
+        resource.WithTelemetrySDK(),
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    tp := trace.NewTracerProvider(
+        trace.WithBatcher(exporter),
+        trace.WithResource(res),
+    )
+    otel.SetTracerProvider(tp)
+    otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+        propagation.TraceContext{},
+        propagation.Baggage{},
+    ))
+    return tp
+}
+
 func main() {
     tp := initTracer()
     defer tp.Shutdown(context.Background())
 
-    // Create gRPC connection with OpenTelemetry interceptors
-    conn, err := grpc.Dial(
+    // Create gRPC connection with OpenTelemetry instrumentation
+    conn, err := grpc.NewClient(
         "payment-service:50051",
         grpc.WithTransportCredentials(insecure.NewCredentials()),
-        grpc.WithUnaryInterceptor(otelgrpc.UnaryClientInterceptor()),
-        grpc.WithStreamInterceptor(otelgrpc.StreamClientInterceptor()),
+        grpc.WithStatsHandler(otelgrpc.NewClientHandler(
+            otelgrpc.WithMessageEvents(otelgrpc.ReceivedEvents, otelgrpc.SentEvents),
+        )),
     )
     if err != nil {
         log.Fatalf("Failed to connect: %v", err)
@@ -229,6 +279,8 @@ spec:
         env:
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: "http://otel-collector:4317"
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: "grpc"
         - name: OTEL_SERVICE_NAME
           value: "payment-service"
         - name: OTEL_TRACES_SAMPLER
@@ -257,22 +309,12 @@ Query traces to analyze gRPC performance:
 
 ```bash
 # Find slow gRPC calls
-curl 'http://tempo:3100/api/search' -d '{
-  "tags": {
-    "rpc.system": "grpc",
-    "span.kind": "server"
-  },
-  "minDuration": "1s"
-}'
+curl -G -s 'http://tempo:3100/api/search' \
+  --data-urlencode 'q={ span.rpc.system.name = "grpc" && span:kind = server && span:duration > 1s }'
 
 # Find failed gRPC calls
-curl 'http://tempo:3100/api/search' -d '{
-  "tags": {
-    "rpc.system": "grpc",
-    "status.code": "error",
-    "rpc.grpc.status_code": "14"
-  }
-}'
+curl -G -s 'http://tempo:3100/api/search' \
+  --data-urlencode 'q={ span.rpc.system.name = "grpc" && span:status = error && span.rpc.response.status_code = "UNAVAILABLE" }'
 ```
 
 OpenTelemetry gRPC instrumentation provides complete visibility into RPC communications across Kubernetes services. By automatically capturing trace context and performance metrics, you gain the insights needed to optimize and debug distributed gRPC systems.
