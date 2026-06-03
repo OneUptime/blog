@@ -42,7 +42,7 @@ First, define a standard event schema that any service in your system can emit:
 
 import boto3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 events = boto3.client('events')
 
@@ -54,7 +54,7 @@ def send_notification(notification_type, recipient_id, data, priority='normal', 
         'data': data,
         'priority': priority,
         'requestedChannels': channels,  # None means use user preferences
-        'timestamp': datetime.utcnow().isoformat(),
+        'timestamp': datetime.now(timezone.utc).isoformat(),
     }
 
     events.put_events(Entries=[{
@@ -260,7 +260,7 @@ Each channel has its own sender Lambda. Here is the email sender using SES:
 # Lambda - Email Sender via SES
 import boto3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 ses = boto3.client('ses')
 dynamodb = boto3.resource('dynamodb')
@@ -274,8 +274,8 @@ def handler(event, context):
         rendered = message['rendered']
 
         # Look up user's email address
-        user = users_table.get_item(Key={'userId': recipient_id})
-        email = user['Item'].get('email')
+        user = users_table.get_item(Key={'userId': recipient_id}).get('Item', {})
+        email = user.get('email')
 
         if not email:
             log_delivery(message, 'FAILED', 'No email address on file')
@@ -304,7 +304,7 @@ def log_delivery(message, status, detail):
         'notificationType': message['notificationType'],
         'status': status,
         'detail': detail,
-        'timestamp': datetime.utcnow().isoformat()
+        'timestamp': datetime.now(timezone.utc).isoformat()
     })
 ```
 
@@ -314,32 +314,49 @@ And the SMS sender using SNS:
 # Lambda - SMS Sender via SNS
 import boto3
 import json
+from datetime import datetime, timezone
 
 sns = boto3.client('sns')
 dynamodb = boto3.resource('dynamodb')
 users_table = dynamodb.Table('Users')
+delivery_log = dynamodb.Table('NotificationDeliveryLog')
 
 def handler(event, context):
     for record in event['Records']:
         message = json.loads(record['body'])
         recipient_id = message['recipientId']
 
-        user = users_table.get_item(Key={'userId': recipient_id})
-        phone = user['Item'].get('phone')
+        user = users_table.get_item(Key={'userId': recipient_id}).get('Item', {})
+        phone = user.get('phone')
 
         if not phone:
+            log_delivery(message, 'FAILED', 'No phone number on file')
             continue
 
-        sns.publish(
-            PhoneNumber=phone,
-            Message=message['rendered']['body'][:160],  # SMS character limit
-            MessageAttributes={
-                'AWS.SNS.SMS.SMSType': {
-                    'DataType': 'String',
-                    'StringValue': 'Transactional'
+        try:
+            response = sns.publish(
+                PhoneNumber=phone,
+                Message=message['rendered']['body'][:1600],  # SNS SMS Publish limit
+                MessageAttributes={
+                    'AWS.SNS.SMS.SMSType': {
+                        'DataType': 'String',
+                        'StringValue': 'Transactional'
+                    }
                 }
-            }
-        )
+            )
+            log_delivery(message, 'SENT', response['MessageId'])
+        except Exception as e:
+            log_delivery(message, 'FAILED', str(e))
+
+def log_delivery(message, status, detail):
+    delivery_log.put_item(Item={
+        'notificationId': f'{message["recipientId"]}:{message["timestamp"]}',
+        'channel': message['channel'],
+        'notificationType': message['notificationType'],
+        'status': status,
+        'detail': detail,
+        'timestamp': datetime.now(timezone.utc).isoformat()
+    })
 ```
 
 ## Notification Preferences API
