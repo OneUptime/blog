@@ -25,14 +25,16 @@ You'll land on the S3 dashboard showing all your existing buckets. Click the ora
 
 ## Step 2: Choose a Bucket Name
 
-The bucket name is globally unique across all AWS accounts worldwide. That means if someone already has a bucket named `my-app-data`, you can't use that name.
+For general purpose buckets in the shared global namespace, the bucket name is unique across all AWS accounts in the same AWS partition. That means if someone already has a bucket named `my-app-data` in that partition, you can't use that name.
 
 Some rules for bucket names:
 - Must be 3-63 characters long
 - Can only contain lowercase letters, numbers, hyphens, and dots
 - Must start and end with a letter or number
+- Can't contain two adjacent dots
 - Can't be formatted as an IP address (like 192.168.1.1)
-- Must be unique across all AWS accounts globally
+- Can't use AWS-reserved prefixes or suffixes
+- Must be unique across all AWS accounts in the same AWS partition
 
 Good naming conventions include using your organization name or account ID as a prefix:
 
@@ -62,14 +64,13 @@ The alternative - ACLs enabled - is a legacy approach that AWS actively discoura
 
 ## Step 5: Block Public Access Settings
 
-This is the most important security setting. By default, all four "Block Public Access" options are checked, and you should leave them that way unless you're intentionally hosting a public website or public dataset.
+This is the most important security setting. By default, the "Block all public access" option is checked, which turns on all four underlying "Block Public Access" settings. You should leave it that way unless you're intentionally hosting a public website or public dataset.
 
 The four settings are:
-1. **Block all public access** - Master switch
-2. **Block public access to buckets and objects granted through new ACLs**
-3. **Block public access to buckets and objects granted through any ACLs**
-4. **Block public access to buckets and objects granted through new public bucket or access point policies**
-5. **Block public and cross-account access to buckets and objects through any public bucket or access point policies**
+1. **Block public access to buckets and objects granted through new ACLs**
+2. **Block public access to buckets and objects granted through any ACLs**
+3. **Block public access to buckets and objects granted through new public bucket or access point policies**
+4. **Block public and cross-account access to buckets and objects through any public bucket or access point policies**
 
 Keep all of these ON. If you need to serve files publicly later, use CloudFront with an Origin Access Control instead of making your bucket public. For more on this topic, check our dedicated guide on [blocking public access on S3 buckets](https://oneuptime.com/blog/post/2026-02-12-block-public-access-on-s3-buckets/view).
 
