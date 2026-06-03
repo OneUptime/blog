@@ -208,7 +208,7 @@ Resources:
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
-      Domain: !Sub "auth-${AWS::StackName}"
+      Domain: !Sub "app-auth-${AWS::AccountId}"
       UserPoolId: !Ref UserPool
 
   ALB:
@@ -270,26 +270,33 @@ Example headers ALB sends to your backend:
 
 ```text
 x-amzn-oidc-accesstoken: eyJraWQ...  (the actual access token)
-x-amzn-oidc-identity: user@example.com  (the subject claim)
+x-amzn-oidc-identity: 1234567890  (the subject claim)
 x-amzn-oidc-data: eyJ0eX...  (JWT with user claims)
 ```
 
 Reading these headers in a Node.js Express application:
 
 ```javascript
+const https = require('https');
 const jwt = require('jsonwebtoken');
-const jwksClient = require('jwks-rsa');
 
-// ALB signs the claims JWT with its own key
-const client = jwksClient({
-  jwksUri: `https://public-keys.auth.elb.us-east-1.amazonaws.com`
-});
+const AWS_REGION = 'us-east-1';
+const EXPECTED_ALB_ARN = 'arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/app/my-alb/abc123';
 
 function getKey(header, callback) {
-  client.getSigningKey(header.kid, (err, key) => {
-    const signingKey = key.publicKey || key.rsaPublicKey;
-    callback(null, signingKey);
-  });
+  const keyUrl = `https://public-keys.auth.elb.${AWS_REGION}.amazonaws.com/${encodeURIComponent(header.kid)}`;
+
+  https.get(keyUrl, (response) => {
+    let publicKey = '';
+
+    response.on('data', (chunk) => {
+      publicKey += chunk;
+    });
+
+    response.on('end', () => {
+      callback(null, publicKey);
+    });
+  }).on('error', callback);
 }
 
 app.get('/dashboard', (req, res) => {
@@ -300,12 +307,13 @@ app.get('/dashboard', (req, res) => {
   }
 
   // Verify the ALB-signed JWT
-  jwt.verify(encodedToken, getKey, { algorithms: ['ES256'] }, (err, decoded) => {
-    if (err) {
+  jwt.verify(encodedToken, getKey, { algorithms: ['ES256'], complete: true }, (err, verified) => {
+    if (err || verified.header.signer !== EXPECTED_ALB_ARN) {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
     // Use the decoded claims
+    const decoded = verified.payload;
     const userEmail = decoded.email;
     const userName = decoded.name;
     const userId = decoded.sub;
@@ -318,7 +326,7 @@ app.get('/dashboard', (req, res) => {
 });
 ```
 
-Always verify the JWT signature. The `x-amzn-oidc-data` header is signed by ALB, so verifying it ensures the claims weren't tampered with by an attacker who bypassed the load balancer.
+Always verify the JWT signature and the expected ALB ARN in the token header. The `x-amzn-oidc-data` header is signed by ALB, so verifying it ensures the claims weren't tampered with by an attacker who bypassed the load balancer.
 
 ## Mixed Authentication Rules
 
@@ -332,7 +340,7 @@ aws elbv2 create-rule \
   --conditions '[{"Field": "path-pattern", "Values": ["/health"]}]' \
   --actions '[{"Type": "forward", "TargetGroupArn": "'$TARGET_GROUP_ARN'"}]'
 
-# API endpoints - require auth but allow programmatic access
+# API endpoints - require auth and return 401 instead of redirecting AJAX calls
 aws elbv2 create-rule \
   --listener-arn $LISTENER_ARN \
   --priority 20 \
@@ -345,7 +353,7 @@ aws elbv2 create-rule \
 
 The `OnUnauthenticatedRequest` setting is key:
 - `authenticate`: Redirect to login page (for browser-based access)
-- `deny`: Return 401 (for API access)
+- `deny`: Return 401 (for AJAX/API calls)
 - `allow`: Pass through without auth (for public endpoints)
 
 ALB authentication is one of the most underused AWS features. It removes significant complexity from your application while providing enterprise-grade authentication. For more on load balancer configuration, check out [NLB with TLS termination](https://oneuptime.com/blog/post/2026-02-12-nlb-tls-termination/view).
