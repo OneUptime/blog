@@ -8,7 +8,7 @@ Description: An in-depth comparison of Amazon MemoryDB for Redis and Amazon Elas
 
 ---
 
-AWS gives you two managed Redis services: ElastiCache for Redis and MemoryDB for Redis. On the surface, they look similar - both run Redis, both are managed, and both are fast. But underneath, they're built for fundamentally different use cases. Choosing the wrong one means either paying too much or not getting the guarantees you need.
+AWS gives you two managed Redis OSS-compatible services: ElastiCache for Redis OSS and MemoryDB. On the surface, they look similar - both run Redis OSS-compatible engines, both are managed, and both are fast. But underneath, they're built for fundamentally different use cases. Choosing the wrong one means either paying too much or not getting the guarantees you need.
 
 Let's break down the differences in a way that actually helps you make the right decision.
 
@@ -16,9 +16,9 @@ Let's break down the differences in a way that actually helps you make the right
 
 This is the one thing that matters most, and everything else flows from it.
 
-**ElastiCache for Redis** uses standard Redis replication. Writes go to the primary node, which asynchronously replicates to replicas. If the primary fails before a write is replicated, that write is lost. This is fine for a cache (you can always refetch from the database), but it's not okay for a primary data store.
+**ElastiCache for Redis OSS** uses standard Redis OSS replication. Writes go to the primary node, which asynchronously replicates to replicas. If the primary fails before a write is replicated, that write can be lost. This is fine for a cache (you can always refetch from the database), but it's not okay for a primary data store.
 
-**MemoryDB for Redis** uses a Multi-AZ distributed transaction log. Every write is durably stored in the transaction log across multiple AZs before it's acknowledged to the client. If the primary fails, no writes are lost. Period.
+**MemoryDB** uses a Multi-AZ distributed transaction log. Successfully persisted writes are durably stored in the transaction log across multiple AZs. If the primary fails, MemoryDB is designed for recovery without data loss for those persisted writes.
 
 ```mermaid
 graph TD
@@ -40,21 +40,21 @@ graph TD
 
 ## Feature Comparison
 
-| Feature | ElastiCache for Redis | MemoryDB for Redis |
+| Feature | ElastiCache for Redis OSS | MemoryDB |
 |---------|----------------------|-------------------|
-| Redis compatibility | Full | Full |
-| Write durability | Async (potential data loss) | Durable (zero data loss) |
+| Redis OSS compatibility | Full | Full |
+| Write durability | Async replication (potential data loss) | Durable Multi-AZ transaction log |
 | Read latency | Microseconds | Microseconds |
 | Write latency | Microseconds | Single-digit milliseconds |
 | Cluster mode | Optional | Always enabled |
-| TLS | Optional | Always enabled |
-| Authentication | Optional (AUTH token) | Required (ACL) |
-| Max shards | 500 | 500 |
-| Max replicas per shard | 5 | 5 |
+| TLS | Optional | Optional, but recommended |
+| Authentication | Optional; AUTH, RBAC, and IAM options depend on engine/version | ACL-based, open-access ACL, and IAM options depend on TLS and engine/version |
+| Max shards | Up to 500 with supported engines and quota increase | Up to 500 shards with 0 replicas, subject to the 500-node cluster limit |
+| Max replicas per shard | 5 | 5 optional replicas per shard |
 | Backup/snapshots | Yes | Yes |
-| Multi-AZ | Optional | Always enabled |
-| Global Datastore | Yes | Yes |
-| Engine versions | Redis 5.0-7.x | Redis 6.2-7.x |
+| Multi-AZ | Optional | Multi-AZ durability; replicas can span AZs |
+| Cross-Region replication | Global Datastore | MemoryDB Multi-Region |
+| Engine versions | Valkey and Redis OSS, including Redis OSS 5.0.6-7.1 for node-based clusters | Valkey and Redis OSS 6.2-7.x |
 
 ## Performance Comparison
 
@@ -89,20 +89,23 @@ Both services can handle millions of operations per second at scale. The through
 
 ## Cost Comparison
 
-MemoryDB costs more than ElastiCache because of the transaction log infrastructure. Here's a rough comparison for the same node type:
+MemoryDB usually costs more than ElastiCache because of the transaction log infrastructure and data-written charges. Here's a rough comparison pattern for similar node types:
 
 ```text
-Monthly cost for cache.r6g.large / db.r6g.large (us-east-1):
+Monthly cost pattern for cache.r6g.large / db.r6g.large (us-east-1):
 
 ElastiCache (3-node replication group):
-  Primary:    ~$175/mo
-  Replica 1:  ~$175/mo
-  Replica 2:  ~$175/mo
-  Total:      ~$525/mo
+  Primary:    node-hours
+  Replica 1:  node-hours
+  Replica 2:  node-hours
+  Total:      3 node-months
 
-MemoryDB (3-shard cluster, 1 replica each):
-  6 nodes:    ~$780/mo
-  Total:      ~$780/mo
+MemoryDB (1-shard cluster, 2 replicas):
+  Primary:    node-hours
+  Replica 1:  node-hours
+  Replica 2:  node-hours
+  Data writes: per-GB write charge
+  Total:      3 node-months + data-written charges
 ```
 
 However, if you're currently running ElastiCache Redis AND a separate database (like RDS) because you need durability, the total cost comparison changes:
@@ -111,16 +114,16 @@ However, if you're currently running ElastiCache Redis AND a separate database (
 Architecture comparison:
 
 Option A: ElastiCache + RDS (cache + durable storage)
-  ElastiCache: ~$525/mo
-  RDS:         ~$350/mo
-  Total:       ~$875/mo
+  ElastiCache: node-hours
+  RDS:         instance/storage/I/O charges
+  Total:       cache + database
 
 Option B: MemoryDB only (durable cache/database)
-  MemoryDB:    ~$780/mo
-  Total:       ~$780/mo
+  MemoryDB:    node-hours + data-written charges
+  Total:       durable in-memory database
 ```
 
-In this scenario, MemoryDB is actually cheaper AND simpler because you've eliminated an entire component.
+In this scenario, MemoryDB can be cheaper AND simpler if it eliminates an entire component and your workload fits Redis OSS-compatible data structures.
 
 ## Security Comparison
 
@@ -128,15 +131,15 @@ MemoryDB takes a more opinionated security stance:
 
 **ElastiCache:**
 - TLS is optional
-- Authentication is optional (AUTH token)
+- Authentication is optional for node-based clusters; AUTH, RBAC, and IAM authentication options depend on engine/version
 - Can run without encryption
 
 **MemoryDB:**
-- TLS is always enabled
-- ACL-based authentication is required
+- TLS is optional at cluster creation, but should be enabled for production workloads
+- Every cluster is associated with an ACL; clusters without TLS must use the open-access ACL
 - At-rest encryption is always enabled
 
-If you're in a regulated environment, MemoryDB's security defaults save you from accidentally deploying an insecure cache.
+If you're in a regulated environment, MemoryDB's at-rest encryption and ACL model help, but you still need to enable TLS and configure users appropriately.
 
 ## Use Case Decision Guide
 
@@ -163,7 +166,7 @@ def get_user(user_id):
 
 **Write latency is critical.** If you need sub-millisecond write acknowledgment and can tolerate potential data loss on failure.
 
-**Cost is the primary concern.** ElastiCache is 20-30% cheaper for the same node type.
+**Cost is the primary concern.** ElastiCache is usually cheaper for cache-only workloads because it doesn't charge for MemoryDB's durable write path.
 
 **You need Memcached.** MemoryDB only supports Redis. If you specifically need Memcached, ElastiCache is your only option.
 
@@ -186,7 +189,7 @@ def create_order(order_id, order_data):
 
 **You want to simplify your architecture.** Replace ElastiCache + RDS with just MemoryDB for Redis-centric workloads.
 
-**Compliance requires encryption everywhere.** MemoryDB's mandatory TLS and encryption simplify compliance.
+**Compliance requires encryption everywhere.** MemoryDB's at-rest encryption and ACL model can help simplify compliance, and you should enable TLS for in-transit encryption.
 
 ### Quick Decision Matrix
 
@@ -214,7 +217,7 @@ If you decide to move from ElastiCache to MemoryDB:
 1. Create a snapshot of your ElastiCache cluster
 2. Create a new MemoryDB cluster from that snapshot
 3. Update your application connection strings
-4. Enable ACL authentication in your application code
+4. Configure ACL users and TLS as needed in your application code
 
 ```bash
 # Create a snapshot from ElastiCache
@@ -252,7 +255,7 @@ elasticache = redis.Redis(
     port=6379,
 )
 
-# MemoryDB connection (required auth, required TLS)
+# MemoryDB connection (with ACL user and TLS enabled)
 from redis.cluster import RedisCluster
 memorydb = RedisCluster(
     host='clustercfg.my-memorydb.abc123.memorydb.us-east-1.amazonaws.com',
@@ -262,7 +265,6 @@ memorydb = RedisCluster(
     ssl=True,
     ssl_cert_reqs='required',
     decode_responses=True,
-    skip_full_coverage_check=True,
 )
 ```
 
