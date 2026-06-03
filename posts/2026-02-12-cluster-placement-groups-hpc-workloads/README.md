@@ -19,8 +19,8 @@ HPC workloads typically involve many nodes working on the same problem simultane
 Cluster placement groups solve this by:
 
 - Placing all instances in the same network segment within a single AZ
-- Enabling up to 100 Gbps bandwidth between instances
-- Providing single-digit microsecond latencies
+- Enabling higher per-flow throughput and high-bandwidth instance networking
+- Providing low inter-node latency
 - Supporting EFA for kernel-bypass networking
 
 ## Choosing the Right Instance Types
@@ -33,7 +33,7 @@ Not all EC2 instance types are created equal for HPC. Here are the key families:
 | hpc7g          | ARM-based HPC | 200 Gbps EFA | 64 | 128 GB |
 | c5n            | General compute | 100 Gbps EFA | 72 | 192 GB |
 | p4d            | GPU HPC/ML | 400 Gbps EFA | 96 | 1152 GB |
-| c6i            | Latest gen compute | 50 Gbps EFA | 128 | 256 GB |
+| c6i.32xlarge   | x86 compute (largest sizes) | 50 Gbps EFA | 128 | 256 GB |
 
 The `hpc6a` and `hpc7g` instances are specifically designed for HPC and offer the best price-performance for non-GPU workloads.
 
@@ -73,6 +73,11 @@ aws ec2 authorize-security-group-ingress \
   --protocol -1 \
   --source-group $SG_ID
 
+aws ec2 authorize-security-group-egress \
+  --group-id $SG_ID \
+  --protocol -1 \
+  --source-group $SG_ID
+
 # Allow SSH from your network
 aws ec2 authorize-security-group-ingress \
   --group-id $SG_ID \
@@ -81,7 +86,7 @@ aws ec2 authorize-security-group-ingress \
   --cidr 10.0.0.0/8
 ```
 
-EFA requires all-protocol access between nodes in the cluster. This is normal for HPC - the nodes need unrestricted communication.
+EFA requires all-protocol inbound and outbound access between nodes in the cluster. This is normal for HPC - the nodes need unrestricted communication.
 
 ## Launching HPC Instances with EFA
 
@@ -95,12 +100,12 @@ aws ec2 run-instances \
   --count 16 \
   --placement GroupName=hpc-cluster \
   --key-name my-keypair \
-  --network-interfaces '{
+  --network-interfaces '[{
     "DeviceIndex": 0,
     "SubnetId": "subnet-0123456789abcdef0",
     "Groups": ["sg-0123456789abcdef0"],
     "InterfaceType": "efa"
-  }' \
+  }]' \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=hpc-node}]'
 ```
 
@@ -126,10 +131,12 @@ cd aws-efa-installer
 ./efa_installer.sh -y
 
 # Verify EFA installation
-fi_info -p efa
+/opt/amazon/efa/bin/fi_info -p efa -t FI_EP_RDM
 
 # Set up environment for Open MPI
 cat >> /etc/profile.d/efa.sh << 'EFAENV'
+export PATH=/opt/amazon/efa/bin:$PATH
+export LD_LIBRARY_PATH=/opt/amazon/efa/lib:$LD_LIBRARY_PATH
 export PATH=/opt/amazon/openmpi/bin:$PATH
 export LD_LIBRARY_PATH=/opt/amazon/openmpi/lib:$LD_LIBRARY_PATH
 EFAENV
@@ -142,7 +149,7 @@ Verify EFA is working:
 
 ```bash
 # Verify EFA is detected
-fi_info -p efa
+/opt/amazon/efa/bin/fi_info -p efa -t FI_EP_RDM
 
 # Expected output should show the EFA provider
 # provider: efa
@@ -175,9 +182,9 @@ Mount it on each node:
 
 ```bash
 # Mount Lustre on each HPC node
-amazon-linux-extras install -y lustre2.10
+amazon-linux-extras install -y lustre
 mkdir -p /shared
-mount -t lustre file-system-dns-name@tcp:/fsx /shared
+mount -t lustre -o relatime,flock file-system-dns-name@tcp:/mountname /shared
 ```
 
 ## Running an MPI Job
@@ -212,14 +219,16 @@ mpirun \
   -x FI_PROVIDER=efa \
   -x FI_EFA_USE_DEVICE_RDMA=1 \
   -x LD_LIBRARY_PATH \
-  --mca btl_tcp_if_include eth0 \
-  --mca pml ^cm \
+  --mca pml cm \
+  --mca mtl ofi \
+  --mca mtl_ofi_provider_include efa \
   /shared/bin/my_simulation --input /shared/data/input.dat
 ```
 
 The key flags here:
 - `FI_PROVIDER=efa` tells libfabric to use the EFA provider
 - `FI_EFA_USE_DEVICE_RDMA=1` enables RDMA for even lower latency
+- `--mca pml cm --mca mtl ofi` tells Open MPI to use the OFI/libfabric transport
 - `-np 768` runs 768 processes (8 nodes x 96 cores)
 
 ## Terraform for a Complete HPC Cluster
