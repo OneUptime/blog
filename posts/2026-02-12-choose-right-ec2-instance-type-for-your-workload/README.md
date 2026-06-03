@@ -64,7 +64,7 @@ If your application is CPU-bound and doesn't need tons of memory, C-series gives
 - Large application caches
 - Databases with heavy read workloads
 
-**X-series (x2idn, x2iedn)** take it further with massive amounts of memory - up to 4 TB of RAM. These are for enterprise-grade SAP HANA deployments, in-memory databases at scale, and similar workloads.
+**X-series (x2idn, x2iedn)** take it further with massive amounts of memory - up to 4 TiB of RAM. These are for enterprise-grade SAP HANA deployments, in-memory databases at scale, and similar workloads.
 
 ### Storage Optimized (I, D, H)
 
@@ -102,13 +102,13 @@ Once you've picked a family, you need to pick a size. Here's the general progres
 
 | Size | vCPUs | Memory (GiB) | Network (Gbps) |
 |------|-------|-------------|-----------------|
-| medium | 1 | 4 | Up to 12.5 |
-| large | 2 | 8 | Up to 12.5 |
-| xlarge | 4 | 16 | Up to 12.5 |
-| 2xlarge | 8 | 32 | Up to 15 |
-| 4xlarge | 16 | 64 | Up to 25 |
+| medium | 1 | 4 | 0.52 baseline / up to 12.5 |
+| large | 2 | 8 | 0.937 baseline / up to 12.5 |
+| xlarge | 4 | 16 | 1.876 baseline / up to 12.5 |
+| 2xlarge | 8 | 32 | 3.75 baseline / up to 15 |
+| 4xlarge | 16 | 64 | 7.5 baseline / up to 15 |
 
-Each step up roughly doubles everything. The price doubles too, so there's no discount for going bigger - but there's no penalty either.
+Each step up roughly doubles vCPU and memory. Network and EBS bandwidth usually increase too, but not always linearly. The On-Demand price generally scales with size within the same family, so choose the smallest size that meets your performance requirements.
 
 ### Right-Sizing Strategy
 
@@ -120,13 +120,13 @@ Don't try to guess the perfect size upfront. Here's what actually works:
 
 3. **Scale down if utilization is consistently low.** If your CPU averages under 20% and memory usage stays under 40%, you're probably oversized.
 
-4. **Use AWS Compute Optimizer.** After running for a few days, Compute Optimizer analyzes your usage patterns and recommends the right instance type and size.
+4. **Use AWS Compute Optimizer.** After you opt in, Compute Optimizer analyzes CloudWatch metrics over a default 14-day lookback period and recommends the right instance type and size.
 
-You can change your instance type without losing data - just stop the instance, change the type, and start it again. See our guide on [resizing EC2 instances](https://oneuptime.com/blog/post/2026-02-12-resize-ec2-instance-change-instance-type/view) for the step-by-step process.
+You can change your instance type without losing data on EBS volumes - just stop the instance, change the type, and start it again. Stopping an instance does lose data on any attached instance store volumes, so check your storage type first. See our guide on [resizing EC2 instances](https://oneuptime.com/blog/post/2026-02-12-resize-ec2-instance-change-instance-type/view) for the step-by-step process.
 
 ## Graviton vs Intel vs AMD
 
-AWS offers most instance types with three processor options:
+AWS offers many current instance families with multiple processor options:
 
 - **Graviton (g suffix)** - ARM-based, designed by AWS. Best price-performance in most cases. About 20-40% cheaper than Intel equivalents.
 - **Intel (i suffix or no suffix)** - Broadest software compatibility. Required if your software only runs on x86.
@@ -144,7 +144,7 @@ The instance type is only half the equation. How you pay matters just as much:
 
 **Reserved Instances**: Commit to a specific instance type in a specific region for 1 or 3 years. Similar savings to Savings Plans but less flexible.
 
-**Spot Instances**: Use spare AWS capacity at up to 90% discount. AWS can take the instance back with 2 minutes notice. Great for fault-tolerant batch jobs, CI/CD workloads, and stateless workers.
+**Spot Instances**: Use spare AWS capacity at up to 90% discount. AWS can interrupt the instance with a two-minute warning before stop or termination, except when hibernation starts immediately. Great for fault-tolerant batch jobs, CI/CD workloads, and stateless workers.
 
 ## Practical Examples
 
