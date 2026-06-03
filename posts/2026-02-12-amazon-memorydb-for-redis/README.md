@@ -8,7 +8,7 @@ Description: A complete guide to Amazon MemoryDB for Redis, covering setup, conf
 
 ---
 
-What if Redis wasn't just a cache but an actual database with full durability guarantees? That's exactly what Amazon MemoryDB for Redis is. It's a Redis-compatible, durable, in-memory database service that gives you Redis performance with the durability of a traditional database. Your data survives node failures, cluster failures, and even AZ outages without losing a single write.
+What if Redis wasn't just a cache but an actual database with full durability guarantees? That's exactly what Amazon MemoryDB for Redis is. It's a Redis-compatible, durable, in-memory database service that gives you Redis performance with the durability of a traditional database. Acknowledged writes survive node failures and even AZ outages.
 
 Let's walk through setting it up and understanding when it makes sense over ElastiCache.
 
@@ -81,7 +81,7 @@ aws memorydb create-user \
 # Create an ACL and associate the user
 aws memorydb create-acl \
   --acl-name my-app-acl \
-  --user-names app-user default
+  --user-names app-user
 ```
 
 Now create the cluster:
@@ -150,7 +150,7 @@ resource "aws_memorydb_user" "app" {
 
 resource "aws_memorydb_acl" "main" {
   name       = "my-app-acl"
-  user_names = [aws_memorydb_user.app.user_name, "default"]
+  user_names = [aws_memorydb_user.app.user_name]
 }
 
 # MemoryDB cluster
@@ -178,7 +178,7 @@ resource "aws_memorydb_cluster" "main" {
 
 ## Connecting to MemoryDB
 
-MemoryDB uses the Redis protocol, so any Redis client works. The main difference is that TLS is always required and you must authenticate.
+MemoryDB uses the Redis protocol, so compatible Redis clients work. For a password-protected ACL like the one above, keep TLS enabled and connect with TLS and authentication.
 
 ### Python Connection
 
@@ -232,7 +232,7 @@ const cluster = new Redis.Cluster([
     },
     connectTimeout: 5000,
   },
-  scaleReads: 'slave', // Read from replicas for read-heavy workloads
+  scaleReads: 'slave', // Read from replicas for workloads that can tolerate replica lag
   clusterRetryStrategy: (times) => Math.min(times * 200, 3000),
 });
 
@@ -289,14 +289,17 @@ client.set('email:alice@example.com', 'user:1001')
 
 ### Transaction Support
 
-MemoryDB supports Redis transactions (MULTI/EXEC):
+MemoryDB supports Redis transactions (MULTI/EXEC). In cluster mode, all keys in the transaction must be in the same hash slot, so use a hash tag for keys that must be updated atomically:
 
 ```python
-# Atomic transfer between accounts
-def transfer_funds(from_account, to_account, amount):
-    pipe = client.pipeline()
-    pipe.hincrbyfloat(f'account:{from_account}', 'balance', -amount)
-    pipe.hincrbyfloat(f'account:{to_account}', 'balance', amount)
+# Atomic transfer between accounts in the same ledger
+def transfer_funds(ledger_id, from_account, to_account, amount):
+    from_key = f'account:{{ledger:{ledger_id}}}:{from_account}'
+    to_key = f'account:{{ledger:{ledger_id}}}:{to_account}'
+
+    pipe = client.pipeline(transaction=True)
+    pipe.hincrbyfloat(from_key, 'balance', -amount)
+    pipe.hincrbyfloat(to_key, 'balance', amount)
     pipe.execute()
     # Both operations are atomic and durable
 ```
@@ -354,17 +357,17 @@ MemoryDB publishes metrics to CloudWatch just like ElastiCache:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/MemoryDB \
   --metric-name DatabaseMemoryUsagePercentage \
-  --dimensions Name=ClusterName,Value=my-memorydb-cluster \
+  --dimensions Name=ClusterName,Value=my-memorydb-cluster Name=NodeId,Value=0001 \
   --start-time $(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
   --statistics Average Maximum
 
-# Check primary endpoint latency
+# Check primary link health status
 aws cloudwatch get-metric-statistics \
   --namespace AWS/MemoryDB \
   --metric-name PrimaryLinkHealthStatus \
-  --dimensions Name=ClusterName,Value=my-memorydb-cluster \
+  --dimensions Name=ClusterName,Value=my-memorydb-cluster Name=NodeId,Value=0001 \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
