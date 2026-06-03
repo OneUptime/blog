@@ -120,6 +120,12 @@ spec:
         command:
           - redis-server
           - /data/redis.conf
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-password
+              key: password
         ports:
         - containerPort: 6379
           name: redis
@@ -146,12 +152,6 @@ spec:
             - redis-cli -a $REDIS_PASSWORD ping
           initialDelaySeconds: 10
           periodSeconds: 5
-          env:
-          - name: REDIS_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: redis-password
-                key: password
 
       volumes:
       - name: config
@@ -190,6 +190,7 @@ data:
     # AOF Configuration
     appendonly yes
     appendfilename "appendonly.aof"
+    appenddirname "appendonlydir"
 
     # Fsync policy - write to disk on every change (safest but slowest)
     # appendfsync always
@@ -262,6 +263,7 @@ data:
     # AOF Persistence
     appendonly yes
     appendfilename "appendonly.aof"
+    appenddirname "appendonlydir"
     appendfsync everysec
     no-appendfsync-on-rewrite no
     auto-aof-rewrite-percentage 100
@@ -339,6 +341,12 @@ spec:
         command:
           - redis-server
           - /data/redis.conf
+        env:
+        - name: REDIS_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: redis-password
+              key: password
         ports:
         - containerPort: 6379
           name: redis
@@ -367,12 +375,6 @@ spec:
           initialDelaySeconds: 10
           periodSeconds: 5
           timeoutSeconds: 3
-          env:
-          - name: REDIS_PASSWORD
-            valueFrom:
-              secretKeyRef:
-                name: redis-password
-                key: password
 
       # Redis Exporter sidecar
       - name: redis-exporter
@@ -430,6 +432,11 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 echo "Starting Redis backup at ${TIMESTAMP}"
 
+# Prevent automatic AOF rewrites while copying the AOF directory
+PREVIOUS_REWRITE_PERCENTAGE=$(kubectl exec -n $NAMESPACE $POD_NAME -- redis-cli -a $REDIS_PASSWORD CONFIG GET auto-aof-rewrite-percentage | tail -n 1 | tr -d '\r')
+kubectl exec -n $NAMESPACE $POD_NAME -- redis-cli -a $REDIS_PASSWORD CONFIG SET auto-aof-rewrite-percentage 0
+trap 'kubectl exec -n $NAMESPACE $POD_NAME -- redis-cli -a $REDIS_PASSWORD CONFIG SET auto-aof-rewrite-percentage ${PREVIOUS_REWRITE_PERCENTAGE:-100}' EXIT
+
 # Trigger BGSAVE for RDB
 kubectl exec -n $NAMESPACE $POD_NAME -- redis-cli -a $REDIS_PASSWORD BGSAVE
 
@@ -467,9 +474,9 @@ mkdir -p ${BACKUP_DIR}/${TIMESTAMP}
 echo "Copying RDB snapshot..."
 kubectl cp ${NAMESPACE}/${POD_NAME}:/data/dump.rdb ${BACKUP_DIR}/${TIMESTAMP}/dump.rdb
 
-# Copy AOF file
-echo "Copying AOF file..."
-kubectl cp ${NAMESPACE}/${POD_NAME}:/data/appendonly.aof ${BACKUP_DIR}/${TIMESTAMP}/appendonly.aof
+# Copy Redis 7 multi-part AOF directory
+echo "Copying AOF directory..."
+kubectl cp ${NAMESPACE}/${POD_NAME}:/data/appendonlydir ${BACKUP_DIR}/${TIMESTAMP}/appendonlydir
 
 # Get Redis info
 kubectl exec -n $NAMESPACE $POD_NAME -- redis-cli -a $REDIS_PASSWORD INFO > ${BACKUP_DIR}/${TIMESTAMP}/redis-info.txt
@@ -481,7 +488,7 @@ cat > ${BACKUP_DIR}/${TIMESTAMP}/metadata.json <<EOF
   "pod": "${POD_NAME}",
   "namespace": "${NAMESPACE}",
   "backup_type": "full",
-  "files": ["dump.rdb", "appendonly.aof"]
+  "files": ["dump.rdb", "appendonlydir/"]
 }
 EOF
 
@@ -533,8 +540,12 @@ spec:
             args:
               - -c
               - |
-                # Install redis-cli
-                yum install -y redis
+                # Install tar for kubectl cp
+                yum install -y tar gzip
+
+                # Install kubectl
+                curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
 
                 # Run backup script
                 /scripts/backup-redis-persistence.sh
@@ -589,6 +600,7 @@ set -e
 BACKUP_FILE=$1
 NAMESPACE=${NAMESPACE:-redis}
 POD_NAME=${POD_NAME:-redis-persistent-0}
+PVC_NAME=${PVC_NAME:-data-redis-persistent-0}
 RESTORE_DIR="/tmp/restore"
 
 if [ -z "$BACKUP_FILE" ]; then
@@ -613,10 +625,34 @@ echo "Stopping Redis..."
 kubectl scale statefulset redis-persistent -n $NAMESPACE --replicas=0
 kubectl wait --for=delete pod/$POD_NAME -n $NAMESPACE --timeout=60s
 
-# Copy persistence files
+# Mount the Redis PVC in a temporary restore pod
+cat <<EOF | kubectl apply -n $NAMESPACE -f -
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis-restore
+spec:
+  restartPolicy: Never
+  containers:
+  - name: redis
+    image: redis:7.0-alpine
+    command: ["sh", "-c", "sleep 3600"]
+    volumeMounts:
+    - name: data
+      mountPath: /data
+  volumes:
+  - name: data
+    persistentVolumeClaim:
+      claimName: $PVC_NAME
+EOF
+kubectl wait --for=condition=ready pod/redis-restore -n $NAMESPACE --timeout=120s
+
+# Copy persistence files into the mounted PVC
 echo "Restoring persistence files..."
-kubectl cp $RESTORE_DIR/dump.rdb $NAMESPACE/$POD_NAME:/data/dump.rdb
-kubectl cp $RESTORE_DIR/appendonly.aof $NAMESPACE/$POD_NAME:/data/appendonly.aof
+kubectl exec -n $NAMESPACE redis-restore -- sh -c "rm -f /data/dump.rdb && rm -rf /data/appendonlydir"
+kubectl cp $RESTORE_DIR/dump.rdb $NAMESPACE/redis-restore:/data/dump.rdb
+kubectl cp $RESTORE_DIR/appendonlydir $NAMESPACE/redis-restore:/data/appendonlydir
+kubectl delete pod redis-restore -n $NAMESPACE --wait=true
 
 # Start Redis (scale up)
 echo "Starting Redis..."
