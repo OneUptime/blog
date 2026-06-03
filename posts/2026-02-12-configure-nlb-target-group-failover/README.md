@@ -4,36 +4,36 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, NLB, Load Balancing, Failover, High Availability, Target Groups
 
-Description: Learn how to configure Network Load Balancer target group failover for high availability including primary and secondary target groups with health checks.
+Description: Learn how to configure Network Load Balancer target group failover for high availability using target group health thresholds, DNS failover, routing failover, and health checks.
 
 ---
 
-When your primary backend goes down, traffic needs to go somewhere else - fast. NLB target group failover lets you define primary and secondary target groups so that traffic automatically shifts when health checks fail. This is critical for architectures where you need a hot standby or disaster recovery backend.
+When your backend loses healthy targets in an Availability Zone, traffic needs to go somewhere else - fast. NLB target group health settings let you define DNS failover and routing failover thresholds so that traffic is directed away from unhealthy zones, or intentionally routed to all targets during a fail-open condition.
 
 ## How NLB Target Group Failover Works
 
-NLB target group failover uses a simple concept: you define multiple target groups for a listener, with one marked as primary and another as secondary. The NLB sends all traffic to the primary target group. If the primary becomes unhealthy (based on health check thresholds), traffic automatically fails over to the secondary.
+NLB target group failover is based on target group health thresholds, not primary and secondary target groups on the same listener. The NLB normally sends traffic to healthy targets in enabled Availability Zones. If the number or percentage of healthy targets in a zone drops below your DNS failover threshold, the load balancer marks the load balancer node IP address for that zone as unhealthy in DNS so new clients resolve to healthy zones. If the healthy target count drops below your routing failover threshold, the NLB sends traffic to all targets available to the load balancer node, including unhealthy targets, instead of only the remaining healthy targets.
 
 ```mermaid
 graph TD
-    A[NLB Listener :443] --> B{Target Group Health Check}
-    B -->|Primary Healthy| C[Primary Target Group - Production]
-    B -->|Primary Unhealthy| D[Secondary Target Group - DR Standby]
-    C --> E[Instance 1]
-    C --> F[Instance 2]
-    D --> G[DR Instance 1]
-    D --> H[DR Instance 2]
+    A[NLB Listener :443] --> B[Target Group Health Checks]
+    B -->|Zone Meets Threshold| C[Route to Healthy Targets in Zone]
+    B -->|Below DNS Failover Threshold| D[Remove Zone IP from NLB DNS]
+    B -->|Below Routing Failover Threshold| E[Route to All Targets in Scope]
+    C --> F[Instance 1]
+    C --> G[Instance 2]
+    E --> H[Healthy and Unhealthy Targets]
 ```
 
-When the primary target group recovers, traffic automatically fails back. This behavior is controlled by the failover configuration on the target group.
+When the target group health recovers above the configured threshold, the zone can become healthy again in DNS. Cross-region or active-passive failover requires Route 53 failover records that point to separate load balancers or other backup resources.
 
-## Step 1: Create the Primary Target Group
+## Step 1: Create the Target Group
 
 ```bash
-# Create the primary target group
+# Create the target group
 
 aws elbv2 create-target-group \
-    --name primary-app-tg \
+    --name app-tg \
     --protocol TCP \
     --port 443 \
     --vpc-id vpc-0123456789abcdef0 \
@@ -43,10 +43,10 @@ aws elbv2 create-target-group \
     --health-check-interval-seconds 10 \
     --healthy-threshold-count 2 \
     --unhealthy-threshold-count 2 \
-    --tags 'Key=Role,Value=primary'
+    --tags 'Key=Role,Value=app'
 ```
 
-Health check configuration matters a lot for failover. Faster intervals and lower thresholds mean quicker failover, but also more sensitivity to brief hiccups.
+Health check configuration matters a lot for failover. Faster intervals and lower thresholds mean quicker health-state changes, but also more sensitivity to brief hiccups.
 
 Recommended settings for fast failover:
 
@@ -54,43 +54,22 @@ Recommended settings for fast failover:
 |---------|-------|--------|
 | Interval | 10 seconds | Fast detection |
 | Healthy threshold | 2 | Quick recovery confirmation |
-| Unhealthy threshold | 2 | Two consecutive failures triggers failover |
+| Unhealthy threshold | 2 | Two consecutive failures marks a target unhealthy |
 
-With these settings, failover triggers in approximately 20 seconds (2 failed checks at 10-second intervals).
+With these settings, a target can be marked unhealthy after approximately 20 seconds (2 failed checks at 10-second intervals), plus any propagation time.
 
-## Step 2: Create the Secondary Target Group
+## Step 2: Register Targets
 
-```bash
-# Create the secondary (failover) target group
-aws elbv2 create-target-group \
-    --name secondary-app-tg \
-    --protocol TCP \
-    --port 443 \
-    --vpc-id vpc-0123456789abcdef0 \
-    --target-type instance \
-    --health-check-protocol TCP \
-    --health-check-port 443 \
-    --health-check-interval-seconds 10 \
-    --healthy-threshold-count 2 \
-    --unhealthy-threshold-count 2 \
-    --tags 'Key=Role,Value=secondary'
-```
-
-## Step 3: Register Targets
+Register targets in multiple Availability Zones so DNS failover has healthy zones to route to when one zone falls below the threshold.
 
 ```bash
-# Register instances in the primary target group
+# Register instances in the target group
 aws elbv2 register-targets \
-    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/primary-app-tg/abc123 \
-    --targets Id=i-0123456789abcdef0 Id=i-0123456789abcdef1
-
-# Register instances in the secondary target group
-aws elbv2 register-targets \
-    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/secondary-app-tg/def456 \
-    --targets Id=i-0987654321fedcba0 Id=i-0987654321fedcba1
+    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/app-tg/abc123 \
+    --targets Id=i-0123456789abcdef0 Id=i-0123456789abcdef1 Id=i-0987654321fedcba0 Id=i-0987654321fedcba1
 ```
 
-## Step 4: Create the NLB with Failover Configuration
+## Step 3: Create the NLB and Listener
 
 ```bash
 # Create the NLB
@@ -101,41 +80,22 @@ aws elbv2 create-load-balancer \
     --scheme internet-facing \
     --tags 'Key=Application,Value=webapp'
 
-# Create a listener with primary target group as default
+# Create a listener that forwards to the target group
 aws elbv2 create-listener \
     --load-balancer-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:loadbalancer/net/app-nlb/abc123 \
     --protocol TCP \
     --port 443 \
-    --default-actions '[
-        {
-            "Type": "forward",
-            "ForwardConfig": {
-                "TargetGroups": [
-                    {
-                        "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/primary-app-tg/abc123",
-                        "Weight": 1
-                    },
-                    {
-                        "TargetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/secondary-app-tg/def456",
-                        "Weight": 0
-                    }
-                ],
-                "TargetGroupStickinessConfig": {
-                    "Enabled": false
-                }
-            }
-        }
-    ]'
+    --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/app-tg/abc123
 ```
 
-## Step 5: Configure Target Group Failover Settings
+## Step 4: Configure Target Group Failover Settings
 
-This is the key configuration. The `TargetFailover` attribute controls what happens when targets in the primary group become unhealthy.
+This is the key configuration. The target group health attributes control DNS failover and routing failover when healthy targets fall below your thresholds.
 
 ```bash
-# Enable failover on the primary target group
+# Configure target group health failover thresholds
 aws elbv2 modify-target-group-attributes \
-    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/primary-app-tg/abc123 \
+    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/app-tg/abc123 \
     --attributes \
         'Key=target_group_health.dns_failover.minimum_healthy_targets.count,Value=1' \
         'Key=target_group_health.dns_failover.minimum_healthy_targets.percentage,Value=off' \
@@ -145,8 +105,8 @@ aws elbv2 modify-target-group-attributes \
 
 These attributes control:
 
-- **dns_failover.minimum_healthy_targets.count**: If the number of healthy targets drops below this count, Route 53 DNS failover is triggered (if using Route 53 health checks)
-- **unhealthy_state_routing.minimum_healthy_targets.count**: If healthy targets drop below this count, the NLB routes traffic to all targets (including unhealthy ones) rather than dropping it
+- **dns_failover.minimum_healthy_targets.count**: If the number of healthy targets in scope drops below this count, the load balancer marks the affected zone as unhealthy in DNS so traffic is routed only to healthy zones
+- **unhealthy_state_routing.minimum_healthy_targets.count**: If healthy targets drop below this count, the NLB routes traffic to all targets in scope, including unhealthy targets
 
 ## Using Terraform for the Complete Setup
 
@@ -158,45 +118,37 @@ resource "aws_lb" "app" {
   internal           = false
   load_balancer_type = "network"
   subnets            = [aws_subnet.public_1a.id, aws_subnet.public_1b.id]
-
-  enable_cross_zone_load_balancing = true
 }
 
-resource "aws_lb_target_group" "primary" {
-  name     = "primary-app-tg"
-  port     = 443
-  protocol = "TCP"
-  vpc_id   = aws_vpc.main.id
+resource "aws_lb_target_group" "app" {
+  name        = "app-tg"
+  port        = 443
+  protocol    = "TCP"
+  target_type = "instance"
+  vpc_id      = aws_vpc.main.id
 
   health_check {
     protocol            = "TCP"
-    port                = 443
+    port                = "443"
     interval            = 10
     healthy_threshold   = 2
     unhealthy_threshold = 2
   }
 
-  tags = {
-    Role = "primary"
-  }
-}
+  target_group_health {
+    dns_failover {
+      minimum_healthy_targets_count      = "1"
+      minimum_healthy_targets_percentage = "off"
+    }
 
-resource "aws_lb_target_group" "secondary" {
-  name     = "secondary-app-tg"
-  port     = 443
-  protocol = "TCP"
-  vpc_id   = aws_vpc.main.id
-
-  health_check {
-    protocol            = "TCP"
-    port                = 443
-    interval            = 10
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
+    unhealthy_state_routing {
+      minimum_healthy_targets_count      = "1"
+      minimum_healthy_targets_percentage = "off"
+    }
   }
 
   tags = {
-    Role = "secondary"
+    Role = "app"
   }
 }
 
@@ -206,60 +158,50 @@ resource "aws_lb_listener" "app" {
   protocol          = "TCP"
 
   default_action {
-    type = "forward"
-
-    forward {
-      target_group {
-        arn    = aws_lb_target_group.primary.arn
-        weight = 1
-      }
-      target_group {
-        arn    = aws_lb_target_group.secondary.arn
-        weight = 0
-      }
-    }
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app.arn
   }
 }
 ```
 
 ## Monitoring Failover Events
 
-Set up CloudWatch alarms to detect when failover occurs:
+Set up CloudWatch alarms to detect when target group health drops below your expected threshold:
 
 ```bash
-# Alarm when primary target group has no healthy targets
+# Alarm when the target group has fewer than two healthy targets
 aws cloudwatch put-metric-alarm \
-    --alarm-name "primary-tg-no-healthy-targets" \
+    --alarm-name "app-tg-low-healthy-targets" \
     --metric-name HealthyHostCount \
     --namespace AWS/NetworkELB \
     --statistic Minimum \
     --period 60 \
-    --threshold 1 \
+    --threshold 2 \
     --comparison-operator LessThanThreshold \
     --dimensions \
-        "Name=TargetGroup,Value=targetgroup/primary-app-tg/abc123" \
+        "Name=TargetGroup,Value=targetgroup/app-tg/abc123" \
         "Name=LoadBalancer,Value=net/app-nlb/abc123" \
     --evaluation-periods 1 \
     --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts \
-    --alarm-description "Primary target group failover - no healthy targets"
+    --alarm-description "NLB target group has fewer healthy targets than expected"
 ```
 
 ```bash
-# Alarm when secondary target group starts receiving traffic
+# Alarm when unhealthy targets are present
 aws cloudwatch put-metric-alarm \
-    --alarm-name "secondary-tg-active" \
-    --metric-name ActiveFlowCount \
+    --alarm-name "app-tg-unhealthy-targets" \
+    --metric-name UnHealthyHostCount \
     --namespace AWS/NetworkELB \
-    --statistic Sum \
+    --statistic Maximum \
     --period 60 \
     --threshold 0 \
     --comparison-operator GreaterThanThreshold \
     --dimensions \
-        "Name=TargetGroup,Value=targetgroup/secondary-app-tg/def456" \
+        "Name=TargetGroup,Value=targetgroup/app-tg/abc123" \
         "Name=LoadBalancer,Value=net/app-nlb/abc123" \
     --evaluation-periods 1 \
     --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts \
-    --alarm-description "Secondary target group is now receiving traffic - failover in progress"
+    --alarm-description "NLB target group has unhealthy targets"
 ```
 
 ## Testing Failover
@@ -267,21 +209,21 @@ aws cloudwatch put-metric-alarm \
 Never assume failover works - test it.
 
 ```bash
-# Simulate primary failure by deregistering all targets
+# Simulate target failure by deregistering targets in one Availability Zone
 aws elbv2 deregister-targets \
-    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/primary-app-tg/abc123 \
+    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/app-tg/abc123 \
     --targets Id=i-0123456789abcdef0 Id=i-0123456789abcdef1
 
 # Monitor health status
 watch -n 5 'aws elbv2 describe-target-health \
-    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/secondary-app-tg/def456'
+    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/app-tg/abc123'
 
-# Verify traffic is reaching secondary targets
+# Verify traffic is still reaching healthy targets
 curl -v https://app.example.com/health
 
-# Re-register primary targets to test failback
+# Re-register the targets to test recovery
 aws elbv2 register-targets \
-    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/primary-app-tg/abc123 \
+    --target-group-arn arn:aws:elasticloadbalancing:us-east-1:123456789012:targetgroup/app-tg/abc123 \
     --targets Id=i-0123456789abcdef0 Id=i-0123456789abcdef1
 ```
 
@@ -289,16 +231,16 @@ aws elbv2 register-targets \
 
 ### Active-Passive
 
-Primary handles all traffic. Secondary is a warm standby that only receives traffic during failover. This is the most common pattern and what we have configured above.
+For active-passive failover, use Route 53 failover records with evaluate target health enabled and point them to separate primary and secondary load balancers or other backup resources. NLB listener configuration does not provide automatic primary-to-secondary target group switching.
 
 ### Cross-AZ Failover
 
-Primary targets are in AZ-a, secondary in AZ-b. Provides availability zone-level resilience.
+Register targets in multiple Availability Zones and configure target group health thresholds. When DNS failover is triggered for an unhealthy zone, clients resolving the NLB DNS name receive IP addresses for healthy zones.
 
 ### Cross-Region Failover
 
-For cross-region failover, combine NLB target group failover with Route 53 health checks. See our guide on [configuring Route 53 CIDR-based routing](https://oneuptime.com/blog/post/2026-02-12-configure-route-53-cidr-based-routing/view) for complementary routing strategies.
+For cross-region failover, combine NLB target group health checks with Route 53 failover records. See our guide on [configuring Route 53 CIDR-based routing](https://oneuptime.com/blog/post/2026-02-12-configure-route-53-cidr-based-routing/view) for complementary routing strategies.
 
 ## Conclusion
 
-NLB target group failover gives you automatic, fast, and reliable traffic redirection when your primary backend becomes unavailable. The key to a good setup is aggressive health check configuration (fast intervals, low thresholds), proper monitoring with CloudWatch alarms, and regular testing. Do not wait for a real outage to discover that your failover does not work as expected.
+NLB target group health settings give you automatic, fast, and reliable traffic redirection away from unhealthy zones when your backend becomes unavailable. The key to a good setup is aggressive but realistic health check configuration, proper monitoring with CloudWatch alarms, and regular testing. Do not wait for a real outage to discover that your failover does not work as expected.
