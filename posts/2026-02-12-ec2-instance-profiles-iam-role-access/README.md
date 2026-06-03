@@ -108,17 +108,22 @@ cat > app-policy.json << 'EOF'
         "sqs:DeleteMessage",
         "sqs:GetQueueAttributes"
       ],
-      "Resource": "arn:aws:s3:::my-app-queue"
+      "Resource": "arn:aws:sqs:us-east-1:123456789012:my-app-queue"
     },
     {
-      "Sid": "CloudWatchLogs",
+      "Sid": "CreateCloudWatchLogGroups",
+      "Effect": "Allow",
+      "Action": "logs:CreateLogGroup",
+      "Resource": "arn:aws:logs:*:*:log-group:/app/*"
+    },
+    {
+      "Sid": "WriteCloudWatchLogStreams",
       "Effect": "Allow",
       "Action": [
-        "logs:CreateLogGroup",
         "logs:CreateLogStream",
         "logs:PutLogEvents"
       ],
-      "Resource": "arn:aws:logs:*:*:log-group:/app/*"
+      "Resource": "arn:aws:logs:*:*:log-group:/app/*:log-stream:*"
     }
   ]
 }
@@ -207,11 +212,17 @@ SSH into the instance and verify that the credentials are available.
 Test the instance profile credentials:
 
 ```bash
+# Get an IMDSv2 token
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+  -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+
 # Check which role is attached (from inside the instance)
-curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/
 
 # Get the actual temporary credentials
-curl -s http://169.254.169.254/latest/meta-data/iam/security-credentials/EC2AppServerRole
+curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+  http://169.254.169.254/latest/meta-data/iam/security-credentials/EC2AppServerRole
 
 # Test AWS CLI access (uses instance profile automatically)
 aws sts get-caller-identity
@@ -250,7 +261,7 @@ const s3 = new S3Client({ region: 'us-east-1' });
 async function listFiles() {
   const command = new ListObjectsV2Command({ Bucket: 'my-app-bucket' });
   const response = await s3.send(command);
-  response.Contents.forEach(obj => console.log(obj.Key));
+  (response.Contents || []).forEach(obj => console.log(obj.Key));
 }
 
 listFiles();
@@ -259,6 +270,7 @@ listFiles();
 Java:
 
 ```java
+import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Response;
