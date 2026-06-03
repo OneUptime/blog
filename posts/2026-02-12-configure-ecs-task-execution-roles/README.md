@@ -98,7 +98,7 @@ resource "aws_iam_role_policy" "secrets_access" {
           "secretsmanager:GetSecretValue"
         ]
         Resource = [
-          "arn:aws:secretsmanager:us-east-1:123456789:secret:production/*"
+          "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/*"
         ]
       }
     ]
@@ -127,7 +127,7 @@ resource "aws_iam_role_policy" "ssm_access" {
           "ssm:GetParameters"
         ]
         Resource = [
-          "arn:aws:ssm:us-east-1:123456789:parameter/production/*"
+          "arn:aws:ssm:us-east-1:123456789012:parameter/production/*"
         ]
       }
     ]
@@ -204,7 +204,7 @@ Reference it in your task definition.
       "name": "app",
       "image": "myorg/myapp:latest",
       "repositoryCredentials": {
-        "credentialsParameter": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/dockerhub-credentials-AbCdEf"
+        "credentialsParameter": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/dockerhub-credentials-AbCdEf"
       }
     }
   ]
@@ -215,9 +215,14 @@ The execution role needs permission to read that specific secret.
 
 ## CloudFormation Example
 
-Here's a complete CloudFormation template for an execution role with all the common permissions.
+Here's a complete CloudFormation template for an execution role with common secrets and parameter permissions.
 
 ```yaml
+Parameters:
+  SecretsKMSKeyArn:
+    Type: String
+    Description: ARN of the customer managed KMS key used for encrypted secrets and parameters
+
 Resources:
   ECSExecutionRole:
     Type: AWS::IAM::Role
@@ -251,7 +256,7 @@ Resources:
                 Action:
                   - kms:Decrypt
                 Resource:
-                  - !GetAtt SecretsKMSKey.Arn
+                  - !Ref SecretsKMSKeyArn
 ```
 
 ## Shared vs. Per-Service Execution Roles
