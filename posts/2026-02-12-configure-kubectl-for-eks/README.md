@@ -55,7 +55,7 @@ The primary way to configure kubectl for EKS is through the AWS CLI's update-kub
 aws eks update-kubeconfig --name my-cluster --region us-west-2
 ```
 
-This does three things: it adds the cluster's API server endpoint, sets up the certificate authority data, and configures authentication using the aws eks get-token command. The configuration gets written to `~/.kube/config` by default.
+This does three things: it adds the cluster's API server endpoint, sets up the certificate authority data, and configures authentication using the aws eks get-token command. The configuration gets written to the first path in `KUBECONFIG` if that environment variable is set, or to `~/.kube/config` by default.
 
 You can specify a different kubeconfig file if you prefer:
 
@@ -93,12 +93,14 @@ users:
         apiVersion: client.authentication.k8s.io/v1beta1
         command: aws
         args:
+          - --region
+          - us-west-2
           - eks
           - get-token
           - --cluster-name
           - my-cluster
-          - --region
-          - us-west-2
+          - --output
+          - json
 ```
 
 The key piece is the `exec` section under `users`. Every time kubectl needs to authenticate, it runs `aws eks get-token` to get a temporary bearer token. This token is tied to your current AWS credentials.
@@ -145,7 +147,7 @@ aws eks update-kubeconfig \
   --profile production-account
 ```
 
-This adds the `--profile` flag to the exec command in your kubeconfig. You can also set it manually by editing the kubeconfig:
+This adds the `AWS_PROFILE` environment variable to the exec command in your kubeconfig. You can also set it manually by editing the kubeconfig:
 
 ```yaml
 # Kubeconfig user section with AWS profile specified
@@ -181,6 +183,8 @@ aws eks update-kubeconfig \
 
 This is particularly useful in organizations where different teams manage different clusters and access is controlled through IAM roles. For more on this topic, see our post on [cross-account EKS access](https://oneuptime.com/blog/post/2026-02-12-set-up-cross-account-eks-cluster-access/view).
 
+One important distinction: `--role-arn` is used for cluster authentication when you issue kubectl commands. If you need to assume a role just to retrieve cluster details while generating the kubeconfig, use `--assume-role-arn`.
+
 ## Verifying Connectivity
 
 After configuration, verify that kubectl can reach your cluster:
@@ -196,13 +200,13 @@ kubectl get nodes
 kubectl auth whoami
 ```
 
-If `kubectl cluster-info` works but `kubectl get nodes` fails with an authorization error, it means authentication is working but your IAM entity isn't mapped in the cluster's aws-auth ConfigMap. You'll need to add the appropriate mapping.
+If `kubectl cluster-info` works but `kubectl get nodes` fails with an authorization error, it means authentication is working but your IAM entity doesn't have the necessary Kubernetes permissions through EKS access entries or, on older clusters, the aws-auth ConfigMap. You'll need to add the appropriate access configuration.
 
 ## Troubleshooting Common Issues
 
 **"Unable to connect to the server"** - This usually means your network can't reach the cluster's API endpoint. If it's a private cluster, you'll need VPN or Direct Connect access. Check your [cluster endpoint configuration](https://oneuptime.com/blog/post/2026-02-12-configure-eks-control-plane-endpoint-access/view).
 
-**"You must be logged in to the server (Unauthorized)"** - Your AWS credentials are either expired, invalid, or the IAM entity isn't mapped in the cluster. Run `aws sts get-caller-identity` to verify your current identity, then check the aws-auth ConfigMap.
+**"You must be logged in to the server (Unauthorized)"** - Your AWS credentials are either expired, invalid, or the IAM entity isn't granted access in the cluster. Run `aws sts get-caller-identity` to verify your current identity, then check EKS access entries or the aws-auth ConfigMap if your cluster still uses it.
 
 ```bash
 # Check the aws-auth ConfigMap for IAM mappings
