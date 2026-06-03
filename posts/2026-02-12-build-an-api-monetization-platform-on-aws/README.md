@@ -10,7 +10,7 @@ Description: Build an API monetization platform on AWS with usage tracking, tier
 
 You have built an API. Now you want to charge for it. Whether it is a data API, a machine learning inference endpoint, or a SaaS platform API, monetizing it requires more than just slapping a price tag on it. You need usage tracking, rate limiting, tiered pricing plans, billing integration, and a developer portal where customers can sign up and manage their API keys.
 
-AWS API Gateway has built-in support for usage plans and API keys, which gives you a solid foundation. In this guide, we will build a complete API monetization platform on top of it.
+AWS API Gateway REST APIs have built-in support for usage plans and API keys, which gives you a solid foundation. In this guide, we will build a complete API monetization platform on top of it.
 
 ## Architecture
 
@@ -31,19 +31,18 @@ graph TD
 
 ## Setting Up API Gateway with Usage Plans
 
-Usage plans in API Gateway let you define rate limits, burst limits, and monthly quotas per tier. Here is the CloudFormation for a three-tier pricing model:
+Usage plans in API Gateway REST APIs let you define rate limits, burst limits, and monthly quotas per tier. These limits are applied on a best-effort basis, so keep billing and cost controls separate from usage plan enforcement. Here is the CloudFormation for a three-tier pricing model, assuming your REST API already has a deployed `prod` stage and methods with `ApiKeyRequired` enabled:
 
 ```yaml
 # API Gateway with tiered usage plans
 
 AWSTemplateFormatVersion: '2010-09-09'
-Resources:
-  MonetizedAPI:
-    Type: AWS::ApiGateway::RestApi
-    Properties:
-      Name: MonetizedAPI
-      Description: API with usage-based pricing
+Parameters:
+  RestApiId:
+    Type: String
+    Description: ID of an existing REST API with a deployed prod stage
 
+Resources:
   # Free tier - limited access
   FreePlan:
     Type: AWS::ApiGateway::UsagePlan
@@ -57,7 +56,7 @@ Resources:
         Limit: 1000          # 1000 requests per month
         Period: MONTH
       ApiStages:
-        - ApiId: !Ref MonetizedAPI
+        - ApiId: !Ref RestApiId
           Stage: prod
 
   # Pro tier - higher limits
@@ -73,7 +72,7 @@ Resources:
         Limit: 100000         # 100k requests per month
         Period: MONTH
       ApiStages:
-        - ApiId: !Ref MonetizedAPI
+        - ApiId: !Ref RestApiId
           Stage: prod
 
   # Enterprise tier - highest limits
@@ -89,7 +88,7 @@ Resources:
         Limit: 10000000       # 10M requests per month
         Period: MONTH
       ApiStages:
-        - ApiId: !Ref MonetizedAPI
+        - ApiId: !Ref RestApiId
           Stage: prod
 ```
 
@@ -120,6 +119,12 @@ PLAN_PRICING = {
     'free': 0,
     'pro': 49.99,
     'enterprise': 499.99
+}
+
+PLAN_LIMITS = {
+    'free': 1000,
+    'pro': 100000,
+    'enterprise': 10000000
 }
 
 def signup(event, context):
@@ -157,9 +162,11 @@ def signup(event, context):
         'email': email,
         'company': company,
         'plan': plan,
+        'usagePlanId': PLAN_IDS[plan],
         'apiKeyId': api_key['id'],
         'apiKeyValue': api_key['value'],
         'monthlyPrice': str(PLAN_PRICING[plan]),
+        'monthlyLimit': PLAN_LIMITS[plan],
         'status': 'ACTIVE',
         'createdAt': datetime.utcnow().isoformat()
     })
@@ -196,26 +203,24 @@ def respond(status, body):
 
 ## Usage Tracking and Metering
 
-API Gateway logs usage data automatically, but for detailed billing, you need more granular tracking. Log every request through a custom authorizer or request interceptor:
+API Gateway usage plans expose per-key usage data, but for detailed billing, you may need more granular tracking by path or feature. Log each metered request from your backend after API Gateway has accepted the API key:
 
 ```python
-# Custom Lambda authorizer that also tracks usage
+# Helper called by your backend Lambda after API Gateway accepts the API key
 import boto3
-import json
 import time
 
 dynamodb = boto3.resource('dynamodb')
 usage_table = dynamodb.Table('APIUsage')
 
-def authorizer(event, context):
-    api_key = event['headers'].get('x-api-key', '')
+def track_usage(event):
+    identity = event.get('requestContext', {}).get('identity', {})
+    api_key_id = identity.get('apiKeyId')
     resource_path = event['resource']
     method = event['httpMethod']
 
-    # Validate the API key (API Gateway handles this too,
-    # but we need the key for usage tracking)
-    if not api_key:
-        raise Exception('Unauthorized')
+    if not api_key_id:
+        raise Exception('API key was not available in the request context')
 
     # Track this request
     timestamp = int(time.time())
@@ -223,7 +228,7 @@ def authorizer(event, context):
 
     usage_table.update_item(
         Key={
-            'pk': f'KEY#{api_key[:16]}',
+            'pk': f'KEY#{api_key_id}',
             'sk': f'HOUR#{hour_bucket}#PATH#{resource_path}'
         },
         UpdateExpression='ADD requestCount :one SET #m = :method, apiKey = :key',
@@ -231,25 +236,9 @@ def authorizer(event, context):
         ExpressionAttributeValues={
             ':one': 1,
             ':method': method,
-            ':key': api_key[:16]
+            ':key': api_key_id
         }
     )
-
-    # Return the authorization policy
-    return generate_policy('Allow', event['methodArn'])
-
-def generate_policy(effect, resource):
-    return {
-        'principalId': 'api-user',
-        'policyDocument': {
-            'Version': '2012-10-17',
-            'Statement': [{
-                'Action': 'execute-api:Invoke',
-                'Effect': effect,
-                'Resource': resource
-            }]
-        }
-    }
 ```
 
 ## Billing Calculation
@@ -296,12 +285,12 @@ def handler(event, context):
     )
 
     for sub in subscriptions['Items']:
-        api_key_prefix = sub['apiKeyValue'][:16]
+        api_key_id = sub['apiKeyId']
         plan = sub['plan']
 
         # Count total requests for the month
         total_requests = count_requests(
-            api_key_prefix,
+            api_key_id,
             int(month_start.timestamp()),
             int(month_end.timestamp())
         )
@@ -329,13 +318,13 @@ def handler(event, context):
             'createdAt': datetime.utcnow().isoformat()
         })
 
-def count_requests(api_key_prefix, start_ts, end_ts):
+def count_requests(api_key_id, start_ts, end_ts):
     """Count total requests for an API key in a time range."""
     total = 0
     response = usage_table.query(
         KeyConditionExpression='pk = :pk AND sk BETWEEN :start AND :end',
         ExpressionAttributeValues={
-            ':pk': f'KEY#{api_key_prefix}',
+            ':pk': f'KEY#{api_key_id}',
             ':start': f'HOUR#{start_ts}',
             ':end': f'HOUR#{end_ts}'
         }
@@ -354,6 +343,7 @@ Connect your billing to Stripe for payment processing:
 import boto3
 import json
 import stripe
+from decimal import Decimal, ROUND_HALF_UP
 
 secrets = boto3.client('secretsmanager')
 dynamodb = boto3.resource('dynamodb')
@@ -372,7 +362,7 @@ def process_invoices(event, context):
     )
 
     for invoice in pending['Items']:
-        total = float(invoice['totalCost'])
+        total = Decimal(invoice['totalCost'])
 
         if total <= 0:
             # Free plan with no overage
@@ -385,21 +375,26 @@ def process_invoices(event, context):
             continue
 
         try:
+            customer_id = get_stripe_customer_id(invoice['email'])
+            amount_cents = int(
+                (total * 100).quantize(Decimal('1'), rounding=ROUND_HALF_UP)
+            )
+
             # Create Stripe invoice
             stripe_invoice = stripe.Invoice.create(
-                customer=get_stripe_customer_id(invoice['email']),
+                customer=customer_id,
                 auto_advance=True
             )
 
             stripe.InvoiceItem.create(
-                customer=get_stripe_customer_id(invoice['email']),
+                customer=customer_id,
                 invoice=stripe_invoice.id,
-                amount=int(total * 100),  # Stripe uses cents
+                amount=amount_cents,  # Stripe uses cents
                 currency='usd',
                 description=f'API usage for {invoice["period"]}'
             )
 
-            stripe_invoice.finalize_invoice()
+            stripe.Invoice.finalize_invoice(stripe_invoice.id)
 
             invoices_table.update_item(
                 Key={'invoiceId': invoice['invoiceId']},
@@ -467,6 +462,13 @@ def get_usage(event, context):
         'monthlyLimit': sub.get('monthlyLimit'),
         'status': sub['status']
     })
+
+def respond(status, body):
+    return {
+        'statusCode': status,
+        'headers': {'Content-Type': 'application/json'},
+        'body': json.dumps(body)
+    }
 ```
 
 ## Monitoring Your API Platform
