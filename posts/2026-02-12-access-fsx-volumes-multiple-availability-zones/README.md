@@ -73,7 +73,7 @@ aws ec2 create-security-group \
   --description "Allow FSx access from multiple AZs" \
   --vpc-id vpc-0abc1234
 
-# Allow SMB traffic (Windows File Server)
+# Allow SMB traffic (Windows File Server clients)
 aws ec2 authorize-security-group-ingress \
   --group-id sg-0123456789abcdef0 \
   --protocol tcp \
@@ -92,9 +92,22 @@ aws ec2 authorize-security-group-ingress \
   --protocol udp \
   --port 53 \
   --cidr 10.0.0.0/16
+
+# Allow Lustre traffic (FSx for Lustre clients)
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-0123456789abcdef0 \
+  --protocol tcp \
+  --port 988 \
+  --cidr 10.0.0.0/16
+
+aws ec2 authorize-security-group-ingress \
+  --group-id sg-0123456789abcdef0 \
+  --protocol tcp \
+  --port 1018-1023 \
+  --cidr 10.0.0.0/16
 ```
 
-The CIDR block `10.0.0.0/16` should match your VPC's CIDR range, which covers all subnets across all AZs. If you want tighter controls, you can specify individual subnet CIDRs instead.
+The CIDR block `10.0.0.0/16` should match your VPC's CIDR range, which covers all subnets across all AZs. If you want tighter controls, you can specify individual subnet CIDRs or client security group IDs instead. For production Windows File Server deployments, also make sure the security groups and network ACLs that apply to FSx, Active Directory domain controllers, DNS servers, FSx clients, and FSx administrators allow the full set of required Microsoft AD and SMB ports documented by AWS.
 
 ## Accessing FSx for Lustre from Multiple AZs
 
@@ -125,10 +138,18 @@ sudo amazon-linux-extras install -y lustre
 # Create the mount point
 sudo mkdir -p /mnt/fsx
 
+# Get the Lustre mount name
+aws fsx describe-file-systems \
+  --file-system-ids fs-0123456789abcdef0 \
+  --query 'FileSystems[0].LustreConfiguration.MountName' \
+  --output text
+
 # Mount the FSx for Lustre file system
 # The mount target DNS name works from any AZ in the VPC
+# Replace mountname with the value returned above
 sudo mount -t lustre \
-  fs-0123456789abcdef0.fsx.us-east-1.amazonaws.com@tcp:/fsx \
+  -o relatime,flock \
+  fs-0123456789abcdef0.fsx.us-east-1.amazonaws.com@tcp:/mountname \
   /mnt/fsx
 ```
 
@@ -155,17 +176,17 @@ nslookup fs-0123456789abcdef0.your-domain.com
 
 When accessing FSx from multiple AZs, you should keep an eye on latency and throughput. Cross-AZ requests will naturally have slightly higher latency than same-AZ requests.
 
-Set up CloudWatch alarms to track performance:
+Set up CloudWatch alarms to track performance. Amazon FSx publishes throughput, IOPS, connection, and capacity metrics to CloudWatch; for end-to-end client latency, use client-side or application telemetry.
 
 ```bash
-# Create a CloudWatch alarm for high latency
+# Create a CloudWatch alarm for high network throughput utilization
 aws cloudwatch put-metric-alarm \
-  --alarm-name "FSx-CrossAZ-Latency" \
-  --metric-name "DataReadOperationLatency" \
+  --alarm-name "FSx-NetworkThroughputUtilization" \
+  --metric-name "NetworkThroughputUtilization" \
   --namespace "AWS/FSx" \
   --statistic Average \
   --period 300 \
-  --threshold 5 \
+  --threshold 80 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
   --dimensions Name=FileSystemId,Value=fs-0123456789abcdef0 \
@@ -182,7 +203,7 @@ There are a few things worth knowing about cross-AZ FSx performance:
 
 - **Latency**: Cross-AZ adds roughly 1-2ms of additional latency compared to same-AZ access. For most workloads this is negligible, but it matters for things like databases.
 - **Throughput**: Your throughput isn't impacted by cross-AZ access per se, but the FSx throughput tier you selected still applies as a ceiling.
-- **Cost**: AWS charges for cross-AZ data transfer (currently around $0.01/GB in each direction). Plan accordingly if you're dealing with terabytes.
+- **Cost**: AWS data transfer charges vary by FSx file system type, deployment type, creation date, and Region. FSx for Lustre charges for data transferred into and out of Amazon FSx across AZs at same-Region data transfer rates, while newer Multi-AZ FSx for Windows File Server file systems do not charge for access from a non-preferred AZ. Plan accordingly if you're dealing with terabytes.
 
 A solid approach is to run your primary workload in the same AZ as the FSx primary ENI and use the cross-AZ capability for failover scenarios or secondary readers.
 
