@@ -8,7 +8,7 @@ Description: Deploy Spring Cloud Gateway on Kubernetes with comprehensive route 
 
 ---
 
-Spring Cloud Gateway provides a powerful and flexible routing engine built on Spring Framework 5, Project Reactor, and Spring Boot 2. Unlike traditional servlet-based gateways, Spring Cloud Gateway uses non-blocking APIs to handle requests efficiently. Route predicates determine whether a request matches a particular route, enabling sophisticated traffic routing based on virtually any request attribute.
+Spring Cloud Gateway provides a powerful and flexible routing engine built on Spring Framework 6, Project Reactor, and Spring Boot 3. Unlike traditional servlet-based gateways, Spring Cloud Gateway uses non-blocking APIs to handle requests efficiently. Route predicates determine whether a request matches a particular route, enabling sophisticated traffic routing based on virtually any request attribute.
 
 ## Why Spring Cloud Gateway
 
@@ -22,12 +22,21 @@ Start by creating a Spring Boot application with the Spring Cloud Gateway depend
 
 ```xml
 <!-- pom.xml -->
-<project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
   <parent>
     <groupId>org.springframework.boot</groupId>
     <artifactId>spring-boot-starter-parent</artifactId>
     <version>3.2.0</version>
   </parent>
+
+  <groupId>com.example</groupId>
+  <artifactId>gateway-service</artifactId>
+  <version>0.0.1-SNAPSHOT</version>
+  <name>gateway-service</name>
 
   <dependencies>
     <dependency>
@@ -253,6 +262,15 @@ Create custom predicates for application-specific routing logic.
 
 ```java
 // CustomHeaderRoutePredicate.java
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
+import java.util.function.Predicate;
+
+import org.springframework.cloud.gateway.handler.predicate.AbstractRoutePredicateFactory;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ServerWebExchange;
+
 @Component
 public class CustomHeaderRoutePredicateFactory
     extends AbstractRoutePredicateFactory<CustomHeaderRoutePredicateFactory.Config> {
@@ -273,7 +291,7 @@ public class CustomHeaderRoutePredicateFactory
             }
 
             // Custom logic: route if header value is uppercase
-            return headerValue.equals(headerValue.toUpperCase());
+            return headerValue.equals(headerValue.toUpperCase(Locale.ROOT));
         };
     }
 
@@ -384,7 +402,7 @@ spec:
 
 ## Dynamic Configuration with ConfigMap
 
-Externalize gateway configuration using ConfigMaps for easy updates without rebuilding images.
+Externalize gateway configuration using ConfigMaps for easy updates without rebuilding images. A mounted ConfigMap updates the files in the container eventually, but Spring Boot does not automatically reload those changes unless you restart the application or add a refresh mechanism such as Spring Cloud Kubernetes Configuration Watcher.
 
 ```yaml
 # gateway-config.yaml
@@ -504,4 +522,4 @@ public class GatewayRoutingTest {
 
 ## Conclusion
 
-Spring Cloud Gateway provides a powerful, flexible routing engine that integrates seamlessly with Spring-based microservices. Route predicates enable sophisticated traffic management based on any request attribute, while filters allow you to transform requests and responses. Deploying on Kubernetes with ConfigMaps enables dynamic configuration updates without service restarts. Whether you need simple path-based routing or complex multi-dimensional traffic splitting, Spring Cloud Gateway's predicate system provides the flexibility to implement your routing requirements.
+Spring Cloud Gateway provides a powerful, flexible routing engine that integrates seamlessly with Spring-based microservices. Route predicates enable sophisticated traffic management based on any request attribute, while filters allow you to transform requests and responses. Deploying on Kubernetes with ConfigMaps lets you update configuration without rebuilding images; applying those changes at runtime requires an application restart or a refresh mechanism. Whether you need simple path-based routing or complex multi-dimensional traffic splitting, Spring Cloud Gateway's predicate system provides the flexibility to implement your routing requirements.
