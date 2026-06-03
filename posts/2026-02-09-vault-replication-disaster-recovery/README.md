@@ -32,11 +32,11 @@ vault version
 kubectl --context=primary -n vault get pods
 kubectl --context=secondary -n vault get pods
 
-# Network connectivity between clusters
-kubectl --context=primary -n vault exec vault-0 -- \
-  nc -zv vault.secondary-cluster.com 8201
+# Network connectivity from secondary to the primary cluster port
+kubectl --context=secondary -n vault exec vault-0 -- \
+  nc -zv vault.primary-cluster.com 8201
 
-# Both clusters should have similar configuration
+# Both clusters should run the same Vault version
 ```
 
 ## Enabling DR Replication on Primary
@@ -52,7 +52,7 @@ vault login
 vault write -f sys/replication/dr/primary/enable
 
 # Verify replication status
-vault read sys/replication/status
+vault read sys/replication/dr/status
 
 # Output shows:
 # mode: primary
@@ -69,12 +69,12 @@ vault write sys/replication/dr/primary/secondary-token \
   id="secondary-cluster" \
   ttl="24h"
 
-# Output provides token:
-# Key     Value
-# ---     -----
-# token   eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
+# Output provides a wrapped activation token:
+# Key                              Value
+# ---                              -----
+# wrapping_token:                  eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...
 
-# Store this token securely for secondary activation
+# Store this wrapping_token securely for secondary activation
 ```
 
 ## Activating Secondary Cluster
@@ -86,13 +86,13 @@ Configure the secondary cluster:
 export VAULT_ADDR='https://vault.secondary.company.com:8200'
 vault login
 
-# Enable DR secondary with token from primary
+# Enable DR secondary with the wrapping_token from primary
 vault write sys/replication/dr/secondary/enable \
   primary_api_addr="https://vault.primary.company.com:8200" \
   token="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
 
 # Wait for initial sync
-vault read sys/replication/status
+vault read sys/replication/dr/status
 
 # When ready, output shows:
 # mode: secondary
@@ -107,21 +107,22 @@ Track replication status:
 # On primary, check replication metrics
 vault read sys/replication/dr/status
 
-# Key metrics:
-# - last_wal: last WAL index replicated
+# Key fields:
+# - last_wal: last WAL index written locally
+# - last_dr_wal: last DR WAL shipped to a secondary
 # - merkle_root: data consistency hash
-# - connection_state: stream-wals (healthy)
+# - secondaries[].connection_status: connected (healthy)
 
 # On secondary, verify sync state
 vault read sys/replication/dr/status
 
-# Check lag time
-# - last_remote_wal: primary's latest WAL
-# - last_wal: secondary's latest received WAL
-
-# Monitor replication lag
-REPLICATION_LAG=$(($(vault read -field=last_remote_wal sys/replication/dr/status) - \
-                    $(vault read -field=last_wal sys/replication/dr/status)))
+# Check lag time. Run the first command against the primary and the second
+# command against the secondary.
+PRIMARY_DR_WAL=$(VAULT_ADDR='https://vault.primary.company.com:8200' \
+  vault read -field=last_dr_wal sys/replication/dr/status)
+SECONDARY_REMOTE_WAL=$(VAULT_ADDR='https://vault.secondary.company.com:8200' \
+  vault read -field=last_remote_wal sys/replication/dr/status)
+REPLICATION_LAG=$((PRIMARY_DR_WAL - SECONDARY_REMOTE_WAL))
 echo "Replication lag: $REPLICATION_LAG WAL entries"
 ```
 
@@ -141,25 +142,26 @@ spec:
   - name: vault-dr-replication
     interval: 30s
     rules:
-    - alert: VaultDRReplicationDown
-      expr: vault_replication_dr_primary_secondary_connections == 0
+    - alert: VaultDRReplicationWalBacklog
+      expr: vault_replication_wal_last_dr_wal - vault_replication_fsm_last_remote_wal > 1000
       for: 5m
       annotations:
-        summary: "Vault DR replication connection lost"
-        description: "No DR secondaries connected to primary"
+        summary: "Vault DR replication WAL backlog is high"
+        description: "Secondary is more than 1000 WAL entries behind the primary"
 
-    - alert: VaultDRReplicationLagging
-      expr: vault_replication_dr_primary_wal_index - vault_replication_dr_secondary_wal_index > 1000
+    - alert: VaultDRWalPersistenceSlow
+      expr: vault_wal_persistWALs_sum / vault_wal_persistWALs_count > 1000
       for: 10m
       annotations:
-        summary: "DR replication lagging behind primary"
-        description: "Secondary is more than 1000 WAL entries behind"
+        summary: "Vault WAL persistence is slow"
+        description: "Average WAL persistence latency is above 1000 ms"
 
-    - alert: VaultDRSecondaryNotStreaming
-      expr: vault_replication_dr_secondary_state != 2
+    - alert: VaultDRMerkleSyncRunning
+      expr: rate(vault_replication_merkleSync_count[10m]) > 0
       for: 5m
       annotations:
-        summary: "DR secondary not in streaming state"
+        summary: "Vault DR replication is using Merkle sync"
+        description: "Merkle sync activity can indicate a secondary is catching up or unhealthy"
 ```
 
 ## Testing DR Failover
@@ -173,7 +175,8 @@ vault read sys/replication/dr/status
 
 # 2. Promote secondary to primary
 # WARNING: This makes secondary active
-vault write -f sys/replication/dr/secondary/promote
+vault write sys/replication/dr/secondary/promote \
+  dr_operation_token="<DR_OPERATION_TOKEN>"
 
 # 3. Verify promotion
 vault read sys/replication/dr/status
@@ -185,9 +188,10 @@ vault read sys/replication/dr/status
 # 5. Applications reconnect to new primary
 
 # 6. To revert (demote current primary back to secondary)
-vault write sys/replication/dr/primary/demote
+vault write -f sys/replication/dr/primary/demote
 
-# 7. Re-enable replication in correct direction
+# 7. Generate a new secondary activation token on the new primary, then
+# update the demoted secondary's assigned primary
 ```
 
 ## Automating Failover Detection
@@ -213,6 +217,11 @@ spec:
           value: "https://vault.primary.company.com:8200"
         - name: SECONDARY_ADDR
           value: "https://vault.secondary.company.com:8200"
+        - name: DR_OPERATION_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: vault-dr-operation-token
+              key: token
         command:
         - /bin/sh
         - -c
@@ -221,17 +230,12 @@ spec:
           set -e
 
           # Check primary health
-          if ! curl -sf $PRIMARY_ADDR/v1/sys/health; then
+          if ! curl -sf "$PRIMARY_ADDR/v1/sys/health?standbyok=true&perfstandbyok=true"; then
             echo "Primary cluster is down, initiating failover"
 
-            # Authenticate to secondary
-            VAULT_ADDR=$SECONDARY_ADDR
-            VAULT_TOKEN=$(vault write -field=token auth/kubernetes/login \
-              role=admin jwt=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token))
-            export VAULT_TOKEN
-
-            # Promote secondary
-            vault write -f sys/replication/dr/secondary/promote
+            # Promote secondary with a pre-generated DR operation token
+            VAULT_ADDR=$SECONDARY_ADDR vault write sys/replication/dr/secondary/promote \
+              dr_operation_token="$DR_OPERATION_TOKEN"
 
             # Update load balancer/DNS (implementation specific)
             ./update-dns.sh
@@ -255,21 +259,26 @@ sleep 30
 
 # 3. Demote primary to secondary
 export VAULT_ADDR='https://vault.primary.company.com:8200'
-vault write sys/replication/dr/primary/demote
+vault write -f sys/replication/dr/primary/demote
 
 # 4. Promote secondary to primary
 export VAULT_ADDR='https://vault.secondary.company.com:8200'
-vault write -f sys/replication/dr/secondary/promote
+vault write sys/replication/dr/secondary/promote \
+  dr_operation_token="<DR_OPERATION_TOKEN>"
 
 # 5. Update DNS to point to new primary
 
 # 6. Perform maintenance on old primary
 
-# 7. Re-enable as secondary when maintenance complete
+# 7. Generate a new secondary activation token on the new primary
+vault write sys/replication/dr/primary/secondary-token id="original-primary"
+
+# 8. Update the demoted cluster to follow the new primary
 export VAULT_ADDR='https://vault.primary.company.com:8200'
-vault write sys/replication/dr/secondary/enable \
+vault write sys/replication/dr/secondary/update-primary \
+  dr_operation_token="<DR_OPERATION_TOKEN>" \
   primary_api_addr="https://vault.secondary.company.com:8200" \
-  token="<new-secondary-token>"
+  token="<new-secondary-activation-token>"
 ```
 
 ## Handling Split-Brain Scenarios
@@ -304,7 +313,7 @@ Implement fencing:
 ```bash
 # Fence old primary after failover
 # This prevents split-brain if old primary comes back
-vault write sys/replication/dr/primary/secondary-token/revoke \
+vault write sys/replication/dr/primary/revoke-secondary \
   id="secondary-cluster"
 
 # Or disable replication entirely on old primary
@@ -320,7 +329,7 @@ Document disaster recovery procedures:
 
 ## Pre-requisites
 - Access to both primary and secondary clusters
-- Vault admin credentials
+- Vault admin credentials and a DR operation token
 - DNS/Load balancer access
 
 ## Detection
@@ -332,8 +341,9 @@ Document disaster recovery procedures:
 1. **Promote Secondary**
    ```
    export VAULT_ADDR='https://vault.secondary.company.com:8200'
-   vault write -f sys/replication/dr/secondary/promote
-   ```text
+   vault write sys/replication/dr/secondary/promote \
+     dr_operation_token="<DR_OPERATION_TOKEN>"
+   ```
 
 2. **Update DNS**
    - Change vault.company.com to point to secondary cluster
@@ -358,7 +368,8 @@ Document disaster recovery procedures:
 
 3. **If Failing Back**
    - Demote current primary (former secondary)
-   - Promote original primary
+   - Promote original primary with a DR operation token
+   - Update the assigned primary for any remaining secondaries
    - Update DNS back to original
 ```
 
@@ -374,22 +385,26 @@ echo "=== Vault DR Test $(date) ==="
 
 # 1. Verify replication health
 echo "Checking replication status..."
-SECONDARY_LAG=$(vault read -field=last_remote_wal sys/replication/dr/status)
-echo "Replication lag: $SECONDARY_LAG"
+PRIMARY_DR_WAL=$(VAULT_ADDR='https://vault.primary.company.com:8200' \
+  vault read -field=last_dr_wal sys/replication/dr/status)
+SECONDARY_REMOTE_WAL=$(VAULT_ADDR='https://vault.secondary.company.com:8200' \
+  vault read -field=last_remote_wal sys/replication/dr/status)
+echo "Replication lag: $((PRIMARY_DR_WAL - SECONDARY_REMOTE_WAL)) WAL entries"
 
-# 2. Perform test promotion (don't actually change anything)
-echo "Simulating promotion..."
-# In test environment only!
-# vault write -f sys/replication/dr/secondary/promote -dry-run
+# 2. Verify secondary streaming state
+echo "Checking secondary streaming state..."
+SECONDARY_STATE=$(VAULT_ADDR='https://vault.secondary.company.com:8200' \
+  vault read -field=state sys/replication/dr/status)
+echo "Secondary state: $SECONDARY_STATE"
 
-# 3. Verify secondary can be promoted
-PROMOTION_STATUS=$(vault read -format=json sys/replication/dr/status | \
-  jq -r '.data.primaries[0].connection_status')
-echo "Promotion readiness: $PROMOTION_STATUS"
+# 3. Verify secondary connection to primary
+CONNECTION_STATE=$(VAULT_ADDR='https://vault.secondary.company.com:8200' \
+  vault read -field=connection_state sys/replication/dr/status)
+echo "Connection state: $CONNECTION_STATE"
 
-# 4. Test application connectivity
-echo "Testing application access to secondary..."
-curl -sf https://vault.secondary.company.com:8200/v1/sys/health
+# 4. Test secondary health endpoint
+echo "Testing secondary health endpoint..."
+curl -sf "https://vault.secondary.company.com:8200/v1/sys/health?drsecondarycode=200"
 
 # 5. Document results
 echo "DR test completed successfully"
