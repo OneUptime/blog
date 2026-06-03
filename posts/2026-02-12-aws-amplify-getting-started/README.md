@@ -61,8 +61,9 @@ Initialize Amplify in your project:
 
 ```bash
 # Create a React app (or use an existing one)
-npx create-react-app my-amplify-app
+npm create vite@latest my-amplify-app -- --template react
 cd my-amplify-app
+npm install
 
 # Initialize Amplify
 amplify init
@@ -108,7 +109,7 @@ npm install aws-amplify @aws-amplify/ui-react
 Configure and use authentication in your React app:
 
 ```javascript
-// src/index.js
+// src/main.jsx
 import { Amplify } from 'aws-amplify';
 import config from './amplifyconfiguration.json';
 
@@ -126,7 +127,6 @@ function App({ signOut, user }) {
     return (
         <div>
             <h1>Hello, {user.username}</h1>
-            <p>Email: {user.attributes.email}</p>
             <button onClick={signOut}>Sign Out</button>
         </div>
     );
@@ -137,7 +137,7 @@ function App({ signOut, user }) {
 export default withAuthenticator(App);
 ```
 
-That gives you a complete authentication flow with zero custom UI code. If you want to customize it, you can use the lower-level `Auth` API instead.
+That gives you a complete authentication flow with zero custom UI code. If you want to customize it, you can use the lower-level Auth APIs from `aws-amplify/auth` instead.
 
 For more control over the authentication flow, see [using Amplify Authentication with Cognito](https://oneuptime.com/blog/post/2026-02-12-amplify-authentication-cognito/view).
 
@@ -228,31 +228,33 @@ import { uploadData, getUrl, list } from 'aws-amplify/storage';
 async function uploadFile(file) {
     try {
         const result = await uploadData({
-            key: `uploads/${file.name}`,
+            path: `public/uploads/${file.name}`,
             data: file,
             options: {
                 contentType: file.type,
                 onProgress: ({ transferredBytes, totalBytes }) => {
-                    const progress = Math.round((transferredBytes / totalBytes) * 100);
-                    console.log(`Upload progress: ${progress}%`);
+                    if (totalBytes) {
+                        const progress = Math.round((transferredBytes / totalBytes) * 100);
+                        console.log(`Upload progress: ${progress}%`);
+                    }
                 }
             }
         }).result;
-        console.log('Upload complete:', result.key);
+        console.log('Upload complete:', result.path);
     } catch (error) {
         console.error('Upload failed:', error);
     }
 }
 
 // Get a file URL
-async function getFileUrl(key) {
-    const url = await getUrl({ key });
+async function getFileUrl(path) {
+    const url = await getUrl({ path });
     return url.url.toString();
 }
 
 // List files
-async function listFiles(prefix) {
-    const result = await list({ prefix });
+async function listFiles(path) {
+    const result = await list({ path });
     return result.items;
 }
 ```
