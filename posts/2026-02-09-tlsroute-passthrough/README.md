@@ -23,7 +23,7 @@ Start with simple SNI-based routing to a backend service.
 ```yaml
 # tlsroute-basic.yaml
 
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: basic-tls-route
@@ -67,37 +67,53 @@ Route different SNI hostnames to different backend services.
 
 ```yaml
 # tlsroute-multi-hostname.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
-  name: multi-hostname-tls
+  name: api-tls
   namespace: default
 spec:
   parentRefs:
     - name: tls-gateway
       sectionName: tls-passthrough
+  hostnames:
+    - "api.example.com"
   rules:
-    # Route api.example.com
-    - matches:
-        - snis:
-            - "api.example.com"
-      backendRefs:
+    - backendRefs:
         - name: api-service
           port: 443
 
-    # Route db.example.com
-    - matches:
-        - snis:
-            - "db.example.com"
-      backendRefs:
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: database-tls
+  namespace: default
+spec:
+  parentRefs:
+    - name: tls-gateway
+      sectionName: tls-passthrough
+  hostnames:
+    - "db.example.com"
+  rules:
+    - backendRefs:
         - name: database-service
           port: 5432
 
-    # Route *.internal.example.com
-    - matches:
-        - snis:
-            - "*.internal.example.com"
-      backendRefs:
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: TLSRoute
+metadata:
+  name: internal-tls
+  namespace: default
+spec:
+  parentRefs:
+    - name: tls-gateway
+      sectionName: tls-passthrough
+  hostnames:
+    - "*.internal.example.com"
+  rules:
+    - backendRefs:
         - name: internal-service
           port: 443
 ```
@@ -110,7 +126,7 @@ Use TLS passthrough for database connections that require TLS.
 
 ```yaml
 # tlsroute-postgres.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: postgres-tls-route
@@ -148,7 +164,7 @@ spec:
           from: All
 ```
 
-Database clients connect through the gateway with full TLS encryption to the backend.
+Database clients connect through the gateway with full TLS encryption to the backend. For PostgreSQL clients that use libpq, configure `sslnegotiation=direct` so the connection starts with a TLS ClientHello that the Gateway can inspect for SNI.
 
 ## Implementing Traffic Splitting with TLS
 
@@ -156,7 +172,7 @@ Split TLS traffic across multiple backends for blue-green or canary deployments.
 
 ```yaml
 # tlsroute-traffic-split.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: canary-tls-route
@@ -188,7 +204,7 @@ Route TLS traffic to services in different namespaces.
 
 ```yaml
 # tlsroute-cross-namespace.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: cross-namespace-tls
@@ -207,7 +223,7 @@ spec:
 
 ---
 # ReferenceGrant to allow cross-namespace access
-apiVersion: gateway.networking.k8s.io/v1beta1
+apiVersion: gateway.networking.k8s.io/v1
 kind: ReferenceGrant
 metadata:
   name: allow-frontend-to-backend-tls
@@ -229,7 +245,7 @@ Route Redis connections with TLS through the gateway.
 
 ```yaml
 # tlsroute-redis.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: redis-tls-route
@@ -286,13 +302,13 @@ kubectl get tlsroute basic-tls-route -o jsonpath='{.status.parents[*].conditions
 kubectl get tlsroute basic-tls-route -o jsonpath='{.status.parents[0].conditions[?(@.type=="ResolvedRefs")]}'
 ```
 
-## Implementing Fallback Backends
+## Preparing Standby Backends
 
-Configure fallback routing when primary backends are unavailable.
+Configure a standby backend that can be activated by changing weights.
 
 ```yaml
 # tlsroute-fallback.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: tls-with-fallback
@@ -309,13 +325,13 @@ spec:
           port: 443
           weight: 100
 
-        # Fallback backend (used if primary fails)
+        # Standby backend (activate by increasing this weight)
         - name: app-backup
           port: 443
           weight: 0
 ```
 
-When the primary backend is unavailable, traffic automatically fails over to the backup.
+With weight `0`, no traffic is forwarded to the backup. Increase its weight when you want to shift new connections to the standby backend.
 
 ## Combining TLS Passthrough with TCP
 
@@ -323,7 +339,7 @@ Use TLS passthrough for custom TCP protocols.
 
 ```yaml
 # tlsroute-custom-protocol.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: custom-protocol-tls
@@ -382,7 +398,7 @@ Route TLS traffic across multiple clusters.
 
 ```yaml
 # tlsroute-multi-cluster.yaml
-apiVersion: gateway.networking.k8s.io/v1alpha2
+apiVersion: gateway.networking.k8s.io/v1
 kind: TLSRoute
 metadata:
   name: multi-cluster-tls
@@ -411,7 +427,7 @@ spec:
 
 Use TLS passthrough when backends require their own certificate management or when regulations mandate end-to-end encryption.
 
-Configure SNI hostnames carefully. Wildcards work but exact matches are more performant.
+Configure SNI hostnames carefully. Wildcards work, but exact matches are more explicit and avoid unintended hostname matches.
 
 Monitor backend service health. The gateway can't inspect encrypted traffic, so backend health checks are critical.
 
@@ -421,7 +437,7 @@ Document why specific routes use passthrough rather than termination to help fut
 
 Test certificate updates on backends without gateway involvement. Passthrough means the gateway doesn't see certificate changes.
 
-Configure appropriate timeout values for long-lived TLS connections like databases.
+Configure appropriate implementation-specific timeout values for long-lived TLS connections like databases.
 
 Use ReferenceGrants carefully when allowing cross-namespace backend references for security.
 
