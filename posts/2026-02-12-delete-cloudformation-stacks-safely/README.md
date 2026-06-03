@@ -8,7 +8,7 @@ Description: Learn how to safely delete CloudFormation stacks without losing imp
 
 ---
 
-Deleting a CloudFormation stack removes every resource it manages. That includes databases, S3 buckets with data, encryption keys, and DNS records. Done carelessly, a stack deletion can wipe out production data in seconds. This guide covers how to delete stacks safely, with checks and safeguards to prevent disasters.
+Deleting a CloudFormation stack attempts to remove every resource it manages. That includes databases, S3 buckets, encryption keys, and DNS records. Done carelessly, a stack deletion can wipe out production data in seconds. This guide covers how to delete stacks safely, with checks and safeguards to prevent disasters.
 
 ## The Basics of Stack Deletion
 
@@ -55,7 +55,7 @@ aws cloudformation list-stack-resources \
   --output table
 ```
 
-Look for resources that contain data: RDS instances, S3 buckets, DynamoDB tables, EFS file systems, Elasticsearch domains.
+Look for resources that contain data: RDS instances, S3 buckets, DynamoDB tables, EFS file systems, OpenSearch Service domains.
 
 ### 3. Check for cross-stack dependencies
 
@@ -122,12 +122,13 @@ Resources:
       BucketName: temp-processing-bucket
 ```
 
-The three options:
+Common options:
 
 | Policy | Behavior | Use For |
 |---|---|---|
-| `Delete` | Resource is deleted (default) | Temporary or recreatable resources |
+| `Delete` | Resource is deleted (default for most resources) | Temporary or recreatable resources |
 | `Retain` | Resource is kept, just detached from the stack | Databases, encryption keys, critical data |
+| `RetainExceptOnCreate` | Resource is retained except when the stack operation that created it rolls back | New resources that should be cleaned up if initial creation fails |
 | `Snapshot` | Creates a final snapshot, then deletes | RDS, ElastiCache, Redshift |
 
 For a deeper dive, see our post on [DeletionPolicy to retain resources](https://oneuptime.com/blog/post/2026-02-12-cloudformation-deletionpolicy-retain-resources/view).
@@ -240,12 +241,18 @@ CloudFormation can't delete S3 buckets that contain objects. You need to empty t
 # Empty an S3 bucket before stack deletion
 aws s3 rm s3://my-bucket-name --recursive
 
-# If versioning is enabled, also delete version markers
+# If versioning is enabled, also delete object versions and delete markers
 aws s3api list-object-versions \
   --bucket my-bucket-name \
-  --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
   --output json | \
-aws s3api delete-objects --bucket my-bucket-name --delete file:///dev/stdin
+  jq '{Objects: ((.Versions // []) + (.DeleteMarkers // []) | map({Key, VersionId}))}' \
+  > objects-to-delete.json
+
+if [ "$(jq '.Objects | length' objects-to-delete.json)" -gt 0 ]; then
+  aws s3api delete-objects \
+    --bucket my-bucket-name \
+    --delete file://objects-to-delete.json
+fi
 ```
 
 Alternatively, add a custom resource to your template that empties the bucket during deletion. But that adds complexity - sometimes the manual approach is simpler.
