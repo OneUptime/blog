@@ -8,13 +8,13 @@ Description: Configure SR-IOV network device plugin to provide direct hardware a
 
 ---
 
-Single Root I/O Virtualization (SR-IOV) enables network interfaces to expose multiple virtual functions that can be directly assigned to pods. This bypasses the kernel network stack and software switching, providing near-native network performance with minimal CPU overhead. SR-IOV is essential for applications requiring high throughput, low latency, or guaranteed bandwidth.
+Single Root I/O Virtualization (SR-IOV) enables network interfaces to expose multiple virtual functions that can be directly assigned to pods. This bypasses overlay networks, virtual bridges, and software switching, providing near-native network performance with minimal CPU overhead. SR-IOV is essential for applications requiring high throughput, low latency, or guaranteed bandwidth.
 
 ## Understanding SR-IOV Architecture
 
 Traditional pod networking uses software bridges and network namespaces, which adds latency and CPU overhead. SR-IOV provides:
 
-- Direct hardware access from pods (bypassing host kernel)
+- Direct hardware access from pods (bypassing host software switching)
 - Near line-rate throughput (10Gbps, 25Gbps, 100Gbps)
 - Microsecond-level latency
 - Hardware-offloaded packet processing
@@ -48,7 +48,7 @@ lspci -v -s 0000:05:00.0 | grep -i SR-IOV
 Enable SR-IOV in BIOS and kernel:
 
 ```bash
-# Check if IOMMU is enabled (required for SR-IOV)
+# Check if IOMMU is enabled (required for secure device assignment)
 dmesg | grep -i iommu
 
 # Enable IOMMU if not enabled (add to kernel parameters)
@@ -103,8 +103,14 @@ systemctl enable sriov-vfs.service
 Deploy the SR-IOV network device plugin:
 
 ```bash
-# Install SR-IOV Network Operator
-kubectl apply -f https://raw.githubusercontent.com/k8snetworkplumbingwg/sriov-network-operator/master/deployment/sriov-network-operator.yaml
+# Install SR-IOV Network Operator with Helm
+helm install -n sriov-network-operator --create-namespace \
+  --set sriovOperatorConfig.deploy=true \
+  sriov-network-operator \
+  oci://ghcr.io/k8snetworkplumbingwg/sriov-network-operator-chart
+
+# If Pod Security Admission is enabled, allow privileged operator pods
+kubectl label ns sriov-network-operator pod-security.kubernetes.io/enforce=privileged
 ```
 
 Or install manually:
@@ -127,11 +133,11 @@ data:
       "resourceList": [
         {
           "resourceName": "intel_sriov_netdevice",
-          "selectors": {
+          "selectors": [{
             "vendors": ["8086"],
-            "devices": ["154c", "10ed"],
-            "drivers": ["i40evf", "ixgbevf"]
-          }
+            "devices": ["154c", "10ed", "1889"],
+            "drivers": ["i40evf", "ixgbevf", "iavf"]
+          }]
         }
       ]
     }
@@ -140,7 +146,7 @@ EOF
 kubectl apply -f configMap.yaml
 
 # Deploy device plugin
-kubectl apply -f deployments/k8s-v1.16/sriovdp-daemonset.yaml
+kubectl apply -f deployments/sriovdp-daemonset.yaml
 ```
 
 Verify installation:
@@ -169,6 +175,7 @@ spec:
   config: '{
     "cniVersion": "0.3.1",
     "type": "sriov",
+    "name": "sriov-network",
     "ipam": {
       "type": "host-local",
       "subnet": "10.56.217.0/24",
@@ -316,6 +323,7 @@ spec:
   config: '{
     "cniVersion": "0.3.1",
     "type": "sriov",
+    "name": "sriov-network-2",
     "ipam": {
       "type": "host-local",
       "subnet": "10.56.218.0/24"
@@ -446,11 +454,11 @@ Verify PCI device IDs match your hardware.
 
 ## Security Considerations
 
-SR-IOV bypasses kernel network security:
+SR-IOV bypasses the primary pod network's software controls for traffic on the SR-IOV interface:
 
-1. **Network policies don't apply**: Traffic goes directly to hardware
-2. **Privileged access required**: Pods need elevated capabilities
-3. **Hardware access**: Pods can potentially access other VFs
+1. **Network policies may not apply to secondary interfaces**: Traffic on the SR-IOV interface is handled outside the primary CNI datapath
+2. **Elevated access may be required**: DPDK and device-management workloads often need privileged mode or extra capabilities
+3. **Hardware and firmware isolation matter**: Use IOMMU, trusted NIC firmware, and correct VF configuration to isolate assigned devices
 
 Mitigations:
 
@@ -496,7 +504,7 @@ metadata:
   namespace: nfv
 spec:
   hard:
-    intel.com/intel_sriov_netdevice: "4"  # Max 4 VFs per namespace
+    requests.intel.com/intel_sriov_netdevice: "4"  # Max 4 requested VFs per namespace
 ```
 
 SR-IOV network devices provide the highest possible network performance for Kubernetes pods by enabling direct hardware access. Use SR-IOV for applications requiring multi-gigabit throughput, microsecond latency, or guaranteed bandwidth like NFV, HPC, financial trading systems, and real-time data processing. While it requires compatible hardware and adds operational complexity, the performance benefits make it essential for demanding network-intensive workloads.
