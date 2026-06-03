@@ -20,7 +20,7 @@ Beyond reliability, pipelines give you audit trails. You can see exactly which c
 
 ## Option 1: SAM Pipelines (Built-in)
 
-SAM has a built-in command for bootstrapping CI/CD pipelines. It supports AWS CodePipeline, GitHub Actions, GitLab CI/CD, and Bitbucket Pipelines.
+SAM has a built-in command for bootstrapping CI/CD pipelines. It supports AWS CodePipeline, Jenkins, GitHub Actions, GitLab CI/CD, and Bitbucket Pipelines.
 
 Here's how to get started with the interactive setup:
 
@@ -67,7 +67,7 @@ jobs:
       - uses: aws-actions/setup-sam@v2
 
       # Configure AWS credentials from GitHub secrets
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -108,6 +108,9 @@ Resources:
     Properties:
       Name: sam-app-pipeline
       RoleArn: !GetAtt PipelineRole.Arn
+      ArtifactStore:
+        Type: S3
+        Location: !Ref PipelineArtifactBucket
       Stages:
         # Source stage pulls code from CodeCommit
         - Name: Source
@@ -154,6 +157,7 @@ Resources:
                 StackName: my-sam-app-prod
                 TemplatePath: BuildOutput::packaged.yaml
                 Capabilities: CAPABILITY_IAM
+                RoleArn: !GetAtt CloudFormationDeployRole.Arn
               InputArtifacts:
                 - Name: BuildOutput
 ```
@@ -184,6 +188,9 @@ With GitHub Actions, you can use environments with protection rules:
 
 ```yaml
 # Multi-stage deployment with approval gates
+env:
+  AWS_REGION: us-east-1
+
 jobs:
   deploy-dev:
     runs-on: ubuntu-latest
@@ -191,8 +198,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
       - run: sam build --use-container
-      - run: sam deploy --stack-name app-dev --parameter-overrides Stage=dev
+      - run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name app-dev \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides Stage=dev
 
   deploy-prod:
     needs: deploy-dev
@@ -202,8 +221,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/setup-sam@v2
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
       - run: sam build --use-container
-      - run: sam deploy --stack-name app-prod --parameter-overrides Stage=prod
+      - run: |
+          sam deploy \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset \
+            --stack-name app-prod \
+            --resolve-s3 \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides Stage=prod
 ```
 
 ## Testing in the Pipeline
@@ -250,7 +281,7 @@ This shifts traffic gradually to the new version and rolls back automatically if
 
 ## Monitoring Your Pipeline
 
-A pipeline you can't observe is a pipeline you can't trust. Set up notifications for pipeline failures. CloudWatch Events can trigger SNS notifications when a pipeline stage fails. For more comprehensive monitoring of your deployed applications, check out how to [monitor AWS Lambda functions](https://oneuptime.com/blog/post/2026-02-02-aws-lambda-functions/view) effectively.
+A pipeline you can't observe is a pipeline you can't trust. Set up notifications for pipeline failures. Amazon EventBridge rules can trigger SNS notifications when a pipeline stage fails. For more comprehensive monitoring of your deployed applications, check out how to [monitor AWS Lambda functions](https://oneuptime.com/blog/post/2026-02-02-aws-lambda-functions/view) effectively.
 
 ## Wrapping Up
 
