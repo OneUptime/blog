@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudWatch, Lambda, Serverless, Monitoring
 
-Description: Learn how to use the CloudWatch Embedded Metric Format to publish custom metrics directly from Lambda function logs without extra API calls or costs.
+Description: Learn how to use the CloudWatch Embedded Metric Format to publish custom metrics directly from Lambda function logs without calling PutMetricData yourself.
 
 ---
 
-If you've ever tried publishing custom CloudWatch metrics from a Lambda function using the standard `PutMetricData` API, you've probably noticed the downsides. Each API call adds latency to your function execution, increases your AWS bill, and can even get throttled under high concurrency. The CloudWatch Embedded Metric Format (EMF) solves all of these problems by letting you embed metric definitions directly in your log output.
+If you've ever tried publishing custom CloudWatch metrics from a Lambda function using the standard `PutMetricData` API, you've probably noticed the downsides. Each API call adds latency to your function execution, increases your AWS bill, and can even get throttled under high concurrency. The CloudWatch Embedded Metric Format (EMF) avoids that direct metric API call by letting you embed metric definitions directly in your log output.
 
-When CloudWatch Logs receives a log entry in EMF format, it automatically extracts the metric data and publishes it as a custom CloudWatch metric. No extra API calls. No added latency. No throttling concerns. You just write a specially structured JSON object to stdout, and CloudWatch handles the rest.
+When CloudWatch Logs receives a log entry in EMF format, it automatically extracts the metric data and publishes it as a custom CloudWatch metric. No `PutMetricData` call in your Lambda code. No synchronous metric API latency. No `PutMetricData` throttling concerns. You just write a specially structured JSON object to stdout, and CloudWatch handles the rest.
 
 ## How EMF Works
 
@@ -172,11 +172,11 @@ exports.handler = metricScope((metrics) => async (event, context) => {
 
   // Create multiple dimension sets so you can query the metric
   // by different slices
-  metrics.setDimensions(
+  metrics.setDimensions([
     { Environment: 'prod', Endpoint: '/api/orders' },  // slice by env + endpoint
     { Environment: 'prod' },                             // slice by env only
     { Endpoint: '/api/orders' }                          // slice by endpoint only
-  );
+  ]);
 
   metrics.putMetric('RequestLatency', 45.2, Unit.Milliseconds);
   metrics.putMetric('RequestCount', 1, Unit.Count);
@@ -240,14 +240,14 @@ EMF is almost always the better choice inside Lambda functions. Here's a quick c
 
 | Factor | EMF | PutMetricData API |
 |--------|-----|-------------------|
-| Latency impact | None (async via logs) | Adds API call latency |
-| Cost | Free (part of log ingestion) | $0.01 per 1,000 API calls |
-| Throttling | Not subject to metric API limits | 150 TPS per account/region |
+| Latency impact | No synchronous metric API call | Adds API call latency |
+| Cost | No `PutMetricData` request charge; log ingestion and custom metric charges still apply | $0.01 per 1,000 API calls |
+| Throttling | Not subject to `PutMetricData` API limits | 500 TPS per account/region |
 | Rich log data | Yes, same log line | Separate log and metric calls |
 | High resolution | 1-second supported | 1-second supported |
-| Outside Lambda | Needs CloudWatch agent | Works anywhere |
+| Outside Lambda | Use the CloudWatch agent or PutLogEvents | Works anywhere with AWS API access |
 
-The main situation where you'd still want `PutMetricData` is when you're running outside Lambda - on EC2, ECS, or on-premises. For those cases, check out our post on [publishing custom CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-publish-custom-cloudwatch-metrics/view).
+The main situation where you'd still want `PutMetricData` is when you don't want to route the data through CloudWatch Logs or can't use the CloudWatch agent or `PutLogEvents`. For those cases, check out our post on [publishing custom CloudWatch metrics](https://oneuptime.com/blog/post/2026-02-12-publish-custom-cloudwatch-metrics/view).
 
 ## Querying EMF Logs with Logs Insights
 
@@ -266,7 +266,7 @@ For more on writing these queries, check out [CloudWatch Logs Insights query syn
 
 ## Tips and Gotchas
 
-A few things to keep in mind. First, each EMF log line can contain up to 100 metrics and 30 dimensions. If you exceed these limits, the metrics won't be extracted. Second, the `_aws.Timestamp` field is optional - if you omit it, CloudWatch uses the log event timestamp. Third, make sure your metric values are numbers, not strings. A stringified number like `"42"` won't be extracted as a metric.
+A few things to keep in mind. First, each EMF metric directive can contain up to 100 metric definitions, and each dimension set can contain up to 30 dimension keys. If you exceed these limits, the metrics won't be extracted. Second, include `_aws.Timestamp` as milliseconds since the Unix epoch when you construct EMF manually; the client libraries set this for you. Third, make sure your metric values are numbers, not strings. A stringified number like `"42"` won't be extracted as a metric.
 
 Also, watch out for cold starts. The `aws-embedded-metrics` library initializes quickly, but if you're constructing EMF manually, make sure you're emitting valid JSON even on the first invocation.
 
