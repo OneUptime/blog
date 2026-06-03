@@ -62,7 +62,7 @@ aws auditmanager create-control \
 The `control-mapping-sources` parameter is where the magic happens. It tells Audit Manager where to pull evidence from. You've got several options:
 
 - **AWS_Config** - Uses Config rule evaluations as evidence
-- **AWS_CloudTrail** - Collects CloudTrail events as evidence
+- **AWS_Cloudtrail** - Collects CloudTrail events as evidence
 - **AWS_Security_Hub** - Uses Security Hub findings
 - **AWS_API_Call** - Calls AWS APIs on a schedule to collect snapshots
 - **MANUAL** - Requires manual evidence upload
@@ -80,7 +80,7 @@ aws auditmanager create-control \
       "sourceName": "IAM_Policy_CloudTrail",
       "sourceDescription": "CloudTrail events for IAM policy changes",
       "sourceSetUpOption": "System_Controls_Mapping",
-      "sourceType": "AWS_CloudTrail",
+      "sourceType": "AWS_Cloudtrail",
       "sourceKeyword": {
         "keywordInputType": "SELECT_FROM_LIST",
         "keywordValue": "PutGroupPolicy"
@@ -90,7 +90,7 @@ aws auditmanager create-control \
       "sourceName": "IAM_Role_CloudTrail",
       "sourceDescription": "CloudTrail events for IAM role policy changes",
       "sourceSetUpOption": "System_Controls_Mapping",
-      "sourceType": "AWS_CloudTrail",
+      "sourceType": "AWS_Cloudtrail",
       "sourceKeyword": {
         "keywordInputType": "SELECT_FROM_LIST",
         "keywordValue": "PutRolePolicy"
@@ -108,7 +108,6 @@ Now that you have controls, let's put them together into a framework. Here's a P
 ```python
 # create_custom_framework.py - Build a custom security framework
 import boto3
-import json
 
 client = boto3.client('auditmanager')
 
@@ -121,6 +120,11 @@ def create_framework():
     for control in controls['controlMetadataList']:
         control_map[control['name']] = control['id']
 
+    def require_control(name):
+        if name not in control_map:
+            raise ValueError(f"Control not found: {name}")
+        return {'id': control_map[name]}
+
     # Define the framework structure
     framework_response = client.create_assessment_framework(
         name='Custom-Security-Framework-v1',
@@ -130,32 +134,32 @@ def create_framework():
             {
                 'name': 'Identity and Access Management',
                 'controls': [
-                    {'id': control_map.get('IAM-PolicyChangeMonitoring', '')},
-                    {'id': control_map.get('IAM-MFAEnforcement', '')},
-                    {'id': control_map.get('IAM-RootAccountUsage', '')},
+                    require_control('IAM-PolicyChangeMonitoring'),
+                    require_control('IAM-MFAEnforcement'),
+                    require_control('IAM-RootAccountUsage'),
                 ]
             },
             {
                 'name': 'Logging and Monitoring',
                 'controls': [
-                    {'id': control_map.get('CloudTrail-LogValidation', '')},
-                    {'id': control_map.get('CloudWatch-AlarmCoverage', '')},
-                    {'id': control_map.get('VPCFlowLogs-Enabled', '')},
+                    require_control('CloudTrail-LogValidation'),
+                    require_control('CloudWatch-AlarmCoverage'),
+                    require_control('VPCFlowLogs-Enabled'),
                 ]
             },
             {
                 'name': 'Data Protection',
                 'controls': [
-                    {'id': control_map.get('S3-Encryption', '')},
-                    {'id': control_map.get('EBS-Encryption', '')},
-                    {'id': control_map.get('RDS-Encryption', '')},
+                    require_control('S3-Encryption'),
+                    require_control('EBS-Encryption'),
+                    require_control('RDS-Encryption'),
                 ]
             },
             {
                 'name': 'Network Security',
                 'controls': [
-                    {'id': control_map.get('SecurityGroup-NoPublicSSH', '')},
-                    {'id': control_map.get('VPC-DefaultSG-Restricted', '')},
+                    require_control('SecurityGroup-NoPublicSSH'),
+                    require_control('VPC-DefaultSG-Restricted'),
                 ]
             }
         ],
@@ -176,7 +180,7 @@ if __name__ == '__main__':
 
 ## Creating an Assessment from the Framework
 
-A framework by itself doesn't do anything - you need to create an assessment that uses it. The assessment defines the scope (which AWS accounts and services) and the time period.
+A framework by itself doesn't do anything - you need to create an assessment that uses it. The assessment defines the AWS accounts in scope, the process owner role, and the destination for assessment reports. Audit Manager infers the AWS services in scope from your assessment controls and their data sources.
 
 ```python
 # create_assessment.py - Launch an assessment from your custom framework
@@ -196,14 +200,6 @@ def create_assessment(framework_id):
             'awsAccounts': [
                 {'id': '123456789012'},
                 {'id': '987654321098'}
-            ],
-            'awsServices': [
-                {'serviceName': 'iam'},
-                {'serviceName': 's3'},
-                {'serviceName': 'ec2'},
-                {'serviceName': 'rds'},
-                {'serviceName': 'cloudtrail'},
-                {'serviceName': 'cloudwatch'}
             ]
         },
         roles=[
@@ -230,11 +226,11 @@ create_assessment('your-framework-id-here')
 Not everything can be automated. Sometimes you need to attach manual evidence - penetration test reports, vendor questionnaires, or policy documents.
 
 ```bash
-# Upload manual evidence to a specific control in your assessment
+# Upload manual evidence to a specific assessment control ID
 aws auditmanager batch-import-evidence-to-assessment-control \
   --assessment-id "a1b2c3d4-5678-90ab-cdef-example" \
   --control-set-id "Identity-and-Access-Management" \
-  --control-id "IAM-MFAEnforcement" \
+  --control-id "11111111-2222-3333-4444-555555555555" \
   --manual-evidence '[
     {
       "s3ResourcePath": "s3://my-audit-evidence/pentest-report-2026-q1.pdf"
@@ -251,8 +247,8 @@ If you're running a multi-account setup with AWS Organizations, you'll want to s
 
 ```bash
 # Share the framework with another account
-aws auditmanager create-assessment-framework-share \
-  --framework-id "your-framework-id" \
+aws auditmanager start-assessment-framework-share \
+  --framework-id "00000000-1111-2222-3333-444444444444" \
   --destination-account "987654321098" \
   --destination-region "us-east-1" \
   --comment "Sharing our security framework for Q1 assessment"
