@@ -26,7 +26,7 @@ sequenceDiagram
     You->>EC2: Hibernate instance
     EC2->>RAM: Signal OS to hibernate
     RAM->>EBS: Write RAM contents to disk
-    EC2->>EC2: Stop instance (no hourly charges)
+    EC2->>EC2: Stop instance (no instance usage charges after stopped)
 
     Note over EC2: Time passes (up to 60 days)
 
@@ -36,7 +36,7 @@ sequenceDiagram
     EC2->>You: Instance running (same state as before)
 ```
 
-During hibernation, you're only charged for the EBS storage and any Elastic IPs. No EC2 instance-hour charges.
+After the instance reaches the stopped state, you're only charged for attached resources such as EBS storage and Elastic IPs. No EC2 instance-hour charges apply while the hibernated instance is stopped, though AWS does bill instance usage while the hibernation is still in the `stopping` state.
 
 ## Prerequisites for Hibernation
 
@@ -46,9 +46,9 @@ Not every instance can hibernate. Here are the requirements:
 
 **Root volume**: Must be an EBS volume (not instance store), encrypted, and large enough to hold the RAM contents plus OS data.
 
-**RAM limit**: Maximum 150 GB of RAM for hibernation.
+**RAM limit**: Linux instances must have less than 150 GiB of RAM. Windows instances must have 16 GiB of RAM or less.
 
-**OS support**: Amazon Linux 2, Ubuntu 18.04+, Windows Server 2016+, and several other distributions.
+**OS support**: AL2023, Amazon Linux 2, supported Ubuntu LTS AMIs, Windows Server 2016+, and several other distributions. Check the AWS AMI requirements because support depends on the AMI release date and, for some distributions, extra configuration.
 
 **Hibernation agent**: The OS needs the hibernation agent installed (included by default in Amazon Linux 2 and recent AMIs).
 
@@ -99,7 +99,7 @@ The root volume needs enough space for the OS, your applications, and the RAM du
 Root volume size >= OS + application data + (2 x RAM size)
 ```
 
-The 2x multiplier gives breathing room for the hibernation file plus normal OS operations. For an m5.xlarge with 16 GB RAM, a 50 GB root volume is comfortable.
+The 2x multiplier gives breathing room for the hibernation file plus normal OS operations. For an m5.xlarge with 16 GiB RAM, a 50 GiB root volume is comfortable.
 
 ## Hibernating and Resuming
 
@@ -167,7 +167,7 @@ Hibernation is valuable in several scenarios:
 aws ec2 describe-instances \
   --filters "Name=tag:Environment,Values=development" "Name=instance-state-name,Values=running" \
   --query 'Reservations[].Instances[].InstanceId' \
-  --output text | xargs -n1 -I{} aws ec2 stop-instances --instance-ids {} --hibernate
+  --output text | xargs -r -I{} aws ec2 stop-instances --instance-ids {} --hibernate
 ```
 
 **Pre-warmed instances** - Boot an instance, warm up your application caches and JIT compilers, then hibernate. When you need capacity, resume the hibernated instance and it's immediately ready with warm caches.
@@ -195,15 +195,15 @@ aws ec2 describe-instances \
 
 There are some things to be aware of:
 
-**60-day limit** - An instance can be hibernated for a maximum of 60 days. After that, AWS may terminate it.
+**60-day limit** - AWS doesn't support keeping an instance hibernated for more than 60 days. To keep it longer, start the hibernated instance, stop it, and then start it again.
 
 **Network connections** - TCP connections will time out during hibernation. Your application needs to handle reconnection gracefully. This includes database connections, message queue consumers, and API clients.
 
 **Time drift** - The system clock will show the time from when the instance was hibernated. NTP corrects this quickly, but applications that depend on precise timing should be aware.
 
-**IP addresses** - The private IP stays the same. Public IPs change unless you use an Elastic IP. Elastic IPs aren't charged while the instance is stopped (hibernated).
+**IP addresses** - The private IPv4 address and any IPv6 addresses stay the same. Public IPv4 addresses change unless you use an Elastic IP. Elastic IPs remain associated with hibernated instances and are charged.
 
-**Spot Instances** - Spot Instances support hibernation as an interruption behavior. Instead of being terminated, the instance can be hibernated and resumed when capacity is available.
+**Spot Instances** - Spot Instances support hibernation as an interruption behavior. Instead of being terminated, the instance can be hibernated and resumed when capacity is available. If you enable hibernation with `Configured=true`, AWS sets the Spot interruption behavior to hibernate unless you explicitly set it to `hibernate`.
 
 ```bash
 # Launch Spot Instance with hibernation on interruption
@@ -214,8 +214,7 @@ aws ec2 run-instances \
   --instance-market-options '{
     "MarketType": "spot",
     "SpotOptions": {
-      "SpotInstanceType": "persistent",
-      "InstanceInterruptionBehavior": "hibernate"
+      "SpotInstanceType": "persistent"
     }
   }' \
   --block-device-mappings '[{
@@ -241,9 +240,9 @@ systemctl status hibinit-agent
 
 ## Cost Savings with Hibernation
 
-The main cost benefit is straightforward: you don't pay for EC2 compute hours while hibernated. You only pay for EBS storage.
+The main cost benefit is straightforward: you don't pay for EC2 compute hours while the hibernated instance is stopped. You still pay for EBS storage and any billable public IPv4 addresses, such as Elastic IPs.
 
-For example, an m5.xlarge ($0.192/hr) hibernated for 14 hours overnight:
+For example, an m5.xlarge Linux instance in us-east-1 ($0.192/hr) hibernated for 14 hours overnight:
 - Without hibernation: $0.192 x 14 = $2.69/night = $80.64/month
 - With hibernation: 50 GB gp3 EBS = $4.00/month for that time
 - Monthly savings per instance: roughly $76
