@@ -8,7 +8,7 @@ Description: Learn how to configure comprehensive audit logging for RBAC permiss
 
 ---
 
-RBAC changes directly impact cluster security. A misconfigured RoleBinding can grant excessive permissions. A deleted ClusterRole can break critical system components. Unauthorized access attempts might indicate an attack in progress. Audit logging captures these events, creating an immutable record of who did what and when.
+RBAC changes directly impact cluster security. A misconfigured RoleBinding can grant excessive permissions. A deleted ClusterRole can break critical system components. Unauthorized access attempts might indicate an attack in progress. Audit logging captures these events, creating a record of who did what and when.
 
 Kubernetes audit logging records API server requests at configurable detail levels. For RBAC monitoring, you need to capture permission changes, failed authorization attempts, and successful access to sensitive resources. This data supports security investigations, compliance audits, and detecting privilege escalation attempts.
 
@@ -47,13 +47,6 @@ rules:
       - clusterrolebindings
   verbs: ["create", "update", "patch", "delete"]
 
-# Log failed authorization attempts (403 responses)
-- level: Metadata
-  omitStages:
-  - RequestReceived
-  responseStatus:
-    code: 403
-
 # Log access to sensitive resources
 - level: Metadata
   resources:
@@ -76,6 +69,8 @@ rules:
   verbs: ["create"]
 
 # Default: log everything else at Metadata level
+# This includes responseStatus.code, so failed authorization
+# attempts (403 responses) can be queried from the audit log.
 - level: Metadata
   omitStages:
   - RequestReceived
@@ -155,7 +150,7 @@ Find ClusterRole modifications:
 ```bash
 # Who is modifying ClusterRoles?
 jq 'select(.objectRef.resource=="clusterroles" and
-           .verb in ["update", "patch", "delete"]) |
+           (.verb as $verb | ["update", "patch", "delete"] | index($verb))) |
     {user: .user.username, role: .objectRef.name, verb: .verb, time: .timestamp}' \
   /var/log/kubernetes/audit.log
 ```
@@ -186,7 +181,8 @@ Detect attempts to create cluster-admin bindings:
 
 ```bash
 # Find attempts to bind cluster-admin role
-jq 'select(.objectRef.resource in ["rolebindings", "clusterrolebindings"] and
+jq 'select((.objectRef.resource as $resource | ["rolebindings", "clusterrolebindings"] | index($resource)) and
+           .verb=="create" and
            .requestObject.roleRef.name=="cluster-admin")' \
   /var/log/kubernetes/audit.log
 ```
@@ -208,7 +204,7 @@ Monitor who accesses secrets:
 ```bash
 # Find secret access events
 jq 'select(.objectRef.resource=="secrets" and
-           .verb in ["get", "list"])' \
+           (.verb as $verb | ["get", "list"] | index($verb)))' \
   /var/log/kubernetes/audit.log
 
 # Group by user and secret
@@ -220,26 +216,30 @@ jq 'select(.objectRef.resource=="secrets" and .verb=="get") |
 
 ## Implementing Real-Time RBAC Alerts
 
-Use audit sinks to send audit events to external systems in real-time:
+Use the API server webhook audit backend to send audit events to external systems in real-time:
 
 ```yaml
-# audit-sink.yaml
-apiVersion: auditregistration.k8s.io/v1alpha1
-kind: AuditSink
-metadata:
-  name: rbac-alert-sink
-spec:
-  policy:
-    level: RequestResponse
-    stages:
-    - ResponseComplete
-  webhook:
-    throttle:
-      qps: 10
-      burst: 15
-    clientConfig:
-      url: "https://alerting-system.company.com/audit"
-      # or use service reference for in-cluster endpoint
+# audit-webhook-config.yaml
+apiVersion: v1
+kind: Config
+clusters:
+- name: audit-webhook
+  cluster:
+    server: https://alerting-system.company.com/audit
+contexts:
+- name: audit-webhook
+  context:
+    cluster: audit-webhook
+current-context: audit-webhook
+```
+
+Then add the webhook flags and mount the webhook config file in the API server manifest:
+
+```yaml
+- --audit-webhook-config-file=/etc/kubernetes/audit-webhook-config.yaml
+- --audit-webhook-mode=batch
+- --audit-webhook-batch-throttle-qps=10
+- --audit-webhook-batch-throttle-burst=15
 ```
 
 Build a webhook receiver that processes audit events:
@@ -296,47 +296,43 @@ if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
 ```
 
-Deploy the webhook receiver and apply the AuditSink.
+Deploy the webhook receiver, copy the webhook config to the control-plane node, mount it into the API server, and restart kubelet.
 
 ## Building RBAC Audit Dashboards
 
-Create Grafana dashboards using audit log data. First, ship audit logs to Loki:
+Create Grafana dashboards using audit log data. First, ship audit logs to Loki with Grafana Alloy:
 
-```yaml
-# promtail-config.yaml
-scrape_configs:
-- job_name: kubernetes-audit
-  static_configs:
-  - targets:
-    - localhost
-    labels:
-      job: kubernetes-audit
-      __path__: /var/log/kubernetes/audit.log
+```hcl
+# config.alloy
+loki.source.file "kubernetes_audit" {
+  targets = [
+    {
+      __path__ = "/var/log/kubernetes/audit.log",
+      job      = "kubernetes-audit",
+    },
+  ]
 
-  pipeline_stages:
-  - json:
-      expressions:
-        user: user.username
-        verb: verb
-        resource: objectRef.resource
-        status_code: responseStatus.code
-  - labels:
-      user:
-      verb:
-      resource:
+  forward_to = [loki.write.local.receiver]
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
 ```
 
 Query audit logs in Grafana:
 
 ```logql
 # RBAC changes over time
-{job="kubernetes-audit"} | json | resource=~"roles|rolebindings|clusterroles|clusterrolebindings"
+{job="kubernetes-audit"} | json resource="objectRef.resource" | resource=~"roles|rolebindings|clusterroles|clusterrolebindings"
 
 # Failed authorization attempts
-{job="kubernetes-audit"} | json | status_code="403"
+{job="kubernetes-audit"} | json status_code="responseStatus.code" | status_code="403"
 
 # Secret access patterns
-{job="kubernetes-audit"} | json | resource="secrets" | verb=~"get|list"
+{job="kubernetes-audit"} | json resource="objectRef.resource", verb="verb" | resource="secrets" | verb=~"get|list"
 ```
 
 ## Generating Compliance Reports
@@ -363,7 +359,7 @@ echo ""
 echo "## RoleBinding Changes"
 jq -r "select(.timestamp >= \"${START_DATE}\" and .timestamp <= \"${END_DATE}\" and
               .objectRef.resource==\"rolebindings\" and
-              .verb in [\"create\", \"update\", \"delete\"]) |
+              (.verb as \$verb | [\"create\", \"update\", \"delete\"] | index(\$verb))) |
        \"\\(.timestamp) | \\(.user.username) | \\(.verb) | \\(.objectRef.namespace)/\\(.objectRef.name)\"" \
   /var/log/kubernetes/audit.log | column -t -s '|'
 
@@ -371,7 +367,7 @@ echo ""
 echo "## ClusterRoleBinding Changes"
 jq -r "select(.timestamp >= \"${START_DATE}\" and .timestamp <= \"${END_DATE}\" and
               .objectRef.resource==\"clusterrolebindings\" and
-              .verb in [\"create\", \"update\", \"delete\"]) |
+              (.verb as \$verb | [\"create\", \"update\", \"delete\"] | index(\$verb))) |
        \"\\(.timestamp) | \\(.user.username) | \\(.verb) | \\(.objectRef.name)\"" \
   /var/log/kubernetes/audit.log | column -t -s '|'
 
@@ -400,9 +396,9 @@ Run monthly:
 
 Many compliance frameworks require audit log retention:
 
-- SOC 2: Minimum 1 year
-- PCI DSS: Minimum 1 year, immediately available for 3 months
-- HIPAA: Minimum 6 years
+- SOC 2: Retain logs long enough to support your defined controls and audit period; many organizations use 1 year
+- PCI DSS: Minimum 12 months, with at least the most recent 3 months immediately available
+- HIPAA: Retain required Security Rule documentation for 6 years; confirm audit log retention with your compliance team
 
 Configure log rotation and archival:
 
@@ -412,11 +408,10 @@ Configure log rotation and archival:
     daily
     rotate 365
     compress
-    delaycompress
     notifempty
     missingok
     create 0600 root root
-    postrotate
+    lastaction
         # Ship to long-term storage
         aws s3 cp /var/log/kubernetes/audit.log.1.gz \
           s3://company-audit-logs/kubernetes/$(date +%Y/%m/%d)/
@@ -426,7 +421,7 @@ Configure log rotation and archival:
 
 ## Protecting Audit Logs from Tampering
 
-Audit logs must be immutable for compliance. Use:
+Audit logs should be tamper-resistant or immutable where required for compliance. Use:
 
 **Write-Only Storage**: Configure audit backend to write to append-only storage.
 
