@@ -14,7 +14,7 @@ Think of it like a docker-compose file, but for AWS. If you haven't created your
 
 ## Task Definition Basics
 
-Every task definition specifies:
+A typical task definition specifies:
 
 - **Family** - a name that groups revisions together
 - **Container definitions** - one or more containers to run
@@ -33,11 +33,11 @@ Here's a basic task definition for a web application.
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "web",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-web-app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-web-app:latest",
       "essential": true,
       "portMappings": [
         {
@@ -82,6 +82,8 @@ Fargate has specific valid combinations of CPU and memory. You can't just pick a
 | 1024 (1 vCPU) | 2 GB through 8 GB (in 1 GB increments) |
 | 2048 (2 vCPU) | 4 GB through 16 GB (in 1 GB increments) |
 | 4096 (4 vCPU) | 8 GB through 30 GB (in 1 GB increments) |
+| 8192 (8 vCPU) | 16 GB through 60 GB (in 4 GB increments, Linux platform 1.4.0 or later) |
+| 16384 (16 vCPU) | 32 GB through 120 GB (in 8 GB increments, Linux platform 1.4.0 or later) |
 
 For EC2 launch type, you have more flexibility since the limits come from your instance sizes.
 
@@ -116,11 +118,11 @@ The right way to handle credentials and API keys.
   "secrets": [
     {
       "name": "DATABASE_URL",
-      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:prod/database-url-AbCdEf"
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/database-url-AbCdEf"
     },
     {
       "name": "API_KEY",
-      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:prod/api-key-GhIjKl"
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/api-key-GhIjKl"
     }
   ]
 }
@@ -138,7 +140,7 @@ Your task execution role needs permission to read these secrets.
         "secretsmanager:GetSecretValue"
       ],
       "Resource": [
-        "arn:aws:secretsmanager:us-east-1:123456789:secret:prod/*"
+        "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/*"
       ]
     }
   ]
@@ -156,7 +158,7 @@ Cheaper than Secrets Manager for non-sensitive configuration.
   "secrets": [
     {
       "name": "FEATURE_FLAG_URL",
-      "valueFrom": "arn:aws:ssm:us-east-1:123456789:parameter/prod/feature-flag-url"
+      "valueFrom": "arn:aws:ssm:us-east-1:123456789012:parameter/prod/feature-flag-url"
     }
   ]
 }
@@ -199,11 +201,11 @@ A task can run multiple containers that share networking and optionally share st
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "512",
   "memory": "1024",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "web",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/web-app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/web-app:latest",
       "essential": true,
       "portMappings": [
         {"containerPort": 8080, "protocol": "tcp"}
@@ -246,7 +248,7 @@ A task can run multiple containers that share networking and optionally share st
       "secrets": [
         {
           "name": "DD_API_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:datadog-api-key"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:datadog-api-key"
         }
       ],
       "logConfiguration": {
@@ -332,8 +334,8 @@ This trips up a lot of people. There are two different IAM roles:
 ```json
 {
   "family": "web-app",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::123456789:role/webAppTaskRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/webAppTaskRole",
   "containerDefinitions": [...]
 }
 ```
