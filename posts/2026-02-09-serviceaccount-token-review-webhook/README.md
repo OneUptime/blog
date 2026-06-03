@@ -12,7 +12,7 @@ The TokenReview API enables services to validate ServiceAccount tokens and extra
 
 ## Understanding TokenReview API
 
-The TokenReview API validates ServiceAccount tokens and returns authentication information. You send a token to the API, and it responds with whether the token is valid, which ServiceAccount it represents, and what permissions it has. This enables external services to trust Kubernetes identities without direct access to the cluster's signing keys.
+The TokenReview API validates ServiceAccount tokens and returns authentication information. You send a token to the API, and it responds with whether the token is valid and which ServiceAccount it represents. This enables external services to trust Kubernetes identities without direct access to the cluster's signing keys.
 
 This is particularly useful for webhooks. Admission webhooks, mutating webhooks, and custom API endpoints can validate that requests come from legitimate Kubernetes ServiceAccounts. This creates a unified authentication system where Kubernetes identities extend beyond the cluster boundary.
 
@@ -270,7 +270,7 @@ def webhook():
     logging.info(f"Authenticated request from: {user.username}")
 
     # Check namespace membership
-    if not any(g.startswith('system:serviceaccounts:production') for g in user.groups):
+    if not any(g == 'system:serviceaccounts:production' for g in user.groups):
         return jsonify({"error": "Access denied"}), 403
 
     # Process webhook
@@ -351,16 +351,32 @@ import (
     "context"
     "fmt"
 
-    authv1 "k8s.io/api/authorization/v1"
+    authnv1 "k8s.io/api/authentication/v1"
+    authzv1 "k8s.io/api/authorization/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
 )
 
-func checkPermissions(clientset *kubernetes.Clientset, username, namespace, resource, verb string) (bool, error) {
-    sar := &authv1.SubjectAccessReview{
-        Spec: authv1.SubjectAccessReviewSpec{
-            User: username,
-            ResourceAttributes: &authv1.ResourceAttributes{
+func convertExtra(extra map[string]authnv1.ExtraValue) map[string]authzv1.ExtraValue {
+    if extra == nil {
+        return nil
+    }
+
+    converted := make(map[string]authzv1.ExtraValue, len(extra))
+    for key, values := range extra {
+        converted[key] = authzv1.ExtraValue(values)
+    }
+    return converted
+}
+
+func checkPermissions(clientset *kubernetes.Clientset, user *authnv1.UserInfo, namespace, resource, verb string) (bool, error) {
+    sar := &authzv1.SubjectAccessReview{
+        Spec: authzv1.SubjectAccessReviewSpec{
+            User:   user.Username,
+            UID:    user.UID,
+            Groups: user.Groups,
+            Extra:  convertExtra(user.Extra),
+            ResourceAttributes: &authzv1.ResourceAttributes{
                 Namespace: namespace,
                 Verb:      verb,
                 Resource:  resource,
@@ -380,11 +396,11 @@ func checkPermissions(clientset *kubernetes.Clientset, username, namespace, reso
     return result.Status.Allowed, nil
 }
 
-func handleAuthenticatedRequest(clientset *kubernetes.Clientset, user *authv1.UserInfo) error {
+func handleAuthenticatedRequest(clientset *kubernetes.Clientset, user *authnv1.UserInfo) error {
     // Check if user can create pods
     allowed, err := checkPermissions(
         clientset,
-        user.Username,
+        user,
         "production",
         "pods",
         "create",
@@ -507,6 +523,11 @@ Deploy your webhook service:
 ```yaml
 # webhook-deployment.yaml
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: webhook-system
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: webhook-service
@@ -586,7 +607,7 @@ Test your webhook authentication:
 
 ```bash
 # Get a ServiceAccount token
-TOKEN=$(kubectl create token webhook-client -n production --duration=1h)
+TOKEN=$(kubectl create token webhook-client -n production --duration=1h --audience=webhook-service)
 
 # Call the webhook
 curl -X POST https://webhook-service.webhook-system.svc/webhook \
