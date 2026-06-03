@@ -16,11 +16,11 @@ By default, Terraform stores state in a local file called `terraform.tfstate`. T
 
 Remote backends address all of these concerns by providing centralized storage, state locking, and encryption at rest.
 
-## S3 Backend with DynamoDB Locking
+## S3 Backend with Native Locking
 
-The most widely used backend for AWS-based Kubernetes clusters is S3 with DynamoDB for state locking. Here is how to set it up.
+The most widely used backend for AWS-based Kubernetes clusters is S3 with native S3 lockfiles for state locking. Here is how to set it up.
 
-First, create the S3 bucket and DynamoDB table. You can do this with a separate "bootstrap" Terraform configuration:
+First, create the S3 bucket. You can do this with a separate "bootstrap" Terraform configuration:
 
 ```hcl
 # bootstrap/main.tf
@@ -57,17 +57,6 @@ resource "aws_s3_bucket_public_access_block" "terraform_state" {
   ignore_public_acls      = true
   restrict_public_buckets = true
 }
-
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
 ```
 
 Now configure the backend in your Kubernetes project:
@@ -79,7 +68,7 @@ terraform {
     key            = "kubernetes/production/terraform.tfstate"
     region         = "us-east-1"
     encrypt        = true
-    dynamodb_table = "terraform-state-locks"
+    use_lockfile   = true
     kms_key_id     = "arn:aws:kms:us-east-1:123456789:key/abcd-1234"
   }
 }
@@ -158,7 +147,7 @@ terraform {
 }
 ```
 
-This approach works well when you do not want external dependencies for state storage. However, it comes with caveats. Kubernetes Secrets have a 1MB size limit, which can be reached with large state files. State is only as durable as your etcd cluster. And you need a running cluster before you can manage anything, creating a chicken-and-egg problem for bootstrap scenarios.
+This approach works well when you do not want external dependencies for state storage. However, it comes with caveats. Kubernetes Secrets have a 1MiB size limit, so Terraform may need to split large state files across multiple Secrets. State is only as durable as your etcd cluster. And you need a running cluster before you can manage anything, creating a chicken-and-egg problem for bootstrap scenarios.
 
 ## Terraform Cloud Backend
 
@@ -264,7 +253,7 @@ terraform init \
   -backend-config="bucket=myorg-terraform-state" \
   -backend-config="key=kubernetes/production/terraform.tfstate" \
   -backend-config="region=us-east-1" \
-  -backend-config="dynamodb_table=terraform-state-locks" \
+  -backend-config="use_lockfile=true" \
   -backend-config="encrypt=true"
 ```
 
