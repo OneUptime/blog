@@ -20,9 +20,9 @@ AWS supports three types of MFA:
 
 - **Virtual MFA devices** (authenticator apps like Google Authenticator or Authy)
 - **Hardware MFA devices** (physical key fobs or YubiKeys)
-- **FIDO2 security keys** (WebAuthn-compatible keys)
+- **Passkeys and security keys** (FIDO-based/WebAuthn-compatible authenticators)
 
-For most teams, virtual MFA is the quickest to deploy. For the root account, hardware MFA is strongly recommended. Check our guide on [setting up virtual MFA for the root account](https://oneuptime.com/blog/post/2026-02-12-set-up-virtual-mfa-aws-root-account/view) for that specific case.
+For most teams, virtual MFA is the quickest to deploy. For the root account, phishing-resistant MFA such as a passkey or security key is strongly recommended. Check our guide on [setting up virtual MFA for the root account](https://oneuptime.com/blog/post/2026-02-12-set-up-virtual-mfa-aws-root-account/view) for that specific case.
 
 ## Enabling MFA for a Single User via Console
 
@@ -46,7 +46,7 @@ For scripting and automation, you can enable MFA through the AWS CLI.
 # Create a virtual MFA device for a user
 
 aws iam create-virtual-mfa-device \
-  --virtual-mfa-device-name user-jane-mfa \
+  --virtual-mfa-device-name jane \
   --outfile /tmp/QRCode.png \
   --bootstrap-method QRCodePNG
 ```
@@ -58,7 +58,7 @@ The QR code gets saved as an image. The user scans it with their authenticator a
 # You need two consecutive TOTP codes from the authenticator app
 aws iam enable-mfa-device \
   --user-name jane \
-  --serial-number arn:aws:iam::123456789012:mfa/user-jane-mfa \
+  --serial-number arn:aws:iam::123456789012:mfa/jane \
   --authentication-code1 123456 \
   --authentication-code2 789012
 ```
@@ -192,28 +192,28 @@ import boto3
 
 # Check MFA enrollment status for all IAM users
 iam = boto3.client("iam")
-users = iam.list_users()["Users"]
+paginator = iam.get_paginator("list_users")
 
 print(f"{'Username':<25} {'MFA Enabled':<15} {'Last Login'}")
 print("-" * 65)
 
-for user in users:
-    username = user["UserName"]
-    mfa_devices = iam.list_mfa_devices(UserName=username)["MFADevices"]
-    has_mfa = "Yes" if mfa_devices else "NO - ACTION NEEDED"
+for page in paginator.paginate():
+    for user in page["Users"]:
+        username = user["UserName"]
+        mfa_devices = iam.list_mfa_devices(UserName=username)["MFADevices"]
+        has_mfa = "Yes" if mfa_devices else "NO - ACTION NEEDED"
 
-    login_profile = None
-    try:
-        iam.get_login_profile(UserName=username)
-        has_console = True
-    except iam.exceptions.NoSuchEntityException:
-        has_console = False
+        try:
+            iam.get_login_profile(UserName=username)
+            has_console = True
+        except iam.exceptions.NoSuchEntityException:
+            has_console = False
 
-    last_login = user.get("PasswordLastUsed", "Never")
+        last_login = user.get("PasswordLastUsed", "Never")
 
-    # Only flag users with console access but no MFA
-    if has_console:
-        print(f"{username:<25} {has_mfa:<15} {last_login}")
+        # Only flag users with console access but no MFA
+        if has_console:
+            print(f"{username:<25} {has_mfa:<15} {last_login}")
 ```
 
 ## Handling Programmatic Access
@@ -241,6 +241,7 @@ mfa-login() {
   CREDS=$(aws sts get-session-token \
     --serial-number "$MFA_ARN" \
     --token-code "$TOKEN" \
+    --duration-seconds 3600 \
     --output json)
 
   export AWS_ACCESS_KEY_ID=$(echo $CREDS | jq -r '.Credentials.AccessKeyId')
@@ -259,7 +260,7 @@ Don't apply MFA enforcement to service accounts or roles used by applications. T
 
 ## Monitoring MFA Compliance
 
-Set up a CloudWatch Events rule to detect when users log in without MFA, or create a Config rule to check compliance:
+Set up an Amazon EventBridge rule for CloudTrail `ConsoleLogin` events where `additionalEventData.MFAUsed` is `No`, or create a Config rule to check compliance:
 
 ```bash
 # Create an AWS Config rule to check MFA compliance
@@ -282,7 +283,7 @@ You can also integrate this with your monitoring stack. If you're using OneUptim
 
 - Enable MFA for every IAM user with console access
 - Use an IAM policy to enforce MFA - don't rely on users doing it voluntarily
-- The root account should always have hardware MFA
+- The root account should always have phishing-resistant MFA such as a passkey or security key
 - Handle programmatic access carefully with `sts:GetSessionToken`
 - Monitor compliance continuously with AWS Config or credential reports
 - Consider moving to [IAM Identity Center (SSO)](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-iam-identity-center-sso/view) for centralized MFA management
