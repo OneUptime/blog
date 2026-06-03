@@ -130,7 +130,7 @@ Resources:
             Status: Enabled
             Transitions:
               - StorageClass: STANDARD_IA
-                TransitionInDays: 30
+                TransitionInDays: 31
       Tags:
         - Key: Team
           Value: !Ref TeamName
@@ -151,7 +151,8 @@ The Lambda function that handles provisioning requests validates inputs and kick
 import boto3
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
+from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb')
 sfn_client = boto3.client('stepfunctions')
@@ -188,11 +189,7 @@ def handler(event, context):
     # Check team quota
     existing = table.query(
         IndexName='TeamProductIndex',
-        KeyConditionExpression='teamName = :t AND productType = :p',
-        ExpressionAttributeValues={
-            ':t': team,
-            ':p': product_key
-        }
+        KeyConditionExpression=Key('teamName').eq(team) & Key('productType').eq(product_key)
     )
     if len(existing['Items']) >= product['maxPerTeam']:
         return respond(400, {'error': f'Team quota exceeded. Max {product["maxPerTeam"]} allowed.'})
@@ -206,12 +203,12 @@ def handler(event, context):
         'productType': product_key,
         'parameters': parameters,
         'status': 'PENDING',
-        'createdAt': datetime.utcnow().isoformat()
+        'createdAt': datetime.now(timezone.utc).isoformat()
     })
 
     # Start the provisioning workflow
     sfn_client.start_execution(
-        stateMachineArn='arn:aws:states:us-east-1:123456789:stateMachine:ProvisioningWorkflow',
+        stateMachineArn='arn:aws:states:us-east-1:123456789012:stateMachine:ProvisioningWorkflow',
         input=json.dumps({
             'requestId': request_id,
             'productKey': product_key,
@@ -257,7 +254,7 @@ The Step Functions state machine handles the approval flow. Some resources auto-
       "Type": "Task",
       "Resource": "arn:aws:states:::sns:publish.waitForTaskToken",
       "Parameters": {
-        "TopicArn": "arn:aws:sns:us-east-1:123456789:approval-requests",
+        "TopicArn": "arn:aws:sns:us-east-1:123456789012:approval-requests",
         "Message": {
           "requestId.$": "$.requestId",
           "user.$": "$.user",
@@ -277,17 +274,17 @@ The Step Functions state machine handles the approval flow. Some resources auto-
     },
     "ProvisionResource": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:ProvisionViaServiceCatalog",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:ProvisionViaServiceCatalog",
       "Next": "UpdateStatus"
     },
     "UpdateStatus": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:UpdateRequestStatus",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:UpdateRequestStatus",
       "End": true
     },
     "RequestTimedOut": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:HandleTimeout",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:HandleTimeout",
       "End": true
     }
   }
@@ -340,7 +337,8 @@ Self-service portals often lead to resource sprawl. Build in TTL (time-to-live) 
 ```python
 # Lambda to check for expired resources and notify owners
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+from boto3.dynamodb.conditions import Attr
 
 dynamodb = boto3.resource('dynamodb')
 ses_client = boto3.client('ses')
@@ -348,31 +346,38 @@ table = dynamodb.Table('ProvisioningRequests')
 
 def handler(event, context):
     # Find resources older than 30 days without renewal
-    cutoff = (datetime.utcnow() - timedelta(days=30)).isoformat()
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
 
-    response = table.scan(
-        FilterExpression='createdAt < :cutoff AND #s = :active AND attribute_not_exists(renewedAt)',
-        ExpressionAttributeNames={'#s': 'status'},
-        ExpressionAttributeValues={
-            ':cutoff': cutoff,
-            ':active': 'ACTIVE'
-        }
-    )
-
-    for item in response['Items']:
-        # Send warning email to the resource owner
-        ses_client.send_email(
-            Source='platform-team@company.com',
-            Destination={'ToAddresses': [item['userId']]},
-            Message={
-                'Subject': {'Data': f'Resource expiring: {item["productType"]}'},
-                'Body': {'Text': {'Data': (
-                    f'Your {item["productType"]} (request {item["requestId"]}) '
-                    f'will be terminated in 7 days unless you renew it.\n\n'
-                    f'Renew at: https://portal.company.com/requests/{item["requestId"]}'
-                )}}
-            }
+    scan_kwargs = {
+        'FilterExpression': (
+            Attr('createdAt').lt(cutoff) &
+            Attr('status').eq('ACTIVE') &
+            Attr('renewedAt').not_exists()
         )
+    }
+
+    while True:
+        response = table.scan(**scan_kwargs)
+
+        for item in response['Items']:
+            # Send warning email to the resource owner
+            ses_client.send_email(
+                Source='platform-team@company.com',
+                Destination={'ToAddresses': [item['userId']]},
+                Message={
+                    'Subject': {'Data': f'Resource expiring: {item["productType"]}'},
+                    'Body': {'Text': {'Data': (
+                        f'Your {item["productType"]} (request {item["requestId"]}) '
+                        f'will be terminated in 7 days unless you renew it.\n\n'
+                        f'Renew at: https://portal.company.com/requests/{item["requestId"]}'
+                    )}}
+                }
+            )
+
+        if 'LastEvaluatedKey' not in response:
+            break
+
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 ```
 
 ## Monitoring and Audit
