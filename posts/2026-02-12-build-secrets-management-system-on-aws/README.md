@@ -32,6 +32,8 @@ import * as cdk from 'aws-cdk-lib';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as cr from 'aws-cdk-lib/custom-resources';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 export class SecretsStack extends cdk.Stack {
   constructor(scope: cdk.App, id: string) {
@@ -80,10 +82,38 @@ export class SecretsStack extends cdk.Stack {
     });
 
     // Sensitive config in Parameter Store (SecureString)
-    new ssm.StringParameter(this, 'EncryptionSalt', {
-      parameterName: '/app/production/encryption-salt',
-      stringValue: 'this-will-be-encrypted',
-      type: ssm.ParameterType.SECURE_STRING,
+    // CloudFormation/CDK can't create SecureString parameters directly, so call SSM.
+    const secureSaltParameter = {
+      Name: '/app/production/encryption-salt',
+      Value: 'this-will-be-encrypted',
+      Type: 'SecureString',
+      KeyId: secretsKey.keyArn,
+      Overwrite: true,
+    };
+
+    new cr.AwsCustomResource(this, 'EncryptionSalt', {
+      onCreate: {
+        service: 'SSM',
+        action: 'putParameter',
+        parameters: secureSaltParameter,
+        physicalResourceId: cr.PhysicalResourceId.of('/app/production/encryption-salt'),
+      },
+      onUpdate: {
+        service: 'SSM',
+        action: 'putParameter',
+        parameters: secureSaltParameter,
+        physicalResourceId: cr.PhysicalResourceId.of('/app/production/encryption-salt'),
+      },
+      policy: cr.AwsCustomResourcePolicy.fromStatements([
+        new iam.PolicyStatement({
+          actions: ['ssm:PutParameter'],
+          resources: ['*'],
+        }),
+        new iam.PolicyStatement({
+          actions: ['kms:Encrypt', 'kms:DescribeKey'],
+          resources: [secretsKey.keyArn],
+        }),
+      ]),
     });
   }
 }
@@ -150,7 +180,7 @@ AWS provides a Lambda extension that caches secrets more efficiently than doing 
 ```typescript
 // Lambda with Secrets Manager caching extension
 const handler = new lambda.Function(this, 'Handler', {
-  runtime: lambda.Runtime.NODEJS_18_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda'),
   layers: [
@@ -211,8 +241,11 @@ const database = new rds.DatabaseInstance(this, 'Database', {
   credentials: rds.Credentials.fromSecret(dbCredentials),
 });
 
+// Add connection details such as host, port, and engine to the secret
+const attachedDbCredentials = dbCredentials.attach(database);
+
 // Enable automatic rotation every 30 days
-dbCredentials.addRotationSchedule('Rotation', {
+attachedDbCredentials.addRotationSchedule('Rotation', {
   automaticallyAfter: cdk.Duration.days(30),
   hostedRotation: secretsmanager.HostedRotation.postgreSqlSingleUser({
     vpc,
@@ -225,7 +258,13 @@ For custom secrets (API keys, tokens), write your own rotation Lambda.
 
 ```javascript
 // lambda/rotate-api-key.js
-const { SecretsManagerClient, GetSecretValueCommand, PutSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+const {
+  SecretsManagerClient,
+  DescribeSecretCommand,
+  GetSecretValueCommand,
+  PutSecretValueCommand,
+  UpdateSecretVersionStageCommand,
+} = require('@aws-sdk/client-secrets-manager');
 
 const client = new SecretsManagerClient({});
 
@@ -259,7 +298,7 @@ exports.handler = async (event) => {
 
     case 'finishSecret':
       // Mark the new version as current
-      // Secrets Manager handles the version stage promotion
+      await promotePendingSecret(SecretId, ClientRequestToken);
       break;
   }
 };
@@ -271,6 +310,21 @@ async function getSecretVersion(secretId, versionStage) {
   }));
   return JSON.parse(SecretString);
 }
+
+async function promotePendingSecret(secretId, clientRequestToken) {
+  const metadata = await client.send(new DescribeSecretCommand({ SecretId: secretId }));
+  const currentVersion = Object.entries(metadata.VersionIdsToStages || {})
+    .find(([, stages]) => stages.includes('AWSCURRENT'))?.[0];
+
+  if (currentVersion === clientRequestToken) return;
+
+  await client.send(new UpdateSecretVersionStageCommand({
+    SecretId: secretId,
+    VersionStage: 'AWSCURRENT',
+    MoveToVersionId: clientRequestToken,
+    RemoveFromVersionId: currentVersion,
+  }));
+}
 ```
 
 ## Cross-Account Secret Sharing
@@ -279,13 +333,21 @@ When you have multiple AWS accounts (dev, staging, prod), you might need to shar
 
 ```typescript
 // Resource policy to allow cross-account access
+const sharedSecretAccount = new iam.AccountPrincipal('222222222222');
+const sharedSecretKey = new kms.Key(this, 'SharedSecretKey', {
+  enableKeyRotation: true,
+});
+
 const secret = new secretsmanager.Secret(this, 'SharedSecret', {
   secretName: 'shared/api-key',
+  encryptionKey: sharedSecretKey,
 });
+
+sharedSecretKey.grantDecrypt(sharedSecretAccount);
 
 secret.addToResourcePolicy(new iam.PolicyStatement({
   effect: iam.Effect.ALLOW,
-  principals: [new iam.AccountPrincipal('222222222222')],
+  principals: [sharedSecretAccount],
   actions: ['secretsmanager:GetSecretValue'],
   resources: ['*'],
 }));
