@@ -455,12 +455,12 @@ Not every API operation has a paginator. Check what's available.
 ```python
 import boto3
 
-# List available paginators for a service
+# Check whether specific operations have paginators
 s3 = boto3.client('s3')
 print(s3.can_paginate('list_objects_v2'))  # True
 print(s3.can_paginate('get_object'))      # False (single object, no pagination)
 
-# Or check the paginator config
+# Or list service operations and check the ones you use with can_paginate()
 print(s3.meta.service_model.operation_names)
 ```
 
