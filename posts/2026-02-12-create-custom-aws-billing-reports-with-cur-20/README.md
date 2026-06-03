@@ -18,8 +18,8 @@ CUR 2.0 (Data Exports) brings several improvements:
 
 - **Simplified column names.** No more camelCase mixed with snake_case. Columns follow a consistent naming convention.
 - **SQL-based column selection.** You define which columns you want using SQL, so you only get what you need.
-- **Parquet by default.** Better compression and faster query performance compared to CSV.
-- **Direct Athena integration.** The export automatically creates and maintains an Athena table.
+- **Parquet support.** Better compression and faster query performance compared to CSV when you choose Parquet output.
+- **Athena integration.** The export can deliver Athena setup files, including a CloudFormation template and SQL file for creating the Athena table.
 - **Smaller, more manageable files.** Better partitioning means faster queries.
 
 ## Prerequisites
@@ -33,7 +33,7 @@ CUR 2.0 (Data Exports) brings several improvements:
 
 You can create a data export through the console or CLI. Let us use the CLI for repeatability.
 
-First, define the export configuration:
+When creating an export with the CLI, create the S3 bucket and apply the bucket policy from Step 2 first. Then define the export configuration:
 
 ```bash
 # Create a CUR 2.0 data export
@@ -43,7 +43,7 @@ aws bcm-data-exports create-export \
     "Name": "monthly-detailed-billing",
     "Description": "Detailed monthly billing report for all accounts",
     "DataQuery": {
-      "QueryStatement": "SELECT identity_line_item_id, identity_time_interval, bill_billing_period_start_date, bill_billing_period_end_date, bill_payer_account_id, line_item_usage_account_id, line_item_line_item_type, line_item_usage_start_date, line_item_usage_end_date, line_item_product_code, line_item_usage_type, line_item_operation, line_item_resource_id, line_item_usage_amount, line_item_unblended_cost, line_item_blended_cost, product_product_name, product_region, pricing_term, pricing_unit, resource_tags FROM COST_AND_USAGE_REPORT",
+      "QueryStatement": "SELECT identity_line_item_id, identity_time_interval, bill_billing_period_start_date, bill_billing_period_end_date, bill_payer_account_id, line_item_usage_account_id, line_item_line_item_type, line_item_usage_start_date, line_item_usage_end_date, line_item_product_code, line_item_usage_type, line_item_operation, line_item_resource_id, line_item_usage_amount, line_item_unblended_cost, line_item_blended_cost, product.product_name AS product_product_name, product.region AS product_region, pricing_term, pricing_unit, resource_tags FROM COST_AND_USAGE_REPORT",
       "TableConfigurations": {
         "COST_AND_USAGE_REPORT": {
           "TIME_GRANULARITY": "DAILY",
@@ -59,7 +59,7 @@ aws bcm-data-exports create-export \
         "S3Prefix": "cur2/",
         "S3Region": "us-east-1",
         "S3OutputConfigurations": {
-          "OutputType": "CUSTOM",
+          "OutputType": "ATHENA",
           "Format": "PARQUET",
           "Compression": "PARQUET",
           "Overwrite": "OVERWRITE_REPORT"
@@ -94,14 +94,13 @@ aws s3api put-bucket-policy \
           "Service": "bcm-data-exports.amazonaws.com"
         },
         "Action": [
-          "s3:PutObject",
-          "s3:GetBucketLocation"
+          "s3:PutObject"
         ],
-        "Resource": [
-          "arn:aws:s3:::my-billing-reports-123456789012",
-          "arn:aws:s3:::my-billing-reports-123456789012/*"
-        ],
+        "Resource": "arn:aws:s3:::my-billing-reports-123456789012/*",
         "Condition": {
+          "ArnLike": {
+            "aws:SourceArn": "arn:aws:bcm-data-exports:us-east-1:123456789012:export/*"
+          },
           "StringEquals": {
             "aws:SourceAccount": "123456789012"
           }
@@ -113,19 +112,20 @@ aws s3api put-bucket-policy \
 
 ## Step 3: Query with Amazon Athena
 
-Once the first export is delivered (usually within 24 hours), you can query it with Athena. CUR 2.0 can automatically create the Athena table for you, but here is how to set it up manually:
+Once the first export is delivered (usually within 24 hours), you can query it with Athena. If you choose Athena integration, Data Exports delivers a CloudFormation template and a SQL file that you can use to create the Athena resources. Here is a simplified manual table definition for one billing period:
 
 ```sql
 -- Create the Athena table for CUR 2.0 data
 CREATE EXTERNAL TABLE IF NOT EXISTS billing_reports (
     identity_line_item_id STRING,
     identity_time_interval STRING,
-    bill_billing_period_start_date STRING,
+    bill_billing_period_start_date TIMESTAMP,
+    bill_billing_period_end_date TIMESTAMP,
     bill_payer_account_id STRING,
     line_item_usage_account_id STRING,
     line_item_line_item_type STRING,
-    line_item_usage_start_date STRING,
-    line_item_usage_end_date STRING,
+    line_item_usage_start_date TIMESTAMP,
+    line_item_usage_end_date TIMESTAMP,
     line_item_product_code STRING,
     line_item_usage_type STRING,
     line_item_operation STRING,
@@ -137,10 +137,10 @@ CREATE EXTERNAL TABLE IF NOT EXISTS billing_reports (
     product_region STRING,
     pricing_term STRING,
     pricing_unit STRING,
-    resource_tags STRING
+    resource_tags MAP<STRING, STRING>
 )
 STORED AS PARQUET
-LOCATION 's3://my-billing-reports-123456789012/cur2/'
+LOCATION 's3://my-billing-reports-123456789012/cur2/monthly-detailed-billing/data/BILLING_PERIOD=2026-02/'
 TBLPROPERTIES ('parquet.compression'='SNAPPY');
 ```
 
@@ -157,7 +157,7 @@ SELECT
     product_product_name AS service_name,
     ROUND(SUM(line_item_unblended_cost), 2) AS total_cost
 FROM billing_reports
-WHERE bill_billing_period_start_date = '2026-02-01'
+WHERE bill_billing_period_start_date = TIMESTAMP '2026-02-01 00:00:00'
     AND line_item_line_item_type = 'Usage'
 GROUP BY line_item_product_code, product_product_name
 ORDER BY total_cost DESC
@@ -174,7 +174,7 @@ SELECT
     ROUND(SUM(line_item_unblended_cost), 2) AS total_cost,
     ROUND(SUM(line_item_usage_amount), 2) AS total_usage
 FROM billing_reports
-WHERE bill_billing_period_start_date = '2026-02-01'
+WHERE bill_billing_period_start_date = TIMESTAMP '2026-02-01 00:00:00'
 GROUP BY line_item_usage_account_id, line_item_product_code
 HAVING SUM(line_item_unblended_cost) > 10
 ORDER BY account_id, total_cost DESC;
@@ -188,7 +188,7 @@ SELECT
     DATE(line_item_usage_start_date) AS usage_date,
     ROUND(SUM(line_item_unblended_cost), 2) AS daily_cost
 FROM billing_reports
-WHERE bill_billing_period_start_date = '2026-02-01'
+WHERE bill_billing_period_start_date = TIMESTAMP '2026-02-01 00:00:00'
     AND line_item_line_item_type = 'Usage'
 GROUP BY DATE(line_item_usage_start_date)
 ORDER BY usage_date;
@@ -204,7 +204,7 @@ SELECT
     product_region AS region,
     ROUND(SUM(line_item_unblended_cost), 2) AS total_cost
 FROM billing_reports
-WHERE bill_billing_period_start_date = '2026-02-01'
+WHERE bill_billing_period_start_date = TIMESTAMP '2026-02-01 00:00:00'
     AND line_item_resource_id != ''
     AND line_item_line_item_type = 'Usage'
 GROUP BY line_item_resource_id, line_item_product_code, product_region
@@ -231,7 +231,7 @@ def lambda_handler(event, context):
         product_region AS region,
         ROUND(SUM(line_item_unblended_cost), 2) AS weekly_cost
     FROM billing_reports
-    WHERE line_item_usage_start_date >= date_add('day', -7, current_date)
+    WHERE line_item_usage_start_date >= date_add('day', -7, current_timestamp)
     GROUP BY line_item_usage_account_id,
              line_item_product_code,
              product_region
