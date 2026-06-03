@@ -14,7 +14,7 @@ AMP integrates well with EKS, works with standard Prometheus tooling, and pairs 
 
 ## What AMP Does and Doesn't Do
 
-AMP handles the **backend** - metric storage, query processing, and high availability. It does **not** handle metric collection. You still need a Prometheus server or an OpenTelemetry collector running in your cluster to scrape metrics from your containers and remote-write them to AMP.
+AMP handles the **backend** - metric storage, query processing, and high availability. It does **not** handle metric collection unless you use an AMP managed scraper. You still need a Prometheus server, an OpenTelemetry collector, or a managed scraper to scrape metrics from your containers and remote-write them to AMP.
 
 Think of it this way:
 
@@ -101,10 +101,11 @@ Create a values file:
 
 ```yaml
 # prometheus-values.yaml
-serviceAccount:
-  name: prometheus-server
-  annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/PrometheusServerRole
+serviceAccounts:
+  server:
+    name: prometheus-server
+    annotations:
+      eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/PrometheusServerRole
 
 server:
   remoteWrite:
@@ -155,7 +156,7 @@ Configure the ADOT collector to scrape Prometheus metrics and remote-write to AM
 
 ```yaml
 # ADOT collector configuration
-apiVersion: opentelemetry.io/v1alpha1
+apiVersion: opentelemetry.io/v1beta1
 kind: OpenTelemetryCollector
 metadata:
   name: adot-collector
@@ -163,7 +164,7 @@ metadata:
 spec:
   mode: deployment
   serviceAccount: adot-collector
-  config: |
+  config:
     receivers:
       prometheus:
         config:
@@ -182,7 +183,7 @@ spec:
                 - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
                   action: replace
                   regex: ([^:]+)(?::\d+)?;(\d+)
-                  replacement: $1:$2
+                  replacement: $$1:$$2
                   target_label: __address__
 
     exporters:
@@ -302,15 +303,15 @@ Useful PromQL queries for container monitoring:
 # CPU usage by pod
 sum(rate(container_cpu_usage_seconds_total{namespace="production"}[5m])) by (pod)
 
-# Memory usage as percentage of limit
+# Memory usage as percentage of memory limit
 sum(container_memory_working_set_bytes{namespace="production"}) by (pod) /
-sum(kube_pod_container_resource_limits{resource="memory", namespace="production"}) by (pod) * 100
+sum(kube_pod_container_resource_limits{resource="memory", unit="byte", namespace="production"}) by (pod) * 100
 
-# Request rate per service
-sum(rate(myapp_http_requests_total[5m])) by (service)
+# Request rate by path
+sum(rate(myapp_http_requests_total[5m])) by (path)
 
 # P99 request latency
-histogram_quantile(0.99, rate(myapp_http_request_duration_seconds_bucket[5m]))
+histogram_quantile(0.99, sum(rate(myapp_http_request_duration_seconds_bucket[5m])) by (le, path))
 
 # Pod restart rate
 rate(kube_pod_container_status_restarts_total[15m]) > 0
@@ -332,8 +333,8 @@ groups:
       - record: namespace:container_memory_usage:sum
         expr: sum(container_memory_working_set_bytes) by (namespace)
 
-      - record: service:http_request_rate:sum_rate5m
-        expr: sum(rate(myapp_http_requests_total[5m])) by (service)
+      - record: path:http_request_rate:sum_rate5m
+        expr: sum(rate(myapp_http_requests_total[5m])) by (path)
 ```
 
 Upload the rules:
@@ -362,14 +363,14 @@ Now you can build PromQL dashboards in Grafana using your AMP data. For more on 
 
 AMP pricing is based on:
 
-- **Metric samples ingested:** $0.003 per 10,000 samples (first 2 billion/month)
-- **Metrics stored:** $0.03 per million samples stored per month
-- **Query samples processed:** $0.003 per 10,000 samples scanned
+- **Metric samples ingested:** $0.90 per 10 million samples (first 2 billion/month)
+- **Metrics stored:** $0.03 per GB of compressed samples and metadata stored per month
+- **Query samples processed:** $0.10 per billion samples processed
 
 For a cluster with 100 pods each exposing 50 metrics scraped every 30 seconds:
 - 100 pods * 50 metrics * 2 scrapes/minute * 60 * 24 * 30 = ~432 million samples/month
-- Ingestion cost: ~$130/month
-- Storage cost: depends on retention
+- Ingestion cost: ~$39/month before free tier or volume tiers
+- Storage cost: depends on compressed sample and metadata size
 
 Tips to control costs:
 - Increase the scrape interval from 15s to 30s or 60s for non-critical metrics
