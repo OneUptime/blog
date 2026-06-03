@@ -16,14 +16,14 @@ This guide demonstrates how to replace the mesh's default CA with cert-manager b
 
 Service meshes use short-lived certificates for workload identity. Certificates typically expire after 24 hours and are automatically rotated. The CA must support high-volume issuance and fast response times.
 
-Istio and Linkerd both support pluggable CA backends through cert-manager integration. The mesh's control plane requests certificates via cert-manager's API, which handles communication with the external CA.
+Istio can delegate workload certificate signing to cert-manager through istio-csr. Linkerd uses cert-manager to manage and rotate its identity issuer certificate, while Linkerd's identity service continues to issue the short-lived workload certificates from that issuer.
 
 ## Installing cert-manager
 
 Deploy cert-manager to your cluster:
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.13.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 
 # Verify installation
 
@@ -77,13 +77,13 @@ spec:
 Install istio-csr to bridge Istio and cert-manager:
 
 ```bash
-helm repo add jetstack https://charts.jetstack.io
-helm repo update
-
-helm install cert-manager-istio-csr jetstack/cert-manager-istio-csr \
+helm upgrade cert-manager-istio-csr oci://quay.io/jetstack/charts/cert-manager-istio-csr \
+  --install \
   --namespace cert-manager \
+  --wait \
   --set app.certmanager.issuer.name=vault-issuer \
   --set app.certmanager.issuer.kind=ClusterIssuer \
+  --set app.certmanager.issuer.group=cert-manager.io \
   --set app.server.maxCertificateDuration=1h
 ```
 
@@ -96,34 +96,22 @@ metadata:
   name: istio-with-external-ca
   namespace: istio-system
 spec:
+  profile: default
   meshConfig:
-    # Disable built-in CA
-    ca:
-      address: cert-manager-istio-csr.cert-manager.svc:443
-      tlsSettings:
-        mode: SIMPLE
-        sni: cert-manager-istio-csr.cert-manager.svc
-
-    # Certificate configuration
-    defaultConfig:
-      proxyMetadata:
-        ISTIO_META_CERT_SIGNER: cert-manager
+    trustDomain: cluster.local
 
   components:
     pilot:
       k8s:
         env:
-        - name: CERT_SIGNER_DOMAIN
-          value: cert-manager.cert-manager.svc
-        - name: PILOT_CERT_PROVIDER
-          value: kubernetes
-        - name: EXTERNAL_CA
-          value: ISTIOD_RA_KUBERNETES_API
+        # Disable istiod's built-in CA server
+        - name: ENABLE_CA_SERVER
+          value: "false"
 
   values:
     global:
-      # Use cert-manager for CA
-      pilotCertProvider: kubernetes
+      # Send workload certificate requests to istio-csr
+      caAddress: cert-manager-istio-csr.cert-manager.svc:443
 ```
 
 Apply the configuration:
@@ -134,24 +122,22 @@ istioctl install -f istio-external-ca.yaml
 
 ## Configuring Linkerd with cert-manager
 
-Install Linkerd with cert-manager integration:
+Install the Linkerd CRDs and prepare the trust anchor:
 
 ```bash
 # Install Linkerd CRDs
 linkerd install --crds | kubectl apply -f -
 
+# Create the control plane namespace
+kubectl create namespace linkerd --dry-run=client -o yaml | kubectl apply -f -
+
 # Create trust anchor from cert-manager
 kubectl get secret -n cert-manager ca-key-pair -o jsonpath='{.data.tls\.crt}' | \
   base64 -d > ca.crt
 
-# Install Linkerd control plane
-linkerd install \
-  --identity-external-issuer \
-  --identity-trust-anchors-file ca.crt \
-  | kubectl apply -f -
 ```
 
-Deploy linkerd-cert-manager:
+Create the Linkerd identity issuer certificate with cert-manager:
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -167,47 +153,22 @@ spec:
     name: vault-issuer
     kind: ClusterIssuer
   commonName: identity.linkerd.cluster.local
-  dnsNames:
-  - identity.linkerd.cluster.local
   isCA: true
   privateKey:
+    rotationPolicy: Always
     algorithm: ECDSA
   usages:
   - cert sign
   - crl sign
-  - server auth
-  - client auth
----
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: linkerd-cert-manager
-  namespace: linkerd
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
-metadata:
-  name: linkerd-cert-manager
-  namespace: linkerd
-rules:
-- apiGroups: ['']
-  resources: ['secrets']
-  verbs: ['get', 'update']
-  resourceNames: ['linkerd-identity-issuer']
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: RoleBinding
-metadata:
-  name: linkerd-cert-manager
-  namespace: linkerd
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: linkerd-cert-manager
-subjects:
-- kind: ServiceAccount
-  name: linkerd-cert-manager
-  namespace: linkerd
+```
+
+Install the Linkerd control plane after the `linkerd-identity-issuer` Secret is ready:
+
+```bash
+linkerd install \
+  --identity-external-issuer \
+  --identity-trust-anchors-file ca.crt \
+  | kubectl apply -f -
 ```
 
 ## Configuring Vault PKI Backend
@@ -230,6 +191,7 @@ vault write -field=certificate pki/root/generate/internal \
 vault write pki/roles/istio-mesh \
   allowed_domains="cluster.local,svc" \
   allow_subdomains=true \
+  allowed_uri_sans="spiffe://cluster.local/*" \
   max_ttl=24h \
   require_cn=false
 
@@ -268,8 +230,8 @@ Track certificate metrics:
 # Certificate expiration time
 certmanager_certificate_expiration_timestamp_seconds
 
-# Certificate renewal errors
-certmanager_certificate_renewal_errors_total
+# Certificate renewal time
+certmanager_certificate_renewal_timestamp_seconds
 
 # Certificate ready status
 certmanager_certificate_ready_status
@@ -293,12 +255,12 @@ spec:
       annotations:
         summary: "Certificate {{ $labels.name }} expires in less than 24h"
 
-    - alert: CertificateRenewalFailing
+    - alert: CertificateNotReady
       expr: |
-        certmanager_certificate_renewal_errors_total > 0
+        certmanager_certificate_ready_status{condition="False"} == 1
       for: 1h
       annotations:
-        summary: "Certificate renewal failing for {{ $labels.name }}"
+        summary: "Certificate {{ $labels.name }} is not ready"
 ```
 
 ## Validating mTLS with External Certificates
@@ -308,12 +270,14 @@ Verify certificates are issued by external CA:
 ```bash
 # Extract certificate from a pod
 kubectl exec -n production deploy/api-gateway -c istio-proxy -- \
-  openssl s_client -connect localhost:15000 -showcerts < /dev/null 2>&1 | \
+  openssl s_client -connect api-gateway.production:8080 -showcerts < /dev/null 2>&1 | \
   openssl x509 -text -noout
 
 # Check issuer
-kubectl exec -n production deploy/api-gateway -c istio-proxy -- \
-  cat /var/run/secrets/istio/root-cert.pem | openssl x509 -text -noout | grep Issuer
+istioctl proxy-config secret deployment/api-gateway.production -o json | \
+  jq -r '.dynamicActiveSecrets[] |
+    select(.name == "default").secret.tlsCertificate.certificateChain.inlineBytes' | \
+  base64 -d | openssl x509 -text -noout | grep Issuer
 ```
 
 Test mTLS connectivity:
@@ -356,7 +320,8 @@ spec:
 Monitor rotation events:
 
 ```bash
-kubectl get events -n production --field-selector reason=Issuing,reason=Renewed
+kubectl get events -n production --field-selector reason=Issuing
+kubectl get events -n linkerd --field-selector reason=IssuerUpdated
 ```
 
 ## Troubleshooting External CA Integration
