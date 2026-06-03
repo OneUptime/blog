@@ -37,7 +37,7 @@ You'll need:
 - An EKS cluster running Kubernetes 1.23 or later
 - `kubectl` configured to talk to your cluster
 - `helm` (optional but recommended)
-- The cluster must have an OIDC provider configured for IAM Roles for Service Accounts (IRSA)
+- IAM permissions for the CloudWatch agent, either through EKS Pod Identity, worker node IAM roles, or IAM Roles for Service Accounts (IRSA)
 
 Verify your cluster:
 
@@ -57,15 +57,14 @@ The recommended approach is using the Amazon CloudWatch Observability Helm chart
 ```bash
 # Add the EKS charts repository
 helm repo add aws-observability https://aws-observability.github.io/helm-charts
-helm repo update
+helm repo update aws-observability
 
-# Install the CloudWatch Observability addon
-helm install cloudwatch-agent aws-observability/amazon-cloudwatch-observability \
+# Install the CloudWatch Observability Helm chart
+helm install --wait amazon-cloudwatch-observability aws-observability/amazon-cloudwatch-observability \
   --namespace amazon-cloudwatch \
   --create-namespace \
   --set clusterName=my-cluster \
-  --set region=us-east-1 \
-  --set containerInsights.enabled=true
+  --set region=us-east-1
 ```
 
 This deploys the CloudWatch agent as a DaemonSet (runs on every node) and Fluent Bit for log forwarding.
@@ -79,7 +78,6 @@ AWS also offers Container Insights as a managed EKS add-on:
 aws eks create-addon \
   --cluster-name my-cluster \
   --addon-name amazon-cloudwatch-observability \
-  --addon-version v1.5.0-eksbuild.1 \
   --service-account-role-arn arn:aws:iam::123456789012:role/CloudWatchAgentRole
 ```
 
@@ -100,7 +98,6 @@ The CloudWatch agent running in your cluster needs AWS permissions. The proper w
 Create a trust policy:
 
 ```json
-// Trust policy for the CloudWatch agent service account
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -112,6 +109,7 @@ Create a trust policy:
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
+          "oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:aud": "sts.amazonaws.com",
           "oidc.eks.us-east-1.amazonaws.com/id/EXAMPLED539D4633E53DE1B71EXAMPLE:sub": "system:serviceaccount:amazon-cloudwatch:cloudwatch-agent"
         }
       }
@@ -170,7 +168,7 @@ Container Insights stores performance data in CloudWatch Logs under `/aws/contai
 Find pods with high CPU usage:
 
 ```sql
--- Top 10 pods by CPU utilization
+# Top 10 pods by CPU utilization
 stats max(pod_cpu_utilization) as max_cpu by PodName, Namespace
 | sort max_cpu desc
 | limit 10
@@ -179,7 +177,7 @@ stats max(pod_cpu_utilization) as max_cpu by PodName, Namespace
 Check for pods that keep restarting:
 
 ```sql
--- Find pods with restart counts in the last hour
+# Find pods with restart counts in the last hour
 stats max(pod_number_of_container_restarts) as restarts by PodName, Namespace
 | filter restarts > 0
 | sort restarts desc
@@ -188,7 +186,7 @@ stats max(pod_number_of_container_restarts) as restarts by PodName, Namespace
 Monitor node resource pressure:
 
 ```sql
--- Node memory utilization over time
+# Node memory utilization over time
 stats avg(node_memory_utilization) as avg_mem by NodeName, bin(5m)
 | sort avg_mem desc
 ```
@@ -196,7 +194,7 @@ stats avg(node_memory_utilization) as avg_mem by NodeName, bin(5m)
 Find pods approaching their memory limits:
 
 ```sql
--- Pods using more than 80% of their memory request
+# Pods using more than 80% of their memory limit
 stats max(pod_memory_utilization_over_pod_limit) as mem_pct by PodName, Namespace
 | filter mem_pct > 80
 | sort mem_pct desc
@@ -242,10 +240,10 @@ aws cloudwatch put-metric-alarm \
 
 # Alarm when pod restarts are detected
 aws cloudwatch put-metric-alarm \
-  --alarm-name "EKS-PodRestarts" \
+  --alarm-name "EKS-PodRestarts-my-app" \
   --namespace "ContainerInsights" \
   --metric-name "pod_number_of_container_restarts" \
-  --dimensions Name=ClusterName,Value=my-cluster Name=Namespace,Value=production \
+  --dimensions Name=ClusterName,Value=my-cluster Name=Namespace,Value=production Name=PodName,Value=my-app \
   --statistic Sum \
   --period 300 \
   --threshold 5 \
@@ -256,7 +254,7 @@ aws cloudwatch put-metric-alarm \
 
 ## Monitoring Fargate Pods on EKS
 
-If you're running Fargate pods on EKS, Container Insights works differently. You don't need the DaemonSet since there are no nodes to run it on. Instead, AWS collects metrics automatically for Fargate pods.
+If you're running Fargate pods on EKS, Container Insights works differently. You don't need the CloudWatch agent DaemonSet since there are no EC2 worker nodes to run it on. Instead, deploy the AWS Distro for OpenTelemetry (ADOT) Collector for EKS Fargate to collect cAdvisor metrics through the Kubernetes API server and send them to CloudWatch.
 
 However, Fargate pod metrics have some limitations compared to EC2-backed pods:
 
@@ -264,17 +262,17 @@ However, Fargate pod metrics have some limitations compared to EC2-backed pods:
 - No node-level metrics (since there's no visible node)
 - Network metrics may be limited
 
-For Fargate, make sure your pod execution role has CloudWatch permissions:
+For Fargate, make sure the ADOT collector service account has CloudWatch permissions:
 
 ```yaml
-# Fargate pod role with CloudWatch permissions
+# ADOT collector service account with CloudWatch permissions
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: my-app
-  namespace: production
+  name: adot-collector
+  namespace: fargate-container-insights
   annotations:
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/FargatePodRole
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/EKS-Fargate-ADOT-ServiceAccount-Role
 ```
 
 ## Integrating with Prometheus Metrics
