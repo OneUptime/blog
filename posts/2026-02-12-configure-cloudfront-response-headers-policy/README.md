@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudFront, Security Headers, CORS, CSP, HTTP Headers
 
-Description: Learn how to configure CloudFront response headers policies to add security headers, CORS headers, and custom headers to all responses without modifying your origin.
+Description: Learn how to configure CloudFront response headers policies to add security headers, CORS headers, and custom headers without modifying your origin.
 
 ---
 
-Security headers protect your users from cross-site scripting, clickjacking, and other browser-based attacks. CORS headers enable legitimate cross-origin requests. Traditionally, you configure these on your web server. With CloudFront response headers policies, you configure them once at the CDN level and they apply to every response, regardless of what your origin returns.
+Security headers protect your users from cross-site scripting, clickjacking, and other browser-based attacks. CORS headers enable legitimate cross-origin requests. Traditionally, you configure these on your web server. With CloudFront response headers policies, you configure them once at the CDN level and they apply to every response for the cache behaviors where the policy is attached, regardless of what your origin returns.
 
 ## Why Configure Headers at CloudFront?
 
 Configuring response headers at the CloudFront level has several advantages:
 
-- **Consistency**: Every response gets the same headers, even if you have multiple origins
+- **Consistency**: Every response for the associated cache behavior gets the same headers, even if you have multiple origins
 - **No origin changes needed**: Your application code and server config stay untouched
 - **Centralized management**: One place to update headers for all your distributions
 - **Override capability**: CloudFront can add, replace, or remove headers from origin responses
@@ -34,8 +34,8 @@ aws cloudfront list-response-headers-policies \
 
 Common managed policies:
 - **SecurityHeadersPolicy**: Adds standard security headers (X-Frame-Options, X-Content-Type-Options, etc.)
-- **CORS-with-preflight**: Configures CORS for common use cases
-- **SimpleCORS**: Basic CORS with Access-Control-Allow-Origin: *
+- **CORS-With-Preflight**: Configures CORS for common use cases that use preflight requests
+- **SimpleCORS**: Basic CORS for simple requests with Access-Control-Allow-Origin: *
 
 ```bash
 # Attach a managed security headers policy to a cache behavior
@@ -76,7 +76,7 @@ aws cloudfront create-response-headers-policy \
             },
             "ContentSecurityPolicy": {
                 "Override": true,
-                "ContentSecurityPolicy": "default-src '\''self'\''; script-src '\''self'\'' cdn.example.com; style-src '\''self'\'' '\''unsafe-inline'\''; img-src '\''self'\'' data: *.cloudfront.net; font-src '\''self'\'' fonts.googleapis.com fonts.gstatic.com; connect-src '\''self'\'' api.example.com; frame-ancestors '\''none'\''"
+                "ContentSecurityPolicy": "default-src '\''self'\''; script-src '\''self'\'' cdn.example.com; style-src '\''self'\'' '\''unsafe-inline'\'' fonts.googleapis.com; img-src '\''self'\'' data: *.cloudfront.net; font-src '\''self'\'' fonts.gstatic.com; connect-src '\''self'\'' api.example.com; frame-ancestors '\''none'\''"
             },
             "ContentTypeOptions": {
                 "Override": true
@@ -116,7 +116,7 @@ Let me break down what each header does:
 | Content-Security-Policy | (custom) | Defines allowed content sources |
 | X-Content-Type-Options | nosniff | Prevents MIME type sniffing |
 | Strict-Transport-Security | max-age=31536000; includeSubDomains; preload | Forces HTTPS for 1 year |
-| Permissions-Policy | camera=(), microphone=() | Restricts browser feature access |
+| Permissions-Policy | camera=(), microphone=(), geolocation=(self) | Restricts browser feature access |
 
 ### CORS Configuration
 
@@ -225,11 +225,14 @@ aws cloudfront create-response-headers-policy \
 
 ```bash
 # Get current distribution config
-DIST_CONFIG=$(aws cloudfront get-distribution-config --id E1234567890ABC)
-ETAG=$(echo "$DIST_CONFIG" | jq -r '.ETag')
+aws cloudfront get-distribution-config --id E1234567890ABC > dist-config.json
+ETAG=$(jq -r '.ETag' dist-config.json)
 
 # Update the default cache behavior to use the response headers policy
 # In the distribution config JSON, add ResponseHeadersPolicyId to the cache behavior
+jq '.DistributionConfig |
+    .DefaultCacheBehavior.ResponseHeadersPolicyId = "your-policy-id-here"' \
+    dist-config.json > updated-config.json
 
 # Example: update default cache behavior
 aws cloudfront update-distribution \
@@ -344,12 +347,14 @@ The `Override` flag in each header configuration controls what happens when your
 
 For security headers, almost always use `Override: true` to ensure consistent policy enforcement regardless of what the origin returns.
 
+For CORS headers, `OriginOverride` works at the CORS configuration level: if it is `false` and the origin returns any CORS header, CloudFront keeps the origin's CORS headers instead of adding the CORS headers from the policy.
+
 ## Removing Headers
 
 You can also use response headers policies to remove headers that your origin sends but should not be exposed:
 
 ```bash
-# Remove server information headers that expose implementation details
+# Remove origin headers that expose implementation details
 aws cloudfront create-response-headers-policy \
     --response-headers-policy-config '{
         "Name": "remove-server-headers",
@@ -364,6 +369,8 @@ aws cloudfront create-response-headers-policy \
         }
     }'
 ```
+
+If you remove the `Server` header, CloudFront removes the origin's `Server` value but still adds its own `Server: CloudFront` header to the response.
 
 For additional CloudFront security features, see our guide on [setting up CloudFront field-level encryption](https://oneuptime.com/blog/post/2026-02-12-set-up-cloudfront-field-level-encryption/view).
 
