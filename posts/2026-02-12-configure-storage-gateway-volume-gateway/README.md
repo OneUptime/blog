@@ -8,7 +8,7 @@ Description: Learn how to configure AWS Storage Gateway Volume Gateway for iSCSI
 
 ---
 
-Volume Gateway provides cloud-backed iSCSI block storage to your on-premises applications. Think of it as having a local SAN that quietly backs everything up to AWS. Your applications see standard iSCSI block devices, but the data is stored as Amazon EBS snapshots in the cloud. This gives you a solid disaster recovery story and the ability to spin up EBS volumes from those snapshots in minutes if you ever need to migrate workloads to AWS.
+Volume Gateway provides cloud-backed iSCSI block storage to your on-premises applications. Think of it as having a local SAN that quietly backs everything up to AWS. Your applications see standard iSCSI block devices, and snapshots are stored in AWS as Amazon EBS snapshots. This gives you a solid disaster recovery story and the ability to spin up EBS volumes from supported snapshots in minutes if you ever need to migrate workloads to AWS.
 
 There are two modes: **Cached Volumes** and **Stored Volumes**. We'll cover both.
 
@@ -16,9 +16,9 @@ There are two modes: **Cached Volumes** and **Stored Volumes**. We'll cover both
 
 The choice between cached and stored depends on your priorities:
 
-**Cached Volumes**: Your primary data lives in S3, with a local cache holding frequently accessed data. You get up to 1 PB of storage per gateway with 32 volumes of up to 32 TB each. Best when you need lots of storage but can tolerate slightly higher latency for cache misses.
+**Cached Volumes**: Your primary data lives in S3, with a local cache holding frequently accessed data. You get up to 1 PiB of storage per gateway with 32 volumes of up to 32 TiB each. Best when you need lots of storage but can tolerate slightly higher latency for cache misses.
 
-**Stored Volumes**: Your full dataset lives on-premises, with asynchronous snapshots uploaded to S3 as EBS snapshots. Each volume can be up to 16 TB with up to 32 volumes per gateway. Best when you need low-latency access to your entire dataset.
+**Stored Volumes**: Your full dataset lives on-premises, with asynchronous snapshots uploaded to S3 as EBS snapshots. Each volume can be up to 16 TiB with up to 32 volumes per gateway. Best when you need low-latency access to your entire dataset.
 
 ```mermaid
 graph TD
@@ -41,7 +41,7 @@ graph TD
 
 You'll need:
 - An activated Storage Gateway configured as either CACHED or STORED type (see [setting up Storage Gateway](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-storage-gateway-hybrid-storage/view))
-- Local disks assigned for cache (cached mode) or both cache and upload buffer (both modes)
+- Local disks assigned for cache and upload buffer (cached mode), or upload buffer and stored volume data disks (stored mode)
 - iSCSI initiator software on your client machines
 - Network connectivity between clients and the gateway VM
 
@@ -66,14 +66,14 @@ aws storagegateway add-upload-buffer \
   --disk-ids "disk-buffer001"
 ```
 
-For cached volumes, the cache should be sized at roughly 20% of your total volume sizes. The upload buffer should be at least 150 GB. For stored volumes, you need local disks large enough to hold your entire dataset plus an upload buffer.
+For cached volumes, the cache should be sized at roughly 20% of your existing file store size. The upload buffer should be at least 150 GiB. For stored volumes, you need local disks large enough to hold your entire dataset plus an upload buffer.
 
 ## Step 2: Create a Cached Volume
 
 Here's how to create a cached volume:
 
 ```bash
-# Create a 500 GB cached volume
+# Create a 500 GiB cached volume
 aws storagegateway create-cached-iscsi-volume \
   --gateway-arn arn:aws:storagegateway:us-east-1:123456789012:gateway/sgw-12345678 \
   --volume-size-in-bytes 536870912000 \
@@ -93,7 +93,7 @@ For stored volumes, the process is slightly different. You can either create a n
 aws storagegateway create-stored-iscsi-volume \
   --gateway-arn arn:aws:storagegateway:us-east-1:123456789012:gateway/sgw-12345678 \
   --disk-id "disk-data001" \
-  --preserve-existing-data false \
+  --no-preserve-existing-data \
   --target-name "stored-vol-001" \
   --network-interface-id "10.0.1.100"
 
@@ -101,13 +101,13 @@ aws storagegateway create-stored-iscsi-volume \
 aws storagegateway create-stored-iscsi-volume \
   --gateway-arn arn:aws:storagegateway:us-east-1:123456789012:gateway/sgw-12345678 \
   --disk-id "disk-data002" \
-  --preserve-existing-data false \
+  --no-preserve-existing-data \
   --target-name "stored-vol-002" \
   --network-interface-id "10.0.1.100" \
   --snapshot-id "snap-0123456789abcdef0"
 ```
 
-Setting `preserve-existing-data` to true keeps whatever data is currently on that disk. Useful if you're migrating existing local storage behind a Volume Gateway.
+Using `--preserve-existing-data` keeps whatever data is currently on that disk. Useful if you're migrating existing local storage behind a Volume Gateway.
 
 ## Step 4: Connect from Linux iSCSI Initiator
 
@@ -190,7 +190,7 @@ aws storagegateway create-snapshot \
   --snapshot-description "Pre-migration snapshot"
 ```
 
-These snapshots appear as regular EBS snapshots in your AWS account. You can create EBS volumes from them, which is incredibly useful for disaster recovery or cloud migration.
+These snapshots appear as regular EBS snapshots in your AWS account. You can create EBS volumes from supported snapshots, which is incredibly useful for disaster recovery or cloud migration.
 
 ## Step 7: Configure CHAP Authentication
 
@@ -205,7 +205,7 @@ aws storagegateway update-chap-credentials \
   --secret-to-authenticate-target "TargetSecret12345"
 ```
 
-CHAP provides mutual authentication between the initiator (client) and target (gateway). Both secrets must be at least 12 characters and no more than 16 characters.
+CHAP provides mutual authentication between the initiator (client) and target (gateway). Both secrets must be at least 12 bytes and no more than 16 bytes when encoded in UTF-8.
 
 ## Monitoring Volume Gateway
 
