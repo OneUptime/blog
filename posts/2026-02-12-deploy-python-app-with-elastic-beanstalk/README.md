@@ -166,7 +166,7 @@ You can run migrations automatically during deployment using container commands.
 # .ebextensions/migrations.config - Run migrations on deploy
 container_commands:
   01_migrate:
-    command: "python manage.py db upgrade"
+    command: "python manage.py migrate"
     leader_only: true
 ```
 
@@ -216,14 +216,17 @@ def configure_logging():
 To retrieve logs from your running environment, use the EB CLI.
 
 ```bash
-# Fetch the last 100 lines of logs
+# Fetch tail logs
+eb logs
+
+# Fetch full instance logs
 eb logs --all
 
 # Tail logs in real-time
 eb logs --stream
 ```
 
-For production monitoring, you'll want something more robust. Setting up [application monitoring with OneUptime](https://oneuptime.com/blog/post/2026-02-12-set-up-aws-resilience-hub-for-application-resilience/view) gives you alerting, dashboards, and incident management beyond what CloudWatch alone provides.
+For production monitoring, you'll want something more robust. Setting up [application monitoring with OneUptime](https://oneuptime.com/blog/post/2026-01-24-apm-monitoring/view) gives you alerting, dashboards, and incident management beyond what CloudWatch alone provides.
 
 ## Using a Procfile for Custom Commands
 
@@ -240,9 +243,9 @@ Gunicorn is the recommended WSGI server for production. The worker and thread co
 
 There are a few things that trip people up regularly:
 
-**Port binding**: Don't hardcode a port. Elastic Beanstalk sets the `PORT` environment variable, and your app needs to listen on it (or let the reverse proxy handle it, which is the default behavior with Gunicorn).
+**Port binding**: The default port for the Python WSGI server is 8000, and the Procfile example above uses that port. If you specify a different port in your Procfile, set the `PORT` environment property to the same value.
 
-**Large deployments**: If your deployment package exceeds 512 MB, you'll hit issues. Use `.ebignore` to exclude test files, documentation, and anything else that doesn't need to be on the server.
+**Large deployments**: If your source bundle exceeds 500 MB, you'll hit issues. Use `.ebignore` to exclude test files, documentation, and anything else that doesn't need to be on the server.
 
 ```text
 # .ebignore - Files to exclude from deployment
@@ -255,7 +258,7 @@ docs/
 node_modules/
 ```
 
-**Health checks**: Elastic Beanstalk pings your application's root URL to determine health. Make sure `/` returns a 200 status code, or configure a custom health check path.
+**Health checks**: If you configure an HTTP health check path, make sure that path returns a 200 status code. Without an application health check URL, the load balancer uses a TCP check on port 80.
 
 ```yaml
 # .ebextensions/healthcheck.config
