@@ -58,7 +58,7 @@ resource "aws_codepipeline" "app" {
       version          = "1"
       output_artifacts = ["source_output"]
       configuration = {
-        ConnectionArn    = aws_codestarconnections_connection.github.arn
+        ConnectionArn    = aws_codeconnections_connection.github.arn
         FullRepositoryId = "myorg/myapp"
         BranchName       = "main"
       }
@@ -91,7 +91,7 @@ resource "aws_codepipeline" "app" {
       owner           = "AWS"
       provider        = "CodeBuild"
       version         = "1"
-      input_artifacts = ["build_output"]
+      input_artifacts = ["source_output"]
       configuration = {
         ProjectName = aws_codebuild_project.security_scan.name
       }
@@ -105,12 +105,16 @@ resource "aws_codepipeline" "app" {
       name            = "DeployStaging"
       category        = "Deploy"
       owner           = "AWS"
-      provider        = "CodeDeploy"
+      provider        = "CodeDeployToECS"
       version         = "1"
       input_artifacts = ["build_output"]
       configuration = {
-        ApplicationName     = aws_codedeploy_app.app.name
-        DeploymentGroupName = aws_codedeploy_deployment_group.staging.deployment_group_name
+        ApplicationName                = aws_codedeploy_app.app.name
+        DeploymentGroupName            = aws_codedeploy_deployment_group.staging.deployment_group_name
+        TaskDefinitionTemplateArtifact = "build_output"
+        TaskDefinitionTemplatePath     = "taskdef.json"
+        AppSpecTemplateArtifact        = "build_output"
+        AppSpecTemplatePath            = "appspec.yml"
       }
     }
   }
@@ -138,12 +142,16 @@ resource "aws_codepipeline" "app" {
       name            = "DeployProduction"
       category        = "Deploy"
       owner           = "AWS"
-      provider        = "CodeDeploy"
+      provider        = "CodeDeployToECS"
       version         = "1"
       input_artifacts = ["build_output"]
       configuration = {
-        ApplicationName     = aws_codedeploy_app.app.name
-        DeploymentGroupName = aws_codedeploy_deployment_group.production.deployment_group_name
+        ApplicationName                = aws_codedeploy_app.app.name
+        DeploymentGroupName            = aws_codedeploy_deployment_group.production.deployment_group_name
+        TaskDefinitionTemplateArtifact = "build_output"
+        TaskDefinitionTemplatePath     = "taskdef.json"
+        AppSpecTemplateArtifact        = "build_output"
+        AppSpecTemplatePath            = "appspec.yml"
       }
     }
   }
@@ -199,6 +207,7 @@ artifacts:
   files:
     - dist/**/*
     - appspec.yml
+    - taskdef.json
     - scripts/**/*
   discard-paths: no
 
@@ -206,11 +215,11 @@ reports:
   test-results:
     files:
       - 'junit-results.xml'
-    file-format: JunitXml
+    file-format: JUNITXML
   coverage:
     files:
       - 'coverage/clover.xml'
-    file-format: CloverXml
+    file-format: CLOVERXML
 
 cache:
   paths:
@@ -221,7 +230,7 @@ cache:
 
 Integrate security scanning directly into your pipeline. This catches vulnerabilities before they reach production.
 
-This buildspec runs security scans on the build output.
+This buildspec runs security scans on the source artifact.
 
 ```yaml
 # buildspec-security.yml
@@ -244,7 +253,7 @@ phases:
           echo "Scanning Docker image..."
           docker build -t scan-target .
           # Use ECR scanning or Trivy
-          docker run --rm aquasec/trivy image --exit-code 1 --severity HIGH,CRITICAL scan-target
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy image --exit-code 1 --severity HIGH,CRITICAL scan-target
         fi
 
       # Scan Infrastructure as Code templates
@@ -448,7 +457,7 @@ resource "aws_codebuild_project" "build" {
 
   environment {
     compute_type    = "BUILD_GENERAL1_MEDIUM"
-    image           = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    image           = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
     type            = "LINUX_CONTAINER"
     privileged_mode = false  # Only enable if building Docker images
 
