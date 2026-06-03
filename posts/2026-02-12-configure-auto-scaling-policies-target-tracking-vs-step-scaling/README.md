@@ -76,19 +76,17 @@ aws autoscaling put-scaling-policy \
     --auto-scaling-group-name webapp-asg \
     --policy-name cpu-target-tracking \
     --policy-type TargetTrackingScaling \
+    --estimated-instance-warmup 300 \
     --target-tracking-configuration '{
         "PredefinedMetricSpecification": {
             "PredefinedMetricType": "ASGAverageCPUUtilization"
         },
-        "TargetValue": 60.0,
-        "ScaleInCooldown": 300,
-        "ScaleOutCooldown": 60
+        "TargetValue": 60.0
     }'
 ```
 
-The cooldown periods matter:
-- **ScaleOutCooldown (60s)**: After adding instances, wait 60 seconds before adding more. Keep this short for responsiveness.
-- **ScaleInCooldown (300s)**: After removing instances, wait 5 minutes before removing more. Keep this longer to avoid flapping.
+The warmup period matters:
+- **EstimatedInstanceWarmup (300s)**: After adding instances, give them time to boot and start contributing reliable metrics. Set this to match your application's real startup time.
 
 ### Predefined Metrics
 
@@ -111,14 +109,13 @@ aws autoscaling put-scaling-policy \
     --auto-scaling-group-name webapp-asg \
     --policy-name request-count-tracking \
     --policy-type TargetTrackingScaling \
+    --estimated-instance-warmup 300 \
     --target-tracking-configuration '{
         "PredefinedMetricSpecification": {
             "PredefinedMetricType": "ALBRequestCountPerTarget",
             "ResourceLabel": "app/webapp-alb/abc123/targetgroup/webapp/def456"
         },
-        "TargetValue": 500.0,
-        "ScaleOutCooldown": 60,
-        "ScaleInCooldown": 300
+        "TargetValue": 500.0
     }'
 ```
 
@@ -129,15 +126,15 @@ This says "keep each instance handling about 500 requests per minute." If traffi
 You can also use custom CloudWatch metrics:
 
 ```bash
-# Scale based on a custom metric (e.g., queue depth)
+# Scale based on a custom metric (e.g., queue backlog per instance)
 aws autoscaling put-scaling-policy \
     --auto-scaling-group-name worker-asg \
-    --policy-name queue-depth-tracking \
+    --policy-name queue-backlog-tracking \
     --policy-type TargetTrackingScaling \
     --target-tracking-configuration '{
         "CustomizedMetricSpecification": {
-            "MetricName": "ApproximateNumberOfMessagesVisible",
-            "Namespace": "AWS/SQS",
+            "MetricName": "BacklogPerInstance",
+            "Namespace": "Custom/Worker",
             "Dimensions": [
                 {
                     "Name": "QueueName",
@@ -150,7 +147,7 @@ aws autoscaling put-scaling-policy \
     }'
 ```
 
-This keeps the SQS queue depth around 10 messages by scaling workers up or down.
+This keeps the SQS backlog around 10 messages per worker by scaling workers up or down. Raw SQS queue depth is not a good target tracking metric because it does not change proportionally with the number of workers; publish a backlog-per-instance metric instead.
 
 ## Step Scaling
 
@@ -302,8 +299,8 @@ aws autoscaling describe-scaling-activities \
 ```
 
 Watch for:
-- **Frequent scaling oscillation** (adding and removing instances constantly) - increase cooldown periods
-- **Slow scale-out** during traffic spikes - reduce ScaleOutCooldown or use step scaling with aggressive steps
+- **Frequent scaling oscillation** (adding and removing instances constantly) - tune instance warmup or lengthen scale-in evaluation periods
+- **Slow scale-out** during traffic spikes - enable one-minute metrics, tune instance warmup, or use step scaling with aggressive steps
 - **Too many instances** during low traffic - your target might be too low
 
 Set up [monitoring with OneUptime](https://oneuptime.com) to track your ASG behavior over time and correlate scaling events with application performance.
@@ -338,7 +335,7 @@ Predictive scaling uses machine learning to analyze historical patterns and pre-
 
 2. **Add ALBRequestCountPerTarget as a second policy.** This catches load increases that don't show up in CPU (like I/O-bound requests).
 
-3. **Keep scale-out fast and scale-in slow.** Short scale-out cooldown (60s), longer scale-in cooldown (300s+). It's always better to have slightly more capacity than to be caught short.
+3. **Keep scale-out fast and scale-in slow.** Use one-minute metrics for faster detection, set instance warmup to match your real startup time, and use longer scale-in evaluation periods for step scaling. It's always better to have slightly more capacity than to be caught short.
 
 4. **Set health check grace period appropriately.** New instances need time to boot and warm up. If health checks fire too soon, the ASG terminates instances before they're ready, creating a scaling loop.
 
