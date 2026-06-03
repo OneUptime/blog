@@ -48,7 +48,7 @@ Create the admin role with a trust policy for the identity pool:
             "Action": "sts:AssumeRoleWithWebIdentity",
             "Condition": {
                 "StringEquals": {
-                    "cognito-identity.amazonaws.com:aud": "us-east-1:identity-pool-id"
+                    "cognito-identity.amazonaws.com:aud": "us-east-1:11111111-1111-1111-1111-111111111111"
                 },
                 "ForAnyValue:StringLike": {
                     "cognito-identity.amazonaws.com:amr": "authenticated"
@@ -82,8 +82,9 @@ aws iam put-role-policy \
                     "dynamodb:*"
                 ],
                 "Resource": [
+                    "arn:aws:s3:::my-app-bucket",
                     "arn:aws:s3:::my-app-bucket/*",
-                    "arn:aws:dynamodb:us-east-1:123456789:table/my-app-*"
+                    "arn:aws:dynamodb:us-east-1:123456789012:table/my-app-*"
                 ]
             }
         ]
@@ -104,14 +105,29 @@ aws iam put-role-policy \
             {
                 "Effect": "Allow",
                 "Action": [
-                    "s3:GetObject",
-                    "s3:ListBucket",
+                    "s3:ListBucket"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::my-app-bucket"
+                ]
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
+                    "s3:GetObject"
+                ],
+                "Resource": [
+                    "arn:aws:s3:::my-app-bucket/*"
+                ]
+            },
+            {
+                "Effect": "Allow",
+                "Action": [
                     "dynamodb:GetItem",
                     "dynamodb:Query"
                 ],
                 "Resource": [
-                    "arn:aws:s3:::my-app-bucket/*",
-                    "arn:aws:dynamodb:us-east-1:123456789:table/my-app-*"
+                    "arn:aws:dynamodb:us-east-1:123456789012:table/my-app-*"
                 ]
             }
         ]
@@ -129,13 +145,15 @@ Attach IAM roles to your Cognito groups:
 aws cognito-idp update-group \
     --user-pool-id us-east-1_XXXXXXXXX \
     --group-name Admins \
-    --role-arn arn:aws:iam::123456789:role/CognitoAdminRole
+    --role-arn arn:aws:iam::123456789012:role/CognitoAdminRole \
+    --precedence 1
 
 # Associate the user IAM role with the Users group
 aws cognito-idp update-group \
     --user-pool-id us-east-1_XXXXXXXXX \
     --group-name Users \
-    --role-arn arn:aws:iam::123456789:role/CognitoUserRole
+    --role-arn arn:aws:iam::123456789012:role/CognitoUserRole \
+    --precedence 10
 ```
 
 ## Step 3: Configure the Identity Pool
@@ -148,7 +166,7 @@ Create an identity pool with the correct settings:
 # Create the identity pool
 aws cognito-identity create-identity-pool \
     --identity-pool-name MyAppIdentityPool \
-    --allow-unauthenticated-identities false \
+    --no-allow-unauthenticated-identities \
     --cognito-identity-providers \
         ProviderName=cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX,ClientId=your-app-client-id,ServerSideTokenCheck=true
 ```
@@ -158,8 +176,8 @@ Configure the role mapping to use token-based role selection:
 ```bash
 # Set role mappings - use Token for group-based role selection
 aws cognito-identity set-identity-pool-roles \
-    --identity-pool-id us-east-1:identity-pool-id \
-    --roles authenticated=arn:aws:iam::123456789:role/CognitoUserRole \
+    --identity-pool-id us-east-1:11111111-1111-1111-1111-111111111111 \
+    --roles authenticated=arn:aws:iam::123456789012:role/CognitoUserRole \
     --role-mappings '{
         "cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX:your-app-client-id": {
             "Type": "Token",
@@ -188,7 +206,7 @@ const {
 const identityClient = new CognitoIdentityClient({ region: 'us-east-1' });
 
 async function getAWSCredentials(idToken) {
-    const IDENTITY_POOL_ID = 'us-east-1:your-identity-pool-id';
+    const IDENTITY_POOL_ID = 'us-east-1:11111111-1111-1111-1111-111111111111';
     const USER_POOL_URI = 'cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX';
 
     // Step 1: Get an identity ID
@@ -258,18 +276,18 @@ If a user is in both Admins (precedence 1) and Users (precedence 10), the token 
 {
     "cognito:groups": ["Admins", "Users"],
     "cognito:roles": [
-        "arn:aws:iam::123456789:role/CognitoAdminRole",
-        "arn:aws:iam::123456789:role/CognitoUserRole"
+        "arn:aws:iam::123456789012:role/CognitoAdminRole",
+        "arn:aws:iam::123456789012:role/CognitoUserRole"
     ],
-    "cognito:preferred_role": "arn:aws:iam::123456789:role/CognitoAdminRole"
+    "cognito:preferred_role": "arn:aws:iam::123456789012:role/CognitoAdminRole"
 }
 ```
 
 The Identity Pool will use the `preferred_role` claim to determine which credentials to issue, assuming you've set the role mapping type to `Token`.
 
-## Scoping Permissions with Session Tags
+## Scoping Permissions with Cognito Identity Variables
 
-For even finer-grained control, you can use session tags based on the user's identity. This lets you create IAM policies that restrict access to resources that belong to the specific user.
+For even finer-grained control, you can use Cognito identity policy variables based on the user's identity pool identity ID. This lets you create IAM policies that restrict access to resources that belong to the specific user.
 
 Here's an IAM policy that uses the Cognito identity ID as a path prefix:
 
