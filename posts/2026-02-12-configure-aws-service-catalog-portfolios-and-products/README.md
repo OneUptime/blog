@@ -33,7 +33,7 @@ graph TD
 
 **Products** are CloudFormation templates wrapped with metadata - name, description, version, and launch constraints. Each product can have multiple versions.
 
-**Portfolios** are collections of products shared with specific IAM users, groups, roles, or entire AWS accounts. A portfolio also defines constraints that apply to all products within it.
+**Portfolios** are collections of products shared with specific IAM users, groups, roles, or entire AWS accounts. Constraints are applied to products within a specific portfolio.
 
 **Constraints** control how products can be launched - which IAM role to use, what tag values are allowed, and notification preferences.
 
@@ -213,7 +213,6 @@ aws servicecatalog create-constraint \
 The launch role needs permissions to create the resources defined in your CloudFormation templates, plus permissions to manage CloudFormation stacks. Here is a sample policy:
 
 ```json
-// Launch role policy - permissions needed to provision the S3 bucket product
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -246,24 +245,25 @@ The launch role needs permissions to create the resources defined in your CloudF
 }
 ```
 
-## Step 5: Add Tag Constraints
+## Step 5: Add Tag Update Constraints and TagOptions
 
-Tag constraints enforce tagging policies on provisioned resources. This ensures cost allocation and governance:
+Tag update constraints control whether tag changes on a product or portfolio are applied to resources during provisioned product updates. This helps keep cost allocation and governance tags in sync:
 
 ```bash
-# Require a CostCenter tag with specific allowed values
+# Allow tag updates on provisioned resources
 aws servicecatalog create-constraint \
   --portfolio-id "port-xyz789" \
   --product-id "prod-abc123" \
-  --type "TAG_UPDATE" \
+  --type "RESOURCE_UPDATE" \
   --parameters '{
-    "TagUpdateOnProvisionedProduct": {
-      "TagUpdatesOnProvisionedProduct": "ALLOWED"
+    "Version": "2.0",
+    "Properties": {
+      "TagUpdateOnProvisionedProduct": "ALLOWED"
     }
   }'
 ```
 
-You can also use tag options to restrict allowed values:
+You can use TagOptions to restrict the tag values users can choose during provisioning:
 
 ```bash
 # Create tag options for environment
