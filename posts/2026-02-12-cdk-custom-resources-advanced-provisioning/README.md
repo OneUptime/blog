@@ -20,15 +20,14 @@ The easiest custom resource is `AwsCustomResource`. It calls an AWS API directly
 // lib/custom-resources-stack.ts - AWS SDK call as a custom resource
 import * as cdk from 'aws-cdk-lib';
 import * as cr from 'aws-cdk-lib/custom-resources';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
 
 export class CustomResourcesStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Example: Enable S3 Transfer Acceleration on a bucket
-    // (not natively supported by CloudFormation)
+    // Example: Enable S3 Transfer Acceleration on an existing bucket
+    // managed outside this stack
     const enableTransferAcceleration = new cr.AwsCustomResource(
       this, 'EnableTransferAcceleration', {
         onCreate: {
@@ -68,17 +67,13 @@ The `AwsCustomResource` handles the Lambda function, permissions, and CloudForma
 You can also use custom resources to read data and pass it to other constructs:
 
 ```typescript
-// Fetch the latest AMI ID using a custom resource
+// Fetch the latest Amazon Linux 2 AMI ID using a public SSM parameter
 const latestAmi = new cr.AwsCustomResource(this, 'LatestAmi', {
   onCreate: {
-    service: 'EC2',
-    action: 'describeImages',
+    service: 'SSM',
+    action: 'getParameter',
     parameters: {
-      Owners: ['amazon'],
-      Filters: [
-        { Name: 'name', Values: ['amzn2-ami-hvm-*-x86_64-gp2'] },
-        { Name: 'state', Values: ['available'] },
-      ],
+      Name: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2',
     },
     physicalResourceId: cr.PhysicalResourceId.of('latest-ami-lookup'),
   },
@@ -88,7 +83,7 @@ const latestAmi = new cr.AwsCustomResource(this, 'LatestAmi', {
 });
 
 // Use the result in another resource
-const amiId = latestAmi.getResponseField('Images.0.ImageId');
+const amiId = latestAmi.getResponseField('Parameter.Value');
 ```
 
 The `getResponseField` method extracts values from the API response using dot notation. This is really useful for bridging gaps where CDK doesn't have a built-in lookup.
@@ -233,7 +228,7 @@ The flow goes like this: `onEventHandler` starts the operation and returns immed
 
 ## Error Handling
 
-Proper error handling in custom resources is critical. If your Lambda throws an unhandled exception, CloudFormation will wait for an hour before timing out:
+Proper error handling in custom resources is critical. Without a framework that sends a failure response, a Lambda error can leave CloudFormation waiting for the custom resource timeout:
 
 ```python
 # Robust error handling in custom resource handlers
