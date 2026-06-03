@@ -8,13 +8,13 @@ Description: A practical guide to migrating workloads to AWS Graviton ARM-based 
 
 ---
 
-AWS Graviton processors are ARM-based chips designed by AWS that deliver significantly better price-performance than their x86 counterparts. We're talking 20-40% cost savings with equal or better performance for most workloads. If you're running x86 instances and haven't evaluated Graviton, you're likely overpaying.
+AWS Graviton processors are ARM-based chips designed by AWS that deliver significantly better price-performance than their x86 counterparts. We're talking 20-40% better price-performance with equal or better performance for many workloads. If you're running x86 instances and haven't evaluated Graviton, you may be overpaying.
 
 The Graviton3 processor (used in C7g, M7g, R7g instances) offers up to 25% better compute performance than Graviton2, along with improvements in memory bandwidth, cryptography, and floating-point operations. Let's walk through adopting Graviton for your workloads.
 
 ## Graviton Instance Families
 
-AWS offers Graviton versions across all major instance families. The naming convention is simple - an "g" in the instance type name means Graviton.
+AWS offers Graviton versions across many major instance families. The naming convention is simple - a lowercase "g" after the generation number in the instance type name usually means Graviton.
 
 | x86 Instance | Graviton Equivalent | Savings |
 |-------------|-------------------|---------|
@@ -24,30 +24,43 @@ AWS offers Graviton versions across all major instance families. The naming conv
 | r5.2xlarge | r7g.2xlarge | ~20% |
 | m5.xlarge | m7g.xlarge | ~20% |
 
-The per-hour pricing is about 20% lower, but the performance improvements often push the effective savings to 30-40% when you account for doing more work per dollar.
+The per-hour pricing is often roughly 15-20% lower for comparable sizes, but the performance improvements can push the effective savings higher when you account for doing more work per dollar.
 
 Compare pricing directly:
 
 ```bash
 # Compare x86 vs Graviton pricing
 
-echo "=== x86 (m5.large) ==="
-aws pricing get-products \
-  --service-code AmazonEC2 \
-  --filters \
-    "Type=TERM_MATCH,Field=instanceType,Value=m5.large" \
-    "Type=TERM_MATCH,Field=operatingSystem,Value=Linux" \
-    "Type=TERM_MATCH,Field=location,Value=US East (N. Virginia)" \
-    "Type=TERM_MATCH,Field=tenancy,Value=Shared" \
-    "Type=TERM_MATCH,Field=preInstalledSw,Value=NA" \
-  --region us-east-1 \
-  --query 'PriceList[0]' | python3 -c "import sys,json; print(json.loads(json.loads(sys.stdin.read()))['terms'])" 2>/dev/null
+price_for() {
+  local instance_type="$1"
 
-echo "=== Graviton (m7g.large) ==="
-# Similar query for m7g.large
+  aws pricing get-products \
+    --service-code AmazonEC2 \
+    --filters \
+      "Type=TERM_MATCH,Field=instanceType,Value=${instance_type}" \
+      "Type=TERM_MATCH,Field=operatingSystem,Value=Linux" \
+      "Type=TERM_MATCH,Field=location,Value=US East (N. Virginia)" \
+      "Type=TERM_MATCH,Field=tenancy,Value=Shared" \
+      "Type=TERM_MATCH,Field=preInstalledSw,Value=NA" \
+      "Type=TERM_MATCH,Field=capacitystatus,Value=Used" \
+      "Type=TERM_MATCH,Field=operation,Value=RunInstances" \
+    --region us-east-1 \
+    --output json | python3 -c '
+import json, sys
+response = json.load(sys.stdin)
+product = json.loads(response["PriceList"][0])
+for term in product["terms"]["OnDemand"].values():
+    for dimension in term["priceDimensions"].values():
+        if dimension["unit"] == "Hrs":
+            print(dimension["pricePerUnit"]["USD"])
+'
+}
+
+echo "m5.large:  $(price_for m5.large) per hour"
+echo "m7g.large: $(price_for m7g.large) per hour"
 ```
 
-Or simply check the EC2 pricing page - the differences are consistently around 20%.
+Or simply check the EC2 pricing page - the exact differences vary by region and instance family.
 
 ## Checking Application Compatibility
 
@@ -97,6 +110,7 @@ AMI_ID=$(aws ec2 describe-images \
   --owners amazon \
   --filters \
     "Name=name,Values=al2023-ami-*-arm64" \
+    "Name=architecture,Values=arm64" \
     "Name=state,Values=available" \
   --query 'Images | sort_by(@, &CreationDate) | [-1].ImageId' \
   --output text)
@@ -219,6 +233,11 @@ data "aws_ami" "amazon_linux_arm" {
   }
 
   filter {
+    name   = "architecture"
+    values = ["arm64"]
+  }
+
+  filter {
     name   = "virtualization-type"
     values = ["hvm"]
   }
@@ -262,13 +281,12 @@ java -version
 # openjdk version "17.x.x" ... aarch64
 ```
 
-Corretto includes Graviton-specific optimizations for the JIT compiler, garbage collection, and cryptographic operations. Java 17+ is recommended for the best Graviton performance.
+Corretto is the JDK distribution AWS tests and tunes for its platforms, including Graviton. Java 17+ is recommended for the best Graviton performance.
 
 JVM tuning tips for Graviton:
 
 ```bash
-# Graviton has larger cache lines (64 bytes vs 64 bytes, but different prefetch)
-# Use Large Pages for better TLB performance
+# Use large pages only after testing them with your workload and OS settings
 java -XX:+UseLargePages \
   -XX:+UseTransparentHugePages \
   -XX:+UseG1GC \
@@ -278,13 +296,13 @@ java -XX:+UseLargePages \
 
 ## Python on Graviton
 
-Python works out of the box on Graviton. For compute-heavy workloads using NumPy, SciPy, or similar packages, the ARM-optimized BLAS libraries can provide a performance boost.
+Python works out of the box on Graviton. For compute-heavy workloads using NumPy, SciPy, or similar packages, recent ARM64 wheels and tuned BLAS libraries can provide a performance boost.
 
 ```bash
 # Install Python with optimized math libraries
 sudo yum install -y python3 python3-pip
 
-# Install NumPy (will use ARM-optimized BLAS automatically)
+# Install recent packages with ARM64 wheel support
 pip3 install numpy scipy pandas
 ```
 
@@ -304,26 +322,26 @@ Monitor both instances for performance differences, error rates, and latency. On
 
 ## Cost Savings Calculator
 
-Here's a quick way to estimate your savings:
+Here's a quick way to estimate your savings, assuming 730 hours per month in US East (N. Virginia):
 
 | Current Setup | Graviton Equivalent | Monthly Savings |
 |--------------|-------------------|----------------|
-| 10x m5.large ($699/mo) | 10x m7g.large ($559/mo) | $140 |
-| 5x c5.2xlarge ($1,224/mo) | 5x c7g.2xlarge ($979/mo) | $245 |
-| 20x t3.medium ($608/mo) | 20x t4g.medium ($486/mo) | $122 |
+| 10x m5.large ($701/mo) | 10x m7g.large ($596/mo) | $105 |
+| 5x c5.2xlarge ($1,241/mo) | 5x c7g.2xlarge ($1,059/mo) | $183 |
+| 20x t3.medium ($607/mo) | 20x t4g.medium ($491/mo) | $117 |
 
-For a fleet of 35 instances, that's over $500/month in savings - just from changing instance types. Add Savings Plans or Reserved Instances on top, and the savings compound.
+For a fleet of 35 instances, that's over $400/month in savings - just from changing instance types. Add Savings Plans or Reserved Instances on top, and the savings compound.
 
 ## When Not to Use Graviton
 
 Be cautious with these scenarios:
 - Software that only ships x86 binaries (some commercial databases, monitoring agents)
 - Workloads with x86-specific SIMD optimizations (rare, but exists in some HPC scenarios)
-- Windows workloads (Graviton supports Linux and some macOS, not Windows)
+- Windows or macOS workloads (Graviton EC2 instances support Linux, not Windows or macOS)
 - If your build pipeline can't produce ARM64 artifacts
 
 For monitoring your Graviton fleet's performance against your x86 baseline, set up proper observability from day one. Check our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view).
 
 ## Wrapping Up
 
-Graviton instances offer a straightforward 20-40% improvement in price-performance. The migration path for most workloads is simply: verify your software runs on ARM, switch to a Graviton instance type with an ARM64 AMI, and benchmark. Docker and modern language runtimes make this transition nearly seamless. The savings are real, they're immediate, and they compound as your fleet grows. There's very little reason not to evaluate Graviton for your next instance launch.
+Graviton instances offer up to 40% better price-performance. The migration path for most workloads is simply: verify your software runs on ARM, switch to a Graviton instance type with an ARM64 AMI, and benchmark. Docker and modern language runtimes make this transition nearly seamless. The savings are real, they're immediate, and they compound as your fleet grows. There's very little reason not to evaluate Graviton for your next instance launch.
