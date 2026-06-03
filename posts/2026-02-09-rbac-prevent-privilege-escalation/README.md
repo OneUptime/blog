@@ -8,13 +8,13 @@ Description: Implement RBAC policies that prevent privilege escalation by restri
 
 ---
 
-Privilege escalation occurs when users create or modify RBAC resources to grant themselves additional permissions. A user with permission to edit roles could add cluster-admin to their own role binding, bypassing intended access controls. Preventing this requires careful RBAC design that limits who can modify authorization policies.
+Privilege escalation occurs when users create or modify RBAC resources to grant themselves additional permissions. A user with permission to edit role bindings and bind high-privilege roles could bind cluster-admin to themselves, bypassing intended access controls. Preventing this requires careful RBAC design that limits who can modify authorization policies.
 
 ## Understanding Privilege Escalation Vectors
 
-The escalate, bind, and impersonate verbs in RBAC control privilege escalation. The escalate verb prevents users from creating roles with more permissions than they have. The bind verb controls creating role bindings. The impersonate verb allows acting as another user or service account.
+The escalate, bind, and impersonate verbs in RBAC control privilege escalation. The escalate verb allows users to create or update roles with more permissions than they already have. The bind verb controls creating role bindings to roles whose permissions the user does not already have. The impersonate verb allows acting as another user or service account.
 
-Without proper controls, a user with edit access to roles could grant themselves any permission, defeating the purpose of RBAC.
+Without proper controls such as the Kubernetes `escalate` and `bind` checks, a user with edit access to roles or role bindings could grant themselves additional permissions, defeating the purpose of RBAC.
 
 ## Creating Non-Escalating Role Management
 
@@ -141,10 +141,9 @@ Allow teams to manage roles in their namespaces without cluster-wide escalation.
 ```yaml
 # rbac-namespace-role-admin.yaml
 apiVersion: rbac.authorization.k8s.io/v1
-kind: Role
+kind: ClusterRole
 metadata:
   name: namespace-role-admin
-  namespace: team-a
 rules:
 # Can manage roles in this namespace
 - apiGroups: ["rbac.authorization.k8s.io"]
@@ -171,7 +170,7 @@ metadata:
   namespace: team-a
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: Role
+  kind: ClusterRole
   name: namespace-role-admin
 subjects:
 - kind: Group
@@ -233,17 +232,17 @@ subjects:
 Monitor for privilege escalation attempts.
 
 ```bash
-# Find users with escalate permission
+# Find roles with escalate permission
 kubectl get clusterroles,roles --all-namespaces -o json | \
   jq -r '.items[] | select(.rules[]?.verbs[]? == "escalate") |
     {name: .metadata.name, namespace: .metadata.namespace}'
 
-# Find users with bind permission
+# Find roles with bind permission
 kubectl get clusterroles,roles --all-namespaces -o json | \
   jq -r '.items[] | select(.rules[]?.verbs[]? == "bind") |
     {name: .metadata.name, namespace: .metadata.namespace}'
 
-# Find users with impersonate permission
+# Find roles with impersonate permission
 kubectl get clusterroles,roles --all-namespaces -o json | \
   jq -r '.items[] | select(.rules[]?.verbs[]? == "impersonate") |
     {name: .metadata.name, namespace: .metadata.namespace}'
@@ -374,6 +373,9 @@ rules:
 - apiGroups: [""]
   resources: ["pods"]
   verbs: ["get", "list"]
+- apiGroups: ["rbac.authorization.k8s.io"]
+  resources: ["roles", "rolebindings"]
+  verbs: ["create"]
 EOF
 
 kubectl create rolebinding test-user-binding -n default \
@@ -409,13 +411,15 @@ on:
   pull_request:
     paths:
       - 'rbac/**/*.yaml'
+  pull_request_review:
+    types: [submitted]
 
 jobs:
   review:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Check for escalation risks
         run: |
@@ -431,9 +435,15 @@ jobs:
           fi
 
       - name: Require approval
-        uses: github/required-reviews@v1
+        uses: Automattic/action-required-review@v5
         with:
-          required-reviewers: security-team
+          token: ${{ secrets.REQUIRED_REVIEWS_TOKEN }}
+          requirements: |
+            - name: RBAC changes
+              paths:
+                - 'rbac/**/*.yaml'
+              teams:
+                - security-team
 ```
 
 Preventing privilege escalation requires restricting access to RBAC resources and using Kubernetes built-in protections. The API server prevents users from creating roles with more permissions than they have, but you must carefully control the escalate, bind, and impersonate verbs. Implement separation of duties, audit RBAC changes, and use admission controllers for approval workflows to maintain secure RBAC policies.
