@@ -14,7 +14,7 @@ This guide walks you through building a real CDK application in Python - a Dynam
 
 ## Prerequisites
 
-You need Python 3.8 or later, pip, and the CDK CLI.
+You need Node.js 22.x or later, Python 3.9 or later, pip, virtualenv, and the CDK CLI.
 
 ```bash
 # Verify Python is installed
@@ -130,15 +130,12 @@ class DynamoApiStack(Stack):
                 name="id",
                 type=dynamodb.AttributeType.STRING,
             ),
-            # Sort key for querying items within a partition
-            sort_key=dynamodb.Attribute(
-                name="created_at",
-                type=dynamodb.AttributeType.STRING,
-            ),
             billing_mode=dynamodb.BillingMode.PAY_PER_REQUEST,
             removal_policy=RemovalPolicy.DESTROY,
             # Enable point-in-time recovery for data safety
-            point_in_time_recovery=True,
+            point_in_time_recovery_specification=dynamodb.PointInTimeRecoverySpecification(
+                point_in_time_recovery_enabled=True,
+            ),
         )
 
         # Add a Global Secondary Index for querying by status
@@ -162,7 +159,11 @@ class DynamoApiStack(Stack):
             code=_lambda.Code.from_inline(self._get_handler_code()),
             timeout=Duration.seconds(10),
             memory_size=256,
-            log_retention=logs.RetentionDays.ONE_WEEK,
+            log_group=logs.LogGroup(
+                self, "ApiHandlerLogGroup",
+                retention=logs.RetentionDays.ONE_WEEK,
+                removal_policy=RemovalPolicy.DESTROY,
+            ),
             environment={
                 "TABLE_NAME": table.table_name,
             },
@@ -213,7 +214,7 @@ class DynamoApiStack(Stack):
 import json
 import os
 import boto3
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource("dynamodb")
 table = dynamodb.Table(os.environ["TABLE_NAME"])
@@ -229,7 +230,7 @@ def handler(event, context):
 
         elif method == "POST" and path == "/items":
             body = json.loads(event["body"])
-            body["created_at"] = datetime.utcnow().isoformat()
+            body["created_at"] = datetime.now(timezone.utc).isoformat()
             table.put_item(Item=body)
             return response(201, body)
 
@@ -239,6 +240,13 @@ def handler(event, context):
             if "Item" in result:
                 return response(200, result["Item"])
             return response(404, {"error": "Not found"})
+
+        elif method == "PUT":
+            item_id = event["pathParameters"]["id"]
+            body = json.loads(event["body"])
+            body["id"] = item_id
+            table.put_item(Item=body)
+            return response(200, body)
 
         elif method == "DELETE":
             item_id = event["pathParameters"]["id"]
@@ -347,7 +355,7 @@ Keep your requirements.txt updated as you add new CDK modules.
 
 ```text
 # requirements.txt
-aws-cdk-lib==2.170.0
+aws-cdk-lib==2.257.0
 constructs>=10.0.0,<11.0.0
 ```
 
