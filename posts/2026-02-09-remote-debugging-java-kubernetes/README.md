@@ -25,7 +25,7 @@ Add JDWP parameters to your Java application's startup command:
 ```dockerfile
 # Dockerfile
 
-FROM openjdk:17-jdk-slim
+FROM eclipse-temurin:17-jdk
 
 WORKDIR /app
 COPY target/myapp.jar /app/app.jar
@@ -122,7 +122,7 @@ Start debugging by clicking the debug button. IntelliJ connects to your Kubernet
 
 ## Dynamic Debugging with JVM Attach
 
-For production environments where debug ports should not be exposed, use JVM attach to enable debugging on demand:
+For production environments where debug ports should not be exposed, use JVM attach to enable debugging on demand. The attach tool must run with a JDK and the same effective user as the target JVM:
 
 ```java
 // DebugAgent.java
@@ -148,9 +148,7 @@ public class DebugAgent {
             VirtualMachine vm = VirtualMachine.attach(pid);
 
             // Load the JDWP agent
-            vm.startLocalManagementAgent();
-            String agentArgs = debugOptions;
-            vm.loadAgent("jdwp=" + agentArgs);
+            vm.loadAgentLibrary("jdwp", debugOptions);
 
             System.out.println("Debug agent loaded successfully on PID: " + pid);
             System.out.println("Debug port: 5005");
@@ -173,19 +171,35 @@ kind: Deployment
 metadata:
   name: java-app
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-app
   template:
+    metadata:
+      labels:
+        app: java-app
     spec:
       shareProcessNamespace: true
+      volumes:
+      - name: tmp
+        emptyDir: {}
       containers:
       - name: java-app
         image: myregistry/java-app:latest
         ports:
         - containerPort: 8080
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
 
       - name: debug-sidecar
-        image: openjdk:17-jdk-slim
+        image: eclipse-temurin:17-jdk
         command: ["/bin/sh"]
         args: ["-c", "while true; do sleep 3600; done"]
+        volumeMounts:
+        - name: tmp
+          mountPath: /tmp
         securityContext:
           capabilities:
             add: ["SYS_PTRACE"]
@@ -194,14 +208,21 @@ spec:
 Attach the debugger from the sidecar:
 
 ```bash
+# Select a pod created by the deployment
+POD=$(kubectl get pod -l app=java-app -o jsonpath='{.items[0].metadata.name}')
+
 # Find the Java process PID
-kubectl exec -it java-app -c debug-sidecar -- ps aux | grep java
+kubectl exec -it "$POD" -c debug-sidecar -- ps aux | grep java
+
+# Copy and compile the attach helper in the sidecar
+kubectl cp DebugAgent.java "$POD":/tmp/DebugAgent.java -c debug-sidecar
+kubectl exec -it "$POD" -c debug-sidecar -- javac --add-modules jdk.attach /tmp/DebugAgent.java
 
 # Attach debugger to the process
-kubectl exec -it java-app -c debug-sidecar -- java -cp /usr/lib/jvm/java-17-openjdk/lib/tools.jar DebugAgent <PID>
+kubectl exec -it "$POD" -c debug-sidecar -- java --add-modules jdk.attach -cp /tmp DebugAgent <PID>
 
 # Forward the debug port
-kubectl port-forward java-app 5005:5005
+kubectl port-forward "$POD" 5005:5005
 ```
 
 ## Building a Debug Enabler Script
@@ -251,8 +272,8 @@ else
 
     echo "Found Java process with PID: $JAVA_PID"
 
-    # Note: This requires the JDK to be available in the container
-    kubectl exec -n "$NAMESPACE" "$POD" -- jcmd "$JAVA_PID" VM.start_java_debugging
+    # Note: This requires DebugAgent.class and a JDK to be available in the container
+    kubectl exec -n "$NAMESPACE" "$POD" -- java --add-modules jdk.attach -cp /tmp DebugAgent "$JAVA_PID"
 fi
 
 # Set up port forward
@@ -280,47 +301,16 @@ chmod +x enable-java-debug.sh
 
 Enable debugging based on environment configuration:
 
-```java
-// Application.java
-public class Application {
-    public static void main(String[] args) {
-        // Check if debug mode is requested
-        String debugMode = System.getenv("DEBUG_MODE");
+```bash
+#!/bin/sh
+# entrypoint.sh
 
-        if ("true".equals(debugMode)) {
-            enableDebugMode();
-        }
+if [ "$DEBUG_MODE" = "true" ]; then
+    DEBUG_PORT="${DEBUG_PORT:-5005}"
+    export JAVA_TOOL_OPTIONS="$JAVA_TOOL_OPTIONS -agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:$DEBUG_PORT"
+fi
 
-        // Start application
-        SpringApplication.run(Application.class, args);
-    }
-
-    private static void enableDebugMode() {
-        try {
-            String debugPort = System.getenv().getOrDefault("DEBUG_PORT", "5005");
-
-            // Start JDWP agent programmatically
-            Class<?> vmClass = Class.forName("com.sun.tools.attach.VirtualMachine");
-            String pid = ManagementFactory.getRuntimeMXBean().getName().split("@")[0];
-
-            Object vm = vmClass.getMethod("attach", String.class).invoke(null, pid);
-
-            String options = String.format(
-                "transport=dt_socket,server=y,suspend=n,address=*:%s",
-                debugPort
-            );
-
-            vmClass.getMethod("startManagementAgent", String.class)
-                   .invoke(vm, options);
-
-            System.out.println("Debug mode enabled on port " + debugPort);
-
-            vmClass.getMethod("detach").invoke(vm);
-        } catch (Exception e) {
-            System.err.println("Failed to enable debug mode: " + e.getMessage());
-        }
-    }
-}
+exec java -jar /app/app.jar
 ```
 
 Enable debugging via ConfigMap:
@@ -339,7 +329,14 @@ kind: Deployment
 metadata:
   name: java-app
 spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: java-app
   template:
+    metadata:
+      labels:
+        app: java-app
     spec:
       containers:
       - name: java-app
@@ -396,14 +393,17 @@ kill $PF_PID
 Use Java Flight Recorder alongside remote debugging:
 
 ```bash
+# Select a pod created by the deployment
+POD=$(kubectl get pod -n development -l app=java-app -o jsonpath='{.items[0].metadata.name}')
+
 # Start flight recording
-kubectl exec -n development java-app -- jcmd 1 JFR.start duration=60s filename=/tmp/recording.jfr
+kubectl exec -n development "$POD" -- jcmd 1 JFR.start duration=60s filename=/tmp/recording.jfr
 
 # Wait for recording to complete
 sleep 60
 
 # Copy recording file
-kubectl cp development/java-app:/tmp/recording.jfr ./recording.jfr
+kubectl cp development/"$POD":/tmp/recording.jfr ./recording.jfr
 
 # Analyze with Java Mission Control
 jmc recording.jfr
