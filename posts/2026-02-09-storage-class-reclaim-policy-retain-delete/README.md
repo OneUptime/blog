@@ -12,13 +12,13 @@ The reclaim policy determines what happens to a persistent volume when its corre
 
 ## Understanding Reclaim Policies
 
-Kubernetes supports three reclaim policies:
+Kubernetes PersistentVolumes support three reclaim policies:
 
 1. **Delete** - Automatically deletes the PV and underlying storage when PVC is deleted
 2. **Retain** - Keeps the PV and data when PVC is deleted, requiring manual cleanup
 3. **Recycle** - Deprecated, performs basic scrub (rm -rf) before reuse
 
-The policy is set in the StorageClass and inherited by dynamically provisioned PersistentVolumes.
+For dynamically provisioned volumes, set `Delete` or `Retain` in the StorageClass; the policy is inherited by the PersistentVolume. `Recycle` is deprecated and should not be used for new StorageClasses.
 
 ## Delete Reclaim Policy
 
@@ -125,8 +125,8 @@ parameters:
   type: gp3
   encrypted: "true"
   # Tag for easy identification
-  tagSpecification_1: "Name=ReclaimPolicy|Value=Retain"
-  tagSpecification_2: "Name=Environment|Value=Production"
+  tagSpecification_1: "ReclaimPolicy=Retain"
+  tagSpecification_2: "Environment=Production"
 # Retain for production data
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
@@ -252,7 +252,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  tagSpecification_1: "Name=Environment|Value=Development"
+  tagSpecification_1: "Environment=Development"
 reclaimPolicy: Delete
 volumeBindingMode: Immediate
 allowVolumeExpansion: true
@@ -267,7 +267,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  tagSpecification_1: "Name=Environment|Value=Staging"
+  tagSpecification_1: "Environment=Staging"
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -284,8 +284,8 @@ parameters:
   type: io2
   iops: "10000"
   encrypted: "true"
-  tagSpecification_1: "Name=Environment|Value=Production"
-  tagSpecification_2: "Name=Compliance|Value=Required"
+  tagSpecification_1: "Environment=Production"
+  tagSpecification_2: "Compliance=Required"
 reclaimPolicy: Retain
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -293,7 +293,7 @@ allowVolumeExpansion: true
 
 ## Automated Cleanup for Retained Volumes
 
-Create a cleanup job for old retained volumes:
+Create a cleanup job for old retained PV objects after the underlying storage has been reviewed or cleaned up:
 
 ```yaml
 apiVersion: batch/v1
@@ -331,7 +331,7 @@ spec:
                 RETAIN_TAG=$(kubectl get pv $pv -o jsonpath='{.metadata.labels.retain}')
 
                 if [ "$RETAIN_TAG" != "true" ]; then
-                  echo "Deleting PV: $pv"
+                  echo "Deleting PV object: $pv"
                   kubectl delete pv $pv
                 else
                   echo "Skipping PV $pv (marked for retention)"
