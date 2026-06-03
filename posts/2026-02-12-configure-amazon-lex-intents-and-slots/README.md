@@ -76,7 +76,6 @@ Always prefer built-in types when they fit your use case. They're pre-trained an
 When built-in types don't cut it, create custom slot types. For our `SeatClassType`:
 
 ```json
-// Custom slot type definition for seat classes
 {
   "slotTypeName": "SeatClassType",
   "valueSelectionSetting": {
@@ -121,7 +120,7 @@ For each required slot, you define an elicitation prompt - the question the bot 
 
 You can also set up:
 
-- **Wait and continue responses**: What the bot says while waiting for user input
+- **Wait and continue responses**: What the bot says when a streaming user asks it to wait, continue waiting, or resume
 - **Capture responses**: Acknowledgment when a slot is filled ("Got it, flying from New York.")
 - **Default values**: Pre-fill slots when appropriate
 
@@ -200,7 +199,6 @@ Lex V2 supports input and output contexts, which let you chain intents together.
 Set an output context on the `BookFlight` intent:
 
 ```json
-// Output context that activates after a flight is booked
 {
   "name": "BookingComplete",
   "timeToLiveInSeconds": 300,
@@ -266,7 +264,7 @@ After configuring your intents and slots, build the bot and test thoroughly. Pay
 3. **Is the conversation flow natural?** Walk through the full flow as if you were a real user.
 4. **What happens with unexpected input?** Type something completely unrelated and make sure the fallback intent handles it gracefully.
 
-Check your CloudWatch metrics to monitor intent match rates over time. A `MissedUtteranceCount` that keeps climbing means you need more utterance examples. For comprehensive monitoring across all your AWS services, take a look at [Amazon DevOps Guru for operational insights](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view).
+Check your Lex analytics and conversation logs to monitor intent match rates over time. A rising missed utterance count means you need more utterance examples. For comprehensive monitoring across all your AWS services, take a look at [Amazon DevOps Guru for operational insights](https://oneuptime.com/blog/post/2026-02-12-use-amazon-devops-guru-for-operational-insights/view).
 
 ## Wrapping Up
 
