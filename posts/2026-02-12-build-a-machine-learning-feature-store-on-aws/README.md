@@ -26,7 +26,7 @@ graph TD
     A[Raw Data Sources] --> B[Feature Engineering Pipelines]
     B --> C[Feature Store]
 
-    C --> D[Online Store - DynamoDB]
+    C --> D[SageMaker Online Store]
     C --> E[Offline Store - S3 + Parquet]
 
     D --> F[Real-time Inference]
@@ -56,37 +56,49 @@ Create feature groups that define the schema for your features:
 import boto3
 import sagemaker
 from sagemaker.feature_store.feature_group import FeatureGroup
+from sagemaker.feature_store.feature_definition import (
+    FractionalFeatureDefinition,
+    IntegralFeatureDefinition,
+    StringFeatureDefinition,
+)
 
 session = sagemaker.Session()
 region = boto3.Session().region_name
+
+FEATURE_DEFINITION_CLASSES = {
+    'String': StringFeatureDefinition,
+    'Integral': IntegralFeatureDefinition,
+    'Fractional': FractionalFeatureDefinition,
+}
+
+def build_feature_definitions(schema):
+    return [
+        FEATURE_DEFINITION_CLASSES[feature_type](feature_name)
+        for feature_name, feature_type in schema
+    ]
 
 # User features - computed from user activity data
 user_feature_group = FeatureGroup(
     name='user-features',
     sagemaker_session=session,
-)
-
-# Define the schema
-user_feature_group.load_feature_definitions(
-    data_frame=None,
-    feature_definitions=[
-        {'FeatureName': 'user_id', 'FeatureType': 'String'},
-        {'FeatureName': 'event_time', 'FeatureType': 'String'},
+    feature_definitions=build_feature_definitions([
+        ('user_id', 'String'),
+        ('event_time', 'String'),
         # Engagement features
-        {'FeatureName': 'total_sessions_7d', 'FeatureType': 'Integral'},
-        {'FeatureName': 'avg_session_duration_7d', 'FeatureType': 'Fractional'},
-        {'FeatureName': 'pages_per_session_7d', 'FeatureType': 'Fractional'},
+        ('total_sessions_7d', 'Integral'),
+        ('avg_session_duration_7d', 'Fractional'),
+        ('pages_per_session_7d', 'Fractional'),
         # Purchase features
-        {'FeatureName': 'total_purchases_30d', 'FeatureType': 'Integral'},
-        {'FeatureName': 'total_spend_30d', 'FeatureType': 'Fractional'},
-        {'FeatureName': 'avg_order_value_30d', 'FeatureType': 'Fractional'},
+        ('total_purchases_30d', 'Integral'),
+        ('total_spend_30d', 'Fractional'),
+        ('avg_order_value_30d', 'Fractional'),
         # Recency features
-        {'FeatureName': 'days_since_last_visit', 'FeatureType': 'Integral'},
-        {'FeatureName': 'days_since_last_purchase', 'FeatureType': 'Integral'},
+        ('days_since_last_visit', 'Integral'),
+        ('days_since_last_purchase', 'Integral'),
         # Behavioral features
-        {'FeatureName': 'favorite_category', 'FeatureType': 'String'},
-        {'FeatureName': 'device_type', 'FeatureType': 'String'},
-    ],
+        ('favorite_category', 'String'),
+        ('device_type', 'String'),
+    ]),
 )
 
 # Create with both online and offline store
@@ -94,43 +106,61 @@ user_feature_group.create(
     s3_uri=f's3://feature-store-bucket/offline-store/',
     record_identifier_name='user_id',
     event_time_feature_name='event_time',
-    role_arn='arn:aws:iam::123456789:role/sagemaker-role',
+    role_arn='arn:aws:iam::123456789012:role/sagemaker-role',
     enable_online_store=True,
 )
 
 print('User feature group created successfully')
 ```
 
-Create a product feature group:
+Create product and real-time feature groups:
 
 ```python
 # Product features for recommendation models
 product_feature_group = FeatureGroup(
     name='product-features',
     sagemaker_session=session,
-)
-
-product_feature_group.load_feature_definitions(
-    data_frame=None,
-    feature_definitions=[
-        {'FeatureName': 'product_id', 'FeatureType': 'String'},
-        {'FeatureName': 'event_time', 'FeatureType': 'String'},
-        {'FeatureName': 'category', 'FeatureType': 'String'},
-        {'FeatureName': 'price', 'FeatureType': 'Fractional'},
-        {'FeatureName': 'avg_rating', 'FeatureType': 'Fractional'},
-        {'FeatureName': 'total_reviews', 'FeatureType': 'Integral'},
-        {'FeatureName': 'views_7d', 'FeatureType': 'Integral'},
-        {'FeatureName': 'purchases_7d', 'FeatureType': 'Integral'},
-        {'FeatureName': 'conversion_rate_7d', 'FeatureType': 'Fractional'},
-        {'FeatureName': 'return_rate_30d', 'FeatureType': 'Fractional'},
-    ],
+    feature_definitions=build_feature_definitions([
+        ('product_id', 'String'),
+        ('event_time', 'String'),
+        ('category', 'String'),
+        ('price', 'Fractional'),
+        ('avg_rating', 'Fractional'),
+        ('total_reviews', 'Integral'),
+        ('views_7d', 'Integral'),
+        ('purchases_7d', 'Integral'),
+        ('conversion_rate_7d', 'Fractional'),
+        ('return_rate_30d', 'Fractional'),
+    ]),
 )
 
 product_feature_group.create(
     s3_uri=f's3://feature-store-bucket/offline-store/',
     record_identifier_name='product_id',
     event_time_feature_name='event_time',
-    role_arn='arn:aws:iam::123456789:role/sagemaker-role',
+    role_arn='arn:aws:iam::123456789012:role/sagemaker-role',
+    enable_online_store=True,
+)
+
+# Real-time features for online inference
+realtime_feature_group = FeatureGroup(
+    name='user-realtime-features',
+    sagemaker_session=session,
+    feature_definitions=build_feature_definitions([
+        ('user_id', 'String'),
+        ('event_time', 'String'),
+        ('items_in_cart', 'Integral'),
+        ('session_page_count', 'Integral'),
+        ('time_on_site_seconds', 'Fractional'),
+        ('last_viewed_category', 'String'),
+    ]),
+)
+
+realtime_feature_group.create(
+    s3_uri=False,
+    record_identifier_name='user_id',
+    event_time_feature_name='event_time',
+    role_arn='arn:aws:iam::123456789012:role/sagemaker-role',
     enable_online_store=True,
 )
 ```
@@ -176,6 +206,18 @@ def compute_user_features(raw_events_df, reference_date):
         avg_order_value_30d=('amount', 'mean'),
     ).reset_index()
 
+    # Behavioral features
+    behavioral = events_30d.groupby('user_id').agg(
+        favorite_category=(
+            'category',
+            lambda x: x.mode().iat[0] if not x.mode().empty else 'unknown',
+        ),
+        device_type=(
+            'device_type',
+            lambda x: x.mode().iat[0] if not x.mode().empty else 'unknown',
+        ),
+    ).reset_index()
+
     # Recency features
     last_activity = raw_events_df.groupby('user_id').agg(
         last_visit=('timestamp', 'max'),
@@ -197,9 +239,30 @@ def compute_user_features(raw_events_df, reference_date):
         last_activity[['user_id', 'days_since_last_visit', 'days_since_last_purchase']],
         on='user_id', how='outer'
     )
+    features = features.merge(behavioral, on='user_id', how='left')
 
     # Fill missing values
-    features = features.fillna(0)
+    numeric_features = [
+        'total_sessions_7d',
+        'avg_session_duration_7d',
+        'pages_per_session_7d',
+        'total_purchases_30d',
+        'total_spend_30d',
+        'avg_order_value_30d',
+        'days_since_last_visit',
+        'days_since_last_purchase',
+    ]
+    integral_features = [
+        'total_sessions_7d',
+        'total_purchases_30d',
+        'days_since_last_visit',
+        'days_since_last_purchase',
+    ]
+    features[numeric_features] = features[numeric_features].fillna(0)
+    features[integral_features] = features[integral_features].astype('int64')
+    features[['favorite_category', 'device_type']] = (
+        features[['favorite_category', 'device_type']].fillna('unknown')
+    )
 
     # Add event time for the feature store
     features['event_time'] = reference_date.isoformat()
@@ -212,6 +275,7 @@ Ingest the computed features into the feature store:
 ```python
 # ingest_features.py - Write features to SageMaker Feature Store
 import boto3
+import sagemaker
 from sagemaker.feature_store.feature_group import FeatureGroup
 
 def ingest_features(feature_df, feature_group_name):
@@ -219,7 +283,6 @@ def ingest_features(feature_df, feature_group_name):
     session = sagemaker.Session()
     feature_group = FeatureGroup(name=feature_group_name, sagemaker_session=session)
 
-    # Ingest in batches (max 500 records per batch)
     feature_group.ingest(
         data_frame=feature_df,
         max_processes=4,
@@ -303,7 +366,7 @@ exports.predict = async (event) => {
   const prediction = await sagemakerRuntime.send(new InvokeEndpointCommand({
     EndpointName: process.env.MODEL_ENDPOINT,
     ContentType: 'text/csv',
-    Body: featureVector.join(','),
+    Body: Buffer.from(featureVector.join(',')),
   }));
 
   const score = JSON.parse(Buffer.from(prediction.Body).toString());
@@ -356,21 +419,48 @@ SELECT
     pf.conversion_rate_7d
 FROM training_labels l
 LEFT JOIN (
-    SELECT *, ROW_NUMBER() OVER (
-        PARTITION BY user_id
-        ORDER BY event_time DESC
-    ) as rn
-    FROM "sagemaker_featurestore"."user-features"
-    WHERE event_time <= l.event_time
-) uf ON l.user_id = uf.user_id AND uf.rn = 1
+    SELECT
+        l.user_id,
+        l.product_id,
+        l.event_time AS label_event_time,
+        uf.total_sessions_7d,
+        uf.avg_session_duration_7d,
+        uf.total_spend_30d,
+        uf.days_since_last_visit,
+        ROW_NUMBER() OVER (
+            PARTITION BY l.user_id, l.product_id, l.event_time
+            ORDER BY uf.event_time DESC, uf.write_time DESC
+        ) as rn
+    FROM training_labels l
+    JOIN "sagemaker_featurestore"."user-features" uf
+        ON l.user_id = uf.user_id
+        AND uf.event_time <= l.event_time
+        AND uf.is_deleted = false
+) uf ON l.user_id = uf.user_id
+    AND l.product_id = uf.product_id
+    AND l.event_time = uf.label_event_time
+    AND uf.rn = 1
 LEFT JOIN (
-    SELECT *, ROW_NUMBER() OVER (
-        PARTITION BY product_id
-        ORDER BY event_time DESC
-    ) as rn
-    FROM "sagemaker_featurestore"."product-features"
-    WHERE event_time <= l.event_time
-) pf ON l.product_id = pf.product_id AND pf.rn = 1
+    SELECT
+        l.user_id,
+        l.product_id,
+        l.event_time AS label_event_time,
+        pf.price,
+        pf.avg_rating,
+        pf.conversion_rate_7d,
+        ROW_NUMBER() OVER (
+            PARTITION BY l.user_id, l.product_id, l.event_time
+            ORDER BY pf.event_time DESC, pf.write_time DESC
+        ) as rn
+    FROM training_labels l
+    JOIN "sagemaker_featurestore"."product-features" pf
+        ON l.product_id = pf.product_id
+        AND pf.event_time <= l.event_time
+        AND pf.is_deleted = false
+) pf ON l.user_id = pf.user_id
+    AND l.product_id = pf.product_id
+    AND l.event_time = pf.label_event_time
+    AND pf.rn = 1
 """
 ```
 
