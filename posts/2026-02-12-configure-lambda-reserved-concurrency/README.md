@@ -8,7 +8,7 @@ Description: Learn how to use Lambda reserved concurrency to control function sc
 
 ---
 
-Every AWS account has a default concurrent execution limit of 1,000 Lambda invocations per region. All your Lambda functions share this pool. If one function gets a traffic spike and uses 900 of those 1,000 slots, every other function in the account fights over the remaining 100. Reserved concurrency lets you carve out dedicated slots for specific functions so this doesn't happen.
+AWS Lambda has a default concurrent execution limit of 1,000 invocations per region, though new accounts can start with reduced quotas until AWS raises them based on usage. All your Lambda functions share this pool. If one function gets a traffic spike and uses 900 of those 1,000 slots, every other function in the account fights over the remaining 100. Reserved concurrency lets you carve out dedicated slots for specific functions so this doesn't happen.
 
 It's one of those settings you don't think about until something breaks at 3 AM.
 
@@ -118,30 +118,17 @@ aws lambda put-function-concurrency \
   --reserved-concurrent-executions 50
 ```
 
-Now pair this with SQS for overflow handling:
+For asynchronous workloads, put SQS in front of the function so messages wait in the queue when the function is at capacity:
 
-```python
+```bash
 # Use SQS as a buffer when the function is at capacity
-import json
-import boto3
-
-sqs = boto3.client('sqs')
-QUEUE_URL = os.environ['OVERFLOW_QUEUE_URL']
-
-
-def lambda_handler(event, context):
-    try:
-        # Try to process directly
-        result = process_order(event['order_id'])
-        return {'statusCode': 200, 'body': json.dumps(result)}
-    except Exception as e:
-        # If overwhelmed, queue for retry
-        sqs.send_message(
-            QueueUrl=QUEUE_URL,
-            MessageBody=json.dumps(event)
-        )
-        return {'statusCode': 202, 'body': json.dumps({'status': 'queued'})}
+aws lambda create-event-source-mapping \
+  --function-name db-query-function \
+  --event-source-arn arn:aws:sqs:us-east-1:123456789012:orders \
+  --batch-size 10
 ```
+
+When reserved concurrency throttles the function, Lambda backs off and retries the queued messages instead of the function catching the throttle inside its handler.
 
 ## Isolating Workloads
 
@@ -195,8 +182,8 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/Lambda \
   --metric-name ConcurrentExecutions \
   --dimensions Name=FunctionName,Value=order-processor \
-  --start-time $(date -u -v-1d +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
+  --start-time 2026-02-11T00:00:00Z \
+  --end-time 2026-02-12T00:00:00Z \
   --period 300 \
   --statistics Maximum \
   --output table
@@ -286,10 +273,17 @@ That unreserved pool must be at least 100 (AWS enforces this). So the maximum yo
 A helpful script to see your current allocation:
 
 ```bash
-# List all functions with reserved concurrency
-aws lambda list-functions \
-  --query "Functions[?ReservedConcurrentExecutions!=null].{Name:FunctionName,Reserved:ReservedConcurrentExecutions}" \
-  --output table
+# List reserved concurrency for each function
+for function_name in $(aws lambda list-functions --query "Functions[].FunctionName" --output text); do
+  reserved=$(aws lambda get-function-concurrency \
+    --function-name "$function_name" \
+    --query "ReservedConcurrentExecutions" \
+    --output text 2>/dev/null)
+
+  if [ "$reserved" != "None" ]; then
+    printf "%s\t%s\n" "$function_name" "$reserved"
+  fi
+done
 
 # Get unreserved concurrency
 aws lambda get-account-settings \
