@@ -17,7 +17,7 @@ This guide shows you how to deploy Spark on Kubernetes and run ML data processin
 Add the Spark Operator Helm repository:
 
 ```bash
-helm repo add spark-operator https://googlecloudplatform.github.io/spark-on-k8s-operator
+helm repo add spark-operator https://kubeflow.github.io/spark-operator
 helm repo update
 
 # Install Spark Operator
@@ -26,7 +26,7 @@ helm install spark-operator spark-operator/spark-operator \
   --namespace spark-operator \
   --create-namespace \
   --set webhook.enable=true \
-  --set sparkJobNamespace=spark-apps
+  --set "spark.jobNamespaces={spark-apps}"
 
 # Verify installation
 kubectl get pods -n spark-operator
@@ -41,6 +41,7 @@ Create a basic PySpark application:
 # data_processing.py
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, mean, stddev, count
+from pyspark.sql.window import Window
 import logging
 
 logging.basicConfig(level=logging.INFO)
@@ -53,7 +54,7 @@ def main():
 
     logging.info("Spark session created")
 
-    # Read data from S3/GCS
+    # Read data from S3
     df = spark.read.parquet("s3a://my-bucket/raw-data/")
 
     logging.info(f"Loaded {df.count()} rows")
@@ -62,9 +63,10 @@ def main():
     df_clean = df.dropna()
 
     # Feature engineering
+    feature_window = Window.rowsBetween(Window.unboundedPreceding, Window.unboundedFollowing)
     df_features = df_clean \
-        .withColumn("feature_mean", mean("value").over()) \
-        .withColumn("feature_std", stddev("value").over())
+        .withColumn("feature_mean", mean("value").over(feature_window)) \
+        .withColumn("feature_std", stddev("value").over(feature_window))
 
     # Aggregations
     df_agg = df_features.groupBy("category") \
@@ -103,7 +105,7 @@ RUN pip install --no-cache-dir \
     scikit-learn==1.3.0 \
     pyarrow==14.0.0
 
-COPY data_processing.py /app/
+COPY *.py /app/
 
 USER 185
 
@@ -151,7 +153,7 @@ spec:
   # Executor configuration
   executor:
     cores: 4
-    instances: 5
+    instances: 2
     memory: "8g"
     labels:
       version: "3.5.0"
@@ -168,6 +170,7 @@ spec:
   sparkConf:
     "spark.sql.shuffle.partitions": "200"
     "spark.default.parallelism": "100"
+    "spark.jars.packages": "org.apache.hadoop:hadoop-aws:3.3.4,com.amazonaws:aws-java-sdk-bundle:1.12.262"
     "spark.hadoop.fs.s3a.impl": "org.apache.hadoop.fs.s3a.S3AFileSystem"
     "spark.hadoop.fs.s3a.aws.credentials.provider": "com.amazonaws.auth.InstanceProfileCredentialsProvider"
     "spark.kubernetes.allocation.batch.size": "10"
@@ -243,6 +246,7 @@ Create a feature engineering job:
 # feature_engineering.py
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import *
+from pyspark.sql.window import Window
 from pyspark.ml.feature import VectorAssembler, StandardScaler
 from pyspark.ml import Pipeline
 
@@ -253,15 +257,16 @@ def create_features(spark):
     # Time-based features
     df = df.withColumn("hour", hour("timestamp")) \
            .withColumn("day_of_week", dayofweek("timestamp")) \
-           .withColumn("month", month("timestamp"))
+           .withColumn("month", month("timestamp")) \
+           .withColumn("timestamp_unix", unix_timestamp("timestamp"))
 
     # Aggregations
     df = df.withColumn(
         "rolling_avg_7d",
         avg("value").over(
             Window.partitionBy("user_id")
-                  .orderBy("timestamp")
-                  .rowsBetween(-7, 0)
+                  .orderBy("timestamp_unix")
+                  .rangeBetween(-7 * 24 * 60 * 60, 0)
         )
     )
 
@@ -315,11 +320,11 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: spark-submit
+          serviceAccountName: spark-driver
           restartPolicy: OnFailure
           containers:
           - name: spark-submit
-            image: apache/spark:v3.5.0
+            image: apache/spark-py:v3.5.0
             command:
             - /bin/sh
             - -c
@@ -347,9 +352,12 @@ Configure Spark to use GPUs:
 spec:
   sparkConf:
     "spark.executor.resource.gpu.amount": "1"
+    "spark.executor.resource.gpu.vendor": "nvidia.com"
+    "spark.executor.resource.gpu.discoveryScript": "/opt/spark/examples/src/main/scripts/getGpusResources.sh"
     "spark.task.resource.gpu.amount": "1"
     "spark.rapids.sql.enabled": "true"
     "spark.plugins": "com.nvidia.spark.SQLPlugin"
+    "spark.jars.packages": "com.nvidia:rapids-4-spark_2.12:23.10.0,com.nvidia:cuDF:23.10.0:cuda11"
 
   executor:
     cores: 4
@@ -363,16 +371,17 @@ spec:
 Install RAPIDS libraries:
 
 ```dockerfile
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04
+FROM apache/spark-py:v3.5.0
 
-# Install Spark
-RUN apt-get update && apt-get install -y openjdk-11-jre python3-pip
+USER root
 
 # Install RAPIDS
 RUN pip install --no-cache-dir \
     cudf-cu11==23.10.0 \
     cuml-cu11==23.10.0 \
     cugraph-cu11==23.10.0
+
+USER 185
 ```
 
 ## Monitoring Spark Applications
@@ -381,16 +390,16 @@ Query Spark metrics:
 
 ```promql
 # Running applications
-spark_applications_running
+spark_application_running_count
 
 # Executor count
-spark_executors_count
+spark_executor_running_count
 
-# Task duration
-rate(spark_task_duration_seconds_sum[5m])
+# Application start latency
+spark_application_start_latency_seconds
 
-# Failed tasks
-rate(spark_task_failed_total[5m])
+# Failed executors
+spark_executor_failure_count
 ```
 
 Access Spark UI:
@@ -414,7 +423,7 @@ sparkConf:
 
   # Shuffle optimization
   "spark.sql.shuffle.partitions": "200"
-  "spark.shuffle.service.enabled": "true"
+  "spark.dynamicAllocation.shuffleTracking.enabled": "true"
 
   # Adaptive Query Execution
   "spark.sql.adaptive.enabled": "true"
