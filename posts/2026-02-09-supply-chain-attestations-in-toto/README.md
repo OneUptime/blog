@@ -28,15 +28,17 @@ Start by installing in-toto and generating keys for your build system functionar
 pip3 install in-toto
 
 # Generate functionary keys for each CI/CD stage
-in-toto-keygen builder
-in-toto-keygen tester
-in-toto-keygen signer
+openssl genpkey -algorithm ed25519 -out root
+openssl pkey -in root -pubout -out root.pub
+openssl genpkey -algorithm ed25519 -out builder
+openssl pkey -in builder -pubout -out builder.pub
+openssl genpkey -algorithm ed25519 -out tester
+openssl pkey -in tester -pubout -out tester.pub
+openssl genpkey -algorithm ed25519 -out signer
+openssl pkey -in signer -pubout -out signer.pub
 
 # Keys are stored as PEM files
-ls -la *.pem
-# builder (private key), builder.pub (public key)
-# tester, tester.pub
-# signer, signer.pub
+ls -la root root.pub builder builder.pub tester tester.pub signer signer.pub
 ```
 
 Create a supply chain layout that defines your expected build process:
@@ -45,27 +47,32 @@ Create a supply chain layout that defines your expected build process:
 # create-layout.py
 #!/usr/bin/env python3
 
-from in_toto.models.layout import Layout, Step, Inspection
+from securesystemslib.signer import CryptoSigner, Key
+from in_toto.models.layout import Layout, Step
 from in_toto.models.metadata import Metablock
+
+layout = Layout()
+builder_key = layout.add_functionary_key_from_path("builder.pub")
+tester_key = layout.add_functionary_key_from_path("tester.pub")
+signer_key = layout.add_functionary_key_from_path("signer.pub")
 
 # Define the build step
 build_step = Step(
     name="build",
     expected_materials=[
-        ["MATCH", "Dockerfile", "WITH", "PRODUCTS", "FROM", "fetch-source"],
-        ["MATCH", "src/*", "WITH", "PRODUCTS", "FROM", "fetch-source"]
+        ["ALLOW", "Dockerfile"],
+        ["ALLOW", "src/*"],
+        ["DISALLOW", "*"]
     ],
     expected_products=[
-        ["CREATE", "myapp:*"],  # Docker image created
-        ["CREATE", "image-digest.txt"]  # Digest recorded
+        ["CREATE", "image-digest.txt"],  # Digest recorded
+        ["DISALLOW", "*"]
     ],
-    pubkeys=["<builder-public-key-id>"],
+    pubkeys=[builder_key["keyid"]],
     expected_command=[
-        "docker",
-        "build",
-        "-t",
-        "myapp:latest",
-        "."
+        "sh",
+        "-c",
+        "docker build -t myapp:latest . && docker inspect myapp:latest --format='{{.Id}}' > image-digest.txt"
     ],
     threshold=1
 )
@@ -74,13 +81,23 @@ build_step = Step(
 test_step = Step(
     name="test",
     expected_materials=[
-        ["MATCH", "myapp:*", "WITH", "PRODUCTS", "FROM", "build"]
+        ["MATCH", "image-digest.txt", "WITH", "PRODUCTS", "FROM", "build"],
+        ["DISALLOW", "*"]
     ],
     expected_products=[
-        ["CREATE", "test-results.xml"]
+        ["CREATE", "test-results.xml"],
+        ["DISALLOW", "*"]
     ],
-    pubkeys=["<tester-public-key-id>"],
+    pubkeys=[tester_key["keyid"]],
     expected_command=[
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        "$PWD:/workspace",
+        "-w",
+        "/workspace",
+        "myapp:latest",
         "pytest",
         "--junitxml=test-results.xml"
     ],
@@ -91,33 +108,38 @@ test_step = Step(
 sign_step = Step(
     name="sign",
     expected_materials=[
-        ["MATCH", "myapp:*", "WITH", "PRODUCTS", "FROM", "build"]
+        ["MATCH", "image-digest.txt", "WITH", "PRODUCTS", "FROM", "build"],
+        ["DISALLOW", "*"]
     ],
     expected_products=[
-        ["CREATE", "signature.sig"]
+        ["CREATE", "signature.bundle"],
+        ["DISALLOW", "*"]
     ],
-    pubkeys=["<signer-public-key-id>"],
+    pubkeys=[signer_key["keyid"]],
     expected_command=[
         "cosign",
-        "sign"
+        "sign",
+        "--key",
+        "cosign.key",
+        "--bundle",
+        "signature.bundle",
+        "ghcr.io/myorg/myapp:latest"
     ],
     threshold=1
 )
 
 # Create the layout
-layout = Layout(
-    steps=[build_step, test_step, sign_step],
-    inspect=[],
-    keys={
-        "<builder-public-key-id>": load_public_key("builder.pub"),
-        "<tester-public-key-id>": load_public_key("tester.pub"),
-        "<signer-public-key-id>": load_public_key("signer.pub")
-    },
-    expires="2027-12-31T23:59:59Z"
-)
+layout.steps = [build_step, test_step, sign_step]
+layout.inspect = []
+layout.expires = "2027-12-31T23:59:59Z"
 
 # Sign the layout with the root key
+root_layout = Layout()
+root_key = root_layout.add_functionary_key_from_path("root.pub")
+root_public_key = Key.from_dict(root_key["keyid"], root_key)
+root_signer = CryptoSigner.from_priv_key_uri("file2:root", root_public_key)
 metablock = Metablock(signed=layout)
+metablock.create_signature(root_signer)
 metablock.dump("root.layout")
 
 print("Layout created: root.layout")
@@ -143,7 +165,7 @@ on:
     branches: [main]
 
 env:
-  IMAGE_NAME: myapp
+  IMAGE_NAME: myorg/myapp
   REGISTRY: ghcr.io
 
 jobs:
@@ -156,10 +178,16 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Install in-toto
         run: pip3 install in-toto
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Install ORAS
+        uses: oras-project/setup-oras@v1
 
       - name: Fetch builder key
         env:
@@ -168,19 +196,15 @@ jobs:
           echo "$BUILDER_KEY" > builder
           chmod 600 builder
 
-      - name: Start build attestation
+      - name: Build image with attestation
         run: |
           in-toto-run \
             --step-name build \
-            --key builder \
+            --signing-key builder \
             --materials Dockerfile src/ \
             --products image-digest.txt \
             --verbose \
-            -- docker build -t $IMAGE_NAME:${{ github.sha }} .
-
-          # Record image digest
-          docker inspect $IMAGE_NAME:${{ github.sha }} \
-            --format='{{.Id}}' > image-digest.txt
+            -- sh -c "docker build -t $IMAGE_NAME:${{ github.sha }} . && docker inspect $IMAGE_NAME:${{ github.sha }} --format='{{.Id}}' > image-digest.txt"
 
       - name: Run tests with attestation
         env:
@@ -191,10 +215,15 @@ jobs:
 
           in-toto-run \
             --step-name test \
-            --key tester \
+            --signing-key tester \
             --materials image-digest.txt \
             --products test-results.xml \
-            -- docker run --rm $IMAGE_NAME:${{ github.sha }} pytest --junitxml=test-results.xml
+            -- docker run --rm -v "$PWD:/workspace" -w /workspace $IMAGE_NAME:${{ github.sha }} pytest --junitxml=test-results.xml
+
+      - name: Push image
+        run: |
+          docker tag $IMAGE_NAME:${{ github.sha }} $REGISTRY/$IMAGE_NAME:${{ github.sha }}
+          docker push $REGISTRY/$IMAGE_NAME:${{ github.sha }}
 
       - name: Sign image with attestation
         env:
@@ -205,21 +234,13 @@ jobs:
           chmod 600 signer
           echo "$COSIGN_KEY" > cosign.key
 
-          # Sign with cosign
-          cosign sign --key cosign.key $REGISTRY/$IMAGE_NAME:${{ github.sha }}
-
-          # Generate in-toto attestation for signing
+          # Sign with cosign and generate in-toto attestation for the signing step
           in-toto-run \
             --step-name sign \
-            --key signer \
+            --signing-key signer \
             --materials image-digest.txt \
-            --products signature.sig \
-            -- cosign sign --key cosign.key $REGISTRY/$IMAGE_NAME:${{ github.sha }}
-
-      - name: Push image
-        run: |
-          docker tag $IMAGE_NAME:${{ github.sha }} $REGISTRY/$IMAGE_NAME:${{ github.sha }}
-          docker push $REGISTRY/$IMAGE_NAME:${{ github.sha }}
+            --products signature.bundle \
+            -- cosign sign --key cosign.key --bundle signature.bundle $REGISTRY/$IMAGE_NAME:${{ github.sha }}
 
       - name: Bundle attestations
         run: |
@@ -235,13 +256,14 @@ jobs:
 
       - name: Upload attestations to registry
         run: |
-          # Attach attestations to image as OCI artifact
-          cosign attach attestation \
-            --attestation attestations-${{ github.sha }}.tar.gz \
-            $REGISTRY/$IMAGE_NAME:${{ github.sha }}
+          # Attach the tarball to the image as an OCI referrer
+          oras attach \
+            --artifact-type application/vnd.in-toto.bundle.v1+gzip \
+            $REGISTRY/$IMAGE_NAME:${{ github.sha }} \
+            attestations-${{ github.sha }}.tar.gz:application/gzip
 
       - name: Upload attestations as artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: in-toto-attestations
           path: attestations-${{ github.sha }}.tar.gz
@@ -253,59 +275,89 @@ This workflow generates three link attestations (build, test, sign) and attaches
 
 Create an admission webhook that verifies in-toto attestations before allowing pods to run:
 
+The webhook container image must include the `oras` CLI as well as the Python dependencies.
+
 ```python
 # in-toto-admission-webhook.py
 #!/usr/bin/env python3
 
 from flask import Flask, request, jsonify
-import in_toto.verifylib
-import in_toto.runlib
+from in_toto.models.layout import Layout
+from in_toto.models.metadata import Metadata
+from in_toto.verifylib import in_toto_verify
 import subprocess
 import json
-import base64
+import tarfile
+import tempfile
+import os
 
 app = Flask(__name__)
 
 LAYOUT_PATH = "/etc/intoto/root.layout"
-PUBKEYS_PATH = "/etc/intoto/keys/"
+ROOT_KEY_PATH = "/etc/intoto/root.pub"
+ARTIFACT_TYPE = "application/vnd.in-toto.bundle.v1+gzip"
 
 def verify_image_attestations(image):
     """Download and verify in-toto attestations for an image"""
     try:
-        # Download attestations from registry
-        cmd = f"cosign download attestation {image}"
-        result = subprocess.run(
-            cmd.split(),
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
+        with tempfile.TemporaryDirectory() as workdir:
+            # Discover the in-toto bundle attached to the image as an OCI referrer
+            discover = subprocess.run(
+                [
+                    "oras",
+                    "discover",
+                    "--artifact-type",
+                    ARTIFACT_TYPE,
+                    "--format",
+                    "json",
+                    "--depth",
+                    "1",
+                    image,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
 
-        if result.returncode != 0:
-            return False, f"Failed to download attestations: {result.stderr}"
+            discovery = json.loads(discover.stdout)
+            referrers = discovery.get("referrers") or discovery.get("manifests", [])
+            if not referrers:
+                return False, "No in-toto attestation bundle found"
 
-        # Extract attestations
-        attestation_data = json.loads(result.stdout)
+            bundle_ref = referrers[0]["reference"]
+            subprocess.run(
+                ["oras", "pull", "--output", workdir, bundle_ref],
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
 
-        # Save link files temporarily
-        link_files = []
-        for att in attestation_data:
-            payload = base64.b64decode(att['payload'])
-            link_data = json.loads(payload)
-            link_file = f"/tmp/{link_data['_type']}.link"
-            with open(link_file, 'w') as f:
-                json.dump(link_data, f)
-            link_files.append(link_file)
+            bundle_path = next(
+                os.path.join(workdir, name)
+                for name in os.listdir(workdir)
+                if name.endswith(".tar.gz")
+            )
 
-        # Verify using in-toto
-        verification_result = in_toto.verifylib.in_toto_verify(
-            layout_path=LAYOUT_PATH,
-            layout_key_paths=[f"{PUBKEYS_PATH}/root.pub"],
-            link_dir="/tmp/"
-        )
+            link_dir = os.path.join(workdir, "links")
+            os.makedirs(link_dir, exist_ok=True)
+            with tarfile.open(bundle_path, "r:gz") as tar:
+                tar.extractall(link_dir)
+
+            # Verify using in-toto
+            layout_metadata = Metadata.load(LAYOUT_PATH)
+            root_key = Layout().add_functionary_key_from_path(ROOT_KEY_PATH)
+            in_toto_verify(
+                layout_metadata,
+                {root_key["keyid"]: root_key},
+                link_dir_path=os.path.join(link_dir, "attestations"),
+            )
 
         return True, "Attestations verified successfully"
 
+    except subprocess.CalledProcessError as e:
+        return False, f"Failed to download attestations: {e.stderr}"
     except Exception as e:
         return False, f"Verification failed: {str(e)}"
 
@@ -437,12 +489,12 @@ SLSA (Supply-chain Levels for Software Artifacts) builds on in-toto concepts. Ge
 #!/bin/bash
 
 IMAGE_DIGEST=$1
-BUILD_TYPE="https://slsa.dev/container-based-build/v0.1"
+BUILD_TYPE="https://github.com/Attestations/GitHubActionsWorkflow@v1"
 BUILDER_ID="https://github.com/myorg/myrepo/.github/workflows/build.yaml@refs/heads/main"
 
 cat > provenance.json <<EOF
 {
-  "_type": "https://in-toto.io/Statement/v0.1",
+  "_type": "https://in-toto.io/Statement/v1",
   "subject": [
     {
       "name": "ghcr.io/myorg/myapp",
@@ -451,53 +503,38 @@ cat > provenance.json <<EOF
       }
     }
   ],
-  "predicateType": "https://slsa.dev/provenance/v0.2",
+  "predicateType": "https://slsa.dev/provenance/v1",
   "predicate": {
-    "builder": {
-      "id": "${BUILDER_ID}"
-    },
-    "buildType": "${BUILD_TYPE}",
-    "invocation": {
-      "configSource": {
-        "uri": "git+https://github.com/myorg/myrepo@refs/heads/main",
-        "digest": {
-          "sha1": "$(git rev-parse HEAD)"
-        },
-        "entryPoint": ".github/workflows/build.yaml"
-      }
-    },
-    "buildConfig": {
-      "steps": [
+    "buildDefinition": {
+      "buildType": "${BUILD_TYPE}",
+      "externalParameters": {
+        "workflow": ".github/workflows/build.yaml",
+        "ref": "refs/heads/main"
+      },
+      "resolvedDependencies": [
         {
-          "command": ["docker", "build", "-t", "myapp", "."],
-          "env": []
+          "uri": "git+https://github.com/myorg/myrepo@refs/heads/main",
+          "digest": {
+            "gitCommit": "$(git rev-parse HEAD)"
+          }
         }
       ]
     },
-    "metadata": {
-      "buildInvocationId": "${GITHUB_RUN_ID}",
-      "buildStartedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-      "completeness": {
-        "parameters": true,
-        "environment": false,
-        "materials": true
+    "runDetails": {
+      "builder": {
+        "id": "${BUILDER_ID}"
       },
-      "reproducible": false
-    },
-    "materials": [
-      {
-        "uri": "git+https://github.com/myorg/myrepo@refs/heads/main",
-        "digest": {
-          "sha1": "$(git rev-parse HEAD)"
-        }
+      "metadata": {
+        "invocationId": "${GITHUB_RUN_ID}",
+        "startedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
       }
-    ]
+    }
   }
 }
 EOF
 
 # Sign the provenance
-cosign attest --key cosign.key --predicate provenance.json ghcr.io/myorg/myapp@sha256:${IMAGE_DIGEST}
+cosign attest --key cosign.key --predicate provenance.json --type slsaprovenance1 ghcr.io/myorg/myapp@sha256:${IMAGE_DIGEST}
 ```
 
 ## Monitoring Attestation Verification
