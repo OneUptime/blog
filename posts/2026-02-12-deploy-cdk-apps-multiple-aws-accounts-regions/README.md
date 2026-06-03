@@ -56,8 +56,7 @@ The `--trust` flag tells the target account's CDK bootstrap stack to allow the s
 # Bootstrap with a custom execution policy for production
 cdk bootstrap aws://333333333333/us-west-2 \
   --trust 444444444444 \
-  --cloudformation-execution-policies arn:aws:iam::333333333333:policy/CDKDeploymentPolicy \
-  --qualifier prod
+  --cloudformation-execution-policies arn:aws:iam::333333333333:policy/CDKDeploymentPolicy
 ```
 
 ## Defining Multi-Account Environments
@@ -212,12 +211,14 @@ CDK Pipelines is the recommended way to deploy across multiple accounts. It crea
 
 ```typescript
 // A CDK Pipeline that deploys across accounts
-import { CodePipeline, CodePipelineSource, ShellStep } from 'aws-cdk-lib/pipelines';
+import { CodePipeline, CodePipelineSource, ManualApprovalStep, ShellStep } from 'aws-cdk-lib/pipelines';
 
 const pipeline = new CodePipeline(this, 'Pipeline', {
   pipelineName: 'MyAppPipeline',
   synth: new ShellStep('Synth', {
-    input: CodePipelineSource.gitHub('myorg/myrepo', 'main'),
+    input: CodePipelineSource.connection('myorg/myrepo', 'main', {
+      connectionArn: 'arn:aws:codestar-connections:us-east-1:444444444444:connection/example-connection-id',
+    }),
     commands: [
       'npm ci',
       'npm run build',
