@@ -176,7 +176,7 @@ exports.handler = async (event) => {
 
 ## Deploying with CloudFormation
 
-Here's the full CloudFormation template:
+Here's a CloudFormation snippet:
 
 ```yaml
 # Step Functions state machine with Lambda functions
@@ -281,7 +281,10 @@ Step Functions has several state types beyond Task:
     "Type": "Map",
     "ItemsPath": "$.items",
     "MaxConcurrency": 5,
-    "Iterator": {
+    "ItemProcessor": {
+      "ProcessorConfig": {
+        "Mode": "INLINE"
+      },
       "StartAt": "ProcessItem",
       "States": {
         "ProcessItem": {
@@ -353,7 +356,7 @@ The Step Functions console gives you a visual map of each execution, showing whi
 aws stepfunctions list-executions \
   --state-machine-arn arn:aws:states:us-east-1:123456789012:stateMachine:order-processing \
   --status-filter FAILED \
-  --max-results 10
+  --max-items 10
 ```
 
 For deeper Lambda monitoring within these workflows, check out [monitoring Lambda performance with CloudWatch](https://oneuptime.com/blog/post/2026-02-12-monitor-lambda-function-performance-with-cloudwatch/view).
