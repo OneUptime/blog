@@ -33,6 +33,11 @@ First, deploy a Redis master with replicas using StatefulSets:
 # redis-master-replica.yaml
 
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: redis
+---
+apiVersion: v1
 kind: ConfigMap
 metadata:
   name: redis-config
@@ -69,7 +74,6 @@ data:
     protected-mode no
     port 6379
     replicaof redis-master-0.redis-master.redis.svc.cluster.local 6379
-    masterauth ${REDIS_PASSWORD}
     replica-serve-stale-data yes
     replica-read-only yes
     repl-diskless-sync no
@@ -80,6 +84,16 @@ data:
     maxmemory-policy allkeys-lru
     appendonly yes
     appendfsync everysec
+
+  init.sh: |
+    #!/bin/sh
+    set -e
+
+    exec redis-server /etc/redis/redis.conf \
+      --requirepass "$REDIS_PASSWORD" \
+      --masterauth "$REDIS_PASSWORD" \
+      --replica-announce-ip "$POD_NAME.$REDIS_SERVICE_NAME.redis.svc.cluster.local" \
+      --replica-announce-port 6379
 ---
 apiVersion: apps/v1
 kind: StatefulSet
@@ -101,21 +115,25 @@ spec:
     spec:
       containers:
       - name: redis
-        image: redis:7.0-alpine
+        image: redis:7.4-alpine
         ports:
         - containerPort: 6379
           name: redis
         command:
-          - redis-server
-          - /etc/redis/redis.conf
-          - --requirepass
-          - $(REDIS_PASSWORD)
+          - sh
+          - /etc/redis/init.sh
         env:
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
               name: redis-password
               key: password
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: REDIS_SERVICE_NAME
+          value: redis-master
         volumeMounts:
         - name: data
           mountPath: /data
@@ -146,9 +164,12 @@ spec:
       - name: config
         configMap:
           name: redis-config
+          defaultMode: 0755
           items:
           - key: master.conf
             path: redis.conf
+          - key: init.sh
+            path: init.sh
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -179,21 +200,25 @@ spec:
     spec:
       containers:
       - name: redis
-        image: redis:7.0-alpine
+        image: redis:7.4-alpine
         ports:
         - containerPort: 6379
           name: redis
         command:
-          - redis-server
-          - /etc/redis/redis.conf
-          - --requirepass
-          - $(REDIS_PASSWORD)
+          - sh
+          - /etc/redis/init.sh
         env:
         - name: REDIS_PASSWORD
           valueFrom:
             secretKeyRef:
               name: redis-password
               key: password
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: REDIS_SERVICE_NAME
+          value: redis-replica
         volumeMounts:
         - name: data
           mountPath: /data
@@ -224,9 +249,12 @@ spec:
       - name: config
         configMap:
           name: redis-config
+          defaultMode: 0755
           items:
           - key: replica.conf
             path: redis.conf
+          - key: init.sh
+            path: init.sh
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -270,7 +298,8 @@ Create the password secret and deploy:
 
 ```bash
 # Create password
-REDIS_PASSWORD=$(openssl rand -base64 32)
+REDIS_PASSWORD=$(openssl rand -hex 32)
+kubectl create namespace redis --dry-run=client -o yaml | kubectl apply -f -
 kubectl create secret generic redis-password \
   --from-literal=password="$REDIS_PASSWORD" \
   -n redis
@@ -294,6 +323,8 @@ data:
   sentinel.conf: |
     port 26379
     dir /data
+    sentinel resolve-hostnames yes
+    sentinel announce-hostnames yes
     sentinel monitor mymaster redis-master-0.redis-master.redis.svc.cluster.local 6379 2
     sentinel auth-pass mymaster ${REDIS_PASSWORD}
     sentinel down-after-milliseconds mymaster 5000
@@ -305,7 +336,8 @@ data:
     #!/bin/sh
     set -e
 
-    # Replace password in config
+    # ConfigMap files are not shell-expanded by Kubernetes, so render the
+    # Sentinel configuration before starting Sentinel.
     sed "s/\${REDIS_PASSWORD}/$REDIS_PASSWORD/g" /etc/sentinel/sentinel.conf > /tmp/sentinel.conf
 
     # Start sentinel
@@ -338,7 +370,7 @@ spec:
             topologyKey: kubernetes.io/hostname
       containers:
       - name: sentinel
-        image: redis:7.0-alpine
+        image: redis:7.4-alpine
         ports:
         - containerPort: 26379
           name: sentinel
@@ -426,6 +458,8 @@ data:
   sentinel.conf: |
     port 26379
     dir /data
+    sentinel resolve-hostnames yes
+    sentinel announce-hostnames yes
 
     # Monitor master
     sentinel monitor mymaster redis-master-0.redis-master.redis.svc.cluster.local 6379 2
@@ -438,9 +472,6 @@ data:
 
     # Advanced settings
     sentinel deny-scripts-reconfig yes
-    sentinel resolve-hostnames yes
-    sentinel announce-hostnames yes
-
     # Connection limits
     maxclients 10000
 
@@ -498,7 +529,6 @@ const redis = new Redis({
   ],
   name: 'mymaster',
   password: process.env.REDIS_PASSWORD,
-  sentinelPassword: process.env.REDIS_PASSWORD,
 
   // Retry strategy
   retryStrategy: (times) => {
@@ -625,8 +655,9 @@ kubectl exec -it $(kubectl get pod -l app=redis-sentinel -n redis -o jsonpath='{
 
 # Check replication info on new master
 NEW_MASTER=$(kubectl exec -it $(kubectl get pod -l app=redis-sentinel -n redis -o jsonpath='{.items[0].metadata.name}') -n redis -- redis-cli -p 26379 sentinel get-master-addr-by-name mymaster | head -1)
+NEW_MASTER_POD=${NEW_MASTER%%.*}
 
-kubectl exec -it redis-replica-0 -n redis -- redis-cli -a $REDIS_PASSWORD info replication
+kubectl exec -it "$NEW_MASTER_POD" -n redis -- redis-cli -a $REDIS_PASSWORD info replication
 ```
 
 ## Monitoring Sentinel Health
@@ -681,10 +712,9 @@ spec:
     spec:
       template:
         spec:
-          serviceAccountName: redis-monitor
           containers:
           - name: monitor
-            image: redis:7.0-alpine
+            image: redis:7.4-alpine
             command: ["/bin/sh", "-c"]
             args:
               - |
