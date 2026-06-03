@@ -8,7 +8,7 @@ Description: Integrate Terraform with CI/CD pipelines to automate Kubernetes dep
 
 ---
 
-Automating Terraform deployments through CI/CD pipelines brings consistency, repeatability, and safety to Kubernetes infrastructure management. By integrating Terraform with version control and continuous delivery systems, you create automated workflows that test, validate, and deploy infrastructure changes with proper approvals and rollback capabilities.
+Automating Terraform deployments through CI/CD pipelines brings consistency, repeatability, and safety to Kubernetes infrastructure management. By integrating Terraform with version control and continuous delivery systems, you create automated workflows that test, validate, and deploy infrastructure changes with proper approvals and auditable plan artifacts.
 
 ## GitHub Actions Terraform Workflow
 
@@ -26,8 +26,12 @@ on:
     branches: [main]
 
 env:
-  TF_VERSION: '1.6.0'
+  TF_VERSION: '1.15.5'
   AWS_REGION: 'us-east-1'
+
+permissions:
+  contents: read
+  issues: write
 
 jobs:
   validate:
@@ -35,10 +39,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
@@ -46,13 +50,13 @@ jobs:
         run: terraform fmt -check -recursive
 
       - name: Terraform Init
-        run: terraform init -backend=false
+        run: terraform init -backend=false -input=false
 
       - name: Terraform Validate
         run: terraform validate
 
       - name: Run tflint
-        uses: terraform-linters/setup-tflint@v3
+        uses: terraform-linters/setup-tflint@v6
         with:
           tflint_version: latest
 
@@ -67,31 +71,31 @@ jobs:
     needs: validate
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -input=false
 
       - name: Terraform Plan
         id: plan
         run: |
-          terraform plan -out=tfplan -no-color
+          terraform plan -out=tfplan -no-color -input=false
           terraform show -no-color tfplan > plan-output.txt
 
       - name: Upload Plan
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: terraform-plan
           path: |
@@ -100,7 +104,7 @@ jobs:
 
       - name: Comment PR with Plan
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -109,13 +113,13 @@ jobs:
             const output = `#### Terraform Plan
             <details><summary>Show Plan</summary>
 
-            ```
+            ~~~
             ${plan}
-            ```
+            ~~~
 
             </details>`;
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -132,30 +136,30 @@ jobs:
       url: https://kubernetes.example.com
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v2
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
-        run: terraform init
+        run: terraform init -input=false
 
       - name: Download Plan
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v8
         with:
           name: terraform-plan
 
       - name: Terraform Apply
-        run: terraform apply -auto-approve tfplan
+        run: terraform apply -input=false tfplan
 
       - name: Post-deployment Verification
         run: |
