@@ -16,11 +16,11 @@ In this guide, you'll learn how to install and configure Reloader, use annotatio
 
 ## Understanding the Problem
 
-When you update a ConfigMap or Secret, Kubernetes doesn't automatically restart pods that use them. For mounted volumes, kubelet eventually updates the files (30-60 seconds), but environment variables never change without a pod restart.
+When you update a ConfigMap or Secret, Kubernetes doesn't automatically restart pods that use them. For mounted volumes, kubelet eventually updates the files after its sync loop, but applications only see the change if they reload or watch those files. Environment variables never change without a pod restart.
 
 This creates several issues:
 
-- Pods continue running with old configuration
+- Applications that read configuration only at startup continue using old values
 - Environment variables remain stale indefinitely
 - Manual restarts are required for every config change
 - Risk of forgetting to restart all affected deployments
@@ -114,7 +114,6 @@ kind: Deployment
 metadata:
   name: my-app
   annotations:
-    reloader.stakater.com/match: "true"
     configmap.reloader.stakater.com/reload: "app-config,feature-flags"
 spec:
   replicas: 3
@@ -153,7 +152,6 @@ kind: Deployment
 metadata:
   name: api-server
   annotations:
-    reloader.stakater.com/match: "true"
     secret.reloader.stakater.com/reload: "api-keys,database-credentials"
 spec:
   replicas: 2
@@ -191,7 +189,6 @@ kind: Deployment
 metadata:
   name: web-app
   annotations:
-    reloader.stakater.com/match: "true"
     configmap.reloader.stakater.com/reload: "web-config,nginx-config"
     secret.reloader.stakater.com/reload: "tls-certs,oauth-secrets"
 spec:
@@ -300,7 +297,6 @@ metadata:
   name: backend
   namespace: production
   annotations:
-    reloader.stakater.com/match: "true"
     configmap.reloader.stakater.com/reload: "backend-config"
     secret.reloader.stakater.com/reload: "backend-secrets"
 spec:
@@ -441,7 +437,6 @@ If you don't want Reloader watching all namespaces, configure it for specific na
 helm install reloader stakater/reloader \
   --namespace reloader \
   --create-namespace \
-  --set reloader.watchGlobally=false \
   --set reloader.namespaceSelector="environment=production"
 ```
 
@@ -453,7 +448,7 @@ Use a specific Reloader version:
 helm install reloader stakater/reloader \
   --namespace reloader \
   --create-namespace \
-  --set reloader.deployment.image.tag=v1.0.40
+  --set image.tag=v1.0.40
 ```
 
 ## Monitoring Reloader
@@ -461,35 +456,30 @@ helm install reloader stakater/reloader \
 Check Reloader's metrics endpoint for monitoring:
 
 ```bash
-# Port-forward to Reloader
-kubectl port-forward -n reloader svc/reloader-reloader 9090:9090
+# Port-forward to a Reloader pod
+kubectl port-forward -n reloader \
+  pod/$(kubectl get pod -n reloader -l app=reloader -o jsonpath='{.items[0].metadata.name}') \
+  9090:9090
 
 # Access metrics
 curl http://localhost:9090/metrics
 ```
 
-Create a ServiceMonitor for Prometheus:
+Enable a PodMonitor for Prometheus Operator:
 
 ```yaml
-apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
-metadata:
-  name: reloader
-  namespace: reloader
-spec:
-  selector:
-    matchLabels:
-      app: reloader
-  endpoints:
-  - port: metrics
-    interval: 30s
+reloader:
+  podMonitor:
+    enabled: true
+    labels:
+      release: prometheus
 ```
 
 ## Best Practices
 
 1. **Use auto mode for development**: In dev environments, use `reloader.stakater.com/auto: "true"` for convenience.
 
-2. **Use match mode for production**: In production, explicitly list ConfigMaps and Secrets to avoid unintended restarts.
+2. **Use named reload annotations for production**: In production, explicitly list ConfigMaps and Secrets to avoid unintended restarts.
 
 3. **Monitor reload events**: Track reload events in your monitoring system to correlate configuration changes with application behavior.
 
