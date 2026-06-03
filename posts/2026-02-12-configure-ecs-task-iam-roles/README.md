@@ -198,10 +198,15 @@ const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
 
 // Credentials come from the task role automatically
 const s3 = new S3Client({ region: 'us-east-1' });
-const result = await s3.send(new GetObjectCommand({
-  Bucket: 'my-assets-bucket',
-  Key: 'config.json'
-}));
+
+async function main() {
+  const result = await s3.send(new GetObjectCommand({
+    Bucket: 'my-assets-bucket',
+    Key: 'config.json'
+  }));
+}
+
+main().catch(console.error);
 ```
 
 ```go
@@ -267,7 +272,7 @@ data "aws_iam_policy_document" "ecs_assume_role" {
 
 ## Restricting Role Assumption by Condition
 
-For extra security, you can add conditions to the trust policy that restrict which ECS clusters or accounts can assume the role.
+For extra security, you can add conditions to the trust policy that restrict which account can assume the role and reduce confused deputy risk. AWS doesn't currently support using `aws:SourceArn` to restrict a task role trust policy to a specific ECS cluster, so use a wildcard for ECS resources in the account.
 
 ```hcl
 resource "aws_iam_role" "restricted_task_role" {
