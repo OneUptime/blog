@@ -43,7 +43,7 @@ graph TD
 First, figure out what went wrong:
 
 ```bash
-# Find the first failure event in the stack
+# Find failure events in the stack
 
 aws cloudformation describe-stack-events \
   --stack-name my-app-prod \
@@ -86,7 +86,7 @@ Before retrying, use a [change set](https://oneuptime.com/blog/post/2026-02-12-c
 
 ## Handling UPDATE_ROLLBACK_FAILED
 
-This is the scary one. The stack is stuck - you can't update it, delete it, or create new change sets. Here's how to recover.
+This is the scary one. The stack is stuck - you can't update it or create new change sets until you recover it. You can either continue the rollback or delete the stack. Here's how to recover.
 
 ### Step 1: Identify What Blocked the Rollback
 
@@ -94,7 +94,7 @@ This is the scary one. The stack is stuck - you can't update it, delete it, or c
 # Find why the rollback failed
 aws cloudformation describe-stack-events \
   --stack-name my-app-prod \
-  --query 'StackEvents[?ResourceStatus==`UPDATE_ROLLBACK_FAILED` || ResourceStatus==`DELETE_FAILED`].[Timestamp,LogicalResourceId,ResourceStatusReason]' \
+  --query 'StackEvents[?ResourceStatus==`UPDATE_FAILED` || ResourceStatus==`DELETE_FAILED`].[Timestamp,LogicalResourceId,ResourceStatusReason]' \
   --output table
 ```
 
@@ -123,7 +123,7 @@ aws cloudformation continue-update-rollback \
   --resources-to-skip MyProblematicResource AnotherStuckResource
 ```
 
-The `--resources-to-skip` flag tells CloudFormation to ignore those resources and continue rolling back everything else. Only use this when you're sure the resource is either gone or manually restored.
+The `--resources-to-skip` flag tells CloudFormation to mark those resources as `UPDATE_COMPLETE` and continue rolling back everything else. You can only skip resources that are in `UPDATE_FAILED` because the rollback failed. Only use this when you're sure the resource is either gone or manually restored.
 
 ```bash
 # Wait for the rollback to complete
@@ -142,10 +142,10 @@ aws cloudformation describe-stacks \
 If you skipped resources, your stack's view of reality no longer matches actual infrastructure. You need to:
 
 1. Decide if the skipped resource should exist
-2. Either import it back into the stack or remove it from the template
+2. Either manually adjust the resource to match the template or update the template to match the resource's actual state
 3. Deploy an update that aligns the template with reality
 
-For resource import, check our guide on [CloudFormation resource import](https://oneuptime.com/blog/post/2026-02-12-cloudformation-resource-import/view).
+If the replacement resource is unmanaged by CloudFormation and should be brought into the stack, check our guide on [CloudFormation resource import](https://oneuptime.com/blog/post/2026-02-12-cloudformation-resource-import/view).
 
 ## Preventing Update Failures
 
