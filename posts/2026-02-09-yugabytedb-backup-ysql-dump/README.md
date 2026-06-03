@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, YugabyteDB, Backup, Disaster Recovery, YSQL
 
-Description: Implement automated backup and restore strategies for YugabyteDB on Kubernetes using ysql_dump and ysqlsh, including point-in-time recovery, incremental backups, and disaster recovery procedures.
+Description: Implement automated backup and restore strategies for YugabyteDB on Kubernetes using ysql_dump and ysqlsh, including scheduled dumps, application-level change exports, and disaster recovery procedures.
 
 ---
 
@@ -14,9 +14,9 @@ YugabyteDB backups protect against data loss from user errors, corruption, or di
 
 YugabyteDB supports two backup approaches. Logical backups using ysql_dump export data and schema as SQL statements. Physical backups using snapshots capture raw data files. Each approach has different use cases and trade-offs.
 
-Logical backups work across YugabyteDB versions and allow selective restore of specific databases or tables. They compress well and integrate easily with object storage. However, they are slower for large databases and require database resources during dump.
+Logical backups can be restored into newer YugabyteDB versions and allow selective restore of specific databases or tables. They compress well and integrate easily with object storage. However, they are slower for large databases and require database resources during dump.
 
-Physical snapshots are faster for large datasets and have minimal performance impact. They require more storage space and must restore to the same or newer YugabyteDB version. For most Kubernetes deployments, logical backups provide the best balance of flexibility and simplicity.
+Physical snapshots are faster for large datasets and have minimal performance impact. They require more storage space and must restore to the same or newer YugabyteDB version. For smaller databases, cross-version migrations, or cases where a SQL-format export is required, logical backups provide a flexible option.
 
 ## Creating Manual Database Backups
 
@@ -28,7 +28,7 @@ Access a YugabyteDB pod to run backup commands:
 kubectl exec -it yb-tserver-0 -n yugabyte -- bash
 
 # Backup a single database
-/home/yugabyte/bin/ysql_dump \
+/home/yugabyte/postgres/bin/ysql_dump \
   -h yb-tserver-service \
   -p 5433 \
   -U yugabyte \
@@ -37,7 +37,7 @@ kubectl exec -it yb-tserver-0 -n yugabyte -- bash
   -f /tmp/production_db.backup
 
 # Backup with compression
-/home/yugabyte/bin/ysql_dump \
+/home/yugabyte/postgres/bin/ysql_dump \
   -h yb-tserver-service \
   -p 5433 \
   -U yugabyte \
@@ -45,7 +45,7 @@ kubectl exec -it yb-tserver-0 -n yugabyte -- bash
   | gzip > /tmp/production_db.sql.gz
 
 # Backup all databases
-/home/yugabyte/bin/ysql_dumpall \
+/home/yugabyte/postgres/bin/ysql_dumpall \
   -h yb-tserver-service \
   -p 5433 \
   -U yugabyte \
@@ -56,7 +56,7 @@ The `-F c` flag creates a custom format archive that supports parallel restore a
 
 ## Implementing Automated Backup CronJob
 
-Create a Kubernetes CronJob for scheduled backups:
+Create a Kubernetes CronJob for scheduled backups. The container image must include both the YugabyteDB client utilities and the AWS CLI:
 
 ```yaml
 # yugabyte-backup-cronjob.yaml
@@ -89,7 +89,7 @@ data:
     for DB in $DATABASES; do
       echo "Backing up database: $DB"
 
-      /home/yugabyte/bin/ysql_dump \
+      /home/yugabyte/postgres/bin/ysql_dump \
         -h yb-tserver-service \
         -p 5433 \
         -U yugabyte \
@@ -99,7 +99,7 @@ data:
         -f "$BACKUP_DIR/${DB}-${TIMESTAMP}.backup"
 
       # Calculate checksum
-      md5sum "$BACKUP_DIR/${DB}-${TIMESTAMP}.backup" > "$BACKUP_DIR/${DB}-${TIMESTAMP}.backup.md5"
+      (cd "$BACKUP_DIR" && md5sum "${DB}-${TIMESTAMP}.backup" > "${DB}-${TIMESTAMP}.backup.md5")
 
       # Upload to S3
       aws s3 cp "$BACKUP_DIR/${DB}-${TIMESTAMP}.backup" "$S3_BUCKET/$DB/" --storage-class STANDARD_IA
@@ -112,7 +112,7 @@ data:
 
     # Backup global objects (roles, tablespaces, etc.)
     echo "Backing up global objects"
-    /home/yugabyte/bin/ysql_dumpall \
+    /home/yugabyte/postgres/bin/ysql_dumpall \
       -h yb-tserver-service \
       -p 5433 \
       -U yugabyte \
@@ -122,12 +122,12 @@ data:
     aws s3 cp "$BACKUP_DIR/globals-${TIMESTAMP}.sql.gz" "$S3_BUCKET/globals/"
     rm "$BACKUP_DIR/globals-${TIMESTAMP}.sql.gz"
 
-    # Clean up old backups (keep last 30 days)
+    # Clean up old backups (keep last 30 backup files and checksums)
     for DB in $DATABASES; do
       aws s3 ls "$S3_BUCKET/$DB/" | \
         awk '{print $4}' | \
         sort -r | \
-        tail -n +31 | \
+        tail -n +61 | \
         xargs -I {} aws s3 rm "$S3_BUCKET/$DB/{}"
     done
 
@@ -155,7 +155,7 @@ spec:
           serviceAccountName: yugabyte-backup-sa
           containers:
             - name: backup
-              image: yugabytedb/yugabyte:2.19.3.0-b140
+              image: your-registry/yugabyte-aws-cli:2.19.3.0-b140
               command:
                 - /bin/bash
                 - /scripts/backup.sh
@@ -194,7 +194,7 @@ spec:
                 sizeLimit: 50Gi
 ```
 
-## Creating Required RBAC and Secrets
+## Creating Required Service Account and Secrets
 
 Set up service account and AWS credentials:
 
@@ -214,7 +214,7 @@ kubectl apply -f yugabyte-backup-cronjob.yaml
 
 ## Implementing Incremental Backup Strategy
 
-Track changes since last backup using transaction timestamps:
+Track changes since last backup using application-level timestamps:
 
 ```yaml
 # incremental-backup-configmap.yaml
@@ -273,7 +273,7 @@ aws s3 cp s3://my-yugabyte-backups/production_db/production_db-20260209-020000.b
 
 # Verify checksum
 aws s3 cp s3://my-yugabyte-backups/production_db/production_db-20260209-020000.backup.md5 /tmp/
-md5sum -c /tmp/production_db-20260209-020000.backup.md5
+cd /tmp && md5sum -c production_db-20260209-020000.backup.md5
 
 # Drop existing database (careful!)
 /home/yugabyte/bin/ysqlsh \
@@ -287,10 +287,10 @@ md5sum -c /tmp/production_db-20260209-020000.backup.md5
   -h yb-tserver-service \
   -p 5433 \
   -U yugabyte \
-  -c "CREATE DATABASE production_db;"
+  -c "CREATE DATABASE production_db WITH TEMPLATE template0;"
 
 # Restore from backup
-/home/yugabyte/bin/pg_restore \
+/home/yugabyte/postgres/bin/pg_restore \
   -h yb-tserver-service \
   -p 5433 \
   -U yugabyte \
@@ -308,7 +308,7 @@ Restore specific tables from a backup:
 
 ```bash
 # List contents of backup
-/home/yugabyte/bin/pg_restore \
+/home/yugabyte/postgres/bin/pg_restore \
   -h yb-tserver-service \
   -p 5433 \
   -U yugabyte \
@@ -316,7 +316,7 @@ Restore specific tables from a backup:
   /tmp/production_db-20260209-020000.backup
 
 # Restore only specific tables
-/home/yugabyte/bin/pg_restore \
+/home/yugabyte/postgres/bin/pg_restore \
   -h yb-tserver-service \
   -p 5433 \
   -U yugabyte \
@@ -327,9 +327,9 @@ Restore specific tables from a backup:
   /tmp/production_db-20260209-020000.backup
 ```
 
-## Implementing Point-in-Time Recovery
+## Approximating Recovery Points with Frequent Dumps
 
-While ysql_dump doesn't support true PITR, you can approximate it with frequent backups:
+While ysql_dump doesn't support true PITR, you can approximate recovery points with frequent backups. Use YugabyteDB snapshot schedules for actual point-in-time recovery:
 
 ```yaml
 # frequent-backup-cronjob.yaml
@@ -347,14 +347,14 @@ spec:
           restartPolicy: OnFailure
           containers:
             - name: backup
-              image: yugabytedb/yugabyte:2.19.3.0-b140
+              image: your-registry/yugabyte-aws-cli:2.19.3.0-b140
               command:
                 - sh
                 - -c
                 - |
                   TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 
-                  /home/yugabyte/bin/ysql_dump \
+                  /home/yugabyte/postgres/bin/ysql_dump \
                     -h yb-tserver-service \
                     -p 5433 \
                     -U yugabyte \
@@ -399,7 +399,7 @@ spec:
       restartPolicy: OnFailure
       containers:
         - name: test
-          image: yugabytedb/yugabyte:2.19.3.0-b140
+          image: your-registry/yugabyte-aws-cli:2.19.3.0-b140
           command:
             - sh
             - -c
@@ -418,10 +418,16 @@ spec:
                 -h yb-tserver-service \
                 -p 5433 \
                 -U yugabyte \
-                -c "DROP DATABASE IF EXISTS backup_test; CREATE DATABASE backup_test;"
+                -c "DROP DATABASE IF EXISTS backup_test;"
+
+              /home/yugabyte/bin/ysqlsh \
+                -h yb-tserver-service \
+                -p 5433 \
+                -U yugabyte \
+                -c "CREATE DATABASE backup_test WITH TEMPLATE template0;"
 
               # Restore to test database
-              /home/yugabyte/bin/pg_restore \
+              /home/yugabyte/postgres/bin/pg_restore \
                 -h yb-tserver-service \
                 -p 5433 \
                 -U yugabyte \
