@@ -51,9 +51,23 @@ spec:
     region: us-west-2
 ```
 
+Remember that Velero backups can include both object-storage data and persistent volume data. Cloud-provider volume snapshots are managed through VolumeSnapshotLocation resources and usually cannot be created in a different region from the volume. If you need full geographic redundancy for persistent volumes, use Velero file system backups so volume data is stored in the object store, or replicate/copy volume snapshots separately.
+
 ## Method 1: S3 Cross-Region Replication
 
 The most efficient approach uses cloud provider native replication. For AWS S3, configure Cross-Region Replication (CRR):
+
+Enable versioning on both buckets first (required for CRR):
+
+```bash
+aws s3api put-bucket-versioning \
+  --bucket velero-backups-us-east-1 \
+  --versioning-configuration Status=Enabled
+
+aws s3api put-bucket-versioning \
+  --bucket velero-backups-us-west-2 \
+  --versioning-configuration Status=Enabled
+```
 
 ```json
 {
@@ -63,7 +77,10 @@ The most efficient approach uses cloud provider native replication. For AWS S3, 
       "Status": "Enabled",
       "Priority": 1,
       "Filter": {
-        "Prefix": "backups/"
+        "Prefix": ""
+      },
+      "DeleteMarkerReplication": {
+        "Status": "Disabled"
       },
       "Destination": {
         "Bucket": "arn:aws:s3:::velero-backups-us-west-2",
@@ -74,7 +91,10 @@ The most efficient approach uses cloud provider native replication. For AWS S3, 
           }
         },
         "Metrics": {
-          "Status": "Enabled"
+          "Status": "Enabled",
+          "EventThreshold": {
+            "Minutes": 15
+          }
         }
       }
     }
@@ -92,21 +112,9 @@ aws s3api put-bucket-replication \
   --replication-configuration file://replication-policy.json
 ```
 
-Enable versioning on both buckets (required for CRR):
-
-```bash
-aws s3api put-bucket-versioning \
-  --bucket velero-backups-us-east-1 \
-  --versioning-configuration Status=Enabled
-
-aws s3api put-bucket-versioning \
-  --bucket velero-backups-us-west-2 \
-  --versioning-configuration Status=Enabled
-```
-
 ## Method 2: Velero Multi-Location Backups
 
-Configure Velero to write backups to multiple locations simultaneously using backup schedules:
+Configure Velero to create separate backups in multiple locations using backup schedules:
 
 ```yaml
 apiVersion: velero.io/v1
@@ -136,7 +144,7 @@ spec:
     - production
 ```
 
-This creates independent backups in each region. While it uses more storage and backup time, it provides complete independence between regions.
+This creates independent object-storage backups in each region. While it uses more storage and backup time, it provides regional independence for Kubernetes metadata and any file system backup repositories stored in the selected BackupStorageLocation. Cloud-provider volume snapshots still need their own regional replication or copy process.
 
 ## Method 3: Script-Based Replication
 
@@ -150,28 +158,13 @@ SOURCE_BUCKET="velero-backups-us-east-1"
 DEST_BUCKET="velero-backups-us-west-2"
 SOURCE_REGION="us-east-1"
 DEST_REGION="us-west-2"
+VELERO_PREFIX="" # Set this if your BackupStorageLocation uses objectStorage.prefix
 
-# Get list of backups from source
-aws s3 ls s3://${SOURCE_BUCKET}/backups/ --region ${SOURCE_REGION} | while read -r line; do
-  backup_dir=$(echo $line | awk '{print $2}')
-
-  # Check if backup exists in destination
-  if ! aws s3 ls s3://${DEST_BUCKET}/backups/${backup_dir} --region ${DEST_REGION} &>/dev/null; then
-    echo "Syncing backup: ${backup_dir}"
-
-    # Sync the backup
-    aws s3 sync \
-      s3://${SOURCE_BUCKET}/backups/${backup_dir} \
-      s3://${DEST_BUCKET}/backups/${backup_dir} \
-      --source-region ${SOURCE_REGION} \
-      --region ${DEST_REGION}
-  fi
-done
-
-# Sync metadata
+# Sync the full Velero object-storage prefix, including backup metadata and
+# file system backup repositories when they are stored in the bucket.
 aws s3 sync \
-  s3://${SOURCE_BUCKET}/metadata/ \
-  s3://${DEST_BUCKET}/metadata/ \
+  s3://${SOURCE_BUCKET}/${VELERO_PREFIX} \
+  s3://${DEST_BUCKET}/${VELERO_PREFIX} \
   --source-region ${SOURCE_REGION} \
   --region ${DEST_REGION}
 ```
@@ -231,30 +224,30 @@ gcloud transfer jobs create gs://velero-backups-us-east \
 Azure Storage accounts support geographic redundancy natively:
 
 ```bash
-# Create storage account with GRS (Geo-Redundant Storage)
+# Create storage account with RA-GRS for read access to the secondary region
 az storage account create \
-  --name veleroblueprimarygrs \
+  --name veleroblueprimaryragrs \
   --resource-group velero-rg \
   --location eastus \
-  --sku Standard_GRS \
+  --sku Standard_RAGRS \
   --kind StorageV2
 
-# Or use GZRS (Geo-Zone-Redundant Storage) for higher availability
+# Or use RA-GZRS for read-access geo-zone-redundant storage
 az storage account create \
-  --name veleroblueprimarygzrs \
+  --name veleroblueprimaryragzrs \
   --resource-group velero-rg \
   --location eastus \
-  --sku Standard_GZRS \
+  --sku Standard_RAGZRS \
   --kind StorageV2
 ```
 
-Configure Velero to use the GRS storage account:
+Configure Velero to use the RA-GRS storage account:
 
 ```yaml
 apiVersion: velero.io/v1
 kind: BackupStorageLocation
 metadata:
-  name: azure-grs
+  name: azure-ragrs
   namespace: velero
 spec:
   provider: azure
@@ -262,7 +255,7 @@ spec:
     bucket: velero-backups
   config:
     resourceGroup: velero-rg
-    storageAccount: veleroblueprimarygrs
+    storageAccount: veleroblueprimaryragrs
 ```
 
 ## Verifying Multi-Region Replication
@@ -277,8 +270,8 @@ velero backup-location get primary-us-east
 velero backup-location get replica-us-west
 
 # List backups in each location
-velero backup get --storage-location primary-us-east
-velero backup get --storage-location replica-us-west
+velero backup get -l velero.io/storage-location=primary-us-east
+velero backup get -l velero.io/storage-location=replica-us-west
 ```
 
 Create a monitoring script:
@@ -290,8 +283,8 @@ Create a monitoring script:
 PRIMARY_LOCATION="primary-us-east"
 REPLICA_LOCATION="replica-us-west"
 
-PRIMARY_COUNT=$(velero backup get --storage-location $PRIMARY_LOCATION -o json | jq '.items | length')
-REPLICA_COUNT=$(velero backup get --storage-location $REPLICA_LOCATION -o json | jq '.items | length')
+PRIMARY_COUNT=$(velero backup get -l velero.io/storage-location=$PRIMARY_LOCATION -o json | jq '.items | length')
+REPLICA_COUNT=$(velero backup get -l velero.io/storage-location=$REPLICA_LOCATION -o json | jq '.items | length')
 
 if [ "$PRIMARY_COUNT" -ne "$REPLICA_COUNT" ]; then
   echo "WARNING: Backup count mismatch - Primary: $PRIMARY_COUNT, Replica: $REPLICA_COUNT"
@@ -311,10 +304,11 @@ kubectl patch backupstoragelocation primary-us-east -n velero \
   --type merge \
   --patch '{"spec":{"accessMode":"ReadOnly"}}'
 
-# Restore from replica region
+# Confirm the backup has been synced from the replica location, then restore it
+velero backup describe production-backup-20260209
+
 velero restore create test-restore \
-  --from-backup production-backup-20260209 \
-  --storage-location replica-us-west
+  --from-backup production-backup-20260209
 ```
 
 ## Cost Considerations
@@ -328,7 +322,7 @@ Multi-region replication increases costs through:
 Optimize costs by:
 
 - Using lifecycle policies to age out old backups
-- Compressing backups before replication
+- Using Velero file system backup deduplication or storage-class transitions where supported
 - Replicating only critical workloads to multiple regions
 - Using cheaper storage tiers for older replicated backups
 
