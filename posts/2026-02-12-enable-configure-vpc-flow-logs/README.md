@@ -26,11 +26,11 @@ Most organizations start with VPC-level flow logs to get broad visibility, then 
 
 Flow logs can be sent to three destinations:
 
-1. **CloudWatch Logs** - Good for real-time monitoring and alerting
+1. **CloudWatch Logs** - Good for faster monitoring and alerting
 2. **S3** - Best for long-term storage and batch analysis
-3. **Kinesis Data Firehose** - Good for streaming to third-party tools
+3. **Amazon Data Firehose** - Good for streaming to third-party tools
 
-Each has trade-offs. CloudWatch Logs is more expensive for high-volume traffic but lets you query logs quickly and set up alarms. S3 is cheaper for storage and works great with Athena for analysis. Kinesis Firehose is the best choice when you're shipping logs to external SIEM tools.
+Each has trade-offs. CloudWatch Logs is more expensive for high-volume traffic but lets you query logs quickly and set up alarms. S3 is cheaper for storage and works great with Athena for analysis. Firehose is the best choice when you're shipping logs to external SIEM tools.
 
 ## Creating a VPC Flow Log to CloudWatch Logs
 
@@ -138,7 +138,7 @@ Some notable custom fields:
 
 - **pkt-srcaddr / pkt-dstaddr** - The actual packet source/destination (different from srcaddr/dstaddr when traffic traverses a NAT gateway)
 - **flow-direction** - Whether traffic is ingress or egress
-- **traffic-path** - The path traffic takes through the network
+- **traffic-path** - The path egress traffic takes through the network
 - **tcp-flags** - TCP flag bitmask (useful for identifying SYN floods, port scans, etc.)
 - **pkt-src-aws-service / pkt-dst-aws-service** - Identifies if traffic came from or went to an AWS service
 
@@ -179,7 +179,7 @@ When flow logs go to S3, they're organized in a specific path structure:
 s3://bucket-name/AWSLogs/account-id/vpcflowlogs/region/year/month/day/
 ```
 
-Each file is gzipped and contains roughly 5-10 minutes of data. For busy VPCs, this can mean hundreds of files per day. That's where Athena comes in handy for querying - check out our post on [analyzing VPC Flow Logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-athena/view).
+Files are published at 5-minute intervals, and each file can contain some or all of the flow log records for IP traffic recorded in the previous 5 minutes. For busy VPCs, this can mean hundreds of files per day. That's where Athena comes in handy for querying - check out our post on [analyzing VPC Flow Logs with Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-athena/view).
 
 ## Monitoring with CloudWatch
 
@@ -219,10 +219,10 @@ Flow logs can get expensive, especially for high-traffic VPCs. Here are ways to 
 - **Filter traffic type** - If you only need rejected traffic for security monitoring, don't capture ACCEPT traffic
 - **Use 10-minute aggregation** instead of 1-minute if you don't need near-real-time data
 
-A typical cost estimate for a moderately busy VPC (50 GB/month of flow log data) would be roughly $25/month to CloudWatch or $3-5/month to S3.
+A rough N. Virginia estimate for a moderately busy VPC (50 GB/month of flow log data) would be about $25/month for delivery to CloudWatch Logs or about $12.50/month for delivery to S3, before CloudWatch archival, S3 storage, query, request, format conversion, or Firehose processing charges.
 
 ## Wrapping Up
 
-VPC Flow Logs are one of those services you should enable everywhere. The cost is minimal compared to the visibility they provide. Start with VPC-level flow logs to S3 for everything, add CloudWatch destinations for VPCs that need real-time alerting, and use custom log formats when you need deeper network analysis.
+VPC Flow Logs are one of those services you should enable everywhere. The cost is minimal compared to the visibility they provide. Start with VPC-level flow logs to S3 for everything, add CloudWatch destinations for VPCs that need faster alerting, and use custom log formats when you need deeper network analysis.
 
 For analyzing the data you collect, see our guides on [CloudWatch Logs Insights](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-cloudwatch-logs-insights/view) and [Athena](https://oneuptime.com/blog/post/2026-02-12-analyze-vpc-flow-logs-athena/view).
