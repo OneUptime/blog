@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, SQS, Dead Letter Queue, Lambda, Error Handling
 
-Description: Build a robust dead letter queue processing system on AWS using SQS, Lambda, and Step Functions to handle failed messages with automated retry and alerting.
+Description: Build a robust dead letter queue processing system on AWS using SQS and Lambda to handle failed messages with automated retry and alerting.
 
 ---
 
@@ -22,7 +22,7 @@ graph TD
     D -->|Transient Error| E[Retry Queue with Delay]
     D -->|Permanent Error| F[Error Archive in S3]
     D -->|Unknown Error| G[Manual Review Queue]
-    E --> A
+    E --> L[Source Processor Lambda]
     C --> H[CloudWatch Metrics]
     H --> I[CloudWatch Alarm]
     I --> J[SNS Alert]
@@ -44,10 +44,10 @@ Resources:
     Properties:
       QueueName: order-processing
       VisibilityTimeout: 60
-      MessageRetentionPeriod: 1209600  # 14 days
+      MessageRetentionPeriod: 345600  # 4 days
       RedrivePolicy:
         deadLetterTargetArn: !GetAtt DeadLetterQueue.Arn
-        maxReceiveCount: 3  # Move to DLQ after 3 failed attempts
+        maxReceiveCount: 3  # Move to DLQ after the receive count exceeds 3
 
   # Dead letter queue for failed messages
   DeadLetterQueue:
@@ -76,7 +76,7 @@ Resources:
       MessageRetentionPeriod: 1209600
 ```
 
-The key setting is `maxReceiveCount: 3` on the source queue. After a message fails processing 3 times, SQS automatically moves it to the DLQ.
+The key setting is `maxReceiveCount: 3` on the source queue. After a message's receive count exceeds 3, SQS automatically moves it to the DLQ. The retry queue is a delayed queue for another processing pass; configure the same application processor that consumes the source queue to also consume the retry queue. SQS does not automatically move messages from a retry queue back to the source queue.
 
 ## Building the DLQ Processor
 
@@ -304,17 +304,17 @@ You need to know when the DLQ is growing. Set up CloudWatch alarms:
       AlarmActions:
         - !Ref AlertTopic
 
-  # Alert when DLQ is growing rapidly
-  DLQGrowthAlarm:
+  # Alert when DLQ backlog is large
+  DLQBacklogAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmName: dlq-rapid-growth
-      MetricName: NumberOfMessagesSent
+      AlarmName: dlq-large-backlog
+      MetricName: ApproximateNumberOfMessagesVisible
       Namespace: AWS/SQS
       Dimensions:
         - Name: QueueName
           Value: order-processing-dlq
-      Statistic: Sum
+      Statistic: Maximum
       Period: 300
       EvaluationPeriods: 2
       Threshold: 50
@@ -334,40 +334,22 @@ import boto3
 sqs = boto3.client('sqs')
 
 def redrive_messages(event, context):
-    """Move messages from DLQ back to the source queue after a fix is deployed."""
-    dlq_url = event['dlqUrl']
-    source_url = event['sourceUrl']
-    max_messages = event.get('maxMessages', 100)
+    """Start an SQS-managed redrive task after a fix is deployed."""
+    dlq_arn = event['dlqArn']
+    source_arn = event.get('sourceArn')  # Optional; omit to redrive to the original source queue.
+    max_rate = event.get('maxMessagesPerSecond', 100)
 
-    moved = 0
+    kwargs = {
+        'SourceArn': dlq_arn,
+        'MaxNumberOfMessagesPerSecond': max_rate
+    }
 
-    while moved < max_messages:
-        response = sqs.receive_message(
-            QueueUrl=dlq_url,
-            MaxNumberOfMessages=10,
-            WaitTimeSeconds=1,
-            MessageAttributeNames=['All']
-        )
+    if source_arn:
+        kwargs['DestinationArn'] = source_arn
 
-        messages = response.get('Messages', [])
-        if not messages:
-            break
+    response = sqs.start_message_move_task(**kwargs)
 
-        for msg in messages:
-            # Send to source queue
-            sqs.send_message(
-                QueueUrl=source_url,
-                MessageBody=msg['Body'],
-                MessageAttributes=msg.get('MessageAttributes', {})
-            )
-            # Delete from DLQ
-            sqs.delete_message(
-                QueueUrl=dlq_url,
-                ReceiptHandle=msg['ReceiptHandle']
-            )
-            moved += 1
-
-    return {'messagesMoved': moved}
+    return {'taskHandle': response['TaskHandle']}
 ```
 
 ## DLQ Analytics Dashboard
@@ -388,13 +370,21 @@ def handler(event, context):
     # Analyze errors from the last 24 hours
     cutoff = (datetime.utcnow() - timedelta(hours=24)).isoformat()
 
-    response = error_log.scan(
-        FilterExpression='#ts > :cutoff',
-        ExpressionAttributeNames={'#ts': 'timestamp'},
-        ExpressionAttributeValues={':cutoff': cutoff}
-    )
+    items = []
+    scan_kwargs = {
+        'FilterExpression': '#ts > :cutoff',
+        'ExpressionAttributeNames': {'#ts': 'timestamp'},
+        'ExpressionAttributeValues': {':cutoff': cutoff}
+    }
 
-    items = response['Items']
+    while True:
+        response = error_log.scan(**scan_kwargs)
+        items.extend(response['Items'])
+
+        if 'LastEvaluatedKey' not in response:
+            break
+
+        scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
     # Count errors by type
     error_counts = Counter(item['errorType'] for item in items)
@@ -424,4 +414,4 @@ The DLQ processor itself needs monitoring. If it fails, messages pile up in the 
 
 A dead letter queue without processing is just a graveyard for messages. By adding automated classification, retry logic, archival, and alerting, you turn it into a self-healing system that handles transient failures automatically and surfaces permanent failures for human review.
 
-The key patterns to remember: classify errors as transient vs. permanent, retry transient failures with exponential backoff, archive permanent failures with enough context to debug them later, and always alert when the DLQ is growing. This approach works for any message-driven system on AWS, whether you are using SQS, SNS, Kinesis, or EventBridge.
+The key patterns to remember: classify errors as transient vs. permanent, retry transient failures with delayed retries, archive permanent failures with enough context to debug them later, and always alert when the DLQ is growing. These concepts can be adapted to other message-driven systems on AWS, but the implementation details differ for services such as SNS, Kinesis, and EventBridge.
