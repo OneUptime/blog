@@ -30,10 +30,18 @@ helm install external-secrets \
   --create-namespace
 ```
 
-Configure AWS Secrets Manager as the secret store:
+Create an IAM role annotated service account, then configure AWS Secrets Manager as the secret store:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: external-secrets-sa
+  namespace: default
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/external-secrets
+---
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager
@@ -52,7 +60,7 @@ spec:
 Create an ExternalSecret that syncs from AWS Secrets Manager:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -85,7 +93,7 @@ Deploy this ExternalSecret to all clusters, and they'll automatically fetch and 
 For multi-region deployments, use region-specific secret stores:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets-manager-us-west
@@ -177,10 +185,10 @@ spec:
       - name: api
         image: myapp:latest
         command: ["/bin/sh"]
-        args: ["-c", "source /vault/secrets/database && ./app"]
+        args: ["-c", ". /vault/secrets/database && ./app"]
 ```
 
-The Vault agent sidecar automatically fetches secrets and keeps them updated.
+The Vault agent sidecar automatically fetches secrets and renders updated secret files when Vault Agent template renewal or refresh occurs.
 
 ## Approach 3: Sealed Secrets for GitOps
 
@@ -204,7 +212,10 @@ kubectl create secret generic api-keys \
   --dry-run=client -o yaml > api-keys.yaml
 
 # Seal the secret (safe to commit)
-kubeseal --format=yaml < api-keys.yaml > api-keys-sealed.yaml
+kubeseal --format=yaml \
+  --controller-name=sealed-secrets \
+  --controller-namespace=kube-system \
+  < api-keys.yaml > api-keys-sealed.yaml
 
 # Commit the sealed secret to Git
 git add api-keys-sealed.yaml
@@ -282,15 +293,14 @@ For advanced use cases, build a custom controller that syncs secrets between clu
 ```python
 # secret-sync-controller.py
 from kubernetes import client, config, watch
-import base64
-import boto3
+import copy
 
 class SecretSyncController:
     def __init__(self, clusters):
         self.clusters = {}
         for cluster_name, kubeconfig_path in clusters.items():
-            config.load_kube_config(kubeconfig_path)
-            self.clusters[cluster_name] = client.CoreV1Api()
+            api_client = config.new_client_from_config(config_file=kubeconfig_path)
+            self.clusters[cluster_name] = client.CoreV1Api(api_client)
 
     def sync_secret(self, secret, source_cluster, target_clusters):
         """Sync secret from source to target clusters"""
@@ -309,15 +319,19 @@ class SecretSyncController:
         # Create secret in target clusters
         for target in target_clusters:
             target_api = self.clusters[target]
+            target_secret = copy.deepcopy(source_secret)
 
             # Remove cluster-specific metadata
-            source_secret.metadata.resource_version = None
-            source_secret.metadata.uid = None
+            target_secret.metadata.resource_version = None
+            target_secret.metadata.uid = None
+            target_secret.metadata.creation_timestamp = None
+            target_secret.metadata.managed_fields = None
+            target_secret.metadata.namespace = 'default'
 
             try:
                 target_api.create_namespaced_secret(
                     namespace='default',
-                    body=source_secret
+                    body=target_secret
                 )
                 print(f"Created secret {secret} in {target}")
             except client.exceptions.ApiException as e:
@@ -325,7 +339,7 @@ class SecretSyncController:
                     target_api.patch_namespaced_secret(
                         name=secret,
                         namespace='default',
-                        body=source_secret
+                        body=target_secret
                     )
                     print(f"Updated secret {secret} in {target}")
                 else:
@@ -343,7 +357,11 @@ class SecretSyncController:
             # Check if secret should be synced
             annotations = event['object'].metadata.annotations or {}
             if annotations.get('sync.example.com/enabled') == 'true':
-                targets = annotations.get('sync.example.com/targets', '').split(',')
+                targets = [
+                    target.strip()
+                    for target in annotations.get('sync.example.com/targets', '').split(',')
+                    if target.strip()
+                ]
 
                 if event_type in ['ADDED', 'MODIFIED']:
                     self.sync_secret(secret_name, 'production-east', targets)
@@ -365,7 +383,7 @@ Deploy this as a pod in your management cluster.
 Implement automated secret rotation:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: database-credentials
@@ -415,10 +433,10 @@ spec:
         summary: "External secret {{ $labels.name }} failed to sync"
 
     - alert: SecretNotSynced
-      expr: time() - externalsecret_sync_calls_total > 3600
+      expr: externalsecret_status_condition{condition="Ready",status!="True"} == 1
       for: 10m
       annotations:
-        summary: "External secret {{ $labels.name }} hasn't synced in over 1 hour"
+        summary: "External secret {{ $labels.name }} is not ready"
 ```
 
 ## Best Practices
