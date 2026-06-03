@@ -39,6 +39,8 @@ spec:
     name: master-http
   - port: 19333
     name: master-grpc
+  - port: 9324
+    name: metrics
   clusterIP: None
   selector:
     app: seaweedfs-master
@@ -82,8 +84,9 @@ spec:
           PEERS=${PEERS%,}
 
           exec /usr/bin/weed master \
-            -ip=$(POD_IP) \
+            -ip=${POD_IP} \
             -port=9333 \
+            -metricsPort=9324 \
             -peers=${PEERS} \
             -mdir=/data \
             -defaultReplication=001 \
@@ -94,6 +97,8 @@ spec:
           name: master-http
         - containerPort: 19333
           name: master-grpc
+        - containerPort: 9324
+          name: metrics
         env:
         - name: POD_IP
           valueFrom:
@@ -160,6 +165,8 @@ spec:
     name: volume-http
   - port: 18080
     name: volume-grpc
+  - port: 9327
+    name: metrics
   clusterIP: None
   selector:
     app: seaweedfs-volume
@@ -197,14 +204,14 @@ spec:
         - -c
         - |
           exec /usr/bin/weed volume \
-            -ip=$(POD_IP) \
+            -ip=${POD_IP} \
             -port=8080 \
             -metricsPort=9327 \
             -dir=/data \
             -max=100 \
             -mserver=seaweedfs-master-0.seaweedfs-master:9333,seaweedfs-master-1.seaweedfs-master:9333,seaweedfs-master-2.seaweedfs-master:9333 \
             -dataCenter=dc1 \
-            -rack=$(RACK) \
+            -rack=${RACK} \
             -compactionMBps=50 \
             -readMode=proxy
         ports:
@@ -274,6 +281,8 @@ spec:
     name: filer-http
   - port: 18888
     name: filer-grpc
+  - port: 9326
+    name: metrics
   selector:
     app: seaweedfs-filer
 ---
@@ -283,7 +292,7 @@ kind: Deployment
 metadata:
   name: seaweedfs-filer
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: seaweedfs-filer
@@ -300,7 +309,7 @@ spec:
         - -c
         - |
           exec /usr/bin/weed filer \
-            -ip=$(POD_IP) \
+            -ip=${POD_IP} \
             -port=8888 \
             -master=seaweedfs-master-0.seaweedfs-master:9333,seaweedfs-master-1.seaweedfs-master:9333,seaweedfs-master-2.seaweedfs-master:9333 \
             -dataCenter=dc1 \
@@ -322,6 +331,8 @@ spec:
         volumeMounts:
         - name: filer-config
           mountPath: /etc/seaweedfs
+        - name: filer-data
+          mountPath: /data
         resources:
           requests:
             memory: "256Mi"
@@ -333,6 +344,21 @@ spec:
       - name: filer-config
         configMap:
           name: seaweedfs-filer-config
+      - name: filer-data
+        persistentVolumeClaim:
+          claimName: seaweedfs-filer-data
+---
+# filer-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: seaweedfs-filer-data
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
 ---
 # filer-config.yaml
 apiVersion: v1
@@ -349,11 +375,15 @@ data:
 Deploy the filer service.
 
 ```bash
+kubectl apply -f filer-config.yaml
+kubectl apply -f filer-pvc.yaml
 kubectl apply -f seaweedfs-filer-service.yaml
+kubectl apply -f seaweedfs-filer-deployment.yaml
 kubectl wait --for=condition=ready pod -l app=seaweedfs-filer --timeout=120s
 
 # Test filer access
-kubectl exec seaweedfs-filer-$(kubectl get pod -l app=seaweedfs-filer -o jsonpath='{.items[0].metadata.name}' | cut -d'-' -f3) -- curl -s http://localhost:8888/
+FILER_POD=$(kubectl get pod -l app=seaweedfs-filer -o jsonpath='{.items[0].metadata.name}')
+kubectl exec "${FILER_POD}" -- curl -s http://localhost:8888/
 ```
 
 ## Deploying S3 Gateway
@@ -449,6 +479,8 @@ stringData:
           "actions": [
             "Admin",
             "Read",
+            "List",
+            "Tagging",
             "Write"
           ]
         }
@@ -461,10 +493,11 @@ Deploy the S3 gateway.
 ```bash
 kubectl apply -f s3-secret.yaml
 kubectl apply -f seaweedfs-s3-service.yaml
+kubectl apply -f seaweedfs-s3-deployment.yaml
 kubectl wait --for=condition=ready pod -l app=seaweedfs-s3 --timeout=120s
 
 # Get S3 endpoint
-S3_ENDPOINT=$(kubectl get svc seaweedfs-s3 -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+S3_ENDPOINT=$(kubectl get svc seaweedfs-s3 -o jsonpath='{.status.loadBalancer.ingress[0].ip}{.status.loadBalancer.ingress[0].hostname}')
 echo "S3 endpoint: http://${S3_ENDPOINT}:8333"
 ```
 
@@ -537,14 +570,14 @@ Test FUSE mount functionality.
 kubectl apply -f fuse-mount-pod.yaml
 kubectl wait --for=condition=ready pod/seaweedfs-mount-test
 
-# Write files through FUSE mount
-kubectl exec seaweedfs-mount-test -- sh -c "echo 'test data' > /mnt/seaweedfs/testfile.txt"
+# Write files through FUSE mount into the bucket directory
+kubectl exec seaweedfs-mount-test -- sh -c "echo 'test data' > /mnt/seaweedfs/buckets/test-bucket/testfile.txt"
 
 # Read back through FUSE
-kubectl exec seaweedfs-mount-test -- cat /mnt/seaweedfs/testfile.txt
+kubectl exec seaweedfs-mount-test -- cat /mnt/seaweedfs/buckets/test-bucket/testfile.txt
 
 # Verify file is accessible via S3
-aws s3 ls s3://testfile.txt --endpoint-url=http://${S3_ENDPOINT}:8333
+aws s3 ls s3://test-bucket/testfile.txt --endpoint-url=http://${S3_ENDPOINT}:8333
 ```
 
 ## Configuring Replication
@@ -559,8 +592,9 @@ SeaweedFS uses replication notation: XYZ where X is datacenter copies, Y is rack
 # 100 - 1 copy in different datacenter
 # 200 - 2 copies in different datacenters
 
-# Set default replication when creating volumes
-kubectl exec seaweedfs-master-0 -- weed shell <<< "volume.configure.replication -replication=001"
+# Change replication for an existing volume, then repair missing replicas
+kubectl exec seaweedfs-master-0 -- weed shell <<< "volume.configure.replication -volumeId=1 -replication=001"
+kubectl exec seaweedfs-master-0 -- weed shell <<< "volume.fix.replication"
 
 # Check replication status
 kubectl exec seaweedfs-master-0 -- weed shell <<< "volume.list"
@@ -609,6 +643,6 @@ spec:
     interval: 30s
 ```
 
-Key metrics to monitor include `weed_master_volume_count`, `weed_volume_disk_free_bytes`, and `weed_filer_request_total`.
+Key metrics to monitor include `SeaweedFS_master_is_leader`, `SeaweedFS_volumeServer_max_volumes`, and `SeaweedFS_filer_request_total`.
 
 SeaweedFS provides a lightweight yet powerful storage solution that scales from single-server deployments to multi-datacenter clusters. Its dual nature as both object storage and distributed filesystem makes it versatile for various workload types. By deploying SeaweedFS on Kubernetes with proper replication and monitoring, you gain S3-compatible storage without the operational complexity of alternatives like Ceph or the resource requirements of MinIO.
