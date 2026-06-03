@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Storage, RawBlock, Database
 
-Description: Learn how to configure and use raw block volumes in Kubernetes for high-performance database workloads, bypassing the filesystem layer for maximum IOPS and lowest latency.
+Description: Learn how to configure and use raw block volumes in Kubernetes for high-performance database workloads, bypassing the filesystem layer for lower overhead when the application supports direct block access.
 
 ---
 
-Raw block volumes provide direct access to block devices without a filesystem, offering maximum performance for databases and applications that implement their own storage management. This eliminates filesystem overhead and gives applications complete control over storage.
+Raw block volumes provide direct access to block devices without a filesystem, which can improve performance for databases and applications that implement their own storage management. This avoids filesystem overhead and gives applications complete control over storage.
 
 ## Understanding Raw Block Volumes
 
@@ -28,7 +28,7 @@ Raw block volumes differ from filesystem volumes:
 
 Use raw block when:
 - Running databases with custom storage engines (Oracle, MySQL InnoDB)
-- Needing maximum IOPS and lowest latency
+- Needing to reduce storage overhead after benchmarking the workload
 - Application handles block-level operations
 - Avoiding filesystem overhead
 
@@ -44,7 +44,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: io2
-  iops: "50000"  # High IOPS for databases
+  iopsPerGB: "500"  # 50,000 IOPS for a 100Gi volume
   encrypted: "true"
 volumeBindingMode: WaitForFirstConsumer
 allowVolumeExpansion: true
@@ -88,14 +88,12 @@ Mount as a block device using `volumeDevices`:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: postgres-raw-block
+  name: raw-block-example
 spec:
   containers:
-  - name: postgres
-    image: postgres:15
-    env:
-    - name: POSTGRES_PASSWORD
-      value: "password123"
+  - name: block-consumer
+    image: fedora:40
+    command: ["/bin/sh", "-c", "lsblk && tail -f /dev/null"]
     # Use volumeDevices instead of volumeMounts
     volumeDevices:
     - name: data
@@ -121,6 +119,8 @@ spec:
     - /bin/sh
     - -c
     - |
+      set -e
+      apk add --no-cache e2fsprogs util-linux
       # Format the block device with ext4
       if ! blkid /dev/xvda; then
         echo "Formatting /dev/xvda..."
@@ -148,6 +148,8 @@ spec:
     - /bin/bash
     - -c
     - |
+      set -e
+      mkdir -p /mnt
       # Mount the formatted device
       mount /dev/xvda /mnt
       # Start postgres
@@ -165,7 +167,7 @@ spec:
 
 ## Raw Block with MySQL
 
-MySQL can use raw block devices directly:
+MySQL InnoDB can use raw disk partitions for the system tablespace, but it must be configured before the first database initialization:
 
 ```yaml
 apiVersion: v1
@@ -175,8 +177,10 @@ metadata:
 data:
   my.cnf: |
     [mysqld]
+    innodb_data_home_dir=
+    innodb_data_file_path=/dev/mysql-data:100Graw
     innodb_flush_method=O_DIRECT
-    innodb_file_per_table=1
+    innodb_file_per_table=0
 ---
 apiVersion: v1
 kind: Pod
@@ -206,19 +210,19 @@ spec:
 
 ## StatefulSet with Raw Block Volumes
 
-Deploy a database cluster using raw block:
+Deploy a stateful workload using raw block devices:
 
 ```yaml
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: scylladb-cluster
+  name: raw-block-workers
 spec:
-  serviceName: scylladb
+  serviceName: raw-block-workers
   replicas: 3
   selector:
     matchLabels:
-      app: scylladb
+      app: raw-block-worker
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -233,19 +237,15 @@ spec:
   template:
     metadata:
       labels:
-        app: scylladb
+        app: raw-block-worker
     spec:
       containers:
-      - name: scylladb
-        image: scylladb/scylla:latest
-        args:
-        - --smp
-        - "4"
-        - --memory
-        - "8G"
+      - name: block-consumer
+        image: fedora:40
+        command: ["/bin/sh", "-c", "lsblk && tail -f /dev/null"]
         volumeDevices:
         - name: data
-          devicePath: /dev/scylla-data
+          devicePath: /dev/database-data
 ```
 
 ## Performance Testing
@@ -289,7 +289,7 @@ Run the benchmark:
 
 ```bash
 kubectl apply -f fio-benchmark.yaml
-kubectl wait --for=condition=complete pod/fio-benchmark --timeout=300s
+kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/fio-benchmark --timeout=300s
 kubectl logs fio-benchmark
 
 # Compare with filesystem benchmark by changing to volumeMounts
