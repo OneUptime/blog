@@ -20,8 +20,8 @@ The most direct performance lever is how much compute you throw at the job.
 
 | Worker Type | vCPU | Memory | Disk | DPU | Best For |
 |-------------|------|--------|------|-----|----------|
-| G.1X | 4 | 16 GB | 64 GB | 1 | Most jobs |
-| G.2X | 8 | 32 GB | 128 GB | 2 | Memory-heavy transforms, large joins |
+| G.1X | 4 | 16 GB | 94 GB | 1 | Most jobs |
+| G.2X | 8 | 32 GB | 138 GB | 2 | Memory-heavy transforms, large joins |
 | G.4X | 16 | 64 GB | 256 GB | 4 | Very large datasets |
 | G.8X | 32 | 128 GB | 512 GB | 8 | Extreme scale |
 
@@ -73,12 +73,11 @@ Glue lets you pass Spark configuration parameters:
 ```python
 # Pass custom Spark configuration
 default_args = {
-    '--conf': 'spark.sql.shuffle.partitions=200',
-    '--conf': 'spark.default.parallelism=100'
+    '--conf': 'spark.sql.shuffle.partitions=200 --conf spark.default.parallelism=100'
 }
 ```
 
-Wait - that won't work because of duplicate keys. Use this approach instead:
+If you only need runtime SQL settings, you can also set them in the ETL script itself:
 
 ```python
 # Set multiple Spark configurations in the ETL script itself
@@ -252,15 +251,16 @@ distribution = df.groupBy("customer_id").count().orderBy("count", ascending=Fals
 distribution.show(20)
 
 # Compare largest vs median partition
-stats = distribution.describe("count")
-stats.show()
+largest_count = distribution.first()["count"]
+median_count = distribution.approxQuantile("count", [0.5], 0.01)[0]
+print(f"Largest count: {largest_count}, median count: {median_count}")
 ```
 
 ### Salting to Fix Skew
 
 ```python
 # Add salt to distribute skewed keys across multiple partitions
-from pyspark.sql.functions import concat, lit, rand, floor
+from pyspark.sql.functions import col, concat, count, floor, lit, rand, sum
 
 salt_factor = 10
 
