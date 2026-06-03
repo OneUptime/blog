@@ -8,17 +8,17 @@ Description: Step-by-step guide to sending CloudWatch Alarm notifications to Sla
 
 ---
 
-Slack is where most engineering teams live during the workday. So it makes sense to send your CloudWatch alarm notifications there instead of relying on email that might sit unread for hours. There are three solid approaches to getting CloudWatch alarms into Slack, and which one you pick depends on how much customization you need.
+Slack is where most engineering teams live during the workday. So it makes sense to send your CloudWatch alarm notifications there instead of relying on email that might sit unread for hours. There are two solid approaches to getting CloudWatch alarms into Slack, and which one you pick depends on how much customization you need.
 
-The simplest option is AWS Chatbot, which is a managed service built for exactly this purpose. The middle ground is an SNS-to-Lambda pipeline that gives you full control over message formatting. And the quick-and-dirty approach is a direct webhook. Let's cover all three.
+The simplest option is Amazon Q Developer in chat applications, formerly AWS Chatbot, which is a managed service built for exactly this purpose. The SNS-to-Lambda pipeline gives you full control over message formatting. Let's cover both, plus a common direct-webhook shortcut that does not work with SNS.
 
-## Method 1: AWS Chatbot (Recommended)
+## Method 1: Amazon Q Developer in chat applications (Recommended)
 
-AWS Chatbot is the official, AWS-managed way to send notifications to Slack. It handles the OAuth flow, message formatting, and even lets you run AWS CLI commands from Slack.
+Amazon Q Developer in chat applications, formerly AWS Chatbot, is the official, AWS-managed way to send notifications to Slack. It handles the OAuth flow, message formatting, and even lets you run AWS CLI commands from Slack. The AWS CLI command namespace is still `chatbot`.
 
-### Step 1: Set Up AWS Chatbot
+### Step 1: Set Up Amazon Q Developer in chat applications
 
-Go to the AWS Chatbot console and click "Configure new client." Select Slack, and you'll be redirected to authorize the Chatbot app in your Slack workspace.
+Go to the Amazon Q Developer in chat applications console and click "Configure new client." Select Slack, and you'll be redirected to authorize the app in your Slack workspace.
 
 ### Step 2: Create a Chatbot Channel Configuration
 
@@ -27,21 +27,20 @@ Go to the AWS Chatbot console and click "Configure new client." Select Slack, an
 
 aws chatbot create-slack-channel-configuration \
   --configuration-name "cloudwatch-alerts" \
-  --slack-workspace-id "T0123ABC" \
+  --slack-team-id "T0123ABC" \
   --slack-channel-id "C0456DEF" \
   --iam-role-arn arn:aws:iam::123456789012:role/AWSChatbotRole \
   --sns-topic-arns arn:aws:sns:us-east-1:123456789012:infrastructure-alerts \
   --logging-level ERROR
 ```
 
-You'll need the Slack workspace ID and channel ID. You can find these in Slack by right-clicking a channel and selecting "Copy link" - the workspace and channel IDs are in the URL.
+You'll need the Slack team ID and channel ID. You can find the channel ID in Slack by right-clicking a channel and selecting "Copy link" - the channel ID is at the end of the URL.
 
 ### Step 3: Create the IAM Role
 
-AWS Chatbot needs an IAM role:
+Amazon Q Developer in chat applications needs an IAM role. Save this trust policy as `chatbot-trust.json`:
 
 ```json
-// Trust policy for AWS Chatbot role
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -62,10 +61,10 @@ aws iam create-role \
   --role-name AWSChatbotRole \
   --assume-role-policy-document file://chatbot-trust.json
 
-# Attach the notification permissions policy
+# Attach an AWS managed policy that supports CloudWatch alarm notifications
 aws iam attach-role-policy \
   --role-name AWSChatbotRole \
-  --policy-arn arn:aws:iam::aws:policy/AWSChatbotNotificationsOnly
+  --policy-arn arn:aws:iam::aws:policy/CloudWatchReadOnlyAccess
 ```
 
 ### Step 4: Connect CloudWatch Alarms to the SNS Topic
@@ -102,10 +101,10 @@ In Slack, go to your workspace settings, then Apps > Incoming Webhooks. Create a
 # Lambda function to send formatted CloudWatch alarms to Slack
 import json
 import os
-import urllib3
+import urllib.error
+import urllib.request
 
 SLACK_WEBHOOK_URL = os.environ['SLACK_WEBHOOK_URL']
-http = urllib3.PoolManager()
 
 def lambda_handler(event, context):
     # Parse the CloudWatch alarm from the SNS message
@@ -196,15 +195,19 @@ def lambda_handler(event, context):
     }
 
     # Send to Slack
-    response = http.request(
-        'POST',
+    request = urllib.request.Request(
         SLACK_WEBHOOK_URL,
-        body=json.dumps(slack_message),
-        headers={'Content-Type': 'application/json'}
+        data=json.dumps(slack_message).encode('utf-8'),
+        headers={'Content-Type': 'application/json'},
+        method='POST'
     )
 
-    if response.status != 200:
-        raise Exception(f'Slack API error: {response.status} {response.data.decode()}')
+    try:
+        with urllib.request.urlopen(request) as response:
+            if response.status != 200:
+                raise Exception(f'Slack API error: {response.status} {response.read().decode()}')
+    except urllib.error.HTTPError as error:
+        raise Exception(f'Slack API error: {error.code} {error.read().decode()}') from error
 
     return {'statusCode': 200}
 ```
@@ -236,19 +239,19 @@ aws sns subscribe \
   --notification-endpoint arn:aws:lambda:us-east-1:123456789012:function:cloudwatch-to-slack
 ```
 
-## Method 3: Direct SNS to Slack (Quick Setup)
+## Method 3: Direct SNS to Slack (Does Not Work)
 
-For the fastest possible setup, subscribe Slack's webhook directly to SNS as an HTTPS endpoint:
+It might look tempting to subscribe Slack's webhook directly to SNS as an HTTPS endpoint, but incoming webhooks cannot complete the SNS subscription confirmation flow:
 
 ```bash
-# Subscribe the Slack webhook directly to SNS
+# This subscription remains pending because Slack cannot confirm it
 aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:infrastructure-alerts \
   --protocol https \
   --notification-endpoint "https://hooks.slack.com/services/T00/B00/xxx"
 ```
 
-The downside is that Slack receives the raw SNS message, which is ugly JSON. It works, but the Lambda approach produces much better-looking notifications.
+SNS sends a confirmation message containing a `SubscribeURL` before it delivers notifications to an HTTP or HTTPS endpoint. Slack incoming webhooks do not follow that confirmation URL, and SNS notifications are not formatted as Slack webhook payloads anyway. Use Amazon Q Developer in chat applications or the Lambda approach instead.
 
 ## CloudFormation for the Lambda Approach
 
@@ -293,8 +296,10 @@ Resources:
           SLACK_WEBHOOK_URL: !Ref SlackWebhookUrl
       Code:
         ZipFile: |
-          import json, os, urllib3
-          http = urllib3.PoolManager()
+          import json
+          import os
+          import urllib.request
+
           def lambda_handler(event, context):
               msg = json.loads(event['Records'][0]['Sns']['Message'])
               state = msg['NewStateValue']
@@ -305,9 +310,13 @@ Resources:
                       'text': f"*{msg['AlarmName']}* is {state}\n{msg.get('AlarmDescription', '')}\n{msg['NewStateReason']}"
                   }]
               }
-              http.request('POST', os.environ['SLACK_WEBHOOK_URL'],
-                           body=json.dumps(slack_msg),
-                           headers={'Content-Type': 'application/json'})
+              request = urllib.request.Request(
+                  os.environ['SLACK_WEBHOOK_URL'],
+                  data=json.dumps(slack_msg).encode('utf-8'),
+                  headers={'Content-Type': 'application/json'},
+                  method='POST'
+              )
+              urllib.request.urlopen(request)
 
   LambdaPermission:
     Type: AWS::Lambda::Permission
@@ -355,4 +364,4 @@ aws cloudwatch set-alarm-state \
 
 ## Wrapping Up
 
-Getting CloudWatch alarms into Slack keeps your team informed without anyone needing to watch the AWS console. AWS Chatbot is the easiest path if you want something managed. The Lambda approach gives you beautiful, customized messages. Either way, pair your Slack notifications with [PagerDuty integration](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-pagerduty/view) for critical alerts that need guaranteed acknowledgment. Slack messages are easy to miss, but they're perfect for team awareness and non-urgent monitoring.
+Getting CloudWatch alarms into Slack keeps your team informed without anyone needing to watch the AWS console. Amazon Q Developer in chat applications is the easiest path if you want something managed. The Lambda approach gives you beautiful, customized messages. Either way, pair your Slack notifications with [PagerDuty integration](https://oneuptime.com/blog/post/2026-02-12-cloudwatch-alarms-pagerduty/view) for critical alerts that need guaranteed acknowledgment. Slack messages are easy to miss, but they're perfect for team awareness and non-urgent monitoring.
