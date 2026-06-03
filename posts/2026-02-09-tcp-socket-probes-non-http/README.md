@@ -169,13 +169,15 @@ spec:
           failureThreshold: 2
 ```
 
-For better health checking, combine TCP liveness with HTTP readiness on the management port:
+For better health checking, combine TCP liveness with an application-aware exec readiness check:
 
 ```yaml
 readinessProbe:
-  httpGet:
-    path: /api/health/checks/alarms
-    port: 15672
+  exec:
+    command:
+    - /bin/sh
+    - -ec
+    - rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms
   initialDelaySeconds: 10
   periodSeconds: 5
 ```
@@ -249,10 +251,10 @@ spec:
         port: main
       periodSeconds: 10
 
-    # Check admin port separately
+    # Check the admin port for readiness
     readinessProbe:
       tcpSocket:
-        port: main
+        port: admin
       periodSeconds: 5
 ```
 
@@ -294,6 +296,12 @@ spec:
     volumeMounts:
     - name: health
       mountPath: /health
+    readinessProbe:
+      exec:
+        command:
+        - test
+        - -f
+        - /health/ready
 
   volumes:
   - name: health
@@ -417,12 +425,14 @@ sum by (namespace, pod) (
 
 # TCP probe latency
 histogram_quantile(0.95,
-  rate(prober_probe_duration_seconds_bucket{probe_type="TCP"}[5m])
+  sum by (le, namespace, pod) (
+    rate(prober_probe_duration_seconds_bucket{probe_type="TCP"}[5m])
+  )
 )
 
 # Pods with failing TCP probes
-count by (namespace, pod) (
-  prober_probe_total{probe_type="TCP",result="failed"}
+sum by (namespace, pod) (
+  increase(prober_probe_total{probe_type="TCP",result="failed"}[5m])
 ) > 0
 ```
 
@@ -441,7 +451,7 @@ kubectl exec -it my-pod -- telnet localhost 5432
 
 # Check from another pod (network perspective)
 kubectl run -it --rm debug --image=busybox --restart=Never -- \
-  nc -zv my-pod 5432
+  nc -zv my-service 5432
 
 # View probe events
 kubectl describe pod my-pod
@@ -459,7 +469,7 @@ nc -zv localhost 5432
 
 ## TCP Probes with Custom Network Policies
 
-Ensure network policies allow probe traffic:
+If your CNI enforces NetworkPolicy for node-originated probe traffic, ensure policies allow traffic from your node IP ranges:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -473,11 +483,11 @@ spec:
   policyTypes:
   - Ingress
   ingress:
-  # Allow kubelet to perform health checks
+  # Allow kubelet health checks from node IPs.
+  # Replace this CIDR with your cluster's node subnet.
   - from:
-    - namespaceSelector:
-        matchLabels:
-          name: kube-system
+    - ipBlock:
+        cidr: 10.0.0.0/8
     ports:
     - protocol: TCP
       port: 5432
@@ -491,7 +501,7 @@ spec:
       port: 5432
 ```
 
-Health check probes originate from the kubelet on each node, not from the control plane.
+Health check probes originate from the kubelet on each node, not from the control plane or a Pod in the `kube-system` namespace.
 
 ## Common TCP Probe Issues
 
@@ -515,13 +525,13 @@ kubectl exec -it my-pod -- getenforce
 
 **Wrong port number:**
 ```yaml
-# Verify port configuration matches container
+# Verify the probe port matches the port your process listens on
 ports:
-- containerPort: 5432  # Must match probe port
+- containerPort: 5432  # Documents the container's listening port
 
 livenessProbe:
   tcpSocket:
-    port: 5432  # Must match containerPort
+    port: 5432  # Must match the listening port
 ```
 
 **Service listening on specific interface:**
@@ -529,8 +539,9 @@ livenessProbe:
 # Check if service listens on 0.0.0.0 or 127.0.0.1
 kubectl exec -it my-pod -- netstat -tlnp
 
-# If listening on 127.0.0.1, probe works
-# If listening on specific IP, may need to configure service
+# TCP probes connect to the Pod IP from the node.
+# If the service only listens on 127.0.0.1, use an exec probe or
+# configure the service to listen on the Pod IP or 0.0.0.0.
 ```
 
 ## Best Practices for TCP Probes
