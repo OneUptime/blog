@@ -19,7 +19,7 @@ This guide covers setting up the X-Ray data source in Managed Grafana, building 
 You need:
 
 - An Amazon Managed Grafana workspace (see [setting up Amazon Managed Grafana](https://oneuptime.com/blog/post/2026-02-12-set-up-amazon-managed-grafana/view))
-- Applications instrumented with X-Ray SDK or OpenTelemetry sending traces to X-Ray
+- Applications instrumented with OpenTelemetry or the X-Ray SDK sending traces to X-Ray. AWS recommends migrating X-Ray SDK and daemon instrumentation to OpenTelemetry because the X-Ray SDKs and daemon entered maintenance mode on February 25, 2026.
 - IAM permissions for the Grafana workspace role to query X-Ray
 
 ## Step 1: Configure IAM Permissions
@@ -44,7 +44,8 @@ Add X-Ray read permissions to your Grafana workspace role.
         "xray:GetGroup",
         "xray:GetTimeSeriesServiceStatistics",
         "xray:GetSamplingRules",
-        "xray:GetSamplingStatisticSummaries"
+        "xray:GetSamplingStatisticSummaries",
+        "ec2:DescribeRegions"
       ],
       "Resource": "*"
     }
@@ -149,7 +150,7 @@ Create panels that show trace data alongside your metrics.
 4. Filter: `service("order-api")`
 5. Visualization: Time series graph
 
-This shows how your service latency changes over time, broken down by the statistics X-Ray provides (average, p50, p90, p99).
+This shows how your service latency changes over time, including average response time and counts for success, error, fault, throttled, and total traces.
 
 ### Panel 2: Error Trace List
 
@@ -168,7 +169,7 @@ This gives you a clickable list of error traces. Click any trace ID to see the f
 3. Query type: **Service Map**
 4. Visualization: Node Graph
 
-The service map shows all your services and how they connect. Services with errors are highlighted in red. This is incredibly useful for spotting which downstream dependency is causing problems.
+The service map shows all your services and how they connect. Faults are highlighted in red, errors in yellow, throttled responses in purple, and successful responses in green. This is incredibly useful for spotting which downstream dependency is causing problems.
 
 ## Step 5: Correlate Metrics and Traces
 
@@ -205,7 +206,7 @@ service("order-api") { http.method = "POST" AND http.status = 500 }
 **By annotation (custom metadata):**
 
 ```text
-annotation.customer_tier = "premium"
+annotation[customer_tier] = "premium"
 ```
 
 **By response time range:**
@@ -223,12 +224,12 @@ service(id(name: "order", type: "AWS::Lambda::Function"))
 **Combining multiple services:**
 
 ```text
-service("order-api") OR service("payment-api") { error = true }
+service("order-api") { error = true } OR service("payment-api") { error = true }
 ```
 
 ## Step 7: Set Up Trace-Based Alerts
 
-While X-Ray does not natively support alerting through Grafana, you can set up alerts based on X-Ray trace statistics.
+Because X-Ray Trace Statistics queries return numeric time series, you can set up Grafana alerts based on those query results.
 
 1. Create a panel with X-Ray Trace Statistics query
 2. Switch to the Alert tab
