@@ -67,7 +67,7 @@ This creates a minimal bastion host in a public subnet.
 ```bash
 # Launch a bastion host
 aws ec2 run-instances \
-  --image-id ami-0c55b159cbfafe1f0 \
+  --image-id resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64 \
   --instance-type t3.micro \
   --key-name my-keypair \
   --security-group-ids sg-bastion-sg \
@@ -122,12 +122,12 @@ mysql -h 127.0.0.1 -P 3307 -u admin -p
 
 ## AWS Systems Manager Session Manager (No Bastion Needed)
 
-Session Manager lets you create port forwarding sessions without running a bastion host. The EC2 instance needs the SSM agent (installed by default on Amazon Linux) and an appropriate IAM role.
+Session Manager lets you create port forwarding sessions through an SSM-managed EC2 instance without opening SSH access or running a public bastion host. The EC2 instance needs the SSM agent (installed by default on Amazon Linux) and an appropriate IAM role.
 
 This is cleaner than SSH tunneling because:
 - No SSH keys to manage
 - No inbound ports needed on the EC2 instance
-- All sessions are logged in CloudTrail
+- Session API calls are logged in CloudTrail
 
 This command creates a port forwarding session through Session Manager.
 
@@ -157,13 +157,13 @@ For teams that frequently need database access, AWS Client VPN provides a VPN co
 
 Setting up Client VPN involves:
 
-1. Create a certificate authority (ACM Private CA or mutual authentication)
+1. Choose an authentication method (mutual authentication, Active Directory, or SAML-based federated authentication)
 2. Create a Client VPN endpoint
 3. Associate it with your VPC subnets
 4. Configure authorization rules
 5. Download the client configuration
 
-This is more setup than SSH tunneling, but it's much better for teams. Everyone gets VPN access with their own certificates, and you don't need to share SSH keys.
+This is more setup than SSH tunneling, but it's much better for teams. Everyone gets VPN access through the authentication method you choose, and you don't need to share SSH keys.
 
 Once the VPN is connected, you use the RDS endpoint directly.
 
@@ -227,7 +227,7 @@ If you can't connect, check these common issues in order:
 3. **Route tables**: Ensure proper routing between subnets
 4. **RDS status**: The instance must be in "Available" state
 5. **Credentials**: Double-check username, password, and database name
-6. **SSL/TLS**: Some connections require SSL. Add `--ssl-mode=require` for PostgreSQL or `--ssl` for MySQL
+6. **SSL/TLS**: Some connections require SSL. Add `sslmode=require` in the PostgreSQL connection string or `--ssl-mode=REQUIRED` for MySQL
 
 For persistent connectivity issues, try using [Reachability Analyzer](https://oneuptime.com/blog/post/2026-02-12-use-reachability-analyzer-diagnose-vpc-connectivity/view) to diagnose the network path.
 
