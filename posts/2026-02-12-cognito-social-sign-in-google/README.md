@@ -32,7 +32,9 @@ sequenceDiagram
     Cognito->>Google: Exchange code for tokens
     Google->>Cognito: Google tokens with user info
     Cognito->>Cognito: Create/update user in pool
-    Cognito->>App: Redirect with Cognito tokens
+    Cognito->>App: Redirect with authorization code
+    App->>Cognito: Exchange code for Cognito tokens
+    Cognito->>App: Return Cognito tokens
     App->>User: Signed in
 ```
 
@@ -270,12 +272,12 @@ attribute_mapping = {
 
 ## Linking Google Accounts to Existing Users
 
-When a user who already has a password-based account signs in with Google, Cognito creates a separate user by default. To link them, use a Pre Sign-Up Lambda trigger:
+When a user who already has a password-based account signs in with Google, Cognito creates a separate user by default. A Pre Sign-Up Lambda trigger can auto-confirm federated users, but it doesn't link accounts by itself:
 
 ```javascript
 // link-accounts-lambda.js
 export const handler = async (event) => {
-  // Auto-link federated users to existing accounts
+  // Auto-confirm federated users after they sign in with Google
   if (event.triggerSource === 'PreSignUp_ExternalProvider') {
     event.response.autoConfirmUser = true;
     event.response.autoVerifyEmail = true;
@@ -285,7 +287,7 @@ export const handler = async (event) => {
 };
 ```
 
-For full account linking, you'll need admin API calls to merge the accounts. This is covered in [Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view).
+For full account linking, you'll need the `AdminLinkProviderForUser` admin API to link the Google identity to the existing user. This is covered in [Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view).
 
 ## Testing the Integration
 
