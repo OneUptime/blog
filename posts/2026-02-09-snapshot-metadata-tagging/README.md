@@ -67,35 +67,35 @@ metadata:
   name: postgres-prod-20260209-153045
   annotations:
     # Backup details
-    backup.kubernetes.io/timestamp: "2026-02-09T15:30:45Z"
-    backup.kubernetes.io/trigger: "scheduled-cronjob"
-    backup.kubernetes.io/duration: "45s"
+    backup.example.com/timestamp: "2026-02-09T15:30:45Z"
+    backup.example.com/trigger: "scheduled-cronjob"
+    backup.example.com/duration: "45s"
 
     # Application state
-    backup.kubernetes.io/app-version: "v2.4.1"
-    backup.kubernetes.io/database-version: "15.2"
-    backup.kubernetes.io/transaction-log-position: "0/1A2B3C4D"
+    backup.example.com/app-version: "v2.4.1"
+    backup.example.com/database-version: "15.2"
+    backup.example.com/transaction-log-position: "0/1A2B3C4D"
 
     # Verification status
-    backup.kubernetes.io/verified: "2026-02-10T02:00:00Z"
-    backup.kubernetes.io/verification-status: "passed"
-    backup.kubernetes.io/restore-tested: "true"
+    backup.example.com/verified: "2026-02-10T02:00:00Z"
+    backup.example.com/verification-status: "passed"
+    backup.example.com/restore-tested: "true"
 
     # Compliance documentation
-    backup.kubernetes.io/compliance-reviewed: "2026-02-09T16:00:00Z"
-    backup.kubernetes.io/compliance-officer: "jane.smith@company.com"
-    backup.kubernetes.io/encryption-enabled: "true"
-    backup.kubernetes.io/encryption-key-id: "arn:aws:kms:us-east-1:123456789012:key/xxxxx"
+    backup.example.com/compliance-reviewed: "2026-02-09T16:00:00Z"
+    backup.example.com/compliance-officer: "jane.smith@company.com"
+    backup.example.com/encryption-enabled: "true"
+    backup.example.com/encryption-key-id: "arn:aws:kms:us-east-1:123456789012:key/xxxxx"
 
     # Recovery information
-    backup.kubernetes.io/rpo-minutes: "60"
-    backup.kubernetes.io/rto-minutes: "30"
-    backup.kubernetes.io/recovery-priority: "high"
+    backup.example.com/rpo-minutes: "60"
+    backup.example.com/rto-minutes: "30"
+    backup.example.com/recovery-priority: "high"
 
     # Documentation
-    backup.kubernetes.io/notes: "Pre-migration backup before v3.0 upgrade"
-    backup.kubernetes.io/runbook: "https://wiki.company.com/backup-restore"
-    backup.kubernetes.io/contact: "platform-team@company.com"
+    backup.example.com/notes: "Pre-migration backup before v3.0 upgrade"
+    backup.example.com/runbook: "https://wiki.company.com/backup-restore"
+    backup.example.com/contact: "platform-team@company.com"
 
 spec:
   volumeSnapshotClassName: prod-snapshot-class
@@ -148,11 +148,11 @@ metadata:
     created-by: script
     snapshot-script-version: "1.0"
   annotations:
-    backup.kubernetes.io/timestamp: "$ISO_TIMESTAMP"
-    backup.kubernetes.io/trigger: "manual-script"
-    backup.kubernetes.io/created-by: "$(whoami)"
-    backup.kubernetes.io/pvc-name: "$PVC_NAME"
-    backup.kubernetes.io/retention-until: "$(date -d "+${RETENTION_DAYS} days" -Iseconds)"
+    backup.example.com/timestamp: "$ISO_TIMESTAMP"
+    backup.example.com/trigger: "manual-script"
+    backup.example.com/created-by: "$(whoami)"
+    backup.example.com/pvc-name: "$PVC_NAME"
+    backup.example.com/retention-until: "$(date -d "+${RETENTION_DAYS} days" -Iseconds)"
 spec:
   volumeSnapshotClassName: csi-snapshot-class
   source:
@@ -192,19 +192,19 @@ Search by annotations:
 # Find verified snapshots
 kubectl get volumesnapshot -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations."backup.kubernetes.io/verified" != null) |
+    select(.metadata.annotations."backup.example.com/verified" != null) |
     .metadata.name'
 
 # Find snapshots created by CronJobs
 kubectl get volumesnapshot -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations."backup.kubernetes.io/trigger" == "scheduled-cronjob") |
+    select(.metadata.annotations."backup.example.com/trigger" == "scheduled-cronjob") |
     .metadata.name'
 
 # Find snapshots needing verification
 kubectl get volumesnapshot -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations."backup.kubernetes.io/verified" == null) |
+    select(.metadata.annotations."backup.example.com/verified" == null) |
     .metadata.name'
 ```
 
@@ -223,12 +223,23 @@ echo
 # Cost per GB-month (example: AWS EBS snapshot pricing)
 COST_PER_GB=0.05
 
+JQ_SIZE_TO_GIB='
+  def size_to_gib:
+    if . == null then 0
+    elif test("Ki$") then (rtrimstr("Ki") | tonumber) / 1048576
+    elif test("Mi$") then (rtrimstr("Mi") | tonumber) / 1024
+    elif test("Gi$") then (rtrimstr("Gi") | tonumber)
+    elif test("Ti$") then (rtrimstr("Ti") | tonumber) * 1024
+    else tonumber / 1073741824
+    end;
+'
+
 echo "By Cost Center:"
 kubectl get volumesnapshot -o json | \
-  jq -r '.items[] |
+  jq -r "$JQ_SIZE_TO_GIB"'.items[] |
     {
-      cost_center: .metadata.labels."cost-center",
-      size_gb: (.status.restoreSize | rtrimstr("Gi") | tonumber)
+      cost_center: (.metadata.labels."cost-center" // "unknown"),
+      size_gb: (.status.restoreSize | size_to_gib)
     }' | \
   jq -s 'group_by(.cost_center) |
     .[] |
@@ -243,10 +254,10 @@ kubectl get volumesnapshot -o json | \
 echo
 echo "By Application:"
 kubectl get volumesnapshot -o json | \
-  jq -r '.items[] |
+  jq -r "$JQ_SIZE_TO_GIB"'.items[] |
     {
-      app: .metadata.labels.app,
-      size_gb: (.status.restoreSize | rtrimstr("Gi") | tonumber)
+      app: (.metadata.labels.app // "unknown"),
+      size_gb: (.status.restoreSize | size_to_gib)
     }' | \
   jq -s 'group_by(.app) |
     .[] |
@@ -262,10 +273,10 @@ kubectl get volumesnapshot -o json | \
 echo
 echo "By Environment:"
 kubectl get volumesnapshot -o json | \
-  jq -r '.items[] |
+  jq -r "$JQ_SIZE_TO_GIB"'.items[] |
     {
-      env: .metadata.labels.environment,
-      size_gb: (.status.restoreSize | rtrimstr("Gi") | tonumber)
+      env: (.metadata.labels.environment // "unknown"),
+      size_gb: (.status.restoreSize | size_to_gib)
     }' | \
   jq -s 'group_by(.env) |
     .[] |
@@ -296,14 +307,14 @@ kubectl get volumesnapshot -l compliance-required=true \
 NAME:.metadata.name,\
 CREATED:.metadata.creationTimestamp,\
 APP:.metadata.labels.app,\
-VERIFIED:.metadata.annotations.'backup\.kubernetes\.io/verified',\
-ENCRYPTION:.metadata.annotations.'backup\.kubernetes\.io/encryption-enabled'
+VERIFIED:.metadata.annotations.'backup\.example\.com/verified',\
+ENCRYPTION:.metadata.annotations.'backup\.example\.com/encryption-enabled'
 
 echo
 echo "Snapshots Missing Verification:"
 kubectl get volumesnapshot -l compliance-required=true -o json | \
   jq -r '.items[] |
-    select(.metadata.annotations."backup.kubernetes.io/verified" == null) |
+    select(.metadata.annotations."backup.example.com/verified" == null) |
     "\(.metadata.name)\t\(.metadata.creationTimestamp)"' | \
   column -t -s $'\t'
 
