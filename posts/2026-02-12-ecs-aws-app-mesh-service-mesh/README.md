@@ -10,11 +10,11 @@ Description: A practical guide to integrating Amazon ECS with AWS App Mesh for s
 
 Running microservices on ECS gets complicated fast. Once you've got five or ten services all talking to each other, you start running into problems - retries, timeouts, circuit breaking, traffic splitting, observability. You can bake all of that into every service individually, or you can push it down to the infrastructure layer with a service mesh.
 
-AWS App Mesh is Amazon's managed service mesh built on Envoy. It gives you consistent traffic management, observability, and security across your ECS services without modifying your application code. Let's walk through how to set it up.
+AWS App Mesh is Amazon's managed service mesh built on Envoy. It gives you consistent traffic management, observability, and security across your ECS services without modifying your application code. AWS has announced that App Mesh support ends on September 30, 2026, so use this guide for existing App Mesh deployments and evaluate Amazon ECS Service Connect or another service mesh for new long-lived projects. Let's walk through how to set it up.
 
 ## How App Mesh Works with ECS
 
-At a high level, App Mesh works by injecting an Envoy proxy sidecar into each of your ECS tasks. All inbound and outbound traffic flows through this proxy instead of going directly to your application. The proxy handles routing rules, retries, timeouts, and exports telemetry data.
+At a high level, App Mesh works by running an Envoy proxy sidecar in each of your ECS tasks. Application traffic is redirected through this proxy instead of going directly to your application. The proxy handles routing rules, retries, timeouts, and exports telemetry data.
 
 ```mermaid
 graph LR
@@ -52,7 +52,7 @@ aws appmesh create-mesh \
   --spec egressFilter={type=DROP_ALL}
 ```
 
-The `egressFilter` setting of `DROP_ALL` means that traffic can only flow to services that are explicitly defined in the mesh. If you want your services to reach external endpoints, you'd use `ALLOW_ALL` instead or define virtual services for external destinations.
+The `egressFilter` setting of `DROP_ALL` means that traffic can only flow to services that are explicitly defined in the mesh, with an exception for traffic to `*.amazonaws.com` for AWS API calls. If you want your services to reach other external endpoints, you'd use `ALLOW_ALL` instead or define virtual services for external destinations.
 
 ## Step 2: Create Virtual Nodes
 
@@ -96,7 +96,7 @@ aws appmesh create-virtual-node \
   }'
 ```
 
-The `backends` section declares which other services this node is allowed to talk to. This gives you a clear picture of your service dependencies and prevents unintended communication.
+The `backends` section declares which other mesh services this node is expected to talk to. This gives you a clear picture of your service dependencies and, when combined with a restrictive egress filter, helps prevent unintended communication.
 
 ## Step 3: Create Virtual Routers and Routes
 
@@ -210,7 +210,7 @@ Now you need to add the Envoy sidecar to your ECS task definitions. Here's the c
     },
     {
       "name": "envoy",
-      "image": "840364872350.dkr.ecr.us-east-1.amazonaws.com/aws-appmesh-envoy:v1.27.0.0-prod",
+      "image": "840364872350.dkr.ecr.us-east-1.amazonaws.com/aws-appmesh-envoy:v1.34.13.1-prod",
       "essential": true,
       "environment": [
         {
@@ -240,7 +240,7 @@ The `dependsOn` with `HEALTHY` condition makes sure your app doesn't start until
 
 One of the biggest wins of App Mesh is the observability it provides. Envoy exports detailed metrics about every request - latency, error rates, retry counts, connection pools, and more.
 
-You can export these metrics to CloudWatch, X-Ray, or third-party tools. For X-Ray integration, add the X-Ray daemon as another sidecar and enable tracing in the Envoy configuration:
+You can export Envoy metrics to CloudWatch or third-party tools, and you can export traces to X-Ray. For X-Ray integration, add the X-Ray daemon as another sidecar and enable tracing in the Envoy configuration:
 
 ```json
 {
@@ -254,7 +254,7 @@ You can export these metrics to CloudWatch, X-Ray, or third-party tools. For X-R
 }
 ```
 
-Then set the `ENABLE_ENVOY_XRAY_TRACING` environment variable to `1` on the Envoy container. You'll get distributed traces across all your services without any instrumentation in your application code.
+Then set the `ENABLE_ENVOY_XRAY_TRACING` environment variable to `1` on the Envoy container. You'll get Envoy-generated distributed traces across service-to-service calls without adding tracing code to your application, though application-level spans still require application instrumentation.
 
 For more on ECS monitoring, check out our guide on [monitoring ECS with Container Insights](https://oneuptime.com/blog/post/2026-02-12-monitor-ecs-container-insights/view).
 
@@ -305,4 +305,4 @@ A few things I've seen trip people up:
 
 AWS App Mesh brings serious service mesh capabilities to ECS without requiring you to manage Envoy configurations by hand. You get traffic management, observability, and resilience features at the infrastructure level. The initial setup takes some effort, but once it's running, managing traffic across your microservices becomes much more straightforward.
 
-Start with a small mesh - maybe two or three services - and expand from there. That way you can learn the patterns and debug issues in a controlled environment before rolling it out to your entire fleet.
+For existing deployments, start with a small mesh - maybe two or three services - and expand from there. That way you can learn the patterns and debug issues in a controlled environment before rolling it out to your entire fleet.
