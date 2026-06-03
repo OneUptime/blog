@@ -37,13 +37,13 @@ aws cloudwatch get-metric-statistics \
   --namespace AWS/EC2 \
   --metric-name CPUCreditBalance \
   --dimensions Name=InstanceId,Value=i-0abc123 \
-  --start-time $(date -u -v-1d +%Y-%m-%dT%H:%M:%S) \
+  --start-time $(date -u -d '1 day ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
   --statistics Average
 ```
 
-If credits stay consistently above zero, you're a good fit for T3. If they keep hitting zero, you might want to switch to T3 Unlimited or a fixed-performance instance.
+If credits stay consistently above zero, you're a good fit for T3. If they keep hitting zero, confirm whether the instance is already using T3 Unlimited (the default for T3 when launched as On-Demand) and watch for surplus credit charges, or switch to a fixed-performance instance.
 
 ## Use Spot Instances
 
@@ -198,7 +198,7 @@ Developers can then launch from this AMI and be productive immediately, without 
 
 ## Cost Monitoring
 
-Track your development environment costs with AWS Cost Explorer tags:
+Track your development environment costs with AWS cost allocation tags:
 
 ```bash
 # Tag all dev resources consistently
@@ -206,6 +206,8 @@ aws ec2 create-tags \
   --resources i-0abc123 vol-0abc123 \
   --tags Key=CostCenter,Value=development Key=Team,Value=engineering
 ```
+
+After tagging resources, activate `CostCenter` and `Team` as user-defined cost allocation tags in AWS Billing and Cost Management so they appear in Cost Explorer and cost allocation reports.
 
 Then set up budget alerts so you know immediately if costs spike:
 
@@ -239,13 +241,13 @@ Combining all these strategies, here's the impact on a typical development insta
 
 | Optimization | Savings |
 |-------------|---------|
-| Right-sizing (m5.xlarge to t3.medium) | 75% |
+| Right-sizing (m5.xlarge to t3.medium) | 79% |
 | Spot pricing | Additional 60-70% |
 | Scheduling (business hours only) | Additional 65% |
 | Graviton (ARM) | Additional 20% |
 | **Combined** | **Up to 95%** |
 
-A t3.medium Spot Instance running only during business hours costs about $3-4 per month. Compare that to the $122/month m5.xlarge On-Demand that many developers launch by default. That's a 97% cost reduction per developer.
+A t3.medium Spot Instance running only during business hours costs about $3-4 per month. Compare that to the roughly $138/month m5.xlarge On-Demand that many developers launch by default. That's about a 97% cost reduction per developer.
 
 ## Wrapping Up
 
