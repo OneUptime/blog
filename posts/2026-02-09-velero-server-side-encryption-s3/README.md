@@ -14,7 +14,7 @@ Kubernetes backups contain sensitive data including application configurations, 
 
 AWS S3 offers three server-side encryption methods for Velero backups:
 
-**SSE-S3**: S3-managed encryption keys. Simplest option with no additional configuration required beyond enabling it.
+**SSE-S3**: S3-managed encryption keys. Simplest option, and the default baseline encryption for all new S3 object uploads.
 
 **SSE-KMS**: AWS Key Management Service encryption. Provides encryption key rotation, access logging, and fine-grained access control.
 
@@ -24,7 +24,7 @@ For most Velero deployments, SSE-KMS provides the best balance of security and m
 
 ## Configuring SSE-S3 Encryption
 
-The simplest encryption method uses S3-managed keys. Enable it on your Velero backup bucket:
+The simplest encryption method uses S3-managed keys. S3 applies SSE-S3 to all new object uploads by default, but you can explicitly set bucket default encryption:
 
 ```bash
 # Enable default encryption on S3 bucket
@@ -290,7 +290,7 @@ AWS automatically rotates the key material annually. Old backups remain accessib
 
 ## Cross-Account KMS Access
 
-For centralized backup management, configure cross-account KMS access:
+For centralized backup management, configure cross-account KMS access. Grant write permissions such as `kms:Encrypt` and `kms:GenerateDataKey` when the external Velero role writes backups, and `kms:Decrypt` when it restores or reads backups:
 
 ```json
 {
@@ -301,6 +301,8 @@ For centralized backup management, configure cross-account KMS access:
   },
   "Action": [
     "kms:Decrypt",
+    "kms:Encrypt",
+    "kms:GenerateDataKey",
     "kms:DescribeKey"
   ],
   "Resource": "*",
@@ -314,38 +316,33 @@ For centralized backup management, configure cross-account KMS access:
 
 ## Monitoring KMS Usage
 
-Track KMS API usage for backup operations:
+Track KMS API usage for backup operations. This example assumes CloudTrail is configured to deliver events to the `/aws/cloudtrail/velero-kms-audit` CloudWatch Logs log group:
 
 ```bash
-# CloudWatch Insights query for KMS usage
 aws logs start-query \
-  --log-group-name /aws/kms/velero-backups \
+  --log-group-name /aws/cloudtrail/velero-kms-audit \
   --start-time $(date -u -d '1 hour ago' +%s) \
   --end-time $(date -u +%s) \
-  --query-string 'fields @timestamp, eventName, userAgent
+  --query-string 'fields @timestamp, eventSource, eventName, errorCode, userAgent
+    | filter eventSource = "kms.amazonaws.com"
     | filter eventName like /Encrypt|Decrypt|GenerateDataKey/
     | stats count() by eventName'
 ```
 
-Create CloudWatch alarms for KMS errors:
+Create CloudWatch alarms for unusual KMS request volume:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: kms-alarm
-data:
-  alarm.json: |
-    {
-      "AlarmName": "velero-kms-errors",
-      "MetricName": "UserErrorCount",
-      "Namespace": "AWS/KMS",
-      "Statistic": "Sum",
-      "Period": 300,
-      "EvaluationPeriods": 1,
-      "Threshold": 5,
-      "ComparisonOperator": "GreaterThanThreshold"
-    }
+```bash
+aws cloudwatch put-metric-alarm \
+  --alarm-name velero-kms-request-volume \
+  --namespace AWS/KMS \
+  --metric-name SuccessfulRequest \
+  --dimensions Name=KeyArn,Value=arn:aws:kms:us-east-1:ACCOUNT_ID:key/KEY_ID \
+               Name=Operation,Value=GenerateDataKey \
+  --statistic Sum \
+  --period 300 \
+  --evaluation-periods 1 \
+  --threshold 1000 \
+  --comparison-operator GreaterThanThreshold
 ```
 
 ## Compliance and Audit Logging
@@ -364,16 +361,12 @@ aws cloudtrail create-trail \
 aws cloudtrail start-logging \
   --name velero-kms-audit
 
-# Add event selectors for KMS
+# Include KMS management events in the trail
 aws cloudtrail put-event-selectors \
   --trail-name velero-kms-audit \
   --event-selectors '[{
     "ReadWriteType": "All",
-    "IncludeManagementEvents": true,
-    "DataResources": [{
-      "Type": "AWS::KMS::Key",
-      "Values": ["arn:aws:kms:us-east-1:ACCOUNT_ID:key/*"]
-    }]
+    "IncludeManagementEvents": true
   }]'
 ```
 
@@ -385,7 +378,7 @@ Common encryption problems and solutions:
 **Solution**: Verify IAM role has kms:GenerateDataKey permission
 
 **Error**: Unable to read old backups after key rotation
-**Solution**: Check that IAM role has kms:Decrypt on all key versions
+**Solution**: Check that IAM role has kms:Decrypt on the KMS key and that the key has not been disabled or scheduled for deletion
 
 **Error**: High KMS costs
 **Solution**: Enable S3 Bucket Keys to reduce API calls
