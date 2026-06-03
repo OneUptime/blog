@@ -202,7 +202,7 @@ terraform import kubernetes_service.api production/api
 
 ## Importing ConfigMaps and Secrets
 
-ConfigMaps and Secrets often contain many key-value pairs. Capture all of them:
+ConfigMaps and Secrets often contain many key-value pairs. Capture all of them. For Secrets, use the decoded string values in `data`; if you copied values from `kubectl get secret -o yaml`, decode the base64 values first.
 
 ```hcl
 resource "kubernetes_config_map" "app_config" {
@@ -230,9 +230,9 @@ resource "kubernetes_secret" "app_secrets" {
   type = "Opaque"
 
   data = {
-    api_key      = "base64encodedkey=="
-    db_password  = "base64encodedpassword=="
-    jwt_secret   = "base64encodedsecret=="
+    api_key      = "actual-api-key"
+    db_password  = "actual-db-password"
+    jwt_secret   = "actual-jwt-secret"
   }
 }
 ```
@@ -382,7 +382,6 @@ resource "kubernetes_ingress_v1" "app" {
     namespace = "production"
 
     annotations = {
-      "kubernetes.io/ingress.class"                = "nginx"
       "cert-manager.io/cluster-issuer"             = "letsencrypt-prod"
       "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
       "nginx.ingress.kubernetes.io/force-ssl-redirect" = "true"
@@ -391,6 +390,8 @@ resource "kubernetes_ingress_v1" "app" {
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     rule {
       host = "api.example.com"
 
@@ -483,9 +484,9 @@ terraform import 'kubernetes_namespace.env["production"]' production
 
 Note the quotes around the resource address when using for_each.
 
-## Handling Computed Fields
+## Handling Controller-Managed Fields
 
-Some fields are computed by Kubernetes and can't be set in configuration. Use lifecycle ignore_changes:
+Some fields may be updated by controllers outside Terraform. Use lifecycle ignore_changes for configurable fields that another controller manages:
 
 ```hcl
 resource "kubernetes_deployment" "api" {
@@ -522,16 +523,13 @@ resource "kubernetes_deployment" "api" {
   lifecycle {
     ignore_changes = [
       metadata[0].annotations,
-      metadata[0].generation,
-      metadata[0].resource_version,
-      metadata[0].uid,
       spec[0].template[0].metadata[0].annotations
     ]
   }
 }
 ```
 
-This prevents Terraform from trying to manage fields that Kubernetes controls.
+Terraform does not manage read-only metadata such as `uid`, `resource_version`, or `generation`, so you don't need to add those fields to ignore_changes.
 
 ## Importing RBAC Resources
 
@@ -643,7 +641,7 @@ If you see changes, investigate each one. Common issues:
 
 1. **Missing fields** - Add them to your configuration
 2. **Different values** - Match your configuration to the actual resource
-3. **Computed fields** - Use lifecycle ignore_changes
+3. **Controller-managed fields** - Use lifecycle ignore_changes for configurable fields managed outside Terraform
 4. **Default values** - Explicitly set values that match Kubernetes defaults
 
 ## Handling Import Failures
