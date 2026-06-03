@@ -8,7 +8,7 @@ Description: Learn how to configure Velero resource modifiers to transform Kuber
 
 ---
 
-Sometimes you need to modify resources as they're restored rather than restoring them exactly as they were backed up. Velero resource modifiers provide a powerful mechanism to transform resources during restore, allowing you to adapt workloads to different environments, fix configuration issues, or update deprecated APIs automatically.
+Sometimes you need to modify resources as they're restored rather than restoring them exactly as they were backed up. Velero resource modifiers provide a powerful mechanism to transform resources during restore, allowing you to adapt workloads to different environments, fix configuration issues, or add migration-related metadata automatically.
 
 ## Understanding Resource Modifiers
 
@@ -17,7 +17,7 @@ Resource modifiers are JSON patches applied to resources during restore. They le
 - Update image tags to newer versions
 - Modify resource requests and limits
 - Change storage class names
-- Update API versions
+- Add migration-related labels and annotations
 - Remove or add labels and annotations
 - Transform environment variables
 
@@ -48,7 +48,7 @@ data:
       patches:
       - operation: replace
         path: "/spec/replicas"
-        value: "1"
+        value: 1
 ```
 
 This modifier reduces all deployment replicas to 1 during restore.
@@ -80,13 +80,13 @@ data:
         path: "/spec/template/spec/containers/0/image"
         value: "test-registry.example.com/myapp:latest"
 
-    # Change image tag for all containers
+    # Change image tag when the first container uses the old image
     - conditions:
         groupResource: deployments.apps
       patches:
       - operation: test
         path: "/spec/template/spec/containers/0/image"
-        value: ".*:v1.0.0"
+        value: "myapp:v1.0.0"
       - operation: replace
         path: "/spec/template/spec/containers/0/image"
         value: "myapp:v1.1.0"
@@ -263,13 +263,15 @@ data:
     # Only modify deployments with specific label
     - conditions:
         groupResource: deployments.apps
-        labelSelector: "app=web-frontend"
+        labelSelector:
+          matchLabels:
+            app: web-frontend
         namespaces:
         - production
       patches:
       - operation: replace
         path: "/spec/replicas"
-        value: "2"
+        value: 2
 
     # Modify resources by name pattern
     - conditions:
@@ -335,7 +337,7 @@ data:
       patches:
       - operation: replace
         path: "/spec/replicas"
-        value: "1"
+        value: 1
       - operation: replace
         path: "/spec/template/spec/containers/0/resources/requests/memory"
         value: "128Mi"
@@ -354,7 +356,9 @@ data:
     resourceModifierRules:
     - conditions:
         groupResource: services
-        labelSelector: "type=LoadBalancer"
+        matches:
+        - path: "/spec/type"
+          value: "LoadBalancer"
       patches:
       - operation: add
         path: "/metadata/annotations/service.beta.kubernetes.io~1aws-load-balancer-internal"
@@ -363,7 +367,7 @@ data:
 
 ## Handling API Version Migrations
 
-Update deprecated API versions during restore:
+Add metadata used by newer platform features during restore:
 
 ```yaml
 apiVersion: v1
@@ -377,22 +381,17 @@ data:
   resource-modifiers.yaml: |
     version: v1
     resourceModifierRules:
-    # Migrate old Ingress API
+    # Add Pod Security Standards labels to the restored namespace
     - conditions:
-        groupResource: ingresses.extensions
-      patches:
-      - operation: replace
-        path: "/apiVersion"
-        value: "networking.k8s.io/v1"
-
-    # Update PodSecurityPolicy to Pod Security Standards
-    - conditions:
-        groupResource: podsecuritypolicies.policy
+        groupResource: namespaces
+        resourceNameRegex: "^production$"
       patches:
       - operation: add
-        path: "/metadata/annotations/pod-security.kubernetes.io~1enforce"
+        path: "/metadata/labels/pod-security.kubernetes.io~1enforce"
         value: "restricted"
 ```
+
+For API migrations that require schema changes, such as migrating old Ingress APIs to `networking.k8s.io/v1`, convert the manifest before restore instead of only replacing `apiVersion`.
 
 ## Testing Resource Modifiers
 
@@ -485,7 +484,7 @@ data:
       patches:
       - operation: replace
         path: "/spec/replicas"
-        value: "1"
+        value: 1
 
     # 3. Add test environment labels
     - conditions:
@@ -512,7 +511,9 @@ data:
     # 5. Change service types
     - conditions:
         groupResource: services
-        labelSelector: "type=external"
+        labelSelector:
+          matchLabels:
+            type: external
       patches:
       - operation: replace
         path: "/spec/type"
@@ -552,7 +553,7 @@ velero restore logs my-restore | grep -i "modifier\|patch"
 # Describe restore to see errors
 velero restore describe my-restore --details
 
-# Test JSON patch syntax
+# Test an equivalent field transformation locally
 echo '{"spec":{"replicas":3}}' | jq '. | .spec.replicas = 1'
 ```
 
