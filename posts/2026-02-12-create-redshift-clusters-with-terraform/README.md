@@ -143,7 +143,6 @@ resource "aws_redshift_parameter_group" "main" {
         query_group           = ["etl"]
         memory_percent_to_use = 50
         query_concurrency     = 5
-        max_execution_time    = 3600000
       },
       {
         query_group           = ["analytics"]
@@ -151,7 +150,7 @@ resource "aws_redshift_parameter_group" "main" {
         query_concurrency     = 10
       },
       {
-        query_group           = ["default"]
+        query_group           = []
         memory_percent_to_use = 20
         query_concurrency     = 5
       }
@@ -172,6 +171,11 @@ resource "aws_kms_key" "redshift" {
   description             = "KMS key for Redshift cluster encryption"
   deletion_window_in_days = 30
   enable_key_rotation     = true
+}
+
+# S3 bucket for audit logs
+resource "aws_s3_bucket" "redshift_logs" {
+  bucket = var.redshift_log_bucket_name
 }
 
 # The Redshift cluster
@@ -204,13 +208,6 @@ resource "aws_redshift_cluster" "main" {
   # Enhanced VPC routing forces COPY/UNLOAD through VPC
   enhanced_vpc_routing = true
 
-  # Logging
-  logging {
-    enable               = true
-    bucket_name          = aws_s3_bucket.redshift_logs.id
-    s3_key_prefix        = "redshift-logs/"
-  }
-
   # Prevent accidental deletion
   skip_final_snapshot       = false
   final_snapshot_identifier = "analytics-cluster-final-snapshot"
@@ -219,6 +216,14 @@ resource "aws_redshift_cluster" "main" {
     Environment = var.environment
     ManagedBy   = "terraform"
   }
+}
+
+# Audit logging
+resource "aws_redshift_logging" "main" {
+  cluster_identifier  = aws_redshift_cluster.main.id
+  log_destination_type = "s3"
+  bucket_name          = aws_s3_bucket.redshift_logs.id
+  s3_key_prefix        = "redshift-logs/"
 }
 ```
 
@@ -341,7 +346,19 @@ variable "vpc_id" {
   type = string
 }
 
+variable "app_security_group_id" {
+  type = string
+}
+
 variable "data_bucket_name" {
+  type = string
+}
+
+variable "redshift_log_bucket_name" {
+  type = string
+}
+
+variable "sns_topic_arn" {
   type = string
 }
 
