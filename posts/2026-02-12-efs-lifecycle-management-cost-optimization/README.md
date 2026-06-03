@@ -4,26 +4,27 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, EFS, Cost Optimization, Lifecycle Management, Storage
 
-Description: Set up EFS lifecycle management to automatically move infrequently accessed files to cheaper storage classes and save up to 92% on storage costs.
+Description: Set up EFS lifecycle management to automatically move infrequently accessed files to cheaper storage classes and save up to 95% on storage costs.
 
 ---
 
 EFS Standard storage costs about $0.30 per GB per month. That's reasonable for actively used data, but you're probably paying that rate for files that haven't been touched in months. Old log files, historical data, past deployment artifacts, uploaded content that nobody looks at - it's all sitting in Standard storage at full price.
 
-EFS lifecycle management automatically moves files to cheaper storage classes based on how recently they were accessed. Infrequent Access (IA) storage costs about $0.016 per GB per month - that's a 92% savings. The catch is that there's a small per-access charge when you read IA files, but for data that's rarely touched, the savings are massive.
+EFS lifecycle management automatically moves files to cheaper storage classes based on how recently they were accessed. Infrequent Access (IA) storage costs about $0.0165 per GB per month - that's about a 95% savings. The catch is that there's a small per-access charge when you read IA files, but for data that's rarely touched, the savings are massive.
 
 ## How EFS Storage Classes Work
 
-EFS has four storage classes:
+EFS has three storage classes. Standard and IA pricing differs for Regional and One Zone file systems:
 
-| Storage Class | Cost (GB/month) | Best For |
+| Storage Option | Cost (GB/month) | Best For |
 |---------------|-----------------|----------|
-| Standard | ~$0.30 | Frequently accessed files |
-| Infrequent Access (IA) | ~$0.016 | Files accessed a few times per quarter |
+| Regional Standard | ~$0.30 | Frequently accessed files |
+| Regional Infrequent Access (IA) | ~$0.0165 | Files accessed a few times per quarter |
+| Regional Archive | ~$0.008 | Files accessed a few times per year |
 | One Zone Standard | ~$0.16 | Frequently accessed, single-AZ |
-| One Zone IA | ~$0.0133 | Rarely accessed, single-AZ |
+| One Zone IA | ~$0.0132 | Rarely accessed, single-AZ |
 
-One Zone classes are cheaper because they don't replicate across Availability Zones. Use them only for data you can recreate or that doesn't need the durability of multi-AZ replication.
+One Zone file systems are cheaper because they don't replicate across Availability Zones. Use them only for data you can recreate or that doesn't need the durability of multi-AZ replication.
 
 ## Enabling Lifecycle Management
 
@@ -41,7 +42,7 @@ aws efs put-lifecycle-configuration \
   ]'
 ```
 
-Available transition periods: 1, 7, 14, 30, 60, or 90 days.
+Available transition periods: 1, 7, 14, 30, 60, 90, 180, 270, or 365 days.
 
 ## Adding Transition Back to Standard
 
@@ -95,8 +96,8 @@ Understanding how your data is distributed across storage classes helps you tune
 # Check Standard storage usage
 aws cloudwatch get-metric-statistics \
   --namespace "AWS/EFS" \
-  --metric-name "StorageBytesStandard" \
-  --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" "Name=StorageClass,Value=Total" \
+  --metric-name "StorageBytes" \
+  --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" "Name=StorageClass,Value=Standard" \
   --start-time "$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 86400 \
@@ -112,7 +113,8 @@ aws efs describe-file-systems \
   --query "FileSystems[0].SizeInBytes.{
     TotalBytes: Value,
     StandardBytes: ValueInStandard,
-    IABytes: ValueInIA
+    IABytes: ValueInIA,
+    ArchiveBytes: ValueInArchive
   }" \
   --output json
 ```
@@ -135,14 +137,17 @@ def calculate_efs_costs(file_system_id, region='us-east-1'):
     total_gb = size_info['Value'] / (1024 ** 3)
     standard_gb = size_info.get('ValueInStandard', 0) / (1024 ** 3)
     ia_gb = size_info.get('ValueInIA', 0) / (1024 ** 3)
+    archive_gb = size_info.get('ValueInArchive', 0) / (1024 ** 3)
 
     # Pricing (us-east-1, approximate)
     standard_price = 0.30  # per GB/month
-    ia_price = 0.016       # per GB/month
+    ia_price = 0.0165      # per GB/month
+    archive_price = 0.008  # per GB/month
 
     standard_cost = standard_gb * standard_price
     ia_cost = ia_gb * ia_price
-    total_cost = standard_cost + ia_cost
+    archive_cost = archive_gb * archive_price
+    total_cost = standard_cost + ia_cost + archive_cost
 
     # What it would cost without lifecycle management
     all_standard_cost = total_gb * standard_price
@@ -152,6 +157,7 @@ def calculate_efs_costs(file_system_id, region='us-east-1'):
     print(f"{'=' * 45}")
     print(f"Standard storage: {standard_gb:.1f} GB  (${standard_cost:.2f}/mo)")
     print(f"IA storage:       {ia_gb:.1f} GB  (${ia_cost:.2f}/mo)")
+    print(f"Archive storage:  {archive_gb:.1f} GB  (${archive_cost:.2f}/mo)")
     print(f"Total:            {total_gb:.1f} GB  (${total_cost:.2f}/mo)")
     print(f"")
     print(f"Without lifecycle: ${all_standard_cost:.2f}/mo")
@@ -164,7 +170,7 @@ calculate_efs_costs('fs-0abc123def456789')
 
 There's a charge every time you read data from IA storage: $0.01 per GB read. This is important to factor in. If a file in IA gets read frequently, the access charges might exceed what you'd pay for Standard storage.
 
-The break-even point: if a 1 GB file is read more than about 28 times per month, it's cheaper to keep it in Standard storage ($0.30/mo) rather than IA ($0.016/mo storage + $0.01/read * N reads).
+The break-even point: if a 1 GB file is read more than about 28 times per month, it's cheaper to keep it in Standard storage ($0.30/mo) rather than IA ($0.0165/mo storage + $0.01/read * N reads).
 
 For most workloads, files in IA are accessed infrequently enough that the storage savings far outweigh the access charges. But if you have automated processes that scan the entire file system regularly (backups, security scanners, antivirus), those reads will hit IA files and incur charges.
 
@@ -221,7 +227,7 @@ The right transition period depends on your access patterns:
 
 **30 days** - The safe default. Files untouched for a month are usually not actively needed.
 
-**60-90 days** - Conservative. Use this if you're unsure about access patterns or if IA read charges are a concern.
+**60-365 days** - Conservative. Use this if you're unsure about access patterns or if IA read charges are a concern.
 
 You can check what transition period makes the most sense by looking at file access patterns:
 
@@ -249,13 +255,13 @@ Note that this won't move files back from IA to Standard. Files already in IA st
 
 ## Monitoring with CloudWatch Alarms
 
-Set up alerts to track your IA storage ratio and detect unexpected patterns:
+Set up alerts to detect when IA storage drops to zero unexpectedly:
 
 ```bash
-# Create a dashboard-ready metric filter
+# Create an alarm for unexpectedly empty IA storage
 aws cloudwatch put-metric-alarm \
-  --alarm-name "efs-ia-ratio-check" \
-  --alarm-description "Alert if IA percentage drops unexpectedly (files being moved back to Standard)" \
+  --alarm-name "efs-ia-storage-empty" \
+  --alarm-description "Alert if IA storage drops to zero unexpectedly" \
   --namespace "AWS/EFS" \
   --metric-name "StorageBytes" \
   --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" "Name=StorageClass,Value=IA" \
