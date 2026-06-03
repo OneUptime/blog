@@ -17,7 +17,7 @@ This guide covers creating volumes, attaching them, and setting them up so they 
 A few things to know upfront:
 
 - EBS volumes are availability zone-specific. A volume in us-east-1a can only attach to instances in us-east-1a.
-- Each instance has a root EBS volume (where the OS lives) and can have additional volumes attached.
+- Most EC2 instances use a root EBS volume (where the OS lives) and can have additional volumes attached.
 - Volumes can only be attached to one instance at a time (except for io1/io2 Multi-Attach, which is a special case).
 - Performance characteristics depend on the volume type. See our guide on [choosing between EBS volume types](https://oneuptime.com/blog/post/2026-02-12-choose-between-ebs-volume-types/view) for details.
 
@@ -29,7 +29,7 @@ A few things to know upfront:
 2. Click "Create volume"
 3. Configure:
    - **Volume type**: gp3 is the best default choice
-   - **Size**: In GiB (1 GiB to 16 TiB)
+   - **Size**: In GiB (for gp3, 1 GiB to 64 TiB)
    - **Availability Zone**: Must match your instance's AZ
    - **Encryption**: Enable with KMS key (recommended)
 4. Click "Create volume"
@@ -193,8 +193,12 @@ Here's a complete script that creates, attaches, formats, and mounts a volume:
 #!/bin/bash
 # Create and set up a new EBS volume for an EC2 instance
 
-INSTANCE_ID=$(curl -s http://169.254.169.254/latest/meta-data/instance-id)
-AZ=$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone)
+TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" \
+    -H "X-aws-ec2-metadata-token-ttl-seconds: 21600")
+INSTANCE_ID=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/instance-id)
+AZ=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" \
+    http://169.254.169.254/latest/meta-data/placement/availability-zone)
 VOLUME_SIZE=100
 MOUNT_POINT="/data"
 DEVICE="/dev/xvdf"
@@ -225,22 +229,34 @@ aws ec2 attach-volume \
 echo "Attaching volume..."
 sleep 10  # Wait for device to appear
 
-# Wait for the device to be present
-while [ ! -b $DEVICE ]; do
-    echo "Waiting for device $DEVICE..."
+# Wait for the device to be present. Nitro instances expose EBS volumes as NVMe devices,
+# so map by the EBS volume ID if the requested device name is not present.
+VOLUME_SERIAL=${VOLUME_ID//-/}
+while true; do
+    if [ -b "$DEVICE" ]; then
+        VOLUME_DEVICE=$DEVICE
+        break
+    fi
+
+    VOLUME_DEVICE=$(lsblk -ndo NAME,SERIAL | awk -v serial="$VOLUME_SERIAL" '$2 == serial { print "/dev/" $1; exit }')
+    if [ -n "$VOLUME_DEVICE" ] && [ -b "$VOLUME_DEVICE" ]; then
+        break
+    fi
+
+    echo "Waiting for device $DEVICE or NVMe volume $VOLUME_ID..."
     sleep 2
 done
 
 # Format the volume
 echo "Formatting volume..."
-sudo mkfs -t xfs $DEVICE
+sudo mkfs -t xfs $VOLUME_DEVICE
 
 # Mount it
 sudo mkdir -p $MOUNT_POINT
-sudo mount $DEVICE $MOUNT_POINT
+sudo mount $VOLUME_DEVICE $MOUNT_POINT
 
 # Add to fstab for persistence
-UUID=$(sudo blkid -s UUID -o value $DEVICE)
+UUID=$(sudo blkid -s UUID -o value $VOLUME_DEVICE)
 echo "UUID=$UUID  $MOUNT_POINT  xfs  defaults,nofail  0  2" | sudo tee -a /etc/fstab
 
 echo "Volume $VOLUME_ID mounted at $MOUNT_POINT"
@@ -248,7 +264,7 @@ echo "Volume $VOLUME_ID mounted at $MOUNT_POINT"
 
 ## Attaching Multiple Volumes
 
-Instances can have up to 28 EBS volumes attached (though the practical limit depends on the instance type). This is useful for separating data, logs, and temp storage:
+Many Nitro instances support up to 28 total attachments shared across EBS volumes, network interfaces, and NVMe instance store volumes, though the actual EBS volume limit depends on the instance type and size. This is useful for separating data, logs, and temp storage:
 
 ```bash
 # Create and attach multiple volumes for different purposes
