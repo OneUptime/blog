@@ -63,7 +63,7 @@ Elastic Beanstalk supports PHP natively and handles most of the infrastructure s
 
 ### Configuration Files
 
-Create the required EB configuration files. This one installs PHP extensions and sets up the document root:
+Create the required EB configuration files. This one sets PHP options and configures the document root:
 
 ```yaml
 # .ebextensions/01_laravel.config
@@ -81,7 +81,7 @@ option_settings:
 
 Run Laravel-specific setup commands after deployment:
 
-```yaml
+```bash
 # .platform/hooks/postdeploy/01_laravel_setup.sh
 #!/bin/bash
 cd /var/app/current
@@ -173,6 +173,7 @@ RUN apk add --no-cache \
 
 # Configure PHP for production
 COPY docker/php/php-production.ini /usr/local/etc/php/conf.d/production.ini
+COPY --from=vendor /usr/bin/composer /usr/bin/composer
 
 WORKDIR /var/www/html
 
