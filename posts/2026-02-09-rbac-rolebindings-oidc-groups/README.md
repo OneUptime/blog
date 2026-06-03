@@ -33,7 +33,7 @@ spec:
   - name: kube-apiserver
     command:
     - kube-apiserver
-    - --oidc-issuer-url=https://accounts.google.com
+    - --oidc-issuer-url=https://issuer.example.com
     - --oidc-client-id=kubernetes
     - --oidc-username-claim=email
     - --oidc-groups-claim=groups
@@ -47,18 +47,16 @@ For managed Kubernetes services, configuration varies.
 # Azure AKS - OIDC is configured through Azure AD integration
 az aks update -g myResourceGroup -n myAKSCluster \
   --enable-aad \
-  --aad-admin-group-object-ids <group-id>
+  --aad-admin-group-object-ids <group-id> \
+  --aad-tenant-id <tenant-id>
 
-# GKE - Uses Google identity automatically
+# GKE - Enable Google Groups for RBAC
 gcloud container clusters create my-cluster \
-  --enable-cloud-logging \
-  --enable-cloud-monitoring \
-  --enable-autoscaling
+  --location=us-central1 \
+  --security-group=gke-security-groups@company.com
 
-# EKS - Configure OIDC identity provider
-eksctl utils associate-iam-oidc-provider \
-  --cluster my-cluster \
-  --approve
+# EKS - Associate an external OIDC identity provider
+eksctl associate identityprovider -f associate-identity-provider.yaml
 ```
 
 ## Creating Group-Based RoleBindings
@@ -185,7 +183,7 @@ roleRef:
 subjects:
 - kind: Group
   # Another Azure AD group
-  name: "ffffffff-gggg-hhhh-iiii-jjjjjjjjjjjj"
+  name: "ffffffff-1111-2222-3333-jjjjjjjjjjjj"
   apiGroup: rbac.authorization.k8s.io
 ```
 
@@ -193,10 +191,10 @@ Get Azure AD group object IDs.
 
 ```bash
 # List Azure AD groups
-az ad group list --query "[].{Name:displayName, ObjectId:objectId}" -o table
+az ad group list --query "[].{Name:displayName, ObjectId:id}" -o table
 
 # Get specific group
-az ad group show --group "Kubernetes Admins" --query objectId -o tsv
+az ad group show --group "Kubernetes Admins" --query id -o tsv
 ```
 
 ## Implementing Okta OIDC Integration
@@ -242,8 +240,8 @@ Configure GKE with Google Groups.
 
 ```bash
 # Enable Google Groups for RBAC
-gcloud beta container clusters update my-cluster \
-  --enable-google-groups-for-rbac \
+gcloud container clusters update my-cluster \
+  --location=us-central1 \
   --security-group=gke-security-groups@company.com
 ```
 
@@ -327,8 +325,10 @@ Verify group membership and permissions.
 
 ```bash
 # Get user's groups from OIDC token
-kubectl config view --raw -o jsonpath='{.users[0].user.auth-provider.config.id-token}' | \
-  cut -d '.' -f2 | base64 -d | jq .groups
+ID_TOKEN=<paste-id-token>
+printf '%s' "$ID_TOKEN" | \
+  jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") |
+    @base64d | fromjson | .groups'
 
 # Test permission as user
 kubectl auth can-i create deployment -n development --as=user@company.com
