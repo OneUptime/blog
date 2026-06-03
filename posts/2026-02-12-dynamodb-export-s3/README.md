@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, DynamoDB, S3, Data Export
 
-Description: Learn how to export DynamoDB table data to S3 using native exports, Data Pipeline, and custom scripts for analytics, backup, and data migration use cases.
+Description: Learn how to export DynamoDB table data to S3 using native exports, DynamoDB Streams, and custom scripts for analytics, backup, and data migration use cases.
 
 ---
 
@@ -38,14 +38,14 @@ aws dynamodb update-continuous-backups \
 ```bash
 # Export table to S3 in DynamoDB JSON format
 aws dynamodb export-table-to-point-in-time \
-  --table-arn arn:aws:dynamodb:us-east-1:123456789:table/Orders \
+  --table-arn arn:aws:dynamodb:us-east-1:123456789012:table/Orders \
   --s3-bucket my-exports-bucket \
   --s3-prefix dynamodb-exports/orders/ \
   --export-format DYNAMODB_JSON
 
-# Or export in ION format (Amazon's format, more compact)
+# Or export in Amazon Ion text format
 aws dynamodb export-table-to-point-in-time \
-  --table-arn arn:aws:dynamodb:us-east-1:123456789:table/Orders \
+  --table-arn arn:aws:dynamodb:us-east-1:123456789012:table/Orders \
   --s3-bucket my-exports-bucket \
   --s3-prefix dynamodb-exports/orders/ \
   --export-format ION
@@ -56,7 +56,7 @@ You can also export data from a specific point in time:
 ```bash
 # Export data as it was at a specific timestamp
 aws dynamodb export-table-to-point-in-time \
-  --table-arn arn:aws:dynamodb:us-east-1:123456789:table/Orders \
+  --table-arn arn:aws:dynamodb:us-east-1:123456789012:table/Orders \
   --s3-bucket my-exports-bucket \
   --s3-prefix dynamodb-exports/orders/ \
   --export-time "2026-02-11T00:00:00Z" \
@@ -67,11 +67,11 @@ aws dynamodb export-table-to-point-in-time \
 
 ```bash
 # List exports
-aws dynamodb list-exports --table-arn arn:aws:dynamodb:us-east-1:123456789:table/Orders
+aws dynamodb list-exports --table-arn arn:aws:dynamodb:us-east-1:123456789012:table/Orders
 
 # Describe a specific export
 aws dynamodb describe-export \
-  --export-arn arn:aws:dynamodb:us-east-1:123456789:table/Orders/export/01234567890
+  --export-arn arn:aws:dynamodb:us-east-1:123456789012:table/Orders/export/01234567890
 ```
 
 The export creates files in your S3 bucket under the specified prefix:
@@ -102,8 +102,13 @@ Each line is a separate item with DynamoDB type descriptors.
 ## Using the SDK to Trigger Exports
 
 ```javascript
-const AWS = require('aws-sdk');
-const dynamodb = new AWS.DynamoDB();
+const {
+  DynamoDBClient,
+  DescribeExportCommand,
+  ExportTableToPointInTimeCommand
+} = require('@aws-sdk/client-dynamodb');
+
+const dynamodb = new DynamoDBClient({});
 
 async function exportTable(tableArn, bucketName, prefix) {
   const params = {
@@ -113,7 +118,7 @@ async function exportTable(tableArn, bucketName, prefix) {
     ExportFormat: 'DYNAMODB_JSON'
   };
 
-  const result = await dynamodb.exportTableToPointInTime(params).promise();
+  const result = await dynamodb.send(new ExportTableToPointInTimeCommand(params));
   console.log('Export started:', result.ExportDescription.ExportArn);
   return result.ExportDescription;
 }
@@ -123,7 +128,7 @@ async function waitForExport(exportArn) {
   let status = 'IN_PROGRESS';
 
   while (status === 'IN_PROGRESS') {
-    const result = await dynamodb.describeExport({ ExportArn: exportArn }).promise();
+    const result = await dynamodb.send(new DescribeExportCommand({ ExportArn: exportArn }));
     status = result.ExportDescription.ExportStatus;
     console.log(`Export status: ${status}`);
 
@@ -141,10 +146,12 @@ async function waitForExport(exportArn) {
 For more control over the export format or when you need to transform data during export, use a custom Scan-based export:
 
 ```javascript
-const AWS = require('aws-sdk');
-const { S3 } = require('@aws-sdk/client-s3');
-const docClient = new AWS.DynamoDB.DocumentClient();
-const s3 = new S3();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, ScanCommand } = require('@aws-sdk/lib-dynamodb');
+const { PutObjectCommand, S3Client } = require('@aws-sdk/client-s3');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const s3 = new S3Client({});
 
 async function customExport(tableName, bucketName, keyPrefix) {
   let lastKey = undefined;
@@ -153,28 +160,30 @@ async function customExport(tableName, bucketName, keyPrefix) {
 
   do {
     // Scan a batch of items
-    const result = await docClient.scan({
+    const result = await docClient.send(new ScanCommand({
       TableName: tableName,
       ExclusiveStartKey: lastKey,
       Limit: 1000
-    }).promise();
+    }));
 
-    if (result.Items.length > 0) {
+    const batch = result.Items || [];
+
+    if (batch.length > 0) {
       // Convert to newline-delimited JSON
-      const content = result.Items
+      const content = batch
         .map(item => JSON.stringify(item))
         .join('\n');
 
       // Upload to S3
       const key = `${keyPrefix}/part-${String(fileCount).padStart(5, '0')}.jsonl`;
-      await s3.putObject({
+      await s3.send(new PutObjectCommand({
         Bucket: bucketName,
         Key: key,
         Body: content,
         ContentType: 'application/json'
-      });
+      }));
 
-      totalItems += result.Items.length;
+      totalItems += batch.length;
       fileCount++;
       console.log(`Exported ${totalItems} items (${fileCount} files)`);
     }
@@ -199,13 +208,13 @@ async function rateLimitedExport(tableName, bucketName, keyPrefix, delayMs = 100
   let fileCount = 0;
 
   do {
-    const result = await docClient.scan({
+    const result = await docClient.send(new ScanCommand({
       TableName: tableName,
       ExclusiveStartKey: lastKey,
       Limit: BATCH_SIZE
-    }).promise();
+    }));
 
-    items.push(...result.Items);
+    items.push(...(result.Items || []));
     lastKey = result.LastEvaluatedKey;
 
     // Write to S3 when we have enough items
@@ -229,12 +238,12 @@ async function writeToS3(bucket, prefix, fileNum, items) {
   const key = `${prefix}/part-${String(fileNum).padStart(5, '0')}.jsonl`;
   const body = items.map(i => JSON.stringify(i)).join('\n');
 
-  await s3.putObject({
+  await s3.send(new PutObjectCommand({
     Bucket: bucket,
     Key: key,
     Body: body,
     ContentType: 'application/json'
-  });
+  }));
 }
 ```
 
@@ -246,14 +255,14 @@ If you need CSV for analytics tools like Excel or data warehouses:
 // Export to CSV format
 async function exportToCSV(tableName, bucketName, key) {
   // First, scan to discover all attribute names
-  const sampleResult = await docClient.scan({
+  const sampleResult = await docClient.send(new ScanCommand({
     TableName: tableName,
     Limit: 100
-  }).promise();
+  }));
 
   // Collect all unique attribute names
   const allAttributes = new Set();
-  sampleResult.Items.forEach(item => {
+  (sampleResult.Items || []).forEach(item => {
     Object.keys(item).forEach(attr => allAttributes.add(attr));
   });
   const headers = Array.from(allAttributes).sort();
@@ -263,12 +272,12 @@ async function exportToCSV(tableName, bucketName, key) {
   let lastKey = undefined;
 
   do {
-    const result = await docClient.scan({
+    const result = await docClient.send(new ScanCommand({
       TableName: tableName,
       ExclusiveStartKey: lastKey
-    }).promise();
+    }));
 
-    for (const item of result.Items) {
+    for (const item of result.Items || []) {
       const row = headers.map(h => {
         const value = item[h];
         if (value === undefined) return '';
@@ -283,12 +292,12 @@ async function exportToCSV(tableName, bucketName, key) {
   } while (lastKey);
 
   // Upload to S3
-  await s3.putObject({
+  await s3.send(new PutObjectCommand({
     Bucket: bucketName,
     Key: key,
     Body: csv,
     ContentType: 'text/csv'
-  });
+  }));
 }
 ```
 
@@ -297,19 +306,23 @@ async function exportToCSV(tableName, bucketName, key) {
 For ongoing data synchronization, use DynamoDB Streams instead of full exports:
 
 ```javascript
+const { PutObjectCommand, S3Client } = require('@aws-sdk/client-s3');
+const { unmarshall } = require('@aws-sdk/util-dynamodb');
+
+const s3 = new S3Client({});
+
 // Lambda function triggered by DynamoDB Stream
 // Writes changes to S3 in near real-time
 exports.handler = async (event) => {
-  const s3 = new S3();
   const records = event.Records.map(record => ({
     eventName: record.eventName,
     timestamp: record.dynamodb.ApproximateCreationDateTime,
-    keys: AWS.DynamoDB.Converter.unmarshall(record.dynamodb.Keys),
+    keys: unmarshall(record.dynamodb.Keys),
     newImage: record.dynamodb.NewImage
-      ? AWS.DynamoDB.Converter.unmarshall(record.dynamodb.NewImage)
+      ? unmarshall(record.dynamodb.NewImage)
       : null,
     oldImage: record.dynamodb.OldImage
-      ? AWS.DynamoDB.Converter.unmarshall(record.dynamodb.OldImage)
+      ? unmarshall(record.dynamodb.OldImage)
       : null
   }));
 
@@ -317,12 +330,12 @@ exports.handler = async (event) => {
   const key = `stream-exports/${new Date().toISOString().slice(0, 10)}/${Date.now()}.jsonl`;
   const body = records.map(r => JSON.stringify(r)).join('\n');
 
-  await s3.putObject({
+  await s3.send(new PutObjectCommand({
     Bucket: process.env.EXPORT_BUCKET,
     Key: key,
     Body: body,
     ContentType: 'application/json'
-  });
+  }));
 
   console.log(`Exported ${records.length} stream records to S3`);
 };
@@ -335,15 +348,15 @@ Once your data is in S3, you can query it with Amazon Athena without loading it 
 ```sql
 -- Create an Athena table pointing to the DynamoDB export
 CREATE EXTERNAL TABLE orders_export (
-  Item struct&lt;
-    orderId: struct&lt;S: string&gt;,
-    customerId: struct&lt;S: string&gt;,
-    amount: struct&lt;N: string&gt;,
-    status: struct&lt;S: string&gt;
-  &gt;
+  Item struct<
+    orderId: struct<S: string>,
+    customerId: struct<S: string>,
+    amount: struct<N: string>,
+    status: struct<S: string>
+  >
 )
 ROW FORMAT SERDE 'org.openx.data.jsonserde.JsonSerDe'
-LOCATION 's3://my-exports-bucket/dynamodb-exports/orders/AWSDynamoDB/data/';
+LOCATION 's3://my-exports-bucket/dynamodb-exports/orders/AWSDynamoDB/01234567890123-abcdef/data/';
 
 -- Query the exported data
 SELECT
@@ -360,21 +373,27 @@ WHERE Item.status.S = 'shipped';
 Use EventBridge (CloudWatch Events) with a Lambda function to schedule exports:
 
 ```javascript
+const {
+  DynamoDBClient,
+  ExportTableToPointInTimeCommand
+} = require('@aws-sdk/client-dynamodb');
+
+const dynamodb = new DynamoDBClient({});
+
 // Lambda function triggered on a schedule
 exports.handler = async (event) => {
-  const dynamodb = new AWS.DynamoDB();
   const tables = ['Orders', 'Users', 'Products'];
 
   for (const tableName of tables) {
-    const tableArn = `arn:aws:dynamodb:us-east-1:123456789:table/${tableName}`;
+    const tableArn = `arn:aws:dynamodb:us-east-1:123456789012:table/${tableName}`;
     const date = new Date().toISOString().slice(0, 10);
 
-    await dynamodb.exportTableToPointInTime({
+    await dynamodb.send(new ExportTableToPointInTimeCommand({
       TableArn: tableArn,
       S3Bucket: 'my-exports-bucket',
       S3Prefix: `scheduled-exports/${tableName}/${date}/`,
       ExportFormat: 'DYNAMODB_JSON'
-    }).promise();
+    }));
 
     console.log(`Started export for ${tableName}`);
   }
