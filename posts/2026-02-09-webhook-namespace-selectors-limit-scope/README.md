@@ -369,7 +369,7 @@ webhooks:
   sideEffects: None
 ```
 
-The webhook only runs for pods with specific labels in production namespaces.
+The webhook runs for CREATE requests where the pod has the label and UPDATE requests where either the old or new pod has the label, in production namespaces.
 
 ## Dynamic Namespace Labeling
 
@@ -434,8 +434,17 @@ var (
     )
 )
 
+type Webhook struct{}
+
 func (w *Webhook) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
-    // ... decode admission review ...
+    var review admissionv1.AdmissionReview
+    _ = r
+    // ... decode admission review into review ...
+
+    if review.Request == nil {
+        http.Error(rw, "missing admission request", http.StatusBadRequest)
+        return
+    }
 
     namespace := review.Request.Namespace
     resource := review.Request.Resource.Resource
