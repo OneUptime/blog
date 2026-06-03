@@ -71,6 +71,15 @@ aws elasticache modify-cache-parameter-group \
   --parameter-name-values \
     "ParameterName=maxmemory-policy,ParameterValue=volatile-lru" \
     "ParameterName=notify-keyspace-events,ParameterValue=Ex"
+
+# Associate the parameter group with the replication group
+aws elasticache wait replication-group-available \
+  --replication-group-id session-store
+
+aws elasticache modify-replication-group \
+  --replication-group-id session-store \
+  --cache-parameter-group-name session-params \
+  --apply-immediately
 ```
 
 Using `volatile-lru` means Redis will only evict keys that have a TTL set when memory is full, and it'll evict the least recently used ones first. Since all sessions have TTLs, this is exactly what we want.
@@ -91,22 +100,30 @@ Configure Flask to use Redis for sessions:
 from flask import Flask, session
 from flask_session import Session
 import redis
+import os
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
+from redis.exceptions import ConnectionError, TimeoutError
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = os.environ['SECRET_KEY']
 
 # Configure Redis session backend
 app.config['SESSION_TYPE'] = 'redis'
 app.config['SESSION_PERMANENT'] = True
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600  # 1 hour
-app.config['SESSION_USE_SIGNER'] = True  # Sign the session cookie
 app.config['SESSION_KEY_PREFIX'] = 'session:'
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Strict'
 app.config['SESSION_REDIS'] = redis.Redis(
     host='session-store.abc123.ng.0001.use1.cache.amazonaws.com',
     port=6379,
     ssl=True,
     socket_timeout=5,
     socket_connect_timeout=2,
-    retry_on_timeout=True,
+    retry=Retry(ExponentialBackoff(), 3),
+    retry_on_error=[ConnectionError, TimeoutError],
     health_check_interval=30,
 )
 
@@ -145,9 +162,11 @@ For more control, implement session management directly:
 
 ```python
 import redis
-import json
 import uuid
 import time
+from redis.backoff import ExponentialBackoff
+from redis.retry import Retry
+from redis.exceptions import ConnectionError, TimeoutError
 
 class RedisSessionManager:
     def __init__(self, redis_host, redis_port=6379, ttl=3600, prefix='sess:'):
@@ -157,7 +176,8 @@ class RedisSessionManager:
             ssl=True,
             decode_responses=True,
             socket_timeout=5,
-            retry_on_timeout=True
+            retry=Retry(ExponentialBackoff(), 3),
+            retry_on_error=[ConnectionError, TimeoutError]
         )
         self.ttl = ttl
         self.prefix = prefix
@@ -229,20 +249,28 @@ class RedisSessionManager:
 ```javascript
 const express = require('express');
 const session = require('express-session');
-const RedisStore = require('connect-redis').default;
-const Redis = require('ioredis');
+const { RedisStore } = require('connect-redis');
+const { createClient } = require('redis');
 
 const app = express();
+app.set('trust proxy', 1);
+
+if (!process.env.SESSION_SECRET) {
+  throw new Error('SESSION_SECRET is required');
+}
 
 // Create Redis client
-const redisClient = new Redis({
-  host: 'session-store.abc123.ng.0001.use1.cache.amazonaws.com',
-  port: 6379,
-  tls: {},
-  retryStrategy: (times) => Math.min(times * 200, 3000),
-  maxRetriesPerRequest: 3,
-  enableReadyCheck: true,
+const redisClient = createClient({
+  socket: {
+    host: 'session-store.abc123.ng.0001.use1.cache.amazonaws.com',
+    port: 6379,
+    tls: true,
+    connectTimeout: 5000,
+    reconnectStrategy: (retries) => Math.min(retries * 200, 3000),
+  },
 });
+redisClient.on('error', (err) => console.error('Redis error:', err));
+redisClient.connect().catch(console.error);
 
 // Configure session middleware
 app.use(session({
@@ -251,7 +279,7 @@ app.use(session({
     prefix: 'sess:',
     ttl: 3600, // 1 hour in seconds
   }),
-  secret: process.env.SESSION_SECRET || 'your-secret-key',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -315,6 +343,8 @@ Configure Spring Session:
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
+import org.springframework.data.redis.connection.lettuce.LettuceClientConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.session.data.redis.config.annotation.web.http.EnableRedisHttpSession;
 
@@ -324,12 +354,15 @@ public class SessionConfig {
 
     @Bean
     public RedisConnectionFactory connectionFactory() {
-        LettuceConnectionFactory factory = new LettuceConnectionFactory(
+        RedisStandaloneConfiguration redisConfig = new RedisStandaloneConfiguration(
             "session-store.abc123.ng.0001.use1.cache.amazonaws.com",
             6379
         );
-        factory.setUseSsl(true);
-        return factory;
+        LettuceClientConfiguration clientConfig = LettuceClientConfiguration.builder()
+            .useSsl()
+            .and()
+            .build();
+        return new LettuceConnectionFactory(redisConfig, clientConfig);
     }
 }
 ```
@@ -342,9 +375,9 @@ public class SessionConfig {
 # Python - regenerate session after authentication
 old_data = dict(session)
 session.clear()
-# Flask-Session generates a new ID automatically
 for key, value in old_data.items():
     session[key] = value
+app.session_interface.regenerate(session)
 ```
 
 **Store minimal data.** Don't store the entire user object. Store just the user ID and fetch details from the database when needed.
