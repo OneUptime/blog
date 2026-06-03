@@ -58,9 +58,12 @@ Create a readiness endpoint that checks dependencies:
 package main
 
 import (
+    "context"
     "database/sql"
     "net/http"
     "time"
+
+    _ "github.com/lib/pq"
 )
 
 var db *sql.DB
@@ -103,6 +106,11 @@ func livenessHandler(w http.ResponseWriter, r *http.Request) {
     w.WriteHeader(http.StatusOK)
     w.Write([]byte("Alive"))
 }
+
+func checkRedis() bool {
+    // Replace this with a Redis PING using your application's Redis client.
+    return true
+}
 ```
 
 Notice how readiness checks external dependencies while liveness only checks the application itself.
@@ -116,8 +124,8 @@ Verify database connectivity before accepting traffic:
 
 from flask import Flask, jsonify
 import psycopg2
+import psycopg2.pool
 import redis
-import time
 
 app = Flask(__name__)
 
@@ -127,7 +135,7 @@ redis_client = None
 def init_dependencies():
     global db_pool, redis_client
     # Initialize database connection pool
-    db_pool = psycopg2.pool.SimpleConnectionPool(
+    db_pool = psycopg2.pool.ThreadedConnectionPool(
         1, 20,
         host="postgres",
         database="myapp",
@@ -142,16 +150,19 @@ def readiness():
     checks = {}
 
     # Check database
+    conn = None
     try:
         conn = db_pool.getconn()
         cur = conn.cursor()
         cur.execute('SELECT 1')
         cur.close()
-        db_pool.putconn(conn)
         checks['database'] = 'healthy'
     except Exception as e:
         checks['database'] = f'unhealthy: {str(e)}'
         return jsonify(checks), 503
+    finally:
+        if conn is not None:
+            db_pool.putconn(conn)
 
     # Check Redis
     try:
@@ -186,6 +197,14 @@ const redis = require('redis');
 
 const app = express();
 let isReady = false;
+
+async function warmupCaches() {
+  // Load frequently used cache entries here.
+}
+
+async function loadConfiguration() {
+  // Load application configuration here.
+}
 
 // Initialize connections asynchronously
 async function initialize() {
@@ -256,7 +275,7 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
-      maxUnavailable: 0  # Never allow all pods to be unavailable
+      maxUnavailable: 0  # Do not reduce available replicas during rollout
   selector:
     matchLabels:
       app: api-server
@@ -287,7 +306,7 @@ spec:
               command: ["/bin/sh", "-c", "sleep 15"]
 ```
 
-This configuration ensures at least one pod is always ready during updates.
+This configuration keeps the desired number of replicas available during updates.
 
 ## Checking Multiple Dependencies
 
@@ -298,9 +317,19 @@ package main
 
 import (
     "context"
+    "database/sql"
     "encoding/json"
     "net/http"
     "time"
+
+    "github.com/rabbitmq/amqp091-go"
+    "github.com/redis/go-redis/v9"
+)
+
+var (
+    db          *sql.DB
+    redisClient *redis.Client
+    mqConn      *amqp091.Connection
 )
 
 type HealthCheck struct {
@@ -368,7 +397,7 @@ func checkCache(ctx context.Context) HealthCheck {
 func checkMessageQueue(ctx context.Context) HealthCheck {
     check := HealthCheck{Name: "rabbitmq", Status: "healthy"}
     // Check RabbitMQ connection
-    if !mqConn.IsClosed() {
+    if mqConn.IsClosed() {
         check.Status = "unhealthy"
         check.Error = "connection closed"
     }
@@ -380,6 +409,9 @@ func checkExternalAPI(ctx context.Context) HealthCheck {
     // Quick health check to external service
     req, _ := http.NewRequestWithContext(ctx, "GET", "https://api.example.com/health", nil)
     resp, err := http.DefaultClient.Do(req)
+    if resp != nil {
+        defer resp.Body.Close()
+    }
     if err != nil || resp.StatusCode != 200 {
         check.Status = "unhealthy"
         if err != nil {
@@ -531,8 +563,8 @@ Query readiness status with Prometheus:
 # Pods not ready
 kube_pod_status_ready{condition="false"}
 
-# Count pods not ready by deployment
-count by (namespace, deployment) (
+# Count pods not ready by namespace
+count by (namespace) (
   kube_pod_status_ready{condition="false"}
 )
 
