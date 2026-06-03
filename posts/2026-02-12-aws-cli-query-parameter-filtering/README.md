@@ -49,7 +49,7 @@ aws ec2 describe-instances \
 
 # Find instances missing a specific tag
 aws ec2 describe-instances \
-  --query "Reservations[].Instances[?!Tags[?Key=='CostCenter']].{
+  --query "Reservations[].Instances[?(Tags[?Key=='CostCenter'] | [0]) == \`null\`].{
     ID: InstanceId,
     Name: Tags[?Key=='Name'] | [0].Value
   }[]" \
@@ -108,9 +108,9 @@ aws ec2 describe-security-groups \
 ## Recipe 4: Cost-Related Queries
 
 ```bash
-# Get the most expensive services this month
+# Get the most expensive services for February 2026
 aws ce get-cost-and-usage \
-  --time-period "Start=2026-02-01,End=2026-02-12" \
+  --time-period "Start=2026-02-01,End=2026-03-01" \
   --granularity MONTHLY \
   --metrics "UnblendedCost" \
   --group-by "Type=DIMENSION,Key=SERVICE" \
@@ -167,7 +167,7 @@ aws lambda list-functions \
     Name: FunctionName,
     Runtime: Runtime,
     Memory: MemorySize,
-    CodeSizeMB: to_number(CodeSize) && CodeSize,
+    CodeSizeBytes: CodeSize,
     Timeout: Timeout,
     LastModified: LastModified
   }" \
@@ -175,7 +175,7 @@ aws lambda list-functions \
 
 # Find Lambda functions using deprecated runtimes
 aws lambda list-functions \
-  --query "Functions[?Runtime=='python3.8' || Runtime=='python3.7' || Runtime=='nodejs14.x' || Runtime=='nodejs16.x'].{
+  --query "Functions[?Runtime=='nodejs20.x' || Runtime=='ruby3.2' || Runtime=='python3.9' || Runtime=='nodejs18.x' || Runtime=='dotnet6' || Runtime=='python3.8' || Runtime=='python3.7' || Runtime=='nodejs14.x' || Runtime=='nodejs16.x'].{
     Name: FunctionName,
     Runtime: Runtime
   }" \
@@ -235,7 +235,7 @@ aws ecs describe-task-definition \
     Image: image,
     CPU: cpu,
     Memory: memory,
-    Ports: portMappings[].containerPort | join(', ', @[].to_string(@))
+    Ports: portMappings[].to_string(containerPort) | join(', ', @)
   }" \
   --output table
 
@@ -262,7 +262,7 @@ aws elbv2 describe-target-health \
 JMESPath doesn't have native date functions, but string comparison works for ISO 8601 dates.
 
 ```bash
-# Find resources created after a specific date
+# Find resources created on or after a specific date
 aws ec2 describe-snapshots \
   --owner-ids self \
   --query "Snapshots[?StartTime>='2026-01-01'].{
