@@ -125,17 +125,18 @@ CREATE EXTERNAL TABLE IF NOT EXISTS network_logs.vpc_flow_logs_enhanced (
   log_status string,
   vpc_id string,
   subnet_id string,
+  instance_id string,
+  tcp_flags int,
+  type string,
+  pkt_srcaddr string,
+  pkt_dstaddr string,
   az_id string,
   sublocation_type string,
   sublocation_id string,
-  pkt_srcaddr string,
-  pkt_dstaddr string,
-  region string,
   pkt_src_aws_service string,
   pkt_dst_aws_service string,
   flow_direction string,
-  traffic_path int,
-  tcp_flags int
+  traffic_path int
 )
 PARTITIONED BY (`date` string)
 ROW FORMAT DELIMITED
@@ -212,7 +213,7 @@ FROM network_logs.vpc_flow_logs_projected
 WHERE date >= date_format(date_add('day', -1, current_date), '%Y/%m/%d')
   AND action = 'ACCEPT'
   AND srcaddr LIKE '10.%'
-  AND NOT (dstaddr LIKE '10.%' OR dstaddr LIKE '172.16.%' OR dstaddr LIKE '192.168.%')
+  AND NOT regexp_like(dstaddr, '^(10[.]|192[.]168[.]|172[.](1[6-9]|2[0-9]|3[0-1])[.])')
 GROUP BY srcaddr, dstaddr
 HAVING SUM(bytes) > 100000000  -- More than 100 MB
 ORDER BY megabytes_transferred DESC
