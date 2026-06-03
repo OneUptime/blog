@@ -28,10 +28,13 @@ This is where Oracle on RDS gets complicated:
 
 Enterprise Edition is ONLY available through BYOL. If you don't have existing Oracle licenses, you're limited to SE2 with License Included pricing.
 
-For BYOL, you need to ensure compliance with Oracle's licensing terms. On RDS, Oracle licenses are based on vCPUs:
+For BYOL, you need to ensure compliance with Oracle's licensing terms. Oracle's cloud licensing policy for Amazon RDS is based on the maximum available vCPUs of the instance type, but the counting depends on the edition:
 
-- Each vCPU requires 0.5 processor licenses
-- A db.r6i.xlarge with 4 vCPUs needs 2 processor licenses
+- For Enterprise Edition, two vCPUs count as one Oracle Processor license when multithreading is enabled
+- A db.r6i.xlarge with 4 vCPUs needs 2 Enterprise Edition processor licenses
+- For Standard Edition Two, instances with up to 4 vCPUs count as one socket, and every additional 4 vCPUs (rounded up) count as another socket, up to the SE2 vCPU limits
+
+For BYOL Multi-AZ deployments, you also need licenses for both the primary DB instance and the standby DB instance.
 
 ## Creating via the Console
 
@@ -153,17 +156,16 @@ This script creates an application tablespace and schema user with appropriate p
 
 ```sql
 -- Create a tablespace for the application
--- Note: On RDS, you use the rdsadmin procedures for some operations
-BEGIN
-  rdsadmin.rdsadmin_util.create_directory('DATA_PUMP_DIR');
-END;
-/
+CREATE TABLESPACE myapp_data
+  DATAFILE SIZE 1G
+  AUTOEXTEND ON
+  MAXSIZE 20G;
 
 -- Create an application schema user
 CREATE USER myapp_user IDENTIFIED BY "app_strong_password"
-  DEFAULT TABLESPACE USERS
+  DEFAULT TABLESPACE myapp_data
   TEMPORARY TABLESPACE TEMP
-  QUOTA UNLIMITED ON USERS;
+  QUOTA UNLIMITED ON myapp_data;
 
 -- Grant basic privileges
 GRANT CREATE SESSION TO myapp_user;
@@ -243,7 +245,7 @@ For external monitoring, consider setting up [infrastructure monitoring with One
 
 ## Cost Considerations
 
-Oracle on RDS is the most expensive engine option. A db.r6i.large with License Included SE2 in us-east-1 costs roughly $0.70/hour - about $500/month before storage and I/O costs. Enterprise BYOL instances are cheaper per hour (since you supply the license), but you still need to account for your Oracle license costs.
+Oracle on RDS is the most expensive engine option. A db.r6i.large with License Included SE2 in us-east-1 typically costs hundreds of dollars per month before storage and I/O costs; check the AWS pricing page for the current hourly rate. Enterprise BYOL instances are cheaper per hour (since you supply the license), but you still need to account for your Oracle license costs.
 
 Some cost-saving strategies:
 
