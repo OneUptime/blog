@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Cognito, OIDC, Authentication, SSO
 
-Description: Configure OpenID Connect federation in Amazon Cognito to integrate with any OIDC-compliant identity provider for single sign-on.
+Description: Configure OpenID Connect federation in Amazon Cognito to integrate with an OIDC identity provider for single sign-on.
 
 ---
 
-While SAML handles most enterprise SSO scenarios, some identity providers work better with OpenID Connect (OIDC). Cognito supports OIDC federation natively, letting you connect to any standards-compliant OIDC provider - Auth0, Ping Identity, Keycloak, or your own custom IdP.
+While SAML handles most enterprise SSO scenarios, some identity providers work better with OpenID Connect (OIDC). Cognito supports OIDC federation natively, letting you connect to OIDC providers that meet Cognito's requirements - Auth0, Ping Identity, Keycloak, or your own custom IdP.
 
 OIDC is newer and simpler than SAML. It's built on top of OAuth 2.0, uses JSON instead of XML, and is generally easier to debug when things go wrong.
 
@@ -27,10 +27,12 @@ To set up OIDC federation in Cognito, you need from your identity provider:
 
 - **Client ID**: The application identifier registered with the IdP
 - **Client Secret**: The secret for your application
-- **Issuer URL**: The OIDC discovery endpoint (e.g., `https://idp.example.com`)
+- **Issuer URL**: The OIDC issuer base URL (e.g., `https://idp.example.com`)
 - **Scopes**: What user information to request (typically `openid email profile`)
 
 The IdP's discovery document at `{issuer}/.well-known/openid-configuration` should contain the authorization, token, and userinfo endpoints.
+
+Cognito also requires the OIDC provider to support `client_secret_post` authentication at the token endpoint.
 
 ## Step 1: Register Your App with the IdP
 
@@ -65,9 +67,6 @@ resource "aws_cognito_identity_provider" "oidc" {
     oidc_issuer            = "https://idp.example.com"
     authorize_scopes       = "openid email profile"
 
-    # How to send credentials when exchanging the code
-    token_request_method   = "POST"
-
     # These are auto-discovered from the issuer, but can be set explicitly
     attributes_request_method = "GET"
     authorize_url          = "https://idp.example.com/authorize"
@@ -100,7 +99,6 @@ aws cognito-idp create-identity-provider \
     "client_secret": "your-oidc-client-secret",
     "oidc_issuer": "https://idp.example.com",
     "authorize_scopes": "openid email profile",
-    "token_request_method": "POST",
     "attributes_request_method": "GET"
   }' \
   --attribute-mapping '{
@@ -183,7 +181,6 @@ resource "aws_cognito_identity_provider" "keycloak" {
     client_secret        = "your-keycloak-client-secret"
     oidc_issuer          = "https://keycloak.example.com/realms/myrealm"
     authorize_scopes     = "openid email profile"
-    token_request_method = "POST"
     attributes_request_method = "GET"
   }
 
@@ -217,7 +214,6 @@ resource "aws_cognito_identity_provider" "auth0" {
     client_secret        = "your-auth0-client-secret"
     oidc_issuer          = "https://your-tenant.auth0.com/"
     authorize_scopes     = "openid email profile"
-    token_request_method = "POST"
     attributes_request_method = "GET"
   }
 
@@ -258,7 +254,6 @@ resource "aws_cognito_identity_provider" "oidc" {
     client_secret        = each.value.client_secret
     oidc_issuer          = each.value.issuer
     authorize_scopes     = "openid email profile"
-    token_request_method = "POST"
   }
 
   attribute_mapping = {
@@ -275,7 +270,7 @@ resource "aws_cognito_identity_provider" "oidc" {
 
 The most common problems with OIDC federation:
 
-**Token exchange fails** - Check that `token_request_method` matches what your IdP expects. Some IdPs require POST, others accept GET.
+**Token exchange fails** - Check that your IdP supports `client_secret_post` at the token endpoint and that the discovered or manually configured token endpoint is correct.
 
 **Attributes not populated** - Verify the `attributes_request_method` setting. Also check that the requested scopes include `profile` for name attributes.
 
@@ -308,26 +303,16 @@ After OIDC sign-in, Cognito issues its own tokens. Your application validates Co
 
 ```javascript
 // validate-token.js
-import { jwtDecode } from 'jwt-decode';
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
-function validateCognitoToken(idToken) {
-  const decoded = jwtDecode(idToken);
+const verifier = CognitoJwtVerifier.create({
+  userPoolId: 'us-east-1_XXXXXXXXX',
+  tokenUse: 'id',
+  clientId: 'your-cognito-app-client-id'
+});
 
-  // Check issuer
-  const expectedIssuer = `https://cognito-idp.us-east-1.amazonaws.com/us-east-1_XXXXXXXXX`;
-  if (decoded.iss !== expectedIssuer) {
-    throw new Error('Invalid token issuer');
-  }
-
-  // Check expiration
-  if (decoded.exp * 1000 < Date.now()) {
-    throw new Error('Token expired');
-  }
-
-  // The identity provider info is in the token
-  console.log('Identity provider:', decoded.identities?.[0]?.providerName);
-
-  return decoded;
+async function validateCognitoToken(idToken) {
+  return await verifier.verify(idToken);
 }
 ```
 
