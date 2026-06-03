@@ -38,10 +38,13 @@ Handle large file uploads using S3 presigned URLs for direct browser-to-S3 uploa
 ```javascript
 // upload-service/handler.js - Generate presigned upload URLs
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { v4: uuidv4 } = require('uuid');
 
 const s3 = new S3Client({});
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const RAW_BUCKET = process.env.RAW_BUCKET;
 
 exports.getUploadUrl = async (event) => {
@@ -126,7 +129,7 @@ exports.handler = async (event) => {
           OutputGroupSettings: {
             Type: 'HLS_GROUP_SETTINGS',
             HlsGroupSettings: {
-              Destination: `s3://${process.env.OUTPUT_BUCKET}/hls/${videoId}/`,
+              Destination: `s3://${process.env.OUTPUT_BUCKET}/hls/${videoId}/index`,
               SegmentLength: 6,
               MinSegmentLength: 0,
             },
@@ -148,7 +151,7 @@ exports.handler = async (event) => {
           OutputGroupSettings: {
             Type: 'FILE_GROUP_SETTINGS',
             FileGroupSettings: {
-              Destination: `s3://${process.env.OUTPUT_BUCKET}/thumbnails/${videoId}/`,
+              Destination: `s3://${process.env.OUTPUT_BUCKET}/thumbnails/${videoId}/thumb`,
             },
           },
           Outputs: [{
@@ -225,8 +228,12 @@ exports.handler = async (event) => {
   const video = await getVideoByJobId(jobId);
 
   if (status === 'COMPLETE') {
-    const hlsUrl = `https://${process.env.CDN_DOMAIN}/hls/${video.videoId}/index.m3u8`;
-    const thumbnailUrl = `https://${process.env.CDN_DOMAIN}/thumbnails/${video.videoId}/thumb.0000000.jpg`;
+    const hlsPlaylistPath = detail.outputGroupDetails[0].playlistFilePaths[0]
+      .replace(`s3://${process.env.OUTPUT_BUCKET}/`, '');
+    const thumbnailPath = detail.outputGroupDetails[1].outputDetails[0].outputFilePaths[0]
+      .replace(`s3://${process.env.OUTPUT_BUCKET}/`, '');
+    const hlsUrl = `https://${process.env.CDN_DOMAIN}/${hlsPlaylistPath}`;
+    const thumbnailUrl = `https://${process.env.CDN_DOMAIN}/${thumbnailPath}`;
 
     await updateVideoStatus(video.videoId, 'ready', {
       hlsUrl,
@@ -250,25 +257,35 @@ exports.handler = async (event) => {
 
 ## Step 4: CloudFront Distribution for Streaming
 
-Configure CloudFront for HLS streaming with signed URLs for access control:
+Configure CloudFront for HLS streaming with signed cookies for access control:
 
 ```bash
 # Create a CloudFront distribution for video delivery
 
 aws cloudfront create-distribution \
   --distribution-config '{
+    "CallerReference": "video-platform-2026-02-12",
+    "Comment": "CloudFront distribution for video delivery",
     "Origins": {
+      "Quantity": 1,
       "Items": [{
         "DomainName": "video-output-bucket.s3.amazonaws.com",
         "Id": "S3Origin",
-        "S3OriginConfig": {
-          "OriginAccessIdentity": "origin-access-identity/cloudfront/EXAMPLE"
-        }
+        "OriginAccessControlId": "OAC_ID",
+        "S3OriginConfig": { "OriginAccessIdentity": "" }
       }]
     },
     "DefaultCacheBehavior": {
       "TargetOriginId": "S3Origin",
       "ViewerProtocolPolicy": "redirect-to-https",
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"]
+        }
+      },
       "TrustedKeyGroups": {
         "Enabled": true,
         "Quantity": 1,
@@ -277,10 +294,24 @@ aws cloudfront create-distribution \
       "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
     },
     "CacheBehaviors": {
+      "Quantity": 1,
       "Items": [{
-        "PathPattern": "hls/*/*.m3u8",
+        "PathPattern": "hls/*/*",
         "TargetOriginId": "S3Origin",
         "ViewerProtocolPolicy": "redirect-to-https",
+        "AllowedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
+        "TrustedKeyGroups": {
+          "Enabled": true,
+          "Quantity": 1,
+          "Items": ["KEY_GROUP_ID"]
+        },
         "CachePolicyId": "CACHE_POLICY_SHORT_TTL"
       }]
     },
@@ -288,11 +319,11 @@ aws cloudfront create-distribution \
   }'
 ```
 
-Generate signed URLs for video access:
+Generate signed cookies for video access. HLS playback fetches the master playlist, variant playlists, and media segments as separate requests, so one signed URL for the `.m3u8` file is not enough:
 
 ```javascript
-// playback/handler.js - Generate signed playback URLs
-const { getSignedUrl } = require('@aws-sdk/cloudfront-signer');
+// playback/handler.js - Generate signed playback cookies
+const { getSignedCookies } = require('@aws-sdk/cloudfront-signer');
 
 exports.getPlaybackUrl = async (event) => {
   const videoId = event.pathParameters.videoId;
@@ -302,18 +333,31 @@ exports.getPlaybackUrl = async (event) => {
     return { statusCode: 404, body: JSON.stringify({ error: 'Video not available' }) };
   }
 
-  // Generate signed URL that expires in 4 hours
-  const signedUrl = getSignedUrl({
-    url: `https://${process.env.CDN_DOMAIN}/hls/${videoId}/index.m3u8`,
+  // Generate signed cookies that expire in 4 hours and cover all HLS files for this video
+  const cookies = getSignedCookies({
+    policy: JSON.stringify({
+      Statement: [{
+        Resource: `https://${process.env.CDN_DOMAIN}/hls/${videoId}/*`,
+        Condition: {
+          DateLessThan: {
+            'AWS:EpochTime': Math.floor((Date.now() + 4 * 60 * 60 * 1000) / 1000),
+          },
+        },
+      }],
+    }),
     keyPairId: process.env.CLOUDFRONT_KEY_PAIR_ID,
     privateKey: process.env.CLOUDFRONT_PRIVATE_KEY,
-    dateLessThan: new Date(Date.now() + 4 * 60 * 60 * 1000).toISOString(),
   });
 
   return {
     statusCode: 200,
+    multiValueHeaders: {
+      'Set-Cookie': Object.entries(cookies).map(([name, value]) =>
+        `${name}=${value}; Path=/hls/${videoId}/; Domain=${process.env.CDN_COOKIE_DOMAIN}; Secure; HttpOnly; SameSite=None`
+      ),
+    },
     body: JSON.stringify({
-      playbackUrl: signedUrl,
+      playbackUrl: video.hlsUrl,
       thumbnailUrl: video.thumbnailUrl,
       duration: video.duration,
     }),
@@ -327,20 +371,22 @@ On the frontend, use HLS.js for cross-browser HLS playback:
 
 ```html
 <!-- Simple video player with HLS.js -->
-<video id="video-player" controls></video>
+<video id="video-player" controls crossorigin="use-credentials"></video>
 
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 <script>
   // Initialize HLS.js player
   const video = document.getElementById('video-player');
-  const hlsUrl = 'SIGNED_HLS_URL_HERE';
+  const hlsUrl = 'HLS_URL_HERE';
 
   if (Hls.isSupported()) {
     const hls = new Hls({
       // Start with the lowest quality for fast initial load
       startLevel: 0,
-      // Auto quality switching based on bandwidth
-      autoLevelEnabled: true,
+      xhrSetup: (xhr) => {
+        // Send CloudFront signed cookies with playlist and segment requests
+        xhr.withCredentials = true;
+      },
     });
     hls.loadSource(hlsUrl);
     hls.attachMedia(video);
@@ -357,9 +403,12 @@ Track video views and engagement:
 
 ```javascript
 // analytics/handler.js - Video analytics via Kinesis Firehose
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { FirehoseClient, PutRecordCommand } = require('@aws-sdk/client-firehose');
+const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const firehose = new FirehoseClient({});
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 exports.trackEvent = async (event) => {
   const { videoId, eventType, timestamp, position, quality } = JSON.parse(event.body);
@@ -399,7 +448,7 @@ exports.trackEvent = async (event) => {
 Video streaming costs can spiral quickly. Key optimizations:
 
 - **Transcode once, cache forever**: Set long cache TTLs on transcoded segments since they never change
-- **Use MediaConvert reserved pricing**: If you transcode more than 100 hours/month, reserved pricing saves 50%+
+- **Evaluate MediaConvert reserved queues for steady workloads**: Reserved transcode slots can lower costs for predictable, non-urgent workloads, but they require a 12-month commitment
 - **Clean up raw uploads**: Delete the original upload from S3 after transcoding completes
 - **Use S3 Intelligent-Tiering**: Older videos that are rarely watched automatically move to cheaper storage
 
