@@ -8,7 +8,7 @@ Description: Learn how to disable source/destination checks on EC2 instances to 
 
 ---
 
-By default, every EC2 instance performs a source/destination check on all network traffic. This means the instance will only accept traffic where it's either the source or the destination. That's sensible for regular instances, but it completely breaks use cases like NAT instances, VPN gateways, firewalls, and load balancers - anything where the instance needs to forward traffic that isn't addressed to it.
+By default, every EC2 instance performs a source/destination check on all network traffic. This means the instance will only send or receive traffic where it's either the source or the destination. That's sensible for regular instances, but it completely breaks use cases like NAT instances, VPN gateways, firewalls, and routing appliances - anything where the instance needs to forward traffic that isn't addressed to it.
 
 Disabling this check is a one-line command, but understanding when and why you need it is just as important.
 
@@ -36,9 +36,9 @@ You should disable this check whenever your instance acts as a network intermedi
 - **NAT instances** - forwarding traffic from private subnets to the internet
 - **VPN gateways** - routing encrypted tunnel traffic
 - **Software firewalls** - inspecting and forwarding traffic between subnets
-- **Load balancers** - distributing traffic to backend servers
-- **Network monitoring** - instances doing packet capture or traffic mirroring
-- **Kubernetes/Docker networking** - container networking overlays sometimes need this
+- **Transparent load balancers** - distributing traffic while forwarding packets that are not addressed to the instance itself
+- **Inline network monitoring** - appliances that inspect and forward traffic between interfaces
+- **Kubernetes/Docker networking** - some container networking overlays need this when the EC2 instance forwards traffic for non-instance IPs
 
 If your instance is just a regular application server that sends and receives its own traffic, leave the check enabled. It's a useful security feature for those cases.
 
@@ -52,7 +52,7 @@ Disable source/destination check on an instance:
 # Disable source/destination check on a specific instance
 
 aws ec2 modify-instance-attribute \
-  --instance-id i-0abc123def456789 \
+  --instance-id i-0abc123def4567890 \
   --no-source-dest-check
 ```
 
@@ -61,7 +61,7 @@ To verify the current setting:
 ```bash
 # Check the source/destination check status
 aws ec2 describe-instance-attribute \
-  --instance-id i-0abc123def456789 \
+  --instance-id i-0abc123def4567890 \
   --attribute sourceDestCheck
 ```
 
@@ -72,7 +72,7 @@ If you need to re-enable it later:
 ```bash
 # Re-enable source/destination check
 aws ec2 modify-instance-attribute \
-  --instance-id i-0abc123def456789 \
+  --instance-id i-0abc123def4567890 \
   --source-dest-check
 ```
 
@@ -85,7 +85,7 @@ Disable source/destination check on a specific ENI:
 ```bash
 # Disable on a specific network interface
 aws ec2 modify-network-interface-attribute \
-  --network-interface-id eni-0abc123def456789 \
+  --network-interface-id eni-0abc123def4567890 \
   --no-source-dest-check
 ```
 
@@ -100,11 +100,11 @@ First, launch an instance in a public subnet with a public IP:
 ```bash
 # Launch a NAT instance in a public subnet
 aws ec2 run-instances \
-  --image-id ami-0abc123def456 \
+  --image-id ami-0abcdef1234567890 \
   --instance-type t3.micro \
   --key-name my-key \
-  --subnet-id subnet-0abc123public \
-  --security-group-ids sg-0abc123natsg \
+  --subnet-id subnet-0abc123def4567890 \
+  --security-group-ids sg-0abc123def4567890 \
   --associate-public-ip-address \
   --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=nat-instance}]'
 ```
@@ -114,26 +114,31 @@ Disable source/destination check on the new instance:
 ```bash
 # Disable source/destination check for NAT functionality
 aws ec2 modify-instance-attribute \
-  --instance-id i-0abc123nat456 \
+  --instance-id i-0abc123def4567890 \
   --no-source-dest-check
 ```
 
-Now SSH into the instance and enable IP forwarding and NAT:
+Now SSH into the instance and enable IP forwarding and NAT. If the primary network interface is not `eth0`, replace `eth0` with the primary interface name from your instance:
 
 ```bash
+# Install and enable iptables persistence
+sudo yum install -y iptables-services
+sudo systemctl enable iptables
+sudo systemctl start iptables
+
 # Enable IP forwarding in the kernel
 sudo sysctl -w net.ipv4.ip_forward=1
 
 # Make it permanent
 echo "net.ipv4.ip_forward = 1" | sudo tee /etc/sysctl.d/nat.conf
+sudo sysctl -p /etc/sysctl.d/nat.conf
 
 # Set up NAT with iptables
 sudo iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+sudo iptables -F FORWARD
 
 # Make iptables rules persistent
-sudo yum install -y iptables-services
 sudo service iptables save
-sudo systemctl enable iptables
 ```
 
 Finally, update the private subnet's route table to point internet-bound traffic at the NAT instance:
@@ -141,9 +146,9 @@ Finally, update the private subnet's route table to point internet-bound traffic
 ```bash
 # Add a route in the private subnet's route table
 aws ec2 create-route \
-  --route-table-id rtb-0abc123private \
+  --route-table-id rtb-0abc123def4567890 \
   --destination-cidr-block 0.0.0.0/0 \
-  --instance-id i-0abc123nat456
+  --instance-id i-0abc123def4567890
 ```
 
 ## Security Group Configuration for NAT
@@ -155,13 +160,13 @@ Configure the security group for NAT:
 ```bash
 # Allow all traffic from the private subnet CIDR
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-0abc123natsg \
+  --group-id sg-0abc123def4567890 \
   --protocol -1 \
   --cidr 10.0.2.0/24
 
-# Allow HTTP and HTTPS outbound (usually already allowed by default)
+# Allow all outbound traffic (usually already allowed by default)
 aws ec2 authorize-security-group-egress \
-  --group-id sg-0abc123natsg \
+  --group-id sg-0abc123def4567890 \
   --protocol -1 \
   --cidr 0.0.0.0/0
 ```
@@ -172,7 +177,7 @@ Here's the Terraform equivalent for the entire setup:
 
 ```hcl
 resource "aws_instance" "nat" {
-  ami                         = "ami-0abc123def456"
+  ami                         = "ami-0abcdef1234567890"
   instance_type               = "t3.micro"
   subnet_id                   = aws_subnet.public.id
   associate_public_ip_address = true
@@ -182,12 +187,15 @@ resource "aws_instance" "nat" {
 
   user_data = <<-EOF
     #!/bin/bash
+    yum install -y iptables-services
+    systemctl enable iptables
+    systemctl start iptables
     sysctl -w net.ipv4.ip_forward=1
     echo "net.ipv4.ip_forward = 1" >> /etc/sysctl.d/nat.conf
+    sysctl -p /etc/sysctl.d/nat.conf
     iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
-    yum install -y iptables-services
+    iptables -F FORWARD
     service iptables save
-    systemctl enable iptables
   EOF
 
   tags = { Name = "nat-instance" }
@@ -232,7 +240,7 @@ You might wonder when to use a NAT instance over AWS's managed NAT Gateway. Here
 | Bandwidth | Depends on instance type | Up to 100 Gbps |
 | Availability | Single instance (no HA by default) | Managed HA within AZ |
 | Maintenance | You manage OS, patches, monitoring | Fully managed |
-| Security Groups | Yes, full SG support | No SG, uses NACLs only |
+| Security Groups | Yes, full SG support | No SG; controlled by route tables and subnet NACLs |
 | Port Forwarding | Yes, with iptables | No |
 | Bastion Host | Can double as bastion | No |
 
@@ -247,11 +255,11 @@ A simple health check script that runs on a monitoring instance:
 ```bash
 #!/bin/bash
 # Check if NAT instance is healthy and failover if needed
-NAT_INSTANCE_ID="i-0abc123nat456"
-BACKUP_NAT_ID="i-0abc123backup"
-ROUTE_TABLE_ID="rtb-0abc123private"
+NAT_INSTANCE_ID="i-0abc123def4567890"
+BACKUP_NAT_ID="i-0def456abc1237890"
+ROUTE_TABLE_ID="rtb-0abc123def4567890"
 
-# Ping test through the NAT instance
+# Check EC2 instance status
 STATUS=$(aws ec2 describe-instance-status \
   --instance-ids $NAT_INSTANCE_ID \
   --query 'InstanceStatuses[0].InstanceState.Name' \
