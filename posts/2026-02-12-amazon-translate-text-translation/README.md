@@ -61,7 +61,7 @@ for code, name in languages.items():
 
 ## Auto-Detecting the Source Language
 
-When you don't know what language the input is in, set the source to 'auto' and Translate will figure it out.
+When you don't know what language the input is in, set the source to 'auto' and Translate will figure it out. Auto-detection calls Amazon Comprehend, so use a region where Amazon Comprehend supports language detection.
 
 ```python
 def detect_and_translate(text, target_language):
@@ -137,13 +137,13 @@ create_terminology('monitoring-terms', terms)
 Now use the terminology when translating.
 
 ```python
-def translate_with_terminology(text, target_language, terminology_names):
+def translate_with_terminology(text, target_language, terminology_name):
     """Translate using custom terminology for consistent terms."""
     response = translate.translate_text(
         Text=text,
         SourceLanguageCode='en',
         TargetLanguageCode=target_language,
-        TerminologyNames=terminology_names
+        TerminologyNames=[terminology_name]
     )
 
     # Show which terms were applied
@@ -156,7 +156,7 @@ def translate_with_terminology(text, target_language, terminology_names):
 
 # Translate with terminology
 text = "OneUptime helps you monitor uptime and manage incidents on your StatusPage."
-translated = translate_with_terminology(text, 'es', ['monitoring-terms'])
+translated = translate_with_terminology(text, 'es', 'monitoring-terms')
 print(f"Translation: {translated}")
 ```
 
@@ -215,7 +215,7 @@ def start_batch_translation(
     source_language,
     target_languages,
     role_arn,
-    terminology_names=None
+    terminology_name=None
 ):
     """Start a batch translation job."""
     params = {
@@ -232,8 +232,8 @@ def start_batch_translation(
         'TargetLanguageCodes': target_languages
     }
 
-    if terminology_names:
-        params['TerminologyNames'] = terminology_names
+    if terminology_name:
+        params['TerminologyNames'] = [terminology_name]
 
     response = translate.start_text_translation_job(**params)
     job_id = response['JobId']
@@ -296,7 +296,7 @@ class TranslationService:
         # Check cache
         import hashlib
         cache_key = hashlib.sha256(
-            f"{text}:{target_language}".encode()
+            f"{text}:{target_language}:{terminology or ''}".encode()
         ).hexdigest()
 
         cached = self._get_cached(cache_key)
@@ -374,15 +374,18 @@ Translate can handle HTML content while preserving the markup structure.
 ```python
 def translate_html(html_content, target_language):
     """Translate HTML content while preserving tags."""
-    response = translate.translate_text(
-        Text=html_content,
+    response = translate.translate_document(
+        Document={
+            'Content': html_content.encode('utf-8'),
+            'ContentType': 'text/html'
+        },
         SourceLanguageCode='en',
         TargetLanguageCode=target_language,
         Settings={
             'Formality': 'FORMAL'  # or 'INFORMAL'
         }
     )
-    return response['TranslatedText']
+    return response['TranslatedDocument']['Content'].decode('utf-8')
 
 html = '<h1>Welcome</h1><p>Monitor your <strong>infrastructure</strong> in real-time.</p>'
 translated = translate_html(html, 'fr')
