@@ -56,6 +56,16 @@ aws s3api put-bucket-policy \
         }
       },
       {
+        "Sid": "AWSConfigBucketExistenceCheck",
+        "Effect": "Allow",
+        "Principal": {"Service": "config.amazonaws.com"},
+        "Action": "s3:ListBucket",
+        "Resource": "arn:aws:s3:::my-config-bucket-111111111111",
+        "Condition": {
+          "StringEquals": {"AWS:SourceAccount": "111111111111"}
+        }
+      },
+      {
         "Sid": "AWSConfigBucketDelivery",
         "Effect": "Allow",
         "Principal": {"Service": "config.amazonaws.com"},
@@ -105,6 +115,8 @@ aws configservice put-configuration-recorder \
   --configuration-recorder name=default,roleARN=arn:aws:iam::111111111111:role/AWSConfigRole \
   --recording-group allSupported=true,includeGlobalResourceTypes=true
 ```
+
+Global IAM resource types (IAM users, groups, roles, and customer managed policies) can only be recorded in Regions where AWS Config supported them before February 2022. In newer Regions, set `includeGlobalResourceTypes=false` or omit global IAM types from your selected resource types.
 
 If you want to be selective about which resources to track (to save costs), you can specify resource types.
 
@@ -177,7 +189,10 @@ resource "aws_config_delivery_channel" "main" {
     delivery_frequency = "Six_Hours"
   }
 
-  depends_on = [aws_config_configuration_recorder.main]
+  depends_on = [
+    aws_config_configuration_recorder.main,
+    aws_s3_bucket_policy.config
+  ]
 }
 
 resource "aws_config_configuration_recorder_status" "main" {
@@ -210,6 +225,55 @@ resource "aws_iam_role_policy_attachment" "config" {
 resource "aws_s3_bucket" "config" {
   bucket = "my-config-bucket-111111111111"
 }
+
+data "aws_caller_identity" "current" {}
+
+resource "aws_s3_bucket_policy" "config" {
+  bucket = aws_s3_bucket.config.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AWSConfigBucketPermissionsCheck"
+        Effect    = "Allow"
+        Principal = { Service = "config.amazonaws.com" }
+        Action    = "s3:GetBucketAcl"
+        Resource  = aws_s3_bucket.config.arn
+        Condition = {
+          StringEquals = {
+            "AWS:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+      {
+        Sid       = "AWSConfigBucketExistenceCheck"
+        Effect    = "Allow"
+        Principal = { Service = "config.amazonaws.com" }
+        Action    = "s3:ListBucket"
+        Resource  = aws_s3_bucket.config.arn
+        Condition = {
+          StringEquals = {
+            "AWS:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      },
+      {
+        Sid       = "AWSConfigBucketDelivery"
+        Effect    = "Allow"
+        Principal = { Service = "config.amazonaws.com" }
+        Action    = "s3:PutObject"
+        Resource  = "${aws_s3_bucket.config.arn}/AWSLogs/${data.aws_caller_identity.current.account_id}/Config/*"
+        Condition = {
+          StringEquals = {
+            "s3:x-amz-acl"      = "bucket-owner-full-control"
+            "AWS:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+        }
+      }
+    ]
+  })
+}
 ```
 
 ## Querying Resource Configurations
@@ -235,13 +299,13 @@ aws configservice select-resource-config \
 The advanced query feature is powerful. You can write SQL-like queries across all your tracked resources.
 
 ```bash
-# Find all public S3 buckets
+# Inspect S3 bucket public access block settings
 aws configservice select-resource-config \
   --expression "SELECT resourceId, resourceName, configuration.publicAccessBlockConfiguration WHERE resourceType = 'AWS::S3::Bucket'"
 
-# Find all EC2 instances without required tags
+# Find all available EBS volumes
 aws configservice select-resource-config \
-  --expression "SELECT resourceId, tags WHERE resourceType = 'AWS::EC2::Instance' AND tags.tag('Environment') IS NULL"
+  --expression "SELECT resourceId, tags, configuration.state.value WHERE resourceType = 'AWS::EC2::Volume' AND configuration.state.value = 'available'"
 ```
 
 ## Adding Config Rules
