@@ -50,10 +50,10 @@ The key components on each external instance are:
 
 Your external servers need:
 
-- A supported Linux operating system (Amazon Linux 2, Ubuntu 20.04+, RHEL 7+, CentOS 7+, Debian 10+, Fedora 36+, openSUSE Tumbleweed, or SUSE Enterprise Server 15+)
+- A supported Linux operating system and CPU architecture. AWS currently supports Amazon Linux 2023, Ubuntu 20/22/24, and RHEL 9 on x86_64 and ARM64. Amazon Linux 2, CentOS Stream 9, RHEL 7/8, Fedora 32/33/40, openSUSE Tumbleweed, Ubuntu 18, Debian 9/10/11/12, and SUSE Enterprise Server 15 are supported only until August 7, 2026.
 - Docker installed and running
 - Outbound internet access to reach AWS APIs (or AWS PrivateLink endpoints)
-- At least 1 vCPU and 512MB of RAM available for the ECS agent
+- Enough CPU and memory available for the SSM agent, ECS agent, Docker, and the tasks you plan to run
 
 ## Step 1: Create an ECS Cluster
 
@@ -100,7 +100,7 @@ aws iam attach-role-policy \
 
 aws iam attach-role-policy \
   --role-name ecsAnywhereRole \
-  --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerServiceforEC2Role
+  --policy-arn arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role
 ```
 
 If your tasks pull images from ECR, also attach the ECR read policy.
@@ -111,6 +111,8 @@ aws iam attach-role-policy \
   --role-name ecsAnywhereRole \
   --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
 ```
+
+If your task definitions use the `awslogs` log driver, create or reuse an ECS task execution role with the `AmazonECSTaskExecutionRolePolicy` policy and specify it in the task definition.
 
 ## Step 3: Generate the Activation Key
 
@@ -164,7 +166,7 @@ aws ecs list-container-instances \
 # Describe the external instance
 aws ecs describe-container-instances \
   --cluster hybrid-cluster \
-  --container-instances "arn:aws:ecs:us-east-1:123456789:container-instance/hybrid-cluster/abc123" \
+  --container-instances "arn:aws:ecs:us-east-1:123456789012:container-instance/hybrid-cluster/abc123" \
   --query 'containerInstances[0].{Status:status,RegisteredAt:registeredAt,RunningTasks:runningTasksCount,CPU:registeredResources[?name==`CPU`].integerValue,Memory:registeredResources[?name==`MEMORY`].integerValue}'
 ```
 
@@ -181,10 +183,11 @@ Task definitions for ECS Anywhere use the `EXTERNAL` launch type. They work the 
   "networkMode": "bridge",
   "cpu": "256",
   "memory": "512",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "web",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
       "essential": true,
       "portMappings": [
         {
