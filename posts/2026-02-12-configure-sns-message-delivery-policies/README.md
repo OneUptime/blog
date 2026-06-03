@@ -19,14 +19,14 @@ Each subscription protocol has different default retry behavior.
 ```mermaid
 flowchart TD
     A[SNS Message] --> B{Protocol?}
-    B -->|HTTP/HTTPS| C["3 retries, no delay phase<br/>Then 10 retries with backoff<br/>Total: 23 retries over ~1 hour"]
-    B -->|SQS| D["Infinite retries<br/>Very aggressive<br/>Near 100% delivery"]
-    B -->|Lambda| E["3 retries<br/>With backoff"]
-    B -->|Email| F["No retries<br/>Best effort"]
-    B -->|SMS| G["No retries<br/>Best effort"]
+    B -->|HTTP/HTTPS| C["Default: 3 retries<br/>20 seconds between failed attempts<br/>Customizable up to 3,600 seconds total retry time"]
+    B -->|SQS| D["AWS managed endpoint policy<br/>100,015 attempts over 23 days"]
+    B -->|Lambda| E["AWS managed endpoint policy<br/>100,015 attempts over 23 days"]
+    B -->|Email/SMTP| F["Customer managed endpoint policy<br/>50 attempts over 6 hours"]
+    B -->|SMS| G["Customer managed endpoint policy<br/>50 attempts over 6 hours"]
 ```
 
-HTTP/HTTPS endpoints have the most configurable retry policies since they're the most likely to experience transient failures.
+HTTP/HTTPS endpoints are the only protocols that support custom delivery policies. Other protocols use Amazon SNS-defined delivery policies.
 
 ## Configuring HTTP/HTTPS Delivery Policies
 
@@ -43,7 +43,7 @@ aws sns set-subscription-attributes \
       "numRetries": 15,
       "numNoDelayRetries": 2,
       "minDelayTarget": 5,
-      "maxDelayTarget": 600,
+      "maxDelayTarget": 60,
       "numMinDelayRetries": 3,
       "numMaxDelayRetries": 5,
       "backoffFunction": "exponential"
@@ -106,11 +106,11 @@ def set_delivery_policy(subscription_arn, config):
         'patient': {
             'healthyRetryPolicy': {
                 'numRetries': 50,
-                'numNoDelayRetries': 0,
-                'minDelayTarget': 20,
-                'maxDelayTarget': 3600,
-                'numMinDelayRetries': 5,
-                'numMaxDelayRetries': 25,
+                'numNoDelayRetries': 3,
+                'minDelayTarget': 1,
+                'maxDelayTarget': 60,
+                'numMinDelayRetries': 2,
+                'numMaxDelayRetries': 35,
                 'backoffFunction': 'exponential',
             }
         },
