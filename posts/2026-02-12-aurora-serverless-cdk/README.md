@@ -21,7 +21,6 @@ Here's a PostgreSQL-compatible Aurora Serverless v2 cluster:
 import * as cdk from 'aws-cdk-lib';
 import * as rds from 'aws-cdk-lib/aws-rds';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
 export class AuroraStack extends cdk.Stack {
@@ -89,13 +88,19 @@ export class AuroraStack extends cdk.Stack {
 }
 ```
 
-The `serverlessV2MinCapacity` and `serverlessV2MaxCapacity` control the scaling range in Aurora Capacity Units (ACUs). Each ACU is roughly 2 GB of memory. Setting min to 0.5 means the cluster can scale down to nearly nothing during quiet periods, saving significant costs.
+The `serverlessV2MinCapacity` and `serverlessV2MaxCapacity` control the scaling range in Aurora Capacity Units (ACUs). Each ACU is roughly 2 GB of memory. Setting min to 0.5 means the cluster can scale down to the lowest continuously running capacity for engine versions that don't support auto-pause.
 
 ## Security Configuration
 
 Lock down the database with proper security groups and encryption:
 
 ```typescript
+import * as kms from 'aws-cdk-lib/aws-kms';
+
+const encryptionKey = new kms.Key(this, 'DatabaseEncryptionKey', {
+  enableKeyRotation: true,
+});
+
 // Security group for database access
 const dbSecurityGroup = new ec2.SecurityGroup(this, 'DBSecurityGroup', {
   vpc: vpc,
@@ -134,7 +139,7 @@ const cluster = new rds.DatabaseCluster(this, 'SecureCluster', {
 });
 ```
 
-IAM authentication eliminates the need for password-based access from applications. Your Lambda functions or ECS tasks authenticate using their IAM role instead.
+IAM authentication lets applications connect without storing a database password, but they still need to generate an IAM database authentication token and use a database user configured for IAM authentication. Your Lambda functions or ECS tasks can generate that token using their IAM role.
 
 ## MySQL-Compatible Cluster
 
@@ -248,7 +253,7 @@ export const handler = async (event: any) => {
 
 ## Data API for Serverless Access
 
-Aurora Serverless v2 supports the Data API, which lets you run SQL queries over HTTP without managing database connections:
+Aurora Serverless v2 supports the Data API for supported engine versions and Regions, which lets you run SQL queries over HTTP without managing database connections:
 
 ```typescript
 // Enable Data API on the cluster
