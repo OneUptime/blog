@@ -73,6 +73,13 @@ data:
           - url: http://prometheus.observability.svc.cluster.local:9090/api/v1/write
             send_exemplars: true
 
+    overrides:
+      defaults:
+        metrics_generator:
+          processors:
+            - service-graphs
+            - span-metrics
+
     ingester:
       trace_idle_period: 10s
       max_block_bytes: 1048576
@@ -135,10 +142,12 @@ spec:
 
 ## Configuring Prometheus Remote Write
 
-Enable Prometheus to receive metrics from Tempo:
+Enable Prometheus to receive metrics from Tempo by starting Prometheus with `--web.enable-remote-write-receiver`. The Prometheus configuration can still scrape Tempo's own `/metrics` endpoint:
 
 ```yaml
 # prometheus-config.yaml
+# Start Prometheus with:
+# prometheus --config.file=/etc/prometheus/prometheus.yml --web.enable-remote-write-receiver
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -149,9 +158,6 @@ data:
     global:
       scrape_interval: 15s
       evaluation_interval: 15s
-
-    remote_write:
-      - url: http://prometheus.observability.svc.cluster.local:9090/api/v1/write
 
     scrape_configs:
     - job_name: 'tempo'
@@ -170,57 +176,52 @@ Build Grafana dashboards using generated metrics:
     "panels": [
       {
         "title": "Request Rate (requests/sec)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "datasource": "Prometheus",
-            "expr": "sum(rate(traces_spanmetrics_calls_total{service_name=\"$service\"}[5m])) by (span_name)",
+            "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"$service\"}[5m])) by (span_name)",
             "legendFormat": "{{span_name}}"
           }
-        ],
-        "yaxes": [
-          {"format": "reqps"}
         ]
       },
       {
         "title": "Error Rate (%)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "datasource": "Prometheus",
-            "expr": "sum(rate(traces_spanmetrics_calls_total{service_name=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[5m])) by (span_name) / sum(rate(traces_spanmetrics_calls_total{service_name=\"$service\"}[5m])) by (span_name) * 100",
+            "expr": "sum(rate(traces_spanmetrics_calls_total{service=\"$service\", status_code=\"STATUS_CODE_ERROR\"}[5m])) by (span_name) / sum(rate(traces_spanmetrics_calls_total{service=\"$service\"}[5m])) by (span_name) * 100",
             "legendFormat": "{{span_name}}"
           }
-        ],
-        "yaxes": [
-          {"format": "percent"}
         ]
       },
       {
-        "title": "Duration P50/P95/P99 (ms)",
-        "type": "graph",
+        "title": "Duration P50/P95/P99 (seconds)",
+        "type": "timeseries",
         "targets": [
           {
-            "expr": "histogram_quantile(0.50, sum(rate(traces_spanmetrics_latency_bucket{service_name=\"$service\"}[5m])) by (le, span_name))",
+            "expr": "histogram_quantile(0.50, sum(rate(traces_spanmetrics_latency_bucket{service=\"$service\"}[5m])) by (le, span_name))",
             "legendFormat": "P50 - {{span_name}}"
           },
           {
-            "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service_name=\"$service\"}[5m])) by (le, span_name))",
+            "expr": "histogram_quantile(0.95, sum(rate(traces_spanmetrics_latency_bucket{service=\"$service\"}[5m])) by (le, span_name))",
             "legendFormat": "P95 - {{span_name}}"
           },
           {
-            "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service_name=\"$service\"}[5m])) by (le, span_name))",
+            "expr": "histogram_quantile(0.99, sum(rate(traces_spanmetrics_latency_bucket{service=\"$service\"}[5m])) by (le, span_name))",
             "legendFormat": "P99 - {{span_name}}"
           }
         ]
       },
       {
-        "title": "Service Graph",
-        "type": "nodeGraph",
+        "title": "Service Graph Request Rate",
+        "type": "timeseries",
         "targets": [
           {
             "datasource": "Prometheus",
-            "expr": "traces_service_graph_request_total"
+            "expr": "sum(rate(traces_service_graph_request_total[5m])) by (client, server)",
+            "legendFormat": "{{client}} -> {{server}}"
           }
         ]
       }
@@ -231,7 +232,7 @@ Build Grafana dashboards using generated metrics:
           "name": "service",
           "type": "query",
           "datasource": "Prometheus",
-          "query": "label_values(traces_spanmetrics_calls_total, service_name)"
+          "query": "label_values(traces_spanmetrics_calls_total, service)"
         }
       ]
     }
@@ -257,25 +258,25 @@ data:
       rules:
       - alert: HighErrorRate
         expr: |
-          (sum(rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service_name)
+          (sum(rate(traces_spanmetrics_calls_total{status_code="STATUS_CODE_ERROR"}[5m])) by (service)
           /
-          sum(rate(traces_spanmetrics_calls_total[5m])) by (service_name)) > 0.05
+          sum(rate(traces_spanmetrics_calls_total[5m])) by (service)) > 0.05
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "High error rate for {{ $labels.service_name }}"
+          summary: "High error rate for {{ $labels.service }}"
 
       - alert: HighLatency
         expr: |
           histogram_quantile(0.95,
-            sum(rate(traces_spanmetrics_latency_bucket[5m])) by (le, service_name)
-          ) > 1000
+            sum(rate(traces_spanmetrics_latency_bucket[5m])) by (le, service)
+          ) > 1
         for: 10m
         labels:
           severity: warning
         annotations:
-          summary: "High P95 latency for {{ $labels.service_name }}"
+          summary: "High P95 latency for {{ $labels.service }}"
 ```
 
 Tempo's metrics generator provides RED metrics without additional instrumentation. By deriving metrics from trace data, you maintain a single source of truth for both detailed traces and aggregate service performance metrics in Kubernetes environments.
