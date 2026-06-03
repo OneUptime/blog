@@ -77,6 +77,9 @@ metadata:
   name: critical-service
 spec:
   replicas: 12
+  selector:
+    matchLabels:
+      app: critical-service
   template:
     metadata:
       labels:
@@ -100,9 +103,9 @@ spec:
         image: critical-service:latest
 ```
 
-This creates a two-level distribution:
-1. First, spread evenly across zones (hard requirement)
-2. Then, spread across nodes within zones (soft preference)
+This creates two distribution rules:
+1. Spread evenly across zones as a hard requirement
+2. Prefer spreading across nodes as a soft preference
 
 The `ScheduleAnyway` on the node-level constraint makes it a preference rather than a requirement. If perfect node distribution isn't possible, the scheduler proceeds anyway.
 
@@ -117,6 +120,9 @@ metadata:
   name: resource-intensive-app
 spec:
   replicas: 20
+  selector:
+    matchLabels:
+      app: resource-intensive-app
   template:
     metadata:
       labels:
@@ -125,7 +131,7 @@ spec:
       topologySpreadConstraints:
       - maxSkew: 1
         topologyKey: kubernetes.io/hostname
-        whenUnsatisfiable: ScheduleAnyway
+        whenUnsatisfiable: DoNotSchedule
         labelSelector:
           matchLabels:
             app: resource-intensive-app
@@ -139,9 +145,9 @@ spec:
             memory: "4Gi"
 ```
 
-The `minDomains: 5` ensures pods spread across at least 5 nodes, even if fewer would technically satisfy the maxSkew constraint. This prevents clustering all pods on a small subset of nodes.
+The `minDomains: 5` tells the scheduler to treat the global minimum as 0 until at least 5 eligible node domains exist. With `maxSkew: 1`, this prevents scheduling extra pods onto a smaller set of nodes while the minimum domain count is not met.
 
-With 20 replicas and minDomains of 5, you get at least 4 pods per node. Without minDomains, all 20 might land on 2 large nodes if they have capacity.
+With 20 replicas and 5 eligible nodes, you get 4 pods per node. If fewer than 5 eligible nodes exist, additional pods remain pending instead of packing onto fewer nodes.
 
 ## Using Node Affinity with Topology Spread
 
@@ -154,6 +160,9 @@ metadata:
   name: ml-training
 spec:
   replicas: 8
+  selector:
+    matchLabels:
+      app: ml-training
   template:
     metadata:
       labels:
@@ -241,7 +250,7 @@ spec:
           storage: 100Gi
 ```
 
-Each database replica lands on a different node in a different zone, maximizing resilience against failures.
+The database replicas spread across available nodes and zones within the configured skew, maximizing resilience against failures.
 
 ## Dynamic Topology Spread with Cluster Autoscaler
 
@@ -254,6 +263,9 @@ metadata:
   name: scalable-app
 spec:
   replicas: 30
+  selector:
+    matchLabels:
+      app: scalable-app
   template:
     metadata:
       labels:
@@ -277,23 +289,39 @@ spec:
         image: scalable-app:latest
 ```
 
-As pods scale up, cluster autoscaler provisions nodes in zones and pools that help satisfy topology constraints. This maintains even distribution without manual intervention.
+As pods scale up, a topology-aware node autoscaler can provision nodes in zones and pools that help satisfy hard topology constraints. Soft `ScheduleAnyway` constraints improve scheduler scoring, but they do not by themselves make pods pending for autoscaler scale-up.
 
 ## Monitoring Topology Distribution
 
-Create Prometheus queries to track pod distribution:
+Create Prometheus queries to track pod distribution. These examples assume kube-state-metrics is configured to expose the relevant pod and node labels:
 
 ```promql
 # Pods per zone
 
-sum(kube_pod_info{namespace="production"}) by (node, topology_zone)
+sum by (label_topology_kubernetes_io_zone) (
+  kube_pod_info{namespace="production"}
+  * on(node) group_left(label_topology_kubernetes_io_zone)
+    kube_node_labels
+)
 
 # Maximum skew across zones
 max(
-  sum(kube_pod_info{app="web-app"}) by (topology_zone)
+  sum by (label_topology_kubernetes_io_zone) (
+    kube_pod_info{namespace="production"}
+    * on(namespace, pod) group_left(label_app)
+      kube_pod_labels{label_app="web-app"}
+    * on(node) group_left(label_topology_kubernetes_io_zone)
+      kube_node_labels
+  )
 ) -
 min(
-  sum(kube_pod_info{app="web-app"}) by (topology_zone)
+  sum by (label_topology_kubernetes_io_zone) (
+    kube_pod_info{namespace="production"}
+    * on(namespace, pod) group_left(label_app)
+      kube_pod_labels{label_app="web-app"}
+    * on(node) group_left(label_topology_kubernetes_io_zone)
+      kube_node_labels
+  )
 )
 
 # Nodes with pod count above threshold
@@ -319,7 +347,7 @@ data:
             "title": "Pods per Zone",
             "targets": [
               {
-                "expr": "sum(kube_pod_info) by (topology_zone)"
+                "expr": "sum by (label_topology_kubernetes_io_zone) (kube_pod_info * on(node) group_left(label_topology_kubernetes_io_zone) kube_node_labels)"
               }
             ],
             "type": "graph"
@@ -363,11 +391,19 @@ metadata:
   namespace: kube-system
 data:
   policy.yaml: |
-    apiVersion: descheduler/v1alpha1
+    apiVersion: descheduler/v1alpha2
     kind: DeschedulerPolicy
-    strategies:
-      RemovePodsViolatingTopologySpreadConstraint:
-        enabled: true
+    profiles:
+    - name: topology-spread
+      pluginConfig:
+      - name: RemovePodsViolatingTopologySpreadConstraint
+        args:
+          constraints:
+          - DoNotSchedule
+      plugins:
+        balance:
+          enabled:
+          - RemovePodsViolatingTopologySpreadConstraint
 ```
 
 The descheduler evicts pods that violate topology spread constraints, allowing them to reschedule correctly.
