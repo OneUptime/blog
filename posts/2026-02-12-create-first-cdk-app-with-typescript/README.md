@@ -17,7 +17,7 @@ This guide walks you through creating a real CDK app from scratch - not just a h
 First, make sure you have the prerequisites installed.
 
 ```bash
-# Verify Node.js (14.x or later required)
+# Verify Node.js (22.x or later recommended)
 
 node --version
 
@@ -58,10 +58,10 @@ s3-processor/
 Let's look at what CDK generated in the entry point file.
 
 ```typescript
+#!/usr/bin/env node
 // bin/s3-processor.ts
 // This is where the CDK app is instantiated and stacks are added
-import 'source-map-support/register';
-import * as cdk from 'aws-cdk-lib';
+import * as cdk from 'aws-cdk-lib/core';
 import { S3ProcessorStack } from '../lib/s3-processor-stack';
 
 const app = new cdk.App();
@@ -119,8 +119,14 @@ export class S3ProcessorStack extends cdk.Stack {
           ],
           // Delete objects after 365 days
           expiration: cdk.Duration.days(365),
+          noncurrentVersionExpiration: cdk.Duration.days(365),
         },
       ],
+    });
+
+    const processorLogGroup = new logs.LogGroup(this, 'ProcessorLogGroup', {
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     // Create the Lambda function that processes uploads
@@ -149,7 +155,7 @@ export class S3ProcessorStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       memorySize: 256,
       // Set log retention to avoid indefinite log storage
-      logRetention: logs.RetentionDays.TWO_WEEKS,
+      logGroup: processorLogGroup,
       environment: {
         BUCKET_NAME: uploadBucket.bucketName,
       },
@@ -166,7 +172,7 @@ export class S3ProcessorStack extends cdk.Stack {
       { prefix: 'uploads/' },
     );
 
-    // Output the bucket name and Lambda ARN
+    // Output the bucket name, Lambda details, and log group name
     new cdk.CfnOutput(this, 'BucketName', {
       value: uploadBucket.bucketName,
       description: 'Upload bucket name',
@@ -175,6 +181,16 @@ export class S3ProcessorStack extends cdk.Stack {
     new cdk.CfnOutput(this, 'FunctionArn', {
       value: processorFunction.functionArn,
       description: 'Processor function ARN',
+    });
+
+    new cdk.CfnOutput(this, 'FunctionName', {
+      value: processorFunction.functionName,
+      description: 'Processor function name',
+    });
+
+    new cdk.CfnOutput(this, 'LogGroupName', {
+      value: processorLogGroup.logGroupName,
+      description: 'Processor log group name',
     });
   }
 }
@@ -282,7 +298,7 @@ After deployment, test by uploading a file to the S3 bucket.
 aws s3 cp test-file.txt s3://YOUR_BUCKET_NAME/uploads/test-file.txt
 
 # Check the Lambda logs to verify processing
-aws logs tail /aws/lambda/S3ProcessorStack-ProcessorFunction-XXXXX --follow
+aws logs tail YOUR_LOG_GROUP_NAME --follow
 ```
 
 ## Cleaning Up
