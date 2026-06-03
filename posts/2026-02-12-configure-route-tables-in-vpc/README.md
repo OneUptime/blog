@@ -12,7 +12,7 @@ Route tables are the traffic cops of your VPC. Every packet that leaves a subnet
 
 ## How Route Tables Work
 
-Every VPC comes with a main route table. Every subnet that isn't explicitly associated with a custom route table uses the main one. The main route table always has a single rule: traffic destined for the VPC's own CIDR block stays local.
+Every VPC comes with a main route table. Every subnet that isn't explicitly associated with a custom route table uses the main one. By default, a manually created VPC's main route table has a rule for each VPC CIDR block: traffic destined for the VPC's own CIDR block stays local.
 
 When a packet needs to leave a subnet, AWS evaluates the route table from most specific to least specific. The route with the longest matching prefix wins. If no route matches, the packet is dropped.
 
@@ -23,7 +23,7 @@ Destination        Target
 10.0.0.0/16        local
 ```
 
-That single `local` route means any resource in the VPC can reach any other resource in the VPC. It's the one route you can't delete.
+That `local` route means resources in the VPC have a route to reach other resources in the VPC, assuming security groups, network ACLs, and host firewalls allow the traffic. It's the route you can't delete.
 
 ## Creating Custom Route Tables
 
@@ -146,20 +146,21 @@ AWS uses longest prefix match to decide which route to use. Here's an example:
 ```text
 Destination        Target
 10.0.0.0/16        local
-10.0.5.0/24        pcx-abc123
+172.16.0.0/16      pcx-abc123
+172.16.5.0/24      tgw-xyz789
 0.0.0.0/0          igw-def456
 ```
 
-If a packet is heading for `10.0.5.42`:
-1. `10.0.5.0/24` matches (24-bit prefix)
-2. `10.0.0.0/16` also matches (16-bit prefix)
+If a packet is heading for `172.16.5.42`:
+1. `172.16.5.0/24` matches (24-bit prefix)
+2. `172.16.0.0/16` also matches (16-bit prefix)
 3. `0.0.0.0/0` also matches (0-bit prefix)
 
-The `/24` route wins because it's the most specific. The packet goes to the VPC peering connection, not the local route or the internet gateway. This is useful for carving out specific traffic paths within a broader network.
+The `/24` route wins because it's the most specific. The packet goes to the transit gateway, not the VPC peering connection or the internet gateway. This is useful for carving out specific traffic paths within a broader network.
 
 ## Per-AZ Route Tables for HA
 
-For high availability, create separate route tables per AZ. This matters when you have NAT gateways in each AZ:
+For high availability with zonal NAT gateways, create separate route tables per AZ. This matters when you have NAT gateways in each AZ:
 
 ```bash
 # Route table for private subnets in AZ-a - uses NAT in AZ-a
@@ -193,7 +194,7 @@ aws ec2 associate-route-table \
   --subnet-id $PRIVATE_SUBNET_AZ_B
 ```
 
-This way, if AZ-a goes down, the NAT gateway and route table in AZ-b continue working independently. Without per-AZ route tables, all private subnets point to a single NAT gateway, creating a single point of failure.
+This way, if AZ-a goes down, private subnets in AZ-b continue using the NAT gateway in AZ-b independently. With one shared private route table and zonal NAT gateways, all associated private subnets point to the same NAT gateway, creating a single point of failure.
 
 ## CloudFormation Example
 
