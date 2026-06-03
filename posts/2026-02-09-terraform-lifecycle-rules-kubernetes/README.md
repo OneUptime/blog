@@ -105,17 +105,22 @@ resource "kubernetes_stateful_set" "database" {
 }
 ```
 
-If you attempt to destroy these resources, Terraform will refuse and display an error. To remove the protection, you must first remove the prevent_destroy rule, apply the change, and then destroy the resource.
+If you attempt to destroy these resources while the rule is present in the configuration, Terraform will refuse and display an error. To remove the protection, edit the configuration so the prevent_destroy rule no longer applies before planning the deletion.
 
-## Managing Zero-Downtime Deployments
+## Managing Safe Resource Replacements
 
-Kubernetes deployments often require updates that change immutable fields, forcing Terraform to recreate the resource. The create_before_destroy rule ensures new resources exist before old ones are removed:
+Kubernetes deployments handle ordinary image and pod template updates with rolling updates. The create_before_destroy rule is only appropriate when Terraform must replace a resource and Kubernetes can allow the old and new objects to exist at the same time. Because Kubernetes object names are unique within a namespace, use a generated name or another unique naming strategy for resources that use create_before_destroy:
 
 ```hcl
+variable "rollout_id" {
+  description = "Unique identifier for this replacement rollout"
+  type        = string
+}
+
 resource "kubernetes_deployment" "api" {
   metadata {
-    name      = "api-server"
-    namespace = "production"
+    generate_name = "api-server-"
+    namespace     = "production"
   }
 
   spec {
@@ -123,16 +128,16 @@ resource "kubernetes_deployment" "api" {
 
     selector {
       match_labels = {
-        app     = "api"
-        version = "v2"
+        app        = "api"
+        rollout_id = var.rollout_id
       }
     }
 
     template {
       metadata {
         labels = {
-          app     = "api"
-          version = "v2"
+          app        = "api"
+          rollout_id = var.rollout_id
         }
       }
 
@@ -201,14 +206,10 @@ resource "kubernetes_service" "api" {
 
     type = "LoadBalancer"
   }
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 ```
 
-With create_before_destroy, Terraform spins up new pods, waits for them to become ready, and only then terminates old pods. This maintains service availability throughout the deployment.
+With create_before_destroy and a unique Deployment name, Terraform can create the replacement Deployment before destroying the previous one. The Kubernetes provider waits for Deployment rollout by default, while the Service's broader selector can route traffic to available pods during the replacement.
 
 ## Ignoring External Changes
 
@@ -325,9 +326,9 @@ resource "kubernetes_pod" "monitoring" {
 }
 ```
 
-## Using replace_triggered_by for Coordinated Updates
+## Using Pod Template Annotations for Coordinated Updates
 
-The replace_triggered_by argument forces resource replacement when specific referenced resources change. This is useful for ensuring pods restart when ConfigMaps or Secrets update:
+The replace_triggered_by argument forces resource replacement when specific referenced resources change. For Kubernetes Deployments that consume ConfigMaps or Secrets, a safer pattern is to place a hash of that data in the pod template annotations so Kubernetes performs a normal rolling update:
 
 ```hcl
 resource "kubernetes_config_map" "app_config" {
@@ -350,8 +351,8 @@ resource "kubernetes_secret" "app_secrets" {
   }
 
   data = {
-    api_key      = base64encode("super-secret-key")
-    db_password  = base64encode("database-password")
+    api_key     = "super-secret-key"
+    db_password = "database-password"
   }
 }
 
@@ -375,7 +376,7 @@ resource "kubernetes_deployment" "app" {
         labels = {
           app = "application"
         }
-        # Add hash to force pod recreation when config changes
+        # Add hash to trigger a rollout when config changes
         annotations = {
           config_hash  = sha256(jsonencode(kubernetes_config_map.app_config.data))
           secrets_hash = sha256(jsonencode(kubernetes_secret.app_secrets.data))
@@ -402,17 +403,10 @@ resource "kubernetes_deployment" "app" {
       }
     }
   }
-
-  lifecycle {
-    replace_triggered_by = [
-      kubernetes_config_map.app_config.data,
-      kubernetes_secret.app_secrets.data
-    ]
-  }
 }
 ```
 
-When the ConfigMap or Secret data changes, Terraform forces a deployment recreation, ensuring pods pick up new configuration values.
+When the ConfigMap or Secret data changes, the pod template annotations change, and Kubernetes rolls out new pods that pick up the new configuration values. Use replace_triggered_by only when replacing the Terraform-managed resource itself is acceptable.
 
 ## Combining Multiple Lifecycle Rules
 
@@ -490,8 +484,7 @@ resource "kubernetes_stateful_set" "elasticsearch" {
   }
 
   lifecycle {
-    prevent_destroy       = true
-    create_before_destroy = true
+    prevent_destroy = true
     ignore_changes = [
       spec[0].replicas  # Allow manual scaling
     ]
@@ -499,11 +492,11 @@ resource "kubernetes_stateful_set" "elasticsearch" {
 }
 ```
 
-This configuration protects the StatefulSet from deletion, ensures graceful replacement if needed, and allows operators to manually adjust replica counts without Terraform interference.
+This configuration protects the StatefulSet from deletion and allows operators to manually adjust replica counts without Terraform interference.
 
-## Conditional Lifecycle Rules
+## Conditional Resource Patterns for Lifecycle Rules
 
-You can conditionally apply lifecycle rules based on variables:
+Lifecycle rules must use literal values, so you cannot set prevent_destroy directly from a variable. To use different lifecycle behavior by environment, split the resources or modules so only the production resource includes the rule:
 
 ```hcl
 variable "environment" {
@@ -511,13 +504,23 @@ variable "environment" {
   type        = string
 }
 
-resource "kubernetes_namespace" "app" {
+resource "kubernetes_namespace" "app_production" {
+  count = var.environment == "production" ? 1 : 0
+
   metadata {
     name = "app-${var.environment}"
   }
 
   lifecycle {
-    prevent_destroy = var.environment == "production" ? true : false
+    prevent_destroy = true
+  }
+}
+
+resource "kubernetes_namespace" "app_non_production" {
+  count = var.environment == "production" ? 0 : 1
+
+  metadata {
+    name = "app-${var.environment}"
   }
 }
 ```
@@ -529,8 +532,8 @@ Production namespaces gain deletion protection while development environments re
 When you add or remove lifecycle rules, Terraform may require special handling:
 
 1. **Adding prevent_destroy** - Apply immediately, takes effect on next destroy attempt
-2. **Removing prevent_destroy** - Requires two applies: first to remove the rule, second to destroy
-3. **Adding create_before_destroy** - May cause immediate resource recreation
+2. **Removing prevent_destroy** - Remove the rule from configuration before planning a deletion
+3. **Adding create_before_destroy** - Changes replacement ordering the next time replacement is required
 4. **Adding ignore_changes** - Prevents future updates to ignored fields but doesn't revert existing differences
 
 Always run terraform plan to understand the impact before applying lifecycle rule changes.
