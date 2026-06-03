@@ -62,6 +62,7 @@ Here's a task definition configured for awsvpc mode.
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "app",
@@ -86,7 +87,7 @@ Here's a task definition configured for awsvpc mode.
 }
 ```
 
-With `awsvpc`, you only specify `containerPort` - there's no `hostPort` mapping because the container gets its own network namespace. The container port IS the port on the ENI.
+With `awsvpc`, you usually only specify `containerPort` - if `hostPort` is omitted, ECS sets it to the same value as `containerPort`. The container port IS the port on the ENI.
 
 ## Service Network Configuration
 
@@ -189,7 +190,7 @@ If you're using EC2 launch type with `awsvpc`, there's an important limitation: 
 
 For example, a `t3.medium` supports 3 ENIs. One is used by the instance itself, leaving 2 for ECS tasks. That's a low number if you want to run many small tasks.
 
-AWS provides a solution called ENI trunking. When enabled, ECS uses a trunk ENI to multiplex multiple tasks on a single ENI, significantly increasing density.
+AWS provides a solution called ENI trunking. When enabled, ECS attaches a managed trunk ENI and increases the number of task ENIs available on supported instances, significantly increasing density.
 
 ```bash
 # Enable ENI trunking for your account
@@ -197,16 +198,15 @@ aws ecs put-account-setting-default \
   --name awsvpcTrunking \
   --value enabled
 
-# You also need to enable it per instance with this on the container instance
-# Add to your EC2 user data:
-# ECS_ENABLE_TASK_ENI=true
+# New supported container instances launched after enabling this setting
+# can register with increased ENI limits.
 ```
 
-With trunking enabled on supported instance types, a `c5.large` can go from 3 tasks to about 10 tasks. Check the AWS documentation for specific numbers per instance type.
+With trunking enabled on supported instance types, a `c5.large` can go from 2 `awsvpc` tasks to 10 tasks. Check the AWS documentation for specific numbers per instance type.
 
 ## Public vs Private Subnets
 
-The `assign_public_ip` setting determines whether your task's ENI gets a public IP address. Here's when to use each option:
+For Fargate services, the `assign_public_ip` setting determines whether your task's ENI gets a public IP address. For EC2 launch type tasks using `awsvpc`, task ENIs don't receive public IP addresses. Here's when to use each option for Fargate:
 
 **Private subnets (assign_public_ip = false)**:
 - Tasks sit behind a NAT Gateway for outbound internet access
@@ -266,22 +266,27 @@ aws ec2 describe-subnets \
 ```hcl
 # VPC endpoints for ECR (avoids needing NAT Gateway)
 resource "aws_vpc_endpoint" "ecr_api" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.us-east-1.ecr.api"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.us-east-1.ecr.api"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 
 resource "aws_vpc_endpoint" "ecr_dkr" {
-  vpc_id            = aws_vpc.main.id
-  service_name      = "com.amazonaws.us-east-1.ecr.dkr"
-  vpc_endpoint_type = "Interface"
-  subnet_ids        = var.private_subnet_ids
+  vpc_id              = aws_vpc.main.id
+  service_name        = "com.amazonaws.us-east-1.ecr.dkr"
+  vpc_endpoint_type   = "Interface"
+  subnet_ids          = var.private_subnet_ids
+  security_group_ids  = [aws_security_group.vpc_endpoint.id]
+  private_dns_enabled = true
 }
 
 resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.us-east-1.s3"
+  vpc_id          = aws_vpc.main.id
+  service_name    = "com.amazonaws.us-east-1.s3"
+  route_table_ids = var.private_route_table_ids
 }
 ```
 
