@@ -23,7 +23,7 @@ flowchart LR
     B -->|No Match| D[Discarded]
 ```
 
-Filters use a JSON-based pattern syntax similar to EventBridge rules. You can filter on any field in the event record, including nested fields, and use comparison operators for numeric values.
+Filters use a JSON-based pattern syntax similar to EventBridge rules. You can filter on the supported fields for each event source, including nested fields, and use comparison operators for numeric values.
 
 ## Supported Event Sources
 
@@ -35,7 +35,6 @@ Event filtering works with these Lambda event sources:
 - Amazon MSK (Kafka)
 - Self-managed Apache Kafka
 - Amazon MQ (ActiveMQ and RabbitMQ)
-- Amazon DocumentDB change streams
 
 The filter syntax is the same across all sources, but the event structure varies. You need to know the event payload format for your specific source to write correct filters.
 
@@ -83,7 +82,7 @@ Both conditions must be true (AND logic). For OR logic between different pattern
 
 ### SQS Message Body Filtering
 
-When filtering SQS messages, your message body must be valid JSON. If the body is a plain string, you can only filter on message attributes, not the body itself.
+When filtering nested fields in SQS messages, your message body must be valid JSON. Amazon SQS event source mappings only support filtering on the `body` key, so if the body is a plain string, you can match the body as a string but not filter on nested body properties.
 
 ```python
 # Example: Sending properly structured SQS messages
@@ -120,7 +119,7 @@ sqs.send_message(
 DynamoDB stream events have a specific structure with `dynamodb.NewImage` and `dynamodb.OldImage` fields. Filtering on these lets you react only to specific types of changes.
 
 ```bash
-# Filter DynamoDB stream for only INSERT events on premium users
+# Filter DynamoDB stream records for premium users
 aws lambda create-event-source-mapping \
   --function-name premium-user-handler \
   --event-source-arn arn:aws:dynamodb:us-east-1:123456789012:table/Users/stream/2024-01-01T00:00:00.000 \
@@ -128,23 +127,23 @@ aws lambda create-event-source-mapping \
   --filter-criteria '{
     "Filters": [
       {
-        "Pattern": "{\"eventName\":[\"INSERT\"],\"dynamodb\":{\"NewImage\":{\"accountType\":{\"S\":[\"premium\"]}}}}"
+        "Pattern": "{\"dynamodb\":{\"NewImage\":{\"accountType\":{\"S\":[\"premium\"]}}}}"
       }
     ]
   }'
 ```
 
-This filter only fires when a new item is inserted AND the `accountType` attribute is "premium". Regular account insertions are ignored.
+This filter only fires when the new image contains an `accountType` attribute of "premium". Regular account records are ignored. DynamoDB event source filters only support the `dynamodb` key, so if your function must distinguish inserts from updates, check the record's `eventName` in your handler.
 
 ### Filtering on Old and New Image
 
-You can also filter based on what changed by comparing old and new images.
+You can also filter based on what changed by matching old and new images, as long as the stream view includes both images.
 
 ```json
 {
   "Filters": [
     {
-      "Pattern": "{\"eventName\":[\"MODIFY\"],\"dynamodb\":{\"NewImage\":{\"status\":{\"S\":[\"shipped\"]}},\"OldImage\":{\"status\":{\"S\":[\"processing\"]}}}}"
+      "Pattern": "{\"dynamodb\":{\"NewImage\":{\"status\":{\"S\":[\"shipped\"]}},\"OldImage\":{\"status\":{\"S\":[\"processing\"]}}}}"
     }
   ]
 }
@@ -246,13 +245,13 @@ aws lambda create-event-source-mapping \
   }'
 ```
 
-You can have up to 5 filter patterns per event source mapping.
+You can have up to 5 filter patterns per event source mapping by default, and you can request a quota increase up to 10.
 
 ## Cost Impact
 
 The cost savings from filtering can be substantial. Consider a DynamoDB stream generating 1 million change events per day, but you only care about 10% of them. Without filtering, Lambda runs 1 million times. With filtering, it runs 100,000 times. That is a 90% reduction in Lambda invocations.
 
-Filtered-out records are still read from the event source (you still pay for Kinesis shard reads or DynamoDB stream reads), but you avoid the Lambda invocation cost and duration charges entirely.
+Filtered-out records are still read from the event source, so filtering does not reduce event source polling, stream retention, or queue request costs. It does avoid the Lambda invocation cost and duration charges for records that do not match.
 
 ## Updating Filters
 
@@ -280,7 +279,7 @@ aws lambda update-event-source-mapping \
 
 If your filter is not matching records you expect it to match, check these common issues:
 
-1. **JSON structure mismatch**: The filter must match the exact event structure, including nesting. For SQS, the body is inside a `body` key. For Kinesis, it is inside `data`.
+1. **JSON structure mismatch**: The filter must match the exact filtering structure, including nesting. For SQS, filter on the `body` key. For Kinesis, filter on the decoded record payload using the `data` key.
 2. **Data types**: A filter for `[100]` (number) will not match `["100"]` (string). Make sure types match.
 3. **Missing fields**: If the record does not contain the filtered field, it does not match. Use the `exists` operator to handle optional fields.
 
