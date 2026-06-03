@@ -16,7 +16,7 @@ This guide covers configuring performance parameters across AWS EBS, Azure Disks
 
 IOPS measures the number of I/O operations per second, relevant for workloads with many small random reads/writes like databases and key-value stores. Throughput measures megabytes per second, important for sequential operations like video processing, backups, and big data analytics.
 
-Cloud providers offer different performance tiers: general purpose balanced volumes provide baseline performance with burst capability, provisioned IOPS volumes deliver guaranteed performance for demanding workloads, and throughput-optimized volumes maximize sequential performance for large data transfers.
+Cloud providers offer different performance tiers: general purpose balanced volumes provide baseline performance with burst capability where applicable, provisioned IOPS volumes deliver guaranteed performance for demanding workloads, and throughput-optimized volumes maximize sequential performance for large data transfers.
 
 The relationship between IOPS and throughput depends on block size. At 4KB blocks, 10,000 IOPS equals roughly 40 MB/s throughput. At 1MB blocks, 100 IOPS equals 100 MB/s. Understanding your workload's access pattern determines the appropriate tuning strategy.
 
@@ -49,8 +49,8 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
-  iops: "16000"       # Maximum 16,000 IOPS
-  throughput: "1000"   # Maximum 1,000 MB/s
+  iops: "16000"       # High IOPS setting; gp3 supports up to 80,000 IOPS when size limits are met
+  throughput: "1000"   # High throughput setting; gp3 supports up to 2,000 MiB/s
   encrypted: "true"
 allowVolumeExpansion: true
 ---
@@ -62,7 +62,7 @@ metadata:
 provisioner: ebs.csi.aws.com
 parameters:
   type: io2
-  iops: "64000"       # Up to 64,000 IOPS
+  iops: "64000"       # io2 Block Express supports up to 256,000 IOPS on Nitro-based instances
   encrypted: "true"
 allowVolumeExpansion: true
 mountOptions:
@@ -73,9 +73,9 @@ mountOptions:
 Cost vs performance considerations for EBS:
 
 ```bash
-# gp3: Best value - $0.08/GB + $0.005/provisioned IOPS + $0.04/MB/s throughput
-# io2: Highest performance - $0.125/GB + $0.065/provisioned IOPS
-# st1: Throughput optimized - $0.045/GB (500 MB/s max)
+# gp3: Best value - region-dependent GB pricing plus charges for provisioned IOPS above 3,000 and throughput above 125 MiB/s
+# io2: Highest performance - region-dependent GB pricing plus provisioned IOPS charges
+# st1: Throughput optimized - region-dependent GB pricing, up to 500 MiB/s per volume
 
 kubectl apply -f aws-gp3-standard.yaml
 kubectl apply -f aws-gp3-performance.yaml
@@ -95,6 +95,7 @@ metadata:
 provisioner: disk.csi.azure.com
 parameters:
   skuName: PremiumV2_LRS
+  cachingMode: None
   diskIOPSReadWrite: "5000"
   diskMBpsReadWrite: "125"
 allowVolumeExpansion: true
@@ -139,7 +140,7 @@ provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-balanced
   replication-type: regional-pd
-  # Performance scales with size: 6 IOPS/GB, 28 MB/s per GB read, 14 MB/s per GB write
+  # Performance scales with size and VM limits; regional balanced PD provides 6 IOPS/GiB and 0.28 MiB/s per GiB
 allowVolumeExpansion: true
 volumeBindingMode: WaitForFirstConsumer
 ---
@@ -152,7 +153,7 @@ provisioner: pd.csi.storage.gke.io
 parameters:
   type: pd-extreme
   provisioned-iops-on-create: "100000"
-  # Extreme PD: Up to 100,000 IOPS, 2,400 MB/s throughput
+  # Extreme PD: provision 2,500-120,000 IOPS; throughput depends on provisioned IOPS and machine type
 allowVolumeExpansion: true
 ---
 # gcp-ssd-standard.yaml
@@ -180,8 +181,9 @@ metadata:
 provisioner: csi.trident.netapp.io
 parameters:
   backendType: "ontap-san"
-  qosPolicy: "high-priority"
-  # Create QoS policy in ONTAP: qos policy-group create -policy-group high-priority -max-throughput 10000iops
+  selector: "performance=high"
+  # Back this selector with a Trident backend or storage pool whose defaults set qosPolicy: high-priority
+  # Create QoS policy in ONTAP: qos policy-group create -policy-group high-priority -max-throughput 10000IOPS
 allowVolumeExpansion: true
 ---
 # ontap-adaptive-qos.yaml
@@ -192,7 +194,8 @@ metadata:
 provisioner: csi.trident.netapp.io
 parameters:
   backendType: "ontap-nas"
-  adaptiveQosPolicy: "adaptive-extreme"
+  selector: "performance=adaptive-extreme"
+  # Back this selector with a Trident backend or storage pool whose defaults set adaptiveQosPolicy: adaptive-extreme
   # Adaptive QoS scales with volume size
   # Create in ONTAP: qos adaptive-policy-group create -policy-group adaptive-extreme -expected-iops 6144IOPS/TB -peak-iops 12288IOPS/TB
 allowVolumeExpansion: true
@@ -208,12 +211,10 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: pure-high-performance
-provisioner: pure-csi
+provisioner: pxd.portworx.com
 parameters:
-  backend: pure-flasharray
-  bandwidth_limit: ""      # No limit
-  iops_limit: ""           # No limit
-  createoptions: -o compressed=false
+  backend: "pure_block"
+  csi.storage.k8s.io/fstype: ext4
 allowVolumeExpansion: true
 ---
 # pure-limited.yaml
@@ -221,11 +222,11 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: pure-limited
-provisioner: pure-csi
+provisioner: pxd.portworx.com
 parameters:
-  backend: pure-flasharray
-  bandwidth_limit: "500M"  # 500 MB/s limit
-  iops_limit: "10000"      # 10,000 IOPS limit
+  backend: "pure_block"
+  max_bandwidth: "500M"  # 500 MB/s limit
+  max_iops: "10000"      # 10,000 IOPS limit
 allowVolumeExpansion: true
 ```
 
@@ -246,8 +247,6 @@ parameters:
   dataLocality: "best-effort"
   diskSelector: "ssd"
   nodeSelector: "storage-node"
-  # Engine image with IO optimization
-  engineImage: "longhornio/longhorn-engine:v1.5.3"
 allowVolumeExpansion: true
 mountOptions:
   - noatime
@@ -344,7 +343,7 @@ provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "3000"        # Standard IOPS
-  throughput: "1000"   # Maximum throughput for large scans
+  throughput: "1000"   # High throughput for large scans
 ---
 # cache-storage.yaml - Balanced
 apiVersion: storage.k8s.io/v1

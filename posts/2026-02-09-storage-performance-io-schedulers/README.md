@@ -116,8 +116,10 @@ spec:
               DEV_NAME=$(basename $dev)
               echo "Configuring $DEV_NAME for NVMe performance"
 
-              # Set scheduler to none
-              echo none > $dev/queue/scheduler
+              # Set scheduler to none if available
+              if grep -qw none $dev/queue/scheduler; then
+                echo none > $dev/queue/scheduler
+              fi
 
               # Set queue depth
               echo 1024 > $dev/queue/nr_requests
@@ -144,16 +146,18 @@ spec:
               if [ "$ROTATIONAL" == "0" ]; then
                 echo "Configuring $DEV_NAME for SSD performance"
 
-                # Set mq-deadline scheduler
-                echo mq-deadline > $dev/queue/scheduler
+                # Set mq-deadline scheduler if available
+                if grep -qw mq-deadline $dev/queue/scheduler; then
+                  echo mq-deadline > $dev/queue/scheduler
+                fi
 
                 # Optimize for SSD
                 echo 256 > $dev/queue/nr_requests
                 echo 128 > $dev/queue/read_ahead_kb
                 echo 0 > $dev/queue/add_random
 
-                # Enable TRIM/discard
-                echo 0 > $dev/queue/discard_max_bytes || true
+                # Allow discard/TRIM up to the hardware limit when supported
+                cat $dev/queue/discard_max_hw_bytes > $dev/queue/discard_max_bytes || true
 
                 echo "$DEV_NAME configured: scheduler=$(cat $dev/queue/scheduler)"
               fi
@@ -199,11 +203,12 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "16000"
   throughput: "1000"
+  csi.storage.k8s.io/fstype: ext4
 mountOptions:
   - noatime          # Don't update access times
   - nodiratime       # Don't update directory access times
@@ -226,6 +231,7 @@ provisioner: driver.longhorn.io
 parameters:
   numberOfReplicas: "3"
   staleReplicaTimeout: "30"
+  fsType: ext4
 mountOptions:
   - noatime
   - nodiratime
@@ -240,6 +246,8 @@ kind: StorageClass
 metadata:
   name: throughput-storage
 provisioner: driver.longhorn.io
+parameters:
+  fsType: ext4
 mountOptions:
   - noatime
   - nodiratime
@@ -271,13 +279,13 @@ spec:
 EOF
 
 # Check mount options in pod
-kubectl run -it --rm mount-check --image=ubuntu:22.04 --overrides='
+kubectl run -it --rm mount-check --image=ubuntu:22.04 --restart=Never --overrides='
 {
   "spec": {
     "containers": [{
-      "name": "test",
+      "name": "mount-check",
       "image": "ubuntu:22.04",
-      "command": ["/bin/bash"],
+      "command": ["/bin/bash", "-c", "mount | grep /data"],
       "stdin": true,
       "tty": true,
       "volumeMounts": [{
@@ -292,7 +300,7 @@ kubectl run -it --rm mount-check --image=ubuntu:22.04 --overrides='
       }
     }]
   }
-}' -- mount | grep /data
+}'
 ```
 
 ## Tuning Block Device Parameters
@@ -331,7 +339,9 @@ for dev in /sys/block/nvme*n*; do
     echo 256 > $dev/queue/read_ahead_kb
 
     # IO scheduler
-    echo none > $dev/queue/scheduler
+    if grep -qw none $dev/queue/scheduler; then
+      echo none > $dev/queue/scheduler
+    fi
 
     # Disable entropy contribution
     echo 0 > $dev/queue/add_random
@@ -396,6 +406,7 @@ kubectl exec fio-benchmark -- fio \
   --direct=1 \
   --size=10G \
   --numjobs=4 \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --directory=/data
@@ -410,6 +421,7 @@ kubectl exec fio-benchmark -- fio \
   --direct=1 \
   --size=10G \
   --numjobs=4 \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --directory=/data
@@ -424,6 +436,7 @@ kubectl exec fio-benchmark -- fio \
   --direct=1 \
   --size=10G \
   --numjobs=1 \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --directory=/data
@@ -439,6 +452,7 @@ kubectl exec fio-benchmark -- fio \
   --direct=1 \
   --size=10G \
   --numjobs=4 \
+  --time_based \
   --runtime=60 \
   --group_reporting \
   --directory=/data
@@ -479,7 +493,7 @@ rate(node_disk_reads_completed_total[5m])
 rate(node_disk_writes_completed_total[5m])
 
 # Average wait time
-rate(node_disk_io_time_weighted_seconds_total[5m]) / rate(node_disk_reads_completed_total[5m] + node_disk_writes_completed_total[5m])
+(rate(node_disk_read_time_seconds_total[5m]) + rate(node_disk_write_time_seconds_total[5m])) / (rate(node_disk_reads_completed_total[5m]) + rate(node_disk_writes_completed_total[5m]))
 ```
 
 Create alerts for performance degradation.
@@ -496,7 +510,7 @@ spec:
     interval: 30s
     rules:
     - alert: HighDiskIOWait
-      expr: rate(node_disk_io_time_weighted_seconds_total[5m]) / rate(node_disk_reads_completed_total[5m] + node_disk_writes_completed_total[5m]) > 0.1
+      expr: (rate(node_disk_read_time_seconds_total[5m]) + rate(node_disk_write_time_seconds_total[5m])) / (rate(node_disk_reads_completed_total[5m]) + rate(node_disk_writes_completed_total[5m])) > 0.1
       for: 5m
       labels:
         severity: warning
