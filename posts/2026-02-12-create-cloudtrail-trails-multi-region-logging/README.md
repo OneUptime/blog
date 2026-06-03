@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, CloudTrail, Security, Auditing, Multi-Region
 
-Description: Learn how to configure AWS CloudTrail for multi-region logging to capture API activity across all regions, with centralized storage and organization-wide trails.
+Description: Learn how to configure AWS CloudTrail for multi-region logging to capture API activity across enabled regions, with centralized storage and organization-wide trails.
 
 ---
 
-A single-region CloudTrail trail is a half-measure. Attackers know this - they'll spin up resources in a region you're not monitoring, use them for their purposes, and clean up before you notice. Multi-region trails record API activity across every AWS region, including regions you've never used. It's the only way to get complete visibility.
+A single-region CloudTrail trail is a half-measure. Attackers know this - they'll spin up resources in a region you're not monitoring, use them for their purposes, and clean up before you notice. Multi-region trails record API activity across every AWS Region enabled in your account, including regions where you've never deployed workloads. It's the only way to get complete visibility.
 
 This guide covers setting up multi-region trails, organization-wide trails, and the architecture patterns for centralized log collection.
 
@@ -17,7 +17,7 @@ This guide covers setting up multi-region trails, organization-wide trails, and 
 Even if your workloads only run in `us-east-1` and `eu-west-1`, API calls can happen in any region. An attacker with stolen credentials can:
 
 - Launch EC2 instances in `ap-southeast-1` for crypto mining
-- Create IAM users (these are logged in `us-east-1` regardless, but other global services aren't)
+- Create IAM users (global service events are logged as occurring in `us-east-1` when global service events are included)
 - Exfiltrate data through S3 buckets in remote regions
 - Set up persistence through Lambda functions in regions you never check
 
@@ -46,7 +46,7 @@ The `--kms-key-id` parameter encrypts logs with a customer-managed KMS key. This
 
 ### What a Multi-Region Trail Captures
 
-Once enabled, the trail records management events from every region:
+Once enabled, the trail records management events from every enabled region:
 
 ```mermaid
 flowchart TD
@@ -58,7 +58,7 @@ flowchart TD
         E[ap-southeast-1] --> Z
         F[ap-northeast-1] --> Z
         G[sa-east-1] --> Z
-        H[... all other regions] --> Z
+        H[... all other enabled regions] --> Z
     end
     Z --> Y[CloudWatch Logs]
     Z --> X[Athena Queries]
@@ -88,7 +88,7 @@ s3://cloudtrail-central-logs-123456789012/
 If you're using AWS Organizations, you can create a single trail that covers every account in the organization. This is the gold standard for enterprise logging.
 
 ```bash
-# Create an organization trail (must be run from the management account)
+# Create an organization trail (must be run from the management account or a CloudTrail delegated administrator account)
 aws cloudtrail create-trail \
   --name org-wide-trail \
   --s3-bucket-name cloudtrail-org-logs-management \
@@ -100,7 +100,7 @@ aws cloudtrail create-trail \
 aws cloudtrail start-logging --name org-wide-trail
 ```
 
-The `--is-organization-trail` flag makes this trail capture events from every account in the organization. Member accounts can see the trail but can't modify or delete it.
+The `--is-organization-trail` flag makes this trail capture events from every account in the organization. Member accounts can see the trail but can't modify or delete it. If you create the trail with the AWS CLI or API, enable trusted access for CloudTrail in AWS Organizations first.
 
 ### Bucket Policy for Organization Trail
 
@@ -214,7 +214,7 @@ The log archive account is a separate account that only the security team can ac
 For data events (S3, Lambda, DynamoDB), you can either enable them for all resources or specific ones:
 
 ```bash
-# Enable S3 data events for all buckets across all regions
+# Enable selected S3 data events and Lambda invocation events across enabled regions
 aws cloudtrail put-event-selectors \
   --trail-name org-multi-region-trail \
   --advanced-event-selectors '[
@@ -277,7 +277,7 @@ APPROVED_REGIONS = {"us-east-1", "us-west-2", "eu-west-1"}
 
 def lambda_handler(event, context):
     """
-    Triggered by CloudWatch Events rule that matches CloudTrail events.
+    Triggered by an EventBridge rule that matches CloudTrail events.
     Alerts when activity is detected in non-approved regions.
     """
     region = event.get("detail", {}).get("awsRegion", "unknown")
@@ -300,14 +300,16 @@ def lambda_handler(event, context):
         print(f"Alert sent: {event_name} in {region} by {user_arn}")
 ```
 
-The EventBridge rule to trigger this:
+The EventBridge rule to trigger this. Create the rule in every Region you want to monitor, or forward regional events to a central event bus:
 
 ```bash
 # Create EventBridge rule to catch API calls in unauthorized regions
 aws events put-rule \
   --name detect-unauthorized-region-activity \
+  --state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS \
   --event-pattern '{
     "source": ["aws.ec2", "aws.s3", "aws.lambda", "aws.rds"],
+    "detail-type": ["AWS API Call via CloudTrail"],
     "detail": {
       "awsRegion": [
         {"anything-but": ["us-east-1", "us-west-2", "eu-west-1"]}
@@ -341,7 +343,7 @@ resource "aws_cloudtrail" "org_trail" {
     insight_type = "ApiErrorRateInsight"
   }
 
-  # Data events for S3 and Lambda
+  # Data events for S3
   advanced_event_selector {
     name = "Log all management events"
     field_selector {
@@ -401,29 +403,26 @@ resource "aws_s3_bucket_lifecycle_configuration" "cloudtrail_logs" {
 
 ## Verifying Multi-Region Coverage
 
-After setting up the trail, verify it's capturing events from all regions:
+After setting up the trail, verify it's configured as multi-Region and check recent event history across enabled regions:
 
 ```bash
 # Check trail configuration
 aws cloudtrail describe-trails \
   --trail-name-list org-multi-region-trail \
-  --query 'trailList[0].{Name:Name,MultiRegion:IsMultiRegionTrail,OrgTrail:IsOrganizationTrail,Logging:HasCustomEventSelectors}'
+  --query 'trailList[0].{Name:Name,MultiRegion:IsMultiRegionTrail,OrgTrail:IsOrganizationTrail,CustomSelectors:HasCustomEventSelectors}'
 
-# Verify events are coming from multiple regions
-aws cloudtrail lookup-events \
-  --max-items 50 \
-  --query 'Events[*].{Region:CloudTrailEvent}' | \
-  python3 -c "
-import sys, json
-events = json.load(sys.stdin)
-regions = set()
-for e in events:
-    detail = json.loads(e['Region'])
-    regions.add(detail.get('awsRegion', 'unknown'))
-print('Regions with recent activity:')
-for r in sorted(regions):
-    print(f'  - {r}')
-"
+# Verify recent regional event history across enabled regions
+for region in $(aws ec2 describe-regions --query 'Regions[].RegionName' --output text); do
+  count=$(aws cloudtrail lookup-events \
+    --region "$region" \
+    --max-items 1 \
+    --query 'length(Events)' \
+    --output text 2>/dev/null)
+
+  if [ "$count" != "0" ]; then
+    echo "Recent CloudTrail events found in $region"
+  fi
+done
 ```
 
 ## Cost Optimization
