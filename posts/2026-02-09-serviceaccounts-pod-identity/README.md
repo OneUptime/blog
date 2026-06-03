@@ -14,7 +14,7 @@ ServiceAccounts are fundamental to Kubernetes security, providing an identity me
 
 When a pod needs to interact with the Kubernetes API or external services, it uses a ServiceAccount. This account provides credentials in the form of a token that the pod can use to authenticate. By default, every namespace has a "default" ServiceAccount, but creating dedicated ServiceAccounts for specific workloads follows the principle of least privilege.
 
-A ServiceAccount consists of three main components: the account itself, an associated token (or tokens), and RBAC bindings that define what the account can do. Modern Kubernetes versions use bound tokens with limited lifetimes and audience restrictions for enhanced security.
+A ServiceAccount is a namespaced API object that can be used with ServiceAccount tokens and RBAC bindings that define what the account can do. Modern Kubernetes versions use bound tokens with limited lifetimes and audience restrictions for enhanced security.
 
 ## Creating a Basic ServiceAccount
 
@@ -125,7 +125,7 @@ This token is long-lived and persists until you delete the secret. Use this appr
 
 ServiceAccounts can reference image pull secrets, making them available to all pods using that account:
 
-```yaml
+```bash
 # First create the image pull secret
 kubectl create secret docker-registry regcred \
   --docker-server=registry.example.com \
@@ -133,9 +133,11 @@ kubectl create secret docker-registry regcred \
   --docker-password=password \
   --docker-email=user@example.com \
   -n production
+```
 
-# Then reference it in the ServiceAccount
----
+Then reference it in the ServiceAccount:
+
+```yaml
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -196,10 +198,10 @@ kubectl exec -it api-client-pod -n production -- cat /var/run/secrets/kubernetes
 kubectl exec -it api-client-pod -n production -- sh
 # Inside the pod:
 # TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-# curl -k -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api/v1/namespaces
+# curl -k -H "Authorization: Bearer $TOKEN" https://kubernetes.default.svc/api
 ```
 
-These commands help you verify that the ServiceAccount is properly configured and that pods can access the credentials.
+These commands help you verify that the ServiceAccount is properly configured and that pods can access the credentials. For API endpoints beyond discovery, make sure the ServiceAccount has the necessary RBAC permissions.
 
 ## Conclusion
 
