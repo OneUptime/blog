@@ -12,7 +12,7 @@ Setting appropriate resource requests and limits is one of the most impactful op
 
 ## Understanding Requests vs Limits
 
-Resource requests tell the scheduler the minimum resources a pod needs. The scheduler only places pods on nodes with available capacity. Requests also determine a pod's resource guarantee - the kubelet ensures each pod receives at least its requested resources.
+Resource requests tell the scheduler the minimum resources a pod needs. The scheduler only places pods on nodes with available capacity. Requests also influence runtime allocation: CPU requests affect CPU share under contention, while memory requests are mainly used for scheduling and eviction decisions.
 
 Limits define the maximum resources a pod can consume. The kubelet enforces limits through cgroups. For CPU, exceeding limits causes throttling. For memory, exceeding limits triggers an OOM kill.
 
@@ -36,18 +36,18 @@ spec:
         cpu: "500m"
 ```
 
-This pod requires 256Mi memory and 250 millicores CPU to schedule. It can burst up to 512Mi and 500m but no higher. The scheduler considers only requests when placing pods.
+This pod requires 256Mi memory and 250 millicores CPU to schedule. CPU usage above 500m is throttled, while memory usage above 512Mi may cause the container to be killed. The scheduler considers only requests when placing pods.
 
 ## Analyzing Current Resource Usage
 
-Before setting resources, measure actual usage. Deploy workloads with generous limits and no requests initially, then observe patterns:
+Before setting resources, measure actual usage. Deploy workloads with conservative initial requests and generous limits, then observe patterns:
 
 ```bash
 # Check current resource usage for a deployment
 
 kubectl top pods -n production -l app=myapp
 
-# View historical resource usage from metrics-server
+# View current resource usage from the Metrics API
 kubectl get --raw /apis/metrics.k8s.io/v1beta1/namespaces/production/pods
 ```
 
@@ -118,8 +118,8 @@ The gap between request and limit determines burst capacity. Applications with b
 Monitor CPU throttling:
 
 ```promql
-# CPU throttling percentage
-rate(container_cpu_cfs_throttled_seconds_total[5m]) /
+# CPU throttling percentage by CFS period
+rate(container_cpu_cfs_throttled_periods_total[5m]) /
 rate(container_cpu_cfs_periods_total[5m]) * 100
 ```
 
@@ -170,13 +170,13 @@ resources:
     cpu: "1000m"
 ```
 
-Setting requests equal to limits guarantees resources and creates a Guaranteed QoS class. This prevents interference from other workloads.
+Setting requests equal to limits creates a Guaranteed QoS class and makes the pod least likely to be evicted under node pressure.
 
 ## Using Quality of Service Classes
 
 Kubernetes assigns QoS classes based on requests and limits:
 
-**Guaranteed**: All containers have requests equal to limits for both CPU and memory. These pods never get evicted due to resource pressure.
+**Guaranteed**: All containers have requests equal to limits for both CPU and memory. These pods are least likely to be evicted due to resource pressure, but can still be evicted if they exceed limits or the node cannot preserve stability otherwise.
 
 ```yaml
 resources:
@@ -188,7 +188,7 @@ resources:
     cpu: "500m"
 ```
 
-**Burstable**: At least one container has requests lower than limits or has only requests set. These pods get evicted before Guaranteed pods during pressure.
+**Burstable**: The pod does not meet the Guaranteed criteria, but at least one container has a CPU or memory request or limit. These pods get evicted after BestEffort pods and before Guaranteed pods during pressure.
 
 ```yaml
 resources:
@@ -200,7 +200,7 @@ resources:
     cpu: "1000m"
 ```
 
-**BestEffort**: No requests or limits set. These pods get evicted first and receive no resource guarantees.
+**BestEffort**: No CPU or memory requests or limits set at the container or pod level. These pods get evicted first and receive no resource guarantees.
 
 ```yaml
 resources: {}  # No requests or limits
@@ -270,17 +270,18 @@ Track resource efficiency metrics to identify optimization opportunities:
 # CPU utilization percentage
 (
   rate(container_cpu_usage_seconds_total[5m]) /
-  (container_spec_cpu_quota / container_spec_cpu_period)
+  ((container_spec_cpu_quota > 0) / container_spec_cpu_period)
 ) * 100
 
-# Pods with low utilization (< 20% memory)
+# Containers with low memory utilization compared to requests (< 20%)
 (
   container_memory_working_set_bytes /
-  container_spec_memory_limit_bytes
+  on(namespace, pod, container)
+  kube_pod_container_resource_requests{resource="memory", unit="byte"}
 ) < 0.2
 ```
 
-Low utilization indicates oversized requests. High utilization near limits suggests undersized resources.
+Low utilization compared to requests indicates oversized requests. High utilization near limits suggests undersized limits.
 
 Create dashboards showing:
 - Current vs requested resources
@@ -312,10 +313,10 @@ Document the rationale for each change and monitor impact on performance metrics
 
 ## Common Mistakes to Avoid
 
-Setting limits without requests causes pods to get BestEffort QoS even though they have constraints. Always set both:
+Setting limits without requests causes Kubernetes to copy the limit into the request for that resource when no admission-time default request is applied. That can unintentionally reserve more capacity than you expected. Always set both explicitly:
 
 ```yaml
-# Wrong - creates BestEffort pod with limits
+# Wrong - Kubernetes treats omitted requests as equal to these limits
 resources:
   limits:
     memory: "512Mi"
@@ -384,7 +385,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: myapp
-  updateMode: "Off"  # Recommend only, don't apply
+  updatePolicy:
+    updateMode: "Off"  # Recommend only, don't apply
 ```
 
 Check recommendations:
@@ -393,6 +395,6 @@ Check recommendations:
 kubectl describe vpa myapp-vpa -n production
 ```
 
-The output shows recommended requests and limits based on actual usage patterns. Review recommendations before applying them manually or switching to Auto mode.
+The output shows recommended requests based on actual usage patterns. Review recommendations before applying them manually or switching to an update mode that changes pods.
 
 Right-sizing pod resources reduces costs while maintaining performance. The investment in measurement and analysis pays off through lower cloud bills and more efficient cluster utilization.
