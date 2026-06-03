@@ -105,6 +105,7 @@ metadata:
 Apply the ServiceAccount:
 
 ```bash
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f gcs-app-serviceaccount.yaml
 ```
 
@@ -145,7 +146,8 @@ spec:
     - -c
     - |
       echo "Testing GCS access with Workload Identity..."
-      gcloud auth list
+      curl -H "Metadata-Flavor: Google" \
+        http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email
       gsutil ls gs://my-bucket
       sleep 3600
 ```
@@ -158,11 +160,12 @@ kubectl apply -f gcs-reader-pod.yaml
 # Check logs
 kubectl logs gcs-reader -n production
 
-# Verify the service account being used
-kubectl exec gcs-reader -n production -- gcloud auth list
+# Verify the service account email from the metadata server
+kubectl exec gcs-reader -n production -- curl -H "Metadata-Flavor: Google" \
+    http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email
 ```
 
-You should see the GCP service account listed as the active account.
+You should see the GCP service account email returned.
 
 ## Using GCP Client Libraries
 
@@ -191,22 +194,8 @@ func main() {
     }
     defer client.Close()
 
-    // List buckets
-    fmt.Println("Buckets:")
-    it := client.Buckets(ctx, "PROJECT_ID")
-    for {
-        bucketAttrs, err := it.Next()
-        if err == iterator.Done {
-            break
-        }
-        if err != nil {
-            log.Fatalf("Failed to list buckets: %v", err)
-        }
-        fmt.Printf("  - %s\n", bucketAttrs.Name)
-    }
-
     // List objects in a bucket
-    fmt.Println("\nObjects in my-bucket:")
+    fmt.Println("Objects in my-bucket:")
     objectIt := client.Bucket("my-bucket").Objects(ctx, nil)
     for {
         attrs, err := objectIt.Next()
@@ -240,13 +229,8 @@ def main():
     # Access Cloud Storage
     storage_client = storage.Client(project=project_id)
 
-    print("Buckets:")
-    buckets = storage_client.list_buckets()
-    for bucket in buckets:
-        print(f"  - {bucket.name}")
-
     # List objects in a bucket
-    print("\nObjects in my-bucket:")
+    print("Objects in my-bucket:")
     bucket = storage_client.bucket('my-bucket')
     blobs = bucket.list_blobs()
     for blob in blobs:
@@ -369,7 +353,6 @@ import (
     "fmt"
 
     "cloud.google.com/go/storage"
-    "golang.org/x/oauth2/google"
     "google.golang.org/api/impersonate"
     "google.golang.org/api/option"
 )
@@ -438,24 +421,16 @@ Enable Cloud Audit Logs:
 ```bash
 # Enable Data Access audit logs for specific services
 gcloud projects get-iam-policy PROJECT_ID \
-    --format=json > policy.json
+    --format=yaml > policy.yaml
 
-# Add audit config (edit policy.json)
-cat >> policy.json <<EOF
-{
-  "auditConfigs": [
-    {
-      "service": "storage.googleapis.com",
-      "auditLogConfigs": [
-        { "logType": "DATA_READ" },
-        { "logType": "DATA_WRITE" }
-      ]
-    }
-  ]
-}
-EOF
+# Edit policy.yaml and add or update only the auditConfigs section:
+# auditConfigs:
+# - auditLogConfigs:
+#   - logType: DATA_READ
+#   - logType: DATA_WRITE
+#   service: storage.googleapis.com
 
-gcloud projects set-iam-policy PROJECT_ID policy.json
+gcloud projects set-iam-policy PROJECT_ID policy.yaml
 ```
 
 Query audit logs:
@@ -488,7 +463,7 @@ gcloud iam service-accounts create app2-sa --project=PROJECT_ID
 gcloud projects add-iam-policy-binding PROJECT_ID \
     --member="serviceAccount:app1-sa@PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/storage.objectViewer" \
-    --condition='resource.name.startsWith("projects/_/buckets/app1-bucket")'
+    --condition='title=app1-bucket-only,expression=resource.name.startsWith("projects/_/buckets/app1-bucket")'
 ```
 
 Use custom roles for fine-grained permissions:
