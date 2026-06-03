@@ -36,7 +36,7 @@ spec:
     spec:
       containers:
       - name: app
-        image: myapp:latest
+        image: myapp:1.0.0
         ports:
         - containerPort: 8080
         resources:
@@ -46,6 +46,18 @@ spec:
           limits:
             memory: "512Mi"
             cpu: "500m"
+      - name: metrics-exporter
+        image: myapp-metrics-exporter:1.0.0
+        ports:
+        - containerPort: 9090
+          name: metrics
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "128Mi"
+            cpu: "100m"
 ```
 
 ## Advanced Configuration
@@ -65,6 +77,11 @@ data:
       timeout: 30s
     features:
       enabled: true
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: app-service-account
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -86,7 +103,7 @@ spec:
       serviceAccountName: app-service-account
       containers:
       - name: main
-        image: myapp:latest
+        image: myapp:1.0.0
         ports:
         - containerPort: 8080
           name: http
@@ -96,6 +113,15 @@ spec:
         env:
         - name: CONFIG_PATH
           value: "/etc/config/config.yaml"
+      - name: metrics-exporter
+        image: myapp-metrics-exporter:1.0.0
+        ports:
+        - containerPort: 9090
+          name: metrics
+        volumeMounts:
+        - name: config
+          mountPath: /etc/config
+          readOnly: true
       volumes:
       - name: config
         configMap:
@@ -213,12 +239,12 @@ Integrate monitoring into your deployment:
 apiVersion: v1
 kind: Service
 metadata:
-  name: app-metrics
+  name: advanced-app-metrics
   labels:
-    app: myapp
+    app: advanced
 spec:
   selector:
-    app: myapp
+    app: advanced
   ports:
   - name: metrics
     port: 9090
@@ -231,7 +257,7 @@ metadata:
 spec:
   selector:
     matchLabels:
-      app: myapp
+      app: advanced
   endpoints:
   - port: metrics
     interval: 30s
@@ -285,9 +311,9 @@ deploy:
   script:
     - kubectl apply -f kubernetes/configmap.yaml
     - kubectl apply -f kubernetes/deployment.yaml
-    - kubectl rollout status deployment/myapp
-  only:
-    - main
+    - kubectl rollout status deployment/advanced-app
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "main"'
 ```
 
 For GitHub Actions:
@@ -301,13 +327,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: azure/k8s-set-context@v3
+      - uses: actions/checkout@v4
+      - uses: azure/k8s-set-context@v4
         with:
           method: kubeconfig
           kubeconfig: ${{ secrets.KUBE_CONFIG }}
       - run: kubectl apply -f k8s/
-      - run: kubectl rollout status deployment/myapp
+      - run: kubectl rollout status deployment/advanced-app
 ```
 
 ## Testing Strategies
@@ -321,12 +347,16 @@ kubectl create namespace test-environment
 # Deploy to test
 kubectl apply -f deployment.yaml -n test-environment
 
+# Expose the application in the test namespace
+kubectl expose deployment advanced-app --name=advanced-app \
+  --port=8080 --target-port=http -n test-environment
+
 # Run tests
-kubectl run test-pod --image=busybox --rm -it \
-  -n test-environment -- sh -c "wget -O- http://myapp:8080/health"
+kubectl run test-pod --image=busybox:1.36 --rm -it --restart=Never \
+  -n test-environment -- wget -O- http://advanced-app:8080/health
 
 # Check logs
-kubectl logs -f deployment/myapp -n test-environment
+kubectl logs -f deployment/advanced-app -n test-environment
 
 # Cleanup
 kubectl delete namespace test-environment
@@ -340,7 +370,7 @@ Optimize your deployment for better performance:
 apiVersion: v1
 kind: Service
 metadata:
-  name: myapp-service
+  name: advanced-app-service
 spec:
   type: ClusterIP
   sessionAffinity: ClientIP
@@ -348,7 +378,7 @@ spec:
     clientIP:
       timeoutSeconds: 3600
   selector:
-    app: myapp
+    app: advanced
   ports:
   - port: 80
     targetPort: 8080
@@ -360,12 +390,12 @@ Enable horizontal pod autoscaling:
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
-  name: myapp-hpa
+  name: advanced-app-hpa
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: myapp
+    name: advanced-app
   minReplicas: 3
   maxReplicas: 10
   metrics:
@@ -401,7 +431,7 @@ spec:
       type: RuntimeDefault
   containers:
   - name: app
-    image: myapp:latest
+    image: myapp:1.0.0
     securityContext:
       allowPrivilegeEscalation: false
       readOnlyRootFilesystem: true
@@ -422,11 +452,11 @@ Apply network policies:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: myapp-network-policy
+  name: advanced-app-network-policy
 spec:
   podSelector:
     matchLabels:
-      app: myapp
+      app: advanced
   policyTypes:
   - Ingress
   - Egress
@@ -456,7 +486,7 @@ Implement backup and recovery strategies:
 apiVersion: velero.io/v1
 kind: Schedule
 metadata:
-  name: myapp-backup
+  name: advanced-app-backup
   namespace: velero
 spec:
   schedule: "0 1 * * *"
@@ -465,7 +495,7 @@ spec:
     - production
     labelSelector:
       matchLabels:
-        app: myapp
+        app: advanced
     ttl: 720h
 ```
 
@@ -496,12 +526,12 @@ Use pod disruption budgets:
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: myapp-pdb
+  name: advanced-app-pdb
 spec:
   minAvailable: 2
   selector:
     matchLabels:
-      app: myapp
+      app: advanced
 ```
 
 By implementing these patterns and following best practices, you create robust, scalable, and maintainable Kubernetes deployments that handle production workloads effectively.
