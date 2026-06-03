@@ -168,32 +168,28 @@ spec:
   ingress:
   # Allow from same namespace
   - from:
-    - namespaceSelector:
-        matchLabels:
-          team: team-a
+    - podSelector: {}
   # Allow from ingress controller
   - from:
     - namespaceSelector:
         matchLabels:
-          name: ingress-nginx
+          kubernetes.io/metadata.name: ingress-nginx
   egress:
   # Allow to same namespace
   - to:
-    - namespaceSelector:
-        matchLabels:
-          team: team-a
+    - podSelector: {}
   # Allow DNS
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
   # Allow external traffic
-  - to:
-    - namespaceSelector: {}
-    ports:
+  - ports:
     - port: 443
 ```
 
@@ -274,14 +270,14 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: monitoring
+          kubernetes.io/metadata.name: monitoring
     ports:
     - port: 9090  # Prometheus
   # Allow access to shared logging
   - to:
     - namespaceSelector:
         matchLabels:
-          name: logging
+          kubernetes.io/metadata.name: logging
     ports:
     - port: 9200  # Elasticsearch
 ```
@@ -342,10 +338,18 @@ Query costs with Prometheus:
 
 ```promql
 # CPU usage by team
-sum(rate(container_cpu_usage_seconds_total[5m])) by (namespace, team)
+sum by (namespace, label_team) (
+  rate(container_cpu_usage_seconds_total{container!="POD", image!=""}[5m])
+  * on (namespace, pod) group_left(label_team)
+  kube_pod_labels{label_team!=""}
+)
 
 # Memory usage by team
-sum(container_memory_working_set_bytes) by (namespace, team)
+sum by (namespace, label_team) (
+  container_memory_working_set_bytes{container!="POD", image!=""}
+  * on (namespace, pod) group_left(label_team)
+  kube_pod_labels{label_team!=""}
+)
 ```
 
 ## Monitoring and Alerts
@@ -366,8 +370,10 @@ spec:
     rules:
     - alert: TeamAQuotaExceeded
       expr: |
-        sum(kube_resourcequota{namespace="team-a", type="used"}) /
-        sum(kube_resourcequota{namespace="team-a", type="hard"}) > 0.9
+        max by (namespace, resource) (
+          kube_resourcequota{namespace="team-a", type="used"}
+          / ignoring(type) kube_resourcequota{namespace="team-a", type="hard"}
+        ) > 0.9
       for: 5m
       annotations:
         summary: "Team A approaching quota limit"
@@ -396,6 +402,9 @@ spec:
     matchLabels:
       app: team-a-overflow
   template:
+    metadata:
+      labels:
+        app: team-a-overflow
     spec:
       affinity:
         nodeAffinity:
@@ -438,4 +447,3 @@ spec:
 8. **Document Policies**: Clearly communicate multi-tenancy rules to teams
 
 Soft multi-tenancy with node pools provides a balance between isolation and efficiency, allowing multiple teams to share infrastructure while maintaining operational boundaries and fair resource allocation.
-
