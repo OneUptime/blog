@@ -31,26 +31,34 @@ Identity is the foundation of security on AWS. Get this wrong and nothing else m
 **Use IAM Identity Center (SSO) instead of IAM users.** IAM users with long-lived credentials are a liability. SSO with federated identity and temporary credentials is the way:
 
 ```hcl
-# Enable IAM Identity Center
+# Use the existing IAM Identity Center instance
+data "aws_ssoadmin_instances" "main" {}
+
+locals {
+  sso_instance_arn = tolist(data.aws_ssoadmin_instances.main.arns)[0]
+}
 
 resource "aws_ssoadmin_managed_policy_attachment" "admin" {
-  instance_arn       = aws_ssoadmin_instance.main.arn
+  instance_arn       = local.sso_instance_arn
   managed_policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
   permission_set_arn = aws_ssoadmin_permission_set.admin.arn
 }
 
 resource "aws_ssoadmin_permission_set" "admin" {
   name             = "AdministratorAccess"
-  instance_arn     = aws_ssoadmin_instance.main.arn
+  instance_arn     = local.sso_instance_arn
   session_duration = "PT4H"  # 4 hour sessions
 }
 
 resource "aws_ssoadmin_permission_set" "developer" {
   name             = "DeveloperAccess"
-  instance_arn     = aws_ssoadmin_instance.main.arn
+  instance_arn     = local.sso_instance_arn
   session_duration = "PT8H"
+}
 
-  # Inline policy with limited permissions
+resource "aws_ssoadmin_permission_set_inline_policy" "developer" {
+  instance_arn       = local.sso_instance_arn
+  permission_set_arn = aws_ssoadmin_permission_set.developer.arn
   inline_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -73,7 +81,7 @@ resource "aws_ssoadmin_permission_set" "developer" {
 
 **Apply least privilege everywhere.** For a deep dive on this topic, see our post on [implementing the principle of least privilege on AWS](https://oneuptime.com/blog/post/2026-02-12-implement-principle-least-privilege-aws/view). The short version: start with no permissions and add only what's needed. Use IAM Access Analyzer to identify unused permissions.
 
-**Enforce MFA.** Require MFA for all human access, especially console access and sensitive API calls:
+**Enforce MFA.** Require MFA for all human access, especially console access and sensitive API calls. For IAM Identity Center, enforce MFA in Identity Center or your external identity provider. For any remaining IAM user or role access, use SCPs carefully:
 
 ```hcl
 # SCP that denies actions without MFA
@@ -93,9 +101,13 @@ resource "aws_organizations_policy" "require_mfa" {
           BoolIfExists = {
             "aws:MultiFactorAuthPresent" = "false"
           }
+          Bool = {
+            "aws:PrincipalIsAWSService" = "false"
+          }
           StringNotLike = {
-            "aws:PrincipalARN" = [
-              "arn:aws:iam::*:role/service-role/*"
+            "aws:PrincipalArn" = [
+              "arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/*/AWSReservedSSO_*",
+              "arn:aws:iam::*:role/aws-reserved/sso.amazonaws.com/AWSReservedSSO_*"
             ]
           }
         }
@@ -142,24 +154,24 @@ resource "aws_guardduty_detector" "main" {
   enable = true
 
   finding_publishing_frequency = "FIFTEEN_MINUTES"
+}
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
-  }
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
 }
 ```
 
@@ -168,13 +180,15 @@ resource "aws_guardduty_detector" "main" {
 ```hcl
 resource "aws_securityhub_account" "main" {}
 
+data "aws_region" "current" {}
+
 resource "aws_securityhub_standards_subscription" "cis" {
-  standards_arn = "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"
+  standards_arn = "arn:aws:securityhub:${data.aws_region.current.region}::standards/cis-aws-foundations-benchmark/v/1.4.0"
   depends_on    = [aws_securityhub_account.main]
 }
 
 resource "aws_securityhub_standards_subscription" "aws_best_practices" {
-  standards_arn = "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0"
+  standards_arn = "arn:aws:securityhub:${data.aws_region.current.region}::standards/aws-foundational-security-best-practices/v/1.0.0"
   depends_on    = [aws_securityhub_account.main]
 }
 ```
