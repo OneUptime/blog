@@ -14,13 +14,13 @@ In this guide, you'll learn how to deploy RabbitMQ using the Cluster Operator, c
 
 ## Understanding RabbitMQ Quorum Queues
 
-Traditional RabbitMQ mirrored queues rely on leader-follower replication with eventual consistency. Quorum queues use Raft consensus for strong consistency, providing:
+Traditional RabbitMQ mirrored classic queues relied on leader-follower replication and were removed in RabbitMQ 4.0. Quorum queues use Raft consensus for strong consistency, providing:
 
-- Guaranteed message ordering across replicas
+- Replicated FIFO queues with all operations going through a leader
 - Automatic leader election on node failure
-- No message loss during network partitions
-- Built-in at-least-once delivery semantics
-- Better performance under high load
+- Data safety for confirmed messages as long as a majority of queue members remains available
+- Poison message handling with configurable delivery limits
+- Predictable failure handling during node restarts and upgrades
 
 Quorum queues are ideal for scenarios requiring data safety and consistency over maximum throughput.
 
@@ -57,17 +57,17 @@ helm install rabbitmq-operator bitnami/rabbitmq-cluster-operator \
 
 ## Deploying a Basic RabbitMQ Cluster
 
-Create a RabbitMQCluster resource:
+Create a RabbitmqCluster resource:
 
 ```yaml
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: production-rabbitmq
   namespace: rabbitmq
 spec:
   replicas: 3
-  image: rabbitmq:3.12-management
+  image: rabbitmq:4.3-management
   service:
     type: ClusterIP
   persistence:
@@ -160,17 +160,17 @@ data:
     }
 ```
 
-Update the RabbitMQCluster to load definitions:
+Update the RabbitmqCluster to load definitions:
 
 ```yaml
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: production-rabbitmq
   namespace: rabbitmq
 spec:
   replicas: 3
-  image: rabbitmq:3.12-management
+  image: rabbitmq:4.3-management
   override:
     statefulSet:
       spec:
@@ -188,7 +188,8 @@ spec:
                 name: rabbitmq-definitions
   rabbitmq:
     additionalConfig: |
-      management.load_definitions = /etc/rabbitmq/definitions.json
+      definitions.import_backend = local_filesystem
+      definitions.local.path = /etc/rabbitmq/definitions.json
 ```
 
 ## Creating Quorum Queues Programmatically
@@ -217,7 +218,7 @@ channel.queue_declare(
         'x-queue-type': 'quorum',
         'x-quorum-initial-group-size': 3,
         'x-max-length': 50000,
-        'x-delivery-limit': 5  # Dead letter after 5 delivery attempts
+        'x-delivery-limit': 5  # Drop or dead-letter after repeated failed deliveries
     }
 )
 
@@ -242,6 +243,8 @@ package main
 
 import (
     "log"
+    "time"
+
     amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -282,6 +285,7 @@ func main() {
     if err := ch.Confirm(false); err != nil {
         log.Fatal(err)
     }
+    confirmCh := ch.NotifyPublish(make(chan amqp.Confirmation, 1))
 
     err = ch.Publish(
         "",         // exchange
@@ -297,6 +301,15 @@ func main() {
     if err != nil {
         log.Fatal(err)
     }
+
+    select {
+    case confirm := <-confirmCh:
+        if !confirm.Ack {
+            log.Fatal("message was not confirmed by broker")
+        }
+    case <-time.After(5 * time.Second):
+        log.Fatal("timed out waiting for publisher confirm")
+    }
 }
 ```
 
@@ -306,7 +319,7 @@ Apply policies for consistent quorum queue configuration:
 
 ```yaml
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: production-rabbitmq
   namespace: rabbitmq
@@ -316,8 +329,8 @@ spec:
     additionalConfig: |
       # Set default queue type to quorum
       default_queue_type = quorum
-      # Configure delivery limit
-      quorum_queue.delivery_limit = 3
+      # Keep quorum queue leaders reasonably balanced
+      queue_leader_locator = balanced
 ```
 
 Define policies via management API:
@@ -338,6 +351,7 @@ curl -u $USERNAME:$PASSWORD -X PUT \
     "pattern": ".*",
     "definition": {
       "max-length": 100000,
+      "delivery-limit": 3,
       "overflow": "reject-publish"
     },
     "priority": 1,
@@ -351,7 +365,7 @@ Configure anti-affinity to spread RabbitMQ nodes across availability zones:
 
 ```yaml
 apiVersion: rabbitmq.com/v1beta1
-kind: RabbitMQCluster
+kind: RabbitmqCluster
 metadata:
   name: production-rabbitmq
   namespace: rabbitmq
@@ -405,7 +419,7 @@ def callback(ch, method, properties, body):
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
         print(f"Error processing message: {e}")
-        # Negative acknowledge - will be redelivered or dead-lettered
+        # Negative acknowledge without requeue - will be discarded or dead-lettered if a DLX is configured
         ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
 
 # Consume from quorum queue
@@ -421,57 +435,37 @@ channel.start_consuming()
 
 ## Monitoring Quorum Queue Health
 
-Deploy RabbitMQ Prometheus exporter:
+The Cluster Operator enables RabbitMQ's built-in Prometheus plugin by default. Expose the metrics port with a ServiceMonitor:
 
 ```yaml
-apiVersion: v1
-kind: Service
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
 metadata:
-  name: rabbitmq-exporter
-  namespace: rabbitmq
+  name: production-rabbitmq
+  namespace: monitoring
   labels:
-    app: rabbitmq-exporter
+    app: rabbitmq
 spec:
-  ports:
-  - port: 9419
-    name: metrics
-  selector:
-    app: rabbitmq-exporter
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: rabbitmq-exporter
-  namespace: rabbitmq
-spec:
-  replicas: 1
   selector:
     matchLabels:
-      app: rabbitmq-exporter
-  template:
-    metadata:
-      labels:
-        app: rabbitmq-exporter
-    spec:
-      containers:
-      - name: exporter
-        image: kbudde/rabbitmq-exporter:latest
-        env:
-        - name: RABBIT_URL
-          value: http://production-rabbitmq.rabbitmq.svc.cluster.local:15672
-        - name: RABBIT_USER
-          valueFrom:
-            secretKeyRef:
-              name: production-rabbitmq-default-user
-              key: username
-        - name: RABBIT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: production-rabbitmq-default-user
-              key: password
-        ports:
-        - containerPort: 9419
-          name: metrics
+      app.kubernetes.io/component: rabbitmq
+  namespaceSelector:
+    matchNames:
+    - rabbitmq
+  endpoints:
+  - port: prometheus
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 14s
+  - port: prometheus
+    path: /metrics/detailed
+    interval: 15s
+    scrapeTimeout: 14s
+    params:
+      family:
+      - queue_coarse_metrics
+      - queue_consumer_count
+      - ra_metrics
 ```
 
 Create alerts for quorum queue issues:
@@ -486,19 +480,19 @@ spec:
   groups:
   - name: rabbitmq-quorum
     rules:
-    - alert: QuorumQueueLostQuorum
+    - alert: QuorumQueueFrequentLeaderElections
       expr: |
-        rabbitmq_queue_members{queue_type="quorum"} < 2
+        increase(rabbitmq_detailed_raft_elections[10m]) > 3
       for: 5m
       labels:
         severity: critical
       annotations:
-        summary: "Quorum queue lost quorum"
-        description: "Queue {{ $labels.queue }} has fewer than 2 members"
+        summary: "Frequent Raft leader elections"
+        description: "Queue {{ $labels.queue }} has had repeated Raft leader elections"
 
     - alert: QuorumQueueHighLength
       expr: |
-        rabbitmq_queue_messages{queue_type="quorum"} > 10000
+        rabbitmq_detailed_queue_messages_ready > 10000
       for: 10m
       labels:
         severity: warning
