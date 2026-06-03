@@ -8,15 +8,15 @@ Description: Identify and fix NetworkPolicy misconfigurations that allow traffic
 
 ---
 
-NetworkPolicies are meant to secure your Kubernetes cluster by controlling which pods can communicate with each other. However, misconfigured policies can allow unintended traffic, creating security gaps that attackers can exploit. Unlike policies that block too much traffic (which you notice immediately through broken applications), policies that allow too much traffic silently fail to protect your workloads.
+NetworkPolicies are meant to secure your Kubernetes cluster by controlling which pods can communicate with each other, when your cluster uses a network plugin that enforces them. However, misconfigured policies can allow unintended traffic, creating security gaps that attackers can exploit. Unlike policies that block too much traffic (which you notice immediately through broken applications), policies that allow too much traffic silently fail to protect your workloads.
 
 These security gaps are dangerous because they go unnoticed until a security audit or breach reveals them. Proactive testing and verification of NetworkPolicy enforcement ensures your intended security posture matches reality.
 
 ## Understanding Default NetworkPolicy Behavior
 
-NetworkPolicies use a default-allow model. Without any NetworkPolicy selecting a pod, that pod can communicate freely with all other pods and external endpoints. Once any NetworkPolicy selects a pod, the pod becomes isolated and only explicitly allowed traffic passes.
+NetworkPolicies use a default-allow model. Without any NetworkPolicy selecting a pod for a given direction, that pod can communicate freely in that direction. Once any NetworkPolicy selects a pod for ingress or egress, that direction becomes isolated and only explicitly allowed traffic passes. Reply traffic for allowed connections is allowed implicitly.
 
-This means you must be explicit about denying traffic. There are no explicit deny rules in NetworkPolicies, only allow rules.
+This means you must be explicit about isolation and allowed traffic. There are no explicit deny rules in Kubernetes NetworkPolicies, only allow rules.
 
 ## Testing Network Policy Enforcement
 
@@ -106,9 +106,9 @@ kubectl get namespaces -l team=platform
 
 Broad namespace selectors allow access from many pods.
 
-## Checking for Missing policyTypes
+## Checking for Missing Egress Isolation
 
-Missing policyTypes field allows unintended traffic:
+Policies that only apply to ingress leave egress unrestricted:
 
 ```yaml
 # Problematic policy (only restricts ingress):
@@ -132,7 +132,7 @@ spec:
 # Pod can connect to anything
 ```
 
-Fix by adding Egress to policyTypes:
+Fix by adding Egress to policyTypes and defining egress rules:
 
 ```yaml
 spec:
@@ -152,10 +152,12 @@ spec:
   - to:  # Allow DNS
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - port: 53
       protocol: UDP
+    - port: 53
+      protocol: TCP
 ```
 
 ## Testing Port Specificity
@@ -220,14 +222,24 @@ Broad CIDR ranges allow unintended external access.
 Multiple policies selecting the same pod combine additively:
 
 ```bash
-# List all policies selecting a pod
-POD_LABELS=$(kubectl get pod my-pod -o jsonpath='{.metadata.labels}' | jq -r 'to_entries|map("\(.key)=\(.value)")|.[]')
+# List policies in the pod's namespace that select a pod
+POD_NAMESPACE=$(kubectl get pod my-pod -o jsonpath='{.metadata.namespace}')
+POD_LABELS=$(kubectl get pod my-pod -o json | jq '.metadata.labels')
 
-# Check each policy
-for label in $POD_LABELS; do
-  kubectl get networkpolicies --all-namespaces -o json | \
-    jq ".items[] | select(.spec.podSelector.matchLabels.\"${label%%=*}\" == \"${label#*=}\")"
-done
+kubectl get networkpolicies -n "$POD_NAMESPACE" -o json | \
+  jq --argjson labels "$POD_LABELS" '
+    def selector_matches($selector; $labels):
+      ($selector == {} or (
+        (($selector.matchLabels // {}) | to_entries | all($labels[.key] == .value)) and
+        (($selector.matchExpressions // []) | all(. as $expr |
+          if $expr.operator == "In" then (($expr.values // []) | index($labels[$expr.key]))
+          elif $expr.operator == "NotIn" then ((($expr.values // []) | index($labels[$expr.key])) | not)
+          elif $expr.operator == "Exists" then ($labels[$expr.key] != null)
+          elif $expr.operator == "DoesNotExist" then ($labels[$expr.key] == null)
+          else false end
+        ))
+      ));
+    .items[] | select(selector_matches(.spec.podSelector; $labels))'
 
 # Combined effect is union of all policies
 # Any policy allowing traffic permits it
@@ -258,10 +270,10 @@ Test different protocols:
 
 ```bash
 # Test TCP
-kubectl exec test-pod -- nc -zv -tcp protected-pod 8080
+kubectl exec test-pod -- nc -zv protected-pod 8080
 
 # Test UDP
-kubectl exec test-pod -- nc -zv -udp protected-pod 8080
+kubectl exec test-pod -- nc -zvu protected-pod 8080
 
 # Both should not succeed if only TCP is intended
 ```
@@ -271,17 +283,17 @@ kubectl exec test-pod -- nc -zv -udp protected-pod 8080
 Policies can conflict in unexpected ways:
 
 ```bash
-# Policy 1: Denies by being restrictive
+# Policy 1: Restrictive allow list
 kubectl get networkpolicy deny-policy -o yaml
 
-# Policy 2: Accidentally allows
+# Policy 2: Accidentally broadens allowed traffic
 kubectl get networkpolicy allow-policy -o yaml
 
-# Since policies are additive, allow-policy overrides deny-policy
+# Since policies are additive, allow-policy expands the effective allow list
 # Review all policies selecting the same pods
 ```
 
-The most permissive policy wins due to additive nature.
+The effective allowed traffic is the union of all matching policies.
 
 ## Testing Egress DNS Access
 
@@ -299,26 +311,28 @@ kubectl exec my-pod -- nslookup google.com
 # - to:
 #   - namespaceSelector:
 #       matchLabels:
-#         name: kube-system
+#         kubernetes.io/metadata.name: kube-system
 #   ports:
 #   - protocol: UDP
+#     port: 53
+#   - protocol: TCP
 #     port: 53
 ```
 
 Forgetting DNS breaks name resolution silently.
 
-## Using Network Policy Dry Run Tools
+## Using Network Policy Validation Tools
 
 Some tools validate NetworkPolicy configuration:
 
 ```bash
-# For Calico, use policy recommender
+# For Calico, inspect configured policies
 kubectl exec -n kube-system calico-node-xxx -- \
   calicoctl get networkpolicy -o yaml
 
 # For Cilium, check policy status
 kubectl exec -n kube-system cilium-xxx -- \
-  cilium policy get
+  cilium-dbg endpoint list
 
 # Look for warnings or recommendations
 ```
@@ -386,17 +400,29 @@ Verify all pods have appropriate policies:
 ```bash
 # Find pods without NetworkPolicy
 kubectl get pods --all-namespaces -o json | \
-  jq -r '.items[] | select(.metadata.labels | length > 0) |
-  "\(.metadata.namespace)/\(.metadata.name): \(.metadata.labels)"' | \
+  jq -r '.items[] | @base64' | \
   while read pod; do
-    namespace=$(echo $pod | cut -d/ -f1)
-    podname=$(echo $pod | cut -d/ -f2 | cut -d: -f1)
-    policies=$(kubectl get networkpolicy -n $namespace -o json | \
-      jq --arg labels "$(echo $pod | cut -d: -f2)" \
-      '.items[] | select(.spec.podSelector.matchLabels | to_entries | all(.key + "=" + .value | IN($labels)))')
+    pod_json=$(echo "$pod" | base64 -d)
+    namespace=$(echo "$pod_json" | jq -r '.metadata.namespace')
+    podname=$(echo "$pod_json" | jq -r '.metadata.name')
+    labels=$(echo "$pod_json" | jq -c '.metadata.labels // {}')
+    policies=$(kubectl get networkpolicy -n "$namespace" -o json | \
+      jq --argjson labels "$labels" '
+        def selector_matches($selector; $labels):
+          ($selector == {} or (
+            (($selector.matchLabels // {}) | to_entries | all($labels[.key] == .value)) and
+            (($selector.matchExpressions // []) | all(. as $expr |
+              if $expr.operator == "In" then (($expr.values // []) | index($labels[$expr.key]))
+              elif $expr.operator == "NotIn" then ((($expr.values // []) | index($labels[$expr.key])) | not)
+              elif $expr.operator == "Exists" then ($labels[$expr.key] != null)
+              elif $expr.operator == "DoesNotExist" then ($labels[$expr.key] == null)
+              else false end
+            ))
+          ));
+        [.items[] | select(selector_matches(.spec.podSelector; $labels))] | length')
 
-    if [ -z "$policies" ]; then
-      echo "No policy for: $pod"
+    if [ "$policies" -eq 0 ]; then
+      echo "No policy for: $namespace/$podname"
     fi
   done
 ```
@@ -424,18 +450,17 @@ Set up monitoring for policy violations:
 
 ```bash
 # For Cilium, monitor policy verdicts
-kubectl exec -n kube-system cilium-xxx -- \
-  cilium monitor --type policy-verdict
+kubectl exec -n kube-system cilium-xxx -c cilium-agent -- \
+  hubble observe flows -t policy-verdict
 
 # Look for unexpected allows
 # Policy verdict: allowed
 
-# For Calico, enable policy logging
-kubectl annotate namespace production \
-  projectcalico.org/policy-audit=true
+# For Calico, add a temporary Log rule with Calico NetworkPolicy
+kubectl apply -f calico-log-policy.yaml
 
-# Review logs for unexpected traffic
-kubectl logs -n kube-system calico-node-xxx | grep policy
+# Review Felix logs for unexpected traffic
+kubectl logs -n calico-system -l k8s-app=calico-node | grep calico-packet
 ```
 
 Monitoring catches policy gaps in real-time.
@@ -449,17 +474,18 @@ Systematic testing matrix:
 # test-network-policies.sh
 
 SOURCES=("frontend-pod" "backend-pod" "external-pod")
-DESTINATIONS=("api-service:8080" "db-service:5432" "cache-service:6379")
+DESTINATIONS=("api-service 8080" "db-service 5432" "cache-service 6379")
 
 echo "Testing NetworkPolicy enforcement..."
 
 for src in "${SOURCES[@]}"; do
   for dst in "${DESTINATIONS[@]}"; do
-    result=$(kubectl exec $src -- timeout 2 curl -s http://$dst 2>&1)
+    read -r host port <<< "$dst"
+    result=$(kubectl exec "$src" -- nc -zvw2 "$host" "$port" 2>&1)
     if [ $? -eq 0 ]; then
-      echo "ALLOWED: $src -> $dst"
+      echo "ALLOWED: $src -> $host:$port"
     else
-      echo "BLOCKED: $src -> $dst"
+      echo "BLOCKED: $src -> $host:$port"
     fi
   done
 done
