@@ -17,8 +17,11 @@ There's no "skip to page 5" or "offset 100." If you need page 5, you have to rea
 Here's the fundamental pattern:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+
+const client = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(client);
 
 // Fetch one page of results
 async function getPage(customerId, pageSize, startKey) {
@@ -34,22 +37,24 @@ async function getPage(customerId, pageSize, startKey) {
     params.ExclusiveStartKey = startKey;
   }
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
 
   return {
-    items: result.Items,
+    items: result.Items || [],
     nextKey: result.LastEvaluatedKey || null,  // null means no more pages
     count: result.Count
   };
 }
 
 // Usage
-const page1 = await getPage('cust-001', 20, null);
-console.log('Page 1:', page1.items.length, 'items');
+async function example() {
+  const page1 = await getPage('cust-001', 20, null);
+  console.log('Page 1:', page1.items.length, 'items');
 
-if (page1.nextKey) {
-  const page2 = await getPage('cust-001', 20, page1.nextKey);
-  console.log('Page 2:', page2.items.length, 'items');
+  if (page1.nextKey) {
+    const page2 = await getPage('cust-001', 20, page1.nextKey);
+    console.log('Page 2:', page2.items.length, 'items');
+  }
 }
 ```
 
@@ -69,15 +74,19 @@ async function getAllItems(customerId) {
     const params = {
       TableName: 'Orders',
       KeyConditionExpression: 'customerId = :cid',
-      ExpressionAttributeValues: { ':cid': customerId },
-      ExclusiveStartKey: lastKey
+      ExpressionAttributeValues: { ':cid': customerId }
     };
 
-    const result = await docClient.query(params).promise();
-    allItems.push(...result.Items);
+    if (lastKey) {
+      params.ExclusiveStartKey = lastKey;
+    }
+
+    const result = await docClient.send(new QueryCommand(params));
+    const items = result.Items || [];
+    allItems.push(...items);
     lastKey = result.LastEvaluatedKey;
 
-    console.log(`Fetched ${result.Items.length} items (total: ${allItems.length})`);
+    console.log(`Fetched ${items.length} items (total: ${allItems.length})`);
   } while (lastKey);
 
   return allItems;
@@ -88,19 +97,19 @@ Be careful with this pattern on large datasets. If a customer has a million orde
 
 ## Cursor-Based API Pagination
 
-For REST APIs, encode the cursor as a base64 string so it's URL-safe:
+For REST APIs, encode the cursor as a base64url string so it's URL-safe:
 
 ```javascript
 // Encode LastEvaluatedKey to a URL-safe cursor string
 function encodeCursor(lastEvaluatedKey) {
   if (!lastEvaluatedKey) return null;
-  return Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64');
+  return Buffer.from(JSON.stringify(lastEvaluatedKey)).toString('base64url');
 }
 
 // Decode cursor back to a DynamoDB key
 function decodeCursor(cursor) {
   if (!cursor) return undefined;
-  return JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
+  return JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8'));
 }
 
 // API endpoint handler
@@ -113,14 +122,18 @@ async function handleListOrders(req, res) {
     TableName: 'Orders',
     KeyConditionExpression: 'customerId = :cid',
     ExpressionAttributeValues: { ':cid': customerId },
-    Limit: pageSize,
-    ExclusiveStartKey: decodeCursor(cursor)
+    Limit: pageSize
   };
 
-  const result = await docClient.query(params).promise();
+  const startKey = decodeCursor(cursor);
+  if (startKey) {
+    params.ExclusiveStartKey = startKey;
+  }
+
+  const result = await docClient.send(new QueryCommand(params));
 
   res.json({
-    items: result.Items,
+    items: result.Items || [],
     nextCursor: encodeCursor(result.LastEvaluatedKey),
     hasMore: !!result.LastEvaluatedKey
   });
@@ -136,14 +149,14 @@ GET /api/customers/cust-001/orders?pageSize=20&cursor=eyJjdXN0b21lcklkIjoiY3Vz..
 
 ## Security: Validating Cursors
 
-The cursor contains your DynamoDB key attributes. A malicious user could craft a cursor to access another customer's data. Always validate:
+The cursor contains your DynamoDB key attributes. A malicious user could craft a cursor to tamper with pagination or probe key values. Always validate:
 
 ```javascript
 function decodeCursorSafe(cursor, expectedCustomerId) {
   if (!cursor) return undefined;
 
   try {
-    const key = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
+    const key = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8'));
 
     // Validate that the cursor belongs to the expected customer
     if (key.customerId !== expectedCustomerId) {
@@ -167,14 +180,19 @@ function signCursor(key) {
   const payload = JSON.stringify(key);
   const hmac = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
   const signed = JSON.stringify({ payload, hmac });
-  return Buffer.from(signed).toString('base64');
+  return Buffer.from(signed).toString('base64url');
 }
 
 function verifyCursor(cursor) {
-  const { payload, hmac } = JSON.parse(Buffer.from(cursor, 'base64').toString('utf-8'));
+  const { payload, hmac } = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf-8'));
   const expected = crypto.createHmac('sha256', SECRET).update(payload).digest('hex');
+  const actualBuffer = Buffer.from(hmac, 'hex');
+  const expectedBuffer = Buffer.from(expected, 'hex');
 
-  if (hmac !== expected) {
+  if (
+    actualBuffer.length !== expectedBuffer.length ||
+    !crypto.timingSafeEqual(actualBuffer, expectedBuffer)
+  ) {
     throw new Error('Cursor has been tampered with');
   }
 
@@ -203,13 +221,16 @@ async function getFilteredPage(customerId, minAmount, pageSize, cursor) {
         ':cid': customerId,
         ':min': minAmount
       },
-      // Read more than we need to account for filtered items
-      Limit: pageSize * 3,
-      ExclusiveStartKey: lastKey
+      // Limit applies before filtering, so keep reading until this page is full
+      Limit: pageSize - items.length
     };
 
-    const result = await docClient.query(params).promise();
-    items.push(...result.Items);
+    if (lastKey) {
+      params.ExclusiveStartKey = lastKey;
+    }
+
+    const result = await docClient.send(new QueryCommand(params));
+    items.push(...(result.Items || []));
     scannedCount += result.ScannedCount;
     lastKey = result.LastEvaluatedKey;
 
@@ -217,14 +238,10 @@ async function getFilteredPage(customerId, minAmount, pageSize, cursor) {
     if (!lastKey) break;
   }
 
-  // Trim to page size and return
-  const pageItems = items.slice(0, pageSize);
-  const hasMore = items.length > pageSize || !!lastKey;
-
   return {
-    items: pageItems,
-    nextCursor: hasMore ? encodeCursor(lastKey) : null,
-    hasMore
+    items,
+    nextCursor: encodeCursor(lastKey),
+    hasMore: !!lastKey
   };
 }
 ```
@@ -241,14 +258,18 @@ async function getLatestOrders(customerId, pageSize, cursor) {
     KeyConditionExpression: 'customerId = :cid',
     ExpressionAttributeValues: { ':cid': customerId },
     ScanIndexForward: false,  // Reverse sort order
-    Limit: pageSize,
-    ExclusiveStartKey: decodeCursor(cursor)
+    Limit: pageSize
   };
 
-  const result = await docClient.query(params).promise();
+  const startKey = decodeCursor(cursor);
+  if (startKey) {
+    params.ExclusiveStartKey = startKey;
+  }
+
+  const result = await docClient.send(new QueryCommand(params));
 
   return {
-    items: result.Items,
+    items: result.Items || [],
     nextCursor: encodeCursor(result.LastEvaluatedKey),
     hasMore: !!result.LastEvaluatedKey
   };
@@ -274,7 +295,7 @@ async function getPageByNumber(customerId, pageSize, pageNumber) {
   const cursors = pageCache.get(cacheKey);
 
   // If we have the cursor for this page, use it
-  if (cursors[pageNumber] !== undefined) {
+  if (pageNumber === 1 || cursors[pageNumber]) {
     const result = await getPage(customerId, pageSize, cursors[pageNumber]);
 
     // Cache the cursor for the next page
@@ -298,9 +319,18 @@ async function getPageByNumber(customerId, pageSize, pageNumber) {
     const result = await getPage(customerId, pageSize, cursor);
     currentPage++;
     cursor = result.nextKey;
-    cursors[currentPage] = cursor;
 
-    if (!cursor) break;
+    if (!cursor) {
+      return {
+        items: [],
+        nextKey: null,
+        count: 0,
+        pageNumber,
+        hasNextPage: false
+      };
+    }
+
+    cursors[currentPage] = cursor;
   }
 
   return getPageByNumber(customerId, pageSize, pageNumber);
@@ -360,4 +390,4 @@ Monitor your DynamoDB query latency across pages with [OneUptime](https://oneupt
 
 ## Wrapping Up
 
-DynamoDB pagination is cursor-based: you get a `LastEvaluatedKey` and pass it back to continue. There's no way to skip pages or count total results without reading through them. Encode cursors as base64 for API transport, validate them for security, and handle the edge cases with FilterExpressions carefully. For most applications, infinite scroll or "load more" UIs are a natural fit for cursor-based pagination. If you truly need page numbers, cache the cursors per session. Design your API around the cursor model and you'll have fast, scalable pagination that works at any data size.
+DynamoDB pagination is cursor-based: you get a `LastEvaluatedKey` and pass it back to continue. There's no way to skip pages or count total results without reading through them. Encode cursors as base64url for API transport, validate them for security, and handle the edge cases with FilterExpressions carefully. For most applications, infinite scroll or "load more" UIs are a natural fit for cursor-based pagination. If you truly need page numbers, cache the cursors per session. Design your API around the cursor model and you'll have fast, scalable pagination that works at any data size.
