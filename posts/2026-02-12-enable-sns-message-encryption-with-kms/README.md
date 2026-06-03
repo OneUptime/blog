@@ -47,7 +47,7 @@ aws sns create-topic \
 
 ## Using a Customer-Managed KMS Key
 
-For more control over key rotation, access policies, and audit logging, use a customer-managed key (CMK).
+For more control over key rotation, access policies, and audit logging, use a customer-managed KMS key.
 
 ### Step 1: Create the KMS Key
 
@@ -66,7 +66,7 @@ aws kms create-alias \
 
 ### Step 2: Configure the Key Policy
 
-The KMS key policy must allow SNS to use the key for encrypting and decrypting messages. It also needs to allow subscribers to decrypt.
+The KMS key policy must allow SNS to use the key for encrypting and decrypting messages. Publishers, and AWS services that publish to the topic, also need permission to use the key. Subscribers don't decrypt SNS messages themselves; SNS decrypts messages before delivery.
 
 ```json
 {
@@ -88,7 +88,7 @@ The KMS key policy must allow SNS to use the key for encrypting and decrypting m
         "Service": "sns.amazonaws.com"
       },
       "Action": [
-        "kms:GenerateDataKey",
+        "kms:GenerateDataKey*",
         "kms:Decrypt"
       ],
       "Resource": "*"
@@ -100,7 +100,7 @@ The KMS key policy must allow SNS to use the key for encrypting and decrypting m
         "Service": "cloudwatch.amazonaws.com"
       },
       "Action": [
-        "kms:GenerateDataKey",
+        "kms:GenerateDataKey*",
         "kms:Decrypt"
       ],
       "Resource": "*"
@@ -112,7 +112,7 @@ The KMS key policy must allow SNS to use the key for encrypting and decrypting m
         "Service": "s3.amazonaws.com"
       },
       "Action": [
-        "kms:GenerateDataKey",
+        "kms:GenerateDataKey*",
         "kms:Decrypt"
       ],
       "Resource": "*"
@@ -155,7 +155,7 @@ sns = boto3.client('sns')
 def create_encrypted_topic(topic_name, key_alias='alias/sns-encryption'):
     """Create an SNS topic with KMS encryption.
 
-    Creates a CMK if one doesn't exist, sets up the key policy,
+    Creates a customer-managed KMS key if one doesn't exist, sets up the key policy,
     and creates the encrypted topic.
     """
     # Check if the key alias already exists
@@ -220,7 +220,7 @@ def get_or_create_key(alias):
                         'events.amazonaws.com',
                     ]
                 },
-                'Action': ['kms:GenerateDataKey', 'kms:Decrypt'],
+                'Action': ['kms:GenerateDataKey*', 'kms:Decrypt'],
                 'Resource': '*',
             },
         ],
@@ -286,12 +286,13 @@ encrypt_all_topics()
 
 ## Setting Up with CDK
 
-CDK handles the KMS key policy automatically when you use the `masterKey` property.
+CDK sets the topic's KMS key when you use the `masterKey` property. For customer-managed keys, add the KMS permissions that SNS and your publishers need.
 
 ```typescript
 import * as cdk from 'aws-cdk-lib';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as iam from 'aws-cdk-lib/aws-iam';
 
 // Option 1: Use the AWS-managed key (simplest)
 const simpleTopic = new sns.Topic(this, 'SimpleEncryptedTopic', {
@@ -312,13 +313,23 @@ const secureTopic = new sns.Topic(this, 'SecureEncryptedTopic', {
   masterKey: encryptionKey,
 });
 
-// CDK automatically adds the necessary KMS permissions
-// when you add subscriptions
+encryptionKey.addToResourcePolicy(new iam.PolicyStatement({
+  principals: [new iam.ServicePrincipal('sns.amazonaws.com')],
+  actions: ['kms:GenerateDataKey*', 'kms:Decrypt'],
+  resources: ['*'],
+  conditions: {
+    StringEquals: {
+      'kms:EncryptionContext:aws:sns:topicArn': secureTopic.topicArn,
+    },
+  },
+}));
+
+// Grant publishers or publishing AWS services KMS permissions separately.
 ```
 
 ## Cross-Account Encryption
 
-When using encrypted topics with cross-account subscriptions, the KMS key policy must also grant access to the subscriber account.
+When another AWS account publishes to an encrypted topic, the KMS key policy must also grant that publisher account permission to use the key. Cross-account subscribers don't need decrypt access to the SNS topic key because SNS decrypts messages before delivery.
 
 ```python
 import json
@@ -326,22 +337,23 @@ import boto3
 
 kms = boto3.client('kms')
 
-def grant_cross_account_key_access(key_id, subscriber_account_id):
-    """Grant another AWS account permission to decrypt messages
+def grant_cross_account_key_access(key_id, publisher_account_id):
+    """Grant another AWS account permission to publish messages
     from an encrypted SNS topic."""
 
     # Get the current key policy
     response = kms.get_key_policy(KeyId=key_id, PolicyName='default')
     policy = json.loads(response['Policy'])
 
-    # Add a statement for the subscriber account
+    # Add a statement for the publisher account
     policy['Statement'].append({
-        'Sid': f'AllowDecrypt-{subscriber_account_id}',
+        'Sid': f'AllowPublishWithKey{publisher_account_id}',
         'Effect': 'Allow',
         'Principal': {
-            'AWS': f'arn:aws:iam::{subscriber_account_id}:root'
+            'AWS': f'arn:aws:iam::{publisher_account_id}:root'
         },
         'Action': [
+            'kms:GenerateDataKey*',
             'kms:Decrypt',
             'kms:DescribeKey',
         ],
@@ -354,7 +366,7 @@ def grant_cross_account_key_access(key_id, subscriber_account_id):
         Policy=json.dumps(policy),
     )
 
-    print(f'Granted decrypt access to account {subscriber_account_id}')
+    print(f'Granted KMS access to publisher account {publisher_account_id}')
 
 grant_cross_account_key_access('YOUR_KEY_ID', '222222222222')
 ```
@@ -376,16 +388,16 @@ aws sns set-topic-attributes \
 Keep track of how your encryption keys are being used.
 
 ```bash
-# Create a CloudWatch alarm for KMS key access denied errors
+# Create a CloudWatch alarm for SNS-related KMS decrypt usage
 aws cloudwatch put-metric-alarm \
-  --alarm-name "KMS-SNS-AccessDenied" \
-  --alarm-description "KMS access denied errors for SNS encryption key" \
+  --alarm-name "KMS-SNS-DecryptUsage" \
+  --alarm-description "KMS decrypt usage for SNS encryption key" \
   --namespace "AWS/KMS" \
-  --metric-name "AccessDeniedCount" \
-  --dimensions Name=KeyId,Value=YOUR_KEY_ID \
+  --metric-name "SuccessfulRequest" \
+  --dimensions Name=KeyArn,Value=arn:aws:kms:us-east-1:123456789012:key/YOUR_KEY_ID Name=Operation,Value=Decrypt \
   --statistic Sum \
   --period 300 \
-  --threshold 1 \
+  --threshold 1000 \
   --comparison-operator GreaterThanOrEqualToThreshold \
   --evaluation-periods 1 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:critical-alerts
