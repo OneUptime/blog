@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Terraform, ALB, Networking, Load Balancing
 
-Description: Complete guide to creating and configuring AWS Application Load Balancers with Terraform, including listeners, target groups, path-based routing, SSL, and WAF integration.
+Description: Complete guide to creating and configuring AWS Application Load Balancers with Terraform, including listeners, target groups, path-based routing, SSL, and redirect rules.
 
 ---
 
 Application Load Balancers (ALBs) are the front door for most web applications on AWS. They handle SSL termination, path-based routing, health checks, and traffic distribution across your backend services. Setting them up with Terraform gives you repeatable, version-controlled load balancer configurations that you can deploy across environments.
 
-This guide covers everything from a basic ALB to advanced setups with multiple target groups, SSL certificates, redirect rules, and WAF integration.
+This guide covers everything from a basic ALB to advanced setups with multiple target groups, SSL certificates, and redirect rules.
 
 ## Basic ALB Setup
 
-An ALB needs three things: the load balancer itself, at least one target group, and at least one listener.
+A typical ALB setup that forwards traffic to an application needs three things: the load balancer itself, at least one target group, and at least one listener.
 
 Start with the security group.
 
@@ -312,9 +312,9 @@ resource "aws_lb_listener_rule" "weighted" {
 }
 ```
 
-## Using Dynamic Blocks for Rules
+## Using for_each for Rules
 
-When you have many routing rules, use dynamic blocks to keep the configuration clean.
+When you have many routing rules, use `for_each` to keep the configuration clean.
 
 ```hcl
 variable "routing_rules" {
@@ -381,7 +381,7 @@ resource "aws_lb_listener_rule" "services" {
 }
 ```
 
-For more on dynamic blocks, see our guide on [Terraform dynamic blocks](https://oneuptime.com/blog/post/2026-02-12-terraform-dynamic-blocks-for-repeated-configuration/view).
+For repeated nested blocks in Terraform, see our guide on [Terraform dynamic blocks](https://oneuptime.com/blog/post/2026-02-12-terraform-dynamic-blocks-for-repeated-configuration/view).
 
 ## SSL Certificate Management
 
