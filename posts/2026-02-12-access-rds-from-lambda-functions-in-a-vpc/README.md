@@ -24,13 +24,13 @@ If you haven't configured VPC access for Lambda yet, check out our guide on [con
 
 ## Network Architecture
 
-The architecture is straightforward. Lambda and RDS both live in private subnets within the same VPC. Lambda creates ENIs in those subnets to establish connectivity, and security groups control the traffic flow.
+The architecture is straightforward. Lambda and RDS both live in private subnets within the same VPC. Lambda creates managed Hyperplane ENIs for the subnet and security group combination you configure, and security groups control the traffic flow.
 
 ```mermaid
 graph TB
     subgraph VPC
         subgraph Private Subnets
-            A[Lambda ENIs] -->|Port 5432/3306| B[RDS Instance]
+            A[Lambda-managed ENIs] -->|Port 5432/3306| B[RDS Instance]
         end
     end
     C[Lambda Function] --> A
@@ -82,21 +82,6 @@ resource "aws_security_group" "lambda_sg" {
   description = "Allows Lambda to connect to RDS"
   vpc_id      = aws_vpc.main.id
 
-  # Allow outbound to RDS on PostgreSQL port
-  egress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.rds_sg.id]
-  }
-
-  # Allow outbound HTTPS for AWS API calls (if needed)
-  egress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 }
 
 # Security group for the RDS instance
@@ -104,14 +89,33 @@ resource "aws_security_group" "rds_sg" {
   name        = "rds-from-lambda"
   description = "Allows inbound from Lambda"
   vpc_id      = aws_vpc.main.id
+}
 
-  # Accept connections from Lambda's security group
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [aws_security_group.lambda_sg.id]
-  }
+# Allow outbound from Lambda to RDS on PostgreSQL port
+resource "aws_vpc_security_group_egress_rule" "lambda_to_rds" {
+  security_group_id            = aws_security_group.lambda_sg.id
+  referenced_security_group_id = aws_security_group.rds_sg.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
+}
+
+# Allow outbound HTTPS for AWS API calls (if needed)
+resource "aws_vpc_security_group_egress_rule" "lambda_https" {
+  security_group_id = aws_security_group.lambda_sg.id
+  cidr_ipv4         = "0.0.0.0/0"
+  from_port         = 443
+  to_port           = 443
+  ip_protocol       = "tcp"
+}
+
+# Accept connections from Lambda's security group
+resource "aws_vpc_security_group_ingress_rule" "rds_from_lambda" {
+  security_group_id            = aws_security_group.rds_sg.id
+  referenced_security_group_id = aws_security_group.lambda_sg.id
+  from_port                    = 5432
+  to_port                      = 5432
+  ip_protocol                  = "tcp"
 }
 ```
 
@@ -131,6 +135,8 @@ aws secretsmanager create-secret \
 ```
 
 Then retrieve it in your Lambda function:
+
+If the Lambda function only runs in private subnets, make sure it can reach Secrets Manager through a NAT gateway or an interface VPC endpoint.
 
 ```javascript
 // Fetch database credentials from Secrets Manager
@@ -155,7 +161,7 @@ For more on this pattern, see our post on [using Lambda with Secrets Manager](ht
 
 ## Step 4: Write the Database Connection Code
 
-Here's a complete example using Node.js with PostgreSQL:
+Here's the query code using Node.js with PostgreSQL:
 
 ```javascript
 // Lambda function that queries RDS PostgreSQL
@@ -167,6 +173,7 @@ async function getConnection() {
   // Reuse the connection across warm invocations
   if (dbClient) return dbClient;
 
+  // Include the getDbCredentials helper from the previous section in the same file
   const creds = await getDbCredentials();
 
   dbClient = new Client({
@@ -245,6 +252,7 @@ def get_connection():
     return connection
 
 def handler(event, context):
+    global connection
     try:
         conn = get_connection()
         with conn.cursor() as cursor:
@@ -261,7 +269,7 @@ def handler(event, context):
 
 ## The Connection Pool Problem
 
-Here's where things get tricky. Every Lambda execution environment maintains its own database connection. If your function scales to 100 concurrent invocations, that's 100 database connections. RDS instances have connection limits - a db.t3.micro allows about 66 connections, while a db.r5.large supports around 1000.
+Here's where things get tricky. Every Lambda execution environment maintains its own database connection. If your function scales to 100 concurrent invocations, that's up to 100 database connections. RDS instances have connection limits that depend on the engine, instance class, and parameter group. For example, the default PostgreSQL `max_connections` value is based on `LEAST({DBInstanceClassMemory/9531392}, 5000)`, while MySQL uses a different memory-based formula.
 
 If Lambda scales beyond what your database can handle, new connections will fail and your application breaks.
 
@@ -300,6 +308,7 @@ After deploying, test the function to verify connectivity:
 # Invoke the function and check the response
 aws lambda invoke \
   --function-name rds-query-handler \
+  --cli-binary-format raw-in-base64-out \
   --payload '{}' \
   response.json && cat response.json
 ```
