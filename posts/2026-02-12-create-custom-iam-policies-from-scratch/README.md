@@ -104,14 +104,14 @@ This grants read-only access to EC2. The wildcards match any action starting wit
 
 ## Adding Conditions
 
-Conditions let you add constraints beyond just "who" and "what." Here's a policy that only works during business hours from a specific IP range:
+Conditions let you add constraints beyond just "who" and "what." Here's a policy that only works during a specific date range from a specific IP range:
 
 ```json
 {
     "Version": "2012-10-17",
     "Statement": [
         {
-            "Sid": "AllowDuringBusinessHours",
+            "Sid": "AllowDuringDateRange",
             "Effect": "Allow",
             "Action": [
                 "ec2:StartInstances",
