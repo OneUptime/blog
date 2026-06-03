@@ -32,16 +32,6 @@ type Product {
   price: Float!
   category: String!
   inStock: Boolean!
-  reviews: [Review]
-}
-
-type Review {
-  id: ID!
-  productId: ID!
-  author: String!
-  rating: Int!
-  comment: String
-  createdAt: String!
 }
 
 type ProductConnection {
@@ -52,14 +42,12 @@ type ProductConnection {
 type Query {
   getProduct(id: ID!): Product
   listProducts(category: String, limit: Int, nextToken: String): ProductConnection
-  searchProducts(query: String!): [Product]
 }
 
 type Mutation {
   createProduct(input: CreateProductInput!): Product
   updateProduct(id: ID!, input: UpdateProductInput!): Product
   deleteProduct(id: ID!): Boolean
-  addReview(input: AddReviewInput!): Review
 }
 
 input CreateProductInput {
@@ -75,13 +63,6 @@ input UpdateProductInput {
   price: Float
   category: String
   inStock: Boolean
-}
-
-input AddReviewInput {
-  productId: ID!
-  author: String!
-  rating: Int!
-  comment: String
 }
 ```
 
@@ -123,9 +104,10 @@ const TABLE = process.env.PRODUCTS_TABLE;
 exports.handler = async (event) => {
   console.log('Resolver event:', JSON.stringify(event));
 
-  const { fieldName, arguments: args } = event.info
-    ? { fieldName: event.info.fieldName, arguments: event.arguments }
-    : { fieldName: event.field, arguments: event.arguments };
+  const resolverEvent = event.payload || event;
+  const { fieldName, arguments: args } = resolverEvent.info
+    ? { fieldName: resolverEvent.info.fieldName, arguments: resolverEvent.arguments }
+    : { fieldName: resolverEvent.field, arguments: resolverEvent.arguments };
 
   switch (fieldName) {
     case 'getProduct':
@@ -304,13 +286,13 @@ Resources:
     Type: AWS::AppSync::GraphQLSchema
     Properties:
       ApiId: !GetAtt ProductApi.ApiId
-      DefinitionS3Location: schema.graphql
+      DefinitionS3Location: s3://YOUR_BUCKET/schema.graphql
 
   ApiKey:
     Type: AWS::AppSync::ApiKey
     Properties:
       ApiId: !GetAtt ProductApi.ApiId
-      Expires: 1740787200
+      Expires: 1830297600
 
   ProductDataSource:
     Type: AWS::AppSync::DataSource
@@ -324,6 +306,7 @@ Resources:
 
   GetProductResolver:
     Type: AWS::AppSync::Resolver
+    DependsOn: ProductSchema
     Properties:
       ApiId: !GetAtt ProductApi.ApiId
       TypeName: Query
@@ -332,6 +315,7 @@ Resources:
 
   ListProductsResolver:
     Type: AWS::AppSync::Resolver
+    DependsOn: ProductSchema
     Properties:
       ApiId: !GetAtt ProductApi.ApiId
       TypeName: Query
@@ -340,20 +324,43 @@ Resources:
 
   CreateProductResolver:
     Type: AWS::AppSync::Resolver
+    DependsOn: ProductSchema
     Properties:
       ApiId: !GetAtt ProductApi.ApiId
       TypeName: Mutation
       FieldName: createProduct
       DataSourceName: !GetAtt ProductDataSource.Name
 
+  UpdateProductResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: ProductSchema
+    Properties:
+      ApiId: !GetAtt ProductApi.ApiId
+      TypeName: Mutation
+      FieldName: updateProduct
+      DataSourceName: !GetAtt ProductDataSource.Name
+
+  DeleteProductResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: ProductSchema
+    Properties:
+      ApiId: !GetAtt ProductApi.ApiId
+      TypeName: Mutation
+      FieldName: deleteProduct
+      DataSourceName: !GetAtt ProductDataSource.Name
+
   ProductResolverFunction:
     Type: AWS::Serverless::Function
     Properties:
+      CodeUri: .
       Handler: productResolver.handler
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Environment:
         Variables:
           PRODUCTS_TABLE: !Ref ProductsTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ProductsTable
 
   ProductsTable:
     Type: AWS::DynamoDB::Table
@@ -416,7 +423,7 @@ This creates a new product:
 curl -X POST \
   -H "Content-Type: application/json" \
   -H "x-api-key: YOUR_API_KEY" \
-  -d '{"query": "mutation { createProduct(input: { name: \"Widget\", price: 9.99, category: \"tools\" }) { id name price } }"}' \
+  -d '{"query": "mutation { createProduct(input: { name: \"Widget\", description: \"A useful widget\", price: 9.99, category: \"tools\" }) { id name price } }"}' \
   https://YOUR_API_ID.appsync-api.us-east-1.amazonaws.com/graphql
 ```
 
