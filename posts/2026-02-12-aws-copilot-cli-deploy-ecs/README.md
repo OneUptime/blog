@@ -10,7 +10,7 @@ Description: Learn how to use the AWS Copilot CLI to deploy containerized applic
 
 Setting up ECS from scratch involves a lot of moving parts: clusters, task definitions, services, load balancers, VPCs, subnets, security groups, IAM roles, log groups, and more. AWS Copilot abstracts all of that away behind a simple CLI. You point it at your Dockerfile, answer a few questions, and it builds, pushes, and deploys your application to ECS.
 
-Copilot isn't just a deployment tool - it's an opinionated framework for structuring your ECS applications. It creates environments (dev, staging, production), manages pipelines, handles secrets, and configures networking. If you're starting a new ECS project and don't want to write hundreds of lines of infrastructure code, Copilot is worth a serious look.
+Copilot isn't just a deployment tool - it's an opinionated framework for structuring your ECS applications. It creates environments (dev, staging, production), manages pipelines, handles secrets, and configures networking. AWS Copilot CLI reaches end of support on June 12, 2026, so it is still useful for existing Copilot applications, but new projects should also evaluate AWS's recommended alternatives such as Amazon ECS Express Mode or AWS CDK.
 
 ## Installing Copilot
 
@@ -21,7 +21,7 @@ Copilot is a standalone binary. Install it based on your platform.
 
 brew install aws/tap/copilot-cli
 
-# macOS/Linux (direct download)
+# Linux x86 64-bit (direct download)
 curl -Lo copilot https://github.com/aws/copilot-cli/releases/latest/download/copilot-linux \
   && chmod +x copilot \
   && sudo mv copilot /usr/local/bin/copilot
@@ -49,6 +49,7 @@ A service in Copilot maps directly to an ECS service. Copilot supports several s
 - **Backend Service** - An internal service accessible via service discovery
 - **Worker Service** - A service that processes messages from an SQS queue
 - **Request-Driven Web Service** - Runs on App Runner instead of ECS
+- **Static Site** - A static website hosted with S3 and CloudFront
 
 Let's create a load-balanced web service.
 
@@ -172,7 +173,7 @@ memory: 512
 count: 3
 
 variables:
-  QUEUE_URL: !GetAtt EventsQueue.QueueUrl
+  SERVICE_MODE: internal
 
 # Service discovery endpoint
 # Other services can reach this at: http://worker.dev.my-web-app.local:3000
@@ -206,6 +207,7 @@ copilot storage init \
   --name users \
   --storage-type DynamoDB \
   --workload api \
+  --lifecycle workload \
   --partition-key userId:S \
   --sort-key createdAt:N
 
@@ -213,13 +215,15 @@ copilot storage init \
 copilot storage init \
   --name uploads \
   --storage-type S3 \
-  --workload api
+  --workload api \
+  --lifecycle workload
 
 # Add an RDS Aurora Serverless cluster
 copilot storage init \
   --name mydb \
   --storage-type Aurora \
   --workload api \
+  --lifecycle workload \
   --engine PostgreSQL
 ```
 
@@ -232,7 +236,7 @@ Copilot can create a CI/CD pipeline that automatically deploys when you push to 
 copilot pipeline init \
   --name main-pipeline \
   --url https://github.com/myorg/my-app.git \
-  --branch main \
+  --git-branch main \
   --environments "dev,production"
 
 # Deploy the pipeline
@@ -246,10 +250,10 @@ This creates a CodePipeline that:
 4. Waits for manual approval
 5. Deploys to production
 
-The pipeline configuration lives in `copilot/pipeline.yml`.
+The pipeline configuration lives in `copilot/pipelines/main-pipeline/manifest.yml`.
 
 ```yaml
-# copilot/pipeline.yml
+# copilot/pipelines/main-pipeline/manifest.yml
 name: main-pipeline
 version: 1
 
@@ -300,8 +304,8 @@ copilot app delete
 
 ## When to Use Copilot vs. Terraform
 
-Copilot is great when:
-- You're starting a new project and want to move fast
+Copilot is still useful when:
+- You're maintaining an existing Copilot application and want to move fast
 - You don't have a dedicated platform team
 - You want best-practice ECS architecture without deep AWS knowledge
 - You need a CI/CD pipeline quickly
@@ -312,6 +316,6 @@ Terraform/CDK is better when:
 - Your team already has Terraform expertise
 - You need to manage non-ECS resources in the same codebase
 
-Many teams start with Copilot and migrate to Terraform later if they outgrow it. The CloudFormation stacks Copilot creates are well-organized and can be a useful reference for your Terraform migration.
+Teams already using Copilot can migrate to Terraform later if they outgrow it or need a supported path after Copilot's end-of-support date. The CloudFormation stacks Copilot creates are well-organized and can be a useful reference for your Terraform migration.
 
 For monitoring the applications you deploy with Copilot, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to set up proper observability alongside your deployment pipeline.
