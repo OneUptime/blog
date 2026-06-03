@@ -250,12 +250,14 @@ Detect unexpected spending spikes by putting anomaly detection on billing metric
 ```bash
 # Detect anomalous daily spending
 aws cloudwatch put-anomaly-detector \
+  --region us-east-1 \
   --namespace "AWS/Billing" \
   --metric-name EstimatedCharges \
   --dimensions Name=Currency,Value=USD \
   --stat Maximum
 
 aws cloudwatch put-metric-alarm \
+  --region us-east-1 \
   --alarm-name "spending-anomaly" \
   --metrics '[
     {
@@ -284,6 +286,8 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 1 \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:finance-alerts"
 ```
+
+Billing metrics are stored in US East (N. Virginia), and billing alerts must be enabled before CloudWatch publishes the `EstimatedCharges` metric.
 
 ## Excluding Time Periods
 
