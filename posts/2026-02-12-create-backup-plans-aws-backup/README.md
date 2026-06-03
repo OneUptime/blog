@@ -98,14 +98,14 @@ aws backup create-backup-plan \
         }
       },
       {
-        "RuleName": "Weekly-90day",
+        "RuleName": "Weekly-120day",
         "TargetBackupVaultName": "production-backups",
         "ScheduleExpression": "cron(0 5 ? * SUN *)",
         "StartWindowMinutes": 120,
         "CompletionWindowMinutes": 360,
         "Lifecycle": {
           "MoveToColdStorageAfterDays": 30,
-          "DeleteAfterDays": 90
+          "DeleteAfterDays": 120
         }
       },
       {
@@ -125,10 +125,10 @@ aws backup create-backup-plan \
 
 This gives you:
 - **Daily backups** kept for 30 days (warm storage)
-- **Weekly backups** on Sundays, moved to cold storage after 30 days, deleted after 90 days
+- **Weekly backups** on Sundays, moved to cold storage after 30 days, deleted after 120 days
 - **Monthly backups** on the 1st, moved to cold storage after 14 days, deleted after 1 year
 
-Cold storage is significantly cheaper but has a minimum 90-day storage duration. Don't move backups to cold storage if you'll delete them within 90 days - you'd pay the full 90-day minimum anyway.
+Cold storage is significantly cheaper but has a minimum 90-day storage duration after transition. Don't move backups to cold storage if you'll delete them less than 90 days after that transition - AWS Backup requires `DeleteAfterDays` to be at least 90 days greater than `MoveToColdStorageAfterDays`.
 
 ## Plan 3: Cross-Region Backup
 
@@ -229,7 +229,6 @@ aws backup create-backup-plan \
       {
         "RuleName": "ContinuousBackup",
         "TargetBackupVaultName": "production-backups",
-        "ScheduleExpression": "cron(0 0 * * ? *)",
         "Lifecycle": {
           "DeleteAfterDays": 35
         },
@@ -301,10 +300,9 @@ aws backup get-backup-plan \
 aws backup list-backup-selections \
   --backup-plan-id "plan-abc123"
 
-# Check the next scheduled backup time
+# Check recent backup jobs from this plan
 aws backup list-backup-jobs \
-  --by-backup-plan-id "plan-abc123" \
-  --max-results 5
+  --query 'BackupJobs[?CreatedBy.BackupPlanId==`plan-abc123`][0:5]'
 ```
 
 ## Cost Optimization Tips
