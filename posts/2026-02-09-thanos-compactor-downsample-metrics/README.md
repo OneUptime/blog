@@ -8,13 +8,13 @@ Description: Learn how to configure Thanos Compactor to automatically downsample
 
 ---
 
-Storing years of Kubernetes metrics at full resolution consumes massive storage and slows historical queries. Thanos Compactor automatically downsamples old metrics to lower resolutions (5m, 1h), reducing storage by 90 percent while keeping queries fast.
+Storing years of Kubernetes metrics at full resolution consumes massive storage and slows historical queries. Thanos Compactor automatically downsamples old metrics to lower resolutions (5m, 1h), which keeps long-range queries fast and can reduce storage when older raw blocks are expired by retention policies.
 
 This guide covers deploying and configuring the Compactor for production downsampling.
 
 ## Understanding Downsampling
 
-Downsampling reduces metric resolution for old data. Fresh data stays at full resolution (typically 30s), but data older than 30 days might downsample to 5-minute resolution, and data older than 90 days to 1-hour resolution.
+Downsampling reduces metric resolution for older blocks. Fresh data stays at full resolution (typically 30s). Thanos creates 5-minute downsampled blocks once raw blocks are older than 40 hours, and creates 1-hour downsampled blocks once 5-minute blocks are older than 10 days. Retention settings then decide how long each resolution is kept.
 
 For example, CPU usage recorded every 30 seconds:
 
@@ -22,7 +22,7 @@ For example, CPU usage recorded every 30 seconds:
 - **30-90 days**: 5m resolution (288 samples/day) - 90% reduction
 - **90+ days**: 1h resolution (24 samples/day) - 99% reduction
 
-Queries automatically use the appropriate resolution based on the requested time range.
+Queries can use downsampled resolutions automatically when Thanos Query is configured with `--query.auto-downsampling`, or when clients set the `max_source_resolution` query parameter.
 
 ## Deploying Thanos Compactor
 
@@ -54,11 +54,10 @@ spec:
           - --http-address=0.0.0.0:10902
           - --objstore.config-file=/etc/thanos/objstore.yml
           # Downsampling configuration
-          - --retention.resolution-raw=30d     # Keep 30s resolution for 30 days
+          - --retention.resolution-raw=30d     # Keep raw resolution for 30 days
           - --retention.resolution-5m=90d      # Keep 5m resolution for 90 days
           - --retention.resolution-1h=365d     # Keep 1h resolution for 1 year
-          # Enable downsampling
-          - --downsampling.disable=false
+          # Downsampling is enabled by default; add --downsampling.disable only to turn it off
           # Compaction configuration
           - --compact.concurrency=1
           - --downsample.concurrency=1
@@ -117,7 +116,7 @@ The retention flags control how long each resolution is kept:
 
 ```yaml
 args:
-  # Raw 30-second data for 30 days
+  # Raw-resolution data for 30 days
   - --retention.resolution-raw=30d
 
   # 5-minute downsampled data for 90 days total
@@ -133,13 +132,14 @@ After 30 days, raw data is deleted and only 5m resolution remains. After 90 days
 
 ## Understanding Downsampling Aggregations
 
-Compactor creates downsampled blocks using these aggregations:
+Compactor creates downsampled blocks as aggregate chunks. Each downsampled chunk stores multiple views of the samples in the window:
 
-- **Counter**: Uses max value within the window
-- **Gauge**: Uses average within the window
-- **Histogram**: Merges buckets
+- **Raw**: A representative raw sample
+- **Count and sum**: Used to calculate averages over the window
+- **Min and max**: Preserve the range of values in the window
+- **Counter**: Preserves counter-like behavior for counter functions
 
-For example, 10 samples at 30s resolution become 1 sample at 5m resolution.
+For example, 10 samples at 30s resolution fit into one 5-minute downsampling window. A simple average for that window would be:
 
 Original (30s):
 ```text
@@ -170,16 +170,19 @@ Track compaction and downsampling:
 thanos_compact_group_compactions_total
 
 # Downsampling duration
-thanos_compact_downsample_duration_seconds
+histogram_quantile(0.95, rate(thanos_compact_downsample_duration_seconds_bucket[1h]))
 
-# Last successful compaction
-time() - thanos_compact_last_run_timestamp_seconds
+# Successful iterations in the last 2 hours
+increase(thanos_compact_iterations_total[2h])
 
 # Compactor iterations
 rate(thanos_compact_iterations_total[5m])
 
 # Block cleanup operations
 thanos_compact_block_cleanup_loops_total
+
+# Downsampling backlog
+thanos_compact_todo_downsample_blocks
 ```
 
 ## Configuring Compaction Intervals
@@ -188,8 +191,8 @@ Control how often compaction runs:
 
 ```yaml
 args:
-  # Compact blocks older than 2 hours
-  - --compact.block-fetch-concurrency=1
+  # Fetch one block at a time during compaction
+  - --compact.blocks-fetch-concurrency=1
   - --compact.cleanup-interval=5m
   # Wait between compaction cycles
   - --wait
@@ -200,7 +203,7 @@ The `--wait` flag makes Compactor run continuously. Remove it for one-time compa
 
 ## Storage Optimization Calculations
 
-Calculate storage savings from downsampling:
+Calculate rough sample-count savings from downsampling and retention:
 
 ```text
 Original storage (30s for 1 year):
@@ -209,14 +212,14 @@ Original storage (30s for 1 year):
 - ~8 bytes per sample
 = 840 GB per year
 
-With downsampling:
-- 30 days at 30s: 86,400 samples = 69 MB
-- 60 days at 5m: 17,280 samples = 14 MB
-- 275 days at 1h: 6,600 samples = 5 MB
-= 88 MB per metric per year
-= 8.8 GB total for 100,000 metrics
+With raw retention at 30 days and lower-resolution retention after that:
+- 30 days at 30s: 86,400 samples
+- 60 days at 5m: 17,280 samples
+- 275 days at 1h: 6,600 samples
+= 110,280 samples per metric per year
+= ~88 GB total for 100,000 metrics before TSDB/index overhead
 
-Storage reduction: 99% savings
+Sample-count reduction: about 89% compared with retaining raw samples for the full year
 ```
 
 ## Handling Compaction Failures
@@ -225,7 +228,7 @@ Compactor can fail for several reasons. Configure retries and monitoring:
 
 ```yaml
 args:
-  # Retry failed uploads
+  # Keep compaction concurrency conservative while investigating failures
   - --compact.concurrency=1
   # Clean up partial blocks
   - --delete-delay=48h
@@ -244,18 +247,21 @@ args:
   # Deduplication labels
   - --deduplication.replica-label=prometheus_replica
   - --deduplication.replica-label=replica
+  # Use penalty-based deduplication for HA Prometheus replicas
+  - --deduplication.func=penalty
 ```
 
-This reduces storage by removing duplicate data from HA Prometheus setups.
+This can reduce storage by merging duplicate data from HA Prometheus setups. The merge is irreversible, so test it carefully and back up data before enabling it.
 
 ## Compaction Grouping
 
 Blocks are grouped by external labels for compaction:
 
 ```yaml
-args:
-  # Group blocks by cluster label
-  - --compact.block-viewer.global.sync-block-interval=3m
+global:
+  external_labels:
+    cluster: production-us-east
+    prometheus: monitoring/main
 ```
 
 Blocks with the same external labels are compacted together.
@@ -276,7 +282,7 @@ spec:
     rules:
     - alert: ThanosCompactorNotRunning
       expr: |
-        time() - thanos_compact_last_run_timestamp_seconds > 7200
+        increase(thanos_compact_iterations_total[2h]) == 0
       for: 15m
       labels:
         severity: critical
@@ -296,12 +302,12 @@ spec:
 
     - alert: ThanosCompactorHighDuration
       expr: |
-        thanos_compact_duration_seconds > 3600
+        histogram_quantile(0.95, rate(thanos_compact_downsample_duration_seconds_bucket[1h])) > 3600
       labels:
         severity: warning
       annotations:
-        summary: "Compaction taking too long"
-        description: "Last compaction took {{ $value }}s"
+        summary: "Downsampling taking too long"
+        description: "95th percentile downsampling duration is {{ $value }}s"
 
     - alert: ThanosCompactorDiskFull
       expr: |
@@ -320,59 +326,55 @@ spec:
 Check object storage for downsampled blocks:
 
 ```bash
-# List blocks in S3
-aws s3 ls s3://thanos-metrics/ --recursive | grep -E '5m|1h'
-
 # Check block metadata
 kubectl exec -n monitoring thanos-compactor-0 -- \
   thanos tools bucket inspect \
   --objstore.config-file=/etc/thanos/objstore.yml
 ```
 
-Downsampled blocks have `5m` or `1h` in their directory names.
+Downsampled blocks are still stored under ULID block directories. Use the bucket inspect output or each block's `meta.json` to check the resolution.
 
 ## Query Performance with Downsampling
 
-Queries automatically select the appropriate resolution:
+Queries can select downsampled data when `--query.auto-downsampling` is enabled or when the client sets `max_source_resolution`:
 
-- Query last 1 hour → uses raw 30s data
-- Query last 7 days → uses raw 30s data
-- Query last 60 days → uses 5m downsampled data
-- Query last 6 months → uses 1h downsampled data
+- `max_source_resolution=0` uses only raw data
+- `max_source_resolution=5m` can use raw or 5-minute downsampled data
+- `max_source_resolution=1h` can use raw, 5-minute, or 1-hour downsampled data
+- `max_source_resolution=auto` lets Thanos choose based on the query
 
-Grafana queries spanning 30+ days run 10-50x faster against downsampled data.
+Grafana queries spanning long time ranges can run significantly faster against downsampled data.
 
 ## Manual Compaction
 
-Trigger manual compaction for specific blocks:
+Run a one-time compaction pass:
 
 ```bash
 kubectl exec -n monitoring thanos-compactor-0 -- \
   thanos compact \
   --data-dir=/tmp/compact \
   --objstore.config-file=/etc/thanos/objstore.yml \
-  --wait=false \
   --compact.concurrency=1
 ```
 
 ## Disabling Downsampling for Specific Metrics
 
-Some metrics should not be downsampled (e.g., SLO calculations). Use separate Prometheus instances without Thanos sidecar for these metrics, or configure the Compactor to skip certain blocks.
+Some metrics should not be queried from downsampled data (e.g., SLO calculations). Use raw data for those queries by setting `max_source_resolution=0`, keep raw retention long enough for the SLO window, or send those metrics to separate blocks that can be selected or excluded with Compactor selector relabeling.
 
 ## Backfilling Downsampled Data
 
-If you enable downsampling on existing data:
+If you enable downsampling on existing data, the Compactor will create downsampled blocks during its normal cycles. You can also run the downsampling service directly:
 
 ```bash
 kubectl exec -n monitoring thanos-compactor-0 -- \
-  thanos downsample \
+  thanos tools bucket downsample \
   --data-dir=/data \
   --objstore.config-file=/etc/thanos/objstore.yml
 ```
 
 This creates downsampled blocks for existing data in object storage.
 
-Resource Requirements
+## Resource Requirements
 
 Compactor needs significant memory and CPU:
 
@@ -382,4 +384,4 @@ Compactor needs significant memory and CPU:
 
 Scale resources based on metric cardinality and block size.
 
-Thanos Compactor's downsampling dramatically reduces long-term storage costs while maintaining query performance, making multi-year metric retention economically viable.
+Thanos Compactor's downsampling keeps long-range queries fast and, when paired with retention policies for raw data, can reduce long-term storage costs enough to make multi-year metric retention economically viable.
