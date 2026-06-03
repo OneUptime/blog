@@ -14,7 +14,7 @@ RDS Extended Support is an AWS program that lets you continue running major data
 
 ## How Extended Support Works
 
-When a database engine version reaches its RDS end of standard support date, AWS does not immediately force you to upgrade. Instead, your instances automatically enter the Extended Support period. If you do nothing, you start paying the Extended Support charges.
+When a database engine version reaches its RDS end of standard support date, AWS does not immediately force you to upgrade if RDS Extended Support is enabled for the database. Instead, your instances automatically enter the Extended Support period. If you do nothing and Extended Support is enabled, you start paying the Extended Support charges. If Extended Support is disabled, Amazon RDS upgrades the database to a supported engine version on or shortly after the end of standard support date.
 
 ```mermaid
 timeline
@@ -32,14 +32,15 @@ timeline
 
 ## Which Engines Support Extended Support?
 
-As of early 2026, RDS Extended Support is available for:
+As of June 2026, RDS Extended Support is available for:
 
 - **MySQL 5.7** - Standard support ended, Extended Support active
 - **PostgreSQL 11** - Standard support ended, Extended Support active
-- **MySQL 8.0** - Will need Extended Support when it reaches end of standard support
-- **PostgreSQL 12, 13, 14** - Future candidates as they reach end of standard support
+- **PostgreSQL 12 and 13** - Standard support ended, Extended Support active
+- **MySQL 8.0** - Standard support ends on July 31, 2026; Extended Support year 1 pricing starts on August 1, 2026
+- **PostgreSQL 14** - Will need Extended Support when it reaches end of standard support
 - **Aurora MySQL 2 (MySQL 5.7 compatible)** - Extended Support active
-- **Aurora PostgreSQL (compatible with PostgreSQL 11)** - Extended Support active
+- **Aurora PostgreSQL (compatible with PostgreSQL 11, 12, and 13)** - Extended Support active
 
 ## Checking Your Current Engine Versions
 
@@ -64,7 +65,7 @@ aws rds describe-db-clusters \
 
 ## Understanding the Costs
 
-Extended Support pricing is straightforward but can add up quickly. The charges are per vCPU-hour on top of your normal RDS instance costs.
+Extended Support pricing is straightforward but can add up quickly. For provisioned instances, the charges are per vCPU-hour on top of your normal RDS instance costs. For Aurora Serverless v2, Extended Support is charged per Aurora Capacity Unit (ACU) hour.
 
 For a rough estimate of what Extended Support costs for your fleet:
 
@@ -94,7 +95,7 @@ VCPU_MAP = {
 # Engines and versions in Extended Support
 EXTENDED_SUPPORT_VERSIONS = {
     'mysql': ['5.7'],
-    'postgres': ['11'],
+    'postgres': ['11', '12', '13'],
 }
 
 response = rds.describe_db_instances()
@@ -120,28 +121,29 @@ print(f"\nTotal estimated Extended Support cost: ${total_monthly_cost:.2f}/month
 
 ## Opting Out of Extended Support
 
-If you are creating a new instance and want to make sure it does not accidentally use an Extended Support version, you can check available versions.
+If you are creating a new instance and want to make sure it does not accidentally use an Extended Support version, you can check the lifecycle dates for major engine versions.
 
 ```bash
-# List available MySQL versions and their support status
-aws rds describe-db-engine-versions \
+# List MySQL major versions and their support lifecycle dates
+aws rds describe-db-major-engine-versions \
   --engine mysql \
-  --query 'DBEngineVersions[*].{Version:EngineVersion,Status:Status,SupportedFeatures:SupportedFeatureNames}' \
+  --query 'DBMajorEngineVersions[*].{Version:MajorEngineVersion,Lifecycles:SupportedEngineLifecycles}' \
   --output table
 ```
 
-When creating new instances, always specify a version that is in standard support.
+When creating new instances, specify a version that is in standard support and disable Extended Support enrollment so creation fails if the version is past its end of standard support date.
 
 ```bash
 # Create a new instance with a supported engine version
 aws rds create-db-instance \
   --db-instance-identifier my-new-mysql \
   --engine mysql \
-  --engine-version 8.0.36 \
+  --engine-version 8.4.7 \
   --db-instance-class db.m5.large \
   --master-username admin \
   --master-user-password 'SecureP@ss123!' \
-  --allocated-storage 100
+  --allocated-storage 100 \
+  --engine-lifecycle-support open-source-rds-extended-support-disabled
 ```
 
 ## Planning Your Upgrade
@@ -150,10 +152,10 @@ The whole point of Extended Support is to give you time to plan a proper upgrade
 
 ### Phase 1: Assessment (Weeks 1-2)
 
-Identify all instances on Extended Support versions and catalog their dependencies.
+Identify instances on Extended Support versions and catalog their dependencies.
 
 ```bash
-# Find all parameter groups used by Extended Support instances
+# Find parameter groups used by MySQL 5.7 Extended Support instances
 aws rds describe-db-instances \
   --query 'DBInstances[?starts_with(EngineVersion, `5.7`)].{Instance:DBInstanceIdentifier,ParamGroup:DBParameterGroups[0].DBParameterGroupName}' \
   --output table
@@ -161,7 +163,7 @@ aws rds describe-db-instances \
 
 ### Phase 2: Testing (Weeks 3-6)
 
-Create a snapshot of your production database and restore it as a test instance with the new engine version.
+Create a snapshot of your production database, restore it as a test instance, and then upgrade the test instance to the new engine version.
 
 ```bash
 # Create a snapshot of the current instance
@@ -169,12 +171,18 @@ aws rds create-db-snapshot \
   --db-instance-identifier my-legacy-mysql \
   --db-snapshot-identifier pre-upgrade-snapshot
 
-# Restore the snapshot with the new engine version
+# Restore the snapshot as a test instance
 aws rds restore-db-instance-from-db-snapshot \
   --db-instance-identifier my-legacy-mysql-test-upgrade \
   --db-snapshot-identifier pre-upgrade-snapshot \
-  --db-instance-class db.m5.large \
-  --engine-version 8.0.36
+  --db-instance-class db.m5.large
+
+# Upgrade the restored test instance
+aws rds modify-db-instance \
+  --db-instance-identifier my-legacy-mysql-test-upgrade \
+  --engine-version 8.0.46 \
+  --allow-major-version-upgrade \
+  --apply-immediately
 ```
 
 Run your application test suite against the upgraded test instance and look for:
@@ -185,13 +193,15 @@ Run your application test suite against the upgraded test instance and look for:
 
 ### Phase 3: Pre-Upgrade Preparation (Week 7)
 
-Check for upgrade compatibility issues.
+When you start the upgrade, Amazon RDS runs mandatory prechecks automatically. If the prechecks find incompatibilities, RDS cancels the upgrade before stopping the DB instance and writes details to the `PrePatchCompatibility.log` file.
 
 ```bash
-# For MySQL, run the pre-upgrade check
-aws rds describe-db-instances \
-  --db-instance-identifier my-legacy-mysql \
-  --query 'DBInstances[0].PendingModifiedValues'
+# Check available upgrade targets before starting the upgrade
+aws rds describe-db-engine-versions \
+  --engine mysql \
+  --engine-version 5.7.44 \
+  --query 'DBEngineVersions[*].ValidUpgradeTarget[*].{Version:EngineVersion,MajorUpgrade:IsMajorVersionUpgrade}' \
+  --output table
 ```
 
 For MySQL 5.7 to 8.0 specifically, watch out for:
@@ -206,9 +216,8 @@ For MySQL 5.7 to 8.0 specifically, watch out for:
 # Perform the major version upgrade during a maintenance window
 aws rds modify-db-instance \
   --db-instance-identifier my-legacy-mysql \
-  --engine-version 8.0.36 \
-  --allow-major-version-upgrade \
-  --apply-immediately
+  --engine-version 8.0.46 \
+  --allow-major-version-upgrade
 ```
 
 For Aurora clusters:
@@ -218,8 +227,7 @@ For Aurora clusters:
 aws rds modify-db-cluster \
   --db-cluster-identifier my-aurora-cluster \
   --engine-version 8.0.mysql_aurora.3.07.0 \
-  --allow-major-version-upgrade \
-  --apply-immediately
+  --allow-major-version-upgrade
 ```
 
 ## Monitoring Extended Support Charges
@@ -245,7 +253,7 @@ Look for usage types containing "ExtendedSupport" in the results.
 
 ## Setting Up Upgrade Reminders
 
-Create a CloudWatch alarm to remind you about instances on Extended Support.
+Create an EventBridge rule to remind you about instances on Extended Support.
 
 ```bash
 # Create an EventBridge rule to check for Extended Support instances weekly
