@@ -60,6 +60,9 @@ Parameters:
   InstanceType:
     Type: String
     Default: t3.medium
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
 
 Resources:
   AppSecurityGroup:
@@ -71,7 +74,9 @@ Resources:
   AppInstance:
     Type: AWS::EC2::Instance
     Properties:
+      ImageId: !Ref LatestAmiId
       InstanceType: !Ref InstanceType
+      SubnetId: !ImportValue PublicSubnet-ID
       SecurityGroupIds:
         - !Ref AppSecurityGroup
       Tags:
@@ -129,6 +134,8 @@ artifacts:
     - parameters/**/*
 ```
 
+Make sure the CodeBuild service role has permission to call `cloudformation:ValidateTemplate`.
+
 ## Step 3: Create the Pipeline IAM Role
 
 The pipeline role needs CloudFormation permissions:
@@ -144,6 +151,9 @@ The pipeline role needs CloudFormation permissions:
         "cloudformation:UpdateStack",
         "cloudformation:DeleteStack",
         "cloudformation:DescribeStacks",
+        "cloudformation:DescribeStackResources",
+        "cloudformation:DescribeStackEvents",
+        "cloudformation:GetTemplate",
         "cloudformation:CreateChangeSet",
         "cloudformation:ExecuteChangeSet",
         "cloudformation:DeleteChangeSet",
@@ -161,7 +171,9 @@ The pipeline role needs CloudFormation permissions:
       "Effect": "Allow",
       "Action": [
         "s3:GetObject",
+        "s3:GetObjectVersion",
         "s3:PutObject",
+        "s3:PutObjectAcl",
         "s3:GetBucketVersioning"
       ],
       "Resource": [
@@ -176,6 +188,14 @@ The pipeline role needs CloudFormation permissions:
         "codebuild:StartBuild"
       ],
       "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "codeconnections:UseConnection",
+        "codestar-connections:UseConnection"
+      ],
+      "Resource": "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc-123"
     }
   ]
 }
@@ -229,7 +249,7 @@ Here's the full pipeline definition with change set review:
             "version": "1"
           },
           "configuration": {
-            "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789:connection/abc-123",
+            "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc-123",
             "FullRepositoryId": "my-org/infrastructure",
             "BranchName": "main"
           },
@@ -355,11 +375,23 @@ Deploy the same templates to multiple environments:
         "configuration": {
           "ActionMode": "CHANGE_SET_REPLACE",
           "StackName": "myapp-staging",
+          "ChangeSetName": "staging-changeset",
+          "TemplatePath": "ValidatedTemplates::templates/main.yml",
+          "RoleArn": "arn:aws:iam::123456789012:role/CloudFormationExecutionRole",
           "TemplateConfiguration": "ValidatedTemplates::parameters/staging.json"
         }
       }]
     },
-    {"name": "Execute-Staging"},
+    {
+      "name": "Execute-Staging",
+      "actions": [{
+        "configuration": {
+          "ActionMode": "CHANGE_SET_EXECUTE",
+          "StackName": "myapp-staging",
+          "ChangeSetName": "staging-changeset"
+        }
+      }]
+    },
     {"name": "Approve-Production"},
     {
       "name": "Deploy-Production",
@@ -367,11 +399,23 @@ Deploy the same templates to multiple environments:
         "configuration": {
           "ActionMode": "CHANGE_SET_REPLACE",
           "StackName": "myapp-production",
+          "ChangeSetName": "production-changeset",
+          "TemplatePath": "ValidatedTemplates::templates/main.yml",
+          "RoleArn": "arn:aws:iam::123456789012:role/CloudFormationExecutionRole",
           "TemplateConfiguration": "ValidatedTemplates::parameters/production.json"
         }
       }]
     },
-    {"name": "Execute-Production"}
+    {
+      "name": "Execute-Production",
+      "actions": [{
+        "configuration": {
+          "ActionMode": "CHANGE_SET_EXECUTE",
+          "StackName": "myapp-production",
+          "ChangeSetName": "production-changeset"
+        }
+      }]
+    }
   ]
 }
 ```
