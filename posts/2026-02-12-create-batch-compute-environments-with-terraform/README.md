@@ -31,31 +31,12 @@ graph LR
 
 ## IAM Roles
 
-AWS Batch needs several IAM roles. The service role lets Batch manage resources, and the execution role lets containers access AWS services:
+AWS Batch needs several IAM roles. The service-linked role lets Batch manage resources, and the execution role lets containers access AWS services:
 
 ```hcl
-# Batch service role
-
-resource "aws_iam_role" "batch_service" {
-  name = "batch-service-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "batch.amazonaws.com"
-        }
-      }
-    ]
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "batch_service" {
-  role       = aws_iam_role.batch_service.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSBatchServiceRole"
+# Batch service-linked role
+resource "aws_iam_service_linked_role" "batch" {
+  aws_service_name = "batch.amazonaws.com"
 }
 
 # ECS task execution role (for Fargate and EC2 container jobs)
@@ -122,6 +103,57 @@ resource "aws_iam_role_policy" "batch_job_s3" {
     ]
   })
 }
+
+# ECS instance role for EC2-based Batch compute environments
+resource "aws_iam_role" "ecs_instance" {
+  name = "batch-ecs-instance-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_instance" {
+  role       = aws_iam_role.ecs_instance.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2ContainerServiceforEC2Role"
+}
+
+resource "aws_iam_instance_profile" "ecs_instance" {
+  name = "batch-ecs-instance-profile"
+  role = aws_iam_role.ecs_instance.name
+}
+
+# Spot Fleet role for Spot-based Batch compute environments
+resource "aws_iam_role" "spot_fleet" {
+  name = "batch-spot-fleet-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "spotfleet.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "spot_fleet" {
+  role       = aws_iam_role.spot_fleet.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2SpotFleetTaggingRole"
+}
 ```
 
 ## Fargate Compute Environment
@@ -151,7 +183,7 @@ resource "aws_batch_compute_environment" "fargate" {
   compute_environment_name = "fargate-compute"
   type                     = "MANAGED"
   state                    = "ENABLED"
-  service_role             = aws_iam_role.batch_service.arn
+  service_role             = aws_iam_service_linked_role.batch.arn
 
   compute_resources {
     type      = "FARGATE"
@@ -209,15 +241,15 @@ resource "aws_batch_compute_environment" "ec2_spot" {
   compute_environment_name = "ec2-spot-compute"
   type                     = "MANAGED"
   state                    = "ENABLED"
-  service_role             = aws_iam_role.batch_service.arn
+  service_role             = aws_iam_service_linked_role.batch.arn
 
   compute_resources {
     type                = "SPOT"
     allocation_strategy = "SPOT_PRICE_CAPACITY_OPTIMIZED"
     bid_percentage      = 60  # max 60% of on-demand price
 
-    min_vcpus = 0
-    max_vcpus = 512
+    min_vcpus     = 0
+    max_vcpus     = 512
     desired_vcpus = 0
 
     instance_type = [
@@ -231,6 +263,7 @@ resource "aws_batch_compute_environment" "ec2_spot" {
 
     security_group_ids = [aws_security_group.batch.id]
     subnets            = var.private_subnet_ids
+    instance_role      = aws_iam_instance_profile.ecs_instance.arn
 
     launch_template {
       launch_template_id = aws_launch_template.batch.id
@@ -254,7 +287,7 @@ resource "aws_batch_compute_environment" "ec2_spot" {
 }
 ```
 
-Listing multiple instance types with `SPOT_PRICE_CAPACITY_OPTIMIZED` gives Batch the flexibility to choose the cheapest available capacity. Setting `min_vcpus = 0` means Batch scales to zero when there are no jobs, which saves money.
+Listing multiple instance types with `SPOT_PRICE_CAPACITY_OPTIMIZED` gives Batch the flexibility to choose Spot capacity based on both price and interruption risk. Setting `min_vcpus = 0` means Batch scales to zero when there are no jobs, which saves money.
 
 ## GPU Compute Environment
 
@@ -266,7 +299,7 @@ resource "aws_batch_compute_environment" "gpu" {
   compute_environment_name = "gpu-compute"
   type                     = "MANAGED"
   state                    = "ENABLED"
-  service_role             = aws_iam_role.batch_service.arn
+  service_role             = aws_iam_service_linked_role.batch.arn
 
   compute_resources {
     type                = "EC2"
@@ -279,27 +312,28 @@ resource "aws_batch_compute_environment" "gpu" {
     instance_type = [
       "g5.xlarge",
       "g5.2xlarge",
-      "p3.2xlarge",
+      "p4d.24xlarge",
     ]
 
     security_group_ids = [aws_security_group.batch.id]
     subnets            = var.private_subnet_ids
+    instance_role      = aws_iam_instance_profile.ecs_instance.arn
 
     ec2_configuration {
-      image_type = "ECS_AL2_NVIDIA"
+      image_type = "ECS_AL2023_NVIDIA"
     }
   }
 }
 ```
 
-The `ECS_AL2_NVIDIA` image type includes NVIDIA drivers pre-installed.
+The `ECS_AL2023_NVIDIA` image type includes NVIDIA drivers pre-installed.
 
 ## Job Queue
 
 Job queues connect to compute environments and have a priority:
 
 ```hcl
-# High priority queue - uses on-demand EC2
+# High priority queue - uses Fargate
 resource "aws_batch_job_queue" "high_priority" {
   name     = "high-priority-queue"
   state    = "ENABLED"
@@ -372,14 +406,13 @@ resource "aws_batch_job_definition" "data_processing" {
     attempts = 3
 
     evaluate_on_exit {
-      action       = "RETRY"
-      on_reason    = "Host EC2*"
-      on_exit_code = "*"
+      action           = "RETRY"
+      on_status_reason = "Host EC2*"
     }
 
     evaluate_on_exit {
       action       = "EXIT"
-      on_exit_code = "0"
+      on_reason    = "*"
     }
   }
 
@@ -393,7 +426,7 @@ resource "aws_batch_job_definition" "data_processing" {
 }
 ```
 
-The retry strategy is important - it automatically retries jobs that fail due to host issues (like spot termination) while letting jobs that succeed exit cleanly.
+The retry strategy is important for EC2 jobs - it automatically retries jobs that fail due to host issues (like spot termination) while letting other failures exit cleanly. This Fargate job definition should be submitted to a Fargate queue; for the EC2 Spot queue, create a separate EC2 job definition by setting `platform_capabilities = ["EC2"]` or omitting `platform_capabilities`.
 
 ## Logging
 
