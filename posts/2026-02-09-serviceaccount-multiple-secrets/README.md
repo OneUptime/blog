@@ -8,15 +8,15 @@ Description: Configure Kubernetes ServiceAccounts with multiple secrets includin
 
 ---
 
-ServiceAccounts can reference multiple secrets simultaneously, providing workloads with access to various credentials through a single identity. Understanding how to configure and manage multiple secrets per ServiceAccount enables flexible and secure credential distribution across your applications.
+ServiceAccounts can reference multiple secrets simultaneously, including image pull secrets and ServiceAccount token secrets. Understanding how to configure and manage multiple secrets around a ServiceAccount enables flexible and secure credential distribution across your applications.
 
 ## Understanding ServiceAccount Secret Types
 
-ServiceAccounts interact with several types of secrets. Image pull secrets authenticate with container registries. Token secrets provide long-lived authentication tokens. Custom secrets store application-specific credentials. Each secret type serves a different purpose and can be combined on a single ServiceAccount.
+ServiceAccounts interact with several types of secrets. Image pull secrets authenticate with container registries. Token secrets provide long-lived authentication tokens. Custom secrets store application-specific credentials and must still be referenced directly by Pods as volumes or environment variables. Each secret type serves a different purpose and can be used by workloads that run under a single ServiceAccount.
 
 Modern Kubernetes automatically creates bound tokens instead of token secrets, but you might still need explicit token secrets for backward compatibility or external access. Image pull secrets are essential for private registries. Custom secrets provide application credentials that should be associated with the workload identity.
 
-By attaching multiple secrets to a ServiceAccount, you centralize credential management and ensure that all pods using that account automatically receive the necessary credentials.
+By configuring image pull secrets on a ServiceAccount and referencing application secrets from Pods, you centralize credential management for workloads while keeping each secret's use explicit.
 
 ## Configuring Image Pull Secrets
 
@@ -65,7 +65,7 @@ Pods using this ServiceAccount can pull from all three registries.
 
 ## Adding Custom Application Secrets
 
-Attach application secrets to the ServiceAccount:
+Optionally list application secrets on the ServiceAccount as an allow-list for clusters that still use the deprecated `kubernetes.io/enforce-mountable-secrets` annotation. Pods must still reference these secrets explicitly:
 
 ```yaml
 # serviceaccount-with-app-secrets.yaml
@@ -130,7 +130,7 @@ kubectl apply -f serviceaccount-with-app-secrets.yaml
 
 ## Accessing Secrets from Pods
 
-Pods can access these secrets through volume mounts or environment variables:
+Pods access these secrets by explicitly referencing them through volume mounts or environment variables:
 
 ```yaml
 # pod-using-multiple-secrets.yaml
@@ -242,6 +242,8 @@ secrets:
 ```
 
 The same ServiceAccount name in different namespaces references environment-specific secrets.
+
+Pods in each namespace still need to reference the environment-specific application secrets they use.
 
 ## Using Projected Volumes for Multiple Secrets
 
@@ -378,7 +380,7 @@ External Secrets Operator synchronizes secrets from external vaults automaticall
 
 ## Rotating Multiple Secrets
 
-Implement secret rotation for all ServiceAccount secrets:
+Implement secret rotation for secrets used by Pods running under the ServiceAccount:
 
 ```bash
 #!/bin/bash
@@ -389,6 +391,7 @@ SA_NAME="app-with-secrets"
 
 # Rotate database credentials
 kubectl create secret generic database-credentials \
+  -n $NAMESPACE \
   --from-literal=host=postgres.example.com \
   --from-literal=username=appuser \
   --from-literal=password=$(openssl rand -base64 32) \
@@ -396,17 +399,19 @@ kubectl create secret generic database-credentials \
 
 # Rotate API keys (assuming you have new keys)
 kubectl create secret generic api-keys \
-  --from-literal=stripe-key=$NEW_STRIPE_KEY \
-  --from-literal=sendgrid-key=$NEW_SENDGRID_KEY \
+  -n $NAMESPACE \
+  --from-literal=stripe-key="$NEW_STRIPE_KEY" \
+  --from-literal=sendgrid-key="$NEW_SENDGRID_KEY" \
   --dry-run=client -o yaml | kubectl apply -f -
 
 # Rotate TLS certificates
 kubectl create secret tls tls-certificates \
+  -n $NAMESPACE \
   --cert=new-cert.pem \
   --key=new-key.pem \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Restart pods to pick up new secrets
+# Restart deployments that you label for this ServiceAccount to pick up env var changes
 kubectl rollout restart deployment -n $NAMESPACE -l serviceAccount=$SA_NAME
 
 echo "Secrets rotated and pods restarted"
@@ -452,7 +457,7 @@ for ns in $(kubectl get ns -o jsonpath='{.items[*].metadata.name}'); do
 done
 ```
 
-This helps identify unused secrets and track secret distribution.
+This helps identify referenced secrets and track secret configuration.
 
 ## Troubleshooting Multiple Secrets
 
@@ -468,14 +473,14 @@ kubectl get serviceaccount app-with-secrets -n production -o yaml
 # Check if pods can access secrets
 kubectl exec app-pod -n production -- ls -la /credentials
 
-# Verify secret permissions
+# Verify API permissions, only needed if the app reads Secret objects through the Kubernetes API
 kubectl auth can-i get secrets --as=system:serviceaccount:production:app-with-secrets
 
 # Check for secret mount errors
 kubectl describe pod app-pod -n production | grep -A 10 Events
 ```
 
-Verify that secrets exist before referencing them in ServiceAccounts. Ensure RBAC permissions allow secret access.
+Verify that secrets exist before referencing them in Pods or ServiceAccounts. For mounted secrets and secret-backed environment variables, ensure the Pod explicitly references the secret; RBAC permissions are only needed when the workload reads Secret objects through the Kubernetes API.
 
 ## Security Best Practices
 
@@ -522,4 +527,4 @@ This separation limits credential exposure.
 
 ## Conclusion
 
-ServiceAccounts support multiple secrets, enabling comprehensive credential management through a single identity. By configuring image pull secrets, token secrets, and custom application secrets on ServiceAccounts, you centralize credential distribution and ensure workloads automatically receive necessary credentials. Use projected volumes to organize multiple secrets into clean directory structures, implement regular rotation procedures, and follow the principle of least privilege by creating specific ServiceAccounts for different secret requirements. This approach provides flexible, secure credential management for diverse application needs.
+ServiceAccounts support multiple image pull secrets and token secrets, enabling credential management through a single identity. By configuring image pull secrets on ServiceAccounts and explicitly referencing custom application secrets from Pods, you centralize credential distribution while keeping secret access clear. Use projected volumes to organize multiple secrets into clean directory structures, implement regular rotation procedures, and follow the principle of least privilege by creating specific ServiceAccounts for different secret requirements. This approach provides flexible, secure credential management for diverse application needs.
