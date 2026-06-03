@@ -94,20 +94,27 @@ aws iam put-role-policy \
   --policy-name s3-backup-access \
   --policy-document '{
     "Version": "2012-10-17",
-    "Statement": [{
-      "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:ListBucket",
-        "s3:AbortMultipartUpload",
-        "s3:ListMultipartUploadParts"
-      ],
-      "Resource": [
-        "arn:aws:s3:::my-rds-backups",
-        "arn:aws:s3:::my-rds-backups/*"
-      ]
-    }]
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:ListBucket",
+          "s3:GetBucketLocation"
+        ],
+        "Resource": "arn:aws:s3:::my-rds-backups"
+      },
+      {
+        "Effect": "Allow",
+        "Action": [
+          "s3:GetObjectAttributes",
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:AbortMultipartUpload",
+          "s3:ListMultipartUploadParts"
+        ],
+        "Resource": "arn:aws:s3:::my-rds-backups/*"
+      }
+    ]
   }'
 ```
 
@@ -189,8 +196,11 @@ After adding STATSPACK, create snapshots and generate reports from SQL*Plus.
 -- Take a STATSPACK snapshot
 EXECUTE STATSPACK.SNAP;
 
+-- View available snapshots
+SELECT SNAP_ID, SNAP_TIME FROM STATS$SNAPSHOT ORDER BY 1;
+
 -- Generate a report between two snapshots
-@$ORACLE_HOME/rdbms/admin/spreport.sql
+EXECUTE RDSADMIN.RDS_RUN_SPREPORT(1, 2);
 ```
 
 ### Oracle TDE (Enterprise Edition Only)
@@ -218,10 +228,15 @@ aws rds create-option-group \
 # Add the audit plugin
 aws rds add-option-to-option-group \
   --option-group-name mysql-audit-options \
-  --options "OptionName=MARIADB_AUDIT_PLUGIN,OptionSettings=[
-    {Name=SERVER_AUDIT_EVENTS,Value=CONNECT,QUERY_DDL,QUERY_DML},
-    {Name=SERVER_AUDIT_EXCL_USERS,Value=rdsadmin}
-  ]"
+  --options '[
+    {
+      "OptionName": "MARIADB_AUDIT_PLUGIN",
+      "OptionSettings": [
+        {"Name": "SERVER_AUDIT_EVENTS", "Value": "CONNECT,QUERY_DDL,QUERY_DML"},
+        {"Name": "SERVER_AUDIT_EXCL_USERS", "Value": "rdsadmin"}
+      ]
+    }
+  ]'
 ```
 
 The audit plugin logs connection events and queries, which is essential for compliance requirements like PCI DSS, HIPAA, and SOX.
