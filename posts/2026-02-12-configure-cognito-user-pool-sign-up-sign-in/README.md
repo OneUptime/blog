@@ -30,18 +30,28 @@ resource "aws_cognito_user_pool" "main" {
   # Allow self-registration
   admin_create_user_config {
     allow_admin_create_user_only = false
+
+    invite_message_template {
+      email_subject = "Welcome to MyApp"
+      email_message = "Your username is {username} and temporary password is {####}."
+      sms_message   = "Your username is {username} and temporary password is {####}."
+    }
   }
 
   # Require email verification
   auto_verified_attributes = ["email"]
   username_attributes       = ["email"]
 
-  # Invitation message for admin-created users
-  admin_create_user_config {
-    invite_message_template {
-      email_subject = "Welcome to MyApp"
-      email_message = "Your username is {username} and temporary password is {####}."
-      sms_message   = "Your username is {username} and temporary password is {####}."
+  # Custom attribute used during sign-up
+  schema {
+    name                = "organization"
+    attribute_data_type = "String"
+    mutable             = true
+    required            = false
+
+    string_attribute_constraints {
+      min_length = 1
+      max_length = 256
     }
   }
 }
@@ -163,6 +173,12 @@ resource "aws_cognito_user_pool_client" "app" {
     id_token      = "hours"
     refresh_token = "days"
   }
+
+  write_attributes = [
+    "email",
+    "name",
+    "custom:organization"
+  ]
 }
 ```
 
@@ -337,6 +353,14 @@ resource "aws_cognito_user_pool" "main" {
     pre_sign_up = aws_lambda_function.pre_signup.arn
   }
 }
+
+resource "aws_lambda_permission" "allow_cognito_pre_signup" {
+  statement_id  = "AllowExecutionFromCognito"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.pre_signup.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.main.arn
+}
 ```
 
 For details on Lambda triggers, check out [using Cognito Lambda triggers for pre sign-up](https://oneuptime.com/blog/post/2026-02-12-cognito-lambda-triggers-pre-sign-up/view).
@@ -346,10 +370,10 @@ For details on Lambda triggers, check out [using Cognito Lambda triggers for pre
 Cognito has built-in rate limits for sign-up and sign-in operations. For most accounts, the default limits are:
 
 - Sign-up: 50 requests per second
-- Sign-in: 200 requests per second
-- Token refresh: 200 requests per second
+- Sign-in: 120 requests per second
+- Token refresh: 120 requests per second
 
-If you're building a high-traffic application, request limit increases through AWS Support before launch.
+If you're building a high-traffic application, request limit increases through Service Quotas before launch.
 
 ## Summary
 
