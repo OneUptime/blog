@@ -8,7 +8,7 @@ Description: A step-by-step guide to deploying Docker containers on ECS using th
 
 ---
 
-The EC2 launch type gives you more control over the infrastructure running your containers compared to Fargate. You manage a fleet of EC2 instances, and ECS schedules your containers onto them. This approach makes sense when you need GPU instances, specific instance types, sustained-use pricing, or workloads that benefit from running on dedicated hardware.
+The EC2 launch type gives you more control over the infrastructure running your containers compared to Fargate. You manage a fleet of EC2 instances, and ECS schedules your containers onto them. This approach makes sense when you need GPU instances, specific instance types, Reserved Instance or Savings Plans pricing, or workloads that benefit from running on dedicated hardware.
 
 The trade-off is operational complexity - you're responsible for patching, scaling, and monitoring the instances themselves. But with managed capacity providers and Auto Scaling, most of that complexity can be automated.
 
@@ -43,7 +43,7 @@ Create a launch template with the ECS configuration.
 
 ```bash
 # Create a user data script that configures the ECS agent
-USER_DATA=$(cat <<'SCRIPT' | base64
+USER_DATA=$(cat <<'SCRIPT' | base64 | tr -d '\n'
 #!/bin/bash
 # Configure the ECS agent to join the right cluster
 cat >> /etc/ecs/ecs.config << EOF
@@ -229,7 +229,7 @@ aws ecs create-service \
   --service-name api-service \
   --task-definition api-ec2:1 \
   --desired-count 4 \
-  --launch-type EC2 \
+  --capacity-provider-strategy capacityProvider=ec2-on-demand,weight=1,base=1 \
   --load-balancers '[
     {
       "targetGroupArn": "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/api-ec2-targets/abc123",
@@ -262,7 +262,7 @@ The `placement-strategy` is important for EC2:
 Create a second ASG with spot instances and add it as a capacity provider.
 
 ```bash
-# Create a launch template for spot instances
+# Create a launch template for the spot capacity provider
 aws ec2 create-launch-template \
   --launch-template-name ecs-spot-template \
   --launch-template-data "{
@@ -271,13 +271,7 @@ aws ec2 create-launch-template \
       \"Arn\": \"arn:aws:iam::123456789:instance-profile/ecsInstanceRole\"
     },
     \"SecurityGroupIds\": [\"sg-12345678\"],
-    \"UserData\": \"$USER_DATA\",
-    \"InstanceMarketOptions\": {
-      \"MarketType\": \"spot\",
-      \"SpotOptions\": {
-        \"SpotInstanceType\": \"one-time\"
-      }
-    }
+    \"UserData\": \"$USER_DATA\"
   }"
 
 # Create ASG with mixed instance types for better spot availability
@@ -297,13 +291,15 @@ aws autoscaling create-auto-scaling-group \
       ]
     },
     "InstancesDistribution": {
+      "OnDemandPercentageAboveBaseCapacity": 0,
       "SpotAllocationStrategy": "capacity-optimized",
       "SpotMaxPrice": ""
     }
   }' \
   --min-size 0 \
   --max-size 10 \
-  --vpc-zone-identifier "subnet-abc123,subnet-def456"
+  --vpc-zone-identifier "subnet-abc123,subnet-def456" \
+  --new-instances-protected-from-scale-in
 
 # Register it as a capacity provider
 aws ecs create-capacity-provider \
@@ -326,7 +322,7 @@ aws ecs put-cluster-capacity-providers \
     capacityProvider=ec2-spot,weight=3
 ```
 
-This strategy keeps 2 on-demand instances as a baseline and distributes additional capacity 75% to spot instances. Spot can save you 60-70% compared to on-demand pricing.
+This default strategy places at least 2 tasks per service on on-demand capacity and distributes additional tasks 75% to spot capacity. Spot can save you 60-70% compared to on-demand pricing.
 
 ## Monitoring Instance Health
 
