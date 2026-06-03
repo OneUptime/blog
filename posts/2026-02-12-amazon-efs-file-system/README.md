@@ -8,7 +8,7 @@ Description: Step-by-step guide to creating an Amazon EFS file system, configuri
 
 ---
 
-Amazon Elastic File System (EFS) is a managed NFS file system that you can mount on multiple compute resources simultaneously. Unlike EBS volumes, which are tied to a single EC2 instance, EFS can be shared across dozens or hundreds of instances, containers, and even Lambda functions. It grows and shrinks automatically - you never have to provision capacity.
+Amazon Elastic File System (EFS) is a managed NFS file system that you can mount on multiple compute resources simultaneously. Unlike most EBS volumes, which are attached to one EC2 instance at a time (EBS Multi-Attach is limited to specific Provisioned IOPS volume types and instances in the same Availability Zone), EFS can be shared across dozens or hundreds of instances, containers, and even Lambda functions. It grows and shrinks automatically - you never have to provision capacity.
 
 If you need shared storage that multiple things can read and write at the same time, EFS is usually the right answer. Let's create one from scratch and get it ready for use.
 
@@ -128,7 +128,7 @@ You should see all mount targets in the "available" state before trying to mount
 
 ## Setting Up a File System Policy
 
-EFS supports resource-based policies that control who can mount and access the file system. Here's a policy that enforces encryption in transit and prevents anonymous access:
+EFS supports resource-based policies that control who can mount and access the file system. Here's a policy that enforces encryption in transit. Because setting a custom file system policy removes the default anonymous full-access policy, grant `elasticfilesystem:ClientMount` and related client permissions to the IAM roles that need access, and mount with IAM authorization.
 
 ```bash
 # Set a file system policy
@@ -146,21 +146,6 @@ aws efs put-file-system-policy \
         "Condition": {
           "Bool": {
             "aws:SecureTransport": "false"
-          }
-        }
-      },
-      {
-        "Sid": "PreventAnonymousAccess",
-        "Effect": "Deny",
-        "Principal": {"AWS": "*"},
-        "Action": "*",
-        "Resource": "*",
-        "Condition": {
-          "Bool": {
-            "elasticfilesystem:AccessedViaMountTarget": "true"
-          },
-          "StringEquals": {
-            "elasticfilesystem:AccessPointArn": ""
           }
         }
       }
@@ -310,4 +295,4 @@ With your EFS file system created and mount targets ready, you can now mount it 
 
 ## Wrapping Up
 
-Creating an EFS file system is straightforward - the file system itself, mount targets in your subnets, and a security group to control access. The important decisions are around performance mode, throughput mode, and encryption, and for most workloads the defaults (generalPurpose, bursting, encrypted) are the right choices. Once it's created, you've got a fully managed, scalable, shared file system ready for whatever you need to throw at it.
+Creating an EFS file system is straightforward - the file system itself, mount targets in your subnets, and a security group to control access. The important decisions are around performance mode, throughput mode, and encryption, and for most workloads the settings used here (generalPurpose, bursting, encrypted) are a solid starting point. Once it's created, you've got a fully managed, scalable, shared file system ready for whatever you need to throw at it.
