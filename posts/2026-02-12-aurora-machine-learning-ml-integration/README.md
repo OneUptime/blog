@@ -18,7 +18,7 @@ Aurora ML doesn't run ML models inside the database. What it does is create SQL 
 
 The supported integrations are:
 
-- **Amazon SageMaker** - Call any SageMaker endpoint for custom model predictions
+- **Amazon SageMaker** - Call CSV-compatible SageMaker endpoints for custom model predictions
 - **Amazon Comprehend** - Built-in sentiment analysis and language detection
 - **Amazon Bedrock** - Access foundation models (available in newer Aurora versions)
 
@@ -42,8 +42,9 @@ Before you start, you need:
 
 - An Aurora MySQL (version 2.07.0+) or Aurora PostgreSQL (version 10.14+) cluster
 - The appropriate IAM roles configured
-- For SageMaker: a deployed SageMaker endpoint
+- For SageMaker: a deployed CSV-compatible SageMaker endpoint
 - For Comprehend: no additional setup needed (it's a managed service)
+- For Aurora PostgreSQL: the `aws_ml` extension installed in the database where you want to call ML functions
 
 ## Setting Up IAM Roles
 
@@ -78,14 +79,9 @@ aws iam create-role \
 aws iam attach-role-policy \
   --role-name AuroraMLRole \
   --policy-arn arn:aws:iam::aws:policy/ComprehendReadOnly
-
-# Attach SageMaker runtime policy for calling endpoints
-aws iam attach-role-policy \
-  --role-name AuroraMLRole \
-  --policy-arn arn:aws:iam::aws:policy/AmazonSageMakerReadOnly
 ```
 
-For SageMaker, you'll also need a more specific policy that allows invoking your endpoint:
+For SageMaker, create a policy document named `sagemaker-invoke-endpoint-policy.json` that allows invoking your endpoint:
 
 ```json
 {
@@ -98,6 +94,15 @@ For SageMaker, you'll also need a more specific policy that allows invoking your
     }
   ]
 }
+```
+
+Then attach it to the role:
+
+```bash
+aws iam put-role-policy \
+  --role-name AuroraMLRole \
+  --policy-name AuroraInvokeSageMakerEndpoint \
+  --policy-document file://sagemaker-invoke-endpoint-policy.json
 ```
 
 ## Associating the IAM Role with Aurora
@@ -127,6 +132,28 @@ aws rds modify-db-cluster-parameter-group \
   --parameters "ParameterName=aws_default_comprehend_role,ParameterValue=arn:aws:iam::123456789012:role/AuroraMLRole,ApplyMethod=pending-reboot" \
                "ParameterName=aws_default_sagemaker_role,ParameterValue=arn:aws:iam::123456789012:role/AuroraMLRole,ApplyMethod=pending-reboot"
 ```
+
+For Aurora PostgreSQL, install the Aurora ML extension in the database where you want to use the functions:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS aws_ml CASCADE;
+```
+
+Database users also need permission to invoke the Aurora ML functions. For Aurora MySQL version 3, grant the relevant database roles:
+
+```sql
+GRANT AWS_COMPREHEND_ACCESS TO 'app_user'@'%';
+GRANT AWS_SAGEMAKER_ACCESS TO 'app_user'@'%';
+```
+
+For Aurora MySQL version 2, use the older privilege names:
+
+```sql
+GRANT INVOKE COMPREHEND ON *.* TO 'app_user'@'%';
+GRANT INVOKE SAGEMAKER ON *.* TO 'app_user'@'%';
+```
+
+For Aurora PostgreSQL, grant `EXECUTE` privileges on the relevant functions to non-superuser database roles.
 
 ## Using Amazon Comprehend for Sentiment Analysis
 
@@ -172,16 +199,17 @@ In Aurora PostgreSQL, the function syntax is slightly different:
 SELECT
     review_id,
     review_text,
-    aws_comprehend.detect_sentiment(review_text, 'en') AS sentiment,
-    aws_comprehend.detect_sentiment_confidence(review_text, 'en') AS confidence
-FROM customer_reviews
+    s.sentiment,
+    s.confidence
+FROM customer_reviews,
+     aws_comprehend.detect_sentiment(review_text, 'en') AS s
 WHERE LENGTH(review_text) > 20
-ORDER BY confidence DESC;
+ORDER BY s.confidence DESC;
 ```
 
 ## Calling SageMaker Endpoints
 
-For custom ML models, you create a SQL function that maps to a SageMaker endpoint.
+For custom ML models, you create a SQL function that maps to a SageMaker endpoint. Aurora ML supports SageMaker endpoints that read and write CSV data with a `ContentType` of `text/csv`.
 
 ### Aurora MySQL - Creating a SageMaker Function
 
@@ -235,7 +263,7 @@ AS $$
         support_tickets,
         account_age_days
     )::FLOAT
-$$ LANGUAGE sql PARALLEL SAFE;
+$$ LANGUAGE sql PARALLEL SAFE COST 5000;
 
 -- Use the function in a query
 SELECT
