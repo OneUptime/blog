@@ -18,7 +18,7 @@ Bedrock currently offers models from these providers:
 
 | Provider | Models | Strengths |
 |----------|--------|-----------|
-| Anthropic | Claude 3.5 Sonnet, Claude 3 Haiku, Claude 3 Opus | Reasoning, analysis, coding, safety |
+| Anthropic | Claude Sonnet, Claude Haiku, Claude Opus | Reasoning, analysis, coding, safety |
 | Meta | Llama 3 8B, Llama 3 70B | Open-ended generation, multilingual |
 | Amazon | Titan Text, Titan Embeddings, Titan Image | AWS integration, embeddings, cost |
 | Cohere | Command R, Command R+, Embed | Search, RAG, enterprise text |
@@ -35,10 +35,10 @@ import json
 
 bedrock_runtime = boto3.client('bedrock-runtime', region_name='us-east-1')
 
-# Claude 3.5 Sonnet - Best balance of speed and intelligence
+# Claude Sonnet 4.6 - Best balance of speed and intelligence
 
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-5-sonnet-20240620-v1:0',
+    modelId='anthropic.claude-sonnet-4-6',
     messages=[{
         'role': 'user',
         'content': [{
@@ -64,9 +64,9 @@ print(response['output']['message']['content'][0]['text'])
 Claude's model tiers serve different needs.
 
 ```python
-# Claude 3 Haiku - Fastest and cheapest, great for simple tasks
+# Claude Haiku 4.5 - Fast and lower-cost, great for simple tasks
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-haiku-20240307-v1:0',
+    modelId='anthropic.claude-haiku-4-5-20251001-v1:0',
     messages=[{
         'role': 'user',
         'content': [{'text': 'Classify this support ticket: "My account is locked and I need to reset my password"'}]
@@ -79,9 +79,9 @@ haiku_usage = response['usage']
 print(f"Haiku: {haiku_response}")
 print(f"Tokens: {haiku_usage['inputTokens']}in, {haiku_usage['outputTokens']}out")
 
-# Claude 3 Opus - Most capable, use for complex tasks
+# Claude Opus 4.7 - Most capable, use for complex tasks
 response = bedrock_runtime.converse(
-    modelId='anthropic.claude-3-opus-20240229-v1:0',
+    modelId='anthropic.claude-opus-4-7',
     messages=[{
         'role': 'user',
         'content': [{'text': 'Design a microservices architecture for an e-commerce platform with high availability requirements. Include service boundaries, communication patterns, and data management strategy.'}]
@@ -138,8 +138,8 @@ result = json.loads(response['body'].read())
 embedding = result['embedding']
 print(f"Titan Embedding: {len(embedding)} dimensions")
 
-# Titan also supports image embeddings
-# Useful for multi-modal search
+# Titan also supports multimodal embeddings.
+# This text-only example uses the multimodal model for search.
 response = bedrock_runtime.invoke_model(
     modelId='amazon.titan-embed-image-v1',
     contentType='application/json',
@@ -148,8 +148,8 @@ response = bedrock_runtime.invoke_model(
     })
 )
 
-image_embedding = json.loads(response['body'].read())['embedding']
-print(f"Image embedding: {len(image_embedding)} dimensions")
+multimodal_embedding = json.loads(response['body'].read())['embedding']
+print(f"Multimodal text embedding: {len(multimodal_embedding)} dimensions")
 ```
 
 **When to use Titan:**
@@ -247,10 +247,10 @@ Let's benchmark the models on the same task to see how they compare.
 import time
 
 models = [
-    ('anthropic.claude-3-5-sonnet-20240620-v1:0', 'Claude Sonnet'),
+    ('anthropic.claude-sonnet-4-6', 'Claude Sonnet'),
     ('meta.llama3-70b-instruct-v1:0', 'Llama 70B'),
     ('amazon.titan-text-express-v1', 'Titan Express'),
-    ('anthropic.claude-3-haiku-20240307-v1:0', 'Claude Haiku'),
+    ('anthropic.claude-haiku-4-5-20251001-v1:0', 'Claude Haiku'),
 ]
 
 prompt = 'Write a concise explanation of how load balancers distribute traffic across servers.'
@@ -300,8 +300,8 @@ Here's a practical decision framework:
 ```mermaid
 graph TB
     A[What's your task?] --> B{Complexity?}
-    B -->|Complex reasoning, coding| C[Claude 3.5 Sonnet or Opus]
-    B -->|Simple classification, extraction| D[Claude 3 Haiku]
+    B -->|Complex reasoning, coding| C[Claude Sonnet or Opus]
+    B -->|Simple classification, extraction| D[Claude Haiku]
     B -->|General text generation| E{Budget?}
     E -->|Lower cost| F[Llama 3 or Titan]
     E -->|Best quality| C
@@ -313,14 +313,15 @@ graph TB
 
 ## Cost Comparison
 
-Pricing varies significantly across models. Here's a rough comparison per 1000 tokens.
+Pricing varies significantly across models, Regions, and service tiers. Check the AWS pricing page for current rates, then plug them into a calculator like this.
 
 ```python
-# Approximate Bedrock pricing (check AWS for current rates)
+# Example Bedrock pricing inputs per 1,000 tokens.
+# Replace these with current AWS pricing for your Region and service tier.
 pricing = {
-    'Claude 3.5 Sonnet': {'input': 0.003, 'output': 0.015},
-    'Claude 3 Haiku': {'input': 0.00025, 'output': 0.00125},
-    'Claude 3 Opus': {'input': 0.015, 'output': 0.075},
+    'Claude Sonnet': {'input': 0.003, 'output': 0.015},
+    'Claude Haiku': {'input': 0.00025, 'output': 0.00125},
+    'Claude Opus': {'input': 0.015, 'output': 0.075},
     'Llama 3 70B': {'input': 0.00265, 'output': 0.0035},
     'Llama 3 8B': {'input': 0.0003, 'output': 0.0006},
     'Titan Text Express': {'input': 0.0002, 'output': 0.0006},
@@ -345,9 +346,9 @@ class BedrockModelRouter:
     def __init__(self, bedrock_client):
         self.client = bedrock_client
         self.models = {
-            'simple': 'anthropic.claude-3-haiku-20240307-v1:0',
-            'medium': 'anthropic.claude-3-5-sonnet-20240620-v1:0',
-            'complex': 'anthropic.claude-3-opus-20240229-v1:0',
+            'simple': 'anthropic.claude-haiku-4-5-20251001-v1:0',
+            'medium': 'anthropic.claude-sonnet-4-6',
+            'complex': 'anthropic.claude-opus-4-7',
             'embedding': 'amazon.titan-embed-text-v2:0'
         }
 
@@ -401,6 +402,7 @@ Track your Bedrock usage across models with CloudWatch and [OneUptime](https://o
 
 ```python
 import boto3
+from datetime import datetime, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 
@@ -409,10 +411,10 @@ response = cloudwatch.get_metric_statistics(
     Namespace='AWS/Bedrock',
     MetricName='Invocations',
     Dimensions=[
-        {'Name': 'ModelId', 'Value': 'anthropic.claude-3-5-sonnet-20240620-v1:0'}
+        {'Name': 'ModelId', 'Value': 'anthropic.claude-sonnet-4-6'}
     ],
-    StartTime='2026-02-11T00:00:00Z',
-    EndTime='2026-02-12T00:00:00Z',
+    StartTime=datetime(2026, 2, 11, tzinfo=timezone.utc),
+    EndTime=datetime(2026, 2, 12, tzinfo=timezone.utc),
     Period=3600,
     Statistics=['Sum']
 )
