@@ -17,12 +17,15 @@ We'll use React Native with the AWS SDK and secure storage.
 Install the required packages:
 
 ```bash
-npx react-native init CognitoMobileApp --template react-native-template-typescript
+npx @react-native-community/cli@latest init CognitoMobileApp
 cd CognitoMobileApp
 
 # AWS Cognito SDK
 
 npm install @aws-sdk/client-cognito-identity-provider
+
+# React Native polyfills used by AWS SDK packages
+npm install react-native-get-random-values react-native-url-polyfill
 
 # Secure storage for tokens (uses Keychain on iOS, Keystore on Android)
 npm install react-native-keychain
@@ -31,7 +34,7 @@ npm install react-native-keychain
 npm install jwt-decode
 
 # For iOS, install pods
-cd ios && pod install && cd ..
+cd ios && bundle exec pod install && cd ..
 ```
 
 Create your configuration:
@@ -41,13 +44,14 @@ Create your configuration:
 export const CognitoConfig = {
     region: 'us-east-1',
     userPoolId: 'us-east-1_XXXXXXXXX',
+    // Use a public app client with ALLOW_USER_PASSWORD_AUTH and ALLOW_REFRESH_TOKEN_AUTH enabled.
     clientId: 'your-app-client-id'
 };
 ```
 
 ## Secure Token Storage
 
-On mobile, never store tokens in AsyncStorage - it's essentially plaintext. Use the device's secure enclave instead.
+On mobile, never store tokens in AsyncStorage - it's essentially plaintext. Use the device's secure storage APIs instead.
 
 Here's a secure storage wrapper:
 
@@ -123,14 +127,14 @@ Here's the mobile auth service:
 
 ```typescript
 // src/services/AuthService.ts
+import 'react-native-get-random-values';
+import 'react-native-url-polyfill/auto';
 import {
     CognitoIdentityProviderClient,
     InitiateAuthCommand,
     SignUpCommand,
     ConfirmSignUpCommand,
-    GlobalSignOutCommand,
-    ForgotPasswordCommand,
-    ConfirmForgotPasswordCommand
+    GlobalSignOutCommand
 } from '@aws-sdk/client-cognito-identity-provider';
 import { jwtDecode } from 'jwt-decode';
 import { SecureStorage } from './SecureStorage';
@@ -150,7 +154,7 @@ class AuthService {
     private client: CognitoIdentityProviderClient;
     private currentUser: User | null = null;
     private listeners: Set<AuthListener> = new Set();
-    private refreshTimer: NodeJS.Timeout | null = null;
+    private refreshTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor() {
         this.client = new CognitoIdentityProviderClient({
