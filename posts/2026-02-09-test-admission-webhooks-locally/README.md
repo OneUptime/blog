@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Admission Webhook, Testing, Webhook Development, Local Development
 
-Description: Learn how to test Kubernetes admission webhooks locally using tools like webhook-tester and kind clusters, enabling rapid development without deploying to production clusters.
+Description: Learn how to test Kubernetes admission webhooks locally using sample AdmissionReview requests and kind clusters, enabling rapid development without deploying to production clusters.
 
 ---
 
@@ -29,7 +29,7 @@ Install required tools:
 
 brew install kind  # macOS
 # OR
-curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.20.0/kind-linux-amd64
+curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.32.0/kind-linux-amd64
 chmod +x ./kind
 sudo mv ./kind /usr/local/bin/kind
 
@@ -71,17 +71,19 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
     "net/http"
+    "os"
 
     admissionv1 "k8s.io/api/admission/v1"
+    corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 type WebhookServer struct{}
 
 func (ws *WebhookServer) validate(w http.ResponseWriter, r *http.Request) {
-    body, err := ioutil.ReadAll(r.Body)
+    body, err := io.ReadAll(r.Body)
     if err != nil {
         http.Error(w, "Failed to read request body", http.StatusBadRequest)
         return
@@ -119,6 +121,7 @@ func (ws *WebhookServer) validate(w http.ResponseWriter, r *http.Request) {
     }
 
     admissionReview.Response = &response
+    admissionReview.Request = nil
 
     responseBytes, err := json.Marshal(admissionReview)
     if err != nil {
@@ -134,8 +137,17 @@ func main() {
     server := &WebhookServer{}
     http.HandleFunc("/validate", server.validate)
 
+    certFile := os.Getenv("TLS_CERT_FILE")
+    if certFile == "" {
+        certFile = "tls.crt"
+    }
+    keyFile := os.Getenv("TLS_KEY_FILE")
+    if keyFile == "" {
+        keyFile = "tls.key"
+    }
+
     fmt.Println("Webhook server listening on :8443")
-    http.ListenAndServeTLS(":8443", "tls.crt", "tls.key", nil)
+    http.ListenAndServeTLS(":8443", certFile, keyFile, nil)
 }
 ```
 
@@ -144,7 +156,6 @@ func main() {
 Create test admission request JSON:
 
 ```json
-// test-request.json
 {
   "apiVersion": "admission.k8s.io/v1",
   "kind": "AdmissionReview",
@@ -210,7 +221,6 @@ package main
 import (
     "bytes"
     "encoding/json"
-    "net/http"
     "net/http/httptest"
     "testing"
 
@@ -326,8 +336,13 @@ spec:
     spec:
       containers:
       - name: webhook
-        image: localhost/admission-webhook:latest
+        image: admission-webhook:local
         imagePullPolicy: Never
+        env:
+        - name: TLS_CERT_FILE
+          value: /certs/tls.crt
+        - name: TLS_KEY_FILE
+          value: /certs/tls.key
         ports:
         - containerPort: 8443
         volumeMounts:
@@ -355,11 +370,18 @@ spec:
 Build and load image into kind:
 
 ```bash
+# Generate certificates and create the TLS secret
+./generate-certs.sh
+kubectl create secret tls webhook-certs \
+  --cert=tls.crt \
+  --key=tls.key \
+  --dry-run=client -o yaml | kubectl apply -f -
+
 # Build Docker image
-docker build -t admission-webhook:latest .
+docker build -t admission-webhook:local .
 
 # Load image into kind cluster
-kind load docker-image admission-webhook:latest
+kind load docker-image admission-webhook:local
 
 # Deploy webhook
 kubectl apply -f webhook-deployment.yaml
@@ -367,11 +389,11 @@ kubectl apply -f webhook-deployment.yaml
 
 ## Configuring Webhook Registration
 
-Generate certificates and create ValidatingWebhookConfiguration:
+Create the ValidatingWebhookConfiguration:
 
 ```bash
-# Generate CA and webhook certificates
-./generate-certs.sh
+# Use the CA certificate from generate-certs.sh. The server certificate
+# should include admission-webhook.default.svc as a DNS subjectAltName.
 
 # Create webhook configuration
 cat <<EOF | kubectl apply -f -
@@ -425,7 +447,7 @@ kubectl get validatingwebhookconfiguration pod-validator -o yaml
 kubectl logs -n kube-system kube-apiserver-kind-control-plane | grep admission
 
 # Test webhook connectivity
-kubectl run debug --image=curlimages/curl -it --rm -- \
+kubectl run debug --image=curlimages/curl --labels=app=debug -it --rm -- \
   curl -k https://admission-webhook.default.svc.cluster.local/validate
 ```
 
@@ -443,8 +465,15 @@ echo "Creating kind cluster..."
 kind create cluster --wait 5m
 
 echo "Building and loading webhook image..."
-docker build -t admission-webhook:latest .
-kind load docker-image admission-webhook:latest
+docker build -t admission-webhook:local .
+kind load docker-image admission-webhook:local
+
+echo "Creating webhook certificates..."
+./generate-certs.sh
+kubectl create secret tls webhook-certs \
+  --cert=tls.crt \
+  --key=tls.key \
+  --dry-run=client -o yaml | kubectl apply -f -
 
 echo "Deploying webhook..."
 kubectl apply -f webhook-deployment.yaml
