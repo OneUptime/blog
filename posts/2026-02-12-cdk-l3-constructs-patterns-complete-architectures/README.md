@@ -98,7 +98,7 @@ That single `ApplicationLoadBalancedFargateService` construct creates an ECS clu
 
 ### Network Load Balanced Fargate Service
 
-For services that need TCP/UDP load balancing or ultra-low latency, there's a Network Load Balancer variant.
+For services that need TCP load balancing or ultra-low latency, there's a Network Load Balancer variant.
 
 ```typescript
 // Deploy a TCP service behind an NLB
@@ -142,8 +142,8 @@ const worker = new ecsPatterns.QueueProcessingFargateService(
     maxScalingCapacity: 20,
     // Scale based on messages in the queue
     scalingSteps: [
-      { upper: 0, change: -1 },    // Scale to 0 when queue is empty
-      { lower: 1, change: +1 },    // Add 1 task per message
+      { upper: 0, change: -1 },    // Scale down when the queue is empty
+      { lower: 1, change: +1 },    // Add capacity when messages are waiting
       { lower: 100, change: +5 },  // Scale faster when queue is deep
       { lower: 500, change: +10 }, // Scale aggressively for large backlogs
     ],
