@@ -21,7 +21,7 @@ Glue supports several job types:
 | Spark | Apache Spark | Large-scale batch ETL |
 | Spark Streaming | Spark Structured Streaming | Near-real-time ETL |
 | Python Shell | Python 3 | Small-scale transforms, API calls |
-| Ray | Ray | Python-heavy ML workloads |
+| Ray | Ray | Python-heavy ML workloads (existing customers only) |
 
 For most ETL workloads, Spark jobs are the way to go. Python Shell is good for lightweight tasks that don't need distributed processing.
 
@@ -68,11 +68,11 @@ print(f"Job created: {response['Name']}")
 
 | Worker Type | vCPU | Memory | Disk | Use Case |
 |-------------|------|--------|------|----------|
-| G.1X | 4 | 16 GB | 64 GB | Most workloads |
-| G.2X | 8 | 32 GB | 128 GB | Memory-heavy transforms |
+| G.1X | 4 | 16 GB | 94 GB | Most workloads |
+| G.2X | 8 | 32 GB | 138 GB | Memory-heavy transforms |
 | G.4X | 16 | 64 GB | 256 GB | Large-scale joins |
 | G.8X | 32 | 128 GB | 512 GB | Very large datasets |
-| G.025X | 2 | 4 GB | 64 GB | Small Python Shell jobs |
+| G.025X | 2 | 4 GB | 84 GB | Low-volume streaming jobs |
 
 Start with G.1X and 10 workers. Scale up based on job performance metrics.
 
@@ -89,7 +89,7 @@ from awsglue.context import GlueContext
 from awsglue.job import Job
 from awsglue.dynamicframe import DynamicFrame
 from pyspark.context import SparkContext
-from pyspark.sql.functions import col, year, month, dayofmonth, from_unixtime, lower, trim
+from pyspark.sql.functions import col, year, month, dayofmonth, from_unixtime, lower, trim, lpad
 
 # Get job parameters
 args = getResolvedOptions(sys.argv, [
@@ -142,8 +142,8 @@ transformed = df \
     .withColumn("timestamp", col("timestamp").cast("long")) \
     .withColumn("event_date", from_unixtime(col("timestamp"))) \
     .withColumn("year", year(from_unixtime(col("timestamp"))).cast("string")) \
-    .withColumn("month", month(from_unixtime(col("timestamp"))).cast("string").lpad(2, "0")) \
-    .withColumn("day", dayofmonth(from_unixtime(col("timestamp"))).cast("string").lpad(2, "0")) \
+    .withColumn("month", lpad(month(from_unixtime(col("timestamp"))).cast("string"), 2, "0")) \
+    .withColumn("day", lpad(dayofmonth(from_unixtime(col("timestamp"))).cast("string"), 2, "0")) \
     .filter(col("user_id").isNotNull()) \
     .filter(col("event_type").isNotNull()) \
     .dropDuplicates(["event_id"])
@@ -204,10 +204,7 @@ The cleanest way to read data is through the Glue Data Catalog:
 datasource = glueContext.create_dynamic_frame.from_catalog(
     database="raw_data",
     table_name="events",
-    push_down_predicate="year='2025' AND month='02'",
-    additional_options={
-        "enableUpdateCatalog": True
-    }
+    push_down_predicate="year='2025' AND month='02'"
 )
 ```
 
