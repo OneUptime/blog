@@ -38,10 +38,15 @@ Your Grafana workspace role needs permission to query the Managed Prometheus wor
         "aps:GetLabels",
         "aps:GetSeries",
         "aps:GetMetricMetadata",
-        "aps:ListWorkspaces",
         "aps:DescribeWorkspace"
       ],
       "Resource": "arn:aws:aps:us-east-1:123456789012:workspace/*"
+    },
+    {
+      "Sid": "AMPWorkspaceDiscovery",
+      "Effect": "Allow",
+      "Action": "aps:ListWorkspaces",
+      "Resource": "*"
     }
   ]
 }
@@ -68,17 +73,17 @@ aws amp describe-workspace \
   --workspace-id ws-abc123-def456
 
 # The endpoint will look like:
-# https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/
+# https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/api/v1/
 ```
 
-The query endpoint is the workspace endpoint with `/api/v1/query` appended, but Grafana handles this automatically. You just need the base workspace URL.
+Grafana appends the Prometheus API path automatically. Use the workspace URL without `/api/v1/` in the data source URL.
 
 ## Step 3: Add Prometheus Data Source in Grafana
 
-In the Grafana UI:
+In Amazon Managed Grafana v12 and later, add the **Amazon Managed Service for Prometheus** data source. For older workspaces that still use the core Prometheus data source, the same URL and SigV4 settings apply.
 
-1. Navigate to **Configuration > Data Sources > Add data source**
-2. Select **Prometheus**
+1. Navigate to **Connections > Data Sources > Add data source**
+2. Select **Amazon Managed Service for Prometheus**
 3. Configure:
 
 | Setting | Value |
@@ -103,7 +108,7 @@ curl -X POST \
   "https://g-abc123.grafana-workspace.us-east-1.amazonaws.com/api/datasources" \
   -d '{
     "name": "Amazon Managed Prometheus",
-    "type": "prometheus",
+    "type": "grafana-amazonprometheus-datasource",
     "url": "https://aps-workspaces.us-east-1.amazonaws.com/workspaces/ws-abc123-def456/",
     "access": "proxy",
     "jsonData": {
