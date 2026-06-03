@@ -120,6 +120,8 @@ resource "aws_ecs_capacity_provider" "ec2" {
 }
 ```
 
+After you create the ASG capacity provider, add `aws_ecs_capacity_provider.ec2.name` to the `capacity_providers` list in `aws_ecs_cluster_capacity_providers.main`. A capacity provider must be associated with the cluster before a service can use it in a strategy.
+
 The `target_capacity = 80` setting is important. It tells ECS to aim for 80% utilization on your EC2 instances, leaving some headroom for burst traffic without needing to wait for new instances to launch.
 
 ## Using Capacity Provider Strategies in Services
@@ -127,7 +129,7 @@ The `target_capacity = 80` setting is important. It tells ECS to aim for 80% uti
 Once your capacity providers are set up, you reference them in your ECS service definitions. This is where you decide how each service distributes its tasks.
 
 ```hcl
-# A service that mixes EC2 and Fargate Spot
+# A service that mixes EC2 capacity providers
 resource "aws_ecs_service" "api" {
   name            = "api-service"
   cluster         = aws_ecs_cluster.main.id
@@ -142,32 +144,30 @@ resource "aws_ecs_service" "api" {
   }
 
   capacity_provider_strategy {
-    capacity_provider = "FARGATE_SPOT"
-    weight            = 1      # 1 part Fargate Spot
+    capacity_provider = "ec2-spot-capacity"
+    weight            = 1      # 1 part EC2 Spot-backed capacity
   }
 }
 ```
 
-One thing to note: you can't use `launch_type` and `capacity_provider_strategy` at the same time. If you're migrating from a service that specifies `launch_type = "FARGATE"`, you need to remove that and switch to a capacity provider strategy instead.
+One thing to note: you can't use `launch_type` and `capacity_provider_strategy` at the same time. If you're migrating from a service that specifies `launch_type = "FARGATE"`, you need to remove that and switch to a capacity provider strategy instead. A single capacity provider strategy also can't mix Fargate providers with Auto Scaling Group providers, so keep Fargate and EC2-backed strategies separate.
 
 ## Migrating Existing Services
 
 If you've got existing services running with a launch type, the migration path looks like this:
 
 1. Add capacity providers to your cluster
-2. Create a new service with the capacity provider strategy
-3. Gradually shift traffic from the old service to the new one
-4. Delete the old service
+2. Make sure the task definition is compatible with the target capacity provider
+3. Remove `launch_type` from the service and add the capacity provider strategy
+4. Force a new deployment so replacement tasks start with the new strategy
 
-You can't simply update an existing service from `launch_type` to `capacity_provider_strategy`. It requires replacing the service. In Terraform, you'd use `create_before_destroy` lifecycle rules.
+ECS now supports updating an existing service from a launch type to a capacity provider strategy. In Terraform, `capacity_provider_strategy` still conflicts with `launch_type`, so remove `launch_type` and use `force_new_deployment = true` when changing the service's compute configuration.
 
 ```hcl
 resource "aws_ecs_service" "api" {
   # ... service config with capacity_provider_strategy ...
 
-  lifecycle {
-    create_before_destroy = true
-  }
+  force_new_deployment = true
 }
 ```
 
@@ -192,10 +192,10 @@ aws ecs put-cluster-capacity-providers \
 
 ## Monitoring Capacity Providers
 
-You'll want to keep an eye on how your capacity providers are performing. CloudWatch gives you a few useful metrics:
+You'll want to keep an eye on how your capacity providers are performing. CloudWatch and ECS give you a few useful signals:
 
-- `CapacityProviderReservation` - Shows how much of your capacity is being used. If this is consistently high, you might need to increase your ASG max size.
-- `BacklogPerCapacityProvider` - Tasks waiting to be placed. If you see a backlog, scaling isn't keeping up.
+- `CapacityProviderReservation` - Published in the `AWS/ECS/ManagedScaling` namespace for ASG capacity providers with managed scaling enabled. If this is consistently above your target capacity, you might need to increase your ASG max size or adjust the scaling settings.
+- ECS service events and tasks stuck in `PROVISIONING` - These are useful signals that tasks are waiting to be placed. If you see this often, scaling isn't keeping up or the ASG can't provide compatible instances.
 
 For monitoring ECS clusters and the services running on them, it's worth setting up proper observability. Check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) for tips on building dashboards and alerts.
 
@@ -218,6 +218,6 @@ Here's a quick decision framework:
 - **Fargate only** - Small teams, variable workloads, don't want to manage instances
 - **Fargate + Fargate Spot** - Cost-sensitive workloads that can handle interruptions
 - **EC2 ASG** - Need GPU instances, specific instance types, or want to use reserved instances
-- **Mixed strategy** - Best of both worlds. Keep a baseline on EC2 (with reserved pricing) and burst to Fargate
+- **Cluster-level mix** - Best of both worlds. Keep steady services on EC2-backed capacity and use separate Fargate or Fargate Spot strategies where they fit
 
 Capacity providers aren't complicated once you understand the model. Define your providers, set up strategies, and let ECS handle the placement math. Your cluster gets smarter about how it uses resources, and you stop over-provisioning "just in case."
