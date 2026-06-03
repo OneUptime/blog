@@ -367,6 +367,12 @@ Gen 2 lets you add custom functions for business logic that goes beyond simple C
 
 ```typescript
 // amplify/data/resource.ts - Add custom queries and mutations
+import { defineFunction } from '@aws-amplify/backend';
+
+const taskStats = defineFunction({
+  entry: './task-stats/handler.ts',
+});
+
 const schema = a.schema({
   // ... existing models ...
 
@@ -378,7 +384,7 @@ const schema = a.schema({
       completed: a.integer(),
       overdue: a.integer(),
     }))
-    .handler(a.handler.function('taskStats'))
+    .handler(a.handler.function(taskStats))
     .authorization((allow) => [allow.authenticated()]),
 });
 ```
