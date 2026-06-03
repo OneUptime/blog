@@ -8,7 +8,7 @@ Description: Learn how to configure Amazon ECS task placement strategies to opti
 
 ---
 
-When you run ECS tasks on EC2 instances (not Fargate), you have control over where tasks get placed in your cluster. By default, ECS spreads tasks across instances, but that might not be what you want. Maybe you want to pack tasks tightly to minimize the number of instances, or spread them across availability zones for high availability, or place specific tasks on instances with certain attributes.
+When you run ECS tasks on EC2 instances (not Fargate), you have control over where tasks get placed in your cluster. By default, ECS services spread tasks across availability zones, but that might not be what you want. Maybe you want to pack tasks tightly to minimize the number of instances, spread them across individual instances for higher availability, or place specific tasks on instances with certain attributes.
 
 ECS task placement strategies give you this control. They tell the scheduler how to select instances for your tasks.
 
@@ -54,12 +54,12 @@ aws ecs create-service \
   ]'
 ```
 
-With 6 tasks and 3 AZs, this places 2 tasks in each AZ. If one AZ goes down, you lose only 2 of 6 tasks instead of potentially all of them.
+With 6 tasks and 3 AZs, this attempts to place 2 tasks in each AZ, assuming each AZ has enough eligible capacity. If one AZ goes down, you lose only 2 of 6 tasks instead of potentially all of them.
 
 You can also spread across instances:
 
 ```bash
-# Spread tasks across individual instances (one task per instance)
+# Spread tasks evenly across individual instances
 aws ecs create-service \
   --cluster my-cluster \
   --service-name worker \
@@ -212,10 +212,10 @@ aws ecs run-task \
 
 ## Updating Placement Strategy on Existing Services
 
-You cannot change the placement strategy of an existing service directly. You need to create a new service with the desired strategy or use the force-new-deployment option (which reapplies the strategy to new task placements, but does not move existing tasks).
+You can change the placement strategy of an existing service with `update-service`. Updating the placement strategy does not trigger a new service deployment by itself. If you want replacement tasks to be launched with the new strategy immediately, use the `force-new-deployment` option.
 
 ```bash
-# Create a new version of the service with updated strategy
+# Update the service's placement strategy and start a new deployment
 aws ecs update-service \
   --cluster my-cluster \
   --service production-api \
@@ -291,7 +291,7 @@ aws ecs create-service \
 ### Stateful Service (Instance Isolation)
 
 ```bash
-# Spread across instances so each task runs alone
+# Spread tasks evenly across instances
 aws ecs create-service \
   --cluster production \
   --service-name cache-node \
@@ -301,6 +301,8 @@ aws ecs create-service \
     {"type": "spread", "field": "instanceId"}
   ]'
 ```
+
+If you need to guarantee that each task runs on a separate instance, use a `distinctInstance` placement constraint in addition to the spread strategy.
 
 ## How Strategies Interact with Auto-Scaling
 
