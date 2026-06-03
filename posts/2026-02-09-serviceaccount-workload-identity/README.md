@@ -38,7 +38,7 @@ metadata:
     eks.amazonaws.com/token-expiration: "86400"
 ```
 
-The role-arn annotation specifies which IAM role the pod should assume. The sts-regional-endpoints annotation uses regional STS endpoints for better performance. The token-expiration controls the lifetime of AWS credentials.
+The role-arn annotation specifies which IAM role the pod should assume. The sts-regional-endpoints annotation uses regional STS endpoints for better performance. The token-expiration controls the lifetime of the projected ServiceAccount token that AWS STS validates.
 
 Create the IAM role with a trust policy:
 
@@ -177,39 +177,54 @@ metadata:
     azure.workload.identity/service-account-token-expiration: "3600"
 ```
 
-Set up Azure AD application:
+Set up a Microsoft Entra user-assigned managed identity:
 
 ```bash
-# Create Azure AD application
-az ad app create --display-name k8s-blob-app
+# Get subscription ID
+SUB_ID=$(az account show --query id -o tsv)
 
-# Get application ID
-APP_ID=$(az ad app list --display-name k8s-blob-app --query [].appId -o tsv)
+# Create managed identity
+az identity create \
+  --name blob-app-identity \
+  --resource-group my-rg
+
+# Get managed identity details
+CLIENT_ID=$(az identity show \
+  --name blob-app-identity \
+  --resource-group my-rg \
+  --query clientId -o tsv)
+
+PRINCIPAL_ID=$(az identity show \
+  --name blob-app-identity \
+  --resource-group my-rg \
+  --query principalId -o tsv)
+
+TENANT_ID=$(az identity show \
+  --name blob-app-identity \
+  --resource-group my-rg \
+  --query tenantId -o tsv)
 
 # Get OIDC issuer URL
 OIDC_ISSUER=$(az aks show --name my-cluster --resource-group my-rg --query "oidcIssuerProfile.issuerUrl" -o tsv)
 
 # Create federated credential
-az ad app federated-credential create \
-  --id $APP_ID \
-  --parameters '{
-    "name": "k8s-federated-credential",
-    "issuer": "'$OIDC_ISSUER'",
-    "subject": "system:serviceaccount:production:blob-app",
-    "audiences": ["api://AzureADTokenExchange"]
-  }'
-
-# Create managed identity and assign permissions
-az identity create \
-  --name blob-app-identity \
-  --resource-group my-rg
+az identity federated-credential create \
+  --name k8s-federated-credential \
+  --identity-name blob-app-identity \
+  --resource-group my-rg \
+  --issuer "$OIDC_ISSUER" \
+  --subject "system:serviceaccount:production:blob-app" \
+  --audience api://AzureADTokenExchange
 
 # Assign role
 az role assignment create \
-  --assignee $APP_ID \
+  --assignee-object-id "$PRINCIPAL_ID" \
+  --assignee-principal-type ServicePrincipal \
   --role "Storage Blob Data Reader" \
-  --scope /subscriptions/SUB_ID/resourceGroups/my-rg
+  --scope "/subscriptions/$SUB_ID/resourceGroups/my-rg"
 ```
+
+Use the CLIENT_ID and TENANT_ID values from the managed identity in the ServiceAccount annotations.
 
 Deploy with workload identity:
 
@@ -231,12 +246,19 @@ spec:
     - /bin/bash
     - -c
     - |
-      # Azure SDK automatically uses workload identity
-      az storage blob list --account-name myaccount --container-name mycontainer
+      # Azure CLI uses the injected workload identity token to log in
+      az login --service-principal \
+        --username "$AZURE_CLIENT_ID" \
+        --tenant "$AZURE_TENANT_ID" \
+        --federated-token "$(cat "$AZURE_FEDERATED_TOKEN_FILE")"
+      az storage blob list \
+        --account-name myaccount \
+        --container-name mycontainer \
+        --auth-mode login
       sleep 3600
 ```
 
-The azure.workload.identity/use label enables the mutating webhook that injects necessary environment variables.
+The azure.workload.identity/use label enables the mutating webhook that injects necessary environment variables and the projected token file. Azure SDKs can use those values automatically through DefaultAzureCredential.
 
 ## Multi-Cloud ServiceAccount Configuration
 
@@ -288,8 +310,6 @@ package main
 
 import (
     "encoding/json"
-    "fmt"
-    "net/http"
 
     admissionv1 "k8s.io/api/admission/v1"
     corev1 "k8s.io/api/core/v1"
@@ -311,6 +331,8 @@ func (ws *WebhookServer) mutate(ar *admissionv1.AdmissionReview) *admissionv1.Ad
     // Get ServiceAccount
     saName := pod.Spec.ServiceAccountName
     // Fetch SA annotations (simplified - would need actual K8s client)
+    saAnnotations := map[string]string{}
+    _ = saName
 
     // Check for custom identity annotations
     if role, ok := saAnnotations["identity.custom.io/role"]; ok {
@@ -318,24 +340,43 @@ func (ws *WebhookServer) mutate(ar *admissionv1.AdmissionReview) *admissionv1.Ad
         patches := []map[string]interface{}{
             {
                 "op":    "add",
-                "path":  "/spec/containers/0/env/-",
-                "value": map[string]string{
-                    "name":  "CUSTOM_IDENTITY_ROLE",
-                    "value": role,
+                "path":  "/spec/containers/0/env",
+                "value": []map[string]string{
+                    {
+                        "name":  "CUSTOM_IDENTITY_ROLE",
+                        "value": role,
+                    },
+                    {
+                        "name":  "CUSTOM_IDENTITY_TOKEN_FILE",
+                        "value": "/var/run/secrets/custom-identity/token",
+                    },
                 },
             },
             {
                 "op":    "add",
-                "path":  "/spec/volumes/-",
-                "value": map[string]interface{}{
-                    "name": "custom-identity-token",
-                    "projected": map[string]interface{}{
-                        "sources": []map[string]interface{}{
-                            {
-                                "serviceAccountToken": map[string]interface{}{
-                                    "path":              "token",
-                                    "expirationSeconds": 3600,
-                                    "audience":          "https://api.custom.io",
+                "path":  "/spec/containers/0/volumeMounts",
+                "value": []map[string]interface{}{
+                    {
+                        "name":      "custom-identity-token",
+                        "mountPath": "/var/run/secrets/custom-identity",
+                        "readOnly":  true,
+                    },
+                },
+            },
+            {
+                "op":   "add",
+                "path": "/spec/volumes",
+                "value": []map[string]interface{}{
+                    {
+                        "name": "custom-identity-token",
+                        "projected": map[string]interface{}{
+                            "sources": []map[string]interface{}{
+                                {
+                                    "serviceAccountToken": map[string]interface{}{
+                                        "path":              "token",
+                                        "expirationSeconds": 3600,
+                                        "audience":          "https://api.custom.io",
+                                    },
                                 },
                             },
                         },
@@ -408,7 +449,7 @@ metadata:
 #     eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/AdminRole
 ```
 
-Use admission controllers to enforce annotation policies:
+Use admission controllers to enforce annotation policies. For example, with a matching Gatekeeper ConstraintTemplate installed:
 
 ```yaml
 # opa-gatekeeper-constraint.yaml
