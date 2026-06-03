@@ -8,7 +8,7 @@ Description: Learn how to configure the CloudWatch Agent to collect custom appli
 
 ---
 
-The CloudWatch Agent doesn't just collect system metrics like CPU and memory. It can also act as a custom metrics collector, accepting data from your applications via StatsD or collectd protocols, running custom scripts to gather metrics, and publishing everything to CloudWatch under your own namespaces.
+The CloudWatch Agent doesn't just collect system metrics like CPU and memory. It can also act as a custom metrics collector, accepting data from your applications via StatsD or collectd protocols, collecting from supported metric sources, and publishing everything to CloudWatch under your own namespaces.
 
 This unlocks application-level monitoring without changing your code's metric publishing approach. If your application already emits StatsD metrics (many frameworks do), you just point it at the local CloudWatch Agent instead of a StatsD server. Let's walk through all the custom metric collection options.
 
@@ -161,7 +161,7 @@ The `procstat` plugin collects metrics for specific processes running on your in
 
 You can match processes by `exe` (executable name), `pattern` (regex on the full command line), or `pid_file` (a file containing the PID).
 
-## Custom Script Metrics with ethtool and nvidia_smi
+## Specialized Metrics with ethtool and nvidia_smi
 
 The agent has built-in support for some specialty metric sources:
 
