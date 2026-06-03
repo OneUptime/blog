@@ -33,7 +33,7 @@ A few important things about `Fn::Equals`:
 - It only works in the `Conditions` section
 - It compares exactly two values
 - Comparison is case-sensitive
-- Both values must be strings (numbers are coerced to strings)
+- `Fn::Equals` compares string values; `Number` parameters resolve as strings when referenced
 
 ## Fn::If - The Ternary Operator
 
@@ -305,8 +305,11 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      ManagedPolicyArns: !If
+        - TracingEnabled
+        - - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+          - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
+        - - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
 
   # Dead letter queue - only in production
   DLQ:
