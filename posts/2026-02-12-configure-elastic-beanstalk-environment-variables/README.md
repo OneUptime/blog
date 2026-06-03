@@ -31,7 +31,7 @@ eb setenv NODE_ENV=production \
 eb printenv
 ```
 
-Each `eb setenv` call triggers an environment update, which restarts your instances. If you're setting multiple variables, always do it in a single command to avoid multiple restarts.
+Each `eb setenv` call triggers an environment update, which can restart your application processes. If you're setting multiple variables, always do it in a single command to avoid repeated updates.
 
 ## Setting Variables Through the Console
 
@@ -39,12 +39,13 @@ You can also manage variables through the AWS Console:
 
 1. Open the Elastic Beanstalk console
 2. Select your environment
-3. Go to Configuration > Software
-4. Scroll to Environment properties
-5. Add your key-value pairs
-6. Click Apply
+3. Go to Configuration
+4. Under Updates, monitoring, and logging, click Edit
+5. Scroll to Runtime environment variables
+6. Add your key-value pairs
+7. Click Apply
 
-The console limits you to 200 environment properties, which is plenty for most applications.
+Elastic Beanstalk stores environment properties as `key=value` strings, and the combined size of all environment properties can't exceed 4,096 bytes.
 
 ## Using .ebextensions Config Files
 
@@ -79,15 +80,13 @@ Parameters:
 
 option_settings:
   aws:elasticbeanstalk:application:environment:
-    DB_HOST:
-      "Fn::Ref": DatabaseHost
-    DB_PORT:
-      "Fn::Ref": DatabasePort
+    DB_HOST: '`{"Ref" : "DatabaseHost"}`'
+    DB_PORT: '`{"Ref" : "DatabasePort"}`'
 ```
 
 ## Integrating with Secrets Manager
 
-For sensitive values, Secrets Manager is the right choice. It provides encryption, rotation, and audit logging. Your application retrieves secrets at runtime instead of storing them in environment variables.
+For sensitive values, Secrets Manager is the right choice. It provides encryption, rotation, and audit logging. Your application can retrieve secrets at runtime, or supported Elastic Beanstalk platform versions can fetch Secrets Manager values during instance bootstrapping and assign them to environment variables.
 
 First, store your secrets.
 
@@ -133,7 +132,7 @@ Make sure your EB instance role has permission to read the secrets.
             "Action": [
                 "secretsmanager:GetSecretValue"
             ],
-            "Resource": "arn:aws:secretsmanager:us-east-1:123456789:secret:myapp/*"
+            "Resource": "arn:aws:secretsmanager:us-east-1:123456789012:secret:myapp/*"
         }
     ]
 }
@@ -189,31 +188,14 @@ config = load_ssm_config('/myapp/production/')
 
 ## Loading Variables at Startup
 
-A common pattern is to load secrets into environment variables during instance startup using `.platform` hooks.
+A common pattern is to let Elastic Beanstalk load secrets into environment variables during instance bootstrapping. Platform versions released on or after March 26, 2025 support Secrets Manager secrets and SSM Parameter Store parameters configured this way.
 
-```bash
-#!/bin/bash
-# .platform/hooks/prebuild/01_load_secrets.sh
-# Load secrets from SSM into environment variables before the app starts
-
-PARAMS=$(aws ssm get-parameters-by-path \
-    --path "/myapp/production/" \
-    --with-decryption \
-    --region us-east-1 \
-    --query "Parameters[*].{Name:Name,Value:Value}" \
-    --output text)
-
-# Write each parameter as an environment variable
-while IFS=$'\t' read -r name value; do
-    key=$(echo "$name" | awk -F/ '{print $NF}' | tr '[:lower:]-' '[:upper:]_')
-    echo "export $key=\"$value\"" >> /etc/profile.d/app-env.sh
-done <<< "$PARAMS"
-```
-
-Make the script executable.
-
-```bash
-chmod +x .platform/hooks/prebuild/01_load_secrets.sh
+```yaml
+# .ebextensions/env-secrets.config - Environment variables backed by secret stores
+option_settings:
+  aws:elasticbeanstalk:application:environmentsecrets:
+    DATABASE_PASSWORD: arn:aws:secretsmanager:us-east-1:123456789012:secret:myapp/database-AbCd12
+    API_KEY: arn:aws:ssm:us-east-1:123456789012:parameter/myapp/production/api-key
 ```
 
 ## Variable Precedence
@@ -221,8 +203,8 @@ chmod +x .platform/hooks/prebuild/01_load_secrets.sh
 When the same variable is defined in multiple places, Elastic Beanstalk follows this precedence order (highest to lowest):
 
 1. Environment properties set via the console or CLI
-2. Option settings in `.ebextensions` config files
-3. Saved configurations
+2. Saved configurations
+3. Option settings in `.ebextensions` config files
 4. Default values
 
 This means CLI and console settings always override what's in your `.ebextensions` files. That's actually helpful - you can define defaults in code and override them per-environment.
@@ -231,12 +213,12 @@ This means CLI and console settings always override what's in your `.ebextension
 
 There are a few limits to be aware of:
 
-- Maximum 200 environment properties per environment
-- Each key can be up to 128 characters
-- Each value can be up to 8192 characters (increased from the old 256 limit)
-- Total size of all environment properties can't exceed 20 KB
+- Keys can contain alphanumeric characters and these symbols: `_ . : / + \ - @`
+- Values can contain alphanumeric characters, whitespace, and these symbols: `_ . : / = + \ - @ ' "`
+- For compatibility with all platforms, use environment variable names that match `[A-Z_][A-Z0-9_]*`
+- Total size of all environment properties can't exceed 4,096 bytes when stored as `key=value` strings
 
-If you're hitting the 200-property limit, it's a sign you should move some configuration to SSM Parameter Store or a config file stored in S3.
+If you're hitting the combined size limit, it's a sign you should move some configuration to SSM Parameter Store or a config file stored in S3.
 
 ## Debugging Environment Variables
 
@@ -246,8 +228,8 @@ When your application isn't picking up variables correctly, here's how to troubl
 # SSH into the instance to check what's actually set
 eb ssh
 
-# Check environment variables for the running process
-sudo cat /opt/elasticbeanstalk/deployment/env
+# Check plaintext environment properties on Amazon Linux platforms
+/opt/elasticbeanstalk/bin/get-config environment
 
 # For Docker-based environments, check inside the container
 sudo docker exec -it <container-id> env
