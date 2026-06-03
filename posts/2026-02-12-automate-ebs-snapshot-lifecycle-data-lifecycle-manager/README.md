@@ -88,7 +88,7 @@ aws dlm create-lifecycle-policy \
   }'
 ```
 
-This policy creates a snapshot of every volume tagged `DLMBackup=true` at 3:00 AM UTC daily, keeps the 7 most recent snapshots, and automatically deletes older ones.
+This policy schedules a snapshot of every volume tagged `DLMBackup=true` at 3:00 AM UTC daily. DLM starts snapshot creation within an hour of the scheduled time, keeps the 7 most recent snapshots, and automatically deletes older ones.
 
 ## Multiple Schedules in One Policy
 
@@ -209,7 +209,7 @@ aws dlm create-lifecycle-policy \
         "Count": 7
       },
       "CrossRegionCopyRules": [{
-        "TargetRegion": "us-west-2",
+        "Target": "us-west-2",
         "Encrypted": true,
         "RetainRule": {
           "Interval": 7,
@@ -330,14 +330,14 @@ aws ec2 describe-snapshots \
   --query 'Snapshots[].{ID: SnapshotId, Size: VolumeSize, Date: StartTime}' \
   --output table
 
-# Total snapshot storage in use
+# Sum source volume sizes represented by your snapshots (not billed incremental storage)
 aws ec2 describe-snapshots \
   --owner-ids self \
   --query 'sum(Snapshots[].VolumeSize)' \
   --output text
 ```
 
-Snapshot pricing is roughly $0.05 per GB-month. A 100 GB volume with 7 daily snapshots doesn't cost 7x100 GB - thanks to incremental storage, it's usually much less.
+Snapshot pricing is roughly $0.05 per GB-month in many regions. A 100 GB volume with 7 daily snapshots doesn't cost 7x100 GB - thanks to incremental storage, it's usually much less. Use AWS Billing, Cost Explorer, or the Cost and Usage Report to see actual billed snapshot storage.
 
 ## Fast Snapshot Restore
 
@@ -358,12 +358,12 @@ Both services handle EBS snapshots, so when should you use which?
 
 | Feature | DLM | AWS Backup |
 |---------|-----|-----------|
-| Cost | Free (pay for snapshots only) | Free (pay for storage only) |
+| Cost | No DLM policy fee (pay for snapshots and enabled extras) | No setup fee (pay for storage, transfers, restores, and evaluations) |
 | EBS snapshots | Yes | Yes |
 | EC2 AMIs | Yes | Yes |
 | Other services (RDS, S3, etc.) | No | Yes |
 | Compliance reporting | No | Yes |
-| Cross-account backup | No | Yes |
+| Cross-account snapshot sharing/copy | Yes | Yes |
 | Vault lock (WORM) | No | Yes |
 
 Use DLM when you only need EBS snapshot management. Use AWS Backup when you need a unified backup solution across multiple AWS services, or when you need compliance features.
