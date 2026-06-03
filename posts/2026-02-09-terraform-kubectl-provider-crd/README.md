@@ -8,11 +8,11 @@ Description: Learn how to use the Terraform kubectl provider to apply Custom Res
 
 ---
 
-The official Terraform Kubernetes provider covers a wide range of built-in resource types, but it falls short when you need to manage Custom Resource Definitions or arbitrary Kubernetes manifests. The `kubectl` provider by Gavin Barron fills this gap by allowing you to apply raw YAML manifests directly from Terraform, making it possible to manage CRDs, custom resources, and any Kubernetes object that the native provider does not support. This post walks through setting up the kubectl provider, managing CRDs, and handling real-world scenarios.
+The official Terraform Kubernetes provider covers a wide range of built-in resource types and also includes the `kubernetes_manifest` resource for custom resources. The `kubectl` provider by Gavin Bunney is still useful when you want to apply raw YAML manifests directly from Terraform, making it possible to manage CRDs, custom resources, and Kubernetes objects without translating them into HCL maps. This post walks through setting up the kubectl provider, managing CRDs, and handling real-world scenarios.
 
 ## Why the kubectl Provider Exists
 
-The official `hashicorp/kubernetes` provider requires that every resource type be explicitly implemented in the provider code. This means that when you install a Kubernetes operator that introduces new Custom Resource Definitions, the official provider cannot manage those custom resources. You would need to fall back to running `kubectl apply` outside of Terraform, breaking your infrastructure-as-code workflow.
+The typed resources in the official `hashicorp/kubernetes` provider require each resource type to be explicitly implemented in the provider code. The provider's `kubernetes_manifest` resource can manage CRDs and custom resources, but it expects the CRD schema to exist in the cluster at plan time. The kubectl provider is another option when you want Terraform to apply raw YAML in the same shape you would pass to `kubectl apply`.
 
 The kubectl provider solves this by accepting raw YAML as input and applying it to the cluster just like the `kubectl apply` command would. It supports server-side apply, diff detection, and proper lifecycle management within Terraform state.
 
@@ -25,11 +25,15 @@ terraform {
   required_providers {
     kubectl = {
       source  = "gavinbunney/kubectl"
-      version = "~> 1.14"
+      version = "~> 1.19"
     }
     kubernetes = {
       source  = "hashicorp/kubernetes"
-      version = "~> 2.25"
+      version = "~> 3.0"
+    }
+    http = {
+      source  = "hashicorp/http"
+      version = "~> 3.6"
     }
   }
 }
@@ -172,8 +176,8 @@ data "kubectl_file_documents" "crds" {
 }
 
 resource "kubectl_manifest" "crds" {
-  for_each  = { for k, v in data.kubectl_file_documents.crds : k => v.manifests }
-  yaml_body = values(each.value)[0]
+  for_each  = merge([for docs in data.kubectl_file_documents.crds : docs.manifests]...)
+  yaml_body = each.value
 
   server_side_apply = true
   force_conflicts   = true
@@ -198,11 +202,10 @@ resource "kubectl_manifest" "namespace_with_labels" {
 
   server_side_apply = true
   force_conflicts   = false
-  field_manager     = "terraform"
 }
 ```
 
-Setting `force_conflicts = false` means Terraform will fail if another controller owns fields that Terraform is trying to modify. This is a safety mechanism that prevents accidental overwrites. Set it to `true` only when you know Terraform should take ownership.
+Setting `force_conflicts = false` means Terraform will fail if another controller owns fields that Terraform is trying to modify. This is a safety mechanism that prevents accidental overwrites. Set it to `true` only when you know Terraform should take ownership. When server-side apply is enabled, the provider uses `kubectl` as the field manager.
 
 ## Handling Resource Dependencies
 
@@ -261,37 +264,32 @@ resource "kubectl_manifest" "service_monitor" {
 
 ## Wait Conditions
 
-Some resources take time to become ready. The kubectl provider supports wait conditions:
+Some resources take time to become ready. The kubectl provider does not support arbitrary field-based wait conditions for custom resources, but it can wait for Deployment and APIService rollouts:
 
 ```hcl
-resource "kubectl_manifest" "argocd_application" {
+resource "kubectl_manifest" "web" {
   yaml_body = <<-YAML
-    apiVersion: argoproj.io/v1alpha1
-    kind: Application
+    apiVersion: apps/v1
+    kind: Deployment
     metadata:
-      name: my-app
-      namespace: argocd
+      name: web
+      namespace: production
     spec:
-      project: default
-      source:
-        repoURL: https://github.com/myorg/my-app
-        targetRevision: main
-        path: k8s/overlays/production
-      destination:
-        server: https://kubernetes.default.svc
-        namespace: production
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
+      replicas: 2
+      selector:
+        matchLabels:
+          app: web
+      template:
+        metadata:
+          labels:
+            app: web
+        spec:
+          containers:
+            - name: nginx
+              image: nginx:1.27
   YAML
 
-  wait_for {
-    field {
-      key   = "status.health.status"
-      value = "Healthy"
-    }
-  }
+  wait_for_rollout = true
 
   timeouts {
     create = "10m"
