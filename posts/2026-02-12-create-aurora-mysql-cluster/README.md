@@ -16,13 +16,13 @@ If you're starting a new project or outgrowing standard RDS MySQL, Aurora is wor
 
 Before diving in, here's why you'd pick Aurora:
 
-- **Storage**: Auto-scales from 10 GB to 128 TB. No need to provision or manage storage.
-- **Replication**: Up to 15 read replicas with sub-10ms replica lag (vs. seconds for standard MySQL replication).
+- **Storage**: Auto-scales up to 256 TiB on current Aurora MySQL 3.10 and higher releases. No need to provision or manage storage.
+- **Replication**: Up to 15 read replicas with replica lag that is usually much less than 100 ms (vs. seconds for standard MySQL replication).
 - **Failover**: Automatic failover typically completes in under 30 seconds.
 - **Durability**: 6 copies of your data across 3 Availability Zones.
 - **Backups**: Continuous backup to S3 with point-in-time recovery.
 
-The trade-off is cost. Aurora instances are roughly 20% more expensive than equivalent RDS MySQL instances, and storage pricing is different.
+The trade-off is cost. Aurora instance and storage pricing is different from standard RDS MySQL, so compare both instance hours and I/O or storage charges for your workload.
 
 ## Prerequisites
 
@@ -87,9 +87,10 @@ The cluster is the primary resource. It manages the shared storage volume:
 aws rds create-db-cluster \
   --db-cluster-identifier myapp-aurora-cluster \
   --engine aurora-mysql \
-  --engine-version 8.0.mysql_aurora.3.07.1 \
+  --engine-version 8.0.mysql_aurora.3.12.0 \
   --master-username admin \
   --master-user-password "$DB_PASSWORD" \
+  --database-name myapp \
   --db-subnet-group-name myapp-aurora-subnets \
   --vpc-security-group-ids sg-0123456789abcdef0 \
   --db-cluster-parameter-group-name myapp-aurora-mysql8-cluster \
@@ -245,11 +246,13 @@ Control which reader gets promoted to writer during a failover:
 # Set failover priority (tier 0 is highest priority, 15 is lowest)
 aws rds modify-db-instance \
   --db-instance-identifier myapp-aurora-reader-1 \
-  --promotion-tier 0
+  --promotion-tier 0 \
+  --apply-immediately
 
 aws rds modify-db-instance \
   --db-instance-identifier myapp-aurora-reader-2 \
-  --promotion-tier 1
+  --promotion-tier 1 \
+  --apply-immediately
 ```
 
 Tier 0 readers get promoted first. If you have a larger reader instance, set it as the highest priority.
@@ -296,10 +299,10 @@ aws cloudwatch put-metric-alarm \
   --dimensions Name=DBClusterIdentifier,Value=myapp-aurora-cluster \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:db-alerts
 
-# Aurora replica lag
+# Maximum replica lag across readers
 aws cloudwatch put-metric-alarm \
   --alarm-name "aurora-myapp-replica-lag" \
-  --metric-name AuroraReplicaLag \
+  --metric-name AuroraReplicaLagMaximum \
   --namespace AWS/RDS \
   --statistic Maximum \
   --period 60 \
