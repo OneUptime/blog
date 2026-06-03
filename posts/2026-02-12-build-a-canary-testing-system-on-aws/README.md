@@ -32,7 +32,7 @@ graph TD
 
 ## Setting Up Basic Canaries
 
-CloudWatch Synthetics canaries are Lambda functions that run on a schedule. You can write them in Node.js or Python. Let us start with a simple API health canary.
+CloudWatch Synthetics canaries are Lambda functions that run on a schedule. You can write them in Node.js, Python, or Java. Let us start with a simple API health canary.
 
 ```yaml
 # CloudFormation template for canary infrastructure
@@ -59,15 +59,28 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/CloudWatchSyntheticsFullAccess
       Policies:
-        - PolicyName: S3Access
+        - PolicyName: CanaryExecutionAccess
           PolicyDocument:
+            Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: s3:PutObject
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
                 Resource: !Sub '${CanaryBucket.Arn}/*'
+              - Effect: Allow
+                Action: s3:GetBucketLocation
+                Resource: !GetAtt CanaryBucket.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/cwsyn-*'
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:canary-creds-*'
 ```
 
 ## Writing API Canaries
@@ -76,11 +89,15 @@ The most valuable canaries test your critical API endpoints. Here is a canary th
 
 ```javascript
 // Canary script: Test the authentication and main API endpoint
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const log = require('@aws/synthetics-logger');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
 const https = require('https');
 
+const secretsManager = new SecretsManagerClient({});
+
 const apiCanary = async function () {
+    const credentials = await getSecret(process.env.CANARY_SECRET_ID);
+
     // Step 1: Authenticate and get a token
     const authResponse = await makeRequest({
         hostname: 'api.myapp.com',
@@ -88,8 +105,8 @@ const apiCanary = async function () {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            clientId: process.env.CANARY_CLIENT_ID,
-            clientSecret: process.env.CANARY_CLIENT_SECRET
+            clientId: credentials.clientId,
+            clientSecret: credentials.clientSecret
         })
     });
 
@@ -155,6 +172,13 @@ function makeRequest(options) {
     });
 }
 
+async function getSecret(secretId) {
+    const response = await secretsManager.send(new GetSecretValueCommand({
+        SecretId: secretId
+    }));
+    return JSON.parse(response.SecretString);
+}
+
 exports.handler = async () => {
     return await apiCanary();
 };
@@ -166,10 +190,14 @@ For web applications, UI canaries navigate through critical user flows using a h
 
 ```javascript
 // Canary script: Test the login and dashboard flow via headless Chrome
-const synthetics = require('Synthetics');
-const log = require('SyntheticsLogger');
+const synthetics = require('@aws/synthetics-puppeteer');
+const log = require('@aws/synthetics-logger');
+const { SecretsManagerClient, GetSecretValueCommand } = require('@aws-sdk/client-secrets-manager');
+
+const secretsManager = new SecretsManagerClient({});
 
 const uiCanary = async function () {
+    const credentials = await getSecret(process.env.CANARY_SECRET_ID);
     const page = await synthetics.getPage();
 
     // Step 1: Navigate to the login page
@@ -184,8 +212,8 @@ const uiCanary = async function () {
 
     // Step 2: Fill in credentials and submit
     await synthetics.executeStep('performLogin', async function () {
-        await page.type('#email', process.env.CANARY_TEST_EMAIL);
-        await page.type('#password', process.env.CANARY_TEST_PASSWORD);
+        await page.type('#email', credentials.email);
+        await page.type('#password', credentials.password);
         await page.click('#login-button');
         await page.waitForNavigation({ waitUntil: 'networkidle0' });
         await synthetics.takeScreenshot('after-login', 'dashboard');
@@ -206,6 +234,13 @@ const uiCanary = async function () {
     });
 };
 
+async function getSecret(secretId) {
+    const response = await secretsManager.send(new GetSecretValueCommand({
+        SecretId: secretId
+    }));
+    return JSON.parse(response.SecretString);
+}
+
 exports.handler = async () => {
     return await uiCanary();
 };
@@ -221,7 +256,7 @@ Deploy canaries as infrastructure:
     Type: AWS::Synthetics::Canary
     Properties:
       Name: api-health-canary
-      RuntimeVersion: syn-nodejs-puppeteer-6.2
+      RuntimeVersion: syn-nodejs-puppeteer-15.1
       ArtifactS3Location: !Sub 's3://${CanaryBucket}/api-canary'
       ExecutionRoleArn: !GetAtt CanaryRole.Arn
       Schedule:
@@ -230,8 +265,7 @@ Deploy canaries as infrastructure:
       RunConfig:
         TimeoutInSeconds: 60
         EnvironmentVariables:
-          CANARY_CLIENT_ID: '{{resolve:secretsmanager:canary-creds:SecretString:clientId}}'
-          CANARY_CLIENT_SECRET: '{{resolve:secretsmanager:canary-creds:SecretString:clientSecret}}'
+          CANARY_SECRET_ID: canary-creds
       Code:
         Handler: apiCanary.handler
         S3Bucket: canary-code-bucket
@@ -242,7 +276,7 @@ Deploy canaries as infrastructure:
     Type: AWS::Synthetics::Canary
     Properties:
       Name: ui-login-canary
-      RuntimeVersion: syn-nodejs-puppeteer-6.2
+      RuntimeVersion: syn-nodejs-puppeteer-15.1
       ArtifactS3Location: !Sub 's3://${CanaryBucket}/ui-canary'
       ExecutionRoleArn: !GetAtt CanaryRole.Arn
       Schedule:
@@ -251,6 +285,8 @@ Deploy canaries as infrastructure:
       RunConfig:
         TimeoutInSeconds: 120
         MemoryInMB: 1024
+        EnvironmentVariables:
+          CANARY_SECRET_ID: canary-creds
       Code:
         Handler: uiCanary.handler
         S3Bucket: canary-code-bucket
@@ -260,26 +296,27 @@ Deploy canaries as infrastructure:
 
 ## Automated Rollback on Canary Failures
 
-This is where things get powerful. When a canary fails after a deployment, automatically roll back:
+This is where things get powerful. When a canary fails during a deployment, automatically stop the deployment and let CodeDeploy roll back:
 
 ```python
 # Lambda triggered by canary failure alarm to rollback CodeDeploy
 import boto3
+from datetime import datetime, timedelta, timezone
 
 codedeploy = boto3.client('codedeploy')
-cloudwatch = boto3.client('cloudwatch')
 
 def handler(event, context):
     # Get the alarm that triggered this
-    alarm_name = event['detail']['alarmName']
+    alarm_name = event['alarmData']['alarmName']
+    print(f'Received alarm: {alarm_name}')
 
     # Find the most recent deployment
     deployments = codedeploy.list_deployments(
         applicationName='MyApplication',
         deploymentGroupName='Production',
-        includeOnlyStatuses=['Succeeded', 'InProgress'],
+        includeOnlyStatuses=['Created', 'Queued', 'InProgress', 'Baking', 'Ready'],
         createTimeRange={
-            'start': datetime.utcnow() - timedelta(hours=1)
+            'start': datetime.now(timezone.utc) - timedelta(hours=1)
         }
     )
 
@@ -293,7 +330,7 @@ def handler(event, context):
     deployment = codedeploy.get_deployment(deploymentId=deployment_id)
     deploy_time = deployment['deploymentInfo']['createTime']
 
-    if (datetime.utcnow() - deploy_time.replace(tzinfo=None)).seconds > 1800:
+    if (datetime.now(timezone.utc) - deploy_time).total_seconds() > 1800:
         print('Last deployment is too old to be the cause')
         return
 
@@ -306,7 +343,7 @@ def handler(event, context):
     print(f'Rolled back deployment {deployment_id} due to canary failure')
 ```
 
-Wire this up with a CloudWatch alarm:
+Wire this up with a CloudWatch alarm and give CloudWatch permission to invoke the rollback Lambda:
 
 ```yaml
 # Alarm that triggers rollback when canary fails
@@ -327,6 +364,15 @@ Wire this up with a CloudWatch alarm:
       AlarmActions:
         - !Ref RollbackTopic
         - !GetAtt RollbackLambda.Arn
+
+  RollbackLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref RollbackLambda
+      Action: lambda:InvokeFunction
+      Principal: lambda.alarms.cloudwatch.amazonaws.com
+      SourceAccount: !Ref AWS::AccountId
+      SourceArn: !Sub 'arn:aws:cloudwatch:${AWS::Region}:${AWS::AccountId}:alarm:api-canary-failure'
 ```
 
 ## Multi-Region Canaries
@@ -340,7 +386,7 @@ import boto3
 REGIONS = ['us-east-1', 'us-west-2', 'eu-west-1', 'ap-southeast-1']
 CANARY_CONFIG = {
     'Name': 'api-health-canary',
-    'RuntimeVersion': 'syn-nodejs-puppeteer-6.2',
+    'RuntimeVersion': 'syn-nodejs-puppeteer-15.1',
     'Schedule': {'Expression': 'rate(5 minutes)'}
 }
 
@@ -351,15 +397,21 @@ for region in REGIONS:
             Name=f'api-health-{region}',
             RuntimeVersion=CANARY_CONFIG['RuntimeVersion'],
             ArtifactS3Location=f's3://canary-artifacts-{region}/canaries',
-            ExecutionRoleArn=f'arn:aws:iam::123456789:role/CanaryRole',
+            ExecutionRoleArn='arn:aws:iam::123456789012:role/CanaryRole',
             Schedule=CANARY_CONFIG['Schedule'],
             Code={
                 'Handler': 'apiCanary.handler',
                 'S3Bucket': f'canary-code-{region}',
                 'S3Key': 'api-canary.zip'
             },
-            RunConfig={'TimeoutInSeconds': 60}
+            RunConfig={
+                'TimeoutInSeconds': 60,
+                'EnvironmentVariables': {
+                    'CANARY_SECRET_ID': 'canary-creds'
+                }
+            }
         )
+        client.start_canary(Name=f'api-health-{region}')
         print(f'Created canary in {region}')
     except client.exceptions.ConflictException:
         print(f'Canary already exists in {region}')
