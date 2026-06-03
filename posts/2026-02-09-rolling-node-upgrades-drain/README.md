@@ -8,13 +8,13 @@ Description: Execute safe rolling worker node upgrades using kubectl drain and u
 
 ---
 
-Rolling node upgrades update worker nodes one at a time while maintaining application availability. The drain operation gracefully evicts pods to other nodes before performing system maintenance, while uncordon makes the node schedulable again after upgrade completion. Proper use of drain, combined with PodDisruptionBudgets and careful timing, ensures zero-downtime upgrades for production workloads.
+Rolling node upgrades update worker nodes one at a time after the control plane has been upgraded while maintaining application availability. The drain operation gracefully evicts pods to other nodes before performing system maintenance, while uncordon makes the node schedulable again after upgrade completion. Proper use of drain, combined with PodDisruptionBudgets and careful timing, minimizes downtime for production workloads.
 
 This guide demonstrates performing rolling node upgrades with drain and uncordon, handling stateful workloads, managing PodDisruptionBudgets, and troubleshooting common evacuation issues.
 
 ## Understanding Drain and Uncordon
 
-kubectl drain prepares a node for maintenance by safely evicting all pods. The operation first cordons the node, marking it unschedulable, then terminates pods respecting grace periods and disruption budgets. Pods managed by controllers (Deployments, StatefulSets, DaemonSets) are recreated on other nodes.
+kubectl drain prepares a node for maintenance by safely evicting eligible pods. The operation first cordons the node, marking it unschedulable, then terminates pods respecting grace periods and disruption budgets. Pods managed by controllers such as Deployments, ReplicaSets, StatefulSets, and Jobs are recreated on other nodes when scheduling and storage constraints allow. DaemonSet-managed pods are not deleted by drain when `--ignore-daemonsets` is used.
 
 Uncordon reverses the cordon operation, making the node schedulable again. New pods can then be scheduled on the upgraded node based on resource availability and pod affinity rules.
 
@@ -133,17 +133,22 @@ Once drained, upgrade the node's Kubernetes components.
 # SSH to the node
 ssh worker-01
 
-# Upgrade kubeadm, kubelet, and kubectl
-sudo apt-mark unhold kubeadm kubelet kubectl
+# Upgrade kubeadm first
+sudo apt-mark unhold kubeadm
 sudo apt-get update
-sudo apt-get install -y \
-  kubeadm=1.28.4-00 \
-  kubelet=1.28.4-00 \
-  kubectl=1.28.4-00
-sudo apt-mark hold kubeadm kubelet kubectl
+sudo apt-get install -y kubeadm='1.36.1-*'
+sudo apt-mark hold kubeadm
 
 # Upgrade node configuration
 sudo kubeadm upgrade node
+
+# Upgrade kubelet and kubectl
+sudo apt-mark unhold kubelet kubectl
+sudo apt-get update
+sudo apt-get install -y \
+  kubelet='1.36.1-*' \
+  kubectl='1.36.1-*'
+sudo apt-mark hold kubelet kubectl
 
 # Restart kubelet
 sudo systemctl daemon-reload
@@ -216,12 +221,12 @@ Automate the rolling upgrade across all worker nodes.
 
 set -e
 
-TARGET_VERSION="${1:-1.28.4}"
+TARGET_VERSION="${1:-1.36.1}"
 GRACE_PERIOD="${2:-60}"
 DRAIN_TIMEOUT="${3:-10m}"
 
 # Get list of worker nodes
-NODES=$(kubectl get nodes -l node-role.kubernetes.io/worker -o jsonpath='{.items[*].metadata.name}')
+NODES=$(kubectl get nodes -l '!node-role.kubernetes.io/control-plane,!node-role.kubernetes.io/master' -o jsonpath='{.items[*].metadata.name}')
 
 echo "=== Rolling Node Upgrade to v${TARGET_VERSION} ==="
 echo "Nodes to upgrade: $NODES"
@@ -247,14 +252,17 @@ for NODE in $NODES; do
   # Upgrade node (requires SSH access)
   echo "[3/5] Upgrading Kubernetes components..."
   ssh $NODE <<ENDSSH
-    sudo apt-mark unhold kubeadm kubelet kubectl
+    sudo apt-mark unhold kubeadm
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq kubeadm="${TARGET_VERSION}-*"
+    sudo apt-mark hold kubeadm
+    sudo kubeadm upgrade node
+    sudo apt-mark unhold kubelet kubectl
     sudo apt-get update -qq
     sudo apt-get install -y -qq \
-      kubeadm=${TARGET_VERSION}-00 \
-      kubelet=${TARGET_VERSION}-00 \
-      kubectl=${TARGET_VERSION}-00
-    sudo apt-mark hold kubeadm kubelet kubectl
-    sudo kubeadm upgrade node
+      kubelet="${TARGET_VERSION}-*" \
+      kubectl="${TARGET_VERSION}-*"
+    sudo apt-mark hold kubelet kubectl
     sudo systemctl daemon-reload
     sudo systemctl restart kubelet
 ENDSSH
@@ -290,7 +298,7 @@ Run the automated upgrade:
 
 ```bash
 chmod +x rolling-node-upgrade.sh
-./rolling-node-upgrade.sh 1.28.4 60 10m
+./rolling-node-upgrade.sh 1.36.1 60 10m
 ```
 
 ## Handling Stateful Workloads
@@ -298,7 +306,7 @@ chmod +x rolling-node-upgrade.sh
 Special considerations for StatefulSets and databases.
 
 ```bash
-# For StatefulSets with local storage
+# For StatefulSets, verify storage can attach on another node first
 # 1. Ensure pod replicas > 1 for redundancy
 kubectl scale statefulset database --replicas=3
 
@@ -309,12 +317,12 @@ kubectl drain worker-04 \
   --grace-period=300 \
   --timeout=30m
 
-# 3. Wait for StatefulSet pod to recover on new node
+# 3. Wait for StatefulSet pod to recover
 kubectl wait --for=condition=ready pod -l app=database --timeout=10m
 
 # For databases with leader election
-# 1. Trigger leader transfer before drain (if supported)
-kubectl exec database-0 -- pg_promote  # PostgreSQL example
+# 1. Trigger leader transfer or controlled failover before drain (if supported)
+kubectl exec database-1 -- sh -c 'pg_ctl promote -D "$PGDATA"'  # PostgreSQL example on a standby
 
 # 2. Drain follower nodes first
 kubectl drain worker-04 --ignore-daemonsets --delete-emptydir-data
@@ -353,10 +361,7 @@ Confirm all nodes upgraded successfully.
 
 ```bash
 # Verify all nodes at target version
-kubectl get nodes -o custom-columns=\
-NAME:.metadata.name,\
-VERSION:.status.nodeInfo.kubeletVersion,\
-STATUS:.status.conditions[-1].type
+kubectl get nodes -o custom-columns='NAME:.metadata.name,VERSION:.status.nodeInfo.kubeletVersion,READY:.status.conditions[?(@.type=="Ready")].status'
 
 # Check for scheduling issues
 kubectl get pods -A --field-selector=status.phase!=Running,status.phase!=Succeeded
@@ -375,7 +380,7 @@ kubectl get events -A --sort-by='.lastTimestamp' | tail -50
 
 ## Rollback Procedures
 
-If issues arise, rollback node upgrades.
+If issues arise, restore a worker node to a previous supported kubelet version.
 
 ```bash
 # Cordon problematic node
@@ -386,13 +391,15 @@ kubectl drain worker-05 --ignore-daemonsets --delete-emptydir-data
 
 # SSH to node and downgrade
 ssh worker-05
-sudo apt-mark unhold kubeadm kubelet kubectl
+sudo apt-mark unhold kubeadm
 sudo apt-get install -y --allow-downgrades \
-  kubeadm=1.27.8-00 \
-  kubelet=1.27.8-00 \
-  kubectl=1.27.8-00
-sudo apt-mark hold kubeadm kubelet kubectl
-sudo kubeadm upgrade node
+  kubeadm='1.35.5-*'
+sudo apt-mark hold kubeadm
+sudo apt-mark unhold kubelet kubectl
+sudo apt-get install -y --allow-downgrades \
+  kubelet='1.35.5-*' \
+  kubectl='1.35.5-*'
+sudo apt-mark hold kubelet kubectl
 sudo systemctl daemon-reload
 sudo systemctl restart kubelet
 exit
@@ -404,4 +411,4 @@ kubectl uncordon worker-05
 kubectl get node worker-05 -o jsonpath='{.status.nodeInfo.kubeletVersion}'
 ```
 
-Rolling node upgrades with drain and uncordon enable zero-downtime Kubernetes cluster maintenance. By respecting PodDisruptionBudgets, gracefully evacuating pods, and upgrading nodes sequentially, you maintain application availability throughout the upgrade process. Automation through scripts ensures consistency across nodes while monitoring and verification procedures confirm successful upgrades before proceeding to the next node.
+Rolling node upgrades with drain and uncordon enable low-disruption Kubernetes cluster maintenance. By respecting PodDisruptionBudgets, gracefully evacuating pods, and upgrading nodes sequentially, you maintain application availability throughout the upgrade process. Automation through scripts ensures consistency across nodes while monitoring and verification procedures confirm successful upgrades before proceeding to the next node.
