@@ -12,7 +12,7 @@ Event sourcing is a design pattern where every change to application state is ca
 
 The event store is the backbone of this pattern. It is an append-only database that stores events in order, supports efficient retrieval by entity, and publishes events for downstream consumers.
 
-On AWS, DynamoDB and Kinesis together form a solid foundation for an event store. DynamoDB provides the durable, ordered storage. Kinesis (or DynamoDB Streams) broadcasts events to consumers. This guide walks through building a production-ready event store.
+On AWS, DynamoDB and Kinesis together form a solid foundation for an event store. DynamoDB provides the durable storage, ordered by sort key within each entity. Kinesis (or DynamoDB Streams) broadcasts events to consumers. This guide walks through building a production-ready event store.
 
 ## Event Store Architecture
 
@@ -70,8 +70,8 @@ Events should be self-describing. Each event includes the entity it belongs to, 
 
 ```python
 # events.py - Event model definitions
-from dataclasses import dataclass, asdict
-from datetime import datetime
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any, Dict
 import json
 import uuid
@@ -96,7 +96,7 @@ class Event:
             entity_type=entity_type,
             event_type=event_type,
             version=version,
-            timestamp=datetime.utcnow().isoformat(),
+            timestamp=datetime.now(timezone.utc).isoformat(),
             data=data,
             metadata=metadata or {}
         )
@@ -130,6 +130,7 @@ class EventStore:
 
     def __init__(self, table_name='EventStore'):
         dynamodb = boto3.resource('dynamodb')
+        self.table_name = table_name
         self.table = dynamodb.Table(table_name)
 
     def append(self, event):
@@ -159,6 +160,9 @@ class EventStore:
         if not events:
             return
 
+        if len(events) > 100:
+            raise ValueError("DynamoDB transactions support up to 100 actions")
+
         # Use DynamoDB transactions for atomic multi-event appends
         client = boto3.client('dynamodb')
 
@@ -167,7 +171,7 @@ class EventStore:
             item = event.to_dynamodb_item()
             transact_items.append({
                 'Put': {
-                    'TableName': 'EventStore',
+                    'TableName': self.table_name,
                     'Item': self._serialize_for_transaction(item),
                     'ConditionExpression': 'attribute_not_exists(entityId) AND attribute_not_exists(version)',
                 }
@@ -176,27 +180,35 @@ class EventStore:
         try:
             client.transact_write_items(TransactItems=transact_items)
         except ClientError as e:
-            if 'TransactionCanceledException' in str(e):
+            if e.response['Error']['Code'] == 'TransactionCanceledException':
                 raise ConcurrencyError("Concurrent modification detected")
             raise
 
     def get_events(self, entity_id, from_version=0):
         """Retrieve all events for an entity, optionally from a specific version."""
-        response = self.table.query(
-            KeyConditionExpression=Key('entityId').eq(entity_id) & Key('version').gte(from_version),
-            ScanIndexForward=True  # Ascending order by version
-        )
-
         events = []
-        for item in response['Items']:
-            events.append({
-                'entityId': item['entityId'],
-                'version': item['version'],
-                'eventType': item['eventType'],
-                'timestamp': item['eventTimestamp'],
-                'data': json.loads(item['data']),
-                'metadata': json.loads(item.get('metadata', '{}')),
-            })
+        query_args = {
+            'KeyConditionExpression': Key('entityId').eq(entity_id) & Key('version').gte(from_version),
+            'ScanIndexForward': True  # Ascending order by version
+        }
+
+        while True:
+            response = self.table.query(**query_args)
+
+            for item in response['Items']:
+                events.append({
+                    'entityId': item['entityId'],
+                    'version': item['version'],
+                    'eventType': item['eventType'],
+                    'timestamp': item['eventTimestamp'],
+                    'data': json.loads(item['data']),
+                    'metadata': json.loads(item.get('metadata', '{}')),
+                })
+
+            if 'LastEvaluatedKey' not in response:
+                break
+
+            query_args['ExclusiveStartKey'] = response['LastEvaluatedKey']
 
         return events
 
@@ -279,6 +291,7 @@ class Order:
         store = EventStore()
         store.append(event)
         self._apply_event_data('OrderPlaced', event.data)
+        self.version = event.version
 
     def cancel(self, reason):
         """Cancel the order (produces an OrderCancelled event)."""
@@ -296,6 +309,7 @@ class Order:
         store = EventStore()
         store.append(event)
         self._apply_event_data('OrderCancelled', event.data)
+        self.version = event.version
 
     def _apply(self, event):
         """Apply an event to update the aggregate state."""
