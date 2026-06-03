@@ -33,12 +33,12 @@ package main
 
 import (
     "context"
+    "encoding/json"
 
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/types"
     "k8s.io/client-go/kubernetes"
-    "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
 func updateServiceWithSSA(ctx context.Context, kubeClient kubernetes.Interface) error {
@@ -107,6 +107,10 @@ import (
 
 func reconcileConfigMap(ctx context.Context, k8sClient client.Client) error {
     configMap := &corev1.ConfigMap{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "v1",
+            Kind:       "ConfigMap",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      "app-config",
             Namespace: "default",
@@ -136,6 +140,10 @@ Different controllers can manage different fields of the same resource:
 // Controller A manages ports
 func controllerA(ctx context.Context, k8sClient client.Client) error {
     service := &corev1.Service{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "v1",
+            Kind:       "Service",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      "shared-service",
             Namespace: "default",
@@ -156,6 +164,10 @@ func controllerA(ctx context.Context, k8sClient client.Client) error {
 // Controller B manages labels
 func controllerB(ctx context.Context, k8sClient client.Client) error {
     service := &corev1.Service{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "v1",
+            Kind:       "Service",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      "shared-service",
             Namespace: "default",
@@ -181,6 +193,10 @@ When another manager owns a field you're trying to change, you get a conflict er
 ```go
 func updateWithConflictHandling(ctx context.Context, k8sClient client.Client) error {
     deployment := &appsv1.Deployment{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "apps/v1",
+            Kind:       "Deployment",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      "app",
             Namespace: "default",
@@ -198,11 +214,10 @@ func updateWithConflictHandling(ctx context.Context, k8sClient client.Client) er
         if apierrors.IsConflict(err) {
             // Another manager owns the replicas field
             // Option 1: Log and skip
-            log.Info("Replicas field owned by another manager, skipping")
-            return nil
+            // return nil
 
             // Option 2: Force take ownership (use carefully)
-            err = k8sClient.Patch(ctx, deployment, client.Apply, &client.PatchOptions{
+            return k8sClient.Patch(ctx, deployment, client.Apply, &client.PatchOptions{
                 FieldManager: "replica-controller",
                 Force:        ptr.To(true),  // Force take ownership
             })
@@ -223,6 +238,10 @@ You don't need to specify all fields. Send only what you manage:
 ```go
 func updateOnlyAnnotations(ctx context.Context, k8sClient client.Client) error {
     pod := &corev1.Pod{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "v1",
+            Kind:       "Pod",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      "mypod",
             Namespace: "default",
@@ -249,6 +268,10 @@ Remove fields by omitting them from your apply:
 ```go
 func removeOwnedLabel(ctx context.Context, k8sClient client.Client) error {
     service := &corev1.Service{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "v1",
+            Kind:       "Service",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      "my-service",
             Namespace: "default",
@@ -278,7 +301,6 @@ import (
 
     appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
-    "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     ctrl "sigs.k8s.io/controller-runtime"
     "sigs.k8s.io/controller-runtime/pkg/client"
@@ -297,6 +319,10 @@ func (r *AppReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 
     // Create desired Deployment state
     deployment := &appsv1.Deployment{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "apps/v1",
+            Kind:       "Deployment",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      app.Name,
             Namespace: app.Namespace,
@@ -367,7 +393,12 @@ metadata:
         f:labels:
           f:managed-by: {}
       f:spec:
-        f:ports: {}
+        f:ports:
+          k:{"port":80,"protocol":"TCP"}:
+            .: {}
+            f:name: {}
+            f:port: {}
+            f:protocol: {}
     manager: port-controller
     operation: Apply
     time: "2026-02-09T10:00:00Z"
@@ -408,6 +439,10 @@ func migrateToSSA(ctx context.Context, k8sClient client.Client) error {
 
     // New way: Just apply desired state
     desiredDeployment := &appsv1.Deployment{
+        TypeMeta: metav1.TypeMeta{
+            APIVersion: "apps/v1",
+            Kind:       "Deployment",
+        },
         ObjectMeta: metav1.ObjectMeta{
             Name:      "app",
             Namespace: "default",
