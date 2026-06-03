@@ -133,7 +133,7 @@ affinity:
     - weight: 50
       preference:
         matchExpressions:
-        - key: node.kubernetes.io/instance-type
+        - key: capacity-type
           operator: In
           values:
           - spot
@@ -360,9 +360,8 @@ kubectl get pod POD_NAME -o yaml | yq '.spec.affinity'
 # Temporarily relax to preferred for testing
 kubectl patch deployment DEPLOY_NAME --type=json -p='[
   {
-    "op": "replace",
-    "path": "/spec/template/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution",
-    "value": null
+    "op": "remove",
+    "path": "/spec/template/spec/affinity/nodeAffinity/requiredDuringSchedulingIgnoredDuringExecution"
   }
 ]'
 ```
