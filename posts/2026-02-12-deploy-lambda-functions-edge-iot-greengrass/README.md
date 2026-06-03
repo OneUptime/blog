@@ -156,7 +156,7 @@ aws lambda create-function \
   --runtime python3.11 \
   --handler lambda_function.lambda_handler \
   --zip-file fileb://function.zip \
-  --role arn:aws:iam::123456789:role/LambdaEdgeRole \
+  --role arn:aws:iam::123456789012:role/LambdaEdgeRole \
   --timeout 25 \
   --memory-size 128 \
   --environment "Variables={TEMP_THRESHOLD=35,HUMIDITY_THRESHOLD=80}"
@@ -179,50 +179,34 @@ aws lambda create-alias \
 
 ## Step 2: Create the Greengrass Component from Lambda
 
-In Greengrass v2, you wrap the Lambda function in a component definition.
+In Greengrass v2, you import the published Lambda function version as a component.
 
 ```bash
 # Create a Greengrass component from the Lambda function
 aws greengrassv2 create-component-version \
-  --inline-recipe '{
-    "RecipeFormatVersion": "2020-01-25",
-    "ComponentName": "com.example.EdgeSensorProcessor",
-    "ComponentVersion": "1.0.0",
-    "ComponentType": "aws.greengrass.lambda",
-    "ComponentDependencies": {
-      "aws.greengrass.LambdaLauncher": {
-        "VersionRequirement": ">=2.0.0"
-      },
-      "aws.greengrass.LambdaRuntimes": {
-        "VersionRequirement": ">=2.0.0"
-      },
-      "aws.greengrass.TokenExchangeService": {
-        "VersionRequirement": ">=2.0.0"
-      }
-    },
-    "ComponentConfiguration": {
-      "DefaultConfiguration": {
-        "lambdaExecutionParameters": {
-          "EnvironmentVariables": {
+  --cli-input-json '{
+    "lambdaFunction": {
+      "lambdaArn": "arn:aws:lambda:us-east-1:123456789012:function:EdgeSensorProcessor:1",
+      "componentName": "com.example.EdgeSensorProcessor",
+      "componentVersion": "1.0.0",
+      "componentLambdaParameters": {
+        "environmentVariables": {
             "TEMP_THRESHOLD": "35",
             "HUMIDITY_THRESHOLD": "80"
-          }
         },
-        "containerMode": "NoContainer",
+        "eventSources": [
+          {
+            "topic": "devices/+/raw-telemetry",
+            "type": "IOT_CORE"
+          }
+        ],
         "inputPayloadEncodingType": "json",
         "timeoutInSeconds": 25,
         "maxIdleTimeInSeconds": 60,
         "maxInstancesCount": 5,
-        "pinned": true,
-        "pubsubTopics": {
-          "0": {
-            "topic": "devices/+/raw-telemetry",
-            "type": "IOT_CORE"
-          }
-        }
+        "pinned": true
       }
-    },
-    "ComponentSource": "arn:aws:lambda:us-east-1:123456789:function:EdgeSensorProcessor:1"
+    }
   }'
 ```
 
@@ -231,27 +215,27 @@ Key configuration options:
 - **containerMode**: `NoContainer` runs the function as a process. Use `GreengrassContainer` for isolation.
 - **pinned**: `true` means the function runs continuously (long-lived). `false` means it is invoked on demand.
 - **maxInstancesCount**: How many concurrent instances can run.
-- **pubsubTopics**: MQTT topics that trigger the function.
+- **eventSources**: Local publish/subscribe or AWS IoT Core MQTT topics that trigger the function.
 
 ## Step 3: Deploy to the Edge Device
 
 ```bash
 # Deploy the Lambda component to a device
 aws greengrassv2 create-deployment \
-  --target-arn "arn:aws:iot:us-east-1:123456789:thing/my-greengrass-core" \
+  --target-arn "arn:aws:iot:us-east-1:123456789012:thing/my-greengrass-core" \
   --deployment-name "EdgeLambdaDeployment" \
   --components '{
     "com.example.EdgeSensorProcessor": {
       "componentVersion": "1.0.0",
       "configurationUpdate": {
-        "merge": "{\"lambdaExecutionParameters\":{\"EnvironmentVariables\":{\"TEMP_THRESHOLD\":\"30\"}}}"
+        "merge": "{\"lambdaExecutionParameters\":{\"EnvironmentVariables\":{\"TEMP_THRESHOLD\":\"30\"}},\"containerMode\":\"NoContainer\"}"
       }
     },
-    "aws.greengrass.LambdaLauncher": {
-      "componentVersion": "2.0.0"
-    },
-    "aws.greengrass.LambdaRuntimes": {
-      "componentVersion": "2.0.0"
+    "aws.greengrass.LegacySubscriptionRouter": {
+      "componentVersion": "2.1.15",
+      "configurationUpdate": {
+        "merge": "{\"subscriptions\":{\"EdgeSensorProcessor_to_cloud\":{\"id\":\"EdgeSensorProcessor_to_cloud\",\"source\":\"component:com.example.EdgeSensorProcessor\",\"subject\":\"devices/+/processed\",\"target\":\"cloud\"},\"EdgeSensorProcessor_alerts_to_cloud\":{\"id\":\"EdgeSensorProcessor_alerts_to_cloud\",\"source\":\"component:com.example.EdgeSensorProcessor\",\"subject\":\"local/alerts\",\"target\":\"cloud\"},\"EdgeSensorProcessor_aggregated_to_cloud\":{\"id\":\"EdgeSensorProcessor_aggregated_to_cloud\",\"source\":\"component:com.example.EdgeSensorProcessor\",\"subject\":\"edge/aggregated-data\",\"target\":\"cloud\"}}}"
+      }
     }
   }'
 ```
@@ -261,6 +245,7 @@ aws greengrassv2 create-deployment \
 ### Subscribe to Local MQTT Topics
 
 The Lambda function can subscribe to both IoT Core topics and local topics.
+If your Lambda code uses the AWS IoT Greengrass Core SDK `publish()` API, deploy and configure the `aws.greengrass.LegacySubscriptionRouter` component for the topics it publishes.
 
 ```python
 # Enhanced lambda with Greengrass SDK for local pub/sub
@@ -283,7 +268,7 @@ def lambda_handler(event, context):
         payload=json.dumps(result)
     )
 
-    # If there are alerts, publish to a local alert topic too
+    # If there are alerts, publish to an alert topic too
     if result.get('alerts'):
         client.publish(
             topic='local/alerts',
@@ -320,17 +305,15 @@ For long-running processing, use a pinned Lambda function that runs continuously
 # long_lived_processor.py - Runs continuously on the edge
 import greengrasssdk
 import json
-import time
 import logging
+import threading
+import time
 
 logger = logging.getLogger()
 client = greengrasssdk.client('iot-data')
 
-def lambda_handler(event, context):
-    """
-    Long-lived Lambda that continuously processes data.
-    Called once and runs indefinitely.
-    """
+def continuous_processor():
+    """Continuously process local data in the long-lived function process."""
     logger.info("Starting long-lived edge processor")
 
     while True:
@@ -351,6 +334,16 @@ def lambda_handler(event, context):
 
         time.sleep(30)  # Process every 30 seconds
 
+processor_thread = threading.Thread(target=continuous_processor, daemon=True)
+processor_thread.start()
+
+def lambda_handler(event, context):
+    """
+    Handler for work messages.
+    The background thread does the continuous processing.
+    """
+    return {'processor_running': processor_thread.is_alive()}
+
 def read_local_data():
     """Read from local data source."""
     # Replace with actual sensor reading logic
@@ -359,9 +352,6 @@ def read_local_data():
 def should_send_to_cloud(data):
     """Only send significant data to reduce bandwidth."""
     return True  # Replace with actual filtering logic
-
-# Entry point for long-lived function
-lambda_handler(None, None)
 ```
 
 ## Step 5: Access Local Resources
@@ -425,7 +415,7 @@ aws greengrassv2 create-component-version \
 
 # Deploy the updated component
 aws greengrassv2 create-deployment \
-  --target-arn "arn:aws:iot:us-east-1:123456789:thinggroup/edge-devices" \
+  --target-arn "arn:aws:iot:us-east-1:123456789012:thinggroup/edge-devices" \
   --components '{
     "com.example.EdgeSensorProcessor": {
       "componentVersion": "2.0.0"
