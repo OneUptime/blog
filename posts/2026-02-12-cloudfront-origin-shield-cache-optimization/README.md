@@ -41,7 +41,7 @@ graph TB
     end
 ```
 
-Without Origin Shield, three regional caches might all request the same object from your origin simultaneously. With Origin Shield, only one request reaches the origin - the other two are served from Origin Shield's cache.
+Without Origin Shield, three regional caches might all request the same object from your origin simultaneously. With Origin Shield, CloudFront can collapse those requests so as few as one request reaches the origin - the other two can be served from Origin Shield's cache.
 
 ## Enabling Origin Shield
 
@@ -71,8 +71,9 @@ The origin configuration with Origin Shield looks like this:
       {
         "Id": "my-s3-origin",
         "DomainName": "my-bucket.s3.us-east-1.amazonaws.com",
+        "OriginAccessControlId": "E1234567890OAC",
         "S3OriginConfig": {
-          "OriginAccessIdentity": "origin-access-identity/cloudfront/E1234567890"
+          "OriginAccessIdentity": ""
         },
         "OriginShield": {
           "Enabled": true,
@@ -107,6 +108,15 @@ Parameters:
       - ap-northeast-1
 
 Resources:
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${OriginBucket}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -120,18 +130,32 @@ Resources:
         Origins:
           - Id: s3-origin
             DomainName: !Sub "${OriginBucket}.s3.${AWS::Region}.amazonaws.com"
+            OriginAccessControlId: !GetAtt OriginAccessControl.Id
             S3OriginConfig:
-              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${OAI}"
+              OriginAccessIdentity: ""
             OriginShield:
               Enabled: true
               OriginShieldRegion: !Ref OriginShieldRegion
         PriceClass: PriceClass_All
 
-  OAI:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+  BucketPolicy:
+    Type: AWS::S3::BucketPolicy
     Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "OAI for ${OriginBucket}"
+      Bucket: !Ref OriginBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipalReadOnly
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${OriginBucket}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub
+                  - "arn:aws:cloudfront::${AWS::AccountId}:distribution/${DistributionId}"
+                  - DistributionId: !GetAtt CloudFrontDistribution.Id
 
 Outputs:
   DistributionDomain:
@@ -152,20 +176,21 @@ If your origin is behind a CDN or in a location not listed, choose the region wi
 
 ## Measuring the Impact
 
-After enabling Origin Shield, you'll want to measure its effectiveness. CloudFront provides metrics that show the cache hit ratio at different layers.
+After enabling Origin Shield, you'll want to measure its effectiveness. CloudFront doesn't publish a separate `OriginShieldHitRatio` CloudWatch metric. Use the distribution cache hit rate and origin latency metrics, compare your origin's own request count against the pre-Origin Shield baseline, and use CloudFront logs to count `OriginShieldHit` values in the `x-edge-detailed-result-type` field.
 
-Query CloudFront metrics to measure Origin Shield effectiveness:
+Query CloudFront metrics to measure cache hit rate and origin latency:
 
 ```bash
-# Get cache hit ratio over the last 24 hours
+# CloudFront metrics are available through CloudWatch in us-east-1
 aws cloudwatch get-metric-data \
+  --region us-east-1 \
   --metric-data-queries '[
     {
-      "Id": "originShieldHitRatio",
+      "Id": "cacheHitRate",
       "MetricStat": {
         "Metric": {
           "Namespace": "AWS/CloudFront",
-          "MetricName": "OriginShieldHitRatio",
+          "MetricName": "CacheHitRate",
           "Dimensions": [
             {
               "Name": "DistributionId",
@@ -182,7 +207,7 @@ aws cloudwatch get-metric-data \
       }
     },
     {
-      "Id": "originRequests",
+      "Id": "originLatencyP50",
       "MetricStat": {
         "Metric": {
           "Namespace": "AWS/CloudFront",
@@ -199,7 +224,7 @@ aws cloudwatch get-metric-data \
           ]
         },
         "Period": 3600,
-        "Stat": "Average"
+        "Stat": "p50"
       }
     }
   ]' \
@@ -208,9 +233,10 @@ aws cloudwatch get-metric-data \
 ```
 
 A healthy Origin Shield deployment should show:
-- Origin Shield hit ratio above 50% (higher is better)
-- Reduced origin request count compared to pre-Origin Shield baseline
-- Lower average origin latency
+- Improved distribution cache hit rate
+- `OriginShieldHit` entries in CloudFront logs for requests served from Origin Shield
+- Reduced origin request count compared to your pre-Origin Shield baseline
+- Lower origin latency percentiles
 
 ## Optimizing Cache Hit Ratios Further
 
@@ -254,7 +280,7 @@ Key optimization strategies:
 
 3. **Use appropriate TTLs**: Longer TTLs mean fewer cache misses. Set TTLs as high as your content freshness requirements allow.
 
-4. **Enable compression**: The `EnableAcceptEncodingGzip` and `EnableAcceptEncodingBrotli` settings let CloudFront cache compressed versions, reducing transfer size without splitting the cache.
+4. **Enable compression**: The `EnableAcceptEncodingGzip` and `EnableAcceptEncodingBrotli` settings let CloudFront normalize the `Accept-Encoding` header and cache compressed versions, reducing transfer size while limiting unnecessary cache key variation.
 
 ## Origin Shield with Dynamic Content
 
@@ -268,7 +294,7 @@ This request collapsing happens automatically. It's particularly valuable for:
 
 ## Cost Analysis
 
-Origin Shield adds an incremental cost per request that flows through it. As of 2026, the pricing is roughly $0.0035 per 10,000 requests (varies by region). For most workloads, the reduction in origin requests more than offsets this cost.
+Origin Shield adds an incremental cost per request that flows through it. As of 2026, the pricing is $0.0075 per 10,000 requests in US regions, $0.009 per 10,000 requests in most Europe and Asia Pacific regions, and $0.016 per 10,000 requests in South America (Sao Paulo). For many workloads, the reduction in origin requests can offset this cost.
 
 Calculate the ROI:
 
@@ -276,7 +302,7 @@ Calculate the ROI:
 Origin requests before Origin Shield: 1,000,000/day
 Origin Shield hit ratio: 60%
 Origin requests after: 400,000/day
-Origin Shield cost: ~$1.05/day (300k requests * 3 regions)
+Origin Shield cost in a US region: ~$0.75/day if 1,000,000 requests/day are charged as incremental Origin Shield requests
 Origin compute savings: depends on your origin infrastructure
 ```
 
