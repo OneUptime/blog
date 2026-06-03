@@ -31,7 +31,7 @@ helm repo update
 helm install cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --create-namespace \
-  --set installCRDs=true
+  --set crds.enabled=true
 
 # Verify installation
 kubectl get pods -n cert-manager
@@ -54,7 +54,7 @@ spec:
     solvers:
     - http01:
         ingress:
-          class: nginx
+          ingressClassName: nginx
 ```
 
 Apply the issuer:
@@ -139,25 +139,30 @@ helm upgrade cert-manager jetstack/cert-manager \
   --namespace cert-manager \
   --reuse-values \
   --set prometheus.enabled=true \
-  --set prometheus.servicemonitor.enabled=true
+  --set prometheus.podmonitor.enabled=true
 ```
 
 Query certificate expiration metrics:
 
 ```promql
 # Days until certificate expires
-certmanager_certificate_expiration_timestamp_seconds{name="example-com-tls"}
+(certmanager_certificate_expiration_timestamp_seconds{name="example-com-tls"}
   - time()
 ) / 86400
+```
 
+```yaml
 # Alert on certificates expiring soon
-ALERT CertificateExpiringSoon
-  IF (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 14
-  FOR 1h
-  LABELS { severity="warning" }
-  ANNOTATIONS {
-    summary = "Certificate {{ $labels.name }} expiring in {{ $value | humanizeDuration }}"
-  }
+groups:
+- name: cert-manager
+  rules:
+  - alert: CertificateExpiringSoon
+    expr: (certmanager_certificate_expiration_timestamp_seconds - time()) / 86400 < 14
+    for: 1h
+    labels:
+      severity: warning
+    annotations:
+      summary: "Certificate {{ $labels.name }} expires in {{ $value }} days"
 ```
 
 ## Configuring Ingress for Zero-Downtime Rotation
@@ -196,7 +201,7 @@ spec:
               number: 80
 ```
 
-NGINX Ingress Controller automatically reloads when TLS secrets change, ensuring zero downtime during certificate rotation.
+NGINX Ingress Controller automatically picks up updated TLS secrets, ensuring zero downtime during certificate rotation.
 
 ## Configuring Applications to Reload Certificates
 
@@ -210,6 +215,7 @@ import (
     "crypto/tls"
     "log"
     "net/http"
+    "path/filepath"
     "sync"
     "time"
 
@@ -253,25 +259,45 @@ func (cr *CertReloader) watchCerts() {
         log.Fatal(err)
     }
 
+    certDir := filepath.Dir(cr.certPath)
+    keyDir := filepath.Dir(cr.keyPath)
+    watched := map[string]struct{}{}
+
+    addDir := func(dir string) {
+        if _, ok := watched[dir]; ok {
+            return
+        }
+        if err := watcher.Add(dir); err != nil {
+            log.Fatalf("failed to watch %s: %v", dir, err)
+        }
+        watched[dir] = struct{}{}
+    }
+
+    addDir(certDir)
+    addDir(keyDir)
+
     go func() {
         for {
             select {
-            case event := <-watcher.Events:
-                if event.Op&fsnotify.Write == fsnotify.Write {
-                    log.Println("Certificate file modified, reloading...")
+            case event, ok := <-watcher.Events:
+                if !ok {
+                    return
+                }
+                if event.Op&(fsnotify.Create|fsnotify.Write|fsnotify.Rename|fsnotify.Remove) != 0 {
+                    log.Println("Certificate volume changed, reloading...")
                     time.Sleep(1 * time.Second) // Wait for write to complete
                     if err := cr.reload(); err != nil {
                         log.Printf("Error reloading certificate: %v", err)
                     }
                 }
-            case err := <-watcher.Errors:
+            case err, ok := <-watcher.Errors:
+                if !ok {
+                    return
+                }
                 log.Printf("Watcher error: %v", err)
             }
         }
     }()
-
-    watcher.Add(cr.certPath)
-    watcher.Add(cr.keyPath)
 }
 
 func (cr *CertReloader) GetCertificate(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
@@ -340,7 +366,7 @@ spec:
 
 ## Using Kubernetes Secret Projection for Atomic Updates
 
-Secrets mounted as volumes update automatically, but file changes are eventually consistent. Use subPath projections for atomic updates:
+Secrets mounted as volumes update automatically, but file changes are eventually consistent. Avoid `subPath` mounts for certificates because they do not receive Secret updates. Use a Secret volume or projected volume mounted as a directory:
 
 ```yaml
 volumes:
@@ -410,12 +436,7 @@ cert-manager creates and manages each certificate independently, rotating them o
 Force immediate renewal for testing or emergency rotation:
 
 ```bash
-# Force renewal by deleting the secret
-kubectl delete secret example-com-tls-secret -n production
-
-# cert-manager will immediately recreate it
-
-# Or use cmctl to trigger renewal
+# Use cmctl to trigger renewal
 cmctl renew example-com-tls -n production
 
 # Watch renewal progress
@@ -471,13 +492,19 @@ For production systems, use automated backup solutions like Velero:
 
 ```bash
 # Install Velero
-velero install --provider aws --bucket my-backup-bucket
+velero install \
+  --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
+  --bucket my-backup-bucket \
+  --backup-location-config region=us-east-1 \
+  --snapshot-location-config region=us-east-1 \
+  --secret-file ./credentials-velero
 
 # Create backup schedule for cert-manager resources
 velero schedule create cert-manager-backup \
   --schedule="0 2 * * *" \
   --include-namespaces cert-manager,production \
-  --include-resources certificates,clusterissuers
+  --include-resources certificates.cert-manager.io,issuers.cert-manager.io,clusterissuers.cert-manager.io,secrets
 ```
 
 ## Best Practices for Certificate Rotation
