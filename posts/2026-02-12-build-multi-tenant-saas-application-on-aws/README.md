@@ -67,7 +67,7 @@ aws cognito-idp create-user-pool \
 aws cognito-idp create-user-pool-client \
   --user-pool-id YOUR_POOL_ID \
   --client-name saas-web-app \
-  --generate-secret \
+  --no-generate-secret \
   --explicit-auth-flows ALLOW_USER_SRP_AUTH ALLOW_REFRESH_TOKEN_AUTH
 ```
 
@@ -174,16 +174,16 @@ class TenantAwareDB {
     await this.docClient.send(new PutCommand({
       TableName: this.tableName,
       Item: {
+        ...item,
         pk: `TENANT#${tenantId}`,
         sk: item.sk,
-        ...item,
         tenantId,
         updatedAt: new Date().toISOString(),
       },
       // Ensure we don't accidentally overwrite another tenant's data
-      ConditionExpression: 'attribute_not_exists(pk) OR pk = :pk',
+      ConditionExpression: 'attribute_not_exists(pk) OR tenantId = :tenantId',
       ExpressionAttributeValues: {
-        ':pk': `TENANT#${tenantId}`,
+        ':tenantId': tenantId,
       },
     }));
   }
@@ -204,7 +204,9 @@ CREATE POLICY tenant_isolation ON projects
 
 -- Set the tenant context at the beginning of each request
 -- (done in your application's database middleware)
-SET app.current_tenant_id = 'tenant-123';
+BEGIN;
+SET LOCAL app.current_tenant_id = 'tenant-123';
+-- Run tenant-scoped queries here, then COMMIT or ROLLBACK.
 ```
 
 ## Tenant Onboarding
@@ -278,7 +280,7 @@ Different tenants get different resource limits based on their plan:
 
 ```javascript
 // middleware/rate-limit.js
-const { DynamoDBDocumentClient, UpdateCommand, GetCommand } = require('@aws-sdk/lib-dynamodb');
+const { UpdateCommand } = require('@aws-sdk/lib-dynamodb');
 
 const LIMITS = {
   free: { requestsPerMinute: 60, apiCallsPerDay: 1000 },
