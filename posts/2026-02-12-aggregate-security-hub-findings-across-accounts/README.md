@@ -10,7 +10,7 @@ Description: Learn how to set up cross-account and cross-region aggregation in A
 
 If you're running Security Hub in 50 accounts across 10 regions, that's 500 separate places to check for security findings. Nobody's doing that. You need a single aggregation point where all findings flow together, giving your security team one dashboard for the entire organization.
 
-Security Hub cross-account aggregation (also called the "finding aggregation" or "administrator-member" model) lets you designate one account as the central hub. Findings from all member accounts are automatically replicated to the administrator, including findings from GuardDuty, Config, Inspector, and Security Hub's own compliance checks.
+Security Hub cross-account aggregation (also called the "finding aggregation" or "administrator-member" model) lets you designate one account as the central hub. Findings from all member accounts are automatically replicated to the administrator, including findings from GuardDuty, Inspector, Macie, IAM Access Analyzer, and Security Hub's own compliance checks.
 
 ## Architecture
 
@@ -73,39 +73,49 @@ Check the aggregator status.
 aws securityhub list-finding-aggregators
 ```
 
-## Step 3: Auto-Enable Members
+## Step 3: Configure Members
 
-Configure Security Hub to automatically enable in all organization member accounts.
+Configure Security Hub central configuration so you can enable Security Hub in organization member accounts with configuration policies.
 
 ```bash
-# Auto-enable Security Hub for all existing and new accounts
+# Enable central configuration from the home Region
 aws securityhub update-organization-configuration \
-  --auto-enable \
+  --no-auto-enable \
   --organization-configuration '{
     "ConfigurationType": "CENTRAL"
   }'
 ```
 
-The `CENTRAL` configuration type means the administrator account controls the configuration for all members. Members can't disable Security Hub or change standards settings.
+The `CENTRAL` configuration type means the administrator account controls the configuration for accounts and OUs that are associated with a configuration policy. Members can't disable Security Hub or change standards settings that are managed by an associated policy.
 
 You can also use `LOCAL` if you want member accounts to manage their own configuration.
 
 ## Step 4: Enable Standards Across the Organization
 
-Push compliance standards to all member accounts from the administrator.
+Create a configuration policy in the home Region and associate it with your organization root or an OU. Replace `r-abc123` with your AWS Organizations root ID.
 
 ```bash
-# Enable CIS Benchmark across the organization
-aws securityhub batch-enable-standards \
-  --standards-subscription-requests '[{
-    "StandardsArn": "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"
-  }]'
+# Create a policy that enables Security Hub, CIS, and FSBP
+aws securityhub create-configuration-policy \
+  --name "Organization Security Hub Policy" \
+  --description "Enable Security Hub standards across the organization" \
+  --configuration-policy '{
+    "SecurityHub": {
+      "ServiceEnabled": true,
+      "EnabledStandardIdentifiers": [
+        "arn:aws:securityhub:us-east-1::standards/cis-aws-foundations-benchmark/v/1.4.0",
+        "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0"
+      ],
+      "SecurityControlsConfiguration": {
+        "DisabledSecurityControlIdentifiers": []
+      }
+    }
+  }'
 
-# Enable AWS Foundational Security Best Practices
-aws securityhub batch-enable-standards \
-  --standards-subscription-requests '[{
-    "StandardsArn": "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0"
-  }]'
+# Associate the returned policy ARN or ID with the organization root
+aws securityhub start-configuration-policy-association \
+  --configuration-policy-identifier "arn:aws:securityhub:us-east-1:555555555555:configuration-policy/a1b2c3d4-5678-90ab-cdef-EXAMPLE11111" \
+  --target '{"RootId": "r-abc123"}'
 ```
 
 ## Viewing Aggregated Findings
@@ -133,7 +143,7 @@ aws securityhub get-findings \
 aws securityhub get-findings \
   --filters '{
     "ComplianceStatus": [{"Value": "FAILED", "Comparison": "EQUALS"}],
-    "ProductName": [{"Value": "Security Hub", "Comparison": "EQUALS"}],
+    "ProductName": [{"Value": "Security Hub CSPM", "Comparison": "EQUALS"}],
     "SeverityLabel": [{"Value": "CRITICAL", "Comparison": "EQUALS"}]
   }' \
   --sort-criteria '{"Field": "AwsAccountId", "SortOrder": "asc"}'
@@ -171,7 +181,7 @@ aws securityhub create-insight \
   --name "Most Common Compliance Failures Org-Wide" \
   --filters '{
     "ComplianceStatus": [{"Value": "FAILED", "Comparison": "EQUALS"}],
-    "ProductName": [{"Value": "Security Hub", "Comparison": "EQUALS"}],
+    "ProductName": [{"Value": "Security Hub CSPM", "Comparison": "EQUALS"}],
     "RecordState": [{"Value": "ACTIVE", "Comparison": "EQUALS"}]
   }' \
   --group-by-attribute "GeneratorId"
@@ -274,13 +284,36 @@ resource "aws_securityhub_finding_aggregator" "all_regions" {
 }
 
 resource "aws_securityhub_organization_configuration" "org" {
-  auto_enable           = true
-  auto_enable_standards = "DEFAULT"
-  depends_on            = [aws_securityhub_account.admin]
+  auto_enable           = false
+  auto_enable_standards = "NONE"
+  depends_on            = [aws_securityhub_finding_aggregator.all_regions]
 
   organization_configuration {
     configuration_type = "CENTRAL"
   }
+}
+
+resource "aws_securityhub_configuration_policy" "org" {
+  name        = "Organization Security Hub Policy"
+  description = "Enable Security Hub standards across the organization"
+
+  configuration_policy {
+    service_enabled = true
+    enabled_standard_arns = [
+      "arn:aws:securityhub:us-east-1::standards/cis-aws-foundations-benchmark/v/1.4.0",
+      "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0",
+    ]
+    security_controls_configuration {
+      disabled_control_identifiers = []
+    }
+  }
+
+  depends_on = [aws_securityhub_organization_configuration.org]
+}
+
+resource "aws_securityhub_configuration_policy_association" "root" {
+  target_id = "r-abc123"
+  policy_id = aws_securityhub_configuration_policy.org.id
 }
 
 # Cross-account insights
