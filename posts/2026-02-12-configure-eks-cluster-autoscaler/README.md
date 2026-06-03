@@ -8,13 +8,13 @@ Description: Step-by-step guide to configuring the Kubernetes Cluster Autoscaler
 
 ---
 
-Running a fixed number of nodes in your EKS cluster is wasteful. During peak hours, you don't have enough capacity. During off-hours, you're paying for nodes sitting idle. The Cluster Autoscaler solves this by automatically adjusting the number of nodes based on pending pods and resource utilization.
+Running a fixed number of nodes in your EKS cluster is wasteful. During peak hours, you don't have enough capacity. During off-hours, you're paying for nodes sitting idle. The Cluster Autoscaler solves this by automatically adjusting the number of nodes based on pending pods and whether nodes can be removed safely.
 
 This guide walks through setting up the Cluster Autoscaler on EKS, tuning it for your workloads, and avoiding the common pitfalls that trip people up.
 
 ## How the Cluster Autoscaler Works
 
-The Cluster Autoscaler watches for pods that can't be scheduled due to insufficient resources. When it finds unschedulable pods, it calculates which node group can accommodate them and triggers a scale-up. For scale-down, it identifies nodes that are underutilized (below 50% resource usage by default) and safely drains and terminates them.
+The Cluster Autoscaler watches for pods that can't be scheduled due to insufficient resources. When it finds unschedulable pods, it calculates which node group can accommodate them and triggers a scale-up. For scale-down, it identifies nodes whose requested CPU and memory are below the utilization threshold (50% by default), verifies their pods can move elsewhere, and safely drains and terminates them.
 
 ```mermaid
 flowchart TD
@@ -48,13 +48,25 @@ The Cluster Autoscaler needs permissions to describe and modify Auto Scaling Gro
     {
       "Effect": "Allow",
       "Action": [
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled": "true",
+          "aws:ResourceTag/k8s.io/cluster-autoscaler/my-cluster": "owned"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
         "autoscaling:DescribeAutoScalingGroups",
         "autoscaling:DescribeAutoScalingInstances",
         "autoscaling:DescribeLaunchConfigurations",
         "autoscaling:DescribeScalingActivities",
         "autoscaling:DescribeTags",
-        "autoscaling:SetDesiredCapacity",
-        "autoscaling:TerminateInstanceInAutoScalingGroup",
         "ec2:DescribeLaunchTemplateVersions",
         "ec2:DescribeInstanceTypes",
         "ec2:DescribeImages",
@@ -79,7 +91,14 @@ aws iam create-policy \
 
 ## Step 2: Create an IAM Role for Service Account (IRSA)
 
-The recommended approach is to use IRSA to grant the Cluster Autoscaler pod the necessary permissions. This avoids attaching broad permissions to all nodes.
+The recommended approach is to use IRSA to grant the Cluster Autoscaler pod the necessary permissions. This avoids attaching broad permissions to all nodes. Make sure the IAM OIDC provider is associated with your cluster first:
+
+```bash
+# Associate the IAM OIDC provider if it is not already enabled
+eksctl utils associate-iam-oidc-provider \
+  --cluster=my-cluster \
+  --approve
+```
 
 ```bash
 # Create the IRSA role for Cluster Autoscaler
@@ -177,7 +196,7 @@ You should see log entries about the autoscaler discovering your node groups and
 
 The default settings work for most cases, but you'll likely want to tune a few parameters.
 
-**Scale-down delay** controls how long a node must be underutilized before it's removed:
+**Scale-down delay** controls how long a node must be unneeded before it's removed:
 
 ```yaml
 # Add these flags to the container command
@@ -186,10 +205,10 @@ The default settings work for most cases, but you'll likely want to tune a few p
 - --scale-down-unneeded-time=10m        # Node must be unneeded for 10 min
 ```
 
-**Scale-down utilization threshold** determines what counts as "underutilized":
+**Scale-down utilization threshold** determines what counts as "underutilized" based on requested resources:
 
 ```yaml
-# Node is eligible for scale-down if utilization is below 50%
+# Node is eligible for scale-down if requested CPU and memory are below 50%
 - --scale-down-utilization-threshold=0.5
 ```
 
