@@ -43,11 +43,27 @@ aws organizations enable-aws-service-access \
 Create the aggregator in your management account (or a delegated administrator account).
 
 ```bash
+# Create an IAM role for the organization aggregator
+aws iam create-role \
+  --role-name OrgConfigRole \
+  --assume-role-policy-document '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Effect": "Allow",
+      "Principal": { "Service": "config.amazonaws.com" },
+      "Action": "sts:AssumeRole"
+    }]
+  }'
+
+aws iam attach-role-policy \
+  --role-name OrgConfigRole \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSConfigRoleForOrganizations
+
 # Create an organization aggregator that covers all regions
 aws configservice put-configuration-aggregator \
   --configuration-aggregator-name org-aggregator \
   --organization-aggregation-source '{
-    "RoleArn": "arn:aws:iam::111111111111:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig",
+    "RoleArn": "arn:aws:iam::111111111111:role/OrgConfigRole",
     "AllAwsRegions": true
   }'
 ```
@@ -58,7 +74,7 @@ If you only want to aggregate specific regions, replace `AllAwsRegions` with a l
 aws configservice put-configuration-aggregator \
   --configuration-aggregator-name org-aggregator \
   --organization-aggregation-source '{
-    "RoleArn": "arn:aws:iam::111111111111:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig",
+    "RoleArn": "arn:aws:iam::111111111111:role/OrgConfigRole",
     "AwsRegions": ["us-east-1", "us-west-2", "eu-west-1"]
   }'
 ```
@@ -105,7 +121,7 @@ aws configservice put-aggregation-authorization \
   --authorized-aws-region us-east-1
 ```
 
-This explicit authorization step is what makes individual account aggregation more work. With the organization aggregator, it's automatic.
+Use the AWS Region where the aggregator was created for `--authorized-aws-region`. This explicit authorization step is what makes individual account aggregation more work. With the organization aggregator, it's automatic.
 
 ## Querying Aggregated Data
 
@@ -115,17 +131,15 @@ Once the aggregator is running, you can query compliance data across all account
 
 ```bash
 # Get compliance summary grouped by account
-aws configservice get-aggregate-compliance-details-by-config-rule \
+aws configservice describe-aggregate-compliance-by-config-rules \
   --configuration-aggregator-name org-aggregator \
-  --config-rule-name restricted-ssh \
-  --compliance-type NON_COMPLIANT \
-  --limit 20
+  --filters ConfigRuleName=restricted-ssh,ComplianceType=NON_COMPLIANT
 ```
 
-### Find Non-Compliant Resources Across Accounts
+### Count Discovered Resources Across Accounts
 
 ```bash
-# List all non-compliant security groups across all accounts
+# Count discovered resources by resource type across all accounts
 aws configservice get-aggregate-discovered-resource-counts \
   --configuration-aggregator-name org-aggregator \
   --group-by-key RESOURCE_TYPE
@@ -136,7 +150,7 @@ aws configservice get-aggregate-discovered-resource-counts \
 The aggregate advanced query feature lets you run SQL-like queries across all accounts.
 
 ```bash
-# Find all S3 buckets without encryption across all accounts
+# Find S3 buckets with versioning suspended across all accounts
 aws configservice select-aggregate-resource-config \
   --configuration-aggregator-name org-aggregator \
   --expression "
@@ -145,10 +159,10 @@ aws configservice select-aggregate-resource-config \
       awsRegion,
       resourceId,
       resourceName,
-      configuration.serverSideEncryptionConfiguration
+      supplementaryConfiguration.BucketVersioningConfiguration.status
     WHERE
       resourceType = 'AWS::S3::Bucket'
-      AND configuration.serverSideEncryptionConfiguration IS NULL
+      AND supplementaryConfiguration.BucketVersioningConfiguration.status = 'Suspended'
   "
 ```
 
@@ -209,6 +223,8 @@ resource "aws_config_configuration_aggregator" "organization" {
     all_regions = true
     role_arn    = aws_iam_role.config_aggregator.arn
   }
+
+  depends_on = [aws_iam_role_policy_attachment.config_aggregator]
 }
 
 resource "aws_iam_role" "config_aggregator" {
@@ -244,23 +260,23 @@ def get_compliance_summary(aggregator_name):
     """Get compliance summary across all accounts."""
 
     # Get compliance by Config rule
-    response = config.describe_aggregate_compliance_by_config_rules(
+    summary = defaultdict(list)
+    paginator = config.get_paginator('describe_aggregate_compliance_by_config_rules')
+
+    for page in paginator.paginate(
         ConfigurationAggregatorName=aggregator_name,
         Filters={'ComplianceType': 'NON_COMPLIANT'}
-    )
+    ):
+        for rule in page['AggregateComplianceByConfigRules']:
+            rule_name = rule['ConfigRuleName']
+            account = rule['AccountId']
+            region = rule['AwsRegion']
 
-    summary = defaultdict(list)
-
-    for rule in response['AggregateComplianceByConfigRules']:
-        rule_name = rule['ConfigRuleName']
-        account = rule['AccountId']
-        region = rule['AwsRegion']
-
-        summary[rule_name].append({
-            'account': account,
-            'region': region,
-            'compliance': rule['Compliance']['ComplianceType']
-        })
+            summary[rule_name].append({
+                'account': account,
+                'region': region,
+                'compliance': rule['Compliance']['ComplianceType']
+            })
 
     # Print results
     print(f"\nCompliance Summary for {aggregator_name}")
