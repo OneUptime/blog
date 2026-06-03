@@ -43,13 +43,13 @@ The core Lambda handles different writing modes through a single endpoint:
 import boto3
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 bedrock = boto3.client('bedrock-runtime')
 dynamodb = boto3.resource('dynamodb')
 history_table = dynamodb.Table('WritingHistory')
 
-MODEL_ID = 'anthropic.claude-3-sonnet-20240229-v1:0'
+MODEL_ID = 'anthropic.claude-sonnet-4-6-v1'
 
 def handler(event, context):
     body = json.loads(event['body'])
@@ -330,14 +330,15 @@ def call_bedrock(prompt, max_tokens=1024, temperature=0.5):
 
 def save_history(user_id, mode, request, result):
     """Save writing history for the user."""
+    now = datetime.now(timezone.utc)
     history_table.put_item(Item={
         'historyId': str(uuid.uuid4()),
         'userId': user_id,
         'mode': mode,
         'request': json.dumps(request, default=str)[:5000],
         'result': json.dumps(result, default=str)[:10000],
-        'timestamp': datetime.utcnow().isoformat(),
-        'ttl': int(datetime.utcnow().timestamp()) + (90 * 86400)
+        'timestamp': now.isoformat(),
+        'ttl': int(now.timestamp()) + (90 * 86400)
     })
 
 def respond(status, body):
@@ -405,7 +406,7 @@ Rewritten content:"""
 
 ## Monitoring the Writing Assistant
 
-Track API latency (writers expect fast responses), error rates, usage per writing mode (which features are most popular), and token consumption for cost management. If Bedrock throttles your requests during peak hours, users get a degraded experience. Monitor with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-code-review-bot-with-amazon-bedrock/view) to catch performance issues before they impact users.
+Track API latency (writers expect fast responses), error rates, usage per writing mode (which features are most popular), and token consumption for cost management. If Bedrock throttles your requests during peak hours, users get a degraded experience. Monitor with [OneUptime](https://oneuptime.com/) to catch performance issues before they impact users.
 
 ## Wrapping Up
 
