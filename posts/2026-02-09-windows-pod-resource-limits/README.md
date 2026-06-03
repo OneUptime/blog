@@ -14,7 +14,7 @@ Resource management is critical for stable Kubernetes clusters. Windows containe
 
 Windows containers use the Windows Host Compute Service (HCS) for resource isolation and limitation. Unlike Linux cgroups, Windows uses job objects and resource controls that behave differently in several ways.
 
-CPU limits in Windows containers are enforced as a percentage of total CPU time rather than CPU shares. Memory limits trigger out-of-memory kills similar to Linux but with different timing characteristics due to Windows memory management.
+CPU limits in Windows containers are enforced as a cap on available CPU time. CPU requests are still important for Kubernetes scheduling, but Windows cannot guarantee a minimum amount of CPU time to a container the same way Linux CPU shares can influence cgroup scheduling. Memory limits cap container memory through Windows resource controls, but Windows does not overcommit memory for processes the same way Linux does; if physical memory is exhausted, paging can slow performance instead of producing Linux-style OOM termination behavior.
 
 Windows containers typically require more base memory than equivalent Linux containers due to the Windows kernel overhead. A minimal Windows Server Core container needs around 200-300 MB just for the operating system before your application loads.
 
@@ -52,11 +52,11 @@ spec:
         cpu: "1000m"
 ```
 
-The `requests` define the guaranteed resources, while `limits` define the maximum the container can use.
+The `requests` tell the scheduler how much CPU and memory to reserve when placing the pod, while `limits` define the maximum the container can use.
 
 ## Calculating Appropriate Resource Requests
 
-Determine baseline resource needs for your Windows application:
+Determine baseline resource needs for your Windows application by adapting a sampling loop like this inside your application container:
 
 ```yaml
 # resource-testing-pod.yaml
@@ -83,12 +83,12 @@ spec:
       $memSamples = @()
 
       for ($i = 0; $i -lt $samples; $i++) {
-        # CPU usage
+        # Container-visible CPU usage
         $cpu = Get-Counter '\Processor(_Total)\% Processor Time' -SampleInterval 1 -MaxSamples 1
         $cpuPercent = [math]::Round($cpu.CounterSamples[0].CookedValue, 2)
         $cpuSamples += $cpuPercent
 
-        # Memory usage
+        # Memory usage for this PowerShell process
         $mem = Get-WmiObject Win32_Process -Filter "ProcessId = $PID"
         $memMB = [math]::Round($mem.WorkingSetSize / 1MB, 2)
         $memSamples += $memMB
@@ -168,9 +168,9 @@ spec:
       }
     resources:
       requests:
-        cpu: "1000m"  # Guaranteed 1 CPU
+        cpu: "1000m"  # Scheduler reserves 1 CPU
       limits:
-        cpu: "2000m"  # Can burst to 2 CPUs
+        cpu: "2000m"  # Limited to 2 CPUs
 ```
 
 Understanding CPU behavior:
@@ -187,33 +187,33 @@ spec:
   containers:
   # Scenario 1: Low CPU, no bursting
   - name: low-cpu
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command: ["powershell", "-Command", "Start-Sleep 3600"]
     resources:
       requests:
         cpu: "100m"
       limits:
-        cpu: "100m"  # Same as request = no bursting
+        cpu: "100m"  # Same as request = capped at request
 
   # Scenario 2: Moderate CPU with bursting
   - name: burstable-cpu
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command: ["powershell", "-Command", "Start-Sleep 3600"]
     resources:
       requests:
         cpu: "250m"
       limits:
-        cpu: "1000m"  # Can burst 4x during peaks
+        cpu: "1000m"  # Can use up to 4x the request during peaks
 
-  # Scenario 3: Guaranteed CPU
+  # Scenario 3: Request equals limit
   - name: guaranteed-cpu
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command: ["powershell", "-Command", "Start-Sleep 3600"]
     resources:
       requests:
         cpu: "2000m"
       limits:
-        cpu: "2000m"  # Guaranteed, no sharing
+        cpu: "2000m"  # Request equals limit
 ```
 
 ## Configuring Memory Resources
@@ -248,9 +248,9 @@ spec:
       limits:
         memory: "2Gi"
 
-  # Large application (SQL Server)
+  # Large application (line-of-business service)
   - name: large-app
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: myregistry.azurecr.io/windows-line-of-business-app:v1
     resources:
       requests:
         memory: "4Gi"
@@ -325,13 +325,13 @@ kubectl top nodes
 # Describe pod to see limits
 kubectl describe pod <pod-name> | grep -A 5 "Limits:"
 
-# Check for OOM kills
-kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].lastState.terminated.reason}{"\n"}{end}' | grep OOMKilled
+# Check for terminated containers
+kubectl get pods -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.containerStatuses[0].lastState.terminated.reason}{"\n"}{end}'
 ```
 
-## Handling Out of Memory Situations
+## Handling Memory Pressure
 
-Configure memory limits to prevent OOM kills:
+Configure memory limits and application-level memory handling to reduce memory pressure:
 
 ```yaml
 # oom-prevention.yaml
@@ -399,7 +399,7 @@ spec:
     kubernetes.io/os: windows
   containers:
   - name: app
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command: ["powershell", "-Command", "Start-Sleep 3600"]
     resources:
       requests:
@@ -419,7 +419,7 @@ spec:
     kubernetes.io/os: windows
   containers:
   - name: app
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command: ["powershell", "-Command", "Start-Sleep 3600"]
     resources:
       requests:
@@ -439,7 +439,7 @@ spec:
     kubernetes.io/os: windows
   containers:
   - name: app
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: mcr.microsoft.com/windows/servercore:ltsc2022
     command: ["powershell", "-Command", "Start-Sleep 3600"]
     # No resources specified
 ```
@@ -502,8 +502,8 @@ Follow these guidelines:
 2. Leave at least 20% headroom between requests and limits for bursting
 3. Account for Windows OS overhead (minimum 200-300 MB)
 4. Test resource usage under load before deploying to production
-5. Monitor OOMKilled events and adjust limits accordingly
-6. Use Guaranteed QoS for critical applications
+5. Monitor memory pressure, paging, and terminated containers, then adjust limits accordingly
+6. Use equal requests and limits for critical applications that need predictable scheduling and strict caps
 7. Implement application-level memory management
 8. Set appropriate resource quotas at namespace level
 
