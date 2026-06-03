@@ -8,7 +8,7 @@ Description: Build an automated resume and CV parser using AWS Textract, Compreh
 
 ---
 
-Parsing resumes is one of those problems that sounds straightforward but hides a mess of edge cases. Resumes come in PDFs, Word documents, and images. Layouts range from single-column to multi-column to creative designs that break every parser. Names, dates, skills, and experience sections are never in the same place twice.
+Parsing resumes is one of those problems that sounds straightforward but hides a mess of edge cases. Resumes come in PDFs, Word documents that need conversion before Textract, and images. Layouts range from single-column to multi-column to creative designs that break every parser. Names, dates, skills, and experience sections are never in the same place twice.
 
 AWS Textract extracts text and structure from documents. Combined with Comprehend for entity recognition and a bit of custom logic, you can build a resume parser that handles the variety of formats recruiters deal with every day.
 
@@ -31,7 +31,9 @@ graph TD
 When a resume is uploaded to S3, a Lambda function kicks off the parsing pipeline:
 
 ```yaml
-# CloudFormation for the resume parsing pipeline
+# CloudFormation excerpt for the resume parsing pipeline.
+# ResumeParserLambda, its execution role, and the AWS::Lambda::Permission
+# that allows S3 to invoke it are omitted for brevity.
 
 AWSTemplateFormatVersion: '2010-09-09'
 Resources:
@@ -83,7 +85,6 @@ The first step is pulling raw text from the resume. Textract handles PDFs, PNGs,
 ```python
 # Lambda function to extract text from resume using Textract
 import boto3
-import json
 import uuid
 
 textract = boto3.client('textract')
@@ -99,15 +100,18 @@ def extract_text(event, context):
     obj = s3.head_object(Bucket=bucket, Key=key)
     file_size = obj['ContentLength']
 
-    if file_size > 10 * 1024 * 1024:  # 10MB limit
+    lower_key = key.lower()
+    is_pdf_or_tiff = lower_key.endswith(('.pdf', '.tif', '.tiff'))
+    max_size = 500 * 1024 * 1024 if is_pdf_or_tiff else 10 * 1024 * 1024
+
+    if file_size > max_size:
         return {'error': 'File too large for Textract'}
 
     # For single-page documents, use synchronous API
     # For multi-page PDFs, use asynchronous API
-    content_type = obj.get('ContentType', '')
 
-    if key.endswith('.pdf'):
-        # Use async API for PDFs (handles multi-page)
+    if is_pdf_or_tiff:
+        # Use async API for PDFs and TIFFs (handles multi-page documents)
         response = textract.start_document_text_detection(
             DocumentLocation={
                 'S3Object': {'Bucket': bucket, 'Name': key}
@@ -135,8 +139,17 @@ def wait_for_textract_job(job_id):
         response = textract.get_document_text_detection(JobId=job_id)
         status = response['JobStatus']
 
-        if status == 'SUCCEEDED':
-            return extract_text_from_blocks(response['Blocks'])
+        if status in ('SUCCEEDED', 'PARTIAL_SUCCESS'):
+            blocks = response.get('Blocks', [])
+            next_token = response.get('NextToken')
+            while next_token:
+                page = textract.get_document_text_detection(
+                    JobId=job_id,
+                    NextToken=next_token
+                )
+                blocks.extend(page.get('Blocks', []))
+                next_token = page.get('NextToken')
+            return extract_text_from_blocks(blocks)
         elif status == 'FAILED':
             raise Exception(f'Textract job failed: {response.get("StatusMessage")}')
 
@@ -253,7 +266,6 @@ def identify_sections(lines):
 def parse_experience(lines):
     """Parse work experience entries."""
     experiences = []
-    current_entry = None
     text = '\n'.join(lines)
 
     # Split by date patterns to find individual job entries
@@ -274,6 +286,29 @@ def parse_experience(lines):
         })
 
     return experiences
+
+def parse_summary(lines):
+    """Return the summary section as a single paragraph."""
+    return ' '.join(line.strip() for line in lines if line.strip())
+
+def parse_education(lines):
+    """Parse education entries."""
+    entries = []
+    current_entry = []
+
+    for line in lines:
+        cleaned = line.strip()
+        if not cleaned:
+            if current_entry:
+                entries.append('\n'.join(current_entry))
+                current_entry = []
+            continue
+        current_entry.append(cleaned)
+
+    if current_entry:
+        entries.append('\n'.join(current_entry))
+
+    return entries
 
 def parse_skills(lines):
     """Extract skills from the skills section."""
@@ -302,12 +337,18 @@ import boto3
 
 comprehend = boto3.client('comprehend')
 
+def truncate_utf8(text, max_bytes):
+    """Trim text to a UTF-8 byte limit without splitting a character."""
+    encoded = text.encode('utf-8')[:max_bytes]
+    return encoded.decode('utf-8', errors='ignore')
+
 def enhance_with_nlp(text, parsed_profile):
     """Use Comprehend to extract additional entities."""
+    comprehend_text = truncate_utf8(text, 5000)
 
     # Detect key phrases
     phrases_response = comprehend.detect_key_phrases(
-        Text=text[:5000],  # Comprehend has a 5000 byte limit per call
+        Text=comprehend_text,  # Comprehend real-time plain-text APIs have a 5KB limit
         LanguageCode='en'
     )
 
@@ -318,7 +359,7 @@ def enhance_with_nlp(text, parsed_profile):
 
     # Detect entities (organizations, dates, locations)
     entities_response = comprehend.detect_entities(
-        Text=text[:5000],
+        Text=comprehend_text,
         LanguageCode='en'
     )
 
@@ -397,12 +438,27 @@ def search_profiles(skills=None, min_experience=0):
         attr_values[':minExp'] = min_experience
 
     if not filter_parts:
-        return profiles_table.scan()['Items']
+        return scan_all()
 
-    return profiles_table.scan(
+    return scan_all(
         FilterExpression=' AND '.join(filter_parts),
         ExpressionAttributeValues=attr_values
-    )['Items']
+    )
+
+def scan_all(**scan_kwargs):
+    """Return all matching scan results across DynamoDB pages."""
+    items = []
+    response = profiles_table.scan(**scan_kwargs)
+    items.extend(response.get('Items', []))
+
+    while 'LastEvaluatedKey' in response:
+        response = profiles_table.scan(
+            **scan_kwargs,
+            ExclusiveStartKey=response['LastEvaluatedKey']
+        )
+        items.extend(response.get('Items', []))
+
+    return items
 ```
 
 ## Monitoring the Parser Pipeline
