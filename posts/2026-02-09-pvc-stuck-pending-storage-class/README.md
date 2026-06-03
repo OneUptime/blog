@@ -65,8 +65,7 @@ kubectl get storageclass
 
 # Output might show:
 # NAME                 PROVISIONER             RECLAIMPOLICY   AGE
-# standard (default)   kubernetes.io/aws-ebs   Delete          30d
-# fast-ssd             <missing>
+# standard (default)   ebs.csi.aws.com         Delete          30d
 
 # The PVC requests "fast-ssd" but it doesn't exist
 ```
@@ -79,7 +78,7 @@ apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
   name: fast-ssd
-provisioner: kubernetes.io/aws-ebs
+provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   iops: "3000"
@@ -110,6 +109,7 @@ Apply the configuration.
 ```bash
 kubectl apply -f storageclass.yaml
 # or
+kubectl delete pvc app-data -n default
 kubectl apply -f pvc.yaml
 
 # Check PVC status
@@ -125,11 +125,11 @@ Dynamic provisioning requires a functioning storage provisioner. Check if the pr
 kubectl get pods -n kube-system | grep ebs-csi
 
 # Output:
-# ebs-csi-controller-0   6/6     Running   0          5d
-# ebs-csi-node-xyz       3/3     Running   0          5d
+# ebs-csi-controller-abc123   6/6     Running   0          5d
+# ebs-csi-node-xyz           3/3     Running   0          5d
 
 # Check controller logs for errors
-kubectl logs -n kube-system ebs-csi-controller-0 -c csi-provisioner | tail -50
+kubectl logs -n kube-system deployment/ebs-csi-controller -c csi-provisioner --tail=50
 
 # Look for errors like:
 # failed to provision volume: rpc error: code = Internal desc = Could not create volume
@@ -155,7 +155,7 @@ Check provisioner RBAC permissions.
 kubectl get serviceaccount ebs-csi-controller-sa -n kube-system
 
 # Check ClusterRole permissions
-kubectl describe clusterrole ebs-csi-provisioner-role
+kubectl get clusterrole | grep ebs-csi
 
 # Verify ClusterRoleBinding
 kubectl get clusterrolebinding | grep ebs-csi
@@ -169,10 +169,11 @@ Cloud providers and storage backends have capacity and quota limits. Check if yo
 # For AWS, check account limits
 aws service-quotas get-service-quota \
   --service-code ebs \
-  --quota-code L-D18FCD1D  # EBS volume limit
+  --quota-code L-7A658B76  # gp3 storage limit in TiB
 
 # Check current usage
-aws ec2 describe-volumes --query 'length(Volumes)'
+aws ec2 describe-volumes --filters Name=volume-type,Values=gp3 \
+  --query 'sum(Volumes[].Size)'
 
 # For GCP, check quotas
 gcloud compute project-info describe --project=<project-id> | \
@@ -279,6 +280,7 @@ provisioner: nfs.csi.k8s.io
 parameters:
   server: nfs-server.example.com
   share: /exports
+  subDir: ${pvc.metadata.namespace}-${pvc.metadata.name}
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -398,14 +400,14 @@ data:
           summary: "PVC {{ $labels.namespace }}/{{ $labels.persistentvolumeclaim }} stuck pending"
           description: "Check StorageClass and provisioner"
 
-      - alert: PVProvisioningFailed
+      - alert: StorageOperationFailed
         expr: |
           rate(storage_operation_duration_seconds_count{status="fail-unknown"}[5m]) > 0
         for: 5m
         labels:
           severity: critical
         annotations:
-          summary: "PV provisioning failures detected"
+          summary: "Kubernetes storage operation failures detected"
 ```
 
 Create a dashboard tracking PVC provisioning times and failure rates.
