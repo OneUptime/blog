@@ -31,7 +31,6 @@ Before you dive in, make sure you have the following:
 You'll need these IAM permissions at minimum:
 
 ```json
-// IAM policy for Application Insights setup
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -39,6 +38,9 @@ You'll need these IAM permissions at minimum:
       "Effect": "Allow",
       "Action": [
         "applicationinsights:*",
+        "iam:CreateServiceLinkedRole",
+        "iam:ListRoles",
+        "resource-groups:ListGroups",
         "cloudwatch:*",
         "logs:*",
         "ec2:DescribeInstances",
@@ -90,6 +92,7 @@ Now create the Application Insights application:
 # Create the Application Insights application
 aws application-insights create-application \
   --resource-group-name "my-web-app" \
+  --auto-config-enabled \
   --ops-center-enabled \
   --cwe-monitor-enabled
 ```
@@ -156,7 +159,7 @@ Here's how to update a component configuration via CLI:
 aws application-insights update-component-configuration \
   --resource-group-name "my-web-app" \
   --component-name "my-ec2-component" \
-  --monitor true \
+  --monitor \
   --tier "DEFAULT" \
   --component-configuration '{
     "alarmMetrics": [
@@ -198,7 +201,7 @@ To get details on a specific problem:
 ```bash
 # Get detailed information about a specific problem
 aws application-insights describe-problem \
-  --problem-id "p-1234567890"
+  --problem-id "p-12345678-1234-1234-1234-123456789012"
 ```
 
 And to see the observations that make up a problem:
@@ -206,7 +209,7 @@ And to see the observations that make up a problem:
 ```bash
 # List observations related to a problem
 aws application-insights describe-problem-observations \
-  --problem-id "p-1234567890"
+  --problem-id "p-12345678-1234-1234-1234-123456789012"
 ```
 
 ## How Application Insights Detection Works
