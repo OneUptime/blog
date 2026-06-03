@@ -58,7 +58,7 @@ aws configservice put-config-rule \
     }
   }'
 
-# Check that unused IAM credentials are disabled
+# Check for IAM credentials that have not been used recently
 aws configservice put-config-rule \
   --config-rule '{
     "ConfigRuleName": "iam-user-unused-credentials",
@@ -80,10 +80,10 @@ aws configservice put-config-rule \
     "InputParameters": "{\"maxAccessKeyAge\": \"90\"}"
   }'
 
-# Check that no IAM policies grant full "*" admin access
+# Check that customer managed IAM policies do not grant full "*" admin access
 aws configservice put-config-rule \
   --config-rule '{
-    "ConfigRuleName": "iam-no-inline-policy-check",
+    "ConfigRuleName": "iam-policy-no-admin-access",
     "Source": {
       "Owner": "AWS",
       "SourceIdentifier": "IAM_POLICY_NO_STATEMENTS_WITH_ADMIN_ACCESS"
@@ -96,7 +96,7 @@ aws configservice put-config-rule \
 Data encryption should be non-negotiable. These rules verify that encryption is enabled where it matters.
 
 ```bash
-# Check that EBS volumes are encrypted
+# Check that attached EBS volumes are encrypted
 aws configservice put-config-rule \
   --config-rule '{
     "ConfigRuleName": "encrypted-ebs-volumes",
