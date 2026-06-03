@@ -27,6 +27,7 @@ metadata:
   name: strace-enabled-pod
   namespace: debugging
 spec:
+  shareProcessNamespace: true
   containers:
   - name: app
     image: myapp:latest
@@ -41,14 +42,6 @@ spec:
       capabilities:
         add:
         - SYS_PTRACE
-    volumeMounts:
-    - name: proc
-      mountPath: /host/proc
-      readOnly: true
-  volumes:
-  - name: proc
-    hostPath:
-      path: /proc
 ```
 
 ## Installing strace in Running Containers
@@ -69,8 +62,8 @@ kubectl exec -it my-pod -- bash -c "yum install -y strace"
 # Using ephemeral containers
 kubectl debug my-pod -it \
   --image=ubuntu \
-  --target=my-pod \
-  --share-processes \
+  --target=app \
+  --profile=sysadmin \
   -- bash -c "apt-get update && apt-get install -y strace && bash"
 ```
 
@@ -172,8 +165,8 @@ kubectl exec -it my-pod -- strace -e trace=network -p <PID>
 # Trace connection attempts
 kubectl exec -it my-pod -- strace -e trace=connect -p <PID>
 
-# Show DNS resolution
-kubectl exec -it my-pod -- strace -e trace=connect -p <PID> 2>&1 | grep -A2 "connect"
+# Show DNS-related network activity
+kubectl exec -it my-pod -- strace -e trace=network -p <PID> 2>&1 | grep -E "connect|sendto|recvfrom"
 
 # Trace send and receive operations
 kubectl exec -it my-pod -- strace -e trace=send,sendto,recv,recvfrom -p <PID>
@@ -209,8 +202,8 @@ Capture strace output for later analysis:
 # Save to file
 kubectl exec my-pod -- strace -o /tmp/strace.log -p <PID>
 
-# Save with timestamps
-kubectl exec my-pod -- strace -tt -o /tmp/strace.log -p <PID>
+# Save with timestamps and syscall durations
+kubectl exec my-pod -- strace -tt -T -o /tmp/strace.log -p <PID>
 
 # Copy to local system
 kubectl cp my-pod:/tmp/strace.log ./strace-analysis.log
@@ -219,10 +212,10 @@ kubectl cp my-pod:/tmp/strace.log ./strace-analysis.log
 grep -E "ENOENT|EACCES|ETIMEDOUT|ECONNREFUSED" strace-analysis.log
 
 # Find slow syscalls (taking more than 1 second)
-grep "<[0-9]\.[0-9][0-9][0-9][0-9][0-9][0-9]>" strace-analysis.log
+awk -F'[<>]' '/<[0-9]+\.[0-9]+>/ && $2 + 0 > 1 {print}' strace-analysis.log
 
 # Count syscalls
-awk '{print $NF}' strace-analysis.log | sort | uniq -c | sort -rn
+awk '{sub(/^[0-9:.]+ +/, ""); split($0, a, "("); print a[1]}' strace-analysis.log | sort | uniq -c | sort -rn
 ```
 
 ## Tracing Application Startup
@@ -343,11 +336,11 @@ echo "  - strace-detailed.log (detailed trace)"
 # Basic analysis
 echo ""
 echo "Top 10 syscalls by count:"
-grep -v "^---" strace-detailed.log | awk -F'(' '{print $1}' | sort | uniq -c | sort -rn | head -10
+grep -v "^---" strace-detailed.log | awk '{sub(/^[0-9:.]+ +/, ""); split($0, a, "("); print a[1]}' | sort | uniq -c | sort -rn | head -10
 
 echo ""
 echo "Failed syscalls:"
-grep -E "= -1 E" strace-detailed.log | awk -F'(' '{print $1}' | sort | uniq -c | sort -rn
+grep -E "= -1 E" strace-detailed.log | awk '{sub(/^[0-9:.]+ +/, ""); split($0, a, "("); print a[1]}' | sort | uniq -c | sort -rn
 ```
 
 ## Troubleshooting Common Issues
@@ -358,8 +351,8 @@ If strace fails with "Operation not permitted":
 # Check if SYS_PTRACE capability is enabled
 kubectl get pod my-pod -o jsonpath='{.spec.containers[*].securityContext.capabilities.add}'
 
-# Add capability to pod
-kubectl patch pod my-pod --type=json -p='[{"op":"add","path":"/spec/containers/0/securityContext/capabilities/add","value":["SYS_PTRACE"]}]'
+# Add capability to the workload's pod template, then let the controller create a new pod
+kubectl patch deployment my-deployment --type='strategic' -p='{"spec":{"template":{"spec":{"containers":[{"name":"app","securityContext":{"capabilities":{"add":["SYS_PTRACE"]}}}]}}}}'
 ```
 
 If you cannot see other container processes:
