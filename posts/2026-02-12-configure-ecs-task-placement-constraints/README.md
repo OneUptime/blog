@@ -8,7 +8,9 @@ Description: Learn how to use Amazon ECS task placement constraints to control w
 
 ---
 
-While placement strategies determine how ECS ranks instances, placement constraints are hard filters that determine which instances are even eligible to run your task. If an instance does not meet the constraint, it is excluded entirely. No exceptions.
+While placement strategies determine how ECS ranks instances, placement constraints are hard filters that determine which instances are even eligible to run your task. If an instance does not meet the constraint, it is excluded entirely.
+
+These examples apply to ECS tasks that run on EC2 container instances. Task placement constraints are not supported for Fargate tasks.
 
 This is useful when certain tasks need specific instance types, must run in particular availability zones, need GPU support, or should avoid running on the same instance as another task.
 
@@ -39,7 +41,7 @@ ECS supports two constraint types:
 
 ### 1. distinctInstance
 
-Ensures each task runs on a different container instance. No two tasks from the same service share an instance.
+Ensures each active task in the same task group runs on a different container instance. For a service, this usually means no two active tasks from the same service share an instance.
 
 ```bash
 # Each task runs on its own instance
