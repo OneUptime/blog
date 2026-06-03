@@ -17,7 +17,7 @@ This guide covers creating certificates, validating them with DNS through Route 
 When you request a certificate, ACM needs to verify that you actually own the domain. There are two validation methods:
 
 1. **DNS validation** - ACM gives you a CNAME record to add to your DNS. Once the record exists, validation happens automatically. This is the preferred method because it enables auto-renewal.
-2. **Email validation** - ACM sends an email to domain contacts. This doesn't support auto-renewal through Terraform and is generally more annoying.
+2. **Email validation** - ACM sends an email to domain contacts. It requires a manual approval step outside Terraform and is generally more annoying.
 
 We'll use DNS validation with Route 53 for everything in this guide.
 
@@ -112,7 +112,7 @@ resource "aws_acm_certificate" "wildcard" {
   }
 }
 
-# Create validation records for all domains
+# Create the shared DNS validation record
 resource "aws_route53_record" "wildcard_validation" {
   for_each = {
     for dvo in aws_acm_certificate.wildcard.domain_validation_options : dvo.domain_name => {
@@ -120,6 +120,7 @@ resource "aws_route53_record" "wildcard_validation" {
       record = dvo.resource_record_value
       type   = dvo.resource_record_type
     }
+    if dvo.domain_name == "example.com"
   }
 
   allow_overwrite = true
@@ -136,7 +137,7 @@ resource "aws_acm_certificate_validation" "wildcard" {
 }
 ```
 
-Fun fact: the wildcard `*.example.com` and the apex `example.com` often use the same CNAME validation record. The `for_each` with `dvo.domain_name` as the key handles deduplication automatically.
+Fun fact: the wildcard `*.example.com` and the apex `example.com` use the same CNAME validation record. The `for_each` filters to the apex validation option so Terraform creates one Route 53 record for that shared validation CNAME instead of managing the same record twice.
 
 ## Multi-Domain Certificate (SAN)
 
@@ -274,7 +275,7 @@ Notice we reference `aws_acm_certificate_validation.main.certificate_arn` instea
 
 ## Certificate Expiry Monitoring
 
-ACM certificates auto-renew as long as the DNS validation records still exist. But things can go wrong - someone deletes a Route 53 record, or you move DNS providers. It's worth monitoring for upcoming expirations.
+ACM certificates auto-renew as long as the certificate is in use and the DNS validation records still exist. But things can go wrong - someone deletes a Route 53 record, or you move DNS providers. It's worth monitoring for upcoming expirations.
 
 This CloudWatch alarm fires 30 days before a certificate expires:
 
@@ -319,4 +320,4 @@ For more on managing multi-region AWS resources with Terraform, check out our po
 
 ## Wrapping Up
 
-ACM certificates in Terraform follow a predictable pattern: request the certificate, create DNS validation records in Route 53, and wait for validation. The trickiest parts are remembering the CloudFront us-east-1 requirement and using the validation resource's ARN (not the certificate's ARN) when attaching to other resources. Once you've got the pattern down, adding new certificates is straightforward.
+ACM certificates in Terraform follow a predictable pattern: request the certificate, create DNS validation records in Route 53, and wait for validation. The trickiest parts are remembering the CloudFront us-east-1 requirement and using the certificate ARN exported by the validation resource when attaching to other resources. Once you've got the pattern down, adding new certificates is straightforward.
