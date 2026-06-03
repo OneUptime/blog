@@ -69,8 +69,8 @@ aws ec2 describe-volumes \
 aws rds describe-db-instances \
   --filters "Name=engine,Values=postgres"
 
-# S3 buckets don't support server-side filters
-# Use --query instead for S3
+# S3 list-buckets doesn't use --filters
+# Use --prefix or --bucket-region for server-side narrowing, then --query for other filtering
 ```
 
 ## JMESPath Queries - The Basics
@@ -110,9 +110,9 @@ Use the `?` operator to filter arrays.
 aws ec2 describe-instances \
   --query "Reservations[].Instances[?State.Name=='running'].InstanceId[]"
 
-# Instances launched in the last 24 hours
+# Instances launched on or after a cutoff date
 aws ec2 describe-instances \
-  --query "Reservations[].Instances[?LaunchTime>='2026-02-11'].{ID:InstanceId, Launched:LaunchTime}"
+  --query "Reservations[].Instances[?LaunchTime>='2026-02-11'].{ID:InstanceId, Launched:LaunchTime}[]"
 
 # Security groups with a specific name pattern
 aws ec2 describe-security-groups \
@@ -205,17 +205,17 @@ aws ec2 describe-instances \
 
 ### Flattening Nested Arrays
 
-The `[]` operator flattens nested arrays. This is essential for EC2 results where instances are nested inside reservations.
+The `[]` flatten projection flattens nested arrays, while `[*]` keeps the nested shape. Flattening is essential for EC2 results where instances are nested inside reservations.
 
 ```bash
 # Without flattening - nested arrays
 aws ec2 describe-instances \
-  --query "Reservations[].Instances[].InstanceId"
+  --query "Reservations[*].Instances[*].InstanceId"
 # Output: [["i-123"], ["i-456", "i-789"]]
 
 # With flattening - flat array
 aws ec2 describe-instances \
-  --query "Reservations[].Instances[].InstanceId[]"
+  --query "Reservations[].Instances[].InstanceId"
 # Output: ["i-123", "i-456", "i-789"]
 ```
 
