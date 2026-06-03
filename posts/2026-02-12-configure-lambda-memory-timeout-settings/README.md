@@ -107,7 +107,7 @@ Here's a Python script that calculates the cost comparison:
 ```python
 # cost_calculator.py - Compare Lambda costs at different memory levels
 
-# Price per GB-second (as of 2026, us-east-1)
+# Price per GB-second (as of 2026, us-east-1, x86)
 PRICE_PER_GB_SECOND = 0.0000166667
 PRICE_PER_REQUEST = 0.0000002
 
@@ -167,6 +167,7 @@ QUERY_ID=$(aws logs start-query \
   --query 'queryId' \
   --output text)
 
+# Repeat until the query status is Complete
 aws logs get-query-results \
   --query-id "$QUERY_ID" \
   --output table

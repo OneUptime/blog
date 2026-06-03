@@ -8,27 +8,33 @@ Tutorial / Guide
 
 ## Technologies Covered
 - AWS Lambda
-- AWS CLI
 - Amazon CloudWatch Logs and Logs Insights
-- AWS Serverless Application Model (SAM)
+- AWS CLI
+- AWS SAM / CloudFormation
 - Terraform AWS provider
 - Python
 
 ## Sources Consulted
-- AWS Lambda documentation: Configure Lambda function memory - https://docs.aws.amazon.com/lambda/latest/operatorguide/computing-power.html
-- AWS Lambda documentation: Configure Lambda function timeout - https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html
-- AWS CLI Command Reference: lambda update-function-configuration - https://docs.aws.amazon.com/cli/latest/reference/lambda/update-function-configuration.html
-- AWS CLI Command Reference: logs start-query - https://docs.aws.amazon.com/cli/latest/reference/logs/start-query.html
-- AWS Lambda documentation: Viewing CloudWatch logs for Lambda functions - https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-view.html
-- AWS Lambda documentation: Using CloudWatch metrics with Lambda - https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics.html
-- AWS Lambda pricing - https://aws.amazon.com/lambda/pricing/
-- AWS SAM documentation: AWS::Serverless::Function - https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html
-- Terraform Registry: aws_lambda_function resource - https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function
+- AWS Lambda quotas: https://docs.aws.amazon.com/lambda/latest/dg/gettingstarted-limits.html
+- AWS Lambda timeout configuration: https://docs.aws.amazon.com/lambda/latest/dg/configuration-timeout.html
+- AWS Lambda CloudWatch metric types: https://docs.aws.amazon.com/lambda/latest/dg/monitoring-metrics-types.html
+- Viewing CloudWatch logs for Lambda functions: https://docs.aws.amazon.com/lambda/latest/dg/monitoring-cloudwatchlogs-view.html
+- AWS CLI `get-function-configuration`: https://docs.aws.amazon.com/cli/latest/reference/lambda/get-function-configuration.html
+- AWS CLI `update-function-configuration`: https://docs.aws.amazon.com/cli/latest/reference/lambda/update-function-configuration.html
+- AWS CLI `logs start-query`: https://docs.aws.amazon.com/cli/latest/reference/logs/start-query.html
+- AWS Lambda pricing: https://aws.amazon.com/lambda/pricing/
+- AWS SAM `AWS::Serverless::Function`: https://docs.aws.amazon.com/serverless-application-model/latest/developerguide/sam-resource-function.html
+- AWS CloudFormation `AWS::Lambda::Function`: https://docs.aws.amazon.com/AWSCloudFormation/latest/TemplateReference/aws-resource-lambda-function.html
+- Terraform AWS provider `aws_lambda_function`: https://registry.terraform.io/providers/hashicorp/aws/latest/docs/resources/lambda_function
+- AWS Lambda Power Tuning project: https://github.com/alexcasalboni/aws-lambda-power-tuning
 
 ## Issues Found
-- The post used `aws cloudwatch get-metric-statistics` with a `MaxMemoryUsed` metric in the `AWS/Lambda` namespace. `Max Memory Used` is available in Lambda REPORT logs and as the CloudWatch Logs Insights field `@maxMemoryUsed`, not as a standard Lambda CloudWatch metric. Replaced the command with an `aws logs start-query` / `aws logs get-query-results` example that queries REPORT logs for maximum memory usage.
-- The original memory monitoring command used `date -v-7d`, which is BSD/macOS-specific. The replacement uses epoch seconds with shell arithmetic, which works in common Bash environments.
+- The monitoring section uses CloudWatch Logs Insights rather than a standard `AWS/Lambda` metric for `MaxMemoryUsed`. This is correct because Lambda REPORT fields such as `@maxMemoryUsed` and `@memorySize` are exposed through Lambda logs and Logs Insights, while `MaxMemoryUsed` is not listed as a standard `AWS/Lambda` metric. The README already contained this corrected approach in the local workspace during review, so no additional README change was needed for this issue.
+- CloudWatch Logs Insights queries are asynchronous. Added a comment telling readers to repeat `get-query-results` until the query status is `Complete`.
+- The cost calculator comment gave a single `us-east-1` price without noting architecture. AWS Lambda pricing differs by architecture, so the comment now specifies that the `0.0000166667` GB-second price is for x86 in `us-east-1`.
 
 ## Review Notes
-- AWS CLI was not installed in the local workspace, so CLI syntax was verified against the official AWS CLI command reference instead of local `--help` output.
-- The cost calculator uses the first-tier x86 on-demand duration price for us-east-1 and does not model Arm pricing, tiered duration pricing, provisioned concurrency, SnapStart, or Compute Savings Plans. That is acceptable for the post's illustrative comparison, but production cost modeling should use the current AWS pricing page or AWS Pricing Calculator.
+- The Lambda memory range, 1 MB increment, timeout range, default timeout, proportional CPU allocation, and 1,769 MB per vCPU reference matched AWS documentation.
+- The AWS CLI commands for viewing and updating Lambda configuration use current command names and options.
+- The SAM, CloudFormation, and Terraform property names are current for Lambda memory and timeout configuration.
+- The internal OneUptime links and the AWS Lambda Power Tuning reference were reachable and relevant.
