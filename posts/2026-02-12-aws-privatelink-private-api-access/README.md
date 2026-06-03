@@ -8,7 +8,7 @@ Description: Set up AWS PrivateLink to access APIs and services privately within
 
 ---
 
-When your application in VPC A needs to call an API in VPC B, the default path goes out through the internet gateway, across the public internet, and back in. Even with TLS encryption, this route exposes your traffic to potential interception, adds latency, and complicates your security posture. You're also paying for NAT gateway and data transfer costs.
+When your application in VPC A needs to call a publicly exposed API in VPC B, the default path goes out through the internet gateway, across the public internet, and back in. Even with TLS encryption, this route exposes your traffic to potential interception, adds latency, and complicates your security posture. You're also paying for NAT gateway and data transfer costs.
 
 AWS PrivateLink eliminates all of that. It creates a private connection between VPCs using elastic network interfaces inside your VPC. Traffic never leaves the AWS network. There's no internet gateway, no NAT, no public IPs involved. It works for AWS services, your own services, and third-party SaaS products on the AWS Marketplace.
 
@@ -48,10 +48,11 @@ aws ec2 create-vpc-endpoint \
   --vpc-endpoint-type Interface \
   --subnet-ids subnet-aaa111 subnet-bbb222 \
   --security-group-ids sg-12345678 \
-  --private-dns-enabled
+  --private-dns-enabled \
+  --dns-options PrivateDnsOnlyForInboundResolverEndpoint=false
 ```
 
-The `--private-dns-enabled` flag is important. It makes `s3.us-east-1.amazonaws.com` resolve to the private endpoint IP instead of the public one. Your applications don't need any code changes.
+The `--private-dns-enabled` flag is important. It makes `s3.us-east-1.amazonaws.com` resolve to the private endpoint IP instead of the public one. For S3 interface endpoints, `PrivateDnsOnlyForInboundResolverEndpoint` defaults to `true`; setting it to `false` routes in-VPC S3 requests through the interface endpoint even when you do not have an S3 gateway endpoint in the VPC. Your applications don't need any code changes.
 
 ### Common AWS Services with PrivateLink
 
@@ -139,10 +140,10 @@ This creates a PrivateLink endpoint service backed by your NLB:
 aws ec2 create-vpc-endpoint-service-configuration \
   --network-load-balancer-arns arn:aws:elasticloadbalancing:us-east-1:111111111111:loadbalancer/net/my-service-nlb/abc123 \
   --acceptance-required \
-  --private-dns-name api.myservice.internal
+  --private-dns-name api.myservice.com
 ```
 
-The `--acceptance-required` flag means you must manually approve connection requests. Remove it if you want automatic acceptance.
+The `--acceptance-required` flag means you must manually approve connection requests. Remove it if you want automatic acceptance. If you set a private DNS name, you must verify that you own the domain before consumers can use it.
 
 Note the service name from the output. It'll look like `com.amazonaws.vpce.us-east-1.vpce-svc-abc123`.
 
@@ -170,7 +171,8 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.vpce.us-east-1.vpce-svc-abc123 \
   --vpc-endpoint-type Interface \
   --subnet-ids subnet-ccc333 subnet-ddd444 \
-  --security-group-ids sg-consumer789
+  --security-group-ids sg-consumer789 \
+  --private-dns-enabled
 ```
 
 ### Step 5: Accept the Connection (Provider Side)
@@ -193,7 +195,7 @@ Here's the complete provider-side Terraform setup:
 resource "aws_vpc_endpoint_service" "my_service" {
   acceptance_required        = true
   network_load_balancer_arns = [aws_lb.service_nlb.arn]
-  private_dns_name           = "api.myservice.internal"
+  private_dns_name           = "api.myservice.com"
 
   allowed_principals = [
     "arn:aws:iam::222222222222:root",
@@ -261,7 +263,7 @@ Test connectivity from an instance in the consumer VPC:
 
 ```bash
 # From an EC2 instance in the consumer VPC
-curl -v https://api.myservice.internal/health
+curl -v https://api.myservice.com/health
 ```
 
 ## Cost Considerations
