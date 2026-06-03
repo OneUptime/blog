@@ -62,16 +62,16 @@ This reveals whether pod-to-pod traffic takes expected paths through your CNI pl
 
 ## TCP traceroute for Service Testing
 
-Regular traceroute uses ICMP or UDP, which firewalls often block. TCP traceroute works better:
+Regular Linux traceroute uses UDP probes by default, and some environments also block ICMP responses. TCP traceroute works better when you need probes that match an application port:
 
 ```bash
-# Install tcptraceroute
+# Run tcptraceroute
 kubectl exec -it netshoot -- tcptraceroute api.example.com 443
 
 # Specify port for service endpoint
 kubectl exec -it netshoot -- tcptraceroute my-service.my-namespace.svc.cluster.local 8080
 
-# TCP traceroute succeeds where ICMP traceroute fails
+# TCP traceroute may succeed where UDP or ICMP traceroute fails
 ```
 
 TCP traceroute is essential when troubleshooting services that only accept TCP connections.
@@ -123,7 +123,7 @@ Analyze paths to external APIs or services:
 # Trace to external API
 kubectl exec -it netshoot -- traceroute api.example.com
 
-# Shows complete path including:
+# May show path components including:
 # - Internal cluster hops
 # - NAT gateway
 # - Internet routing
@@ -164,24 +164,29 @@ kubectl exec -it netshoot -- traceroute -n google.com
 # -n prevents DNS lookups, showing only IPs
 
 # First hop should be pod's gateway
-# Look for your NAT gateway IP in the path
-# External hops show your public egress IP
+# Look for network hops that match your egress path
+# NAT devices may or may not appear or respond in traceroute output
 ```
 
-Missing NAT gateway in the path indicates NAT configuration issues.
+An unexpected egress path can indicate NAT configuration issues, but absence of a NAT gateway from traceroute output does not prove NAT is missing.
 
 ## Using Different Protocols
 
 Test paths with various protocols:
 
 ```bash
-# ICMP traceroute (default)
+# UDP traceroute (Linux default)
 traceroute google.com
 
-# UDP traceroute
+# ICMP traceroute
+traceroute -I google.com
+
+# UDP traceroute explicitly
 traceroute -U google.com
 
 # TCP traceroute
+traceroute -T -p 443 google.com
+# Or, if installed:
 tcptraceroute google.com 443
 
 # Different protocols may take different paths
@@ -196,18 +201,18 @@ Analyze paths to cluster services:
 
 ```bash
 # Trace to service ClusterIP
-kubectl exec -it netshoot -- traceroute my-service.my-namespace.svc.cluster.local
+kubectl exec -it netshoot -- traceroute -T -p 8080 my-service.my-namespace.svc.cluster.local
 
 # May show:
-# - Direct to pod if service has single endpoint
-# - Path through kube-proxy iptables rules
-# - Load balancer path for LoadBalancer services
+# - The network path toward the selected backend endpoint
+# - No visible kube-proxy hop, because Service translation happens in node packet-processing rules
+# - Load balancer path for external LoadBalancer access
 
 # Compare with direct pod trace
 kubectl exec -it netshoot -- traceroute pod-ip
 ```
 
-This reveals how kube-proxy routes service traffic.
+This helps compare Service traffic with direct Pod IP traffic, but traceroute does not display kube-proxy rules as separate hops.
 
 ## Diagnosing Routing Loops
 
@@ -271,11 +276,11 @@ Dual-stack clusters need both IPv4 and IPv6 path verification.
 Use traceroute to diagnose MTU issues:
 
 ```bash
-# Trace with large packet size
-kubectl exec -it netshoot -- traceroute -F api.example.com
+# Trace with Don't Fragment set and a larger packet size
+kubectl exec -it netshoot -- traceroute -F api.example.com 1500
 
 # -F sets "Don't Fragment" flag
-# If fragmentation is needed, shows which hop blocks it
+# If fragmentation would be needed, responses can identify where the packet is too large
 
 # Test with specific packet size
 kubectl exec -it netshoot -- traceroute --mtu api.example.com
@@ -290,11 +295,11 @@ MTU mismatches appear as hops that do not respond to large packets.
 Analyze paths through service mesh proxies:
 
 ```bash
-# From meshed pod
-kubectl exec -it meshed-pod -c istio-proxy -- traceroute destination
+# From the application container in a meshed pod
+kubectl exec -it meshed-pod -c app -- traceroute destination
 
 # May show:
-# - Traffic through sidecar proxy
+# - Network path after sidecar traffic capture
 # - Egress gateway
 # - External destination
 
@@ -302,7 +307,7 @@ kubectl exec -it meshed-pod -c istio-proxy -- traceroute destination
 kubectl exec -it non-meshed-pod -- traceroute destination
 ```
 
-Service mesh routing adds hops and latency that traceroute reveals.
+Service mesh routing can add proxies or egress gateways, but traceroute shows IP-layer hops rather than the full logical Envoy route.
 
 ## Tracing NodePort Traffic
 
@@ -315,8 +320,8 @@ traceroute NODE-IP
 # Should reach node IP
 # Service routing happens via iptables, not visible in traceroute
 
-# From pod, trace to NodePort service
-kubectl exec -it netshoot -- traceroute my-service-nodeport
+# From pod, trace to a node IP on the NodePort
+kubectl exec -it netshoot -- traceroute -T -p 30080 NODE-IP
 ```
 
 NodePort traffic routing involves kube-proxy iptables rules that traceroute cannot show.
@@ -353,14 +358,15 @@ THRESHOLD_HOPS=15
 THRESHOLD_LATENCY=100  # milliseconds
 
 # Run traceroute
-HOPS=$(traceroute -m 30 $DESTINATION 2>/dev/null | grep -c "^ ")
-LATENCY=$(traceroute -m 30 $DESTINATION 2>/dev/null | tail -1 | awk '{print $4}')
+TRACE=$(traceroute -m 30 "$DESTINATION" 2>/dev/null)
+HOPS=$(printf '%s\n' "$TRACE" | awk '/^[[:space:]]*[0-9]+[[:space:]]/ {count++} END {print count+0}')
+LATENCY=$(printf '%s\n' "$TRACE" | awk '/^[[:space:]]*[0-9]+[[:space:]]/ {for (i=1; i<=NF; i++) if ($i ~ /^[0-9.]+$/ && $(i+1) == "ms") latency=$i} END {print latency}')
 
 if [ $HOPS -gt $THRESHOLD_HOPS ]; then
   echo "WARNING: Too many hops ($HOPS) to $DESTINATION"
 fi
 
-if [ $(echo "$LATENCY > $THRESHOLD_LATENCY" | bc) -eq 1 ]; then
+if [ -n "$LATENCY" ] && awk "BEGIN {exit !($LATENCY > $THRESHOLD_LATENCY)}"; then
   echo "WARNING: High latency ($LATENCY ms) to $DESTINATION"
 fi
 ```
