@@ -40,7 +40,7 @@ Kubernetes includes several score plugins:
 - **PodTopologySpread**: Scores based on topology spread constraints
 - **TaintToleration**: Scores based on taints and tolerations
 - **NodeAffinity**: Scores based on node affinity rules
-- **NodePreferAvoidPods**: Avoids nodes with certain annotations
+- **NodePreferAvoidPods**: Avoids nodes with certain annotations (deprecated; use taints instead)
 
 ## Basic Configuration
 
@@ -62,7 +62,7 @@ profiles:
         weight: 1
 ```
 
-These are the defaults. Now let's customize them.
+These plugins are enabled by default with weight 1, alongside other default score plugins such as TaintToleration, NodeAffinity, PodTopologySpread, InterPodAffinity, and VolumeBinding. Now let's customize them.
 
 ## Prioritizing Resource Availability
 
@@ -263,10 +263,10 @@ profiles:
         weight: 1
       disabled:
       - name: ImageLocality  # Don't consider image locality
-      - name: InterPodAffinity  # Don't consider pod affinity (expensive)
+      - name: InterPodAffinity  # Don't score preferred pod affinity
 ```
 
-Disabling expensive plugins like InterPodAffinity can significantly improve scheduling performance in large clusters.
+Disabling expensive score plugins like InterPodAffinity can improve scoring performance in large clusters. To stop enforcing required pod affinity or anti-affinity rules, you would need to disable InterPodAffinity at every extension point where it runs.
 
 ## Combining Multiple Priorities
 
@@ -304,6 +304,7 @@ profiles:
           weight: 2  # Memory more important than CPU
   - name: PodTopologySpread
     args:
+      defaultingType: List
       defaultConstraints:
       - maxSkew: 1
         topologyKey: topology.kubernetes.io/zone
@@ -409,22 +410,25 @@ profiles:
 Track how score plugins affect scheduling:
 
 ```bash
+# Run these from a host or port-forward that can reach kube-scheduler's secure metrics endpoint
+
 # View scheduler metrics
 
-kubectl get --raw /metrics | grep scheduler_framework_extension_point_duration_seconds
+curl -k https://127.0.0.1:10259/metrics | grep scheduler_framework_extension_point_duration_seconds
 
 # Filter for score plugins
-kubectl get --raw /metrics | \
+curl -k https://127.0.0.1:10259/metrics | \
   grep scheduler_framework_extension_point_duration_seconds | \
-  grep score
+  grep 'extension_point="Score"'
 
 # Check which plugins take the most time
-kubectl get --raw /metrics | \
-  grep scheduler_framework_extension_point_duration_seconds | \
+curl -k https://127.0.0.1:10259/metrics | \
+  grep scheduler_plugin_execution_duration_seconds | \
+  grep 'extension_point="Score"' | \
   sort -t= -k2 -nr | head -20
 ```
 
-If a plugin is slow, consider reducing its weight or disabling it.
+If a plugin is slow, consider disabling it or changing the constraints that make it expensive. Reducing its weight changes its influence on placement, but it does not make the plugin run faster.
 
 ## Testing Score Plugin Configurations
 
@@ -433,16 +437,13 @@ Validate your configuration before deploying:
 ```bash
 # Create test pods with different characteristics
 kubectl run test-cpu-heavy --image=nginx --restart=Never \
-  --requests=cpu=2000m,memory=512Mi \
-  --overrides='{"spec":{"schedulerName":"production-scheduler"}}'
+  --overrides='{"spec":{"schedulerName":"production-scheduler","containers":[{"name":"test-cpu-heavy","image":"nginx","resources":{"requests":{"cpu":"2000m","memory":"512Mi"}}}]}}'
 
 kubectl run test-memory-heavy --image=nginx --restart=Never \
-  --requests=cpu=100m,memory=4Gi \
-  --overrides='{"spec":{"schedulerName":"production-scheduler"}}'
+  --overrides='{"spec":{"schedulerName":"production-scheduler","containers":[{"name":"test-memory-heavy","image":"nginx","resources":{"requests":{"cpu":"100m","memory":"4Gi"}}}]}}'
 
 kubectl run test-balanced --image=nginx --restart=Never \
-  --requests=cpu=1000m,memory=1Gi \
-  --overrides='{"spec":{"schedulerName":"production-scheduler"}}'
+  --overrides='{"spec":{"schedulerName":"production-scheduler","containers":[{"name":"test-balanced","image":"nginx","resources":{"requests":{"cpu":"1000m","memory":"1Gi"}}}]}}'
 
 # Check where they landed
 kubectl get pods -o wide | grep test-
@@ -462,14 +463,14 @@ kubectl edit deployment kube-scheduler -n kube-system
 
 # View detailed scoring
 kubectl logs -n kube-system -l component=kube-scheduler | \
-  grep "Prioritizing" -A 20
+  grep "Calculated node's final score" | tail -20
 
 # Look for lines like:
-# "node score: Node1=200, Node2=150, Node3=175"
+# "Calculated node's final score for pod" pod="default/test" node="node1" score=619
 
 # Check specific plugin scores
 kubectl logs -n kube-system -l component=kube-scheduler | \
-  grep "NodeResourcesFit score" | tail -20
+  grep "Plugin scored node for pod" | grep 'plugin="NodeResourcesFit"' | tail -20
 ```
 
 ## Best Practices
