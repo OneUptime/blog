@@ -34,8 +34,12 @@ Here's a simple Flink application in Java that reads from Kinesis, processes the
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.connectors.kinesis.FlinkKinesisConsumer;
-import org.apache.flink.streaming.connectors.kinesis.FlinkKinesisProducer;
+import org.apache.flink.connector.aws.config.AWSConfigConstants;
+import org.apache.flink.connector.kinesis.sink.KinesisStreamsSink;
+import org.apache.flink.streaming.connectors.kinesis.config.ConsumerConfigConstants;
+import org.apache.flink.api.common.serialization.SimpleStringSchema;
 import org.apache.flink.streaming.api.windowing.time.Time;
+import org.apache.flink.streaming.api.windowing.assigners.TumblingProcessingTimeWindows;
 
 import java.util.Properties;
 
@@ -45,10 +49,11 @@ public class OrderProcessor {
 
         // Configure Kinesis consumer properties
         Properties consumerConfig = new Properties();
-        consumerConfig.setProperty("aws.region", "us-east-1");
-        consumerConfig.setProperty("flink.stream.initpos", "LATEST");
-        consumerConfig.setProperty("flink.stream.recordpublisher", "EFO");
-        consumerConfig.setProperty("flink.stream.efo.consumername", "flink-processor");
+        consumerConfig.put(AWSConfigConstants.AWS_REGION, "us-east-1");
+        consumerConfig.put(ConsumerConfigConstants.STREAM_INITIAL_POSITION, "LATEST");
+        consumerConfig.put(ConsumerConfigConstants.RECORD_PUBLISHER_TYPE,
+                ConsumerConfigConstants.RecordPublisherType.EFO.name());
+        consumerConfig.put(ConsumerConfigConstants.EFO_CONSUMER_NAME, "flink-processor");
 
         // Create source from Kinesis
         FlinkKinesisConsumer<String> source = new FlinkKinesisConsumer<>(
@@ -67,21 +72,20 @@ public class OrderProcessor {
                 .window(TumblingProcessingTimeWindows.of(Time.minutes(1)))
                 .aggregate(new OrderAggregator());
 
-        // Configure Kinesis producer properties
-        Properties producerConfig = new Properties();
-        producerConfig.setProperty("aws.region", "us-east-1");
-        producerConfig.setProperty("AggregationEnabled", "false");
+        // Configure Kinesis sink properties
+        Properties sinkProperties = new Properties();
+        sinkProperties.put(AWSConfigConstants.AWS_REGION, "us-east-1");
 
-        FlinkKinesisProducer<String> sink = new FlinkKinesisProducer<>(
-                new SimpleStringSchema(),
-                producerConfig
-        );
-        sink.setDefaultStream("order-summaries-stream");
-        sink.setDefaultPartition("0");
+        KinesisStreamsSink<String> sink = KinesisStreamsSink.<String>builder()
+                .setKinesisClientProperties(sinkProperties)
+                .setSerializationSchema(new SimpleStringSchema())
+                .setPartitionKeyGenerator(element -> "0")
+                .setStreamName("order-summaries-stream")
+                .build();
 
         processedStream
                 .map(summary -> summary.toJson())
-                .addSink(sink);
+                .sinkTo(sink);
 
         env.execute("Order Processing Pipeline");
     }
@@ -168,12 +172,14 @@ The execution role needs permissions for your sources, sinks, and the applicatio
             "Effect": "Allow",
             "Action": [
                 "kinesis:DescribeStream",
+                "kinesis:DescribeStreamSummary",
                 "kinesis:GetShardIterator",
                 "kinesis:GetRecords",
                 "kinesis:ListShards",
                 "kinesis:SubscribeToShard",
                 "kinesis:DescribeStreamConsumer",
                 "kinesis:RegisterStreamConsumer",
+                "kinesis:DeregisterStreamConsumer",
                 "kinesis:PutRecord",
                 "kinesis:PutRecords"
             ],
@@ -215,7 +221,7 @@ The execution role needs permissions for your sources, sinks, and the applicatio
 
 ## Starting the Application
 
-Start the application and tell it where to begin reading:
+Start the application. The Kinesis starting position is set in the Flink source configuration above, and the run configuration controls how the application restores state:
 
 ```bash
 # Start the Flink application
@@ -243,9 +249,9 @@ One of the best features of managed Flink is auto scaling. When you enable it (w
 The scaling is based on KPUs (Kinesis Processing Units). Each KPU provides:
 - 1 vCPU
 - 4 GB memory
-- 50 GB storage for application state
+- 50 GB running application storage
 
-If you set parallelism to 4 and parallelism per KPU to 1, you start with 4 KPUs. With auto-scaling, this can grow up to 8x the initial parallelism.
+If you set parallelism to 4 and parallelism per KPU to 1, you start with 4 KPUs for processing. With auto scaling, Managed Service for Apache Flink can increase current parallelism in response to load up to the maximum parallelism allowed by your application's KPU quota.
 
 ## Updating the Application
 
@@ -292,7 +298,7 @@ Flink applications publish metrics to CloudWatch automatically. The key ones to 
 - **uptime** - How long the job has been running since last restart
 - **numberOfFailedCheckpoints** - Checkpoint failures can lead to data reprocessing
 - **lastCheckpointDuration** - If checkpoints are taking too long, you might need more resources
-- **records_lag_max** - How far behind the consumer is from the latest data
+- **millisbehindLatest** - How far behind a Kinesis consumer is from the latest data
 
 ```bash
 # Check Flink application metrics
