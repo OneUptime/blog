@@ -8,7 +8,7 @@ Description: Learn how to connect AWS Lambda functions to a VPC so they can acce
 
 ---
 
-By default, AWS Lambda functions run in an AWS-managed VPC that has internet access but can't reach your private resources. If your Lambda needs to talk to an RDS database, an ElastiCache cluster, or any other resource sitting inside your VPC, you need to configure the function to run within that VPC.
+By default, AWS Lambda functions run in an AWS-managed VPC that has internet access but can't reach your private resources. If your Lambda needs to talk to an RDS database, an ElastiCache cluster, or any other resource sitting inside your VPC, you need to attach the function to your VPC.
 
 This sounds straightforward, but there are a few gotchas that trip people up. Let's walk through the entire process - from the IAM permissions to the subnet configuration to dealing with the dreaded "no internet" problem.
 
@@ -25,7 +25,7 @@ Other reasons include:
 
 ## The IAM Role Setup
 
-Before you configure VPC access, your Lambda function's execution role needs the right permissions. Specifically, it needs the `AmazonVPCFullAccess` managed policy or, better yet, a minimal custom policy.
+Before you configure VPC access, your Lambda function's execution role needs the right permissions. Specifically, it needs the `AWSLambdaVPCAccessExecutionRole` managed policy or, better yet, a minimal custom policy.
 
 Here's a minimal IAM policy that grants just what Lambda needs to create and manage ENIs (Elastic Network Interfaces) in your VPC:
 
@@ -38,6 +38,7 @@ Here's a minimal IAM policy that grants just what Lambda needs to create and man
       "Action": [
         "ec2:CreateNetworkInterface",
         "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeSubnets",
         "ec2:DeleteNetworkInterface",
         "ec2:AssignPrivateIpAddresses",
         "ec2:UnassignPrivateIpAddresses"
@@ -99,12 +100,12 @@ Resources:
         - IpProtocol: tcp
           FromPort: 443
           ToPort: 443
-          CidrIpBlock: 0.0.0.0/0
+          CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
           # Allow traffic to the database subnet
-          CidrIpBlock: 10.0.0.0/16
+          CidrIp: 10.0.0.0/16
 ```
 
 ## Configuring VPC Access with AWS CLI
@@ -129,13 +130,13 @@ aws lambda update-function-configuration \
 
 ## The Internet Access Problem
 
-Here's the biggest gotcha. Once your Lambda function is inside a VPC, it loses internet access. This means it can't call AWS APIs (like S3, DynamoDB, SQS), external APIs, or anything outside your VPC.
+Here's the biggest gotcha. Once your Lambda function is attached to a VPC, its outbound traffic goes through that VPC. This means it can't call AWS APIs (like S3, DynamoDB, SQS), external APIs, or anything outside your VPC unless the VPC has the right routes or endpoints.
 
 You have two options to restore internet access:
 
 ### Option 1: NAT Gateway
 
-Place your Lambda in private subnets and route traffic through a NAT Gateway in a public subnet. This is the traditional approach.
+Attach your Lambda function to private subnets and route traffic through a NAT Gateway in a public subnet. This is the traditional approach.
 
 ```mermaid
 graph LR
@@ -209,20 +210,20 @@ On the RDS side, you need an inbound rule allowing traffic from the Lambda secur
 
 VPC-connected Lambda functions used to have significantly longer cold starts - sometimes 10+ seconds while AWS provisioned ENIs. Since 2019, AWS improved this with Hyperplane ENIs that are created when you deploy or update the function, not at invocation time.
 
-Today, VPC-connected Lambdas have cold starts that are only marginally longer than non-VPC ones. You'll see maybe 1-2 seconds of additional latency on a cold start. For most use cases, this is perfectly acceptable.
+Today, VPC-connected Lambdas no longer pay the old ENI creation penalty on every cold start. The remaining impact is usually much smaller than it used to be, but you should measure it for your runtime, package size, and workload.
 
-If cold starts matter a lot, consider using [Provisioned Concurrency](https://oneuptime.com/blog/post/2026-02-12-implement-canary-deployments-for-lambda-functions/view) to keep warm instances ready.
+If cold starts matter a lot, consider using [Provisioned Concurrency](https://docs.aws.amazon.com/lambda/latest/dg/provisioned-concurrency.html) to keep warm instances ready.
 
 ## Monitoring VPC-Connected Lambdas
 
-Once your Lambda is in a VPC, you should monitor ENI usage. Each Lambda execution environment uses an ENI, and there's a per-region limit. If you hit that limit, new invocations will fail.
+Once your Lambda is attached to a VPC, you should monitor ENI usage. Lambda creates Hyperplane ENIs for subnet and security group combinations, and there's a per-VPC limit. If you hit that limit, new invocations can fail.
 
 Check your ENI usage with:
 
 ```bash
 # Count ENIs created by Lambda in your VPC
 aws ec2 describe-network-interfaces \
-  --filters "Name=requester-id,Values=*lambda*" \
+  --filters "Name=interface-type,Values=lambda" \
   --query "NetworkInterfaces[].NetworkInterfaceId" \
   --output text | wc -w
 ```
