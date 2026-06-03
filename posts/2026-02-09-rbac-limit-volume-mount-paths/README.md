@@ -42,7 +42,7 @@ rules:
     - pods
   verbs: ["create", "get", "list", "watch"]
 
-# Need to read ConfigMaps and Secrets to reference them
+# Optional: allow direct API reads of ConfigMaps and Secrets
 - apiGroups: [""]
   resources:
     - configmaps
@@ -91,8 +91,10 @@ The restricted profile blocks:
 Allowed volume types in restricted profile:
 
 - configMap
+- csi
 - downwardAPI
 - emptyDir
+- ephemeral
 - persistentVolumeClaim
 - projected
 - secret
@@ -107,9 +109,18 @@ metadata:
   name: hostpath-test
   namespace: applications
 spec:
+  securityContext:
+    runAsNonRoot: true
+    seccompProfile:
+      type: RuntimeDefault
   containers:
   - name: nginx
     image: nginx
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
     volumeMounts:
     - name: host-root
       mountPath: /host
@@ -128,10 +139,10 @@ kubectl apply -f dangerous-pod.yaml
 
 ## Implementing OPA Gatekeeper for Fine-Grained Control
 
-For more granular control beyond PSA, use OPA Gatekeeper. Install Gatekeeper:
+For more granular control beyond PSA, use OPA Gatekeeper. If you need to allow a small set of hostPath mounts, use this in a namespace where PSA does not already enforce the restricted profile, because restricted forbids all hostPath volumes. Install Gatekeeper:
 
 ```bash
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/release-3.14/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
 ```
 
 Create a constraint template that restricts volume paths:
@@ -170,7 +181,12 @@ spec:
 
         path_allowed(path) {
           allowed := input.parameters.allowedPaths[_]
-          startswith(path, allowed)
+          path == allowed
+        }
+
+        path_allowed(path) {
+          allowed := input.parameters.allowedPaths[_]
+          startswith(path, sprintf("%s/", [allowed]))
         }
 ```
 
@@ -194,7 +210,7 @@ spec:
       - apiGroups: [""]
         kinds: ["Pod"]
     namespaces:
-      - applications
+      - hostpath-exceptions
   parameters:
     allowedPaths:
       - /tmp  # Only allow /tmp hostPath mounts
@@ -213,7 +229,7 @@ Now pods with dangerous hostPath mounts are rejected:
 # Try to mount /etc
 kubectl run test --image=nginx \
   --overrides='{"spec":{"volumes":[{"name":"host-etc","hostPath":{"path":"/etc"}}],"containers":[{"name":"nginx","image":"nginx","volumeMounts":[{"name":"host-etc","mountPath":"/host-etc"}]}]}}' \
-  -n applications
+  -n hostpath-exceptions
 
 # Error: admission webhook denied the request: hostPath volume with path /etc is not allowed
 ```
@@ -248,7 +264,18 @@ spec:
 
         violation[{"msg": msg}] {
           input.review.object.kind == "PersistentVolumeClaim"
+          not has_storage_class
+          msg := "storageClassName is required and must be one of the approved StorageClasses"
+        }
+
+        has_storage_class {
+          input.review.object.spec.storageClassName != ""
+        }
+
+        violation[{"msg": msg}] {
+          input.review.object.kind == "PersistentVolumeClaim"
           storage_class := input.review.object.spec.storageClassName
+          storage_class != ""
           not storage_class_allowed(storage_class)
           msg := sprintf("StorageClass %v is not allowed", [storage_class])
         }
@@ -318,7 +345,7 @@ The first PVC succeeds, the second is rejected.
 
 ## Controlling ConfigMap and Secret Mounts
 
-RBAC controls who can read ConfigMaps and Secrets. A user who cannot `get` a Secret cannot mount it:
+RBAC controls direct API reads of ConfigMaps and Secrets, but pod creation permission can still provide indirect access to Secrets mounted into Pods in the same namespace. Use RBAC to limit direct reads, and admission policy to restrict which ConfigMaps and Secrets pod specs can reference:
 
 ```yaml
 # app-developer-role.yaml
@@ -334,15 +361,15 @@ rules:
     - pods
   verbs: ["create", "get", "list", "watch", "delete"]
 
-# Can read specific ConfigMaps
+# Can directly read one specific ConfigMap
 - apiGroups: [""]
   resources:
     - configmaps
-  verbs: ["get", "list"]
+  verbs: ["get"]
   resourceNames:
     - app-config  # Only this ConfigMap
 
-# Can read specific Secrets
+# Can directly read one specific Secret
 - apiGroups: [""]
   resources:
     - secrets
@@ -351,7 +378,86 @@ rules:
     - app-secrets  # Only this Secret
 ```
 
-When a developer tries to create a pod that mounts a Secret they cannot read:
+Create a Gatekeeper template that allows only approved ConfigMap and Secret names in pod volumes:
+
+```yaml
+# restrict-named-volume-refs-template.yaml
+apiVersion: templates.gatekeeper.sh/v1
+kind: ConstraintTemplate
+metadata:
+  name: k8srestrictnamedvolumerefs
+spec:
+  crd:
+    spec:
+      names:
+        kind: K8sRestrictNamedVolumeRefs
+      validation:
+        openAPIV3Schema:
+          type: object
+          properties:
+            allowedConfigMaps:
+              type: array
+              items:
+                type: string
+            allowedSecrets:
+              type: array
+              items:
+                type: string
+  targets:
+    - target: admission.k8s.gatekeeper.sh
+      rego: |
+        package k8srestrictnamedvolumerefs
+
+        violation[{"msg": msg}] {
+          volume := input.review.object.spec.volumes[_]
+          volume.configMap
+          configmap_name := volume.configMap.name
+          not configmap_allowed(configmap_name)
+          msg := sprintf("ConfigMap %v is not allowed in pod volumes", [configmap_name])
+        }
+
+        violation[{"msg": msg}] {
+          volume := input.review.object.spec.volumes[_]
+          volume.secret
+          secret_name := volume.secret.secretName
+          not secret_allowed(secret_name)
+          msg := sprintf("Secret %v is not allowed in pod volumes", [secret_name])
+        }
+
+        configmap_allowed(name) {
+          allowed := input.parameters.allowedConfigMaps[_]
+          name == allowed
+        }
+
+        secret_allowed(name) {
+          allowed := input.parameters.allowedSecrets[_]
+          name == allowed
+        }
+```
+
+Create a constraint:
+
+```yaml
+# allow-app-named-volume-refs-constraint.yaml
+apiVersion: constraints.gatekeeper.sh/v1beta1
+kind: K8sRestrictNamedVolumeRefs
+metadata:
+  name: allow-app-named-volume-refs
+spec:
+  match:
+    kinds:
+      - apiGroups: [""]
+        kinds: ["Pod"]
+    namespaces:
+      - applications
+  parameters:
+    allowedConfigMaps:
+      - app-config
+    allowedSecrets:
+      - app-secrets
+```
+
+When a developer tries to create a pod that mounts an unapproved Secret:
 
 ```yaml
 # unauthorized-mount.yaml
@@ -370,19 +476,19 @@ spec:
   volumes:
   - name: database-creds
     secret:
-      secretName: database-admin-password  # User does not have access
+      secretName: database-admin-password  # Not in the allowed list
 ```
 
 The pod is rejected:
 
 ```bash
 kubectl apply -f unauthorized-mount.yaml
-# Error: cannot get secret "database-admin-password"
+# Error: admission webhook denied the request: Secret database-admin-password is not allowed in pod volumes
 ```
 
 ## Restricting EmptyDir Size and Medium
 
-Use Gatekeeper to limit EmptyDir volume sizes:
+Use Gatekeeper to block EmptyDir volumes that use node memory:
 
 ```yaml
 # restrict-emptydir-template.yaml
@@ -399,8 +505,6 @@ spec:
         openAPIV3Schema:
           type: object
           properties:
-            maxSizeLimit:
-              type: string
             allowMemoryMedium:
               type: boolean
   targets:
@@ -524,4 +628,4 @@ jq 'select(.objectRef.resource=="pods" and .responseStatus.code==403) |
   /var/log/kubernetes/audit.log
 ```
 
-Restricting volume mount paths and types requires layering multiple security controls. RBAC controls who can create pods and access secrets. Pod Security Admission or Gatekeeper enforces what volume types are allowed. Admission webhooks provide custom validation logic. Together, these controls prevent users from mounting sensitive host paths or accessing unauthorized storage, maintaining strong security boundaries in multi-tenant clusters.
+Restricting volume mount paths and types requires layering multiple security controls. RBAC controls who can create pods and directly access secrets. Pod Security Admission or Gatekeeper enforces what volume types are allowed. Admission webhooks provide custom validation logic. Together, these controls prevent users from mounting sensitive host paths or accessing unauthorized storage, maintaining strong security boundaries in multi-tenant clusters.
