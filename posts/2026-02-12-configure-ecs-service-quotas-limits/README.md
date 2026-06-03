@@ -16,7 +16,7 @@ This guide covers the most important ECS quotas, how to check your current usage
 
 ECS quotas fall into two categories:
 
-- **Adjustable quotas**: These can be increased by submitting a request through AWS Service Quotas. Examples include the number of clusters per account and tasks per service.
+- **Adjustable quotas**: These can be increased by submitting a request through AWS Service Quotas. Examples include the number of clusters per account and ECS API request-rate quotas.
 - **Hard limits**: These cannot be changed. They are architectural constraints of the service. Examples include the number of containers per task definition.
 
 ## Key ECS Quotas
@@ -26,11 +26,11 @@ Here are the default quotas that most teams bump into first:
 | Resource | Default Limit | Adjustable? |
 |----------|-------------|-------------|
 | Clusters per region | 10,000 | Yes |
-| Services per cluster | 5,000 | Yes |
-| Tasks per service | 5,000 | Yes |
-| Container instances per cluster | 5,000 | Yes |
-| Tasks launched per run-task | 10 | Yes |
-| Task definitions (revisions) | No limit | N/A |
+| Services per cluster | 5,000 | No |
+| Tasks per service | 5,000 | No |
+| Container instances per cluster | 5,000 | No |
+| Tasks launched per run-task | 10 | No |
+| Revisions per task definition family | 1,000,000 | No |
 | Containers per task definition | 10 | No |
 | Subnets per awsvpc configuration | 16 | No |
 | Security groups per awsvpc configuration | 5 | No |
@@ -53,11 +53,10 @@ aws service-quotas list-service-quotas \
 To check a specific quota:
 
 ```bash
-# Check the tasks-per-service quota
-aws service-quotas get-service-quota \
+# Find the tasks-per-service quota
+aws service-quotas list-service-quotas \
   --service-code ecs \
-  --quota-code L-4637F321 \
-  --query 'Quota.{Name:QuotaName,Value:Value}'
+  --query 'Quotas[?QuotaName==`Tasks per service`].{Name:QuotaName,Value:Value,Adjustable:Adjustable}'
 ```
 
 ## Checking Current Usage
@@ -90,11 +89,16 @@ aws ecs list-container-instances \
 When you need more capacity, request an increase through Service Quotas.
 
 ```bash
-# Request an increase for tasks per service (quota code L-4637F321)
+QUOTA_CODE=$(aws service-quotas list-service-quotas \
+  --service-code ecs \
+  --query 'Quotas[?QuotaName==`Clusters per account`].QuotaCode | [0]' \
+  --output text)
+
+# Request an increase for clusters per account
 aws service-quotas request-service-quota-increase \
   --service-code ecs \
-  --quota-code L-4637F321 \
-  --desired-value 10000
+  --quota-code "$QUOTA_CODE" \
+  --desired-value 15000
 ```
 
 You can check the status of your request:
@@ -118,28 +122,30 @@ If you use Fargate, there are additional quotas to watch.
 
 | Resource | Default Limit | Adjustable? |
 |----------|-------------|-------------|
-| Fargate on-demand tasks per region | 1,000 | Yes |
-| Fargate Spot tasks per region | 1,000 | Yes |
+| Fargate On-Demand vCPU resource count | 6 | Yes |
+| Fargate Spot vCPU resource count | 6 | Yes |
+| Fargate On-Demand sustained launch rate | 20 per second in many established regions; 5 per second in other regions | Yes |
+| Fargate Spot sustained launch rate | 20 per second in many established regions; 5 per second in other regions | Yes |
 | Fargate task CPU/memory combinations | Fixed set | No |
 
-The Fargate on-demand task limit is the one most teams hit first. It counts all running Fargate tasks across all clusters in a region.
+The Fargate On-Demand vCPU resource count is the one most teams hit first. It counts running Fargate vCPUs in a region, not just the number of ECS tasks.
 
 ```bash
-# Check Fargate on-demand task quota
-aws service-quotas get-service-quota \
+# Check Fargate On-Demand vCPU quota
+aws service-quotas list-service-quotas \
   --service-code fargate \
-  --quota-code L-790AF391 \
-  --query 'Quota.{Name:QuotaName,Value:Value}'
+  --query 'Quotas[?QuotaName==`Fargate On-Demand vCPU resource count`].{Name:QuotaName,Value:Value,Adjustable:Adjustable}'
 
-# Count current running Fargate tasks across all clusters
-CLUSTERS=$(aws ecs list-clusters --query 'clusterArns[]' --output text)
-TOTAL=0
-for CLUSTER in $CLUSTERS; do
-  COUNT=$(aws ecs list-tasks --cluster "$CLUSTER" --launch-type FARGATE \
-    --desired-status RUNNING --query 'taskArns | length(@)')
-  TOTAL=$((TOTAL + COUNT))
-done
-echo "Total Fargate tasks: $TOTAL"
+# Get current Fargate On-Demand vCPU usage from CloudWatch usage metrics
+aws cloudwatch get-metric-statistics \
+  --namespace AWS/Usage \
+  --metric-name ResourceCount \
+  --dimensions Name=Service,Value=Fargate Name=Type,Value=Resource Name=Resource,Value=vCPU Name=Class,Value=Standard/OnDemand \
+  --statistics Maximum \
+  --period 300 \
+  --start-time "$(date -u -d '15 minutes ago' +%Y-%m-%dT%H:%M:%SZ)" \
+  --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+  --query 'Datapoints | sort_by(@,&Timestamp)[-1].Maximum'
 ```
 
 ## Setting Up Quota Monitoring
@@ -147,34 +153,22 @@ echo "Total Fargate tasks: $TOTAL"
 Set up CloudWatch alarms to alert you when you are approaching your limits.
 
 ```bash
-# Create a CloudWatch alarm for service count approaching limit
+# Create a CloudWatch alarm for Fargate On-Demand vCPU usage approaching quota
 aws cloudwatch put-metric-alarm \
-  --alarm-name ecs-service-count-high \
-  --alarm-description "ECS service count approaching quota limit" \
-  --metric-name ServiceCount \
-  --namespace AWS/ECS \
+  --alarm-name fargate-ondemand-vcpu-high \
+  --alarm-description "Fargate On-Demand vCPU usage approaching quota limit" \
+  --metric-name ResourceCount \
+  --namespace AWS/Usage \
+  --dimensions Name=Service,Value=Fargate Name=Type,Value=Resource Name=Resource,Value=vCPU Name=Class,Value=Standard/OnDemand \
   --statistic Maximum \
   --period 300 \
-  --threshold 4000 \
+  --threshold 5 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 1 \
   --alarm-actions arn:aws:sns:us-east-1:123456789:ops-alerts
 ```
 
-You can also use AWS Config to monitor quota utilization.
-
-```bash
-# Enable AWS Config rule for service quota monitoring
-aws configservice put-config-rule \
-  --config-rule '{
-    "ConfigRuleName": "ecs-quota-monitor",
-    "Source": {
-      "Owner": "AWS",
-      "SourceIdentifier": "SERVICE_QUOTA_CHECK"
-    },
-    "InputParameters": "{\"serviceCode\":\"ecs\"}"
-  }'
-```
+You can also use the Service Quotas console to visualize supported quota utilization and create CloudWatch alarms from the quota page.
 
 ## Automating Quota Checks with a Script
 
@@ -190,9 +184,10 @@ THRESHOLD=80  # Alert when usage exceeds this percentage
 echo "=== ECS Quota Utilization Check ==="
 
 # Check clusters
-CLUSTER_QUOTA=$(aws service-quotas get-service-quota \
-  --service-code ecs --quota-code L-21C621EB \
-  --query 'Quota.Value' --output text 2>/dev/null || echo "10000")
+CLUSTER_QUOTA=$(aws service-quotas list-service-quotas \
+  --service-code ecs \
+  --query 'Quotas[?QuotaName==`Clusters per account`].Value | [0]' \
+  --output text 2>/dev/null || echo "10000")
 CLUSTER_COUNT=$(aws ecs list-clusters --query 'clusterArns | length(@)' --output text)
 CLUSTER_PCT=$((CLUSTER_COUNT * 100 / ${CLUSTER_QUOTA%.*}))
 echo "Clusters: $CLUSTER_COUNT / ${CLUSTER_QUOTA%.*} ($CLUSTER_PCT%)"
@@ -218,25 +213,23 @@ Task definitions have their own set of hard limits that you cannot change.
 
 **Containers per task**: Maximum 10 containers per task definition. If you need more, consider splitting into multiple tasks.
 
-**Environment variables per container**: Maximum 100 environment variables. Use Secrets Manager or Parameter Store for configuration-heavy applications. See our guide on [using Parameter Store with ECS](https://oneuptime.com/blog/post/2026-02-12-ecs-parameter-store-configuration/view).
+**Environment variables per container**: Individual environment variables contribute to the task definition size. Use Secrets Manager, Parameter Store, or environment files for configuration-heavy applications. See our guide on [using Parameter Store with ECS](https://oneuptime.com/blog/post/2026-02-12-ecs-parameter-store-configuration/view).
 
 **Task definition size**: The JSON payload cannot exceed 64KB. This limit is rarely hit unless you have many containers with extensive environment variable lists.
 
-**Volumes per task**: Maximum 10 volumes per task definition.
+**Volumes per task**: A task definition can define multiple volumes, but only one volume can be configured at launch for Amazon EBS.
 
 ## Rate Limits
 
 Beyond resource quotas, ECS also has API rate limits (throttling).
 
-| API Action | Default Rate | Burst |
+| API Category | Sustained Rate | Burst |
 |-----------|-------------|-------|
-| RegisterTaskDefinition | 1 TPS | 1 |
-| RunTask | 1 TPS | 1 |
-| StartTask | 1 TPS | 1 |
-| CreateService | 1 TPS | 1 |
-| UpdateService | 1 TPS | 1 |
-| DescribeTasks | 20 TPS | 40 |
-| ListTasks | 20 TPS | 40 |
+| Task definition modify actions, such as RegisterTaskDefinition | 1 TPS | 20 |
+| Task definition read actions, such as DescribeTaskDefinition | 20 TPS | 50 |
+| Service modify actions, such as CreateService and UpdateService | 5 TPS | 50 |
+| Service read actions, such as DescribeServices | 20 TPS | 100 |
+| Cluster resource read actions, such as ListTasks and DescribeTasks | 20 TPS | 100 |
 
 If you are automating deployments across many services, you might hit these rate limits. Use exponential backoff and jitter in your deployment scripts.
 
@@ -245,6 +238,7 @@ If you are automating deployments across many services, you might hit these rate
 import boto3
 import time
 import random
+from botocore.exceptions import ClientError
 
 ecs = boto3.client('ecs')
 
@@ -256,8 +250,8 @@ def update_service_with_retry(cluster, service, task_def, max_retries=5):
                 service=service,
                 taskDefinition=task_def
             )
-        except ecs.exceptions.ClientError as e:
-            if 'ThrottlingException' in str(e):
+        except ClientError as e:
+            if e.response.get('Error', {}).get('Code') in ('ThrottlingException', 'TooManyRequestsException'):
                 # Exponential backoff with jitter
                 wait = (2 ** attempt) + random.uniform(0, 1)
                 print(f"Throttled, waiting {wait:.1f}s before retry")
@@ -276,7 +270,7 @@ As a rule of thumb, review your ECS quotas when:
 - You are expanding to a new region (quotas are per-region)
 - You are preparing for a traffic event (Black Friday, product launch, etc.)
 
-Request increases proactively - do not wait until your deployment fails at 2 AM because you ran out of Fargate tasks.
+Request increases proactively - do not wait until your deployment fails at 2 AM because you ran out of Fargate vCPU capacity.
 
 ## Wrapping Up
 
