@@ -8,7 +8,7 @@ Description: Learn how to create custom kubectl plugins in Bash and Go to extend
 
 ---
 
-kubectl plugins let you add custom subcommands without modifying kubectl itself. Any executable named `kubectl-something` in your PATH becomes available as `kubectl something`. This simple mechanism enables powerful extensions using shell scripts or compiled programs.
+kubectl plugins let you add custom subcommands without modifying kubectl itself. Any executable named `kubectl-something` in your PATH becomes available as `kubectl something`. For plugin command names that contain dashes, use underscores in the executable name, such as `kubectl-pod_summary` for `kubectl pod-summary`. This simple mechanism enables powerful extensions using shell scripts or compiled programs.
 
 ## How kubectl Plugins Work
 
@@ -101,13 +101,13 @@ Create a plugin that summarizes pod status across namespaces:
 
 ```bash
 #!/bin/bash
-# kubectl-pod-summary - Show pod status summary
+# kubectl-pod_summary - Show pod status summary
 
 set -e
 
 show_help() {
     cat << EOF
-kubectl-pod-summary - Display pod status summary
+kubectl pod-summary - Display pod status summary
 
 Usage:
   kubectl pod-summary [namespace]
@@ -159,13 +159,13 @@ Build a plugin that safely drains nodes with confirmation:
 
 ```bash
 #!/bin/bash
-# kubectl-drain-safe - Safe node draining with confirmation
+# kubectl-drain_safe - Safe node draining with confirmation
 
 set -e
 
 show_help() {
     cat << EOF
-kubectl-drain-safe - Drain node with confirmation and safety checks
+kubectl drain-safe - Drain node with confirmation and safety checks
 
 Usage:
   kubectl drain-safe <node-name> [flags]
@@ -173,7 +173,7 @@ Usage:
 Flags:
   --force              Skip confirmation prompt
   --ignore-daemonsets  Ignore DaemonSet-managed pods
-  --delete-local-data  Delete pods with local storage
+  --delete-local-data  Continue even if pods use emptyDir data
 
 Examples:
   kubectl drain-safe worker-1
@@ -276,15 +276,15 @@ func main() {
     podName := flag.Arg(0)
 
     // Load kubeconfig
-    if *kubeconfig == "" {
-        *kubeconfig = os.Getenv("KUBECONFIG")
-        if *kubeconfig == "" {
-            home, _ := os.UserHomeDir()
-            *kubeconfig = home + "/.kube/config"
-        }
+    loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+    if *kubeconfig != "" {
+        loadingRules.ExplicitPath = *kubeconfig
     }
 
-    config, err := clientcmd.BuildConfigFromFlags("", *kubeconfig)
+    config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+        loadingRules,
+        &clientcmd.ConfigOverrides{},
+    ).ClientConfig()
     if err != nil {
         fmt.Printf("Error loading kubeconfig: %v\n", err)
         os.Exit(1)
@@ -332,12 +332,12 @@ go build -o kubectl-podinfo kubectl-podinfo.go
 mv kubectl-podinfo /usr/local/bin/
 
 # Use the plugin
-kubectl podinfo nginx-pod -namespace=production
+kubectl podinfo -namespace=production nginx-pod
 ```
 
 ## Advanced Go Plugin with Tables
 
-Create formatted table output using client-go printer utilities:
+Create formatted table output:
 
 ```go
 // kubectl-resource-summary.go
@@ -363,13 +363,10 @@ func main() {
     namespace := flag.String("namespace", "", "Target namespace (default: all namespaces)")
     flag.Parse()
 
-    kubeconfig := os.Getenv("KUBECONFIG")
-    if kubeconfig == "" {
-        home, _ := os.UserHomeDir()
-        kubeconfig = home + "/.kube/config"
-    }
-
-    config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+    config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(
+        clientcmd.NewDefaultClientConfigLoadingRules(),
+        &clientcmd.ConfigOverrides{},
+    ).ClientConfig()
     if err != nil {
         fmt.Printf("Error: %v\n", err)
         os.Exit(1)
@@ -388,23 +385,43 @@ func main() {
     var counts []ResourceCount
 
     // Pods
-    pods, _ := clientset.CoreV1().Pods(*namespace).List(ctx, listOpts)
+    pods, err := clientset.CoreV1().Pods(*namespace).List(ctx, listOpts)
+    if err != nil {
+        fmt.Printf("Error listing pods: %v\n", err)
+        os.Exit(1)
+    }
     counts = append(counts, ResourceCount{"Pods", len(pods.Items)})
 
     // Services
-    services, _ := clientset.CoreV1().Services(*namespace).List(ctx, listOpts)
+    services, err := clientset.CoreV1().Services(*namespace).List(ctx, listOpts)
+    if err != nil {
+        fmt.Printf("Error listing services: %v\n", err)
+        os.Exit(1)
+    }
     counts = append(counts, ResourceCount{"Services", len(services.Items)})
 
     // Deployments
-    deployments, _ := clientset.AppsV1().Deployments(*namespace).List(ctx, listOpts)
+    deployments, err := clientset.AppsV1().Deployments(*namespace).List(ctx, listOpts)
+    if err != nil {
+        fmt.Printf("Error listing deployments: %v\n", err)
+        os.Exit(1)
+    }
     counts = append(counts, ResourceCount{"Deployments", len(deployments.Items)})
 
     // ConfigMaps
-    configmaps, _ := clientset.CoreV1().ConfigMaps(*namespace).List(ctx, listOpts)
+    configmaps, err := clientset.CoreV1().ConfigMaps(*namespace).List(ctx, listOpts)
+    if err != nil {
+        fmt.Printf("Error listing configmaps: %v\n", err)
+        os.Exit(1)
+    }
     counts = append(counts, ResourceCount{"ConfigMaps", len(configmaps.Items)})
 
     // Secrets
-    secrets, _ := clientset.CoreV1().Secrets(*namespace).List(ctx, listOpts)
+    secrets, err := clientset.CoreV1().Secrets(*namespace).List(ctx, listOpts)
+    if err != nil {
+        fmt.Printf("Error listing secrets: %v\n", err)
+        os.Exit(1)
+    }
     counts = append(counts, ResourceCount{"Secrets", len(secrets.Items)})
 
     // Print summary
@@ -449,14 +466,14 @@ spec:
         os: linux
         arch: amd64
     uri: https://github.com/yourusername/kubectl-podinfo/releases/download/v1.0.0/kubectl-podinfo-linux-amd64.tar.gz
-    sha256: "abc123..."
+    sha256: "<sha256-of-linux-amd64-archive>"
     bin: kubectl-podinfo
   - selector:
       matchLabels:
         os: darwin
         arch: amd64
     uri: https://github.com/yourusername/kubectl-podinfo/releases/download/v1.0.0/kubectl-podinfo-darwin-amd64.tar.gz
-    sha256: "def456..."
+    sha256: "<sha256-of-darwin-amd64-archive>"
     bin: kubectl-podinfo
 ```
 
@@ -525,14 +542,14 @@ kubectl myplugin invalid-arg  # Shows clear error and exits non-zero
 
 ## Performance Considerations
 
-Bash plugins execute quickly for simple operations but slow down with complex processing. Go plugins start faster and handle large data sets better:
+Bash plugins execute quickly for simple operations but slow down with complex processing. Go plugins avoid shell pipeline overhead and handle large data sets better, but exact timings depend on your machine, cluster latency, and how many kubectl/API calls the plugin makes:
 
 ```bash
 # Bash - fast for simple kubectl calls
-time kubectl bash-plugin  # ~100ms
+time kubectl bash-plugin
 
-# Go - compiled, faster execution
-time kubectl go-plugin  # ~50ms
+# Go - compiled, better for complex processing
+time kubectl go-plugin
 ```
 
 Choose Bash for simple wrappers, Go for complex logic and data processing.
