@@ -8,11 +8,11 @@ Description: Master automatic secret rotation for Kubernetes ServiceAccounts usi
 
 ---
 
-Kubernetes ServiceAccount tokens provide identity for pods but often remain static throughout a deployment's lifetime. Implementing automatic rotation of ServiceAccount credentials and associated secrets reduces the risk from compromised credentials. This guide demonstrates using HashiCorp Vault to automate secret rotation for Kubernetes workloads.
+Kubernetes ServiceAccount tokens provide identity for pods. In modern Kubernetes releases, the default projected ServiceAccount token mounted into a pod is short-lived and rotated by the kubelet; legacy ServiceAccount token Secrets are long-lived and do not rotate automatically. Implementing automatic rotation of Vault tokens and application secrets reduces the risk from compromised credentials. This guide demonstrates using HashiCorp Vault to automate secret rotation for Kubernetes workloads.
 
 ## Understanding ServiceAccount Secret Rotation
 
-Traditional Kubernetes ServiceAccount tokens don't expire. Long-lived credentials increase security risk because compromised tokens provide indefinite access. Vault addresses this through short-lived, automatically rotated tokens.
+Legacy Kubernetes ServiceAccount token Secrets don't expire. Long-lived credentials increase security risk because compromised tokens provide indefinite access. Vault addresses application access through short-lived Vault tokens and dynamic secrets; it validates the pod's ServiceAccount JWT but does not replace Kubernetes' own token rotation.
 
 Secret rotation involves generating new credentials, distributing them to applications, and revoking old credentials after a grace period. The process must occur without service interruption, requiring coordination between Vault, Kubernetes, and applications.
 
@@ -35,12 +35,12 @@ vault write auth/kubernetes/config \
 vault write auth/kubernetes/role/app-role \
     bound_service_account_names=myapp \
     bound_service_account_namespaces=production \
-    policies=app-policy \
-    ttl=1h \
-    max_ttl=2h
+    token_policies=app-policy \
+    token_ttl=1h \
+    token_max_ttl=2h
 ```
 
-The short TTL forces regular token rotation.
+The short Vault token TTL requires regular token renewal or re-authentication.
 
 ## Implementing Application-Level Token Renewal
 
@@ -286,6 +286,7 @@ spec:
       labels:
         app: myapp
     spec:
+      shareProcessNamespace: true
       serviceAccountName: myapp
       containers:
       - name: vault-agent
@@ -495,7 +496,7 @@ func (a *Application) Run() {
 
 ## Automating Secret Rotation with CronJobs
 
-Create CronJobs for periodic rotation:
+Create CronJobs for periodic rotation. The rotator image must include the Vault CLI, kubectl, and jq:
 
 ```yaml
 apiVersion: batch/v1
@@ -513,7 +514,7 @@ spec:
           restartPolicy: OnFailure
           containers:
           - name: rotator
-            image: vault:1.15
+            image: your-registry/vault-kubectl-jq:1.15
             env:
             - name: VAULT_ADDR
               value: http://vault.vault-system:8200
@@ -577,7 +578,7 @@ data:
       rules:
       - alert: SecretRotationFailed
         expr: |
-          rate(vault_database_creds_generation_failures[5m]) > 0
+          increase(database_CreateUser_error[5m]) > 0
         labels:
           severity: critical
         annotations:
@@ -585,11 +586,11 @@ data:
 
       - alert: StaleCredentials
         expr: |
-          time() - vault_token_creation_time > 7200
+          increase(vault_secret_lease_creation{secret_engine="database"}[2h]) == 0
         labels:
           severity: warning
         annotations:
-          summary: "Credentials haven't rotated in 2 hours"
+          summary: "No database credential leases created in 2 hours"
 ```
 
 ## Best Practices
@@ -606,6 +607,6 @@ Test rotation procedures regularly in non-production environments. Ensure the en
 
 ## Conclusion
 
-Implementing automatic secret rotation for Kubernetes ServiceAccounts significantly reduces the risk from compromised credentials. By combining Vault's dynamic secret generation with application-level rotation handling, you create a robust security posture where credentials have limited lifetimes and rotate automatically. This pattern is essential for production environments requiring strong security controls and compliance with regulatory frameworks that mandate regular credential rotation.
+Implementing automatic secret rotation for Kubernetes workloads significantly reduces the risk from compromised credentials. By combining Vault's dynamic secret generation with application-level rotation handling, you create a robust security posture where credentials have limited lifetimes and rotate automatically. This pattern is essential for production environments requiring strong security controls and compliance with regulatory frameworks that mandate regular credential rotation.
 
 Adopt automated secret rotation to improve your security posture while maintaining operational efficiency.
