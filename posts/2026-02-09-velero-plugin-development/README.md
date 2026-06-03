@@ -29,10 +29,11 @@ Each plugin type serves specific purposes in the backup and restore workflow.
 Create a development environment for plugin development:
 
 ```bash
-# Install Go 1.21 or later
+# Install a Go version compatible with your Velero dependency
 
-wget https://go.dev/dl/go1.21.0.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.21.0.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.25.10.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go
+sudo tar -C /usr/local -xzf go1.25.10.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 
 # Create plugin project
@@ -51,15 +52,13 @@ go get github.com/vmware-tanzu/velero/pkg/plugin/framework
 Implement a plugin that modifies resources during backup:
 
 ```go
-// plugins/backup/custom_action.go
+// custom_backup_action.go
 package main
 
 import (
-    "encoding/json"
-
     "github.com/pkg/errors"
     "github.com/sirupsen/logrus"
-    v1 "k8s.io/api/core/v1"
+    api "github.com/vmware-tanzu/velero/pkg/apis/velero/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
     "k8s.io/apimachinery/pkg/runtime"
 
@@ -84,26 +83,25 @@ func (p *CustomBackupAction) AppliesTo() (velero.ResourceSelector, error) {
 }
 
 // Execute performs the backup action
-func (p *CustomBackupAction) Execute(item runtime.Unstructured, backup *v1.ConfigMap) (runtime.Unstructured, []velero.ResourceIdentifier, error) {
+func (p *CustomBackupAction) Execute(item runtime.Unstructured, backup *api.Backup) (runtime.Unstructured, []velero.ResourceIdentifier, error) {
     p.log.Info("Executing custom backup action")
 
-    // Get the object metadata
-    metadata, err := getObjectMeta(item)
-    if err != nil {
-        return nil, nil, err
+    u, ok := item.(*unstructured.Unstructured)
+    if !ok {
+        return nil, nil, errors.Errorf("expected *unstructured.Unstructured, got %T", item)
     }
 
     // Add custom annotations
-    annotations := metadata["annotations"]
+    annotations := u.GetAnnotations()
     if annotations == nil {
-        annotations = make(map[string]interface{})
+        annotations = make(map[string]string)
     }
 
-    annotationsMap := annotations.(map[string]interface{})
-    annotationsMap["backup.example.com/processed"] = "true"
-    annotationsMap["backup.example.com/timestamp"] = backup.CreationTimestamp.String()
-
-    metadata["annotations"] = annotationsMap
+    annotations["backup.example.com/processed"] = "true"
+    if backup != nil {
+        annotations["backup.example.com/timestamp"] = backup.CreationTimestamp.String()
+    }
+    u.SetAnnotations(annotations)
 
     // Return modified item
     return item, nil, nil
@@ -120,16 +118,13 @@ func getObjectMeta(item runtime.Unstructured) (map[string]interface{}, error) {
 Create a plugin that modifies resources during restore:
 
 ```go
-// plugins/restore/custom_action.go
+// custom_restore_action.go
 package main
 
 import (
-    "fmt"
-
     "github.com/pkg/errors"
     "github.com/sirupsen/logrus"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-    "k8s.io/apimachinery/pkg/runtime"
 
     "github.com/vmware-tanzu/velero/pkg/plugin/velero"
 )
@@ -180,14 +175,13 @@ func (p *CustomRestoreAction) Execute(input *velero.RestoreItemActionExecuteInpu
 Implement a plugin for custom storage backends:
 
 ```go
-// plugins/objectstore/custom_store.go
+// custom_store.go
 package main
 
 import (
     "io"
     "time"
 
-    "github.com/pkg/errors"
     "github.com/sirupsen/logrus"
 
     "github.com/vmware-tanzu/velero/pkg/plugin/velero"
@@ -317,7 +311,7 @@ Or configure in Velero installation:
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,myregistry/velero-custom-plugin:v1.0.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1,myregistry/velero-custom-plugin:v1.0.0 \
   --bucket velero-backups \
   --secret-file ./credentials
 ```
@@ -351,7 +345,7 @@ type ConfigurableAction struct {
     config   map[string]string
 }
 
-func (p *ConfigurableAction) Execute(item runtime.Unstructured, backup *v1.ConfigMap) (runtime.Unstructured, []velero.ResourceIdentifier, error) {
+func (p *ConfigurableAction) Execute(item runtime.Unstructured, backup *api.Backup) (runtime.Unstructured, []velero.ResourceIdentifier, error) {
     // Read configuration
     annotationKey := p.config["annotationKey"]
     if annotationKey == "" {
@@ -360,14 +354,18 @@ func (p *ConfigurableAction) Execute(item runtime.Unstructured, backup *v1.Confi
 
     // Use configuration in plugin logic
     metadata, _ := getObjectMeta(item)
-    annotations := metadata["annotations"].(map[string]interface{})
+    annotations, _ := metadata["annotations"].(map[string]interface{})
+    if annotations == nil {
+        annotations = make(map[string]interface{})
+    }
     annotations[annotationKey] = "true"
+    metadata["annotations"] = annotations
 
     return item, nil, nil
 }
 ```
 
-Configure the plugin via Velero ConfigMap:
+Configure the plugin via Velero ConfigMap, then have your plugin read this ConfigMap and populate its configuration:
 
 ```yaml
 apiVersion: v1
@@ -377,7 +375,7 @@ metadata:
   namespace: velero
   labels:
     velero.io/plugin-config: ""
-    velero.io/custom-backup-action: ConfigurableAction
+    example.com/custom-backup-action: BackupItemAction
 data:
   annotationKey: "custom.example.com/backup"
 ```
@@ -388,22 +386,18 @@ Enable debug logging for plugin development:
 
 ```bash
 # Update Velero deployment with debug logging
-kubectl patch deployment velero -n velero -p '
-{
-  "spec": {
-    "template": {
-      "spec": {
-        "containers": [{
-          "name": "velero",
-          "env": [{
-            "name": "LOG_LEVEL",
-            "value": "debug"
-          }]
-        }]
-      }
-    }
+kubectl patch deployment velero -n velero --type='json' -p='[
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/args/-",
+    "value": "--log-level"
+  },
+  {
+    "op": "add",
+    "path": "/spec/template/spec/containers/0/args/-",
+    "value": "debug"
   }
-}'
+]'
 
 # View detailed plugin logs
 kubectl logs -n velero -l name=velero --follow | grep plugin
@@ -451,9 +445,11 @@ func TestCustomBackupAction_Execute(t *testing.T) {
         },
     }
 
-    result, _, err := action.Execute(item, nil)
+    result, _, err := action.Execute(item, &api.Backup{})
     assert.NoError(t, err)
-    // Add assertions
+
+    updated := result.(*unstructured.Unstructured)
+    assert.Equal(t, "true", updated.GetAnnotations()["backup.example.com/processed"])
 }
 ```
 
