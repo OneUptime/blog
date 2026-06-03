@@ -37,12 +37,12 @@ graph TD
 
 | Feature | CloudFront | Global Accelerator |
 |---------|-----------|-------------------|
-| Caching | Yes, at 400+ edge locations | No caching |
-| Protocols | HTTP, HTTPS, WebSocket | TCP, UDP |
-| Static IPs | No (uses DNS names) | Yes, two anycast IPs |
+| Caching | Yes, across 750+ CloudFront POPs | No caching |
+| Protocols | HTTP, HTTPS, WebSocket, gRPC over HTTP/2 | TCP, UDP |
+| Static IPs | Optional Anycast static IP lists; otherwise DNS names | Yes, two IPv4 anycast IPs, or four IPs for dual-stack |
 | Edge Logic | CloudFront Functions, Lambda@Edge | No edge compute |
-| SSL Termination | At the edge | At the endpoint (pass-through) |
-| Origin Types | S3, ALB, Custom HTTP | ALB, NLB, EC2, Elastic IP |
+| TLS Termination | Viewer TLS at the edge; origin TLS optional | TLS is not terminated by Global Accelerator; TCP is terminated at the edge |
+| Origin Types | S3, ALB, custom HTTP origins, VPC origins | ALB, NLB, EC2, Elastic IP |
 | Health Checks | Via origin groups | Built-in per endpoint group |
 | Failover | Origin groups (HTTP error codes) | Automatic (health check based) |
 | DDoS Protection | AWS Shield Standard included | AWS Shield Standard included |
@@ -72,34 +72,71 @@ Example setup for a web application:
 
 aws cloudfront create-distribution \
   --distribution-config '{
+    "CallerReference": "web-app-2026-02-12",
+    "Comment": "Web app distribution",
     "Origins": {
       "Quantity": 2,
       "Items": [
         {
           "Id": "api",
           "DomainName": "api-alb.us-east-1.elb.amazonaws.com",
-          "CustomOriginConfig": {"HTTPSPort": 443, "OriginProtocolPolicy": "https-only"}
+          "CustomHeaders": {"Quantity": 0},
+          "CustomOriginConfig": {
+            "HTTPPort": 80,
+            "HTTPSPort": 443,
+            "OriginProtocolPolicy": "https-only",
+            "OriginSslProtocols": {
+              "Quantity": 1,
+              "Items": ["TLSv1.2"]
+            }
+          }
         },
         {
           "Id": "static",
           "DomainName": "static-assets.s3.amazonaws.com",
+          "CustomHeaders": {"Quantity": 0},
           "S3OriginConfig": {"OriginAccessIdentity": ""}
         }
       ]
     },
+    "OriginGroups": {"Quantity": 0},
     "DefaultCacheBehavior": {
       "TargetOriginId": "api",
       "ViewerProtocolPolicy": "redirect-to-https",
-      "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+      "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
+      "AllowedMethods": {
+        "Quantity": 7,
+        "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"]
+        }
+      }
     },
     "CacheBehaviors": {
       "Quantity": 1,
       "Items": [{
         "PathPattern": "/static/*",
         "TargetOriginId": "static",
-        "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
+        "ViewerProtocolPolicy": "redirect-to-https",
+        "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
+        "AllowedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        }
       }]
-    }
+    },
+    "CustomErrorResponses": {"Quantity": 0},
+    "Enabled": true,
+    "ViewerCertificate": {
+      "CloudFrontDefaultCertificate": true
+    },
+    "HttpVersion": "http2and3",
+    "IsIPV6Enabled": true
   }'
 ```
 
@@ -107,15 +144,15 @@ aws cloudfront create-distribution \
 
 Global Accelerator is the right choice when:
 
-**Your traffic is non-HTTP.** Gaming (UDP), VoIP, IoT protocols, custom TCP protocols - CloudFront can't handle these. Global Accelerator works with any TCP or UDP traffic.
+**Your traffic is non-HTTP.** Gaming (UDP), VoIP, IoT protocols, custom TCP protocols - CloudFront is built for HTTP-based protocols, not arbitrary TCP or UDP services. Global Accelerator works with TCP and UDP traffic.
 
-**You need static IP addresses.** Some enterprise clients need to allowlist IPs in their firewalls. CloudFront uses DNS-based routing with changing IPs. Global Accelerator gives you two fixed IPs that never change.
+**You need static IP addresses.** Some enterprise clients need to allowlist IPs in their firewalls. CloudFront can use Anycast static IP lists, but the default CloudFront model is DNS-based routing with changing IP ranges. Global Accelerator gives you fixed anycast IPs that remain assigned for as long as the accelerator exists.
 
 **Your content isn't cacheable.** If every request is unique (real-time bidding, financial trading, live data feeds), CloudFront's caching provides no benefit. Global Accelerator's backbone routing still helps with latency and consistency.
 
 **You need instant failover.** CloudFront origin failover depends on HTTP error codes from the origin. Global Accelerator failover is based on active health checks and triggers in seconds when an endpoint becomes unhealthy, even before any user request fails.
 
-**You need TCP/UDP pass-through.** Global Accelerator doesn't terminate SSL - it passes connections through. This matters when your application handles its own TLS or uses mutual TLS (mTLS).
+**You need TCP/UDP acceleration without TLS termination at the edge.** Global Accelerator terminates TCP at the edge and opens a second optimized TCP connection to your endpoint, but it doesn't terminate TLS. This matters when your application handles its own TLS or uses mutual TLS (mTLS).
 
 Example for a gaming service:
 
@@ -134,7 +171,7 @@ Both services improve performance, but in different ways:
 
 **CloudFront performance gain**: Primarily from caching. A cache hit eliminates the round trip to the origin entirely. For cache misses, CloudFront uses optimized routes to the origin, but the improvement is modest compared to a cache hit.
 
-**Global Accelerator performance gain**: From network path optimization. Every request benefits from the AWS backbone, regardless of cacheability. Typical improvement is 20-60% reduction in latency, depending on the user's location and the quality of the public internet path.
+**Global Accelerator performance gain**: From network path optimization. Every request benefits from the AWS backbone, regardless of cacheability. AWS advertises network performance improvements of up to 60%, depending on the user's location and the quality of the public internet path.
 
 Real-world example: A user in Mumbai accessing a server in us-east-1.
 
@@ -169,13 +206,13 @@ This gives you caching benefits for static content and backbone routing for dyna
 
 ## Cost Comparison
 
-**CloudFront pricing**: $0.085/GB data transfer (US/EU, decreasing with volume) + $0.0075-$0.02 per 10,000 requests. No fixed monthly fee. Free tier: 1TB/month transfer, 10M requests/month.
+**CloudFront pricing**: CloudFront has flat-rate CDN plans as well as pay-as-you-go pricing. On pay-as-you-go, charges vary by geography and traffic type, with common US/EU rates historically around $0.085/GB for the first tier plus per-request charges. The current Free flat-rate plan includes 100GB data transfer and 1M requests per month per distribution.
 
-**Global Accelerator pricing**: ~$0.025/hour per accelerator (~$18/month fixed) + data transfer premium varying by region ($0.015-$0.090/GB on top of standard transfer). No free tier.
+**Global Accelerator pricing**: ~$0.025/hour per accelerator (~$18/month fixed) + data transfer premium varying by source and destination ($0.007-$0.105/GB in the current public table) on top of standard data transfer charges. Standard public IPv4 address charges also apply to IPv4 addresses used with accelerators.
 
 For a site serving 1TB/month:
 - CloudFront: ~$85 in data transfer + request charges
-- Global Accelerator: ~$18 fixed + ~$15-90 data transfer premium
+- Global Accelerator: ~$18 fixed + data transfer premium + standard data transfer charges
 
 CloudFront is generally cheaper for standard web traffic, especially with a high cache hit rate. Global Accelerator's fixed cost makes it more economical at higher traffic volumes.
 
@@ -185,7 +222,7 @@ Ask these questions:
 
 1. **Is your traffic HTTP/HTTPS?** If no, use Global Accelerator.
 2. **Is your content cacheable?** If yes, CloudFront will likely be both faster and cheaper.
-3. **Do you need static IPs?** If yes, use Global Accelerator (or both).
+3. **Do you need static IPs?** If yes, use Global Accelerator, CloudFront Anycast static IPs, or both depending on whether you also need CDN features.
 4. **Do you need WAF, signed URLs, or edge compute?** If yes, use CloudFront.
 5. **Do you need instant health-check-based failover?** Global Accelerator.
 6. **Do you need deterministic instance-level routing?** Global Accelerator custom routing.
