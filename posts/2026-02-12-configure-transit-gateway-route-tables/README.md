@@ -8,7 +8,7 @@ Description: Master transit gateway route tables to control traffic flow between
 
 ---
 
-The default transit gateway route table gives you full mesh connectivity - every attachment can talk to every other attachment. That's fine for getting started, but real-world networks need segmentation. Your dev environment shouldn't be able to reach production databases. Your third-party vendor VPC shouldn't see your internal services.
+The default transit gateway route table gives you full mesh routing - every attachment can learn routes to every other attachment, assuming the VPC route tables, security groups, and network ACLs also allow the traffic. That's fine for getting started, but real-world networks need segmentation. Your dev environment shouldn't be able to reach production databases. Your third-party vendor VPC shouldn't see your internal services.
 
 Transit gateway route tables let you control exactly which VPCs can communicate with each other. You create separate route tables for different routing domains, associate attachments with them, and control route propagation. It's like having multiple virtual routers inside your transit gateway.
 
@@ -241,11 +241,30 @@ Resources:
       TransitGatewayRouteTableId: !Ref ProductionRouteTable
       TransitGatewayAttachmentId: !Ref ProdAttachment
 
+  DevAssociation:
+    Type: AWS::EC2::TransitGatewayRouteTableAssociation
+    Properties:
+      TransitGatewayRouteTableId: !Ref DevelopmentRouteTable
+      TransitGatewayAttachmentId: !Ref DevAttachment
+
+  SharedAssociation:
+    Type: AWS::EC2::TransitGatewayRouteTableAssociation
+    Properties:
+      TransitGatewayRouteTableId: !Ref SharedRouteTable
+      TransitGatewayAttachmentId: !Ref SharedAttachment
+
   # Propagations - shared services visible from production
   SharedToProdPropagation:
     Type: AWS::EC2::TransitGatewayRouteTablePropagation
     Properties:
       TransitGatewayRouteTableId: !Ref ProductionRouteTable
+      TransitGatewayAttachmentId: !Ref SharedAttachment
+
+  # Propagations - shared services visible from development
+  SharedToDevPropagation:
+    Type: AWS::EC2::TransitGatewayRouteTablePropagation
+    Properties:
+      TransitGatewayRouteTableId: !Ref DevelopmentRouteTable
       TransitGatewayAttachmentId: !Ref SharedAttachment
 
   # Propagation - production visible from shared services
@@ -254,6 +273,13 @@ Resources:
     Properties:
       TransitGatewayRouteTableId: !Ref SharedRouteTable
       TransitGatewayAttachmentId: !Ref ProdAttachment
+
+  # Propagation - development visible from shared services
+  DevToSharedPropagation:
+    Type: AWS::EC2::TransitGatewayRouteTablePropagation
+    Properties:
+      TransitGatewayRouteTableId: !Ref SharedRouteTable
+      TransitGatewayAttachmentId: !Ref DevAttachment
 
   # Blackhole route blocking dev from reaching prod
   BlockDevToProd:
