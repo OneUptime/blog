@@ -118,7 +118,7 @@ This is the one-time investment to actually move to AWS. Underestimating this ki
 ### Assessment and Planning
 
 ```text
-AWS Migration Assessment Service or consultant fees
+AWS Migration Evaluator or consultant fees
 Application portfolio analysis
 Dependency mapping tools and labor
 Architecture design and review
@@ -129,7 +129,7 @@ Training for operations team
 ### Migration Execution
 
 ```text
-Migration tooling (CloudEndure, DMS, etc.)
+Migration tooling (AWS Application Migration Service, AWS DMS, etc.)
 Temporary parallel running costs (on-prem + cloud)
 Additional bandwidth during migration
 Staff overtime or contractor costs
