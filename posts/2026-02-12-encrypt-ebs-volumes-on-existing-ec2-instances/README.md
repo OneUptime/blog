@@ -8,14 +8,14 @@ Description: Step-by-step guide to adding encryption to existing unencrypted EBS
 
 ---
 
-EBS encryption protects your data at rest, in transit between the volume and the instance, and in any snapshots created from the volume. There's no performance penalty for encrypted volumes, and once enabled, encryption is completely transparent to the OS and applications.
+EBS encryption protects your data at rest, in transit between the volume and the instance, and in any snapshots created from the volume. You can expect the same IOPS performance as unencrypted volumes, with minimal effect on latency, and once enabled, encryption is completely transparent to the OS and applications.
 
 The catch is that you can't encrypt an existing unencrypted volume in place. You need to create an encrypted copy. This guide walks through the process for both data volumes and root volumes.
 
 ## Why Encrypt?
 
 - **Compliance** - Many frameworks (HIPAA, SOC 2, PCI DSS, GDPR) require encryption at rest
-- **No performance penalty** - EBS encryption uses AES-256 and is handled by the instance's hardware
+- **Same IOPS performance** - EBS encryption uses AES-256 and is handled transparently by AWS
 - **Automatic key management** - AWS KMS handles the encryption keys
 - **Snapshot encryption** - Snapshots of encrypted volumes are automatically encrypted
 - **It's free** - No additional charge for EBS encryption (KMS has a small cost for API calls)
@@ -25,6 +25,13 @@ The catch is that you can't encrypt an existing unencrypted volume in place. You
 The process: snapshot the unencrypted volume, copy the snapshot with encryption enabled, create a new volume from the encrypted snapshot, then swap the volumes.
 
 ### Step 1: Create a Snapshot of the Unencrypted Volume
+
+Pause writes to the volume before taking the snapshot. The safest option is to unmount it first:
+
+```bash
+# Unmount the old volume so the snapshot is filesystem-consistent
+sudo umount /data
+```
 
 ```bash
 # Create a snapshot of the existing unencrypted volume
@@ -59,7 +66,7 @@ echo "Encrypted snapshot: $ENCRYPTED_SNAP"
 aws ec2 wait snapshot-completed --snapshot-ids $ENCRYPTED_SNAP
 ```
 
-By default, this uses the AWS-managed key `aws/ebs`. To use a customer-managed key:
+If you haven't changed the default EBS KMS key for the Region, this uses the AWS-managed key `aws/ebs`. To use a customer-managed key:
 
 ```bash
 # Copy with a specific KMS key
@@ -96,14 +103,7 @@ aws ec2 wait volume-available --volume-ids $ENCRYPTED_VOL
 
 ### Step 4: Swap the Volumes
 
-On the instance:
-
-```bash
-# Unmount the old volume
-sudo umount /data
-```
-
-Then swap at the AWS level:
+Swap at the AWS level:
 
 ```bash
 # Detach the old unencrypted volume
@@ -148,15 +148,14 @@ if [ -z "$INSTANCE_ID" ]; then
     exit 1
 fi
 
-# Get instance details
-ROOT_VOL=$(aws ec2 describe-instances \
-    --instance-ids $INSTANCE_ID \
-    --query 'Reservations[0].Instances[0].BlockDeviceMappings[0].Ebs.VolumeId' \
-    --output text)
-
 ROOT_DEVICE=$(aws ec2 describe-instances \
     --instance-ids $INSTANCE_ID \
     --query 'Reservations[0].Instances[0].RootDeviceName' \
+    --output text)
+
+ROOT_VOL=$(aws ec2 describe-instances \
+    --instance-ids $INSTANCE_ID \
+    --query "Reservations[0].Instances[0].BlockDeviceMappings[?DeviceName=='$ROOT_DEVICE'].Ebs.VolumeId | [0]" \
     --output text)
 
 AZ=$(aws ec2 describe-instances \
@@ -279,7 +278,7 @@ done
 
 **AWS-managed key (aws/ebs)**:
 - No setup required
-- Free (no KMS charges)
+- No monthly key storage charge (KMS request charges can still apply)
 - Can't share encrypted snapshots across accounts
 - Can't control key rotation schedule
 - Can't revoke access granularly
@@ -336,4 +335,4 @@ After encrypting your volumes, set up [monitoring with OneUptime](https://oneupt
 
 6. **Audit regularly.** Even with default encryption, check for unencrypted volumes that might predate the setting or have been created through exceptions.
 
-EBS encryption is one of the easiest security improvements you can make on AWS. There's no performance cost, no application changes needed, and it satisfies a common compliance requirement. If your volumes aren't encrypted yet, start the migration today.
+EBS encryption is one of the easiest security improvements you can make on AWS. You can expect the same IOPS performance, no application changes are needed, and it satisfies a common compliance requirement. If your volumes aren't encrypted yet, start the migration today.
