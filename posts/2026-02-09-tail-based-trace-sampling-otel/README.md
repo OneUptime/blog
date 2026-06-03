@@ -14,7 +14,7 @@ This guide demonstrates implementing tail-based sampling with load balancing in 
 
 ## Understanding Tail-Based Sampling
 
-Tail sampling decisions are made after all spans in a trace arrive. Benefits include:
+Tail sampling decisions are made after buffering spans for a configured decision window, which gives the collector more complete trace context than head sampling. Benefits include:
 - Sampling based on complete trace characteristics
 - Always capturing interesting traces (errors, slow requests)
 - Making decisions with full context
@@ -101,7 +101,7 @@ data:
 
     exporters:
       # Load-balanced export to gateway collectors
-      loadbalancing:
+      load_balancing:
         routing_key: "traceID"
         protocol:
           otlp:
@@ -111,14 +111,14 @@ data:
         resolver:
           dns:
             hostname: otel-gateway.tracing.svc.cluster.local
-            port: 4317
+            port: "4317"
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [resourcedetection, batch]
-          exporters: [loadbalancing]
+          exporters: [load_balancing]
 ```
 
 ## Gateway Collector with Tail Sampling
@@ -228,7 +228,7 @@ data:
               min_value: 400
               max_value: 599
 
-          # Sample important services at higher rate
+          # Always sample important services
           - name: critical-services
             type: string_attribute
             string_attribute:
@@ -243,7 +243,7 @@ data:
             probabilistic:
               sampling_percentage: 5
 
-          # Composite policy: sample errors OR slow traces
+          # Composite policy: sample traces that are both errors and slow
           - name: errors-and-slow
             type: and
             and:
@@ -257,7 +257,7 @@ data:
                   latency:
                     threshold_ms: 500
 
-          # Rate limiting per service
+          # Rate limiting across sampled spans
           - name: rate-limit
             type: rate_limiting
             rate_limiting:
@@ -278,8 +278,8 @@ data:
         tls:
           insecure: true
 
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
         sampling_initial: 5
         sampling_thereafter: 200
 
@@ -288,7 +288,7 @@ data:
         traces:
           receivers: [otlp]
           processors: [memory_limiter, groupbytrace, tail_sampling, batch]
-          exporters: [otlp, logging]
+          exporters: [otlp, debug]
 ```
 
 ## Advanced Tail Sampling Policies
@@ -344,22 +344,32 @@ policies:
     type: composite
     composite:
       max_total_spans_per_second: 1000
-      policy_order: [errors-or-slow, production-only]
+      policy_order: [prod-errors, prod-slow]
       composite_sub_policy:
-        - name: errors-or-slow
-          type: or
-          or:
-            - name: errors
-              type: status_code
-              status_code: {status_codes: [ERROR]}
-            - name: slow
-              type: latency
-              latency: {threshold_ms: 1000}
-        - name: production-only
-          type: string_attribute
-          string_attribute:
-            key: deployment.environment
-            values: [production]
+        - name: prod-errors
+          type: and
+          and:
+            and_sub_policy:
+              - name: errors
+                type: status_code
+                status_code: {status_codes: [ERROR]}
+              - name: production
+                type: string_attribute
+                string_attribute:
+                  key: deployment.environment
+                  values: [production]
+        - name: prod-slow
+          type: and
+          and:
+            and_sub_policy:
+              - name: slow
+                type: latency
+                latency: {threshold_ms: 1000}
+              - name: production
+                type: string_attribute
+                string_attribute:
+                  key: deployment.environment
+                  values: [production]
 ```
 
 ## Monitoring Tail Sampling
@@ -368,16 +378,18 @@ Track sampling decisions:
 
 ```promql
 # Traces sampled vs received
-rate(otelcol_processor_tail_sampling_sampling_decision_latency_count[5m])
+rate(otelcol_processor_tail_sampling_global_count_traces_sampled{decision="sampled"}[5m])
+/
+rate(otelcol_processor_tail_sampling_new_trace_id_received[5m])
 
 # Sampling decisions by policy
-sum by (policy) (rate(otelcol_processor_tail_sampling_count_traces_sampled[5m]))
+sum by (policy, decision) (rate(otelcol_processor_tail_sampling_count_traces_sampled[5m]))
 
 # Dropped traces
-rate(otelcol_processor_tail_sampling_count_trace_dropped[5m])
+rate(otelcol_processor_tail_sampling_global_count_traces_sampled{decision="dropped"}[5m])
 
 # Buffer utilization
-otelcol_processor_tail_sampling_traces_on_memory
+otelcol_processor_tail_sampling_sampling_traces_on_memory
 ```
 
 Create alerts:
@@ -385,15 +397,14 @@ Create alerts:
 ```yaml
 - alert: TailSamplingBufferFull
   expr: |
-    otelcol_processor_tail_sampling_traces_on_memory >
-    otelcol_processor_tail_sampling_num_traces * 0.9
+    otelcol_processor_tail_sampling_sampling_traces_on_memory > 90000
   for: 5m
   annotations:
     summary: "Tail sampling buffer near capacity"
 
 - alert: HighTraceDropRate
   expr: |
-    rate(otelcol_processor_tail_sampling_count_trace_dropped[5m]) > 10
+    rate(otelcol_processor_tail_sampling_global_count_traces_sampled{decision="dropped"}[5m]) > 10
   for: 10m
   annotations:
     summary: "High trace drop rate in tail sampling"
@@ -405,7 +416,7 @@ Ensure traces are routed to the same collector:
 
 ```yaml
 exporters:
-  loadbalancing:
+  load_balancing:
     routing_key: "traceID"
     protocol:
       otlp:
@@ -422,14 +433,9 @@ exporters:
     resolver:
       dns:
         hostname: otel-gateway.tracing.svc.cluster.local
-        port: 4317
+        port: "4317"
         interval: 5s
         timeout: 1s
-      static:
-        hostnames:
-          - otel-gateway-0.otel-gateway.tracing.svc.cluster.local:4317
-          - otel-gateway-1.otel-gateway.tracing.svc.cluster.local:4317
-          - otel-gateway-2.otel-gateway.tracing.svc.cluster.local:4317
 ```
 
 ## Tuning Performance
@@ -444,8 +450,8 @@ processors:
     num_workers: 20     # Parallel processing
 
   tail_sampling:
-    decision_wait: 10s  # Match groupbytrace
-    num_traces: 200000  # Must match groupbytrace
+    decision_wait: 10s  # How long to wait before making a sampling decision
+    num_traces: 200000  # Increase for high trace cardinality
     expected_new_traces_per_sec: 5000  # For sizing buffers
 ```
 
@@ -455,7 +461,7 @@ processors:
 2. **Use load balancing**: Ensure all spans for a trace reach same collector
 3. **Monitor buffer utilization**: Alert before capacity is reached
 4. **Set reasonable wait times**: Too short misses spans, too long wastes memory
-5. **Prioritize policies**: Put "always sample" policies first
+5. **Use explicit policy controls**: Use `sample_on_first_match` or composite `policy_order` when ordering matters
 6. **Test with production traffic**: Validate sampling rates match expectations
 7. **Scale gateway collectors**: Add replicas based on trace volume
 
