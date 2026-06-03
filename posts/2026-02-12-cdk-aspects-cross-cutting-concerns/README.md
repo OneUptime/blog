@@ -8,7 +8,7 @@ Description: Learn how to use CDK Aspects to enforce tagging policies, complianc
 
 ---
 
-CDK Aspects let you apply a visitor pattern across your entire construct tree. They run after synthesis and can inspect, modify, or validate every resource in your stack. This makes them perfect for cross-cutting concerns - things like tagging policies, encryption enforcement, or compliance checks that apply to every resource regardless of where it's defined.
+CDK Aspects let you apply a visitor pattern across your entire construct tree. They run during synthesis, after your constructs are defined, and can inspect, modify, or validate every resource in your stack before the final CloudFormation template is emitted. This makes them perfect for cross-cutting concerns - things like tagging policies, encryption enforcement, or compliance checks that apply to every resource regardless of where it's defined.
 
 Think of Aspects as middleware for your infrastructure. They intercept every resource and apply rules consistently.
 
@@ -50,7 +50,7 @@ The most common use case for Aspects is ensuring all resources have required tag
 
 ```typescript
 // Aspect that enforces required tags on all taggable resources
-import { IAspect, CfnResource, Annotations, Tags } from 'aws-cdk-lib';
+import { IAspect, CfnResource } from 'aws-cdk-lib';
 import { IConstruct } from 'constructs';
 
 class RequiredTags implements IAspect {
@@ -120,12 +120,12 @@ class EnforceEncryption implements IAspect {
       }
     }
 
-    // Check DynamoDB tables
+    // Check DynamoDB tables that require KMS-managed SSE
     if (node instanceof dynamodb.CfnTable) {
-      const sse = node.sseSpecification;
-      if (!sse || sse.sseEnabled !== true) {
+      const sse = node.sseSpecification as dynamodb.CfnTable.SSESpecificationProperty | undefined;
+      if (!sse || sse.sseEnabled !== true || sse.sseType !== 'KMS') {
         Annotations.of(node).addWarning(
-          'DynamoDB table should have SSE enabled for compliance.'
+          'DynamoDB tables are encrypted at rest by default, but this table should use KMS-managed SSE for compliance.'
         );
       }
     }
@@ -178,26 +178,36 @@ Aspects can validate that security groups don't have overly permissive rules.
 
 ```typescript
 // Aspect that blocks overly permissive security group rules
+import * as ec2 from 'aws-cdk-lib/aws-ec2';
+
 class NoOpenSecurityGroups implements IAspect {
   public visit(node: IConstruct): void {
+    const checkRule = (rule: any): void => {
+      const cidr = rule.cidrIp ?? rule.cidrIpv6;
+      if (cidr === '0.0.0.0/0' || cidr === '::/0') {
+        const port = rule.fromPort ?? 'all traffic';
+        // Allow 80 and 443, block everything else
+        if (port !== 80 && port !== 443) {
+          Annotations.of(node).addError(
+            `Security group allows ${cidr} on port ${port}. ` +
+            'Only ports 80 and 443 can be open to the internet.'
+          );
+        }
+      }
+    };
+
     if (node instanceof ec2.CfnSecurityGroup) {
       const ingress = node.securityGroupIngress;
 
       if (Array.isArray(ingress)) {
         for (const rule of ingress) {
-          const cidr = (rule as any).cidrIp;
-          if (cidr === '0.0.0.0/0') {
-            const port = (rule as any).fromPort;
-            // Allow 80 and 443, block everything else
-            if (port !== 80 && port !== 443) {
-              Annotations.of(node).addError(
-                `Security group allows 0.0.0.0/0 on port ${port}. ` +
-                'Only ports 80 and 443 can be open to the internet.'
-              );
-            }
-          }
+          checkRule(rule);
         }
       }
+    }
+
+    if (node instanceof ec2.CfnSecurityGroupIngress) {
+      checkRule(node);
     }
   }
 }
