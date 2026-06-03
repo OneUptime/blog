@@ -14,9 +14,9 @@ While cloud object storage services like AWS S3 offer convenience, they come wit
 
 MinIO offers several advantages:
 
-- No recurring cloud storage costs
+- No recurring cloud object storage costs when MinIO runs on owned infrastructure
 - Complete control over backup data
-- No internet bandwidth charges for backups
+- No internet bandwidth charges for backups that stay inside your own network
 - Works in air-gapped environments
 - Compatible with Velero's AWS S3 plugin
 - Can run on-premises or in different cloud regions
@@ -28,12 +28,11 @@ This makes MinIO ideal for organizations with strict data residency requirements
 Deploy MinIO using the official operator:
 
 ```bash
-# Add MinIO operator repository
-
-kubectl apply -f https://github.com/minio/operator/releases/latest/download/operator.yaml
+# Install the MinIO Operator
+kubectl kustomize github.com/minio/operator\?ref=v7.1.1 | kubectl apply -f -
 
 # Wait for operator to be ready
-kubectl wait --for=condition=ready pod -l name=minio-operator -n minio-operator --timeout=300s
+kubectl rollout status deployment/minio-operator -n minio-operator --timeout=300s
 ```
 
 Create a MinIO tenant for Velero backups:
@@ -47,12 +46,25 @@ metadata:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: minio-creds
+  name: storage-configuration
   namespace: minio-tenant
 type: Opaque
 stringData:
-  accesskey: velero-backup-user
-  secretkey: changeme-strong-password-here
+  config.env: |-
+    export MINIO_ROOT_USER="minio-admin"
+    export MINIO_ROOT_PASSWORD="changeme-strong-root-password-here"
+    export MINIO_STORAGE_CLASS_STANDARD="EC:2"
+    export MINIO_BROWSER="on"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: velero-backup-user
+  namespace: minio-tenant
+type: Opaque
+stringData:
+  CONSOLE_ACCESS_KEY: velero-backup-user
+  CONSOLE_SECRET_KEY: changeme-strong-password-here
 ---
 apiVersion: minio.min.io/v2
 kind: Tenant
@@ -62,6 +74,10 @@ metadata:
 spec:
   image: minio/minio:latest
   imagePullPolicy: IfNotPresent
+  configuration:
+    name: storage-configuration
+  users:
+  - name: velero-backup-user
   pools:
   - servers: 4
     name: pool-0
@@ -78,13 +94,6 @@ spec:
         storageClassName: standard
   mountPath: /export
   requestAutoCert: false
-  credsSecret:
-    name: minio-creds
-  env:
-  - name: MINIO_BROWSER
-    value: "on"
-  - name: MINIO_STORAGE_CLASS_STANDARD
-    value: "EC:2"
 ```
 
 Apply the configuration:
@@ -105,7 +114,7 @@ Access MinIO and create the backup bucket:
 kubectl port-forward svc/velero-storage-console -n minio-tenant 9001:9001
 
 # Or use MinIO client
-kubectl run mc-client --image=minio/mc --rm -it --restart=Never -- /bin/bash
+kubectl run mc-client --image=minio/mc --rm -it --restart=Never -- /bin/sh
 
 # Inside the mc-client pod
 mc alias set minio http://velero-storage-hl.minio-tenant.svc.cluster.local:9000 velero-backup-user changeme-strong-password-here
@@ -117,7 +126,7 @@ mc mb minio/velero-backups
 mc version enable minio/velero-backups
 
 # Set lifecycle policy
-mc ilm add --expiry-days 30 minio/velero-backups
+mc ilm rule add --expire-days 30 minio/velero-backups
 ```
 
 ## Configuring Velero to Use MinIO
@@ -137,7 +146,7 @@ Install Velero with MinIO configuration:
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1 \
   --bucket velero-backups \
   --secret-file ./credentials-minio \
   --backup-location-config \
@@ -177,7 +186,7 @@ Check that data appears in MinIO:
 ```bash
 # List objects in MinIO
 kubectl run mc-client --image=minio/mc --rm -it --restart=Never -- \
-  mc ls minio/velero-backups/backups/
+  /bin/sh -c 'mc alias set minio http://velero-storage-hl.minio-tenant.svc.cluster.local:9000 velero-backup-user changeme-strong-password-here && mc ls minio/velero-backups/backups/'
 ```
 
 ## Configuring MinIO for High Availability
@@ -185,6 +194,19 @@ kubectl run mc-client --image=minio/mc --rm -it --restart=Never -- \
 For production use, configure MinIO with proper redundancy:
 
 ```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: storage-configuration-ha
+  namespace: minio-tenant
+type: Opaque
+stringData:
+  config.env: |-
+    export MINIO_ROOT_USER="minio-admin"
+    export MINIO_ROOT_PASSWORD="changeme-strong-root-password-here"
+    export MINIO_STORAGE_CLASS_STANDARD="EC:4"
+    export MINIO_BROWSER="on"
+---
 apiVersion: minio.min.io/v2
 kind: Tenant
 metadata:
@@ -192,6 +214,10 @@ metadata:
   namespace: minio-tenant
 spec:
   image: minio/minio:latest
+  configuration:
+    name: storage-configuration-ha
+  users:
+  - name: velero-backup-user
   pools:
   - servers: 4  # 4 MinIO servers
     name: pool-0
@@ -206,20 +232,15 @@ spec:
           requests:
             storage: 500Gi
         storageClassName: fast-ssd
+    resources:
+      requests:
+        memory: 4Gi
+        cpu: 2
+      limits:
+        memory: 8Gi
+        cpu: 4
   mountPath: /export
-  credsSecret:
-    name: minio-creds
-  env:
-  - name: MINIO_STORAGE_CLASS_STANDARD
-    value: "EC:4"  # Erasure coding with 4 parity drives
   requestAutoCert: false
-  resources:
-    requests:
-      memory: 4Gi
-      cpu: 2
-    limits:
-      memory: 8Gi
-      cpu: 4
 ```
 
 This configuration provides:
@@ -236,7 +257,8 @@ Secure MinIO traffic with TLS:
 # Create TLS certificate
 openssl req -new -x509 -days 365 -nodes \
   -out minio.crt -keyout minio.key \
-  -subj "/CN=velero-storage-hl.minio-tenant.svc.cluster.local"
+  -subj "/CN=velero-storage-hl.minio-tenant.svc.cluster.local" \
+  -addext "subjectAltName=DNS:velero-storage-hl.minio-tenant.svc.cluster.local"
 
 # Create Kubernetes secret
 kubectl create secret tls minio-tls \
@@ -265,40 +287,16 @@ Update Velero to use HTTPS:
 
 ```bash
 # Get certificate for Velero
-kubectl get secret minio-tls -n minio-tenant -o jsonpath='{.data.ca\.crt}' | base64 -d > minio-ca.crt
+kubectl get secret minio-tls -n minio-tenant -o jsonpath='{.data.tls\.crt}' | base64 -d > minio-ca.crt
 
-# Create ConfigMap with CA certificate
-kubectl create configmap minio-ca \
+# Create Secret with CA certificate
+kubectl create secret generic minio-ca \
   --from-file=ca-bundle.crt=minio-ca.crt \
   -n velero
 
-# Update Velero deployment
-kubectl patch deployment velero -n velero --type=json \
-  -p='[
-    {
-      "op": "add",
-      "path": "/spec/template/spec/volumes/-",
-      "value": {
-        "name": "minio-ca",
-        "configMap": {
-          "name": "minio-ca"
-        }
-      }
-    },
-    {
-      "op": "add",
-      "path": "/spec/template/spec/containers/0/volumeMounts/-",
-      "value": {
-        "name": "minio-ca",
-        "mountPath": "/etc/ssl/certs/minio-ca.crt",
-        "subPath": "ca-bundle.crt"
-      }
-    }
-  ]'
-
-# Update backup storage location to use HTTPS
+# Update backup storage location to use HTTPS and trust the CA
 kubectl patch backupstoragelocation default -n velero --type=merge \
-  -p='{"spec":{"config":{"s3Url":"https://velero-storage-hl.minio-tenant.svc.cluster.local:9000"}}}'
+  -p='{"spec":{"objectStorage":{"caCertRef":{"name":"minio-ca","key":"ca-bundle.crt"}},"config":{"s3Url":"https://velero-storage-hl.minio-tenant.svc.cluster.local:9000"}}}'
 ```
 
 ## Setting Up MinIO Monitoring
@@ -306,7 +304,7 @@ kubectl patch backupstoragelocation default -n velero --type=merge \
 Monitor MinIO health and performance:
 
 ```yaml
-apiVersion: v1
+apiVersion: monitoring.coreos.com/v1
 kind: ServiceMonitor
 metadata:
   name: minio-metrics
@@ -346,8 +344,7 @@ MinIO stores backup data, but MinIO itself needs backup:
 mc mirror minio/velero-backups /backup/minio-velero-backups
 
 # Or use MinIO built-in site replication
-mc admin replicate add minio-primary minio-backup \
-  --replicate "arn:minio:replication::velero-backups:*"
+mc admin replicate add minio-primary minio-backup
 ```
 
 ## Troubleshooting MinIO-Velero Issues
@@ -360,7 +357,7 @@ Common issues and solutions:
 kubectl get svc -n minio-tenant
 
 # Test connectivity from Velero pod
-kubectl exec -n velero deployment/velero -- \
+kubectl run minio-check --image=curlimages/curl --rm -it --restart=Never -n velero -- \
   curl http://velero-storage-hl.minio-tenant.svc.cluster.local:9000/minio/health/live
 ```
 
@@ -385,10 +382,8 @@ Move existing S3 backups to MinIO:
 mc mirror s3/velero-backups minio/velero-backups
 
 # Update Velero configuration
-velero backup-location set default \
-  --bucket velero-backups \
-  --config \
-    region=minio,s3ForcePathStyle="true",s3Url=http://velero-storage-hl.minio-tenant.svc.cluster.local:9000
+kubectl patch backupstoragelocation default -n velero --type=merge \
+  -p='{"spec":{"objectStorage":{"bucket":"velero-backups"},"config":{"region":"minio","s3ForcePathStyle":"true","s3Url":"http://velero-storage-hl.minio-tenant.svc.cluster.local:9000"}}}'
 
 # Verify backups are accessible
 velero backup get
@@ -401,7 +396,7 @@ Connect Velero to MinIO running outside Kubernetes:
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.1 \
   --bucket velero-backups \
   --secret-file ./credentials-minio \
   --backup-location-config \
@@ -426,9 +421,9 @@ AWS S3 Standard:
 
 MinIO on Kubernetes:
 - Initial storage cost (hardware/cloud disk)
-- No ongoing per-GB charges
+- No ongoing cloud object storage per-GB charges when using owned infrastructure
 - No request charges
-- Break-even at ~12 months for 100GB
+- Break-even depends on your hardware, disk, power, operations, and cloud egress costs
 ```
 
 For larger deployments, MinIO becomes significantly more cost-effective.
