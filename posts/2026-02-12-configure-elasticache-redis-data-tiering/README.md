@@ -4,17 +4,17 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, ElastiCache, Redis, Data Tiering, Cost Optimization, Caching
 
-Description: Learn how to use ElastiCache Redis data tiering to store up to 20 times more data per node by automatically moving less-accessed data to SSD storage.
+Description: Learn how to use ElastiCache Redis data tiering to store more data per node by automatically moving less-accessed data to SSD storage.
 
 ---
 
 Redis is fast because it stores everything in memory. But memory is expensive. If your Redis dataset has grown to hundreds of gigabytes, the cost of r6g instances with enough RAM to hold it all can be staggering. And the reality is that most applications follow the 80/20 rule - 80% of requests hit 20% of the data.
 
-ElastiCache data tiering takes advantage of this pattern. It stores frequently accessed data in memory (DRAM) and automatically moves less-accessed data to local NVMe SSD storage. You get up to 20 times more storage capacity per node at a fraction of the cost of pure in-memory storage.
+ElastiCache data tiering takes advantage of this pattern. It stores frequently accessed data in memory (DRAM) and automatically moves less-accessed data to local NVMe SSD storage. R6gd nodes provide 4.8 times more total capacity (memory plus SSD) than comparable R6g nodes and can reduce costs compared with pure in-memory storage.
 
 ## How Data Tiering Works
 
-When data tiering is enabled, ElastiCache uses r6gd instance types that have both DRAM and local NVMe SSDs. Redis tracks access patterns and automatically moves items between tiers.
+When data tiering is enabled, ElastiCache uses r6gd instance types that have both DRAM and local NVMe SSDs. ElastiCache monitors item access times and automatically moves less-recently-used values between tiers.
 
 ```mermaid
 graph TD
@@ -28,8 +28,8 @@ graph TD
 Key characteristics:
 
 - **DRAM tier**: Sub-millisecond latency, stores hot data
-- **SSD tier**: Single-digit millisecond latency, stores warm/cold data
-- **Automatic**: Redis manages which tier data lives in based on access patterns
+- **SSD tier**: Additional latency for cold reads, stores warm/cold data
+- **Automatic**: ElastiCache manages which tier data lives in based on access patterns
 - **Transparent**: Your application code does not need to change
 
 The SSD tier is not as fast as DRAM, but it is still orders of magnitude faster than hitting a database. For most cache use cases, the small increase in latency for cold data is imperceptible to end users.
@@ -41,7 +41,7 @@ Data tiering makes sense when:
 - Your Redis dataset exceeds 100 GB
 - A significant portion of your data is accessed infrequently
 - You want to reduce costs without splitting your cache across multiple clusters
-- Your application can tolerate single-digit millisecond latency for cold data
+- Your application can tolerate additional latency for cold data
 
 It does not make sense when:
 
@@ -55,15 +55,15 @@ Let's compare the cost of storing 500 GB of cache data with and without data tie
 
 Without data tiering (r6g.4xlarge, 105 GB DRAM):
 - You need 5 nodes to hold 500 GB (with some headroom)
-- 5 x r6g.4xlarge = approximately $4,900/month
+- 5 x r6g.4xlarge = 5 primary node-hours for every hour the cluster runs
 
-With data tiering (r6gd.4xlarge, 105 GB DRAM + 1 TB SSD):
+With data tiering (r6gd.4xlarge, 105 GB DRAM + roughly 400 GB SSD):
 - You need 1 node to hold 500 GB (100 GB hot in DRAM, 400 GB cold on SSD)
-- 1 x r6gd.4xlarge = approximately $1,400/month
+- 1 x r6gd.4xlarge = 1 primary node-hour for every hour the cluster runs
 
-**Savings: approximately $3,500/month (71%)**
+AWS states that r6gd nodes provide 4.8 times more total capacity than comparable r6g nodes and can provide over 60% savings at maximum utilization.
 
-The actual savings depend on your data distribution and access patterns, but the potential is significant.
+The actual savings depend on your region, data distribution, and access patterns, but the potential is significant.
 
 ## Setting Up Data Tiering
 
@@ -80,7 +80,7 @@ aws elasticache create-cache-parameter-group \
   --description "Parameter group for Redis with data tiering"
 ```
 
-Tune the maxmemory policy. The `allkeys-lru` policy works well with data tiering because it ensures the hottest data stays in DRAM.
+Tune the maxmemory policy. The `allkeys-lru` policy is supported with data tiering and works well for cache workloads because Redis OSS can evict the least-recently-used keys when the node's total data capacity is full.
 
 ```bash
 # Set eviction policy to work well with data tiering
@@ -101,7 +101,7 @@ aws elasticache create-replication-group \
   --engine-version 7.1 \
   --cache-node-type cache.r6gd.xlarge \
   --data-tiering-enabled \
-  --num-node-groups 2 \
+  --num-node-groups 1 \
   --replicas-per-node-group 1 \
   --automatic-failover-enabled \
   --multi-az-enabled \
@@ -129,11 +129,11 @@ aws elasticache describe-replication-groups \
 Track how much data is in each tier to understand your access patterns.
 
 ```bash
-# Monitor memory usage (DRAM tier)
+# Monitor bytes used in the DRAM tier
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
-  --metric-name DatabaseMemoryUsagePercentage \
-  --dimensions Name=ReplicationGroupId,Value=my-tiered-cache \
+  --metric-name BytesUsedForCache \
+  --dimensions Name=ReplicationGroupId,Value=my-tiered-cache Name=Tier,Value=Memory \
   --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
@@ -141,15 +141,15 @@ aws cloudwatch get-metric-statistics \
 ```
 
 ```bash
-# Monitor SSD utilization
+# Monitor bytes used in the SSD tier
 aws cloudwatch get-metric-statistics \
   --namespace AWS/ElastiCache \
-  --metric-name DataTieringDiskUsagePercentage \
-  --dimensions Name=ReplicationGroupId,Value=my-tiered-cache \
+  --metric-name BytesUsedForCache \
+  --dimensions Name=ReplicationGroupId,Value=my-tiered-cache Name=Tier,Value=SSD \
   --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 3600 \
-  --statistics Average,Maximum
+  --statistics Average
 ```
 
 ### Latency Impact
@@ -165,17 +165,17 @@ aws cloudwatch get-metric-statistics \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 60 \
-  --statistics p99
+  --extended-statistics p99
 ```
 
 ### Set Up Alerts
 
 ```bash
-# Alert when SSD storage is getting full
+# Alert when total DRAM plus SSD data capacity is getting full
 aws cloudwatch put-metric-alarm \
-  --alarm-name tiered-cache-ssd-full \
+  --alarm-name tiered-cache-capacity-full \
   --namespace AWS/ElastiCache \
-  --metric-name DataTieringDiskUsagePercentage \
+  --metric-name DatabaseCapacityUsagePercentage \
   --dimensions Name=ReplicationGroupId,Value=my-tiered-cache \
   --statistic Maximum \
   --period 300 \
@@ -192,7 +192,7 @@ aws cloudwatch put-metric-alarm \
   --dimensions Name=ReplicationGroupId,Value=my-tiered-cache \
   --extended-statistic p99 \
   --period 60 \
-  --threshold 5 \
+  --threshold 5000 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 5 \
   --alarm-actions arn:aws:sns:us-east-1:123456789012:CacheAlerts
@@ -249,8 +249,8 @@ def get_product(product_id):
 - Data tiering is only available with r6gd node types
 - Minimum node type is cache.r6gd.xlarge
 - Not available with ElastiCache Serverless (as of early 2026)
-- The SSD tier adds a few milliseconds of latency for cold reads
-- Cluster mode must be enabled
+- The SSD tier adds latency for cold reads
+- Data tiering requires a replication group, but cluster mode does not have to be enabled
 - Cannot convert an existing non-tiered cluster to tiered (must create new)
 
 ## Migration from Non-Tiered to Tiered
@@ -272,13 +272,13 @@ aws elasticache create-replication-group \
   --cache-node-type cache.r6gd.xlarge \
   --data-tiering-enabled \
   --snapshot-name pre-tiering-migration \
-  --num-node-groups 2 \
+  --num-node-groups 1 \
   --replicas-per-node-group 1 \
   --automatic-failover-enabled
 ```
 
 ## Summary
 
-ElastiCache Redis data tiering is a straightforward way to cut your Redis costs when your dataset has grown large but not all data is accessed equally. By automatically moving cold data to SSD storage, you can store up to 20 times more data per node at a fraction of the cost. The key is understanding your access patterns - if you have a clear hot/cold split, the savings can be dramatic.
+ElastiCache Redis data tiering is a straightforward way to cut your Redis costs when your dataset has grown large but not all data is accessed equally. By automatically moving cold data to SSD storage, you can store more data per node at a fraction of the cost. The key is understanding your access patterns - if you have a clear hot/cold split, the savings can be dramatic.
 
 For more on ElastiCache, see our guides on [ElastiCache Serverless](https://oneuptime.com/blog/post/2026-02-12-set-up-elasticache-serverless/view) and [Global Datastore for multi-Region caching](https://oneuptime.com/blog/post/2026-02-12-configure-elasticache-global-datastore-for-multi-region/view).
