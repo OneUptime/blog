@@ -44,8 +44,13 @@ const nextConfig = {
   reactStrictMode: true,
   // Amplify handles output configuration automatically
   images: {
-    // If you use external images, add domains here
-    domains: ['images.unsplash.com'],
+    // If you use external images, add remote patterns here
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'images.unsplash.com',
+      },
+    ],
   },
 }
 
@@ -129,6 +134,8 @@ frontend:
         - npm ci
     build:
       commands:
+        - env | grep -e NEXT_PUBLIC_ >> .env.production
+        - env | grep -e API_BASE_URL -e APP_ENV >> .env.production
         - npm run build
   artifacts:
     baseDirectory: .next
@@ -144,7 +151,7 @@ The cache configuration is important - caching `node_modules` and `.next/cache` 
 
 ## Environment Variables
 
-You'll almost certainly need environment variables for things like API keys, database URLs, and feature flags. There are two ways to set them.
+You'll almost certainly need environment variables for things like API URLs, feature flags, and server-side configuration. There are two ways to set them. Avoid putting long-lived secrets directly in Amplify environment variables; use IAM roles or a secrets service for sensitive production credentials when possible.
 
 Through the console, navigate to your app, go to "Environment variables", and add them there.
 
@@ -155,11 +162,10 @@ Through the CLI, use this command:
 aws amplify update-app \
   --app-id YOUR_APP_ID \
   --environment-variables \
-    DATABASE_URL=postgresql://user:pass@host:5432/db \
-    NEXT_PUBLIC_API_URL=https://api.example.com
+    API_BASE_URL=https://internal-api.example.com,NEXT_PUBLIC_API_URL=https://api.example.com
 ```
 
-Remember that Next.js has a distinction between server-side and client-side environment variables. Variables prefixed with `NEXT_PUBLIC_` are exposed to the browser, while others are only available during build time and on the server.
+Remember that Next.js has a distinction between server-side and client-side environment variables. Variables prefixed with `NEXT_PUBLIC_` are inlined into the browser bundle at build time, while unprefixed variables are only available on the server. On Amplify, add the variables your SSR code needs to `.env.production` during the build, as shown in the `amplify.yml` example above.
 
 Here's how to access them in your Next.js code:
 
@@ -170,8 +176,8 @@ export const config = {
   apiUrl: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/api',
 
   // Server-only variables
-  databaseUrl: process.env.DATABASE_URL,
-  secretKey: process.env.SECRET_KEY,
+  apiBaseUrl: process.env.API_BASE_URL,
+  appEnv: process.env.APP_ENV,
 }
 ```
 
@@ -197,14 +203,10 @@ One of Amplify's best features is automatic preview deployments for PRs. Enable 
 
 ```bash
 # Enable pull request previews
-aws amplify update-app \
+aws amplify update-branch \
   --app-id YOUR_APP_ID \
-  --enable-auto-branch-creation \
-  --auto-branch-creation-config '{
-    "enableAutoBuild": true,
-    "stage": "DEVELOPMENT",
-    "enablePullRequestPreview": true
-  }'
+  --branch-name main \
+  --enable-pull-request-preview
 ```
 
 Every pull request gets its own URL where you can preview changes before merging. This is incredibly useful for design reviews and QA.
@@ -275,7 +277,7 @@ A few things that trip people up with Amplify and Next.js:
 
 **Build timeouts**: The default build timeout is 30 minutes. If your build takes longer, increase it in the app settings.
 
-**Image optimization**: Next.js image optimization works on Amplify, but make sure your `next.config.js` has the correct image domains configured.
+**Image optimization**: Next.js image optimization works on Amplify, but make sure your `next.config.js` has the correct image `remotePatterns` configured.
 
 **Large dependencies**: If your `node_modules` is massive, builds can be slow. Use `npm ci` instead of `npm install` in your build spec for faster, more reliable installs.
 
