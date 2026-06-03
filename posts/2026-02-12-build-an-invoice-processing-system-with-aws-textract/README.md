@@ -38,11 +38,17 @@ Invoices come from multiple sources - email attachments, supplier portals, and m
 # CloudFormation for invoice processing infrastructure
 
 AWSTemplateFormatVersion: '2010-09-09'
+Parameters:
+  InvoiceTriggerLambdaArn:
+    Type: String
+    Description: ARN of the Lambda function that starts the invoice workflow
+
 Resources:
   InvoiceBucket:
     Type: AWS::S3::Bucket
+    DependsOn: InvoiceTriggerPermission
     Properties:
-      BucketName: invoice-inbox
+      BucketName: !Sub '${AWS::AccountId}-${AWS::Region}-invoice-inbox'
       NotificationConfiguration:
         LambdaConfigurations:
           - Event: s3:ObjectCreated:*
@@ -51,7 +57,15 @@ Resources:
                 Rules:
                   - Name: prefix
                     Value: incoming/
-            Function: !GetAtt InvoiceTriggerLambda.Arn
+            Function: !Ref InvoiceTriggerLambdaArn
+
+  InvoiceTriggerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref InvoiceTriggerLambdaArn
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub 'arn:aws:s3:::${AWS::AccountId}-${AWS::Region}-invoice-inbox'
 
   InvoiceTable:
     Type: AWS::DynamoDB::Table
@@ -172,8 +186,7 @@ def normalize_invoice(raw_data):
         item = {
             'description': clean_text(get_field(raw_item, 'ITEM')),
             'quantity': parse_number(get_field(raw_item, 'QUANTITY')),
-            'unitPrice': parse_amount(get_field(raw_item, 'PRICE')),
-            'amount': parse_amount(get_field(raw_item, 'EXPENSE_ROW_AMOUNT'))
+            'amount': parse_amount(get_field(raw_item, 'PRICE'))
         }
         if item['description']:  # Skip empty rows
             invoice['lineItems'].append(item)
@@ -184,6 +197,7 @@ def normalize_invoice(raw_data):
 
     # Run validation checks
     invoice['validationErrors'] = validate_invoice(invoice)
+    invoice['hasValidationErrors'] = len(invoice['validationErrors']) > 0
 
     return invoice
 
@@ -279,15 +293,24 @@ Orchestrate the full pipeline with Step Functions:
   "States": {
     "ExtractData": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:extract-invoice",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:extract-invoice",
       "ResultPath": "$.extractedData",
       "Next": "NormalizeData",
       "Retry": [{"ErrorEquals": ["States.TaskFailed"], "MaxAttempts": 2}]
     },
     "NormalizeData": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:normalize-invoice",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:normalize-invoice",
       "ResultPath": "$.normalizedData",
+      "Next": "CheckDuplicate"
+    },
+    "CheckDuplicate": {
+      "Type": "Task",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:check-duplicate",
+      "Parameters": {
+        "invoice.$": "$.normalizedData"
+      },
+      "ResultPath": "$.duplicateCheck",
       "Next": "CheckConfidence"
     },
     "CheckConfidence": {
@@ -296,8 +319,8 @@ Orchestrate the full pipeline with Step Functions:
         {
           "And": [
             {"Variable": "$.normalizedData.avgConfidence", "NumericGreaterThan": 95},
-            {"Variable": "$.normalizedData.validationErrors", "IsPresent": true},
-            {"Variable": "$.normalizedData.validationErrors", "StringEquals": "[]"}
+            {"Variable": "$.normalizedData.hasValidationErrors", "BooleanEquals": false},
+            {"Variable": "$.duplicateCheck.isDuplicate", "BooleanEquals": false}
           ],
           "Next": "AutoApprove"
         }
@@ -306,22 +329,17 @@ Orchestrate the full pipeline with Step Functions:
     },
     "AutoApprove": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:store-invoice",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:store-invoice",
       "Parameters": {
         "invoice.$": "$.normalizedData",
         "status": "APPROVED",
         "approvedBy": "AUTO"
       },
-      "Next": "CheckDuplicate"
+      "End": true
     },
     "SendToReview": {
       "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:queue-for-review",
-      "End": true
-    },
-    "CheckDuplicate": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:us-east-1:123456789:function:check-duplicate",
+      "Resource": "arn:aws:lambda:us-east-1:123456789012:function:queue-for-review",
       "End": true
     }
   }
@@ -335,10 +353,22 @@ Invoices get submitted twice more often than you would think. Check for duplicat
 ```python
 # Lambda to detect duplicate invoices
 import boto3
+from datetime import datetime
 from boto3.dynamodb.conditions import Key
 
 dynamodb = boto3.resource('dynamodb')
 table = dynamodb.Table('Invoices')
+
+def abs_date_diff(date_a, date_b):
+    """Return the absolute difference between two ISO date strings in days."""
+    if not date_a or not date_b:
+        return 999999
+    try:
+        parsed_a = datetime.strptime(date_a, '%Y-%m-%d')
+        parsed_b = datetime.strptime(date_b, '%Y-%m-%d')
+    except ValueError:
+        return 999999
+    return abs((parsed_a - parsed_b).days)
 
 def handler(event, context):
     invoice = event['invoice']
@@ -374,7 +404,7 @@ def handler(event, context):
 
 ## Monitoring Invoice Processing
 
-Accounts payable is a critical business function. If invoices stop processing, vendors do not get paid and relationships suffer. Monitor the pipeline end-to-end: upload-to-extraction time, extraction confidence scores, human review queue depth, and processing success rates. [OneUptime](https://oneuptime.com/blog/post/2026-02-12-build-a-resume-cv-parser-with-aws-textract-and-lambda/view) can track the health of each processing stage and alert you to slowdowns.
+Accounts payable is a critical business function. If invoices stop processing, vendors do not get paid and relationships suffer. Monitor the pipeline end-to-end: upload-to-extraction time, extraction confidence scores, human review queue depth, and processing success rates. [OneUptime](https://oneuptime.com/) can track the health of each processing stage and alert you to slowdowns.
 
 ## Wrapping Up
 
