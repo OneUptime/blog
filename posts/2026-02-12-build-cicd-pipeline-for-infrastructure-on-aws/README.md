@@ -33,19 +33,20 @@ CDK Pipelines is a high-level construct that creates a self-mutating pipeline. W
 // lib/pipeline-stack.ts
 import * as cdk from 'aws-cdk-lib';
 import { CodePipeline, CodePipelineSource, ShellStep, ManualApprovalStep } from 'aws-cdk-lib/pipelines';
+import { Construct } from 'constructs';
 
 export class PipelineStack extends cdk.Stack {
-  constructor(scope: cdk.App, id: string) {
-    super(scope, id);
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+    super(scope, id, props);
 
     const pipeline = new CodePipeline(this, 'InfraPipeline', {
       pipelineName: 'InfrastructurePipeline',
       crossAccountKeys: true, // Enable cross-account deployments
 
-      // Source: pull from GitHub
+      // Source: pull from GitHub through a CodeConnections connection
       synth: new ShellStep('Synth', {
-        input: CodePipelineSource.gitHub('your-org/infra-repo', 'main', {
-          authentication: cdk.SecretValue.secretsManager('github-token'),
+        input: CodePipelineSource.connection('your-org/infra-repo', 'main', {
+          connectionArn: 'arn:aws:codeconnections:us-east-1:123456789012:connection/your-connection-id',
         }),
         commands: [
           'npm ci',
@@ -121,6 +122,7 @@ export class InfraStage extends cdk.Stage {
     const appStack = new ApplicationStack(this, 'Application', {
       vpc: networkStack.vpc,
       database: dbStack.database,
+      environmentName: id.toLowerCase(),
     });
 
     this.apiUrlOutput = appStack.apiUrlOutput;
@@ -135,7 +137,7 @@ Test your infrastructure code before deploying. CDK supports snapshot testing an
 ```typescript
 // test/infra.test.ts
 import * as cdk from 'aws-cdk-lib';
-import { Template, Match } from 'aws-cdk-lib/assertions';
+import { Template } from 'aws-cdk-lib/assertions';
 import { NetworkStack } from '../lib/network-stack';
 import { DatabaseStack } from '../lib/database-stack';
 
@@ -215,7 +217,7 @@ const buildProject = new codebuild.PipelineProject(this, 'BuildProject', {
     phases: {
       install: {
         'runtime-versions': {
-          nodejs: '18',
+          nodejs: '22',
         },
         commands: [
           'npm ci',
@@ -291,7 +293,7 @@ export class ApplicationStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: ApplicationProps) {
     super(scope, id, props);
 
-    const isProd = this.node.tryGetContext('environment') === 'production';
+    const isProd = props.environmentName === 'production';
 
     const service = new ecs.FargateService(this, 'AppService', {
       cluster: props.cluster,
@@ -342,7 +344,7 @@ Track pipeline execution times and success rates.
 new cloudwatch.Alarm(this, 'PipelineFailureAlarm', {
   metric: new cloudwatch.Metric({
     namespace: 'AWS/CodePipeline',
-    metricName: 'PipelineExecutionFailedCount',
+    metricName: 'FailedPipelineExecutions',
     dimensionsMap: { PipelineName: pipeline.pipeline.pipelineName },
     period: cdk.Duration.hours(1),
     statistic: 'Sum',
