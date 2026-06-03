@@ -8,31 +8,32 @@ Description: Learn how to configure Velero parallel upload options to speed up l
 
 ---
 
-Large Kubernetes clusters with many resources or large persistent volumes can take hours to backup with default Velero settings. Parallel upload configuration significantly reduces backup time by uploading multiple resources and volume snapshots concurrently, helping you meet aggressive RPO targets and minimize backup windows.
+Large Kubernetes clusters with many resources or large persistent volumes can take hours to backup with default Velero settings. Parallel upload configuration can reduce backup time by uploading files for file system backups and CSI snapshot data movement concurrently, helping you meet aggressive RPO targets and minimize backup windows.
 
 ## Understanding Velero Upload Concurrency
 
 Velero processes backups in stages:
 
 - Resource backup (API objects): Serialized to JSON and uploaded
-- Volume snapshot creation: Creates CSI snapshots or Restic backups
-- Data upload: Transfers snapshot data to object storage
+- Volume snapshot creation: Creates native or CSI volume snapshots
+- Data upload: Transfers file system backup or CSI snapshot data to object storage
 
-Each stage supports parallelization to improve performance.
+Velero can parallelize backup processing across independent backups, node-agent work per node, and file uploads within file system backup or CSI snapshot data movement.
 
-## Configuring Resource Upload Concurrency
+## Configuring File Upload Concurrency
 
-Adjust the number of concurrent resource uploads:
+Install Velero with the AWS plugin and node-agent enabled:
 
 ```bash
 # Install Velero with increased concurrency
 
 velero install \
   --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --backup-location-config region=us-east-1 \
   --use-node-agent \
-  --uploader-type restic \
+  --uploader-type kopia \
   --default-repo-maintain-frequency 24h \
   --server-cpu-request 1000m \
   --server-memory-request 512Mi \
@@ -40,66 +41,51 @@ velero install \
   --server-memory-limit 1Gi
 ```
 
-Update the Velero deployment to add concurrency flags:
+Set file upload concurrency on the backup request:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: velero.io/v1
+kind: Backup
 metadata:
-  name: velero
+  name: production-backup
   namespace: velero
 spec:
-  template:
-    spec:
-      containers:
-      - name: velero
-        image: velero/velero:latest
-        args:
-        - server
-        - --default-backup-ttl=168h
-        - --default-volume-snapshot-locations=default
-        - --default-backup-storage-location=default
-        - --backup-sync-period=1m
-        - --default-item-operation-timeout=4h
-        - --default-volumes-to-fs-backup=false
-        - --parallel-files-upload=8  # Parallel file uploads
-        resources:
-          requests:
-            cpu: 1000m
-            memory: 512Mi
-          limits:
-            cpu: 2000m
-            memory: 1Gi
+  includedNamespaces:
+  - production
+  defaultVolumesToFsBackup: true
+  storageLocation: default
+  uploaderConfig:
+    parallelFilesUpload: 8  # Parallel file uploads per volume
 ```
 
-## Configuring Restic Upload Parallelism
+You can also set this from the CLI:
 
-For file-level backups with Restic, configure parallel upload workers:
+```bash
+velero backup create production-backup \
+  --include-namespaces production \
+  --default-volumes-to-fs-backup \
+  --parallel-files-upload 8 \
+  --wait
+```
+
+## Configuring Kopia Upload Parallelism
+
+For file-level backups with Kopia, configure parallel upload workers per backup:
 
 ```yaml
-apiVersion: apps/v1
-kind: DaemonSet
+apiVersion: velero.io/v1
+kind: Schedule
 metadata:
-  name: node-agent
+  name: production-fs-backup
   namespace: velero
 spec:
+  schedule: "0 2 * * *"
   template:
-    spec:
-      containers:
-      - name: node-agent
-        image: velero/velero:latest
-        args:
-        - node-agent
-        - server
-        - --uploader-type=restic
-        - --parallel-files-upload=8  # 8 concurrent uploads
-        resources:
-          requests:
-            cpu: 1000m
-            memory: 1Gi
-          limits:
-            cpu: 2000m
-            memory: 2Gi
+    includedNamespaces:
+    - production
+    defaultVolumesToFsBackup: true
+    uploaderConfig:
+      parallelFilesUpload: 8  # 8 concurrent file uploads per volume
 ```
 
 Higher parallelism requires more CPU and memory.
@@ -148,7 +134,8 @@ spec:
     bucket: velero-backups
   config:
     region: us-east-1
-    s3Url: https://velero-backups.s3-accelerate.amazonaws.com
+    s3Url: https://s3-accelerate.amazonaws.com
+    s3ForcePathStyle: "false"
 ```
 
 ## Configuring Node Agent Resource Allocation
@@ -173,9 +160,6 @@ spec:
           limits:
             cpu: "2"
             memory: 4Gi
-        env:
-        - name: GOMAXPROCS
-          value: "4"  # More CPU for parallel processing
 ```
 
 ## Measuring Backup Performance
@@ -192,42 +176,37 @@ echo "Starting performance test..."
 START=$(date +%s)
 
 # Create backup
-velero backup create perf-test-$(date +%s) \
-  --include-namespaces $NAMESPACE \
+BACKUP_NAME="perf-test-$(date +%s)"
+velero backup create "$BACKUP_NAME" \
+  --include-namespaces "$NAMESPACE" \
   --default-volumes-to-fs-backup \
+  --parallel-files-upload 8 \
   --wait
 
 END=$(date +%s)
 DURATION=$((END - START))
 
 # Get backup details
-BACKUP=$(velero backup get -o json | jq -r '.items | sort_by(.metadata.creationTimestamp) | last')
-ITEMS=$(echo $BACKUP | jq -r '.status.totalItems')
-SIZE=$(echo $BACKUP | jq -r '.status.progress.totalBytes // 0')
+BACKUP=$(velero backup get "$BACKUP_NAME" -o json)
+ITEMS=$(echo "$BACKUP" | jq -r '.status.totalItems // 0')
 
 echo "Duration: ${DURATION}s"
 echo "Items backed up: $ITEMS"
-echo "Data size: $(numfmt --to=iec-i --suffix=B $SIZE)"
-echo "Throughput: $(numfmt --to=iec-i --suffix=B $((SIZE / DURATION)))/s"
-echo "Items per second: $((ITEMS / DURATION))"
+if [ "$DURATION" -gt 0 ]; then
+  echo "Items per second: $((ITEMS / DURATION))"
+fi
 ```
 
 ## Tuning Network Bandwidth
 
-Optimize network settings for faster uploads:
+Optimize network settings for faster uploads. A Kubernetes ConfigMap by itself will not change kernel TCP settings; apply sysctls through your node configuration management or an approved privileged node tuning mechanism:
 
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: node-agent-config
-  namespace: velero
-data:
-  # Increase TCP buffer sizes
-  net.core.rmem_max: "134217728"  # 128MB
-  net.core.wmem_max: "134217728"
-  net.ipv4.tcp_rmem: "4096 87380 67108864"
-  net.ipv4.tcp_wmem: "4096 65536 67108864"
+```bash
+# Example node-level settings; validate with your platform team before applying
+sudo sysctl -w net.core.rmem_max=134217728
+sudo sysctl -w net.core.wmem_max=134217728
+sudo sysctl -w net.ipv4.tcp_rmem="4096 87380 67108864"
+sudo sysctl -w net.ipv4.tcp_wmem="4096 65536 67108864"
 ```
 
 ## Implementing Backup Scheduling for Off-Peak Hours
@@ -275,8 +254,10 @@ metadata:
 spec:
   includedNamespaces:
   - database
-  defaultVolumesToFsBackup: true  # Use Restic for deduplication
+  defaultVolumesToFsBackup: true  # Use Kopia file system backup for deduplication
   storageLocation: default
+  uploaderConfig:
+    parallelFilesUpload: 4
 ```
 
 ## Monitoring Upload Performance
@@ -296,23 +277,25 @@ spec:
     rules:
     - alert: SlowBackupUpload
       expr: |
-        velero_backup_duration_seconds > 3600
+        histogram_quantile(0.95,
+          sum(rate(velero_backup_duration_seconds_bucket[30m])) by (le)
+        ) > 3600
       for: 5m
       labels:
         severity: warning
       annotations:
         summary: "Backup taking too long"
-        description: "Backup {{ $labels.backup }} has been running for over 1 hour"
+        description: "The p95 Velero backup duration is over 1 hour"
 
-    - alert: BackupThroughputLow
+    - alert: BackupItemsLow
       expr: |
-        rate(velero_backup_items_total[5m]) < 10
+        velero_backup_items_total < 10
       for: 10m
       labels:
         severity: warning
       annotations:
-        summary: "Low backup throughput"
-        description: "Backup throughput is below 10 items/second"
+        summary: "Low backup item count"
+        description: "A completed Velero backup contains fewer than 10 items"
 ```
 
 ## Using Multiple Backup Storage Locations
@@ -390,21 +373,6 @@ def run_backup_test(parallel_uploads, namespace):
 
     print(f"\nTesting with parallel_uploads={parallel_uploads}")
 
-    # Update Velero deployment
-    subprocess.run([
-        'kubectl', 'set', 'env', 'deployment/velero',
-        f'PARALLEL_FILES_UPLOAD={parallel_uploads}',
-        '-n', 'velero'
-    ])
-
-    # Wait for rollout
-    subprocess.run([
-        'kubectl', 'rollout', 'status', 'deployment/velero',
-        '-n', 'velero'
-    ])
-
-    time.sleep(10)
-
     # Run backup
     backup_name = f'benchmark-{parallel_uploads}-{int(time.time())}'
     start = time.time()
@@ -412,15 +380,17 @@ def run_backup_test(parallel_uploads, namespace):
     subprocess.run([
         'velero', 'backup', 'create', backup_name,
         '--include-namespaces', namespace,
+        '--default-volumes-to-fs-backup',
+        '--parallel-files-upload', str(parallel_uploads),
         '--wait'
-    ])
+    ], check=True)
 
     duration = time.time() - start
 
     # Get backup details
     result = subprocess.run([
-        'velero', 'backup', 'describe', backup_name, '-o', 'json'
-    ], capture_output=True, text=True)
+        'velero', 'backup', 'get', backup_name, '-o', 'json'
+    ], capture_output=True, text=True, check=True)
 
     backup_data = json.loads(result.stdout)
     items = backup_data['status']['totalItems']
@@ -432,7 +402,7 @@ def run_backup_test(parallel_uploads, namespace):
     # Cleanup
     subprocess.run([
         'velero', 'backup', 'delete', backup_name, '--confirm'
-    ])
+    ], check=True)
 
     return {
         'parallel_uploads': parallel_uploads,
@@ -464,7 +434,7 @@ Follow these practices for optimal performance:
 3. **Test thoroughly**: Benchmark different configurations in non-production
 4. **Consider network**: Ensure network bandwidth can handle parallel uploads
 5. **Schedule wisely**: Run large backups during off-peak hours
-6. **Use volume snapshots**: CSI snapshots are faster than Restic for large volumes
+6. **Use volume snapshots**: CSI snapshots are often faster than file system backup for large volumes
 7. **Allocate resources**: Give Velero sufficient CPU and memory for parallel operations
 
 ## Conclusion
