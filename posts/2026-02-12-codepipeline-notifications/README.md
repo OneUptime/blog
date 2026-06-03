@@ -14,7 +14,7 @@ AWS gives you several ways to get notified about pipeline events: notification r
 
 ## Option 1: Notification Rules (Recommended)
 
-CodePipeline notification rules are the simplest way to set up alerts. They support SNS topics and AWS Chatbot (for Slack/Teams integration).
+CodePipeline notification rules are the simplest way to set up alerts. They support SNS topics and Amazon Q Developer in chat applications, formerly AWS Chatbot (for Slack/Teams integration).
 
 ### Create an SNS Topic
 
@@ -25,9 +25,35 @@ aws sns create-topic --name codepipeline-notifications
 
 # Subscribe your email
 aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:codepipeline-notifications \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:codepipeline-notifications \
   --protocol email \
   --notification-endpoint devops@example.com
+```
+
+If you create the SNS topic yourself instead of creating it through the notification rule workflow, add access policy statements that allow CodeStar Notifications and EventBridge to publish to the topic:
+
+```json
+{
+  "Sid": "AWSCodeStarNotificationsPublish",
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "codestar-notifications.amazonaws.com"
+  },
+  "Action": "SNS:Publish",
+  "Resource": "arn:aws:sns:us-east-1:123456789012:codepipeline-notifications"
+}
+```
+
+```json
+{
+  "Sid": "EventBridgePublish",
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "events.amazonaws.com"
+  },
+  "Action": "SNS:Publish",
+  "Resource": "arn:aws:sns:us-east-1:123456789012:codepipeline-notifications"
+}
 ```
 
 ### Create the Notification Rule
@@ -36,7 +62,7 @@ aws sns subscribe \
 # Create a notification rule for pipeline events
 aws codestar-notifications create-notification-rule \
   --name "my-pipeline-alerts" \
-  --resource "arn:aws:codepipeline:us-east-1:123456789:my-app-pipeline" \
+  --resource "arn:aws:codepipeline:us-east-1:123456789012:my-app-pipeline" \
   --detail-type FULL \
   --event-type-ids \
     "codepipeline-pipeline-pipeline-execution-failed" \
@@ -45,7 +71,7 @@ aws codestar-notifications create-notification-rule \
     "codepipeline-pipeline-manual-approval-needed" \
     "codepipeline-pipeline-manual-approval-succeeded" \
     "codepipeline-pipeline-manual-approval-failed" \
-  --targets '[{"TargetType":"SNS","TargetAddress":"arn:aws:sns:us-east-1:123456789:codepipeline-notifications"}]'
+  --targets '[{"TargetType":"SNS","TargetAddress":"arn:aws:sns:us-east-1:123456789012:codepipeline-notifications"}]'
 ```
 
 Available event types include:
@@ -88,7 +114,7 @@ aws events put-targets \
   --rule codepipeline-failure-alert \
   --targets '[{
     "Id": "sns-target",
-    "Arn": "arn:aws:sns:us-east-1:123456789:codepipeline-notifications"
+    "Arn": "arn:aws:sns:us-east-1:123456789012:codepipeline-notifications"
   }]'
 ```
 
@@ -111,11 +137,11 @@ aws events put-rule \
 
 ## Option 3: Slack Integration
 
-There are two ways to get CodePipeline notifications in Slack: AWS Chatbot and a custom Lambda function.
+There are two ways to get CodePipeline notifications in Slack: Amazon Q Developer in chat applications and a custom Lambda function.
 
-### AWS Chatbot (Easy Way)
+### Amazon Q Developer in chat applications (Easy Way)
 
-AWS Chatbot provides native Slack integration:
+Amazon Q Developer in chat applications provides native Slack integration. The AWS CLI command is still under the `chatbot` namespace:
 
 ```bash
 # Create a Chatbot Slack channel configuration
@@ -124,10 +150,10 @@ aws chatbot create-slack-channel-configuration \
   --slack-team-id T0XXXXXXX \
   --slack-channel-id C0XXXXXXX \
   --iam-role-arn arn:aws:iam::123456789012:role/ChatbotRole \
-  --sns-topic-arns arn:aws:sns:us-east-1:123456789:codepipeline-notifications
+  --sns-topic-arns arn:aws:sns:us-east-1:123456789012:codepipeline-notifications
 ```
 
-You'll need to install the AWS Chatbot app in your Slack workspace first through the AWS Console.
+You'll need to install the Amazon Q Developer app in your Slack workspace first through the AWS Console.
 
 ### Custom Lambda (More Control)
 
@@ -221,7 +247,7 @@ aws events put-targets \
   --rule pipeline-slack-notifications \
   --targets '[{
     "Id": "slack-lambda",
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:slack-notifier"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:slack-notifier"
   }]'
 
 # Grant EventBridge permission to invoke the Lambda
@@ -230,7 +256,7 @@ aws lambda add-permission \
   --statement-id eventbridge-invoke \
   --action lambda:InvokeFunction \
   --principal events.amazonaws.com \
-  --source-arn arn:aws:events:us-east-1:123456789:rule/pipeline-slack-notifications
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/pipeline-slack-notifications
 ```
 
 ## Notification for Approval Actions
@@ -245,9 +271,23 @@ aws sns create-topic --name pipeline-approvals
 
 # Subscribe the on-call channel
 aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:pipeline-approvals \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:pipeline-approvals \
   --protocol email \
   --notification-endpoint release-managers@example.com
+```
+
+Add an SNS topic policy statement that allows EventBridge to publish to the approval topic:
+
+```json
+{
+  "Sid": "EventBridgePublishApprovals",
+  "Effect": "Allow",
+  "Principal": {
+    "Service": "events.amazonaws.com"
+  },
+  "Action": "SNS:Publish",
+  "Resource": "arn:aws:sns:us-east-1:123456789012:pipeline-approvals"
+}
 ```
 
 Then create a specific EventBridge rule:
@@ -264,6 +304,13 @@ aws events put-rule \
       "state": ["STARTED"]
     }
   }'
+
+aws events put-targets \
+  --rule pipeline-approval-needed \
+  --targets '[{
+    "Id": "approval-sns-target",
+    "Arn": "arn:aws:sns:us-east-1:123456789012:pipeline-approvals"
+  }]'
 ```
 
 ## Best Practices
