@@ -14,7 +14,7 @@ This guide covers how to build an anomaly detection system on AWS that works acr
 
 ## Choosing Your Approach
 
-AWS gives you three main options for anomaly detection, and the right choice depends on your data and requirements:
+AWS gives you several common options for anomaly detection, and the right choice depends on your data and requirements:
 
 ```mermaid
 graph TD
@@ -28,7 +28,7 @@ graph TD
 ```
 
 - **CloudWatch Anomaly Detection**: Zero-code option for CloudWatch metrics. AWS trains the model for you.
-- **Amazon Lookout for Metrics**: Managed anomaly detection for business metrics from various sources.
+- **Amazon OpenSearch Service anomaly detection**: Managed anomaly detection for streaming and historical operational data indexed in OpenSearch.
 - **SageMaker with Random Cut Forest**: The built-in algorithm for time-series and tabular anomaly detection.
 - **Custom models on SageMaker**: Full control when the built-in options do not fit.
 
@@ -92,7 +92,7 @@ cloudwatch.put_metric_alarm(
     ],
     ThresholdMetricId='anomaly_band',
     AlarmActions=[
-        'arn:aws:sns:us-east-1:123456789:anomaly-alerts'
+        'arn:aws:sns:us-east-1:123456789012:anomaly-alerts'
     ]
 )
 ```
@@ -208,7 +208,8 @@ def handler(event, context):
         response = sagemaker_runtime.invoke_endpoint(
             EndpointName=ENDPOINT_NAME,
             ContentType='text/csv',
-            Body=features
+            Accept='application/json',
+            Body=features.encode('utf-8')
         )
 
         result = json.loads(response['Body'].read())
