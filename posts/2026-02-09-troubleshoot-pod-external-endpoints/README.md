@@ -47,7 +47,7 @@ kubectl exec -it my-pod -- dig google.com
 # Check DNS configuration
 kubectl exec -it my-pod -- cat /etc/resolv.conf
 
-# Should show cluster DNS (typically 10.96.0.10)
+# Should show cluster DNS (often 10.96.0.10, depending on the cluster Service CIDR)
 # nameserver 10.96.0.10
 # search default.svc.cluster.local svc.cluster.local cluster.local
 ```
@@ -128,7 +128,7 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
+          kubernetes.io/metadata.name: kube-system
     ports:
     - protocol: UDP
       port: 53  # Allow DNS
@@ -146,19 +146,19 @@ spec:
 
 ## Verifying NAT and Source IP
 
-Pods use NAT to access external endpoints. Verify NAT is working:
+Pods in many IPv4 clusters use SNAT to access external endpoints. Verify the source address that external services see:
 
 ```bash
 # Check pod's source IP when accessing external service
 kubectl exec -it my-pod -- curl ifconfig.me
 
-# Should return node's public IP, not pod IP
+# Should return the node, NAT gateway, or configured egress gateway public IP
 
-# If it returns pod IP, NAT is not working
-# Check CNI plugin configuration and cloud provider NAT setup
+# If it returns an unroutable pod IP in a private IPv4 cluster,
+# check CNI plugin masquerading and cloud provider NAT setup
 ```
 
-Without proper NAT, external services receive requests from non-routable pod IPs and cannot respond.
+Without proper outbound routing or SNAT in private IPv4 clusters, external services can receive requests from non-routable pod IPs and cannot respond.
 
 ## Testing from Node Directly
 
@@ -201,7 +201,7 @@ Restrictive egress rules block pods from reaching external endpoints.
 
 ## Verifying NAT Gateway or Internet Gateway
 
-Clusters need internet access infrastructure:
+Clusters need appropriate internet egress infrastructure:
 
 ```bash
 # For AWS, verify NAT Gateway exists for private subnets
@@ -220,7 +220,7 @@ gcloud compute routers nats list --router=ROUTER-NAME
 az network nat gateway list --resource-group RG
 ```
 
-Without NAT Gateway or Internet Gateway, pods cannot reach external endpoints.
+Without an appropriate egress path, pods cannot reach external endpoints.
 
 ## Testing with Different Protocols
 
@@ -248,7 +248,7 @@ TLS problems prevent HTTPS connections:
 
 ```bash
 # Test TLS connection
-kubectl exec -it my-pod -- openssl s_client -connect api.example.com:443
+kubectl exec -it my-pod -- openssl s_client -connect api.example.com:443 -servername api.example.com
 
 # Check if certificate validation fails
 kubectl exec -it my-pod -- curl -v https://api.example.com
@@ -275,7 +275,8 @@ kubectl exec -it my-pod -- ls /etc/ssl/certs/
 kubectl exec -it my-pod -- curl --cacert /etc/ssl/certs/ca-certificates.crt \
   https://api.example.com
 
-# Update CA certificates if needed (in container)
+# Update CA certificates if needed; this requires an image that includes the tool
+# and changes made with kubectl exec do not persist after the container is replaced
 kubectl exec -it my-pod -- update-ca-certificates
 ```
 
@@ -328,8 +329,10 @@ Capture traffic to see exactly what happens:
 # Attach debug container
 kubectl debug -it pod/my-pod --image=nicolaka/netshoot --target=my-pod-container
 
-# Capture traffic to external endpoint
-tcpdump -i any -n host api.example.com
+# Capture traffic to external endpoint and DNS
+tcpdump -i any -n 'host api.example.com or port 53'
+
+# If DNS is failing, replace api.example.com with a known resolved IP address
 
 # From another terminal, test connection
 kubectl exec -it my-pod -- curl https://api.example.com
@@ -371,7 +374,7 @@ kubectl get configmap coredns -n kube-system -o yaml
 # forward . /etc/resolv.conf
 
 # Check what DNS servers CoreDNS uses
-kubectl exec -n kube-system coredns-xxx -- cat /etc/resolv.conf
+kubectl exec -n kube-system deploy/coredns -- cat /etc/resolv.conf
 
 # Test resolution through entire chain
 kubectl exec -it my-pod -- dig google.com +trace
@@ -416,14 +419,15 @@ kube-proxy settings affect egress:
 # Check masquerade configuration
 kubectl get configmap kube-proxy -n kube-system -o yaml | grep masqueradeAll
 
-# If false, only pod CIDR traffic is masqueraded
-# External traffic might use pod IPs without NAT
+# kube-proxy masquerade settings affect Service traffic.
+# For direct pod egress to external IPs, also check the CNI plugin
+# and any ip-masq-agent or cloud-provider SNAT configuration.
 
 # Check cluster CIDR configuration
 kubectl cluster-info dump | grep -i cidr
 ```
 
-Incorrect kube-proxy masquerading breaks external connectivity.
+Incorrect kube-proxy masquerading can affect Service traffic; direct pod egress problems are usually handled in CNI or cloud egress configuration.
 
 ## Creating Comprehensive Test
 
