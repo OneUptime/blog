@@ -54,6 +54,7 @@ This policy grants Lambda the permissions needed to attach to a VPC.
       "Action": [
         "ec2:CreateNetworkInterface",
         "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeSubnets",
         "ec2:DeleteNetworkInterface",
         "ec2:AssignPrivateIpAddresses",
         "ec2:UnassignPrivateIpAddresses"
@@ -202,9 +203,9 @@ exports.handler = async (event) => {
 For production workloads, RDS Proxy is the right answer. It sits between Lambda and RDS, managing a connection pool that handles the bursty nature of Lambda traffic.
 
 Benefits of RDS Proxy with Lambda:
-- Multiplexes hundreds of Lambda connections into a smaller pool of database connections
+- Multiplexes many Lambda connections into a smaller pool of database connections when sessions are not pinned
 - Handles connection draining and failover
-- Supports IAM authentication (no database passwords needed)
+- Supports IAM authentication for Lambda clients, so database passwords don't need to be stored in Lambda
 - Reduces database CPU from connection overhead
 
 See our detailed guide on [setting up RDS Proxy](https://oneuptime.com/blog/post/2026-02-12-setup-rds-proxy-connection-pooling/view) and [using RDS Proxy with Lambda](https://oneuptime.com/blog/post/2026-02-12-use-rds-proxy-with-lambda-functions/view).
@@ -243,7 +244,7 @@ connection = psycopg2.connect(
 
 ## Using IAM Authentication with Lambda
 
-IAM authentication eliminates the need for database passwords. Lambda's execution role gets permission to generate auth tokens.
+IAM authentication eliminates the need to store database passwords in Lambda. Lambda's execution role gets permission to generate auth tokens.
 
 This Lambda code uses IAM authentication to connect to RDS through a proxy.
 
@@ -339,7 +340,7 @@ Watch these metrics to stay healthy:
 - **Lambda concurrent executions**: Should stay below your RDS max_connections
 - **RDS DatabaseConnections**: Track connection usage
 - **Lambda errors**: Watch for connection timeouts
-- **RDS Proxy connection borrow rate**: If using proxy, monitor how quickly connections are being claimed
+- **RDS Proxy connection borrow rate and pinned sessions**: If using proxy, monitor how quickly connections are being claimed and how many database connections are pinned
 
 Set up monitoring with [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-infrastructure-monitoring/view) to get alerts before connection exhaustion becomes a problem.
 
