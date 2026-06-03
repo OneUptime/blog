@@ -32,7 +32,7 @@ helm plugin install https://github.com/helm-unittest/helm-unittest
 
 # Install chart-testing (ct) tool
 curl -sSLo ct.tar.gz \
-  https://github.com/helm/chart-testing/releases/download/v3.10.0/chart-testing_3.10.0_linux_amd64.tar.gz
+  https://github.com/helm/chart-testing/releases/download/v3.14.0/chart-testing_3.14.0_linux_amd64.tar.gz
 tar -xzf ct.tar.gz
 sudo mv ct /usr/local/bin/
 
@@ -51,8 +51,7 @@ sudo mv kubeconform /usr/local/bin/
 
 Define a JSON schema to validate chart values:
 
-```yaml
-# values.schema.json
+```json
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "type": "object",
@@ -114,7 +113,7 @@ Define a JSON schema to validate chart values:
             },
             "memory": {
               "type": "string",
-              "pattern": "^[0-9]+Mi?$"
+              "pattern": "^[0-9]+(Ki|Mi|Gi|Ti|M|G|T)?$"
             }
           }
         },
@@ -127,7 +126,7 @@ Define a JSON schema to validate chart values:
             },
             "memory": {
               "type": "string",
-              "pattern": "^[0-9]+Mi?$"
+              "pattern": "^[0-9]+(Ki|Mi|Gi|Ti|M|G|T)?$"
             }
           }
         }
@@ -251,11 +250,11 @@ Run the unit tests:
 # Run all tests
 helm unittest ./mychart
 
-# Run with verbose output
-helm unittest -f 'tests/**/*_test.yaml' ./mychart -3
+# Run a specific test file glob
+helm unittest -f 'tests/**/*_test.yaml' ./mychart
 
-# Generate test coverage report
-helm unittest --output-type junit --output-file test-results.xml ./mychart
+# Generate a JUnit test report
+helm unittest --output-type JUnit --output-file test-results.xml ./mychart
 ```
 
 ## Creating a Chart Testing Configuration
@@ -285,12 +284,8 @@ target-branch: main
 validate-chart-schema: true
 validate-yaml: true
 
-# Kubernetes versions to test against
-kubernetes-version: v1.28.0
-
 # Additional Helm arguments
-helm-extra-set-args:
-  - install-test=true
+helm-extra-set-args: --set install-test=true
 ```
 
 ## Building a Comprehensive Validation Script
@@ -359,7 +354,7 @@ fi
 echo ""
 print_info "Step 3: Validating values schema..."
 if [ -f "$CHART_DIR/values.schema.json" ]; then
-    if helm template test "$CHART_DIR" --validate > /dev/null 2>&1; then
+    if helm template test "$CHART_DIR" > /dev/null 2>&1; then
         print_success "Values schema validation passed"
     else
         print_error "Values schema validation failed"
@@ -461,8 +456,8 @@ fi
 echo ""
 print_info "Step 8: Scanning for security issues..."
 
-# Check for runAsRoot
-if grep -r "runAsRoot: false" "$CHART_DIR/templates/" > /dev/null; then
+# Check for runAsNonRoot
+if grep -r "runAsNonRoot: true" "$CHART_DIR/templates/" > /dev/null; then
     print_success "Security: runAsNonRoot is configured"
 else
     print_info "Consider adding runAsNonRoot: true to security contexts"
@@ -524,14 +519,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Set up Helm
-        uses: azure/setup-helm@v3
+        uses: azure/setup-helm@v4.3.0
         with:
-          version: v3.12.0
+          version: v3.20.3
 
       - name: Install helm-unittest
         run: |
@@ -546,7 +541,7 @@ jobs:
 
           # Install chart-testing
           curl -sSLo ct.tar.gz \
-            https://github.com/helm/chart-testing/releases/download/v3.10.0/chart-testing_3.10.0_linux_amd64.tar.gz
+            https://github.com/helm/chart-testing/releases/download/v3.14.0/chart-testing_3.14.0_linux_amd64.tar.gz
           tar -xzf ct.tar.gz
           sudo mv ct /usr/local/bin/
 
@@ -567,7 +562,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: chart-test-results
           path: |
@@ -598,10 +593,10 @@ repos:
 
       - id: validate-chart
         name: Validate Charts
-        entry: ./scripts/validate-chart.sh
+        entry: bash -c 'for chart in charts/*/; do ./scripts/validate-chart.sh $chart; done'
         language: system
         files: ^charts/
-        pass_filenames: true
+        pass_filenames: false
 ```
 
 Install pre-commit and set up hooks:
