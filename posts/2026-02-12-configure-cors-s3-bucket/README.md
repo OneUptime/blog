@@ -63,30 +63,32 @@ aws s3api put-bucket-cors \
 Most real-world applications need more than one origin and method. Here's a more complete configuration.
 
 ```json
-[
-    {
-        "AllowedHeaders": ["*"],
-        "AllowedMethods": ["GET", "HEAD"],
-        "AllowedOrigins": [
-            "https://myapp.com",
-            "https://www.myapp.com",
-            "https://staging.myapp.com"
-        ],
-        "ExposeHeaders": [
-            "ETag",
-            "Content-Length",
-            "x-amz-meta-custom-header"
-        ],
-        "MaxAgeSeconds": 86400
-    },
-    {
-        "AllowedHeaders": ["*"],
-        "AllowedMethods": ["PUT", "POST"],
-        "AllowedOrigins": ["https://myapp.com"],
-        "ExposeHeaders": ["ETag"],
-        "MaxAgeSeconds": 3600
-    }
-]
+{
+    "CORSRules": [
+        {
+            "AllowedHeaders": ["*"],
+            "AllowedMethods": ["GET", "HEAD"],
+            "AllowedOrigins": [
+                "https://myapp.com",
+                "https://www.myapp.com",
+                "https://staging.myapp.com"
+            ],
+            "ExposeHeaders": [
+                "ETag",
+                "Content-Length",
+                "x-amz-meta-custom-header"
+            ],
+            "MaxAgeSeconds": 86400
+        },
+        {
+            "AllowedHeaders": ["*"],
+            "AllowedMethods": ["PUT", "POST"],
+            "AllowedOrigins": ["https://myapp.com"],
+            "ExposeHeaders": ["ETag"],
+            "MaxAgeSeconds": 3600
+        }
+    ]
+}
 ```
 
 Save this as `cors-config.json` and apply it.
@@ -165,7 +167,7 @@ During development, you often need to allow localhost. Here's a configuration th
 ]
 ```
 
-Setting `MaxAgeSeconds` to 0 during development means every request triggers a preflight, which helps when you're changing the CORS config frequently.
+Setting `MaxAgeSeconds` to 0 during development means the browser won't cache preflight responses, so each request that requires a preflight sends a fresh OPTIONS request. That helps when you're changing the CORS config frequently.
 
 ## How CORS Preflight Works
 
@@ -218,13 +220,13 @@ If you're using CloudFront in front of S3, you need additional configuration. Cl
 
 In your CloudFront distribution, make sure to:
 
-1. Add `Origin` to the list of forwarded headers
-2. Include `Origin` in the cache key (so different origins get different cached responses)
+1. Forward `Origin`, `Access-Control-Request-Headers`, and `Access-Control-Request-Method` to S3
+2. Include the CORS headers that affect the response in the cache key, so different origins and preflight requests don't share the wrong cached response
 
-Or use the Managed-CORS-S3Origin cache policy which handles this automatically.
+You can use the managed CORS-S3Origin origin request policy to forward the right headers to S3. If your cached responses vary by origin, also make sure your cache policy includes the headers that need to vary the cache key.
 
 ```bash
-# The Managed-CORS-S3Origin cache policy ID
+# The managed CORS-S3Origin origin request policy ID
 # This forwards Origin, Access-Control-Request-Headers,
 # and Access-Control-Request-Method to the origin
 POLICY_ID="88a5eaf4-2fd4-4709-b370-b4c650ea3fcf"
