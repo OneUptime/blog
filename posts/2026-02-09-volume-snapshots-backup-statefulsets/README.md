@@ -16,7 +16,7 @@ Unlike traditional backup tools that copy data file-by-file, CSI snapshots lever
 
 The Kubernetes volume snapshot feature consists of three main resources: VolumeSnapshotClass defines the snapshot driver and deletion policy, VolumeSnapshot represents a user request for a snapshot of a PVC, and VolumeSnapshotContent is the actual snapshot object created by the CSI driver.
 
-When you create a VolumeSnapshot pointing to a PVC, the external-snapshotter sidecar calls the CSI driver's CreateSnapshot RPC. The driver creates a snapshot using the storage backend's native snapshot functionality and returns a snapshot handle. Kubernetes tracks this snapshot as a VolumeSnapshotContent object that can later be used to restore data or create new volumes.
+When you create a VolumeSnapshot pointing to a PVC, the snapshot controller creates and binds a VolumeSnapshotContent object. The CSI external-snapshotter sidecar watches that VolumeSnapshotContent and calls the CSI driver's CreateSnapshot RPC. The driver creates a snapshot using the storage backend's native snapshot functionality and returns a snapshot handle. Kubernetes tracks this snapshot as a VolumeSnapshotContent object that can later be used to restore data or create new volumes.
 
 Snapshots are crash-consistent by default, meaning they capture the volume state at a specific moment but may not represent application-consistent data. For databases, you typically want to flush buffers or perform a checkpoint before snapshotting to ensure consistency.
 
@@ -27,19 +27,19 @@ Kubernetes requires separate CRDs and a snapshot controller for volume snapshot 
 ```bash
 # Install snapshot CRDs
 
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.4.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.4.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.4.0/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
 
 # Verify CRDs
 kubectl get crd | grep snapshot
 
 # Deploy snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.0/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v6.3.0/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.4.0/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/v8.4.0/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
 
 # Verify controller is running
-kubectl get pods -n kube-system -l app=snapshot-controller
+kubectl get pods -n kube-system -l app.kubernetes.io/name=snapshot-controller
 ```
 
 ## Configuring VolumeSnapshotClass
@@ -117,6 +117,7 @@ spec:
 Deploy and populate with data.
 
 ```bash
+kubectl create secret generic postgres-secret --from-literal=password='change-me'
 kubectl apply -f postgres-statefulset.yaml
 kubectl wait --for=condition=ready pod -l app=postgres
 
@@ -167,7 +168,7 @@ kubectl exec postgres-0 -- psql -U postgres -c "CHECKPOINT;"
 kubectl apply -f postgres-snapshot.yaml
 
 # MySQL: Flush tables
-kubectl exec mysql-0 -- mysql -u root -p$MYSQL_ROOT_PASSWORD -e "FLUSH TABLES WITH READ LOCK; SYSTEM sleep 5; UNLOCK TABLES;" &
+kubectl exec mysql-0 -- sh -c 'mysql -u root -p"$MYSQL_ROOT_PASSWORD" -e "FLUSH TABLES WITH READ LOCK; SYSTEM sleep 5; UNLOCK TABLES;"' &
 sleep 2
 kubectl apply -f mysql-snapshot.yaml
 ```
@@ -291,11 +292,16 @@ spec:
               echo "Snapshot ${SNAPSHOT_NAME} created successfully"
 
               # Clean up snapshots older than 7 days
-              kubectl get volumesnapshots -o json | \
-                jq -r '.items[] |
-                  select(.metadata.name | startswith("postgres-snapshot-")) |
-                  select((now - (.metadata.creationTimestamp | fromdateiso8601)) > 604800) |
-                  .metadata.name' | \
+              CUTOFF=$(date -u -d '7 days ago' +%s)
+              kubectl get volumesnapshots \
+                -o custom-columns=NAME:.metadata.name,CREATED:.metadata.creationTimestamp \
+                --no-headers | \
+                awk -v cutoff="${CUTOFF}" '$1 ~ /^postgres-snapshot-/ {
+                  cmd = "date -u -d " $2 " +%s"
+                  cmd | getline created
+                  close(cmd)
+                  if (created < cutoff) print $1
+                }' | \
                 xargs -r kubectl delete volumesnapshot
           restartPolicy: OnFailure
 ```
@@ -316,7 +322,7 @@ metadata:
 rules:
 - apiGroups: ["snapshot.storage.k8s.io"]
   resources: ["volumesnapshots"]
-  verbs: ["get", "list", "create", "delete"]
+  verbs: ["get", "list", "watch", "create", "delete"]
 - apiGroups: [""]
   resources: ["persistentvolumeclaims"]
   verbs: ["get", "list"]
@@ -347,20 +353,20 @@ kubectl create job --from=cronjob/postgres-snapshot-daily manual-snapshot-test
 kubectl logs job/manual-snapshot-test
 ```
 
-## Backing Up StatefulSet Snapshots to Object Storage
+## Moving StatefulSet Snapshot Data to Object Storage
 
-Export snapshots to S3 for off-cluster disaster recovery using Velero.
+Move snapshot data to S3 for off-cluster disaster recovery using Velero. Standard CSI snapshot backups preserve Kubernetes snapshot metadata and storage-provider snapshots; use Velero's CSI snapshot data movement when you need the snapshot contents copied to object storage.
 
 ```bash
 # Install Velero CLI
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz
-tar -xvf velero-v1.12.0-linux-amd64.tar.gz
-sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/velero-io/velero/releases/download/v1.18.1/velero-v1.18.1-linux-amd64.tar.gz
+tar -xvf velero-v1.18.1-linux-amd64.tar.gz
+sudo mv velero-v1.18.1-linux-amd64/velero /usr/local/bin/
 
-# Install Velero with snapshot support
+# Install Velero with CSI snapshot data movement support
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0,velero/velero-plugin-for-csi:v0.6.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --secret-file ./credentials-velero \
   --backup-location-config region=us-east-1 \
@@ -373,6 +379,7 @@ velero backup create postgres-backup-20260209 \
   --include-namespaces default \
   --selector app=postgres \
   --snapshot-volumes \
+  --snapshot-move-data \
   --csi-snapshot-timeout=10m
 
 # Wait for backup completion
@@ -420,7 +427,7 @@ kubectl get volumesnapshots -A -o json | \
     {name: .metadata.name, error: .status.error}'
 ```
 
-Create alerts for snapshot failures.
+If your kube-state-metrics configuration exposes VolumeSnapshot custom resource metrics, create alerts for snapshot failures.
 
 ```yaml
 # prometheus-alerts.yaml
