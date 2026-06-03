@@ -108,14 +108,19 @@ exports.handler = async (event) => {
 
 // Helper to build HTTP responses
 function response(statusCode, body) {
-  return {
+  const result = {
     statusCode,
     headers: {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*',
     },
-    body: JSON.stringify(body),
   };
+
+  if (body !== null && body !== undefined) {
+    result.body = JSON.stringify(body);
+  }
+
+  return result;
 }
 
 // Parse the request body safely
@@ -376,7 +381,8 @@ Resources:
     Properties:
       ApiId: !Ref HttpApi
       IntegrationType: AWS_PROXY
-      IntegrationUri: !GetAtt TasksFunction.Arn
+      IntegrationUri: !Sub "arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${TasksFunction.Arn}/invocations"
+      IntegrationMethod: POST
       PayloadFormatVersion: "2.0"
 
   # Route all requests to the Lambda function
