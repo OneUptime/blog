@@ -25,10 +25,7 @@ cd my-cognito-app
 npm install @aws-sdk/client-cognito-identity-provider
 
 # Install JWT verification for server-side
-npm install jsonwebtoken jwks-rsa
-
-# Install cookies library for token storage
-npm install cookies-next
+npm install aws-jwt-verify
 ```
 
 Set up your environment variables:
@@ -54,7 +51,6 @@ import {
     SignUpCommand,
     ConfirmSignUpCommand,
     GlobalSignOutCommand,
-    GetUserCommand,
 } from '@aws-sdk/client-cognito-identity-provider';
 
 const client = new CognitoIdentityProviderClient({
@@ -143,13 +139,13 @@ const TOKEN_COOKIE_OPTIONS = {
     path: '/',
 };
 
-export function setAuthCookies(tokens: {
+export async function setAuthCookies(tokens: {
     idToken?: string;
     accessToken?: string;
     refreshToken?: string;
     expiresIn?: number;
 }) {
-    const cookieStore = cookies();
+    const cookieStore = await cookies();
 
     if (tokens.idToken) {
         cookieStore.set('id_token', tokens.idToken, {
@@ -173,8 +169,8 @@ export function setAuthCookies(tokens: {
     }
 }
 
-export function getAuthCookies() {
-    const cookieStore = cookies();
+export async function getAuthCookies() {
+    const cookieStore = await cookies();
     return {
         idToken: cookieStore.get('id_token')?.value,
         accessToken: cookieStore.get('access_token')?.value,
@@ -182,8 +178,8 @@ export function getAuthCookies() {
     };
 }
 
-export function clearAuthCookies() {
-    const cookieStore = cookies();
+export async function clearAuthCookies() {
+    const cookieStore = await cookies();
     cookieStore.delete('id_token');
     cookieStore.delete('access_token');
     cookieStore.delete('refresh_token');
@@ -210,7 +206,7 @@ export async function loginAction(formData: FormData) {
 
     try {
         const tokens = await signIn(email, password);
-        setAuthCookies(tokens);
+        await setAuthCookies(tokens);
     } catch (error: any) {
         return { error: error.message || 'Login failed' };
     }
@@ -245,7 +241,7 @@ export async function confirmAction(formData: FormData) {
 }
 
 export async function logoutAction() {
-    const { accessToken } = getAuthCookies();
+    const { accessToken } = await getAuthCookies();
     if (accessToken) {
         try {
             await signOut(accessToken);
@@ -253,7 +249,7 @@ export async function logoutAction() {
             // Continue with local logout even if global signout fails
         }
     }
-    clearAuthCookies();
+    await clearAuthCookies();
     redirect('/login');
 }
 ```
@@ -310,7 +306,7 @@ export default function LoginPage() {
 
 Next.js middleware runs before every request and is perfect for protecting routes.
 
-Create middleware that checks authentication and refreshes tokens:
+Create middleware that checks whether authentication cookies exist:
 
 ```typescript
 // middleware.ts
@@ -350,14 +346,14 @@ export const config = {
 
 ## Server-Side User Data
 
-In server components, you can read the token from cookies and decode user information.
+In server components, you can read the token from cookies, verify it, and use the verified claims for user information.
 
 Here's a helper to get the current user in server components:
 
 ```typescript
 // lib/get-user.ts
 import { getAuthCookies } from './auth-cookies';
-import jwt from 'jsonwebtoken';
+import { CognitoJwtVerifier } from 'aws-jwt-verify';
 
 export interface CognitoUser {
     sub: string;
@@ -366,24 +362,24 @@ export interface CognitoUser {
     groups: string[];
 }
 
-export function getCurrentUser(): CognitoUser | null {
-    const { idToken } = getAuthCookies();
+const verifier = CognitoJwtVerifier.create({
+    userPoolId: process.env.NEXT_PUBLIC_COGNITO_USER_POOL_ID!,
+    tokenUse: 'id',
+    clientId: process.env.NEXT_PUBLIC_COGNITO_CLIENT_ID!,
+});
+
+export async function getCurrentUser(): Promise<CognitoUser | null> {
+    const { idToken } = await getAuthCookies();
     if (!idToken) return null;
 
     try {
-        // Decode without verification for server components
-        // The middleware and API routes handle full verification
-        const decoded = jwt.decode(idToken) as any;
-
-        if (!decoded || decoded.exp * 1000 < Date.now()) {
-            return null;
-        }
+        const payload = await verifier.verify(idToken);
 
         return {
-            sub: decoded.sub,
-            email: decoded.email,
-            name: decoded.name || decoded['cognito:username'],
-            groups: decoded['cognito:groups'] || [],
+            sub: payload.sub,
+            email: payload.email as string,
+            name: (payload.name || payload['cognito:username']) as string,
+            groups: (payload['cognito:groups'] || []) as string[],
         };
     } catch {
         return null;
@@ -399,8 +395,8 @@ import { getCurrentUser } from '@/lib/get-user';
 import { redirect } from 'next/navigation';
 import { logoutAction } from '@/app/actions/auth';
 
-export default function DashboardPage() {
-    const user = getCurrentUser();
+export default async function DashboardPage() {
+    const user = await getCurrentUser();
 
     if (!user) {
         redirect('/login');
