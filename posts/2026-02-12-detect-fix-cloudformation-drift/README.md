@@ -57,7 +57,7 @@ aws cloudformation describe-stack-drift-detection-status \
 ### Checking Individual Resources
 
 ```bash
-# List all resources and their drift status
+# List drifted resources and their drift status
 aws cloudformation describe-stack-resource-drifts \
   --stack-name my-app-prod \
   --stack-resource-drift-status-filters MODIFIED DELETED \
@@ -71,7 +71,7 @@ The drift statuses are:
 | `IN_SYNC` | Resource matches the template |
 | `MODIFIED` | Resource exists but properties differ |
 | `DELETED` | Resource was deleted outside CloudFormation |
-| `NOT_CHECKED` | Drift detection doesn't support this resource type |
+| `NOT_CHECKED` | CloudFormation hasn't checked the resource, or drift detection doesn't support this resource type |
 
 ### Viewing Drift Details
 
@@ -113,34 +113,37 @@ aws cloudformation detect-stack-resource-drift \
   --logical-resource-id AppSecurityGroup
 ```
 
-This is faster than full-stack drift detection when you're investigating a specific resource.
+This can be faster than full-stack drift detection when you're investigating a specific resource.
 
 ## Fixing Drift
 
 Once you've found drift, you have three options:
 
-### Option 1: Update the Stack to Re-Apply the Template
+### Option 1: Use a Drift-Aware Change Set to Re-Apply the Template
 
-The simplest approach - run a stack update with the current template. CloudFormation will bring resources back to the template's defined state:
+The simplest approach - create a drift-aware change set with the current template. CloudFormation will bring resources back to the template's defined state:
 
 ```bash
-# Re-apply the current template to fix drift
-aws cloudformation update-stack \
+# Create a drift-aware change set to fix drift
+CHANGE_SET_NAME="revert-drift-$(date +%s)"
+
+aws cloudformation create-change-set \
   --stack-name my-app-prod \
+  --change-set-name "$CHANGE_SET_NAME" \
+  --change-set-type UPDATE \
+  --deployment-mode REVERT_DRIFT \
   --use-previous-template \
   --parameters ParameterKey=Environment,UsePreviousValue=true \
   --capabilities CAPABILITY_IAM
 ```
 
-Or use `deploy` with `--no-fail-on-empty-changeset`:
+Review the change set, then execute it:
 
 ```bash
-# Deploy with current template to correct drift
-aws cloudformation deploy \
+# Execute the drift-aware change set after reviewing it
+aws cloudformation execute-change-set \
   --stack-name my-app-prod \
-  --template-file template.yaml \
-  --parameter-overrides Environment=prod \
-  --no-fail-on-empty-changeset
+  --change-set-name "$CHANGE_SET_NAME"
 ```
 
 This works when the template is correct and the drift was unintentional.
@@ -203,7 +206,7 @@ Resources:
       FunctionName: drift-detector
       Runtime: python3.12
       Handler: index.handler
-      Timeout: 120
+      Timeout: 360
       Role: !GetAtt LambdaRole.Arn
       Environment:
         Variables:
