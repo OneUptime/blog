@@ -65,15 +65,22 @@ resource "aws_iam_role_policy" "glue_s3" {
       {
         Effect = "Allow"
         Action = [
-          "s3:GetObject",
-          "s3:PutObject",
-          "s3:DeleteObject",
           "s3:ListBucket"
         ]
         Resource = [
           "arn:aws:s3:::my-data-lake",
+          "arn:aws:s3:::my-etl-scripts"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject"
+        ]
+        Resource = [
           "arn:aws:s3:::my-data-lake/*",
-          "arn:aws:s3:::my-etl-scripts",
           "arn:aws:s3:::my-etl-scripts/*"
         ]
       },
@@ -378,6 +385,24 @@ resource "aws_glue_trigger" "workflow_transform" {
     conditions {
       crawler_name = aws_glue_crawler.events.name
       crawl_state  = "SUCCEEDED"
+    }
+  }
+}
+
+# Third step in the workflow
+resource "aws_glue_trigger" "workflow_report" {
+  name          = "workflow-report"
+  type          = "CONDITIONAL"
+  workflow_name = aws_glue_workflow.etl_pipeline.name
+
+  actions {
+    job_name = aws_glue_job.daily_report.name
+  }
+
+  predicate {
+    conditions {
+      job_name = aws_glue_job.transform_events.name
+      state    = "SUCCEEDED"
     }
   }
 }
