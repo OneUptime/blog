@@ -10,7 +10,7 @@ Description: A complete guide to using CloudWatch ServiceLens to unify metrics, 
 
 When you're monitoring a distributed application on AWS, data lives in three different places: metrics in CloudWatch, logs in CloudWatch Logs, and traces in X-Ray. Jumping between these consoles to investigate an issue gets old fast. That's the problem ServiceLens was built to solve.
 
-CloudWatch ServiceLens pulls metrics, logs, and traces together into a single integrated view. It gives you a service map showing how your components interact, lets you drill into any node to see its health, and correlates traces with the relevant logs and metrics. It's essentially a unified observability layer built on top of tools you're probably already using.
+CloudWatch ServiceLens pulls metrics, logs, and traces together into a single integrated view. Its service map has been combined into the X-Ray trace map in the CloudWatch console, where you can see how your components interact, drill into any node to see its health, and correlate traces with the relevant logs and metrics. It's essentially a unified observability layer built on top of tools you're probably already using.
 
 ## How ServiceLens Fits Into the Monitoring Stack
 
@@ -42,7 +42,6 @@ Before setting up ServiceLens, you need:
 Here's a minimal IAM policy:
 
 ```json
-// IAM policy needed for ServiceLens access
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -52,6 +51,7 @@ Here's a minimal IAM policy:
         "xray:GetTraceSummaries",
         "xray:BatchGetTraces",
         "xray:GetServiceGraph",
+        "xray:GetTraceGraph",
         "xray:GetGroups",
         "cloudwatch:GetMetricData",
         "cloudwatch:ListMetrics",
@@ -72,10 +72,10 @@ ServiceLens depends on X-Ray data, so let's make sure that's flowing first.
 For a Node.js application, install the AWS X-Ray SDK:
 
 ```bash
-# Install the X-Ray SDK for Node.js
-
 npm install aws-xray-sdk
 ```
+
+Note that the X-Ray SDKs and daemon entered maintenance mode on February 25, 2026. They still work for existing instrumentation, but AWS recommends OpenTelemetry or AWS Distro for OpenTelemetry (ADOT) for new instrumentation.
 
 Then instrument your application:
 
@@ -135,13 +135,14 @@ def get_orders():
 
 ## Navigating the ServiceLens Service Map
 
-Once X-Ray data is flowing, head to CloudWatch in the AWS Console. Under "ServiceLens" in the left navigation, click "Service Map."
+Once X-Ray data is flowing, head to CloudWatch in the AWS Console. Under "X-Ray traces" in the left navigation, click "Trace Map." The older ServiceLens service map view is now combined into this trace map.
 
-The service map shows your application as a graph of interconnected nodes. Each node represents a service or AWS resource, and the edges show how they communicate. The map updates in near real-time and color-codes nodes based on health:
+The trace map shows your application as a graph of interconnected nodes. Each node represents a service or AWS resource, and the edges show how they communicate. The map updates in near real-time and color-codes nodes based on health:
 
-- **Green** means healthy - response times and error rates are normal
-- **Yellow** indicates warnings - elevated latency or error rates
-- **Red** signals problems - high error rates or significant latency spikes
+- **Green** means successful calls
+- **Yellow** indicates client errors - 400 series responses
+- **Red** signals server faults - 500 series responses
+- **Purple** indicates throttling - 429 responses
 
 You can click on any node to see:
 
@@ -152,7 +153,7 @@ You can click on any node to see:
 
 ## Filtering and Time Ranges
 
-ServiceLens lets you filter the service map by time range, which is invaluable during incident investigation. Say you got paged at 3:00 AM - you can set the time range to 2:45 AM - 3:15 AM and see exactly what the service map looked like during that window.
+ServiceLens lets you filter the trace map by time range, which is invaluable during incident investigation. Say you got paged at 3:00 AM - you can set the time range to 2:45 AM - 3:15 AM and see exactly what the trace map looked like during that window.
 
 You can also filter by X-Ray groups if you've set those up. This is handy when you have multiple applications sharing the same AWS account. Check out our guide on [X-Ray groups for filtering traces](https://oneuptime.com/blog/post/2026-02-12-xray-groups-filtering-traces/view) for more details.
 
@@ -234,24 +235,25 @@ const logger = winston.createLogger({
 
 // Now every log line includes the trace ID
 logger.info('Processing order #12345');
-// Output: 2026-02-12T10:30:00Z [info] [traceId=1-abc123-def456] Processing order #12345
+// Output: 2026-02-12T10:30:00Z [info] [traceId=1-65cce540-a1b2c3d4e5f6789012345678] Processing order #12345
 ```
 
-ServiceLens uses the trace ID in your logs to link them to the corresponding trace. It's a small addition that makes a huge difference during debugging.
+CloudWatch trace-to-log correlation relies on trace context in your logs, such as the trace ID. It's a small addition that makes a huge difference during debugging. If you use Application Signals with OpenTelemetry instrumentation, CloudWatch can inject trace context such as trace IDs and span IDs into supported logging frameworks automatically.
 
 ## Using ServiceLens with Container Workloads
 
 If you're running containers on ECS or EKS, ServiceLens works great but needs the X-Ray daemon running as a sidecar:
 
-```yaml
-# ECS task definition with X-Ray daemon sidecar
+```json
 {
   "family": "my-app-task",
+  "networkMode": "bridge",
   "containerDefinitions": [
     {
       "name": "app",
       "image": "my-app:latest",
       "portMappings": [{"containerPort": 3000}],
+      "links": ["xray-daemon"],
       "environment": [
         {
           "name": "AWS_XRAY_DAEMON_ADDRESS",
@@ -280,15 +282,15 @@ For EKS, you can deploy the X-Ray daemon as a DaemonSet or use the AWS Distro fo
 
 ## Setting Up Alarms from ServiceLens
 
-ServiceLens integrates with CloudWatch Alarms. From the service map, you can click on a node and create alarms directly:
+The trace map includes an alerts tab for selected nodes, and you can create CloudWatch alarms on the underlying metrics you publish for those services:
 
 ```bash
-# Create a latency alarm for a service identified in ServiceLens
+# Create a p99 latency alarm for a service-level metric you publish
 aws cloudwatch put-metric-alarm \
   --alarm-name "HighLatency-OrderService" \
   --metric-name "Latency" \
-  --namespace "AWS/X-Ray" \
-  --statistic "p99" \
+  --namespace "MyApp/Services" \
+  --extended-statistic "p99" \
   --period 300 \
   --threshold 2000 \
   --comparison-operator GreaterThanThreshold \
