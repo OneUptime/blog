@@ -49,7 +49,7 @@ Before writing a Dockerfile, understand what the application needs:
 cat /etc/os-release
 
 # Running processes related to the application
-ps aux | grep your-app
+pgrep -af your-app
 
 # Listening ports
 ss -tlnp
@@ -62,10 +62,11 @@ rpm -qa > installed-packages.txt  # RHEL/CentOS
 env | grep -i "app\|db\|redis\|api\|secret" > env-vars.txt
 
 # File system dependencies
-lsof -p $(pgrep your-app) | grep -E "REG|DIR" > file-dependencies.txt
+APP_PIDS=$(pgrep -d, your-app)
+lsof -p "$APP_PIDS" | grep -E "REG|DIR" > file-dependencies.txt
 
 # Network connections
-ss -tnp | grep $(pgrep your-app) > network-connections.txt
+ss -tnp | grep -E "$(pgrep -d'|' your-app)" > network-connections.txt
 ```
 
 ## Step 2: Handle Dependencies
@@ -80,14 +81,14 @@ Choose a base image that matches the application's OS requirements:
 # For applications requiring Ubuntu 18.04 specifically
 FROM ubuntu:18.04
 
-# For applications requiring specific CentOS/RHEL versions
-FROM centos:7
+# For applications requiring a RHEL-compatible base image
+FROM rockylinux:9
 
 # For Java applications with a specific JDK
 FROM eclipse-temurin:11-jre
 
-# For Python 2 applications (yes, they still exist)
-FROM python:2.7-slim
+# For Python applications, pin a supported runtime when possible
+FROM python:3.12-slim
 ```
 
 ### Installing System Dependencies
@@ -107,6 +108,7 @@ RUN apt-get update && apt-get install -y \
     imagemagick \
     ghostscript \
     fonts-dejavu \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # If the app needs specific library versions
@@ -121,13 +123,13 @@ Legacy apps frequently write to local files. These need to be externalized for c
 
 ### File System Access
 
-Map local file paths to EFS or S3:
+Map local file paths to EFS or Amazon S3 Files:
 
 ```dockerfile
 # Create mount points for external storage
 RUN mkdir -p /app/data /app/uploads /app/logs
 
-# These will be mounted as EFS volumes or S3 via s3fs
+# These will be mounted as EFS volumes or Amazon S3 Files volumes
 VOLUME ["/app/data", "/app/uploads", "/app/logs"]
 ```
 
@@ -137,7 +139,7 @@ In your ECS task definition:
 {
   "containerDefinitions": [{
     "name": "legacy-app",
-    "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/legacy-app:latest",
+    "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/legacy-app:latest",
     "mountPoints": [
       {
         "sourceVolume": "app-data",
@@ -178,23 +180,22 @@ Here is a complete example for a legacy PHP application:
 
 ```dockerfile
 # Dockerfile for a legacy PHP application
-FROM php:7.4-apache
+FROM php:8.4-apache
 
-# Install PHP extensions the app needs
-RUN docker-php-ext-install \
-    pdo_mysql \
-    mysqli \
-    gd \
-    zip \
-    opcache
-
-# Install additional system dependencies
+# Install additional system dependencies and PHP extensions the app needs
 RUN apt-get update && apt-get install -y \
+    curl \
+    libfreetype-dev \
     libpng-dev \
-    libjpeg-dev \
+    libjpeg62-turbo-dev \
     libzip-dev \
     && docker-php-ext-configure gd --with-jpeg \
-    && docker-php-ext-install gd \
+    && docker-php-ext-install \
+        pdo_mysql \
+        mysqli \
+        gd \
+        zip \
+        opcache \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy Apache configuration
@@ -224,6 +225,10 @@ FROM tomcat:9-jdk11
 # Remove default applications
 RUN rm -rf /usr/local/tomcat/webapps/*
 
+# Install curl for the health check command
+RUN apt-get update && apt-get install -y curl \
+    && rm -rf /var/lib/apt/lists/*
+
 # Copy the WAR file
 COPY target/myapp.war /usr/local/tomcat/webapps/ROOT.war
 
@@ -251,6 +256,10 @@ Legacy applications often use configuration files instead of environment variabl
 ```dockerfile
 # Use envsubst to template configuration files at startup
 COPY config.template /app/config.template
+
+# Install envsubst for configuration templating
+RUN apt-get update && apt-get install -y gettext-base \
+    && rm -rf /var/lib/apt/lists/*
 
 # Create an entrypoint script that generates config from env vars
 COPY entrypoint.sh /entrypoint.sh
@@ -297,21 +306,21 @@ ecs.register_task_definition(
     requiresCompatibilities=['FARGATE'],
     cpu='1024',
     memory='2048',
-    executionRoleArn='arn:aws:iam::123456789:role/ecsTaskExecutionRole',
-    taskRoleArn='arn:aws:iam::123456789:role/ecsTaskRole',
+    executionRoleArn='arn:aws:iam::123456789012:role/ecsTaskExecutionRole',
+    taskRoleArn='arn:aws:iam::123456789012:role/ecsTaskRole',
     containerDefinitions=[
         {
             'name': 'legacy-app',
-            'image': '123456789.dkr.ecr.us-east-1.amazonaws.com/legacy-app:latest',
+            'image': '123456789012.dkr.ecr.us-east-1.amazonaws.com/legacy-app:latest',
             'portMappings': [{'containerPort': 80, 'protocol': 'tcp'}],
             'secrets': [
                 {
                     'name': 'DATABASE_URL',
-                    'valueFrom': 'arn:aws:secretsmanager:us-east-1:123456789:secret:db-url'
+                    'valueFrom': 'arn:aws:secretsmanager:us-east-1:123456789012:secret:db-url'
                 },
                 {
                     'name': 'DATABASE_PASSWORD',
-                    'valueFrom': 'arn:aws:secretsmanager:us-east-1:123456789:secret:db-password'
+                    'valueFrom': 'arn:aws:secretsmanager:us-east-1:123456789012:secret:db-password'
                 }
             ],
             'environment': [
