@@ -110,7 +110,7 @@ sudo ip rule add from 10.0.2.50/32 table mgmt
 sudo ip route add 10.0.2.0/24 dev eth1 table mgmt
 ```
 
-This ensures that traffic destined for eth1's IP gets responses routed back through eth1, not eth0.
+This ensures that responses for traffic received on eth1 are sourced from eth1's IP and routed back through eth1, not eth0.
 
 ## Making the Configuration Persistent
 
@@ -120,7 +120,7 @@ On Amazon Linux 2 or RHEL-based systems, create interface configuration files:
 
 ```bash
 # Create the interface config file for eth1
-sudo cat > /etc/sysconfig/network-scripts/ifcfg-eth1 << 'EOF'
+sudo tee /etc/sysconfig/network-scripts/ifcfg-eth1 > /dev/null << 'EOF'
 DEVICE=eth1
 BOOTPROTO=dhcp
 ONBOOT=yes
@@ -129,13 +129,13 @@ DEFROUTE=no
 EOF
 
 # Create the route file for eth1
-sudo cat > /etc/sysconfig/network-scripts/route-eth1 << 'EOF'
+sudo tee /etc/sysconfig/network-scripts/route-eth1 > /dev/null << 'EOF'
 default via 10.0.2.1 dev eth1 table mgmt
 10.0.2.0/24 dev eth1 table mgmt
 EOF
 
 # Create the rule file for eth1
-sudo cat > /etc/sysconfig/network-scripts/rule-eth1 << 'EOF'
+sudo tee /etc/sysconfig/network-scripts/rule-eth1 > /dev/null << 'EOF'
 from 10.0.2.50/32 table mgmt
 EOF
 ```
@@ -150,7 +150,7 @@ network:
     eth1:
       dhcp4: true
       dhcp4-overrides:
-        route-metric: 200
+        use-routes: false
       routing-policy:
         - from: 10.0.2.50/32
           table: 100
@@ -187,7 +187,7 @@ resource "aws_instance" "multi_eni" {
   }
 }
 
-# Create a secondary ENI in a different subnet
+# Create a secondary ENI in a different subnet in the same Availability Zone
 resource "aws_network_interface" "secondary" {
   subnet_id       = aws_subnet.management.id
   security_groups = [aws_security_group.mgmt.id]
@@ -230,7 +230,7 @@ aws ec2 associate-address \
 
 **Asymmetric routing**: This is the most common issue. Without policy-based routing, responses go out eth0 regardless of which interface received the request. The routing table setup from earlier fixes this.
 
-**Interface not showing up in the OS**: Some instance types require a reboot after attaching an ENI. Also check that the ENI is in the same Availability Zone as the instance - you can't attach cross-AZ.
+**Interface not showing up in the OS**: Some OS images won't automatically configure a warm- or hot-attached ENI, so you may need to bring the interface up and configure its address manually. Also check that the ENI is in the same Availability Zone as the instance - you can't attach cross-AZ.
 
 **DHCP conflicts**: When using DHCP on multiple interfaces, make sure only one interface sets the default route. Use `DEFROUTE=no` on secondary interfaces.
 
