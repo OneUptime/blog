@@ -50,7 +50,7 @@ resource "aws_customer_gateway" "main" {
 }
 ```
 
-If your VPN device is behind a NAT, you can use a private IP and set `ip_address` to the NAT device's public IP. You'll also need to configure NAT-Traversal (NAT-T) on your device.
+If your VPN device is behind a NAT, set `ip_address` to the NAT device's static public IP. You'll also need to configure NAT-Traversal (NAT-T) on your device.
 
 ## Virtual Private Gateway
 
@@ -176,7 +176,10 @@ resource "aws_vpn_connection" "custom" {
   tunnel1_inside_cidr = "169.254.100.0/30"
   tunnel2_inside_cidr = "169.254.100.4/30"
 
-  # Custom pre-shared keys (store these in Secrets Manager!)
+  # Store the VPN pre-shared keys in AWS Secrets Manager
+  preshared_key_storage = "SecretsManager"
+
+  # Optional custom pre-shared keys
   tunnel1_preshared_key = var.tunnel1_psk
   tunnel2_preshared_key = var.tunnel2_psk
 
@@ -192,7 +195,7 @@ resource "aws_vpn_connection" "custom" {
 }
 ```
 
-Keep the pre-shared keys in a secrets manager, not in your Terraform code or state file. Use `var.tunnel1_psk` and pass it in at plan time.
+Set `preshared_key_storage = "SecretsManager"` if you want AWS to store the VPN pre-shared keys in Secrets Manager. If you pass custom keys through Terraform variables, Terraform still stores those argument values in state, so protect your state file and limit access to it.
 
 ## VPN Connection Outputs
 
@@ -217,7 +220,7 @@ output "tunnel1_bgp_asn" {
   value = aws_vpn_connection.main.tunnel1_bgp_asn
 }
 
-output "tunnel1_inside_cidr" {
+output "tunnel1_vgw_inside_address" {
   value = aws_vpn_connection.main.tunnel1_vgw_inside_address
 }
 
@@ -288,7 +291,7 @@ variable "tunnel2_psk" {
 A few things to keep in mind when running this in production:
 
 1. **Always use both tunnels** - configure your on-premises device to use both tunnels with BGP failover
-2. **Enable acceleration** - add `enable_acceleration = true` to the VPN connection for AWS Global Accelerator-backed tunnels
+2. **Enable acceleration for Transit Gateway VPNs** - add `enable_acceleration = true` to a Transit Gateway VPN connection for AWS Global Accelerator-backed tunnels. Virtual Private Gateway VPN connections don't support acceleration
 3. **Use IKEv2** - it's faster at re-establishing tunnels after failures
 4. **Monitor both tunnels separately** - one tunnel being down might not affect traffic, but it means you've lost redundancy
 5. **Consider VPN as Direct Connect backup** - a common pattern is Direct Connect primary with VPN failover
