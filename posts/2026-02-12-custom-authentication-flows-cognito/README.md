@@ -96,7 +96,7 @@ const ses = new SESClient({ region: 'us-east-1' });
 
 exports.handler = async (event) => {
     // Generate a 6-digit OTP
-    const otp = crypto.randomInt(100000, 999999).toString();
+    const otp = crypto.randomInt(100000, 1000000).toString();
 
     // Send the OTP via email
     const email = event.request.userAttributes.email;
@@ -107,7 +107,7 @@ exports.handler = async (event) => {
         Message: {
             Subject: { Data: 'Your verification code' },
             Body: {
-                Text: { Data: `Your login code is: ${otp}. It expires in 5 minutes.` }
+                Text: { Data: `Your login code is: ${otp}. It expires when your authentication session expires.` }
             }
         }
     }));
@@ -180,6 +180,7 @@ async function signInWithOTP(username) {
         AuthFlow: 'CUSTOM_AUTH',
         ClientId: CLIENT_ID,
         AuthParameters: {
+            CHALLENGE_NAME: 'CUSTOM_CHALLENGE',
             USERNAME: username
         }
     }));
@@ -216,18 +217,13 @@ async function signInWithOTP(username) {
 
 You can combine Cognito's built-in SRP authentication with custom challenges. This is useful when you want traditional password verification followed by a second factor.
 
-Here's a Define Auth Challenge that chains SRP with a custom OTP step:
+Here's a Define Auth Challenge that chains SRP with a custom OTP step. In this flow, the client starts `CUSTOM_AUTH` with `CHALLENGE_NAME: 'SRP_A'` and an `SRP_A` value in `AuthParameters`, so the first Define trigger invocation already has `SRP_A` in the session:
 
 ```javascript
 exports.handler = async (event) => {
     const session = event.request.session;
 
-    if (session.length === 0) {
-        // Start with SRP password verification
-        event.response.challengeName = 'SRP_A';
-        event.response.issueTokens = false;
-        event.response.failAuthentication = false;
-    } else if (
+    if (
         session.length === 1 &&
         session[0].challengeName === 'SRP_A'
     ) {
@@ -273,9 +269,7 @@ Run these commands to configure all three Lambda triggers:
 aws cognito-idp update-user-pool \
     --user-pool-id us-east-1_XXXXXXXXX \
     --lambda-config \
-        DefineAuthChallenge=arn:aws:lambda:us-east-1:123456789:function:define-auth \
-        CreateAuthChallenge=arn:aws:lambda:us-east-1:123456789:function:create-auth \
-        VerifyAuthChallengeResponse=arn:aws:lambda:us-east-1:123456789:function:verify-auth
+        DefineAuthChallenge=arn:aws:lambda:us-east-1:123456789:function:define-auth,CreateAuthChallenge=arn:aws:lambda:us-east-1:123456789:function:create-auth,VerifyAuthChallengeResponse=arn:aws:lambda:us-east-1:123456789:function:verify-auth
 
 # Grant Cognito permission to invoke each function
 for func in define-auth create-auth verify-auth; do
@@ -288,11 +282,13 @@ for func in define-auth create-auth verify-auth; do
 done
 ```
 
+When you use `update-user-pool`, include any existing user pool options that you need to preserve. Options that you don't specify can reset to their default values.
+
 For infrastructure-as-code approaches, see the guides on [setting up Cognito with Terraform](https://oneuptime.com/blog/post/2026-02-12-cognito-terraform/view) or [Cognito with CDK](https://oneuptime.com/blog/post/2026-02-12-cognito-cdk/view).
 
 ## Important Considerations
 
-**Session expiry**: Cognito's custom auth session has a default timeout of 3 minutes. If your OTP delivery is slow, users might time out. You can extend this to up to 15 minutes in the user pool settings.
+**Session expiry**: Cognito's custom auth session has a default timeout of 3 minutes. If your OTP delivery is slow, users might time out. You can extend this to up to 15 minutes in the app client settings.
 
 **Cold starts**: All three Lambda functions fire during a single authentication attempt. Cold starts on any of them add up. Keep your functions lightweight and consider provisioned concurrency for the Define trigger since it runs multiple times per flow.
 
