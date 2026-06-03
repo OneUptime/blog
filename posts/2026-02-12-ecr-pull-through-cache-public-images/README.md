@@ -14,7 +14,7 @@ ECR pull-through cache solves this. It acts as a caching proxy between your ECS 
 
 ## How It Works
 
-When you set up a pull-through cache rule, ECR creates a namespace prefix in your registry. Instead of pulling `nginx:latest` from Docker Hub, your tasks pull `YOUR_ACCOUNT.dkr.ecr.REGION.amazonaws.com/docker-hub/nginx:latest`. ECR handles the caching transparently.
+When you set up a pull-through cache rule, ECR creates a namespace prefix in your registry. Instead of pulling `nginx:latest` from Docker Hub, your tasks pull `YOUR_ACCOUNT.dkr.ecr.REGION.amazonaws.com/docker-hub/library/nginx:latest`. ECR handles the caching transparently.
 
 ```mermaid
 sequenceDiagram
@@ -22,7 +22,7 @@ sequenceDiagram
     participant ECR as ECR Cache
     participant DH as Docker Hub
 
-    ECS->>ECR: Pull docker-hub/nginx:latest
+    ECS->>ECR: Pull docker-hub/library/nginx:latest
     alt Image in cache
         ECR-->>ECS: Return cached image
     else Image not cached
@@ -38,12 +38,6 @@ sequenceDiagram
 Create a cache rule that maps a prefix in your ECR to an upstream registry.
 
 ```bash
-# Cache Docker Hub images
-
-aws ecr create-pull-through-cache-rule \
-  --ecr-repository-prefix docker-hub \
-  --upstream-registry-url registry-1.docker.io
-
 # Cache Amazon ECR Public Gallery images
 aws ecr create-pull-through-cache-rule \
   --ecr-repository-prefix ecr-public \
@@ -54,10 +48,7 @@ aws ecr create-pull-through-cache-rule \
   --ecr-repository-prefix quay \
   --upstream-registry-url quay.io
 
-# Cache GitHub Container Registry images
-aws ecr create-pull-through-cache-rule \
-  --ecr-repository-prefix ghcr \
-  --upstream-registry-url ghcr.io
+# Docker Hub and GitHub Container Registry require credentials.
 ```
 
 In Terraform:
@@ -67,8 +58,8 @@ resource "aws_ecr_pull_through_cache_rule" "docker_hub" {
   ecr_repository_prefix = "docker-hub"
   upstream_registry_url = "registry-1.docker.io"
 
-  # Optional: credentials for authenticated pulls (higher rate limits)
-  credential_arn = aws_secretsmanager_secret.docker_hub_credentials.arn
+  # Required for Docker Hub pull-through cache rules
+  credential_arn = aws_secretsmanager_secret.docker_hub.arn
 }
 
 resource "aws_ecr_pull_through_cache_rule" "ecr_public" {
@@ -151,17 +142,17 @@ After (pulling through ECR cache):
   "containerDefinitions": [
     {
       "name": "nginx",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/docker-hub/nginx:1.25"
+      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/nginx:1.25"
     },
     {
       "name": "redis",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/docker-hub/redis:7-alpine"
+      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/docker-hub/library/redis:7-alpine"
     }
   ]
 }
 ```
 
-For images from Docker Hub's `library` namespace (official images like `nginx`, `redis`), you reference them as `docker-hub/library/nginx` or just `docker-hub/nginx` (ECR handles the library prefix automatically).
+For images from Docker Hub's `library` namespace (official images like `nginx`, `redis`), include the `library` prefix and reference them as `docker-hub/library/nginx`.
 
 For namespaced images (like `grafana/grafana`), use `docker-hub/grafana/grafana`.
 
@@ -202,9 +193,9 @@ Understanding how the cache behaves helps you avoid surprises:
 
 **Subsequent pulls**: Served directly from ECR cache. Much faster, no upstream dependency.
 
-**Tag updates**: If the upstream tag changes (like `latest` or `1.25`), ECR doesn't automatically update the cache. You need to delete the cached image or use a specific digest to force a refresh.
+**Tag updates**: If the upstream tag changes (like `latest` or `1.25`), ECR checks the upstream registry for a newer version at least once every 24 hours when that cached tag is pulled. If a cached repository has tag immutability enabled, ECR can't overwrite the existing tag.
 
-**Cache invalidation**: There's no automatic TTL on cached images. If you need the latest version of a mutable tag, delete the cached repository or image first.
+**Cache invalidation**: There's no automatic TTL on cached images. If you need to force an immediate refresh of a mutable tag before ECR's next upstream check, delete the cached image first.
 
 ```bash
 # Force refresh a cached image by deleting the cached copy
@@ -242,7 +233,7 @@ resource "aws_ecr_lifecycle_policy" "cache_cleanup" {
 }
 ```
 
-The challenge is that repositories are auto-created when images are first pulled. You might need a script or Lambda to apply lifecycle policies to newly created cache repositories.
+The challenge is that repositories are auto-created when images are first pulled. Use an ECR repository creation template to apply lifecycle policies to newly created cache repositories, or use a script or Lambda to apply them after creation.
 
 ```python
 # Lambda to apply lifecycle policies to new cache repos
