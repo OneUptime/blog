@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, ECS, Secrets Manager, Database, Security, Credential
 
-Description: Securely inject database credentials into ECS tasks using AWS Secrets Manager with automatic rotation and zero plaintext exposure
+Description: Securely inject database credentials into ECS tasks using AWS Secrets Manager with automatic rotation and no plaintext credentials in task definitions
 
 ---
 
@@ -56,8 +56,9 @@ aws secretsmanager create-secret \
   --secret-string '{
     "username": "app_user",
     "password": "S3cureP@ssw0rd!",
+    "engine": "postgres",
     "host": "mydb.cluster-abc123.us-east-1.rds.amazonaws.com",
-    "port": "5432",
+    "port": 5432,
     "dbname": "myapp_production"
   }'
 ```
@@ -80,7 +81,7 @@ cat > secrets-policy.json << 'EOF'
         "secretsmanager:GetSecretValue"
       ],
       "Resource": [
-        "arn:aws:secretsmanager:us-east-1:123456789:secret:production/myapp/*"
+        "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/myapp/*"
       ]
     },
     {
@@ -89,7 +90,7 @@ cat > secrets-policy.json << 'EOF'
         "kms:Decrypt"
       ],
       "Resource": [
-        "arn:aws:kms:us-east-1:123456789:key/your-kms-key-id"
+        "arn:aws:kms:us-east-1:123456789012:key/your-kms-key-id"
       ]
     }
   ]
@@ -112,8 +113,8 @@ In your task definition, use the `secrets` field instead of `environment` to ref
 ```json
 {
   "family": "my-app",
-  "executionRoleArn": "arn:aws:iam::123456789:role/ecsTaskExecutionRole",
-  "taskRoleArn": "arn:aws:iam::123456789:role/ecsTaskRole",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::123456789012:role/ecsTaskRole",
   "networkMode": "awsvpc",
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
@@ -121,28 +122,28 @@ In your task definition, use the `secrets` field instead of `environment` to ref
   "containerDefinitions": [
     {
       "name": "app",
-      "image": "123456789.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-app:latest",
       "essential": true,
       "secrets": [
         {
           "name": "DB_USERNAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/myapp/database:username::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/myapp/database-AbCdEf:username::"
         },
         {
           "name": "DB_PASSWORD",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/myapp/database:password::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/myapp/database-AbCdEf:password::"
         },
         {
           "name": "DB_HOST",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/myapp/database:host::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/myapp/database-AbCdEf:host::"
         },
         {
           "name": "DB_PORT",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/myapp/database:port::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/myapp/database-AbCdEf:port::"
         },
         {
           "name": "DB_NAME",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/myapp/database:dbname::"
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/myapp/database-AbCdEf:dbname::"
         }
       ],
       "environment": [
@@ -173,7 +174,7 @@ In your task definition, use the `secrets` field instead of `environment` to ref
 The `valueFrom` format for referencing specific JSON keys is:
 
 ```text
-arn:aws:secretsmanager:REGION:ACCOUNT:secret:SECRET_NAME:JSON_KEY:VERSION_STAGE:VERSION_ID
+arn:aws:secretsmanager:REGION:ACCOUNT:secret:SECRET_NAME-RANDOM_SUFFIX:JSON_KEY:VERSION_STAGE:VERSION_ID
 ```
 
 The trailing colons are required even when you omit version stage and version ID (which defaults to the latest version in AWSCURRENT).
@@ -187,7 +188,7 @@ If your application expects a connection string rather than individual parameter
   "secrets": [
     {
       "name": "DB_CREDENTIALS",
-      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789:secret:production/myapp/database"
+      "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:production/myapp/database-AbCdEf"
     }
   ]
 }
@@ -209,7 +210,7 @@ One of the biggest advantages of Secrets Manager is automatic rotation. For RDS 
 # Enable automatic rotation with 30-day interval
 aws secretsmanager rotate-secret \
   --secret-id production/myapp/database \
-  --rotation-lambda-arn arn:aws:lambda:us-east-1:123456789:function:SecretsManagerRDSRotation \
+  --rotation-lambda-arn arn:aws:lambda:us-east-1:123456789012:function:SecretsManagerRDSRotation \
   --rotation-rules '{"AutomaticallyAfterDays": 30}'
 ```
 
@@ -220,11 +221,14 @@ For RDS, you can use the built-in rotation template:
 aws serverlessrepo create-cloud-formation-change-set \
   --application-id arn:aws:serverlessrepo:us-east-1:297356227824:applications/SecretsManagerRDSPostgreSQLRotationSingleUser \
   --stack-name rds-rotation-lambda \
+  --capabilities CAPABILITY_IAM CAPABILITY_RESOURCE_POLICY \
   --parameter-overrides '[
     {"Name": "endpoint", "Value": "https://secretsmanager.us-east-1.amazonaws.com"},
     {"Name": "functionName", "Value": "rds-credential-rotation"}
   ]'
 ```
+
+Then execute the returned CloudFormation change set to create the rotation Lambda.
 
 ## Handling Rotation in Your Application
 
@@ -232,7 +236,7 @@ When credentials rotate, running containers still have the old values. Here is h
 
 **Option 1: Redeploy tasks after rotation**
 
-Set up an EventBridge rule that triggers a service update when the secret rotates.
+Set up an EventBridge rule that detects successful secret rotation, then attach a Lambda or automation target that calls `UpdateService` with `forceNewDeployment` for your ECS service.
 
 ```bash
 # EventBridge rule to detect secret rotation
@@ -240,12 +244,13 @@ aws events put-rule \
   --name secret-rotation-trigger \
   --event-pattern '{
     "source": ["aws.secretsmanager"],
-    "detail-type": ["AWS API Call via CloudTrail"],
+    "detail-type": [
+      "AWS API Call via CloudTrail",
+      "AWS Service Event via CloudTrail"
+    ],
     "detail": {
-      "eventName": ["RotateSecret"],
-      "requestParameters": {
-        "secretId": ["production/myapp/database"]
-      }
+      "eventSource": ["secretsmanager.amazonaws.com"],
+      "eventName": ["RotationSucceeded"]
     }
   }'
 ```
@@ -298,7 +303,6 @@ Note that Option 2 requires your task role (not execution role) to have `secrets
 Here is the full setup using AWS CDK.
 
 ```typescript
-import * as cdk from 'aws-cdk-lib';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 
@@ -313,7 +317,7 @@ const taskDef = new ecs.FargateTaskDefinition(this, 'TaskDef', {
   cpu: 256,
 });
 
-const container = taskDef.addContainer('app', {
+taskDef.addContainer('app', {
   image: ecs.ContainerImage.fromEcrRepository(repo),
   secrets: {
     // Inject individual JSON keys as separate env vars
@@ -331,6 +335,6 @@ CDK automatically grants the task execution role permission to read the secret.
 
 ## Wrapping Up
 
-Using Secrets Manager with ECS is the right way to handle database credentials in containers. Your secrets stay encrypted, access is audited through CloudTrail, and rotation can happen automatically. The key points to remember: use the `secrets` field in your task definition (not `environment`), make sure your task execution role has the right permissions, and plan for how your application handles credential rotation.
+Using Secrets Manager with ECS is the right way to handle database credentials in containers. Your secrets stay encrypted at rest, access is audited through CloudTrail, and rotation can happen automatically. The key points to remember: use the `secrets` field in your task definition (not `environment`), make sure your task execution role has the right permissions, and plan for how your application handles credential rotation.
 
 For related topics, see our guides on [passing environment variables to ECS tasks](https://oneuptime.com/blog/post/2026-02-12-pass-environment-variables-ecs-tasks/view) and [configuring ECS task execution roles](https://oneuptime.com/blog/post/2026-02-12-configure-ecs-task-execution-roles/view).
