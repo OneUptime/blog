@@ -131,30 +131,32 @@ Items for customer "cust-001":
 Now you can fetch different slices of customer data:
 
 ```javascript
+import { GetCommand, QueryCommand } from '@aws-sdk/lib-dynamodb';
+
 // Get customer profile
-const profile = await docClient.get({
+const profile = await docClient.send(new GetCommand({
   TableName: 'AppData',
   Key: { pk: 'CUST#cust-001', sk: 'PROFILE#main' }
-}).promise();
+}));
 
 // Get all orders
-const orders = await docClient.query({
+const orders = await docClient.send(new QueryCommand({
   TableName: 'AppData',
   KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
   ExpressionAttributeValues: {
     ':pk': 'CUST#cust-001',
     ':prefix': 'ORDER#'
   }
-}).promise();
+}));
 
 // Get everything for this customer
-const allData = await docClient.query({
+const allData = await docClient.send(new QueryCommand({
   TableName: 'AppData',
   KeyConditionExpression: 'pk = :pk',
   ExpressionAttributeValues: {
     ':pk': 'CUST#cust-001'
   }
-}).promise();
+}));
 ```
 
 ## Pattern 4: Version Sort Keys
@@ -194,12 +196,12 @@ Sometimes you need to sort by multiple attributes. Combine them into a single so
 ```text
 Table: Products
 Partition key: category
-Sort key: price#productId
+Sort key: sk
 
 Items:
-  category: "electronics", sort: "00099.99#prod-001"  -> $99.99
-  category: "electronics", sort: "00149.99#prod-002"  -> $149.99
-  category: "electronics", sort: "00999.99#prod-003"  -> $999.99
+  category: "electronics", sk: "00099.99#prod-001"  -> $99.99
+  category: "electronics", sk: "00149.99#prod-002"  -> $149.99
+  category: "electronics", sk: "00999.99#prod-003"  -> $999.99
 ```
 
 Notice the zero-padding on the price. Since string comparison is lexicographic, "99.99" would sort after "149.99". Zero-padding ensures correct numeric ordering.
@@ -220,11 +222,11 @@ const params = {
 
 ### Random Sort Keys
 
-A random UUID as a sort key gives you uniqueness but loses all query power. You can only do exact lookups, never range queries:
+A random UUID as a sort key gives you uniqueness but loses most of the query power. Range and prefix queries are syntactically possible on a string UUID, but they won't line up with meaningful slices of your data:
 
 ```text
 Bad:  sort_key = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-      (Can't do begins_with, BETWEEN, or comparison queries)
+      (begins_with, BETWEEN, and comparison queries won't map to a useful access pattern)
 
 Good: sort_key = "2026-02-12T10:30:00Z#f47ac10b"
       (Timestamp prefix enables range queries)
@@ -251,7 +253,7 @@ Don't try to cram everything into one sort key. If you need five different acces
 DynamoDB allows sort keys up to 1024 bytes. For strings, that's up to 1024 characters (ASCII) or fewer for multi-byte Unicode. In practice, keep sort keys concise:
 
 ```text
-Good: "ORDER#2026-02-12#ord-12345"  (34 bytes)
+Good: "ORDER#2026-02-12#ord-12345"  (26 bytes)
 Bad:  A sort key that includes a full description or long text
 ```
 
