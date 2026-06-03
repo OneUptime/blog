@@ -50,15 +50,15 @@ Conditions:
     - !Condition ShouldMonitor
 ```
 
-The available condition functions are:
+The commonly used condition functions are:
 
 | Function | Description | Example |
 |---|---|---|
 | `Fn::Equals` | Compares two values | `!Equals [!Ref Env, prod]` |
 | `Fn::If` | Ternary - returns one of two values | `!If [IsProd, big, small]` |
 | `Fn::Not` | Negates a condition | `!Not [!Equals [!Ref Env, dev]]` |
-| `Fn::And` | All must be true | `!And [Cond1, Cond2]` |
-| `Fn::Or` | At least one must be true | `!Or [Cond1, Cond2]` |
+| `Fn::And` | All must be true | `!And [!Condition Cond1, !Condition Cond2]` |
+| `Fn::Or` | At least one must be true | `!Or [!Condition Cond1, !Condition Cond2]` |
 
 ## Conditionally Creating Resources
 
@@ -217,6 +217,13 @@ Resources:
             CloudWatchMetricsEnabled: true
             MetricName: RateLimit
 
+  WebACLAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Condition: IsNotDev
+    Properties:
+      ResourceArn: !Ref LoadBalancer
+      WebACLArn: !GetAtt WebACL.Arn
+
   # Only in production - CloudWatch alarm for monitoring
   HighLatencyAlarm:
     Type: AWS::CloudWatch::Alarm
@@ -231,6 +238,8 @@ Resources:
       EvaluationPeriods: 2
       Threshold: 2
       ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref AlarmTopic
       Dimensions:
         - Name: LoadBalancer
           Value: !GetAtt LoadBalancer.LoadBalancerFullName
