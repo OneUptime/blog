@@ -16,7 +16,7 @@ Ephemeral namespaces are temporary Kubernetes namespaces created for a specific 
 
 ## Setting Up Prerequisites
 
-Ensure your Tekton installation has necessary permissions:
+Ensure your Tekton installation has necessary permissions. Create the ServiceAccount in the namespace where your PipelineRuns execute; the examples below use `tekton-pipelines`:
 
 ```yaml
 apiVersion: v1
@@ -36,6 +36,9 @@ rules:
     verbs: ["create", "delete", "get", "list"]
   - apiGroups: [""]
     resources: ["pods", "services", "configmaps", "secrets"]
+    verbs: ["*"]
+  - apiGroups: [""]
+    resources: ["resourcequotas"]
     verbs: ["*"]
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
@@ -64,7 +67,7 @@ subjects:
 Build a task to create ephemeral namespaces:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: create-ephemeral-namespace
@@ -73,9 +76,12 @@ spec:
     - name: namespace-prefix
       type: string
       default: "test"
-    - name: labels
+    - name: label-purpose
       type: string
-      default: "purpose=integration-test,managed-by=tekton"
+      default: "integration-test"
+    - name: label-managed-by
+      type: string
+      default: "tekton"
 
   results:
     - name: namespace-name
@@ -102,7 +108,8 @@ spec:
         metadata:
           name: $NAMESPACE
           labels:
-            $(params.labels)
+            purpose: "$(params.label-purpose)"
+            managed-by: "$(params.label-managed-by)"
             created-at: "$TIMESTAMP"
         EOF
 
@@ -134,7 +141,7 @@ spec:
 Build a task to delete ephemeral namespaces:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: delete-ephemeral-namespace
@@ -174,7 +181,7 @@ spec:
 Create a complete pipeline with ephemeral namespace lifecycle:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: integration-test-ephemeral
@@ -282,7 +289,7 @@ spec:
 Deploy application to the ephemeral namespace:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: deploy-to-namespace
@@ -364,7 +371,7 @@ spec:
 Run integration tests against deployed application:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: run-tests
@@ -413,10 +420,6 @@ spec:
           echo "=== Logs from $pod ==="
           kubectl logs -n $NAMESPACE $pod --tail=100 || true
         done
-      when:
-        - input: "$(tasks.status)"
-          operator: in
-          values: ["Failed", "Error"]
 ```
 
 ## Implementing Parallel Test Execution
@@ -424,7 +427,7 @@ spec:
 Run multiple test suites in parallel using separate namespaces:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: parallel-integration-tests
@@ -551,7 +554,7 @@ spec:
 Deploy test databases in ephemeral namespaces:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: setup-test-database
@@ -652,7 +655,7 @@ spec:
 Add debugging capabilities:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: debug-namespace
