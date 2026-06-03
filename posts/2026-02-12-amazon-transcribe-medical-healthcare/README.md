@@ -16,9 +16,7 @@ Unlike general-purpose Transcribe, the Medical version understands medical termi
 
 The key difference is domain knowledge. General Transcribe might hear "acetaminophen" and transcribe it as "a set of mini fan." Medical Transcribe gets it right because it's been trained on medical speech. It also understands medical abbreviations, drug dosages, and the conversational patterns common in clinical settings.
 
-Transcribe Medical supports two specialties:
-- **Primary Care** - general medical conversations, consultations, and follow-ups
-- **Cardiology** - cardiac-specific terminology and procedures
+For batch jobs, Transcribe Medical supports **Primary Care**. For real-time streaming, it supports additional specialties including **Cardiology**, **Neurology**, **Oncology**, **Radiology**, and **Urology**.
 
 ## Basic Medical Transcription
 
@@ -31,27 +29,33 @@ import time
 
 transcribe = boto3.client('transcribe', region_name='us-east-1')
 
-def transcribe_medical_audio(job_name, media_uri, specialty='PRIMARYCARE', audio_type='DICTATION'):
+def transcribe_medical_audio(job_name, media_uri, audio_type='DICTATION'):
     """Transcribe medical audio using Amazon Transcribe Medical.
 
     Args:
         job_name: Unique job identifier
         media_uri: S3 URI of the audio file
-        specialty: 'PRIMARYCARE' or 'CARDIOLOGY'
         audio_type: 'DICTATION' (single speaker) or 'CONVERSATION' (multi-speaker)
     """
-    response = transcribe.start_medical_transcription_job(
-        MedicalTranscriptionJobName=job_name,
-        Media={'MediaFileUri': media_uri},
-        LanguageCode='en-US',
-        Specialty=specialty,
-        Type=audio_type,
-        OutputBucketName='medical-transcripts',
-        Settings={
-            'ShowSpeakerLabels': audio_type == 'CONVERSATION',
-            'MaxSpeakerLabels': 2 if audio_type == 'CONVERSATION' else 1
+    settings = {}
+    if audio_type == 'CONVERSATION':
+        settings = {
+            'ShowSpeakerLabels': True,
+            'MaxSpeakerLabels': 2
         }
-    )
+
+    request = {
+        'MedicalTranscriptionJobName': job_name,
+        'Media': {'MediaFileUri': media_uri},
+        'LanguageCode': 'en-US',
+        'Specialty': 'PRIMARYCARE',
+        'Type': audio_type,
+        'OutputBucketName': 'medical-transcripts'
+    }
+    if settings:
+        request['Settings'] = settings
+
+    response = transcribe.start_medical_transcription_job(**request)
 
     print(f"Medical transcription job started: {job_name}")
     return response
@@ -82,7 +86,6 @@ def wait_for_medical_transcription(job_name):
 transcribe_medical_audio(
     'patient-note-2026-02-12',
     's3://medical-audio/dictations/dr-smith-note-001.mp3',
-    specialty='PRIMARYCARE',
     audio_type='DICTATION'
 )
 
@@ -91,7 +94,7 @@ result = wait_for_medical_transcription('patient-note-2026-02-12')
 
 ## Processing Medical Transcripts
 
-Medical transcripts have the same structure as regular Transcribe output but with medical-specific entity tagging.
+Medical transcripts have the same core structure as regular Transcribe output, with optional PHI labels when you enable content identification.
 
 ```python
 def parse_medical_transcript(bucket, key):
@@ -150,8 +153,7 @@ def transcribe_clinical_conversation(job_name, audio_uri):
         Type='CONVERSATION',
         Settings={
             'ShowSpeakerLabels': True,
-            'MaxSpeakerLabels': 2,
-            'ChannelIdentification': False
+            'MaxSpeakerLabels': 2
         },
         OutputBucketName='medical-transcripts'
     )
@@ -176,29 +178,31 @@ def format_clinical_transcript(transcript_data, speaker_map=None):
     current_speaker = None
     current_text = []
 
-    for segment in segments:
-        speaker = segment['speaker_label']
-        display_name = speaker_map.get(speaker, speaker)
+    segment_speakers = {
+        item['start_time']: item['speaker_label']
+        for segment in segments
+        for item in segment.get('items', [])
+    }
 
-        words = []
-        for item in segment.get('items', []):
-            if item.get('type') == 'pronunciation':
-                words.append(item['alternatives'][0]['content'])
-            elif item.get('type') == 'punctuation':
-                if words:
-                    words[-1] += item['alternatives'][0]['content']
-
-        text = ' '.join(words)
+    for item in results.get('items', []):
+        if item.get('type') == 'pronunciation':
+            speaker = item.get('speaker_label') or segment_speakers.get(item.get('start_time'), current_speaker)
+            text = item['alternatives'][0]['content']
+        elif item.get('type') == 'punctuation':
+            if current_text:
+                current_text[-1] += item['alternatives'][0]['content']
+            continue
+        else:
+            continue
 
         if speaker != current_speaker:
             if current_speaker and current_text:
                 name = speaker_map.get(current_speaker, current_speaker)
                 formatted.append(f"{name}: {' '.join(current_text)}")
             current_speaker = speaker
-            current_text = [text] if text else []
+            current_text = [text]
         else:
-            if text:
-                current_text.append(text)
+            current_text.append(text)
 
     if current_speaker and current_text:
         name = speaker_map.get(current_speaker, current_speaker)
@@ -274,19 +278,26 @@ class ClinicalDocumentationPipeline:
 
         # Step 1: Transcribe
         print("Transcribing audio...")
-        self.transcribe.start_medical_transcription_job(
-            MedicalTranscriptionJobName=job_name,
-            Media={'MediaFileUri': f's3://{audio_bucket}/{audio_key}'},
-            LanguageCode='en-US',
-            Specialty='PRIMARYCARE',
-            Type=encounter_type,
-            Settings={
-                'ShowSpeakerLabels': encounter_type == 'CONVERSATION',
+        settings = {}
+        if encounter_type == 'CONVERSATION':
+            settings = {
+                'ShowSpeakerLabels': True,
                 'MaxSpeakerLabels': 2
-            },
-            OutputBucketName=self.output_bucket,
-            OutputKey=f'raw/{job_name}.json'
-        )
+            }
+
+        request = {
+            'MedicalTranscriptionJobName': job_name,
+            'Media': {'MediaFileUri': f's3://{audio_bucket}/{audio_key}'},
+            'LanguageCode': 'en-US',
+            'Specialty': 'PRIMARYCARE',
+            'Type': encounter_type,
+            'OutputBucketName': self.output_bucket,
+            'OutputKey': f'raw/{job_name}.json'
+        }
+        if settings:
+            request['Settings'] = settings
+
+        self.transcribe.start_medical_transcription_job(**request)
 
         result = wait_for_medical_transcription(job_name)
         if not result:
@@ -377,26 +388,32 @@ if result:
 Even though Transcribe Medical knows medical terminology, you can still add custom vocabulary for terms specific to your practice, facility names, or newly approved medications.
 
 ```python
-def create_medical_vocabulary(name, phrases):
+def create_medical_vocabulary(name, vocabulary_s3_uri):
     """Create a custom vocabulary for medical transcription."""
     response = transcribe.create_medical_vocabulary(
         VocabularyName=name,
         LanguageCode='en-US',
-        VocabularyFileUri='s3://medical-config/vocabularies/custom-terms.txt'
+        VocabularyFileUri=vocabulary_s3_uri
     )
 
     print(f"Medical vocabulary '{name}' creation started")
     return response
 
-# Example vocabulary file format (one phrase per line in a text file)
+# Example vocabulary file format (a table-formatted text file)
 # Upload this to S3 first
-vocab_content = """Ozempic
-semaglutide
-tirzepatide
-SGLT2
-dapagliflozin
-OneUptime
+vocab_content = """Phrase	IPA	SoundsLike	DisplayAs
+Ozempic			
+semaglutide			
+tirzepatide			
+SGLT2			
+dapagliflozin			
+OneUptime			
 """
+
+create_medical_vocabulary(
+    'practice-custom-terms',
+    's3://medical-config/vocabularies/custom-terms.txt'
+)
 ```
 
 ## HIPAA Compliance Considerations
