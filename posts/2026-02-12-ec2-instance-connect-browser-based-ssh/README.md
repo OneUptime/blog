@@ -17,7 +17,7 @@ Let's set it up.
 Instead of pre-deploying SSH public keys, Instance Connect works like this:
 
 1. You initiate a connection (via browser or CLI)
-2. AWS generates a one-time SSH key pair
+2. A one-time SSH key pair is generated
 3. The public key is pushed to the instance's metadata
 4. You're connected using the temporary private key
 5. The key expires after 60 seconds
@@ -32,7 +32,7 @@ sequenceDiagram
     User->>IAM: Authenticate (IAM credentials)
     IAM->>User: Authorized
     User->>IC: Request connection to instance
-    IC->>IC: Generate temporary SSH key pair
+    User->>User: Generate temporary SSH key pair
     IC->>EC2: Push public key via metadata
     User->>EC2: SSH with temporary private key
     Note over EC2: Key expires after 60 seconds
@@ -45,7 +45,7 @@ The beauty is that access control is handled entirely through IAM policies. No n
 EC2 Instance Connect requires:
 
 - **Instance Connect agent** installed on the instance (pre-installed on Amazon Linux 2 2.0.20190618+, Ubuntu 20.04+)
-- **Security group** allowing SSH (port 22) from the Instance Connect service IP range
+- **Security group** allowing SSH (port 22) from the Instance Connect service IP range for public-IP console access, or from the Instance Connect Endpoint path for private access
 - **IAM permissions** for the connecting user
 - **Public IP or Instance Connect Endpoint** for browser-based access
 
@@ -145,7 +145,7 @@ For tighter control, restrict access to specific instances or tags:
       "Condition": {
         "StringEquals": {
           "ec2:ResourceTag/Environment": "development",
-          "ec2-instance-connect:osUser": "ec2-user"
+          "ec2:osuser": "ec2-user"
         }
       }
     }
@@ -154,6 +154,34 @@ For tighter control, restrict access to specific instances or tags:
 ```
 
 This policy only allows connections to instances tagged `Environment=development` and only as the `ec2-user` OS user.
+
+If you connect through an EC2 Instance Connect Endpoint, also allow the tunnel:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": "ec2-instance-connect:OpenTunnel",
+      "Resource": "arn:aws:ec2:us-east-1:123456789012:instance-connect-endpoint/eice-1234567890abcdef0",
+      "Condition": {
+        "NumericEquals": {
+          "ec2-instance-connect:remotePort": "22"
+        }
+      }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:DescribeInstances",
+        "ec2:DescribeInstanceConnectEndpoints"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
 
 ## Connecting via the AWS Console (Browser)
 
@@ -255,6 +283,20 @@ resource "aws_security_group" "instance_connect" {
   }
 }
 
+# Security group for the Instance Connect Endpoint
+resource "aws_security_group" "ic_endpoint" {
+  name_prefix = "ic-endpoint-"
+  vpc_id      = var.vpc_id
+
+  egress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "SSH to instances"
+  }
+}
+
 # Instance Connect Endpoint
 resource "aws_ec2_instance_connect_endpoint" "main" {
   subnet_id          = var.private_subnet_id
@@ -288,7 +330,7 @@ resource "aws_instance" "app" {
 
 ## Auditing Instance Connect Access
 
-Every Instance Connect session is logged in CloudTrail, giving you a complete audit trail of who connected to which instance and when.
+Every Instance Connect connection request is logged in CloudTrail, giving you an audit trail of who requested access to which instance and when.
 
 Query CloudTrail for Instance Connect events:
 
@@ -305,7 +347,7 @@ aws cloudtrail lookup-events \
   --output table
 ```
 
-This gives you full visibility into SSH access without having to manage SSH key logging yourself.
+For endpoint-based connections, also query for `OpenTunnel` events. This gives you visibility into SSH access requests without having to manage SSH key logging yourself.
 
 ## Comparison with Other Access Methods
 
@@ -320,4 +362,4 @@ Instance Connect is great when you need actual SSH access (for SCP, port forward
 
 ## Summary
 
-EC2 Instance Connect eliminates SSH key management while providing secure, auditable access to your instances. Set up the agent on your AMIs, configure IAM policies for access control, and use Instance Connect Endpoints to reach private instances without bastion hosts. Every connection is logged in CloudTrail, giving you the audit trail that traditional SSH key access can't match. For teams moving to a zero-trust networking model, Instance Connect is a significant step forward.
+EC2 Instance Connect eliminates SSH key management while providing secure, auditable access to your instances. Set up the agent on your AMIs, configure IAM policies for access control, and use Instance Connect Endpoints to reach private instances without bastion hosts. Every connection request is logged in CloudTrail, giving you the audit trail that traditional SSH key access can't match. For teams moving to a zero-trust networking model, Instance Connect is a significant step forward.
