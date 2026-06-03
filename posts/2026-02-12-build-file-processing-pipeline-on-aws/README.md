@@ -39,9 +39,12 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as lambdaEventSources from 'aws-cdk-lib/aws-lambda-event-sources';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import { Construct } from 'constructs';
 
 export class FilePipelineStack extends cdk.Stack {
-  constructor(scope: cdk.App, id: string) {
+  constructor(scope: Construct, id: string) {
     super(scope, id);
 
     // Upload bucket where files arrive
@@ -50,6 +53,19 @@ export class FilePipelineStack extends cdk.Stack {
       lifecycleRules: [{
         expiration: cdk.Duration.days(7), // Auto-delete after 7 days
       }],
+    });
+
+    const outputBucket = new s3.Bucket(this, 'OutputBucket', {
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const errorBucket = new s3.Bucket(this, 'ErrorBucket', {
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const stateMachineArn = new cdk.CfnParameter(this, 'StateMachineArn', {
+      type: 'String',
+      description: 'ARN of the Step Functions state machine to start after validation',
     });
 
     // Dead letter queue for failed messages
@@ -75,7 +91,7 @@ export class FilePipelineStack extends cdk.Stack {
 
     // Processing Lambda reads from the queue
     const processorFunction = new lambda.Function(this, 'ProcessorFunction', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_24_X,
       handler: 'processor.handler',
       code: lambda.Code.fromAsset('lambda'),
       timeout: cdk.Duration.minutes(5),
@@ -83,6 +99,7 @@ export class FilePipelineStack extends cdk.Stack {
       environment: {
         OUTPUT_BUCKET: outputBucket.bucketName,
         ERROR_BUCKET: errorBucket.bucketName,
+        STATE_MACHINE_ARN: stateMachineArn.valueAsString,
       },
     });
 
@@ -95,6 +112,11 @@ export class FilePipelineStack extends cdk.Stack {
     );
 
     uploadBucket.grantRead(processorFunction);
+    errorBucket.grantWrite(processorFunction);
+    processorFunction.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['states:StartExecution'],
+      resources: [stateMachineArn.valueAsString],
+    }));
   }
 }
 ```
@@ -163,7 +185,6 @@ exports.handler = async (event) => {
         sourceBucket: bucket,
         sourceKey: key,
         rowCount: rows.length,
-        validatedData: rows,
       }),
     }));
   }
@@ -223,7 +244,10 @@ For complex file processing, Step Functions let you define a workflow with paral
       "Type": "Map",
       "ItemsPath": "$.chunks",
       "MaxConcurrency": 10,
-      "Iterator": {
+      "ItemProcessor": {
+        "ProcessorConfig": {
+          "Mode": "INLINE"
+        },
         "StartAt": "ProcessChunk",
         "States": {
           "ProcessChunk": {
@@ -269,38 +293,46 @@ Lambda has a 15-minute timeout and limited temp storage (10 GB on `/tmp`). For r
 
 ```javascript
 // lambda/large-file-splitter.js
-// Split large files into chunks using S3 Select or streaming
-const { S3Client, SelectObjectContentCommand } = require('@aws-sdk/client-s3');
+// Split large files into row ranges using streaming
+const { S3Client, GetObjectCommand } = require('@aws-sdk/client-s3');
+const csv = require('csv-parser');
 
 const s3Client = new S3Client({});
 
 exports.handler = async (event) => {
-  const { bucket, key } = event;
+  const { sourceBucket, sourceKey } = event;
+  const rowsPerChunk = 10000;
+  const chunks = [];
+  let rowNumber = 0;
 
-  // Use S3 Select to query CSV data without downloading the entire file
-  const params = {
-    Bucket: bucket,
-    Key: key,
-    ExpressionType: 'SQL',
-    Expression: "SELECT * FROM s3object s WHERE s.status = 'active'",
-    InputSerialization: {
-      CSV: { FileHeaderInfo: 'USE', RecordDelimiter: '\n', FieldDelimiter: ',' },
-    },
-    OutputSerialization: {
-      JSON: { RecordDelimiter: '\n' },
-    },
-  };
+  const { Body } = await s3Client.send(new GetObjectCommand({
+    Bucket: sourceBucket,
+    Key: sourceKey,
+  }));
 
-  const response = await s3Client.send(new SelectObjectContentCommand(params));
+  await new Promise((resolve, reject) => {
+    Body
+      .pipe(csv())
+      .on('data', () => {
+        rowNumber += 1;
+        if ((rowNumber - 1) % rowsPerChunk === 0) {
+          chunks.push({
+            sourceBucket,
+            sourceKey,
+            startRow: rowNumber,
+            endRow: rowNumber + rowsPerChunk - 1,
+          });
+        }
+      })
+      .on('end', resolve)
+      .on('error', reject);
+  });
 
-  let results = '';
-  for await (const event of response.Payload) {
-    if (event.Records) {
-      results += event.Records.Payload.toString();
-    }
+  if (chunks.length > 0) {
+    chunks[chunks.length - 1].endRow = rowNumber;
   }
 
-  return { filteredRecords: results.split('\n').filter(Boolean).length };
+  return { ...event, rowCount: rowNumber, chunks };
 };
 ```
 
