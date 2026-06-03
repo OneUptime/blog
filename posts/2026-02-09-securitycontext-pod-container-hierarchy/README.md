@@ -33,10 +33,11 @@ spec:
     runAsNonRoot: true
   containers:
   - name: container1
-    image: nginx:1.21
+    image: busybox:1.36
+    command: ["sleep", "3600"]
     # Inherits pod settings: runAsUser=1000, runAsGroup=2000
   - name: container2
-    image: busybox
+    image: busybox:1.36
     command: ["sleep", "3600"]
     securityContext:
       runAsUser: 4000
@@ -61,7 +62,8 @@ spec:
     fsGroup: 5000
   containers:
   - name: web
-    image: nginx:1.21
+    image: busybox:1.36
+    command: ["sleep", "3600"]
     securityContext:
       readOnlyRootFilesystem: true
       allowPrivilegeEscalation: false
@@ -74,7 +76,7 @@ spec:
     - name: cache
       mountPath: /var/cache/nginx
   - name: sidecar
-    image: busybox
+    image: busybox:1.36
     command: ["sleep", "3600"]
     securityContext:
       readOnlyRootFilesystem: false
@@ -168,7 +170,8 @@ spec:
     # Pod provides base security
   containers:
   - name: web-server
-    image: nginx:1.21
+    image: busybox:1.36
+    command: ["sleep", "3600"]
     securityContext:
       capabilities:
         drop:
@@ -178,7 +181,8 @@ spec:
       allowPrivilegeEscalation: false
 
   - name: metrics-collector
-    image: prometheus:latest
+    image: busybox:1.36
+    command: ["sleep", "3600"]
     securityContext:
       capabilities:
         drop:
@@ -187,7 +191,7 @@ spec:
       allowPrivilegeEscalation: false
 ```
 
-Each container drops all capabilities then adds back only what it needs.
+The first container shows how to add back a specific capability when a workload needs it, while the second drops all capabilities without adding any back.
 
 ## Seccomp Profile Hierarchy
 
@@ -250,22 +254,22 @@ Different containers can have different SELinux contexts for fine-grained isolat
 
 ## Verifying Effective Security Context
 
-Check the effective security context:
+Check the declared security context and runtime identity:
 
 ```bash
-# Get effective security context
+# Get the pod-level security context declared in the Pod spec
 
-kubectl get pod hierarchy-demo -o jsonpath='{.spec.securityContext}' | jq
+kubectl get pod hierarchy-demo -o json | jq '.spec.securityContext'
 
-# Check container-specific settings
-kubectl get pod hierarchy-demo -o jsonpath='{.spec.containers[*].securityContext}' | jq
+# Check container-specific security contexts declared in the Pod spec
+kubectl get pod hierarchy-demo -o json | jq '.spec.containers[] | {name: .name, securityContext: .securityContext}'
 
 # Verify at runtime
 kubectl exec hierarchy-demo -c container1 -- id
 kubectl exec hierarchy-demo -c container2 -- id
 ```
 
-These commands show what actually applies to each container.
+The `kubectl get` commands show the pod-level defaults and any container-level overrides declared in the Pod spec. The runtime `id` commands show the resulting UID, GID, and supplemental groups inside each container.
 
 ## Common Configuration Patterns
 
