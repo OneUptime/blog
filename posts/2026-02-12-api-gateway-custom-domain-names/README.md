@@ -31,6 +31,7 @@ This command requests a certificate for your API domain with DNS validation:
 
 ```bash
 # Request a certificate for your API domain
+# Use the same region as your API for regional endpoints, or us-east-1 for edge-optimized endpoints
 
 aws acm request-certificate \
   --domain-name api.example.com \
@@ -73,7 +74,7 @@ Wait for the certificate to be validated. This usually takes a few minutes but c
 
 ## Step 2: Create the Custom Domain Name
 
-Once your certificate is validated, create the custom domain in API Gateway.
+Once your certificate is validated, create the custom domain in API Gateway. These AWS CLI examples use the REST API commands; HTTP APIs use API Gateway v2 domain names, which are covered later in the CDK example.
 
 This command creates a regional custom domain name with your ACM certificate:
 
@@ -133,13 +134,13 @@ This gives you `api.example.com/v1/*` pointing to one API and `api.example.com/v
 
 Point your domain to the API Gateway custom domain target.
 
-This command gets the target domain name you need for your DNS record:
+This command gets the target domain name and hosted zone ID you need for your DNS record:
 
 ```bash
-# Get the target domain for DNS
+# Get the target domain and hosted zone ID for DNS
 aws apigateway get-domain-name \
   --domain-name api.example.com \
-  --query 'regionalDomainName'
+  --query '{DNSName:regionalDomainName,HostedZoneId:regionalHostedZoneId}'
 ```
 
 For Route 53, create an alias record:
@@ -163,7 +164,7 @@ aws route53 change-resource-record-sets \
   }'
 ```
 
-The `HostedZoneId` for API Gateway varies by region. Check the AWS documentation for your specific region's hosted zone ID.
+The `HostedZoneId` for regional API Gateway custom domains varies by region. You can use the `regionalHostedZoneId` returned by `get-domain-name` or check the AWS documentation for your specific region's hosted zone ID.
 
 ## Doing It All with CDK
 
@@ -291,7 +292,7 @@ aws apigateway create-domain-name \
 
 **Edge-optimized** endpoints route traffic through CloudFront edge locations. Choose this if your API consumers are globally distributed. The downside is that you can't put your own CloudFront distribution in front of it.
 
-**Regional** endpoints are the better default choice. They're simpler, support mutual TLS, and you can put your own CloudFront distribution in front if you want to customize caching behavior. They also work with AWS WAF directly.
+**Regional** endpoints are the better default choice. They're simpler, support mutual TLS, and you can put your own CloudFront distribution in front if you want to customize caching behavior. Regional REST API stages can also be associated with AWS WAF directly.
 
 For a related topic on CloudFront integration, check out our post on [CloudFront Functions vs Lambda@Edge](https://oneuptime.com/blog/post/2026-02-12-cloudfront-functions-vs-lambda-edge/view).
 
