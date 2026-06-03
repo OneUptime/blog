@@ -44,7 +44,7 @@ The consumer sees a simple interface endpoint in their VPC. The provider exposes
 
 ### Step 1: Create the Backend Service
 
-Your service needs to be behind a Network Load Balancer (NLB). PrivateLink only works with NLBs, not ALBs.
+Your service needs to be behind a Network Load Balancer (NLB). For this interface endpoint service pattern, PrivateLink uses NLBs, not ALBs directly. Endpoint services can also use Gateway Load Balancers for virtual appliance use cases.
 
 If you already have an ALB, put an NLB in front of it or use the ALB as a target for the NLB:
 
@@ -131,10 +131,10 @@ aws ec2 modify-vpc-endpoint-service-permissions \
     "arn:aws:iam::222222222222:root" \
     "arn:aws:iam::333333333333:root"
 
-# Or allow all accounts in an organization
+# Or allow all principals. Use this carefully, especially if you disable manual acceptance.
 aws ec2 modify-vpc-endpoint-service-permissions \
   --service-id $SERVICE_ID \
-  --add-allowed-principals "arn:aws:iam::*:root"
+  --add-allowed-principals "*"
 ```
 
 ## Consumer Side: Connecting to the Service
@@ -300,7 +300,7 @@ aws ec2 describe-vpc-endpoint-connections \
   --query 'VpcEndpointConnections[].{Endpoint:VpcEndpointId,Owner:VpcEndpointOwner,State:VpcEndpointState}'
 ```
 
-4. **Use endpoint policies on the consumer side**: Restrict what actions the endpoint can perform.
+4. **Use endpoint policies for AWS service endpoints**: Endpoint policies are useful when your interface endpoint connects to an AWS service that supports them. For an endpoint service that you own, AWS allows full access to the endpoint, so rely on provider-side allowed principals, manual acceptance, security groups, and application authentication.
 
 ## PrivateLink vs. VPC Peering
 
