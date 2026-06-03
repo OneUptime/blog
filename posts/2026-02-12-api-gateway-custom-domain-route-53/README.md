@@ -117,8 +117,9 @@ Map the custom domain to your API's production stage:
 aws apigateway create-base-path-mapping \
   --domain-name "api.yourcompany.com" \
   --rest-api-id abc123def456 \
-  --stage prod \
-  --base-path ""  # Empty for root path, or "v1" for api.yourcompany.com/v1
+  --stage prod
+
+# Use --base-path "v1" instead for api.yourcompany.com/v1
 ```
 
 You can map different base paths to different APIs, which is useful for versioning:
@@ -166,7 +167,7 @@ aws route53 change-resource-record-sets \
         "Type": "A",
         "AliasTarget": {
           "DNSName": "d-abc123.execute-api.us-west-2.amazonaws.com",
-          "HostedZoneId": "Z1UJRXOUMOOFQ8",
+          "HostedZoneId": "Z2OJLYMUO9EFXC",
           "EvaluateTargetHealth": true
         }
       }
