@@ -37,7 +37,7 @@ aws elasticache describe-replication-groups \
 
 ## Prerequisites
 
-- Your application must run in the same VPC as ElastiCache (or a peered VPC)
+- Your application must have network access to ElastiCache, such as running in the same VPC, a peered VPC, or another routed private network path
 - Security groups must allow traffic on port 6379 (or your custom port)
 - If TLS is enabled, your client must support TLS connections
 
@@ -128,7 +128,7 @@ redis_cluster = RedisCluster(
     host='my-redis-cluster.abc123.clustercfg.use1.cache.amazonaws.com',
     port=6379,
     decode_responses=True,
-    skip_full_coverage_check=True,
+    require_full_coverage=False,
     # ssl=True,  # If TLS is enabled
 )
 
@@ -166,7 +166,9 @@ redis.on('error', (err) => console.error('Redis error:', err));
 redis.on('close', () => console.log('Redis connection closed'));
 
 // Connect explicitly when using lazyConnect
-await redis.connect();
+async function initializeRedis() {
+  await redis.connect();
+}
 
 // Basic operations
 async function cacheApiResponse(endpoint, data, ttlSeconds = 300) {
@@ -202,9 +204,9 @@ const cluster = new Redis.Cluster([
     port: 6379
   }
 ], {
-  // tls: {},  // Uncomment for TLS
   redisOptions: {
     connectTimeout: 5000,
+    // tls: {},  // Uncomment for TLS
   },
   clusterRetryStrategy: (times) => Math.min(times * 200, 3000),
   scaleReads: 'slave', // Read from replicas for read-heavy workloads
@@ -219,42 +221,39 @@ cluster.on('error', (err) => console.error('Cluster error:', err));
 ### Using Jedis
 
 ```java
-import redis.clients.jedis.JedisPool;
-import redis.clients.jedis.JedisPoolConfig;
-import redis.clients.jedis.Jedis;
+import redis.clients.jedis.ConnectionPoolConfig;
+import redis.clients.jedis.RedisClient;
+import java.time.Duration;
 
 public class RedisConnectionManager {
 
-    private static JedisPool pool;
+    private static RedisClient client;
 
     public static void initialize() {
         // Configure the connection pool
-        JedisPoolConfig poolConfig = new JedisPoolConfig();
+        ConnectionPoolConfig poolConfig = new ConnectionPoolConfig();
         poolConfig.setMaxTotal(50);          // Max connections
         poolConfig.setMaxIdle(20);           // Max idle connections
         poolConfig.setMinIdle(5);            // Min idle connections
-        poolConfig.setTestOnBorrow(true);    // Test connection before use
-        poolConfig.setTestOnReturn(true);
+        poolConfig.setTestWhileIdle(true);
         poolConfig.setBlockWhenExhausted(true);
-        poolConfig.setMaxWaitMillis(2000);   // Wait 2s for a connection
+        poolConfig.setMaxWait(Duration.ofSeconds(2));   // Wait 2s for a connection
 
         String host = "my-redis-cluster.abc123.ng.0001.use1.cache.amazonaws.com";
         int port = 6379;
-        int timeout = 5000;
 
-        pool = new JedisPool(poolConfig, host, port, timeout);
+        client = RedisClient.builder()
+            .hostAndPort(host, port)
+            .poolConfig(poolConfig)
+            .build();
     }
 
     public static void cacheValue(String key, String value, int ttlSeconds) {
-        try (Jedis jedis = pool.getResource()) {
-            jedis.setex(key, ttlSeconds, value);
-        }
+        client.setex(key, ttlSeconds, value);
     }
 
     public static String getCachedValue(String key) {
-        try (Jedis jedis = pool.getResource()) {
-            return jedis.get(key);
-        }
+        return client.get(key);
     }
 }
 ```
