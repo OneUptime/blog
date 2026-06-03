@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, WAF, Security, Web Application
 
-Description: Learn how to configure AWS WAF rules to protect your web applications from common attacks including SQL injection, XSS, path traversal, and request smuggling.
+Description: Learn how to configure AWS WAF rules to protect your web applications from common attacks including SQL injection, XSS, oversized requests, bad IPs, and unwanted geographic traffic.
 
 ---
 
 Your web application is under attack right now. Bots are scanning for SQL injection vulnerabilities. Scripts are trying cross-site scripting payloads. Automated tools are probing for known exploits. This isn't hypothetical - if you put a web server on the internet and check the logs, you'll see this traffic within minutes.
 
-AWS WAF (Web Application Firewall) sits in front of your application and filters malicious requests before they reach your servers. It works with CloudFront, Application Load Balancers, API Gateway, and AppSync. You define rules that inspect incoming requests, and WAF either allows, blocks, or counts them.
+AWS WAF (Web Application Firewall) sits in front of your application and filters malicious requests before they reach your servers. It works with CloudFront, Application Load Balancers, API Gateway REST APIs, and AppSync GraphQL APIs. You define rules that inspect incoming requests, and WAF either allows, blocks, or counts them.
 
 Let me show you how to set up rules for the most common web attacks.
 
@@ -18,7 +18,7 @@ Let me show you how to set up rules for the most common web attacks.
 
 Before diving into rules, here's how WAF is structured:
 
-- **Web ACL** - The top-level container. You associate it with a CloudFront distribution, ALB, or API Gateway. Each Web ACL has a list of rules evaluated in order.
+- **Web ACL** - The top-level container. You associate it with a CloudFront distribution, ALB, API Gateway REST API, or another supported AWS WAF resource. Each Web ACL has a list of rules evaluated in order.
 - **Rules** - Define what to inspect and what action to take. Rules can be standalone or grouped.
 - **Rule Groups** - Collections of rules that you manage together. Both AWS-managed and custom rule groups exist.
 - **Statements** - The conditions within a rule that define what to match (IP address, string pattern, regex, etc.)
@@ -28,7 +28,7 @@ Before diving into rules, here's how WAF is structured:
 Start by creating a Web ACL. This is the container for all your rules.
 
 ```bash
-# Create a Web ACL for an ALB (use CLOUDFRONT scope for CloudFront)
+# Create a Web ACL for an ALB (use CLOUDFRONT scope and us-east-1 for CloudFront)
 
 aws wafv2 create-web-acl \
   --name my-app-waf \
@@ -207,9 +207,9 @@ Unusually large requests are often probes or attacks. Limit request size to what
 }
 ```
 
-## IP Reputation Blocking
+## Custom IP Blocking
 
-Block requests from known-bad IP addresses using an IP set.
+Block requests from IP addresses you identify as bad using an IP set.
 
 ```bash
 # Create an IP set for blocked IPs
@@ -351,7 +351,7 @@ resource "aws_wafv2_web_acl_association" "alb" {
 
 ## Testing Your Rules
 
-Always test rules in Count mode before switching to Block mode. Count mode logs matching requests without blocking them.
+Always test rules in Count mode before switching to Block mode. Count mode counts matching requests and lets them continue without blocking.
 
 ```json
 {
@@ -359,7 +359,7 @@ Always test rules in Count mode before switching to Block mode. Count mode logs 
 }
 ```
 
-After running in Count mode for a few days, review the sampled requests in CloudWatch to verify there are no false positives. Then switch to Block.
+After running in Count mode for a few days, review CloudWatch metrics and sampled requests to verify there are no false positives. Then switch to Block.
 
 ```bash
 # View sampled requests
@@ -380,7 +380,7 @@ aws wafv2 put-logging-configuration \
   --logging-configuration '{
     "ResourceArn": "YOUR_WEB_ACL_ARN",
     "LogDestinationConfigs": [
-      "arn:aws:s3:::my-waf-logs-bucket"
+      "arn:aws:s3:::aws-waf-logs-my-waf-logs-bucket"
     ],
     "RedactedFields": [
       {"SingleHeader": {"Name": "authorization"}}
