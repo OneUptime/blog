@@ -204,11 +204,22 @@ class ImageCatalog:
     def search_by_label(self, label):
         """Search for images containing a specific label."""
         # In production, use a proper search index like OpenSearch
-        response = self.table.scan(
-            FilterExpression='contains(labels, :label)',
-            ExpressionAttributeValues={':label': label.lower()}
-        )
-        return response['Items']
+        items = []
+        scan_kwargs = {
+            'FilterExpression': 'contains(labels, :label)',
+            'ExpressionAttributeValues': {':label': label.lower()}
+        }
+
+        while True:
+            response = self.table.scan(**scan_kwargs)
+            items.extend(response['Items'])
+
+            if 'LastEvaluatedKey' not in response:
+                break
+
+            scan_kwargs['ExclusiveStartKey'] = response['LastEvaluatedKey']
+
+        return items
 
 # Usage
 catalog = ImageCatalog()
@@ -221,13 +232,15 @@ results = catalog.search_by_label('beach')
 Here's a Lambda function that automatically analyzes images when they're uploaded to S3.
 
 ```python
+from urllib.parse import unquote_plus
+
 def lambda_handler(event, context):
     """Triggered by S3 upload - analyze the image automatically."""
     rekognition = boto3.client('rekognition')
 
     for record in event['Records']:
         bucket = record['s3']['bucket']['name']
-        key = record['s3']['object']['key']
+        key = unquote_plus(record['s3']['object']['key'])
 
         # Skip non-image files
         if not key.lower().endswith(('.jpg', '.jpeg', '.png')):
@@ -274,7 +287,7 @@ Rekognition charges per image processed, with different rates for each feature. 
 - Set appropriate `MinConfidence` thresholds to reduce noise
 - Use `MaxLabels` to limit the number of labels returned
 - Cache results if you might analyze the same image multiple times
-- For batch processing, consider running jobs during off-peak hours
+- For batch processing, throttle workers so you stay within service quotas and avoid accidental duplicate processing
 
 For monitoring your Rekognition usage and costs alongside other AWS services, check out our guide on [monitoring AWS infrastructure](https://oneuptime.com/blog/post/2026-02-02-pulumi-aws-infrastructure/view).
 
