@@ -14,7 +14,7 @@ AWS Local Zones extend AWS regions into metropolitan areas, putting compute, sto
 
 ## How Local Zones Differ from Regular AZs
 
-A regular Availability Zone is in a full AWS region with access to every AWS service. A Local Zone is a smaller deployment in a metro area with a subset of services. The Local Zone connects back to a parent region over AWS's private fiber network.
+A regular Availability Zone is in a full AWS region with access to the region's broader service portfolio. A Local Zone is a smaller deployment in a metro area with a subset of services. The Local Zone connects back to a parent region over AWS's private network.
 
 Here's what's typically available in Local Zones:
 
@@ -24,16 +24,16 @@ Here's what's typically available in Local Zones:
 - Application Load Balancer
 - Amazon FSx
 - ElastiCache
-- Relational Database Service (select engines)
+- Relational Database Service (select locations and engines)
 
-What's not available: Lambda, DynamoDB, S3 (though S3 is accessible from the parent region). You'll need to architect around these gaps.
+What's not available in most Local Zones: Lambda, DynamoDB, and standard S3 buckets (though S3 is accessible from the parent region, and S3 directory buckets are available in select Local Zones). You'll need to architect around these gaps.
 
 ```mermaid
 graph TB
     A[Users in Houston] -->|~5ms| B[Local Zone: Houston]
-    B -->|Private Fiber ~20ms| C[Parent Region: us-east-1]
+    B -->|AWS private network ~20ms| C[Parent Region: us-east-1]
     C --> D[S3, DynamoDB, Lambda]
-    B --> E[EC2, EBS, ALB, RDS]
+    B --> E[EC2, EBS, ALB, RDS where supported]
 ```
 
 ## Step 1: Enable Local Zones
@@ -51,7 +51,7 @@ aws ec2 describe-availability-zones \
 
 # Enable a Local Zone (Houston example)
 aws ec2 modify-availability-zone-group \
-  --group-name "us-east-1-iah-1" \
+  --group-name "us-east-1-iah-2" \
   --opt-in-status "opted-in"
 ```
 
@@ -66,12 +66,17 @@ Extend your existing VPC into the Local Zone by creating a subnet there.
 aws ec2 create-subnet \
   --vpc-id "vpc-abc123" \
   --cidr-block "10.0.50.0/24" \
-  --availability-zone "us-east-1-iah-1a" \
+  --availability-zone "us-east-1-iah-2a" \
   --tag-specifications 'ResourceType=subnet,Tags=[{Key=Name,Value=local-zone-houston}]'
 
 # Create an internet gateway if you don't have one
 aws ec2 create-internet-gateway \
   --tag-specifications 'ResourceType=internet-gateway,Tags=[{Key=Name,Value=lz-igw}]'
+
+# Attach the internet gateway to the VPC
+aws ec2 attach-internet-gateway \
+  --internet-gateway-id "igw-abc123" \
+  --vpc-id "vpc-abc123"
 
 # Create a route table for the Local Zone subnet
 aws ec2 create-route-table \
@@ -98,7 +103,7 @@ Check what instance types are available in your target Local Zone, then launch.
 # See available instance types in the Houston Local Zone
 aws ec2 describe-instance-type-offerings \
   --location-type "availability-zone" \
-  --filters "Name=location,Values=us-east-1-iah-1a" \
+  --filters "Name=location,Values=us-east-1-iah-2a" \
   --query "InstanceTypeOfferings[].InstanceType" \
   --output table
 
@@ -138,28 +143,35 @@ aws elbv2 create-target-group \
 aws elbv2 register-targets \
   --target-group-arn "arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/houston-targets/abc123" \
   --targets "Id=i-houston001" "Id=i-houston002"
+
+# Forward HTTP traffic from the ALB to the target group
+aws elbv2 create-listener \
+  --load-balancer-arn "arn:aws:elasticloadbalancing:us-east-1:123456789:loadbalancer/app/houston-alb/abc123" \
+  --protocol "HTTP" \
+  --port 80 \
+  --default-actions "Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:123456789:targetgroup/houston-targets/abc123"
 ```
 
 ## Step 5: Deploy a Database Locally
 
-For the lowest latency, run your database in the Local Zone too. RDS supports Local Zone deployments for MySQL and PostgreSQL.
+For the lowest latency, run your database in the Local Zone too if your target Local Zone supports RDS. RDS Local Zone availability is limited; AWS currently documents RDS in the Los Angeles Local Zone in the US West (Oregon) Region, so verify location, engine, and instance-class support before designing around it.
 
 ```bash
-# Create a DB subnet group that includes the Local Zone
+# Create a DB subnet group in the Los Angeles Local Zone
 aws rds create-db-subnet-group \
   --db-subnet-group-name "local-zone-db-group" \
   --db-subnet-group-description "DB subnet group for Local Zone" \
-  --subnet-ids "subnet-lz-houston" "subnet-lz-houston-2"
+  --subnet-ids "subnet-lz-los-angeles"
 
 # Create an RDS instance in the Local Zone
 aws rds create-db-instance \
-  --db-instance-identifier "houston-db" \
+  --db-instance-identifier "los-angeles-db" \
   --db-instance-class "db.r5.large" \
   --engine "postgres" \
   --master-username "admin" \
   --master-user-password "your-secure-password" \
   --db-subnet-group-name "local-zone-db-group" \
-  --availability-zone "us-east-1-iah-1a" \
+  --availability-zone "us-west-2-lax-1a" \
   --allocated-storage 100 \
   --no-multi-az
 ```
@@ -175,7 +187,7 @@ graph TB
     subgraph "Local Zone - Houston"
         A[ALB] --> B[App Servers]
         B --> C[ElastiCache]
-        B --> D[RDS Postgres]
+        B --> D[RDS Postgres - where supported]
     end
 
     subgraph "Parent Region - us-east-1"
@@ -185,9 +197,9 @@ graph TB
         H[SQS - Message Queue]
     end
 
-    B -->|Private Fiber| E
-    B -->|Private Fiber| F
-    B -->|Private Fiber| H
+    B -->|AWS private network| E
+    B -->|AWS private network| F
+    B -->|AWS private network| H
 
     I[Houston Users] -->|~5ms| A
 ```
@@ -196,7 +208,7 @@ Here's how the application code might handle this split.
 
 ```python
 import boto3
-from functools import lru_cache
+import json
 
 # Local Zone resources - fast access
 # ElastiCache runs in the Local Zone for sub-millisecond reads
@@ -236,10 +248,10 @@ def upload_file(file_data, filename):
 
 ## Step 6: Multi-City Deployment
 
-For coverage across multiple cities, deploy to several Local Zones and use Route 53 latency-based routing to send users to the nearest one.
+For coverage across multiple cities, deploy to several Local Zones and use Route 53 geoproximity routing to send users to a nearby Local Zone. Latency-based routing is region-based, so it can't distinguish between multiple Local Zones that share the same parent region.
 
 ```bash
-# Create Route 53 latency records for each Local Zone deployment
+# Create Route 53 geoproximity records for each Local Zone deployment
 aws route53 change-resource-record-sets \
   --hosted-zone-id "Z123456" \
   --change-batch '{
@@ -250,7 +262,9 @@ aws route53 change-resource-record-sets \
           "Name": "app.example.com",
           "Type": "A",
           "SetIdentifier": "houston",
-          "Region": "us-east-1",
+          "GeoProximityLocation": {
+            "LocalZoneGroup": "us-east-1-iah-2"
+          },
           "AliasTarget": {
             "HostedZoneId": "Z35SXDOTRQ7X7K",
             "DNSName": "houston-alb-123.us-east-1.elb.amazonaws.com",
@@ -264,7 +278,9 @@ aws route53 change-resource-record-sets \
           "Name": "app.example.com",
           "Type": "A",
           "SetIdentifier": "miami",
-          "Region": "us-east-1",
+          "GeoProximityLocation": {
+            "LocalZoneGroup": "us-east-1-mia-2"
+          },
           "AliasTarget": {
             "HostedZoneId": "Z35SXDOTRQ7X7K",
             "DNSName": "miami-alb-456.us-east-1.elb.amazonaws.com",

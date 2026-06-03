@@ -30,7 +30,6 @@ Reference `AWS::Include` using `Fn::Transform`:
 # Main template that includes a snippet from S3
 
 AWSTemplateFormatVersion: '2010-09-09'
-Transform: AWS::Include
 Description: Template with included snippets
 
 Resources:
@@ -179,10 +178,11 @@ Statement:
     Action:
       - ssm:GetParameter
       - ssm:GetParameters
-    Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/myapp/*'
+    Resource:
+      Fn::Sub: 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/myapp/*'
 ```
 
-Notice that the snippet can use CloudFormation intrinsic functions like `!Sub`. They're resolved after the include is processed.
+Notice that the snippet can use CloudFormation intrinsic functions like `Fn::Sub`. Use the long-form syntax in snippets, because `AWS::Include` doesn't support YAML shorthand notation in included files.
 
 ## Including in Mappings and Outputs
 
@@ -292,9 +292,7 @@ You can use `AWS::Include` alongside other transforms:
 ```yaml
 # Using Include with SAM transform
 AWSTemplateFormatVersion: '2010-09-09'
-Transform:
-  - AWS::Serverless-2016-10-31
-  - AWS::Include
+Transform: AWS::Serverless-2016-10-31
 
 Resources:
   MyFunction:
@@ -326,7 +324,8 @@ Resources:
 aws cloudformation create-change-set \
   --stack-name test-include \
   --template-body file://template.yaml \
-  --change-set-name preview
+  --change-set-name preview \
+  --change-set-type CREATE
 
 aws cloudformation get-template \
   --stack-name test-include \
@@ -348,7 +347,7 @@ Use `AWS::Include` for static, reusable configuration blocks. Use nested stacks 
 
 ## Best Practices
 
-**Version your snippets.** Enable S3 versioning and consider using specific object versions in your S3 URLs for production templates.
+**Version your snippets.** Enable S3 versioning for audit and rollback, and consider using immutable object keys or versioned prefixes for production templates.
 
 **Test snippets in isolation.** Create a test template that includes the snippet and deploy it to verify correctness.
 
