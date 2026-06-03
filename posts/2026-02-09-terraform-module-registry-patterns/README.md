@@ -370,9 +370,9 @@ output "pod_fqdns" {
 }
 ```
 
-## Creating a Namespace Module with RBAC
+## Creating a Namespace Module with Service Accounts
 
-Package namespace creation with standard RBAC:
+Package namespace creation with standard service accounts and network policy:
 
 ```hcl
 # modules/k8s-namespace/variables.tf
@@ -461,7 +461,7 @@ output "service_accounts" {
 
 ## Publishing to GitHub for Module Registry
 
-Terraform can use GitHub releases as a module source. Structure your repository:
+Terraform can use GitHub repositories and version tags as a module source. Structure your repository:
 
 ```text
 terraform-k8s-modules/
@@ -507,7 +507,7 @@ module "api_service" {
 
 ## Using Private Module Registry
 
-For private registries (Terraform Cloud or Enterprise), publish modules following the naming convention:
+For private registries (HCP Terraform or Terraform Enterprise), publish modules following the naming convention:
 
 ```text
 terraform-<PROVIDER>-<NAME>
@@ -643,7 +643,7 @@ module "ecommerce_stack" {
 
 Document modules with clear README files:
 
-```markdown
+````markdown
 # Kubernetes Application Module
 
 Deploys a standard Kubernetes application with deployment and service.
@@ -659,7 +659,7 @@ module "api" {
   image     = "myapp/api:v1.0.0"
   replicas  = 3
 }
-```bash
+```
 
 ## Inputs
 
@@ -676,7 +676,7 @@ module "api" {
 |------|-------------|
 | deployment_name | Name of the deployment |
 | service_endpoint | Internal service endpoint |
-```text
+````
 
 ## Module Testing
 
@@ -722,7 +722,7 @@ Use version constraints in module references:
 
 ```hcl
 module "api" {
-  source  = "github.com/yourorg/terraform-k8s-modules//modules/k8s-app"
+  source  = "app.terraform.io/yourorg/application/kubernetes"
   version = "~> 1.0"  # Allow 1.x versions, but not 2.0
 
   # Configuration...
