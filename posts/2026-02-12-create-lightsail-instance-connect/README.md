@@ -55,30 +55,30 @@ Lightsail plans bundle compute, storage, and transfer into fixed monthly prices.
 ```bash
 # See all available plans with pricing
 aws lightsail get-bundles \
-  --query 'bundles[?isActive==`true` && supportedPlatforms[0]==`LINUX_UNIX`].{
+  --query 'bundles[?isActive==`true` && contains(supportedPlatforms, `LINUX_UNIX`)].{
     Id: bundleId,
     Price: price,
     CPUs: cpuCount,
     RAM_GB: ramSizeInGb,
     Disk_GB: diskSizeInGb,
-    Transfer_TB: transferPerMonthInGb
+    Transfer_GB: transferPerMonthInGb
   }' \
   --output table
 ```
 
-For most starter projects, the $5/month plan (1 vCPU, 1GB RAM, 40GB SSD) is plenty.
+For most starter projects, the Micro 1GB plan is plenty. Check the `get-bundles` output for the current price and vCPU count in your Region.
 
 ## Step 3: Create the Instance
 
 Now create it. You need to pick a name, availability zone, blueprint, and bundle.
 
 ```bash
-# Create a Ubuntu instance on the $5/month plan
+# Create a Ubuntu instance on the Micro 1GB plan
 aws lightsail create-instances \
   --instance-names my-first-server \
   --availability-zone us-east-1a \
   --blueprint-id ubuntu_22_04 \
-  --bundle-id small_3_0 \
+  --bundle-id micro_3_0 \
   --tags key=Name,value=my-first-server key=Project,value=learning
 ```
 
@@ -129,7 +129,7 @@ Default usernames by blueprint:
 - Amazon Linux: `ec2-user`
 - Debian: `admin`
 - FreeBSD: `ec2-user`
-- WordPress/LAMP/Node.js: varies, check the blueprint docs
+- WordPress/LAMP/Node.js: `bitnami`
 
 ## Step 6: Use Your Own SSH Key
 
@@ -148,10 +148,10 @@ chmod 600 ~/.ssh/lightsail-custom.pem
 Or import an existing public key.
 
 ```bash
-# Import your existing public key
+# Import your existing ssh-rsa public key
 aws lightsail import-key-pair \
   --key-pair-name my-existing-key \
-  --public-key-base64 "$(cat ~/.ssh/id_rsa.pub | base64)"
+  --public-key-base64 "$(base64 < ~/.ssh/id_rsa.pub | tr -d '\n')"
 ```
 
 To use a custom key with a new instance, specify it during creation.
@@ -162,7 +162,7 @@ aws lightsail create-instances \
   --instance-names secure-server \
   --availability-zone us-east-1a \
   --blueprint-id ubuntu_22_04 \
-  --bundle-id small_3_0 \
+  --bundle-id micro_3_0 \
   --key-pair-name my-custom-key
 ```
 
@@ -216,7 +216,7 @@ aws lightsail create-instances \
   --instance-names auto-configured \
   --availability-zone us-east-1a \
   --blueprint-id ubuntu_22_04 \
-  --bundle-id small_3_0 \
+  --bundle-id micro_3_0 \
   --user-data '#!/bin/bash
 apt-get update
 apt-get install -y nginx nodejs npm git
