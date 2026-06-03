@@ -14,7 +14,7 @@ This guide covers everything from basic metric alarms to composite alarms, SNS i
 
 ## The Basics: What CloudWatch Alarms Do
 
-A CloudWatch alarm watches a single metric over a time period you define. When the metric crosses a threshold for a specified number of evaluation periods, the alarm transitions from `OK` to `ALARM` state. You can attach actions to state transitions - most commonly sending an SNS notification that hits a Slack channel or PagerDuty.
+A basic CloudWatch metric alarm watches a single metric over a time period you define. When the metric crosses a threshold for a specified number of evaluation periods, the alarm transitions from `OK` to `ALARM` state. You can attach actions to state transitions - most commonly sending an SNS notification that hits a Slack channel or PagerDuty.
 
 Here's the flow:
 
@@ -68,9 +68,11 @@ resource "aws_sns_topic_subscription" "warning_email" {
 }
 ```
 
+Email subscriptions require the recipient to confirm the subscription before SNS can deliver notifications to that address.
+
 ## Creating a Basic Metric Alarm
 
-Let's start with the most common alarm: EC2 CPU utilization. When CPU stays above 80% for 5 minutes, we want to know about it.
+Let's start with the most common alarm: EC2 CPU utilization. When CPU stays above 80% for 10 minutes, we want to know about it.
 
 This alarm triggers when average CPU utilization exceeds 80% across two consecutive 5-minute evaluation periods:
 
@@ -219,13 +221,13 @@ resource "aws_cloudwatch_metric_alarm" "alb_latency" {
 }
 ```
 
-Notice the `treat_missing_data` setting. For error count metrics, missing data means zero errors happened, so we treat it as "notBreaching". Without this, you'd get alarms firing during low-traffic periods.
+Notice the `treat_missing_data` setting. For error count metrics, missing data means zero errors happened, so we treat it as "notBreaching". Without this, you may see `INSUFFICIENT_DATA` transitions during low-traffic periods.
 
 ## Composite Alarms
 
 Composite alarms let you combine multiple alarms with boolean logic. They're great for reducing noise - instead of getting paged for every individual alarm, you can create a composite that only fires when multiple things go wrong simultaneously.
 
-This composite alarm only triggers when both CPU and memory alarms are in ALARM state:
+This composite alarm only triggers when both application CPU and database CPU alarms are in ALARM state:
 
 ```hcl
 resource "aws_cloudwatch_composite_alarm" "service_degraded" {
@@ -240,7 +242,7 @@ resource "aws_cloudwatch_composite_alarm" "service_degraded" {
 }
 ```
 
-## Using Dynamic Blocks for Multiple Instances
+## Using for_each for Multiple Instances
 
 When you've got a fleet of EC2 instances or multiple RDS databases, you don't want to copy-paste alarm definitions. Terraform's `for_each` handles this nicely.
 
@@ -310,7 +312,7 @@ resource "aws_cloudwatch_metric_alarm" "api_anomaly" {
         LoadBalancer = "app/my-alb/abc123def456"
       }
     }
-    return_data = true
+    return_data = false
   }
 
   alarm_actions = [aws_sns_topic.warning_alerts.arn]
