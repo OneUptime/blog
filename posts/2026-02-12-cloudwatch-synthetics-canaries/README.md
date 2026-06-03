@@ -62,6 +62,17 @@ canaryConfig.setConfig({
   includeResponseBody: true,
 });
 
+const getRequestOptions = (url) => {
+  const parsedUrl = new URL(url);
+  return {
+    hostname: parsedUrl.hostname,
+    path: `${parsedUrl.pathname}${parsedUrl.search}`,
+    port: 443,
+    protocol: 'https:',
+    method: 'GET',
+  };
+};
+
 const handler = async () => {
   const urls = [
     'https://api.example.com/health',
@@ -73,13 +84,7 @@ const handler = async () => {
     log.info(`Checking URL: ${url}`);
     const response = await synthetics.executeHttpStep(
       `Check ${url}`,
-      {
-        hostname: new URL(url).hostname,
-        path: new URL(url).pathname,
-        port: 443,
-        protocol: 'https:',
-        method: 'GET',
-      },
+      getRequestOptions(url),
       validateResponse
     );
   }
@@ -114,7 +119,7 @@ aws synthetics create-canary \
   --artifact-s3-location "s3://my-canary-artifacts/results/" \
   --execution-role-arn "arn:aws:iam::123456789012:role/CloudWatchSyntheticsRole" \
   --schedule '{"Expression": "rate(5 minutes)"}' \
-  --runtime-version "syn-nodejs-puppeteer-9.0" \
+  --runtime-version "syn-nodejs-puppeteer-9.1" \
   --code '{"S3Bucket": "my-canary-artifacts", "S3Key": "scripts/heartbeat-canary.zip", "Handler": "heartbeat-canary.handler"}' \
   --run-config '{"TimeoutInSeconds": 60, "MemoryInMB": 960}'
 
@@ -130,9 +135,21 @@ For testing API endpoints with specific request payloads and response validation
 // api-canary.js
 const synthetics = require('Synthetics');
 const log = require('SyntheticsLogger');
-const https = require('https');
+
+const readResponseBody = async (response) => {
+  return await new Promise((resolve, reject) => {
+    let body = '';
+    response.on('data', (chunk) => {
+      body += chunk;
+    });
+    response.on('end', () => resolve(body));
+    response.on('error', reject);
+  });
+};
 
 const apiTest = async () => {
+  let token;
+
   // Step 1: Test the health endpoint
   await synthetics.executeHttpStep('Health Check', {
     hostname: 'api.example.com',
@@ -144,14 +161,14 @@ const apiTest = async () => {
     if (response.statusCode !== 200) {
       throw new Error(`Health check failed: ${response.statusCode}`);
     }
-    const body = JSON.parse(response.body);
+    const body = JSON.parse(await readResponseBody(response));
     if (body.status !== 'healthy') {
       throw new Error(`Service unhealthy: ${body.status}`);
     }
   });
 
   // Step 2: Test authentication
-  const authResponse = await synthetics.executeHttpStep('Authenticate', {
+  await synthetics.executeHttpStep('Authenticate', {
     hostname: 'api.example.com',
     path: '/auth/token',
     port: 443,
@@ -168,16 +185,14 @@ const apiTest = async () => {
     if (response.statusCode !== 200) {
       throw new Error(`Auth failed: ${response.statusCode}`);
     }
-    const body = JSON.parse(response.body);
+    const body = JSON.parse(await readResponseBody(response));
     if (!body.accessToken) {
       throw new Error('No access token in response');
     }
-    // Store token for next steps
-    synthetics.setStepData('authToken', body.accessToken);
+    token = body.accessToken;
   });
 
   // Step 3: Test a protected endpoint
-  const token = synthetics.getStepData('authToken');
   await synthetics.executeHttpStep('Get Orders', {
     hostname: 'api.example.com',
     path: '/v1/orders?limit=5',
@@ -191,7 +206,7 @@ const apiTest = async () => {
     if (response.statusCode !== 200) {
       throw new Error(`Get orders failed: ${response.statusCode}`);
     }
-    const body = JSON.parse(response.body);
+    const body = JSON.parse(await readResponseBody(response));
     if (!Array.isArray(body.orders)) {
       throw new Error('Response does not contain orders array');
     }
@@ -199,6 +214,7 @@ const apiTest = async () => {
   });
 
   // Step 4: Verify response time is acceptable
+  const startedAt = Date.now();
   await synthetics.executeHttpStep('Latency Check', {
     hostname: 'api.example.com',
     path: '/v1/orders?limit=1',
@@ -208,13 +224,16 @@ const apiTest = async () => {
     headers: {
       'Authorization': `Bearer ${token}`,
     },
-  }, async (response, requestOptions, stepConfig) => {
-    const latency = stepConfig.stepDuration;
-    if (latency > 3000) {
-      throw new Error(`Response too slow: ${latency}ms (threshold: 3000ms)`);
+  }, async (response) => {
+    if (response.statusCode !== 200) {
+      throw new Error(`Latency check failed: ${response.statusCode}`);
     }
-    log.info(`Response time: ${latency}ms`);
   });
+  const latency = Date.now() - startedAt;
+  if (latency > 3000) {
+    throw new Error(`Response too slow: ${latency}ms (threshold: 3000ms)`);
+  }
+  log.info(`Response time: ${latency}ms`);
 };
 
 exports.handler = async () => {
@@ -264,7 +283,7 @@ Resources:
   CanaryArtifactsBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${AWS::AccountId}-synthetics-artifacts'
+      BucketName: !Sub '${AWS::AccountId}-${AWS::Region}-synthetics-artifacts'
       LifecycleConfiguration:
         Rules:
           - ExpirationInDays: 30
@@ -281,14 +300,44 @@ Resources:
             Principal:
               Service: lambda.amazonaws.com
             Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/CloudWatchSyntheticsFullAccess
+      Policies:
+        - PolicyName: CanaryExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                Resource: !Sub '${CanaryArtifactsBucket.Arn}/*'
+              - Effect: Allow
+                Action:
+                  - s3:GetBucketLocation
+                Resource: !GetAtt CanaryArtifactsBucket.Arn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/cwsyn-api-heartbeat-*'
+              - Effect: Allow
+                Action:
+                  - s3:ListAllMyBuckets
+                  - xray:PutTraceSegments
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - cloudwatch:PutMetricData
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    cloudwatch:namespace: CloudWatchSynthetics
 
   ApiHeartbeatCanary:
     Type: AWS::Synthetics::Canary
     Properties:
       Name: api-heartbeat
-      RuntimeVersion: syn-nodejs-puppeteer-9.0
+      RuntimeVersion: syn-nodejs-puppeteer-9.1
       ArtifactS3Location: !Sub 's3://${CanaryArtifactsBucket}/results'
       ExecutionRoleArn: !GetAtt CanaryRole.Arn
       Schedule:
@@ -333,8 +382,7 @@ The canary execution role needs these permissions:
     {
       "Effect": "Allow",
       "Action": [
-        "s3:GetBucketLocation",
-        "s3:ListBucket"
+        "s3:GetBucketLocation"
       ],
       "Resource": "arn:aws:s3:::my-canary-artifacts"
     },
@@ -346,6 +394,14 @@ The canary execution role needs these permissions:
         "logs:PutLogEvents"
       ],
       "Resource": "arn:aws:logs:*:*:log-group:/aws/lambda/cwsyn-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListAllMyBuckets",
+        "xray:PutTraceSegments"
+      ],
+      "Resource": "*"
     },
     {
       "Effect": "Allow",
@@ -378,7 +434,7 @@ You can set canaries to run at various intervals:
 "Expression": "cron(0 9 ? * MON-FRI *)"
 
 # Once (manual trigger only)
-# Don't set a schedule, run manually with start-canary
+"Expression": "rate(0 minute)"
 ```
 
 For critical production endpoints, 5-minute intervals are common. For less critical checks, 15 minutes or hourly works fine.
