@@ -16,16 +16,16 @@ In this guide, you'll learn how to use Velero to migrate complete workloads betw
 
 Velero consists of a server component running in your cluster and a CLI tool for operations. It backs up Kubernetes resources to object storage and copies persistent volume snapshots. For cross-cluster migration, you back up from a source cluster and restore to a target cluster using shared object storage.
 
-The workflow involves installing Velero in both clusters, creating a backup in the source cluster, and restoring from that backup in the target cluster. Velero handles resource transformations needed for the new cluster environment.
+The workflow involves installing Velero in both clusters, creating a backup in the source cluster, and restoring from that backup in the target cluster. Velero can remap namespaces and apply resource modifiers when resources need to be adapted for the new cluster environment.
 
 ## Installing Velero in Source and Target Clusters
 
 Install Velero CLI:
 
 ```bash
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz
-tar -xvf velero-v1.12.0-linux-amd64.tar.gz
-sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/velero-io/velero/releases/download/v1.18.1/velero-v1.18.1-linux-amd64.tar.gz
+tar -xvf velero-v1.18.1-linux-amd64.tar.gz
+sudo mv velero-v1.18.1-linux-amd64/velero /usr/local/bin/
 ```
 
 Install Velero in the source cluster with AWS S3 backend:
@@ -35,7 +35,7 @@ Install Velero in the source cluster with AWS S3 backend:
 
 aws s3 mb s3://velero-backups-migration --region us-east-1
 
-# Create IAM user with S3 permissions
+# Create IAM user with S3 and EBS snapshot permissions
 cat > velero-policy.json <<EOF
 {
     "Version": "2012-10-17",
@@ -43,9 +43,22 @@ cat > velero-policy.json <<EOF
         {
             "Effect": "Allow",
             "Action": [
+                "ec2:DescribeVolumes",
+                "ec2:DescribeSnapshots",
+                "ec2:CreateTags",
+                "ec2:CreateVolume",
+                "ec2:CreateSnapshot",
+                "ec2:DeleteSnapshot"
+            ],
+            "Resource": "*"
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
                 "s3:GetObject",
                 "s3:DeleteObject",
                 "s3:PutObject",
+                "s3:PutObjectTagging",
                 "s3:AbortMultipartUpload",
                 "s3:ListMultipartUploadParts"
             ],
@@ -74,7 +87,7 @@ EOF
 # Install Velero in source cluster
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.8.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.0 \
     --bucket velero-backups-migration \
     --backup-location-config region=us-east-1 \
     --snapshot-location-config region=us-east-1 \
@@ -88,7 +101,7 @@ Install Velero in the target cluster using the same configuration:
 ```bash
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.8.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.0 \
     --bucket velero-backups-migration \
     --backup-location-config region=us-east-1 \
     --snapshot-location-config region=us-east-1 \
@@ -209,51 +222,64 @@ velero restore create selective-restore \
 
 ## Transforming Resources During Restore
 
-Use restore hooks to modify resources during restore:
+Use resource modifiers to patch resources before they are restored:
 
 ```yaml
-apiVersion: velero.io/v1
-kind: Restore
-metadata:
-  name: production-restore-with-hooks
-  namespace: velero
-spec:
-  backupName: production-migration
-  hooks:
-    resources:
-    - name: update-image-registry
-      includedNamespaces:
-      - production
-      includedResources:
-      - deployments
-      - statefulsets
-      postHooks:
-      - exec:
-          container: app
-          command:
-          - /bin/sh
-          - -c
-          - sed -i 's/old-registry.io/new-registry.io/g' /etc/config/app.yaml
-          onError: Continue
-          timeout: 5m
+version: v1
+resourceModifierRules:
+- conditions:
+    groupResource: deployments.apps
+    namespaces:
+    - production
+  strategicPatches:
+  - patchData: |
+      {
+        "spec": {
+          "template": {
+            "spec": {
+              "containers": [
+                {
+                  "name": "app",
+                  "image": "new-registry.io/myapp:v1"
+                }
+              ]
+            }
+          }
+        }
+      }
+```
+
+Create the modifier ConfigMap and reference it during restore:
+
+```bash
+kubectl create configmap image-registry-modifier \
+    --from-file resource-modifier.yaml \
+    -n velero \
+    --context target-cluster
+
+velero restore create production-restore-with-modifier \
+    --from-backup production-migration \
+    --resource-modifier-configmap image-registry-modifier \
+    --context target-cluster
 ```
 
 ## Migrating Persistent Volumes
 
-For cross-cloud migrations where volume snapshots don't work, use Velero with Restic:
+For cross-cloud migrations where volume snapshots don't work, use Velero File System Backup:
 
 ```bash
-# Install Velero with Restic
+# Install Velero with node-agent for File System Backup
 velero install \
     --provider aws \
-    --plugins velero/velero-plugin-for-aws:v1.8.0 \
+    --plugins velero/velero-plugin-for-aws:v1.14.0 \
     --bucket velero-backups-migration \
     --backup-location-config region=us-east-1 \
-    --use-restic \
+    --use-volume-snapshots=false \
+    --use-node-agent \
     --context source-cluster
 ```
 
-Annotate pods to backup volumes with Restic:
+Annotate pods to backup volumes with File System Backup:
 
 ```yaml
 apiVersion: apps/v1
@@ -283,12 +309,12 @@ spec:
           claimName: myapp-config
 ```
 
-Create backup with Restic:
+Create backup with File System Backup:
 
 ```bash
 velero backup create myapp-with-volumes \
     --include-namespaces production \
-    --default-volumes-to-restic \
+    --default-volumes-to-fs-backup \
     --context source-cluster
 ```
 
@@ -336,7 +362,7 @@ fi
 
 echo "Checking pod readiness..."
 TOTAL_PODS=$(kubectl get pods -n $NAMESPACE --context $TARGET_CONTEXT --no-headers | wc -l)
-READY_PODS=$(kubectl get pods -n $NAMESPACE --context $TARGET_CONTEXT --field-selector=status.phase=Running --no-headers | wc -l)
+READY_PODS=$(kubectl get pods -n $NAMESPACE --context $TARGET_CONTEXT -o jsonpath='{range .items[?(@.status.phase=="Running")]}{range .status.conditions[?(@.type=="Ready")]}{.status}{"\n"}{end}{end}' | grep -c '^True$')
 
 echo "Ready pods: $READY_PODS / $TOTAL_PODS"
 
