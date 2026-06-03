@@ -25,7 +25,7 @@ There are three main reasons to create cross-region replicas:
 Before creating a cross-region replica, you need:
 
 - The source instance must have automated backups enabled (backup retention > 0)
-- The source must not be encrypted with the default RDS encryption key if you want encrypted replicas in another region (use a custom KMS key instead)
+- If you want the cross-region replica encrypted, the source instance must already be encrypted
 - VPC security groups in the destination region that allow the replica to function
 - A DB subnet group in the destination region
 
@@ -43,7 +43,6 @@ aws rds create-db-instance-read-replica \
   --region eu-west-1 \
   --db-subnet-group-name eu-db-subnet-group \
   --vpc-security-group-ids sg-eu-db-123 \
-  --storage-encrypted \
   --kms-key-id arn:aws:kms:eu-west-1:123456789012:key/abc-def-123 \
   --no-publicly-accessible \
   --tags Key=Role,Value=cross-region-replica Key=SourceRegion,Value=us-east-1
@@ -76,19 +75,17 @@ graph LR
 2. Transaction logs are shipped across regions over an encrypted link
 3. The replica applies the transaction logs asynchronously
 
-The cross-region network adds latency to replication. Expect replica lag of 1-5 seconds under normal conditions, compared to sub-second lag for same-region replicas. During write-heavy periods, lag can be higher.
+The cross-region network adds latency to replication. Expect higher replica lag than same-region replicas, and monitor the actual lag for your workload and region pair. During write-heavy periods, lag can be higher.
 
 ## Encryption Considerations
 
 Cross-region replicas with encryption require careful KMS key management.
 
-**If the source is unencrypted**: You can create an encrypted cross-region replica by specifying a KMS key in the destination region.
+**If the source is unencrypted**: You can't create an encrypted cross-region replica directly. Create an encrypted copy of the database first, then create the encrypted replica from that encrypted source.
 
-**If the source is encrypted with a custom KMS key**: You must specify a KMS key in the destination region. The source key is used to decrypt the snapshot during initial sync, and the destination key encrypts the replica.
+**If the source is encrypted**: You must specify a KMS key in the destination region. KMS keys are region-specific, so the replica uses a destination-region key rather than the source-region key.
 
-**If the source is encrypted with the default RDS key**: You cannot create a cross-region replica. The default RDS key is region-specific and can't be shared. You'll need to migrate to a custom KMS key first.
-
-This script migrates an RDS instance from the default key to a custom KMS key.
+This script creates an encrypted copy of an existing RDS instance by copying a snapshot with a KMS key.
 
 ```bash
 # Step 1: Create a custom KMS key
@@ -154,13 +151,9 @@ aws cloudwatch put-metric-alarm \
 
 ## Data Transfer Costs
 
-Cross-region replication incurs data transfer charges for the data sent between regions. The cost depends on the regions involved:
+Cross-region replication incurs data transfer charges for the data sent between regions. The cost depends on the regions involved and can change over time, so check the current Amazon RDS pricing page for the exact source-to-destination region pair.
 
-- US regions to US regions: ~$0.02/GB
-- US to Europe: ~$0.02/GB
-- US to Asia Pacific: ~$0.09/GB
-
-For a database with 10 GB of daily write volume, that's roughly $0.20-$0.90/day depending on regions. Not huge, but it adds up for write-heavy workloads.
+For a database with 10 GB of daily write volume, multiply 10 GB by the current cross-region data transfer rate for your region pair. Not huge for small write volumes, but it adds up for write-heavy workloads.
 
 ## Disaster Recovery with Cross-Region Replicas
 
@@ -170,7 +163,7 @@ This script promotes the cross-region replica and reconfigures it for production
 
 ```python
 import boto3
-import time
+from datetime import datetime, timedelta, timezone
 
 def failover_to_region(replica_id, replica_region):
     rds = boto3.client('rds', region_name=replica_region)
@@ -181,14 +174,15 @@ def failover_to_region(replica_id, replica_region):
         Namespace='AWS/RDS',
         MetricName='ReplicaLag',
         Dimensions=[{'Name': 'DBInstanceIdentifier', 'Value': replica_id}],
-        StartTime=time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime(time.time() - 300)),
-        EndTime=time.strftime('%Y-%m-%dT%H:%M:%S', time.gmtime()),
+        StartTime=datetime.now(timezone.utc) - timedelta(minutes=5),
+        EndTime=datetime.now(timezone.utc),
         Period=60,
         Statistics=['Average']
     )
 
     if lag['Datapoints']:
-        avg_lag = lag['Datapoints'][-1]['Average']
+        latest = max(lag['Datapoints'], key=lambda point: point['Timestamp'])
+        avg_lag = latest['Average']
         print(f"Current replica lag: {avg_lag:.1f} seconds")
         print(f"Potential data loss: up to {avg_lag:.1f} seconds of transactions")
 
@@ -249,9 +243,9 @@ Route 53 health checks can detect when the primary region is down and automatica
 
 Be aware of these cross-region replica limitations:
 
-1. **No cascading replicas**: You can't create a replica of a cross-region replica
-2. **Engine support**: MySQL, MariaDB, PostgreSQL, and Oracle support cross-region replicas. SQL Server does not.
-3. **Maximum replicas**: You can have up to 5 cross-region replicas per source instance
+1. **Cascading replicas are engine-specific**: MySQL, MariaDB, and PostgreSQL 14.1 or higher support some cascading cross-region patterns. Db2, SQL Server, Oracle, and PostgreSQL versions lower than 14.1 require the cross-region replica source to be a primary instance.
+2. **Engine support**: Db2, MySQL, MariaDB, PostgreSQL, Oracle, and SQL Server support cross-region replicas, with version and edition requirements that vary by engine.
+3. **Maximum replicas**: A DB instance can have up to 15 read replicas, except Db2 which supports up to 3, and Oracle and SQL Server which support up to 5. For cross-region replicas, RDS can't guarantee more than 5 cross-region read replica DB instances because of source VPC ACL limits.
 4. **Replica lag**: Will always be higher than same-region due to network latency
 5. **No automatic failover**: Unlike Multi-AZ, cross-region failover requires manual promotion
 
