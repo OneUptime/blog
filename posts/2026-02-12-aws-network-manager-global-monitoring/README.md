@@ -19,11 +19,14 @@ Network Manager lives in the AWS console under VPC > Network Manager. Everything
 Create a global network and start registering resources:
 
 ```bash
+NETWORK_MANAGER_REGION="us-west-2"
+
 # Create the global network
 
 aws networkmanager create-global-network \
   --description "Production Network Monitoring" \
-  --tags Key=ManagedBy,Value=NetworkOps
+  --tags Key=ManagedBy,Value=NetworkOps \
+  --region $NETWORK_MANAGER_REGION
 
 # Save the global network ID
 GLOBAL_NETWORK_ID="global-network-0123456789abcdef0"
@@ -31,15 +34,18 @@ GLOBAL_NETWORK_ID="global-network-0123456789abcdef0"
 # Register your transit gateways
 aws networkmanager register-transit-gateway \
   --global-network-id $GLOBAL_NETWORK_ID \
-  --transit-gateway-arn arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-abc123
+  --transit-gateway-arn arn:aws:ec2:us-east-1:123456789012:transit-gateway/tgw-abc123 \
+  --region $NETWORK_MANAGER_REGION
 
 aws networkmanager register-transit-gateway \
   --global-network-id $GLOBAL_NETWORK_ID \
-  --transit-gateway-arn arn:aws:ec2:eu-west-1:123456789012:transit-gateway/tgw-def456
+  --transit-gateway-arn arn:aws:ec2:eu-west-1:123456789012:transit-gateway/tgw-def456 \
+  --region $NETWORK_MANAGER_REGION
 
 aws networkmanager register-transit-gateway \
   --global-network-id $GLOBAL_NETWORK_ID \
-  --transit-gateway-arn arn:aws:ec2:ap-southeast-1:123456789012:transit-gateway/tgw-ghi789
+  --transit-gateway-arn arn:aws:ec2:ap-southeast-1:123456789012:transit-gateway/tgw-ghi789 \
+  --region $NETWORK_MANAGER_REGION
 ```
 
 Registration takes a minute or two. Once complete, Network Manager automatically discovers all the attachments, route tables, and peering connections associated with each transit gateway.
@@ -93,7 +99,8 @@ Add your physical locations and networking equipment:
 aws networkmanager create-site \
   --global-network-id $GLOBAL_NETWORK_ID \
   --description "Company Headquarters" \
-  --location Latitude=37.7749,Longitude=-122.4194,Address="San Francisco, CA"
+  --location Latitude=37.7749,Longitude=-122.4194,Address="San Francisco, CA" \
+  --region $NETWORK_MANAGER_REGION
 
 SITE_ID="site-abc123"
 
@@ -104,7 +111,8 @@ aws networkmanager create-device \
   --description "Edge Router" \
   --type "Router" \
   --vendor "Cisco" \
-  --model "ASR 1001-X"
+  --model "ASR 1001-X" \
+  --region $NETWORK_MANAGER_REGION
 
 DEVICE_ID="device-xyz789"
 
@@ -114,8 +122,9 @@ aws networkmanager create-link \
   --site-id $SITE_ID \
   --description "Primary Internet 500Mbps" \
   --type "Broadband" \
-  --bandwidth UploadSpeedMbps=500,DownloadSpeedMbps=500 \
-  --provider "Comcast Business"
+  --bandwidth UploadSpeed=500,DownloadSpeed=500 \
+  --provider "Comcast Business" \
+  --region $NETWORK_MANAGER_REGION
 
 LINK_ID="link-def456"
 
@@ -124,7 +133,8 @@ aws networkmanager associate-customer-gateway \
   --global-network-id $GLOBAL_NETWORK_ID \
   --customer-gateway-arn arn:aws:ec2:us-east-1:123456789012:customer-gateway/cgw-abc123 \
   --device-id $DEVICE_ID \
-  --link-id $LINK_ID
+  --link-id $LINK_ID \
+  --region $NETWORK_MANAGER_REGION
 ```
 
 Now the topology map shows your headquarters as a physical location with a device connected through a link to your VPN tunnel. Much more useful than just seeing a floating customer gateway.
@@ -150,18 +160,21 @@ aws events put-rule \
     "source": ["aws.networkmanager"],
     "detail-type": [
       "Network Manager Topology Change",
+      "Network Manager Routing Update",
       "Network Manager Status Update"
     ]
   }' \
-  --description "Catch all Network Manager events"
+  --description "Catch all Network Manager events" \
+  --region $NETWORK_MANAGER_REGION
 
 # Route events to SNS
 aws events put-targets \
   --rule "network-manager-events" \
   --targets '[{
     "Id": "sns-target",
-    "Arn": "arn:aws:sns:us-east-1:123456789012:network-alerts"
-  }]'
+    "Arn": "arn:aws:sns:us-west-2:123456789012:network-alerts"
+  }]' \
+  --region $NETWORK_MANAGER_REGION
 ```
 
 For more sophisticated handling, route events to a Lambda function that can parse the event, determine severity, and take action.
@@ -177,11 +190,13 @@ sns_client = boto3.client('sns')
 def handler(event, context):
     detail = event.get('detail', {})
     detail_type = event.get('detail-type', '')
+    change_type = detail.get('changeType', '')
+    resources = event.get('resources', [])
 
     # Determine severity based on event type
-    if 'status' in detail and detail['status'] == 'DOWN':
+    if change_type.endswith('DOWN'):
         severity = 'CRITICAL'
-    elif 'status' in detail and detail['status'] == 'IMPAIRED':
+    elif detail_type in ('Network Manager Routing Update', 'Network Manager Service Advisory'):
         severity = 'WARNING'
     else:
         severity = 'INFO'
@@ -189,8 +204,9 @@ def handler(event, context):
     message = {
         'severity': severity,
         'event_type': detail_type,
-        'resource': detail.get('resourceArn', 'Unknown'),
-        'status': detail.get('status', 'Unknown'),
+        'change_type': change_type or 'Unknown',
+        'resource': resources[-1] if resources else 'Unknown',
+        'description': detail.get('changeDescription', 'Unknown'),
         'region': event.get('region', 'Unknown'),
         'timestamp': event.get('time', 'Unknown')
     }
@@ -198,14 +214,14 @@ def handler(event, context):
     # Only page on critical events
     if severity == 'CRITICAL':
         sns_client.publish(
-            TopicArn='arn:aws:sns:us-east-1:123456789012:pagerduty-integration',
+            TopicArn='arn:aws:sns:us-west-2:123456789012:pagerduty-integration',
             Subject=f'CRITICAL: Network Event - {detail_type}',
             Message=json.dumps(message, indent=2)
         )
 
     # Log all events
     sns_client.publish(
-        TopicArn='arn:aws:sns:us-east-1:123456789012:network-events-log',
+        TopicArn='arn:aws:sns:us-west-2:123456789012:network-events-log',
         Subject=f'{severity}: {detail_type}',
         Message=json.dumps(message, indent=2)
     )
@@ -215,7 +231,7 @@ def handler(event, context):
 
 ## Using the Route Analyzer
 
-The route analyzer is one of Network Manager's most practical tools. It lets you test reachability between any two points in your network without sending actual traffic. This is incredibly useful for validating routing changes, troubleshooting connectivity issues, and verifying that security policies are working as expected.
+The route analyzer is one of Network Manager's most practical tools. It lets you test reachability between any two points in your network without sending actual traffic. This is incredibly useful for validating transit gateway routing changes, troubleshooting connectivity issues, and verifying that transit gateway route tables are working as expected.
 
 Analyze a route between two VPCs:
 
@@ -230,12 +246,15 @@ aws networkmanager start-route-analysis \
   --destination '{
     "TransitGatewayAttachmentArn": "arn:aws:ec2:eu-west-1:123456789012:transit-gateway-attachment/tgw-attach-def456",
     "IpAddress": "10.2.1.10"
-  }'
+  }' \
+  --include-return-path \
+  --region $NETWORK_MANAGER_REGION
 
 # Get the results
 aws networkmanager get-route-analysis \
   --global-network-id $GLOBAL_NETWORK_ID \
-  --route-analysis-id ra-abc123
+  --route-analysis-id ra-abc123 \
+  --region $NETWORK_MANAGER_REGION
 ```
 
 The output shows the full path: which transit gateway route tables are consulted, which attachments are traversed, and whether the route exists in both directions. If there's a problem - maybe a missing route or a blackhole - the analyzer tells you exactly where the path breaks.
