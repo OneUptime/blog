@@ -123,7 +123,7 @@ except s3.exceptions.NoSuchBucket:
 sqs = boto3.resource('sqs')
 try:
     queue = sqs.get_queue_by_name(QueueName='nonexistent-queue')
-except boto3.client('sqs').exceptions.QueueDoesNotExist:
+except sqs.meta.client.exceptions.QueueDoesNotExist:
     print("Queue not found")
 ```
 
@@ -212,17 +212,17 @@ result = call_with_retry(
 
 ## Configuring Built-In Retries
 
-Boto3 has built-in retry behavior that you can configure. The default mode retries a few times, but the "adaptive" mode is smarter about throttling.
+Boto3 has built-in retry behavior that you can configure. If you don't configure retries, Boto3 uses the legacy retry mode. The "adaptive" mode adds client-side rate limiting for throttling, but AWS marks it as experimental.
 
 ```python
 import boto3
 from botocore.config import Config
 
-# Standard mode - retries up to 3 times (default)
+# Standard mode - defaults to 3 total attempts unless overridden
 config_standard = Config(
     retries={
         'mode': 'standard',
-        'max_attempts': 5
+        'total_max_attempts': 5
     }
 )
 
@@ -230,7 +230,7 @@ config_standard = Config(
 config_adaptive = Config(
     retries={
         'mode': 'adaptive',
-        'max_attempts': 10
+        'total_max_attempts': 10
     }
 )
 
@@ -245,6 +245,7 @@ For larger projects, a decorator keeps error handling consistent across your cod
 ```python
 import functools
 import logging
+import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 
 logger = logging.getLogger(__name__)
