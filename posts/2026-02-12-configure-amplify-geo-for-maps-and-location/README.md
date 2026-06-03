@@ -8,7 +8,7 @@ Description: Add interactive maps, geocoding, and location search to your applic
 
 ---
 
-Adding maps and location features to a web or mobile app used to mean reaching for Google Maps or Mapbox, dealing with API keys, and worrying about per-request pricing at scale. Amplify Geo offers an alternative backed by Amazon Location Service. You get interactive maps, place search (geocoding), reverse geocoding, and route calculation, all integrated with the Amplify ecosystem and your existing Cognito authentication.
+Adding maps and location features to a web or mobile app used to mean reaching for Google Maps or Mapbox, dealing with API keys, and worrying about per-request pricing at scale. Amplify Geo offers an alternative backed by Amazon Location Service. You get interactive maps, place search (geocoding), reverse geocoding, and geofence management, all integrated with the Amplify ecosystem and your existing Cognito authentication.
 
 This guide shows how to set up Amplify Geo, render maps, search for places, and add location-based features to your application.
 
@@ -19,8 +19,8 @@ Amplify Geo wraps Amazon Location Service and gives you:
 - **Maps**: Render interactive maps with multiple styles (streets, satellite, navigation)
 - **Place search**: Search for addresses, businesses, and points of interest
 - **Geocoding**: Convert addresses to coordinates and coordinates to addresses
-- **Geofencing**: Define geographic boundaries and detect when devices enter or leave them
-- **Route calculation**: Calculate routes between two points
+- **Geofencing**: Define and manage geographic boundaries
+- **Amazon Location SDK access**: Call Amazon Location Service APIs, such as routes and trackers, when you need functionality outside the Amplify Geo APIs
 
 ```mermaid
 flowchart TD
@@ -28,13 +28,13 @@ flowchart TD
     GEO --> MAPS[Map Display]
     GEO --> SEARCH[Place Search]
     GEO --> GEOCODE[Geocoding]
-    GEO --> ROUTE[Route Calculation]
+    GEO --> SDK[Amazon Location SDK]
     GEO --> FENCE[Geofencing]
 
     MAPS --> ALS[Amazon Location Service]
     SEARCH --> ALS
     GEOCODE --> ALS
-    ROUTE --> ALS
+    SDK --> ALS
     FENCE --> ALS
 ```
 
@@ -84,10 +84,10 @@ For React applications, install the MapLibre GL library that Amplify Geo uses fo
 
 ```bash
 # Install Amplify Geo and MapLibre GL
-npm install aws-amplify @aws-amplify/geo maplibre-gl-js-amplify maplibre-gl
+npm install aws-amplify @aws-amplify/geo maplibre-gl-js-amplify maplibre-gl@2
 
-# If using React, also install the React wrapper
-npm install react-map-gl
+# If using Amplify UI's React MapView component, also install the React wrapper
+npm install react-map-gl maplibre-gl@2
 ```
 
 ## Step 3: Configure Amplify Geo
@@ -95,33 +95,9 @@ npm install react-map-gl
 ```typescript
 // src/amplify-config.ts
 import { Amplify } from 'aws-amplify';
+import amplifyconfig from './amplifyconfiguration.json';
 
-Amplify.configure({
-  Auth: {
-    Cognito: {
-      userPoolId: 'us-east-1_XXXXX',
-      userPoolClientId: 'xxxxxxxx',
-      identityPoolId: 'us-east-1:xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx',
-    },
-  },
-  Geo: {
-    AmazonLocationService: {
-      maps: {
-        items: {
-          myAppMap: {
-            style: 'VectorEsriStreets',
-          },
-        },
-        default: 'myAppMap',
-      },
-      search_indices: {
-        items: ['myAppSearch'],
-        default: 'myAppSearch',
-      },
-      region: 'us-east-1',
-    },
-  },
-});
+Amplify.configure(amplifyconfig);
 ```
 
 ## Step 4: Render a Map
@@ -215,7 +191,7 @@ function PlaceSearch({ onResultSelect }: { onResultSelect: (coords: [number, num
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
           placeholder="Search for a place..."
           style={{ flex: 1, padding: '8px' }}
         />
@@ -257,13 +233,13 @@ Convert coordinates to addresses. This is useful when users tap on the map and y
 import { Geo } from '@aws-amplify/geo';
 
 async function reverseGeocode(latitude: number, longitude: number) {
-  const results = await Geo.searchByCoordinates([longitude, latitude], {
+  const result = await Geo.searchByCoordinates([longitude, latitude], {
     maxResults: 1,
   });
 
-  if (results.length > 0) {
-    console.log('Address:', results[0].label);
-    return results[0].label;
+  if (result?.label) {
+    console.log('Address:', result.label);
+    return result.label;
   }
 
   return null;
@@ -354,6 +330,8 @@ Combine the browser's Geolocation API with Amplify Geo to show the user's positi
 
 ```typescript
 // Track and display the user's current location
+import { drawPoints } from 'maplibre-gl-js-amplify';
+
 function trackUserLocation(map: any) {
   if (!navigator.geolocation) {
     console.error('Geolocation is not supported by this browser');
@@ -367,10 +345,10 @@ function trackUserLocation(map: any) {
 
       // Update marker on map
       const point = {
-        type: 'Feature',
+        type: 'Feature' as const,
         geometry: {
-          type: 'Point',
-          coordinates: [longitude, latitude],
+          type: 'Point' as const,
+          coordinates: [longitude, latitude] as [number, number],
         },
         properties: {
           title: 'Your Location',
@@ -414,7 +392,7 @@ Amazon Location Service offers several map styles:
 | VectorEsriNavigation | Esri | Optimized for navigation |
 | VectorEsriDarkGrayCanvas | Esri | Dark theme for dashboards |
 | VectorHereExplore | HERE | Detailed street map |
-| VectorHereBerlin | HERE | Clean, modern style |
+| VectorHereContrast | HERE | High-contrast Berlin style |
 
 Switch styles by updating the map configuration or creating multiple map resources.
 
@@ -427,7 +405,7 @@ Amazon Location Service pricing is based on usage:
 - Reverse geocoding: Per request
 - Route calculation: Per request
 
-For most applications, costs are lower than comparable Google Maps pricing, especially at scale. The first 3 months include a generous free tier.
+For many applications, costs can be lower than comparable Google Maps pricing, especially at scale. Amazon Location Service offers a free trial for the first 3 months of usage, subject to usage quotas.
 
 ## Wrapping Up
 
