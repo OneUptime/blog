@@ -210,7 +210,7 @@ Resources:
     Properties:
       Subnets: !Split
         - ','
-        - !ImportValue
+        - Fn::ImportValue:
             !Sub '${NetworkStackName}-PublicSubnets'
       SecurityGroups:
         - !Ref ALBSecurityGroup
@@ -219,8 +219,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: ALB Security Group
-      VpcId: !ImportValue
-        !Sub '${NetworkStackName}-VpcId'
+      VpcId:
+        Fn::ImportValue:
+          !Sub '${NetworkStackName}-VpcId'
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 443
@@ -231,8 +232,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Application Security Group
-      VpcId: !ImportValue
-        !Sub '${NetworkStackName}-VpcId'
+      VpcId:
+        Fn::ImportValue:
+          !Sub '${NetworkStackName}-VpcId'
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8080
