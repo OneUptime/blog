@@ -95,7 +95,7 @@ aws datazone create-project-membership \
     --domain-identifier "dzd_abc123" \
     --project-identifier "proj_analytics123" \
     --member '{"userIdentifier": "arn:aws:iam::123456789012:user/analyst-jane"}' \
-    --designation CONTRIBUTOR
+    --designation PROJECT_CONTRIBUTOR
 ```
 
 ## Setting Up Environments
@@ -129,6 +129,7 @@ This is where the data catalog starts to come together. You register a data sour
 aws datazone create-data-source \
     --domain-identifier "dzd_abc123" \
     --project-identifier "proj_dataeng123" \
+    --environment-identifier "env_dataeng123" \
     --name "sales-data-source" \
     --type "GLUE" \
     --configuration '{
@@ -213,21 +214,23 @@ aws datazone accept-subscription-request \
 
 Once approved, DataZone automatically grants the necessary permissions - Lake Formation grants, Redshift shares, or S3 policies - depending on the environment type.
 
-## Automating Governance with Approval Rules
+## Automating Governance with Subscription Settings
 
-For commonly accessed datasets, you can set up auto-approval rules so that certain projects don't need manual approval:
+For commonly accessed datasets, you can disable subscription approval when publishing an asset so incoming subscription requests for that asset are automatically approved. Requests are also automatically approved when the requester is an owner or contributor in both the publishing project and the subscribing project.
 
 ```bash
-# Create a subscription grant for automatic approvals
-# Any project in the domain can auto-access public reference data
+# Create a subscription target for automatic grant fulfillment after approval
 aws datazone create-subscription-target \
     --domain-identifier "dzd_abc123" \
     --environment-identifier "env_abc123" \
-    --name "auto-approve-reference-data" \
-    --type "DEFAULT" \
-    --subscribed-listing-asset-scope '{
-        "asset-scope": "ALL_ASSETS"
-    }'
+    --name "lake-formation-grants" \
+    --type "GlueSubscriptionTargetType" \
+    --subscription-target-config '[{"formName": "GlueSubscriptionTargetConfigForm", "content": "{\"databaseName\":\"sales_database\"}"}]' \
+    --authorized-principals "arn:aws:iam::123456789012:role/AnalyticsProjectRole" \
+    --manage-access-role "arn:aws:iam::123456789012:role/DataZoneManageAccessRole" \
+    --applicable-asset-types "GlueTableAssetType" \
+    --provider "Amazon DataZone" \
+    --subscription-grant-creation-mode AUTOMATIC
 ```
 
 ## Monitoring Your Data Governance
@@ -239,18 +242,14 @@ You should track a few things to make sure your governance setup is working:
 - Which datasets are most accessed
 - Whether metadata is being maintained
 
-DataZone integrates with CloudWatch, so you can set up dashboards and alarms:
+DataZone can be monitored with CloudWatch, CloudWatch Logs, EventBridge, and CloudTrail. For operational checks on data source discovery, you can query DataZone data source runs directly:
 
 ```bash
-# Get metrics on data source runs to ensure discovery is working
-aws cloudwatch get-metric-statistics \
-    --namespace "AWS/DataZone" \
-    --metric-name "DataSourceRunsCompleted" \
-    --dimensions Name=DomainId,Value=dzd_abc123 \
-    --start-time 2026-02-05T00:00:00Z \
-    --end-time 2026-02-12T00:00:00Z \
-    --period 86400 \
-    --statistics Sum
+# List recent data source runs to ensure discovery is working
+aws datazone list-data-source-runs \
+    --domain-identifier "dzd_abc123" \
+    --data-source-identifier "ds_abc123" \
+    --status SUCCESS
 ```
 
 Setting up DataZone is an investment, but it pays off quickly once your data team grows beyond a few people. Instead of Slack messages asking "who owns the sales table?" and "can I get access to the revenue data?", you have a structured catalog with approval workflows. It's not just about compliance - it's about making data actually usable. For more on controlling data access, see how [AWS Lake Formation tag-based access control](https://oneuptime.com/blog/post/2026-02-12-aws-lake-formation-tag-based-access-control/view) can complement your DataZone setup.
