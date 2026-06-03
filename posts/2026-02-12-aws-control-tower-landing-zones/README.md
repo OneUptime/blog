@@ -81,9 +81,13 @@ After setup, verify everything is running.
 
 ```bash
 # Check the landing zone status
+LANDING_ZONE_ARN=$(aws controltower list-landing-zones \
+  --query "landingZones[0].arn" \
+  --output text)
 
-aws controltower list-landing-zones \
-  --query "landingZones[].{Id:identifier, Status:status}" \
+aws controltower get-landing-zone \
+  --landing-zone-identifier "$LANDING_ZONE_ARN" \
+  --query "landingZone.{Arn:arn, Status:status, Drift:driftStatus.status, Version:version}" \
   --output table
 
 # List organizational units
@@ -123,9 +127,22 @@ aws organizations create-organizational-unit \
 Then register these OUs with Control Tower so guardrails get applied.
 
 ```bash
-# Register an OU with Control Tower
-aws controltower register-organizational-unit \
-  --organizational-unit-identifier "ou-abc1-12345678"
+# Get the target OU ARN
+OU_ARN=$(aws organizations describe-organizational-unit \
+  --organizational-unit-id "ou-abc1-12345678" \
+  --query "OrganizationalUnit.Arn" \
+  --output text)
+
+# Get the AWS Control Tower baseline ARN
+BASELINE_ARN=$(aws controltower list-baselines \
+  --query "baselines[?name=='AWSControlTowerBaseline'].arn | [0]" \
+  --output text)
+
+# Register the OU by enabling the AWSControlTowerBaseline
+aws controltower enable-baseline \
+  --baseline-identifier "$BASELINE_ARN" \
+  --baseline-version "4.0" \
+  --target-identifier "$OU_ARN"
 ```
 
 ## Step 3: Enable Guardrails
@@ -138,7 +155,7 @@ Guardrails are pre-packaged governance rules. They come in two types:
 Some guardrails are mandatory (always on), some are strongly recommended, and others are elective.
 
 ```bash
-# List available guardrails (controls)
+# List enabled guardrails (controls)
 aws controltower list-enabled-controls \
   --target-identifier "arn:aws:organizations::123456789:ou/o-abc/ou-abc1-12345678" \
   --query "enabledControls[].{Control:controlIdentifier, Status:statusSummary.status}" \
@@ -153,7 +170,7 @@ aws controltower enable-control \
 Here are some guardrails you should definitely enable:
 
 ```bash
-# Disallow public read access to S3 buckets
+# Detect whether S3 account-level Block Public Access settings are disabled
 aws controltower enable-control \
   --control-identifier "arn:aws:controltower:us-east-1::control/AWS-GR_S3_ACCOUNT_LEVEL_PUBLIC_ACCESS_BLOCKS_PERIODIC" \
   --target-identifier "arn:aws:organizations::123456789:ou/o-abc/ou-prod-123"
@@ -163,7 +180,7 @@ aws controltower enable-control \
   --control-identifier "arn:aws:controltower:us-east-1::control/AWS-GR_ENCRYPTED_VOLUMES" \
   --target-identifier "arn:aws:organizations::123456789:ou/o-abc/ou-prod-123"
 
-# Disallow internet connection through RDP
+# Detect unrestricted ingress to common ports, including RDP
 aws controltower enable-control \
   --control-identifier "arn:aws:controltower:us-east-1::control/AWS-GR_RESTRICTED_COMMON_PORTS" \
   --target-identifier "arn:aws:organizations::123456789:ou/o-abc/ou-prod-123"
@@ -275,7 +292,7 @@ Resources:
     Type: AWS::SecurityHub::Hub
     Properties: {}
 
-  # Require encryption on new S3 buckets
+  # Detect S3 buckets without server-side encryption
   S3BucketEncryptionRule:
     Type: AWS::Config::ConfigRule
     Properties:
@@ -294,9 +311,14 @@ Control Tower provides a dashboard, but you should also monitor the health of yo
 aws configservice get-compliance-summary-by-resource-type \
   --query "ComplianceSummariesByResourceType[?ComplianceSummary.NonCompliantResourceCount.CappedCount > \`0\`]"
 
-# List drift in your landing zone
-aws controltower list-landing-zone-operations \
-  --query "landingZoneOperations[?status!='SUCCEEDED']" \
+# Check landing zone drift status
+LANDING_ZONE_ARN=$(aws controltower list-landing-zones \
+  --query "landingZones[0].arn" \
+  --output text)
+
+aws controltower get-landing-zone \
+  --landing-zone-identifier "$LANDING_ZONE_ARN" \
+  --query "landingZone.{Status:status, Drift:driftStatus.status, Version:version}" \
   --output table
 ```
 
