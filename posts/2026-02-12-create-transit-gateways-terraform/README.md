@@ -30,7 +30,7 @@ graph TD
 
 The Transit Gateway itself is simple to create. The configuration options control its default behavior.
 
-This creates a Transit Gateway with auto-accept for attachments within the same account:
+This creates a Transit Gateway with auto-accept for shared attachment requests:
 
 ```hcl
 resource "aws_ec2_transit_gateway" "main" {
@@ -58,7 +58,7 @@ Key settings explained:
 
 ## Attaching VPCs
 
-Each VPC connects to the Transit Gateway through an attachment. The attachment specifies which subnets in the VPC should have routes to the Transit Gateway.
+Each VPC connects to the Transit Gateway through an attachment. The attachment specifies which subnet in each Availability Zone the Transit Gateway uses as an entry and exit point for traffic.
 
 This attaches three VPCs to the Transit Gateway:
 
@@ -148,6 +148,8 @@ The default route table allows all-to-all communication. For security, you might
 
 This creates separate route tables to isolate staging from production while both can reach shared services:
 
+When you manage associations and propagations explicitly, set `default_route_table_association` and `default_route_table_propagation` to `"disable"` on the Transit Gateway, or set `transit_gateway_default_route_table_association` and `transit_gateway_default_route_table_propagation` to `false` on the VPC attachments. Otherwise, Terraform will try to manage the same association or propagation in two places.
+
 ```hcl
 # Route table for production - can reach shared services only
 resource "aws_ec2_transit_gateway_route_table" "production" {
@@ -226,7 +228,7 @@ This shares the Transit Gateway with another AWS account:
 ```hcl
 resource "aws_ram_resource_share" "transit_gateway" {
   name                      = "transit-gateway-share"
-  allow_external_principals = true  # Required for cross-account sharing
+  allow_external_principals = true  # Required for accounts outside your AWS Organization
 
   tags = {
     Name = "transit-gateway-share"
