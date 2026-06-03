@@ -342,7 +342,7 @@ Test your stack with Jest:
 ```typescript
 // test/ec2-cdk-project.test.ts
 import * as cdk from 'aws-cdk-lib';
-import { Template } from 'aws-cdk-lib/assertions';
+import { Match, Template } from 'aws-cdk-lib/assertions';
 import { Ec2CdkProjectStack } from '../lib/ec2-cdk-project-stack';
 
 test('EC2 Instance Created', () => {
@@ -357,13 +357,13 @@ test('EC2 Instance Created', () => {
 
   // Verify security group allows HTTP
   template.hasResourceProperties('AWS::EC2::SecurityGroup', {
-    SecurityGroupIngress: [
-      {
+    SecurityGroupIngress: Match.arrayWith([
+      Match.objectLike({
         IpProtocol: 'tcp',
         FromPort: 80,
         ToPort: 80,
-      },
-    ],
+      }),
+    ]),
   });
 });
 ```
