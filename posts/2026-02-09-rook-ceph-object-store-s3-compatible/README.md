@@ -84,7 +84,7 @@ spec:
     parameters:
       compression_mode: aggressive
 
-  # Enable deletion lifecycle policies
+  # Remove backing pools when the object store is deleted
   preservePoolsOnDelete: false
 ```
 
@@ -101,27 +101,9 @@ The gateway section creates RGW pods that serve S3 API requests. The metadataPoo
 
 ## Exposing the Object Store
 
-Create a Service and Ingress to access the object store:
+Rook creates a Service named `rook-ceph-rgw-my-store` for the object store. Create an Ingress to access that Service:
 
 ```yaml
-apiVersion: v1
-kind: Service
-metadata:
-  name: rook-ceph-rgw-my-store
-  namespace: rook-ceph
-  labels:
-    app: rook-ceph-rgw
-    rook_object_store: my-store
-spec:
-  ports:
-  - name: http
-    port: 80
-    targetPort: 80
-  selector:
-    app: rook-ceph-rgw
-    rook_object_store: my-store
-  type: ClusterIP
----
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -288,7 +270,7 @@ spec:
     spec:
       containers:
       - name: backup
-        image: python:3.9
+        image: python:3.12
         env:
         - name: S3_ENDPOINT
           value: "http://rook-ceph-rgw-my-store.rook-ceph.svc.cluster.local"
@@ -305,10 +287,14 @@ spec:
         - name: AWS_DEFAULT_REGION
           value: "us-east-1"
         command:
-        - python
+        - sh
         - -c
+        args:
         - |
+          pip install --no-cache-dir boto3
+          python - <<'PY'
           import boto3
+          import os
           import time
           from datetime import datetime
 
@@ -333,6 +319,7 @@ spec:
 
               print(f"Backup created: backup-{timestamp}.txt")
               time.sleep(3600)  # Backup every hour
+          PY
 ```
 
 ## Bucket Lifecycle Policies
@@ -347,7 +334,9 @@ cat > lifecycle.json <<EOF
     {
       "ID": "DeleteOldBackups",
       "Status": "Enabled",
-      "Prefix": "backups/",
+      "Filter": {
+        "Prefix": "backups/"
+      },
       "Expiration": {
         "Days": 30
       }
@@ -355,11 +344,13 @@ cat > lifecycle.json <<EOF
     {
       "ID": "TransitionToArchive",
       "Status": "Enabled",
-      "Prefix": "archive/",
+      "Filter": {
+        "Prefix": "archive/"
+      },
       "Transitions": [
         {
           "Days": 7,
-          "StorageClass": "GLACIER"
+          "StorageClass": "STANDARD_IA"
         }
       ]
     }
@@ -373,6 +364,8 @@ aws s3api put-bucket-lifecycle-configuration \
   --lifecycle-configuration file://lifecycle.json \
   --endpoint-url $S3_ENDPOINT
 ```
+
+Transition rules require a matching RGW storage class configured in Ceph.
 
 ## Monitoring Object Store Health
 
@@ -398,8 +391,9 @@ Monitor performance metrics:
 # Check pool usage
 kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph df
 
-# Monitor RGW operations
-kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph daemonperf client.rgw.my-store
+# Find the RGW daemon name, then monitor RGW operations
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph daemon ls | grep rgw
+kubectl exec -n rook-ceph deploy/rook-ceph-tools -- ceph daemonperf client.rgw.YOUR_DAEMON_NAME
 ```
 
 ## Performance Tuning
@@ -425,7 +419,7 @@ spec:
         cpu: "4000m"
         memory: "8Gi"
     # RGW configuration
-    annotations:
+    rgwCommandFlags:
       rgw_frontends: "beast port=80 num_threads=8"
       rgw_thread_pool_size: "512"
       rgw_max_chunk_size: "4194304"
@@ -488,10 +482,37 @@ aws s3api put-bucket-policy \
 
 ## Multi-Site Object Store Replication
 
-Configure multi-site replication for disaster recovery:
+Configure multi-site replication for disaster recovery. On the primary cluster, create the realm, zone group, zone, and object store:
 
 ```yaml
-# Primary site object store
+apiVersion: ceph.rook.io/v1
+kind: CephObjectRealm
+metadata:
+  name: my-realm
+  namespace: rook-ceph
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectZoneGroup
+metadata:
+  name: my-zonegroup
+  namespace: rook-ceph
+spec:
+  realm: my-realm
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectZone
+metadata:
+  name: primary-zone
+  namespace: rook-ceph
+spec:
+  zoneGroup: my-zonegroup
+  metadataPool:
+    replicated:
+      size: 3
+  dataPool:
+    replicated:
+      size: 3
+---
 apiVersion: ceph.rook.io/v1
 kind: CephObjectStore
 metadata:
@@ -500,16 +521,14 @@ metadata:
 spec:
   gateway:
     instances: 2
-  metadataPool:
-    replicated:
-      size: 3
-  dataPool:
-    replicated:
-      size: 3
   zone:
     name: primary-zone
+```
+
+On the secondary cluster, create the realm keys secret from the primary cluster, then pull the realm and create a secondary zone and object store:
+
+```yaml
 ---
-# Configure realm and zone group for multi-site
 apiVersion: ceph.rook.io/v1
 kind: CephObjectRealm
 metadata:
@@ -526,6 +545,31 @@ metadata:
   namespace: rook-ceph
 spec:
   realm: my-realm
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectZone
+metadata:
+  name: secondary-zone
+  namespace: rook-ceph
+spec:
+  zoneGroup: my-zonegroup
+  metadataPool:
+    replicated:
+      size: 3
+  dataPool:
+    replicated:
+      size: 3
+---
+apiVersion: ceph.rook.io/v1
+kind: CephObjectStore
+metadata:
+  name: secondary-store
+  namespace: rook-ceph
+spec:
+  gateway:
+    instances: 2
+  zone:
+    name: secondary-zone
 ```
 
 ## Backup and Disaster Recovery
