@@ -8,7 +8,7 @@ Description: Deploy multiple machine learning models on a single SageMaker endpo
 
 ---
 
-If you're running more than a handful of models in production, the cost of maintaining a separate endpoint for each one adds up fast. A single ml.m5.xlarge instance costs roughly $270/month. Multiply that by 50 or 100 models and you're looking at serious cloud spend. SageMaker Multi-Model Endpoints (MME) solve this by hosting multiple models on the same infrastructure.
+If you're running more than a handful of models in production, the cost of maintaining a separate endpoint for each one adds up fast. A single ml.m5.xlarge real-time inference instance in us-east-1 costs roughly $170/month before storage and data transfer. Multiply that by 50 or 100 models and you're looking at serious cloud spend. SageMaker Multi-Model Endpoints (MME) solve this by hosting multiple models on the same infrastructure.
 
 This guide walks through setting up and managing multi-model endpoints.
 
@@ -34,7 +34,7 @@ graph TB
 When a request comes in for a specific model:
 1. If the model is already loaded in memory, SageMaker routes the request to it
 2. If the model isn't loaded, SageMaker loads it from S3 (this adds a "cold start" delay)
-3. If memory is full, SageMaker evicts the least recently used model
+3. If memory is full, SageMaker unloads unused cached models to make room
 
 ## When to Use Multi-Model Endpoints
 
@@ -181,12 +181,12 @@ response = runtime.invoke_endpoint(
 
 print(f"Prediction from newly added segment_f: {response['Body'].read().decode()}")
 
-# Remove a model - just delete from S3
+# Remove a model - stop sending requests and delete it from S3
 s3_client.delete_object(
     Bucket=bucket,
     Key=f'{prefix}/segment_c.tar.gz'
 )
-print("Model segment_c removed")
+print("Model segment_c removed from S3")
 ```
 
 ## Listing Available Models
@@ -212,22 +212,19 @@ for model_path in models:
 
 ## Custom Inference Container for MME
 
-If you need custom inference logic, build a container that implements the multi-model server protocol.
+If you need custom inference logic, build a CPU-backed container with the SageMaker Inference Toolkit or Multi Model Server so it implements the multi-model endpoint APIs.
 
 ```python
-# inference.py for a custom MME container
+# model_handler.py logic for an MME-capable container
 
 import os
 import json
 import joblib
 import numpy as np
 
-# Model cache to avoid reloading
-_model_cache = {}
-
 def model_fn(model_dir):
     """Load model from the given directory.
-    SageMaker calls this when a model needs to be loaded."""
+    The multi-model server calls this when a model needs to be loaded."""
     model_path = os.path.join(model_dir, 'model.joblib')
     model = joblib.load(model_path)
     return model
@@ -289,9 +286,11 @@ asg_client.put_scaling_policy(
 
 ## Monitoring MME Performance
 
-Track model-level metrics to understand usage patterns and catch issues.
+Track MME loading metrics to understand usage patterns and catch issues.
 
 ```python
+from datetime import datetime, timezone
+
 cloudwatch = boto3.client('cloudwatch')
 
 # Get model loading latency
@@ -302,14 +301,16 @@ response = cloudwatch.get_metric_statistics(
         {'Name': 'EndpointName', 'Value': 'customer-segments-mme'},
         {'Name': 'VariantName', 'Value': 'AllTraffic'}
     ],
-    StartTime='2026-02-01T00:00:00Z',
-    EndTime='2026-02-12T00:00:00Z',
+    StartTime=datetime(2026, 2, 1, tzinfo=timezone.utc),
+    EndTime=datetime(2026, 2, 12, tzinfo=timezone.utc),
     Period=3600,
     Statistics=['Average', 'Maximum']
 )
 
 for datapoint in sorted(response['Datapoints'], key=lambda x: x['Timestamp']):
-    print(f"{datapoint['Timestamp']}: avg={datapoint['Average']:.0f}ms, max={datapoint['Maximum']:.0f}ms")
+    avg_ms = datapoint['Average'] / 1000
+    max_ms = datapoint['Maximum'] / 1000
+    print(f"{datapoint['Timestamp']}: avg={avg_ms:.0f}ms, max={max_ms:.0f}ms")
 ```
 
 For comprehensive monitoring, connect these metrics to [OneUptime](https://oneuptime.com/blog/post/2026-02-13-aws-cloudwatch-alerting-best-practices/view) to get a unified view across all your ML infrastructure.
