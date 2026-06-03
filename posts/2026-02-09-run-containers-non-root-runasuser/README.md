@@ -48,7 +48,8 @@ spec:
     fsGroup: 2000
   containers:
   - name: app
-    image: nginx:1.25
+    image: busybox:1.36
+    command: ["sh", "-c", "sleep 3600"]
     volumeMounts:
     - name: data
       mountPath: /data
@@ -133,11 +134,12 @@ metadata:
   name: override-root
 spec:
   containers:
-  - name: nginx
-    image: nginx:1.25  # Defaults to root
+  - name: app
+    image: busybox:1.36  # Defaults to root
+    command: ["sh", "-c", "id && sleep 3600"]
     securityContext:
-      runAsUser: 101  # nginx user UID
-      runAsGroup: 101
+      runAsUser: 1000
+      runAsGroup: 1000
       allowPrivilegeEscalation: false
 ```
 
@@ -174,7 +176,7 @@ This Dockerfile:
 - Creates a dedicated non-root user and group
 - Sets correct file ownership using `--chown`
 - Switches to the non-root user with `USER`
-- Exposes a non-privileged port (>1024)
+- Documents a non-privileged port (>1024)
 
 For applications that need to bind to privileged ports (<1024), use capabilities instead:
 
@@ -185,10 +187,12 @@ metadata:
   name: web-server
 spec:
   containers:
-  - name: nginx
-    image: nginx:1.25
+  - name: web
+    image: python:3.12-alpine
+    command: ["python", "-m", "http.server", "80"]
     securityContext:
-      runAsUser: 101
+      runAsUser: 1000
+      runAsGroup: 1000
       runAsNonRoot: true
       capabilities:
         drop:
@@ -199,7 +203,7 @@ spec:
 
 ## Managing File Permissions with fsGroup
 
-The `fsGroup` field ensures that mounted volumes are accessible to non-root users:
+The `fsGroup` field helps make supported mounted volumes accessible to non-root users:
 
 ```yaml
 apiVersion: v1
@@ -223,7 +227,7 @@ spec:
       claimName: app-data
 ```
 
-Kubernetes will change the group ownership of `/data` and its contents to GID 2000, and set the setgid bit so new files inherit this group.
+For volume types that support `fsGroup`, Kubernetes will change the group ownership of `/data` and its contents to GID 2000, and set permissions so new files inherit this group. For CSI volumes, the CSI driver may apply the ownership and permission changes instead.
 
 Verify the permissions:
 
@@ -390,20 +394,40 @@ spec:
       resources: ["pods"]
   validations:
   - expression: |
+      !object.spec.containers.exists(c,
+        has(c.securityContext) &&
+        has(c.securityContext.runAsNonRoot) &&
+        c.securityContext.runAsNonRoot == false
+      ) &&
+      (
+      has(object.spec.securityContext) &&
       has(object.spec.securityContext.runAsNonRoot) &&
       object.spec.securityContext.runAsNonRoot == true ||
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.runAsNonRoot) &&
         c.securityContext.runAsNonRoot == true
       )
-    message: "Containers must explicitly set runAsNonRoot: true"
+      )
+    message: "Pods must set runAsNonRoot: true at the pod level or for every container, with no container override to false"
 
   - expression: |
+      !object.spec.containers.exists(c,
+        has(c.securityContext) &&
+        has(c.securityContext.runAsUser) &&
+        c.securityContext.runAsUser == 0
+      ) &&
+      (
+      has(object.spec.securityContext) &&
+      has(object.spec.securityContext.runAsUser) &&
+      object.spec.securityContext.runAsUser != 0 ||
       object.spec.containers.all(c,
+        has(c.securityContext) &&
         has(c.securityContext.runAsUser) &&
         c.securityContext.runAsUser != 0
       )
-    message: "Containers must not run as UID 0"
+      )
+    message: "Pods must set a non-zero runAsUser at the pod level or for every container, with no container override to UID 0"
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicyBinding
@@ -423,7 +447,7 @@ Verify that containers are running with correct UIDs:
 kubectl exec <pod-name> -- id
 
 # Expected output:
-# uid=1000 gid=1000 groups=2000
+# uid=1000 gid=1000 groups=1000,2000
 
 # Check process ownership
 kubectl exec <pod-name> -- ps aux
@@ -438,7 +462,7 @@ kubectl exec <pod-name> -- ls -la /data
 **Fix**: Test images thoroughly before deploying to production
 
 **Mistake**: Forgetting to set `fsGroup` for shared volumes
-**Fix**: Always specify `fsGroup` when using persistent volumes
+**Fix**: Specify `fsGroup` when shared volume access depends on group permissions and the volume type supports it
 
 **Mistake**: Init containers running as non-root can't set permissions
 **Fix**: Init containers may need to run as root for permission setup
