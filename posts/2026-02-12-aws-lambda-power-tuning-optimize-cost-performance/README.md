@@ -127,18 +127,20 @@ The output looks like:
 
 ```json
 {
-  "power": 512,
-  "cost": 0.0000068,
-  "duration": 245.3,
-  "stateMachine": {
-    "executionCost": 0.00035,
-    "lambdaCost": 0.00068,
-    "visualization": "https://lambda-power-tuning.show/#ABcDEf..."
+  "results": {
+    "power": "512",
+    "cost": 0.0000068,
+    "duration": 245.3,
+    "stateMachine": {
+      "executionCost": 0.00035,
+      "lambdaCost": 0.00068,
+      "visualization": "https://lambda-power-tuning.show/#ABcDEf..."
+    }
   }
 }
 ```
 
-The `visualization` URL opens an interactive chart showing duration and cost at each memory level. The `power` field is the recommended memory size based on your chosen strategy.
+The `visualization` URL opens an interactive chart showing duration and cost at each memory level. The `results.power` field is the recommended memory size based on your chosen strategy.
 
 ## Understanding the Visualization
 
@@ -179,7 +181,7 @@ Finds the memory level with the lowest duration:
 }
 ```
 
-This picks the highest useful memory level - where additional memory stops reducing duration.
+This picks the memory level with the fastest measured duration, regardless of cost.
 
 ### Strategy: Balanced
 
@@ -192,7 +194,7 @@ Finds a middle ground between cost and speed:
 }
 ```
 
-The `balancedWeight` parameter ranges from 0 (pure cost optimization) to 1 (pure speed optimization). A value of 0.5 gives equal weight to both.
+The `balancedWeight` parameter ranges from 0 (pure speed optimization) to 1 (pure cost optimization). A value of 0.5 gives equal weight to both.
 
 ## Advanced Configuration
 
@@ -223,16 +225,20 @@ Test with multiple payloads to simulate a realistic workload mix:
   "lambdaARN": "arn:aws:lambda:us-east-1:123456789012:function:api-handler",
   "powerValues": [256, 512, 1024, 1769],
   "num": 50,
-  "payloadS3": "s3://my-bucket/test-payloads/",
+  "payload": [
+    { "payload": {"path": "/health"}, "weight": 5 },
+    { "payload": {"path": "/orders"}, "weight": 20 },
+    { "payload": {"path": "/reports"}, "weight": 25 }
+  ],
   "strategy": "balanced"
 }
 ```
 
-Place multiple JSON files in the S3 bucket, and the tool will randomly sample from them.
+The weights are relative. In this example, the three payloads are used roughly 10%, 40%, and 50% of the time.
 
 ### Including Cold Starts
 
-By default, Power Tuning measures warm invocations. To include cold starts (which gives a more realistic picture for infrequently called functions):
+By default, Power Tuning discards the fastest and slowest outliers, which can filter out cold-start effects. To force cold starts (which gives a more realistic picture for infrequently called functions):
 
 ```json
 {
@@ -240,13 +246,12 @@ By default, Power Tuning measures warm invocations. To include cold starts (whic
   "powerValues": [256, 512, 1024, 1769],
   "num": 10,
   "payload": {"test": true},
-  "autoOptimize": false,
-  "preProcessorARN": "",
-  "postProcessorARN": ""
+  "onlyColdStarts": true,
+  "discardTopBottom": 0
 }
 ```
 
-Run with a low `num` (like 5-10) and without parallel invocations. This forces Lambda to cold start more frequently, giving you data that includes initialization time.
+Run with a low `num` (like 5-10), because forcing cold starts creates extra versions and aliases and makes the initialization phase slower.
 
 ## Automating Regular Optimization
 
@@ -321,7 +326,7 @@ For teams managing many functions, build automation that reads Power Tuning resu
 # Get the recommended power value from the execution output
 RECOMMENDED=$(aws stepfunctions describe-execution \
   --execution-arn $EXECUTION_ARN \
-  --query "output" --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['power'])")
+  --query "output" --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['results']['power'])")
 
 echo "Recommended memory: ${RECOMMENDED} MB"
 
