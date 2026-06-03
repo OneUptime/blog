@@ -8,7 +8,7 @@ Description: Complete guide to connecting AWS CodePipeline with GitHub repositor
 
 ---
 
-AWS CodePipeline is a solid CI/CD service, but setting up the GitHub integration can be confusing. AWS has changed the recommended approach multiple times - from OAuth tokens to GitHub Apps via CodeStar Connections. The current best practice uses CodeStar Connections (also called AWS Connector for GitHub), which is more secure and gives better visibility into what AWS can access in your repos.
+AWS CodePipeline is a solid CI/CD service, but setting up the GitHub integration can be confusing. AWS has changed the recommended approach multiple times - from OAuth tokens to GitHub Apps via connections. The current best practice uses AWS CodeConnections, formerly called CodeStar Connections, with the AWS Connector for GitHub app. This is more secure and gives better visibility into what AWS can access in your repos.
 
 This guide walks through setting up a CodePipeline that triggers automatically when you push to a GitHub repository.
 
@@ -16,22 +16,22 @@ This guide walks through setting up a CodePipeline that triggers automatically w
 
 ```mermaid
 graph LR
-    GH[GitHub Repo] -->|webhook| CSC[CodeStar Connection]
-    CSC --> CP[CodePipeline]
+    GH[GitHub Repo] -->|webhook| CC[CodeConnections Connection]
+    CC --> CP[CodePipeline]
     CP --> CB[CodeBuild - Build Stage]
     CB --> CD[CodeDeploy - Deploy Stage]
 ```
 
-When you push to GitHub, the CodeStar Connection detects the change and triggers CodePipeline. The pipeline then runs through whatever stages you've configured - typically build and deploy.
+When you push to GitHub, the connection detects the change and triggers CodePipeline. The pipeline then runs through whatever stages you've configured - typically build and deploy.
 
-## Step 1: Create a CodeStar Connection
+## Step 1: Create a CodeConnections Connection
 
-The CodeStar Connection is a one-time setup that authorizes AWS to access your GitHub account or organization.
+The connection is a one-time setup that authorizes AWS to access your GitHub account or organization.
 
 ```bash
 # Create the connection
 
-aws codestar-connections create-connection \
+aws codeconnections create-connection \
   --provider-type GitHub \
   --connection-name my-github-connection
 ```
@@ -48,8 +48,8 @@ After authorization, the connection status changes to "Available."
 
 ```bash
 # Verify the connection is available
-aws codestar-connections get-connection \
-  --connection-arn arn:aws:codestar-connections:us-east-1:123456789:connection/abc-123 \
+aws codeconnections get-connection \
+  --connection-arn arn:aws:codeconnections:us-east-1:123456789012:connection/abc-123 \
   --query 'Connection.ConnectionStatus'
 ```
 
@@ -61,7 +61,7 @@ CodePipeline stores artifacts between stages in S3:
 # Create the artifact bucket
 aws s3 mb s3://my-pipeline-artifacts-123456789
 
-# Enable versioning (required for CodePipeline)
+# Enable versioning (recommended for artifact history)
 aws s3api put-bucket-versioning \
   --bucket my-pipeline-artifacts-123456789 \
   --versioning-configuration Status=Enabled
@@ -90,9 +90,13 @@ CodePipeline needs an IAM role with permissions for all the services it orchestr
     {
       "Effect": "Allow",
       "Action": [
+        "codeconnections:UseConnection",
         "codestar-connections:UseConnection"
       ],
-      "Resource": "arn:aws:codestar-connections:us-east-1:123456789:connection/abc-123"
+      "Resource": [
+        "arn:aws:codeconnections:us-east-1:123456789012:connection/abc-123",
+        "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc-123"
+      ]
     },
     {
       "Effect": "Allow",
@@ -166,7 +170,7 @@ Now put it all together. Here's a pipeline definition with a GitHub source stage
               "version": "1"
             },
             "configuration": {
-              "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789:connection/abc-123",
+              "ConnectionArn": "arn:aws:codeconnections:us-east-1:123456789012:connection/abc-123",
               "FullRepositoryId": "my-org/my-repo",
               "BranchName": "main",
               "OutputArtifactFormat": "CODE_ZIP"
@@ -244,7 +248,7 @@ aws codebuild create-project \
   --name my-app-build \
   --source type=CODEPIPELINE \
   --artifacts type=CODEPIPELINE \
-  --environment type=LINUX_CONTAINER,computeType=BUILD_GENERAL1_SMALL,image=aws/codebuild/amazonlinux2-x86_64-standard:4.0 \
+  --environment type=LINUX_CONTAINER,computeType=BUILD_GENERAL1_SMALL,image=aws/codebuild/amazonlinux-x86_64-standard:5.0 \
   --service-role arn:aws:iam::123456789012:role/CodeBuildServiceRole
 ```
 
@@ -280,62 +284,74 @@ artifacts:
 
 ## Triggering on Specific Branches
 
-By default, the pipeline triggers on pushes to the branch you specified. To trigger on multiple branches, you'll need separate pipelines or use the trigger configuration:
+By default, the pipeline triggers on pushes to the branch you specified. The source action's `BranchName` field is a single branch; to trigger on multiple branches, you'll need separate pipelines or a V2 pipeline trigger configuration:
 
 ```json
 {
-  "name": "GitHub-Source",
-  "actionTypeId": {
-    "category": "Source",
-    "owner": "AWS",
-    "provider": "CodeStarSourceConnection",
-    "version": "1"
-  },
-  "configuration": {
-    "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789:connection/abc-123",
-    "FullRepositoryId": "my-org/my-repo",
-    "BranchName": "main",
-    "DetectChanges": "true"
-  }
+  "pipelineType": "V2",
+  "triggers": [
+    {
+      "providerType": "CodeStarSourceConnection",
+      "gitConfiguration": {
+        "sourceActionName": "GitHub-Source",
+        "push": [
+          {
+            "branches": {
+              "includes": ["main", "release/*"]
+            }
+          }
+        ]
+      }
+    }
+  ]
 }
 ```
 
-Set `DetectChanges` to `false` if you want manual-only triggers.
+On the source action, set `DetectChanges` to `false` if you want manual-only triggers.
 
 ## Triggering on Pull Requests
 
 CodePipeline V2 supports triggering on pull request events:
 
 ```bash
-# Update pipeline to V2 type with PR triggers
+# Get the full pipeline declaration first
+aws codepipeline get-pipeline --name my-app-pipeline > pipeline.json
+
+# Remove the metadata block, set pipeline.pipelineType to V2,
+# add the triggers field shown below, then update the full declaration
 aws codepipeline update-pipeline \
-  --pipeline '{
-    "name": "my-app-pipeline",
-    "pipelineType": "V2",
-    "triggers": [
-      {
-        "providerType": "CodeStarSourceConnection",
-        "gitConfiguration": {
-          "sourceActionName": "GitHub-Source",
-          "push": [
-            {
-              "branches": {
-                "includes": ["main", "release/*"]
-              }
+  --cli-input-json file://pipeline.json
+```
+
+Add this to the top-level `pipeline` object in `pipeline.json`:
+
+```json
+{
+  "pipelineType": "V2",
+  "triggers": [
+    {
+      "providerType": "CodeStarSourceConnection",
+      "gitConfiguration": {
+        "sourceActionName": "GitHub-Source",
+        "push": [
+          {
+            "branches": {
+              "includes": ["main", "release/*"]
             }
-          ],
-          "pullRequest": [
-            {
-              "events": ["OPEN", "UPDATED"],
-              "branches": {
-                "includes": ["main"]
-              }
+          }
+        ],
+        "pullRequest": [
+          {
+            "events": ["OPEN", "UPDATED"],
+            "branches": {
+              "includes": ["main"]
             }
-          ]
-        }
+          }
+        ]
       }
-    ]
-  }'
+    }
+  ]
+}
 ```
 
 ## Monitoring Pipeline Execution
@@ -359,11 +375,11 @@ For setting up notifications when pipelines fail or succeed, check out our guide
 
 If your pipeline doesn't trigger on pushes:
 
-1. Verify the CodeStar Connection is in "Available" status
+1. Verify the connection is in "Available" status
 2. Check that `DetectChanges` is set to `true` (or not set, since it defaults to true)
 3. Make sure the branch name matches exactly
-4. Verify the IAM role has `codestar-connections:UseConnection` permission
+4. Verify the IAM role has `codeconnections:UseConnection` and `codestar-connections:UseConnection` permission
 
-If the source stage fails, it's almost always a connection or permission issue. The CodeStar Connection needs to be authorized for the specific repository you're pulling from.
+If the source stage fails, it's almost always a connection or permission issue. The connection needs to be authorized for the specific repository you're pulling from.
 
 For more advanced pipeline configurations, check our guides on [adding manual approval steps](https://oneuptime.com/blog/post/2026-02-12-codepipeline-manual-approval/view) and [cross-account deployments](https://oneuptime.com/blog/post/2026-02-12-cross-account-codepipeline/view). And for comprehensive CI/CD monitoring, [OneUptime](https://oneuptime.com) can help you track pipeline execution times, failure rates, and deployment frequency across all your projects.
