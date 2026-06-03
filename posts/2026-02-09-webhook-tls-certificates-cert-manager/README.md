@@ -17,7 +17,7 @@ cert-manager automates this entire process. It generates certificates, rotates t
 Install cert-manager in your cluster.
 
 ```bash
-kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.0/cert-manager.yaml
+kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.20.2/cert-manager.yaml
 ```
 
 Wait for cert-manager pods to be ready.
@@ -39,7 +39,7 @@ You should see three pods running: cert-manager, cert-manager-webhook, and cert-
 
 ## Creating a Self-Signed Issuer
 
-For webhook certificates, a self-signed issuer works perfectly. Create an issuer in the webhook namespace.
+For webhook certificates in a quick test environment, a self-signed issuer works. Create an issuer in the webhook namespace.
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -57,7 +57,7 @@ Apply the issuer.
 kubectl apply -f selfsigned-issuer.yaml
 ```
 
-For production environments, you might want a cluster-wide issuer.
+For test environments that share one issuer across multiple namespaces, you might want a cluster-wide issuer.
 
 ```yaml
 apiVersion: cert-manager.io/v1
@@ -153,6 +153,18 @@ spec:
       - name: certs
         secret:
           secretName: webhook-tls
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: webhook-service
+  namespace: webhook-system
+spec:
+  selector:
+    app: validation-webhook
+  ports:
+  - port: 443
+    targetPort: webhook
 ```
 
 The certificate files are automatically available at /certs/tls.crt and /certs/tls.key.
@@ -336,6 +348,7 @@ package main
 import (
     "crypto/tls"
     "log"
+    "net/http"
     "sync"
     "time"
 )
@@ -470,8 +483,7 @@ kubectl get validatingwebhookconfiguration validation-webhook -o yaml | grep caB
 Manually trigger certificate renewal:
 
 ```bash
-kubectl annotate certificate webhook-cert -n webhook-system \
-  cert-manager.io/issue-temporary-certificate="true"
+cmctl renew webhook-cert -n webhook-system
 ```
 
 ## Conclusion
