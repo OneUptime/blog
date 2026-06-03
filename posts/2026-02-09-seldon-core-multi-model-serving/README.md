@@ -79,14 +79,20 @@ kubectl apply -f simple-model.yaml
 # Wait for deployment
 kubectl wait --for=condition=ready pod -l seldon-deployment-id=sklearn-iris -n seldon --timeout=5m
 
-# Test prediction
-curl -X POST http://sklearn-iris-default.seldon.svc.cluster.local:8000/api/v1.0/predictions \
+# Test prediction from your workstation
+kubectl port-forward svc/sklearn-iris-default -n seldon 8000:8000 &
+PF_PID=$!
+sleep 2
+
+curl -X POST http://localhost:8000/api/v1.0/predictions \
   -H "Content-Type: application/json" \
   -d '{
     "data": {
       "ndarray": [[5.1, 3.5, 1.4, 0.2]]
     }
   }'
+
+kill $PF_PID
 ```
 
 ## Creating a Custom Transformer
@@ -94,7 +100,7 @@ curl -X POST http://sklearn-iris-default.seldon.svc.cluster.local:8000/api/v1.0/
 Build a preprocessing transformer:
 
 ```python
-# transformer.py
+# FeatureTransformer.py
 import numpy as np
 
 class FeatureTransformer:
@@ -134,9 +140,9 @@ RUN pip install --no-cache-dir \
     seldon-core==1.17.0 \
     numpy==1.24.0
 
-COPY transformer.py /app/
+COPY FeatureTransformer.py /app/
 
-CMD ["seldon-core-microservice", "transformer", "--service-type=TRANSFORMER"]
+CMD ["seldon-core-microservice", "FeatureTransformer", "--service-type=TRANSFORMER"]
 ```
 
 Deploy with transformer:
@@ -321,27 +327,35 @@ spec:
       # Stage 1: Input validation
       name: validator
       type: TRANSFORMER
+      endpoint:
+        type: REST
       children:
-      # Stage 2: Feature extraction (parallel)
-      - name: text-features
+      # Stage 2: Feature extraction
+      - name: feature-extractor
         type: TRANSFORMER
-        children: []
-      - name: numeric-features
-        type: TRANSFORMER
-        children: []
-
-      # Stage 3: Combine features
-      - name: feature-combiner
-        type: COMBINER
         children:
-        # Stage 4: Model prediction
-        - name: predictor
-          implementation: SKLEARN_SERVER
-          modelUri: gs://my-bucket/model
-
-        # Stage 5: Post-processing
+        # Stage 4: Post-processing
         - name: postprocessor
           type: OUTPUT_TRANSFORMER
+          children:
+          # Stage 3: Model prediction
+          - name: predictor
+            implementation: SKLEARN_SERVER
+            modelUri: gs://my-bucket/model
+    componentSpecs:
+    - spec:
+        containers:
+        - name: validator
+          image: your-registry/input-validator:v1
+        - name: feature-extractor
+          image: your-registry/feature-extractor:v1
+        - name: postprocessor
+          image: your-registry/postprocessor:v1
+        - name: predictor
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
 ```
 
 ## Monitoring Seldon Deployments
@@ -358,7 +372,7 @@ histogram_quantile(0.95,
 )
 
 # Model replicas
-seldon_deployment_replicas
+kube_deployment_status_replicas{deployment=~"sklearn-iris.*"}
 
 # Error rate
 rate(seldon_api_executor_client_requests_seconds_count{code!="200"}[1m])
@@ -392,15 +406,15 @@ Add outlier detection to the pipeline:
 ```python
 # outlier_detector.py
 import numpy as np
-from seldon_core.user_model import SeldonComponent
+from seldon_core.user_model import SeldonResponse
 
-class OutlierDetector(SeldonComponent):
+class OutlierDetector:
     def __init__(self, threshold=3.0):
         self.threshold = threshold
-        self.mean = None
-        self.std = None
+        self.mean = np.array([5.84, 3.05, 3.76, 1.20])
+        self.std = np.array([0.83, 0.43, 1.76, 0.76])
 
-    def predict(self, X, features_names=None):
+    def transform_input(self, X, names=None, meta=None):
         """Detect outliers and flag suspicious inputs"""
         if isinstance(X, list):
             X = np.array(X)
@@ -411,13 +425,12 @@ class OutlierDetector(SeldonComponent):
         # Flag outliers
         is_outlier = np.any(z_scores > self.threshold, axis=1)
 
-        # Add metadata
-        meta = {
-            "outlier_detected": is_outlier.tolist(),
-            "max_z_score": z_scores.max(axis=1).tolist()
+        tags = {
+            "outlier_detected": str(bool(np.any(is_outlier))).lower(),
+            "max_z_score": str(float(z_scores.max()))
         }
 
-        return X, meta
+        return SeldonResponse(data=X, tags=tags)
 ```
 
 Deploy with outlier detection:
@@ -438,6 +451,11 @@ spec:
         containers:
         - name: outlier-detector
           image: your-registry/outlier-detector:v1
+        - name: classifier
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
 ```
 
 ## Using GPU for Model Serving
@@ -451,6 +469,7 @@ metadata:
   name: gpu-model
   namespace: seldon
 spec:
+  protocol: v2
   predictors:
   - name: default
     replicas: 2
