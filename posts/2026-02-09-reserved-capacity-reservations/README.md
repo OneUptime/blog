@@ -4,15 +4,15 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Resource Reservation, Capacity Planning, Cost Optimization, Cloud Economics
 
-Description: Use resource reservations and reserved instances to guarantee capacity for critical workloads while optimizing cloud infrastructure costs.
+Description: Use resource reservations and reserved capacity options to improve capacity availability for critical workloads while optimizing cloud infrastructure costs.
 
 ---
 
-Reserved capacity combines cloud provider reserved instances with Kubernetes resource reservations to guarantee availability for critical workloads at reduced costs. This strategy trades flexibility for savings, typically 30-60% compared to on-demand pricing, while ensuring capacity when you need it.
+Reserved capacity combines cloud provider commitment discounts with capacity reservations and Kubernetes scheduling controls to improve availability for critical workloads at reduced costs. This strategy trades flexibility for savings, typically 30-60% compared to on-demand pricing, while reserving capacity only when you use options such as AWS zonal Reserved Instances, EC2 Capacity Reservations, or Google Cloud reservations.
 
 ## Understanding Reserved Capacity Economics
 
-Cloud providers offer reserved instances at discounted rates in exchange for commitment. You commit to paying for specific instance types in specific regions for one or three years. In return, you receive 30-70% discounts depending on payment terms and commitment length.
+Cloud providers offer reserved instances or committed use discounts at discounted rates in exchange for commitment. You commit to paying for specific instance types, resource amounts, or spend levels for one or three years. In return, you receive discounts depending on payment terms and commitment length.
 
 Reserved instances work best for steady-state workloads with predictable capacity needs. Burst workloads should use on-demand or spot instances. The key is identifying your baseline capacity - the minimum resources you always need.
 
@@ -28,10 +28,10 @@ Calculate baseline by examining historical cluster usage:
 min_over_time(count(kube_node_info)[90d:1d])
 
 # Minimum total CPU requests over 90 days
-min_over_time(sum(kube_pod_container_resource_requests_cpu_cores)[90d:1d])
+min_over_time(sum(kube_pod_container_resource_requests{resource="cpu",unit="core"})[90d:1d])
 
 # Minimum total memory requests over 90 days
-min_over_time(sum(kube_pod_container_resource_requests_memory_bytes)[90d:1d])
+min_over_time(sum(kube_pod_container_resource_requests{resource="memory",unit="byte"})[90d:1d])
 ```
 
 The minimum values represent your baseline. You always need at least this much capacity. Reserve this amount.
@@ -44,7 +44,7 @@ For new clusters without history, estimate baseline from:
 
 ## Purchasing Reserved Instances
 
-On AWS, purchase reserved instances matching your baseline:
+On AWS, purchase reserved instances matching your baseline. If you need a capacity reservation, use zonal Reserved Instances by selecting an Availability Zone, or use EC2 Capacity Reservations with matching attributes:
 
 ```bash
 # Calculate needed reserved capacity
@@ -52,6 +52,7 @@ On AWS, purchase reserved instances matching your baseline:
 aws ec2 describe-reserved-instances-offerings \
   --instance-type t3.xlarge \
   --offering-class standard \
+  --availability-zone us-east-1a \
   --product-description "Linux/UNIX"
 
 # Purchase reserved instances
@@ -74,7 +75,7 @@ gcloud compute commitments create my-commitment \
   --plan=12-month
 ```
 
-GCP's model is more flexible - you commit to resource amounts rather than specific instance types.
+GCP's resource-based model is more flexible - you commit to resource amounts rather than specific VM instance types. Committed use discounts reduce cost but do not reserve capacity unless you also create or attach Compute Engine reservations.
 
 ## Creating Dedicated Reserved Node Pools
 
@@ -89,6 +90,7 @@ metadata:
 managedNodeGroups:
 - name: reserved-baseline
   instanceType: t3.xlarge
+  availabilityZones: ["us-east-1a"]  # Match zonal RIs or Capacity Reservations
   minSize: 50
   maxSize: 50  # Fixed size matching reservations
   desiredCapacity: 50
@@ -124,7 +126,13 @@ metadata:
   namespace: production
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: payment-service
   template:
+    metadata:
+      labels:
+        app: payment-service
     spec:
       priorityClassName: high-priority
       affinity:
@@ -153,7 +161,7 @@ spec:
             cpu: "1000m"
 ```
 
-The node affinity and toleration ensure this service only runs on reserved nodes, guaranteeing capacity.
+The node affinity and toleration ensure this service only runs on reserved nodes, using the capacity set aside for critical workloads.
 
 ## Fallback to On-Demand Capacity
 
@@ -166,7 +174,13 @@ metadata:
   name: api-gateway
 spec:
   replicas: 20
+  selector:
+    matchLabels:
+      app: api-gateway
   template:
+    metadata:
+      labels:
+        app: api-gateway
     spec:
       affinity:
         nodeAffinity:
@@ -204,16 +218,21 @@ Track reserved vs actual usage:
 count(kube_node_labels{label_capacity_type="reserved"})
 
 # Pods on reserved nodes
-count(kube_pod_info{node=~".*reserved.*"})
+count(kube_pod_info * on(node) group_left()
+  kube_node_labels{label_capacity_type="reserved"})
 
 # Reserved node utilization
-sum(kube_pod_container_resource_requests_cpu_cores{node=~".*reserved.*"}) /
-sum(kube_node_status_capacity_cpu_cores{label_capacity_type="reserved"})
+sum(kube_pod_container_resource_requests{resource="cpu",unit="core"} * on(node) group_left()
+  kube_node_labels{label_capacity_type="reserved"}) /
+sum(kube_node_status_allocatable{resource="cpu",unit="core"} * on(node) group_left()
+  kube_node_labels{label_capacity_type="reserved"})
 
 # Wasted reserved capacity
 (
-  sum(kube_node_status_capacity_cpu_cores{label_capacity_type="reserved"}) -
-  sum(kube_pod_container_resource_requests_cpu_cores{node=~".*reserved.*"})
+  sum(kube_node_status_allocatable{resource="cpu",unit="core"} * on(node) group_left()
+    kube_node_labels{label_capacity_type="reserved"}) -
+  sum(kube_pod_container_resource_requests{resource="cpu",unit="core"} * on(node) group_left()
+    kube_node_labels{label_capacity_type="reserved"})
 )
 ```
 
@@ -223,7 +242,7 @@ If reserved node utilization falls below 80%, you are paying for unused capacity
 
 Review reservations quarterly. Cloud providers allow modifying reservations with limitations.
 
-On AWS, you can sell unused reserved instances on the marketplace:
+On AWS, you can sell eligible unused Standard Reserved Instances on the marketplace:
 
 ```bash
 # List your reserved instances
@@ -234,10 +253,11 @@ aws ec2 describe-reserved-instances \
 aws ec2 create-reserved-instances-listing \
   --reserved-instances-id xxxxxxx \
   --instance-count 10 \
-  --price-schedules file://pricing.json
+  --price-schedules file://pricing.json \
+  --client-token 550e8400-e29b-41d4-a716-446655440000
 ```
 
-For GCP, commitments cannot be modified or sold. Plan carefully before committing.
+For GCP, commitments cannot be sold or canceled, though some commitments can be split or merged within documented limits. Plan carefully before committing.
 
 ## Handling Commitment Expiration
 
@@ -280,7 +300,7 @@ This staggers commitment renewal and provides flexibility as needs evolve.
 
 ## Reserved Capacity for Spot Fallback
 
-Use reserved instances as guaranteed capacity backing spot instances:
+Use zonal Reserved Instances or Capacity Reservations as guaranteed capacity backing spot instances:
 
 ```yaml
 managedNodeGroups:
@@ -306,7 +326,7 @@ managedNodeGroups:
     capacity-type: reserved
 ```
 
-During normal operation, workloads run on spot instances. During spot interruptions, pods reschedule to reserved nodes, preventing service disruption.
+With workload scheduling rules that prefer spot capacity and allow the fallback pool, workloads run on spot instances during normal operation. During spot interruptions, pods can reschedule to reserved nodes when enough reserved capacity is available, reducing service disruption.
 
 ## Cost Modeling
 
@@ -331,7 +351,7 @@ Reserved baseline + spot burst:
 - Savings: $10,779/month (60%)
 ```
 
-The mixed strategy combining reserved and spot instances offers maximum savings while maintaining guaranteed capacity.
+The mixed strategy combining reserved and spot instances offers maximum savings while maintaining baseline capacity.
 
 ## Kubernetes Resource Quotas for Reserved Capacity
 
@@ -345,8 +365,8 @@ metadata:
   namespace: production
 spec:
   hard:
-    requests.cpu: "800"      # Total reserved node CPU
-    requests.memory: "3200Gi" # Total reserved node memory
+    requests.cpu: "200"      # Total CPU for 50 t3.xlarge nodes before system overhead
+    requests.memory: "800Gi" # Total memory for 50 t3.xlarge nodes before system overhead
   scopeSelector:
     matchExpressions:
     - operator: In
@@ -380,4 +400,4 @@ Maintain a reservation tracking document:
 
 Review this document quarterly with finance and engineering teams to ensure reservations align with actual needs.
 
-Reserved capacity transforms cloud economics from variable to predictable. Combined with Kubernetes resource management, it guarantees critical workload capacity while delivering substantial cost savings. The key is accurate baseline identification and disciplined capacity management.
+Reserved capacity transforms cloud economics from variable to predictable. Combined with Kubernetes resource management, it improves critical workload capacity planning while delivering substantial cost savings. The key is accurate baseline identification and disciplined capacity management.
