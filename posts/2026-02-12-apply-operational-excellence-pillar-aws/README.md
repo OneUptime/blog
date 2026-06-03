@@ -10,17 +10,20 @@ Description: Practical strategies for implementing the Operational Excellence pi
 
 Operational Excellence is the first pillar of the AWS Well-Architected Framework, and there's a reason for that. If you can't deploy reliably, monitor effectively, and respond to incidents quickly, nothing else matters. Your beautifully architected system is useless if your team can't operate it confidently.
 
-This pillar focuses on five areas: organization, preparation, operation, evolution, and - most importantly - treating everything as code. Let's walk through how to implement each area with specific AWS services and patterns.
+This pillar focuses on four best-practice areas: organization, preparation, operation, and evolution. Treating operations as code is one of the key practices that supports those areas. Let's walk through how to implement each area with specific AWS services and patterns.
 
 ## Design Principles
 
-The Operational Excellence pillar has five design principles:
+The Operational Excellence pillar has eight design principles:
 
-1. Perform operations as code
-2. Make frequent, small, reversible changes
-3. Refine operations procedures frequently
-4. Anticipate failure
-5. Learn from all operational failures
+1. Organize teams around business outcomes
+2. Implement observability for actionable insights
+3. Safely automate where possible
+4. Make frequent, small, reversible changes
+5. Refine operations procedures frequently
+6. Anticipate failure
+7. Learn from all operational events and metrics
+8. Use managed services
 
 These aren't abstract ideals. Each one maps to concrete practices and AWS services.
 
@@ -236,9 +239,9 @@ resource "aws_cloudwatch_metric_alarm" "error_rate" {
 **Automated Response** - Use EventBridge to trigger automated responses to operational events:
 
 ```hcl
-# Automatically remediate when an instance fails health checks
-resource "aws_cloudwatch_event_rule" "instance_unhealthy" {
-  name = "ec2-instance-unhealthy"
+# Automatically remediate when an instance enters a stopped state
+resource "aws_cloudwatch_event_rule" "instance_stopped" {
+  name = "ec2-instance-stopped"
 
   event_pattern = jsonencode({
     source      = ["aws.ec2"]
@@ -250,7 +253,7 @@ resource "aws_cloudwatch_event_rule" "instance_unhealthy" {
 }
 
 resource "aws_cloudwatch_event_target" "remediation" {
-  rule = aws_cloudwatch_event_rule.instance_unhealthy.name
+  rule = aws_cloudwatch_event_rule.instance_stopped.name
   arn  = aws_lambda_function.remediation.arn
 }
 ```
