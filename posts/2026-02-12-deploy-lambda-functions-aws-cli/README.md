@@ -91,6 +91,7 @@ Package it up:
 
 ```bash
 # Create a deployment package from your source directory
+rm -f deployment.zip
 cd src && zip -r ../deployment.zip . && cd ..
 ```
 
@@ -123,6 +124,7 @@ When you change your code, update just the code without touching the configurati
 
 ```bash
 # Rebuild the package
+rm -f deployment.zip
 cd src && zip -r ../deployment.zip . && cd ..
 
 # Update the function code
@@ -353,6 +355,7 @@ if [ -z "$DESCRIPTION" ]; then
 fi
 
 echo "Building deployment package..."
+rm -f deployment.zip
 cd src && zip -r ../deployment.zip . && cd ..
 
 echo "Updating function code..."
