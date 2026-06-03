@@ -57,11 +57,11 @@ aws cloudwatch put-metric-alarm \
 
 Let's unpack each parameter:
 
-- **period** (300) - Evaluate the metric every 5 minutes
+- **period** (300) - Create each evaluation data point from 5 minutes of metric data
 - **evaluation-periods** (2) - Must breach threshold for 2 consecutive periods
 - **statistic** (Average) - Use the average value within each period
 - **comparison-operator** - The metric must be greater than (not equal to) the threshold
-- **treat-missing-data** (missing) - Don't change state if data is missing
+- **treat-missing-data** (missing) - Move to `INSUFFICIENT_DATA` if there isn't enough real data to evaluate
 
 The combination of `period: 300` and `evaluation-periods: 2` means the alarm triggers after 10 minutes of sustained high CPU. This prevents false alarms from brief spikes.
 
@@ -188,10 +188,10 @@ The `treat-missing-data` parameter is often overlooked but critically important:
 
 | Option | Behavior | Best For |
 |--------|----------|----------|
-| `missing` | Maintain current state | Most metrics |
+| `missing` | Treat as missing; move to `INSUFFICIENT_DATA` if there isn't enough real data | Most metrics |
 | `notBreaching` | Treat as within threshold | Metrics that naturally stop |
 | `breaching` | Treat as threshold breach | Critical health metrics |
-| `ignore` | Skip the data point | Intermittent data sources |
+| `ignore` | Maintain current state | Intermittent data sources |
 
 For health-check-style alarms, use `breaching` - if data stops arriving, that's itself a problem:
 
