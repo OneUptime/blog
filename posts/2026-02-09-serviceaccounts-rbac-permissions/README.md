@@ -8,13 +8,13 @@ Description: Master Kubernetes RBAC with ServiceAccounts to implement fine-grain
 
 ---
 
-ServiceAccounts provide identity, but without RBAC (Role-Based Access Control), they have no permissions. Combining ServiceAccounts with RBAC creates a powerful security model that lets you grant exactly the permissions each workload needs, following the principle of least privilege.
+ServiceAccounts provide identity, but without RBAC (Role-Based Access Control), they have no workload permissions beyond the default API discovery permissions granted to authenticated users. Combining ServiceAccounts with RBAC creates a powerful security model that lets you grant exactly the permissions each workload needs, following the principle of least privilege.
 
 ## Understanding the ServiceAccount and RBAC Relationship
 
 A ServiceAccount by itself is just an identity. When a pod authenticates with a ServiceAccount token, the API server knows who the requester is, but not what they're allowed to do. RBAC provides the authorization layer.
 
-RBAC uses four main resources: Roles define sets of permissions within a namespace. ClusterRoles define permissions cluster-wide or for cluster-scoped resources. RoleBindings grant Role permissions to subjects (including ServiceAccounts) within a namespace. ClusterRoleBindings grant ClusterRole permissions cluster-wide.
+RBAC uses four main resources: Roles define sets of permissions within a namespace. ClusterRoles define reusable permissions for namespaced resources, cluster-scoped resources, or non-resource URLs. RoleBindings grant Role or ClusterRole permissions to subjects (including ServiceAccounts) within a namespace. ClusterRoleBindings grant ClusterRole permissions cluster-wide.
 
 The workflow is straightforward: create a ServiceAccount, define what permissions it needs through a Role or ClusterRole, then bind those permissions to the ServiceAccount with a RoleBinding or ClusterRoleBinding.
 
@@ -167,7 +167,7 @@ This ServiceAccount can only read two specific ConfigMaps and one specific Secre
 
 ## Using ClusterRoles for Cross-Namespace Access
 
-When a ServiceAccount needs to access resources across namespaces, use ClusterRoles:
+When a ServiceAccount needs to access the same resources across all namespaces, use a ClusterRole with a ClusterRoleBinding:
 
 ```yaml
 # multi-namespace-reader.yaml
@@ -228,7 +228,7 @@ rules:
 # Deployment permissions
 - apiGroups: ["apps"]
   resources: ["deployments"]
-  verbs: ["get", "list", "create", "update", "patch"]
+  verbs: ["get", "list", "watch", "create", "update", "patch"]
 # Service permissions
 - apiGroups: [""]
   resources: ["services"]
@@ -237,7 +237,7 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   verbs: ["get", "list", "create", "update", "patch"]
-# Permission to check rollout status
+# Permission to read the deployment status subresource
 - apiGroups: ["apps"]
   resources: ["deployments/status"]
   verbs: ["get"]
@@ -425,11 +425,11 @@ kubectl get role pod-reader-role -n production -o yaml
 kubectl auth can-i list pods \
   --as=system:serviceaccount:production:pod-reader
 
-# View API server audit logs for permission denials
+# View API server logs for permission denials, if your control plane exposes them as pods
 kubectl logs -n kube-system -l component=kube-apiserver | grep -i forbidden
 ```
 
-Common issues include incorrect namespace in bindings, typos in ServiceAccount names, or missing verbs in Role rules.
+Common issues include incorrect namespace in bindings, typos in ServiceAccount names, missing verbs in Role rules, or audit logs being written to a configured audit log file or webhook backend instead of the API server pod logs.
 
 ## Conclusion
 
