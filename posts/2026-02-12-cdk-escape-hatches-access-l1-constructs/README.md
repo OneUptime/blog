@@ -50,33 +50,18 @@ The `as s3.CfnBucket` cast tells TypeScript what type to expect. This gives you 
 
 ## Adding Properties Not Exposed by L2
 
-Here's a real scenario. You want to add intelligent tiering to an S3 bucket, but the L2 `Bucket` construct doesn't have a direct property for it.
+Here's a real scenario. You want to set the S3 bucket ABAC status, but the L2 `Bucket` construct doesn't have a direct property for it.
 
 ```typescript
-// Add intelligent tiering configuration via escape hatch
+// Set the bucket ABAC status via escape hatch
 const bucket = new s3.Bucket(this, 'DataBucket', {
   versioned: true,
 });
 
 const cfnBucket = bucket.node.defaultChild as s3.CfnBucket;
 
-// Set intelligent tiering - not directly available in L2
-cfnBucket.intelligentTieringConfigurations = [
-  {
-    id: 'MoveToArchive',
-    status: 'Enabled',
-    tierings: [
-      {
-        accessTier: 'ARCHIVE_ACCESS',
-        days: 90,
-      },
-      {
-        accessTier: 'DEEP_ARCHIVE_ACCESS',
-        days: 180,
-      },
-    ],
-  },
-];
+// Set ABAC status - not directly available in L2
+cfnBucket.abacStatus = 'Enabled';
 ```
 
 ## Overriding Generated Properties
@@ -95,12 +80,12 @@ const myFunction = new lambda.Function(this, 'MyFunction', {
 
 const cfnFunction = myFunction.node.defaultChild as lambda.CfnFunction;
 
-// Override the runtime with a specific value (maybe a custom runtime)
-cfnFunction.runtime = 'nodejs20.x';
+// Override the runtime with a specific CloudFormation value
+cfnFunction.runtime = 'nodejs22.x';
 
-// Add a property that the L2 doesn't support
-cfnFunction.addPropertyOverride('SnapStart', {
-  ApplyOn: 'PublishedVersions',
+// Override a nested CloudFormation property
+cfnFunction.addPropertyOverride('RuntimeManagementConfig', {
+  UpdateRuntimeOn: 'FunctionUpdate',
 });
 ```
 
@@ -123,10 +108,7 @@ cfnTable.addPropertyOverride('SSESpecification.SSEType', 'KMS');
 cfnTable.addPropertyOverride('SSESpecification.KMSMasterKeyId', keyArn);
 
 // Override array elements by index
-cfnTable.addPropertyOverride(
-  'GlobalSecondaryIndexes.0.ProvisionedThroughput',
-  { ReadCapacityUnits: 100, WriteCapacityUnits: 100 },
-);
+cfnTable.addPropertyOverride('KeySchema.0.AttributeName', 'id');
 ```
 
 You can also delete properties that the L2 construct sets.
