@@ -67,7 +67,7 @@ echo "Checking compatibility for $OPERATOR upgrade..."
 
 # Check Kubernetes version requirements
 echo "Current cluster version:"
-kubectl version --short
+kubectl version
 
 # Check CRD versions
 echo "Current CRD versions:"
@@ -103,7 +103,7 @@ helm repo update
 # Check current deployment
 helm list -n $NAMESPACE
 
-# Review upgrade changes
+# Review upgrade changes (requires the helm-diff plugin)
 helm diff upgrade $OPERATOR jetstack/$OPERATOR \
   --namespace $NAMESPACE \
   --version $TARGET_VERSION \
@@ -145,8 +145,7 @@ curl -L https://github.com/cert-manager/cert-manager/releases/download/v$TARGET_
   -o cert-manager-crds-$TARGET_VERSION.yaml
 
 # Review CRD changes
-diff <(kubectl get crd certificates.cert-manager.io -o yaml) \
-     <(grep -A 100 "name: certificates.cert-manager.io" cert-manager-crds-$TARGET_VERSION.yaml)
+kubectl diff -f cert-manager-crds-$TARGET_VERSION.yaml
 
 # Apply new CRDs
 kubectl apply -f cert-manager-crds-$TARGET_VERSION.yaml
@@ -171,20 +170,19 @@ NEW_VERSION="v1"
 
 echo "Migrating $CRD_NAME from $OLD_VERSION to $NEW_VERSION..."
 
-# Get all resources using old version
-kubectl get certificates -A -o json | \
-  jq -r --arg old "$OLD_VERSION" \
-  '.items[] | select(.apiVersion | contains($old)) | "\(.metadata.namespace) \(.metadata.name)"' | \
+# Make sure the CRD serves the new version and uses it as storage before rewriting objects.
+kubectl get crd $CRD_NAME -o json | \
+  jq -e --arg new "$NEW_VERSION" '.spec.versions[] | select(.name == $new and .served == true and .storage == true)' >/dev/null
+
+# Rewrite each object through the API server so it is persisted in the current storage version.
+kubectl get certificates.cert-manager.io -A -o json | \
+  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
   while read ns name; do
     echo "Migrating certificate: $ns/$name"
 
-    # Get resource in old version
-    kubectl get certificate $name -n $ns -o yaml > /tmp/cert-old.yaml
-
-    # Convert to new version (if conversion webhook exists)
-    # Otherwise, manually update the YAML
-    sed "s/apiVersion:.*$OLD_VERSION/apiVersion: cert-manager.io\/$NEW_VERSION/" \
-      /tmp/cert-old.yaml | kubectl apply -f -
+    kubectl patch certificate $name -n $ns \
+      --type merge \
+      -p '{"metadata":{"annotations":{"operator-upgrade/storage-version-migrated":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'"}}}'
   done
 
 echo "Migration complete"
@@ -246,7 +244,7 @@ spec:
 EOF
 
 # Wait for PostgreSQL cluster to be ready
-kubectl wait --for=condition=Running \
+kubectl wait --for=jsonpath='{.status.PostgresClusterStatus}'=Running \
   postgresql/test-cluster \
   --timeout=10m
 
