@@ -14,7 +14,7 @@ In multi-tenant environments, isolating secrets between tenants is critical for 
 
 Vault namespaces create isolated environments within a single Vault cluster. Each namespace operates independently with its own authentication, authorization, and secret storage. This allows different teams, customers, or environments to share infrastructure while maintaining complete separation.
 
-Namespaces support hierarchical structure, where child namespaces inherit from parents. The root namespace has full administrative control, while child namespaces can be delegated to specific teams or tenants.
+Namespaces support hierarchical structure, where child namespaces are created under parents. The root namespace has full administrative control, while child namespaces can be delegated to specific teams or tenants.
 
 Note that namespaces are a Vault Enterprise feature.
 
@@ -82,8 +82,8 @@ vault write auth/kubernetes/config \
 vault write auth/kubernetes/role/app \
   bound_service_account_names=app-sa \
   bound_service_account_namespaces=team-a-prod \
-  policies=app-policy \
-  ttl=1h
+  token_policies=app-policy \
+  token_ttl=1h
 
 # Repeat for team-b with different configuration
 export VAULT_NAMESPACE="team-b"
@@ -102,7 +102,11 @@ export VAULT_NAMESPACE="team-a/production"
 vault policy write app-policy - <<EOF
 # Access to team-a secrets only
 path "secret/data/apps/*" {
-  capabilities = ["read", "list"]
+  capabilities = ["read"]
+}
+
+path "secret/metadata/apps/*" {
+  capabilities = ["list"]
 }
 
 path "database/creds/app-role" {
@@ -116,7 +120,11 @@ export VAULT_NAMESPACE="team-b"
 vault policy write app-policy - <<EOF
 # Access to team-b secrets only
 path "secrets/data/*" {
-  capabilities = ["read", "list", "create", "update"]
+  capabilities = ["read", "create", "update"]
+}
+
+path "secrets/metadata/*" {
+  capabilities = ["list"]
 }
 
 path "transit/encrypt/app-data" {
@@ -170,7 +178,9 @@ In application code:
 package main
 
 import (
-    "io/ioutil"
+    "log"
+    "os"
+
     vault "github.com/hashicorp/vault/api"
 )
 
@@ -187,7 +197,7 @@ func NewVaultClient(namespace string) (*vault.Client, error) {
     client.SetNamespace(namespace)
 
     // Authenticate
-    jwt, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    jwt, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
     if err != nil {
         return nil, err
     }
@@ -222,6 +232,7 @@ func main() {
     // Use secret data
     data := secret.Data["data"].(map[string]interface{})
     apiKey := data["api_key"].(string)
+    _ = apiKey
 }
 ```
 
@@ -258,6 +269,14 @@ path "database/*" {
 
 path "auth/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
+}
+
+path "sys/auth/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+
+path "sys/mounts/*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
 }
 
 path "sys/policies/acl/*" {
@@ -299,17 +318,19 @@ vault write identity/entity name="shared-service" \
 Track metrics per namespace:
 
 ```bash
-# View namespace audit logs
-export VAULT_NAMESPACE="team-a/production"
+# View namespace audit logs from the root namespace
+unset VAULT_NAMESPACE
 
-vault audit enable file file_path=/vault/logs/team-a-audit.log
+vault audit enable -path=team-a-audit file \
+  filter='namespace == "team-a/production/"' \
+  file_path=/vault/logs/team-a-audit.log
 
-# Query namespace-specific metrics
+# Query Vault metrics from the root namespace
 vault read sys/metrics
 
 # Filter audit logs by namespace
 cat /vault/logs/audit.log | \
-  jq 'select(.request.namespace == "team-a/production")'
+  jq 'select(.request.namespace == "team-a/production/")'
 ```
 
 ## Implementing Resource Quotas
@@ -317,6 +338,8 @@ cat /vault/logs/audit.log | \
 Prevent resource exhaustion:
 
 ```bash
+unset VAULT_NAMESPACE
+
 # Create rate limit quota for namespace
 vault write sys/quotas/rate-limit/team-a-quota \
   path="team-a/" \
