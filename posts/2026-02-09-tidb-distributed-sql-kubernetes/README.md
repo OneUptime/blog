@@ -23,7 +23,7 @@ The TiDB Operator manages TiDB cluster lifecycle on Kubernetes using custom reso
 ```bash
 # Install TiDB Operator CRDs
 
-kubectl create -f https://raw.githubusercontent.com/pingcap/tidb-operator/v1.5.0/manifests/crd.yaml
+kubectl create -f https://raw.githubusercontent.com/pingcap/tidb-operator/v1.5.5/manifests/crd.yaml
 
 # Create namespace for the operator
 kubectl create namespace tidb-admin
@@ -34,8 +34,8 @@ helm repo update
 
 helm install tidb-operator pingcap/tidb-operator \
   --namespace tidb-admin \
-  --version v1.5.0 \
-  --set operatorImage=pingcap/tidb-operator:v1.5.0
+  --version v1.5.5 \
+  --set operatorImage=pingcap/tidb-operator:v1.5.5
 
 # Verify installation
 kubectl get pods -n tidb-admin
@@ -55,10 +55,12 @@ metadata:
   name: basic-tidb
   namespace: tidb-cluster
 spec:
-  version: v7.5.0
+  version: v7.5.5
   timezone: UTC
   pvReclaimPolicy: Retain
   enableDynamicConfiguration: true
+  configUpdateStrategy: RollingUpdate
+  discovery: {}
 
   # PD (Placement Driver) configuration
   pd:
@@ -77,6 +79,7 @@ spec:
       level = "info"
       [replication]
       max-replicas = 3
+      enable-placement-rules = true
       location-labels = ["zone", "rack", "host"]
 
   # TiKV (Storage) configuration
@@ -123,14 +126,18 @@ spec:
   tiflash:
     baseImage: pingcap/tiflash
     replicas: 2
+    maxFailoverCount: 0
     requests:
       cpu: "2"
       memory: "8Gi"
-      storage: "100Gi"
     limits:
       cpu: "4"
       memory: "16Gi"
-    storageClassName: standard
+    storageClaims:
+      - resources:
+          requests:
+            storage: 100Gi
+        storageClassName: standard
 ```
 
 Deploy the cluster:
@@ -246,6 +253,7 @@ spec:
       secretName: backup-secret
     s3:
       provider: aws
+      secretName: s3-secret
       region: us-west-2
       bucket: tidb-backups
       prefix: basic-tidb
@@ -258,12 +266,20 @@ spec:
 Create the backup credentials:
 
 ```bash
-# Create secret with S3 credentials
+# Create secret with the TiDB user's password
 kubectl create secret generic backup-secret \
   -n tidb-cluster \
-  --from-literal=password='' \
-  --from-literal=s3.access_key=${AWS_ACCESS_KEY} \
-  --from-literal=s3.secret_key=${AWS_SECRET_KEY}
+  --from-literal=password=''
+
+# Create secret with S3 credentials
+kubectl create secret generic s3-secret \
+  -n tidb-cluster \
+  --from-literal=access_key=${AWS_ACCESS_KEY} \
+  --from-literal=secret_key=${AWS_SECRET_KEY}
+
+# Create RBAC resources for the backup job
+kubectl apply -f https://raw.githubusercontent.com/pingcap/tidb-operator/v1.5.5/manifests/backup/backup-rbac.yaml \
+  -n tidb-cluster
 
 # Apply backup schedule
 kubectl apply -f backup-schedule.yaml
@@ -287,23 +303,24 @@ spec:
   clusters:
     - name: basic-tidb
       namespace: tidb-cluster
+  persistent: true
+  storage: 50Gi
 
   prometheus:
     baseImage: prom/prometheus
     version: v2.45.0
-    replicas: 1
-    requests:
-      storage: 50Gi
-    config:
-      scrape_interval: 15s
+    service:
+      type: ClusterIP
 
   grafana:
     baseImage: grafana/grafana
-    version: 9.5.0
+    version: 7.5.11
     service:
       type: LoadBalancer
-    username: admin
-    password: admin
+
+  initializer:
+    baseImage: pingcap/tidb-monitor-initializer
+    version: v7.5.5
 
   reloader:
     baseImage: pingcap/tidb-monitor-reloader
@@ -406,7 +423,7 @@ kubectl patch tidbcluster basic-tidb -n tidb-cluster \
   -p='[{
     "op": "replace",
     "path": "/spec/tikv/config",
-    "value": "storage.block-cache.capacity = \"20GB\"\n"
+    "value": "[storage.block-cache]\ncapacity = \"20GB\"\n"
   }]'
 ```
 
@@ -435,6 +452,7 @@ spec:
     secretName: backup-secret
   s3:
     provider: aws
+    secretName: s3-secret
     region: us-west-2
     bucket: tidb-backups
     prefix: basic-tidb/backup-20260209
