@@ -50,7 +50,7 @@ The response shows you the current status and when discovery started.
 }
 ```
 
-Once enabled, Macie starts evaluating your buckets within 48 hours. It prioritizes buckets it hasn't scanned before and buckets where new objects have been added.
+Once enabled, Macie evaluates your S3 inventory daily and starts selecting representative objects for analysis.
 
 ## Terraform Configuration
 
@@ -58,41 +58,55 @@ Once enabled, Macie starts evaluating your buckets within 48 hours. It prioritiz
 # Enable Macie account first
 resource "aws_macie2_account" "main" {}
 
-# Enable automated discovery
-resource "aws_macie2_automated_discovery_configuration" "main" {
-  status = "ENABLED"
-
+# The AWS provider doesn't currently have a first-class resource for this setting.
+resource "terraform_data" "enable_automated_discovery" {
   depends_on = [aws_macie2_account.main]
+
+  provisioner "local-exec" {
+    command = "aws macie2 update-automated-discovery-configuration --status ENABLED"
+  }
 }
 ```
 
 ## Configuring Bucket-Level Controls
 
-You might not want Macie scanning every bucket. Some buckets contain only logs or infrastructure data where scanning would be a waste of money. You can exclude specific buckets or include only certain ones.
+You might not want Macie scanning every bucket. Some buckets contain only logs or infrastructure data where scanning would be a waste of money. You can exclude specific buckets from automated discovery by updating the classification scope.
 
 ```bash
-# Exclude specific buckets from automated discovery
-aws macie2 update-resource-profile \
-  --resource-arn "arn:aws:s3:::cloudtrail-logs-bucket" \
-  --sensitivity-score-override -1
+# Get the current classification scope ID
+SCOPE_ID=$(aws macie2 get-automated-discovery-configuration \
+  --query 'classificationScopeId' \
+  --output text)
 
-# Exclude another bucket
-aws macie2 update-resource-profile \
-  --resource-arn "arn:aws:s3:::access-logs-bucket" \
-  --sensitivity-score-override -1
+# Exclude specific buckets from automated discovery
+aws macie2 update-classification-scope \
+  --id "$SCOPE_ID" \
+  --s3 '{
+    "excludes": {
+      "bucketNames": [
+        "cloudtrail-logs-bucket",
+        "access-logs-bucket"
+      ],
+      "operation": "ADD"
+    }
+  }'
 ```
 
-A sensitivity score of -1 tells Macie to skip the bucket entirely. You can also set it to 0 (not sensitive) through 100 (highly sensitive).
+Excluding a bucket tells Macie to stop selecting and analyzing objects in that bucket for automated discovery. Sensitivity scores are separate: Macie calculates scores automatically, and you can only manually override a bucket's score to 100 or remove that override.
 
-To view which buckets are included and their current sensitivity scores:
+To view which buckets are excluded and the current sensitivity scores:
 
 ```bash
-# List bucket profiles with sensitivity scores
-aws macie2 list-resource-profile-artifacts \
-  --resource-arn "arn:aws:s3:::my-bucket"
+# View buckets excluded from automated discovery
+aws macie2 get-classification-scope \
+  --id "$SCOPE_ID"
 
-# Get sensitivity score for all buckets
-aws macie2 list-resource-profile-detections \
+# Get sensitivity score and automated discovery status for all buckets
+aws macie2 describe-buckets \
+  --query 'buckets[*].{Name:bucketName,Score:sensitivityScore,Status:automatedDiscoveryMonitoringStatus}'
+
+# Get detailed sensitivity profile for one bucket
+aws macie2 get-resource-profile \
   --resource-arn "arn:aws:s3:::customer-data-bucket"
 ```
 
@@ -116,16 +130,15 @@ aws macie2 update-sensitivity-inspection-template \
   --includes '{
     "managedDataIdentifierIds": [
       "CREDIT_CARD_NUMBER",
-      "US_SOCIAL_SECURITY_NUMBER",
-      "EMAIL_ADDRESS",
-      "AWS_SECRET_ACCESS_KEY",
-      "US_PASSPORT_NUMBER"
+      "USA_SOCIAL_SECURITY_NUMBER",
+      "AWS_CREDENTIALS",
+      "USA_PASSPORT_NUMBER"
     ]
   }' \
   --excludes '{
     "managedDataIdentifierIds": [
-      "IP_ADDRESS",
-      "MAC_ADDRESS"
+      "NAME",
+      "LATITUDE_LONGITUDE"
     ]
   }'
 ```
@@ -198,7 +211,7 @@ resource "aws_cloudwatch_event_rule" "macie_discovery" {
 
   event_pattern = jsonencode({
     source      = ["aws.macie"]
-    detail-type = ["Macie Finding"]
+    "detail-type" = ["Macie Finding"]
     detail = {
       severity = {
         description = ["High", "Medium"]
@@ -244,17 +257,30 @@ This sends both sensitive data findings (from automated discovery and classifica
 
 ## Cost Optimization
 
-Automated discovery charges per object evaluated. Here are strategies to control costs.
+Automated discovery costs have two main dimensions: object monitoring for your S3 bucket inventory, and object analysis based on the amount of uncompressed data Macie analyzes. Here are strategies to control costs.
 
-**Exclude non-sensitive buckets.** Set sensitivity score to -1 for buckets that clearly don't contain sensitive data - logs, infrastructure state, build artifacts.
+**Exclude non-sensitive buckets.** Add buckets that clearly don't contain sensitive data - logs, infrastructure state, build artifacts - to the classification scope exclusion list.
 
 ```bash
+# Get the current classification scope ID
+SCOPE_ID=$(aws macie2 get-automated-discovery-configuration \
+  --query 'classificationScopeId' \
+  --output text)
+
 # Bulk exclude infrastructure buckets
-for bucket in cloudtrail-logs terraform-state vpc-flow-logs build-artifacts; do
-  aws macie2 update-resource-profile \
-    --resource-arn "arn:aws:s3:::$bucket" \
-    --sensitivity-score-override -1
-done
+aws macie2 update-classification-scope \
+  --id "$SCOPE_ID" \
+  --s3 '{
+    "excludes": {
+      "bucketNames": [
+        "cloudtrail-logs",
+        "terraform-state",
+        "vpc-flow-logs",
+        "build-artifacts"
+      ],
+      "operation": "ADD"
+    }
+  }'
 ```
 
 **Monitor spending.** Check usage regularly.
@@ -262,13 +288,15 @@ done
 ```bash
 # Check automated discovery costs
 aws macie2 get-usage-totals \
-  --query 'usageTotals[?type==`AUTOMATED_SENSITIVE_DATA_DISCOVERY`]'
+  --query 'usageTotals[?type==`AUTOMATED_SENSITIVE_DATA_DISCOVERY` || type==`AUTOMATED_OBJECT_MONITORING`]'
 
 # Detailed usage by time period
 aws macie2 get-usage-statistics \
-  --filter-by '[
-    {"key": "serviceLimit", "comparator": "CONTAINS", "values": ["AUTOMATED_SENSITIVE_DATA_DISCOVERY"]}
-  ]'
+  --query 'records[*].{
+    Account: accountId,
+    ObjectMonitoring: usage[?type==`AUTOMATED_OBJECT_MONITORING`],
+    AutomatedDiscovery: usage[?type==`AUTOMATED_SENSITIVE_DATA_DISCOVERY`]
+  }'
 ```
 
 **Pause during cost spikes.** If costs are higher than expected, you can temporarily disable automated discovery.
@@ -300,7 +328,7 @@ aws macie2 describe-buckets \
   }'
 ```
 
-The sensitivity score updates as Macie processes more objects in each bucket. A score of -1 means excluded, 0 means nothing found yet, and 1-100 indicates increasing levels of sensitive data.
+The sensitivity score updates as Macie processes more objects in each bucket. A score of -1 means a classification error prevented successful analysis, 1-49 indicates not sensitive, 50 means not yet analyzed, 51-99 indicates sensitive, and 100 is the maximum score that you can assign manually.
 
 ## Best Practices
 
