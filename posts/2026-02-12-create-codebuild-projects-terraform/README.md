@@ -14,7 +14,7 @@ In this guide, we'll set up CodeBuild projects in Terraform for common scenarios
 
 ## Basic CodeBuild Project
 
-Every CodeBuild project needs three things: an IAM service role, a source configuration, and an environment definition.
+Every CodeBuild project needs an IAM service role, a source configuration, an environment definition, and an artifacts configuration.
 
 This creates a basic CodeBuild project that builds from a GitHub repository:
 
@@ -31,7 +31,7 @@ resource "aws_codebuild_project" "main" {
 
   environment {
     compute_type                = "BUILD_GENERAL1_MEDIUM"
-    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    image                       = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
     type                        = "LINUX_CONTAINER"
     image_pull_credentials_type = "CODEBUILD"
 
@@ -169,7 +169,7 @@ resource "aws_codebuild_project" "docker_build" {
 
   environment {
     compute_type                = "BUILD_GENERAL1_MEDIUM"
-    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    image                       = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
     type                        = "LINUX_CONTAINER"
     privileged_mode             = true  # Required for Docker builds
     image_pull_credentials_type = "CODEBUILD"
@@ -249,6 +249,29 @@ resource "aws_s3_bucket" "build_cache" {
   bucket = "my-app-build-cache"
 }
 
+resource "aws_iam_role_policy" "codebuild_cache" {
+  role = aws_iam_role.codebuild.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:GetBucketAcl",
+          "s3:GetBucketLocation"
+        ]
+        Resource = [
+          "${aws_s3_bucket.build_cache.arn}",
+          "${aws_s3_bucket.build_cache.arn}/*"
+        ]
+      }
+    ]
+  })
+}
+
 resource "aws_codebuild_project" "cached_build" {
   name         = "my-app-cached-build"
   service_role = aws_iam_role.codebuild.arn
@@ -260,7 +283,7 @@ resource "aws_codebuild_project" "cached_build" {
     location = aws_s3_bucket.build_cache.bucket
   }
 
-  # For Docker layer caching, use LOCAL cache type
+  # For Docker layer caching, use LOCAL cache type and set privileged_mode = true
   # cache {
   #   type  = "LOCAL"
   #   modes = ["LOCAL_DOCKER_LAYER_CACHE", "LOCAL_SOURCE_CACHE"]
@@ -277,7 +300,7 @@ resource "aws_codebuild_project" "cached_build" {
 
   environment {
     compute_type = "BUILD_GENERAL1_MEDIUM"
-    image        = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    image        = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
     type         = "LINUX_CONTAINER"
   }
 }
@@ -332,7 +355,7 @@ resource "aws_codebuild_project" "vpc_build" {
 
   environment {
     compute_type = "BUILD_GENERAL1_MEDIUM"
-    image        = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    image        = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
     type         = "LINUX_CONTAINER"
   }
 }
@@ -425,7 +448,7 @@ resource "aws_codebuild_project" "per_env" {
 
   environment {
     compute_type = each.value.compute_type
-    image        = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    image        = "aws/codebuild/amazonlinux-x86_64-standard:5.0"
     type         = "LINUX_CONTAINER"
 
     environment_variable {
