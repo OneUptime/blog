@@ -42,6 +42,7 @@ flowchart TD
 - An ECS cluster with at least one service running
 - Container Insights enabled on the cluster (for detailed metrics)
 - An SNS topic for notifications
+- An SNS topic policy that allows EventBridge to publish to the topic
 - AWS CLI configured
 
 ## Step 1: Enable Container Insights
@@ -103,7 +104,7 @@ aws cloudwatch put-metric-alarm \
   --treat-missing-data "breaching"
 ```
 
-Memory alarms should have a lower evaluation period than CPU alarms because memory issues escalate faster. Once you start swapping or hitting limits, tasks die quickly.
+Memory alarms often need a shorter evaluation window than CPU alarms because memory issues escalate faster. Once you start swapping or hitting limits, tasks die quickly.
 
 ## Step 4: Create a Running Task Count Alarm
 
@@ -165,7 +166,7 @@ Five evaluation periods of 60 seconds (5 minutes) allows for normal deployment c
 
 ## Step 5: Detect Task Crash Loops with EventBridge
 
-CloudWatch metrics show aggregate health, but EventBridge rules catch individual task failures. Create a rule that detects when tasks stop with a non-zero exit code.
+CloudWatch metrics show aggregate health, but EventBridge rules catch individual task failures. Create a rule that detects stopped tasks with a non-zero container exit code.
 
 ```bash
 # Detect task failures via EventBridge
@@ -177,7 +178,10 @@ aws events put-rule \
     "detail": {
       "clusterArn": ["arn:aws:ecs:us-east-1:123456789012:cluster/my-cluster"],
       "lastStatus": ["STOPPED"],
-      "stoppedReason": [{"anything-but": ["Scaling activity initiated by (deployment"]}]
+      "stoppedReason": [{"anything-but": {"prefix": "Scaling activity initiated by (deployment"}}],
+      "containers": {
+        "exitCode": [{"numeric": [">", 0]}]
+      }
     }
   }' \
   --description "Detect ECS task failures that are not from normal deployments"
@@ -199,7 +203,7 @@ aws events put-targets \
   }]'
 ```
 
-The `anything-but` filter excludes normal deployment task replacements, which would otherwise flood your alerts during every deployment.
+The `anything-but` filter excludes normal deployment task replacements, and the numeric filter only matches containers that exited with a non-zero code.
 
 ## Step 6: Monitor Deployment Health
 
@@ -207,52 +211,17 @@ Stuck deployments are a common ECS problem. A new task definition fails health c
 
 ```bash
 # Alarm for deployment taking too long
-# If running != desired for more than 15 minutes during a deployment, alert
+# If more than one deployment exists for more than 15 minutes, alert
 aws cloudwatch put-metric-alarm \
   --alarm-name "my-service-deployment-stuck" \
-  --alarm-description "ECS deployment may be stuck - task count mismatch for 15 minutes" \
-  --metrics '[
-    {
-      "Id": "running",
-      "MetricStat": {
-        "Metric": {
-          "Namespace": "ECS/ContainerInsights",
-          "MetricName": "RunningTaskCount",
-          "Dimensions": [
-            {"Name": "ClusterName", "Value": "my-cluster"},
-            {"Name": "ServiceName", "Value": "my-service"}
-          ]
-        },
-        "Period": 300,
-        "Stat": "Minimum"
-      },
-      "ReturnData": false
-    },
-    {
-      "Id": "desired",
-      "MetricStat": {
-        "Metric": {
-          "Namespace": "ECS/ContainerInsights",
-          "MetricName": "DesiredTaskCount",
-          "Dimensions": [
-            {"Name": "ClusterName", "Value": "my-cluster"},
-            {"Name": "ServiceName", "Value": "my-service"}
-          ]
-        },
-        "Period": 300,
-        "Stat": "Maximum"
-      },
-      "ReturnData": false
-    },
-    {
-      "Id": "healthy",
-      "Expression": "IF(running < desired, 1, 0)",
-      "Label": "Deployment Unhealthy",
-      "ReturnData": true
-    }
-  ]' \
+  --alarm-description "ECS deployment may be stuck - multiple deployments for 15 minutes" \
+  --metric-name "DeploymentCount" \
+  --namespace "ECS/ContainerInsights" \
+  --dimensions Name=ClusterName,Value=my-cluster Name=ServiceName,Value=my-service \
+  --statistic "Maximum" \
+  --period 300 \
   --evaluation-periods 3 \
-  --threshold 0 \
+  --threshold 1 \
   --comparison-operator "GreaterThanThreshold" \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ecs-alerts" \
   --treat-missing-data "notBreaching"
@@ -267,7 +236,7 @@ Combine all the individual alarms into a single composite alarm that represents 
 aws cloudwatch put-composite-alarm \
   --alarm-name "my-service-health" \
   --alarm-description "Overall health of my-service" \
-  --alarm-rule 'ALARM("my-service-cpu-high") OR ALARM("my-service-memory-high") OR ALARM("my-service-tasks-low")' \
+  --alarm-rule 'ALARM("my-service-cpu-high") OR ALARM("my-service-memory-high") OR ALARM("my-service-tasks-low") OR ALARM("my-service-deployment-stuck")' \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:ecs-critical"
 ```
 
