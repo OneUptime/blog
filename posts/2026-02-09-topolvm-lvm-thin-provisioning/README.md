@@ -16,7 +16,7 @@ This guide demonstrates deploying TopoLVM with LVM thin provisioning, configurin
 
 TopoLVM consists of three main components: the CSI controller that handles volume provisioning decisions, the CSI node plugin that creates and manages LVM logical volumes on each node, and the scheduler extender that informs Kubernetes scheduler about available storage capacity per node.
 
-When you create a PVC, TopoLVM calculates which nodes have enough free space in their volume groups, updates node labels accordingly, and the scheduler extender filters node candidates based on storage requirements. Once a node is selected, the node plugin creates a thin logical volume from the configured thin pool and formats it for the pod to mount.
+When you create a PVC, TopoLVM calculates which nodes have enough free space in their volume groups, updates node annotations accordingly, and the scheduler extender filters node candidates based on storage requirements. Once a node is selected, the node plugin creates a thin logical volume from the configured thin pool and formats it for the pod to mount.
 
 Thin provisioning allows you to overcommit storage by allocating logical capacity without immediate physical backing. A 100GB thin volume consumes only the actual written data, growing dynamically as the application writes more information.
 
@@ -77,16 +77,30 @@ storageClasses:
       additionalParameters:
         "topolvm.io/device-class": "ssd"
 
-# Node configuration
-node:
-  lvmdConfigMap: lvmd-config
+# LVM daemon configuration
+lvmd:
+  deviceClasses:
+    - name: ssd
+      volume-group: node-vg
+      spare-gb: 10
+      default: true
+      type: thin
+      thin-pool:
+        name: thin-pool
+        overprovision-ratio: 2.0
 
 # Scheduler extender configuration
 scheduler:
   enabled: true
   type: deployment
+  service:
+    type: ClusterIP
+  options:
+    listen:
+      host: 0.0.0.0
+      port: 9251
 
-# Webhook for capacity tracking
+# Webhook for adding TopoLVM scheduler resource requests to pods
 webhook:
   podMutatingWebhook:
     enabled: true
@@ -105,76 +119,59 @@ kubectl wait --for=condition=ready pod \
 
 ## Configuring lvmd on Nodes
 
-TopoLVM requires lvmd configuration on each node specifying which volume groups and device classes to use.
+TopoLVM requires lvmd configuration specifying which volume groups and device classes to use. When installing with the Helm chart, put this configuration under `lvmd.deviceClasses` in your values file as shown above. If you manage lvmd outside the chart, the equivalent `lvmd.yaml` looks like this:
 
 ```yaml
-# lvmd-configmap.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: lvmd-config
-  namespace: topolvm-system
-data:
-  lvmd.yaml: |
-    device-classes:
-      - name: ssd
-        volume-group: node-vg
-        spare-gb: 10
-        default: true
-        thin-pool:
-          name: thin-pool
-          overprovision-ratio: 2.0
+# lvmd.yaml
+socket-name: /run/topolvm/lvmd.sock
+device-classes:
+  - name: ssd
+    volume-group: node-vg
+    spare-gb: 10
+    default: true
+    type: thin
+    thin-pool:
+      name: thin-pool
+      overprovision-ratio: 2.0
 ```
 
-The `spare-gb` reserves space in the volume group for metadata and snapshots. The `overprovision-ratio` allows logical capacity to exceed physical capacity, useful for workloads with known usage patterns.
+The `spare-gb` value reserves capacity that lvmd subtracts before reporting free space. The `overprovision-ratio` allows logical capacity to exceed physical capacity in the thin pool, useful for workloads with known usage patterns.
 
 ```bash
-kubectl apply -f lvmd-configmap.yaml
+# Apply updated Helm values to the managed lvmd DaemonSet
+helm upgrade topolvm topolvm/topolvm \
+  --namespace topolvm-system \
+  --values topolvm-values.yaml
 
-# Restart lvmd pods to pick up configuration
-kubectl rollout restart daemonset -n topolvm-system topolvm-node
+# Wait for lvmd and node pods to pick up the configuration
+kubectl rollout status daemonset -n topolvm-system topolvm-lvmd-0
 kubectl rollout status daemonset -n topolvm-system topolvm-node
 ```
 
 ## Enabling the TopoLVM Scheduler Extender
 
-Configure the Kubernetes scheduler to use TopoLVM's capacity-aware scheduler extender.
+Configure the Kubernetes scheduler to use TopoLVM's capacity-aware scheduler extender. On Kubernetes 1.23 and later, configure extenders through `KubeSchedulerConfiguration`; the legacy scheduler `Policy` API is no longer supported.
 
 ```yaml
-# scheduler-policy.yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: scheduler-extender-policy
-  namespace: kube-system
-data:
-  policy.cfg: |
-    {
-      "kind": "Policy",
-      "apiVersion": "v1",
-      "extenders": [
-        {
-          "urlPrefix": "http://topolvm-scheduler.topolvm-system.svc:9251",
-          "filterVerb": "predicate",
-          "prioritizeVerb": "prioritize",
-          "nodeCacheCapable": false,
-          "weight": 1,
-          "managedResources": [
-            {
-              "name": "topolvm.io/capacity",
-              "ignoredByScheduler": true
-            }
-          ]
-        }
-      ]
-    }
+# kube-scheduler-config.yaml
+apiVersion: kubescheduler.config.k8s.io/v1
+kind: KubeSchedulerConfiguration
+extenders:
+  - urlPrefix: "http://topolvm-scheduler.topolvm-system.svc:9251"
+    filterVerb: "predicate"
+    prioritizeVerb: "prioritize"
+    nodeCacheCapable: false
+    weight: 1
+    managedResources:
+      - name: "topolvm.io/capacity"
+        ignoredByScheduler: true
 ```
 
-For most modern Kubernetes installations using the default scheduler, you can configure this through scheduler configuration files or deploy TopoLVM's built-in scheduler webhook instead.
+For managed clusters where you cannot change the default scheduler configuration, use TopoLVM's Storage Capacity Tracking mode instead of the scheduler extender.
 
 ## Creating Storage Classes
 
-Define storage classes for different performance tiers or device classes.
+Define storage classes for different performance tiers or device classes. Each `topolvm.io/device-class` value must match a device class configured in lvmd.
 
 ```yaml
 # storageclass-ssd.yaml
@@ -280,7 +277,7 @@ ssh $NODE sudo lvs -o lv_name,lv_size,pool_lv,origin | grep topolvm
 
 ## Implementing Volume Snapshots
 
-TopoLVM supports CSI snapshots using LVM snapshot functionality.
+TopoLVM supports CSI snapshots using LVM thin snapshot functionality. The Kubernetes VolumeSnapshot CRDs and snapshot controller must be installed before creating VolumeSnapshot resources.
 
 ```yaml
 # volumesnapshotclass.yaml
@@ -322,7 +319,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   storageClassName: topolvm-ssd
-  dataSource:
+  dataSourceRef:
     name: test-snapshot
     kind: VolumeSnapshot
     apiGroup: snapshot.storage.k8s.io
@@ -341,22 +338,23 @@ TopoLVM exposes metrics for monitoring available capacity per node.
 ```bash
 # Check node capacity annotations
 kubectl get nodes -o json | \
-  jq -r '.items[] | "\(.metadata.name): \(.metadata.annotations["topolvm.io/capacity"])"'
+  jq -r '.items[] | "\(.metadata.name): \(.metadata.annotations["capacity.topolvm.io/ssd"])"'
 
 # View detailed capacity per device class
 kubectl get nodes -o json | \
   jq -r '.items[] | {
     name: .metadata.name,
-    capacity: .metadata.annotations["topolvm.io/capacity"]
+    capacity: .metadata.annotations["capacity.topolvm.io/ssd"],
+    defaultCapacity: .metadata.annotations["capacity.topolvm.io/00default"]
   }'
 ```
 
-Install Prometheus ServiceMonitor to scrape TopoLVM metrics.
+Install a Prometheus PodMonitor to scrape TopoLVM node metrics, or enable the chart's built-in PodMonitor with `node.prometheus.podMonitor.enabled=true`.
 
 ```yaml
-# servicemonitor.yaml
+# podmonitor.yaml
 apiVersion: monitoring.coreos.com/v1
-kind: ServiceMonitor
+kind: PodMonitor
 metadata:
   name: topolvm-node
   namespace: topolvm-system
@@ -364,8 +362,13 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/component: node
-  endpoints:
-  - port: metrics
+      app.kubernetes.io/name: topolvm
+  namespaceSelector:
+    matchNames:
+      - topolvm-system
+  podMetricsEndpoints:
+  - path: /metrics
+    port: metrics
     interval: 30s
 ```
 
@@ -421,7 +424,7 @@ spec:
           storage: 50Gi
 ```
 
-Each StatefulSet replica gets a dedicated thin logical volume, and the scheduler ensures pods are distributed across nodes with sufficient storage capacity.
+Each StatefulSet replica gets a dedicated thin logical volume, and the scheduler ensures pods are placed on nodes with sufficient storage capacity.
 
 ## Expanding Thin Pools
 
@@ -439,7 +442,7 @@ sudo lvs node-vg/thin-pool
 
 # TopoLVM automatically detects the capacity change
 # Check updated capacity annotation
-kubectl get node <node-name> -o jsonpath='{.metadata.annotations.topolvm\.io/capacity}'
+kubectl get node <node-name> -o jsonpath='{.metadata.annotations.capacity\.topolvm\.io/ssd}'
 ```
 
 For production environments, monitor thin pool data and metadata percentages, extending before they exceed 80% to maintain performance.
