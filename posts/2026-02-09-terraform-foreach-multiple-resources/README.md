@@ -368,13 +368,14 @@ resource "kubernetes_ingress_v1" "app" {
     name      = "app-ingress"
     namespace = "production"
     annotations = {
-      "kubernetes.io/ingress.class"                = "nginx"
       "cert-manager.io/cluster-issuer"             = "letsencrypt-prod"
       "nginx.ingress.kubernetes.io/ssl-redirect"   = "true"
     }
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     dynamic "rule" {
       for_each = var.ingress_rules
       content {
@@ -439,14 +440,33 @@ resource "random_password" "db_password" {
 # Reference specific secret in deployment
 resource "kubernetes_deployment" "app1" {
   metadata {
-    name = "app1"
+    name      = "app1"
+    namespace = "default"
+    labels = {
+      app = "app1"
+    }
   }
 
   spec {
+    replicas = 1
+
+    selector {
+      match_labels = {
+        app = "app1"
+      }
+    }
+
     template {
+      metadata {
+        labels = {
+          app = "app1"
+        }
+      }
+
       spec {
         container {
           name = "app1"
+          image = "myapp/app1:latest"
 
           env {
             name = "DB_PASSWORD"
