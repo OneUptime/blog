@@ -10,7 +10,7 @@ Description: Step-by-step guide to setting up CloudWatch cross-account observabi
 
 When your AWS footprint spans multiple accounts, monitoring becomes fragmented. Your production workloads are in one account, your data pipeline in another, your staging environment in a third. Each account has its own CloudWatch metrics, logs, and traces. Without cross-account observability, you're constantly switching between accounts just to get a complete picture of what's happening.
 
-CloudWatch cross-account observability fixes this by letting you designate a central "monitoring account" that can view and query telemetry data from all your other "source accounts." You don't have to copy or replicate data - the monitoring account gets live access to metrics, logs, and traces in the source accounts.
+CloudWatch cross-account observability fixes this by letting you designate a central "monitoring account" that can view and query telemetry data from all your other "source accounts." You don't have to build your own replication pipeline - the monitoring account gets access to metrics, logs, and traces in the source accounts.
 
 ## Architecture Overview
 
@@ -112,9 +112,9 @@ aws oam put-sink-policy \
         "Action": ["oam:CreateLink", "oam:UpdateLink"],
         "Resource": "*",
         "Condition": {
-          "ForAnyValue:StringEquals": {
+          "ForAnyValue:StringLike": {
             "aws:PrincipalOrgPaths": [
-              "o-org123456/r-root/ou-root-workloads/"
+              "o-a1b2c3d4e5/r-ab12/ou-ab12-11111111/*"
             ]
           },
           "ForAllValues:StringEquals": {
@@ -137,7 +137,7 @@ In each source account, create a link to the monitoring account's sink:
 ```bash
 # In each source account: create a link to the monitoring sink
 aws oam create-link \
-  --label-template "account-name" \
+  --label-template "$AccountName" \
   --resource-types "AWS::CloudWatch::Metric" "AWS::Logs::LogGroup" "AWS::XRay::Trace" \
   --sink-identifier "arn:aws:oam:us-east-1:999999999999:sink/abc123def456" \
   --region us-east-1
@@ -192,7 +192,7 @@ aws cloudformation create-stack-instances \
 
 Once the links are established, you can query metrics from source accounts directly in the monitoring account. In the CloudWatch console, you'll see an "Account" dropdown that lets you select which account to view.
 
-Via the CLI, use the `--account-id` parameter:
+Via the CLI, use the `AccountId` field in the metric data query:
 
 ```bash
 # Query a metric from a source account
@@ -266,7 +266,9 @@ Now you can create dashboards in the monitoring account that show metrics from a
       "type": "log",
       "x": 0, "y": 7, "width": 24, "height": 6,
       "properties": {
-        "query": "SOURCE 'arn:aws:logs:us-east-1:111111111111:log-group:/aws/ecs/api'\n| filter @message like /ERROR/\n| fields @timestamp, @message\n| sort @timestamp desc\n| limit 10",
+        "accountId": "111111111111",
+        "region": "us-east-1",
+        "query": "SOURCE '/aws/ecs/api' | filter @message like /ERROR/\n| fields @timestamp, @message\n| sort @timestamp desc\n| limit 10",
         "title": "Production API Errors",
         "view": "table"
       }
@@ -285,11 +287,25 @@ You can create alarms in the monitoring account that watch metrics in source acc
 # Create an alarm in the monitoring account for a source account metric
 aws cloudwatch put-metric-alarm \
   --alarm-name "ProdHighCPU" \
-  --namespace "AWS/ECS" \
-  --metric-name "CPUUtilization" \
-  --dimensions Name=ServiceName,Value=api Name=ClusterName,Value=prod \
-  --statistic Average \
-  --period 300 \
+  --metrics '[
+    {
+      "Id": "prod_cpu",
+      "MetricStat": {
+        "Metric": {
+          "Namespace": "AWS/ECS",
+          "MetricName": "CPUUtilization",
+          "Dimensions": [
+            { "Name": "ServiceName", "Value": "api" },
+            { "Name": "ClusterName", "Value": "prod" }
+          ]
+        },
+        "Period": 300,
+        "Stat": "Average"
+      },
+      "AccountId": "111111111111",
+      "ReturnData": true
+    }
+  ]' \
   --threshold 80 \
   --comparison-operator GreaterThanThreshold \
   --evaluation-periods 3 \
@@ -318,7 +334,7 @@ aws oam list-attached-links \
 
 ## Cost Considerations
 
-Cross-account observability itself doesn't have a separate charge. You pay the normal CloudWatch prices for the metrics, logs, and traces in the source accounts. However, cross-account log queries count toward Logs Insights query charges in the monitoring account. And cross-account metric data retrieval counts toward API call quotas. Keep this in mind for high-volume scenarios.
+Cross-account observability itself doesn't have a separate charge for logs and metrics, and the first trace copy is free. You pay the normal CloudWatch and X-Ray prices for the telemetry in the source accounts. However, cross-account log queries count toward Logs Insights query charges in the monitoring account, and trace copies sent to additional monitoring accounts are charged to the source account. Cross-account metric data retrieval also counts toward API call quotas. Keep this in mind for high-volume scenarios.
 
 ## Wrapping Up
 
