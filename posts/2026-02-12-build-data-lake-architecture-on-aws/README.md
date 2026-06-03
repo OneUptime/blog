@@ -125,7 +125,7 @@ aws firehose create-delivery-stream \
       "SizeInMBs": 64,
       "IntervalInSeconds": 300
     },
-    "CompressionFormat": "GZIP",
+    "CompressionFormat": "UNCOMPRESSED",
     "DataFormatConversionConfiguration": {
       "Enabled": true,
       "InputFormatConfiguration": {
@@ -334,7 +334,7 @@ aws lakeformation register-resource \
 # Grant a role access to specific tables
 aws lakeformation grant-permissions \
   --principal '{"DataLakePrincipalIdentifier": "arn:aws:iam::ACCOUNT_ID:role/analyst-role"}' \
-  --resource '{"Table": {"DatabaseName": "datalake_curated", "Name": "daily_event_summary"}}' \
+  --resource '{"Table": {"DatabaseName": "datalake_clean", "Name": "user_events"}}' \
   --permissions '["SELECT"]'
 ```
 
