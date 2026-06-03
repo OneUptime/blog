@@ -2,7 +2,7 @@
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
-Tags: Kubernetes, Window, RuntimeClass
+Tags: Kubernetes, Windows, RuntimeClass
 
 Description: Configure RuntimeClass to automatically route pods to appropriate Windows or Linux nodes based on container runtime requirements in mixed-OS clusters.
 
@@ -14,7 +14,7 @@ RuntimeClass is a Kubernetes feature that allows you to select different contain
 
 RuntimeClass defines which container runtime handler should process a pod. Each RuntimeClass can include scheduling directives that automatically apply to pods using that runtime class. This allows you to centrally manage OS-specific scheduling logic.
 
-For Windows nodes, RuntimeClass ensures pods use Windows-compatible runtime configurations and automatically adds node selectors for Windows nodes. This simplifies pod manifests and reduces configuration errors.
+For Windows nodes, RuntimeClass can select Windows-compatible runtime configurations and merge node selectors for Windows nodes into pods that reference the class. This simplifies pod manifests and reduces configuration errors.
 
 ## Creating RuntimeClass for Windows
 
@@ -42,13 +42,13 @@ scheduling:
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: windows-2019
+  name: windows-2025
 handler: runhcs-wcow-process
 scheduling:
   nodeSelector:
     kubernetes.io/os: windows
     kubernetes.io/arch: amd64
-    node.kubernetes.io/windows-build: "10.0.17763"
+    node.kubernetes.io/windows-build: "10.0.26100"
   tolerations:
   - key: os
     operator: Equal
@@ -86,6 +86,8 @@ kind: Pod
 metadata:
   name: windows-app
 spec:
+  os:
+    name: windows
   runtimeClassName: windows-2022  # Automatically routes to Windows nodes
   containers:
   - name: iis
@@ -128,6 +130,8 @@ spec:
       labels:
         app: web
     spec:
+      os:
+        name: windows
       runtimeClassName: windows-2022
       containers:
       - name: iis
@@ -155,28 +159,20 @@ handler: runhcs-wcow-process
 scheduling:
   nodeSelector:
     kubernetes.io/os: windows
-    windows.build: ltsc2022
+    node.kubernetes.io/windows-build: "10.0.20348"
 ---
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
 metadata:
-  name: windows-ltsc2019
+  name: windows-ltsc2025
 handler: runhcs-wcow-process
 scheduling:
   nodeSelector:
     kubernetes.io/os: windows
-    windows.build: ltsc2019
+    node.kubernetes.io/windows-build: "10.0.26100"
 ```
 
-Label Windows nodes appropriately:
-
-```bash
-# Label Windows 2022 nodes
-kubectl label nodes <node-name> windows.build=ltsc2022
-
-# Label Windows 2019 nodes
-kubectl label nodes <node-name> windows.build=ltsc2019
-```
+Kubernetes automatically labels Windows nodes with `node.kubernetes.io/windows-build` so pods can be routed to a compatible Windows build.
 
 Use in pods:
 
@@ -186,6 +182,8 @@ kind: Pod
 metadata:
   name: app-for-2022
 spec:
+  os:
+    name: windows
   runtimeClassName: windows-ltsc2022
   containers:
   - name: app
@@ -198,21 +196,6 @@ Configure RuntimeClass for specialized container runtimes:
 
 ```yaml
 # specialized-runtimeclasses.yaml
-# Hyper-V isolated containers for Windows
-apiVersion: node.k8s.io/v1
-kind: RuntimeClass
-metadata:
-  name: windows-hyperv
-handler: runhcs-wcow-hypervisor
-scheduling:
-  nodeSelector:
-    kubernetes.io/os: windows
-    hyperv.enabled: "true"
-overhead:
-  podFixed:
-    memory: "512Mi"
-    cpu: "500m"
----
 # gVisor for Linux (sandboxed runtime)
 apiVersion: node.k8s.io/v1
 kind: RuntimeClass
@@ -246,32 +229,19 @@ Use specialized runtimes:
 apiVersion: v1
 kind: Pod
 metadata:
-  name: secure-windows-app
+  name: secure-linux-app
 spec:
-  runtimeClassName: windows-hyperv
+  os:
+    name: linux
+  runtimeClassName: gvisor
   containers:
   - name: app
-    image: mcr.microsoft.com/windows/nanoserver:ltsc2022
+    image: nginx:latest
 ```
 
 ## Default RuntimeClass
 
-Set a default RuntimeClass for pods that don't specify one:
-
-```bash
-# Configure kubelet to use default RuntimeClass
-# On each node, edit kubelet config
-cat <<EOF > /var/lib/kubelet/config.yaml
-apiVersion: kubelet.config.k8s.io/v1beta1
-kind: KubeletConfiguration
-defaultRuntimeClassName: linux
-EOF
-
-# Restart kubelet
-systemctl restart kubelet
-```
-
-Now pods without runtimeClassName will use the default.
+Kubernetes does not provide a kubelet `defaultRuntimeClassName` setting. If a pod does not specify `runtimeClassName`, Kubernetes uses the default runtime handler. To default a RuntimeClass across workloads, use a mutating admission webhook or another admission policy mechanism to add `runtimeClassName` to matching pods.
 
 ## RuntimeClass with Pod Security
 
@@ -303,6 +273,8 @@ metadata:
   name: secure-app
   namespace: restricted-namespace
 spec:
+  os:
+    name: windows
   runtimeClassName: windows-restricted
   securityContext:
     windowsOptions:
@@ -310,8 +282,6 @@ spec:
   containers:
   - name: app
     image: myregistry.azurecr.io/secure-app:v1
-    securityContext:
-      allowPrivilegeEscalation: false
 ```
 
 ## Migrating from Node Selectors to RuntimeClass
@@ -325,8 +295,16 @@ kind: Deployment
 metadata:
   name: old-windows-app
 spec:
+  selector:
+    matchLabels:
+      app: old-windows-app
   template:
+    metadata:
+      labels:
+        app: old-windows-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -343,8 +321,16 @@ kind: Deployment
 metadata:
   name: new-windows-app
 spec:
+  selector:
+    matchLabels:
+      app: new-windows-app
   template:
+    metadata:
+      labels:
+        app: new-windows-app
     spec:
+      os:
+        name: windows
       runtimeClassName: windows-2022  # Replaces nodeSelector and tolerations
       containers:
       - name: app
@@ -404,6 +390,8 @@ kind: Pod
 metadata:
   name: runtimeclass-test
 spec:
+  os:
+    name: windows
   runtimeClassName: windows-2022
   containers:
   - name: test
@@ -429,4 +417,4 @@ spec:
 
 ## Conclusion
 
-RuntimeClass simplifies OS-specific pod routing in mixed Kubernetes clusters. By centralizing scheduling logic in RuntimeClass definitions, you reduce duplication in pod specs and minimize configuration errors. Use RuntimeClass to automatically route Windows pods to Windows nodes and Linux pods to Linux nodes. This approach scales better than manual node selectors and provides flexibility for specialized container runtimes like Hyper-V isolated containers or gVisor sandboxes.
+RuntimeClass simplifies OS-specific pod routing in mixed Kubernetes clusters. By centralizing scheduling logic in RuntimeClass definitions, you reduce duplication in pod specs and minimize configuration errors. Use RuntimeClass to automatically route Windows pods to Windows nodes and Linux pods to Linux nodes. This approach scales better than manual node selectors and provides flexibility for specialized container runtimes like gVisor sandboxes or Kata Containers.
