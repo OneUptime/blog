@@ -12,9 +12,9 @@ Secure Computing Mode (seccomp) provides kernel-level enforcement of system call
 
 ## Understanding Seccomp System Call Filtering
 
-Linux applications interact with the kernel through system calls. A typical application uses only a small subset of the 300+ available system calls, yet containers usually can access all of them by default. Each unnecessary system call represents a potential exploitation vector.
+Linux applications interact with the kernel through system calls. A typical application uses only a small subset of the 300+ available system calls, yet containers without a seccomp profile run unconfined. Each unnecessary system call represents a potential exploitation vector.
 
-Seccomp profiles define allow lists or deny lists of system calls. When a process attempts a blocked system call, the kernel kills the process or returns an error, preventing potential exploitation. This protection operates at the kernel level, making it impossible for attackers to bypass.
+Seccomp profiles define allow lists or deny lists of system calls. When a process attempts a blocked system call, the kernel kills the process or returns an error, preventing potential exploitation. This protection operates at the kernel level, making it difficult for attackers to bypass without compromising the kernel or container runtime.
 
 ## Runtime Default Profile
 
@@ -114,7 +114,7 @@ This profile uses a deny-by-default approach (SCMP_ACT_ERRNO), then explicitly a
 
 ## Deploying Custom Profiles via ConfigMaps
 
-Store custom seccomp profiles in ConfigMaps for easy distribution:
+Store custom seccomp profiles in ConfigMaps, then copy them onto each node's kubelet seccomp directory:
 
 ```yaml
 apiVersion: v1
@@ -135,6 +135,39 @@ data:
       ]
     }
 ---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: seccomp-profile-installer
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: seccomp-profile-installer
+  template:
+    metadata:
+      labels:
+        app: seccomp-profile-installer
+    spec:
+      containers:
+      - name: installer
+        image: busybox:1.36
+        command: ["sh", "-c", "mkdir -p /host-seccomp/profiles && cp /profiles/*.json /host-seccomp/profiles/ && sleep 3600"]
+        volumeMounts:
+        - name: seccomp-profiles
+          mountPath: /profiles
+          readOnly: true
+        - name: host-seccomp
+          mountPath: /host-seccomp
+      volumes:
+      - name: seccomp-profiles
+        configMap:
+          name: seccomp-profiles
+      - name: host-seccomp
+        hostPath:
+          path: /var/lib/kubelet/seccomp
+          type: DirectoryOrCreate
+---
 apiVersion: v1
 kind: Pod
 metadata:
@@ -147,17 +180,9 @@ spec:
       seccompProfile:
         type: Localhost
         localhostProfile: profiles/minimal-profile.json
-    volumeMounts:
-    - name: seccomp-profiles
-      mountPath: /var/lib/kubelet/seccomp/profiles
-      readOnly: true
-  volumes:
-  - name: seccomp-profiles
-    configMap:
-      name: seccomp-profiles
 ```
 
-The profile must exist at `/var/lib/kubelet/seccomp` on the node. Use DaemonSets or node configuration tools to distribute profiles.
+The profile must exist at `/var/lib/kubelet/seccomp` on the node, and `localhostProfile` is relative to that directory. Use DaemonSets or node configuration tools to distribute profiles before scheduling workloads that reference them.
 
 ## Discovering Required System Calls
 
@@ -166,7 +191,7 @@ Trace your application to discover which system calls it actually uses:
 ```bash
 # Run application with strace to capture syscalls
 
-strace -c -f -o syscalls.log ./myapp
+strace -f -o syscalls.log ./myapp
 
 # Extract unique system call names
 grep -oP '^\s*\K[a-z_0-9]+(?=\()' syscalls.log | sort -u > required-syscalls.txt
@@ -229,7 +254,7 @@ spec:
     command: ["sh", "-c"]
     args:
     - |
-      # Try blocked system call
+      # Try an operation commonly blocked by seccomp and Linux capabilities
       reboot 2>&1 || echo "reboot blocked: $?"
 
       # Try allowed system call
@@ -245,24 +270,26 @@ Check pod logs and node kernel logs to diagnose seccomp violations.
 Develop seccomp profiles progressively:
 
 ```yaml
-# Stage 1: Audit mode (log but don't block)
+# Stage 1: Log-only profile (log but don't block)
 apiVersion: v1
 kind: Pod
 metadata:
   name: audit-stage
-  annotations:
-    seccomp.security.alpha.kubernetes.io/pod: "audit"
 spec:
+  securityContext:
+    seccompProfile:
+      type: Localhost
+      localhostProfile: profiles/audit.json
   containers:
   - name: app
     image: myapp:1.0
 
 ---
-# Stage 2: Complain mode (warn about violations)
+# Stage 2: Baseline mode
 apiVersion: v1
 kind: Pod
 metadata:
-  name: complain-stage
+  name: baseline-stage
 spec:
   securityContext:
     seccompProfile:
@@ -287,7 +314,7 @@ spec:
     image: myapp:1.0
 ```
 
-This staged approach prevents breaking production applications.
+For the first stage, use a distributed profile whose `defaultAction` is `SCMP_ACT_LOG` so syscalls are logged but allowed. This staged approach prevents breaking production applications.
 
 ## Per-Container Profiles
 
@@ -399,4 +426,4 @@ Automated testing catches profile errors before production deployment.
 
 ## Conclusion
 
-Custom seccomp profiles provide precise control over system call access, dramatically reducing container attack surfaces. Start with runtime/default profiles for baseline security, then develop custom profiles by tracing application behavior and systematically building allow lists. Use conditional arguments to permit safe system call usage while blocking dangerous operations. Deploy profiles progressively through audit, warning, and enforcement stages to avoid breaking applications. Combine seccomp with other security measures like running as non-root and read-only root filesystems for defense in depth. Regular monitoring and updates ensure profiles remain effective as applications evolve. Fine-grained seccomp control transforms containers into highly restricted execution environments where kernel-level enforcement prevents exploitation attempts that bypass application-level security.
+Custom seccomp profiles provide precise control over system call access, dramatically reducing container attack surfaces. Start with runtime/default profiles for baseline security, then develop custom profiles by tracing application behavior and systematically building allow lists. Use conditional arguments to permit safe system call usage while blocking dangerous operations. Deploy profiles progressively through log-only, baseline, and enforcement stages to avoid breaking applications. Combine seccomp with other security measures like running as non-root and read-only root filesystems for defense in depth. Regular monitoring and updates ensure profiles remain effective as applications evolve. Fine-grained seccomp control transforms containers into highly restricted execution environments where kernel-level enforcement prevents exploitation attempts that bypass application-level security.
