@@ -69,7 +69,7 @@ When you update this deployment, Kubernetes:
 ```sql
 -- Migration that's not backward compatible
 ALTER TABLE users DROP COLUMN legacy_id;
-ALTER TABLE users ADD COLUMN user_type ENUM('regular', 'premium') NOT NULL;
+ALTER TABLE users ADD COLUMN user_type VARCHAR(20) NOT NULL DEFAULT 'regular';
 ```
 
 The old version expects `legacy_id` to exist and doesn't know about `user_type`. Running both versions causes errors.
@@ -117,7 +117,7 @@ spec:
       labels:
         app: api-server
     spec:
-      # Init container runs migration
+      # Init container runs migration for each new pod
       initContainers:
       - name: migrate
         image: myregistry.io/api-server:v2.0.0
@@ -145,11 +145,11 @@ spec:
 
 Deployment sequence:
 1. Old pods terminate
-2. First new pod starts
-3. Init container runs migration
-4. Migration completes
-5. Main container starts
-6. Remaining pods start (all run the same migration, idempotently)
+2. Kubernetes creates the new pods
+3. Each new pod runs the init container before its main container starts
+4. Each init container completes
+5. Main containers start
+6. All migration runs must be idempotent and safe if more than one pod starts at the same time
 
 ## Minimizing Downtime
 
@@ -211,36 +211,34 @@ Monitor deployment downtime:
 DEPLOYMENT=$1
 NAMESPACE=${2:-default}
 
-echo "Starting deployment update..."
-START_TIME=$(date +%s)
-
 # Update deployment
 kubectl set image deployment/$DEPLOYMENT \
   api=myregistry.io/api-server:v2.0.0 \
   -n $NAMESPACE
 
-# Wait for old pods to terminate
-echo "Waiting for old pods to terminate..."
-while [ $(kubectl get pods -l app=$DEPLOYMENT -n $NAMESPACE --field-selector=status.phase=Running | wc -l) -gt 1 ]; do
+# Wait until no replicas are available
+echo "Waiting for downtime to begin..."
+AVAILABLE=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath='{.status.availableReplicas}')
+AVAILABLE=${AVAILABLE:-0}
+while [ "$AVAILABLE" -ne 0 ]; do
   sleep 1
+  AVAILABLE=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o jsonpath='{.status.availableReplicas}')
+  AVAILABLE=${AVAILABLE:-0}
 done
 
-TERMINATION_TIME=$(date +%s)
-TERMINATION_DURATION=$((TERMINATION_TIME - START_TIME))
+DOWNTIME_START=$(date +%s)
 
-echo "Old pods terminated after ${TERMINATION_DURATION}s"
+echo "Deployment has zero available replicas"
 
 # Wait for new pods to be ready
 echo "Waiting for new pods to be ready..."
 kubectl rollout status deployment/$DEPLOYMENT -n $NAMESPACE
 
-END_TIME=$(date +%s)
-TOTAL_DURATION=$((END_TIME - START_TIME))
+DOWNTIME_END=$(date +%s)
+DOWNTIME_DURATION=$((DOWNTIME_END - DOWNTIME_START))
 
 echo "Deployment complete!"
-echo "Total downtime: ${TOTAL_DURATION}s"
-echo "Termination: ${TERMINATION_DURATION}s"
-echo "Startup: $((TOTAL_DURATION - TERMINATION_DURATION))s"
+echo "Zero-available downtime: ${DOWNTIME_DURATION}s"
 ```
 
 ## Maintenance Window Deployment
@@ -279,6 +277,7 @@ spec:
               # Verify health
               sleep 30
               HEALTHY=$(kubectl get deployment api-server -o jsonpath='{.status.availableReplicas}')
+              HEALTHY=${HEALTHY:-0}
 
               if [ "$HEALTHY" -eq "5" ]; then
                 echo "Deployment successful"
@@ -291,7 +290,7 @@ spec:
 
 ## Blue-Green Alternative
 
-For zero-downtime deployments with incompatible versions, use blue-green instead:
+For zero-downtime deployments with incompatible versions, consider blue-green if you can isolate or duplicate the backing data:
 
 ```yaml
 # Blue deployment (current)
@@ -374,8 +373,7 @@ metadata:
 data:
   migrate-up.sql: |
     -- Forward migration
-    ALTER TABLE users ADD COLUMN user_type VARCHAR(20);
-    UPDATE users SET user_type = 'regular';
+    ALTER TABLE users ADD COLUMN user_type VARCHAR(20) NOT NULL DEFAULT 'regular';
 
   migrate-down.sql: |
     -- Rollback migration
@@ -396,6 +394,12 @@ spec:
         - $(DATABASE_URL)
         - -f
         - /scripts/migrate-up.sql
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: database-credentials
+              key: url
         volumeMounts:
         - name: scripts
           mountPath: /scripts
@@ -404,6 +408,40 @@ spec:
         configMap:
           name: migration-scripts
       restartPolicy: Never
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: migrate-down
+spec:
+  schedule: "0 2 * * 0"
+  suspend: true
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+          - name: migrate
+            image: postgres:14
+            command:
+            - psql
+            - $(DATABASE_URL)
+            - -f
+            - /scripts/migrate-down.sql
+            env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-credentials
+                  key: url
+            volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+          volumes:
+          - name: scripts
+            configMap:
+              name: migration-scripts
+          restartPolicy: Never
 ```
 
 If deployment fails:
