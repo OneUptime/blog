@@ -45,10 +45,12 @@ Before getting started:
 
 - Aurora MySQL version 2.09.0 or higher (MySQL 5.7 compatible)
 - Aurora MySQL version 3.01.0 or higher (MySQL 8.0 compatible)
-- Aurora PostgreSQL does NOT support Parallel Query
+- Aurora PostgreSQL does NOT support Aurora Parallel Query
 - Must use `db.r*` instance classes (not `db.t*`)
 - Table must use InnoDB storage engine
-- Parallel Query is not available in all regions - check AWS documentation
+- Hash join optimization should be enabled for clusters where you plan to use Parallel Query
+- Parallel Query is available in all AWS Regions that support Aurora, though minimum required Aurora MySQL versions can vary
+- Parallel Query is not supported with the Aurora I/O-Optimized DB cluster storage configuration
 
 ## Enabling Parallel Query
 
@@ -66,13 +68,7 @@ aws rds modify-db-cluster-parameter-group \
   --parameters "ParameterName=aurora_parallel_query,ParameterValue=ON,ApplyMethod=pending-reboot"
 ```
 
-After modifying the parameter, reboot your instances for the change to take effect:
-
-```bash
-# Reboot the cluster instances to apply the parameter change
-aws rds reboot-db-instance \
-  --db-instance-identifier my-aurora-reader-1
-```
+Because `aurora_parallel_query` is a dynamic parameter, it doesn't require a cluster restart after changing this setting. Existing connections that were using Parallel Query before toggling the option continue to use their current setting until the connection is closed or the instance is rebooted.
 
 ### Enable/Disable Per Session
 
@@ -80,13 +76,13 @@ Even with Parallel Query enabled at the cluster level, you can control it per se
 
 ```sql
 -- Enable Parallel Query for this session
-SET SESSION aurora_pq = ON;
+SET SESSION aurora_parallel_query = ON;
 
 -- Disable Parallel Query for this session
-SET SESSION aurora_pq = OFF;
+SET SESSION aurora_parallel_query = OFF;
 
 -- Check current setting
-SHOW VARIABLES LIKE 'aurora_pq%';
+SHOW VARIABLES LIKE 'aurora_parallel_query';
 ```
 
 This is useful when you want most queries to run normally but enable Parallel Query for specific analytical queries.
@@ -135,8 +131,7 @@ FROM customers
 WHERE total_spend > 10000
 AND last_purchase_date > '2025-06-01'
 AND region = 'us-east'
-ORDER BY total_spend DESC
-LIMIT 100;
+ORDER BY total_spend DESC;
 ```
 
 ### Aggregation Queries
@@ -183,7 +178,7 @@ The optimizer won't choose Parallel Query for:
 - Queries that use the buffer pool cache effectively (data is already in memory)
 - Queries on temporary tables
 - Queries with certain unsupported functions or operations
-- Tables with TEXT or BLOB columns in the select list (though filtering on them works)
+- In Aurora MySQL version 2, queries that refer to `TEXT`, `BLOB`, `JSON`, or `GEOMETRY` columns
 
 ## Performance Comparison Example
 
@@ -203,7 +198,8 @@ CREATE TABLE sales_data (
     INDEX idx_region (region)
 ) ENGINE=InnoDB;
 
--- Insert test data (simplified - use a real data generator for production testing)
+-- Insert test data (simplified - use a real data generator for production testing;
+-- this information_schema example might not reach 10M rows in small schemas)
 INSERT INTO sales_data (sale_date, store_id, product_id, quantity, amount, region)
 SELECT
     DATE_ADD('2024-01-01', INTERVAL FLOOR(RAND() * 730) DAY),
@@ -221,7 +217,7 @@ Run the same query with and without Parallel Query:
 
 ```sql
 -- Without Parallel Query
-SET SESSION aurora_pq = OFF;
+SET SESSION aurora_parallel_query = OFF;
 SELECT region, COUNT(*), SUM(amount), AVG(amount)
 FROM sales_data
 WHERE sale_date BETWEEN '2025-01-01' AND '2025-06-30'
@@ -229,7 +225,7 @@ GROUP BY region;
 -- Typical time: 15-30 seconds on 10M rows
 
 -- With Parallel Query
-SET SESSION aurora_pq = ON;
+SET SESSION aurora_parallel_query = ON;
 SELECT region, COUNT(*), SUM(amount), AVG(amount)
 FROM sales_data
 WHERE sale_date BETWEEN '2025-01-01' AND '2025-06-30'
@@ -237,15 +233,15 @@ GROUP BY region;
 -- Typical time: 2-5 seconds on 10M rows
 ```
 
-## Monitoring Parallel Query with CloudWatch
+## Monitoring Parallel Query
 
-Keep an eye on these CloudWatch metrics:
+Keep an eye on billed read I/O in CloudWatch:
 
 ```bash
-# Check Parallel Query volume metrics
+# Check billed read I/O, which can increase when Parallel Query reads from storage
 aws cloudwatch get-metric-statistics \
   --namespace AWS/RDS \
-  --metric-name ParallelQueryAttempted \
+  --metric-name VolumeReadIOPs \
   --dimensions Name=DBClusterIdentifier,Value=my-aurora-cluster \
   --start-time $(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
