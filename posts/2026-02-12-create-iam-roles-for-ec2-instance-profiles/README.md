@@ -156,7 +156,7 @@ aws ec2 associate-iam-instance-profile \
   --iam-instance-profile Name=MyAppProfile
 ```
 
-The credentials become available within a few seconds. No reboot needed.
+The credentials usually become available shortly after the association propagates. No reboot is needed.
 
 ## Verifying the Setup
 
@@ -258,7 +258,7 @@ resource "aws_instance" "app" {
 
 ## Using IMDSv2
 
-By default, EC2 allows both IMDSv1 (simple HTTP GET) and IMDSv2 (token-based). IMDSv2 is more secure because it requires a token, preventing certain SSRF attacks. Enforce IMDSv2:
+Depending on your account, AMI, and launch settings, EC2 can allow both IMDSv1 (simple HTTP GET) and IMDSv2 (token-based), or require IMDSv2 only. IMDSv2 is more secure because it requires a token, preventing certain SSRF attacks. Enforce IMDSv2:
 
 ```bash
 # Require IMDSv2 for the instance
