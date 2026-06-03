@@ -10,7 +10,7 @@ Description: Learn how to extract named entities like people, organizations, dat
 
 Named entity recognition (NER) is one of the most practical NLP tasks out there. It's how you pull structured data out of messy, unstructured text. Feed Comprehend a paragraph and it tells you which words are people, organizations, locations, dates, quantities, or other specific types. This is the backbone of document processing, content indexing, and automated data extraction.
 
-Amazon Comprehend handles entity recognition without any training. The built-in models cover the most common entity types, and for domain-specific needs, you can train custom entity recognizers. Let's walk through both approaches.
+Amazon Comprehend handles entity recognition without any training. The built-in models cover the most common entity types, and for domain-specific needs, you can train custom entity recognizers. Let's walk through the core APIs.
 
 ## Built-in Entity Types
 
@@ -212,8 +212,8 @@ class EntityExtractionPipeline:
 
     def process_document(self, doc_id, text, metadata=None):
         """Process a document and store extracted entities."""
-        # Handle Comprehend's 5000 byte limit
-        chunks = self._chunk_text(text, max_bytes=5000)
+        # Handle Comprehend's 100 KB real-time text limit
+        chunks = self._chunk_text(text, max_bytes=100000)
 
         all_entities = []
         for chunk in chunks:
@@ -245,23 +245,34 @@ class EntityExtractionPipeline:
 
         return unique_entities
 
-    def _chunk_text(self, text, max_bytes=5000):
+    def _chunk_text(self, text, max_bytes=100000):
         """Split text into chunks that fit within Comprehend's size limit."""
         chunks = []
         current_pos = 0
-        encoded = text.encode('utf-8')
 
-        while current_pos < len(encoded):
-            end_pos = min(current_pos + max_bytes, len(encoded))
+        while current_pos < len(text):
+            end_pos = current_pos
+            current_bytes = 0
 
-            # Don't split in the middle of a word
-            if end_pos < len(encoded):
-                while end_pos > current_pos and encoded[end_pos:end_pos+1] != b' ':
-                    end_pos -= 1
+            while end_pos < len(text):
+                char_bytes = len(text[end_pos].encode('utf-8'))
+                if current_bytes + char_bytes > max_bytes:
+                    break
+                current_bytes += char_bytes
+                end_pos += 1
 
-            chunk_text = encoded[current_pos:end_pos].decode('utf-8', errors='ignore')
+            # Don't split in the middle of a word when possible
+            if end_pos < len(text):
+                split_pos = text.rfind(' ', current_pos, end_pos)
+                if split_pos > current_pos:
+                    end_pos = split_pos
+
+            chunk_text = text[current_pos:end_pos]
             chunks.append({'text': chunk_text, 'offset': current_pos})
             current_pos = end_pos
+
+            while current_pos < len(text) and text[current_pos] == ' ':
+                current_pos += 1
 
         return chunks
 
@@ -315,6 +326,6 @@ def start_entity_job(input_s3, output_s3, role_arn):
 
 Entity recognition powers a lot of practical applications. You can build automated document tagging systems that categorize content based on the organizations, people, and topics mentioned. Media monitoring tools use entity extraction to track brand mentions across news sources. Legal document processing uses it to identify parties, dates, and monetary amounts.
 
-For custom entity types that Comprehend doesn't recognize by default - like product codes, medical terms, or domain-specific identifiers - check out our guide on [Amazon Comprehend custom classification](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-custom-classification/view). You can train models that recognize exactly the entities your business cares about.
+For custom entity types that Comprehend doesn't recognize by default - like product codes, medical terms, or domain-specific identifiers - check out the [Amazon Comprehend custom entity recognition docs](https://docs.aws.amazon.com/comprehend/latest/dg/custom-entity-recognition.html). You can train models that recognize exactly the entities your business cares about.
 
 If you're building entity extraction into a larger text analysis pipeline, consider combining it with [sentiment analysis](https://oneuptime.com/blog/post/2026-02-12-amazon-comprehend-sentiment-analysis/view) to understand not just what entities are mentioned, but how people feel about them. That combination is incredibly powerful for brand monitoring and competitive intelligence.
