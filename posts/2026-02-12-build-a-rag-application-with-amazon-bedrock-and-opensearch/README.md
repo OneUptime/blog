@@ -77,7 +77,7 @@ def create_vector_collection(collection_name):
                 {'ResourceType': 'collection', 'Resource': [f'collection/{collection_name}'], 'Permission': ['aoss:*']},
                 {'ResourceType': 'index', 'Resource': [f'index/{collection_name}/*'], 'Permission': ['aoss:*']}
             ],
-            'Principal': ['arn:aws:iam::123456789:role/RAGApplicationRole']
+            'Principal': ['arn:aws:iam::123456789012:role/RAGApplicationRole']
         }])
     )
 
@@ -100,6 +100,7 @@ Once the collection is active, create an index with the right mapping for vector
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 import boto3
+from urllib.parse import urlparse
 
 def create_vector_index(collection_endpoint, index_name):
     """Create an index optimized for vector similarity search."""
@@ -112,8 +113,11 @@ def create_vector_index(collection_endpoint, index_name):
         session_token=credentials.token
     )
 
+    parsed_endpoint = urlparse(collection_endpoint)
+    host = parsed_endpoint.netloc or parsed_endpoint.path
+
     client = OpenSearch(
-        hosts=[{'host': collection_endpoint, 'port': 443}],
+        hosts=[{'host': host, 'port': 443}],
         http_auth=auth,
         use_ssl=True,
         verify_certs=True,
@@ -132,7 +136,7 @@ def create_vector_index(collection_endpoint, index_name):
             'properties': {
                 'embedding': {
                     'type': 'knn_vector',
-                    'dimension': 1536,  # Titan embedding dimension
+                    'dimension': 1024,  # Titan Text Embeddings V2 default dimension
                     'method': {
                         'engine': 'faiss',
                         'space_type': 'l2',
@@ -189,7 +193,8 @@ def generate_embedding(text):
         contentType='application/json',
         accept='application/json',
         body=json.dumps({
-            'inputText': text[:8192]  # Titan V2 supports up to 8192 tokens
+            'inputText': text[:50000],
+            'dimensions': 1024
         })
     )
 
@@ -354,7 +359,10 @@ def generate_embedding(text):
         modelId='amazon.titan-embed-text-v2:0',
         contentType='application/json',
         accept='application/json',
-        body=json.dumps({'inputText': text[:8192]})
+        body=json.dumps({
+            'inputText': text[:50000],
+            'dimensions': 1024
+        })
     )
     return json.loads(response['body'].read())['embedding']
 ```
@@ -413,6 +421,8 @@ Ranking (most relevant first):"""
 
     response = bedrock_client.invoke_model(
         modelId='anthropic.claude-3-haiku-20240307-v1:0',
+        contentType='application/json',
+        accept='application/json',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'messages': [{'role': 'user', 'content': prompt}],
@@ -464,6 +474,8 @@ Return only the reformulated question, nothing else."""
 
     response = bedrock.invoke_model(
         modelId='anthropic.claude-3-haiku-20240307-v1:0',
+        contentType='application/json',
+        accept='application/json',
         body=json.dumps({
             'anthropic_version': 'bedrock-2023-05-31',
             'messages': [{'role': 'user', 'content': prompt}],
