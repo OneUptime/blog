@@ -18,7 +18,7 @@ Container images can support multiple CPU architectures.
 #!/bin/bash
 # Check image architecture support
 
-docker manifest inspect nginx:latest | jq '.manifests[] | {arch: .platform.architecture, os: .platform.os}'
+docker manifest inspect nginx:latest | jq '.manifests[] | select(.platform.os == "linux") | {arch: .platform.architecture, os: .platform.os}'
 
 # Output shows supported architectures:
 
@@ -59,11 +59,11 @@ docker buildx inspect --bootstrap
 
 # Build for multiple architectures
 docker buildx build --platform linux/amd64,linux/arm64 \
-  -t myapp:v1.0 \
+  -t registry.example.com/myapp:v1.0 \
   --push .
 
 # Verify manifest
-docker manifest inspect myapp:v1.0
+docker manifest inspect registry.example.com/myapp:v1.0
 ```
 
 Buildx creates separate images for each architecture.
@@ -131,7 +131,7 @@ spec:
     spec:
       containers:
       - name: app
-        image: myapp:v1.0  # Multi-arch manifest
+        image: registry.example.com/myapp:v1.0  # Multi-arch manifest
         # No architecture-specific configuration needed
 ```
 
@@ -152,13 +152,13 @@ spec:
     kubernetes.io/arch: arm64
   containers:
   - name: test
-    image: myapp:v1.0
+    image: registry.example.com/myapp:v1.0
     command: ["/bin/sh", "-c"]
     args:
     - |
       echo "Architecture: $(uname -m)"
       echo "Running application tests..."
-      /app/run-tests.sh
+      /usr/local/bin/myapp --version
 ```
 
 ```bash
@@ -167,9 +167,6 @@ spec:
 
 kubectl apply -f arm64-test-pod.yaml
 kubectl wait --for=condition=Ready pod/arm64-test --timeout=60s
-
-# Run tests
-kubectl exec arm64-test -- /app/run-tests.sh
 
 # Check logs
 kubectl logs arm64-test
@@ -196,7 +193,13 @@ metadata:
   name: myapp
 spec:
   replicas: 10
+  selector:
+    matchLabels:
+      app: myapp
   template:
+    metadata:
+      labels:
+        app: myapp
     spec:
       topologySpreadConstraints:
       - maxSkew: 2
@@ -207,7 +210,7 @@ spec:
             app: myapp
       containers:
       - name: app
-        image: myapp:v1.0
+        image: registry.example.com/myapp:v1.0
 ```
 
 This spreads pods across both x86 and ARM64 nodes.
@@ -217,17 +220,32 @@ This spreads pods across both x86 and ARM64 nodes.
 # Gradually increase ARM64 node count
 
 # Week 1: 20% ARM64
-kubectl scale nodegroup arm64-nodes --replicas=2
+aws eks update-nodegroup-config \
+  --cluster-name production \
+  --nodegroup-name arm64-nodes \
+  --scaling-config minSize=1,maxSize=4,desiredSize=2
 
 # Week 2: 50% ARM64
-kubectl scale nodegroup arm64-nodes --replicas=5
+aws eks update-nodegroup-config \
+  --cluster-name production \
+  --nodegroup-name arm64-nodes \
+  --scaling-config minSize=1,maxSize=6,desiredSize=5
 
 # Week 3: 80% ARM64
-kubectl scale nodegroup arm64-nodes --replicas=8
+aws eks update-nodegroup-config \
+  --cluster-name production \
+  --nodegroup-name arm64-nodes \
+  --scaling-config minSize=1,maxSize=10,desiredSize=8
 
 # Week 4: 100% ARM64, scale down x86
-kubectl scale nodegroup x86-nodes --replicas=2
-kubectl scale nodegroup arm64-nodes --replicas=10
+aws eks update-nodegroup-config \
+  --cluster-name production \
+  --nodegroup-name x86-nodes \
+  --scaling-config minSize=0,maxSize=2,desiredSize=2
+aws eks update-nodegroup-config \
+  --cluster-name production \
+  --nodegroup-name arm64-nodes \
+  --scaling-config minSize=1,maxSize=12,desiredSize=10
 ```
 
 Gradual migration minimizes risk.
@@ -247,6 +265,9 @@ spec:
     matchLabels:
       app: monitoring
   template:
+    metadata:
+      labels:
+        app: monitoring
     spec:
       initContainers:
       - name: download-binary
@@ -257,21 +278,21 @@ spec:
         - |
           ARCH=$(uname -m)
           if [ "$ARCH" = "aarch64" ]; then
-            curl -L https://releases.example.com/agent-arm64 -o /agent
+            curl -L https://releases.example.com/agent-arm64 -o /agent-bin/agent
           else
-            curl -L https://releases.example.com/agent-amd64 -o /agent
+            curl -L https://releases.example.com/agent-amd64 -o /agent-bin/agent
           fi
-          chmod +x /agent
+          chmod +x /agent-bin/agent
         volumeMounts:
         - name: agent-binary
-          mountPath: /agent
+          mountPath: /agent-bin
       containers:
       - name: agent
         image: alpine
-        command: ["/agent/agent"]
+        command: ["/agent-bin/agent"]
         volumeMounts:
         - name: agent-binary
-          mountPath: /agent
+          mountPath: /agent-bin
       volumes:
       - name: agent-binary
         emptyDir: {}
@@ -292,22 +313,35 @@ metadata:
 data:
   cpu_usage_by_arch.promql: |
     sum by (arch) (
-      rate(container_cpu_usage_seconds_total[5m])
-    ) * on(pod) group_left(arch)
-    kube_pod_info{node=~".*"}
+      sum by (namespace, pod) (
+        rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m])
+      )
+      * on(namespace, pod) group_left(node)
+      kube_pod_info
+      * on(node) group_left(arch)
+      label_replace(kube_node_labels{label_kubernetes_io_arch!=""}, "arch", "$1", "label_kubernetes_io_arch", "(.*)")
+    )
 
   memory_usage_by_arch.promql: |
     sum by (arch) (
-      container_memory_working_set_bytes
-    ) * on(pod) group_left(arch)
-    kube_pod_info
+      sum by (namespace, pod) (
+        container_memory_working_set_bytes{container!="",pod!=""}
+      )
+      * on(namespace, pod) group_left(node)
+      kube_pod_info
+      * on(node) group_left(arch)
+      label_replace(kube_node_labels{label_kubernetes_io_arch!=""}, "arch", "$1", "label_kubernetes_io_arch", "(.*)")
+    )
 
   request_latency_by_arch.promql: |
     histogram_quantile(0.95,
       sum by (arch, le) (
         rate(http_request_duration_seconds_bucket[5m])
-      ) * on(pod) group_left(arch)
-      kube_pod_info
+        * on(namespace, pod) group_left(node)
+        kube_pod_info
+        * on(node) group_left(arch)
+        label_replace(kube_node_labels{label_kubernetes_io_arch!=""}, "arch", "$1", "label_kubernetes_io_arch", "(.*)")
+      )
     )
 ```
 
@@ -322,7 +356,11 @@ Remove x86 nodes after successful ARM64 migration.
 # Remove x86 nodes
 
 # Verify all pods running on ARM64
-X86_PODS=$(kubectl get pods -A -o wide | grep -v arm64 | tail -n +2 | wc -l)
+X86_PODS=0
+for NODE in $(kubectl get nodes -l kubernetes.io/arch=amd64 -o jsonpath='{.items[*].metadata.name}'); do
+  COUNT=$(kubectl get pods -A --field-selector spec.nodeName=$NODE --no-headers 2>/dev/null | wc -l)
+  X86_PODS=$((X86_PODS + COUNT))
+done
 
 if [ $X86_PODS -gt 0 ]; then
   echo "WARNING: $X86_PODS pods still on x86 nodes"
