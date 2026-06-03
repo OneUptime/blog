@@ -10,14 +10,14 @@ Description: Configure Sign in with Apple as an identity provider in Amazon Cogn
 
 If your app is available on iOS, Apple requires you to offer Sign in with Apple whenever you provide any social sign-in option. Even if it's not required for your case, Apple sign-in is a solid option - users trust it, and Apple's privacy relay feature lets users hide their real email address.
 
-Setting up Apple as a Cognito identity provider is a bit more involved than Google or Facebook because Apple uses a client secret that you generate from a private key, not a static string.
+Setting up Apple as a Cognito identity provider is a bit more involved than Google or Facebook because Apple uses a private key and key metadata instead of a static client secret.
 
 ## How Apple Sign-In Differs
 
 Apple's OAuth implementation has some unique characteristics:
 
-- The client secret is a JWT you generate and sign with a private key
-- The secret expires (max 6 months) and needs regular rotation
+- For direct Apple OAuth, the client secret is a JWT signed with a private key
+- For Cognito user pools, you provide the private key, Team ID, and Key ID; Cognito generates the Apple client secret when it exchanges tokens
 - Apple only sends the user's name on the first sign-in - you must capture it then
 - Users can choose to hide their real email using Apple's relay service
 
@@ -49,9 +49,11 @@ Note these values:
 - **Services ID**: The identifier for your Services ID (this is your client_id)
 - **Private Key**: The .p8 file contents
 
-## Step 2: Generate the Client Secret
+## Step 2: Understand the Client Secret
 
-Apple's client secret is a JWT signed with your private key. Here's a Node.js script to generate it:
+Apple's client secret is a JWT signed with your private key. If you're integrating with Apple directly, you generate this secret yourself. With Amazon Cognito user pools, you don't provide a generated `client_secret`; you provide the private key details in the identity provider configuration and Cognito handles the Apple token exchange.
+
+Here's a Node.js script you can use for direct Apple OAuth integrations or for testing what the Apple client secret looks like:
 
 ```javascript
 // generate-apple-secret.js
@@ -66,7 +68,7 @@ function generateAppleClientSecret() {
   const payload = {
     iss: 'YOUR_TEAM_ID',          // Apple Developer Team ID
     iat: now,
-    exp: now + (86400 * 180),      // 180 days (max allowed)
+    exp: now + (86400 * 180),      // 180 days, safely under Apple's six-month limit
     aud: 'https://appleid.apple.com',
     sub: 'com.yourapp.service'     // Your Services ID
   };
@@ -83,7 +85,7 @@ function generateAppleClientSecret() {
 generateAppleClientSecret();
 ```
 
-You'll need to regenerate this secret before it expires. Automate it with a Lambda function or CI job.
+For Cognito, keep the Apple private key secure and update the identity provider if you rotate or revoke the key in the Apple Developer portal.
 
 ## Step 3: Configure Apple in Cognito
 
@@ -205,7 +207,7 @@ async function signInWithApple() {
 }
 ```
 
-For iOS native apps, use Apple's AuthenticationServices framework and then pass the token to Cognito:
+For iOS apps that use this user-pool social provider, use Cognito's hosted UI or Amplify's web UI redirect flow. If you use Apple's AuthenticationServices framework directly, the Apple identity token is for a separate native flow, such as exchanging it through a Cognito identity pool for AWS credentials:
 
 ```swift
 // AppleSignIn.swift - iOS native implementation
@@ -235,8 +237,8 @@ class AppleSignInManager: NSObject, ASAuthorizationControllerDelegate {
               let tokenString = String(data: identityToken, encoding: .utf8)
         else { return }
 
-        // Pass the Apple token to Cognito
-        // Use the federated sign-in flow
+        // Pass the Apple token to your backend or to a Cognito identity pool
+        // if you are using a native federation flow.
         print("Apple token received: \(tokenString)")
 
         // Capture the name here - Apple only sends it once
@@ -296,13 +298,12 @@ export const handler = async (event) => {
 };
 ```
 
-## Automating Secret Rotation
+## Rotating the Apple Private Key
 
-Since Apple client secrets expire, automate the rotation:
+For Cognito user pools, rotate the Apple private key when you create a replacement key or need to revoke a compromised key. Update the Cognito identity provider with the new `private_key` and `key_id` before revoking the old key in Apple.
 
 ```javascript
-// rotate-apple-secret.js - Lambda for rotating the client secret
-import jwt from 'jsonwebtoken';
+// rotate-apple-key.js - Lambda for updating the Apple private key in Cognito
 import {
   CognitoIdentityProviderClient,
   UpdateIdentityProviderCommand
@@ -322,37 +323,27 @@ export const handler = async () => {
   );
   const privateKey = secretResponse.SecretString;
 
-  // Generate new client secret
-  const now = Math.floor(Date.now() / 1000);
-  const clientSecret = jwt.sign(
-    {
-      iss: process.env.TEAM_ID,
-      iat: now,
-      exp: now + (86400 * 180),
-      aud: 'https://appleid.apple.com',
-      sub: process.env.CLIENT_ID
-    },
-    privateKey,
-    { algorithm: 'ES256', keyid: process.env.KEY_ID }
-  );
-
   // Update the Cognito identity provider
   await cognitoClient.send(new UpdateIdentityProviderCommand({
     UserPoolId: process.env.USER_POOL_ID,
     ProviderName: 'SignInWithApple',
     ProviderDetails: {
-      client_secret: clientSecret
+      client_id: process.env.CLIENT_ID,
+      team_id: process.env.TEAM_ID,
+      key_id: process.env.KEY_ID,
+      private_key: privateKey,
+      authorize_scopes: 'email name'
     }
   }));
 
-  console.log('Apple client secret rotated successfully');
+  console.log('Apple private key updated successfully');
 };
 ```
 
-Schedule this with EventBridge to run every 5 months (before the 6-month expiry).
+Run this after creating a replacement Sign in with Apple key. Apple allows two active private keys per primary App ID, so replace the Cognito configuration before revoking the old key.
 
 For setting up other social providers, see [Cognito social sign-in with Google](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-google/view) and [Cognito social sign-in with Facebook](https://oneuptime.com/blog/post/2026-02-12-cognito-social-sign-in-facebook/view).
 
 ## Summary
 
-Apple sign-in has more moving parts than Google or Facebook - the key-based client secret, the name capture limitation, and the private relay emails all require special handling. But it's worth getting right, especially if you're on iOS where Apple mandates it for apps with social sign-in. Automate the secret rotation early so you don't get caught by a surprise expiration in production.
+Apple sign-in has more moving parts than Google or Facebook - the key-based Cognito configuration, the name capture limitation, and the private relay emails all require special handling. But it's worth getting right, especially if you're on iOS where Apple mandates it for apps with social sign-in. Store the private key securely and have a replacement process ready before you need to revoke or rotate it.
