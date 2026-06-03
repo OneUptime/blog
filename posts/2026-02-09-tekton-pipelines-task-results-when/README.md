@@ -19,7 +19,7 @@ Tasks can emit results that subsequent tasks consume. Results are key-value pair
 Basic task with results:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: check-code-changes
@@ -56,7 +56,7 @@ Results are written to special paths that Tekton reads after task completion.
 Reference results in subsequent tasks:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: conditional-pipeline
@@ -83,7 +83,7 @@ When expressions control whether a task runs. They evaluate to true or false bas
 Basic when expression:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: smart-pipeline
@@ -126,7 +126,7 @@ spec:
 
 ## When Expression Operators
 
-Tekton supports several operators:
+Tekton supports `in` and `notin` operators:
 
 ```yaml
 when:
@@ -140,13 +140,10 @@ when:
     operator: notin
     values: ["true"]
 
-  # Existence check (v0.50+)
-  - input: "$(tasks.scan.results.vulnerabilities)"
-    operator: exists
-
-  # Non-existence
-  - input: "$(tasks.scan.results.critical-vulns)"
-    operator: notexists
+  # Empty value check
+  - input: "$(params.release-tag)"
+    operator: notin
+    values: [""]
 ```
 
 ## Conditional Execution Based on Results
@@ -154,7 +151,7 @@ when:
 Skip tasks based on previous task outcomes:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: test-and-deploy
@@ -199,7 +196,7 @@ spec:
 Combine multiple when expressions:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: production-pipeline
@@ -210,12 +207,9 @@ spec:
 
   tasks:
     - name: security-scan
+      # Assumes the referenced Task declares critical-vulns and high-vulns results
       taskRef:
         name: trivy-scan
-      taskSpec:
-        results:
-          - name: critical-vulns
-          - name: high-vulns
 
     # Deploy to production only if:
     # 1. Branch is main
@@ -243,13 +237,14 @@ spec:
 Use results to determine which tasks to run:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: detect-services
 spec:
   results:
     - name: services
+      type: array
       description: JSON array of services to build
 
   steps:
@@ -257,12 +252,13 @@ spec:
       image: alpine:latest
       script: |
         #!/bin/sh
+        apk add --no-cache git jq
         # Detect changed services
         SERVICES=$(git diff --name-only HEAD~1 | cut -d/ -f1 | sort -u | jq -R -s -c 'split("\n")[:-1]')
         echo -n "$SERVICES" > $(results.services.path)
 ```
 
-Then use a custom task or loop:
+Then, with beta API fields enabled, use `matrix` to fan out one TaskRun per service:
 
 ```yaml
 tasks:
@@ -273,9 +269,10 @@ tasks:
   - name: build-service
     taskRef:
       name: build
-    params:
-      - name: service
-        value: "$(tasks.detect-services.results.services[*])"
+    matrix:
+      params:
+        - name: service
+          value: "$(tasks.detect-services.results.services[*])"
 ```
 
 ## Practical Example: Smart CI Pipeline
@@ -283,7 +280,7 @@ tasks:
 Complete pipeline with intelligent conditionals:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: smart-ci-pipeline
@@ -395,6 +392,7 @@ spec:
 
     # Security scan
     - name: security-scan
+      # Assumes the referenced Task declares a vulnerabilities result
       taskRef:
         name: trivy-scan
       when:
@@ -404,9 +402,6 @@ spec:
       workspaces:
         - name: source
           workspace: source-code
-      taskSpec:
-        results:
-          - name: vulnerabilities
       runAfter:
         - test
 
@@ -467,7 +462,7 @@ spec:
 When expressions don't check task status by default. Use results to propagate status:
 
 ```yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: safe-task
