@@ -90,6 +90,12 @@ In the consuming stack, reference exports by name:
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Application stack using shared network
 
+Parameters:
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64
+    Description: Latest Amazon Linux 2023 AMI ID
+
 Resources:
   AppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -106,6 +112,7 @@ Resources:
     Type: AWS::EC2::Instance
     Properties:
       InstanceType: t3.micro
+      ImageId: !Ref LatestAmiId
       # Split the imported comma-separated list and pick the first subnet
       SubnetId: !Select
         - 0
@@ -140,8 +147,9 @@ Resources:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: App SG
-      VpcId: !ImportValue
-        !Sub '${NetworkStackName}-VpcId'
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkStackName}-VpcId'
 ```
 
 This way, the app stack can point to different network stacks by changing a single parameter. Your dev app stack imports from `network-dev`, and production imports from `network-prod`.
@@ -168,24 +176,33 @@ Resources:
     Type: AWS::RDS::DBSubnetGroup
     Properties:
       DBSubnetGroupDescription: Database subnets
-      SubnetIds: !Split [',', !ImportValue !Sub '${NetworkStackName}-PrivateSubnets']
+      SubnetIds:
+        Fn::Split:
+          - ','
+          - Fn::ImportValue:
+              Fn::Sub: '${NetworkStackName}-PrivateSubnets'
 
   DBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: Database security group
-      VpcId: !ImportValue !Sub '${NetworkStackName}-VpcId'
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkStackName}-VpcId'
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
-          CidrIp: !ImportValue !Sub '${NetworkStackName}-VpcCidr'
+          CidrIp:
+            Fn::ImportValue:
+              Fn::Sub: '${NetworkStackName}-VpcCidr'
 
   Database:
     Type: AWS::RDS::DBInstance
     Properties:
       DBInstanceClass: db.t3.micro
       Engine: postgres
+      AllocatedStorage: 20
       MasterUsername: admin
       MasterUserPassword: '{{resolve:ssm-secure:/myapp/db-password}}'
       DBSubnetGroupName: !Ref DBSubnetGroup
@@ -237,17 +254,27 @@ Resources:
       VpcConfig:
         SecurityGroupIds:
           - !Ref AppSecurityGroup
-        SubnetIds: !Split [',', !ImportValue !Sub '${NetworkStackName}-PrivateSubnets']
+        SubnetIds:
+          Fn::Split:
+            - ','
+            - Fn::ImportValue:
+                Fn::Sub: '${NetworkStackName}-PrivateSubnets'
       Environment:
         Variables:
-          DB_HOST: !ImportValue !Sub '${DataStackName}-DatabaseEndpoint'
-          DB_PORT: !ImportValue !Sub '${DataStackName}-DatabasePort'
+          DB_HOST:
+            Fn::ImportValue:
+              Fn::Sub: '${DataStackName}-DatabaseEndpoint'
+          DB_PORT:
+            Fn::ImportValue:
+              Fn::Sub: '${DataStackName}-DatabasePort'
 
   AppSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: App security group
-      VpcId: !ImportValue !Sub '${NetworkStackName}-VpcId'
+      VpcId:
+        Fn::ImportValue:
+          Fn::Sub: '${NetworkStackName}-VpcId'
 
   AppRole:
     Type: AWS::IAM::Role
@@ -327,6 +354,7 @@ Resources:
   SecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
+      GroupDescription: App security group
       VpcId: '{{resolve:ssm:/infrastructure/vpc-id}}'
 ```
 
