@@ -48,12 +48,13 @@ CREATE EXTERNAL TABLE IF NOT EXISTS s3_access_logs (
   host_header string,
   tls_version string,
   access_point_arn string,
-  acl_required string
+  acl_required string,
+  source_region string
 )
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
   'serialization.format' = '1',
-  'input.regex' = '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*)'
+  'input.regex' = '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) ([^ ]*)(?: ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*))?.*$'
 )
 LOCATION 's3://my-s3-access-logs/logs/my-source-bucket/'
 TBLPROPERTIES ('has_encrypted_data'='false');
@@ -79,7 +80,7 @@ SELECT
   operation,
   COUNT(*) as request_count
 FROM s3_access_logs
-WHERE request_datetime >= '2026-02-01'
+WHERE parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 GROUP BY operation
 ORDER BY request_count DESC
 LIMIT 20;
@@ -94,7 +95,7 @@ SELECT
   SUM(bytes_sent) as total_bytes_sent
 FROM s3_access_logs
 WHERE operation = 'REST.GET.OBJECT'
-  AND request_datetime >= '2026-02-01'
+  AND parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 GROUP BY key
 ORDER BY access_count DESC
 LIMIT 25;
@@ -117,8 +118,8 @@ SELECT
   error_code
 FROM s3_access_logs
 WHERE http_status IN (401, 403)
-  AND request_datetime >= '2026-02-01'
-ORDER BY request_datetime DESC
+  AND parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
+ORDER BY parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') DESC
 LIMIT 100;
 ```
 
@@ -129,10 +130,10 @@ SELECT
   remote_ip,
   COUNT(*) as request_count,
   COUNT(DISTINCT key) as unique_objects,
-  MIN(request_datetime) as first_seen,
-  MAX(request_datetime) as last_seen
+  MIN(parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z')) as first_seen,
+  MAX(parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z')) as last_seen
 FROM s3_access_logs
-WHERE request_datetime >= '2026-02-01'
+WHERE parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 GROUP BY remote_ip
 HAVING COUNT(*) > 1000
 ORDER BY request_count DESC;
@@ -151,8 +152,8 @@ SELECT
 FROM s3_access_logs
 WHERE requester = '-'
   AND http_status = 200
-  AND request_datetime >= '2026-02-01'
-ORDER BY request_datetime DESC
+  AND parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
+ORDER BY parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') DESC
 LIMIT 50;
 ```
 
@@ -168,7 +169,7 @@ SELECT
 FROM s3_access_logs
 WHERE operation = 'REST.GET.OBJECT'
   AND http_status = 200
-  AND request_datetime >= '2026-02-01'
+  AND parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 GROUP BY requester, remote_ip
 HAVING SUM(bytes_sent) > 1073741824  -- more than 1GB
 ORDER BY total_gb_downloaded DESC;
@@ -193,7 +194,7 @@ SELECT
     ELSE 0
   END as estimated_request_cost
 FROM s3_access_logs
-WHERE request_datetime >= '2026-02-01'
+WHERE parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 GROUP BY operation
 ORDER BY request_count DESC;
 ```
@@ -208,7 +209,7 @@ SELECT
 FROM s3_access_logs
 WHERE operation = 'REST.GET.OBJECT'
   AND key != '-'
-  AND request_datetime >= '2026-02-01'
+  AND parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 GROUP BY SUBSTRING(key, 1, POSITION('/' IN key))
 ORDER BY request_count DESC
 LIMIT 20;
@@ -256,7 +257,7 @@ SELECT
 FROM s3_access_logs
 WHERE total_time > 5000  -- requests taking more than 5 seconds
   AND http_status = 200
-  AND request_datetime >= '2026-02-01'
+  AND parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-01:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 ORDER BY total_time DESC
 LIMIT 50;
 ```
@@ -269,15 +270,15 @@ SELECT
   COUNT(*) as request_count,
   SUM(bytes_sent) / 1024 / 1024 / 1024 as gb_transferred
 FROM s3_access_logs
-WHERE request_datetime >= '2026-02-10'
-  AND request_datetime < '2026-02-11'
+WHERE parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') >= parse_datetime('2026-02-10:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
+  AND parse_datetime(request_datetime, 'dd/MMM/yyyy:HH:mm:ss Z') < parse_datetime('2026-02-11:00:00:00', 'yyyy-MM-dd:HH:mm:ss')
 GROUP BY SUBSTR(request_datetime, 13, 2)
 ORDER BY hour_utc;
 ```
 
 ## Step 6: Create Partitioned Tables for Better Performance
 
-If you have a lot of logs, querying the entire dataset every time is slow and expensive. Partition by date for much better performance.
+If you have a lot of logs, querying the entire dataset every time is slow and expensive. Partition by date for much better performance. This assumes your logs are delivered under date-based prefixes like `logs/my-source-bucket/2026/02/01/`.
 
 ```sql
 CREATE EXTERNAL TABLE s3_access_logs_partitioned (
@@ -298,15 +299,33 @@ CREATE EXTERNAL TABLE s3_access_logs_partitioned (
   turn_around_time int,
   referrer string,
   user_agent string,
-  version_id string
+  version_id string,
+  host_id string,
+  signature_version string,
+  cipher_suite string,
+  authentication_type string,
+  host_header string,
+  tls_version string,
+  access_point_arn string,
+  acl_required string,
+  source_region string
 )
 PARTITIONED BY (dt string)
 ROW FORMAT SERDE 'org.apache.hadoop.hive.serde2.RegexSerDe'
 WITH SERDEPROPERTIES (
   'serialization.format' = '1',
-  'input.regex' = '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) ([^ ]*)'
+  'input.regex' = '([^ ]*) ([^ ]*) \\[(.*?)\\] ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) (-|[0-9]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) (\"[^\"]*\"|-) ([^ ]*)(?: ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*) ([^ ]*))?.*$'
 )
-LOCATION 's3://my-s3-access-logs/logs/my-source-bucket/';
+LOCATION 's3://my-s3-access-logs/logs/my-source-bucket/'
+TBLPROPERTIES (
+  'projection.enabled'='true',
+  'projection.dt.format'='yyyy/MM/dd',
+  'projection.dt.interval'='1',
+  'projection.dt.interval.unit'='DAYS',
+  'projection.dt.range'='2026/02/01,NOW',
+  'projection.dt.type'='date',
+  'storage.location.template'='s3://my-s3-access-logs/logs/my-source-bucket/${dt}/'
+);
 ```
 
 ## Query Architecture
