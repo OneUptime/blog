@@ -43,7 +43,7 @@ Use Cognito for player accounts with guest play support:
 
 ```javascript
 // auth-service/handler.js - Player authentication
-const { CognitoIdentityProviderClient, SignUpCommand, InitiateAuthCommand } = require('@aws-sdk/client-cognito-identity-provider');
+const { CognitoIdentityProviderClient, SignUpCommand } = require('@aws-sdk/client-cognito-identity-provider');
 
 const cognito = new CognitoIdentityProviderClient({});
 const USER_POOL_CLIENT_ID = process.env.USER_POOL_CLIENT_ID;
@@ -58,7 +58,7 @@ exports.register = async (event) => {
     Password: password,
     UserAttributes: [
       { Name: 'email', Value: email },
-      { Name: 'custom:display_name', Value: username },
+      { Name: 'nickname', Value: username },
     ],
   }));
 
@@ -91,12 +91,19 @@ Use API Gateway WebSocket API for real-time communication:
 
 ```javascript
 // websocket/connect.js - Handle new WebSocket connections
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, DeleteCommand } = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Store connection when player connects
 exports.connect = async (event) => {
   const connectionId = event.requestContext.connectionId;
-  const playerId = event.queryStringParameters?.playerId;
+  const playerId = event.requestContext.authorizer?.claims?.sub || event.queryStringParameters?.playerId;
+
+  if (!playerId) {
+    return { statusCode: 401, body: 'Unauthorized' };
+  }
 
   await docClient.send(new PutCommand({
     TableName: process.env.CONNECTIONS_TABLE,
@@ -104,7 +111,7 @@ exports.connect = async (event) => {
       connectionId,
       playerId,
       connectedAt: new Date().toISOString(),
-      ttl: Math.floor(Date.now() / 1000) + 3600, // Auto-cleanup after 1 hour
+      ttl: Math.floor(Date.now() / 1000) + 7200, // Eligible for TTL cleanup after API Gateway's max connection duration
     },
   }));
 
@@ -145,7 +152,7 @@ async function sendToPlayer(connectionId, message) {
       Data: JSON.stringify(message),
     }));
   } catch (error) {
-    if (error.statusCode === 410) {
+    if (error.name === 'GoneException') {
       // Connection is gone, clean it up
       await removeConnection(connectionId);
     }
@@ -170,8 +177,9 @@ Match players based on skill rating using an SQS-based queue:
 
 ```javascript
 // matchmaking/handler.js - Player matchmaking system
-const { SQSClient, SendMessageCommand, ReceiveMessageCommand, DeleteMessageCommand } = require('@aws-sdk/client-sqs');
+const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 
+const sqs = new SQSClient({});
 const MATCH_QUEUE = process.env.MATCH_QUEUE_URL;
 
 // Player requests to join a match
@@ -221,6 +229,8 @@ exports.processMatches = async () => {
 
       if (skillDiff <= skillRange && currentMatch.length < playersPerMatch) {
         currentMatch.push(player);
+      } else {
+        currentMatch = [player];
       }
 
       if (currentMatch.length === playersPerMatch) {
@@ -304,10 +314,14 @@ exports.handleGameAction = async (event) => {
 
 ## Step 5: Leaderboard System
 
-Use DynamoDB with a sort key for efficient leaderboard queries:
+Use DynamoDB with a global secondary index sorted by score for efficient leaderboard queries:
 
 ```javascript
 // leaderboard/handler.js - Leaderboard management
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, UpdateCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Update player score after a game
 exports.updateScore = async (playerId, scoreChange, gameMode) => {
@@ -318,8 +332,9 @@ exports.updateScore = async (playerId, scoreChange, gameMode) => {
       PK: `LEADERBOARD#${gameMode}`,
       SK: `PLAYER#${playerId}`,
     },
-    UpdateExpression: 'ADD score :change SET playerId = :pid, updatedAt = :now',
+    UpdateExpression: 'ADD score :change SET GSI1PK = :gm, playerId = :pid, updatedAt = :now',
     ExpressionAttributeValues: {
+      ':gm': `LEADERBOARD#${gameMode}`,
       ':change': scoreChange,
       ':pid': playerId,
       ':now': new Date().toISOString(),
