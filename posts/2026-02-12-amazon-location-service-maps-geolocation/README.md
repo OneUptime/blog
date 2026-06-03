@@ -4,11 +4,11 @@ Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, Amazon Location Service, Geolocation, Map, Cloud
 
-Description: A practical guide to using Amazon Location Service for adding maps, geocoding, routing, and geofencing to your applications without third-party dependencies.
+Description: A practical guide to using Amazon Location Service for adding maps, geocoding, routing, and geofencing to your applications without wiring up separate third-party map APIs.
 
 ---
 
-Building location-aware apps usually means reaching for Google Maps or Mapbox, tacking on API keys, and hoping your usage doesn't blow up your bill at the end of the month. Amazon Location Service offers an alternative that lives right inside your AWS ecosystem. It handles maps, place search, routing, geofencing, and device tracking - all with predictable pricing and tight integration with other AWS services.
+Building location-aware apps usually means reaching for Google Maps or Mapbox, tacking on API keys, and hoping your usage doesn't blow up your bill at the end of the month. Amazon Location Service offers an alternative that lives right inside your AWS ecosystem. It handles maps, place search, routing, geofencing, and device tracking - all with usage-based pricing and tight integration with other AWS services.
 
 Let's dig into how to actually use it, from rendering a map on a web page to setting up geofences that trigger alerts when devices enter or leave a specific area.
 
@@ -16,28 +16,19 @@ Let's dig into how to actually use it, from rendering a map on a web page to set
 
 The service breaks down into five main features:
 
-- **Maps** - Render interactive maps using data from Esri or HERE
+- **Maps** - Render interactive maps using AWS map styles such as Standard, Monochrome, Hybrid, and Satellite
 - **Places** - Search for locations, geocode addresses, reverse geocode coordinates
 - **Routes** - Calculate driving, walking, or trucking routes between points
 - **Geofencing** - Define virtual boundaries and detect when devices cross them
 - **Trackers** - Track device positions over time
 
-You pick a data provider (Esri or HERE) when you create each resource. The underlying data comes from those providers, but you interact with everything through the AWS API.
+Older Amazon Location Maps, Places, and Routes APIs required you to create resources and pick a data provider such as Esri or HERE. The current Maps V2, Places V2, and Routes V2 APIs use standalone endpoints, while geofences and trackers are still created as AWS resources.
 
 ## Setting Up Your First Map
 
-Start by creating a map resource. You can do this in the console or via CLI.
+Start by choosing a map style. The current Maps V2 API doesn't require you to create a map resource first.
 
-```bash
-# Create a map resource using Esri as the data provider
-
-aws location create-map \
-  --map-name "my-app-map" \
-  --configuration Style=VectorEsriNavigation \
-  --description "Main application map"
-```
-
-Available styles include VectorEsriNavigation, VectorEsriStreets, VectorHereExplore, and several others. Pick whatever fits your use case.
+Available styles include Standard, Monochrome, Hybrid, and Satellite. Pick whatever fits your use case.
 
 Next, you'll want to display this map in a web app. Amazon Location Service works with MapLibre GL JS, which is an open-source mapping library.
 
@@ -49,10 +40,10 @@ Here's a basic HTML page that renders your map.
 <head>
   <meta charset="utf-8">
   <title>My AWS Map</title>
-  <link href="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.css" rel="stylesheet" />
-  <script src="https://unpkg.com/maplibre-gl@3.x/dist/maplibre-gl.js"></script>
+  <link href="https://unpkg.com/maplibre-gl@5.x/dist/maplibre-gl.css" rel="stylesheet" />
+  <script src="https://unpkg.com/maplibre-gl@5.x/dist/maplibre-gl.js"></script>
   <!-- AWS SDK and auth helper -->
-  <script src="https://unpkg.com/@aws/amazon-location-utilities-auth-helper@1.x/dist/amazonLocationAuthHelper.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@aws/amazon-location-utilities-auth-helper@1"></script>
   <style>
     body { margin: 0; }
     #map { height: 100vh; width: 100vw; }
@@ -61,7 +52,7 @@ Here's a basic HTML page that renders your map.
 <body>
   <div id="map"></div>
   <script>
-    const mapName = "my-app-map";
+    const mapStyle = "Standard";
     const region = "us-east-1";
     const identityPoolId = "us-east-1:your-identity-pool-id";
 
@@ -73,8 +64,8 @@ Here's a basic HTML page that renders your map.
         container: "map",
         center: [-122.4194, 37.7749], // San Francisco
         zoom: 12,
-        style: `https://maps.geo.${region}.amazonaws.com/maps/v0/maps/${mapName}/style-descriptor`,
-        transformRequest: authHelper.getMapAuthenticationOptions().transformRequest,
+        style: `https://maps.geo.${region}.amazonaws.com/v2/styles/${mapStyle}/descriptor`,
+        ...authHelper.getMapAuthenticationOptions(),
       });
 
       // Add navigation controls
@@ -96,94 +87,74 @@ aws cognito-identity create-identity-pool \
   --allow-unauthenticated-identities
 ```
 
-Then attach a role to the identity pool that grants `geo:GetMap*` permissions.
+Then attach a role to the identity pool that grants the Maps V2 read permissions your map needs, such as `geo-maps:GetStyleDescriptor`, `geo-maps:GetTile`, `geo-maps:GetSprites`, and `geo-maps:GetGlyphs`.
 
 ## Geocoding and Place Search
 
 Geocoding converts an address into coordinates. Reverse geocoding does the opposite. Both are straightforward with the Places API.
 
-First, create a place index.
-
-```bash
-# Create a place index for geocoding
-aws location create-place-index \
-  --index-name "my-place-index" \
-  --data-source "Esri" \
-  --description "Geocoding and place search"
-```
-
-Now you can search for places.
+With Places V2, you don't need to create a place index first. You call the standalone Places client.
 
 ```python
 import boto3
 
-# Initialize the Location Service client
-client = boto3.client('location')
+# Initialize the Places V2 client
+client = boto3.client('geo-places')
 
 # Forward geocoding - address to coordinates
-response = client.search_place_index_for_text(
-    IndexName='my-place-index',
-    Text='350 Fifth Avenue, New York, NY',
+response = client.geocode(
+    QueryText='350 Fifth Avenue, New York, NY',
     MaxResults=5
 )
 
-for result in response['Results']:
-    place = result['Place']
-    point = place['Geometry']['Point']
-    print(f"Found: {place['Label']}")
+for place in response['ResultItems']:
+    point = place['Position']
+    print(f"Found: {place['Address']['Label']}")
     print(f"  Coordinates: {point[1]}, {point[0]}")  # lat, lng
 
 # Reverse geocoding - coordinates to address
-response = client.search_place_index_for_position(
-    IndexName='my-place-index',
-    Position=[-73.9857, 40.7484],  # lng, lat (note the order)
+response = client.reverse_geocode(
+    QueryPosition=[-73.9857, 40.7484],  # lng, lat (note the order)
     MaxResults=1
 )
 
-for result in response['Results']:
-    print(f"Address: {result['Place']['Label']}")
+for place in response['ResultItems']:
+    print(f"Address: {place['Address']['Label']}")
 ```
 
 Watch out for the coordinate order. Amazon Location Service uses `[longitude, latitude]`, which trips people up constantly since most of us think in `lat, lng`.
 
 ## Calculating Routes
 
-Create a route calculator, then request directions between two points.
-
-```bash
-# Create a route calculator
-aws location create-route-calculator \
-  --calculator-name "my-route-calc" \
-  --data-source "Esri" \
-  --description "Driving directions"
-```
-
-Here's how to calculate a route in Python.
+With Routes V2, you don't need to create a route calculator first. Here's how to calculate a route in Python.
 
 ```python
 import boto3
 
-client = boto3.client('location')
+client = boto3.client('geo-routes')
 
 # Calculate a driving route from San Francisco to Los Angeles
-response = client.calculate_route(
-    CalculatorName='my-route-calc',
-    DeparturePosition=[-122.4194, 37.7749],  # SF
-    DestinationPosition=[-118.2437, 34.0522],  # LA
+response = client.calculate_routes(
+    Origin=[-122.4194, 37.7749],  # SF
+    Destination=[-118.2437, 34.0522],  # LA
     TravelMode='Car',
-    IncludeLegGeometry=True,
+    LegGeometryFormat='Simple',
+    LegAdditionalFeatures=['Summary', 'TravelStepInstructions'],
+    TravelStepType='Default',
     DepartNow=True
 )
 
-summary = response['Summary']
-print(f"Distance: {summary['Distance']:.1f} km")
-print(f"Duration: {summary['DurationSeconds'] / 60:.0f} minutes")
+route = response['Routes'][0]
+summary = route['Summary']
+print(f"Distance: {summary['Distance'] / 1000:.1f} km")
+print(f"Duration: {summary['Duration'] / 60:.0f} minutes")
 
 # Each leg contains step-by-step geometry
-for i, leg in enumerate(response['Legs']):
-    print(f"\nLeg {i + 1}: {leg['Distance']:.1f} km")
-    for step in leg['Steps']:
-        print(f"  - {step['Distance']:.1f} km, {step['DurationSeconds']:.0f}s")
+for i, leg in enumerate(route['Legs']):
+    overview = leg['Summary']['Overview']
+    print(f"\nLeg {i + 1}: {overview['Distance'] / 1000:.1f} km")
+    for step in leg.get('VehicleLegDetails', {}).get('TravelSteps', []):
+        print(f"  - {step['Distance'] / 1000:.1f} km, {step['Duration']:.0f}s")
 ```
 
 ## Setting Up Geofences
@@ -222,9 +193,9 @@ client.put_geofence(
     Geometry={
         'Polygon': [[
             [-122.425, 37.780],
-            [-122.415, 37.780],
-            [-122.415, 37.770],
             [-122.425, 37.770],
+            [-122.415, 37.770],
+            [-122.415, 37.780],
             [-122.425, 37.780]  # must close the polygon
         ]]
     }
@@ -237,6 +208,7 @@ Create a tracker and link it to your geofence collection. When tracked devices c
 
 ```python
 import boto3
+from datetime import datetime, timezone
 
 client = boto3.client('location')
 
@@ -258,7 +230,7 @@ client.batch_update_device_position(
     Updates=[{
         'DeviceId': 'vehicle-42',
         'Position': [-122.4200, 37.7755],
-        'SampleTime': '2026-02-12T10:30:00Z'
+        'SampleTime': datetime(2026, 2, 12, 10, 30, tzinfo=timezone.utc)
     }]
 )
 ```
@@ -295,7 +267,7 @@ graph LR
 
 ## Cost Tips
 
-Amazon Location Service pricing is straightforward - you pay per request. Map tiles, geocoding queries, route calculations, and geofence evaluations each have their own per-request price. For most applications, the cost is significantly lower than Google Maps Platform, especially at scale.
+Amazon Location Service pricing is usage-based. Map tiles, geocoding queries, route calculations, and geofence evaluations each have their own price dimensions. For many applications, the cost can be lower than Google Maps Platform, especially at scale.
 
 A few tips to keep costs down:
 
@@ -309,4 +281,4 @@ Keep an eye on your API usage through CloudWatch metrics. Amazon Location Servic
 
 ## Final Thoughts
 
-Amazon Location Service won't replace Google Maps for consumer-facing apps that need Street View or super detailed business listings. But for backend geolocation work - geofencing, fleet tracking, route optimization, geocoding - it's a solid choice that integrates cleanly with the rest of your AWS stack. The pricing model is simpler, the data stays in your account, and you don't need to manage yet another third-party API key.
+Amazon Location Service won't replace Google Maps for consumer-facing apps that need Street View or super detailed business listings. But for backend geolocation work - geofencing, fleet tracking, route optimization, geocoding - it's a solid choice that integrates cleanly with the rest of your AWS stack. The pricing model is simpler, sensitive tracking and geofencing data stays in your AWS account, and you don't need to manage yet another third-party API key.
