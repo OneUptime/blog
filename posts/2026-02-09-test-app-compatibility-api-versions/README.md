@@ -12,7 +12,7 @@ Kubernetes API versions change with each release, deprecating old APIs and intro
 
 ## Understanding API Deprecation
 
-Kubernetes follows a well-defined API deprecation policy. APIs are marked as deprecated for at least two minor versions before removal. For example, an API deprecated in 1.27 won't be removed until 1.29 at the earliest. This gives you time to migrate, but only if you test compatibility proactively.
+Kubernetes follows a well-defined API deprecation policy. Beta APIs are no longer served 9 months or 3 minor releases after deprecation, whichever is longer; alpha APIs can be removed without prior deprecation notice; and GA APIs are not removed within a Kubernetes major version. For example, a beta API deprecated in 1.27 won't be removed until 1.30 at the earliest. This gives you time to migrate, but only if you test compatibility proactively.
 
 Common API changes include extensions/v1beta1 Ingress moving to networking.k8s.io/v1, apiextensions.k8s.io/v1beta1 CustomResourceDefinitions moving to v1, and batch/v1beta1 CronJob moving to batch/v1. Each change requires updating your manifests and deployments.
 
@@ -28,7 +28,8 @@ TARGET_VERSION="1.29"
 
 echo "Checking for deprecated APIs for Kubernetes $TARGET_VERSION..."
 
-# Use kubectl to list all resources
+# Use kubectl to list namespaced resources. This finds currently served alpha/beta API
+# versions; use manifest scans and API request logs to catch removed API usage.
 
 kubectl api-resources --verbs=list --namespaced -o name | while read resource; do
   kubectl get $resource -A -o json 2>/dev/null | \
@@ -147,7 +148,7 @@ echo "Conversion complete. Review files in $OUTPUT_DIR"
 
 ## Monitoring API Deprecation Warnings
 
-Enable and monitor API deprecation warnings from the API server.
+Monitor API deprecation warnings from the API server.
 
 ```bash
 #!/bin/bash
@@ -164,21 +165,16 @@ aws logs filter-log-events \
   --log-group-name /aws/eks/production/cluster \
   --filter-pattern "deprecated"
 
-# Enable audit logging to capture all API calls
-cat <<EOF | kubectl apply -f -
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: audit-policy
-  namespace: kube-system
-data:
-  audit-policy.yaml: |
-    apiVersion: audit.k8s.io/v1
-    kind: Policy
-    rules:
-    - level: RequestResponse
-      verbs: ["create", "update", "patch"]
-      omitStages: ["RequestReceived"]
+# Create an audit policy file for clusters where you control kube-apiserver.
+# Configure kube-apiserver with --audit-policy-file and an audit backend such as
+# --audit-log-path or --audit-webhook-config-file.
+cat <<EOF > audit-policy.yaml
+apiVersion: audit.k8s.io/v1
+kind: Policy
+rules:
+- level: RequestResponse
+  verbs: ["create", "update", "patch"]
+  omitStages: ["RequestReceived"]
 EOF
 ```
 
@@ -226,7 +222,7 @@ test_manifest() {
 failures=0
 for file in $(find $TEST_DIR -name "*.yaml" -o -name "*.yml"); do
   if ! test_manifest $file; then
-    ((failures++))
+    failures=$((failures + 1))
   fi
 done
 
@@ -315,8 +311,8 @@ jobs:
 
       - name: Test manifests
         run: |
-          for file in k8s/**/*.yaml; do
-            kubectl apply -f $file --dry-run=server
+          find k8s -type f \( -name "*.yaml" -o -name "*.yml" \) | while read -r file; do
+            kubectl apply -f "$file" --dry-run=server
           done
 ```
 
@@ -391,7 +387,7 @@ echo "Migrating resources to new API versions..."
 
 # Migrate Ingress from extensions/v1beta1 to networking.k8s.io/v1
 kubectl get ingress -A -o json | \
-  jq '.items[] | select(.apiVersion == "extensions/v1beta1")' | \
+  jq -c '.items[] | select(.apiVersion == "extensions/v1beta1")' | \
   while read -r ing; do
     ns=$(echo $ing | jq -r '.metadata.namespace')
     name=$(echo $ing | jq -r '.metadata.name')
@@ -400,13 +396,13 @@ kubectl get ingress -A -o json | \
 
     # Get current ingress
     kubectl get ingress $name -n $ns -o yaml | \
-      sed 's/apiVersion: extensions\/v1beta1/apiVersion: networking.k8s.io\/v1/' | \
+      kubectl convert -f - --output-version networking.k8s.io/v1 | \
       kubectl apply -f -
   done
 
 # Migrate CronJob from batch/v1beta1 to batch/v1
 kubectl get cronjob -A -o json | \
-  jq '.items[] | select(.apiVersion == "batch/v1beta1")' | \
+  jq -c '.items[] | select(.apiVersion == "batch/v1beta1")' | \
   while read -r cj; do
     ns=$(echo $cj | jq -r '.metadata.namespace')
     name=$(echo $cj | jq -r '.metadata.name')
@@ -414,7 +410,7 @@ kubectl get cronjob -A -o json | \
     echo "Migrating CronJob $ns/$name..."
 
     kubectl get cronjob $name -n $ns -o yaml | \
-      sed 's/apiVersion: batch\/v1beta1/apiVersion: batch\/v1/' | \
+      kubectl convert -f - --output-version batch/v1 | \
       kubectl apply -f -
   done
 
