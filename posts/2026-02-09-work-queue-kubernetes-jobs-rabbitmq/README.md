@@ -10,11 +10,11 @@ Description: Learn how to build reliable work queue patterns using Kubernetes Jo
 
 RabbitMQ brings enterprise-grade messaging capabilities to work queue patterns in Kubernetes. Unlike simple Redis lists, RabbitMQ provides message acknowledgments, dead letter exchanges, priority queues, and sophisticated routing. This makes it ideal for complex batch processing scenarios where message reliability is critical.
 
-When you need guaranteed message delivery, the ability to route messages based on content, or built-in retry mechanisms, RabbitMQ is the right choice. Combined with Kubernetes Jobs, it creates a powerful platform for reliable distributed processing.
+When you need stronger delivery guarantees, the ability to route messages based on content, or retry patterns built on acknowledgments and dead letter exchanges, RabbitMQ is the right choice. Combined with Kubernetes Jobs, it creates a powerful platform for reliable distributed processing.
 
 ## Deploying RabbitMQ
 
-Start with a production-ready RabbitMQ deployment:
+Start with a basic persistent RabbitMQ deployment:
 
 ```yaml
 apiVersion: v1
@@ -90,7 +90,6 @@ Configure RabbitMQ with proper queues and dead letter handling:
 ```python
 #!/usr/bin/env python3
 import pika
-import json
 
 def setup_rabbitmq():
     """Configure RabbitMQ queues and exchanges"""
@@ -149,7 +148,7 @@ if __name__ == "__main__":
     setup_rabbitmq()
 ```
 
-Run this as an init job before starting workers:
+Run this as a setup Job before starting workers:
 
 ```yaml
 apiVersion: batch/v1
@@ -187,6 +186,7 @@ def publish_tasks(tasks):
     )
     connection = pika.BlockingConnection(parameters)
     channel = connection.channel()
+    channel.confirm_delivery()
 
     published = 0
 
@@ -344,6 +344,7 @@ def main():
 
     connection = pika.BlockingConnection(parameters)
     channel = connection.channel()
+    channel.confirm_delivery()
 
     # Set QoS to only receive one message at a time
     channel.basic_qos(prefetch_count=1)
@@ -410,6 +411,17 @@ import os
 
 MAX_RETRIES = 3
 
+class TransientError(Exception):
+    """Error that should be retried"""
+
+class PermanentError(Exception):
+    """Error that should not be retried"""
+
+def process_task(task):
+    """Process a single task"""
+    # Your processing logic
+    return True
+
 def get_retry_count(headers):
     """Get retry count from message headers"""
     if headers and 'x-retry-count' in headers:
@@ -444,6 +456,7 @@ def main():
 
     connection = pika.BlockingConnection(parameters)
     channel = connection.channel()
+    channel.confirm_delivery()
     channel.basic_qos(prefetch_count=1)
 
     method_frame, properties, body = channel.basic_get(queue='work-queue')
@@ -482,8 +495,9 @@ def main():
 
             # Calculate backoff delay
             delay = 1000 * (2 ** retry_count)  # Exponential backoff in ms
+            time.sleep(delay / 1000)
 
-            # Re-publish to delayed queue (requires rabbitmq-delayed-message-exchange plugin)
+            # Re-publish with the updated retry count
             channel.basic_publish(
                 exchange='',
                 routing_key='work-queue',
@@ -686,4 +700,4 @@ if __name__ == "__main__":
     inspect_failures()
 ```
 
-RabbitMQ provides robust messaging features that make work queue patterns more reliable and feature-rich than simple Redis-based queues. Use it when you need guaranteed delivery, sophisticated routing, or built-in retry mechanisms for your batch processing workloads.
+RabbitMQ provides robust messaging features that make work queue patterns more reliable and feature-rich than simple Redis-based queues. Use it when you need stronger delivery guarantees, sophisticated routing, or retry patterns for your batch processing workloads.
