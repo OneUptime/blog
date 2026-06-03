@@ -14,7 +14,7 @@ When pods cannot communicate and NetworkPolicies are in place, you need a system
 
 ## Understanding NetworkPolicy Behavior
 
-NetworkPolicies work differently from traditional firewalls. Once you apply any NetworkPolicy that selects a pod, that pod becomes isolated by default. Traffic is denied unless explicitly allowed by a policy rule.
+NetworkPolicies work differently from traditional firewalls. Once you apply a NetworkPolicy that selects a pod for ingress or egress, that pod becomes isolated for that direction. Traffic in that direction is denied unless explicitly allowed by a policy rule.
 
 This default-deny behavior catches many people by surprise. If you create a NetworkPolicy allowing ingress on port 8080 for a pod, all other ingress traffic to that pod gets blocked, even if no explicit deny rule exists.
 
@@ -199,12 +199,14 @@ spec:
   - to:
     - namespaceSelector:
         matchLabels:
-          name: kube-system
-    - podSelector:
+          kubernetes.io/metadata.name: kube-system
+      podSelector:
         matchLabels:
           k8s-app: kube-dns
     ports:
     - protocol: UDP
+      port: 53
+    - protocol: TCP
       port: 53
   - to:
     - podSelector:
@@ -249,26 +251,35 @@ Some CNI plugins provide logging for NetworkPolicy decisions:
 
 For Calico:
 
-```bash
-# Enable policy logging
-kubectl annotate pod my-pod -n my-namespace \
-  projectcalico.org/policy-logs='{"ingress": "allow,deny", "egress": "allow,deny"}'
-
-# View logs on the node
-kubectl logs -n kube-system calico-node-xxx | grep policy
+```yaml
+# Add a Calico policy Log action before enforcing allow or deny behavior
+apiVersion: projectcalico.org/v3
+kind: NetworkPolicy
+metadata:
+  name: log-myapp-traffic
+  namespace: my-namespace
+spec:
+  selector: app == "myapp"
+  types:
+  - Ingress
+  ingress:
+  - action: Log
+  - action: Allow
 ```
+
+Check the node logs or your configured log aggregation destination for Calico policy log entries.
 
 For Cilium:
 
 ```bash
 # Monitor policy verdicts
-kubectl exec -n kube-system cilium-xxx -- cilium monitor --type policy-verdict
+kubectl exec -n kube-system cilium-xxx -- cilium-dbg monitor -t policy-verdict
 
 # Check policy enforcement for specific endpoints
-kubectl exec -n kube-system cilium-xxx -- cilium endpoint list
+kubectl exec -n kube-system cilium-xxx -- cilium-dbg endpoint list
 ```
 
-These logs show exactly which policy allowed or denied specific packets.
+These tools help show how traffic is evaluated by the CNI plugin and whether packets are forwarded or dropped.
 
 ## Creating Test Policies
 
@@ -298,22 +309,22 @@ Use network tools to understand exactly what is happening:
 
 ```bash
 # Run tcpdump on the destination pod
-kubectl debug -it pod/dest-pod --image=nicolaka/netshoot -- tcpdump -i any port 8080
+kubectl debug -it pod/dest-pod --image=nicolaka/netshoot --profile=netadmin -- tcpdump -i any port 8080
 
 # In another terminal, try connecting
 kubectl exec -it source-pod -- curl http://dest-pod:8080
 
-# If you see no packets in tcpdump, NetworkPolicy is blocking at source
-# If you see SYN packets but no response, NetworkPolicy might be blocking return traffic
+# If you see no packets in tcpdump, NetworkPolicy may be blocking source egress or destination ingress
+# If you see SYN packets but no response, check the application, service routing, or node-level filtering
 ```
 
 For Calico, check endpoint configuration:
 
 ```bash
 # Get Calico endpoint for a pod
-kubectl exec -n kube-system calico-node-xxx -- calicoctl get workloadEndpoint -o yaml
+calicoctl get workloadEndpoint -n my-namespace -o yaml
 
-# This shows all policies applied to the endpoint
+# This shows endpoint labels and profiles Calico uses when evaluating policy
 ```
 
 ## Validating Policy Changes
@@ -342,8 +353,8 @@ NetworkPolicies only support allow rules, not explicit deny rules. This can be c
 For example, to allow traffic from all pods except those labeled `app=untrusted`:
 
 ```yaml
-# This does NOT work - NetworkPolicy has no deny rules
-# You must allow all trusted sources explicitly
+# This is still an allow rule, not an explicit deny rule.
+# It allows same-namespace pods whose app label is not "untrusted".
 
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
