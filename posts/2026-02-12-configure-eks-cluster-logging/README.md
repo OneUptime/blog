@@ -101,23 +101,26 @@ fields @timestamp, @message
 
 For application logs (anything your pods write to stdout/stderr), you need a log forwarder. AWS recommends Fluent Bit, which runs as a DaemonSet and ships logs from every node to CloudWatch.
 
-First, create the IAM policy and service account:
-
-```bash
-# Create IRSA for Fluent Bit with CloudWatch permissions
-eksctl create iamserviceaccount \
-  --cluster my-cluster \
-  --namespace amazon-cloudwatch \
-  --name fluent-bit \
-  --attach-policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy \
-  --approve
-```
-
-Create the namespace:
+First, create the namespace, make sure the cluster has an IAM OIDC provider for IRSA, and create the IAM service account:
 
 ```bash
 # Create the namespace for Fluent Bit
 kubectl create namespace amazon-cloudwatch
+
+# Associate an IAM OIDC provider if your cluster does not already have one
+eksctl utils associate-iam-oidc-provider \
+  --cluster my-cluster \
+  --region us-west-2 \
+  --approve
+
+# Create IRSA for Fluent Bit with CloudWatch permissions
+eksctl create iamserviceaccount \
+  --cluster my-cluster \
+  --region us-west-2 \
+  --namespace amazon-cloudwatch \
+  --name fluent-bit \
+  --attach-policy-arn arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy \
+  --approve
 ```
 
 Deploy Fluent Bit using the AWS-provided configuration:
@@ -141,7 +144,7 @@ data:
         Name              tail
         Tag               kube.*
         Path              /var/log/containers/*.log
-        Parser            docker
+        multiline.parser  docker, cri
         DB                /var/fluent-bit/state/flb_container.db
         Mem_Buf_Limit     50MB
         Skip_Long_Lines   On
@@ -166,18 +169,46 @@ data:
         log_retention_days  30
 
   parsers.conf: |
-    [PARSER]
-        Name        docker
-        Format      json
-        Time_Key    time
-        Time_Format %Y-%m-%dT%H:%M:%S.%L
-        Time_Keep   On
 ```
 
 Deploy the Fluent Bit DaemonSet:
 
 ```yaml
-# fluent-bit-daemonset.yaml - Fluent Bit DaemonSet
+# fluent-bit-daemonset.yaml - Fluent Bit RBAC and DaemonSet
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: fluent-bit-role
+rules:
+  - nonResourceURLs:
+      - /metrics
+    verbs:
+      - get
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - pods/logs
+      - nodes
+      - nodes/proxy
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: fluent-bit-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: fluent-bit-role
+subjects:
+  - kind: ServiceAccount
+    name: fluent-bit
+    namespace: amazon-cloudwatch
+---
 apiVersion: apps/v1
 kind: DaemonSet
 metadata:
@@ -199,7 +230,7 @@ spec:
         - operator: Exists
       containers:
         - name: fluent-bit
-          image: public.ecr.aws/aws-observability/aws-for-fluent-bit:2.31.12
+          image: public.ecr.aws/aws-observability/aws-for-fluent-bit:3.0.1
           resources:
             limits:
               memory: 200Mi
