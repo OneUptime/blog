@@ -19,7 +19,7 @@ Before you build the dashboard, you need to make sure your data is in a queryabl
 ```mermaid
 graph LR
     A[IoT Devices] --> B[IoT Core]
-    B --> C[IoT Analytics / Kinesis]
+    B --> C[IoT Core Rules / Kinesis / Data Firehose]
     C --> D[S3 Data Lake - Parquet]
     D --> E[Athena]
     E --> F[QuickSight]
@@ -35,7 +35,7 @@ The most common patterns are:
 2. **Amazon Timestream** - best for time-series queries on recent data
 3. **RDS/Aurora** - best when IoT data is combined with relational business data
 
-For this walkthrough, we will use the S3 + Athena path since it is the most common for IoT Analytics pipelines. If you are using IoT Analytics, see our guide on [using IoT Analytics for IoT data processing](https://oneuptime.com/blog/post/2026-02-12-use-iot-analytics-for-iot-data-processing/view) to get your data into S3.
+For this walkthrough, we will use the S3 + Athena path since it is a common pattern for IoT pipelines. AWS IoT Analytics ended support on December 15, 2025, so new pipelines should use supported services such as AWS IoT Core rules, Kinesis Data Streams, Amazon Data Firehose, AWS Glue, or similar ingestion and processing services to get data into S3.
 
 ## Step 1: Set Up Athena for Your IoT Data
 
@@ -146,7 +146,7 @@ aws quicksight create-data-set \
   }'
 ```
 
-Using SPICE (Super-fast, Parallel, In-memory Calculation Engine) import mode is recommended for IoT dashboards. It caches the data in memory so dashboards load instantly even when querying millions of rows.
+Using SPICE (Super-fast, Parallel, In-memory Calculation Engine) import mode is recommended for many IoT dashboards. It stores the data in QuickSight's in-memory engine so dashboards can load quickly and consistently even when analyzing large datasets.
 
 ## Step 3: Design the Dashboard
 
@@ -216,7 +216,7 @@ aws quicksight create-refresh-schedule \
   }'
 ```
 
-For near-real-time dashboards, consider using Timestream as your data source instead of S3+Athena. Timestream supports direct query mode in QuickSight (not SPICE), which means every dashboard load runs a live query against your time-series database.
+For near-real-time dashboards, consider using Timestream as your data source instead of S3+Athena. Timestream supports both SPICE imports and direct query mode in QuickSight, but published dashboards that use Timestream autorefresh need a direct query dataset. With direct query, dashboard refreshes run live queries against your time-series database.
 
 ## Step 5: Add Interactivity with Parameters and Filters
 
@@ -260,9 +260,9 @@ You can also embed QuickSight dashboards into your own web applications using th
 
 ## Cost Optimization
 
-QuickSight pricing has two components: per-user fees and SPICE capacity. For IoT dashboards:
+QuickSight pricing includes user pricing, optional Reader capacity pricing, and SPICE capacity. For IoT dashboards:
 
-- Use **Reader** accounts ($5/month per user with session pricing) for users who only view dashboards
+- Use **Reader** accounts for users who only view dashboards, or Reader capacity pricing for embedded or high-scale access patterns
 - Right-size your SPICE capacity based on actual data volume
 - Use incremental SPICE refreshes when possible to reduce refresh costs
 - Consider direct query mode for dashboards that need real-time data but are not accessed frequently
