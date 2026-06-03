@@ -67,12 +67,12 @@ To launch an instance targeting this specific reservation:
 ```bash
 # Launch an instance targeting a specific capacity reservation
 aws ec2 run-instances \
-  --image-id ami-0abc123 \
+  --image-id ami-0abcdef1234567890 \
   --instance-type m5.xlarge \
-  --subnet-id subnet-abc123 \
+  --subnet-id subnet-0abc123def4567890 \
   --capacity-reservation-specification '{
     "CapacityReservationTarget": {
-      "CapacityReservationId": "cr-0abc123def456"
+      "CapacityReservationId": "cr-0123456789abcdef0"
     }
   }'
 ```
@@ -90,22 +90,23 @@ aws ec2 create-capacity-reservation \
   --instance-count 50 \
   --instance-match-criteria open \
   --end-date-type limited \
-  --end-date "2026-03-01T00:00:00Z" \
-  --tag-specifications 'ResourceType=capacity-reservation,Tags=[{Key=Event,Value=product-launch-march}]'
+  --end-date "2026-09-01T00:00:00Z" \
+  --tag-specifications 'ResourceType=capacity-reservation,Tags=[{Key=Event,Value=product-launch-september}]'
 ```
 
-## Capacity Reservation Groups
+## Capacity Reservation Fleets
 
-For complex deployments, use Capacity Reservation Groups to organize reservations:
+For complex deployments, use Capacity Reservation Fleets to manage multiple instance types in a single availability zone:
 
 ```bash
-# Create a capacity reservation group
+# Create a capacity reservation fleet
 aws ec2 create-capacity-reservation-fleet \
   --allocation-strategy prioritized \
   --total-target-capacity 100 \
+  --instance-match-criteria open \
   --instance-type-specifications '[
     {
-      "InstanceType": "m5.xlarge",
+      "InstanceType": "m5.large",
       "InstancePlatform": "Linux/UNIX",
       "Weight": 1,
       "AvailabilityZone": "us-east-1a",
@@ -113,24 +114,24 @@ aws ec2 create-capacity-reservation-fleet \
     },
     {
       "InstanceType": "m5.xlarge",
-      "InstancePlatform": "Linux/UNIX",
-      "Weight": 1,
-      "AvailabilityZone": "us-east-1b",
-      "Priority": 1
-    },
-    {
-      "InstanceType": "m5.2xlarge",
       "InstancePlatform": "Linux/UNIX",
       "Weight": 2,
       "AvailabilityZone": "us-east-1a",
       "Priority": 2
+    },
+    {
+      "InstanceType": "m5.2xlarge",
+      "InstancePlatform": "Linux/UNIX",
+      "Weight": 4,
+      "AvailabilityZone": "us-east-1a",
+      "Priority": 3
     }
   ]' \
   --tenancy default \
-  --end-date "2026-06-01T00:00:00Z"
+  --end-date "2026-12-01T00:00:00Z"
 ```
 
-This creates a fleet of reservations spread across AZs with weighted capacity.
+This creates a fleet of reservations in one AZ with weighted capacity across instance types.
 
 ## Using with Auto Scaling Groups
 
@@ -141,7 +142,7 @@ Auto Scaling groups can use Capacity Reservations to ensure they can always laun
 aws autoscaling create-auto-scaling-group \
   --auto-scaling-group-name "dr-failover-asg" \
   --launch-template "LaunchTemplateName=dr-template,Version=\$Latest" \
-  --vpc-zone-identifier "subnet-abc123" \
+  --vpc-zone-identifier "subnet-0abc123def4567890" \
   --min-size 0 \
   --max-size 10 \
   --desired-capacity 0
@@ -153,7 +154,7 @@ The launch template should reference the capacity reservation:
 # Terraform: Launch template that uses a capacity reservation
 resource "aws_launch_template" "dr" {
   name_prefix   = "dr-"
-  image_id      = "ami-0abc123"
+  image_id      = "ami-0abcdef1234567890"
   instance_type = "m5.xlarge"
 
   capacity_reservation_specification {
@@ -163,7 +164,7 @@ resource "aws_launch_template" "dr" {
   # Or target a specific reservation
   # capacity_reservation_specification {
   #   capacity_reservation_target {
-  #     capacity_reservation_id = "cr-0abc123def456"
+  #     capacity_reservation_id = "cr-0123456789abcdef0"
   #   }
   # }
 }
@@ -206,7 +207,7 @@ resource "aws_ec2_capacity_reservation" "dr_az2" {
 # Launch template targeting the reservation
 resource "aws_launch_template" "dr" {
   name_prefix   = "dr-failover-"
-  image_id      = "ami-0abc123"
+  image_id      = "ami-0abcdef1234567890"
   instance_type = "m5.xlarge"
 
   capacity_reservation_specification {
@@ -230,11 +231,12 @@ aws ec2 describe-capacity-reservations \
     AZ: AvailabilityZone,
     Total: TotalInstanceCount,
     Available: AvailableInstanceCount,
-    Used: TotalInstanceCount - AvailableInstanceCount,
     State: State
   }' \
   --output table
 ```
+
+The used capacity is `TotalInstanceCount - AvailableInstanceCount`.
 
 Set up a CloudWatch alarm for low utilization:
 
@@ -244,13 +246,13 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "capacity-reservation-underutilized" \
   --namespace AWS/EC2CapacityReservations \
   --metric-name UsedInstanceCount \
-  --dimensions Name=CapacityReservationId,Value=cr-0abc123def456 \
+  --dimensions Name=CapacityReservationId,Value=cr-0123456789abcdef0 \
   --statistic Average \
   --period 3600 \
   --evaluation-periods 24 \
   --threshold 1 \
   --comparison-operator LessThanThreshold \
-  --alarm-actions arn:aws:sns:us-east-1:123456789:cost-alerts
+  --alarm-actions arn:aws:sns:us-east-1:123456789012:cost-alerts
 ```
 
 This alerts you if a reservation has been sitting unused for 24 hours, so you can decide whether to cancel it and stop paying.
@@ -271,8 +273,8 @@ Capacity Reservations bill at the On-Demand rate whether the capacity is used or
 # Share a capacity reservation with another account via RAM
 aws ram create-resource-share \
   --name "shared-capacity-dr" \
-  --resource-arns "arn:aws:ec2:us-east-1:123456789:capacity-reservation/cr-0abc123def456" \
-  --principals "arn:aws:organizations::123456789:organization/o-abc123"
+  --resource-arns "arn:aws:ec2:us-east-1:123456789012:capacity-reservation/cr-0123456789abcdef0" \
+  --principals "arn:aws:organizations::123456789012:organization/o-abc123"
 ```
 
 ## Capacity Reservations vs Reserved Instances
@@ -281,11 +283,11 @@ These are often confused but serve different purposes:
 
 | Feature | Capacity Reservations | Reserved Instances |
 |---------|----------------------|-------------------|
-| Guarantees capacity | Yes | No |
+| Guarantees capacity | Yes | Zonal RIs only |
 | Provides discount | No (use with Savings Plans) | Yes |
-| Commitment required | None | 1 or 3 years |
+| Commitment required | None for immediate-use reservations | 1 or 3 years |
 | AZ-specific | Yes | Optional |
-| Can be cancelled | Anytime | No (can be sold on marketplace) |
+| Can be cancelled | Anytime for immediate-use reservations | No (Standard RIs can be sold on marketplace) |
 
 The ideal setup is Capacity Reservations for guaranteed availability, combined with Savings Plans for the pricing discount.
 
