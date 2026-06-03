@@ -18,13 +18,13 @@ When you run a Query or Scan with a FilterExpression, here's what happens:
 
 ```mermaid
 graph LR
-    A[Query/Scan] --> B[Read items from partition]
+    A[Query/Scan] --> B[Read candidate items]
     B --> C[Apply FilterExpression]
     C --> D[Return matching items]
-    B --> E[You pay for ALL items read]
+    B --> E[You pay for the data read]
 ```
 
-Step 1: DynamoDB reads items based on your key condition (for Query) or the entire table (for Scan).
+Step 1: DynamoDB reads items based on your key condition (for Query) or a page of the table or index (for Scan).
 Step 2: DynamoDB applies the FilterExpression to each read item.
 Step 3: Only matching items are returned to you.
 
@@ -35,8 +35,14 @@ The billing is based on Step 1, not Step 3.
 Here's a simple example:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const {
+  DynamoDBDocumentClient,
+  QueryCommand,
+  ScanCommand
+} = require('@aws-sdk/lib-dynamodb');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
 // Get orders for a customer, but only those over $50
 async function getHighValueOrders(customerId) {
@@ -50,13 +56,13 @@ async function getHighValueOrders(customerId) {
     }
   };
 
-  const result = await docClient.query(params).promise();
+  const result = await docClient.send(new QueryCommand(params));
   console.log(`Returned: ${result.Count}, Read: ${result.ScannedCount}`);
   return result.Items;
 }
 ```
 
-If the customer has 200 orders and 30 are over $50, `Count` is 30 and `ScannedCount` is 200. You consumed RCUs for 200 items.
+If the customer has 200 orders and 30 are over $50, `Count` is 30 and `ScannedCount` is 200. You consumed RCUs for the data read from those 200 items.
 
 ## Comparison Operators
 
@@ -88,7 +94,7 @@ FilterExpression: 'contains(tags, :tag)'
 // Begins with
 FilterExpression: 'begins_with(#name, :prefix)'
 
-// In (check if value is in a list)
+// In (check if the attribute equals one of several values)
 FilterExpression: '#status IN (:s1, :s2, :s3)'
 
 // Size (attribute length)
@@ -117,7 +123,8 @@ async function searchOrders(customerId) {
     }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  const result = await docClient.send(new QueryCommand(params));
+  return result.Items;
 }
 ```
 
@@ -140,7 +147,8 @@ async function getOrdersWithDiscount(customerId) {
     }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  const result = await docClient.send(new QueryCommand(params));
+  return result.Items;
 }
 
 // Filter on deeply nested attributes
@@ -227,11 +235,12 @@ async function getActiveUsersInCity(city) {
     }
   };
 
-  return (await docClient.scan(params).promise()).Items;
+  const result = await docClient.send(new ScanCommand(params));
+  return result.Items;
 }
 ```
 
-This scans the entire Users table. If you have 10 million users and 500 are active in the given city, you read 10 million items and return 500. The FilterExpression doesn't make the scan cheaper - it just makes the response smaller.
+This starts scanning the Users table. A single `Scan` call reads up to the `Limit` you set or up to 1 MB of data before filtering; a complete paginated scan of a 10 million user table could read all 10 million items to return 500 matches. The FilterExpression doesn't make the scan cheaper - it just makes each response smaller.
 
 **The fix:** Create a GSI with `city` as the partition key and `status` as the sort key:
 
@@ -249,7 +258,8 @@ async function getActiveUsersInCity(city) {
     }
   };
 
-  return (await docClient.query(params).promise()).Items;
+  const result = await docClient.send(new QueryCommand(params));
+  return result.Items;
 }
 ```
 
@@ -326,7 +336,7 @@ async function getFilteredResults(customerId, targetCount) {
       ExclusiveStartKey: lastKey
     };
 
-    const result = await docClient.query(params).promise();
+    const result = await docClient.send(new QueryCommand(params));
     items = items.concat(result.Items);
     lastKey = result.LastEvaluatedKey;
 
@@ -342,7 +352,7 @@ async function getFilteredResults(customerId, targetCount) {
 Track the ratio of `Count` to `ScannedCount` to understand filter efficiency:
 
 ```javascript
-const result = await docClient.query(params).promise();
+const result = await docClient.send(new QueryCommand(params));
 const efficiency = result.ScannedCount > 0
   ? (result.Count / result.ScannedCount * 100).toFixed(1)
   : 100;
