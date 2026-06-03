@@ -42,7 +42,7 @@ Resources:
   ImageBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: image-recognition-uploads
+      BucketName: !Sub image-recognition-uploads-${AWS::AccountId}-${AWS::Region}
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ['*']
@@ -336,6 +336,15 @@ def train_model(project_arn, training_data_bucket, training_data_prefix, output_
     )
     return response['ProjectVersionArn']
 
+def start_model(project_version_arn, min_inference_units=1):
+    """Start a trained Custom Labels model before running inference."""
+    response = rekognition.start_project_version(
+        ProjectVersionArn=project_version_arn,
+        MinInferenceUnits=min_inference_units
+    )
+    return response['Status']
+
+# Wait until describe_project_versions reports RUNNING before calling detect_custom_labels.
 def detect_custom_labels(project_version_arn, bucket, key, min_confidence=60):
     """Detect custom labels in an image using a trained model."""
     response = rekognition.detect_custom_labels(
@@ -368,7 +377,7 @@ Tie everything together with a single API endpoint:
 import boto3
 import json
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 dynamodb = boto3.resource('dynamodb')
 results_table = dynamodb.Table('ImageAnalysisResults')
@@ -400,7 +409,7 @@ def handler(event, context):
         'analysisType': analysis_type,
         'source': f's3://{bucket}/{key}',
         'results': json.dumps(result, default=str),
-        'analyzedAt': datetime.utcnow().isoformat()
+        'analyzedAt': datetime.now(timezone.utc).isoformat()
     })
 
     result['imageId'] = image_id
