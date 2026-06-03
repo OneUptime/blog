@@ -21,8 +21,7 @@ Unlike KV v1, KV v2 uses a different API path structure. Secrets are written to 
 Enable KV v2 in your Vault cluster:
 
 ```bash
-# Enable KV v2 at the default path
-
+# Enable KV v2 at the default "kv/" path
 vault secrets enable -version=2 kv
 
 # Enable KV v2 at a custom path
@@ -38,11 +37,11 @@ vault write app-secrets/config \
     delete_version_after="30d"
 ```
 
-The `delete_version_after` parameter automatically destroys old versions after the specified duration, helping manage storage usage.
+The `delete_version_after` parameter automatically soft-deletes versions after the specified duration. Use `max_versions` or `vault kv destroy` when you need Vault to permanently remove old version data from storage.
 
 ## Writing Secrets to KV v2
 
-Write secrets using the data path:
+Write secrets using the KV CLI:
 
 ```bash
 # Write a secret with multiple key-value pairs
@@ -147,7 +146,7 @@ metadata:
   name: vault-agent-config
   namespace: production
 data:
-  agent-config.hcl: |
+  config.hcl: |
     vault {
       address = "http://vault.vault-system:8200"
     }
@@ -207,22 +206,12 @@ spec:
     metadata:
       annotations:
         vault.hashicorp.com/agent-inject: "true"
-        vault.hashicorp.com/role: "production-apps"
-        vault.hashicorp.com/agent-inject-secret-config.json: "app-secrets/data/database"
-        vault.hashicorp.com/agent-inject-secret-api-keys.env: "app-secrets/data/api-keys"
+        vault.hashicorp.com/agent-configmap: "vault-agent-config"
     spec:
       serviceAccountName: app-serviceaccount
       containers:
       - name: app
         image: myapp:latest
-        volumeMounts:
-        - name: vault-secrets
-          mountPath: /vault/secrets
-          readOnly: true
-      volumes:
-      - name: vault-secrets
-        emptyDir:
-          medium: Memory
 ```
 
 Note the path structure: `app-secrets/data/database` is used to read secrets, not `app-secrets/database`.
@@ -255,18 +244,21 @@ package main
 
 import (
     "fmt"
+    "strconv"
+
     "github.com/hashicorp/vault/api"
 )
 
 func getSecretWithVersion(client *api.Client, path string, version int) (map[string]interface{}, error) {
-    var secretPath string
+    var secret *api.Secret
+    var err error
     if version > 0 {
-        secretPath = fmt.Sprintf("%s?version=%d", path, version)
+        secret, err = client.Logical().ReadWithData(path, map[string][]string{
+            "version": {strconv.Itoa(version)},
+        })
     } else {
-        secretPath = path
+        secret, err = client.Logical().Read(path)
     }
-
-    secret, err := client.Logical().Read(secretPath)
     if err != nil {
         return nil, fmt.Errorf("failed to read secret: %w", err)
     }
@@ -282,7 +274,10 @@ func getSecretWithVersion(client *api.Client, path string, version int) (map[str
     }
 
     // Get metadata including version information
-    metadata := secret.Data["metadata"].(map[string]interface{})
+    metadata, ok := secret.Data["metadata"].(map[string]interface{})
+    if !ok {
+        return nil, fmt.Errorf("invalid metadata format")
+    }
     currentVersion := metadata["version"]
     fmt.Printf("Retrieved secret version: %v\n", currentVersion)
 
@@ -292,10 +287,10 @@ func getSecretWithVersion(client *api.Client, path string, version int) (map[str
 
 ## Setting Up Access Control Policies
 
-Create fine-grained policies for KV v2:
+Create separate fine-grained policies for KV v2:
 
 ```hcl
-# Policy for applications to read secrets
+# app-read-secrets: policy for applications to read secrets
 path "app-secrets/data/database" {
   capabilities = ["read"]
 }
@@ -304,16 +299,28 @@ path "app-secrets/data/api-keys" {
   capabilities = ["read"]
 }
 
-# Policy for operators to manage secrets
+# app-secret-operators: policy for operators to manage secrets and versions
 path "app-secrets/data/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+  capabilities = ["create", "read", "update", "delete"]
 }
 
 path "app-secrets/metadata/*" {
-  capabilities = ["list", "read"]
+  capabilities = ["create", "read", "update", "delete", "list"]
 }
 
-# Policy for auditors to view metadata only
+path "app-secrets/delete/*" {
+  capabilities = ["update"]
+}
+
+path "app-secrets/undelete/*" {
+  capabilities = ["update"]
+}
+
+path "app-secrets/destroy/*" {
+  capabilities = ["update"]
+}
+
+# app-secret-auditors: policy for auditors to view metadata only
 path "app-secrets/metadata/*" {
   capabilities = ["read", "list"]
 }
@@ -352,7 +359,7 @@ spec:
           serviceAccountName: secret-rotator
           containers:
           - name: rotator
-            image: vault:1.15
+            image: hashicorp/vault:1.21
             command:
             - /bin/sh
             - -c
@@ -364,8 +371,13 @@ spec:
               # Generate new password
               NEW_PASSWORD=$(openssl rand -base64 32)
 
-              # Read current secret
+              # Read current secret state
               CURRENT_VERSION=$(vault kv get -format=json app-secrets/database | jq -r .data.metadata.version)
+              OLD_PASSWORD=$(vault kv get -field=password app-secrets/database)
+
+              # Update actual database password
+              PGPASSWORD="$OLD_PASSWORD" psql -h postgres.database.svc.cluster.local \
+                -U dbuser -c "ALTER USER dbuser WITH PASSWORD '$NEW_PASSWORD';"
 
               # Write new version with updated password
               vault kv put -cas=$CURRENT_VERSION app-secrets/database \
@@ -373,10 +385,6 @@ spec:
                 password="$NEW_PASSWORD" \
                 host="postgres.database.svc.cluster.local" \
                 port="5432"
-
-              # Update actual database password
-              PGPASSWORD="$OLD_PASSWORD" psql -h postgres.database.svc.cluster.local \
-                -U dbuser -c "ALTER USER dbuser WITH PASSWORD '$NEW_PASSWORD';"
           restartPolicy: OnFailure
 ```
 
@@ -406,13 +414,13 @@ data:
     groups:
     - name: vault-kv-v2
       rules:
-      - record: vault_kv_secret_versions
-        expr: vault_secret_kv_count{version="v2"}
+      - record: vault_kv_secret_entries
+        expr: vault_secret_kv_count
 
-      - alert: TooManySecretVersions
-        expr: vault_secret_kv_count{version="v2"} > 50
+      - alert: TooManyKVSecretEntries
+        expr: vault_secret_kv_count > 50
         annotations:
-          summary: "Secret has excessive versions"
+          summary: "KV secrets engine has many entries"
 ```
 
 ## Best Practices
@@ -421,7 +429,7 @@ Always use the data path (`app-secrets/data/path`) when reading secrets, not the
 
 Set appropriate `max_versions` limits to control storage usage. For secrets that change frequently, use lower limits. For audit-critical secrets, retain more versions.
 
-Implement automated cleanup of old versions using the `delete_version_after` setting. This prevents unbounded storage growth while maintaining recent version history for rollbacks.
+Implement automated soft deletion of old versions using the `delete_version_after` setting. Pair it with `max_versions` or explicit destroys to prevent unbounded storage growth while maintaining recent version history for rollbacks.
 
 ## Conclusion
 
