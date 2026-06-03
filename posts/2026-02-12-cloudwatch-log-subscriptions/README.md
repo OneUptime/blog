@@ -43,7 +43,8 @@ aws lambda add-permission \
   --statement-id "cloudwatch-invoke" \
   --principal "logs.amazonaws.com" \
   --action "lambda:InvokeFunction" \
-  --source-arn "arn:aws:logs:us-east-1:123456789012:log-group:/myapp/production/*"
+  --source-arn "arn:aws:logs:us-east-1:123456789012:log-group:/myapp/production/api:*" \
+  --source-account "123456789012"
 
 # Create subscription filter targeting Lambda
 aws logs put-subscription-filter \
@@ -135,19 +136,9 @@ aws logs put-subscription-filter \
 
 ## Destination 4: OpenSearch Service
 
-Stream directly to an OpenSearch domain:
+Stream to an OpenSearch domain by using the CloudWatch console's Amazon OpenSearch Service subscription filter workflow. The console provisions and configures the Lambda function that forwards matching log events to the domain.
 
-```bash
-# Create subscription filter targeting OpenSearch
-aws logs put-subscription-filter \
-  --log-group-name "/myapp/production/api" \
-  --filter-name "logs-to-opensearch" \
-  --filter-pattern "" \
-  --destination-arn "arn:aws:es:us-east-1:123456789012:domain/log-analytics" \
-  --role-arn "arn:aws:iam::123456789012:role/CWLtoOpenSearchRole"
-```
-
-This uses a built-in Lambda function under the hood, so you get the OpenSearch indexing without writing any code.
+This uses Lambda under the hood, so you get the OpenSearch indexing without writing the forwarding code yourself.
 
 ## Advanced Filter Patterns
 
@@ -172,7 +163,7 @@ The filter pattern determines which log events get forwarded. Here are some usef
 # Pattern with OR
 '{ $.statusCode = 500 || $.statusCode = 502 || $.statusCode = 503 }'
 
-# Match when a field exists
+# Match when a boolean field is true
 '{ $.errorStack IS TRUE }'
 ```
 
@@ -182,7 +173,7 @@ Smart filtering is important for cost control. If you only care about errors, do
 
 You can stream logs from one account to a destination in another account. This is useful for centralizing logs in a monitoring account.
 
-In the destination account, create a Kinesis stream or Lambda function. Then create a destination policy:
+In the destination account, create a Kinesis stream or Firehose delivery stream. Then create a destination policy:
 
 ```bash
 # In the destination account: create a destination
@@ -246,7 +237,7 @@ CloudWatch publishes metrics for subscription filters under the `AWS/Logs` names
 - `ForwardedBytes` - bytes forwarded to the destination
 - `ForwardedLogEvents` - number of events forwarded
 - `DeliveryErrors` - failed delivery attempts
-- `DeliveryThrottling` - events dropped due to throttling
+- `DeliveryThrottling` - events throttled while forwarding to the destination
 
 Set up alarms on `DeliveryErrors` to catch pipeline failures:
 
