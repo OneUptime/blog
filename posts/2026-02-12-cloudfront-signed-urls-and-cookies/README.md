@@ -12,7 +12,7 @@ When you need to restrict access to content served through CloudFront - think pr
 
 ## Signed URLs vs Signed Cookies
 
-**Signed URLs** include the signature in the URL itself. Each URL grants access to a single resource. Good for:
+**Signed URLs** include the signature in the URL itself. A canned-policy signed URL grants access to a single resource; a custom-policy signed URL can grant access to resources that match its policy. Good for:
 - Individual file downloads
 - Links shared via email
 - API responses that return file URLs
@@ -42,12 +42,14 @@ Upload the public key to CloudFront:
 ```bash
 # Upload the public key to CloudFront
 aws cloudfront create-public-key \
-  --public-key-config '{
-    "CallerReference": "my-key-001",
-    "Name": "content-signing-key",
-    "EncodedKey": "'"$(cat public_key.pem)"'",
-    "Comment": "Key for signing premium content URLs"
-  }'
+  --public-key-config "$(jq -n \
+    --arg key "$(cat public_key.pem)" \
+    '{
+      CallerReference: "my-key-001",
+      Name: "content-signing-key",
+      EncodedKey: $key,
+      Comment: "Key for signing premium content URLs"
+    }')"
 ```
 
 Note the public key ID from the output. Now create a key group:
@@ -71,8 +73,14 @@ Update your CloudFront distribution to require signed URLs or cookies for specif
   "PathPattern": "/premium/*",
   "TargetOriginId": "s3-premium-content",
   "ViewerProtocolPolicy": "https-only",
-  "AllowedMethods": ["GET", "HEAD"],
-  "CachedMethods": ["GET", "HEAD"],
+  "AllowedMethods": {
+    "Quantity": 2,
+    "Items": ["GET", "HEAD"],
+    "CachedMethods": {
+      "Quantity": 2,
+      "Items": ["GET", "HEAD"]
+    }
+  },
   "TrustedKeyGroups": {
     "Enabled": true,
     "Quantity": 1,
@@ -83,6 +91,7 @@ Update your CloudFront distribution to require signed URLs or cookies for specif
 ```
 
 The `TrustedKeyGroups` setting is what makes CloudFront require a valid signature. Without a signature, users get a 403 error.
+When you update a distribution, `restricted-config.json` must contain the full distribution config with this cache behavior included, not just the behavior snippet above.
 
 ```bash
 # Update the distribution with the restricted behavior
@@ -181,7 +190,6 @@ For signed cookies, you generate three cookies that together grant access. Here'
 ```python
 from botocore.signers import CloudFrontSigner
 from datetime import datetime, timedelta
-import json
 import rsa
 
 def rsa_signer(message):
@@ -190,32 +198,29 @@ def rsa_signer(message):
     return rsa.sign(message, private_key, 'SHA-1')
 
 key_id = 'K2JCJMDQS1EIOO'
-
-# Create a custom policy that grants access to all premium content
-policy = json.dumps({
-    "Statement": [{
-        "Resource": "https://d1234abcdef.cloudfront.net/premium/*",
-        "Condition": {
-            "DateLessThan": {
-                "AWS:EpochTime": int((datetime.utcnow() + timedelta(hours=24)).timestamp())
-            }
-        }
-    }]
-}).replace(" ", "")
-
-# Sign the policy
 cf_signer = CloudFrontSigner(key_id, rsa_signer)
 
-# Get the signed cookie values
-cookies = cf_signer.build_custom_policy(
-    'https://d1234abcdef.cloudfront.net/premium/*',
+# Create a custom policy that grants access to all premium content
+policy = cf_signer.build_policy(
+    'https://cdn.example.com/premium/*',
     date_less_than=datetime.utcnow() + timedelta(hours=24)
 )
 
+encoded_policy = cf_signer._url_b64encode(policy.encode('utf8')).decode('utf8')
+signature = rsa_signer(policy.encode('utf8'))
+encoded_signature = cf_signer._url_b64encode(signature).decode('utf8')
+
+# Get the signed cookie values
+cookies = {
+    'CloudFront-Policy': encoded_policy,
+    'CloudFront-Signature': encoded_signature,
+    'CloudFront-Key-Pair-Id': key_id
+}
+
 # In your web framework, set these three cookies:
-# CloudFront-Policy = base64_encoded_policy
-# CloudFront-Signature = signature
-# CloudFront-Key-Pair-Id = K2JCJMDQS1EIOO
+# CloudFront-Policy = cookies['CloudFront-Policy']
+# CloudFront-Signature = cookies['CloudFront-Signature']
+# CloudFront-Key-Pair-Id = cookies['CloudFront-Key-Pair-Id']
 ```
 
 In an Express.js application, setting the cookies:
@@ -231,7 +236,7 @@ app.get('/login/premium', async (req, res) => {
 
   // Generate the signed cookie values
   const cookieValues = generateSignedCookies(
-    'https://d1234abcdef.cloudfront.net/premium/*',
+    'https://cdn.example.com/premium/*',
     expires
   );
 
