@@ -14,10 +14,10 @@ It's not magic, and it won't catch everything. But it's a solid layer of detecti
 
 ## What CloudTrail Insights Actually Does
 
-Insights analyzes your management events (the API calls that create, modify, and delete AWS resources) and builds a baseline of normal activity. It looks at two things:
+Insights analyzes your management and data events and builds a baseline of normal activity. It looks at two things:
 
-1. **API call rate** - How often specific API actions are called over time
-2. **API error rate** - How often API calls result in errors
+1. **API call rate** - How often write management API actions or data API actions are called over time
+2. **API error rate** - How often management or data API calls result in errors
 
 When either metric spikes beyond what's statistically normal for your account, Insights generates an event. For example, if someone suddenly starts calling `RunInstances` 500 times in an hour when you normally see 5, that'll trigger an insight.
 
@@ -71,14 +71,14 @@ resource "aws_cloudtrail" "main" {
 
 ## How the Baseline Works
 
-Once you enable Insights, CloudTrail needs about 36 hours to build the initial baseline. During this period, it's analyzing your normal API patterns but won't generate any insights yet. Don't worry if you don't see results immediately.
+Once you enable Insights on an existing trail, CloudTrail analyzes the past 28 days of events collected by that trail to build the initial baseline. Don't worry if you don't see results immediately.
 
-The baseline is continuously updated, so it adapts to gradual changes in your usage patterns. If your team starts using a new service and API calls gradually increase over weeks, Insights won't flag that. But if the same increase happens in minutes, it will.
+The baseline is recalculated daily from the past 28 days of data, so it adapts to gradual changes in your usage patterns. If your team starts using a new service and API calls gradually increase over weeks, Insights won't flag that. But if the same increase happens in minutes, it will.
 
 The baseline considers:
 - Time of day patterns (your API usage probably looks different at 3 AM vs 3 PM)
 - Day of week patterns (weekends vs weekdays)
-- Historical trends over the past 7 days
+- Historical trends from the baseline period
 
 ## Understanding Insight Events
 
@@ -156,7 +156,7 @@ aws events put-rule \
   --name cloudtrail-insights-alert \
   --event-pattern '{
     "source": ["aws.cloudtrail"],
-    "detail-type": ["AWS CloudTrail Insight"],
+    "detail-type": ["AWS Insight via CloudTrail"],
     "detail": {
       "insightDetails": {
         "state": ["Start"]
@@ -183,6 +183,8 @@ aws events put-targets \
   --rule cloudtrail-insights-alert \
   --targets "Id"="1","Arn"="arn:aws:sns:us-east-1:111111111111:cloudtrail-insights-alerts"
 ```
+
+If the SNS topic has a restrictive topic policy, make sure it allows the `events.amazonaws.com` service principal to publish to the topic.
 
 For richer notifications, use a Lambda function as the target instead of SNS directly. This lets you format the message, include attribution details, and even trigger automated remediation.
 
@@ -231,8 +233,8 @@ You can check how many management events you generate by looking at your CloudTr
 
 Insights has some real limitations:
 
-- It only works with management events, not data events (like S3 object-level operations)
-- The 36-hour baseline warmup means you won't catch anomalies right after enabling it
+- API call rate Insights for management events only analyzes write management API calls
+- Insights for data events is supported only on trails, not CloudTrail Lake event data stores
 - It can't detect low-and-slow attacks that stay within normal thresholds
 - Single unusual API calls won't trigger it - there needs to be a sustained change in rate
 - It doesn't replace rule-based detection for known bad patterns
