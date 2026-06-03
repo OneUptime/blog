@@ -12,11 +12,11 @@ Token volume projection is a powerful Kubernetes feature that gives you fine-gra
 
 ## Understanding Token Volume Projection
 
-Traditional ServiceAccount token mounting uses a one-size-fits-all approach. The kubelet mounts a default token with standard properties. Token volume projection changes this by letting you specify exactly what kind of token you need - its audience, expiration time, and mount path.
+Default ServiceAccount token mounting uses a one-size-fits-all approach. The kubelet mounts a token for Kubernetes API access at the standard path. Token volume projection changes this by letting you specify exactly what kind of token you need - its audience, expiration time, and mount path.
 
 This matters because different services have different security requirements. A token used to authenticate with the Kubernetes API server needs different properties than a token used for external service authentication. Token projection lets you create multiple tokens with different properties in the same pod.
 
-Projected tokens are bound to the pod's lifecycle and namespace. They're more secure than legacy long-lived tokens because they expire automatically and can't be used outside their intended context.
+Projected tokens are bound to the pod's lifecycle and namespace. They're more secure than legacy long-lived tokens because they expire automatically, are invalidated when the bound pod is deleted, and can be scoped to their intended audience.
 
 ## Basic Token Projection Configuration
 
@@ -207,7 +207,7 @@ package main
 import (
     "context"
     "fmt"
-    "io/ioutil"
+    "os"
 
     authv1 "k8s.io/api/authentication/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -268,7 +268,7 @@ func main() {
     }
 
     // Read the projected token
-    token, err := ioutil.ReadFile("/var/run/secrets/tokens/api-token")
+    token, err := os.ReadFile("/var/run/secrets/tokens/api-token")
     if err != nil {
         panic(err.Error())
     }
@@ -285,9 +285,9 @@ func main() {
 
 This code validates both that the token is authentic and that it has the expected audience claim.
 
-## Working with External OIDC Providers
+## Working with External Services
 
-Projected tokens can integrate with external OIDC providers. Configure your cluster's API server with OIDC settings, then create tokens with appropriate audiences:
+Projected tokens can integrate with external services that trust your cluster's ServiceAccount token issuer. Configure ServiceAccount issuer discovery for your cluster, then create tokens with appropriate audiences:
 
 ```yaml
 # oidc-integrated-pod.yaml
@@ -313,7 +313,7 @@ spec:
           audience: https://example.com
 ```
 
-The token can be used with external services that trust your cluster's OIDC provider. This enables seamless authentication across Kubernetes and external systems.
+The token can be used with external services that trust your cluster's issuer and validate the token's signature, expiration, object binding, and audience. This enables authentication across Kubernetes and external systems without using long-lived ServiceAccount token Secrets.
 
 ## Troubleshooting Token Projection
 
