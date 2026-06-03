@@ -111,14 +111,21 @@ aws iam create-policy \
     "Version": "2012-10-17",
     "Statement": [
       {
-        "Sid": "AllowEC2InDevEnvironment",
+        "Sid": "AllowEC2ReadOnly",
         "Effect": "Allow",
         "Action": [
-          "ec2:Describe*",
+          "ec2:Describe*"
+        ],
+        "Resource": "*"
+      },
+      {
+        "Sid": "AllowEC2StartStopInDevEnvironment",
+        "Effect": "Allow",
+        "Action": [
           "ec2:StartInstances",
           "ec2:StopInstances"
         ],
-        "Resource": "*",
+        "Resource": "arn:aws:ec2:*:123456789012:instance/*",
         "Condition": {
           "StringEquals": {
             "ec2:ResourceTag/Environment": "development"
@@ -161,7 +168,7 @@ aws iam attach-group-policy \
   --policy-arn arn:aws:iam::123456789012:policy/DeveloperAccess
 ```
 
-This is much better than giving developers full access to everything. They can only manage EC2 instances tagged as "development" and S3 buckets with the "dev-" prefix. For more on writing precise policies, see our guide on [creating custom IAM policies from scratch](https://oneuptime.com/blog/post/2026-02-12-create-custom-iam-policies-from-scratch/view).
+This is much better than giving developers full access to everything. They can describe EC2 resources, start and stop EC2 instances tagged as "development", and manage S3 buckets with the "dev-" prefix. For more on writing precise policies, see our guide on [creating custom IAM policies from scratch](https://oneuptime.com/blog/post/2026-02-12-create-custom-iam-policies-from-scratch/view).
 
 ## Managing Groups with Terraform
 
@@ -296,7 +303,7 @@ The key principle is that groups should map to job functions, not to individual 
 
 ## Limits to Keep in Mind
 
-IAM has some limits around groups. A user can be in a maximum of 10 groups. A group can have up to 10 managed policies attached. If you hit these limits, consider consolidating your policies or using permission boundaries to delegate management.
+IAM has some limits around groups. A user can be in a maximum of 10 groups. A group can have up to 10 managed policies attached. If you hit these limits, consider consolidating your policies or moving workforce access to IAM Identity Center permission sets.
 
 ## Wrapping Up
 
