@@ -8,13 +8,13 @@ Description: Diagnose and fix issues where kube-proxy fails to update iptables r
 
 ---
 
-kube-proxy is responsible for implementing Kubernetes services by creating and maintaining iptables rules (or IPVS rules) that route traffic to backend pods. When kube-proxy fails to update these rules, new services become unreachable, existing services route to wrong pods, or deleted services continue receiving traffic. These issues are frustrating because the Kubernetes API shows everything is correct, but network traffic does not follow the expected path.
+kube-proxy is responsible for implementing Kubernetes services by creating and maintaining iptables rules (or IPVS or nftables rules, depending on the configured proxy mode) that route traffic to backend pods. When kube-proxy fails to update these rules, new services become unreachable, existing services route to wrong pods, or deleted services continue receiving traffic. These issues are frustrating because the Kubernetes API shows everything is correct, but network traffic does not follow the expected path.
 
-Troubleshooting kube-proxy iptables issues requires understanding how kube-proxy monitors services and endpoints, how it translates them into iptables rules, and what can go wrong in this process.
+Troubleshooting kube-proxy iptables issues requires understanding how kube-proxy monitors services and backend endpoints, how it translates them into iptables rules, and what can go wrong in this process.
 
 ## Understanding kube-proxy Operation
 
-kube-proxy watches the Kubernetes API for changes to services and endpoints. When it detects changes, it updates iptables rules to match the desired state. The process involves reading service definitions, retrieving corresponding endpoints (pod IPs), generating iptables rules for load balancing, and applying the rules to the kernel.
+kube-proxy watches the Kubernetes API for changes to Services and EndpointSlices. When it detects changes, it updates iptables rules to match the desired state. The process involves reading service definitions, retrieving corresponding backend endpoints (pod IPs), generating iptables rules for load balancing, and applying the rules to the kernel.
 
 Failures in any step cause iptables rules to become stale or incorrect.
 
@@ -43,7 +43,7 @@ kube-proxy logs reveal most common issues directly.
 
 ## Verifying kube-proxy Mode
 
-kube-proxy can run in iptables or IPVS mode. Confirm which mode is active:
+kube-proxy can run in iptables, IPVS, or nftables mode on Linux nodes. Confirm which mode is active:
 
 ```bash
 # Check kube-proxy configuration
@@ -89,11 +89,13 @@ kubectl run test-pod --rm -it --image=curlimages/curl -- \
 
 # Test using service cluster IP directly
 kubectl get svc my-service -n my-namespace
-curl http://CLUSTER_IP:PORT
+kubectl run test-pod --rm -it --image=curlimages/curl -- \
+  curl -v http://CLUSTER_IP:PORT
 
 # Test pod directly (bypassing service)
-kubectl get endpoints my-service -n my-namespace
-curl http://POD_IP:PORT
+kubectl get endpointslice -n my-namespace -l kubernetes.io/service-name=my-service
+kubectl run test-pod --rm -it --image=curlimages/curl -- \
+  curl -v http://POD_IP:PORT
 ```
 
 If the pod works but the service fails, the issue is in kube-proxy or iptables.
@@ -118,22 +120,22 @@ curl -k https://kubernetes.default.svc.cluster.local:443
 
 Network policies or firewall rules might block kube-proxy from reaching the API server.
 
-## Verifying Service and Endpoints
+## Verifying Service and EndpointSlices
 
-kube-proxy only creates rules when services have valid endpoints:
+kube-proxy only routes service traffic to ready backend endpoints:
 
 ```bash
 # Check service definition
 kubectl get svc my-service -n my-namespace -o yaml
 
-# Check endpoints
-kubectl get endpoints my-service -n my-namespace -o yaml
+# Check EndpointSlices
+kubectl get endpointslice -n my-namespace -l kubernetes.io/service-name=my-service -o yaml
 
-# If endpoints are empty, kube-proxy won't create routing rules
-# subsets:  # Empty means no endpoints
+# If EndpointSlices are missing or have no ready endpoints,
+# kube-proxy cannot route service traffic to pods
 ```
 
-Fix the service selector to match pod labels if endpoints are missing.
+Fix the service selector to match pod labels if backend endpoints are missing.
 
 ## Checking kube-proxy Configuration
 
@@ -145,7 +147,7 @@ kubectl get configmap kube-proxy -n kube-system -o yaml
 
 # Check key settings:
 # - clusterCIDR: must match pod network
-# - mode: should be "iptables" or "ipvs"
+# - mode: should be "iptables", "ipvs", or "nftables"
 # - syncPeriod: how often rules refresh
 
 # Verify kube-proxy is using this config
@@ -314,7 +316,7 @@ iptables -t nat -F KUBE-SERVICES
 kubectl delete pod -n kube-system kube-proxy-xxxxx
 ```
 
-kube-proxy should clean up old rules, but bugs can cause accumulation.
+kube-proxy should clean up old rules, but bugs or failed syncs can cause accumulation.
 
 ## Verifying NodePort Allocation
 
@@ -419,6 +421,6 @@ Rapidly increasing rule counts indicate kube-proxy is not cleaning up properly.
 
 kube-proxy iptables issues stem from various causes including API server connectivity failures, resource exhaustion, iptables lock contention, missing kernel modules, or configuration errors. Systematic troubleshooting checks kube-proxy logs, verifies iptables rules exist and are correct, tests API connectivity, and examines service and endpoint configuration.
 
-Most issues resolve by restarting kube-proxy pods to force a full resync. Persistent problems require deeper investigation into node configuration, kernel modules, or kube-proxy configuration. Enable debug logging to see exactly what kube-proxy is doing and why it creates or does not create specific rules.
+Many transient issues resolve by restarting kube-proxy pods to force a full resync. Persistent problems require deeper investigation into node configuration, kernel modules, or kube-proxy configuration. Enable debug logging to see exactly what kube-proxy is doing and why it creates or does not create specific rules.
 
 Understanding how kube-proxy translates services into iptables rules helps you quickly identify where the translation fails. Master these troubleshooting techniques, and you will keep service networking reliable across your Kubernetes cluster.
