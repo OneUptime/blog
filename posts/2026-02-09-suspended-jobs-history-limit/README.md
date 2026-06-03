@@ -1,26 +1,26 @@
-# How to Configure suspendedJobsHistoryLimit for Paused Job Tracking
+# How to Configure Job History Limits for Paused CronJob Tracking
 
 Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, CronJob, Job Management
 
-Description: Learn how to use suspendedJobsHistoryLimit in Kubernetes CronJobs to control how many suspended job instances are retained for tracking and debugging paused batch processing workloads.
+Description: Learn how to use Kubernetes CronJob history limits to control how many completed job instances are retained for tracking and debugging paused batch processing workloads.
 
 ---
 
-Kubernetes CronJobs can be suspended to pause scheduled execution without deleting the CronJob resource. When you suspend a CronJob, completed jobs from previous runs remain in the cluster. The suspendedJobsHistoryLimit setting controls how many of these historical jobs are retained while the CronJob is suspended.
+Kubernetes CronJobs can be suspended to pause scheduled execution without deleting the CronJob resource. When you suspend a CronJob, completed jobs from previous runs remain in the cluster until normal CronJob history cleanup removes them.
 
-This configuration helps manage cluster resources by preventing unlimited accumulation of old job objects while still maintaining enough history for debugging and auditing purposes. Understanding how to configure this limit properly ensures your suspended CronJobs don't consume excessive etcd storage or clutter your namespace.
+This configuration helps manage cluster resources by preventing unlimited accumulation of old job objects while still maintaining enough history for debugging and auditing purposes. Understanding how to configure these limits properly ensures your suspended CronJobs don't consume excessive etcd storage or clutter your namespace.
 
 ## Understanding Suspended Jobs History
 
-When you suspend a CronJob by setting spec.suspend to true, the controller stops creating new jobs but doesn't delete existing ones. The suspendedJobsHistoryLimit determines how many completed job objects to keep from when the CronJob was active.
+When you suspend a CronJob by setting spec.suspend to true, the controller stops creating new jobs but doesn't delete existing ones. Kubernetes does not provide a separate suspendedJobsHistoryLimit field. The supported history controls are successfulJobsHistoryLimit and failedJobsHistoryLimit.
 
-This is separate from successfulJobsHistoryLimit and failedJobsHistoryLimit, which control history retention while the CronJob is active. When suspended, those limits stop applying and suspendedJobsHistoryLimit takes over.
+These fields specify how many successful and failed finished jobs the CronJob controller should retain. They are the same fields used whether the CronJob is active or suspended.
 
 ## Basic Configuration
 
-Configure the suspended jobs history limit in your CronJob spec.
+Configure the job history limits in your CronJob spec.
 
 ```yaml
 apiVersion: batch/v1
@@ -32,14 +32,14 @@ spec:
   schedule: "0 2 * * *"
   suspend: true  # CronJob is suspended
 
-  # Control history while suspended
-  suspendedJobsHistoryLimit: 5
-
-  # Normal history limits (apply when not suspended)
-  successfulJobsHistoryLimit: 3
-  failedJobsHistoryLimit: 1
+  # History limits for finished Jobs
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 2
 
   jobTemplate:
+    metadata:
+      labels:
+        cronjob: daily-report-generator
     spec:
       template:
         spec:
@@ -51,7 +51,7 @@ spec:
             args: ["--date", "$(date +%Y-%m-%d)"]
 ```
 
-With this configuration, when the CronJob is suspended, only the 5 most recent job objects are retained, regardless of whether they succeeded or failed.
+With this configuration, the CronJob retains up to 5 successful finished jobs and 2 failed finished jobs.
 
 ## Suspending Active CronJobs
 
@@ -65,8 +65,8 @@ kubectl patch cronjob daily-report-generator -p '{"spec":{"suspend":true}}'
 # Verify suspension
 kubectl get cronjob daily-report-generator
 
-# Check existing jobs (will continue running)
-kubectl get jobs -l job-name=daily-report-generator
+# Check existing jobs by name prefix
+kubectl get jobs --no-headers -o custom-columns=NAME:.metadata.name | grep '^daily-report-generator-'
 
 # Resume the CronJob
 kubectl patch cronjob daily-report-generator -p '{"spec":{"suspend":false}}'
@@ -88,14 +88,14 @@ spec:
   schedule: "0 0 1 */3 *"  # Run quarterly
   suspend: true
 
-  # Keep minimal history during long suspensions
-  suspendedJobsHistoryLimit: 2
-
-  # Keep more history when active
+  # Keep limited finished Job history
   successfulJobsHistoryLimit: 4
   failedJobsHistoryLimit: 2
 
   jobTemplate:
+    metadata:
+      labels:
+        cronjob: quarterly-analysis
     spec:
       completions: 1
       backoffLimit: 3
@@ -112,32 +112,32 @@ spec:
                 cpu: "2"
 ```
 
-This configuration keeps only 2 historical jobs during suspension but maintains 4 successful and 2 failed jobs when active, balancing resource usage with debugging needs.
+This configuration keeps up to 4 successful and 2 failed finished jobs, balancing resource usage with debugging needs.
 
 ## Monitoring Suspended Job History
 
-Track how many job objects exist for suspended CronJobs to ensure your limits are working correctly.
+Track how many job objects exist for suspended CronJobs to ensure your limits are working correctly. If you add a label to jobTemplate.metadata, each Job created by the CronJob receives that label.
 
 ```bash
 # List all jobs for a suspended CronJob
-kubectl get jobs -l cronjob-name=daily-report-generator
+kubectl get jobs -l cronjob=daily-report-generator
 
 # Count total jobs
-kubectl get jobs -l cronjob-name=daily-report-generator --no-headers | wc -l
+kubectl get jobs -l cronjob=daily-report-generator --no-headers | wc -l
 
 # Check job status distribution
-kubectl get jobs -l cronjob-name=daily-report-generator \
+kubectl get jobs -l cronjob=daily-report-generator \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.status.conditions[0].type}{"\n"}{end}'
 
 # View CronJob details including history limits
 kubectl describe cronjob daily-report-generator
 ```
 
-If you see more jobs than your suspendedJobsHistoryLimit, the cleanup may not have run yet. Kubernetes garbage collection for jobs happens periodically, not immediately.
+If you see more jobs than your configured history limits, the controller may not have reconciled the CronJob yet, or some Jobs may still be active and therefore not counted as finished history.
 
 ## Cleanup Behavior During Suspension
 
-The CronJob controller periodically reconciles job history against the configured limits. When the number of historical jobs exceeds suspendedJobsHistoryLimit, the oldest jobs are deleted.
+The CronJob controller periodically reconciles finished job history against the configured successful and failed history limits. When the number of finished jobs exceeds those limits, the oldest jobs in the relevant category are deleted.
 
 ```yaml
 apiVersion: batch/v1
@@ -147,11 +147,15 @@ metadata:
 spec:
   schedule: "0 3 * * *"
   suspend: true
-  suspendedJobsHistoryLimit: 3
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
 
   jobTemplate:
+    metadata:
+      labels:
+        cronjob: maintenance-job
     spec:
-      # Add labels for easier tracking
+      # Add labels for easier pod tracking
       template:
         metadata:
           labels:
@@ -164,11 +168,11 @@ spec:
             image: maintenance:latest
 ```
 
-When this CronJob is suspended with 5 historical jobs, the controller eventually deletes the 2 oldest jobs to maintain the limit of 3.
+When this CronJob has 5 successful finished jobs, the controller eventually deletes the 2 oldest successful jobs to maintain the limit of 3.
 
 ## Handling Zero or Null Limits
 
-Setting suspendedJobsHistoryLimit to different values produces different behaviors.
+Setting successfulJobsHistoryLimit and failedJobsHistoryLimit to different values produces different behaviors.
 
 ```yaml
 apiVersion: batch/v1
@@ -179,8 +183,9 @@ spec:
   schedule: "*/15 * * * *"
   suspend: true
 
-  # Delete all historical jobs when suspended
-  suspendedJobsHistoryLimit: 0
+  # Do not retain finished Job history
+  successfulJobsHistoryLimit: 0
+  failedJobsHistoryLimit: 0
 
   jobTemplate:
     spec:
@@ -192,13 +197,13 @@ spec:
             image: worker:latest
 ```
 
-With suspendedJobsHistoryLimit set to 0, all completed jobs are deleted when the CronJob is suspended. This is useful for jobs where historical data isn't needed and you want to minimize resource usage.
+With both history limits set to 0, successful and failed finished jobs are not retained. This is useful for jobs where historical data isn't needed and you want to minimize resource usage.
 
-If you omit suspendedJobsHistoryLimit entirely, it defaults to retaining all historical jobs, which can lead to resource accumulation during long suspensions.
+If you omit successfulJobsHistoryLimit and failedJobsHistoryLimit entirely, Kubernetes defaults to retaining 3 successful finished jobs and 1 failed finished job.
 
 ## Transitioning Between Suspended and Active
 
-When you resume a suspended CronJob, the history limits transition from suspendedJobsHistoryLimit back to successfulJobsHistoryLimit and failedJobsHistoryLimit.
+When you resume a suspended CronJob, the same successfulJobsHistoryLimit and failedJobsHistoryLimit settings continue to apply.
 
 ```yaml
 apiVersion: batch/v1
@@ -210,12 +215,9 @@ spec:
   schedule: "0 */6 * * *"
   suspend: false  # Currently active
 
-  # Active history limits
+  # Finished Job history limits
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 1
-
-  # Suspended history limit
-  suspendedJobsHistoryLimit: 10
 
   jobTemplate:
     spec:
@@ -228,32 +230,33 @@ spec:
             command: ["/app/sync"]
 ```
 
-When active, this CronJob keeps 3 successful and 1 failed job. When you suspend it, it switches to keeping 10 total jobs regardless of status. When you resume it, it goes back to the success/failure-based limits.
+Whether active or suspended, this CronJob keeps up to 3 successful finished jobs and 1 failed finished job.
 
 Resource Impact Considerations
 
 Each job object in Kubernetes consumes etcd storage. For frequently-run CronJobs that accumulate many jobs, this can become significant.
 
 ```bash
-# Check etcd storage usage
+# Check the number of Job objects
 kubectl get jobs --all-namespaces -o json | \
   jq '.items | length'
 
-# Find CronJobs with many historical jobs
+# Find CronJobs with many historical jobs by name prefix
 for cj in $(kubectl get cronjobs -o name); do
-  job_count=$(kubectl get jobs -l cronjob-name=$(basename $cj) --no-headers | wc -l)
+  name=$(basename "$cj")
+  job_count=$(kubectl get jobs --no-headers -o custom-columns=NAME:.metadata.name | grep -c "^$name-")
   echo "$cj: $job_count jobs"
 done
 ```
 
-For clusters with many CronJobs, setting appropriate suspended history limits helps manage etcd size and API server performance.
+For clusters with many CronJobs, setting appropriate history limits helps manage etcd size and API server performance.
 
 ## Debugging with Historical Jobs
 
 Retained job objects provide valuable debugging information even when suspended.
 
 ```bash
-# Get logs from a historical job
+# Get logs from pods owned by a historical job
 kubectl logs -l job-name=daily-report-generator-28392
 
 # Check job pod status
@@ -275,28 +278,30 @@ Create scripts to manage CronJob suspension lifecycle with appropriate history l
 
 CRONJOB_NAME=$1
 NAMESPACE=${2:-default}
-HISTORY_LIMIT=${3:-3}
+SUCCESSFUL_HISTORY_LIMIT=${3:-3}
+FAILED_HISTORY_LIMIT=${4:-1}
 
-# Suspend the CronJob and set history limit
-kubectl patch cronjob $CRONJOB_NAME -n $NAMESPACE -p "{
+# Suspend the CronJob and set history limits
+kubectl patch cronjob "$CRONJOB_NAME" -n "$NAMESPACE" -p "{
   \"spec\": {
     \"suspend\": true,
-    \"suspendedJobsHistoryLimit\": $HISTORY_LIMIT
+    \"successfulJobsHistoryLimit\": $SUCCESSFUL_HISTORY_LIMIT,
+    \"failedJobsHistoryLimit\": $FAILED_HISTORY_LIMIT
   }
 }"
 
-echo "Suspended $CRONJOB_NAME with history limit $HISTORY_LIMIT"
+echo "Suspended $CRONJOB_NAME with successful history limit $SUCCESSFUL_HISTORY_LIMIT and failed history limit $FAILED_HISTORY_LIMIT"
 
 # Show current jobs
 echo "Current jobs:"
-kubectl get jobs -n $NAMESPACE -l cronjob-name=$CRONJOB_NAME
+kubectl get jobs -n "$NAMESPACE" --no-headers -o custom-columns=NAME:.metadata.name | grep "^$CRONJOB_NAME-"
 ```
 
-This script suspends a CronJob and sets the appropriate history limit in one operation.
+This script suspends a CronJob and sets the appropriate history limits in one operation.
 
 ## Best Practices
 
-Set suspendedJobsHistoryLimit based on how long you expect the CronJob to remain suspended. For short suspensions during maintenance windows, keep more history. For long-term suspensions, use lower limits.
+Set successfulJobsHistoryLimit and failedJobsHistoryLimit based on how long you expect to need CronJob history. For short suspensions during maintenance windows, keep more history. For long-term suspensions, use lower limits.
 
 Document why CronJobs are suspended using annotations or labels to help team members understand the suspension reason.
 
@@ -310,14 +315,24 @@ metadata:
     suspended-by: "ops-team"
     suspended-at: "2026-02-09T10:00:00Z"
 spec:
+  schedule: "0 0 * * *"
   suspend: true
-  suspendedJobsHistoryLimit: 5
+  successfulJobsHistoryLimit: 5
+  failedJobsHistoryLimit: 1
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+          - name: data-pipeline
+            image: data-pipeline:latest
 ```
 
 Monitor suspended CronJobs regularly to identify ones that should be resumed or deleted entirely.
 
 ## Conclusion
 
-The suspendedJobsHistoryLimit configuration provides fine-grained control over job retention when CronJobs are paused. By setting appropriate limits based on your debugging needs and resource constraints, you can effectively manage cluster resources while maintaining visibility into historical job execution.
+The successfulJobsHistoryLimit and failedJobsHistoryLimit configuration fields provide control over finished job retention for CronJobs, including CronJobs that are paused. By setting appropriate limits based on your debugging needs and resource constraints, you can effectively manage cluster resources while maintaining visibility into historical job execution.
 
-Understanding the interaction between suspended and active history limits helps you design robust CronJob configurations that handle operational scenarios like maintenance windows, debugging sessions, and temporary service disruptions without accumulating unnecessary job objects in your cluster.
+Understanding the interaction between suspension and history limits helps you design robust CronJob configurations that handle operational scenarios like maintenance windows, debugging sessions, and temporary service disruptions without accumulating unnecessary job objects in your cluster.
