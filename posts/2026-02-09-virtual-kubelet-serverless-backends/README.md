@@ -4,13 +4,13 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Virtual Kubelet, Serverless, AWS Fargate, Azure Container Instances
 
-Description: Learn how to extend Kubernetes clusters with serverless compute capacity using Virtual Kubelet to run pods on AWS Fargate, Azure Container Instances, and other serverless platforms.
+Description: Learn how to extend Kubernetes clusters with serverless compute capacity using Virtual Kubelet and native serverless integrations to run pods on Azure Container Instances, AWS Fargate, and other serverless platforms.
 
 ---
 
-Virtual Kubelet extends Kubernetes beyond traditional node-based infrastructure by presenting serverless compute platforms as virtual nodes in your cluster. This allows you to schedule pods on serverless backends like AWS Fargate or Azure Container Instances while using standard Kubernetes APIs and tools.
+Virtual Kubelet extends Kubernetes beyond traditional node-based infrastructure by presenting serverless compute platforms as virtual nodes in your cluster. This allows you to schedule pods on serverless backends like Azure Container Instances and other providers while using standard Kubernetes APIs and tools. On Amazon EKS, AWS Fargate provides a similar serverless pod experience through native EKS Fargate profiles rather than a user-installed Virtual Kubelet deployment.
 
-In this guide, you'll learn how to deploy Virtual Kubelet and use it to burst workloads to serverless platforms, reducing operational overhead and improving cost efficiency.
+In this guide, you'll learn how to deploy Virtual Kubelet-based virtual nodes and use native serverless integrations to burst workloads to serverless platforms, reducing operational overhead and improving cost efficiency.
 
 ## Understanding Virtual Kubelet Architecture
 
@@ -18,9 +18,9 @@ Virtual Kubelet implements the Kubelet API, appearing to Kubernetes as a regular
 
 This architecture provides several benefits. You gain elastic capacity without managing nodes. You pay only for actual pod runtime. You avoid node management overhead like OS patching and scaling. Applications use standard Kubernetes interfaces without modifications.
 
-## Installing Virtual Kubelet for AWS Fargate
+## Using AWS Fargate with EKS
 
-AWS Fargate provides serverless compute for containers. Virtual Kubelet allows you to schedule Kubernetes pods directly to Fargate.
+AWS Fargate provides serverless compute for containers. On Amazon EKS, you schedule Kubernetes pods directly to Fargate with Fargate profiles.
 
 First, create an EKS cluster with Fargate profile:
 
@@ -41,12 +41,11 @@ eksctl create fargateprofile \
   --labels workload=serverless
 ```
 
-EKS automatically deploys Virtual Kubelet when you create Fargate profiles. Verify the virtual nodes:
+EKS uses managed Fargate controllers in the control plane when you create Fargate profiles. Verify where pods are running:
 
 ```bash
-kubectl get nodes
-# You should see nodes like fargate-192.168.1.1
-
+kubectl get pods -n serverless -o wide
+# Pods that match the Fargate profile should show nodes like fargate-ip-192-168-1-1.ec2.internal
 ```
 
 Create a namespace for serverless workloads:
@@ -90,91 +89,38 @@ spec:
             memory: 1Gi
 ```
 
-Kubernetes automatically schedules these pods to Fargate virtual nodes based on the namespace labels.
+EKS automatically schedules these pods to Fargate based on the Fargate profile's namespace and label selectors.
 
 ## Installing Virtual Kubelet for Azure Container Instances
 
 Azure Container Instances (ACI) provides another serverless option for running containers.
 
-Install the ACI Virtual Kubelet provider:
+For AKS, enable the virtual nodes add-on, which is based on the open source Virtual Kubelet project. Virtual nodes require Azure CNI networking and a delegated subnet for ACI.
 
 ```bash
-# Install using Helm
-helm repo add virtual-kubelet https://github.com/virtual-kubelet/azure-aci/raw/master/charts
-helm install virtual-kubelet virtual-kubelet/virtual-kubelet \
-  --set provider=azure \
-  --set nodeName=virtual-kubelet-aci \
-  --set nodeOsType=Linux
-```
+# Register the ACI provider if needed
+az provider register --namespace Microsoft.ContainerInstance
 
-Configure Azure credentials:
+# Create the subnet that ACI uses for virtual node pods
+az network vnet subnet create \
+  --resource-group myResourceGroup \
+  --vnet-name myVnet \
+  --name myVirtualNodeSubnet \
+  --address-prefixes 10.241.0.0/16
 
-```bash
-# Create service principal
-az ad sp create-for-rbac --name virtual-kubelet-sp
-
-# Create secret with credentials
-kubectl create secret generic azure-credentials \
-  --from-literal=AZURE_TENANT_ID=<tenant-id> \
-  --from-literal=AZURE_CLIENT_ID=<client-id> \
-  --from-literal=AZURE_CLIENT_SECRET=<client-secret> \
-  --from-literal=AZURE_SUBSCRIPTION_ID=<subscription-id>
-```
-
-Deploy Virtual Kubelet with ACI provider:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: virtual-kubelet-aci
-  namespace: kube-system
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: virtual-kubelet
-  template:
-    metadata:
-      labels:
-        app: virtual-kubelet
-    spec:
-      serviceAccountName: virtual-kubelet
-      containers:
-      - name: virtual-kubelet
-        image: mcr.microsoft.com/oss/virtual-kubelet/virtual-kubelet:1.10.0
-        env:
-        - name: KUBELET_PORT
-          value: "10250"
-        - name: APISERVER_CERT_LOCATION
-          value: /etc/virtual-kubelet/cert.pem
-        - name: APISERVER_KEY_LOCATION
-          value: /etc/virtual-kubelet/key.pem
-        - name: VKUBELET_POD_IP
-          valueFrom:
-            fieldRef:
-              fieldPath: status.podIP
-        - name: ACI_REGION
-          value: eastus
-        - name: ACI_RESOURCE_GROUP
-          value: virtual-kubelet-rg
-        envFrom:
-        - secretRef:
-            name: azure-credentials
-        volumeMounts:
-        - name: credentials
-          mountPath: /etc/virtual-kubelet
-      volumes:
-      - name: credentials
-        secret:
-          secretName: virtual-kubelet-cert
+# Enable virtual nodes on an AKS cluster that already uses Azure CNI
+az aks enable-addons \
+  --resource-group myResourceGroup \
+  --name myAKSCluster \
+  --addons virtual-node \
+  --subnet-name myVirtualNodeSubnet
 ```
 
 Verify the virtual node:
 
 ```bash
 kubectl get nodes
-# You should see virtual-kubelet-aci node
+# You should see a node like virtual-node-aci-linux
 ```
 
 ## Scheduling Workloads to Virtual Kubelet Nodes
@@ -198,6 +144,12 @@ spec:
     spec:
       nodeSelector:
         type: virtual-kubelet
+        kubernetes.io/os: linux
+      tolerations:
+      - key: virtual-kubelet.io/provider
+        operator: Exists
+      - key: azure.com/aci
+        effect: NoSchedule
       containers:
       - name: app
         image: myapp:latest
@@ -226,8 +178,8 @@ spec:
     spec:
       tolerations:
       - key: virtual-kubelet.io/provider
-        operator: Equal
-        value: azure
+        operator: Exists
+      - key: azure.com/aci
         effect: NoSchedule
       containers:
       - name: worker
@@ -267,6 +219,7 @@ spec:
       tolerations:
       - key: virtual-kubelet.io/provider
         operator: Exists
+      - key: azure.com/aci
         effect: NoSchedule
       containers:
       - name: web
@@ -275,51 +228,32 @@ spec:
 
 This configuration prefers regular nodes but allows overflow to virtual nodes when capacity is exhausted.
 
-## Burst Scaling with Cluster Autoscaler
+## Burst Scaling with Horizontal Pod Autoscaler
 
-Configure Cluster Autoscaler to use virtual nodes for burst capacity:
+Configure Horizontal Pod Autoscaler to create additional replicas when demand increases. The scheduler can place those replicas on virtual nodes when regular nodes do not have enough capacity:
 
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
 metadata:
-  name: cluster-autoscaler
-  namespace: kube-system
+  name: web-app-hpa
 spec:
-  template:
-    spec:
-      containers:
-      - name: cluster-autoscaler
-        image: k8s.gcr.io/autoscaling/cluster-autoscaler:v1.28.0
-        command:
-        - ./cluster-autoscaler
-        - --cloud-provider=aws
-        - --namespace=kube-system
-        - --nodes=1:10:regular-node-group
-        - --scale-down-enabled=true
-        - --scale-down-delay-after-add=5m
-        - --skip-nodes-with-local-storage=false
-        # Prioritize regular nodes over virtual nodes
-        - --expander=priority
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: web-app
+  minReplicas: 2
+  maxReplicas: 50
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
 ```
 
-Create priority expander config:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: cluster-autoscaler-priority-expander
-  namespace: kube-system
-data:
-  priorities: |
-    10:
-      - .*-regular-.*
-    5:
-      - .*-spot-.*
-    1:
-      - .*-virtual-.*
-```
+Use Cluster Autoscaler or Karpenter for VM-backed node groups, but virtual nodes themselves do not require Cluster Autoscaler to provision more VMs.
 
 ## Running Batch Jobs on Serverless
 
@@ -340,6 +274,12 @@ spec:
     spec:
       nodeSelector:
         type: virtual-kubelet
+        kubernetes.io/os: linux
+      tolerations:
+      - key: virtual-kubelet.io/provider
+        operator: Exists
+      - key: azure.com/aci
+        effect: NoSchedule
       restartPolicy: OnFailure
       containers:
       - name: processor
@@ -364,7 +304,7 @@ Monitor virtual node health:
 
 ```bash
 kubectl get nodes -l type=virtual-kubelet
-kubectl describe node virtual-kubelet-aci
+kubectl describe node virtual-node-aci-linux
 ```
 
 Create alerts for virtual node issues:
@@ -386,8 +326,8 @@ spec:
 
     - alert: HighVirtualNodeUsage
       expr: |
-        sum(kube_pod_info{node=~"virtual-kubelet.*"}) /
-        sum(kube_node_status_allocatable{node=~"virtual-kubelet.*"}) > 0.8
+        sum(kube_pod_info{node=~"virtual-node-.*|virtual-kubelet.*"}) /
+        sum(kube_node_status_allocatable{node=~"virtual-node-.*|virtual-kubelet.*",resource="pods"}) > 0.8
       for: 10m
       annotations:
         summary: "High usage on virtual nodes"
@@ -412,11 +352,23 @@ kind: Deployment
 metadata:
   name: background-job
 spec:
+  selector:
+    matchLabels:
+      app: background-job
   template:
+    metadata:
+      labels:
+        app: background-job
     spec:
       priorityClassName: low-priority-serverless
       nodeSelector:
         type: virtual-kubelet
+        kubernetes.io/os: linux
+      tolerations:
+      - key: virtual-kubelet.io/provider
+        operator: Exists
+      - key: azure.com/aci
+        effect: NoSchedule
       containers:
       - name: worker
         image: background-worker:latest
@@ -446,6 +398,6 @@ Implement proper monitoring since debugging can be different on serverless platf
 
 ## Conclusion
 
-Virtual Kubelet extends Kubernetes with serverless compute capacity, providing elastic scaling without node management overhead. Whether using AWS Fargate, Azure Container Instances, or other providers, Virtual Kubelet enables hybrid architectures that balance cost efficiency with operational simplicity.
+Virtual Kubelet extends Kubernetes with serverless compute capacity, providing elastic scaling without node management overhead. Whether using Azure Container Instances, native AWS Fargate profiles on EKS, or other providers, serverless pod backends enable hybrid architectures that balance cost efficiency with operational simplicity.
 
 Start by moving burst workloads and batch jobs to virtual nodes, then expand to other use cases as you gain experience with serverless Kubernetes workloads.
