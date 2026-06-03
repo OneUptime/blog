@@ -46,15 +46,19 @@ The shorthand `boto3.client('s3')` creates a default session behind the scenes. 
 
 When Boto3 needs credentials, it checks these sources in order:
 
-1. **Explicitly passed credentials** (in code)
+1. **Explicitly passed credentials** (to `boto3.client()` or `boto3.Session()`)
 2. **Environment variables** (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`)
-3. **Shared credential file** (`~/.aws/credentials`)
-4. **AWS config file** (`~/.aws/config`)
-5. **Assume role provider** (if configured in profile)
-6. **Boto2 config file** (`/etc/boto.cfg`, `~/.boto`)
-7. **Instance metadata** (EC2 instance role, ECS task role, Lambda execution role)
+3. **Assume role provider** (if configured in profile)
+4. **Assume role with web identity provider**
+5. **AWS IAM Identity Center credential provider**
+6. **Shared credential file** (`~/.aws/credentials`)
+7. **Login with console credentials**
+8. **AWS config file** (`~/.aws/config`)
+9. **Boto2 config file** (`/etc/boto.cfg`, `~/.boto`)
+10. **Container credential provider** (ECS and EKS)
+11. **Instance metadata service** (EC2 instance role)
 
-For most production applications, you should rely on instance metadata (number 7). For local development, use named profiles (numbers 3-4).
+For most production applications, you should rely on role-based credentials from the runtime environment. Lambda exposes execution-role credentials through environment variables, ECS and EKS use the container credential provider, and EC2 uses the instance metadata service. For local development, use named profiles (shared credentials and config files).
 
 ```python
 import boto3
@@ -74,8 +78,8 @@ session = boto3.Session(profile_name='staging')
 # Then use default session
 session = boto3.Session()
 
-# Method 4: Instance role (best for production)
-# On EC2, ECS, Lambda - credentials are automatic
+# Method 4: Runtime role (best for production)
+# On Lambda, ECS, EKS, and EC2 - credentials are automatic
 session = boto3.Session(region_name='us-east-1')
 ```
 
@@ -174,48 +178,18 @@ Temporary credentials (from roles, SSO, etc.) expire. For long-running applicati
 
 ```python
 import boto3
-from botocore.credentials import RefreshableCredentials
-from botocore.session import get_session
-import datetime
 
-def get_refreshable_session(role_arn, session_name='refreshable'):
+def get_refreshable_session(profile_name):
     """
-    Create a session that automatically refreshes credentials
-    when they expire. Perfect for long-running services.
+    Create a session from a profile that can refresh temporary credentials.
+    Configure the profile with role_arn/source_profile, SSO, or web identity.
     """
-    def refresh():
-        sts = boto3.client('sts')
-        response = sts.assume_role(
-            RoleArn=role_arn,
-            RoleSessionName=session_name,
-            DurationSeconds=3600
-        )
-        creds = response['Credentials']
-        return {
-            'access_key': creds['AccessKeyId'],
-            'secret_key': creds['SecretAccessKey'],
-            'token': creds['SessionToken'],
-            'expiry_time': creds['Expiration'].isoformat()
-        }
+    return boto3.Session(profile_name=profile_name)
 
-    # Create refreshable credentials
-    session_credentials = RefreshableCredentials.create_from_metadata(
-        metadata=refresh(),
-        refresh_using=refresh,
-        method='sts-assume-role'
-    )
-
-    # Build a botocore session with the refreshable creds
-    botocore_session = get_session()
-    botocore_session._credentials = session_credentials
-
-    # Return a boto3 session wrapping it
-    return boto3.Session(botocore_session=botocore_session)
-
-# This session automatically refreshes credentials when they expire
-session = get_refreshable_session('arn:aws:iam::333333333333:role/ServiceRole')
+# This session automatically refreshes supported temporary credentials
+session = get_refreshable_session('service-role')
 s3 = session.client('s3')
-# Even if this runs for days, credentials stay fresh
+# Long-running code can keep using clients from this session while the source credentials remain valid
 ```
 
 ## Session Configuration
