@@ -16,41 +16,10 @@ The goal is simple: run the same workloads on fewer nodes without sacrificing pe
 
 Before consolidating, you need visibility into actual resource consumption. Most clusters waste resources because pods request more CPU and memory than they actually use. The difference between requests and actual usage represents opportunity.
 
-Deploy metrics collection to track real resource usage:
+Install metrics-server to track real resource usage:
 
-```yaml
-# Deploy metrics-server for resource tracking
-
-apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: metrics-server
-  namespace: kube-system
----
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: metrics-server
-  namespace: kube-system
-spec:
-  selector:
-    matchLabels:
-      k8s-app: metrics-server
-  template:
-    metadata:
-      labels:
-        k8s-app: metrics-server
-    spec:
-      serviceAccountName: metrics-server
-      containers:
-      - name: metrics-server
-        image: registry.k8s.io/metrics-server/metrics-server:v0.6.4
-        args:
-        - --cert-dir=/tmp
-        - --secure-port=4443
-        - --kubelet-preferred-address-types=InternalIP
-        - --kubelet-use-node-status-port
-        - --metric-resolution=15s
+```bash
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
 ```
 
 Once metrics-server is running, analyze resource usage patterns:
@@ -60,7 +29,7 @@ Once metrics-server is running, analyze resource usage patterns:
 kubectl top nodes
 
 # Identify pods with low utilization
-kubectl top pods --all-namespaces | awk '{if($3 < 100) print}'
+kubectl top pods --all-namespaces --no-headers | awk '$3+0 < 100 {print}'
 
 # Calculate cluster-wide utilization
 kubectl describe nodes | grep -A 5 "Allocated resources"
@@ -84,7 +53,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: web-app
-  updateMode: "Off"  # Recommendation mode only
+  updatePolicy:
+    updateMode: "Off"  # Recommendation mode only
   resourcePolicy:
     containerPolicies:
     - containerName: "*"
@@ -133,8 +103,8 @@ spec:
         - --v=4
         - --stderrthreshold=info
         - --cloud-provider=aws
+        - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/<cluster-name>
         - --skip-nodes-with-local-storage=false
-        - --scale-down-enabled=true
         - --scale-down-utilization-threshold=0.6
         - --scale-down-delay-after-add=5m
         - --scale-down-unneeded-time=5m
@@ -152,7 +122,7 @@ The cluster autoscaler will consolidate pods onto fewer nodes and terminate empt
 
 ## Implementing Descheduler for Active Consolidation
 
-The default scheduler places pods on nodes but never moves them. Over time, this creates fragmentation with many partially filled nodes. Descheduler actively rebalances workloads to improve consolidation.
+The default scheduler places pods on nodes but never moves them. Over time, this creates fragmentation with many partially filled nodes. Descheduler actively rebalances workloads to improve consolidation. For compaction, use the HighNodeUtilization strategy with a scheduler profile that scores nodes with MostAllocated.
 
 ```yaml
 apiVersion: v1
@@ -162,23 +132,30 @@ metadata:
   namespace: kube-system
 data:
   policy.yaml: |
-    apiVersion: descheduler/v1alpha1
+    apiVersion: descheduler/v1alpha2
     kind: DeschedulerPolicy
-    strategies:
-      LowNodeUtilization:
-        enabled: true
-        params:
-          nodeResourceUtilizationThresholds:
-            thresholds:
-              cpu: 40
-              memory: 40
-            targetThresholds:
-              cpu: 70
-              memory: 70
-      RemovePodsViolatingNodeTaints:
-        enabled: true
-      RemoveDuplicates:
-        enabled: true
+    profiles:
+    - name: consolidation
+      pluginConfig:
+      - name: DefaultEvictor
+        args:
+          nodeFit: true
+      - name: HighNodeUtilization
+        args:
+          thresholds:
+            cpu: 40
+            memory: 40
+            pods: 40
+      - name: RemovePodsViolatingNodeTaints
+      - name: RemoveDuplicates
+      plugins:
+        deschedule:
+          enabled:
+          - RemovePodsViolatingNodeTaints
+        balance:
+          enabled:
+          - HighNodeUtilization
+          - RemoveDuplicates
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -209,7 +186,7 @@ spec:
           restartPolicy: Never
 ```
 
-The LowNodeUtilization strategy identifies nodes with less than 40% utilization and evicts pods from them. Those pods are then rescheduled onto higher-utilized nodes, allowing the empty nodes to be terminated.
+The HighNodeUtilization strategy identifies nodes below the configured utilization thresholds and evicts pods from them. With MostAllocated scheduler scoring, those pods are then rescheduled onto more utilized nodes, allowing the empty nodes to be terminated.
 
 ## Configuring Pod Disruption Budgets
 
@@ -250,7 +227,13 @@ metadata:
   name: general-app
 spec:
   replicas: 5
+  selector:
+    matchLabels:
+      app: general-app
   template:
+    metadata:
+      labels:
+        app: general-app
     spec:
       affinity:
         nodeAffinity:
