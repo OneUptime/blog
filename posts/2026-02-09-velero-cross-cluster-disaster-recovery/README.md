@@ -37,6 +37,7 @@ velero install \
   --provider aws \
   --plugins velero/velero-plugin-for-aws:v1.9.0 \
   --bucket disaster-recovery-backups \
+  --prefix primary-cluster \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
   --secret-file ./credentials-velero \
@@ -69,7 +70,7 @@ spec:
       cluster: primary
 ```
 
-This schedule creates regular backups with both volume snapshots and file-level backups for maximum compatibility.
+This schedule creates regular backups with file-level backup enabled by default. Velero will still use snapshots for volumes that are opted out of file-level backup when snapshots are configured.
 
 ## Configuring DR Cluster for Restore
 
@@ -78,12 +79,10 @@ Install Velero on your disaster recovery cluster using the same backup storage l
 ```bash
 # Install Velero on DR cluster
 velero install \
-  --provider aws \
   --plugins velero/velero-plugin-for-aws:v1.9.0 \
-  --bucket disaster-recovery-backups \
-  --backup-location-config region=us-east-1 \
   --no-default-backup-location \
   --secret-file ./credentials-velero \
+  --use-volume-snapshots=false \
   --use-node-agent
 ```
 
@@ -152,15 +151,7 @@ velero restore create full-restore \
 
 ## Handling Storage Class Differences
 
-DR clusters often have different storage infrastructure. Map storage classes during restore:
-
-```bash
-# Restore with storage class mapping
-velero restore create storage-mapped-restore \
-  --from-backup dr-backup-20240209020000 \
-  --storage-class-mappings gp3:standard,io2:premium \
-  --wait
-```
+DR clusters often have different storage infrastructure. Map storage classes during restore with Velero's storage class mapping ConfigMap.
 
 Create a ConfigMap for persistent storage mappings:
 
@@ -179,7 +170,7 @@ data:
   ebs-sc: azure-disk
 ```
 
-This ConfigMap automatically maps storage classes during any restore operation.
+This ConfigMap automatically maps storage classes during restore operations.
 
 ## Implementing Automated Failover
 
@@ -214,7 +205,6 @@ echo "Restoring critical services..."
 velero restore create critical-restore-$(date +%s) \
   --from-backup $BACKUP_NAME \
   --include-namespaces production,database,cache \
-  --storage-class-mappings gp3:standard \
   --wait
 
 # Verify critical pods are running
@@ -226,7 +216,6 @@ echo "Restoring remaining services..."
 velero restore create full-restore-$(date +%s) \
   --from-backup $BACKUP_NAME \
   --exclude-namespaces production,database,cache,kube-system,velero \
-  --storage-class-mappings gp3:standard \
   --wait
 
 echo "DR failover complete. Verifying services..."
@@ -260,7 +249,6 @@ kubectl config use-context $DR_CLUSTER
 velero restore create dr-test-$(date +%s) \
   --from-backup $BACKUP_NAME \
   --namespace-mappings production:production-dr-test \
-  --storage-class-mappings gp3:standard \
   --wait
 
 # Run validation tests
@@ -346,7 +334,7 @@ spec:
       labelSelector:
         matchLabels:
           app: frontend
-      post:
+      postHooks:
       - exec:
           container: app
           command:
@@ -357,7 +345,7 @@ spec:
             echo "Updating DNS records for DR cluster..."
             # Your DNS update logic here
           onError: Continue
-          timeout: 5m
+          execTimeout: 5m
 ```
 
 ## Monitoring Cross-Cluster DR Readiness
@@ -386,7 +374,7 @@ spec:
 
     - alert: DRClusterBackupNotVisible
       expr: |
-        velero_backup_total{location="primary-cluster-backups"} == 0
+        velero_backup_total == 0
       for: 30m
       labels:
         severity: critical
@@ -394,14 +382,14 @@ spec:
         summary: "DR cluster cannot see primary backups"
         description: "Backup storage location may be misconfigured"
 
-    - alert: DRRestoreTestOverdue
+    - alert: DRRestoreFromScheduleOverdue
       expr: |
-        time() - velero_restore_last_successful_timestamp{restore=~"dr-test.*"} > 2592000
+        increase(velero_restore_success_total{schedule="dr-backup"}[30d]) == 0
       labels:
         severity: warning
       annotations:
-        summary: "DR restore test is overdue"
-        description: "Last DR test was over 30 days ago"
+        summary: "No successful DR restore in the last 30 days"
+        description: "No successful restore from the dr-backup schedule was recorded in the last 30 days"
 ```
 
 ## Implementing Multi-Region DR
@@ -450,7 +438,7 @@ spec:
     excludedNamespaces:
     - kube-system
     - velero
-    # Backup to both regions
+    # Back up to the primary region; S3 replication copies the backup to the secondary region
     storageLocation: us-east-backup
     snapshotVolumes: true
     defaultVolumesToFsBackup: true
@@ -462,7 +450,7 @@ Configure S3 replication to sync backups between regions automatically.
 
 Maintain clear DR runbooks:
 
-```markdown
+~~~markdown
 # Disaster Recovery Runbook
 
 ## Pre-Disaster Checklist
@@ -481,22 +469,22 @@ Maintain clear DR runbooks:
 1. Switch context to DR cluster:
    ```bash
    kubectl config use-context dr-cluster
-   ```bash
+   ```
 
 2. Identify latest backup:
    ```bash
    velero backup get --sort-by=.status.completionTimestamp
-   ```bash
+   ```
 
 3. Execute DR failover script:
    ```bash
    ./automated-dr-failover.sh <backup-name>
-   ```bash
+   ```
 
 4. Verify services:
    ```bash
    kubectl get pods --all-namespaces
-   ```bash
+   ```
 
 5. Update DNS to point to DR cluster
 
@@ -506,11 +494,8 @@ Maintain clear DR runbooks:
 - Document lessons learned
 - Update DR procedures
 - Plan primary cluster rebuild
-```text
+~~~
 
 ## Conclusion
 
-Cross-cluster disaster recovery with Velero provides robust protection against catastrophic failures. Configure shared backup storage locations accessible from multiple clusters, implement automated failover procedures, and test recovery operations regularly to ensure your DR strategy works when needed. Combine volume snapshots with file-level backups for maximum portability, map storage classes to handle infrastructure differences, and monitor backup freshness to maintain continuous DR readiness. Regular testing validates your procedures and builds team confidence in executing disaster recovery when every minute counts.
-
-```bash
-```
+Cross-cluster disaster recovery with Velero provides robust protection against catastrophic failures. Configure shared backup storage locations accessible from multiple clusters, implement automated failover procedures, and test recovery operations regularly to ensure your DR strategy works when needed. Use file-level backups for portability, use snapshots where they fit your storage provider and recovery model, map storage classes to handle infrastructure differences, and monitor backup freshness to maintain continuous DR readiness. Regular testing validates your procedures and builds team confidence in executing disaster recovery when every minute counts.
