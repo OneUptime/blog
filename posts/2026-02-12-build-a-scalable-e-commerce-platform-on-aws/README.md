@@ -85,7 +85,7 @@ The Lambda function for the product API:
 ```javascript
 // product-service/handler.js - Product catalog Lambda
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
-const { DynamoDBDocumentClient, GetCommand, QueryCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBDocumentClient, QueryCommand } = require('@aws-sdk/lib-dynamodb');
 
 const client = new DynamoDBClient({});
 const docClient = DynamoDBDocumentClient.from(client);
@@ -117,6 +117,9 @@ exports.getProduct = async (event) => {
 exports.listByCategory = async (event) => {
   const category = event.pathParameters.category;
   const lastKey = event.queryStringParameters?.lastKey;
+  const exclusiveStartKey = lastKey
+    ? JSON.parse(Buffer.from(lastKey, 'base64').toString('utf8'))
+    : undefined;
 
   const result = await docClient.send(new QueryCommand({
     TableName: TABLE_NAME,
@@ -126,7 +129,7 @@ exports.listByCategory = async (event) => {
       ':category': `CATEGORY#${category}`,
     },
     Limit: 20,
-    ExclusiveStartKey: lastKey ? JSON.parse(lastKey) : undefined,
+    ExclusiveStartKey: exclusiveStartKey,
   }));
 
   return {
@@ -159,7 +162,7 @@ const redis = new Redis({
 const CART_TTL = 60 * 60 * 24 * 7;
 
 exports.getCart = async (event) => {
-  const userId = event.requestContext.authorizer.claims.sub;
+  const userId = event.requestContext.authorizer.jwt.claims.sub;
   const cart = await redis.get(`cart:${userId}`);
 
   return {
@@ -169,7 +172,7 @@ exports.getCart = async (event) => {
 };
 
 exports.addToCart = async (event) => {
-  const userId = event.requestContext.authorizer.claims.sub;
+  const userId = event.requestContext.authorizer.jwt.claims.sub;
   const { productId, variantId, quantity } = JSON.parse(event.body);
 
   // Get existing cart or create new one
@@ -203,15 +206,17 @@ Orders need reliability above all else. Use DynamoDB for storage and SQS for asy
 
 ```javascript
 // order-service/handler.js - Order placement and processing
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
 const { v4: uuidv4 } = require('uuid');
 
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const sqs = new SQSClient({});
 const QUEUE_URL = process.env.ORDER_QUEUE_URL;
 
 exports.placeOrder = async (event) => {
-  const userId = event.requestContext.authorizer.claims.sub;
+  const userId = event.requestContext.authorizer.jwt.claims.sub;
   const { items, shippingAddress, paymentMethodId } = JSON.parse(event.body);
   const orderId = uuidv4();
 
@@ -273,7 +278,8 @@ exports.processOrder = async (event) => {
     } catch (error) {
       // Update order to FAILED
       await updateOrderStatus(order.orderId, 'FAILED');
-      // Message returns to queue for retry (DLQ after 3 attempts)
+      // Lambda retries the batch after the queue's visibility timeout.
+      // Configure the source queue redrive policy to send repeated failures to a DLQ.
       throw error;
     }
   }
@@ -362,6 +368,19 @@ Resources:
       Name: ecommerce-api
       ProtocolType: HTTP
 
+  JwtAuthorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref HttpApi
+      AuthorizerType: JWT
+      IdentitySource:
+        - '$request.header.Authorization'
+      JwtConfiguration:
+        Audience:
+          - !Ref CognitoUserPoolClient
+        Issuer: !Sub https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}
+      Name: ecommerce-jwt-authorizer
+
   # Product routes
   GetProductRoute:
     Type: AWS::ApiGatewayV2::Route
@@ -384,6 +403,7 @@ Resources:
       ApiId: !Ref HttpApi
       RouteKey: GET /cart
       AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
       Target: !Sub integrations/${CartIntegration}
 
   # Order routes
@@ -393,6 +413,7 @@ Resources:
       ApiId: !Ref HttpApi
       RouteKey: POST /orders
       AuthorizationType: JWT
+      AuthorizerId: !Ref JwtAuthorizer
       Target: !Sub integrations/${OrderIntegration}
 ```
 
