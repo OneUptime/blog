@@ -50,12 +50,12 @@ Wavelength Zones are opt-in, just like Local Zones. You need to enable them befo
 
 aws ec2 describe-availability-zones \
   --filters "Name=zone-type,Values=wavelength-zone" \
-  --query "AvailabilityZones[].{Zone:ZoneName, State:OptInStatus, Carrier:NetworkBorderGroup}" \
+  --query "AvailabilityZones[].{Zone:ZoneName, Group:GroupName, State:OptInStatus, Carrier:NetworkBorderGroup}" \
   --output table
 
-# Opt in to a specific Wavelength zone
+# Opt in to the Wavelength zone group shown in the Group column
 aws ec2 modify-availability-zone-group \
-  --group-name "us-east-1-wl1-bos-wlz-1" \
+  --group-name "us-east-1-wl1" \
   --opt-in-status "opted-in"
 ```
 
@@ -199,13 +199,15 @@ For VPC-internal communication between Wavelength and the region, set up your ro
 # In the region subnet's route table, add a route to the Wavelength subnet
 # This happens automatically through VPC routing since they share a VPC
 
-# For accessing AWS services, use VPC endpoints
+# For gateway endpoints, associate the Wavelength route table
 aws ec2 create-vpc-endpoint \
   --vpc-id "vpc-abc123" \
   --service-name "com.amazonaws.us-east-1.dynamodb" \
   --vpc-endpoint-type "Gateway" \
   --route-table-ids "rtb-wavelength123"
 ```
+
+For interface VPC endpoints, create the endpoint network interfaces in a regular Availability Zone subnet in the VPC, not in the Wavelength subnet.
 
 ## Step 6: Multi-Location Deployment
 
@@ -214,35 +216,46 @@ For broad coverage, deploy to multiple Wavelength Zones across different metros.
 ```python
 import boto3
 
-ec2 = boto3.client('ec2')
+# Define your target Wavelength zones by parent Region.
+# Each parent Region needs its own VPC.
+deployments = {
+    'us-east-1': {
+        'vpc_id': 'vpc-east123',
+        'zones': [
+            'us-east-1-wl1-bos-wlz-1',   # Boston, Verizon
+            'us-east-1-wl1-nyc-wlz-1',   # New York, Verizon
+            'us-east-1-wl1-was-wlz-1',   # Washington DC, Verizon
+        ],
+    },
+    'us-west-2': {
+        'vpc_id': 'vpc-west456',
+        'zones': [
+            'us-west-2-wl1-sea-wlz-1',   # Seattle, Verizon
+            'us-west-2-wl1-las-wlz-1',   # Las Vegas, Verizon
+        ],
+    },
+}
 
-# Define your target Wavelength zones
-wavelength_zones = [
-    'us-east-1-wl1-bos-wlz-1',   # Boston, Verizon
-    'us-east-1-wl1-nyc-wlz-1',   # New York, Verizon
-    'us-east-1-wl1-was-wlz-1',   # Washington DC, Verizon
-    'us-west-2-wl1-sea-wlz-1',   # Seattle, Verizon
-    'us-west-2-wl1-las-wlz-1',   # Las Vegas, Verizon
-]
+for region_index, (region, config) in enumerate(deployments.items()):
+    ec2 = boto3.client('ec2', region_name=region)
 
-# Create subnets in each zone (assuming VPC spans these regions)
-for i, zone in enumerate(wavelength_zones):
-    cidr = f"10.0.{i + 10}.0/24"
-    response = ec2.create_subnet(
-        VpcId='vpc-abc123',
-        CidrBlock=cidr,
-        AvailabilityZone=zone,
-        TagSpecifications=[{
-            'ResourceType': 'subnet',
-            'Tags': [{'Key': 'Name', 'Value': f'wl-{zone}'}]
-        }]
-    )
-    print(f"Created subnet {response['Subnet']['SubnetId']} in {zone}")
+    for i, zone in enumerate(config['zones']):
+        cidr = f"10.{region_index}.{i + 10}.0/24"
+        response = ec2.create_subnet(
+            VpcId=config['vpc_id'],
+            CidrBlock=cidr,
+            AvailabilityZone=zone,
+            TagSpecifications=[{
+                'ResourceType': 'subnet',
+                'Tags': [{'Key': 'Name', 'Value': f'wl-{zone}'}]
+            }]
+        )
+        print(f"Created subnet {response['Subnet']['SubnetId']} in {zone}")
 ```
 
 ## Monitoring Wavelength Deployments
 
-The same CloudWatch metrics work for Wavelength instances as regular EC2. But pay special attention to network latency metrics - that's the whole point of being there.
+The same CloudWatch metrics work for Wavelength instances as regular EC2. CloudWatch gives you EC2 network throughput metrics, but for latency you should publish custom metrics from real client probes or your application - that's the whole point of being there.
 
 ```bash
 # Get network metrics for your Wavelength instances
@@ -263,9 +276,9 @@ For end-to-end monitoring of your edge deployment across multiple Wavelength Zon
 People often confuse these two. Here's the difference:
 
 - **Wavelength** puts compute inside the carrier's 5G network. Traffic from 5G devices stays in-network.
-- **Local Zones** put compute in a metro area but still connect through the public internet. Good for general low-latency, not specifically 5G.
+- **Local Zones** put compute in a metro area with local internet ingress and egress, plus private connectivity back to the parent Region. Good for general low-latency, not specifically 5G.
 
-If your users are on 5G devices, Wavelength gives you better latency. If they're on broadband or WiFi, Local Zones might be the better fit.
+If your users are on 5G devices in the right carrier network and metro area, Wavelength can give you better latency. If they're on broadband or WiFi, Local Zones might be the better fit.
 
 ## Wrapping Up
 
