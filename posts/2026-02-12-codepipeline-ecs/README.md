@@ -42,12 +42,13 @@ Start with a simple application and Dockerfile:
 ```dockerfile
 # Dockerfile
 
-FROM node:18-alpine
+FROM node:24-alpine
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci --omit=dev
 COPY . .
+RUN apk add --no-cache curl
 
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s CMD curl -f http://localhost:8080/health || exit 1
