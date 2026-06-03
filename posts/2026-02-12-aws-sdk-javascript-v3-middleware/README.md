@@ -14,21 +14,23 @@ The middleware system is one of the most powerful features in the AWS SDK for Ja
 
 Every SDK client has a middleware stack. When you call `client.send(command)`, the request passes through each middleware in the stack before reaching AWS. The response then passes back through the stack in reverse. Each middleware can inspect or modify the request and response.
 
-The stack has four phases (steps), executed in order:
+The stack has five phases (steps), executed in order:
 
 1. **initialize** - Prepare the input, set defaults
 2. **serialize** - Convert the input into an HTTP request
-3. **build** - Add headers, sign the request
-4. **finalize** - Final modifications, retries, logging
+3. **build** - Add stable headers or checksums that apply to every retry
+4. **finalizeRequest** - Final modifications, request signing, retries, logging
+5. **deserialize** - Convert the raw response into command output
 
 ```mermaid
 graph LR
     A[Your Code] --> B[initialize]
     B --> C[serialize]
     C --> D[build]
-    D --> E[finalize]
+    D --> E[finalizeRequest]
     E --> F[AWS API]
-    F --> E
+    F --> G[deserialize]
+    G --> E
     E --> D
     D --> C
     C --> B
@@ -89,7 +91,7 @@ const s3 = new S3Client({ region: 'us-east-1' });
 // Inspect the serialized HTTP request
 s3.middlewareStack.add(
     (next) => async (args) => {
-        // At the 'finalize' step, args.request is the HTTP request
+        // At the 'finalizeRequest' step, args.request is the HTTP request
         const { request } = args;
         console.log('Request URL:', `${request.protocol}//${request.hostname}${request.path}`);
         console.log('Request headers:', JSON.stringify(request.headers, null, 2));
@@ -103,7 +105,7 @@ s3.middlewareStack.add(
         return result;
     },
     {
-        step: 'finalize',
+        step: 'finalizeRequest',
         name: 'inspectionMiddleware'
     }
 );
@@ -278,9 +280,9 @@ s3.middlewareStack.add(
         throw lastError;
     },
     {
-        step: 'finalize',
+        step: 'finalizeRequest',
         name: 'customRetryMiddleware',
-        override: true  // allow replacing existing middleware
+        override: true  // allow replacing middleware with the same name
     }
 );
 ```
@@ -290,7 +292,7 @@ s3.middlewareStack.add(
 Cache responses for idempotent operations to reduce API calls.
 
 ```javascript
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client } from '@aws-sdk/client-s3';
 
 class SimpleCache {
     constructor(ttlMs = 60000) {
@@ -316,11 +318,11 @@ const cache = new SimpleCache(30000); // 30 second TTL
 
 const s3 = new S3Client({ region: 'us-east-1' });
 
-// Cache GetObject responses
+// Cache HeadObject responses. Do not cache GetObject this way because Body is a stream.
 s3.middlewareStack.add(
     (next, context) => async (args) => {
-        // Only cache read operations
-        const cacheable = ['GetObjectCommand', 'HeadObjectCommand'];
+        // Only cache read operations with reusable response bodies
+        const cacheable = ['HeadObjectCommand'];
         if (!cacheable.includes(context.commandName)) {
             return next(args);
         }
@@ -394,9 +396,9 @@ const dynamodb = applyObservability(new DynamoDBClient({}), { serviceName: 'Dyna
 ## Best Practices
 
 - **Keep middleware focused.** Each middleware should do one thing well.
-- **Use appropriate steps.** Put validation in `initialize`, header modifications in `build`, and retry logic in `finalize`.
+- **Use appropriate steps.** Put validation in `initialize`, header modifications in `build`, and retry logic in `finalizeRequest`.
 - **Name your middleware.** The `name` option helps with debugging and prevents duplicate registration.
-- **Don't modify request bodies in `finalize`.** By that point the request is signed, and modifications would break the signature.
+- **Don't modify request bodies in `finalizeRequest`.** Use `build` for stable request changes so they apply consistently across retries and before signing.
 - **Be careful with caching.** Only cache read operations and set appropriate TTLs.
 
 For setting up the SDK clients that use these middleware, see the [client setup guide](https://oneuptime.com/blog/post/2026-02-12-aws-sdk-v3-clients-nodejs/view). Monitoring the performance impact of your middleware is important too - make sure you're tracking the overhead you're adding to each API call.
