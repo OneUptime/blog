@@ -82,7 +82,7 @@ Define roles that control certificate properties:
 ```bash
 # Role for application servers
 vault write pki_int/roles/app-server \
-  allowed_domains="app.example.com,*.app.example.com" \
+  allowed_domains="app.example.com" \
   allow_subdomains=true \
   max_ttl="720h" \
   key_usage="DigitalSignature,KeyEncipherment" \
@@ -98,16 +98,15 @@ vault write pki_int/roles/app-client \
 
 # Role for service mesh
 vault write pki_int/roles/service-mesh \
-  allowed_domains="*.svc.cluster.local" \
+  allowed_domains="svc.cluster.local" \
   allow_subdomains=true \
-  allow_glob_domains=true \
   max_ttl="168h" \
   key_usage="DigitalSignature,KeyEncipherment" \
   ext_key_usage="ServerAuth,ClientAuth"
 
 # Wildcard role for development
 vault write pki_int/roles/dev-wildcard \
-  allowed_domains="*.dev.example.com" \
+  allowed_domains="dev.example.com" \
   allow_subdomains=true \
   allow_wildcard_certificates=true \
   max_ttl="168h"
@@ -160,8 +159,8 @@ EOF
 vault write auth/kubernetes/role/app \
   bound_service_account_names=app-sa \
   bound_service_account_namespaces=default \
-  policies=pki-issue \
-  ttl=1h
+  token_policies=pki-issue \
+  token_ttl=1h
 ```
 
 ## Using Vault Agent for Certificate Injection
@@ -186,42 +185,21 @@ spec:
       annotations:
         vault.hashicorp.com/agent-inject: "true"
         vault.hashicorp.com/role: "app"
+        vault.hashicorp.com/secret-volume-path: "/etc/nginx/ssl"
 
-        # Inject TLS certificate
-        vault.hashicorp.com/agent-inject-secret-tls.crt: "pki_int/issue/app-server"
-        vault.hashicorp.com/agent-inject-template-tls.crt: |
-          {{- with secret "pki_int/issue/app-server" "common_name=api.app.example.com" "ttl=720h" -}}
-          {{ .Data.certificate }}
+        # Inject TLS certificate, private key, and CA from one issued certificate
+        vault.hashicorp.com/agent-inject-secret-certs: "pki_int/issue/app-server"
+        vault.hashicorp.com/agent-inject-template-certs: |
+          {{- with pkiCert "pki_int/issue/app-server" "common_name=api.app.example.com" "ttl=720h" -}}
+          {{ .Cert | writeToFile "/etc/nginx/ssl/tls.crt" "vault" "vault" "0600" }}
+          {{ .Key | writeToFile "/etc/nginx/ssl/tls.key" "vault" "vault" "0600" }}
+          {{ .CA | writeToFile "/etc/nginx/ssl/ca.crt" "vault" "vault" "0644" }}
           {{- end -}}
-
-        # Inject private key
-        vault.hashicorp.com/agent-inject-secret-tls.key: "pki_int/issue/app-server"
-        vault.hashicorp.com/agent-inject-template-tls.key: |
-          {{- with secret "pki_int/issue/app-server" "common_name=api.app.example.com" "ttl=720h" -}}
-          {{ .Data.private_key }}
-          {{- end -}}
-
-        # Inject CA certificate
-        vault.hashicorp.com/agent-inject-secret-ca.crt: "pki_int/issue/app-server"
-        vault.hashicorp.com/agent-inject-template-ca.crt: |
-          {{- with secret "pki_int/issue/app-server" "common_name=api.app.example.com" "ttl=720h" -}}
-          {{ .Data.issuing_ca }}
-          {{- end -}}
-
-        # Set file permissions
-        vault.hashicorp.com/agent-inject-perms: "0600"
     spec:
       serviceAccountName: app-sa
       containers:
       - name: app
         image: nginx:latest
-        volumeMounts:
-        - name: tls-config
-          mountPath: /etc/nginx/ssl
-          readOnly: true
-      volumes:
-      - name: tls-config
-        emptyDir: {}
 ```
 
 ## Implementing Certificate Rotation
@@ -233,8 +211,10 @@ package main
 
 import (
     "crypto/tls"
-    "io/ioutil"
+    "crypto/x509"
+    "fmt"
     "log"
+    "os"
     "time"
 
     vault "github.com/hashicorp/vault/api"
@@ -250,7 +230,7 @@ type CertManager struct {
 }
 
 func (cm *CertManager) authenticate() error {
-    jwt, err := ioutil.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
+    jwt, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/token")
     if err != nil {
         return err
     }
@@ -263,6 +243,9 @@ func (cm *CertManager) authenticate() error {
     secret, err := cm.client.Logical().Write("auth/kubernetes/login", params)
     if err != nil {
         return err
+    }
+    if secret == nil || secret.Auth == nil {
+        return fmt.Errorf("missing auth data in Vault login response")
     }
 
     cm.client.SetToken(secret.Auth.ClientToken)
@@ -279,16 +262,19 @@ func (cm *CertManager) issueCertificate() error {
     if err != nil {
         return err
     }
+    if secret == nil || secret.Data == nil {
+        return fmt.Errorf("missing certificate data in Vault response")
+    }
 
     // Save certificate
     cert := secret.Data["certificate"].(string)
-    if err := ioutil.WriteFile(cm.certPath, []byte(cert), 0600); err != nil {
+    if err := os.WriteFile(cm.certPath, []byte(cert), 0600); err != nil {
         return err
     }
 
     // Save private key
     key := secret.Data["private_key"].(string)
-    if err := ioutil.WriteFile(cm.keyPath, []byte(key), 0600); err != nil {
+    if err := os.WriteFile(cm.keyPath, []byte(key), 0600); err != nil {
         return err
     }
 
@@ -343,8 +329,12 @@ func main() {
         ttl:        "720h",
     }
 
-    cm.authenticate()
-    cm.issueCertificate()
+    if err := cm.authenticate(); err != nil {
+        log.Fatal(err)
+    }
+    if err := cm.issueCertificate(); err != nil {
+        log.Fatal(err)
+    }
 
     // Start renewal checker
     go cm.checkAndRenew()
@@ -389,7 +379,7 @@ rm /tmp/cert.json /tmp/tls.crt /tmp/tls.key /tmp/ca.crt
 echo "TLS secret $SECRET_NAME created in namespace $NAMESPACE"
 ```
 
-## Configuring CRL and OCSP
+## Configuring CRL
 
 Enable certificate revocation checking:
 
@@ -412,7 +402,7 @@ Access CRL:
 
 ```bash
 # Download CRL
-curl http://vault.vault.svc.cluster.local:8200/v1/pki_int/crl/pem
+curl -o crl.pem http://vault.vault.svc.cluster.local:8200/v1/pki_int/crl/pem
 
 # Verify CRL
 openssl crl -in crl.pem -text -noout
