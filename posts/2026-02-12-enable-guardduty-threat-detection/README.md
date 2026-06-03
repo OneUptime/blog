@@ -42,7 +42,7 @@ aws guardduty create-detector \
   --finding-publishing-frequency FIFTEEN_MINUTES
 ```
 
-The `finding-publishing-frequency` determines how often findings are published to EventBridge. Options are `FIFTEEN_MINUTES`, `ONE_HOUR`, or `SIX_HOURS`. For security, go with `FIFTEEN_MINUTES`.
+The `finding-publishing-frequency` determines how often subsequent occurrences of existing findings are published to EventBridge. New findings are sent in near real time. Options are `FIFTEEN_MINUTES`, `ONE_HOUR`, or `SIX_HOURS`. For security, go with `FIFTEEN_MINUTES`.
 
 Check that it's enabled.
 
@@ -65,12 +65,15 @@ DETECTOR_ID=$(aws guardduty list-detectors --query 'DetectorIds[0]' --output tex
 # Enable S3 protection (monitors S3 data access events)
 aws guardduty update-detector \
   --detector-id $DETECTOR_ID \
-  --data-sources '{
-    "S3Logs": {"Enable": true}
-  }'
+  --features '[
+    {
+      "Name": "S3_DATA_EVENTS",
+      "Status": "ENABLED"
+    }
+  ]'
 ```
 
-For Kubernetes, EBS malware scanning, and Lambda protection, use the features configuration.
+For Kubernetes, EBS malware scanning, Lambda protection, and RDS login activity monitoring, use the features configuration.
 
 ```bash
 # Enable EKS protection
@@ -124,38 +127,61 @@ aws guardduty update-detector \
 
 ## Terraform Configuration
 
-Here's the complete Terraform setup for GuardDuty with all protection plans.
+Here's the Terraform setup for GuardDuty with the same protection plans.
 
 ```hcl
 resource "aws_guardduty_detector" "main" {
   enable                       = true
   finding_publishing_frequency = "FIFTEEN_MINUTES"
+}
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
+resource "aws_guardduty_detector_feature" "s3_data_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_runtime_monitoring" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_RUNTIME_MONITORING"
+  status      = "ENABLED"
+
+  additional_configuration {
+    name   = "EKS_ADDON_MANAGEMENT"
+    status = "ENABLED"
   }
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "lambda_network_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "LAMBDA_NETWORK_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "rds_login_events" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "RDS_LOGIN_EVENTS"
+  status      = "ENABLED"
 }
 ```
 
 ## Understanding Findings
 
-GuardDuty findings have a severity level from 0 to 10:
+GuardDuty findings have a severity level from 1.0 to 10.0:
 
-- **Low (0.1 - 3.9)** - Suspicious activity that may not indicate a real threat
+- **Low (1.0 - 3.9)** - Suspicious activity that may not indicate a real threat
 - **Medium (4.0 - 6.9)** - Activity that deviates from normal but might have a benign explanation
 - **High (7.0 - 8.9)** - Strong indicators of compromise that need immediate investigation
 - **Critical (9.0 - 10.0)** - Active compromise requiring emergency response
@@ -281,7 +307,7 @@ Full finding:
 
 ## Adding Custom Threat Intelligence
 
-You can add your own threat intelligence lists (IP addresses or domains) that GuardDuty will check against.
+You can add your own threat intelligence IP lists that GuardDuty will check against. For domain-based lists, use GuardDuty entity lists instead.
 
 ```bash
 # Create a threat intel set from a file in S3
