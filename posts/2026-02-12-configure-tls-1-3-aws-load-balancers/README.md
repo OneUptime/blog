@@ -10,14 +10,14 @@ Description: Configure TLS 1.3 on Application Load Balancers and Network Load Ba
 
 TLS 1.3 was finalized back in 2018, but plenty of AWS load balancers are still running older TLS versions. If you haven't explicitly configured your security policy, you might be allowing TLS 1.0 and 1.1 connections - protocols with known vulnerabilities that most compliance frameworks now require you to disable.
 
-TLS 1.3 isn't just more secure. It's also faster. The handshake completes in one round trip instead of two, and zero round trips for resumed connections. For high-traffic applications, that latency savings adds up. Let's configure it on both Application Load Balancers (ALB) and Network Load Balancers (NLB).
+TLS 1.3 isn't just more secure. It's also faster. The handshake completes in one round trip instead of two, and AWS load balancers support TLS 1.3 session resumption for repeat connections. For high-traffic applications, that latency savings adds up. Let's configure it on both Application Load Balancers (ALB) and Network Load Balancers (NLB).
 
 ## TLS 1.3 Benefits
 
 Before diving into configuration, here's why TLS 1.3 matters:
 
-- **Faster handshakes** - 1-RTT for new connections, 0-RTT for resumed connections
-- **Stronger cipher suites** - Only supports modern AEAD ciphers. No more CBC, RC4, or other legacy algorithms
+- **Faster handshakes** - 1-RTT for new connections, with session resumption for repeat connections. ALB and NLB do not implement TLS 1.3 0-RTT early data
+- **Stronger cipher suites** - TLS 1.3 negotiation uses modern AEAD ciphers. No more CBC, RC4, or other legacy algorithms for TLS 1.3 connections
 - **Simpler protocol** - Removed unnecessary features that were attack vectors (renegotiation, compression)
 - **Forward secrecy by default** - Every connection uses ephemeral keys. Compromising the server's private key doesn't decrypt past traffic
 - **Encrypted handshake** - More of the handshake is encrypted, reducing metadata exposure
@@ -30,13 +30,15 @@ Key policies for TLS 1.3:
 
 | Policy | Min TLS | TLS 1.3 | Notes |
 |--------|---------|---------|-------|
-| ELBSecurityPolicy-TLS13-1-2-2021-06 | 1.2 | Yes | TLS 1.2 + 1.3 (recommended) |
+| ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09 | 1.2 | Yes | TLS 1.2 + 1.3, restricted cipher set, AWS-recommended PQ-TLS policy |
+| ELBSecurityPolicy-TLS13-1-2-2021-06 | 1.2 | Yes | TLS 1.2 + 1.3 |
+| ELBSecurityPolicy-TLS13-1-3-PQ-2025-09 | 1.3 | Yes | TLS 1.3 only, PQ-TLS policy |
 | ELBSecurityPolicy-TLS13-1-3-2021-06 | 1.3 | Yes | TLS 1.3 only (strict) |
 | ELBSecurityPolicy-TLS13-1-2-Res-2021-06 | 1.2 | Yes | Restricted cipher set |
-| ELBSecurityPolicy-2016-08 | 1.0 | No | Default (outdated) |
+| ELBSecurityPolicy-2016-08 | 1.0 | No | Default for non-console creation methods (outdated) |
 | ELBSecurityPolicy-TLS-1-2-2017-01 | 1.2 | No | TLS 1.2 without 1.3 |
 
-For most applications, `ELBSecurityPolicy-TLS13-1-2-2021-06` is the right choice. It supports both TLS 1.2 (for backward compatibility) and TLS 1.3.
+For most applications, `ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09` is the right choice. It supports both TLS 1.2 (for backward compatibility) and TLS 1.3 with a restricted cipher set. If you need the older 2021 TLS 1.3 policy, `ELBSecurityPolicy-TLS13-1-2-2021-06` also supports both TLS 1.2 and TLS 1.3.
 
 ## Configuring TLS 1.3 on Application Load Balancer
 
@@ -49,7 +51,7 @@ This updates an ALB HTTPS listener to use the TLS 1.3 security policy:
 
 aws elbv2 modify-listener \
   --listener-arn arn:aws:elasticloadbalancing:us-east-1:111111111111:listener/app/my-alb/abc123/def456 \
-  --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06
+  --ssl-policy ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09
 ```
 
 For a new listener:
@@ -61,7 +63,7 @@ aws elbv2 create-listener \
   --protocol HTTPS \
   --port 443 \
   --certificates CertificateArn=arn:aws:acm:us-east-1:111111111111:certificate/cert-id \
-  --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
+  --ssl-policy ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09 \
   --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:111111111111:targetgroup/my-targets/abc123
 ```
 
@@ -72,7 +74,7 @@ If all your clients support TLS 1.3 and you want maximum security, use the 1.3-o
 ```bash
 aws elbv2 modify-listener \
   --listener-arn arn:aws:elasticloadbalancing:us-east-1:111111111111:listener/app/my-alb/abc123/def456 \
-  --ssl-policy ELBSecurityPolicy-TLS13-1-3-2021-06
+  --ssl-policy ELBSecurityPolicy-TLS13-1-3-PQ-2025-09
 ```
 
 Be careful with this one. Older clients, some corporate proxies, and certain SDKs might not support TLS 1.3 yet. Test thoroughly before enforcing 1.3-only.
@@ -90,7 +92,7 @@ aws elbv2 create-listener \
   --protocol TLS \
   --port 443 \
   --certificates CertificateArn=arn:aws:acm:us-east-1:111111111111:certificate/cert-id \
-  --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06 \
+  --ssl-policy ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09 \
   --default-actions Type=forward,TargetGroupArn=arn:aws:elasticloadbalancing:us-east-1:111111111111:targetgroup/my-targets/def456
 ```
 
@@ -99,7 +101,7 @@ Update an existing NLB listener:
 ```bash
 aws elbv2 modify-listener \
   --listener-arn arn:aws:elasticloadbalancing:us-east-1:111111111111:listener/net/my-nlb/abc123/def456 \
-  --ssl-policy ELBSecurityPolicy-TLS13-1-2-2021-06
+  --ssl-policy ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09
 ```
 
 ## Terraform Configuration
@@ -113,7 +115,7 @@ resource "aws_lb_listener" "https" {
   load_balancer_arn = aws_lb.application.arn
   port              = 443
   protocol          = "HTTPS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
   certificate_arn   = aws_acm_certificate.main.arn
 
   default_action {
@@ -130,7 +132,7 @@ resource "aws_lb_listener" "tls" {
   load_balancer_arn = aws_lb.network.arn
   port              = 443
   protocol          = "TLS"
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09"
   certificate_arn   = aws_acm_certificate.main.arn
 
   default_action {
@@ -156,7 +158,7 @@ aws elbv2 describe-listeners \
 ```bash
 # See all available security policies
 aws elbv2 describe-ssl-policies \
-  --names ELBSecurityPolicy-TLS13-1-2-2021-06 \
+  --names ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09 \
   --query 'SslPolicies[0].{Name:Name,Protocols:SslProtocols,Ciphers:Ciphers[].Name}'
 ```
 
@@ -196,31 +198,34 @@ curl -v --tls-max 1.2 --tlsv1.2 https://your-domain.com/
 
 ## Cipher Suites in TLS 1.3
 
-TLS 1.3 only supports three cipher suites:
+AWS ELB TLS 1.3 policies commonly negotiate these TLS 1.3 cipher suites:
 
 - `TLS_AES_128_GCM_SHA256` - AES-128 in GCM mode
 - `TLS_AES_256_GCM_SHA384` - AES-256 in GCM mode
 - `TLS_CHACHA20_POLY1305_SHA256` - ChaCha20-Poly1305
 
-All three use AEAD (Authenticated Encryption with Associated Data), which provides both encryption and integrity in a single operation. There's no configuration to choose between them - the client and server negotiate automatically based on their capabilities.
+All three use AEAD (Authenticated Encryption with Associated Data), which provides both encryption and integrity in a single operation. RFC 8446 defines additional TLS 1.3 CCM cipher suites, but they are not part of these ELB TLS 1.3 policies. There's no per-listener configuration to choose between the supported TLS 1.3 cipher suites - the client and server negotiate automatically based on their capabilities.
 
 ## CloudFront TLS 1.3
 
 CloudFront also supports TLS 1.3 through its security policies.
 
-This updates a CloudFront distribution to require TLS 1.2 minimum with TLS 1.3 support:
+This updates a CloudFront distribution to require TLS 1.2 minimum with TLS 1.3 support. CloudFront distribution updates replace the full distribution configuration, so fetch the current config, update the viewer certificate settings, and send the ETag back with the update:
 
 ```bash
-# Update CloudFront distribution viewer certificate
+# Update CloudFront distribution viewer certificate settings
+aws cloudfront get-distribution-config \
+  --id E12345ABCDE \
+  --output json > dist-config.json
+
+jq '.DistributionConfig.ViewerCertificate.MinimumProtocolVersion = "TLSv1.2_2021"
+    | .DistributionConfig' \
+  dist-config.json > distribution-config-updated.json
+
 aws cloudfront update-distribution \
   --id E12345ABCDE \
-  --distribution-config '{
-    "ViewerCertificate": {
-      "ACMCertificateArn": "arn:aws:acm:us-east-1:111111111111:certificate/cert-id",
-      "SSLSupportMethod": "sni-only",
-      "MinimumProtocolVersion": "TLSv1.2_2021"
-    }
-  }'
+  --if-match "$(jq -r '.ETag' dist-config.json)" \
+  --distribution-config file://distribution-config-updated.json
 ```
 
 ## Monitoring TLS Version Usage
@@ -262,7 +267,7 @@ Here's a safe migration path:
 
 1. **Audit current usage.** Enable access logs and analyze TLS version distribution for at least a week.
 
-2. **Enable TLS 1.3 alongside 1.2.** Switch to `ELBSecurityPolicy-TLS13-1-2-2021-06`. This adds TLS 1.3 without breaking any existing clients.
+2. **Enable TLS 1.3 alongside 1.2.** Switch to `ELBSecurityPolicy-TLS13-1-2-Res-PQ-2025-09` or `ELBSecurityPolicy-TLS13-1-2-2021-06`. This adds TLS 1.3 without breaking any existing clients.
 
 3. **Monitor for issues.** Watch for connection errors, increased latency, or client complaints.
 
