@@ -28,9 +28,9 @@ The **Identifier** (Entity ID):
 urn:amazon:cognito:sp:us-east-1_XXXXXXXXX
 ```
 
-The **Sign-on URL** (optional, for IdP-initiated SSO):
+The **Sign-on URL** (optional, for the My Apps tile or SP-initiated app sign-in):
 ```text
-https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
+https://myapp.com/login
 ```
 
 ## Step 2: Configure Azure AD Enterprise Application
@@ -49,7 +49,7 @@ After creating the application, go to "Single sign-on" and select "SAML."
 ```text
 Identifier (Entity ID): urn:amazon:cognito:sp:us-east-1_XXXXXXXXX
 Reply URL (ACS URL): https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
-Sign on URL: https://your-domain.auth.us-east-1.amazoncognito.com/saml2/idpresponse
+Sign on URL: https://myapp.com/login
 ```
 
 ### Attributes & Claims
@@ -58,16 +58,16 @@ Configure the following claim mappings:
 
 | Claim name | Source attribute |
 |---|---|
-| email | user.mail (or user.userprincipalname) |
-| name | user.displayname |
-| given_name | user.givenname |
-| family_name | user.surname |
+| `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress` | user.mail (or user.userprincipalname) |
+| `http://schemas.microsoft.com/identity/claims/displayname` | user.displayname |
+| `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/givenname` | user.givenname |
+| `http://schemas.xmlsoap.org/ws/2005/05/identity/claims/surname` | user.surname |
 
 The default "Unique User Identifier" should be set to `user.userprincipalname` or `user.mail`.
 
 ### Download the Federation Metadata XML
 
-In the "SAML Certificates" section, download the "Federation Metadata XML" file. You'll upload this to Cognito.
+In the "SAML Certificates" section, copy the "App Federation Metadata Url" or download the "Federation Metadata XML" file. You'll give one of these to Cognito.
 
 Note the following from the SAML configuration screen:
 - **Login URL**: `https://login.microsoftonline.com/{tenant-id}/saml2`
@@ -189,7 +189,7 @@ function getAzureADSignInUrl() {
 
 ## Simplified Claim Names
 
-If you prefer shorter claim names in the SAML assertions, you can change this in Azure AD. Under "Attributes & Claims," edit the claims and change the "Namespace" field to empty. This gives you simple names like "email" instead of the full URI.
+If you prefer shorter claim names in the SAML assertions, you can change this in Azure AD. Under "Attributes & Claims," edit the claims and change the "Namespace" field to empty. This gives you simple names like "emailaddress" instead of the full URI.
 
 If you do this, update the Cognito attribute mapping:
 
@@ -197,7 +197,7 @@ If you do this, update the Cognito attribute mapping:
 # With simplified claim names (namespace removed in Azure AD)
 attribute_mapping = {
   email       = "emailaddress"
-  name        = "name"
+  name        = "displayname"
   given_name  = "givenname"
   family_name = "surname"
 }
@@ -205,7 +205,7 @@ attribute_mapping = {
 
 ## User Assignment
 
-By default, Azure AD requires users to be assigned to the enterprise application. Under "Properties" in the enterprise app, you can:
+Azure AD can require users to be assigned to the enterprise application. Under "Properties" in the enterprise app, you can:
 
 - **User assignment required = Yes**: Only assigned users/groups can sign in
 - **User assignment required = No**: All users in the tenant can sign in
