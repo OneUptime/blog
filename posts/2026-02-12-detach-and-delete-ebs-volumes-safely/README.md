@@ -46,7 +46,7 @@ Snapshots are incremental and relatively cheap. It's much better to have a snaps
 
 ### Verify It's Not a Root Volume
 
-Detaching a root volume from a running instance will cause serious problems. Check first:
+You can't detach a root volume while the instance is running. Check first:
 
 ```bash
 # Check if the volume is a root device
@@ -55,7 +55,7 @@ aws ec2 describe-volumes \
     --query 'Volumes[0].Attachments[0].{Device:Device,DeleteOnTermination:DeleteOnTermination}'
 ```
 
-Root volumes typically have device names like `/dev/xvda` or `/dev/sda1`. If it's a root volume, you should terminate the instance instead (or stop it first if you need to detach the root volume for special operations).
+Root volumes typically have device names like `/dev/xvda` or `/dev/sda1`. If it's a root volume, stop the instance first if you need to detach it for special operations. If you're deleting the instance entirely, terminate the instance and use the `DeleteOnTermination` setting to control whether the root volume is kept or deleted.
 
 ## Unmounting the Volume (Linux)
 
@@ -146,7 +146,7 @@ Once detached, you can delete the volume:
 aws ec2 delete-volume --volume-id vol-0123456789abcdef0
 ```
 
-This is permanent. There's no undo, no recycle bin. If you didn't take a snapshot, the data is gone.
+This is permanent unless the volume matches an EC2 Recycle Bin retention rule. If you didn't take a snapshot and the volume isn't retained by Recycle Bin, the data is gone.
 
 ## Finding Unused Volumes
 
@@ -212,15 +212,24 @@ while IFS=$'\t' read -r VOL_ID SIZE CREATE_TIME VOL_TYPE; do
         # Create a snapshot before deleting
         echo "  Creating snapshot..."
         SNAP_ID=$(aws ec2 create-snapshot \
-            --volume-id $VOL_ID \
+            --volume-id "$VOL_ID" \
             --description "Auto-backup before cleanup of $VOL_ID" \
             --query 'SnapshotId' \
             --output text)
         echo "  Snapshot: $SNAP_ID"
+        if [ -z "$SNAP_ID" ] || [ "$SNAP_ID" = "None" ]; then
+            echo "  Snapshot creation failed; skipping delete."
+            continue
+        fi
+        echo "  Waiting for snapshot to complete..."
+        if ! aws ec2 wait snapshot-completed --snapshot-ids "$SNAP_ID"; then
+            echo "  Snapshot did not complete; skipping delete."
+            continue
+        fi
 
         # Delete the volume
         echo "  Deleting volume..."
-        aws ec2 delete-volume --volume-id $VOL_ID
+        aws ec2 delete-volume --volume-id "$VOL_ID"
         echo "  Deleted."
     fi
 done <<< "$VOLUMES"
@@ -244,7 +253,7 @@ aws ec2 describe-instances \
     --output table
 ```
 
-The root volume has `DeleteOnTermination: true` by default. Additional volumes have it set to `false` by default, which means they'll become orphaned when the instance terminates.
+The root volume attached at launch has `DeleteOnTermination: true` by default. Additional data volumes attached through the console at launch, or attached through the console or CLI after launch, have it set to `false` by default, which means they'll become orphaned when the instance terminates. Data volumes attached at launch through the CLI default to deletion unless you set `DeleteOnTermination` to `false`.
 
 To change this behavior:
 
@@ -276,7 +285,7 @@ Then proceed with the AWS-level detach as normal.
 
 ## Monitoring for Orphaned Volumes
 
-Set up a periodic check for orphaned volumes. You can use a simple CloudWatch Events rule that triggers a Lambda function weekly:
+Set up a periodic check for orphaned volumes. You can use Amazon EventBridge Scheduler, or a scheduled EventBridge rule, to trigger a Lambda function weekly:
 
 The Lambda function would run the same logic as the cleanup script - find unattached volumes, optionally alert you or auto-delete after a grace period.
 
