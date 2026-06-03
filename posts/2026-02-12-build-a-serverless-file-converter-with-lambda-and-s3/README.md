@@ -10,7 +10,7 @@ Description: Build an event-driven serverless file conversion pipeline using AWS
 
 Users upload a file, and you need to convert it into a different format. CSV to JSON. DOCX to PDF. PNG to WebP. The traditional approach is running a conversion server 24/7, waiting for files. With Lambda and S3, you can build an event-driven converter that spins up automatically when a file lands in S3, converts it, and goes back to sleep.
 
-Zero cost when idle. Automatic scaling when busy. No servers to patch.
+No Lambda compute cost when idle. Automatic scaling when busy. No servers to patch.
 
 ## Architecture Overview
 
@@ -34,6 +34,8 @@ graph LR
 aws s3 mb s3://my-file-converter-input
 aws s3 mb s3://my-file-converter-output
 ```
+
+S3 bucket names must be globally unique, so replace these example names with names that are available in your account.
 
 Using separate buckets prevents infinite loops. If you wrote the converted file back to the same bucket, the S3 event would trigger Lambda again, which would convert the already-converted file, triggering another event, and so on.
 
@@ -144,6 +146,8 @@ def convert_image_to_webp(bucket, key):
 
 ### Markdown to HTML Converter
 
+For Markdown conversion, include the Python-Markdown package in your deployment package or Lambda layer.
+
 ```python
 # Converts Markdown files to styled HTML documents
 import markdown
@@ -191,6 +195,19 @@ def convert_markdown_to_html(bucket, key):
 
 ## Step 3: Configure the S3 Event Trigger
 
+Grant S3 permission to invoke the Lambda before adding the bucket notification. S3 validates the destination when you configure the notification.
+
+```bash
+# Allow the S3 bucket to invoke the Lambda function
+aws lambda add-permission \
+  --function-name file-converter \
+  --statement-id s3-invoke \
+  --action lambda:InvokeFunction \
+  --principal s3.amazonaws.com \
+  --source-arn arn:aws:s3:::my-file-converter-input \
+  --source-account 123456789012
+```
+
 ```bash
 # Add S3 event notification to trigger Lambda on file upload
 aws s3api put-bucket-notification-configuration \
@@ -210,19 +227,6 @@ aws s3api put-bucket-notification-configuration \
       }
     ]
   }'
-```
-
-Grant S3 permission to invoke the Lambda:
-
-```bash
-# Allow the S3 bucket to invoke the Lambda function
-aws lambda add-permission \
-  --function-name file-converter \
-  --statement-id s3-invoke \
-  --action lambda:InvokeFunction \
-  --principal s3.amazonaws.com \
-  --source-arn arn:aws:s3:::my-file-converter-input \
-  --source-account 123456789012
 ```
 
 ## Step 4: Set Up Lambda Configuration
@@ -252,6 +256,8 @@ Lambda has a 15-minute timeout and 10GB ephemeral storage limit. For files that 
 ```python
 # Route large files to ECS Fargate for processing
 import boto3
+import os
+from urllib.parse import unquote_plus
 
 ecs = boto3.client('ecs')
 
@@ -284,7 +290,7 @@ def start_ecs_task(record):
                 'name': 'converter',
                 'environment': [
                     {'name': 'SOURCE_BUCKET', 'value': record['s3']['bucket']['name']},
-                    {'name': 'SOURCE_KEY', 'value': record['s3']['object']['key']},
+                    {'name': 'SOURCE_KEY', 'value': unquote_plus(record['s3']['object']['key'])},
                     {'name': 'OUTPUT_BUCKET', 'value': os.environ['OUTPUT_BUCKET']}
                 ]
             }]
@@ -299,6 +305,9 @@ Track conversion status in DynamoDB so clients can poll for results:
 
 ```python
 # Track conversion status in DynamoDB for client polling
+import boto3
+from datetime import UTC, datetime
+
 dynamodb = boto3.resource('dynamodb')
 status_table = dynamodb.Table('conversion-jobs')
 
@@ -306,7 +315,7 @@ def update_status(job_id, status, output_key=None, error=None):
     item = {
         'jobId': job_id,
         'status': status,
-        'updatedAt': datetime.utcnow().isoformat()
+        'updatedAt': datetime.now(UTC).isoformat()
     }
     if output_key:
         item['outputKey'] = output_key
@@ -320,12 +329,13 @@ def update_status(job_id, status, output_key=None, error=None):
 Always handle conversion failures gracefully:
 
 ```python
-# Robust error handling with dead-letter queue
+# Robust error handling with error copy and notification
 import traceback
+from urllib.parse import unquote_plus
 
 def handler(event, context):
     record = event['Records'][0]
-    source_key = record['s3']['object']['key']
+    source_key = unquote_plus(record['s3']['object']['key'])
 
     try:
         result = convert_file(record)
@@ -354,6 +364,6 @@ def handler(event, context):
 
 ## Wrapping Up
 
-A serverless file converter with Lambda and S3 is one of the most practical event-driven architectures you can build. It handles the common case efficiently (small to medium files via Lambda), scales automatically with upload volume, and costs nothing when nobody is uploading. Add ECS Fargate for large files and DynamoDB for status tracking, and you have a production-ready file processing pipeline.
+A serverless file converter with Lambda and S3 is one of the most practical event-driven architectures you can build. It handles the common case efficiently (small to medium files via Lambda), scales automatically with upload volume, and has no Lambda compute cost when nobody is uploading. Add ECS Fargate for large files and DynamoDB for status tracking, and you have a production-ready file processing pipeline.
 
 For a specific implementation of image processing, check out our guide on [building a serverless thumbnail generator with Lambda](https://oneuptime.com/blog/post/2026-02-12-build-a-serverless-thumbnail-generator-with-lambda/view).
