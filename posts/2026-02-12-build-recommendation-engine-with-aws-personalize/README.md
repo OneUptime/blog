@@ -14,19 +14,19 @@ Let's walk through building a recommendation system end to end.
 
 ## How Personalize Works
 
-Personalize needs three types of data:
+Personalize primarily needs interaction data, and it can also use item and user metadata:
 
 1. **Interactions** - Who did what and when (user viewed item, user purchased item)
-2. **Items** - Metadata about your items (category, price, genre)
-3. **Users** - Metadata about your users (age group, membership tier)
+2. **Items** - Optional metadata about your items (category, price, genre)
+3. **Users** - Optional metadata about your users (age group, membership tier)
 
 You feed this data in, Personalize trains a model (called a "solution"), and you deploy it as a campaign that serves real-time recommendations.
 
 ```mermaid
 graph LR
     A[Interaction Data] --> D[Dataset Group]
-    B[Item Metadata] --> D
-    C[User Metadata] --> D
+    B[Optional Item Metadata] --> D
+    C[Optional User Metadata] --> D
     D --> E[Solution/Model Training]
     E --> F[Campaign Endpoint]
     F --> G[Real-time Recommendations]
@@ -323,4 +323,4 @@ The campaign's `minProvisionedTPS` setting also affects cost. Start low and incr
 
 ## Summary
 
-AWS Personalize lets you build recommendation engines without deep ML expertise. Prepare your interaction and item data, import it, train a model, deploy a campaign, and call the API. The hardest part is usually getting your data into the right format and having enough of it - Personalize works best with at least 1000 users and 1000 items with meaningful interaction history. For monitoring your recommendation system's performance, check out our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view) to track API latency and error rates.
+AWS Personalize lets you build recommendation engines without deep ML expertise. Prepare your interaction and item data, import it, train a model, deploy a campaign, and call the API. The hardest part is usually getting your data into the right format and having enough of it - Personalize requires at least 1000 item interactions and 25 unique users with at least two item interactions each, and works best with at least 50,000 item interactions from 1000 users with two or more interactions each. For monitoring your recommendation system's performance, check out our guide on [building a logging and monitoring stack on AWS](https://oneuptime.com/blog/post/2026-02-12-build-logging-and-monitoring-stack-on-aws/view) to track API latency and error rates.
