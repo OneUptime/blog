@@ -10,24 +10,24 @@ Description: Configure logging for AWS Network Firewall to capture flow logs, al
 
 AWS Network Firewall gives you deep packet inspection, intrusion prevention, and domain filtering for your VPC traffic. But running a firewall without logging is like having a security camera with no recording. You need to see what's being allowed, what's being blocked, and what's triggering your rules. Without logs, troubleshooting connectivity issues becomes guesswork and security investigations hit dead ends.
 
-Network Firewall supports three log types: flow logs, alert logs, and TLS inspection logs. Each serves a different purpose, and you can send them to different destinations. Let's configure all three.
+Network Firewall supports three log types: flow logs, alert logs, and TLS inspection logs. Each serves a different purpose, and you can send them to different destinations. Let's configure the common logging patterns and note where TLS inspection logs fit.
 
 ## Log Types Explained
 
-**Flow logs** record metadata about every connection that passes through the firewall - source/destination IPs, ports, protocol, bytes transferred, and the action taken (allow/drop). Think of these as your traffic ledger.
+**Flow logs** record metadata about network traffic that the stateful rules engine receives - source/destination IPs, ports, protocol, bytes transferred, and the action taken. Think of these as your traffic ledger.
 
 **Alert logs** are generated when traffic matches a Suricata-compatible IDS/IPS rule. These contain the rule that fired, the signature ID, the severity, and details about the matching traffic. These are your security events.
 
-**TLS inspection logs** are generated when you're using TLS inspection. They record details about TLS connections including the server name indication (SNI), certificate details, and the inspection result.
+**TLS inspection logs** are generated when you're using TLS inspection. They report TLS inspection events such as SNI mismatches, SNI naming errors, and outbound certificate revocation check failures.
 
 ## Logging Destinations
 
-You can send each log type to one or more of these destinations:
+You can send each log type to one of these destinations:
 - Amazon S3 (for long-term storage and Athena queries)
 - CloudWatch Logs (for real-time monitoring and alarms)
 - Kinesis Data Firehose (for streaming to third-party tools)
 
-Most teams use a combination. CloudWatch for real-time alerts, S3 for long-term analysis.
+Most teams use a combination across log types. CloudWatch for real-time alerts, S3 for long-term analysis.
 
 ## Setting Up S3 Logging
 
@@ -57,7 +57,7 @@ aws s3api put-bucket-encryption \
 
 ### Configure Firewall Logging to S3
 
-This configures the Network Firewall to send both flow and alert logs to S3:
+This configures the Network Firewall to send flow logs to S3:
 
 ```bash
 aws network-firewall update-logging-configuration \
@@ -70,14 +70,6 @@ aws network-firewall update-logging-configuration \
         "LogDestination": {
           "bucketName": "network-firewall-logs-111111111111",
           "prefix": "flow-logs/"
-        }
-      },
-      {
-        "LogType": "ALERT",
-        "LogDestinationType": "S3",
-        "LogDestination": {
-          "bucketName": "network-firewall-logs-111111111111",
-          "prefix": "alert-logs/"
         }
       }
     ]
@@ -105,20 +97,13 @@ aws logs put-retention-policy \
   --retention-in-days 90
 ```
 
-Configure the firewall to send logs to CloudWatch:
+Configure the firewall to send alert logs to CloudWatch:
 
 ```bash
 aws network-firewall update-logging-configuration \
   --firewall-arn arn:aws:network-firewall:us-east-1:111111111111:firewall/my-firewall \
   --logging-configuration '{
     "LogDestinationConfigs": [
-      {
-        "LogType": "FLOW",
-        "LogDestinationType": "CloudWatchLogs",
-        "LogDestination": {
-          "logGroup": "/aws/network-firewall/flow"
-        }
-      },
       {
         "LogType": "ALERT",
         "LogDestinationType": "CloudWatchLogs",
@@ -152,54 +137,39 @@ aws network-firewall update-logging-configuration \
   }'
 ```
 
-## Combining Multiple Destinations
+## Combining Log Types
 
-You can send each log type to multiple destinations simultaneously. Here's a complete configuration that sends flow logs to S3 and CloudWatch, and alert logs to all three destinations:
+You can combine destination types by assigning one destination to each log type. If you need to fan out the same log type to multiple systems, send it to CloudWatch Logs or Kinesis Data Firehose and fan it out downstream.
 
-```bash
-aws network-firewall update-logging-configuration \
-  --firewall-arn arn:aws:network-firewall:us-east-1:111111111111:firewall/my-firewall \
-  --logging-configuration '{
-    "LogDestinationConfigs": [
-      {
-        "LogType": "FLOW",
-        "LogDestinationType": "S3",
-        "LogDestination": {
-          "bucketName": "network-firewall-logs-111111111111",
-          "prefix": "flow/"
-        }
-      },
-      {
-        "LogType": "FLOW",
-        "LogDestinationType": "CloudWatchLogs",
-        "LogDestination": {
-          "logGroup": "/aws/network-firewall/flow"
-        }
-      },
-      {
-        "LogType": "ALERT",
-        "LogDestinationType": "S3",
-        "LogDestination": {
-          "bucketName": "network-firewall-logs-111111111111",
-          "prefix": "alert/"
-        }
-      },
-      {
-        "LogType": "ALERT",
-        "LogDestinationType": "CloudWatchLogs",
-        "LogDestination": {
-          "logGroup": "/aws/network-firewall/alert"
-        }
-      },
-      {
-        "LogType": "ALERT",
-        "LogDestinationType": "KinesisDataFirehose",
-        "LogDestination": {
-          "deliveryStream": "firewall-alerts-stream"
-        }
+When you use the AWS CLI, retrieve the current logging configuration with `describe-logging-configuration`, then apply one `LogDestinationConfig` change per `update-logging-configuration` call. The final configuration can look like this:
+
+```json
+{
+  "LogDestinationConfigs": [
+    {
+      "LogType": "FLOW",
+      "LogDestinationType": "S3",
+      "LogDestination": {
+        "bucketName": "network-firewall-logs-111111111111",
+        "prefix": "flow/"
       }
-    ]
-  }'
+    },
+    {
+      "LogType": "ALERT",
+      "LogDestinationType": "CloudWatchLogs",
+      "LogDestination": {
+        "logGroup": "/aws/network-firewall/alert"
+      }
+    },
+    {
+      "LogType": "TLS",
+      "LogDestinationType": "KinesisDataFirehose",
+      "LogDestination": {
+        "deliveryStream": "firewall-tls-stream"
+      }
+    }
+  ]
+}
 ```
 
 ## Terraform Configuration
@@ -231,10 +201,10 @@ resource "aws_networkfirewall_logging_configuration" "main" {
     log_destination_config {
       log_destination = {
         bucketName = aws_s3_bucket.firewall_logs.id
-        prefix     = "alert/"
+        prefix     = "tls/"
       }
       log_destination_type = "S3"
-      log_type             = "ALERT"
+      log_type             = "TLS"
     }
   }
 }
@@ -253,12 +223,13 @@ resource "aws_s3_bucket" "firewall_logs" {
 
 For deep analysis, query your S3-stored logs with Athena.
 
-This creates an Athena table for Network Firewall alert logs:
+If you choose S3 as the destination for alert logs, this creates an Athena table for Network Firewall alert logs:
 
 ```sql
 CREATE EXTERNAL TABLE nfw_alert_logs (
     firewall_name STRING,
     availability_zone STRING,
+    event_timestamp STRING,
     event STRUCT<
         timestamp: STRING,
         flow_id: BIGINT,
@@ -341,7 +312,7 @@ aws cloudwatch put-metric-alarm \
 
 **Always enable both flow and alert logs.** Flow logs show you the full traffic picture. Alert logs show you the security events. You need both for complete visibility.
 
-**Use S3 for retention, CloudWatch for alerting.** S3 is cheap for long-term storage. CloudWatch is better for real-time monitoring and metric-based alarms.
+**Use S3 for retention, CloudWatch for alerting.** S3 is cheap for long-term storage. CloudWatch is better for real-time monitoring and metric-based alarms. If you need the same log type in both places, fan it out downstream from CloudWatch Logs or Kinesis Data Firehose.
 
 **Set appropriate retention periods.** Flow logs generate a lot of data. Keep them for 30-90 days unless compliance requires more. Alert logs should be kept longer since they're security-relevant.
 
