@@ -70,6 +70,8 @@ const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const { v4: uuidv4 } = require('uuid');
 
+const s3 = new S3Client({});
+
 exports.initiateUpload = async (event) => {
   const { filename, contentType, folderId, tags } = JSON.parse(event.body);
   const userId = event.requestContext.authorizer.claims.sub;
@@ -136,18 +138,30 @@ When a document lands in S3, process it automatically:
 ```javascript
 // processing/pipeline.js - Document processing triggered by S3
 const { TextractClient, StartDocumentTextDetectionCommand } = require('@aws-sdk/client-textract');
+const { S3Client, HeadObjectCommand } = require('@aws-sdk/client-s3');
+
+const s3 = new S3Client({});
 
 exports.handler = async (event) => {
   const bucket = event.Records[0].s3.bucket.name;
-  const key = decodeURIComponent(event.Records[0].s3.object.key);
-  const documentId = key.split('/')[1]; // Extract from path
+  const key = decodeURIComponent(event.Records[0].s3.object.key.replace(/\+/g, ' '));
+  const versionId = event.Records[0].s3.object.versionId;
 
-  // Determine processing based on content type
-  const contentType = await getContentType(bucket, key);
+  // Determine processing based on object metadata and content type
+  const head = await s3.send(new HeadObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    VersionId: versionId,
+  }));
+  const documentId = head.Metadata?.['document-id'];
+  if (!documentId) {
+    throw new Error(`Missing document-id metadata for ${key}`);
+  }
+  const contentType = head.ContentType;
 
   if (isPdf(contentType) || isImage(contentType)) {
     // Run OCR with Textract
-    await startTextExtraction(bucket, key, documentId);
+    await startTextExtraction(bucket, key, versionId, documentId);
   } else if (isOfficeDocument(contentType)) {
     // Convert to PDF first, then run OCR
     await convertAndExtract(bucket, key, documentId);
@@ -163,12 +177,12 @@ exports.handler = async (event) => {
   await updateDocumentStatus(documentId, 'processing');
 };
 
-async function startTextExtraction(bucket, key, documentId) {
+async function startTextExtraction(bucket, key, versionId, documentId) {
   const textract = new TextractClient({});
 
   await textract.send(new StartDocumentTextDetectionCommand({
     DocumentLocation: {
-      S3Object: { Bucket: bucket, Name: key },
+      S3Object: { Bucket: bucket, Name: key, Version: versionId },
     },
     NotificationChannel: {
       SNSTopicArn: process.env.TEXTRACT_TOPIC_ARN,
@@ -222,7 +236,8 @@ exports.handleTextractComplete = async (event) => {
     Item: {
       PK: `DOC#${documentId}`,
       SK: 'TEXT',
-      extractedText: text.substring(0, 400000), // DynamoDB item size limit
+      // DynamoDB item size is 400 KB in UTF-8 bytes, including attribute names.
+      extractedText: trimToDynamoDBItemLimit(text),
       pageCount: message.DocumentMetadata?.Pages || 0,
     },
   }));
@@ -230,6 +245,17 @@ exports.handleTextractComplete = async (event) => {
   // Update status to 'ready'
   await updateDocumentStatus(documentId, 'ready');
 };
+
+function trimToDynamoDBItemLimit(text) {
+  const maxTextBytes = 350 * 1024; // Leave room for keys, attribute names, and page metadata.
+  let output = text;
+
+  while (Buffer.byteLength(output, 'utf8') > maxTextBytes) {
+    output = output.slice(0, Math.floor(output.length * 0.9));
+  }
+
+  return output;
+}
 ```
 
 ## Step 4: Full-Text Search
@@ -339,6 +365,8 @@ exports.uploadNewVersion = async (event) => {
       uploadedBy: userId,
       filename,
       contentType,
+      s3Key: doc.s3Key,
+      s3VersionId: null, // Fill this from the S3 ObjectCreated event's object.versionId after upload
       createdAt: new Date().toISOString(),
     },
   }));
@@ -393,6 +421,10 @@ const PERMISSIONS = ['read', 'write', 'delete', 'admin'];
 exports.grantAccess = async (event) => {
   const { folderId, targetUserId, permission } = JSON.parse(event.body);
   const grantorId = event.requestContext.authorizer.claims.sub;
+
+  if (!PERMISSIONS.includes(permission)) {
+    return { statusCode: 400, body: JSON.stringify({ error: 'Invalid permission' }) };
+  }
 
   // Only admins can grant access
   const grantorAccess = await getFolderAccess(grantorId, folderId);
