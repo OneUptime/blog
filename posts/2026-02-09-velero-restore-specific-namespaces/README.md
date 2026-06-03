@@ -12,7 +12,7 @@ Selective namespace restoration allows you to recover specific applications or e
 
 ## Understanding Velero Restore Architecture
 
-Velero restore operations read backup archives and recreate Kubernetes resources in your cluster. Unlike database restores that overwrite existing data, Velero creates new resources, leaving existing ones untouched unless specifically configured otherwise. This design prevents accidental overwrites while enabling flexible restore scenarios like namespace duplication and cross-cluster migration.
+Velero restore operations read backup archives and recreate Kubernetes resources in your cluster. Unlike database restores that overwrite existing data, Velero skips existing resources by default rather than overwriting them, with ServiceAccounts as a documented merge exception. This design prevents accidental overwrites while enabling flexible restore scenarios like namespace duplication and cross-cluster migration.
 
 When you restore from a backup containing multiple namespaces, Velero processes each namespace independently, applying your specified filters and transformations. This architecture enables surgical recovery operations that target specific applications without affecting other cluster workloads.
 
@@ -35,8 +35,8 @@ You can also query backup contents more precisely:
 # Download backup contents for inspection
 velero backup download my-backup
 
-# Extract and examine the backup tarball
-tar -tzf my-backup/my-backup.tar.gz | grep "namespaces/" | cut -d'/' -f2 | sort -u
+# Examine the downloaded backup tarball
+tar -tzf my-backup-data.tar.gz | awk -F/ '{ for (i = 1; i < NF; i++) if ($i == "namespaces") print $(i+1) }' | sort -u
 ```
 
 This shows exactly which namespaces are available for restoration.
@@ -237,12 +237,27 @@ kubectl get pvc -n production
 
 Map PVCs to different storage classes during restore:
 
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: change-storage-class-config
+  namespace: velero
+  labels:
+    velero.io/plugin-config: ""
+    velero.io/change-storage-class: RestoreItemAction
+data:
+  old-storage: new-storage
+```
+
+Apply the mapping before the restore:
+
 ```bash
-# Restore with storage class mapping
+kubectl apply -f storage-class-mapping.yaml
+
 velero restore create storage-mapped-restore \
   --from-backup my-backup \
   --include-namespaces production \
-  --storage-class-mappings old-storage:new-storage \
   --wait
 ```
 
@@ -350,7 +365,7 @@ chmod +x test-restore.sh
 
 ## Handling Resource Dependencies
 
-Some resources depend on others for proper restoration. Configure restore order:
+Some resources depend on others for proper restoration. Velero restores common resource types in a default order, and you can use restore hooks for pod-level checks after restored pods start:
 
 ```yaml
 apiVersion: velero.io/v1
@@ -363,32 +378,35 @@ spec:
   includedNamespaces:
   - production
   restorePVs: true
-  # Restore resources in specific order
+  # Run an application-specific check after matching pods start
   hooks:
     resources:
-    - name: wait-for-pvcs
+    - name: wait-for-database
       includedNamespaces:
       - production
+      includedResources:
+      - pods
       labelSelector:
         matchLabels:
           app: database
-      post:
+      postHooks:
       - exec:
           container: db
           command:
-          - /bin/bash
+          - /bin/sh
           - -c
           - |
-            echo "Waiting for PVC to be bound..."
-            while [ $(kubectl get pvc -n production -l app=database -o jsonpath='{.items[0].status.phase}') != "Bound" ]; do
+            echo "Waiting for database readiness..."
+            until pg_isready; do
               sleep 5
             done
-            echo "PVC bound, starting database initialization"
+            echo "Database is ready for post-restore initialization"
           onError: Fail
-          timeout: 5m
+          waitTimeout: 5m
+          execTimeout: 5m
 ```
 
-This ensures dependent resources are ready before proceeding.
+This lets application-specific initialization wait for restored pods to become ready.
 
 ## Monitoring Restore Operations
 
@@ -398,8 +416,8 @@ Track restore progress in real-time:
 # Watch restore status
 kubectl get restore -n velero -w
 
-# Stream restore logs
-velero restore logs namespace-restore --follow
+# Fetch restore logs
+velero restore logs namespace-restore --timeout 5m
 
 # Check Velero pod logs
 kubectl logs -n velero -l name=velero --follow | grep -i restore
@@ -420,7 +438,7 @@ spec:
     rules:
     - alert: VeleroRestoreFailed
       expr: |
-        velero_restore_failure_total > 0
+        increase(velero_restore_failed_total[5m]) > 0
       labels:
         severity: warning
       annotations:
@@ -432,11 +450,10 @@ spec:
 
 Common problems and solutions:
 
-**Namespace already exists:**
+**Existing namespace or resources:**
 
 ```bash
-# Error: namespace already exists
-# Solution: Use namespace mapping to restore to different name
+# Solution: Use namespace mapping to restore to a different namespace
 velero restore create mapped-restore \
   --from-backup my-backup \
   --include-namespaces production \
