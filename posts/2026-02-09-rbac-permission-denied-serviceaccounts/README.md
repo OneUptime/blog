@@ -46,11 +46,11 @@ kubectl get rolebindings -n production
 
 # Find bindings for specific service account
 kubectl get rolebindings -n production -o json | \
-  jq -r '.items[] | select(.subjects[]?.name=="app-sa") | .metadata.name'
+  jq -r '.items[] | select(.subjects[]? | .kind=="ServiceAccount" and .name=="app-sa" and (.namespace==null or .namespace=="production")) | .metadata.name'
 
 # Check cluster-wide bindings
 kubectl get clusterrolebindings -o json | \
-  jq -r '.items[] | select(.subjects[]?.name=="app-sa") | .metadata.name'
+  jq -r '.items[] | select(.subjects[]? | .kind=="ServiceAccount" and .name=="app-sa" and .namespace=="production") | .metadata.name'
 
 # Describe specific binding
 kubectl describe rolebinding app-sa-binding -n production
@@ -168,8 +168,8 @@ This allows the monitoring service account to read pods and namespaces cluster-w
 Kubernetes includes several built-in ClusterRoles for common permissions.
 
 ```bash
-# List built-in ClusterRoles
-kubectl get clusterroles | grep "^system:"
+# List default ClusterRoles
+kubectl get clusterroles -l kubernetes.io/bootstrapping=rbac-defaults
 
 # View cluster-admin permissions
 kubectl describe clusterrole cluster-admin
@@ -181,7 +181,7 @@ kubectl describe clusterrole edit
 kubectl describe clusterrole view
 ```
 
-Bind service accounts to built-in roles instead of creating custom roles.
+Bind service accounts to built-in roles when they match your access requirements.
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -213,14 +213,14 @@ rules:
 - apiGroups: [""]
   resources: ["configmaps"]
   resourceNames: ["app-config", "database-config"]
-  verbs: ["get", "list"]
+  verbs: ["get"]
 - apiGroups: [""]
   resources: ["secrets"]
   resourceNames: ["app-secret"]
   verbs: ["get"]
 ```
 
-This limits access to only the specified ConfigMaps and Secrets.
+This limits direct access to only the specified ConfigMaps and Secrets.
 
 ## Debugging Permission Issues
 
@@ -426,7 +426,7 @@ Error from server (Forbidden): clusterrolebindings.rbac.authorization.k8s.io is 
 User "your-user" cannot bind ClusterRole "cluster-admin"
 ```
 
-Only cluster-admin users can grant cluster-admin permissions.
+Only users who already have the referenced permissions, or who have explicit bind permission on the referenced role, can grant cluster-admin permissions.
 
 ## Auditing RBAC Changes
 
