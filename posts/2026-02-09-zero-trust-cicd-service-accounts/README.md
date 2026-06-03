@@ -43,7 +43,7 @@ rules:
   # Can manage Deployments
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    verbs: ["get", "list", "watch", "create", "update", "patch"]
+    verbs: ["get", "update", "patch"]
     resourceNames: ["myapp"]  # Only this specific deployment
 
   # Can read deployment status
@@ -101,17 +101,20 @@ Instead of distributing long-lived service account tokens, use workload identity
 
 ```yaml
 # For GitHub Actions using OIDC
-# Step 1: Configure Kubernetes OIDC trust
-apiVersion: v1
-kind: ServiceAccount
+# Step 1: Bind the federated identity's Kubernetes group to the scoped Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
 metadata:
-  name: github-actions-deployer
+  name: github-actions-deployer-binding
   namespace: myapp-production
-  annotations:
-    # Trust GitHub's OIDC provider
-    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/github-actions-deployer
-    # Or for GKE
-    iam.gke.io/gcp-service-account: github-actions@project-id.iam.gserviceaccount.com
+subjects:
+  - kind: Group
+    name: github-actions-deployers
+    apiGroup: rbac.authorization.k8s.io
+roleRef:
+  kind: Role
+  name: app-deployer-role
+  apiGroup: rbac.authorization.k8s.io
 ```
 
 Configure your cloud provider IAM to trust GitHub's OIDC provider:
@@ -144,6 +147,13 @@ EOF
 aws iam create-role \
   --role-name github-actions-deployer \
   --assume-role-policy-document file://trust-policy.json
+
+# Map the IAM role to the Kubernetes group bound above
+aws eks create-access-entry \
+  --cluster-name my-cluster \
+  --principal-arn arn:aws:iam::123456789012:role/github-actions-deployer \
+  --type STANDARD \
+  --kubernetes-groups github-actions-deployers
 ```
 
 Use this identity in GitHub Actions without storing credentials:
@@ -180,11 +190,10 @@ jobs:
         run: |
           kubectl set image deployment/myapp \
             myapp=myregistry.azurecr.io/myapp:${{ github.sha }} \
-            -n myapp-production \
-            --as=system:serviceaccount:myapp-production:app-deployer
+            -n myapp-production
 ```
 
-This approach eliminates stored credentials entirely. Each pipeline run receives a short-lived token valid only for that specific repository and job.
+This approach eliminates stored cloud credentials entirely. Each pipeline run receives short-lived AWS credentials for the trusted repository, and Kubernetes RBAC authorizes that federated identity only through the bound group.
 
 ## Enforcing Runtime Policy with OPA Gatekeeper
 
@@ -201,6 +210,9 @@ spec:
     spec:
       names:
         kind: K8sBlockPrivileged
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -284,6 +296,7 @@ jobs:
         run: |
           kubectl set image deployment/myapp \
             myapp=myregistry.azurecr.io/myapp:${{ github.sha }} \
+            -n myapp-production \
             --token="${KUBE_TOKEN}"
 ```
 
@@ -302,7 +315,7 @@ rules:
   - level: RequestResponse
     users:
       - "system:serviceaccount:myapp-production:app-deployer"
-      - "system:serviceaccount:*:*-deployer"  # All deployer accounts
+      - "system:serviceaccount:staging:staging-deployer"
     verbs: ["create", "update", "patch", "delete"]
 
   # Also log access to secrets
@@ -322,8 +335,8 @@ Ship these audit logs to a SIEM for anomaly detection:
 kubectl logs -n kube-system kube-apiserver-* | \
   jq 'select(.user.username | startswith("system:serviceaccount")) |
       select(.verb == "delete") |
-      select(.objectRef.resource == "deployment")' | \
-  # Alert if CI/CD account deletes deployments (should only update)
+      select(.objectRef.resource == "deployments")'
+# Alert if CI/CD account deletes deployments (should only update)
 ```
 
 ## Network Segmentation for CI/CD
@@ -346,16 +359,16 @@ spec:
   egress:
     # Allow access to Kubernetes API
     - to:
-        - namespaceSelector:
-            matchLabels:
-              name: kube-system
+        - ipBlock:
+            cidr: 10.0.0.10/32  # Replace with your API server endpoint IP/CIDR
       ports:
         - protocol: TCP
           port: 443
 
     # Allow access to container registry
     - to:
-        - podSelector: {}
+        - ipBlock:
+            cidr: 10.0.0.0/24  # Replace with your registry IP/CIDR
       ports:
         - protocol: TCP
           port: 5000  # Internal registry
@@ -408,34 +421,27 @@ deny[msg] {
 
 This catches security issues before deployment attempts, failing pipelines that don't meet policy requirements.
 
-## Rotating Service Account Tokens
+## Issuing Short-Lived Service Account Tokens
 
-Even with scoped permissions, rotate service account tokens regularly:
+Even with scoped permissions, avoid storing long-lived service account tokens. Request short-lived tokens when a pipeline cannot use workload identity:
 
 ```bash
 #!/bin/bash
-# rotate-sa-tokens.sh
+# issue-sa-token.sh
 
 NAMESPACE="myapp-production"
 SA_NAME="app-deployer"
 
-# Delete existing token secret
-kubectl delete secret \
+# Request a short-lived token from the TokenRequest API
+NEW_TOKEN=$(kubectl create token "${SA_NAME}" \
   -n "${NAMESPACE}" \
-  -l kubernetes.io/service-account.name="${SA_NAME}"
+  --duration=10m)
 
-# Kubernetes automatically creates a new token
-# Update CI/CD system with new token
-NEW_TOKEN=$(kubectl get secret \
-  -n "${NAMESPACE}" \
-  -l kubernetes.io/service-account.name="${SA_NAME}" \
-  -o jsonpath='{.items[0].data.token}' | base64 -d)
-
-# Update CI/CD secret store (GitHub, GitLab, etc.)
+# Update CI/CD secret store only if the pipeline cannot fetch tokens dynamically
 gh secret set KUBE_TOKEN --body "${NEW_TOKEN}"
 ```
 
-Run this as a CronJob every 30 days to limit token exposure window.
+Prefer workload identity or projected service account tokens for automated rotation. Manually created service account token Secrets are long-lived and are no longer created automatically in modern Kubernetes releases.
 
 ## Conclusion
 
