@@ -18,13 +18,13 @@ Think of it like a filing system. A **Log Group** is a folder that holds related
 graph TD
     A[CloudWatch Logs] --> B[Log Group: /aws/lambda/order-api]
     A --> C[Log Group: /aws/ecs/payment-service]
-    B --> D[Log Stream: 2026/02/12/[$LATEST]abc123]
-    B --> E[Log Stream: 2026/02/12/[$LATEST]def456]
+    B --> D["Log Stream: 2026/02/12/[$LATEST]abc123"]
+    B --> E["Log Stream: 2026/02/12/[$LATEST]def456"]
     C --> F[Log Stream: ecs/payment/task-id-1]
     C --> G[Log Stream: ecs/payment/task-id-2]
 ```
 
-For Lambda, AWS creates a log group automatically (named `/aws/lambda/<function-name>`), and each function instance gets its own log stream. For ECS, the awslogs driver creates log groups and streams automatically too. But there are plenty of situations where you need to create them yourself - custom applications on EC2, batch jobs, or when you want a specific naming scheme.
+For Lambda, AWS creates a log group automatically (named `/aws/lambda/<function-name>`) when the function is first invoked, and each function instance gets its own log stream. For ECS, the awslogs driver creates streams and can create log groups when you enable `awslogs-create-group`. But there are plenty of situations where you need to create them yourself - custom applications on EC2, batch jobs, or when you want a specific naming scheme.
 
 ## Creating Log Groups with the CLI
 
@@ -177,11 +177,14 @@ Once you have a log group and stream, you can write events to them. Here's how w
 
 ```python
 import boto3
+from datetime import date
 import time
 
 logs_client = boto3.client('logs', region_name='us-east-1')
 
 log_group = '/myapp/production/api'
+instance_id = 'i-1234567890'
+date_str = date.today().isoformat()
 log_stream = f'instance-{instance_id}-{date_str}'
 
 # Make sure the log stream exists
@@ -235,16 +238,18 @@ async function writeLog(logGroup, logStream, message) {
     logEvents: [
       {
         timestamp: Date.now(),
-        message: JSON.stringify({
-          level: 'INFO',
-          msg: 'Request processed',
-          duration: 45,
-          statusCode: 200,
-        }),
+        message: JSON.stringify(message),
       },
     ],
   }));
 }
+
+writeLog('/myapp/production/api', 'default', {
+  level: 'INFO',
+  msg: 'Request processed',
+  duration: 45,
+  statusCode: 200,
+});
 ```
 
 ## Naming Conventions
@@ -256,17 +261,19 @@ Good naming conventions make your logs easier to find and manage. Here are patte
 | Lambda | `/aws/lambda/<function-name>` | Auto-generated |
 | ECS | `/aws/ecs/<service-name>` | `<container>/<task-id>` |
 | EC2 App | `/myapp/<env>/<service>` | `<instance-id>/<date>` |
-| API Gateway | `/aws/apigateway/<api-name>` | Auto-generated |
+| API Gateway REST execution logs | `API-Gateway-Execution-Logs_<rest-api-id>/<stage-name>` | Auto-generated |
 | Batch Jobs | `/myapp/<env>/batch/<job-name>` | `<job-id>` |
 
 The `/aws/` prefix is conventionally reserved for AWS-managed log groups. For your own applications, use a prefix like `/myapp/` or your company name.
 
 ## Log Group Classes
 
-CloudWatch Logs offers two log group classes:
+CloudWatch Logs offers two main log group classes for general use:
 
 - **Standard** - full functionality, all features available
 - **Infrequent Access** - lower cost but with reduced features (no live tail, limited Logs Insights)
+
+There is also a **Delivery** class, but it is only for delivering Lambda logs to Amazon S3 or Amazon Data Firehose.
 
 For logs you only query occasionally (like debug-level logs or audit trails), Infrequent Access can cut your costs significantly:
 
