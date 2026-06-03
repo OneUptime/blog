@@ -18,7 +18,7 @@ ATP inspects login requests to your application. It analyzes:
 
 - Whether the submitted credentials appear in known stolen credential databases
 - Login success and failure patterns per IP address and session
-- Whether the request comes from a known bot or automated tool
+- Whether the request has valid AWS WAF token signals
 - Behavioral signals from the client
 
 When it detects suspicious login activity, it can block the request, challenge it with a CAPTCHA, or label it for your application to handle.
@@ -42,6 +42,7 @@ Before enabling ATP, you need to know:
 - How your login form submits credentials (JSON body, form data)
 - The parameter names for username and password
 - How your application indicates login success or failure (status codes, response body)
+- If you want ATP response inspection, a CloudFront-scoped web ACL. AWS WAF response inspection for ATP is only available for web ACLs that protect CloudFront distributions.
 
 ## Enabling ATP
 
@@ -52,7 +53,8 @@ This adds the Account Takeover Prevention managed rule group to your web ACL wit
 ```bash
 aws wafv2 update-web-acl \
   --name my-web-acl \
-  --scope REGIONAL \
+  --scope CLOUDFRONT \
+  --region us-east-1 \
   --id your-web-acl-id \
   --lock-token "your-lock-token" \
   --default-action '{"Allow": {}}' \
@@ -136,6 +138,8 @@ Note how the success code is 302 (redirect after login) and failure is 200 (re-r
 
 ATP can inspect responses in several ways to determine login success or failure:
 
+Response inspection is only available for CloudFront-scoped web ACLs.
+
 **Status codes** (simplest):
 ```json
 {
@@ -171,11 +175,13 @@ ATP can inspect responses in several ways to determine login success or failure:
 
 Here's the complete Terraform setup for ATP:
 
+For CloudFront-scoped web ACLs, configure the AWS provider to use `us-east-1`.
+
 ```hcl
 resource "aws_wafv2_web_acl" "main" {
   name        = "my-web-acl"
   description = "Web ACL with ATP"
-  scope       = "REGIONAL"
+  scope       = "CLOUDFRONT"
 
   default_action {
     allow {}
@@ -185,8 +191,9 @@ resource "aws_wafv2_web_acl" "main" {
     name     = "account-takeover-prevention"
     priority = 1
 
+    # Start with count mode for testing
     override_action {
-      none {}
+      count {}
     }
 
     statement {
@@ -219,13 +226,6 @@ resource "aws_wafv2_web_acl" "main" {
           }
         }
 
-        # Start with count mode for testing
-        rule_action_override {
-          action_to_use {
-            count {}
-          }
-          name = "VolumetricIpHigh"
-        }
       }
     }
 
@@ -250,7 +250,6 @@ ATP includes several rules that fire based on different threat signals:
 
 | Rule Name | What It Detects |
 |-----------|----------------|
-| `UnsortedStolenCredentialCheck` | Credentials found in stolen databases |
 | `VolumetricIpHigh` | High volume of login attempts from a single IP |
 | `VolumetricSession` | High volume of login attempts in a single session |
 | `AttributeCompromisedCredentials` | Known compromised credential pair |
@@ -259,6 +258,8 @@ ATP includes several rules that fire based on different threat signals:
 | `AttributeLongSession` | Abnormally long-lived sessions |
 | `TokenRejected` | Invalid or missing WAF token |
 | `SignalMissingCredential` | Login requests missing username or password |
+| `VolumetricIpFailedLoginResponseHigh` | High volume of failed login responses from a single IP |
+| `VolumetricSessionFailedLoginResponseHigh` | High volume of failed login responses in a single session |
 
 ## Customizing Rule Actions
 
@@ -270,7 +271,7 @@ This configures different actions for different ATP rules:
 {
   "RuleActionOverrides": [
     {
-      "Name": "UnsortedStolenCredentialCheck",
+      "Name": "AttributeCompromisedCredentials",
       "ActionToUse": {"Block": {}}
     },
     {
@@ -295,7 +296,7 @@ This configures different actions for different ATP rules:
 
 ## Adding the JavaScript SDK
 
-For full ATP effectiveness, especially with the stolen credentials check and session tracking, you should integrate the AWS WAF JavaScript SDK into your login page.
+For full ATP effectiveness, especially for session-level client verification and behavior aggregation, you should integrate the AWS WAF JavaScript SDK into your login page.
 
 Add this to your login page HTML:
 
@@ -318,25 +319,27 @@ Check how ATP is performing with CloudWatch metrics:
 aws cloudwatch get-metric-statistics \
   --namespace AWS/WAFV2 \
   --metric-name BlockedRequests \
-  --dimensions Name=WebACL,Value=my-web-acl Name=Rule,Value=AWS-AWSManagedRulesATPRuleSet \
+  --dimensions Name=WebACL,Value=myWebACL Name=Rule,Value=ATP \
   --start-time 2026-02-11T00:00:00Z \
   --end-time 2026-02-12T00:00:00Z \
   --period 3600 \
-  --statistics Sum
+  --statistics Sum \
+  --region us-east-1
 ```
 
 Review sampled requests to see what's being flagged:
 
 ```bash
 aws wafv2 get-sampled-requests \
-  --web-acl-arn arn:aws:wafv2:us-east-1:111111111111:regional/webacl/my-web-acl/abc123 \
+  --web-acl-arn arn:aws:wafv2:us-east-1:111111111111:global/webacl/my-web-acl/abc123 \
   --rule-metric-name ATP \
-  --scope REGIONAL \
+  --scope CLOUDFRONT \
   --time-window '{
     "StartTime": "2026-02-11T00:00:00Z",
     "EndTime": "2026-02-12T00:00:00Z"
   }' \
-  --max-items 50
+  --max-items 50 \
+  --region us-east-1
 ```
 
 ## Combining with Rate Limiting
