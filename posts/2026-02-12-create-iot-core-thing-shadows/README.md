@@ -124,7 +124,7 @@ A complete shadow document looks like this.
 }
 ```
 
-The `version` field increments with every update. It's crucial for handling conflicts - if two updates arrive simultaneously, the one with the outdated version is rejected.
+The `version` field increments with every update. If you include a `version` in an update request, IoT Core applies the update only when that version matches the latest shadow version. A request with an outdated version is rejected, which lets clients detect conflicts and resync.
 
 ## Device-Side Shadow Handling
 
@@ -217,6 +217,10 @@ get_accepted_sub = shadow_client.subscribe_to_get_shadow_accepted(
     qos=mqtt.QoS.AT_LEAST_ONCE,
     callback=on_get_shadow_accepted
 )
+
+# Wait until the subscriptions are active before publishing requests
+delta_sub[0].result()
+get_accepted_sub[0].result()
 
 # On startup, request the current shadow to check for pending deltas
 get_shadow()
