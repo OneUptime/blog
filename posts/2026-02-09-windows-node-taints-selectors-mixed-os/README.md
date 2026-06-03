@@ -39,7 +39,7 @@ If labels are missing, add them manually:
 ```bash
 # Label Windows nodes
 kubectl label node windows-node-1 kubernetes.io/os=windows
-kubectl label node windows-node-1 node.kubernetes.io/windows-build=10.0.17763
+kubectl label node windows-node-1 node.kubernetes.io/windows-build=10.0.20348
 
 # Label Linux nodes (if needed)
 kubectl label node linux-node-1 kubernetes.io/os=linux
@@ -57,7 +57,7 @@ kubectl label node linux-node-2 workload-type=database
 
 ## Implementing Node Selectors for OS Compatibility
 
-Always use node selectors to specify the required OS:
+Always use node selectors to specify the required OS, and set the Pod OS field to document the intended operating system:
 
 ```yaml
 apiVersion: apps/v1
@@ -74,11 +74,13 @@ spec:
       labels:
         app: windows-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows  # Must run on Windows
       containers:
       - name: app
-        image: mcr.microsoft.com/dotnet/aspnet:6.0-nanoserver-ltsc2022
+        image: mcr.microsoft.com/dotnet/aspnet:8.0-nanoserver-ltsc2022
         ports:
         - containerPort: 80
 ```
@@ -100,6 +102,8 @@ spec:
       labels:
         app: linux-app
     spec:
+      os:
+        name: linux
       nodeSelector:
         kubernetes.io/os: linux  # Must run on Linux
       containers:
@@ -117,12 +121,21 @@ kind: Deployment
 metadata:
   name: windows-dotnet-app
 spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: windows-dotnet-app
   template:
+    metadata:
+      labels:
+        app: windows-dotnet-app
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
         workload-type: dotnet
-        node.kubernetes.io/windows-build: "10.0.17763"
+        node.kubernetes.io/windows-build: "10.0.20348"
       containers:
       - name: app
         image: myregistry.io/dotnet-app:v1.0
@@ -162,6 +175,8 @@ spec:
       labels:
         app: windows-service
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -171,7 +186,7 @@ spec:
         effect: NoSchedule
       containers:
       - name: service
-        image: mcr.microsoft.com/windows/servercore:ltsc2019
+        image: mcr.microsoft.com/windows/servercore:ltsc2022
 ```
 
 ## Using Node Affinity for Flexible Scheduling
@@ -184,8 +199,17 @@ kind: Deployment
 metadata:
   name: preferred-windows-app
 spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: preferred-windows-app
   template:
+    metadata:
+      labels:
+        app: preferred-windows-app
     spec:
+      os:
+        name: windows
       affinity:
         nodeAffinity:
           # Hard requirement: Must be Windows
@@ -205,14 +229,14 @@ spec:
               - key: node.kubernetes.io/windows-build
                 operator: In
                 values:
-                - "10.0.20348"  # Windows Server 2022
+                - "10.0.26100"  # Windows Server 2025
           - weight: 50
             preference:
               matchExpressions:
               - key: node.kubernetes.io/windows-build
                 operator: In
                 values:
-                - "10.0.17763"  # Windows Server 2019
+                - "10.0.20348"  # Windows Server 2022
 
       tolerations:
       - key: os
@@ -227,7 +251,7 @@ spec:
 
 ## Setting Default Node Selectors per Namespace
 
-Configure default node selectors at the namespace level:
+Configure default node selectors at the namespace level with the PodNodeSelector admission controller:
 
 ```yaml
 apiVersion: v1
@@ -246,9 +270,9 @@ metadata:
     scheduler.alpha.kubernetes.io/node-selector: kubernetes.io/os=linux
 ```
 
-Pods in these namespaces automatically inherit the node selector unless explicitly overridden.
+When the PodNodeSelector admission controller is enabled, pods in these namespaces receive the namespace node selector. Pods with conflicting selectors are rejected rather than overridden.
 
-## Creating PodPresets for Common Configurations
+## Creating Admission Webhooks for Common Configurations
 
 Use admission webhooks to automatically inject selectors and tolerations:
 
@@ -289,11 +313,15 @@ spec:
   selector:
     matchLabels:
       app: monitoring-agent
+      os: windows
   template:
     metadata:
       labels:
         app: monitoring-agent
+        os: windows
     spec:
+      os:
+        name: windows
       nodeSelector:
         kubernetes.io/os: windows
       tolerations:
@@ -302,7 +330,7 @@ spec:
         value: windows
         effect: NoSchedule
       - operator: Exists
-        effect: NoSchedule  # Run even on master nodes if needed
+        effect: NoSchedule  # Tolerate any NoSchedule taint; narrow this in production
       containers:
       - name: agent
         image: monitoring-agent:windows
@@ -321,11 +349,15 @@ spec:
   selector:
     matchLabels:
       app: monitoring-agent
+      os: linux
   template:
     metadata:
       labels:
         app: monitoring-agent
+        os: linux
     spec:
+      os:
+        name: linux
       nodeSelector:
         kubernetes.io/os: linux
       containers:
@@ -351,12 +383,11 @@ spec:
   selector:
     matchLabels:
       app: windows-app
-      os: windows
 ```
 
 ## Automating Configuration with Kyverno Policies
 
-Use Kyverno to automatically enforce OS-compatible scheduling:
+Use Kyverno to automatically enforce OS-compatible scheduling based on pod labels:
 
 ```yaml
 apiVersion: kyverno.io/v1
@@ -374,18 +405,20 @@ spec:
     mutate:
       patchStrategicMerge:
         spec:
+          os:
+            +(name): windows
           nodeSelector:
             +(kubernetes.io/os): windows
-          +(tolerations):
+          tolerations:
           - key: os
             operator: Equal
             value: windows
             effect: NoSchedule
     preconditions:
       all:
-      - key: "{{ request.object.spec.containers[].image }}"
-        operator: Contains
-        value: "mcr.microsoft.com/windows"
+      - key: "{{ request.object.metadata.labels.os || '' }}"
+        operator: Equals
+        value: windows
 
   - name: add-linux-selector
     match:
@@ -396,6 +429,8 @@ spec:
     mutate:
       patchStrategicMerge:
         spec:
+          os:
+            +(name): linux
           nodeSelector:
             +(kubernetes.io/os): linux
     preconditions:
@@ -403,9 +438,9 @@ spec:
       - key: "{{ request.object.spec.nodeSelector.\"kubernetes.io/os\" || '' }}"
         operator: Equals
         value: ""
-      - key: "{{ request.object.spec.containers[].image }}"
-        operator: NotIn
-        value: ["*mcr.microsoft.com/windows*"]
+      - key: "{{ request.object.metadata.labels.os || '' }}"
+        operator: Equals
+        value: linux
 ```
 
 ## Validating Pod Placement
@@ -422,17 +457,22 @@ echo "Checking for pods on incorrect OS nodes..."
 kubectl get pods --all-namespaces -o json | jq -r '
   .items[] |
   select(.spec.nodeName != null) |
-  [.metadata.namespace, .metadata.name, .spec.nodeName, (.spec.containers[0].image | split("/") | .[-1])] |
+  [
+    .metadata.namespace,
+    .metadata.name,
+    .spec.nodeName,
+    (.spec.os.name // ""),
+    (.spec.nodeSelector["kubernetes.io/os"] // "")
+  ] |
   @tsv
-' | while read namespace pod node image; do
+' | while IFS=$'\t' read -r namespace pod node pod_os selector_os; do
   # Get node OS
-  node_os=$(kubectl get node $node -o jsonpath='{.metadata.labels.kubernetes\.io/os}')
+  node_os=$(kubectl get node "$node" -o jsonpath='{.metadata.labels.kubernetes\.io/os}')
+  desired_os="${pod_os:-$selector_os}"
 
-  # Check if Windows image on Linux node or vice versa
-  if [[ "$image" == *"windows"* ]] && [[ "$node_os" == "linux" ]]; then
-    echo "ERROR: Windows pod $namespace/$pod on Linux node $node"
-  elif [[ "$image" != *"windows"* ]] && [[ "$node_os" == "windows" ]]; then
-    echo "ERROR: Linux pod $namespace/$pod on Windows node $node"
+  # Check whether the assigned node matches the pod's declared OS.
+  if [[ -n "$desired_os" && "$desired_os" != "$node_os" ]]; then
+    echo "ERROR: $desired_os pod $namespace/$pod on $node_os node $node"
   fi
 done
 ```
@@ -459,8 +499,15 @@ spec:
 
     - alert: WindowsNodeTaintViolation
       expr: |
-        count(kube_pod_info{node=~".*windows.*"}) by (pod, namespace) unless
-        count(kube_pod_tolerations{key="os",value="windows"}) by (pod, namespace)
+        count by (pod, namespace) (
+          kube_pod_info
+          * on(node) group_left(label_kubernetes_io_os)
+            kube_node_labels{label_kubernetes_io_os="windows"}
+        )
+        unless on(pod, namespace)
+        count by (pod, namespace) (
+          kube_pod_tolerations{key="os",value="windows",effect="NoSchedule"}
+        )
       for: 1m
       annotations:
         summary: "Pod on Windows node without proper toleration"
