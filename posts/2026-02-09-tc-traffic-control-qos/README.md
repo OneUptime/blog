@@ -14,9 +14,9 @@ Linux traffic control (tc) is a powerful tool for managing network quality of se
 
 The tc utility controls the Linux kernel's traffic management system. It works with queuing disciplines (qdiscs), classes, and filters to shape, schedule, and police network traffic. Every network interface has a qdisc that determines how packets are queued and transmitted.
 
-The default qdisc is usually `pfifo_fast`, which provides three priority bands but no rate limiting. For bandwidth control, you need to attach a classful qdisc like HTB (Hierarchical Token Bucket) or TBF (Token Bucket Filter). These qdiscs let you set bandwidth limits and guarantee minimum rates.
+The default qdisc depends on the Linux distribution, kernel, and interface type; common defaults include `fq_codel`, `noqueue`, `mq`, and older systems may use `pfifo_fast`. For bandwidth control, you need to attach a qdisc like HTB (Hierarchical Token Bucket) or TBF (Token Bucket Filter). HTB lets you set bandwidth limits and guarantee minimum rates, while TBF enforces a maximum rate.
 
-In Kubernetes, each pod gets a veth interface pair. One end is in the pod's network namespace, the other on the host. You apply tc rules to the host-side veth interface to control traffic to and from the pod.
+In Kubernetes, each pod gets a veth interface pair. One end is in the pod's network namespace, the other on the host. Root qdiscs on the host-side veth control packets transmitted from the host into the pod; controlling pod egress on the host side requires ingress policing or redirecting ingress traffic to an IFB device.
 
 ## Installing and Verifying tc
 
@@ -34,9 +34,9 @@ yum install -y iproute
 tc -Version
 # Output: tc utility, iproute2-5.x.x
 
-# Check default qdisc
+# Check the current qdisc
 tc qdisc show dev eth0
-# Output: qdisc pfifo_fast 0: root refcnt 2 bands 3 priomap...
+# Output varies by system, for example: qdisc fq_codel 0: root refcnt 2 ...
 ```
 
 ## Implementing Basic Bandwidth Limiting
@@ -59,10 +59,10 @@ VETH_INTERFACE="veth1a2b3c4d"
 Apply bandwidth limit using TBF qdisc:
 
 ```bash
-# Limit egress (from pod) to 1 Mbps
+# Limit ingress (to the pod) to 1 Mbps from the host-side veth
 tc qdisc add dev $VETH_INTERFACE root tbf \
   rate 1mbit \
-  burst 32kbit \
+  burst 32kb \
   latency 400ms
 
 # Verify the qdisc is attached
@@ -70,7 +70,7 @@ tc qdisc show dev $VETH_INTERFACE
 
 # Test the bandwidth limit
 kubectl exec $POD_NAME -- wget -O /dev/null http://speedtest.example.com/100mb.bin
-# Should see throughput limited to ~1 Mbps
+# Should see downloads into the pod limited to ~1 Mbps
 ```
 
 The TBF parameters:
@@ -183,7 +183,7 @@ VETH=$(ip route | grep $POD_IP | awk '{print $3}')
 tc qdisc show dev $VETH
 tc class show dev $VETH
 
-# Should see HTB qdisc with classes matching annotation values
+# Should see TBF qdiscs or an IFB device configured for the annotation values
 ```
 
 ## Implementing Network Priority for Critical Pods
@@ -201,27 +201,42 @@ tc qdisc add dev $VETH_INTERFACE parent 1:3 handle 30: sfq
 
 # Route critical traffic to band 0 (highest priority)
 tc filter add dev $VETH_INTERFACE protocol ip parent 1:0 prio 1 \
-  u32 match ip dscp 46 0xff flowid 1:1
+  u32 match ip dsfield 0xb8 0xfc flowid 1:1
 
 # Route normal traffic to band 1
 tc filter add dev $VETH_INTERFACE protocol ip parent 1:0 prio 2 \
-  u32 match ip dscp 0 0xff flowid 1:2
+  u32 match ip dsfield 0x00 0xfc flowid 1:2
 ```
 
 Mark critical packets with DSCP in your application:
 
 ```go
 // Go example: Mark packets with DSCP EF (Expedited Forwarding)
-import "syscall"
+import (
+    "context"
+    "net"
+    "syscall"
+)
 
-func setDSCP(fd int, dscp int) error {
-    return syscall.SetsockoptInt(fd, syscall.IPPROTO_IP, syscall.IP_TOS, dscp<<2)
+func setDSCP(network, address string, dscp int) (net.Conn, error) {
+    dialer := net.Dialer{
+        Control: func(network, address string, c syscall.RawConn) error {
+            var sockErr error
+            err := c.Control(func(fd uintptr) {
+                sockErr = syscall.SetsockoptInt(int(fd), syscall.IPPROTO_IP, syscall.IP_TOS, dscp<<2)
+            })
+            if err != nil {
+                return err
+            }
+            return sockErr
+        },
+    }
+    return dialer.DialContext(context.Background(), network, address)
 }
 
 // Usage
-conn, _ := net.Dial("tcp", "service:8080")
-file, _ := conn.(*net.TCPConn).File()
-setDSCP(int(file.Fd()), 46) // DSCP EF value
+conn, _ := setDSCP("tcp", "service:8080", 46) // DSCP EF value
+defer conn.Close()
 ```
 
 ## Monitoring Traffic Control Performance
@@ -249,7 +264,7 @@ Export tc metrics to Prometheus using node-exporter with custom scripts:
 # /usr/local/bin/tc-metrics.sh
 
 # Output format: metric_name{labels} value
-for iface in $(ip -o link show | awk -F': ' '{print $2}' | grep veth); do
+for iface in $(ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1 | grep '^veth'); do
   tc -s -j qdisc show dev $iface 2>/dev/null | \
     jq -r --arg iface "$iface" '
       .[] |
@@ -307,11 +322,11 @@ spec:
 
           while true; do
             # Find all veth interfaces
-            for veth in $(ip -o link show | grep veth | awk -F': ' '{print $2}'); do
+            for veth in $(ip -o link show | awk -F': ' '{print $2}' | cut -d@ -f1 | grep '^veth'); do
               # Check if qdisc is already configured
-              if ! tc qdisc show dev $veth | grep -q htb; then
+              if ! tc qdisc show dev $veth | grep -q tbf; then
                 # Apply default bandwidth limit
-                tc qdisc add dev $veth root tbf rate 100mbit burst 128kbit latency 50ms 2>/dev/null || true
+                tc qdisc add dev $veth root tbf rate 100mbit burst 128kb latency 50ms 2>/dev/null || true
                 echo "Applied tc to $veth"
               fi
             done
