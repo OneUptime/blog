@@ -8,27 +8,27 @@ Description: Configure VPC peering between Kubernetes clusters across AWS, GCP, 
 
 ---
 
-Running Kubernetes clusters across multiple cloud providers creates challenges for inter-cluster communication. VPC peering establishes private network connections between virtual private clouds, allowing pods in different clusters to communicate directly without traversing the public internet.
+Running Kubernetes clusters across multiple virtual networks creates challenges for inter-cluster communication. VPC peering establishes private network connections between virtual private clouds within a cloud provider, allowing pods in different clusters to communicate directly without traversing the public internet when their pod ranges are routable.
 
-This guide demonstrates how to set up VPC peering between Kubernetes clusters on AWS, GCP, and Azure, including cross-cloud scenarios.
+This guide demonstrates how to set up VPC peering between Kubernetes clusters on AWS, GCP, and Azure, and how to approach cross-cloud connectivity scenarios.
 
 ## Understanding VPC Peering for Kubernetes
 
 VPC peering creates a private network link between two VPCs, making them appear as one network for routing purposes. For Kubernetes clusters, this enables:
 
-**Direct pod-to-pod communication** across clusters without load balancers or ingress controllers.
+**Direct pod-to-pod communication** across clusters without load balancers or ingress controllers, when the Pod CIDR ranges are routable through the peered networks.
 
 **Private service endpoints** for databases and other services shared between clusters.
 
 **Reduced latency** compared to internet-based communication.
 
-**Lower data transfer costs** since traffic stays on the cloud provider's private network.
+**Lower data transfer costs** for same-provider peering scenarios where traffic stays on the cloud provider's private network.
 
-Each cloud provider implements peering differently. AWS and GCP support native cross-cloud peering through partner interconnect, while Azure requires ExpressRoute or VPN for cross-cloud scenarios.
+Each cloud provider implements peering differently. AWS, GCP, and Azure provide native peering within their own virtual networks, while cross-cloud scenarios require VPN or dedicated interconnect services rather than VPC peering.
 
 ## VPC Peering Between Two EKS Clusters
 
-For two EKS clusters in the same AWS account:
+For two EKS clusters in the same AWS account and Region:
 
 ```hcl
 # vpc-peering-eks.tf
@@ -65,7 +65,7 @@ Update security groups to allow traffic:
 resource "aws_security_group_rule" "cluster_1_to_2" {
   type                     = "ingress"
   from_port                = 0
-  to_port                  = 65535
+  to_port                  = 0
   protocol                 = "-1"
   source_security_group_id = aws_security_group.cluster_2_nodes.id
   security_group_id        = aws_security_group.cluster_1_nodes.id
@@ -74,7 +74,7 @@ resource "aws_security_group_rule" "cluster_1_to_2" {
 resource "aws_security_group_rule" "cluster_2_to_1" {
   type                     = "ingress"
   from_port                = 0
-  to_port                  = 65535
+  to_port                  = 0
   protocol                 = "-1"
   source_security_group_id = aws_security_group.cluster_1_nodes.id
   security_group_id        = aws_security_group.cluster_2_nodes.id
@@ -120,7 +120,7 @@ spec:
     app: backend
   ports:
   - port: 8080
-    targetPort: 8080
+    targetPort: 80
   type: ClusterIP
 ---
 apiVersion: apps/v1
@@ -141,18 +141,18 @@ spec:
       - name: backend
         image: nginx:latest
         ports:
-        - containerPort: 8080
+        - containerPort: 80
 ```
 
-Get the service IP:
+Get the backend pod IP:
 
 ```bash
 kubectl --context=cluster1 apply -f cluster1-service.yaml
 
-SERVICE_IP=$(kubectl --context=cluster1 get svc backend-service \
-  -o jsonpath='{.spec.clusterIP}')
+POD_IP=$(kubectl --context=cluster1 get pod -l app=backend \
+  -o jsonpath='{.items[0].status.podIP}')
 
-echo "Service IP: $SERVICE_IP"
+echo "Pod IP: $POD_IP"
 ```
 
 Test from cluster 2:
@@ -163,13 +163,13 @@ kubectl --context=cluster2 run test-pod \
   --image=curlimages/curl:latest \
   --command -- sleep 3600
 
-# Test connectivity
-kubectl --context=cluster2 exec test-pod -- curl -v http://$SERVICE_IP:8080
+# Test connectivity to the routable pod IP
+kubectl --context=cluster2 exec test-pod -- curl -v http://$POD_IP:80
 ```
 
 ## VPC Peering Between Two GKE Clusters
 
-For GKE clusters in the same GCP project:
+For GKE clusters in the same GCP project, use VPC-native clusters so pod ranges are routed as VPC subnet secondary ranges:
 
 ```hcl
 # vpc-peering-gke.tf
@@ -230,7 +230,10 @@ resource "google_compute_firewall" "cluster1_to_cluster2" {
     protocol = "icmp"
   }
 
-  source_ranges = [google_compute_network.cluster1_vpc.ip_cidr_range]
+  source_ranges = [
+    var.cluster1_node_cidr,
+    var.cluster1_pod_cidr
+  ]
 }
 
 resource "google_compute_firewall" "cluster2_to_cluster1" {
@@ -249,13 +252,16 @@ resource "google_compute_firewall" "cluster2_to_cluster1" {
     protocol = "icmp"
   }
 
-  source_ranges = [google_compute_network.cluster2_vpc.ip_cidr_range]
+  source_ranges = [
+    var.cluster2_node_cidr,
+    var.cluster2_pod_cidr
+  ]
 }
 ```
 
 ## VPC Peering Between Two AKS Clusters
 
-For AKS clusters in the same Azure subscription:
+For AKS clusters in the same Azure subscription, use Azure CNI or another configuration where pod IPs are routable in the virtual network:
 
 ```hcl
 # vnet-peering-aks.tf
@@ -314,115 +320,23 @@ az network vnet peering create \
   --allow-forwarded-traffic
 ```
 
-## Cross-Cloud Peering: AWS to GCP
+## Cross-Cloud Connectivity: AWS to GCP
 
-AWS and GCP support cross-cloud connectivity through partner interconnect:
+AWS and GCP do not provide native VPC-to-VPC peering across clouds. Use a site-to-site VPN or dedicated interconnect architecture, such as AWS Direct Connect connected through a colocation or network provider to Google Cloud Dedicated Interconnect or Partner Interconnect.
 
-```hcl
-# aws-to-gcp-interconnect.tf
-# AWS side: Create VPN gateway
-resource "aws_vpn_gateway" "gcp_vpn" {
-  vpc_id = aws_vpc.eks_cluster.id
+For VPN-based connectivity, configure matching resources on both sides: an AWS virtual private gateway or transit gateway, an AWS customer gateway that points to the Google Cloud VPN gateway public IP, a Google Cloud HA VPN gateway, a Cloud Router for BGP, and firewall rules/routes that allow the Kubernetes node and pod CIDR ranges.
 
-  tags = {
-    Name = "gcp-interconnect"
-  }
-}
+Alternatively, use third-party network orchestration platforms for cross-cloud transit, following the vendor's current deployment documentation.
 
-# GCP side: Create Cloud Router
-resource "google_compute_router" "aws_router" {
-  name    = "aws-interconnect-router"
-  region  = "us-central1"
-  network = google_compute_network.gke_vpc.id
-
-  bgp {
-    asn = 64515
-  }
-}
-
-# Create VPN tunnel
-resource "google_compute_vpn_tunnel" "aws_tunnel" {
-  name          = "aws-vpn-tunnel"
-  peer_ip       = aws_vpn_connection.gcp.tunnel1_address
-  shared_secret = aws_vpn_connection.gcp.tunnel1_preshared_key
-  router        = google_compute_router.aws_router.id
-
-  depends_on = [
-    google_compute_forwarding_rule.vpn_rule
-  ]
-}
-```
-
-Alternatively, use third-party solutions like Aviatrix for easier cross-cloud connectivity:
-
-```bash
-# Install Aviatrix controller
-kubectl apply -f https://aviatrix.com/controller-k8s.yaml
-
-# Configure transit gateway
-aviatrix transit-gateway create \
-  --cloud aws \
-  --vpc vpc-11111111 \
-  --region us-east-1
-
-aviatrix transit-gateway create \
-  --cloud gcp \
-  --vpc gke-vpc \
-  --region us-central1
-
-# Peer transit gateways
-aviatrix transit-peering create \
-  --gateway1 aws-transit \
-  --gateway2 gcp-transit
-```
-
-## Cross-Cloud Peering: AWS to Azure
+## Cross-Cloud Connectivity: AWS to Azure
 
 Connect AWS and Azure using VPN or ExpressRoute:
 
-```hcl
-# aws-azure-vpn.tf
-# Azure side
-resource "azurerm_virtual_network_gateway" "aws_vpn" {
-  name                = "aws-vpn-gateway"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-
-  type     = "Vpn"
-  vpn_type = "RouteBased"
-
-  sku = "VpnGw1"
-
-  ip_configuration {
-    name                          = "vnetGatewayConfig"
-    public_ip_address_id          = azurerm_public_ip.vpn_ip.id
-    private_ip_address_allocation = "Dynamic"
-    subnet_id                     = azurerm_subnet.gateway_subnet.id
-  }
-}
-
-# AWS side
-resource "aws_customer_gateway" "azure_vpn" {
-  bgp_asn    = 65000
-  ip_address = azurerm_public_ip.vpn_ip.ip_address
-  type       = "ipsec.1"
-
-  tags = {
-    Name = "azure-vpn-gateway"
-  }
-}
-
-resource "aws_vpn_connection" "azure" {
-  vpn_gateway_id      = aws_vpn_gateway.main.id
-  customer_gateway_id = aws_customer_gateway.azure_vpn.id
-  type                = "ipsec.1"
-  static_routes_only  = false
-}
-```
+For VPN-based connectivity, configure an Azure VPN gateway in the AKS virtual network, an Azure local network gateway that represents the AWS VPN endpoint and CIDR ranges, an AWS virtual private gateway or transit gateway, and an AWS customer gateway that points to the Azure VPN gateway public IP. For dedicated private connectivity, use AWS Direct Connect and Azure ExpressRoute through a supported network provider.
 
 ## Service Discovery Across Peered Clusters
 
-Use ExternalName services for cross-cluster service discovery:
+Use a selectorless Service with manually managed endpoints for cross-cluster service discovery:
 
 ```yaml
 # cluster2-external-service.yaml
@@ -431,13 +345,28 @@ kind: Service
 metadata:
   name: backend-cluster1
 spec:
-  type: ExternalName
-  externalName: 10.0.1.50  # Service ClusterIP from cluster1
   ports:
-  - port: 8080
+  - name: http
+    port: 8080
+    targetPort: 80
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: backend-cluster1-1
+  labels:
+    kubernetes.io/service-name: backend-cluster1
+addressType: IPv4
+ports:
+- name: http
+  protocol: TCP
+  port: 80
+endpoints:
+- addresses:
+  - 10.0.1.50  # Routable pod IP or private load balancer IP from cluster1
 ```
 
-Or use CoreDNS custom configuration:
+Or use provider-supported CoreDNS custom configuration to create DNS aliases for the selectorless Service:
 
 ```yaml
 # coredns-custom-config.yaml
@@ -448,7 +377,7 @@ metadata:
   namespace: kube-system
 data:
   cluster1.override: |
-    rewrite name backend-service.default.svc.cluster.local backend-cluster1.external.svc.cluster.local
+    rewrite name exact backend-service.default.svc.cluster.local backend-cluster1.default.svc.cluster.local
 ```
 
 ## Monitoring VPC Peering
@@ -504,7 +433,8 @@ Check for CIDR overlaps:
 aws ec2 describe-vpcs --query 'Vpcs[*].[VpcId,CidrBlock]'
 
 # GCP
-gcloud compute networks list --format="table(name,IPv4Range)"
+gcloud compute networks subnets list \
+  --format="table(name,region,ipCidrRange,secondaryIpRanges)"
 
 # Azure
 az network vnet list --query '[*].[name,addressSpace.addressPrefixes]'
@@ -512,6 +442,6 @@ az network vnet list --query '[*].[name,addressSpace.addressPrefixes]'
 
 ## Conclusion
 
-VPC peering enables private network communication between Kubernetes clusters across cloud providers, reducing latency and costs while improving security. Each cloud provider offers native peering within their platform, while cross-cloud scenarios require VPN or dedicated interconnect solutions.
+VPC peering enables private network communication between Kubernetes clusters within a cloud provider, reducing latency and improving security. Each cloud provider offers native peering within their platform, while cross-cloud scenarios require VPN or dedicated interconnect solutions.
 
-The key to successful peering is planning CIDR ranges to avoid overlaps, configuring proper routing and firewall rules, and implementing service discovery mechanisms for cross-cluster communication. For production multi-cloud deployments, VPC peering is essential infrastructure.
+The key to successful peering is planning CIDR ranges to avoid overlaps, configuring proper routing and firewall rules, and implementing service discovery mechanisms for cross-cluster communication. For production multi-cluster deployments, VPC peering or private cross-cloud connectivity is essential infrastructure.
