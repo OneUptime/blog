@@ -8,9 +8,9 @@ Description: A practical walkthrough of setting up blue/green deployments for EC
 
 ---
 
-Rolling deployments are simple and work well for most updates. But when you need zero-downtime deployments with instant rollback capability, blue/green deployments are the way to go. With ECS and CodeDeploy, you can run the new version alongside the old one, validate it works, and then shift traffic - all while keeping the old version ready as a fallback.
+Rolling deployments are simple and work well for most updates. But when you need zero-downtime deployments with fast rollback capability, blue/green deployments are the way to go. With ECS and CodeDeploy, you can run the new version alongside the old one, validate it works, and then shift traffic - all while keeping the old version ready as a fallback.
 
-The idea is simple: instead of replacing tasks in place, you spin up a completely new set of tasks (the "green" environment) alongside the existing ones (the "blue" environment). Traffic shifts to green, and if something goes wrong, you shift back to blue instantly.
+The idea is simple: instead of replacing tasks in place, you spin up a completely new set of tasks (the "green" environment) alongside the existing ones (the "blue" environment). Traffic shifts to green, and if something goes wrong, you can quickly shift back to blue.
 
 ## How Blue/Green Works in ECS
 
@@ -48,7 +48,7 @@ During deployment, CodeDeploy creates the green tasks, optionally routes test tr
 
 ## Setting Up the ALB
 
-You need two target groups and two listeners - one for production traffic and optionally one for test traffic.
+You need two target groups, plus one production listener and optionally one test listener.
 
 ```hcl
 # Application Load Balancer
@@ -346,7 +346,6 @@ resource "aws_cloudwatch_metric_alarm" "high_5xx" {
 
   dimensions = {
     LoadBalancer = aws_lb.main.arn_suffix
-    TargetGroup  = aws_lb_target_group.green.arn_suffix
   }
 }
 
@@ -381,4 +380,4 @@ Hooks:
   - AfterAllowTraffic: "arn:aws:lambda:us-east-1:123456789:function:post-deploy-checks"
 ```
 
-Blue/green deployments add complexity compared to rolling updates, but the safety net is worth it for critical services. The ability to validate the new version with test traffic and roll back instantly if something goes wrong can save you from production incidents. For a simpler alternative, check out our post on [rolling deployments in ECS](https://oneuptime.com/blog/post/2026-02-12-rolling-deployments-ecs/view).
+Blue/green deployments add complexity compared to rolling updates, but the safety net is worth it for critical services. The ability to validate the new version with test traffic and roll back quickly if something goes wrong can save you from production incidents. For a simpler alternative, check out our post on [rolling deployments in ECS](https://oneuptime.com/blog/post/2026-02-12-rolling-deployments-ecs/view).
