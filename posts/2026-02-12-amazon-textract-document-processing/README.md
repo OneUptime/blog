@@ -219,6 +219,9 @@ def get_async_results(job_id):
 
         if status == 'SUCCEEDED':
             break
+        elif status == 'PARTIAL_SUCCESS':
+            print(f"Job partially succeeded: {response.get('StatusMessage', '')}")
+            break
         elif status == 'FAILED':
             print(f"Job failed: {response.get('StatusMessage', '')}")
             return None
