@@ -14,14 +14,14 @@ AWS CodePipeline supports manual approval actions that pause the pipeline and wa
 
 ## How Manual Approval Works
 
-When a pipeline hits a manual approval action, it pauses and sends a notification. The pipeline stays in an "InProgress" state until someone either approves or rejects it. If nobody acts within the timeout period (up to 7 days), the approval is automatically rejected.
+When a pipeline hits a manual approval action, it pauses and sends a notification. The pipeline stays in an "InProgress" state until someone either approves or rejects it. If nobody acts within the timeout period, the approval action fails. The default timeout is 7 days, and you can override it for a specific manual approval action with `timeoutInMinutes` from 5 minutes up to 60 days.
 
 ```mermaid
 graph LR
     Build[Build Stage] --> Approve{Manual Approval}
     Approve -->|Approved| Deploy[Deploy Stage]
     Approve -->|Rejected| Stop[Pipeline Stopped]
-    Approve -->|Timeout 7 days| Stop
+    Approve -->|Timeout| Stop
 ```
 
 ## Step 1: Create an SNS Topic for Notifications
@@ -36,12 +36,22 @@ aws sns create-topic \
 
 # Subscribe an email address
 aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:pipeline-approval-notifications \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:pipeline-approval-notifications \
   --protocol email \
   --notification-endpoint team-leads@example.com
 ```
 
 You can subscribe multiple email addresses, a Slack webhook via Lambda, or any other SNS-supported endpoint.
+
+If you're using SNS notifications, make sure the CodePipeline service role can publish to the topic:
+
+```json
+{
+  "Effect": "Allow",
+  "Action": "sns:Publish",
+  "Resource": "arn:aws:sns:us-east-1:123456789012:pipeline-approval-notifications"
+}
+```
 
 For Slack integration, you'd create a Lambda function subscribed to the topic:
 
@@ -108,10 +118,11 @@ You can add the approval action when creating a new pipeline or update an existi
         "version": "1"
       },
       "configuration": {
-        "NotificationArn": "arn:aws:sns:us-east-1:123456789:pipeline-approval-notifications",
+        "NotificationArn": "arn:aws:sns:us-east-1:123456789012:pipeline-approval-notifications",
         "CustomData": "Please review the staging deployment at https://staging.example.com before approving production deployment.",
         "ExternalEntityLink": "https://staging.example.com"
       },
+      "timeoutInMinutes": 1440,
       "runOrder": 1
     }
   ]
@@ -119,6 +130,8 @@ You can add the approval action when creating a new pipeline or update an existi
 ```
 
 The `CustomData` field shows up in the notification and in the console. Use it to give approvers context about what they're approving. The `ExternalEntityLink` provides a clickable URL - perfect for linking to your staging environment.
+
+The `timeoutInMinutes` field is optional. If you omit it, CodePipeline uses the default 7-day timeout.
 
 To add this to an existing pipeline:
 
@@ -140,6 +153,10 @@ A complete pipeline with an approval gate looks like this:
   "pipeline": {
     "name": "my-app-pipeline",
     "roleArn": "arn:aws:iam::123456789012:role/CodePipelineServiceRole",
+    "artifactStore": {
+      "type": "S3",
+      "location": "my-app-pipeline-artifacts"
+    },
     "stages": [
       {
         "name": "Source",
@@ -153,7 +170,7 @@ A complete pipeline with an approval gate looks like this:
               "version": "1"
             },
             "configuration": {
-              "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789:connection/abc-123",
+              "ConnectionArn": "arn:aws:codestar-connections:us-east-1:123456789012:connection/abc-123",
               "FullRepositoryId": "my-org/my-repo",
               "BranchName": "main"
             },
@@ -209,10 +226,11 @@ A complete pipeline with an approval gate looks like this:
               "version": "1"
             },
             "configuration": {
-              "NotificationArn": "arn:aws:sns:us-east-1:123456789:pipeline-approval-notifications",
+              "NotificationArn": "arn:aws:sns:us-east-1:123456789012:pipeline-approval-notifications",
               "CustomData": "Staging deployment complete. Review at https://staging.example.com",
               "ExternalEntityLink": "https://staging.example.com"
-            }
+            },
+            "timeoutInMinutes": 1440
           }
         ]
       },
@@ -253,7 +271,7 @@ Control who can approve deployments with IAM:
       "Action": [
         "codepipeline:PutApprovalResult"
       ],
-      "Resource": "arn:aws:codepipeline:us-east-1:123456789:my-app-pipeline/Production-Approval/ApproveProduction"
+      "Resource": "arn:aws:codepipeline:us-east-1:123456789012:my-app-pipeline/Production-Approval/ApproveProduction"
     },
     {
       "Effect": "Allow",
@@ -261,7 +279,7 @@ Control who can approve deployments with IAM:
         "codepipeline:GetPipelineState",
         "codepipeline:GetPipeline"
       ],
-      "Resource": "arn:aws:codepipeline:us-east-1:123456789:my-app-pipeline"
+      "Resource": "arn:aws:codepipeline:us-east-1:123456789012:my-app-pipeline"
     }
   ]
 }
@@ -360,7 +378,7 @@ When both actions have the same `runOrder`, they run in parallel - both must be 
 
 A few things I've learned about approval gates:
 
-- Keep the timeout reasonable. Seven days is the max, but if nobody approves within 24 hours, something's probably wrong with your process.
+- Keep the timeout reasonable. The default is 7 days and the configurable maximum is 60 days, but if nobody approves within 24 hours, something's probably wrong with your process.
 - Always include context in `CustomData`. "Please approve" tells the approver nothing. "v2.3.1 deployed to staging, includes ticket PROJ-456" is much better.
 - Don't put approvals before every stage. One gate between staging and production is usually enough. Too many gates slow everything down.
 - Monitor pending approvals. If deployments are sitting waiting for approval for hours, you've got a bottleneck.
