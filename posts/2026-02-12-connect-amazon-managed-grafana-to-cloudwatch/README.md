@@ -58,10 +58,12 @@ Your Grafana workspace's IAM role needs CloudWatch and CloudWatch Logs permissio
       "Resource": "*"
     },
     {
-      "Sid": "EC2DescribeForRegions",
+      "Sid": "EC2DescribeForRegionsTagsInstances",
       "Effect": "Allow",
       "Action": [
-        "ec2:DescribeRegions"
+        "ec2:DescribeRegions",
+        "ec2:DescribeTags",
+        "ec2:DescribeInstances"
       ],
       "Resource": "*"
     },
@@ -83,8 +85,8 @@ The `tag:GetResources` permission is optional but highly recommended. It lets yo
 
 In your Grafana workspace:
 
-1. Go to **Configuration** (gear icon) > **Data Sources**
-2. Click **Add data source**
+1. Go to **Connections** > **Data Sources** (or **Configuration** > **Data Sources** in older workspaces)
+2. Click **Add new data source**
 3. Select **Amazon CloudWatch**
 4. Configure the settings:
 
@@ -92,7 +94,7 @@ In your Grafana workspace:
 |---------|-------|
 | Auth Provider | AWS SDK Default |
 | Default Region | us-east-1 (or your primary region) |
-| Custom Metrics Namespace | Leave empty (discovers automatically) |
+| Namespaces of Custom Metrics | Leave empty for AWS service namespaces; add custom namespaces manually if you use custom metrics |
 | Assume Role ARN | Leave empty (uses workspace role) |
 
 5. Click **Save & Test**
@@ -104,6 +106,8 @@ If the test succeeds, you will see "Data source is working."
 You can query CloudWatch across multiple regions from a single data source. Set your default region, and then override per-panel when building dashboards.
 
 For cross-account monitoring, use the **Assume Role ARN** field to assume a role in the target account.
+
+The Grafana workspace role also needs permission to call `sts:AssumeRole` on the target role.
 
 ```json
 {
@@ -138,7 +142,7 @@ You can add multiple queries to the same panel. Add a second query for Errors, a
 
 ### Using Math Expressions
 
-CloudWatch Metrics Insights lets you calculate derived metrics directly in Grafana.
+CloudWatch metric math lets you calculate derived metrics directly in Grafana.
 
 ```text
 # Error rate as a percentage
@@ -146,7 +150,7 @@ CloudWatch Metrics Insights lets you calculate derived metrics directly in Grafa
 # Query A: Errors (Sum)
 # Query B: Invocations (Sum)
 # Expression C:
-METRICS("A") / METRICS("B") * 100
+queryA / queryB * 100
 ```
 
 This gives you an error rate panel without needing to create a custom CloudWatch metric.
@@ -165,6 +169,7 @@ LIMIT 10
 ```
 
 This query shows the average duration for your Lambda function, which is useful for tracking performance trends.
+Metrics Insights queries through `GetMetricData` can query only the most recent three hours of metric data.
 
 ## Step 4: Build CloudWatch Logs Panels
 
@@ -266,7 +271,7 @@ Set up alerts directly in Grafana panels.
 ```text
 Query A: CloudWatch - AWS/Lambda - Errors - Sum - 1m
 Query B: CloudWatch - AWS/Lambda - Invocations - Sum - 1m
-Expression C: A / B * 100
+Expression C: $A / $B * 100
 
 Alert condition: C > 5 (error rate above 5%)
 For: 5m
@@ -274,7 +279,7 @@ For: 5m
 
 ## Cost Optimization
 
-CloudWatch API calls from Grafana are not free. Each `GetMetricData` call costs $0.01 per 1,000 metrics requested. A dashboard with 20 panels, each querying 5 metrics, refreshing every 30 seconds, makes 24,000 API calls per hour.
+CloudWatch API calls from Grafana are not free. `GetMetricData` usage is charged by metrics requested. A dashboard with 20 panels, each querying 5 metrics, refreshing every 30 seconds, requests about 12,000 metrics per hour, assuming each refresh runs all panel queries.
 
 Tips to reduce costs:
 
