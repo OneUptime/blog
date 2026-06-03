@@ -37,6 +37,10 @@ Create a namespace for your pipeline resources:
 ```bash
 kubectl create namespace sbom-pipeline
 
+# Install catalog tasks used by the pipeline
+tkn hub install task git-clone -n sbom-pipeline
+tkn hub install task buildah -n sbom-pipeline
+
 # Create a service account for the pipeline
 kubectl create serviceaccount pipeline-sa -n sbom-pipeline
 ```
@@ -63,7 +67,7 @@ Tekton Tasks define reusable units of work. Create a Task that generates SBOMs u
 
 ```yaml
 # task-generate-sbom.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: generate-sbom
@@ -82,9 +86,13 @@ spec:
     - name: sbom-digest
       description: SHA256 digest of the generated SBOM
 
+  workspaces:
+    - name: sbom-output
+      description: Shared workspace for the generated SBOM file
+
   steps:
     - name: generate-sbom
-      image: anchore/syft:latest
+      image: anchore/syft:v1.44.0-debug
       script: |
         #!/bin/sh
         set -e
@@ -95,65 +103,55 @@ spec:
         echo "Generating SBOM for ${IMAGE}"
 
         # Generate SBOM and save to file
-        syft "${IMAGE}" -o "${FORMAT}" > /workspace/sbom.json
+        syft "${IMAGE}" -o "${FORMAT}" > $(workspaces.sbom-output.path)/sbom.json
 
         # Calculate digest for verification
-        DIGEST=$(sha256sum /workspace/sbom.json | cut -d' ' -f1)
+        DIGEST=$(sha256sum $(workspaces.sbom-output.path)/sbom.json | cut -d' ' -f1)
         echo -n "${DIGEST}" | tee $(results.sbom-digest.path)
 
         echo "SBOM generated successfully"
         echo "Format: ${FORMAT}"
         echo "Digest: ${DIGEST}"
 
-      volumeMounts:
-        - name: sbom-output
-          mountPath: /workspace
-
     - name: validate-sbom
-      image: anchore/syft:latest
+      image: alpine:3.23
       script: |
         #!/bin/sh
         set -e
 
+        apk add --no-cache jq
+
         # Basic validation - ensure SBOM has content
-        if [ ! -s /workspace/sbom.json ]; then
+        if [ ! -s $(workspaces.sbom-output.path)/sbom.json ]; then
           echo "ERROR: SBOM file is empty"
           exit 1
         fi
 
         # Validate JSON structure
-        if ! jq empty /workspace/sbom.json 2>/dev/null; then
+        if ! jq empty $(workspaces.sbom-output.path)/sbom.json 2>/dev/null; then
           echo "ERROR: SBOM is not valid JSON"
           exit 1
         fi
 
-        # Check for minimum expected fields
-        COMPONENT_COUNT=$(jq '.components | length' /workspace/sbom.json)
+        # Check for minimum expected fields in CycloneDX, SPDX, or Syft JSON output
+        COMPONENT_COUNT=$(jq '(.components // .packages // .artifacts // []) | length' $(workspaces.sbom-output.path)/sbom.json)
         if [ "${COMPONENT_COUNT}" -lt 1 ]; then
           echo "ERROR: SBOM contains no components"
           exit 1
         fi
 
         echo "SBOM validation passed - ${COMPONENT_COUNT} components found"
-
-      volumeMounts:
-        - name: sbom-output
-          mountPath: /workspace
-
-  volumes:
-    - name: sbom-output
-      emptyDir: {}
 ```
 
 This Task generates an SBOM, validates its structure, and outputs the digest for downstream verification.
 
 ## Creating the SBOM Publishing Task
 
-Create a Task that publishes SBOMs to your container registry using the OCI artifact format:
+Create a Task that publishes SBOMs to your container registry as an image layer:
 
 ```yaml
 # task-publish-sbom.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: publish-sbom
@@ -167,47 +165,47 @@ spec:
       description: SHA256 digest of the SBOM
       type: string
 
+  workspaces:
+    - name: sbom-output
+      description: Shared workspace containing sbom.json
+
   steps:
-    - name: publish-sbom
-      image: gcr.io/go-containerregistry/crane:latest
+    - name: package-sbom
+      image: alpine:3.23
       script: |
         #!/bin/sh
         set -e
 
-        IMAGE="$(params.IMAGE)"
+        # crane append expects tarball layers, so package the SBOM first
+        tar -C $(workspaces.sbom-output.path) -cf $(workspaces.sbom-output.path)/sbom.tar sbom.json
+
+    - name: publish-sbom
+      image: gcr.io/go-containerregistry/crane:latest
+      command: ["/ko-app/crane"]
+      args:
+        - append
+        - --new_layer
+        - $(workspaces.sbom-output.path)/sbom.tar
+        - --new_tag
+        - $(params.IMAGE).sbom
+        - --base
+        - scratch
+
+    - name: show-published-sbom
+      image: alpine:3.23
+      script: |
+        #!/bin/sh
+        set -e
+
+        SBOM_REF="$(params.IMAGE).sbom"
         SBOM_DIGEST="$(params.SBOM_DIGEST)"
-
-        # Extract registry, repository, and tag
-        REGISTRY=$(echo "${IMAGE}" | cut -d'/' -f1)
-        REPO_TAG=$(echo "${IMAGE}" | cut -d'/' -f2-)
-        REPO=$(echo "${REPO_TAG}" | cut -d':' -f1)
-        TAG=$(echo "${REPO_TAG}" | cut -d':' -f2)
-
-        # Create SBOM reference (image.sbom)
-        SBOM_REF="${REGISTRY}/${REPO}:${TAG}.sbom"
-
-        echo "Publishing SBOM to ${SBOM_REF}"
-
-        # Create OCI artifact from SBOM
-        crane append \
-          --new_layer /workspace/sbom.json \
-          --new_tag "${SBOM_REF}" \
-          --base scratch
 
         echo "SBOM published successfully"
         echo "Reference: ${SBOM_REF}"
         echo "Digest: ${SBOM_DIGEST}"
-
-      volumeMounts:
-        - name: sbom-output
-          mountPath: /workspace
-
-  volumes:
-    - name: sbom-output
-      emptyDir: {}
 ```
 
-This Task publishes the SBOM as an OCI artifact, making it easy to retrieve and verify alongside the image.
+This Task publishes the SBOM as a registry image containing the SBOM file, making it easy to retrieve and verify alongside the image.
 
 ## Signing SBOMs with Cosign
 
@@ -215,7 +213,7 @@ For supply chain security, sign SBOMs to prove authenticity. Create a Task using
 
 ```yaml
 # task-sign-sbom.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: sign-sbom
@@ -228,24 +226,12 @@ spec:
 
   steps:
     - name: sign-sbom
-      image: gcr.io/projectsigstore/cosign:latest
-      script: |
-        #!/bin/sh
-        set -e
-
-        IMAGE="$(params.IMAGE)"
-        SBOM_REF="${IMAGE}.sbom"
-
-        echo "Signing SBOM at ${SBOM_REF}"
-
-        # Sign the SBOM using keyless signing
-        cosign sign --yes "${SBOM_REF}"
-
-        echo "SBOM signed successfully"
-
-      env:
-        - name: COSIGN_EXPERIMENTAL
-          value: "1"  # Enable keyless signing
+      image: ghcr.io/sigstore/cosign/cosign:latest
+      command: ["/ko-app/cosign"]
+      args:
+        - sign
+        - --yes
+        - $(params.IMAGE).sbom
 ```
 
 Cosign keyless signing uses OIDC identity for signatures without managing keys.
@@ -256,7 +242,7 @@ Combine all Tasks into a Pipeline that builds images, generates SBOMs, publishes
 
 ```yaml
 # pipeline-build-with-sbom.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
   name: build-with-sbom
@@ -280,14 +266,13 @@ spec:
 
   workspaces:
     - name: source-workspace
-    - name: docker-config
+    - name: sbom-workspace
 
   tasks:
     # Clone source code
     - name: fetch-source
       taskRef:
         name: git-clone
-        kind: ClusterTask
       params:
         - name: url
           value: $(params.git-url)
@@ -301,7 +286,6 @@ spec:
     - name: build-image
       taskRef:
         name: buildah
-        kind: ClusterTask
       runAfter: [fetch-source]
       params:
         - name: IMAGE
@@ -322,6 +306,9 @@ spec:
           value: $(params.image-reference)
         - name: FORMAT
           value: $(params.sbom-format)
+      workspaces:
+        - name: sbom-output
+          workspace: sbom-workspace
 
     # Publish SBOM
     - name: publish-sbom
@@ -333,6 +320,9 @@ spec:
           value: $(params.image-reference)
         - name: SBOM_DIGEST
           value: $(tasks.generate-sbom.results.sbom-digest)
+      workspaces:
+        - name: sbom-output
+          workspace: sbom-workspace
 
     # Sign SBOM
     - name: sign-sbom
@@ -350,7 +340,7 @@ Create a PipelineRun to execute the pipeline:
 
 ```yaml
 # pipelinerun-example.yaml
-apiVersion: tekton.dev/v1beta1
+apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: build-myapp-with-sbom
@@ -378,9 +368,8 @@ spec:
           resources:
             requests:
               storage: 1Gi
-    - name: docker-config
-      secret:
-        secretName: regcred
+    - name: sbom-workspace
+      emptyDir: {}
 
   serviceAccountName: pipeline-sa
 ```
@@ -410,7 +399,7 @@ spec:
     - name: image-tag
 
   resourcetemplates:
-    - apiVersion: tekton.dev/v1beta1
+    - apiVersion: tekton.dev/v1
       kind: PipelineRun
       metadata:
         generateName: build-sbom-run-
@@ -432,6 +421,8 @@ spec:
                 resources:
                   requests:
                     storage: 1Gi
+          - name: sbom-workspace
+            emptyDir: {}
         serviceAccountName: pipeline-sa
 ---
 apiVersion: triggers.tekton.dev/v1beta1
@@ -471,10 +462,13 @@ Verify SBOMs are correctly published and signed:
 
 ```bash
 # Download SBOM
-crane export registry.example.com/myapp:v1.2.3.sbom sbom.json
+crane export registry.example.com/myapp:v1.2.3.sbom sbom.tar
+tar -xOf sbom.tar sbom.json > sbom.json
 
 # Verify signature
-cosign verify registry.example.com/myapp:v1.2.3.sbom
+cosign verify registry.example.com/myapp:v1.2.3.sbom \
+  --certificate-identity="<expected OIDC identity>" \
+  --certificate-oidc-issuer="<expected OIDC issuer>"
 
 # Query SBOM for specific packages
 jq '.components[] | select(.name == "log4j")' sbom.json
