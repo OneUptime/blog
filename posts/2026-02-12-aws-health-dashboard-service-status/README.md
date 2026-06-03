@@ -8,29 +8,30 @@ Description: Learn how to use the AWS Health Dashboard to monitor AWS service st
 
 ---
 
-When something breaks in production and you suspect AWS is the culprit, the first thing you probably do is check if others are reporting the same issue on Twitter or Reddit. That's not a great strategy. AWS has a dedicated service for this: the AWS Health Dashboard. It comes in two flavors - the Service Health Dashboard (public, shows all AWS services) and your Personal Health Dashboard (account-specific, shows events that actually affect your resources).
+When something breaks in production and you suspect AWS is the culprit, the first thing you probably do is check if others are reporting the same issue on Twitter or Reddit. That's not a great strategy. AWS has a dedicated service for this: the AWS Health Dashboard. It comes in two flavors - Service health (public, shows AWS service availability) and Your account health (account-specific, shows events that actually affect your resources).
 
 Let's look at both and learn how to get the most out of them.
 
-## Service Health Dashboard vs. Personal Health Dashboard
+## Service Health vs. Your Account Health
 
-The **Service Health Dashboard** (status.aws.amazon.com) is a public page that shows the operational status of every AWS service across all regions. Anyone can view it. It's useful for getting a broad picture, but it doesn't tell you if an issue specifically affects your resources.
+The **AWS Health Dashboard - Service health** (health.aws.amazon.com/health/status) is a public page that shows AWS service availability by service and region. Anyone can view it. It's useful for getting a broad picture, but it doesn't tell you if an issue specifically affects your resources.
 
-The **Personal Health Dashboard** (also called AWS Health) is tied to your AWS account. It shows only the events that matter to you - things like scheduled maintenance on your EC2 instances, service degradation in the regions you actually use, and operational issues impacting resources you own. This is where you should be looking first.
+The **AWS Health Dashboard - Your account health** is tied to your AWS account. It shows account-specific events that matter to you - things like scheduled maintenance on your EC2 instances, service degradation in the regions you actually use, and operational issues impacting resources you own. This is where you should be looking first.
 
-## Navigating the Personal Health Dashboard
+## Navigating Your Account Health
 
-In the AWS Console, find Health Dashboard in the search bar or navigate to phd.aws.amazon.com. You'll see three tabs:
+In the AWS Console, find Health Dashboard in the search bar or navigate to health.aws.amazon.com/health/home. Under Your account health, you'll see these views:
 
 - **Open and recent issues** - Active problems and recently resolved ones
 - **Scheduled changes** - Upcoming maintenance that affects your resources
 - **Other notifications** - Service announcements and operational notes
+- **Event log** - All events from the past 90 days
 
 Each event includes the affected service, region, start time, status, and a list of your specific resources that are impacted. This last part is what makes it so much more useful than the public status page.
 
 ## Using the AWS Health API
 
-For programmatic access, AWS provides the Health API. Like the Trusted Advisor API, it's only available in us-east-1 and requires a Business or Enterprise support plan for full access.
+For programmatic access, AWS provides the Health API. The active endpoint is usually us-east-1, with us-east-2 available as a passive endpoint, and the API requires an AWS Business Support+, AWS Enterprise Support, or AWS Unified Operations plan. In regions or accounts that haven't transitioned to those plans, Business, Enterprise On-Ramp, or Enterprise Support also provide access.
 
 List recent events affecting your account:
 
@@ -70,13 +71,13 @@ aws health describe-affected-entities \
   --output table
 ```
 
-## Event Categories
+## Event Scopes and Organization Views
 
-Health events fall into three categories:
+Health events and organization views show up in a few useful ways:
 
 **Account-specific events** are the most important. These are events that directly impact resources in your account - like scheduled maintenance on one of your EC2 instances, or a hardware failure affecting your EBS volume.
 
-**Public events** are broad service issues that affect many customers. These show up on the public Service Health Dashboard too.
+**Public events** are broad service issues that affect many customers. These show up on the public Service health page too.
 
 **Organization events** (if you're using AWS Organizations) aggregate health events across all accounts in your org, giving management visibility into issues affecting any team.
 
@@ -105,6 +106,8 @@ aws events put-targets \
   }]' \
   --region us-east-1
 ```
+
+Make sure the SNS topic's resource policy allows `events.amazonaws.com` to publish to it. The EventBridge console can add this automatically, but CLI and SDK workflows often need the topic policy updated separately.
 
 You can get more specific. This rule only fires for operational issues (not scheduled maintenance) affecting EC2 and RDS:
 
@@ -138,20 +141,21 @@ def lambda_handler(event, context):
     """
     detail = event.get('detail', {})
     service = detail.get('service')
-    event_type = detail.get('eventTypeCode')
+    event_type = detail.get('eventTypeCode', '')
 
     # Only handle EC2 scheduled retirements
     if service != 'EC2' or 'RETIREMENT' not in event_type:
         print(f"Ignoring event: {service}/{event_type}")
         return
 
-    ec2 = boto3.client('ec2')
+    ec2 = boto3.client('ec2', region_name=detail.get('eventRegion'))
 
     # Get affected instance IDs from the event
     affected = detail.get('affectedEntities', [])
     for entity in affected:
-        instance_id = entity.get('entityValue')
-        if not instance_id or not instance_id.startswith('i-'):
+        entity_value = entity.get('entityValue', '')
+        instance_id = entity_value.rsplit('/', 1)[-1]
+        if not instance_id.startswith('i-'):
             continue
 
         print(f"Handling retirement for {instance_id}")
@@ -206,7 +210,7 @@ aws health describe-events-for-organization \
     "startTime": {"from": "2026-02-01T00:00:00Z"},
     "eventStatusCodes": ["open"]
   }' \
-  --query "events[].{Account:awsAccountId,Service:service,Region:region,Status:statusCode}" \
+  --query "events[].{Accounts:affectedAccounts,Service:service,Region:region,Status:statusCode}" \
   --output table
 ```
 
@@ -233,6 +237,8 @@ def lambda_handler(event, context):
 
     category = detail.get('eventTypeCategory', 'unknown')
     color = severity_colors.get(category, '#808080')
+    descriptions = detail.get('eventDescription') or []
+    description = descriptions[0].get('latestDescription', 'No description') if descriptions else 'No description'
 
     message = {
         "attachments": [{
@@ -240,12 +246,10 @@ def lambda_handler(event, context):
             "title": f"AWS Health: {detail.get('eventTypeCode', 'Unknown Event')}",
             "fields": [
                 {"title": "Service", "value": detail.get('service', 'N/A'), "short": True},
-                {"title": "Region", "value": detail.get('region', 'N/A'), "short": True},
+                {"title": "Region", "value": detail.get('eventRegion', 'N/A'), "short": True},
                 {"title": "Category", "value": category, "short": True},
                 {"title": "Status", "value": detail.get('statusCode', 'N/A'), "short": True},
-                {"title": "Description",
-                 "value": detail.get('eventDescription', [{}])[0].get('latestDescription', 'No description'),
-                 "short": False}
+                {"title": "Description", "value": description, "short": False}
             ]
         }]
     }
@@ -264,7 +268,7 @@ Here's an important pattern: when one of your monitoring alerts fires and you su
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 def check_aws_health_for_service(service_name, region):
     """
@@ -278,7 +282,7 @@ def check_aws_health_for_service(service_name, region):
             'services': [service_name],
             'regions': [region],
             'eventStatusCodes': ['open', 'upcoming'],
-            'startTimes': [{'from': datetime.utcnow() - timedelta(hours=24)}]
+            'startTimes': [{'from': datetime.now(timezone.utc) - timedelta(hours=24)}]
         }
     )
 
@@ -295,7 +299,7 @@ def check_aws_health_for_service(service_name, region):
     return {'aws_issue_detected': False}
 ```
 
-For a comprehensive monitoring setup that includes AWS service health alongside your application metrics, check out our post on [setting up Personal Health Dashboard notifications](https://oneuptime.com/blog/post/2026-02-12-aws-personal-health-dashboard-notifications/view).
+For a comprehensive monitoring setup that includes AWS service health alongside your application metrics, check out our post on [setting up AWS Health Dashboard notifications](https://oneuptime.com/blog/post/2026-02-12-aws-personal-health-dashboard-notifications/view).
 
 ## Best Practices
 
