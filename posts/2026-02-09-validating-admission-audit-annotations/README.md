@@ -14,7 +14,7 @@ Audit annotations in ValidatingAdmissionPolicy let you record policy evaluation 
 
 Audit annotations add custom metadata to Kubernetes audit events. When a ValidatingAdmissionPolicy evaluates a request, it can attach annotations describing the evaluation results, matched rules, or calculated values. These annotations appear in the audit log alongside the standard request information.
 
-Unlike validation actions that block non-compliant requests, audit annotations always allow requests to proceed. This makes them perfect for testing new policies, tracking compliance trends, and providing visibility without disrupting workloads.
+Unlike validation rules that block non-compliant requests when bound with the Deny action, audit annotations are for recording information. This makes them useful for testing new policies, tracking compliance trends, and providing visibility without disrupting workloads.
 
 ## Configuring Basic Audit Annotations
 
@@ -37,12 +37,18 @@ spec:
     - key: "resource-limits-check.total-cpu"
       valueExpression: |
         string(object.spec.containers.map(c,
-          int(c.?resources.?requests.?cpu.replace('m', '').orValue('0'))
+          has(c.resources) && has(c.resources.requests) && 'cpu' in c.resources.requests &&
+          string(c.resources.requests['cpu']).endsWith('m')
+          ? int(string(c.resources.requests['cpu']).replace('m', ''))
+          : 0
         ).sum()) + 'm'
     - key: "resource-limits-check.total-memory"
       valueExpression: |
         string(object.spec.containers.map(c,
-          int(c.?resources.?requests.?memory.replace('Mi', '').orValue('0'))
+          has(c.resources) && has(c.resources.requests) && 'memory' in c.resources.requests &&
+          string(c.resources.requests['memory']).endsWith('Mi')
+          ? int(string(c.resources.requests['memory']).replace('Mi', ''))
+          : 0
         ).sum()) + 'Mi'
     - key: "resource-limits-check.has-limits"
       valueExpression: |
@@ -107,17 +113,34 @@ spec:
     - key: "security-check.violation-count"
       valueExpression: |
         string(
-          int(!object.spec.containers.all(c,
+          (!object.spec.containers.all(c,
             has(c.securityContext) && c.securityContext.runAsNonRoot == true
-          )) +
-          int(object.spec.containers.exists(c,
+          ) ? 1 : 0) +
+          (object.spec.containers.exists(c,
             c.?securityContext.?privileged.orValue(false)
-          )) +
-          int(object.spec.?hostNetwork.orValue(false))
+          ) ? 1 : 0) +
+          (object.spec.?hostNetwork.orValue(false) ? 1 : 0)
         )
+  validations:
+    - expression: |
+        object.spec.containers.all(c,
+          has(c.securityContext) &&
+          has(c.securityContext.runAsNonRoot) &&
+          c.securityContext.runAsNonRoot == true
+        )
+      message: "containers must set runAsNonRoot to true"
+    - expression: |
+        object.spec.containers.all(c,
+          !has(c.securityContext) ||
+          !has(c.securityContext.privileged) ||
+          c.securityContext.privileged != true
+        )
+      message: "containers must not run as privileged"
+    - expression: "object.spec.?hostNetwork.orValue(false) != true"
+      message: "pods must not use hostNetwork"
 ```
 
-This policy annotates each request with boolean flags for common security violations and a total count, enabling dashboard creation without blocking pods.
+With an Audit-only binding, this policy annotates each request with boolean flags for common security violations and a total count, enabling dashboard creation without blocking pods.
 
 ## Capturing Resource Metadata
 
@@ -139,10 +162,10 @@ spec:
   auditAnnotations:
     - key: "metadata.has-owner-label"
       valueExpression: |
-        string(has(object.metadata.labels.owner))
+        string(has(object.metadata.labels) && 'owner' in object.metadata.labels)
     - key: "metadata.has-cost-center"
       valueExpression: |
-        string(has(object.metadata.annotations['cost-center']))
+        string(has(object.metadata.annotations) && 'cost-center' in object.metadata.annotations)
     - key: "metadata.replica-count"
       valueExpression: |
         string(object.spec.replicas)
@@ -182,15 +205,19 @@ spec:
     - key: "decision.missing-labels"
       valueExpression: |
         ['team', 'environment', 'app'].filter(label,
-          !(label in object.metadata.labels)
+          !has(object.metadata.labels) || !(label in object.metadata.labels)
         ).join(',')
     - key: "decision.unapproved-capabilities"
       valueExpression: |
         object.spec.containers.map(c,
-          c.?securityContext.?capabilities.?add.orValue([])
-        ).flatten().filter(cap,
-          !(cap in ['NET_BIND_SERVICE', 'CHOWN', 'SETUID', 'SETGID'])
-        ).join(',')
+          c.name + ':' + (
+            has(c.securityContext) && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.add)
+            ? c.securityContext.capabilities.add.filter(cap,
+                !(cap in ['NET_BIND_SERVICE', 'CHOWN', 'SETUID', 'SETGID'])
+              ).join('|')
+            : ''
+          )
+        ).filter(entry, !entry.endsWith(':')).join(',')
     - key: "decision.container-images"
       valueExpression: |
         object.spec.containers.map(c, c.image).join(', ')
@@ -219,25 +246,25 @@ spec:
     - key: "compliance.score"
       valueExpression: |
         string(
-          int(has(object.metadata.labels.team)) * 10 +
-          int(has(object.metadata.labels.owner)) * 10 +
-          int(object.spec.containers.all(c,
+          (has(object.metadata.labels) && 'team' in object.metadata.labels ? 1 : 0) * 10 +
+          (has(object.metadata.labels) && 'owner' in object.metadata.labels ? 1 : 0) * 10 +
+          (object.spec.containers.all(c,
             has(c.resources) && has(c.resources.limits)
-          )) * 20 +
-          int(object.spec.containers.all(c,
+          ) ? 1 : 0) * 20 +
+          (object.spec.containers.all(c,
             has(c.securityContext) && c.securityContext.runAsNonRoot == true
-          )) * 30 +
-          int(object.spec.containers.all(c,
+          ) ? 1 : 0) * 30 +
+          (object.spec.containers.all(c,
             has(c.securityContext) &&
             has(c.securityContext.readOnlyRootFilesystem) &&
             c.securityContext.readOnlyRootFilesystem == true
-          )) * 30
+          ) ? 1 : 0) * 30
         ) + '/100'
     - key: "compliance.level"
       valueExpression: |
-        int(has(object.metadata.labels.team)) * 10 +
-        int(object.spec.containers.all(c, has(c.resources.limits))) * 20 +
-        int(object.spec.containers.all(c, c.securityContext.runAsNonRoot == true)) * 30 >= 50
+        (has(object.metadata.labels) && 'team' in object.metadata.labels ? 1 : 0) * 10 +
+        (object.spec.containers.all(c, has(c.resources) && has(c.resources.limits)) ? 1 : 0) * 20 +
+        (object.spec.containers.all(c, has(c.securityContext) && c.securityContext.runAsNonRoot == true) ? 1 : 0) * 30 >= 50
         ? 'passing' : 'failing'
 ```
 
@@ -266,20 +293,20 @@ spec:
         request.userInfo.username
     - key: "user.groups"
       valueExpression: |
-        request.userInfo.?groups.orValue([]).join(',')
+        request.userInfo.groups.join(',')
     - key: "user.operation"
       valueExpression: |
         request.operation
     - key: "user.namespace"
       valueExpression: |
-        object.metadata.namespace
+        request.namespace
 ```
 
 These annotations link resource changes to specific users and operations, creating an audit trail for compliance reviews.
 
-## Recording Validation Times
+## Recording Request Context
 
-Track policy evaluation performance:
+Record request context that can help correlate policy evaluations with audit events:
 
 ```yaml
 apiVersion: admissionregistration.k8s.io/v1
@@ -295,19 +322,19 @@ spec:
         operations: ["CREATE", "UPDATE"]
         resources: ["pods"]
   auditAnnotations:
-    - key: "performance.validation-timestamp"
+    - key: "performance.request-uid"
       valueExpression: |
-        string(request.requestReceivedTimestamp)
+        string(request.uid)
     - key: "performance.container-count"
       valueExpression: |
         string(object.spec.containers.size() +
                object.spec.?initContainers.orValue([]).size())
     - key: "performance.total-validations"
       valueExpression: |
-        string(object.spec.containers.size() * 5)  # Estimate validations per container
+        string(object.spec.containers.size() * 5)
 ```
 
-Use these annotations to correlate policy complexity with admission latency.
+Use these annotations to correlate policy complexity with admission audit events.
 
 ## Querying Audit Logs
 
@@ -317,14 +344,14 @@ Access audit logs to view policy annotations:
 # If using audit log file
 
 sudo tail -f /var/log/kubernetes/audit/audit.log | \
-  jq 'select(.annotations | has("resource-limits-check.total-cpu"))'
+  jq 'select(.annotations | has("audit-resource-limits/resource-limits-check.total-cpu"))'
 
 # If using audit webhook to Elasticsearch
 curl -X GET "elasticsearch:9200/k8s-audit-*/_search" -H 'Content-Type: application/json' -d'
 {
   "query": {
     "exists": {
-      "field": "annotations.security-check.violation-count"
+      "field": "annotations.audit-security-violations/security-check.violation-count"
     }
   }
 }'
@@ -341,16 +368,16 @@ Parse audit logs to extract annotation data for dashboards and reports.
 
 Use audit annotations to create monitoring dashboards:
 
-```yaml
+```promql
 # Prometheus query examples for metrics derived from audit logs
 # Count pods with security violations
-sum(kube_audit_annotation{key="security-check.violation-count", value!="0"})
+sum(kube_audit_annotation{key="audit-security-violations/security-check.violation-count", value!="0"})
 
 # Track compliance scores over time
-avg(kube_audit_annotation{key="compliance.score"})
+avg(kube_audit_annotation_score{key="audit-compliance-score/compliance.score"})
 
 # Monitor missing labels
-count(kube_audit_annotation{key="decision.missing-labels", value!=""})
+count(kube_audit_annotation{key="audit-policy-decisions/decision.missing-labels", value!=""})
 ```
 
 Export audit log annotations to your observability stack to visualize policy compliance trends.
@@ -373,7 +400,7 @@ spec:
         environment: production
 ```
 
-With both actions, the policy denies non-compliant requests but still logs audit annotations for compliant ones, providing full visibility into policy decisions.
+With both actions, a policy that also defines validation rules denies non-compliant requests and writes validation failures to the audit event. Custom audit annotations from `auditAnnotations` are still written for matching requests when their expressions return a non-empty string.
 
 ## Testing Audit Annotations
 
@@ -390,10 +417,10 @@ sudo tail -100 /var/log/kubernetes/audit/audit.log | \
 
 # Expected output shows audit annotation keys and values
 {
-  "resource-limits-check.total-cpu": "0m",
-  "resource-limits-check.total-memory": "0Mi",
-  "resource-limits-check.has-limits": "false",
-  "metadata.has-owner-label": "false"
+  "audit-resource-limits/resource-limits-check.total-cpu": "0m",
+  "audit-resource-limits/resource-limits-check.total-memory": "0Mi",
+  "audit-resource-limits/resource-limits-check.has-limits": "false",
+  "audit-resource-metadata/metadata.has-owner-label": "false"
 }
 ```
 
