@@ -14,7 +14,7 @@ Let's walk through how to configure both, how to manage them, and when to use ea
 
 ## Account-Level Suppression List
 
-The account-level suppression list applies to all emails sent from your SES account. When an address is on this list, SES won't even attempt to deliver the email - it drops it before it hits the recipient's mail server.
+The account-level suppression list applies to emails sent from your SES account in the current AWS Region. When an address is on this list and its suppression reason matches your settings, SES accepts the message but won't attempt to deliver it - it drops it before it hits the recipient's mail server.
 
 You can configure it to automatically suppress addresses that generate bounces, complaints, or both.
 
@@ -58,7 +58,7 @@ aws sesv2 put-configuration-set-suppression-options \
   --suppressed-reasons BOUNCE
 ```
 
-When a configuration set has its own suppression settings, those override the account-level settings. You can even disable suppression entirely for a specific configuration set (though that's rarely a good idea).
+When a configuration set has its own suppression settings, those override the account-level settings for messages sent with that configuration set. Configuration-set-level suppression is not a separate list; it changes which reasons add addresses to the account-level suppression list. You can even disable suppression entirely for a specific configuration set (though that's rarely a good idea).
 
 ## Managing the Suppression List
 
@@ -102,7 +102,7 @@ aws sesv2 put-suppressed-destination \
 
 ### Bulk Import
 
-If you're migrating from another email provider and you already have a suppression list, you can bulk import it.
+If you're migrating from another email provider and you already have a suppression list, you can script the import for smaller lists. For large lists, use the SES bulk import job flow with a CSV or newline-delimited JSON file in S3.
 
 ```python
 import boto3
@@ -191,16 +191,18 @@ def send_email_safely(ses_client, to_address, subject, body):
         return None
 
     return ses_client.send_email(
-        Source='sender@yourdomain.com',
+        FromEmailAddress='sender@yourdomain.com',
         Destination={'ToAddresses': [to_address]},
-        Message={
-            'Subject': {'Data': subject},
-            'Body': {'Text': {'Data': body}}
+        Content={
+            'Simple': {
+                'Subject': {'Data': subject},
+                'Body': {'Text': {'Data': body}}
+            }
         }
     )
 ```
 
-This saves you API calls and gives you more control over the suppression logic. For example, you might want to unsuppress addresses after 90 days for re-engagement campaigns, or you might want different suppression rules for different email types.
+This saves you API calls and daily sending quota usage, and gives you more control over the suppression logic. For example, you might want to unsuppress addresses after 90 days for re-engagement campaigns, or you might want different suppression rules for different email types.
 
 ## Monitoring Suppression Activity
 
