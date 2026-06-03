@@ -55,7 +55,7 @@ aws ec2 describe-instance-types \
 
 Let's walk through launching an instance with EFA. You need to create the instance with an EFA-enabled network interface from the start.
 
-First, create a security group that allows all traffic between cluster nodes. EFA requires that all traffic types are permitted within the cluster:
+First, create a security group that allows all traffic between cluster nodes. EFA requires all inbound and outbound traffic to and from the security group itself:
 
 ```bash
 # Create a security group for the HPC cluster
@@ -71,6 +71,8 @@ aws ec2 authorize-security-group-ingress \
   --source-group sg-0abc123
 ```
 
+A newly created security group allows all outbound traffic by default. If you restrict outbound rules, add a matching self-referencing outbound rule before using the group with EFA.
+
 Now launch the instance with EFA:
 
 ```bash
@@ -79,7 +81,7 @@ aws ec2 run-instances \
   --image-id ami-0abc123def456 \
   --instance-type c5n.18xlarge \
   --key-name my-key \
-  --network-interfaces "DeviceIndex=0,SubnetId=subnet-0abc123,Groups=sg-0abc123,InterfaceType=efa" \
+  --network-interfaces "NetworkCardIndex=0,DeviceIndex=0,SubnetId=subnet-0abc123,Groups=sg-0abc123,InterfaceType=efa" \
   --placement "GroupName=hpc-placement-group"
 ```
 
@@ -89,7 +91,7 @@ Notice the `InterfaceType=efa` parameter. That's what tells AWS to provision an 
 
 For HPC workloads, you absolutely want a cluster placement group. This tells AWS to place your instances physically close together in the data center, minimizing network hops.
 
-Create a cluster placement group before launching your instances:
+Create a cluster placement group before launching your instances. If you're using the `run-instances` command shown above, create this placement group first:
 
 ```bash
 # Create a cluster placement group
@@ -125,13 +127,13 @@ After the reboot, verify the installation:
 
 ```bash
 # Check that EFA is available
-fi_info -p efa
+fi_info -p efa -t FI_EP_RDM
 
 # Verify the EFA device is present
 ls /dev/infiniband/
 ```
 
-The `fi_info -p efa` command should show available EFA endpoints. If you see output describing the provider capabilities, you're in good shape.
+The `fi_info -p efa -t FI_EP_RDM` command should show available EFA endpoints. If you see output describing the provider capabilities, you're in good shape.
 
 ## Installing MPI for Parallel Computing
 
