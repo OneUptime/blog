@@ -26,7 +26,13 @@ import logging
 import os
 from pythonjsonlogger import jsonlogger
 
-def setup_logger(name: str) -> logging.Logger:
+class ExtraMergingLoggerAdapter(logging.LoggerAdapter):
+    def process(self, msg, kwargs):
+        extra = kwargs.get('extra', {})
+        kwargs['extra'] = {**self.extra, **extra}
+        return msg, kwargs
+
+def setup_logger(name: str) -> logging.LoggerAdapter:
     """Configure structured JSON logger for Kubernetes."""
 
     logger = logging.getLogger(name)
@@ -37,7 +43,7 @@ def setup_logger(name: str) -> logging.Logger:
 
     # Create JSON formatter
     formatter = jsonlogger.JsonFormatter(
-        '%(timestamp)s %(level)s %(name)s %(message)s %(pathname)s %(lineno)d',
+        '%(asctime)s %(levelname)s %(name)s %(message)s %(pathname)s %(lineno)d',
         rename_fields={
             'levelname': 'level',
             'asctime': 'timestamp',
@@ -52,7 +58,7 @@ def setup_logger(name: str) -> logging.Logger:
     logger.addHandler(handler)
 
     # Add Kubernetes metadata as default fields
-    logger = logging.LoggerAdapter(logger, {
+    logger = ExtraMergingLoggerAdapter(logger, {
         'namespace': os.getenv('NAMESPACE', 'unknown'),
         'pod': os.getenv('POD_NAME', 'unknown'),
         'node': os.getenv('NODE_NAME', 'unknown'),
@@ -90,7 +96,13 @@ metadata:
   name: python-app
   namespace: production
 spec:
+  selector:
+    matchLabels:
+      app: python-app
   template:
+    metadata:
+      labels:
+        app: python-app
     spec:
       containers:
       - name: app
@@ -274,8 +286,11 @@ from pythonjsonlogger import jsonlogger
 def setup_logging():
     handler = logging.StreamHandler(sys.stdout)
     formatter = jsonlogger.JsonFormatter(
-        '%(timestamp)s %(level)s %(message)s',
-        rename_fields={'levelname': 'level'},
+        '%(asctime)s %(levelname)s %(message)s',
+        rename_fields={
+            'asctime': 'timestamp',
+            'levelname': 'level'
+        },
         timestamp=True
     )
     handler.setFormatter(formatter)
@@ -397,14 +412,13 @@ Log asynchronous Celery tasks:
 from celery import Celery
 from celery.signals import task_prerun, task_postrun, task_failure
 import logging
-import time
 
 logger = logging.getLogger(__name__)
 
 app = Celery('tasks', broker='redis://redis:6379/0')
 
 @task_prerun.connect
-def task_prerun_handler(task_id, task, *args, **kwargs):
+def task_prerun_handler(task_id=None, task=None, args=None, kwargs=None, **signal_kwargs):
     """Log task start."""
     logger.info('task_started', extra={
         'task_id': task_id,
@@ -414,16 +428,17 @@ def task_prerun_handler(task_id, task, *args, **kwargs):
     })
 
 @task_postrun.connect
-def task_postrun_handler(task_id, task, *args, retval=None, **kwargs):
+def task_postrun_handler(task_id=None, task=None, args=None, kwargs=None, retval=None, state=None, **signal_kwargs):
     """Log task completion."""
     logger.info('task_completed', extra={
         'task_id': task_id,
         'task_name': task.name,
-        'result': str(retval)
+        'result': str(retval),
+        'state': state
     })
 
 @task_failure.connect
-def task_failure_handler(task_id, exception, *args, **kwargs):
+def task_failure_handler(task_id=None, exception=None, args=None, kwargs=None, **signal_kwargs):
     """Log task failure."""
     logger.error('task_failed', extra={
         'task_id': task_id,
@@ -470,8 +485,8 @@ logger = logging.getLogger(__name__)
 def log_with_trace(message: str, **kwargs):
     """Log with trace context."""
     span = trace.get_current_span()
-    if span:
-        span_context = span.get_span_context()
+    span_context = span.get_span_context()
+    if span_context.is_valid:
         kwargs['trace_id'] = format(span_context.trace_id, '032x')
         kwargs['span_id'] = format(span_context.span_id, '016x')
 
@@ -493,6 +508,13 @@ import logging
 import sys
 from pythonjsonlogger import jsonlogger
 
+class MaxLevelFilter(logging.Filter):
+    def __init__(self, max_level):
+        self.max_level = max_level
+
+    def filter(self, record):
+        return record.levelno < self.max_level
+
 def configure_logging():
     """Configure production logging."""
 
@@ -501,8 +523,9 @@ def configure_logging():
 
     # Create formatter
     formatter = jsonlogger.JsonFormatter(
-        '%(timestamp)s %(level)s %(name)s %(message)s',
+        '%(asctime)s %(levelname)s %(name)s %(message)s',
         rename_fields={
+            'asctime': 'timestamp',
             'levelname': 'level',
             'name': 'logger'
         },
@@ -521,6 +544,7 @@ def configure_logging():
     stdout_handler = logging.StreamHandler(sys.stdout)
     stdout_handler.setFormatter(formatter)
     stdout_handler.setLevel(logging.DEBUG)
+    stdout_handler.addFilter(MaxLevelFilter(logging.ERROR))
     root_logger.addHandler(stdout_handler)
 
     # Add stderr handler for errors
