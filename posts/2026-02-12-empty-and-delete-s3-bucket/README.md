@@ -8,7 +8,7 @@ Description: Step-by-step guide to emptying and deleting an S3 bucket, including
 
 ---
 
-You'd think deleting an S3 bucket would be straightforward. And it is, until it isn't. S3 won't let you delete a bucket unless it's completely empty, and "empty" means no objects, no object versions, no delete markers, and no incomplete multipart uploads. If versioning is involved, this gets complicated fast.
+You'd think deleting an S3 bucket would be straightforward. And it is, until it isn't. S3 won't let you delete a bucket unless it's completely empty, and "empty" means no objects, no object versions, and no delete markers. You should also clean up incomplete multipart uploads, because they can keep incurring storage charges and block deletion for S3 directory buckets. If versioning is involved, this gets complicated fast.
 
 Let's walk through the process properly, handling all the edge cases.
 
@@ -68,13 +68,14 @@ def empty_and_delete_bucket(bucket_name):
 
     # Abort any incomplete multipart uploads
     client = boto3.client('s3')
-    uploads = client.list_multipart_uploads(Bucket=bucket_name)
-    for upload in uploads.get('Uploads', []):
-        client.abort_multipart_upload(
-            Bucket=bucket_name,
-            Key=upload['Key'],
-            UploadId=upload['UploadId']
-        )
+    paginator = client.get_paginator('list_multipart_uploads')
+    for page in paginator.paginate(Bucket=bucket_name):
+        for upload in page.get('Uploads', []):
+            client.abort_multipart_upload(
+                Bucket=bucket_name,
+                Key=upload['Key'],
+                UploadId=upload['UploadId']
+            )
     print("Multipart uploads cleaned up.")
 
     # Delete the bucket
@@ -90,7 +91,7 @@ The `bucket.object_versions.all().delete()` line is the key. It handles both obj
 
 ## Handling Large Buckets
 
-For buckets with millions of objects, the Python approach above might time out or run out of memory. Use a lifecycle rule to expire objects first, then delete the bucket after.
+For buckets with millions of objects, the Python approach above might take a long time or hit request limits. Use a lifecycle rule to expire objects first, then delete the bucket after.
 
 Set a lifecycle rule that expires everything.
 
@@ -118,7 +119,7 @@ aws s3api put-bucket-lifecycle-configuration \
   }'
 ```
 
-Wait for S3 to process the lifecycle rules (this can take up to 48 hours). Then check if the bucket is empty and delete it.
+Wait for S3 to process the lifecycle rules (this is asynchronous and might take a few days). Then check if the bucket is empty and delete it.
 
 ```bash
 # Check if any objects remain
@@ -158,9 +159,9 @@ aws s3api delete-bucket-policy --bucket my-old-bucket
 aws s3 rb s3://my-old-bucket
 ```
 
-### Replication Configuration Blocking Deletion
+### Replication Configuration During Decommissioning
 
-If the bucket is a source for cross-region replication, you need to remove the replication configuration first.
+If the bucket is a source for cross-region replication, remove the replication configuration so S3 stops scheduling new replication work while you decommission the bucket.
 
 ```bash
 # Remove replication configuration
@@ -206,7 +207,7 @@ for BUCKET in $BUCKETS; do
     --bucket "$BUCKET" \
     --versioning-configuration Status=Suspended 2>/dev/null
 
-  # Remove all objects and versions
+  # Remove current objects
   aws s3 rm "s3://$BUCKET" --recursive 2>/dev/null
 
   # Use Python one-liner to delete versions
