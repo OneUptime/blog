@@ -8,7 +8,7 @@ Description: Learn how to configure Velero with Container Storage Interface (CSI
 
 ---
 
-Container Storage Interface (CSI) provides a standardized API for storage systems in Kubernetes, enabling portable volume snapshot capabilities across different storage providers. Velero's CSI integration leverages native Kubernetes volume snapshots, offering better performance and consistency compared to traditional backup methods. This approach works with any CSI-compliant storage driver, from cloud providers like AWS EBS and Azure Disk to on-premises solutions like Ceph and Longhorn.
+Container Storage Interface (CSI) provides a standardized API for storage systems in Kubernetes, enabling portable volume snapshot capabilities across different storage providers. Velero's CSI integration leverages native Kubernetes volume snapshots, offering better performance and consistency compared to traditional backup methods. This approach works with CSI storage drivers that support the Kubernetes VolumeSnapshot v1 API, from cloud providers like AWS EBS and Azure Disk to on-premises solutions like Ceph and Longhorn.
 
 ## Understanding CSI Volume Snapshots
 
@@ -35,13 +35,10 @@ If CRDs are missing, install the snapshot controller:
 
 ```bash
 # Install snapshot CRDs
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotclasses.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshotcontents.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/client/config/crd/snapshot.storage.k8s.io_volumesnapshots.yaml
+kubectl kustomize https://github.com/kubernetes-csi/external-snapshotter/client/config/crd | kubectl apply -f -
 
 # Install snapshot controller
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/rbac-snapshot-controller.yaml
-kubectl apply -f https://raw.githubusercontent.com/kubernetes-csi/external-snapshotter/master/deploy/kubernetes/snapshot-controller/setup-snapshot-controller.yaml
+kubectl -n kube-system kustomize https://github.com/kubernetes-csi/external-snapshotter/deploy/kubernetes/snapshot-controller | kubectl apply -f -
 ```
 
 Verify the snapshot controller is running:
@@ -52,20 +49,19 @@ kubectl get pods -n kube-system | grep snapshot-controller
 
 ## Installing Velero with CSI Support
 
-Install Velero with the CSI plugin enabled:
+Install Velero with CSI support enabled:
 
 ```bash
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.9.0,velero/velero-plugin-for-csi:v0.7.0 \
+  --plugins velero/velero-plugin-for-aws:v1.13.0 \
   --bucket my-velero-backups \
   --backup-location-config region=us-east-1 \
-  --use-node-agent \
   --features=EnableCSI \
   --secret-file ./credentials-velero
 ```
 
-The `--features=EnableCSI` flag enables CSI snapshot support, and the CSI plugin handles volume snapshot operations.
+The `--features=EnableCSI` flag enables CSI snapshot support. In Velero v1.14 and later, CSI support is built into Velero, so you do not need to install the separate CSI plugin.
 
 ## Creating a VolumeSnapshotClass
 
@@ -108,7 +104,7 @@ Apply the VolumeSnapshotClass:
 kubectl apply -f volumesnapshotclass.yaml
 ```
 
-The `velero.io/csi-volumesnapshot-class: "true"` label tells Velero to use this class for backups.
+The `velero.io/csi-volumesnapshot-class: "true"` label tells Velero to use this class for backups. Configure only one labeled VolumeSnapshotClass per CSI driver.
 
 ## Configuring Velero Backup with CSI Snapshots
 
@@ -128,8 +124,8 @@ Verify the backup includes volume snapshots:
 ```bash
 velero backup describe my-csi-backup --details
 
-# Check for VolumeSnapshot entries
-kubectl get volumesnapshots -A
+# Check CSI-specific backup log entries
+velero backup logs my-csi-backup | grep -i csi
 ```
 
 ## Creating Backup with Specific VolumeSnapshotClass
@@ -142,14 +138,14 @@ kind: Backup
 metadata:
   name: csi-backup-custom-class
   namespace: velero
+  annotations:
+    # Use specific snapshot class for the EBS CSI driver
+    velero.io/csi-volumesnapshot-class_ebs.csi.aws.com: "velero-snapshot-class"
 spec:
   includedNamespaces:
   - production
   snapshotVolumes: true
-  csi:
-    snapshotTimeout: 10m
-    # Use specific snapshot class
-    volumeSnapshotClassName: velero-snapshot-class
+  csiSnapshotTimeout: 10m
 ```
 
 Apply the backup:
@@ -158,9 +154,11 @@ Apply the backup:
 kubectl apply -f csi-backup.yaml
 ```
 
+Velero uses the `velero.io/csi-volumesnapshot-class_<driver name>` annotation to select a VolumeSnapshotClass for a specific Backup or Schedule.
+
 ## Handling Multi-Zone Volume Snapshots
 
-For clusters spanning multiple availability zones, configure zone-aware snapshots:
+For clusters spanning multiple availability zones on AWS EBS, configure Fast Snapshot Restore for the zones where you need faster volume initialization:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -172,14 +170,14 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Delete
 parameters:
-  # Enable multi-AZ snapshots
-  csi.storage.k8s.io/snapshotter-secret-name: aws-secret
-  csi.storage.k8s.io/snapshotter-secret-namespace: kube-system
-  # Tag snapshots with zone information
-  tagSpecification_1: "Zone={{ .VolumeSnapshotContent.Zone }}"
+  # Enable Fast Snapshot Restore in selected Availability Zones
+  fastSnapshotRestoreAvailabilityZones: "us-east-1a,us-east-1b"
+  # Tag snapshots with VolumeSnapshot metadata
+  tagSpecification_1: "snapshotnamespace={{ .VolumeSnapshotNamespace }}"
+  tagSpecification_2: "snapshotname={{ .VolumeSnapshotName }}"
 ```
 
-This configuration ensures snapshots can be restored across availability zones.
+EBS snapshots are regional resources, but Fast Snapshot Restore is enabled per Availability Zone and requires the EBS CSI driver IAM role to allow the `ec2:EnableFastSnapshotRestores` API. Interpolated snapshot tags require the EBS CSI external-snapshotter sidecar to run with `--extra-create-metadata`.
 
 ## Restoring Volumes from CSI Snapshots
 
@@ -204,7 +202,7 @@ During restore, Velero creates new PersistentVolumes from the VolumeSnapshots, a
 
 ## Monitoring CSI Snapshot Operations
 
-Track snapshot creation and status:
+Track snapshot creation and status while a backup is in progress:
 
 ```bash
 # List all volume snapshots
@@ -223,7 +221,8 @@ kubectl logs -n kube-system -l app=snapshot-controller -f
 Check Velero logs for CSI-specific operations:
 
 ```bash
-kubectl logs -n velero -l name=velero | grep -i csi
+velero backup logs <backup-name> | grep -i csi
+kubectl logs -n velero deploy/velero | grep -i csi
 ```
 
 ## Implementing Snapshot Lifecycle Policies
@@ -244,13 +243,12 @@ spec:
     includedNamespaces:
     - production
     snapshotVolumes: true
-    csi:
-      snapshotTimeout: 10m
+    csiSnapshotTimeout: 10m
     labels:
       backup-type: csi-snapshot
 ```
 
-When Velero deletes the backup, it also removes associated VolumeSnapshots and VolumeSnapshotContents.
+Velero removes the in-cluster VolumeSnapshot objects after the backup is uploaded. When Velero deletes the backup, it also deletes the associated snapshot data from object or block storage.
 
 ## Handling Snapshot Failures
 
@@ -266,34 +264,33 @@ spec:
   includedNamespaces:
   - production
   snapshotVolumes: true
-  csi:
-    # Increase timeout for large volumes
-    snapshotTimeout: 30m
-  # Hook to verify snapshot before proceeding
+  # Increase timeout for large volumes
+  csiSnapshotTimeout: 30m
+  # Hook to flush application data before snapshotting
   hooks:
     resources:
-    - name: verify-snapshot
+    - name: flush-application
       includedNamespaces:
       - production
+      includedResources:
+      - pods
       labelSelector:
         matchLabels:
           backup: required
-      post:
+      pre:
       - exec:
           command:
           - /bin/sh
           - -c
           - |
-            echo "Verifying snapshot creation..."
-            sleep 10
-            kubectl get volumesnapshots -n production
+            sync
 ```
 
-This configuration increases timeout and adds verification hooks.
+This configuration increases timeout and adds a pre-backup hook that flushes buffered filesystem writes before Velero creates snapshots.
 
 ## Optimizing Snapshot Performance
 
-Reduce snapshot time with optimized configurations:
+Reduce restore initialization time and protect snapshots with supported AWS EBS snapshot settings:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -305,12 +302,11 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Delete
 parameters:
-  # Use faster snapshot type (if supported)
-  type: fast
-  # Disable encryption for faster snapshots (not recommended for production)
-  encrypted: "false"
-  # Increase IOPS for snapshot operations
-  iops: "3000"
+  # Enable Fast Snapshot Restore in selected Availability Zones
+  fastSnapshotRestoreAvailabilityZones: "us-east-1a,us-east-1b"
+  # Lock snapshots in governance mode for seven days
+  lockMode: "governance"
+  lockDuration: "7"
 ```
 
 Balance performance with cost and security requirements.
@@ -365,11 +361,11 @@ Backup and restore the test application:
 # Create backup
 velero backup create test-csi-backup \
   --include-namespaces default \
-  --include-resources pvc,pod \
+  --snapshot-volumes=true \
   --wait
 
-# Verify snapshot was created
-kubectl get volumesnapshots -n default
+# Verify CSI snapshot details were recorded
+velero backup describe test-csi-backup --details
 
 # Delete the test resources
 kubectl delete pod test-pod -n default
@@ -377,6 +373,7 @@ kubectl delete pvc test-pvc -n default
 
 # Restore from backup
 velero restore create --from-backup test-csi-backup --wait
+kubectl wait --for=condition=Ready pod/test-pod -n default --timeout=120s
 
 # Verify data is restored
 kubectl exec test-pod -n default -- cat /data/test.txt
@@ -399,14 +396,14 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Delete
 parameters:
-  # Copy snapshots to different region for DR
-  destinationRegion: us-west-2
-  # Encrypt snapshots
-  encrypted: "true"
-  kmsKeyId: arn:aws:kms:us-east-1:123456789012:key/12345678-1234-1234-1234-123456789012
+  # Enable Fast Snapshot Restore for faster restores in selected zones
+  fastSnapshotRestoreAvailabilityZones: "us-east-1a,us-east-1b"
+  # Add snapshot tags for cost allocation and lifecycle policies
+  tagSpecification_1: "Environment=production"
+  tagSpecification_2: "snapshotcontent={{ .VolumeSnapshotContentName }}"
 ```
 
-This configuration enables cross-region snapshot copying and encryption.
+This configuration enables Fast Snapshot Restore and adds AWS tags that can be used for cost allocation and lifecycle policies. Interpolated snapshot tags require the EBS CSI external-snapshotter sidecar to run with `--extra-create-metadata`.
 
 ## Troubleshooting CSI Snapshot Issues
 
@@ -443,24 +440,23 @@ velero restore logs <restore-name>
 Increase snapshot timeout in backup spec:
 
 ```yaml
-csi:
-  snapshotTimeout: 30m
+csiSnapshotTimeout: 30m
 ```
 
 ## Monitoring Snapshot Costs
 
-Track storage costs for CSI snapshots:
+Track storage costs for CSI snapshots by reviewing retained Velero backups and provider snapshots:
 
 ```bash
-# List all snapshots with creation time
-kubectl get volumesnapshots -A -o custom-columns=\
-NAME:.metadata.name,\
-NAMESPACE:.metadata.namespace,\
-CREATED:.metadata.creationTimestamp,\
-READY:.status.readyToUse
+# List backups and expiration times
+velero backup get
 
-# Count total snapshots
-kubectl get volumesnapshots -A --no-headers | wc -l
+# For AWS EBS, list CSI-managed snapshots
+aws ec2 describe-snapshots \
+  --owner-ids self \
+  --filters Name=tag-key,Values=CSIVolumeSnapshotName \
+  --query 'Snapshots[*].[SnapshotId,StartTime,VolumeSize,State]' \
+  --output table
 ```
 
 Set up automated cleanup for old snapshots to control costs.
