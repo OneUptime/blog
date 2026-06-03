@@ -31,7 +31,7 @@ In the EC2 console, click on your instance and look at the details panel. You ne
 - **Public IPv4 DNS** - something like ec2-54-123-45-67.compute-1.amazonaws.com
 - **Key pair name** - confirms which private key to use
 
-If there's no public IP, your instance is in a private subnet. You'll need a bastion host, VPN, or AWS Systems Manager Session Manager to reach it.
+If there's no public IP, your instance may be in a private subnet or may not have a public address assigned. You'll need a bastion host, VPN, EC2 Instance Connect Endpoint, or AWS Systems Manager Session Manager to reach a private instance.
 
 ## Step 1: Set Key File Permissions
 
@@ -104,7 +104,7 @@ Host my-ec2
     HostName 54.123.45.67
     User ec2-user
     IdentityFile ~/keys/my-key.pem
-    StrictHostKeyChecking no
+    StrictHostKeyChecking accept-new
 ```
 
 Now you can connect with just:
@@ -136,7 +136,7 @@ If you prefer PuTTY, you need to convert your .pem key to .ppk format first:
 3. Click "Save private key" to save as .ppk
 
 Then in PuTTY:
-1. Enter the public IP in the "Host Name" field
+1. Enter the username and public IP in the "Host Name" field, like `ec2-user@54.123.45.67`
 2. Go to Connection > SSH > Auth > Credentials
 3. Browse to your .ppk file
 4. Go back to Session and click "Open"
