@@ -17,7 +17,7 @@ Custom metrics fill this gap. You can publish any numerical data point to CloudW
 There are two approaches:
 
 1. **CloudWatch PutMetricData API** - Direct API calls. More flexible, but adds latency and cost per API call.
-2. **Embedded Metric Format (EMF)** - Structured log lines that CloudWatch automatically extracts as metrics. Zero additional API calls, lower latency, and lower cost.
+2. **Embedded Metric Format (EMF)** - Structured log lines that CloudWatch automatically extracts as metrics. No PutMetricData API calls from your function, lower latency, and often lower cost.
 
 EMF is the recommended approach for Lambda. Let's cover both.
 
@@ -101,10 +101,10 @@ await publishMetrics([
 
 ## Approach 2: Embedded Metric Format (Recommended)
 
-EMF lets you publish metrics by simply logging a specially formatted JSON object. CloudWatch picks it up automatically - no API calls needed.
+EMF lets you publish metrics by simply logging a specially formatted JSON object. CloudWatch picks it up automatically - no PutMetricData API call needed.
 
 ```javascript
-// Publish metrics using Embedded Metric Format - zero API calls
+// Publish metrics using Embedded Metric Format - no PutMetricData API call
 function emitMetric(metrics, dimensions, properties = {}) {
   const metricDefinitions = Object.entries(metrics).map(([name, value]) => ({
     Name: name,
@@ -139,7 +139,7 @@ exports.handler = async (event) => {
   const order = await processOrder(event);
   const duration = Date.now() - startTime;
 
-  // Emit metrics via structured log - no API call needed
+  // Emit metrics via structured log - no PutMetricData API call needed
   emitMetric(
     {
       OrdersProcessed: 1,
@@ -210,6 +210,7 @@ npm install aws-embedded-metrics
 
 from aws_embedded_metrics import metric_scope
 from aws_embedded_metrics.unit import Unit
+import json
 
 @metric_scope
 def handler(event, context, metrics):
@@ -267,7 +268,7 @@ aws cloudwatch put-metric-alarm \
   --alarm-name "slow-order-processing" \
   --namespace MyApp \
   --metric-name ProcessingTime \
-  --statistic p99 \
+  --extended-statistic p99 \
   --period 300 \
   --evaluation-periods 2 \
   --threshold 5000 \
@@ -280,6 +281,7 @@ aws cloudwatch put-metric-alarm \
   --metrics '[
     {
       "Id": "errors",
+      "ReturnData": false,
       "MetricStat": {
         "Metric": {
           "Namespace": "MyApp",
@@ -292,6 +294,7 @@ aws cloudwatch put-metric-alarm \
     },
     {
       "Id": "total",
+      "ReturnData": false,
       "MetricStat": {
         "Metric": {
           "Namespace": "MyApp",
@@ -305,7 +308,8 @@ aws cloudwatch put-metric-alarm \
     {
       "Id": "errorRate",
       "Expression": "(errors / total) * 100",
-      "Label": "Error Rate %"
+      "Label": "Error Rate %",
+      "ReturnData": true
     }
   ]' \
   --threshold 5 \
@@ -324,7 +328,7 @@ Bad dimensions: UserId, OrderId, RequestId, Timestamp
 
 **Batch your metrics.** If using PutMetricData, batch multiple data points in a single call rather than making one API call per metric.
 
-**Prefer EMF over PutMetricData.** EMF is cheaper (you pay for log ingestion, not per-metric API calls), adds zero latency to your function, and the log lines double as searchable audit records.
+**Prefer EMF over PutMetricData.** EMF can be cheaper because you avoid PutMetricData request charges, but you still pay for log ingestion/storage and the custom metrics that CloudWatch generates. It avoids the latency of direct CloudWatch API calls from your function, and the log lines double as searchable audit records.
 
 ## Common Metric Patterns
 
@@ -366,4 +370,4 @@ exports.handler = async (event) => {
 
 ## Wrapping Up
 
-Custom CloudWatch metrics bridge the gap between infrastructure monitoring and business monitoring. They let you track what matters to your application - order volumes, processing times, error rates by endpoint, payment amounts - not just Lambda invocation counts. The Embedded Metric Format is the best approach for Lambda: it's free (beyond normal log costs), adds no latency, and your metric log lines serve as both metrics and searchable logs. Start with a few key business metrics and expand as you learn what's useful.
+Custom CloudWatch metrics bridge the gap between infrastructure monitoring and business monitoring. They let you track what matters to your application - order volumes, processing times, error rates by endpoint, payment amounts - not just Lambda invocation counts. The Embedded Metric Format is the best approach for Lambda: it avoids direct CloudWatch API calls from your function, while your metric log lines serve as both metrics and searchable logs. Start with a few key business metrics and expand as you learn what's useful.
