@@ -101,6 +101,7 @@ metadata:
 Apply the service account:
 
 ```bash
+kubectl create namespace production --dry-run=client -o yaml | kubectl apply -f -
 kubectl apply -f service-account.yaml
 
 # Verify creation
@@ -153,6 +154,8 @@ spec:
         app: gcs-app
     spec:
       serviceAccountName: gcs-access  # Use the configured service account
+      nodeSelector:
+        iam.gke.io/gke-metadata-server-enabled: "true"
       containers:
       - name: app
         image: gcr.io/my-project/gcs-app:latest
@@ -181,25 +184,24 @@ Verify that pods can access GCP services:
 # Create test pod with gcloud CLI
 kubectl run gcloud-test -n production \
   --image=google/cloud-sdk:alpine \
-  --serviceaccount=gcs-access \
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"gcs-access","nodeSelector":{"iam.gke.io/gke-metadata-server-enabled":"true"}}}' \
   --command -- sleep infinity
 
 # Exec into the pod
 kubectl exec -it gcloud-test -n production -- sh
 
 # Inside the pod, verify identity
-gcloud auth list
+curl -H "Metadata-Flavor: Google" \
+  http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/email
 
-# Should show the GCP service account:
-# Credentialed Accounts
-# ACTIVE  ACCOUNT
-# *       gcs-bucket-access@my-project.iam.gserviceaccount.com
+# Should show:
+# gcs-bucket-access@my-project.iam.gserviceaccount.com
 
 # Test GCS access
 gsutil ls gs://my-bucket/
 
 # Test programmatic access
-gcloud storage ls
+gcloud storage ls gs://my-bucket/
 
 # Clean up
 exit
@@ -213,20 +215,20 @@ Google Cloud client libraries automatically use Workload Identity:
 ```python
 # app.py
 from google.cloud import storage
-import os
 
-def list_buckets():
-    """List GCS buckets using Workload Identity"""
+def list_objects(bucket_name):
+    """List GCS objects using Workload Identity"""
     # Client libraries automatically use Workload Identity
     # No explicit credentials needed!
     storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
 
-    buckets = storage_client.list_buckets()
-    for bucket in buckets:
-        print(f"Bucket: {bucket.name}")
+    blobs = bucket.list_blobs()
+    for blob in blobs:
+        print(f"Object: {blob.name}")
 
 def upload_file(bucket_name, source_file, destination_blob):
-    """Upload file to GCS using Workload Identity"""
+    """Upload file to GCS using Workload Identity. Requires storage.objects.create."""
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(destination_blob)
@@ -245,7 +247,7 @@ def download_file(bucket_name, source_blob, destination_file):
 
 if __name__ == "__main__":
     print("Testing Workload Identity...")
-    list_buckets()
+    list_objects("my-bucket")
 ```
 
 No credential configuration needed in the code - Workload Identity handles authentication automatically.
@@ -288,6 +290,9 @@ gcloud projects add-iam-policy-binding my-project \
   --member="serviceAccount:db-backup@my-project.iam.gserviceaccount.com" \
   --role="roles/storage.objectCreator"
 
+# Create namespace for jobs
+kubectl create namespace jobs --dry-run=client -o yaml | kubectl apply -f -
+
 # Create Kubernetes service account
 kubectl create serviceaccount db-backup -n jobs
 
@@ -329,8 +334,9 @@ gcloud iam service-accounts get-iam-policy \
 # Test from pod
 kubectl run -it --rm debug \
   --image=google/cloud-sdk:alpine \
-  --serviceaccount=gcs-access \
-  -n production -- gcloud auth list
+  --overrides='{"apiVersion":"v1","spec":{"serviceAccountName":"gcs-access","nodeSelector":{"iam.gke.io/gke-metadata-server-enabled":"true"}}}' \
+  -n production \
+  --command -- sh -c 'curl -H "Metadata-Flavor: Google" http://169.254.169.254/computeMetadata/v1/instance/service-accounts/default/email'
 ```
 
 If authentication fails, verify the annotation on the Kubernetes service account matches the GCP service account exactly.
@@ -347,12 +353,14 @@ gcloud logging read \
   --format json
 
 # Create monitoring alert for unexpected usage
-gcloud alpha monitoring policies create \
+gcloud monitoring policies create \
   --notification-channels=CHANNEL_ID \
   --display-name="Unusual GCS Access" \
   --condition-display-name="High API Calls" \
-  --condition-threshold-value=100 \
-  --condition-threshold-duration=60s
+  --condition-filter='metric.type="serviceruntime.googleapis.com/api/request_count" AND resource.type="consumed_api" AND resource.label.service="storage.googleapis.com"' \
+  --aggregation='{"alignmentPeriod":"60s","perSeriesAligner":"ALIGN_DELTA","crossSeriesReducer":"REDUCE_SUM"}' \
+  --duration=60s \
+  --if='> 100'
 ```
 
 Monitor which pods are using which service accounts to detect anomalies.
@@ -389,12 +397,12 @@ Regularly audit service account permissions and remove unused accounts:
 # List all service accounts
 gcloud iam service-accounts list
 
-# Check when each was last used
+# Review IAM policy bindings for each account
 gcloud iam service-accounts get-iam-policy SA_EMAIL \
   --format=json | jq '.bindings'
 ```
 
-Enable organization policy constraints to require Workload Identity and prevent service account key creation.
+Enable organization policy constraints to prevent service account key creation.
 
 ## Conclusion
 
