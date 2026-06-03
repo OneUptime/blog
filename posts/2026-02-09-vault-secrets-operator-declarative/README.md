@@ -12,9 +12,9 @@ Managing secrets imperatively through scripts or manual commands doesn't fit wel
 
 ## Understanding Vault Secrets Operator
 
-VSO is the official HashiCorp operator that manages Vault resources using Kubernetes custom resources. Unlike External Secrets Operator which is third-party, VSO is built and maintained by HashiCorp specifically for Vault integration. It supports all Vault authentication methods, secret engines, and advanced features like secret caching and transformation.
+VSO is the official HashiCorp operator that manages Vault resources using Kubernetes custom resources. Unlike External Secrets Operator which is third-party, VSO is built and maintained by HashiCorp specifically for Vault integration. It supports common Vault authentication methods, supported Vault secret engines, and advanced features like secret caching and transformation.
 
-The operator watches VaultAuth, VaultStaticSecret, and VaultDynamicSecret resources, automatically creating Kubernetes Secrets with data from Vault.
+The operator watches resources such as VaultConnection, VaultAuth, VaultStaticSecret, VaultDynamicSecret, and VaultPKISecret, automatically creating Kubernetes Secrets with data from Vault.
 
 ## Installing Vault Secrets Operator
 
@@ -28,12 +28,12 @@ helm repo update
 
 # Install Vault Secrets Operator
 helm install vault-secrets-operator hashicorp/vault-secrets-operator \
-  --namespace vault-secrets-operator-system \
+  --namespace vault-secrets-operator \
   --create-namespace \
-  --version 0.4.0
+  --version 1.4.0
 
 # Verify installation
-kubectl -n vault-secrets-operator-system get pods
+kubectl -n vault-secrets-operator get pods
 kubectl get crds | grep secrets.hashicorp.com
 ```
 
@@ -47,7 +47,7 @@ apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultConnection
 metadata:
   name: vault-connection
-  namespace: vault-secrets-operator-system
+  namespace: vault-secrets-operator
 spec:
   # Vault server address
   address: http://vault.vault.svc.cluster.local:8200
@@ -76,7 +76,7 @@ metadata:
   namespace: default
 spec:
   # Reference to VaultConnection
-  vaultConnectionRef: vault-connection
+  vaultConnectionRef: vault-secrets-operator/vault-connection
 
   # Authentication method
   method: kubernetes
@@ -88,9 +88,6 @@ spec:
   kubernetes:
     role: app
     serviceAccount: app-sa
-
-  # Namespace where VaultConnection exists
-  namespace: vault-secrets-operator-system
 ```
 
 ```bash
@@ -264,8 +261,8 @@ spec:
     create: true
     type: kubernetes.io/tls
 
-  # Auto-renew at 67% of TTL
-  renewBefore: 240h
+  # Renew the certificate before it expires
+  expiryOffset: 240h
 
   # Restart deployment when cert rotates
   rolloutRestartTargets:
@@ -329,7 +326,7 @@ spec:
           secretName: app-tls-cert
 ```
 
-When VSO updates secrets, it automatically restarts the deployment due to rolloutRestartTargets.
+When VSO updates secrets, it restarts the deployment if the secret resource has matching rolloutRestartTargets configured.
 
 ## Implementing Secret Caching
 
@@ -341,23 +338,25 @@ apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultAuth
 metadata:
   name: vault-auth-cached
-  namespace: default
+  namespace: vault-secrets-operator
+  labels:
+    cacheStorageEncryption: "true"
 spec:
   vaultConnectionRef: vault-connection
   method: kubernetes
   mount: kubernetes
 
   kubernetes:
-    role: app
-    serviceAccount: app-sa
+    role: operator
+    serviceAccount: vault-secrets-operator-controller-manager
 
   # Enable caching
   storageEncryption:
     mount: transit
     keyName: vso-cache-key
-
-  namespace: vault-secrets-operator-system
 ```
+
+For encrypted persistent caching to take effect, also enable the operator's client cache persistence model in the Helm values, for example `controller.manager.clientCache.persistenceModel: direct-encrypted`.
 
 ## Managing Multiple Vault Instances
 
@@ -370,7 +369,7 @@ apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultConnection
 metadata:
   name: vault-prod
-  namespace: vault-secrets-operator-system
+  namespace: vault-secrets-operator
 spec:
   address: https://vault.prod.company.com:8200
   skipTLSVerify: false
@@ -382,7 +381,7 @@ apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultConnection
 metadata:
   name: vault-dev
-  namespace: vault-secrets-operator-system
+  namespace: vault-secrets-operator
 spec:
   address: https://vault.dev.company.com:8200
   skipTLSVerify: true
@@ -395,7 +394,7 @@ metadata:
   name: vault-auth-prod
   namespace: production
 spec:
-  vaultConnectionRef: vault-prod
+  vaultConnectionRef: vault-secrets-operator/vault-prod
   method: kubernetes
   mount: kubernetes
   kubernetes:
@@ -412,9 +411,11 @@ metadata:
 spec:
   vaultAuthRef: vault-auth-prod
   mount: secret
+  type: kv-v2
   path: prod/app/config
   destination:
     name: prod-config-secret
+    create: true
 ```
 
 ## Monitoring VSO Operations
@@ -423,7 +424,7 @@ Track operator health and secret sync status:
 
 ```bash
 # View operator logs
-kubectl -n vault-secrets-operator-system logs -l app.kubernetes.io/name=vault-secrets-operator
+kubectl -n vault-secrets-operator logs -l app.kubernetes.io/name=vault-secrets-operator
 
 # Check VaultAuth status
 kubectl get vaultauth -A -o wide
@@ -469,8 +470,6 @@ Kustomization for production:
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-namespace: production
-
 resources:
 - ../../base/vault-connection.yaml
 - ../../base/vault-auth.yaml
@@ -491,7 +490,7 @@ Automate secret rotation with VSO:
 apiVersion: secrets.hashicorp.com/v1beta1
 kind: VaultDynamicSecret
 metadata:
-  name: rotated-api-key
+  name: rotated-db-credentials
   namespace: default
 spec:
   vaultAuthRef: vault-auth
@@ -500,7 +499,7 @@ spec:
   path: creds/api-user
 
   destination:
-    name: api-credentials
+    name: rotated-db-credentials
     create: true
 
   # Renew at 67% of lease duration
@@ -509,20 +508,17 @@ spec:
   # Revoke credentials when secret is deleted
   revoke: true
 
-  # Force refresh every 6 hours
+  # Fallback refresh interval if the secret engine returns no lease TTL
   refreshAfter: 6h
 
   # Automatically restart using rotated credentials
   rolloutRestartTargets:
   - kind: Deployment
-    name: api-service
-    selector:
-      matchLabels:
-        app: api-service
+    name: myapp
 ```
 
 ## Best Practices
 
-Use VaultConnection in operator namespace for centralized management. Create separate VaultAuth resources per namespace for isolation. Set appropriate refreshAfter intervals based on secret sensitivity. Always use rolloutRestartTargets for automatic application updates. Enable secret caching for high-throughput applications. Store VSO resources in Git for GitOps workflows. Use transformations to format secrets for application requirements. Monitor VSO metrics and logs for sync issues. Implement proper RBAC for VaultAuth custom resources. Test secret rotation in non-production environments first.
+Use VaultConnection in operator namespace for centralized management. Create separate VaultAuth resources per namespace for isolation. Set appropriate refreshAfter intervals based on secret sensitivity. Use rolloutRestartTargets when applications cannot dynamically reload updated secrets. Enable secret caching for high-throughput applications. Store VSO resources in Git for GitOps workflows. Use transformations to format secrets for application requirements. Monitor VSO metrics and logs for sync issues. Implement proper RBAC for VaultAuth custom resources. Test secret rotation in non-production environments first.
 
 Vault Secrets Operator provides Kubernetes-native, declarative secret management that fits naturally into GitOps workflows. By defining secrets as custom resources, you can version control secret configurations, automate synchronization, and implement proper secret lifecycle management. This approach provides the best integration between Vault and Kubernetes for production secret management.
