@@ -10,13 +10,13 @@ Description: Learn how to set up Amazon FSx for NetApp ONTAP, a fully managed mu
 
 If you're coming from an on-premises environment where NetApp filers are the backbone of your storage infrastructure, moving to AWS can feel like giving up a lot of features. SnapMirror, FlexClone, deduplication, compression, thin provisioning, multi-protocol access - these are things your storage team relies on daily. FSx for NetApp ONTAP brings all of that to AWS as a fully managed service.
 
-It's the most feature-rich FSx option, supporting NFS, SMB, and iSCSI simultaneously on the same data. That means Linux, Windows, and even SAN workloads can all share a single storage system. Let's set it up.
+It's the most feature-rich FSx option, supporting NFS, SMB, and iSCSI on the same storage platform. That means Linux, Windows, and even SAN workloads can all share a single storage system. Let's set it up.
 
 ## Why FSx for NetApp ONTAP
 
 Here's what makes ONTAP different from the other FSx options:
 
-- **Multi-protocol**: NFS, SMB, and iSCSI on the same data - no duplication needed
+- **Multi-protocol**: NFS and SMB can access the same volume, and iSCSI LUNs can run on the same storage platform
 - **Thin provisioning**: Create volumes larger than your physical storage and grow on demand
 - **Instant clones**: FlexClone creates writable copies of volumes in seconds, regardless of size
 - **Snapshots**: Space-efficient snapshots with configurable schedules
@@ -40,7 +40,7 @@ graph TB
 
 - **File System**: The top-level resource. Contains the ONTAP cluster.
 - **Storage Virtual Machine (SVM)**: A logical partition within the file system. Each SVM has its own DNS name, Active Directory configuration, and volumes. Think of it as a virtual filer.
-- **Volume**: Where data actually lives. Each volume has its own junction path, security style (UNIX, NTFS, or mixed), and tiering policy.
+- **Volume**: Where file data or iSCSI LUNs actually live. Each NAS volume has its own junction path, security style (UNIX, NTFS, or mixed), and tiering policy.
 
 ## Creating the File System
 
@@ -89,7 +89,7 @@ aws fsx describe-file-systems \
 
 ## Creating a Storage Virtual Machine
 
-An SVM is automatically created during file system creation, but you can create additional ones:
+When you create a file system from the AWS console, FSx can automatically create a default SVM. When you create the file system with the CLI as shown above, create an SVM explicitly:
 
 ```bash
 # Create an SVM for your application
@@ -129,7 +129,7 @@ aws fsx create-volume \
   --ontap-configuration '{
     "JunctionPath": "/app-data",
     "StorageVirtualMachineId": "svm-0abc123",
-    "SizeInMegabytes": 102400,
+    "SizeInBytes": 107374182400,
     "StorageEfficiencyEnabled": true,
     "SecurityStyle": "UNIX",
     "TieringPolicy": {
@@ -151,7 +151,7 @@ aws fsx create-volume \
   --ontap-configuration '{
     "JunctionPath": "/windows-share",
     "StorageVirtualMachineId": "svm-0abc123",
-    "SizeInMegabytes": 51200,
+    "SizeInBytes": 53687091200,
     "StorageEfficiencyEnabled": true,
     "SecurityStyle": "NTFS",
     "TieringPolicy": {
@@ -165,6 +165,7 @@ aws fsx create-volume \
 Key volume options:
 
 - **JunctionPath**: The mount path within the SVM's namespace
+- **SizeInBytes**: The configured size of the volume, in bytes
 - **StorageEfficiencyEnabled**: Enables deduplication and compression
 - **TieringPolicy**: `AUTO` moves cold data to capacity pool, `SNAPSHOT_ONLY` tiers only snapshot data, `ALL` tiers everything, `NONE` keeps everything on SSD
 
@@ -202,6 +203,13 @@ echo "svm-0abc123.fs-0abc123.fsx.us-east-1.amazonaws.com:/app-data /mnt/ontap nf
 
 On Windows instances that are domain-joined:
 
+First create an SMB share on the SVM with the ONTAP CLI:
+
+```bash
+ssh fsxadmin@management.fs-0abc123.fsx.us-east-1.amazonaws.com
+vserver cifs share create -vserver app-svm -share-name windows-share -path /windows-share
+```
+
 ```powershell
 # Map the SMB share
 net use Z: \\svm-0abc123.fs-0abc123.fsx.us-east-1.amazonaws.com\windows-share
@@ -214,7 +222,7 @@ New-PSDrive -Name "Z" -PSProvider FileSystem `
 
 ## Working with Snapshots
 
-Create and manage snapshots through the ONTAP CLI or API:
+Create and manage snapshots through the AWS CLI or Amazon FSx API:
 
 ```bash
 # Create a snapshot
@@ -236,7 +244,7 @@ aws fsx create-volume \
   --ontap-configuration '{
     "JunctionPath": "/restored-data",
     "StorageVirtualMachineId": "svm-0abc123",
-    "SizeInMegabytes": 102400,
+    "SizeInBytes": 107374182400,
     "CopyTagsToBackups": true,
     "SnapshotPolicy": "default",
     "SecurityStyle": "UNIX"
@@ -264,7 +272,7 @@ aws fsx create-volume \
   --ontap-configuration '{
     "JunctionPath": "/dev-clone",
     "StorageVirtualMachineId": "svm-0abc123",
-    "SizeInMegabytes": 102400,
+    "SizeInBytes": 107374182400,
     "SecurityStyle": "UNIX"
   }' \
   --origin-snapshot '{
@@ -353,7 +361,15 @@ resource "aws_security_group" "ontap" {
     security_groups = [var.client_security_group_id]
   }
 
-  # ONTAP management
+  # ONTAP CLI management
+  ingress {
+    from_port       = 22
+    to_port         = 22
+    protocol        = "tcp"
+    security_groups = [var.admin_security_group_id]
+  }
+
+  # ONTAP REST API management
   ingress {
     from_port       = 443
     to_port         = 443
@@ -388,7 +404,7 @@ Tiering policies:
 aws cloudwatch get-metric-statistics \
   --namespace "AWS/FSx" \
   --metric-name "StorageCapacityUtilization" \
-  --dimensions "Name=FileSystemId,Value=fs-0abc123" \
+  --dimensions "Name=FileSystemId,Value=fs-0abc123" "Name=StorageTier,Value=SSD" "Name=DataType,Value=All" \
   --start-time "$(date -u -d '24 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 3600 \
