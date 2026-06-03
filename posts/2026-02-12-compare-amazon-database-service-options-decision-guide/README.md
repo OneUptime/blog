@@ -27,10 +27,10 @@ Before diving into individual services, answer these questions about your worklo
 graph TD
     A[What data model?] --> B{Relational?}
     B -->|Yes| C{Scale?}
-    C -->|< 64TB| D{Need MySQL/PostgreSQL?}
+    C -->|< 64TiB| D{Need MySQL/PostgreSQL?}
     D -->|Yes| E[Aurora]
     D -->|No| F[RDS]
-    C -->|> 64TB / OLAP| G[Redshift]
+    C -->|> 64TiB / OLAP| G[Redshift]
     B -->|No| H{Key-Value / Document?}
     H -->|Yes| I{Need microsecond latency?}
     I -->|Yes| J[DynamoDB + DAX]
@@ -48,11 +48,11 @@ graph TD
 
 ### Amazon RDS
 
-RDS is the default choice for traditional relational workloads. It supports MySQL, PostgreSQL, MariaDB, Oracle, and SQL Server.
+RDS is the default choice for traditional relational workloads. It supports MySQL, PostgreSQL, MariaDB, Oracle, SQL Server, and Db2.
 
 **Best for:** Lift-and-shift of existing relational applications, small to medium workloads, teams that want managed infrastructure without code changes.
 
-**Limits:** Maximum storage of 64TB (varies by engine), single-region primary, read replicas up to 15 (Aurora) or 5 (standard RDS).
+**Limits:** Maximum storage commonly reaches 64 TiB for most engines, with higher limits for some Oracle and SQL Server configurations. Standard RDS read replica limits vary by engine, but MySQL, MariaDB, PostgreSQL, Oracle, and SQL Server support up to 15 read replicas per source instance in supported configurations.
 
 **Pricing model:** Instance-hours plus storage. A `db.r6g.large` with 100GB costs roughly $200-300/month depending on region and engine.
 
@@ -62,20 +62,20 @@ Aurora is AWS's re-engineered MySQL and PostgreSQL compatible database. The stor
 
 **Best for:** Production workloads that need high availability, read-heavy applications that benefit from up to 15 read replicas, teams that want better performance without leaving MySQL/PostgreSQL.
 
-**Key differentiator:** Aurora's storage auto-scales up to 128TB. You never need to provision storage upfront. Failover takes around 30 seconds compared to several minutes with standard RDS.
+**Key differentiator:** Aurora's storage auto-scales up to 128 TiB. You never need to provision storage upfront. Failover takes around 30 seconds compared to several minutes with standard RDS.
 
-**Aurora Serverless v2** is worth considering if your traffic is highly variable. It scales from 0.5 ACUs to 256 ACUs based on demand. Great for dev/test environments and applications with unpredictable traffic.
+**Aurora Serverless v2** is worth considering if your traffic is highly variable. Depending on the Aurora engine version and platform version, it scales from 0 or 0.5 ACUs up to 256 ACUs based on demand. Great for dev/test environments and applications with unpredictable traffic.
 
 ```text
 Comparison: Standard RDS vs Aurora
 
 | Feature              | RDS              | Aurora           |
 |---------------------|------------------|------------------|
-| Max Storage         | 64 TB            | 128 TB           |
+| Max Storage         | 64 TiB           | 128 TiB          |
 | Replication         | Async            | Sync (storage)   |
-| Read Replicas       | 5                | 15               |
+| Read Replicas       | Up to 15         | 15               |
 | Failover Time       | 1-2 minutes      | ~30 seconds      |
-| Storage Auto-scale  | Manual           | Automatic        |
+| Storage Auto-scale  | Optional scale-up| Automatic        |
 | Cost                | Lower base       | ~20% more        |
 ```
 
@@ -108,15 +108,15 @@ For microsecond latency, add DAX (DynamoDB Accelerator) as an in-memory caching 
 
 import amazondax
 
-dax_client = amazondax.AmazonDaxClient(
-    endpoints=['my-dax-cluster.abc123.dax-clusters.us-east-1.amazonaws.com:8111']
+dax = amazondax.AmazonDaxClient.resource(
+    endpoint_url='dax://my-dax-cluster.abc123.dax-clusters.us-east-1.amazonaws.com',
+    region_name='us-east-1'
 )
 
+table = dax.Table('users')
+
 # This read goes through DAX cache first
-response = dax_client.get_item(
-    TableName='users',
-    Key={'user_id': {'S': 'user-123'}}
-)
+response = table.get_item(Key={'user_id': 'user-123'})
 ```
 
 ### Amazon DocumentDB
@@ -137,7 +137,7 @@ Keyspaces is a managed Apache Cassandra-compatible service.
 
 ### Amazon Neptune
 
-Neptune is a graph database that supports both Gremlin (property graph) and SPARQL (RDF) query languages.
+Neptune is a graph database that supports Gremlin and openCypher for property graphs, and SPARQL for RDF graphs.
 
 **Best for:** Social networks, recommendation engines, fraud detection, knowledge graphs, anything where relationships between entities are the primary query pattern.
 
@@ -158,23 +158,23 @@ Timestream is purpose-built for time-series data.
 
 ### Amazon ElastiCache
 
-ElastiCache provides managed Redis or Memcached.
+ElastiCache provides managed Valkey, Redis OSS, or Memcached.
 
 **Best for:** Caching layer in front of a primary database, session stores, real-time leaderboards, pub/sub messaging, rate limiting.
 
 ElastiCache is not a standalone database - it is almost always used alongside another database to improve read performance. A typical architecture puts ElastiCache between your application and RDS/Aurora.
 
-### Amazon MemoryDB for Redis
+### Amazon MemoryDB
 
-MemoryDB is a durable, Redis-compatible database. Unlike ElastiCache, it provides data durability with multi-AZ transaction logging.
+MemoryDB is a durable, Valkey- and Redis OSS-compatible database. Unlike ElastiCache, it provides data durability with multi-AZ transaction logging.
 
 **Best for:** Use cases where you want Redis as a primary database (not just a cache), applications that need both the speed of Redis and the durability of a traditional database.
 
-### Amazon QLDB
+### Amazon QLDB (end of support)
 
-Quantum Ledger Database provides an immutable, cryptographically verifiable transaction log.
+Amazon QLDB provided an immutable, cryptographically verifiable transaction log, but AWS ended support for QLDB on July 31, 2025. Do not choose it for new workloads.
 
-**Best for:** Audit trails, supply chain tracking, financial transaction histories, any system where you need to prove data has not been tampered with.
+**Best for:** Existing QLDB customers who are migrating away from the service. For new audit-trail or ledger-style designs, evaluate currently supported AWS database patterns instead.
 
 ## Cost Comparison
 
@@ -187,8 +187,8 @@ Here is a rough monthly cost comparison for a moderate workload (assuming us-eas
 | Aurora MySQL    | db.r6g.large, 100GB       | $300                    |
 | Aurora Srvless  | 4 ACU average, 100GB      | $350                    |
 | DynamoDB        | 100 WCU, 400 RCU, 25GB   | $100                    |
-| DynamoDB On-Dem | 10M writes, 50M reads     | $75                     |
-| Redshift        | 2x ra3.xlplus             | $500                    |
+| DynamoDB On-Dem | 10M writes, 50M reads     | $25-50                  |
+| Redshift        | 2x ra3.xlplus             | $1,500+                 |
 | ElastiCache     | cache.r6g.large           | $200                    |
 | Neptune         | db.r5.large               | $280                    |
 | Timestream      | 10GB memory, 100GB mag    | $350                    |
@@ -203,7 +203,7 @@ For most teams building a new application, the decision comes down to:
 - **Web applications with relational data:** Aurora (PostgreSQL or MySQL)
 - **APIs with known access patterns at scale:** DynamoDB
 - **Analytics and reporting:** Redshift
-- **Caching layer:** ElastiCache (Redis)
+- **Caching layer:** ElastiCache (Valkey or Redis OSS)
 
 Do not over-engineer your database selection. Start with what your team knows. A well-operated PostgreSQL database on Aurora will serve 95% of applications just fine. You can always add specialized databases later for specific use cases.
 
