@@ -149,11 +149,13 @@ Here are the most useful query patterns.
 
 ```sql
 -- Get the latest CPU usage for each server
-SELECT hostname, measure_value::double AS cpu_usage, time
+SELECT hostname,
+       max_by(measure_value::double, time) AS cpu_usage,
+       max(time) AS latest_time
 FROM monitoring.server_metrics
 WHERE measure_name = 'cpu_usage'
   AND time > ago(1h)
-ORDER BY time DESC
+GROUP BY hostname
 ```
 
 ```sql
@@ -247,7 +249,14 @@ aws timestream-query create-scheduled-query \
       }
     }
   }' \
-  --scheduled-query-execution-role-arn arn:aws:iam::123456789:role/TimestreamScheduledQueryRole
+  --scheduled-query-execution-role-arn arn:aws:iam::123456789:role/TimestreamScheduledQueryRole \
+  --error-report-configuration '{
+    "S3Configuration": {
+      "BucketName": "timestream-error-reports",
+      "ObjectKeyPrefix": "scheduled-query-errors/",
+      "EncryptionOption": "SSE_S3"
+    }
+  }'
 ```
 
 ## Batch Ingestion from Applications
@@ -309,7 +318,7 @@ Timestream charges for writes, storage, and queries. Here's how to keep costs do
 - Use multi-measure records to reduce the number of write operations
 - Set memory retention to the minimum you need for real-time queries
 - Use scheduled queries to pre-aggregate data for dashboard queries
-- Avoid `SELECT *` - query only the columns you need, as Timestream charges per byte scanned
+- Avoid `SELECT *` - query only the columns you need, because extra columns increase the amount of data scanned and the query work Timestream has to perform
 
 ## Wrapping Up
 
