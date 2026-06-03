@@ -17,7 +17,7 @@ Outputs declare what information to extract from your resources. Each output has
 ```hcl
 output "cluster_endpoint" {
   description = "Kubernetes cluster API endpoint"
-  value       = data.kubernetes_service.api.status[0].load_balancer[0].ingress[0].hostname
+  value       = coalesce(data.kubernetes_service.api.status[0].load_balancer[0].ingress[0].hostname, data.kubernetes_service.api.status[0].load_balancer[0].ingress[0].ip)
 }
 ```
 
@@ -100,6 +100,8 @@ Export service endpoints for applications to consume:
 
 ```hcl
 resource "kubernetes_service" "api" {
+  wait_for_load_balancer = true
+
   metadata {
     name      = "api-gateway"
     namespace = "production"
@@ -141,7 +143,7 @@ resource "kubernetes_service" "database" {
 
 output "api_endpoint" {
   description = "External API endpoint"
-  value       = "http://${kubernetes_service.api.status[0].load_balancer[0].ingress[0].hostname}"
+  value       = "http://${coalesce(kubernetes_service.api.status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.api.status[0].load_balancer[0].ingress[0].ip)}"
 }
 
 output "api_internal_endpoint" {
@@ -157,7 +159,7 @@ output "database_endpoint" {
 output "service_endpoints" {
   description = "Map of all service endpoints"
   value = {
-    api      = "http://${kubernetes_service.api.status[0].load_balancer[0].ingress[0].hostname}"
+    api      = "http://${coalesce(kubernetes_service.api.status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.api.status[0].load_balancer[0].ingress[0].ip)}"
     database = "${kubernetes_service.database.metadata[0].name}.${kubernetes_service.database.metadata[0].namespace}.svc.cluster.local:5432"
   }
 }
@@ -173,12 +175,13 @@ resource "kubernetes_ingress_v1" "app" {
     name      = "app-ingress"
     namespace = "production"
     annotations = {
-      "kubernetes.io/ingress.class" = "nginx"
       "cert-manager.io/cluster-issuer" = "letsencrypt-prod"
     }
   }
 
   spec {
+    ingress_class_name = "nginx"
+
     rule {
       host = "api.example.com"
       http {
@@ -271,8 +274,8 @@ resource "kubernetes_secret" "app_secrets" {
   }
 
   data = {
-    api_key     = base64encode(var.api_key)
-    db_password = base64encode(var.db_password)
+    api_key     = var.api_key
+    db_password = var.db_password
   }
 }
 
@@ -338,7 +341,7 @@ output "application_info" {
         replicas        = resources.deployment.spec[0].replicas
         service_name    = resources.service.metadata[0].name
         service_type    = resources.service.spec[0].type
-        endpoint        = resources.service.spec[0].type == "LoadBalancer" ? resources.service.status[0].load_balancer[0].ingress[0].hostname : "${resources.service.metadata[0].name}.${resources.service.metadata[0].namespace}.svc.cluster.local"
+        endpoint        = resources.service.spec[0].type == "LoadBalancer" ? coalesce(resources.service.status[0].load_balancer[0].ingress[0].hostname, resources.service.status[0].load_balancer[0].ingress[0].ip) : "${resources.service.metadata[0].name}.${resources.service.metadata[0].namespace}.svc.cluster.local"
       }
     }
     ingress = {
@@ -346,7 +349,7 @@ output "application_info" {
         for rule in kubernetes_ingress_v1.app.spec[0].rule :
         "https://${rule.host}"
       ]
-      class = kubernetes_ingress_v1.app.metadata[0].annotations["kubernetes.io/ingress.class"]
+      class = kubernetes_ingress_v1.app.spec[0].ingress_class_name
     }
   }
 }
@@ -379,9 +382,9 @@ output "smoke_test_endpoints" {
 output "monitoring_urls" {
   description = "Monitoring and observability URLs"
   value = {
-    prometheus = "http://${kubernetes_service.prometheus.status[0].load_balancer[0].ingress[0].hostname}:9090"
-    grafana    = "http://${kubernetes_service.grafana.status[0].load_balancer[0].ingress[0].hostname}:3000"
-    alertmanager = "http://${kubernetes_service.alertmanager.status[0].load_balancer[0].ingress[0].hostname}:9093"
+    prometheus   = "http://${coalesce(kubernetes_service.prometheus.status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.prometheus.status[0].load_balancer[0].ingress[0].ip)}:9090"
+    grafana      = "http://${coalesce(kubernetes_service.grafana.status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.grafana.status[0].load_balancer[0].ingress[0].ip)}:3000"
+    alertmanager = "http://${coalesce(kubernetes_service.alertmanager.status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.alertmanager.status[0].load_balancer[0].ingress[0].ip)}:9093"
   }
 }
 ```
@@ -439,6 +442,8 @@ variable "enable_monitoring" {
 resource "kubernetes_service" "prometheus" {
   count = var.enable_monitoring ? 1 : 0
 
+  wait_for_load_balancer = true
+
   metadata {
     name      = "prometheus"
     namespace = "monitoring"
@@ -459,7 +464,7 @@ resource "kubernetes_service" "prometheus" {
 
 output "prometheus_endpoint" {
   description = "Prometheus endpoint (if enabled)"
-  value       = var.enable_monitoring ? "http://${kubernetes_service.prometheus[0].status[0].load_balancer[0].ingress[0].hostname}:9090" : null
+  value       = var.enable_monitoring ? "http://${coalesce(kubernetes_service.prometheus[0].status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.prometheus[0].status[0].load_balancer[0].ingress[0].ip)}:9090" : null
 }
 ```
 
@@ -527,8 +532,8 @@ output "deployment_summary" {
     - Cache: redis.production.svc.cluster.local:6379
 
     Monitoring:
-    - Prometheus: http://${kubernetes_service.prometheus.status[0].load_balancer[0].ingress[0].hostname}:9090
-    - Grafana: http://${kubernetes_service.grafana.status[0].load_balancer[0].ingress[0].hostname}:3000
+    - Prometheus: http://${coalesce(kubernetes_service.prometheus.status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.prometheus.status[0].load_balancer[0].ingress[0].ip)}:9090
+    - Grafana: http://${coalesce(kubernetes_service.grafana.status[0].load_balancer[0].ingress[0].hostname, kubernetes_service.grafana.status[0].load_balancer[0].ingress[0].ip)}:3000
   EOT
 }
 ```
@@ -554,7 +559,7 @@ output "api_keys" {
 }
 ```
 
-Sensitive outputs are hidden in terminal output but still accessible programmatically.
+Sensitive outputs are redacted in Terraform plan/apply output and when listing all outputs, but Terraform still stores them in state and displays them when you request the output by name or use `terraform output -json` or `terraform output -raw`.
 
 ## Using Outputs with Remote State
 
@@ -570,6 +575,11 @@ output "cluster_name" {
   value = aws_eks_cluster.main.name
 }
 
+output "cluster_ca_certificate" {
+  value     = aws_eks_cluster.main.certificate_authority[0].data
+  sensitive = true
+}
+
 # Application workspace
 data "terraform_remote_state" "infrastructure" {
   backend = "s3"
@@ -580,8 +590,14 @@ data "terraform_remote_state" "infrastructure" {
   }
 }
 
+data "aws_eks_cluster_auth" "infrastructure" {
+  name = data.terraform_remote_state.infrastructure.outputs.cluster_name
+}
+
 provider "kubernetes" {
-  host = data.terraform_remote_state.infrastructure.outputs.cluster_endpoint
+  host                   = data.terraform_remote_state.infrastructure.outputs.cluster_endpoint
+  cluster_ca_certificate = base64decode(data.terraform_remote_state.infrastructure.outputs.cluster_ca_certificate)
+  token                  = data.aws_eks_cluster_auth.infrastructure.token
 }
 ```
 
