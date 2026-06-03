@@ -41,14 +41,14 @@ First, create a launch template that works for ECS. The instances need the ECS a
 aws ec2 create-launch-template \
   --launch-template-name ecs-lt \
   --launch-template-data '{
-    "ImageId": "ami-0c55b159cbfafe1f0",
+    "ImageId": "resolve:ssm:/aws/service/ecs/optimized-ami/amazon-linux-2/recommended/image_id",
     "InstanceType": "m5.large",
     "IamInstanceProfile": {
-      "Arn": "arn:aws:iam::123456789:instance-profile/ecsInstanceRole"
+      "Arn": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole"
     },
     "UserData": "'$(echo '#!/bin/bash
 echo ECS_CLUSTER=my-cluster >> /etc/ecs/ecs.config
-echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config' | base64)'"
+echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config' | base64 -w 0)'"
   }'
 ```
 
@@ -170,7 +170,7 @@ aws ecs create-service \
   --desired-count 8 \
   --capacity-provider-strategy \
     "capacityProvider=ondemand-cp,weight=1,base=2" \
-    "capacityProvider=spot-cp,weight=3,base=0"
+    "capacityProvider=spot-cp,weight=3"
 ```
 
 With 8 desired tasks: 2 go to on-demand (base), and the remaining 6 are split 25/75 - roughly 1-2 on on-demand and 4-5 on Spot.
@@ -202,6 +202,16 @@ const onDemandCp = new ecs.AsgCapacityProvider(this, 'OnDemandCP', {
   enableManagedScaling: true,
   enableManagedTerminationProtection: true,
   targetCapacityPercent: 80,
+});
+
+const spotUserData = ec2.UserData.forLinux();
+spotUserData.addCommands(
+  'echo ECS_ENABLE_SPOT_INSTANCE_DRAINING=true >> /etc/ecs/ecs.config',
+);
+
+const spotLaunchTemplate = new ec2.LaunchTemplate(this, 'SpotLaunchTemplate', {
+  machineImage: ecs.EcsOptimizedImage.amazonLinux2(),
+  userData: spotUserData,
 });
 
 // Spot ASG with multiple instance types
