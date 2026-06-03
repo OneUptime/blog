@@ -148,6 +148,7 @@ response = bedrock_runtime.invoke_model(
     modelId='anthropic.claude-3-sonnet-20240229-v1:0',
     guardrailIdentifier=guardrail_id,
     guardrailVersion='DRAFT',
+    contentType='application/json',
     body=json.dumps({
         'anthropic_version': 'bedrock-2023-05-31',
         'max_tokens': 1024,
@@ -176,6 +177,8 @@ def invoke_with_guardrail(user_message, guardrail_id):
             modelId='anthropic.claude-3-sonnet-20240229-v1:0',
             guardrailIdentifier=guardrail_id,
             guardrailVersion='DRAFT',
+            contentType='application/json',
+            trace='ENABLED',
             body=json.dumps({
                 'anthropic_version': 'bedrock-2023-05-31',
                 'max_tokens': 1024,
@@ -186,8 +189,7 @@ def invoke_with_guardrail(user_message, guardrail_id):
         result = json.loads(response['body'].read())
 
         # Check if the guardrail intervened
-        stop_reason = result.get('stop_reason', '')
-        if stop_reason == 'guardrail_intervened':
+        if result.get('amazon-bedrock-guardrailAction') == 'INTERVENED':
             print("Guardrail blocked this interaction")
             # Log the event for review
             log_guardrail_event(user_message, result)
