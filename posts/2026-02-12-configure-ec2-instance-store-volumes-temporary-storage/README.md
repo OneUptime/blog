@@ -30,9 +30,9 @@ Not all instance types include instance store. Here are the common ones:
 | Instance Family | Instance Store | Type | Use Case |
 |----------------|---------------|------|----------|
 | i3, i3en, i4i | Up to 60 TB | NVMe SSD | Storage-optimized |
-| d2, d3, d3en | Up to 336 TB | HDD | Dense storage |
+| d2, d3, d3en | Up to 336 TB | HDD / NVMe HDD | Dense storage |
 | c5d, m5d, r5d | Up to 3.6 TB | NVMe SSD | General purpose + local SSD |
-| c6id, m6id, r6id | Up to 7.6 TB | NVMe SSD | Latest gen with local SSD |
+| c6id, m6id, r6id, c8id, m8id, r8id | Up to 22.8 TB | NVMe SSD | Newer generations with local SSD |
 | z1d | Up to 1.8 TB | NVMe SSD | High frequency + local SSD |
 
 The `d` suffix on an instance type (like c5d, m5d) generally means it includes instance store volumes. The `i` family is purpose-built for maximum local storage performance.
@@ -80,7 +80,7 @@ for dev in $DEVICES; do
 done
 ```
 
-For Amazon Linux 2 and newer instances, NVMe instance store volumes show up as `/dev/nvme*n1` devices. You can identify them using `nvme list`:
+On Nitro-based instances with NVMe instance store, the volumes show up as `/dev/nvme*n1` devices. You can identify them using `nvme list`:
 
 ```bash
 # List all NVMe devices and identify instance store
@@ -166,19 +166,21 @@ elif [ "$DEVICE_COUNT" -eq 1 ]; then
   mkfs.ext4 -E nodiscard $DEVICES
   mkdir -p /mnt/data
   mount -o defaults,noatime,nodiscard $DEVICES /mnt/data
+  FSTAB_DEVICE=$DEVICES
 else
   # Multiple devices - create RAID 0
   mdadm --create /dev/md0 --level=0 --raid-devices=$DEVICE_COUNT $DEVICES
   mkfs.ext4 -E nodiscard /dev/md0
   mkdir -p /mnt/data
   mount -o defaults,noatime,nodiscard /dev/md0 /mnt/data
+  FSTAB_DEVICE=/dev/md0
 fi
 
 chmod 1777 /mnt/data
 
 # Add to fstab for reboot persistence
-# Note: UUID changes on reboot for instance store, use device path
-echo "/dev/md0 /mnt/data ext4 defaults,noatime,nodiscard 0 0" >> /etc/fstab
+# Use the mounted device path because instance store device names are assigned at launch
+echo "$FSTAB_DEVICE /mnt/data ext4 defaults,noatime,nodiscard 0 0" >> /etc/fstab
 
 echo "Instance store setup complete: $(df -h /mnt/data | tail -1)"
 ```
