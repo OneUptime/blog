@@ -33,12 +33,22 @@ kubectl create namespace temporal
 helm install temporal temporalio/temporal \
   --namespace temporal \
   --set server.replicaCount=3 \
-  --set server.config.persistence.default.sql.driver=postgres12 \
-  --set server.config.persistence.default.sql.host=postgres \
-  --set server.config.persistence.default.sql.port=5432 \
-  --set server.config.persistence.default.sql.database=temporal \
-  --set server.config.persistence.default.sql.user=temporal \
-  --set server.config.persistence.default.sql.password=temporal
+  --set server.config.persistence.defaultStore=default \
+  --set server.config.persistence.visibilityStore=visibility \
+  --set server.config.persistence.datastores.default.sql.pluginName=postgres12_pgx \
+  --set server.config.persistence.datastores.default.sql.driverName=postgres12_pgx \
+  --set server.config.persistence.datastores.default.sql.databaseName=temporal \
+  --set server.config.persistence.datastores.default.sql.connectAddr=postgres:5432 \
+  --set server.config.persistence.datastores.default.sql.connectProtocol=tcp \
+  --set server.config.persistence.datastores.default.sql.user=temporal \
+  --set server.config.persistence.datastores.default.sql.password=temporal \
+  --set server.config.persistence.datastores.visibility.sql.pluginName=postgres12_pgx \
+  --set server.config.persistence.datastores.visibility.sql.driverName=postgres12_pgx \
+  --set server.config.persistence.datastores.visibility.sql.databaseName=temporal_visibility \
+  --set server.config.persistence.datastores.visibility.sql.connectAddr=postgres:5432 \
+  --set server.config.persistence.datastores.visibility.sql.connectProtocol=tcp \
+  --set server.config.persistence.datastores.visibility.sql.user=temporal \
+  --set server.config.persistence.datastores.visibility.sql.password=temporal
 
 # Wait for deployment
 kubectl wait --for=condition=available --timeout=300s deployment/temporal-frontend -n temporal
@@ -50,9 +60,7 @@ kubectl get pods -n temporal
 Install Web UI:
 
 ```bash
-helm install temporal-web temporalio/temporal-web \
-  --namespace temporal \
-  --set service.type=LoadBalancer
+kubectl port-forward services/temporal-web 8080:8080 -n temporal
 ```
 
 ## Building Your First Workflow
@@ -62,6 +70,7 @@ Create a simple order processing workflow:
 ```python
 # workflows.py
 from temporalio import workflow, activity
+from temporalio.common import RetryPolicy
 from datetime import timedelta
 from dataclasses import dataclass
 
@@ -92,6 +101,12 @@ async def ship_order(order: Order) -> str:
     # Shipping logic
     return f"SHIP-{order.order_id}"
 
+@activity.defn
+async def refund_payment(payment_id: str) -> None:
+    """Refund a payment"""
+    print(f"Refunding payment {payment_id}")
+    # Refund logic
+
 @workflow.defn
 class OrderWorkflow:
     """Orchestrate order processing"""
@@ -105,11 +120,11 @@ class OrderWorkflow:
             charge_payment,
             order,
             start_to_close_timeout=timedelta(minutes=5),
-            retry_policy={
-                'maximum_attempts': 3,
-                'initial_interval': timedelta(seconds=1),
-                'backoff_coefficient': 2.0
-            }
+            retry_policy=RetryPolicy(
+                maximum_attempts=3,
+                initial_interval=timedelta(seconds=1),
+                backoff_coefficient=2.0
+            )
         )
 
         # Step 2: Reserve inventory
@@ -143,18 +158,19 @@ Deploy the worker:
 ```python
 # worker.py
 import asyncio
+import os
 from temporalio.client import Client
 from temporalio.worker import Worker
-from workflows import OrderWorkflow, charge_payment, reserve_inventory, ship_order
+from workflows import OrderWorkflow, charge_payment, reserve_inventory, refund_payment, ship_order
 
 async def main():
-    client = await Client.connect("temporal-frontend.temporal:7233")
+    client = await Client.connect(os.getenv("TEMPORAL_ADDRESS", "temporal-frontend.temporal:7233"))
 
     worker = Worker(
         client,
         task_queue="order-processing",
         workflows=[OrderWorkflow],
-        activities=[charge_payment, reserve_inventory, ship_order]
+        activities=[charge_payment, reserve_inventory, refund_payment, ship_order]
     )
 
     print("Worker started, processing workflows...")
@@ -245,12 +261,8 @@ def get_order_status(workflow_id):
     async def check_status():
         client = await get_client()
         handle = client.get_workflow_handle(workflow_id)
-
-        try:
-            result = await handle.result()
-            return {'status': 'completed', 'result': result}
-        except:
-            return {'status': 'running'}
+        description = await handle.describe()
+        return {'status': description.status.name.lower()}
 
     status = asyncio.run(check_status())
     return jsonify(status)
@@ -265,13 +277,26 @@ Build a workflow with human approval:
 
 ```python
 # approval_workflow.py
+import asyncio
+
 from temporalio import workflow
+from temporalio import activity
 from datetime import timedelta
+
+@activity.defn
+async def send_approval_email(request: dict) -> None:
+    """Send approval request"""
+    print(f"Sending approval email for {request}")
+
+@activity.defn
+async def process_approved_request(request: dict) -> None:
+    """Process approved request"""
+    print(f"Processing approved request {request}")
 
 @workflow.defn
 class ApprovalWorkflow:
     def __init__(self):
-        self.approved = False
+        self.approved = None
 
     @workflow.run
     async def run(self, request: dict) -> str:
@@ -285,7 +310,7 @@ class ApprovalWorkflow:
         # Wait for approval signal (could be days)
         try:
             await workflow.wait_condition(
-                lambda: self.approved,
+                lambda: self.approved is not None,
                 timeout=timedelta(days=7)
             )
         except asyncio.TimeoutError:
@@ -314,6 +339,8 @@ Signal the workflow:
 
 ```python
 # Send approval signal
+from temporalio.client import Client
+
 async def approve_request(workflow_id):
     client = await Client.connect("temporal-frontend.temporal:7233")
     handle = client.get_workflow_handle(workflow_id)
