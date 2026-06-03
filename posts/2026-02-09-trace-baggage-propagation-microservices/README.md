@@ -17,7 +17,7 @@ This guide demonstrates implementing baggage propagation in Kubernetes microserv
 Baggage is a set of key-value pairs that propagate with distributed context:
 - Travels alongside trace context in HTTP headers
 - Available to all services handling the request
-- Visible in spans for correlation
+- Can be copied to spans for correlation
 - Survives process and network boundaries
 
 Common use cases:
@@ -31,7 +31,7 @@ Common use cases:
 ## Baggage vs Trace Attributes
 
 **Trace Attributes**: Attached to specific spans, not propagated
-**Baggage**: Propagates across service boundaries automatically
+**Baggage**: Propagates across service boundaries when a baggage propagator is configured
 
 Use baggage for:
 - Data needed by downstream services
@@ -50,12 +50,13 @@ package main
 
 import (
     "context"
+    "log"
     "net/http"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/attribute"
     "go.opentelemetry.io/otel/baggage"
     "go.opentelemetry.io/otel/propagation"
-    "go.opentelemetry.io/otel/trace"
 )
 
 func initTelemetry() {
@@ -105,7 +106,10 @@ func callBackend(ctx context.Context) {
     // Propagate context (including baggage)
     otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-    resp, _ := client.Do(req)
+    resp, err := client.Do(req)
+    if err != nil {
+        return
+    }
     defer resp.Body.Close()
 }
 
@@ -128,10 +132,7 @@ func backendHandler(w http.ResponseWriter, r *http.Request) {
     }
 
     // Log with baggage context
-    logger.Info("Processing request",
-        "user_id", userID,
-        "tenant_id", tenantID,
-    )
+    log.Printf("Processing request user_id=%s tenant_id=%s", userID, tenantID)
 }
 ```
 
@@ -144,8 +145,8 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.propagators.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.propagators.baggage import W3CBaggagePropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 # Initialize with baggage propagation
 
@@ -169,7 +170,7 @@ tracer = trace.get_tracer(__name__)
 # Frontend service
 def handle_request(request):
     # Set baggage
-    ctx = baggage.set_baggage("user.id", request.headers.get("X-User-ID"))
+    ctx = baggage.set_baggage("user.id", request.headers.get("X-User-ID", ""))
     ctx = baggage.set_baggage("tenant.id", "acme-corp", ctx)
     ctx = baggage.set_baggage("feature.new_checkout", "true", ctx)
 
@@ -214,14 +215,23 @@ def backend_handler(request):
 
 ## Implementing Baggage in Java
 
+This example assumes your `OpenTelemetry` instance is configured with W3C Trace Context and W3C Baggage propagators.
+
 ```java
 import io.opentelemetry.api.OpenTelemetry;
 import io.opentelemetry.api.baggage.Baggage;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
 import io.opentelemetry.context.propagation.TextMapGetter;
 import io.opentelemetry.context.propagation.TextMapSetter;
+import jakarta.servlet.http.HttpServletRequest;
+import java.io.IOException;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.Collections;
+import java.util.Objects;
 
 public class FrontendService {
     private final Tracer tracer;
@@ -232,10 +242,10 @@ public class FrontendService {
         this.tracer = openTelemetry.getTracer("frontend");
     }
 
-    public void handleRequest(HttpServletRequest request) {
+    public void handleRequest(HttpServletRequest request) throws IOException {
         // Create baggage
         Baggage baggage = Baggage.builder()
-            .put("user.id", request.getHeader("X-User-ID"))
+            .put("user.id", Objects.toString(request.getHeader("X-User-ID"), ""))
             .put("tenant.id", "acme-corp")
             .put("feature.new_ui", "true")
             .build();
@@ -260,8 +270,9 @@ public class FrontendService {
         }
     }
 
-    private void callBackend(Context context) {
-        HttpURLConnection conn = // create connection
+    private void callBackend(Context context) throws IOException {
+        URL url = new URL("http://backend:8080/api");
+        HttpURLConnection conn = (HttpURLConnection) url.openConnection();
 
         // Inject context
         TextMapSetter<HttpURLConnection> setter = (carrier, key, value) ->
@@ -272,11 +283,18 @@ public class FrontendService {
             .inject(context, conn, setter);
 
         // Make request
+        conn.getInputStream().close();
     }
 }
 
 // Backend service
 public class BackendService {
+    private final OpenTelemetry openTelemetry;
+
+    public BackendService(OpenTelemetry openTelemetry) {
+        this.openTelemetry = openTelemetry;
+    }
+
     public void handleRequest(HttpServletRequest request) {
         // Extract context
         TextMapGetter<HttpServletRequest> getter = new TextMapGetter<>() {
@@ -379,14 +397,14 @@ func setupLogger(ctx context.Context) *zap.Logger {
 
 ## Monitoring Baggage Usage
 
-Query baggage in traces:
+Query baggage in traces with your trace backend. For example, if you copy baggage values to span attributes and use Grafana Tempo, you can use TraceQL:
 
-```promql
-# Count spans by baggage value
-count by (baggage_tenant_id) (traces)
+```traceql
+# Find traces for a tenant
+{ span."baggage.tenant.id" = "acme-corp" }
 
 # Filter traces by baggage
-{baggage.user.tier="premium"}
+{ span."baggage.user.tier" = "premium" }
 ```
 
 Track baggage overhead:
