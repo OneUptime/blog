@@ -32,6 +32,7 @@ The credential report tells you when each user last logged in and when their acc
 ```python
 import boto3
 import csv
+import time
 from io import StringIO
 from datetime import datetime, timezone
 
@@ -39,10 +40,11 @@ def find_unused_users(inactive_days=90):
     """Find IAM users who haven't been active in the specified number of days."""
     iam = boto3.client("iam")
 
-    iam.generate_credential_report()
-
-    import time
-    time.sleep(10)
+    while True:
+        response = iam.generate_credential_report()
+        if response["State"] == "COMPLETE":
+            break
+        time.sleep(2)
 
     report = iam.get_credential_report()
     content = report["Content"].decode("utf-8")
@@ -89,7 +91,7 @@ for user, reason in unused:
 
 ### Using Access Advisor
 
-Access Advisor shows which services a user has actually accessed. It's more granular than the credential report:
+Access Advisor shows which services a user has attempted to access. It's more granular than the credential report:
 
 ```bash
 # Generate a service last accessed details report for a user
@@ -98,8 +100,24 @@ JOB_ID=$(aws iam generate-service-last-accessed-details \
   --arn arn:aws:iam::123456789012:user/old-developer \
   --query 'JobId' --output text)
 
-# Wait a moment then retrieve results
-sleep 5
+# Wait for the report to complete, then retrieve results
+while true; do
+  STATUS=$(aws iam get-service-last-accessed-details \
+    --job-id "$JOB_ID" \
+    --query 'JobStatus' --output text)
+
+  if [ "$STATUS" = "COMPLETED" ]; then
+    break
+  fi
+
+  if [ "$STATUS" = "FAILED" ]; then
+    echo "Access Advisor report failed" >&2
+    exit 1
+  fi
+
+  sleep 5
+done
+
 aws iam get-service-last-accessed-details \
   --job-id "$JOB_ID" \
   --query 'ServicesLastAccessed[?LastAuthenticated!=`null`].{Service:ServiceName,LastUsed:LastAuthenticated}' \
@@ -157,8 +175,11 @@ done
 for mfa in $(aws iam list-mfa-devices --user-name "$USERNAME" \
   --query 'MFADevices[*].SerialNumber' --output text); do
     aws iam deactivate-mfa-device --user-name "$USERNAME" --serial-number "$mfa"
-    aws iam delete-virtual-mfa-device --serial-number "$mfa"
-    echo "  Deleted MFA device: $mfa"
+    if aws iam delete-virtual-mfa-device --serial-number "$mfa" 2>/dev/null; then
+      echo "  Deleted virtual MFA device: $mfa"
+    else
+      echo "  Deactivated MFA device: $mfa"
+    fi
 done
 
 # Remove from groups
@@ -193,6 +214,22 @@ for cert in $(aws iam list-signing-certificates --user-name "$USERNAME" \
     echo "  Deleted signing certificate: $cert"
 done
 
+# Delete SSH public keys
+for key in $(aws iam list-ssh-public-keys --user-name "$USERNAME" \
+  --query 'SSHPublicKeys[*].SSHPublicKeyId' --output text); do
+    aws iam delete-ssh-public-key --user-name "$USERNAME" --ssh-public-key-id "$key"
+    echo "  Deleted SSH public key: $key"
+done
+
+# Delete service-specific credentials
+for cred in $(aws iam list-service-specific-credentials --user-name "$USERNAME" \
+  --query 'ServiceSpecificCredentials[*].ServiceSpecificCredentialId' --output text); do
+    aws iam delete-service-specific-credential \
+      --user-name "$USERNAME" \
+      --service-specific-credential-id "$cred"
+    echo "  Deleted service-specific credential: $cred"
+done
+
 # Finally, delete the user
 aws iam delete-user --user-name "$USERNAME"
 echo "User $USERNAME deleted successfully"
@@ -200,7 +237,7 @@ echo "User $USERNAME deleted successfully"
 
 ## Finding Unused IAM Roles
 
-Roles are trickier because they don't show up in credential reports. Use the Access Advisor API:
+Roles are trickier because they don't show up in credential reports. Use role last-used data, which reports activity within IAM's tracking period:
 
 ```python
 import boto3
@@ -211,22 +248,23 @@ def find_unused_roles(inactive_days=90):
     iam = boto3.client("iam")
     unused_roles = []
 
-    roles = iam.list_roles(MaxItems=1000)["Roles"]
+    paginator = iam.get_paginator("list_roles")
 
-    for role in roles:
-        # Skip AWS service-linked roles
-        if role["Path"].startswith("/aws-service-role/"):
-            continue
+    for page in paginator.paginate():
+        for role in page["Roles"]:
+            # Skip AWS service-linked roles
+            if role["Path"].startswith("/aws-service-role/"):
+                continue
 
-        role_name = role["RoleName"]
-        last_used = role.get("RoleLastUsed", {}).get("LastUsedDate")
+            role_name = role["RoleName"]
+            last_used = role.get("RoleLastUsed", {}).get("LastUsedDate")
 
-        if last_used is None:
-            unused_roles.append((role_name, "Never used", role["CreateDate"]))
-        else:
-            days = (datetime.now(timezone.utc) - last_used).days
-            if days > inactive_days:
-                unused_roles.append((role_name, f"{days} days ago", role["CreateDate"]))
+            if last_used is None:
+                unused_roles.append((role_name, "Not used in the tracking period", role["CreateDate"]))
+            else:
+                days = (datetime.now(timezone.utc) - last_used).days
+                if days > inactive_days:
+                    unused_roles.append((role_name, f"{days} days ago", role["CreateDate"]))
 
     return unused_roles
 
