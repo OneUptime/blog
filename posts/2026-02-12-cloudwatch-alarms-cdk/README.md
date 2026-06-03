@@ -21,7 +21,7 @@ If you don't already have a CDK project, spin one up quickly:
 
 mkdir cloudwatch-alarms && cd cloudwatch-alarms
 npx cdk init app --language typescript
-npm install @aws-cdk/aws-cloudwatch @aws-cdk/aws-cloudwatch-actions @aws-cdk/aws-sns @aws-cdk/aws-sns-subscriptions
+npm install aws-cdk-lib constructs
 ```
 
 If you're using CDK v2 (which you should be), the constructs are already included in `aws-cdk-lib`.
@@ -94,7 +94,7 @@ import * as sqs from 'aws-cdk-lib/aws-sqs';
 
 // Lambda error alarm - uses the metric method on the function construct
 const myFunction = new lambda.Function(this, 'MyFunction', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda'),
   functionName: 'my-api-handler',
