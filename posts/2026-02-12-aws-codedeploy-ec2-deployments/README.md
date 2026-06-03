@@ -59,6 +59,25 @@ aws iam attach-role-policy \
 
 Now create the EC2 instance profile. Your instances need permission to pull deployment artifacts from S3.
 
+Save this trust policy as `ec2-trust.json`:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "ec2.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+```
+
+Save this S3 permissions policy as `ec2-s3-policy.json`:
+
 ```json
 {
   "Version": "2012-10-17",
@@ -83,8 +102,9 @@ aws iam create-role \
   --role-name CodeDeployEC2Role \
   --assume-role-policy-document file://ec2-trust.json
 
-# Create the policy for S3 access
-aws iam create-policy \
+# Attach the policy for S3 access
+aws iam put-role-policy \
+  --role-name CodeDeployEC2Role \
   --policy-name CodeDeployEC2S3Access \
   --policy-document file://ec2-s3-policy.json
 
@@ -244,8 +264,8 @@ Once you've kicked off a deployment, you can watch its progress:
 aws deploy get-deployment \
   --deployment-id d-ABCDEF123
 
-# List deployment instances and their status
-aws deploy list-deployment-instances \
+# List deployment target IDs
+aws deploy list-deployment-targets \
   --deployment-id d-ABCDEF123
 ```
 
@@ -253,7 +273,7 @@ The deployment goes through several lifecycle events: BeforeInstall, Install, Af
 
 ## Setting Up Auto-Rollback
 
-You really should configure automatic rollbacks. If a deployment fails or your health checks start failing, CodeDeploy will revert to the last known good version:
+You really should configure automatic rollbacks. If a deployment fails or your configured CloudWatch alarms go into alarm, CodeDeploy will revert to the last known good version:
 
 ```bash
 # Update deployment group with auto-rollback enabled
