@@ -14,7 +14,7 @@ Validating admission webhooks let you implement these policies. They run during 
 
 ## Understanding the Admission Flow
 
-When someone creates or modifies a resource, Kubernetes runs it through multiple admission controllers. Schema validation happens first. Then custom admission webhooks run. If any webhook denies the request, the entire operation fails.
+When someone creates or modifies a resource, Kubernetes runs it through multiple admission controllers. Mutating admission controllers run first, then validating admission controllers run. If any admission controller denies the request, the entire operation fails.
 
 Validating webhooks cannot modify the request. They only approve or reject. This makes them perfect for enforcing policies without worrying about unintended side effects.
 
@@ -30,6 +30,8 @@ go mod init github.com/example/validation-webhook
 # Install dependencies
 
 go get k8s.io/api/admission/v1
+go get k8s.io/api/apps/v1
+go get k8s.io/api/core/v1
 go get k8s.io/apimachinery/pkg/apis/meta/v1
 go get k8s.io/apimachinery/pkg/runtime
 go get k8s.io/apimachinery/pkg/runtime/serializer
@@ -46,11 +48,12 @@ package main
 import (
     "encoding/json"
     "fmt"
-    "io/ioutil"
+    "io"
+    "mime"
     "net/http"
-    "strings"
 
     admissionv1 "k8s.io/api/admission/v1"
+    appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/runtime"
@@ -63,6 +66,7 @@ var (
 )
 
 func init() {
+    appsv1.AddToScheme(scheme)
     corev1.AddToScheme(scheme)
     admissionv1.AddToScheme(scheme)
 }
@@ -74,8 +78,11 @@ type WebhookServer struct {
 func (ws *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
     var body []byte
     if r.Body != nil {
-        if data, err := ioutil.ReadAll(r.Body); err == nil {
+        if data, err := io.ReadAll(r.Body); err == nil {
             body = data
+        } else {
+            http.Error(w, fmt.Sprintf("could not read request body: %v", err), http.StatusBadRequest)
+            return
         }
     }
 
@@ -84,8 +91,8 @@ func (ws *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
         return
     }
 
-    contentType := r.Header.Get("Content-Type")
-    if contentType != "application/json" {
+    contentType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+    if err != nil || contentType != "application/json" {
         http.Error(w, "invalid Content-Type", http.StatusBadRequest)
         return
     }
@@ -128,14 +135,15 @@ func (ws *WebhookServer) serve(w http.ResponseWriter, r *http.Request) {
 
 func (ws *WebhookServer) validate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
     req := ar.Request
+    if req == nil {
+        return denyResponse("admission review request is nil")
+    }
 
     switch req.Kind.Kind {
     case "Pod":
         return validatePod(req)
     case "Deployment":
         return validateDeployment(req)
-    case "Service":
-        return validateService(req)
     default:
         return &admissionv1.AdmissionResponse{
             Allowed: true,
@@ -176,6 +184,7 @@ import (
     "strings"
 
     admissionv1 "k8s.io/api/admission/v1"
+    appsv1 "k8s.io/api/apps/v1"
     corev1 "k8s.io/api/core/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -341,7 +350,7 @@ func validateDeployment(req *admissionv1.AdmissionRequest) *admissionv1.Admissio
 Create a Dockerfile for the webhook.
 
 ```dockerfile
-FROM golang:1.21 as builder
+FROM golang:1.26 AS builder
 WORKDIR /workspace
 COPY go.mod go.sum ./
 RUN go mod download
