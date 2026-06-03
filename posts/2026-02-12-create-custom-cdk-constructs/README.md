@@ -110,6 +110,11 @@ export class MonitoredFunction extends Construct {
   constructor(scope: Construct, id: string, props: MonitoredFunctionProps) {
     super(scope, id);
 
+    const logGroup = new logs.LogGroup(this, 'LogGroup', {
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     // Create the Lambda function
     this.function = new lambda.Function(this, 'Function', {
       runtime: props.runtime,
@@ -119,15 +124,22 @@ export class MonitoredFunction extends Construct {
       memorySize: props.memorySize ?? 256,
       environment: props.environment,
       tracing: lambda.Tracing.ACTIVE,
-      logRetention: logs.RetentionDays.TWO_WEEKS,
+      logGroup,
     });
 
     // Create error rate alarm
+    const errorRate = new cloudwatch.MathExpression({
+      expression: 'IF(invocations > 0, (errors / invocations) * 100, 0)',
+      usingMetrics: {
+        errors: this.function.metricErrors({ statistic: 'Sum' }),
+        invocations: this.function.metricInvocations({ statistic: 'Sum' }),
+      },
+      period: cdk.Duration.minutes(5),
+      label: 'Error rate (%)',
+    });
+
     this.errorAlarm = new cloudwatch.Alarm(this, 'ErrorAlarm', {
-      metric: this.function.metricErrors({
-        period: cdk.Duration.minutes(5),
-        statistic: 'Sum',
-      }),
+      metric: errorRate,
       threshold: props.errorRateThreshold ?? 5,
       evaluationPeriods: 2,
       alarmDescription: `High error rate for ${id}`,
@@ -165,7 +177,7 @@ Now every Lambda function in your organization gets monitoring for free.
 ```typescript
 // Every function automatically gets error and duration alarms
 const orderProcessor = new MonitoredFunction(this, 'OrderProcessor', {
-  runtime: lambda.Runtime.NODEJS_20_X,
+  runtime: lambda.Runtime.NODEJS_22_X,
   handler: 'index.handler',
   code: lambda.Code.fromAsset('lambda/order-processor'),
   timeout: cdk.Duration.seconds(60),
@@ -255,11 +267,11 @@ export class Microservice extends Construct {
     this.dashboard.addWidgets(
       new cloudwatch.GraphWidget({
         title: 'Request Count',
-        left: [this.service.loadBalancer.metricRequestCount()],
+        left: [this.service.loadBalancer.metrics.requestCount()],
       }),
       new cloudwatch.GraphWidget({
         title: 'Response Time',
-        left: [this.service.loadBalancer.metricTargetResponseTime()],
+        left: [this.service.loadBalancer.metrics.targetResponseTime()],
       }),
     );
   }
