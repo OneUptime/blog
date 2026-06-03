@@ -43,7 +43,7 @@ aws docdb-elastic create-cluster \
   --cluster-name my-elastic-cluster \
   --auth-type PLAIN_TEXT \
   --admin-user-name admin \
-  --admin-user-password 'YourStr0ngP@ss!' \
+  --admin-user-password 'YourStr0ngPass!' \
   --shard-capacity 4 \
   --shard-count 3 \
   --subnet-ids subnet-0abc123 subnet-0def456 \
@@ -61,8 +61,8 @@ Parameters explained:
 ```bash
 # Get the cluster endpoint for connections
 aws docdb-elastic get-cluster \
-  --cluster-arn arn:aws:docdb-elastic:us-east-1:123456789012:cluster/my-elastic-cluster \
-  --query '{Endpoint:cluster.clusterEndpoint,Status:cluster.status}'
+  --cluster-arn arn:aws:docdb-elastic:us-east-1:123456789012:cluster/68ffcdf8-e3af-40a3-91e4-24736f2dacc9 \
+  --query '{Arn:cluster.clusterArn,Endpoint:cluster.clusterEndpoint,Status:cluster.status}'
 ```
 
 ## Connecting to the Cluster
@@ -75,7 +75,7 @@ from pymongo import MongoClient
 
 # Connection string for DocumentDB Elastic Cluster
 connection_string = (
-    "mongodb://admin:YourStr0ngP@ss!@"
+    "mongodb://admin:YourStr0ngPass!@"
     "my-elastic-cluster.us-east-1.docdb-elastic.amazonaws.com:27017/"
     "?tls=true&tlsCAFile=global-bundle.pem&retryWrites=false"
 )
@@ -89,9 +89,7 @@ db = client['myapp']
 ```javascript
 // Connect to DocumentDB Elastic Cluster from Node.js
 const { MongoClient } = require('mongodb');
-const fs = require('fs');
-
-const uri = "mongodb://admin:YourStr0ngP@ss!@" +
+const uri = "mongodb://admin:YourStr0ngPass!@" +
     "my-elastic-cluster.us-east-1.docdb-elastic.amazonaws.com:27017/" +
     "?tls=true&retryWrites=false";
 
@@ -155,9 +153,9 @@ results = db.documents.find({
 })
 ```
 
-### Ranged vs Hashed Shard Keys
+### Shard Key Type
 
-DocumentDB Elastic Clusters support both ranged and hashed shard keys.
+DocumentDB Elastic Clusters support hashed shard keys. Range sharding, multi-field shard keys, and changing the shard key are not supported.
 
 ```python
 # Hashed shard key - distributes data evenly regardless of key values
@@ -165,13 +163,6 @@ DocumentDB Elastic Clusters support both ranged and hashed shard keys.
 db.command({
     'shardCollection': 'myapp.logs',
     'key': {'device_id': 'hashed'}
-})
-
-# Ranged shard key - keeps similar values together on the same shard
-# Good for: range queries, time-series data with compound keys
-db.command({
-    'shardCollection': 'myapp.metrics',
-    'key': {'region': 1, 'timestamp': 1}
 })
 ```
 
@@ -182,6 +173,8 @@ db.command({
 Inserts work the same as a regular MongoDB/DocumentDB collection.
 
 ```python
+from datetime import datetime
+
 # Insert documents - DocumentDB routes them to the correct shard
 events = [
     {'tenant_id': 'tenant-abc', 'type': 'page_view', 'url': '/home', 'timestamp': datetime.utcnow()},
@@ -196,6 +189,8 @@ print(f"Inserted {len(result.inserted_ids)} documents")
 ### Querying with the Shard Key
 
 ```python
+from datetime import datetime
+
 # Targeted query - includes shard key, routed to a single shard
 tenant_events = list(db.events.find({
     'tenant_id': 'tenant-abc',
@@ -222,15 +217,14 @@ results = list(db.events.aggregate(pipeline))
 
 ### Creating Indexes
 
-Indexes on sharded collections work the same way, but the shard key must be a prefix of every unique index.
+Indexes on sharded collections work the same way, but unique indexes are not supported on DocumentDB Elastic Clusters.
 
 ```python
 # Create indexes on the sharded collection
-# The shard key (tenant_id) must be part of any unique index
 db.events.create_index([('tenant_id', 1), ('timestamp', -1)])
 db.events.create_index([('tenant_id', 1), ('type', 1)])
 
-# Non-unique indexes can be on any fields
+# Secondary indexes can be on any supported fields
 db.events.create_index([('type', 1)])
 db.events.create_index([('timestamp', -1)])
 ```
@@ -242,7 +236,7 @@ db.events.create_index([('timestamp', -1)])
 ```bash
 # Scale out by adding more shards
 aws docdb-elastic update-cluster \
-  --cluster-arn arn:aws:docdb-elastic:us-east-1:123456789012:cluster/my-elastic-cluster \
+  --cluster-arn arn:aws:docdb-elastic:us-east-1:123456789012:cluster/68ffcdf8-e3af-40a3-91e4-24736f2dacc9 \
   --shard-count 6
 ```
 
@@ -251,28 +245,28 @@ aws docdb-elastic update-cluster \
 ```bash
 # Scale up each shard's compute
 aws docdb-elastic update-cluster \
-  --cluster-arn arn:aws:docdb-elastic:us-east-1:123456789012:cluster/my-elastic-cluster \
+  --cluster-arn arn:aws:docdb-elastic:us-east-1:123456789012:cluster/68ffcdf8-e3af-40a3-91e4-24736f2dacc9 \
   --shard-capacity 8
 ```
 
 ## Monitoring
 
 ```bash
-# Monitor per-shard CPU utilization
+# Monitor cluster CPU utilization
 aws cloudwatch get-metric-statistics \
-  --namespace AWS/DocDB-Elastic \
+  --namespace AWS/DocDB \
   --metric-name CPUUtilization \
-  --dimensions Name=ClusterName,Value=my-elastic-cluster \
+  --dimensions Name=DBClusterIdentifier,Value=my-elastic-cluster \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
   --statistics Average,Maximum
 
-# Monitor read and write operations
+# Monitor write I/O
 aws cloudwatch get-metric-statistics \
-  --namespace AWS/DocDB-Elastic \
-  --metric-name WriteOps \
-  --dimensions Name=ClusterName,Value=my-elastic-cluster \
+  --namespace AWS/DocDB \
+  --metric-name WriteIOPS \
+  --dimensions Name=DBClusterIdentifier,Value=my-elastic-cluster \
   --start-time $(date -u -d '1 hour ago' +%Y-%m-%dT%H:%M:%S) \
   --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
   --period 300 \
