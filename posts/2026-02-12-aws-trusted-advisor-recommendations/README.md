@@ -8,7 +8,7 @@ Description: Learn how to use AWS Trusted Advisor to identify cost savings, secu
 
 ---
 
-AWS Trusted Advisor is one of those services that every AWS account has access to, but surprisingly few teams actually use regularly. It's essentially a best-practices auditor that scans your AWS account and flags issues across five categories: cost optimization, performance, security, fault tolerance, and service limits. Some checks are free. Others require a Business or Enterprise support plan. Either way, it's worth knowing what's available and how to act on the recommendations.
+AWS Trusted Advisor is one of those services that every AWS account has access to, but surprisingly few teams actually use regularly. It's essentially a best-practices auditor that scans your AWS account and flags issues across six categories: cost optimization, performance, security, fault tolerance, service limits, and operational excellence. Some checks are free. Others require a Business Support+, Enterprise Support, or Unified Operations support plan. Either way, it's worth knowing what's available and how to act on the recommendations.
 
 ## What Trusted Advisor Checks
 
@@ -24,23 +24,25 @@ Trusted Advisor runs automated checks against your AWS resources and compares th
 
 **Service Limits** warns you when you're approaching AWS service quotas before you hit them.
 
+**Operational Excellence** highlights operational best-practice gaps such as AWS Well-Architected high risk issues.
+
 ## Free vs. Paid Checks
 
-With a Basic or Developer support plan, you get access to six core security checks and the service limits checks. That's it. Here's what's free:
+With a Basic or Developer support plan, you get console access to all service limits checks and a small set of core checks in the security and fault tolerance categories. That's it. Here's what's included:
 
 - S3 Bucket Permissions
 - Security Groups - Specific Ports Unrestricted
-- IAM Use
 - MFA on Root Account
 - EBS Public Snapshots
 - RDS Public Snapshots
+- AWS STS global endpoint usage across AWS Regions
 - Service Limits (all checks)
 
-For the full set of checks (over 100), you need a Business or Enterprise support plan. If you're running production workloads on AWS, the cost savings Trusted Advisor identifies usually pay for the support plan several times over.
+For the full set of checks, you need a Business Support+, Enterprise Support, or Unified Operations support plan. If you're running production workloads on AWS, the cost savings Trusted Advisor identifies usually pay for the support plan several times over.
 
 ## Accessing Trusted Advisor via CLI
 
-You can interact with Trusted Advisor programmatically through the AWS Support API. Note that this API is only available in us-east-1.
+You can interact with Trusted Advisor programmatically through the AWS Support API if your account has a Business Support+, Enterprise Support, or Unified Operations support plan. Note that the Trusted Advisor operations in the AWS Support API must use us-east-1.
 
 To list all available checks:
 
@@ -82,7 +84,7 @@ aws support refresh-trusted-advisor-check \
   --region us-east-1
 ```
 
-Note that refreshes are rate-limited. You can't refresh the same check more than once every 5 minutes, and there's a limit on how many refreshes you can do per day.
+Note that refreshes are rate-limited. The refresh response includes `millisUntilNextRefreshable`, which tells you when that check can be refreshed again. Some checks are refreshed automatically and can't be manually refreshed.
 
 To refresh all checks at once, you can script it:
 
@@ -108,7 +110,7 @@ The cost optimization category is where most teams find the quickest wins. Here 
 
 **Idle Load Balancers**: Load balancers that have had less than 100 requests per day for the last 7 days. Check if they're actually needed. If not, delete them and save $18/month per idle Classic LB.
 
-**Underutilized EC2 Instances**: Instances where average CPU is below 10% and network I/O is below 5 MB/day for 14 days. Consider right-sizing these or switching to smaller instance types.
+**Underutilized EC2 Instances**: The legacy Low Utilization Amazon EC2 Instances check flags instances that had daily average CPU utilization of 10% or less and network I/O of 5 MB or less on at least 4 of the previous 14 days. Consider right-sizing these or switching to smaller instance types. AWS now recommends the newer Amazon EC2 cost optimization recommendations for instances check when you have Cost Optimization Hub and Compute Optimizer enabled.
 
 Here's a script to pull underutilized instances and estimate savings:
 
@@ -135,7 +137,7 @@ print(f'\nTotal potential savings: \${total_savings:.2f}/month')
 "
 ```
 
-**Unassociated Elastic IPs**: Each unassociated Elastic IP costs about $3.60/month. These add up fast if people forget to release them.
+**Unassociated Elastic IPs**: AWS charges for public IPv4 addresses, including Elastic IPs, so idle addresses add up fast if people forget to release them.
 
 ```bash
 # Find and release unassociated Elastic IPs
@@ -153,8 +155,7 @@ Security findings should be treated with urgency. Here are the most critical one
 ```bash
 # Find security groups with SSH open to the world
 aws ec2 describe-security-groups \
-  --filters "Name=ip-permission.from-port,Values=22" \
-  --query "SecurityGroups[?IpPermissions[?IpRanges[?CidrIp=='0.0.0.0/0']]].{GroupId:GroupId,GroupName:GroupName}" \
+  --query "SecurityGroups[?IpPermissions[?(IpProtocol=='-1'||(FromPort<=\`22\` && ToPort>=\`22\`)) && IpRanges[?CidrIp=='0.0.0.0/0']]].{GroupId:GroupId,GroupName:GroupName}" \
   --output table
 ```
 
@@ -169,7 +170,19 @@ sleep 5
 aws iam get-credential-report \
   --query "Content" \
   --output text | base64 --decode | \
-  awk -F',' 'NR>1 && $9 != "N/A" {print $1, $9}'
+  python3 -c "
+import csv, sys
+from datetime import datetime, timezone, timedelta
+
+cutoff = datetime.now(timezone.utc) - timedelta(days=90)
+for row in csv.DictReader(sys.stdin):
+    for key in ('access_key_1_last_rotated', 'access_key_2_last_rotated'):
+        rotated = row.get(key)
+        if rotated and rotated != 'N/A':
+            rotated_at = datetime.fromisoformat(rotated.replace('Z', '+00:00'))
+            if rotated_at < cutoff:
+                print(row['user'], key, rotated)
+"
 ```
 
 ## Automating Trusted Advisor with EventBridge
@@ -242,9 +255,9 @@ Trigger this with an EventBridge scheduled rule running every Monday morning.
 Service limits might be the most practically useful free check. Hitting a service limit during a scale-up event is a terrible experience. Trusted Advisor warns you when you're at 80% of a limit.
 
 ```bash
-# Get service limit warnings
+# Get EC2 On-Demand Instances service limit warnings
 aws support describe-trusted-advisor-check-result \
-  --check-id "eW7HH0l7J9" \
+  --check-id "0Xc6LMYG8P" \
   --language "en" \
   --region us-east-1 \
   --query "result.flaggedResources[?status!='ok'].metadata" \
