@@ -72,7 +72,7 @@ variable "services_range_name" {
 
 variable "kubernetes_version" {
   type        = string
-  default     = "1.29"
+  default     = "1.35"
 }
 
 variable "node_machine_type" {
@@ -444,7 +444,7 @@ module "gke" {
   subnetwork          = google_compute_subnetwork.main.name
   pods_range_name     = "pods"
   services_range_name = "services"
-  kubernetes_version  = "1.29"
+  kubernetes_version  = "1.35"
   node_machine_type   = "e2-standard-4"
   node_count          = 3
   max_node_count      = 15
@@ -533,9 +533,13 @@ The application code does not need any special credential handling. Google Cloud
 
 ```go
 // Go example - no explicit credentials needed
+package main
+
 import (
-    "cloud.google.com/go/storage"
     "context"
+    "log"
+
+    "cloud.google.com/go/storage"
 )
 
 func main() {
@@ -566,16 +570,16 @@ After deploying a pod, verify that Workload Identity is working:
 ```bash
 kubectl exec -it deploy/my-app -n application -- \
   curl -s -H "Metadata-Flavor: Google" \
-  http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/email
+  http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token
 ```
 
-This should return the GCP service account email (e.g., `app-sa@my-project.iam.gserviceaccount.com`), not the node's service account.
+This should return a JSON response with an `access_token` for the configured workload identity, not credentials from the node's service account.
 
 ## Troubleshooting
 
 **Pods get the node service account instead of the Workload Identity account**: Verify that `workload_metadata_config.mode = "GKE_METADATA"` is set on the node pool. Check that the Kubernetes service account has the `iam.gke.io/gcp-service-account` annotation. Ensure the IAM binding exists with `gcloud iam service-accounts get-iam-policy <GCP_SA_EMAIL>`.
 
-**Permission denied errors**: Verify the GCP IAM roles are correct. Use `gcloud projects get-iam-policy <PROJECT_ID>` to audit the bindings. Check that the Workload Identity pool string matches exactly: `<PROJECT_ID>.svc.id.goog[<NAMESPACE>/<KSA_NAME>]`.
+**Permission denied errors**: Verify the GCP IAM roles are correct. Use `gcloud projects get-iam-policy <PROJECT_ID>` to audit the bindings. Check that the Workload Identity IAM member string matches exactly: `serviceAccount:<PROJECT_ID>.svc.id.goog[<NAMESPACE>/<KSA_NAME>]`.
 
 **Metadata server timeout**: The GKE metadata server can take a few seconds to become available when a pod starts. Add a readiness check or initial delay to your application startup.
 
