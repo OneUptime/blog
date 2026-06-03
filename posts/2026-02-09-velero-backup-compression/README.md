@@ -8,32 +8,31 @@ Description: Learn how to implement Velero backup compression to reduce storage 
 
 ---
 
-Kubernetes backups can consume significant storage space, especially when backing up large persistent volumes or clusters with many resources. Velero supports compression at multiple levels, reducing storage costs and improving backup transfer efficiency without sacrificing disaster recovery capabilities.
+Kubernetes backups can consume significant storage space, especially when backing up large persistent volumes or clusters with many resources. Velero stores Kubernetes resource backups as gzip-compressed tar archives, and file-system backups can use repository-level deduplication and compression. These mechanisms reduce storage costs and improve backup transfer efficiency without sacrificing disaster recovery capabilities.
 
 ## Understanding Velero Compression
 
-Velero compresses backup data in two ways:
+Velero reduces backup storage in two main ways:
 
 - Resource compression: Kubernetes resources (deployments, services, configmaps, etc.) are gzipped before upload
-- Volume snapshot data compression: Some volume snapshot providers support compression
+- File-system backup deduplication and compression: the Velero node agent uses a backup repository uploader such as Kopia for pod volume data
 
-Resource compression happens automatically, but you can optimize it further.
+Resource compression happens automatically, but you can optimize overall backup size further.
 
 ## Enabling Gzip Compression
 
 Velero enables gzip compression by default for all backed-up resources:
 
 ```bash
-# Verify compression is enabled (default behavior)
-
-kubectl get deployment velero -n velero -o yaml | grep -A 5 "args:"
+# After a backup completes, Velero stores the resource archive as a .tar.gz file
+aws s3 ls s3://velero-backups/backups/<backup-name>/
 ```
 
-The Velero server automatically compresses all JSON data before storing it in object storage.
+The Velero server stores the resource backup as a gzip-compressed tar archive before uploading it to object storage.
 
-## Configuring Compression Level
+## Configuring Storage Layout
 
-While Velero uses default compression, you can influence the storage efficiency:
+Velero does not expose a gzip compression-level setting for resource backups, but you can influence storage efficiency by choosing a dedicated bucket or prefix:
 
 ```yaml
 apiVersion: velero.io/v1
@@ -45,20 +44,22 @@ spec:
   provider: aws
   objectStorage:
     bucket: velero-backups
+    prefix: backups
   config:
     region: us-east-1
-    # S3 automatically compresses objects
 ```
 
-For larger savings, use object storage lifecycle policies to compress older backups:
+For larger savings, use object storage lifecycle policies to transition older backups to cheaper storage classes:
 
 ```json
 {
   "Rules": [
     {
-      "Id": "CompressOldBackups",
+      "Id": "TierOldBackups",
       "Status": "Enabled",
-      "Prefix": "backups/",
+      "Filter": {
+        "Prefix": "backups/"
+      },
       "Transitions": [
         {
           "Days": 7,
@@ -70,21 +71,23 @@ For larger savings, use object storage lifecycle policies to compress older back
 }
 ```
 
-## Using Restic for Compressed File-Level Backups
+## Using Kopia for Compressed File-Level Backups
 
-Restic provides built-in compression for file-level backups:
+Velero's node agent uses Kopia by default for file-system backups in current Velero releases. Kopia provides compression and deduplication for file-level backup data:
 
 ```bash
-# Install Velero with Restic
+# Install Velero with the node agent
 velero install \
   --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
+  --secret-file ./credentials-velero \
   --backup-location-config region=us-east-1 \
   --snapshot-location-config region=us-east-1 \
   --use-node-agent
 ```
 
-Enable restic backup for pods with annotation:
+Enable file-system backup for pods with annotation:
 
 ```yaml
 apiVersion: v1
@@ -111,10 +114,10 @@ spec:
       name: app-config
 ```
 
-Restic automatically compresses and deduplicates volume data:
+Kopia can compress and deduplicate volume data:
 
 ```bash
-# Create backup with restic
+# Create backup with file-system backup enabled
 velero backup create compressed-backup \
   --include-namespaces production \
   --default-volumes-to-fs-backup
@@ -201,25 +204,27 @@ BACKUP_NAME=$1
 # Get backup details
 velero backup describe $BACKUP_NAME -o json > /tmp/backup.json
 
-# Extract total items
-ITEMS=$(jq -r '.status.totalItems' /tmp/backup.json)
+# Extract total items when the field is available
+ITEMS=$(jq -r '.status.totalItems // .status.progress.totalItems // 0' /tmp/backup.json)
 
 # Get backup size from S3
-BUCKET=$(jq -r '.spec.storageLocation' /tmp/backup.json)
+BUCKET=velero-backups
 BACKUP_PATH="backups/${BACKUP_NAME}/"
 
-SIZE=$(aws s3 ls s3://velero-backups/${BACKUP_PATH} --recursive --summarize | \
+SIZE=$(aws s3 ls s3://${BUCKET}/${BACKUP_PATH} --recursive --summarize | \
   grep "Total Size" | awk '{print $3}')
 
 echo "Backup: $BACKUP_NAME"
 echo "Items: $ITEMS"
 echo "Compressed size: $(numfmt --to=iec-i --suffix=B $SIZE)"
-echo "Average per item: $(numfmt --to=iec-i --suffix=B $((SIZE / ITEMS)))"
+if [ "$ITEMS" -gt 0 ]; then
+  echo "Average per item: $(numfmt --to=iec-i --suffix=B $((SIZE / ITEMS)))"
+fi
 ```
 
-## Deduplication with Restic
+## Deduplication with Kopia
 
-Restic provides automatic deduplication:
+Kopia provides automatic deduplication:
 
 ```yaml
 apiVersion: velero.io/v1
@@ -232,11 +237,11 @@ spec:
   template:
     includedNamespaces:
     - production
-    defaultVolumesToFsBackup: true  # Use restic for deduplication
+    defaultVolumesToFsBackup: true  # Use file-system backup for deduplication
     ttl: 72h0m0s
 ```
 
-Restic only stores changed data chunks, significantly reducing storage for incremental backups.
+Kopia only stores data chunks that are not already present in the repository, significantly reducing storage for repeated backups.
 
 ## Monitoring Backup Storage Usage
 
@@ -247,7 +252,7 @@ Track storage consumption over time:
 # backup-storage-report.py
 
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 s3 = boto3.client('s3')
 bucket = 'velero-backups'
@@ -262,7 +267,7 @@ def get_storage_stats():
     backup_count = 0
     storage_by_age = {'week': 0, 'month': 0, 'older': 0}
 
-    now = datetime.now(datetime.timezone.utc)
+    now = datetime.now(timezone.utc)
     week_ago = now - timedelta(days=7)
     month_ago = now - timedelta(days=30)
 
@@ -345,6 +350,7 @@ az storage account create \
 # Configure lifecycle management
 az storage account management-policy create \
   --account-name velerostorageaccount \
+  --resource-group velero-rg \
   --policy @lifecycle-policy.json
 ```
 
@@ -434,32 +440,31 @@ Lifecycle configuration:
 
 Follow these practices to optimize compression:
 
-1. **Use Restic for file-level backups**: Provides compression and deduplication
+1. **Use Kopia-backed file-system backups**: Provides compression and deduplication
 2. **Exclude unnecessary resources**: Don't backup ephemeral data
 3. **Implement storage tiering**: Move old backups to cheaper storage
 4. **Monitor compression ratios**: Track effectiveness over time
-5. **Use volume snapshots wisely**: Some storage systems compress better than others
+5. **Use volume snapshots wisely**: Some storage systems store snapshots incrementally or provide their own data-reduction features
 6. **Test restore performance**: Compressed backups may take longer to restore
 
 ## Optimizing Volume Snapshots
 
-For CSI volume snapshots, enable compression at the storage level:
+For CSI volume snapshots, use the storage provider's snapshot data-reduction features where available. On AWS EBS, snapshots are incremental, so subsequent snapshots store only changed blocks:
 
 ```yaml
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: compressed-ssd
+  name: gp3-ssd
 provisioner: ebs.csi.aws.com
 parameters:
   type: gp3
   encrypted: "true"
-  # EBS automatically compresses snapshots
 volumeBindingMode: WaitForFirstConsumer
 ```
 
 ## Conclusion
 
-Velero backup compression reduces storage costs through multiple mechanisms: automatic gzip compression of resources, Restic deduplication for file-level backups, and cloud storage tiering for long-term retention. By combining these approaches with smart exclusion policies, you can significantly reduce backup storage costs while maintaining comprehensive disaster recovery coverage.
+Velero backup compression reduces storage costs through multiple mechanisms: automatic gzip compression of resources, Kopia deduplication and compression for file-level backups, and cloud storage tiering for long-term retention. By combining these approaches with smart exclusion policies, you can significantly reduce backup storage costs while maintaining comprehensive disaster recovery coverage.
 
-Start with basic exclusion policies to reduce backup size, then implement Restic for volumes that benefit from deduplication, and finally configure storage lifecycle policies to automatically tier aging backups to cheaper storage classes. Monitor your compression ratios and storage costs regularly to optimize your backup strategy over time.
+Start with basic exclusion policies to reduce backup size, then implement file-system backups for volumes that benefit from deduplication, and finally configure storage lifecycle policies to automatically tier aging backups to cheaper storage classes. Monitor your compression ratios and storage costs regularly to optimize your backup strategy over time.
