@@ -36,7 +36,7 @@ go mod init github.com/yourusername/minimal-csi-driver
 # Install required dependencies
 go get github.com/container-storage-interface/spec/lib/go/csi
 go get google.golang.org/grpc
-go get github.com/kubernetes-csi/csi-lib-utils/rpc
+go get github.com/kubernetes-csi/drivers/pkg/csi-common
 ```
 
 Create the following directory structure:
@@ -51,8 +51,6 @@ minimal-csi-driver/
 │   │   ├── identity.go
 │   │   ├── controller.go
 │   │   └── node.go
-│   └── server/
-│       └── server.go
 └── deploy/
     └── kubernetes/
 ```
@@ -66,19 +64,23 @@ package driver
 
 import (
     "context"
+
     "github.com/container-storage-interface/spec/lib/go/csi"
+    "google.golang.org/protobuf/types/known/wrapperspb"
 )
 
 type IdentityServer struct {
-    driverName string
-    version    string
+    csi.UnimplementedIdentityServer
+
+    DriverName string
+    Version    string
 }
 
 // GetPluginInfo returns metadata about the plugin
 func (ids *IdentityServer) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
     return &csi.GetPluginInfoResponse{
-        Name:          ids.driverName,
-        VendorVersion: ids.version,
+        Name:          ids.DriverName,
+        VendorVersion: ids.Version,
     }, nil
 }
 
@@ -100,7 +102,7 @@ func (ids *IdentityServer) GetPluginCapabilities(ctx context.Context, req *csi.G
 // Probe allows Kubernetes to verify the driver is ready
 func (ids *IdentityServer) Probe(ctx context.Context, req *csi.ProbeRequest) (*csi.ProbeResponse, error) {
     return &csi.ProbeResponse{
-        Ready: &wrappers.BoolValue{Value: true},
+        Ready: wrapperspb.Bool(true),
     }, nil
 }
 ```
@@ -114,13 +116,15 @@ package driver
 
 import (
     "context"
-    "fmt"
+
     "github.com/container-storage-interface/spec/lib/go/csi"
     "google.golang.org/grpc/codes"
     "google.golang.org/grpc/status"
 )
 
 type ControllerServer struct {
+    csi.UnimplementedControllerServer
+
     volumes map[string]*csi.Volume
 }
 
@@ -229,6 +233,8 @@ import (
 )
 
 type NodeServer struct {
+    csi.UnimplementedNodeServer
+
     nodeID string
 }
 
@@ -311,8 +317,8 @@ import (
     "fmt"
     "os"
 
+    csicommon "github.com/kubernetes-csi/drivers/pkg/csi-common"
     "github.com/yourusername/minimal-csi-driver/pkg/driver"
-    "github.com/kubernetes-csi/csi-lib-utils/rpc"
 )
 
 func main() {
@@ -341,7 +347,7 @@ func main() {
     nodeServer := driver.NewNodeServer(*nodeID)
 
     // Start the gRPC server
-    server := rpc.NewNonBlockingGRPCServer()
+    server := csicommon.NewNonBlockingGRPCServer()
     server.Start(*endpoint, identityServer, controllerServer, nodeServer)
     server.Wait()
 }
@@ -370,7 +376,7 @@ spec:
       serviceAccountName: minimal-csi-controller
       containers:
         - name: csi-provisioner
-          image: k8s.gcr.io/sig-storage/csi-provisioner:v3.0.0
+          image: registry.k8s.io/sig-storage/csi-provisioner:v5.2.0
           args:
             - "--csi-address=/csi/csi.sock"
             - "--v=5"
@@ -411,7 +417,7 @@ spec:
       serviceAccountName: minimal-csi-node
       containers:
         - name: csi-node-driver-registrar
-          image: k8s.gcr.io/sig-storage/csi-node-driver-registrar:v2.5.0
+          image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.13.0
           args:
             - "--csi-address=/csi/csi.sock"
             - "--kubelet-registration-path=/var/lib/kubelet/plugins/minimal.csi.example.com/csi.sock"
