@@ -10,7 +10,7 @@ Description: Learn how to use AWS App Runner to deploy containerized web applica
 
 Not every container deployment needs a full ECS setup with clusters, task definitions, services, load balancers, and target groups. Sometimes you just want to deploy a container and have it work. That's exactly what AWS App Runner does.
 
-App Runner takes a container image (or source code) and gives you a running, auto-scaling, HTTPS-enabled web service with a public URL. No cluster management, no load balancer configuration, no VPC networking to worry about. Let's see how it works and when it makes sense.
+App Runner takes a container image (or source code) and gives you a running, auto-scaling, HTTPS-enabled web service with a public URL. No cluster management, no load balancer configuration, and no VPC networking to worry about unless you need access to private VPC resources. As of April 30, 2026, AWS App Runner no longer accepts new customers; existing App Runner services remain operational and accessible. Let's see how it works and when it makes sense.
 
 ## What App Runner Does for You
 
@@ -19,7 +19,7 @@ When you create an App Runner service, AWS automatically handles:
 - Provisioning compute capacity
 - Load balancing across instances
 - TLS termination with a managed certificate
-- Auto-scaling from zero to your configured maximum
+- Auto-scaling from your configured minimum to your configured maximum
 - Health checking and automatic replacement of failed instances
 - Rolling deployments when you update the image
 
@@ -44,25 +44,25 @@ The fastest way to deploy a container:
 aws apprunner create-service \
   --service-name my-api \
   --source-configuration '{
-    "imageRepository": {
-      "imageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:latest",
-      "imageConfiguration": {
-        "port": "8080",
-        "runtimeEnvironmentVariables": {
+    "ImageRepository": {
+      "ImageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:latest",
+      "ImageConfiguration": {
+        "Port": "8080",
+        "RuntimeEnvironmentVariables": {
           "NODE_ENV": "production",
           "LOG_LEVEL": "info"
         }
       },
-      "imageRepositoryType": "ECR"
+      "ImageRepositoryType": "ECR"
     },
-    "autoDeploymentsEnabled": true,
-    "authenticationConfiguration": {
-      "accessRoleArn": "arn:aws:iam::123456789012:role/AppRunnerECRAccessRole"
+    "AutoDeploymentsEnabled": true,
+    "AuthenticationConfiguration": {
+      "AccessRoleArn": "arn:aws:iam::123456789012:role/AppRunnerECRAccessRole"
     }
   }' \
   --instance-configuration '{
-    "cpu": "1024",
-    "memory": "2048"
+    "Cpu": "1024",
+    "Memory": "2048"
   }' \
   --auto-scaling-configuration-arn "arn:aws:apprunner:us-east-1:123456789012:autoscalingconfiguration/default/1/abc123"
 ```
@@ -78,11 +78,15 @@ App Runner offers fixed instance sizes, similar to Fargate:
 | CPU (vCPU) | Memory (MB) | Good For |
 |------------|-------------|----------|
 | 256 | 512 | Simple APIs, lightweight services |
+| 256 | 1024 | Lightweight services that need a little more memory |
 | 512 | 1024 | Most web applications |
 | 1024 | 2048 | CPU-intensive workloads |
 | 1024 | 3072 | Memory-heavy applications |
+| 1024 | 4096 | Memory-heavy applications on 1 vCPU |
 | 2048 | 4096 | Large applications |
+| 2048 | 6144 | Large applications with more memory pressure |
 | 4096 | 8192 | High-performance services |
+| 4096 | 10240 | High-performance services with more memory pressure |
 | 4096 | 12288 | Memory-intensive processing |
 
 Choose based on your application's actual resource needs. You can change instance sizes later without downtime - App Runner handles the rollout automatically.
@@ -101,7 +105,7 @@ aws apprunner create-auto-scaling-configuration \
 ```
 
 - **max-concurrency** - How many concurrent requests each instance handles before scaling out. Default is 100.
-- **min-size** - Minimum number of instances. Set to at least 1 for always-on, or 0 for scale-to-zero (but be aware of cold start times).
+- **min-size** - Minimum number of provisioned instances. App Runner requires at least 1; when traffic drops, inactive provisioned instances act as a compute capacity reserve.
 - **max-size** - Maximum number of instances. This is your spending cap.
 
 A good starting point is `max-concurrency: 50` for most web applications. If your requests are quick (under 100ms), you can push this higher. If they're slow (database queries, external API calls), lower it.
@@ -115,26 +119,26 @@ For non-sensitive configuration, use runtime environment variables:
 aws apprunner update-service \
   --service-arn arn:aws:apprunner:us-east-1:123456789012:service/my-api/abc123 \
   --source-configuration '{
-    "imageRepository": {
-      "imageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:latest",
-      "imageConfiguration": {
-        "port": "8080",
-        "runtimeEnvironmentVariables": {
+    "ImageRepository": {
+      "ImageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-api:latest",
+      "ImageConfiguration": {
+        "Port": "8080",
+        "RuntimeEnvironmentVariables": {
           "NODE_ENV": "production",
           "API_TIMEOUT": "30000",
           "FEATURE_FLAG_NEW_UI": "true"
         },
-        "runtimeEnvironmentSecrets": {
+        "RuntimeEnvironmentSecrets": {
           "DATABASE_URL": "arn:aws:secretsmanager:us-east-1:123456789012:secret:prod/db-url",
           "API_KEY": "arn:aws:ssm:us-east-1:123456789012:parameter/prod/api-key"
         }
       },
-      "imageRepositoryType": "ECR"
+      "ImageRepositoryType": "ECR"
     }
   }'
 ```
 
-The `runtimeEnvironmentSecrets` field lets you reference Secrets Manager secrets and SSM Parameter Store parameters. App Runner injects these as environment variables at runtime.
+The `RuntimeEnvironmentSecrets` field lets you reference Secrets Manager secrets and SSM Parameter Store parameters. App Runner injects these as environment variables at runtime.
 
 ## Health Checks
 
@@ -145,12 +149,12 @@ App Runner runs health checks to ensure your application is responding correctly
 aws apprunner create-service \
   --service-name my-api \
   --health-check-configuration '{
-    "protocol": "HTTP",
-    "path": "/health",
-    "interval": 10,
-    "timeout": 5,
-    "healthyThreshold": 1,
-    "unhealthyThreshold": 5
+    "Protocol": "HTTP",
+    "Path": "/health",
+    "Interval": 10,
+    "Timeout": 5,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 5
   }' \
   --source-configuration '...'
 ```
@@ -172,7 +176,7 @@ One of App Runner's best features is automatic deployments. When you push a new 
 
 ```bash
 # Enable auto-deployments (set during service creation)
-"autoDeploymentsEnabled": true
+"AutoDeploymentsEnabled": true
 ```
 
 This means your CI/CD pipeline just needs to build and push the image. App Runner handles the rest. The deployment is a rolling update, so there's no downtime.
@@ -200,9 +204,9 @@ aws apprunner create-vpc-connector \
 aws apprunner update-service \
   --service-arn arn:aws:apprunner:us-east-1:123456789012:service/my-api/abc123 \
   --network-configuration '{
-    "egressConfiguration": {
-      "egressType": "VPC",
-      "vpcConnectorArn": "arn:aws:apprunner:us-east-1:123456789012:vpcconnector/production-connector/1/abc123"
+    "EgressConfiguration": {
+      "EgressType": "VPC",
+      "VpcConnectorArn": "arn:aws:apprunner:us-east-1:123456789012:vpcconnector/production-connector/1/abc123"
     }
   }'
 ```
@@ -223,7 +227,7 @@ App Runner will give you CNAME records to add to your DNS. Once validated, it pr
 
 ## When to Use App Runner vs ECS
 
-App Runner is the right choice when:
+For existing App Runner customers, App Runner is the right choice when:
 - You want the simplest possible deployment
 - Your app is a web service or API
 - You don't need fine-grained networking control
@@ -241,4 +245,4 @@ For a deeper look at App Runner with ECR specifically, check out our guide on [s
 
 ## Wrapping Up
 
-App Runner removes the operational overhead of running containers. You don't think about clusters, load balancers, or scaling policies. You push an image, and you get a running service with HTTPS and auto-scaling. For web applications and APIs where simplicity matters more than fine-grained control, it's hard to beat.
+App Runner removes the operational overhead of running containers. You don't think about clusters, load balancers, or scaling policies. You push an image, and you get a running service with HTTPS and auto-scaling. For existing customers running web applications and APIs where simplicity matters more than fine-grained control, it's hard to beat.
