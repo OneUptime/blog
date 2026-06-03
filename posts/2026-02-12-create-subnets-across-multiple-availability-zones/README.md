@@ -8,9 +8,9 @@ Description: Learn how to distribute subnets across multiple AWS availability zo
 
 ---
 
-If all your resources live in a single availability zone, you're one power outage away from a complete outage. AWS availability zones are physically separate data centers within a region, designed so that a failure in one zone doesn't affect the others. Spreading your subnets across multiple AZs is the simplest and most effective way to build resilient infrastructure.
+If all your resources live in a single availability zone, you're one power outage away from a complete outage. AWS availability zones are physically separate locations within a region, each made up of one or more discrete data centers, designed so that a failure in one zone doesn't affect the others. Spreading your subnets across multiple AZs is the simplest and most effective way to build resilient infrastructure.
 
-Many AWS services actually require multi-AZ subnets. RDS Multi-AZ deployments, ECS services, Application Load Balancers - they all need subnets in at least two availability zones. So this isn't just about best practices. It's often a hard requirement.
+Many AWS services actually require multi-AZ subnets. RDS Multi-AZ DB instance deployments and Application Load Balancers need subnets in at least two availability zones, and RDS Multi-AZ DB clusters need subnets in at least three. ECS services don't always require multiple AZs, but production ECS services should use them for resilience, and services fronted by an Application Load Balancer inherit the load balancer's multi-AZ subnet requirement. So this isn't just about best practices. It's often a hard requirement.
 
 ## How Availability Zones Work
 
@@ -261,7 +261,7 @@ Outputs:
 Good tagging is critical when you have dozens of subnets. Here's a tagging scheme that works:
 
 ```bash
-# Tag subnets so Kubernetes and other services can discover them
+# Tag private subnets so Kubernetes and other services can discover them for internal load balancers
 aws ec2 create-tags --resources $SUBNET_ID --tags \
   Key=Name,Value="prod-private-us-east-1a" \
   Key=Environment,Value=production \
@@ -270,7 +270,7 @@ aws ec2 create-tags --resources $SUBNET_ID --tags \
   Key=kubernetes.io/cluster/my-cluster,Value=shared
 ```
 
-The Kubernetes-specific tags are essential if you're running EKS. The cluster's load balancer controller uses these tags to know which subnets to place load balancers in. Without them, your services won't get external endpoints.
+For internet-facing load balancers, tag public subnets with `kubernetes.io/role/elb=1` instead. The Kubernetes-specific role tags are important if you're running EKS. The AWS Load Balancer Controller uses them to know which subnets to place load balancers in. The `kubernetes.io/cluster/my-cluster=shared` tag is required by older AWS Load Balancer Controller versions and is still useful when multiple clusters share a VPC.
 
 ## Verifying Your Setup
 
@@ -280,7 +280,7 @@ After creating all the subnets, verify the layout:
 # List all subnets in your VPC, sorted by AZ
 aws ec2 describe-subnets \
   --filters "Name=vpc-id,Values=$VPC_ID" \
-  --query 'Subnets[].{AZ:AvailabilityZone,CIDR:CidrBlock,Name:Tags[?Key==`Name`].Value|[0],ID:SubnetId}' \
+  --query 'sort_by(Subnets,&AvailabilityZone)[].{AZ:AvailabilityZone,CIDR:CidrBlock,Name:Tags[?Key==`Name`].Value|[0],ID:SubnetId}' \
   --output table
 ```
 
