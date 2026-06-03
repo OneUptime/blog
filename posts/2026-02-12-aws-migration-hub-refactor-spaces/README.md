@@ -8,7 +8,9 @@ Description: Learn how to use AWS Migration Hub Refactor Spaces to manage increm
 
 ---
 
-Breaking apart a monolith is messy. You've got the old system, the new microservices you're building, and somehow you need to route traffic between them while keeping everything working. AWS Migration Hub Refactor Spaces was built specifically for this problem. It gives you a managed environment for incrementally refactoring applications, handling the routing, networking, and service discovery that makes the [strangler fig pattern](https://oneuptime.com/blog/post/2026-02-12-strangler-fig-pattern-aws-migration/view) work in practice.
+Breaking apart a monolith is messy. You've got the old system, the new microservices you're building, and somehow you need to route traffic between them while keeping everything working. AWS Migration Hub Refactor Spaces was built specifically for this problem. It gives you a managed environment for incrementally refactoring applications, handling the routing, networking, and DNS resolution that makes the [strangler fig pattern](https://oneuptime.com/blog/post/2026-02-12-strangler-fig-pattern-aws-migration/view) work in practice.
+
+One current caveat: AWS Migration Hub is no longer open to new customers as of November 7, 2025, so this applies to existing customers who already have access.
 
 Think of it as a purpose-built tool for what people used to cobble together with API Gateway, ALB routing rules, and a lot of manual configuration.
 
@@ -70,7 +72,7 @@ Wait for the environment to be active.
 ```bash
 # Check environment status
 aws migration-hub-refactor-spaces get-environment \
-  --environment-identifier "env-abc123" \
+  --environment-identifier "env-0123456789" \
   --query "{Name:Name, State:State}"
 ```
 
@@ -81,10 +83,10 @@ The application represents what you're refactoring. It creates an API Gateway pr
 ```bash
 # Create the application with an API Gateway proxy
 aws migration-hub-refactor-spaces create-application \
-  --environment-identifier "env-abc123" \
+  --environment-identifier "env-0123456789" \
   --name "order-management" \
   --proxy-type "API_GATEWAY" \
-  --vpc-id "vpc-legacy-123" \
+  --vpc-id "vpc-0123456789abcdef0" \
   --api-gateway-proxy '{
     "EndpointType": "REGIONAL",
     "StageName": "prod"
@@ -100,15 +102,15 @@ Register your existing monolith as a service. This tells Refactor Spaces where t
 ```bash
 # Register the legacy monolith as a service
 aws migration-hub-refactor-spaces create-service \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
   --name "legacy-monolith" \
   --endpoint-type "URL" \
   --url-endpoint '{
-    "Url": "http://legacy-internal.example.com",
-    "HealthUrl": "http://legacy-internal.example.com/health"
+    "Url": "http://10.0.1.10",
+    "HealthUrl": "http://10.0.1.10/health"
   }' \
-  --vpc-id "vpc-legacy-123"
+  --vpc-id "vpc-0123456789abcdef0"
 ```
 
 ## Step 4: Create the Default Route
@@ -118,10 +120,10 @@ Set up a default route that sends all traffic to the legacy service. This is you
 ```bash
 # Create default route to legacy
 aws migration-hub-refactor-spaces create-route \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
   --route-type "DEFAULT" \
-  --service-identifier "svc-legacy-001"
+  --service-identifier "svc-0123456789"
 ```
 
 At this point, all traffic flows through the API Gateway proxy to your legacy monolith. Nothing has changed from the user's perspective.
@@ -135,12 +137,12 @@ Deploy the new service (Lambda, ECS, EC2, whatever you prefer), then register it
 ```bash
 # Register the new user service
 aws migration-hub-refactor-spaces create-service \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
   --name "user-service" \
   --endpoint-type "LAMBDA" \
   --lambda-endpoint '{
-    "Arn": "arn:aws:lambda:us-east-1:123456789:function:user-service"
+    "Arn": "arn:aws:lambda:us-east-1:123456789012:function:user-service"
   }'
 ```
 
@@ -149,15 +151,15 @@ Or if you're using a container-based service:
 ```bash
 # Register a container-based service
 aws migration-hub-refactor-spaces create-service \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
   --name "user-service" \
   --endpoint-type "URL" \
   --url-endpoint '{
-    "Url": "http://user-service.internal:8080",
-    "HealthUrl": "http://user-service.internal:8080/health"
+    "Url": "http://10.1.2.10:8080",
+    "HealthUrl": "http://10.1.2.10:8080/health"
   }' \
-  --vpc-id "vpc-microservices-456"
+  --vpc-id "vpc-0fedcba9876543210"
 ```
 
 ## Step 6: Route Traffic to the New Service
@@ -167,8 +169,8 @@ Create a route that directs specific paths to the new service instead of the leg
 ```bash
 # Route /users/* to the new user service
 aws migration-hub-refactor-spaces create-route \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
   --route-type "URI_PATH" \
   --uri-path-route '{
     "SourcePath": "/users",
@@ -176,7 +178,7 @@ aws migration-hub-refactor-spaces create-route \
     "IncludeChildPaths": true,
     "ActivationState": "ACTIVE"
   }' \
-  --service-identifier "svc-user-001"
+  --service-identifier "svc-1111111111"
 ```
 
 The `IncludeChildPaths` flag means `/users/123`, `/users/123/settings`, and any other sub-path under `/users` will also route to the new service. The legacy system's default route still catches everything else.
@@ -191,8 +193,8 @@ import time
 
 client = boto3.client('migration-hub-refactor-spaces')
 
-ENV_ID = 'env-abc123'
-APP_ID = 'app-xyz789'
+ENV_ID = 'env-0123456789'
+APP_ID = 'app-0123456789'
 
 def migrate_module(name, endpoint_url, vpc_id, path):
     """Register a new service and route traffic to it."""
@@ -245,22 +247,22 @@ def migrate_module(name, endpoint_url, vpc_id, path):
 # Migrate modules one by one
 migrate_module(
     name='order-service',
-    endpoint_url='http://order-service.internal:8080',
-    vpc_id='vpc-microservices-456',
+    endpoint_url='http://10.1.2.11:8080',
+    vpc_id='vpc-0fedcba9876543210',
     path='/orders'
 )
 
 migrate_module(
     name='inventory-service',
-    endpoint_url='http://inventory-service.internal:8080',
-    vpc_id='vpc-microservices-456',
+    endpoint_url='http://10.1.2.12:8080',
+    vpc_id='vpc-0fedcba9876543210',
     path='/inventory'
 )
 
 migrate_module(
     name='notification-service',
-    endpoint_url='http://notification-service.internal:8080',
-    vpc_id='vpc-microservices-456',
+    endpoint_url='http://10.1.2.13:8080',
+    vpc_id='vpc-0fedcba9876543210',
     path='/notifications'
 )
 ```
@@ -272,8 +274,8 @@ Track which routes are handled by new services versus the legacy system.
 ```bash
 # List all routes for the application
 aws migration-hub-refactor-spaces list-routes \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
   --query "RouteSummaryList[].{Path:SourcePath, Type:RouteType, Service:ServiceId, State:State}" \
   --output table
 ```
@@ -289,9 +291,9 @@ class ServiceRegistry:
     """Simple service registry for cross-service calls."""
 
     SERVICES = {
-        'user-service': 'http://user-service.internal:8080',
-        'order-service': 'http://order-service.internal:8080',
-        'legacy': 'http://legacy-internal.example.com',
+        'user-service': 'http://10.1.2.10:8080',
+        'order-service': 'http://10.1.2.11:8080',
+        'legacy': 'http://10.0.1.10',
     }
 
     @classmethod
@@ -324,11 +326,12 @@ Keep close tabs on both systems during the migration. Watch for:
 - Cross-service call failures
 
 ```bash
-# Check API Gateway metrics for the Refactor Spaces proxy
+# Check API Gateway metrics for the Refactor Spaces proxy.
+# Replace the ApiName value with the API Gateway name Refactor Spaces created.
 aws cloudwatch get-metric-statistics \
   --namespace "AWS/ApiGateway" \
   --metric-name "5XXError" \
-  --dimensions "Name=ApiName,Value=refactor-spaces-app-xyz789" \
+  --dimensions "Name=ApiName,Value=order-management" \
   --start-time "2026-02-12T00:00:00Z" \
   --end-time "2026-02-12T23:59:59Z" \
   --period 3600 \
@@ -344,16 +347,16 @@ Once all routes point to new services and the legacy system handles no traffic:
 ```bash
 # Deactivate the default route (legacy)
 aws migration-hub-refactor-spaces update-route \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
-  --route-identifier "route-default-001" \
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
+  --route-identifier "rte-0123456789" \
   --activation-state "INACTIVE"
 
 # After verification period, delete the legacy service
 aws migration-hub-refactor-spaces delete-service \
-  --environment-identifier "env-abc123" \
-  --application-identifier "app-xyz789" \
-  --service-identifier "svc-legacy-001"
+  --environment-identifier "env-0123456789" \
+  --application-identifier "app-0123456789" \
+  --service-identifier "svc-0123456789"
 ```
 
 ## Wrapping Up
