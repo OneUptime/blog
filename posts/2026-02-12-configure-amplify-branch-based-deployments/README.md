@@ -8,7 +8,7 @@ Description: A practical guide to configuring branch-based deployments in AWS Am
 
 ---
 
-One of the most useful features in AWS Amplify is branch-based deployments. Every branch in your Git repository can get its own fully isolated environment with its own URL, backend resources, and environment variables. This means your team can test features in production-like settings before merging to main, without stepping on each other's work.
+One of the most useful features in AWS Amplify is branch-based deployments. Every connected branch in your Git repository can get its own deployment URL, build pipeline, and branch-specific environment variables. For fullstack apps, you can also isolate backend resources per branch. This means your team can test features in production-like settings before merging to main, without stepping on each other's work.
 
 This guide covers how to set up, configure, and manage branch-based deployments in Amplify, including pattern-based auto-detection, per-branch environment variables, and backend isolation.
 
@@ -47,7 +47,7 @@ To enable automatic branch detection:
    - `feature/*` to deploy only feature branches
    - `release/*` to deploy release candidates
 
-You can also exclude patterns. For example, deploy everything except `dependabot/*` branches to avoid wasting build minutes on automated dependency updates.
+Specify only the branch patterns you want Amplify to deploy automatically. For example, use `feature/*` and `release/*` if you want to avoid building automated dependency-update branches.
 
 ## Step 2: Configure Branch Patterns in amplify.yml
 
@@ -65,7 +65,8 @@ frontend:
     build:
       commands:
         # Use different build commands per branch
-        - if [ "$AWS_BRANCH" = "main" ]; then
+        - |
+          if [ "$AWS_BRANCH" = "main" ]; then
             npm run build:production;
           elif [ "$AWS_BRANCH" = "develop" ]; then
             npm run build:staging;
@@ -85,7 +86,7 @@ The `$AWS_BRANCH` environment variable is automatically set by Amplify and conta
 
 ## Step 3: Set Per-Branch Environment Variables
 
-Different branches often need different environment variables. Your production branch connects to a production database, while feature branches should use a development database.
+Different branches often need different environment variables. Your production branch might connect to production services, while feature branches should use development services. Do not store secrets in Amplify environment variables; use Amplify secrets for Gen 2 apps or environment secrets for Gen 1 apps.
 
 In the Amplify console, go to "Hosting" then "Environment variables." You can set variables at two levels:
 
@@ -102,11 +103,11 @@ NODE_ENV=production
 ```text
 # Override for the 'develop' branch
 API_URL=https://staging-api.example.com
-DATABASE_URL=postgresql://user:pass@staging-db:5432/myapp
+APP_ENV=staging
 
 # Override for the 'main' branch
 API_URL=https://api.example.com
-DATABASE_URL=postgresql://user:pass@production-db:5432/myapp
+APP_ENV=production
 ```
 
 Branch-level variables take precedence over app-level variables with the same name.
@@ -151,27 +152,17 @@ This is especially useful for staging environments that should only be visible t
 # Access control configuration
 main: Publicly accessible
 develop: Restricted (username: team, password: *****)
-feature/*: Restricted (username: dev, password: *****)
+auto-detected branches: Restricted (username: dev, password: *****)
 ```
 
 ## Step 6: Configure Notifications for Branch Deployments
 
-Stay informed about deployment status by setting up notifications. Amplify can send notifications through Amazon SNS:
+Stay informed about deployment status by setting up build notifications. Amplify Hosting creates an Amazon SNS topic in your account and uses it to send email notifications when builds succeed or fail.
 
-```bash
-# Create an SNS topic for build notifications
-aws sns create-topic --name amplify-build-notifications
+In the Amplify console, go to "Hosting" then "Build notifications." Choose "Manage notifications," add the email address that should receive notifications, and select either a specific branch or all branches.
 
-# Subscribe your email
-aws sns subscribe \
-  --topic-arn arn:aws:sns:us-east-1:123456789:amplify-build-notifications \
-  --protocol email \
-  --notification-endpoint team@example.com
-```
+You can receive alerts for:
 
-Then in the Amplify console, go to "Notifications" and connect the SNS topic to build events. You can receive alerts for:
-
-- Build started
 - Build succeeded
 - Build failed
 
@@ -179,11 +170,11 @@ Then in the Amplify console, go to "Notifications" and connect the SNS topic to 
 
 Branches come and go, and you do not want stale deployments sitting around consuming resources. Amplify offers a few ways to handle this:
 
-**Auto-deletion**: When you enable branch auto-detection, you can also enable auto-deletion. This means when a branch is deleted from your Git repository, Amplify automatically tears down the associated deployment and backend resources.
+**Auto-disconnection**: When you enable branch auto-detection, you can also enable branch auto-disconnection. This means when a branch is deleted from your Git repository, Amplify automatically deletes the associated Amplify branch deployment. For fullstack branches, review your backend cleanup behavior before relying on automatic deletion for all resources.
 
 **Manual cleanup**: In the Amplify console, you can disconnect individual branches. This removes the deployment but does not delete the Git branch.
 
-**TTL (Time to Live)**: For preview deployments, you can set a TTL so environments are automatically deleted after a certain period, even if the branch still exists.
+**Backend cleanup**: For Gen 1 backend environments that are no longer needed, remove the environment with the Amplify CLI after disconnecting the branch.
 
 ## Workflow Example
 
@@ -197,7 +188,7 @@ Here is a typical workflow using branch-based deployments:
 6. Feature is merged to `develop`, triggering a staging build
 7. After staging validation, `develop` is merged to `main`
 8. Production deploys automatically
-9. `feature/user-profile` branch is deleted, Amplify cleans up
+9. `feature/user-profile` branch is deleted, Amplify disconnects the branch deployment
 
 ## Custom Domains Per Branch
 
@@ -206,10 +197,10 @@ You can assign custom subdomains to specific branches. In the Amplify console un
 ```text
 main -> www.example.com
 develop -> staging.example.com
-feature/* -> *.preview.example.com
+feature/user-profile -> feature-user-profile.example.com
 ```
 
-This gives your staging and preview environments clean, memorable URLs.
+If your custom domain is managed in Route 53, you can also enable automatic subdomain creation so newly connected branches get branch-based subdomains automatically. This gives your staging and preview environments clean, memorable URLs.
 
 ## Debugging Branch Deployments
 
@@ -228,8 +219,8 @@ For more on handling build issues, see our guide on [troubleshooting Amplify bui
 Each branch deployment adds to your Amplify costs. Build minutes are charged per minute, and each SSR deployment incurs Lambda and CloudFront costs. To keep costs under control:
 
 - Limit auto-detection to branches with specific prefixes (like `feature/*` or `release/*`)
-- Enable auto-deletion so unused environments are cleaned up
-- Set TTLs on preview environments
+- Enable branch auto-disconnection so unused branch deployments are cleaned up
+- Remove unused backend environments after preview branches are disconnected
 - Use shared backend environments for non-production branches
 
 ## Wrapping Up
