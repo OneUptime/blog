@@ -8,7 +8,7 @@ Description: Learn how to configure Route 53 CIDR-based routing to direct DNS qu
 
 ---
 
-Sometimes you need more control over DNS routing than geolocation provides. Your enterprise customers come from known IP ranges. Your partner networks have specific CIDR blocks. Your internal services live in predictable subnets. Route 53 CIDR-based routing lets you map source IP ranges directly to DNS responses, giving you precise control over where traffic goes.
+Sometimes you need more control over DNS routing than geolocation provides. Your enterprise customers come from known IP ranges. Your partner networks have specific CIDR blocks. Your internal resolvers or NAT gateways egress from predictable address ranges. Route 53 CIDR-based routing lets you map source IP ranges directly to DNS responses, giving you precise control over where traffic goes.
 
 ## What is CIDR-Based Routing?
 
@@ -34,7 +34,7 @@ This is different from geolocation routing in important ways:
 
 **Partner network integration**: Different partners get routed to different API endpoints based on their network ranges.
 
-**Internal vs. external traffic split**: Route internal company traffic to internal endpoints and external traffic to public endpoints.
+**Internal vs. external traffic split**: Route company traffic from known resolver or egress ranges to internal endpoints and external traffic to public endpoints.
 
 **ISP-specific routing**: Route traffic from specific ISPs to the closest or best-performing endpoint for that ISP's network.
 
@@ -52,7 +52,7 @@ aws route53 create-cidr-collection \
     --caller-reference "cidr-collection-2026-02-12"
 
 # Note the collection ID from the response
-# Example: collection-id-0123456789abcdef0
+# Example: 9ac32814-3e67-4932-9048-8d779cc6f511
 ```
 
 ## Step 2: Add CIDR Blocks to the Collection
@@ -62,7 +62,7 @@ Each CIDR block is associated with a location name. The location name is what yo
 ```bash
 # Add CIDR blocks for different locations/purposes
 aws route53 change-cidr-collection \
-    --id collection-id-0123456789abcdef0 \
+    --id 9ac32814-3e67-4932-9048-8d779cc6f511 \
     --changes '[
         {
             "Action": "PUT",
@@ -125,7 +125,7 @@ aws route53 change-resource-record-sets \
                     "Type": "A",
                     "SetIdentifier": "internal",
                     "CidrRoutingConfig": {
-                        "CollectionId": "collection-id-0123456789abcdef0",
+                        "CollectionId": "9ac32814-3e67-4932-9048-8d779cc6f511",
                         "LocationName": "internal-network"
                     },
                     "TTL": 60,
@@ -141,7 +141,7 @@ aws route53 change-resource-record-sets \
                     "Type": "A",
                     "SetIdentifier": "partner-acme",
                     "CidrRoutingConfig": {
-                        "CollectionId": "collection-id-0123456789abcdef0",
+                        "CollectionId": "9ac32814-3e67-4932-9048-8d779cc6f511",
                         "LocationName": "partner-acme"
                     },
                     "TTL": 60,
@@ -157,7 +157,7 @@ aws route53 change-resource-record-sets \
                     "Type": "A",
                     "SetIdentifier": "partner-globex",
                     "CidrRoutingConfig": {
-                        "CollectionId": "collection-id-0123456789abcdef0",
+                        "CollectionId": "9ac32814-3e67-4932-9048-8d779cc6f511",
                         "LocationName": "partner-globex"
                     },
                     "TTL": 60,
@@ -173,7 +173,7 @@ aws route53 change-resource-record-sets \
                     "Type": "A",
                     "SetIdentifier": "default",
                     "CidrRoutingConfig": {
-                        "CollectionId": "collection-id-0123456789abcdef0",
+                        "CollectionId": "9ac32814-3e67-4932-9048-8d779cc6f511",
                         "LocationName": "*"
                     },
                     "TTL": 60,
@@ -193,14 +193,13 @@ The `"LocationName": "*"` acts as a catch-all for queries that do not match any 
 ```bash
 # List CIDR blocks in the collection
 aws route53 list-cidr-blocks \
-    --collection-id collection-id-0123456789abcdef0
+    --collection-id 9ac32814-3e67-4932-9048-8d779cc6f511
 
 # List all locations in the collection
 aws route53 list-cidr-locations \
-    --collection-id collection-id-0123456789abcdef0
+    --collection-id 9ac32814-3e67-4932-9048-8d779cc6f511
 
-# Test DNS resolution (from different source IPs)
-# Use dig with a specific source to test
+# Test DNS resolution by querying a Route 53 authoritative name server directly
 dig api.example.com @ns-1234.awsdns-12.org
 
 # Use Route 53 test DNS answer
@@ -208,10 +207,12 @@ aws route53 test-dns-answer \
     --hosted-zone-id Z1234567890 \
     --record-name api.example.com \
     --record-type A \
-    --resolver-ip 203.0.113.50
+    --resolver-ip 8.8.8.8 \
+    --edns0-client-subnet-ip 203.0.113.50 \
+    --edns0-client-subnet-mask 24
 ```
 
-The `test-dns-answer` command is extremely useful for validating CIDR-based routing. Provide different resolver IPs to verify that each CIDR block returns the correct record.
+The `test-dns-answer` command is extremely useful for validating CIDR-based routing in public hosted zones. Provide different resolver IPs or EDNS0 client subnet values to verify that each CIDR block returns the correct record.
 
 ## Managing CIDR Collections
 
@@ -220,7 +221,7 @@ The `test-dns-answer` command is extremely useful for validating CIDR-based rout
 ```bash
 # Add new CIDR blocks to an existing location
 aws route53 change-cidr-collection \
-    --id collection-id-0123456789abcdef0 \
+    --id 9ac32814-3e67-4932-9048-8d779cc6f511 \
     --changes '[
         {
             "Action": "PUT",
@@ -241,7 +242,7 @@ Note: PUT replaces the entire CIDR list for that location. Always include all CI
 ```bash
 # Delete a location from the collection
 aws route53 change-cidr-collection \
-    --id collection-id-0123456789abcdef0 \
+    --id 9ac32814-3e67-4932-9048-8d779cc6f511 \
     --changes '[
         {
             "Action": "DELETE_IF_EXISTS",
@@ -309,11 +310,11 @@ resource "aws_route53_record" "api_default" {
 Add Route 53 health checks to your CIDR-based routing records for automatic failover:
 
 ```bash
-# Create a health check for the internal endpoint
+# Create a health check for a public endpoint
 aws route53 create-health-check \
-    --caller-reference "internal-api-health-2026" \
+    --caller-reference "api-health-2026" \
     --health-check-config '{
-        "IPAddress": "10.1.1.100",
+        "IPAddress": "52.0.0.100",
         "Port": 443,
         "Type": "HTTPS",
         "ResourcePath": "/health",
@@ -332,6 +333,7 @@ Track how your CIDR-based routing is performing using Route 53 query logging. Se
 ```bash
 # Query CloudWatch for DNS query metrics
 aws cloudwatch get-metric-statistics \
+    --region us-east-1 \
     --namespace AWS/Route53 \
     --metric-name DNSQueries \
     --dimensions Name=HostedZoneId,Value=Z1234567890 \
@@ -343,17 +345,18 @@ aws cloudwatch get-metric-statistics \
 
 ## Limitations
 
-- Maximum of 5,000 CIDR blocks per collection
-- Maximum of 100 locations per collection
-- CIDR blocks must be IPv4 (/0 to /24) or IPv6 (/0 to /48)
+- Maximum of 1,000 CIDR blocks per collection by default
+- Maximum of 5 CIDR collections per AWS account by default
+- CIDR blocks must be IPv4 (/1 to /24) or IPv6 (/1 to /48); use the default (`"*"`) location for `0.0.0.0/0` or `::/0`
 - The source IP used for routing is the resolver's IP, not the end-user's IP (unless EDNS Client Subnet is supported)
-- CIDR collections are global but hosted zones are regional in terms of management
+- IP-based routing is supported for public hosted zones, not private hosted zones
+- Route 53 is a global service; hosted zone CloudWatch metrics must be queried in `us-east-1`
 
 ## EDNS Client Subnet Considerations
 
 Route 53 CIDR-based routing uses the source IP of the DNS resolver, not the end user's IP. However, if the resolver supports EDNS Client Subnet (ECS), Route 53 can use the truncated client subnet from the query to make routing decisions.
 
-Most public DNS resolvers (Google 8.8.8.8, Cloudflare 1.1.1.1) support ECS. This means CIDR-based routing can often match on the actual end-user network, not just the resolver network.
+Some public DNS resolvers, such as Google Public DNS, support ECS. Others, such as Cloudflare 1.1.1.1, do not send ECS for normal queries. This means CIDR-based routing can sometimes match on the actual end-user network, but you should test the resolvers your users actually use.
 
 ## Conclusion
 
