@@ -8,13 +8,13 @@ Description: Build automated detection rules using CloudTrail and EventBridge to
 
 ---
 
-Every API call in your AWS account leaves a trace in CloudTrail. That includes the ones that fail with "Access Denied." Those failed calls are interesting because they often indicate either misconfigured permissions or someone probing your account for weaknesses. By combining CloudTrail with Amazon EventBridge, you can detect these unauthorized API calls in near real-time and trigger automated responses.
+Every supported management API call in your AWS account leaves a trace in CloudTrail. That includes the ones that fail with "Access Denied." Those failed calls are interesting because they often indicate either misconfigured permissions or someone probing your account for weaknesses. By combining CloudTrail with Amazon EventBridge, you can detect these unauthorized API calls in near real-time and trigger automated responses.
 
 This is not a replacement for GuardDuty (which does ML-based threat detection), but it is a lightweight, targeted approach for catching specific patterns you care about.
 
 ## How It Works
 
-CloudTrail continuously records API activity. When you enable CloudTrail integration with EventBridge, every management event generates an EventBridge event. You write rules that match specific patterns (like error codes indicating unauthorized access), and EventBridge routes those matches to targets like SNS, Lambda, or Step Functions.
+CloudTrail continuously records API activity. When you have an active trail that logs the event types you care about, CloudTrail sends those events to the default EventBridge event bus on a best-effort basis. You write rules that match specific patterns (like error codes indicating unauthorized access), and EventBridge routes those matches to targets like SNS, Lambda, or Step Functions.
 
 ```mermaid
 flowchart LR
@@ -32,7 +32,7 @@ The detection is near real-time. From the moment the API call happens to the tim
 
 ## Prerequisites
 
-- CloudTrail enabled in your account (it is enabled by default for management events)
+- A CloudTrail trail that is currently logging management events
 - EventBridge access (enabled by default in all accounts)
 - An SNS topic for notifications
 - AWS CLI configured
@@ -49,6 +49,13 @@ aws sns subscribe \
   --topic-arn arn:aws:sns:us-east-1:123456789012:security-alerts \
   --protocol email \
   --notification-endpoint security-team@example.com
+
+# Allow EventBridge rules to publish to the topic
+# If the topic already has a policy, merge this statement instead of replacing it.
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:123456789012:security-alerts \
+  --attribute-name Policy \
+  --attribute-value '{"Version":"2012-10-17","Statement":[{"Sid":"AllowEventBridgePublish","Effect":"Allow","Principal":{"Service":"events.amazonaws.com"},"Action":"sns:Publish","Resource":"arn:aws:sns:us-east-1:123456789012:security-alerts"}]}'
 ```
 
 ## Step 2: Detect Access Denied Errors
@@ -59,11 +66,12 @@ The first rule catches any API call that returns an Access Denied error. This is
 # Create EventBridge rule for Access Denied errors
 aws events put-rule \
   --name detect-access-denied \
+  --state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS \
   --event-pattern '{
     "source": ["aws.iam", "aws.s3", "aws.ec2", "aws.sts"],
     "detail-type": ["AWS API Call via CloudTrail"],
     "detail": {
-      "errorCode": ["AccessDenied", "Client.UnauthorizedAccess", "UnauthorizedAccess"]
+      "errorCode": ["AccessDenied", "AccessDeniedException", "Client.UnauthorizedAccess", "UnauthorizedAccess"]
     }
   }' \
   --description "Detect API calls that return Access Denied"
@@ -123,6 +131,7 @@ Also catch root API calls (not just console logins):
 # Detect root account API calls
 aws events put-rule \
   --name detect-root-api-calls \
+  --state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS \
   --event-pattern '{
     "detail-type": ["AWS API Call via CloudTrail"],
     "detail": {
@@ -179,13 +188,13 @@ aws events put-targets \
 
 ## Step 5: Detect Console Logins from Unusual Locations
 
-You can use a Lambda function to enrich the alert with geolocation data and flag logins from unexpected locations.
+You can use a Lambda function to compare login source IPs against expected CIDR ranges and flag logins from unexpected locations.
 
 ```python
 # Lambda function to analyze console login events
 import json
 import boto3
-import urllib.request
+import ipaddress
 
 sns = boto3.client('sns')
 
@@ -208,13 +217,15 @@ def handler(event, context):
         additional = json.loads(additional)
     mfa_used = additional.get('MFAUsed', 'unknown')
 
-    # Check if the source IP is in expected ranges
     is_expected = False
-    for cidr in EXPECTED_CIDRS:
-        # Simplified check - use ipaddress module for production
-        if source_ip.startswith(cidr.split('/')[0].rsplit('.', 1)[0]):
-            is_expected = True
-            break
+    try:
+        source_address = ipaddress.ip_address(source_ip)
+        is_expected = any(
+            source_address in ipaddress.ip_network(cidr)
+            for cidr in EXPECTED_CIDRS
+        )
+    except ValueError:
+        is_expected = False
 
     if not is_expected:
         # This login is from an unexpected location
@@ -254,6 +265,13 @@ aws events put-rule \
       }
     }
   }'
+
+aws lambda add-permission \
+  --statement-id AllowEventBridgeInvokeConsoleLoginAnalyzer \
+  --action lambda:InvokeFunction \
+  --principal events.amazonaws.com \
+  --function-name arn:aws:lambda:us-east-1:123456789012:function:analyze-console-logins \
+  --source-arn arn:aws:events:us-east-1:123456789012:rule/analyze-console-logins
 
 aws events put-targets \
   --rule analyze-console-logins \
@@ -302,8 +320,9 @@ These rules can generate a lot of alerts, especially the Access Denied rule. To 
 
 **Add exclusions**: Use the `anything-but` pattern to exclude known noisy sources:
 
+Exclude known noisy event sources:
+
 ```json
-// Exclude known noisy event sources
 {
   "detail": {
     "errorCode": ["AccessDenied"],
@@ -320,10 +339,10 @@ Generate a test event by making an API call you know will fail:
 
 ```bash
 # This should trigger an Access Denied event (assuming you lack permission)
-aws s3 ls s3://some-bucket-you-dont-own 2>&1 || true
+aws iam list-users 2>&1 || true
 ```
 
-Then check CloudWatch metrics for your EventBridge rules to see if they matched.
+For a read-only management API test, make sure the EventBridge rule uses `--state ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS`. Then check CloudWatch metrics for your EventBridge rules to see if they matched.
 
 ## Wrapping Up
 
