@@ -22,7 +22,7 @@ The CSI driver name must match the driver that manages your storage backend. Usi
 
 ## AWS EBS CSI Driver Configuration
 
-For Amazon EBS volumes, configure the VolumeSnapshotClass with encryption and tagging:
+For Amazon EBS volumes, configure the VolumeSnapshotClass with snapshot tagging:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -32,31 +32,24 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Delete
 parameters:
-  # Enable encryption for snapshots
-  encrypted: "true"
-
-  # Use a specific KMS key for encryption
-  # kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/xxxxx"
-
   # Add tags to snapshots for cost tracking
-  tagSpecification_1: "Name=Environment|Value=Production"
-  tagSpecification_2: "Name=Application|Value=MySQL"
-  tagSpecification_3: "Name=ManagedBy|Value=Kubernetes"
+  tagSpecification_1: "Environment=Production"
+  tagSpecification_2: "Application=MySQL"
+  tagSpecification_3: "ManagedBy=Kubernetes"
 ```
 
-For cross-region replication:
+For fast snapshot restore:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: ebs-snapshot-replicated
+  name: ebs-snapshot-fast-restore
 driver: ebs.csi.aws.com
 deletionPolicy: Retain
 parameters:
-  encrypted: "true"
-  # Copy snapshots to multiple regions for disaster recovery
-  copySnapshotToRegion: "us-west-2,eu-west-1"
+  # Enable fast snapshot restore in specific Availability Zones
+  fastSnapshotRestoreAvailabilityZones: "us-east-1a,us-east-1b"
 ```
 
 ## Google Cloud Persistent Disk Configuration
@@ -77,7 +70,8 @@ parameters:
   # For multi-regional storage
   # storage-locations: us
 
-  # Enable image-family for versioning
+  # Create a disk image and add it to an image family
+  snapshot-type: images
   image-family: mysql-snapshots
 ```
 
@@ -95,10 +89,7 @@ parameters:
   storage-locations: us
 
   # Add labels for organization
-  snapshot-labels: |
-    environment=production
-    application=database
-    backup-tier=critical
+  labels: environment=production,application=database,backup-tier=critical
 ```
 
 ## Azure Disk CSI Configuration
@@ -120,26 +111,23 @@ parameters:
   incremental: "true"
 
   # Add tags for Azure resource management
-  tags: |
-    Environment=Production
-    Application=MySQL
-    CostCenter=Engineering
+  tags: Environment=Production,Application=MySQL,CostCenter=Engineering
 ```
 
-For zone-redundant storage:
+For cross-region snapshots:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
-  name: azure-disk-snapshot-zrs
+  name: azure-disk-snapshot-cross-region
 driver: disk.csi.azure.com
 deletionPolicy: Retain
 parameters:
-  resourceGroup: snapshot-rg-zrs
+  resourceGroup: snapshot-rg-westus
   incremental: "true"
-  # Store snapshots in zone-redundant storage
-  storageAccountType: Standard_ZRS
+  # Store snapshots in a different Azure region
+  location: westus
 ```
 
 ## Ceph RBD Snapshot Configuration
@@ -162,7 +150,7 @@ parameters:
   csi.storage.k8s.io/snapshotter-secret-namespace: rook-ceph
 ```
 
-For snapshots with specific pool configuration:
+For snapshots with a custom name prefix:
 
 ```yaml
 apiVersion: snapshot.storage.k8s.io/v1
@@ -173,9 +161,8 @@ driver: rook-ceph.rbd.csi.ceph.com
 deletionPolicy: Retain
 parameters:
   clusterID: rook-ceph
-  pool: ssd-pool
 
-  # Snapshot scheduling (if supported by Ceph version)
+  # Prefix to use for naming RBD snapshots
   snapshotNamePrefix: scheduled-snapshot
 
   csi.storage.k8s.io/snapshotter-secret-name: rook-csi-rbd-provisioner
@@ -193,12 +180,6 @@ metadata:
   name: trident-snapshot-class
 driver: csi.trident.netapp.io
 deletionPolicy: Delete
-parameters:
-  # Snapshot policy
-  snapshotPolicy: default
-
-  # Snapshot reserve percentage
-  snapshotReserve: "5"
 ```
 
 ## Pure Storage Configuration
@@ -212,12 +193,6 @@ metadata:
   name: pure-snapshot-class
 driver: pure-csi
 deletionPolicy: Delete
-parameters:
-  # Backend storage array
-  backend: pure-fa-1
-
-  # Snapshot retention (if supported)
-  retentionDuration: "7d"
 ```
 
 ## Configuring Multiple VolumeSnapshotClasses
@@ -236,10 +211,9 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Delete
 parameters:
-  encrypted: "false"
-  tagSpecification_1: "Name=Environment|Value=Development"
+  tagSpecification_1: "Environment=Development"
 ---
-# Production snapshots with encryption and retention
+# Production snapshots with retention and tags
 apiVersion: snapshot.storage.k8s.io/v1
 kind: VolumeSnapshotClass
 metadata:
@@ -249,10 +223,8 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Retain
 parameters:
-  encrypted: "true"
-  kmsKeyId: "arn:aws:kms:us-east-1:123456789012:key/xxxxx"
-  tagSpecification_1: "Name=Environment|Value=Production"
-  tagSpecification_2: "Name=Compliance|Value=Required"
+  tagSpecification_1: "Environment=Production"
+  tagSpecification_2: "Compliance=Required"
 ---
 # Long-term archival snapshots
 apiVersion: snapshot.storage.k8s.io/v1
@@ -262,9 +234,10 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Retain
 parameters:
-  encrypted: "true"
-  tagSpecification_1: "Name=Type|Value=Archive"
-  tagSpecification_2: "Name=Retention|Value=7years"
+  tagSpecification_1: "Type=Archive"
+  tagSpecification_2: "Retention=7years"
+  lockMode: "governance"
+  lockDuration: "30"
 ```
 
 ## Setting a Default VolumeSnapshotClass
@@ -281,7 +254,7 @@ metadata:
 driver: ebs.csi.aws.com
 deletionPolicy: Delete
 parameters:
-  encrypted: "true"
+  tagSpecification_1: "ManagedBy=Kubernetes"
 ```
 
 When a VolumeSnapshot doesn't specify a class, Kubernetes uses the default:
@@ -360,8 +333,8 @@ EOF
 kubectl get volumesnapshot test-snapshot
 kubectl describe volumesnapshot test-snapshot
 
-# Verify parameters were applied correctly
-kubectl get volumesnapshotcontent -o yaml | grep -A 10 parameters
+# Verify the snapshot content was created
+kubectl get volumesnapshotcontent -o yaml | grep -A 10 test-snapshot
 ```
 
 ## Provider-Specific Troubleshooting
@@ -372,7 +345,7 @@ For AWS EBS issues:
 # Check IAM permissions for snapshot operations
 aws sts get-caller-identity
 
-# Verify KMS key access (if using encryption)
+# Verify KMS key access if the source volume uses a customer-managed KMS key
 aws kms describe-key --key-id arn:aws:kms:...
 
 # Check CSI driver logs
@@ -407,7 +380,7 @@ kubectl logs -n kube-system -l app=csi-azuredisk-controller
 
 ## Best Practices
 
-1. **Use encryption** for production snapshots
+1. **Use encrypted source volumes** for production snapshots
 2. **Set appropriate deletionPolicy** based on data criticality
 3. **Tag snapshots** for cost tracking and organization
 4. **Create multiple classes** for different use cases
