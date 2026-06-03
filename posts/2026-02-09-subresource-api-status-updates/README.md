@@ -58,7 +58,6 @@ import (
     "context"
     "fmt"
 
-    appsv1 "k8s.io/api/apps/v1"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/util/retry"
@@ -172,6 +171,7 @@ Once enabled, update custom resource status similarly:
 import (
     "context"
     "fmt"
+    "time"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -208,7 +208,7 @@ func updateDatabaseStatus(dynamicClient dynamic.Interface) error {
                 map[string]interface{}{
                     "type":               "Ready",
                     "status":             "True",
-                    "lastTransitionTime": metav1.Now().Format(metav1.RFC3339),
+                    "lastTransitionTime": metav1.Now().Format(time.RFC3339),
                     "reason":             "DatabaseReady",
                     "message":            "Database is ready to accept connections",
                 },
@@ -290,8 +290,8 @@ spec:
         specReplicasPath: .spec.replicas
         # Path to the field in status containing replica count
         statusReplicasPath: .status.replicas
-        # Optional: path to label selector
-        labelSelectorPath: .spec.selector
+        # Optional: path to serialized label selector string
+        labelSelectorPath: .status.labelSelector
     schema:
       openAPIV3Schema:
         type: object
@@ -301,26 +301,33 @@ spec:
             properties:
               replicas:
                 type: integer
-              selector:
-                type: object
           status:
             type: object
             properties:
               replicas:
                 type: integer
+              labelSelector:
+                type: string
 ```
 
 This allows kubectl scale to work with your custom resource:
 
 ```bash
-kubectl scale database my-database --replicas=5
+kubectl scale --replicas=5 databases/my-database
 ```
 
 ## Using the Scale Subresource in Code
 
 ```go
 import (
+    "context"
+
     autoscalingv1 "k8s.io/api/autoscaling/v1"
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+    "k8s.io/apimachinery/pkg/runtime"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "k8s.io/client-go/dynamic"
 )
 
 func scaleDatabase(dynamicClient dynamic.Interface) error {
@@ -393,6 +400,10 @@ type DatabaseCondition struct {
     Message            string
 }
 
+type DatabaseStatus struct {
+    Conditions []DatabaseCondition
+}
+
 func setDatabaseCondition(status *DatabaseStatus, condition DatabaseCondition) {
     // Find existing condition of this type
     for i, c := range status.Conditions {
@@ -424,11 +435,21 @@ func updateWithCondition(dynamicClient dynamic.Interface) error {
 }
 ```
 
-## Watching Status Changes
+## Watching Resources for Status Changes
 
-You can watch for status changes specifically:
+You can watch resources and inspect status changes:
 
 ```go
+import (
+    "context"
+    "fmt"
+
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+    "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+    "k8s.io/apimachinery/pkg/runtime/schema"
+    "k8s.io/client-go/dynamic"
+)
+
 func watchDatabaseStatus(dynamicClient dynamic.Interface) error {
     gvr := schema.GroupVersionResource{
         Group:    "example.com",
@@ -446,7 +467,10 @@ func watchDatabaseStatus(dynamicClient dynamic.Interface) error {
     defer watcher.Stop()
 
     for event := range watcher.ResultChan() {
-        database := event.Object.(*unstructured.Unstructured)
+        database, ok := event.Object.(*unstructured.Unstructured)
+        if !ok {
+            continue
+        }
 
         // Extract status
         status, found, err := unstructured.NestedMap(database.Object, "status")
@@ -484,12 +508,14 @@ func watchDatabaseStatus(dynamicClient dynamic.Interface) error {
 
 ```go
 // Wrong: updates both spec and status
-deployment.Spec.Replicas = 5
+replicas := int32(5)
+deployment.Spec.Replicas = &replicas
 deployment.Status.Replicas = 3
 clientset.AppsV1().Deployments(ns).Update(ctx, deployment, opts)
 
 // Correct: separate updates
-deployment.Spec.Replicas = 5
+replicas = int32(5)
+deployment.Spec.Replicas = &replicas
 clientset.AppsV1().Deployments(ns).Update(ctx, deployment, opts)
 
 // Then update status separately
