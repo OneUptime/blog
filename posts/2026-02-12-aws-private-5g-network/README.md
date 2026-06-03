@@ -10,15 +10,15 @@ Description: Learn how to set up AWS Private 5G to deploy and manage your own pr
 
 Wi-Fi works great in offices, but it struggles in large industrial environments. Warehouses, factories, ports, and outdoor campuses need reliable wireless coverage over huge areas with support for hundreds or thousands of moving devices. Traditional cellular networks are expensive to build and require telecom expertise. AWS Private 5G bridges this gap by letting you deploy a private cellular network as easily as provisioning any other AWS resource.
 
-AWS ships you the small cell radio units and SIM cards. You rack the radios, plug them into your network, and AWS handles the cellular core network in the cloud. Your devices connect via cellular and get direct access to your applications running in AWS. Let's walk through the setup.
+AWS ships you the small cell radio units and SIM cards. You rack the radios, plug them into your network, and AWS delivers and maintains the mobile network core and radio access network software. Your devices connect via cellular and can reach applications running in AWS through your configured network path. Let's walk through the setup.
 
 ## How AWS Private 5G Works
 
 AWS Private 5G consists of:
 
 - **Radio Units**: Small cell hardware shipped to your location. They provide the wireless coverage.
-- **Core Network**: Managed by AWS in the cloud. Handles authentication, session management, and data routing.
-- **SIM Cards**: Physical or eSIM cards for your devices. AWS ships these to you.
+- **Core Network**: Managed by AWS as part of the service. Handles authentication, session management, and data routing.
+- **SIM Cards**: Physical SIM cards for your devices. AWS ships these to you.
 - **Network**: The logical grouping of your radio units, SIMs, and configuration.
 
 ```mermaid
@@ -44,24 +44,24 @@ graph TB
     VPC --> App
 ```
 
-Traffic from devices goes through the radio units to the AWS-managed core network, which routes it directly into your VPC. There's no public internet involved - it's like a private extension of your VPC over cellular.
+Traffic from devices goes through the radio units to the AWS-managed mobile network. Device traffic can stay on a private path to your AWS applications when you configure the required AWS networking and security controls.
 
 ## Creating Your Private Network
 
-Start by creating the network and ordering the hardware.
+Start by creating the network and network site.
 
 Create a private 5G network:
 
 ```bash
 # Create the network
 
-aws private-networks create-network \
+aws privatenetworks create-network \
   --network-name "warehouse-network" \
   --description "Warehouse floor cellular coverage" \
-  --tags Key=Location,Value=WarehouseA Key=Purpose,Value=IoT
+  --tags Location=WarehouseA,Purpose=IoT
 
 # Create a network site (represents a physical location)
-aws private-networks create-network-site \
+aws privatenetworks create-network-site \
   --network-arn arn:aws:private-networks:us-east-1:123456789012:network/warehouse-network \
   --network-site-name "building-a" \
   --description "Building A - Main warehouse floor" \
@@ -70,48 +70,41 @@ aws private-networks create-network-site \
 
 ## Configuring the Network
 
-Define your network plan including the CBRS spectrum, device subnets, and radio configuration.
+Define your network plan including the radio units and device identifiers that you need.
 
 Configure the network plan:
 
 ```bash
-# Create a network plan with radio and device configuration
-aws private-networks create-network-site \
-  --network-arn arn:aws:private-networks:us-east-1:123456789012:network/warehouse-network \
-  --network-site-name "warehouse-floor" \
+# Update the network site plan with radio and device configuration
+aws privatenetworks update-network-site-plan \
+  --network-site-arn arn:aws:private-networks:us-east-1:123456789012:network-site/building-a \
   --pending-plan '{
-    "ResourceDefinitions": [
+    "resourceDefinitions": [
       {
-        "Type": "RADIO_UNIT",
-        "Count": 4,
-        "Options": [
+        "type": "RADIO_UNIT",
+        "count": 4,
+        "options": [
           {
-            "Name": "model",
-            "Value": "indoor"
+            "name": "model",
+            "value": "indoor"
           }
         ]
       },
       {
-        "Type": "DEVICE_IDENTIFIER",
-        "Count": 100,
-        "Options": [
+        "type": "DEVICE_IDENTIFIER",
+        "count": 100,
+        "options": [
           {
-            "Name": "type",
-            "Value": "physical_sim"
+            "name": "type",
+            "value": "physical_sim"
           }
         ]
-      }
-    ],
-    "Options": [
-      {
-        "Name": "subnet",
-        "Value": "10.0.100.0/24"
       }
     ]
   }'
 ```
 
-This orders 4 indoor radio units and 100 SIM cards. AWS ships these to your specified address. The device subnet (10.0.100.0/24) is the IP range assigned to cellular devices when they connect.
+This requests 4 indoor radio units and 100 SIM cards in the site plan. Activate the network site with a shipping address and commitment configuration when you are ready for AWS to process the order.
 
 ## Radio Unit Deployment
 
@@ -120,18 +113,26 @@ Once you receive the radio units, physical installation involves:
 1. Mount the radio unit (ceiling or wall mount, depending on the model).
 2. Connect the radio to your network via Ethernet.
 3. Provide power (PoE or AC adapter).
-4. The radio unit automatically connects to the AWS Private 5G core network.
+4. Acknowledge the order, configure the radio unit location, and register the radio with the Spectrum Access System (SAS).
 
-After physical installation, activate the radio in the console or CLI:
+After physical installation, list the radio resources and configure the access point location in the console or CLI:
 
 ```bash
 # List network resources to find radio unit serial numbers
-aws private-networks list-network-resources \
-  --network-arn arn:aws:private-networks:us-east-1:123456789012:network/warehouse-network \
-  --filters '[{"name": "TYPE", "values": ["RADIO_UNIT"]}]'
+aws privatenetworks list-network-resources \
+  --network-arn arn:aws:private-networks:us-east-1:123456789012:network/warehouse-network
 
-# The radios should appear with status "CREATING" initially,
-# then transition to "AVAILABLE" once they connect
+# Configure the radio location for SAS registration
+aws privatenetworks configure-access-point \
+  --access-point-arn arn:aws:private-networks:us-east-1:123456789012:network-resource/radio-abc123 \
+  --cpi-username "cpi-user" \
+  --cpi-user-id "cpi-user-id" \
+  --cpi-user-password "cpi-password" \
+  --cpi-secret-key "base64-encoded-cpi-certificate" \
+  --position elevation=25,elevationReference=AGL,elevationUnit=FEET,latitude=37.7749,longitude=-122.4194
+
+# The radio resource transitions through provisioning states
+# before becoming AVAILABLE
 ```
 
 ## SIM Card Management
@@ -142,32 +143,31 @@ Manage SIM cards:
 
 ```bash
 # List available SIM cards
-aws private-networks list-device-identifiers \
+aws privatenetworks list-device-identifiers \
   --network-arn arn:aws:private-networks:us-east-1:123456789012:network/warehouse-network
 
 # Activate a SIM card
-aws private-networks activate-device-identifier \
+aws privatenetworks activate-device-identifier \
   --device-identifier-arn arn:aws:private-networks:us-east-1:123456789012:device-identifier/sim-abc123
 
 # Deactivate a lost or stolen SIM
-aws private-networks deactivate-device-identifier \
+aws privatenetworks deactivate-device-identifier \
   --device-identifier-arn arn:aws:private-networks:us-east-1:123456789012:device-identifier/sim-abc123
 ```
 
-Each SIM is tied to a specific device identifier (IMSI). When a device connects to your network with a valid SIM, it gets an IP from your configured subnet and can immediately communicate with resources in your VPC.
+Each SIM is tied to a specific device identifier with an IMSI and ICCID. When a device connects to your network with an active SIM, it can communicate according to your private network configuration and application-side security rules.
 
 ## VPC Integration
 
-Devices on your private 5G network get IPs from your device subnet, which is routable within your VPC. No additional networking configuration is needed - the devices appear as if they're on a regular subnet.
+Devices on your private 5G network communicate through the AWS Private 5G network resources that you configure. Make sure your VPC routing, security groups, network ACLs, and application firewalls allow the traffic you expect.
 
 Verify connectivity from your VPC to devices:
 
 ```bash
-# Devices get IPs like 10.0.100.5, 10.0.100.6, etc.
-# From an EC2 instance in the same VPC:
+# From an EC2 instance that has a route to the device network:
 ping 10.0.100.5
 
-# Your applications can connect directly
+# Your applications can connect if routing and security rules allow it
 curl http://10.0.100.5:8080/sensor-data
 ```
 
@@ -179,48 +179,24 @@ Set up monitoring:
 
 ```bash
 # List network resources and check their health
-aws private-networks list-network-resources \
+aws privatenetworks list-network-resources \
   --network-arn arn:aws:private-networks:us-east-1:123456789012:network/warehouse-network
 
 # Get details on a specific radio unit
-aws private-networks get-network-resource \
+aws privatenetworks get-network-resource \
   --network-resource-arn arn:aws:private-networks:us-east-1:123456789012:network-resource/radio-abc123
 ```
 
 CloudWatch metrics provide:
-- Connected device count
-- Radio unit status
-- Throughput per radio
-- Latency measurements
+- Network status
+- Connected access point or SIM counts
+- Uplink and downlink usage by network, access point, or SIM
 
-Set up CloudWatch alarms:
+Inspect the published metrics before creating alarms:
 
 ```bash
-# Alert if a radio unit goes offline
-aws cloudwatch put-metric-alarm \
-  --alarm-name "radio-unit-offline" \
-  --namespace "AWS/Private5G" \
-  --metric-name "RadioUnitStatus" \
-  --dimensions Name=NetworkName,Value=warehouse-network Name=RadioUnitId,Value=radio-abc123 \
-  --statistic Minimum \
-  --period 300 \
-  --threshold 1 \
-  --comparison-operator LessThanThreshold \
-  --evaluation-periods 2 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
-
-# Alert on high device count (approaching capacity)
-aws cloudwatch put-metric-alarm \
-  --alarm-name "device-count-high" \
-  --namespace "AWS/Private5G" \
-  --metric-name "ConnectedDeviceCount" \
-  --dimensions Name=NetworkName,Value=warehouse-network \
-  --statistic Maximum \
-  --period 60 \
-  --threshold 90 \
-  --comparison-operator GreaterThanThreshold \
-  --evaluation-periods 3 \
-  --alarm-actions arn:aws:sns:us-east-1:123456789012:ops-alerts
+aws cloudwatch list-metrics \
+  --namespace "AWS/Private5G"
 ```
 
 ## Use Cases
@@ -235,20 +211,20 @@ aws cloudwatch put-metric-alarm \
 
 ## Coverage Planning
 
-Each indoor radio unit covers approximately 15,000-25,000 square feet, depending on the environment. Concrete walls and metal shelving reduce range. For a 100,000 square foot warehouse, plan on 4-6 radio units.
+Coverage depends on radio placement, building materials, CBRS spectrum conditions, device placement, and installation design. Concrete walls and metal shelving reduce range. For a 100,000 square foot warehouse, validate the radio count with a site survey and leave overlap for handoff and redundancy.
 
-Outdoor units cover significantly more area - up to several hundred meters in open space.
+Outdoor units can cover more area than indoor units in open space, but final coverage depends on the approved installation and RF environment.
 
 ```text
 Coverage estimation:
-- Indoor (open floor): ~25,000 sq ft per radio
-- Indoor (shelving/walls): ~15,000 sq ft per radio
-- Outdoor: ~200m radius per radio
+- Start with facility drawings and expected device density
+- Account for shelving, walls, machinery, and outdoor obstructions
+- Validate assumptions with an RF site survey
 
 100,000 sq ft warehouse example:
-- Open areas: 4 radios
-- Dense shelving areas: 6-7 radios
-- Recommended: 6 radios with overlap for redundancy
+- Open areas may need fewer radios than dense shelving areas
+- Dense shelving areas usually need more overlap
+- Recommended: plan overlap for redundancy and handoff
 ```
 
 ## Security Considerations
@@ -257,7 +233,7 @@ Private 5G networks provide several security advantages over Wi-Fi:
 
 - **SIM-based authentication**: Only devices with your SIM cards can join the network. No password sharing.
 - **Over-the-air encryption**: All traffic between devices and radio units is encrypted using cellular-grade encryption.
-- **Private traffic path**: Data flows directly to your VPC through AWS backbone networking. No public internet exposure.
+- **Private traffic path**: Data can stay on a private network path when your AWS networking is configured for private application access.
 - **Granular device control**: Activate and deactivate individual SIMs instantly if a device is lost or compromised.
 
 ## Cost Model
@@ -265,10 +241,10 @@ Private 5G networks provide several security advantages over Wi-Fi:
 AWS Private 5G pricing includes:
 
 - No upfront hardware costs (radio units are provided as part of the service)
-- Monthly per-radio-unit fee
-- Per-connected-device fee
-- Data transfer charges
+- Hourly per-radio-unit charges with a 60-day, 1-year, or 3-year commitment option
+- No per-device fees
+- Regional data transfer charges where applicable
 
-The pricing is significantly lower than building a traditional private cellular network, which requires spectrum licenses, core network equipment, and specialized telecom staff. With AWS Private 5G, you get a managed service that integrates natively with your cloud infrastructure.
+The pricing model avoids the upfront hardware and per-device costs common in traditional private cellular deployments. With AWS Private 5G, you get a managed service that integrates with your cloud infrastructure.
 
 For more on network monitoring across your AWS infrastructure, check out our guide on [AWS Network Manager](https://oneuptime.com/blog/post/2026-02-12-aws-network-manager-global-monitoring/view).
