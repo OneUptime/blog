@@ -125,7 +125,7 @@ import boto3
 config = boto3.client('config')
 
 def lambda_handler(event, context):
-    """Check that all DynamoDB tables have encryption with KMS CMK."""
+    """Check that all DynamoDB tables have encryption with a KMS key."""
     invoking_event = json.loads(event['invokingEvent'])
     configuration_item = invoking_event['configurationItem']
 
@@ -135,9 +135,17 @@ def lambda_handler(event, context):
 
     # Check encryption configuration
     table_config = configuration_item['configuration']
-    sse_description = table_config.get('ssedescription', {})
+    sse_description = (
+        table_config.get('SSEDescription')
+        or table_config.get('sseDescription')
+        or table_config.get('ssedescription')
+        or {}
+    )
 
-    if sse_description.get('status') == 'ENABLED' and sse_description.get('sseType') == 'KMS':
+    status = sse_description.get('Status') or sse_description.get('status')
+    sse_type = sse_description.get('SSEType') or sse_description.get('sseType')
+
+    if status == 'ENABLED' and sse_type == 'KMS':
         compliance = 'COMPLIANT'
     else:
         compliance = 'NON_COMPLIANT'
@@ -167,8 +175,8 @@ aws securityhub enable-security-hub \
 # Enable specific standards
 aws securityhub batch-enable-standards \
   --standards-subscription-requests '[
-    {"StandardsArn": "arn:aws:securityhub:::ruleset/cis-aws-foundations-benchmark/v/1.4.0"},
-    {"StandardsArn": "arn:aws:securityhub:us-east-1::standards/pci-dss/v/3.2.1"},
+    {"StandardsArn": "arn:aws:securityhub:us-east-1::standards/cis-aws-foundations-benchmark/v/5.0.0"},
+    {"StandardsArn": "arn:aws:securityhub:us-east-1::standards/pci-dss/v/4.0.1"},
     {"StandardsArn": "arn:aws:securityhub:us-east-1::standards/aws-foundational-security-best-practices/v/1.0.0"}
   ]'
 ```
@@ -179,8 +187,12 @@ Process compliance events from Config, Security Hub, and CloudTrail:
 
 ```javascript
 // compliance-processor/handler.js - Process compliance events
-const { DynamoDBDocumentClient, PutCommand, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, PutCommand } = require('@aws-sdk/lib-dynamodb');
 const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+const s3 = new S3Client({});
 
 exports.handler = async (event) => {
   const detail = event.detail;
@@ -194,9 +206,9 @@ exports.handler = async (event) => {
   } else if (source === 'aws.securityhub') {
     // Security Hub finding
     finding = processSecurityHubEvent(detail);
-  } else if (source === 'aws.cloudtrail') {
+  } else if (event['detail-type'] === 'AWS API Call via CloudTrail') {
     // CloudTrail event (track configuration changes)
-    finding = processCloudTrailEvent(detail);
+    finding = processCloudTrailEvent(event);
   }
 
   if (!finding) return;
@@ -246,16 +258,31 @@ function processConfigEvent(detail) {
 function processSecurityHubEvent(detail) {
   const finding = detail.findings?.[0];
   if (!finding) return null;
+  const complianceStatus = finding.Compliance?.Status;
 
   return {
     resourceId: finding.Resources?.[0]?.Id || 'unknown',
     resourceType: finding.Resources?.[0]?.Type || 'unknown',
     ruleId: finding.Title,
-    complianceStatus: finding.Compliance?.Status === 'PASSED' ? 'COMPLIANT' : 'NON_COMPLIANT',
+    complianceStatus: complianceStatus === 'PASSED' ? 'COMPLIANT' : complianceStatus === 'FAILED' ? 'NON_COMPLIANT' : 'UNKNOWN',
     framework: finding.ProductFields?.StandardsGuideArn || 'SecurityHub',
     severity: finding.Severity?.Label || 'MEDIUM',
     timestamp: finding.UpdatedAt || new Date().toISOString(),
     details: finding,
+  };
+}
+
+function processCloudTrailEvent(event) {
+  const detail = event.detail;
+  return {
+    resourceId: detail.requestParameters?.resourceName || detail.requestParameters?.bucketName || detail.resources?.[0]?.ARN || 'unknown',
+    resourceType: detail.eventSource || event.source,
+    ruleId: detail.eventName,
+    complianceStatus: 'UNKNOWN',
+    framework: 'CloudTrail',
+    severity: 'LOW',
+    timestamp: detail.eventTime || new Date().toISOString(),
+    details: detail,
   };
 }
 ```
@@ -266,6 +293,10 @@ Generate compliance reports on a schedule:
 
 ```javascript
 // report-generator/handler.js - Generate compliance reports
+const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+
+const s3 = new S3Client({});
+
 exports.generateReport = async (event) => {
   const { framework, period } = event;
   const reportDate = new Date().toISOString().split('T')[0];
@@ -351,6 +382,8 @@ For some compliance violations, automatic remediation is appropriate:
 
 ```javascript
 // remediation/handler.js - Auto-remediate specific violations
+const { S3Client, PutBucketEncryptionCommand, PutPublicAccessBlockCommand } = require('@aws-sdk/client-s3');
+
 exports.handler = async (event) => {
   const finding = event.detail;
 
@@ -392,13 +425,28 @@ async function enableS3Encryption(bucketName) {
 
   console.log(`Enabled encryption on S3 bucket: ${bucketName}`);
 }
+
+async function blockS3PublicAccess(bucketName) {
+  const s3 = new S3Client({});
+  await s3.send(new PutPublicAccessBlockCommand({
+    Bucket: bucketName,
+    PublicAccessBlockConfiguration: {
+      BlockPublicAcls: true,
+      IgnorePublicAcls: true,
+      BlockPublicPolicy: true,
+      RestrictPublicBuckets: true,
+    },
+  }));
+
+  console.log(`Blocked public access on S3 bucket: ${bucketName}`);
+}
 ```
 
 Be conservative with auto-remediation. Only remediate violations where the fix cannot cause service disruption.
 
 ## Step 7: Dashboard
 
-Connect QuickSight or Grafana to your DynamoDB compliance data for executive dashboards showing:
+Export or replicate your DynamoDB compliance data to a supported analytics source such as S3 with Athena, OpenSearch, or CloudWatch metrics, then connect QuickSight or Grafana for executive dashboards showing:
 
 - Overall compliance rate per framework
 - Trend of compliance rate over time
