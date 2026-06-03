@@ -63,11 +63,12 @@ data:
               - name: envoy.filters.http.lua
                 typed_config:
                   "@type": type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua
-                  inline_code: |
-                    function envoy_on_request(request_handle)
-                      local body = request_handle:body():getBytes(0, 10000)
-                      request_handle:streamInfo():dynamicMetadata():set("envoy.lua", "request_body", body)
-                    end
+                  default_source_code:
+                    inline_string: |
+                      function envoy_on_request(request_handle)
+                        local body = request_handle:body(true):getBytes(0, 10000)
+                        request_handle:streamInfo():dynamicMetadata():set("envoy.lua", "request_body", body)
+                      end
               - name: envoy.filters.http.router
               route_config:
                 name: local_route
@@ -115,7 +116,7 @@ spec:
     spec:
       containers:
       - name: envoy
-        image: envoyproxy/envoy:v1.25.0
+        image: envoyproxy/envoy:v1.38.0
         ports:
         - containerPort: 8080
         volumeMounts:
@@ -146,8 +147,7 @@ Store captured traffic in a format suitable for replay:
 
 ```python
 import json
-import gzip
-from datetime import datetime
+from datetime import datetime, timezone
 from kafka import KafkaProducer
 
 class TrafficCapture:
@@ -161,7 +161,7 @@ class TrafficCapture:
     def capture_request(self, method, path, headers, body, response_status, duration):
         """Capture a request for later replay."""
         capture = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(timezone.utc).isoformat(),
             'method': method,
             'path': path,
             'headers': self.sanitize_headers(headers),
@@ -223,6 +223,7 @@ import (
     "fmt"
     "io"
     "net/http"
+    "os"
     "time"
 )
 
@@ -376,11 +377,14 @@ from difflib import unified_diff
 
 class ResultComparison:
     def __init__(self):
+        self.total_requests = 0
         self.mismatches = []
         self.performance_degradations = []
 
     def compare_response(self, production, staging):
         """Compare production and staging responses."""
+        self.total_requests += 1
+
         # Status code comparison
         if production['status'] != staging['status']:
             self.mismatches.append({
@@ -402,7 +406,7 @@ class ResultComparison:
     def generate_report(self):
         """Generate comparison report."""
         report = {
-            'total_requests': len(self.mismatches) + len(self.performance_degradations),
+            'total_requests': self.total_requests,
             'status_mismatches': len(self.mismatches),
             'performance_issues': len(self.performance_degradations),
             'mismatches': self.mismatches,
@@ -428,7 +432,7 @@ jobs:
   replay-traffic:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Deploy to Staging
       run: |
@@ -452,10 +456,10 @@ jobs:
     - name: Analyze Results
       run: |
         kubectl logs job/traffic-replay-${GITHUB_SHA} -n staging | \
-          python analyze-replay.py > replay-report.json
+          python3 analyze-replay.py > replay-report.json
 
     - name: Upload Report
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v7
       with:
         name: replay-report
         path: replay-report.json
