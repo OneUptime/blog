@@ -21,11 +21,10 @@ graph TD
     A[Update Stack] --> B{Property Change Type?}
     B -->|In-place update| C[Modify existing resource]
     B -->|Replacement required| D[Create new resource]
-    D --> E[Delete old resource]
-    E --> F{UpdateReplacePolicy?}
+    D --> F{UpdateReplacePolicy?}
     F -->|Delete| G[Old resource destroyed]
     F -->|Retain| H[Old resource kept]
-    F -->|Snapshot| I[Snapshot created, then destroyed]
+    F -->|Snapshot| I[Snapshot created, then old resource deleted]
 ```
 
 Without `UpdateReplacePolicy`, the old resource is deleted during replacement - regardless of your `DeletionPolicy` setting.
@@ -73,7 +72,7 @@ Resources:
       Engine: postgres
 ```
 
-If someone changes the `DBInstanceIdentifier` in the template, CloudFormation replaces the database. Since `UpdateReplacePolicy` defaults to `Delete`, the old database is destroyed. The `DeletionPolicy: Retain` is irrelevant - that only kicks in on stack deletion, not resource replacement.
+If someone changes the `DBInstanceIdentifier` in the template, CloudFormation replaces the database. Since `UpdateReplacePolicy` defaults to `Delete`, the old database is destroyed. The `DeletionPolicy: Retain` is irrelevant - that only kicks in on stack deletion or when a resource is removed from the template, not resource replacement.
 
 The safe version:
 
@@ -98,15 +97,15 @@ Not all property changes cause replacement. Here are some that do:
 
 **RDS (AWS::RDS::DBInstance)**:
 - Changing `DBInstanceIdentifier`
-- Changing `Engine`
-- Changing `AvailabilityZone` (for Single-AZ)
+- Changing `BackupTarget`
+- Changing `CharacterSetName`
 
 **S3 (AWS::S3::Bucket)**:
 - Changing `BucketName`
 
 **DynamoDB (AWS::DynamoDB::Table)**:
 - Changing `TableName`
-- Changing key schema attributes
+- Editing an existing `AttributeDefinitions` entry
 
 **EC2 (AWS::EC2::Instance)**:
 - Changing `AvailabilityZone`
@@ -137,7 +136,7 @@ aws cloudformation wait change-set-create-complete \
 aws cloudformation describe-change-set \
   --stack-name my-app-prod \
   --change-set-name check-for-replacements \
-  --query 'Changes[?ResourceChange.Replacement==`True`].ResourceChange.{Resource:LogicalResourceId,Type:ResourceType}' \
+  --query 'Changes[?ResourceChange.Replacement==`True` || ResourceChange.Replacement==`Conditional`].ResourceChange.{Resource:LogicalResourceId,Type:ResourceType,Replacement:Replacement}' \
   --output table
 ```
 
@@ -240,7 +239,7 @@ aws rds delete-db-instance \
 
 # If you want to keep it, tag it for tracking
 aws rds add-tags-to-resource \
-  --resource-name arn:aws:rds:us-east-1:123456789:db:old-db-name \
+  --resource-name arn:aws:rds:us-east-1:123456789012:db:old-db-name \
   --tags Key=RetainedFrom,Value=my-app-prod Key=RetainedAt,Value=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 ```
 
@@ -286,7 +285,7 @@ With this policy, any update that would replace the database or DynamoDB table w
 
 **Always set both DeletionPolicy and UpdateReplacePolicy.** They cover different scenarios. Missing one leaves a gap.
 
-**Use Snapshot when available.** For RDS, ElastiCache, and Redshift, Snapshot gives you a backup without ongoing costs.
+**Use Snapshot when available.** For RDS, ElastiCache, and Redshift, Snapshot gives you a backup without keeping the old resource running. The snapshots still incur storage costs until you delete them.
 
 **Use Retain for S3, DynamoDB, and KMS.** These don't support snapshots, so Retain is your only safety option.
 
@@ -298,4 +297,4 @@ With this policy, any update that would replace the database or DynamoDB table w
 
 **Review the "Update requires" documentation.** Before adding a new property or changing an existing one, check whether it triggers replacement. The CloudFormation docs list this for every property.
 
-UpdateReplacePolicy closes the data protection gap that DeletionPolicy leaves open. Together, they ensure your critical resources survive any CloudFormation operation - whether it's a stack deletion, a template update, or an accidental property change.
+UpdateReplacePolicy closes the data protection gap that DeletionPolicy leaves open. Together, they ensure your critical resources are retained or backed up during CloudFormation operations - whether it's a stack deletion, a template update, or an accidental property change.
