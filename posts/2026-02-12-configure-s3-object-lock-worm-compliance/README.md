@@ -40,7 +40,7 @@ And two retention modes:
 
 ## Step 1: Create a Bucket with Object Lock Enabled
 
-Object Lock must be enabled at bucket creation time. You can't enable it on an existing bucket.
+Object Lock can be enabled when you create a bucket, or later on an existing versioned general purpose bucket.
 
 ```bash
 # Create a bucket with Object Lock enabled
@@ -49,10 +49,10 @@ Object Lock must be enabled at bucket creation time. You can't enable it on an e
 aws s3api create-bucket \
   --bucket my-compliance-bucket \
   --region us-east-1 \
-  --object-lock-enabled-for-object-configuration '{"ObjectLockEnabled": "Enabled"}'
+  --object-lock-enabled-for-bucket
 ```
 
-Important: once Object Lock is enabled, you can't disable it. And versioning can't be suspended on a bucket with Object Lock. Plan accordingly.
+Important: once Object Lock is enabled, you can't disable it. And versioning can't be suspended on a bucket with Object Lock. When you enable Object Lock while creating a bucket, S3 automatically enables versioning. For an existing bucket, enable versioning first. Plan accordingly.
 
 ## Step 2: Set a Default Retention Policy
 
@@ -102,6 +102,7 @@ aws s3api put-object \
   --bucket my-compliance-bucket \
   --key financial-records/2025-q4-report.pdf \
   --body ./2025-q4-report.pdf \
+  --checksum-algorithm SHA256 \
   --object-lock-mode COMPLIANCE \
   --object-lock-retain-until-date "2032-12-31T00:00:00Z"
 ```
@@ -110,21 +111,23 @@ Here's how to do it with the Python SDK.
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 s3 = boto3.client('s3')
 
 # Calculate retention date - 7 years from now
-retain_until = datetime.utcnow() + timedelta(days=2555)
+retain_until = datetime.now(timezone.utc) + timedelta(days=2555)
 
 # Upload with COMPLIANCE retention
-s3.put_object(
-    Bucket='my-compliance-bucket',
-    Key='audit-logs/2025-audit.log',
-    Body=open('2025-audit.log', 'rb'),
-    ObjectLockMode='COMPLIANCE',
-    ObjectLockRetainUntilDate=retain_until
-)
+with open('2025-audit.log', 'rb') as body:
+    s3.put_object(
+        Bucket='my-compliance-bucket',
+        Key='audit-logs/2025-audit.log',
+        Body=body,
+        ChecksumAlgorithm='SHA256',
+        ObjectLockMode='COMPLIANCE',
+        ObjectLockRetainUntilDate=retain_until
+    )
 
 print(f"Object locked until {retain_until.isoformat()}")
 ```
@@ -222,9 +225,9 @@ flowchart LR
 
 ## Common Mistakes to Avoid
 
-**1. Trying to enable Object Lock on existing buckets**
+**1. Trying to enable Object Lock on unversioned existing buckets**
 
-You can't. Object Lock must be set at bucket creation. If you need to migrate existing data, create a new bucket with Object Lock enabled and copy objects over with the appropriate retention settings.
+Object Lock works only with versioned buckets. If you're enabling it on an existing bucket, turn on versioning first and remember that Object Lock applies to object versions. If you need to migrate existing data, create or enable a bucket with Object Lock and copy objects over with the appropriate retention settings.
 
 **2. Setting compliance mode during testing**
 
@@ -240,13 +243,13 @@ Legal holds and retention serve different purposes. Retention has an expiration 
 
 ## Monitoring Object Lock
 
-Set up CloudWatch alarms and S3 event notifications to track lock-related activities. You'll want to know when someone tries (and fails) to delete a locked object.
+Set up CloudTrail data events and CloudWatch alarms to track lock-related activities. You'll want to know when someone tries (and fails) to delete a locked object.
 
 ```python
 import boto3
 
-# Enable CloudTrail logging for S3 data events
-# This captures all Object Lock API calls
+# Enable CloudTrail logging for S3 write data events
+# This captures object-level writes and delete attempts for the bucket
 cloudtrail = boto3.client('cloudtrail')
 
 cloudtrail.put_event_selectors(
