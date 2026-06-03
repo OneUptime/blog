@@ -58,10 +58,14 @@ aws ec2 create-vpc \
   --cidr-block 10.0.0.0/16 \
   --tag-specifications 'ResourceType=vpc,Tags=[{Key=Name,Value=shared-services-vpc}]'
 
-# Enable DNS hostnames (required for interface endpoints)
+# Enable DNS support and hostnames
 aws ec2 modify-vpc-attribute \
   --vpc-id vpc-shared001 \
-  --enable-dns-hostnames
+  --enable-dns-support '{"Value":true}'
+
+aws ec2 modify-vpc-attribute \
+  --vpc-id vpc-shared001 \
+  --enable-dns-hostnames '{"Value":true}'
 
 # Create subnets in each AZ for the endpoints
 aws ec2 create-subnet \
@@ -104,7 +108,7 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.us-east-1.s3 \
   --subnet-ids subnet-ep-az1 subnet-ep-az2 \
   --security-group-ids sg-endpoints123 \
-  --private-dns-enabled \
+  --no-private-dns-enabled \
   --tag-specifications 'ResourceType=vpc-endpoint,Tags=[{Key=Name,Value=s3-endpoint}]'
 
 # ECR API endpoint
@@ -114,6 +118,7 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.us-east-1.ecr.api \
   --subnet-ids subnet-ep-az1 subnet-ep-az2 \
   --security-group-ids sg-endpoints123 \
+  --no-private-dns-enabled \
   --tag-specifications 'ResourceType=vpc-endpoint,Tags=[{Key=Name,Value=ecr-api-endpoint}]'
 
 # ECR DKR endpoint (for docker pull)
@@ -123,6 +128,7 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.us-east-1.ecr.dkr \
   --subnet-ids subnet-ep-az1 subnet-ep-az2 \
   --security-group-ids sg-endpoints123 \
+  --no-private-dns-enabled \
   --tag-specifications 'ResourceType=vpc-endpoint,Tags=[{Key=Name,Value=ecr-dkr-endpoint}]'
 
 # STS endpoint
@@ -132,6 +138,7 @@ aws ec2 create-vpc-endpoint \
   --service-name com.amazonaws.us-east-1.sts \
   --subnet-ids subnet-ep-az1 subnet-ep-az2 \
   --security-group-ids sg-endpoints123 \
+  --no-private-dns-enabled \
   --tag-specifications 'ResourceType=vpc-endpoint,Tags=[{Key=Name,Value=sts-endpoint}]'
 ```
 
@@ -195,46 +202,66 @@ aws ec2 create-route \
   --route-table-id rtb-spoke \
   --destination-cidr-block 10.0.0.0/16 \
   --transit-gateway-id tgw-shared123
+
+# In the shared services VPC route table, add a return route to the spoke VPC
+aws ec2 create-route \
+  --route-table-id rtb-shared-services \
+  --destination-cidr-block 10.10.0.0/16 \
+  --transit-gateway-id tgw-shared123
 ```
 
 ## DNS Resolution for Shared Endpoints
 
-The trickiest part is DNS. Interface endpoints create DNS records in the shared services VPC, but spoke VPCs can't resolve them by default. You need Route 53 Resolver rules to forward DNS queries.
+The trickiest part is DNS. Interface endpoints create DNS records in the shared services VPC, but the AWS-managed private DNS zone is only available inside that VPC. For VPC-to-VPC sharing, disable private DNS on the centralized endpoints and create Route 53 private hosted zones with alias records that point to the endpoint's regional DNS name. Then associate those private hosted zones with the spoke VPCs.
 
-Set up Route 53 Resolver for endpoint DNS:
+Set up Route 53 private hosted zones for endpoint DNS. Repeat this for each endpoint service name; for `dkr.ecr`, create the alias as a wildcard record such as `*.dkr.ecr.us-east-1.amazonaws.com`.
 
 ```bash
-# In the shared services account: create a resolver outbound endpoint
-aws route53resolver create-resolver-endpoint \
-  --creator-request-id "shared-outbound-001" \
-  --name "shared-services-outbound" \
-  --security-group-ids sg-resolver123 \
-  --direction OUTBOUND \
-  --ip-addresses SubnetId=subnet-ep-az1 SubnetId=subnet-ep-az2
+# Look up the regional DNS name and hosted zone ID for the endpoint
+aws ec2 describe-vpc-endpoints \
+  --vpc-endpoint-ids vpce-s3abc123 \
+  --query 'VpcEndpoints[0].DnsEntries[0]'
 
-# Create resolver rules for each endpoint service
-aws route53resolver create-resolver-rule \
-  --creator-request-id "s3-rule" \
-  --name "s3-endpoint-rule" \
-  --rule-type FORWARD \
-  --domain-name "s3.us-east-1.amazonaws.com" \
-  --resolver-endpoint-id rslvr-out-abc123 \
-  --target-ips Ip=10.0.1.10,Port=53 Ip=10.0.2.10,Port=53
+# Create a private hosted zone for the AWS service endpoint name
+aws route53 create-hosted-zone \
+  --name "s3.us-east-1.amazonaws.com" \
+  --caller-reference "s3-endpoint-zone-001" \
+  --vpc VPCRegion=us-east-1,VPCId=vpc-shared001 \
+  --hosted-zone-config PrivateZone=true,Comment="S3 shared endpoint DNS"
 
-# Share the resolver rules with spoke accounts using RAM
-aws ram create-resource-share \
-  --name "endpoint-dns-rules" \
-  --resource-arns arn:aws:route53resolver:us-east-1:123456789012:resolver-rule/rslvr-rr-abc123 \
-  --principals arn:aws:organizations::123456789012:organization/o-org123
+# Create an alias record that points to the interface endpoint regional DNS name
+aws route53 change-resource-record-sets \
+  --hosted-zone-id Z1234567890ABC \
+  --change-batch '{
+    "Changes": [
+      {
+        "Action": "CREATE",
+        "ResourceRecordSet": {
+          "Name": "s3.us-east-1.amazonaws.com",
+          "Type": "A",
+          "AliasTarget": {
+            "HostedZoneId": "ZVPCENDPOINTZONE",
+            "DNSName": "vpce-s3abc123-abcdefgh.s3.us-east-1.vpce.amazonaws.com",
+            "EvaluateTargetHealth": false
+          }
+        }
+      }
+    ]
+  }'
 ```
 
-In the spoke account, associate the shared resolver rules with your VPC:
+For cross-account VPCs, authorize the spoke account to associate its VPC with the private hosted zone:
 
 ```bash
-# Associate the resolver rule with the spoke VPC
-aws route53resolver associate-resolver-rule \
-  --resolver-rule-id rslvr-rr-abc123 \
-  --vpc-id vpc-spoke001
+# In the shared services account
+aws route53 create-vpc-association-authorization \
+  --hosted-zone-id Z1234567890ABC \
+  --vpc VPCRegion=us-east-1,VPCId=vpc-spoke001
+
+# In the spoke account
+aws route53 associate-vpc-with-hosted-zone \
+  --hosted-zone-id Z1234567890ABC \
+  --vpc VPCRegion=us-east-1,VPCId=vpc-spoke001
 ```
 
 Now when applications in the spoke VPC make API calls to S3, ECR, or STS, DNS resolves to the endpoint IPs in the shared services VPC, and traffic routes through the transit gateway.
@@ -261,6 +288,26 @@ Resources:
         - Key: Name
           Value: shared-services
 
+  SubnetAZ1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SharedVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: endpoint-az1
+
+  SubnetAZ2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SharedVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: endpoint-az2
+
   EndpointSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -283,7 +330,7 @@ Resources:
         - !Ref SubnetAZ2
       SecurityGroupIds:
         - !Ref EndpointSecurityGroup
-      PrivateDnsEnabled: true
+      PrivateDnsEnabled: false
 
   STSEndpoint:
     Type: AWS::EC2::VPCEndpoint
@@ -296,7 +343,7 @@ Resources:
         - !Ref SubnetAZ2
       SecurityGroupIds:
         - !Ref EndpointSecurityGroup
-      PrivateDnsEnabled: true
+      PrivateDnsEnabled: false
 ```
 
 ## Cost Savings Analysis
