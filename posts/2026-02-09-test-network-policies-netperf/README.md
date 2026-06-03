@@ -14,11 +14,11 @@ In this guide, we'll use netperf to measure network performance under policies a
 
 ## Understanding Network Policy Testing Challenges
 
-Network policies control traffic flow at the pod level using label selectors and namespace boundaries. Unlike firewall rules that block at the network layer, Kubernetes policies operate at layer 4 with context about pod identity and namespace membership. This makes testing more complex because policies depend on dynamic pod labels and cluster topology.
+Network policies control traffic flow at the pod level using label selectors and namespace boundaries. Kubernetes NetworkPolicy rules match pods, namespaces, IP blocks, ports, and protocols, so they primarily enforce layer 3 and layer 4 traffic with context about pod identity and namespace membership. This makes testing more complex because policies depend on dynamic pod labels and cluster topology.
 
 Manual testing of network policies is error-prone and doesn't scale. As applications grow, the number of possible connections between pods increases exponentially. Automated testing with connectivity matrices validates all permutations systematically, catching policy gaps that manual testing misses.
 
-Performance testing ensures policies don't introduce latency. Network policy implementations like Calico, Cilium, and Weave Net use different mechanisms for traffic filtering, each with varying performance characteristics. Measuring performance before and after applying policies quantifies overhead and identifies bottlenecks.
+Performance testing measures whether policies introduce latency. Network policy implementations like Calico and Cilium use different mechanisms for traffic filtering, each with varying performance characteristics. Measuring performance before and after applying policies quantifies overhead and identifies bottlenecks.
 
 ## Deploying Netperf for Testing
 
@@ -78,6 +78,11 @@ spec:
 Deploy netperf clients in different namespaces to test cross-namespace policies:
 
 ```yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: test-client
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -163,6 +168,8 @@ spec:
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
 ---
 # backend-policy.yaml
 apiVersion: networking.k8s.io/v1
@@ -201,6 +208,41 @@ spec:
     ports:
     - protocol: UDP
       port: 53
+    - protocol: TCP
+      port: 53
+---
+# database-policy.yaml
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: database-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      tier: database
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          tier: backend
+    ports:
+    - protocol: TCP
+      port: 5432
+  egress:
+  - to:
+    - namespaceSelector: {}
+      podSelector:
+        matchLabels:
+          k8s-app: kube-dns
+    ports:
+    - protocol: UDP
+      port: 53
+    - protocol: TCP
+      port: 53
 ```
 
 These policies create a tiered architecture where frontend pods can only talk to backend, backend can only talk to database, and all tiers can access DNS.
@@ -217,17 +259,15 @@ set -e
 
 # Define test matrix
 declare -A MATRIX=(
-  ["frontend:load-balancer"]="ALLOW"
-  ["frontend:backend"]="ALLOW"
-  ["frontend:database"]="DENY"
-  ["backend:frontend"]="DENY"
-  ["backend:database"]="ALLOW"
-  ["backend:external"]="DENY"
-  ["database:backend"]="DENY"
-  ["database:frontend"]="DENY"
+  ["role=load-balancer|tier=frontend|80"]="ALLOW"
+  ["tier=frontend|tier=backend|8080"]="ALLOW"
+  ["tier=frontend|tier=database|5432"]="DENY"
+  ["tier=backend|tier=frontend|80"]="DENY"
+  ["tier=backend|tier=database|5432"]="ALLOW"
+  ["tier=database|tier=backend|8080"]="DENY"
+  ["tier=database|tier=frontend|80"]="DENY"
 )
 
-NAMESPACES="default"
 TIMEOUT=3
 
 echo "Starting network policy connectivity matrix test"
@@ -238,7 +278,8 @@ test_connection() {
   local source_label=$2
   local target_ns=$3
   local target_label=$4
-  local expected=$5
+  local port=$5
+  local expected=$6
 
   # Get source pod
   SOURCE_POD=$(kubectl get pod -n "$source_ns" -l "$source_label" -o name | head -1)
@@ -255,7 +296,7 @@ test_connection() {
   fi
 
   # Test connection
-  if kubectl exec -n "$source_ns" "$SOURCE_POD" -- timeout "$TIMEOUT" nc -zv "$TARGET_IP" 80 2>&1 | grep -q "succeeded"; then
+  if kubectl exec -n "$source_ns" "$SOURCE_POD" -- timeout "$TIMEOUT" nc -z "$TARGET_IP" "$port"; then
     RESULT="ALLOW"
   else
     RESULT="DENY"
@@ -263,18 +304,18 @@ test_connection() {
 
   # Compare with expected
   if [ "$RESULT" = "$expected" ]; then
-    echo "PASS: $source_label -> $target_label ($RESULT)"
+    echo "PASS: $source_label -> $target_label:$port ($RESULT)"
   else
-    echo "FAIL: $source_label -> $target_label (expected: $expected, got: $RESULT)"
+    echo "FAIL: $source_label -> $target_label:$port (expected: $expected, got: $RESULT)"
     exit 1
   fi
 }
 
 # Run all tests
 for key in "${!MATRIX[@]}"; do
-  IFS=':' read -r source target <<< "$key"
+  IFS='|' read -r source target port <<< "$key"
   expected="${MATRIX[$key]}"
-  test_connection "default" "tier=$source" "default" "tier=$target" "$expected"
+  test_connection "default" "$source" "default" "$target" "$port" "$expected"
 done
 
 echo "=============================================="
@@ -287,28 +328,32 @@ This script systematically tests all connections and verifies they match expecte
 
 Quantify network policy overhead:
 
+For performance benchmarks, make sure the policies you apply select the netperf client/server pods or run netperf from the selected application pods. Policies that do not select the measured pods will not affect the benchmark path.
+
 ```bash
 #!/bin/bash
 # benchmark-policies.sh
 
 echo "Measuring baseline performance (no policies)..."
-kubectl delete networkpolicy --all
+kubectl delete networkpolicy --all --all-namespaces --ignore-not-found
 
 BASELINE=$(kubectl exec -n test-client deployment/netperf-client -- \
-  netperf -H netperf-server.default.svc.cluster.local -l 30 -t TCP_STREAM | \
-  grep "^MIGRATED" | awk '{print $5}')
+  netperf -H netperf-server.default.svc.cluster.local -l 30 -t TCP_STREAM -- \
+  -k THROUGHPUT,THROUGHPUT_UNITS | \
+  awk -F= '/^THROUGHPUT=/{print $2}')
 
 echo "Baseline throughput: $BASELINE Mbps"
 
-echo "Applying network policies..."
+echo "Applying network policies that select the measured pods..."
 kubectl apply -f network-policies/
 
 sleep 10
 
 echo "Measuring performance with policies..."
 WITH_POLICY=$(kubectl exec -n test-client deployment/netperf-client -- \
-  netperf -H netperf-server.default.svc.cluster.local -l 30 -t TCP_STREAM | \
-  grep "^MIGRATED" | awk '{print $5}')
+  netperf -H netperf-server.default.svc.cluster.local -l 30 -t TCP_STREAM -- \
+  -k THROUGHPUT,THROUGHPUT_UNITS | \
+  awk -F= '/^THROUGHPUT=/{print $2}')
 
 echo "Throughput with policies: $WITH_POLICY Mbps"
 
@@ -343,15 +388,25 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
+    - uses: actions/checkout@v4
 
     - name: Create Kind cluster
       uses: helm/kind-action@v1.8.0
+      with:
+        config: |
+          kind: Cluster
+          apiVersion: kind.x-k8s.io/v1alpha4
+          networking:
+            disableDefaultCNI: true
+            podSubnet: 192.168.0.0/16
 
     - name: Install Calico CNI
       run: |
-        kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.0/manifests/tigera-operator.yaml
-        kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.26.0/manifests/custom-resources.yaml
+        kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/v1_crd_projectcalico_org.yaml
+        kubectl create -f https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/tigera-operator.yaml
+        curl -O https://raw.githubusercontent.com/projectcalico/calico/v3.32.0/manifests/custom-resources.yaml
+        kubectl create -f custom-resources.yaml
+        kubectl wait --for=condition=Available tigerastatus --all --timeout=300s
 
     - name: Deploy test applications
       run: |
@@ -373,14 +428,17 @@ jobs:
 Generate visual representations of policies:
 
 ```bash
-# Install network policy viewer
-kubectl apply -f https://raw.githubusercontent.com/runoncloud/kubectl-np-viewer/master/deploy.yaml
+# Install the kubectl network policy viewer plugin with krew
+kubectl krew install np-viewer
 
-# Access viewer
-kubectl port-forward -n np-viewer svc/np-viewer 8080:8080
+# Print policies for the current namespace
+kubectl np-viewer
+
+# Print policies across all namespaces
+kubectl np-viewer --all-namespaces
 ```
 
-The viewer generates diagrams showing allowed and denied connections, making it easier to understand complex policy sets.
+The viewer shows the policy rules that affect namespaces and pods, making it easier to understand complex policy sets.
 
 ## Conclusion
 
