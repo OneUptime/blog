@@ -74,10 +74,6 @@ func Provider() *schema.Provider {
         },
         ResourcesMap: map[string]*schema.Resource{
             "myplatform_application": resourceApplication(),
-            "myplatform_database":    resourceDatabase(),
-        },
-        DataSourcesMap: map[string]*schema.Resource{
-            "myplatform_cluster_info": dataSourceClusterInfo(),
         },
         ConfigureContextFunc: providerConfigure,
     }
@@ -140,11 +136,13 @@ package main
 import (
     "context"
     "fmt"
+    "strings"
     "github.com/hashicorp/terraform-plugin-sdk/v2/diag"
     "github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
+    apierrors "k8s.io/apimachinery/pkg/api/errors"
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
-    "k8s.io/apimachinery/pkg/runtime/schema"
+    k8sschema "k8s.io/apimachinery/pkg/runtime/schema"
     "k8s.io/client-go/dynamic"
 )
 
@@ -155,7 +153,15 @@ func resourceApplication() *schema.Resource {
         UpdateContext: resourceApplicationUpdate,
         DeleteContext: resourceApplicationDelete,
         Importer: &schema.ResourceImporter{
-            StateContext: schema.ImportStatePassthroughContext,
+            StateContext: func(ctx context.Context, d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+                parts := strings.SplitN(d.Id(), "/", 2)
+                if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+                    return nil, fmt.Errorf("expected import ID in namespace/name format")
+                }
+                d.Set("namespace", parts[0])
+                d.Set("name", parts[1])
+                return []*schema.ResourceData{d}, nil
+            },
         },
         Schema: map[string]*schema.Schema{
             "name": {
@@ -225,36 +231,25 @@ func resourceApplication() *schema.Resource {
     }
 }
 
-func resourceApplicationCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    client := meta.(*PlatformClient)
-
-    // Create dynamic client for custom resources
-    dynamicClient, err := dynamic.NewForConfig(client.kubeConfig)
-    if err != nil {
-        return diag.FromErr(err)
-    }
-
-    // Define the GVR for your custom resource
-    gvr := schema.GroupVersionResource{
+func applicationGVR() k8sschema.GroupVersionResource {
+    return k8sschema.GroupVersionResource{
         Group:    "platform.mycompany.com",
         Version:  "v1",
         Resource: "applications",
     }
+}
 
-    name := d.Get("name").(string)
-    namespace := d.Get("namespace").(string)
-    image := d.Get("image").(string)
-    replicas := int64(d.Get("replicas").(int))
-
-    // Build environment variables
+func buildApplicationEnvironment(d *schema.ResourceData) map[string]string {
     envVars := make(map[string]string)
     if env, ok := d.GetOk("environment"); ok {
         for k, v := range env.(map[string]interface{}) {
             envVars[k] = v.(string)
         }
     }
+    return envVars
+}
 
-    // Build resource requirements
+func buildApplicationResources(d *schema.ResourceData) map[string]interface{} {
     resources := map[string]interface{}{
         "cpuRequest":    "100m",
         "memoryRequest": "128Mi",
@@ -278,6 +273,22 @@ func resourceApplicationCreate(ctx context.Context, d *schema.ResourceData, meta
             }
         }
     }
+    return resources
+}
+
+func resourceApplicationCreate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
+    client := meta.(*PlatformClient)
+
+    // Create dynamic client for custom resources
+    dynamicClient, err := dynamic.NewForConfig(client.kubeConfig)
+    if err != nil {
+        return diag.FromErr(err)
+    }
+
+    name := d.Get("name").(string)
+    namespace := d.Get("namespace").(string)
+    image := d.Get("image").(string)
+    replicas := int64(d.Get("replicas").(int))
 
     // Create unstructured object
     application := &unstructured.Unstructured{
@@ -291,14 +302,14 @@ func resourceApplicationCreate(ctx context.Context, d *schema.ResourceData, meta
             "spec": map[string]interface{}{
                 "image":       image,
                 "replicas":    replicas,
-                "environment": envVars,
-                "resources":   resources,
+                "environment": buildApplicationEnvironment(d),
+                "resources":   buildApplicationResources(d),
             },
         },
     }
 
     // Create the resource
-    result, err := dynamicClient.Resource(gvr).Namespace(namespace).Create(
+    _, err = dynamicClient.Resource(applicationGVR()).Namespace(namespace).Create(
         ctx,
         application,
         metav1.CreateOptions{},
@@ -321,41 +332,58 @@ func resourceApplicationRead(ctx context.Context, d *schema.ResourceData, meta i
         return diag.FromErr(err)
     }
 
-    gvr := schema.GroupVersionResource{
-        Group:    "platform.mycompany.com",
-        Version:  "v1",
-        Resource: "applications",
-    }
-
     namespace := d.Get("namespace").(string)
     name := d.Get("name").(string)
 
-    result, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(
+    result, err := dynamicClient.Resource(applicationGVR()).Namespace(namespace).Get(
         ctx,
         name,
         metav1.GetOptions{},
     )
     if err != nil {
-        d.SetId("")
+        if apierrors.IsNotFound(err) {
+            d.SetId("")
+            return nil
+        }
         return diag.FromErr(err)
     }
 
     // Extract status from the resource
-    spec := result.Object["spec"].(map[string]interface{})
-    status := result.Object["status"].(map[string]interface{})
+    spec, _, err := unstructured.NestedMap(result.Object, "spec")
+    if err != nil {
+        return diag.FromErr(err)
+    }
 
-    d.Set("image", spec["image"])
-    d.Set("replicas", spec["replicas"])
+    if image, ok := spec["image"]; ok {
+        if err := d.Set("image", image); err != nil {
+            return diag.FromErr(err)
+        }
+    }
+    if replicas, ok := spec["replicas"]; ok {
+        if err := d.Set("replicas", replicas); err != nil {
+            return diag.FromErr(err)
+        }
+    }
+    if environment, ok := spec["environment"]; ok {
+        if err := d.Set("environment", environment); err != nil {
+            return diag.FromErr(err)
+        }
+    }
 
-    if statusPhase, ok := status["phase"]; ok {
-        d.Set("status", statusPhase)
+    statusPhase, _, err := unstructured.NestedString(result.Object, "status", "phase")
+    if err != nil {
+        return diag.FromErr(err)
+    }
+    if statusPhase != "" {
+        if err := d.Set("status", statusPhase); err != nil {
+            return diag.FromErr(err)
+        }
     }
 
     return nil
 }
 
 func resourceApplicationUpdate(ctx context.Context, d *schema.ResourceData, meta interface{}) diag.Diagnostics {
-    // Similar to Create but use Update instead
     client := meta.(*PlatformClient)
 
     dynamicClient, err := dynamic.NewForConfig(client.kubeConfig)
@@ -363,17 +391,11 @@ func resourceApplicationUpdate(ctx context.Context, d *schema.ResourceData, meta
         return diag.FromErr(err)
     }
 
-    gvr := schema.GroupVersionResource{
-        Group:    "platform.mycompany.com",
-        Version:  "v1",
-        Resource: "applications",
-    }
-
     namespace := d.Get("namespace").(string)
     name := d.Get("name").(string)
 
     // Get current resource
-    current, err := dynamicClient.Resource(gvr).Namespace(namespace).Get(
+    current, err := dynamicClient.Resource(applicationGVR()).Namespace(namespace).Get(
         ctx,
         name,
         metav1.GetOptions{},
@@ -383,12 +405,20 @@ func resourceApplicationUpdate(ctx context.Context, d *schema.ResourceData, meta
     }
 
     // Update spec fields
-    spec := current.Object["spec"].(map[string]interface{})
+    spec, _, err := unstructured.NestedMap(current.Object, "spec")
+    if err != nil {
+        return diag.FromErr(err)
+    }
     spec["image"] = d.Get("image").(string)
     spec["replicas"] = int64(d.Get("replicas").(int))
+    spec["environment"] = buildApplicationEnvironment(d)
+    spec["resources"] = buildApplicationResources(d)
+    if err := unstructured.SetNestedMap(current.Object, spec, "spec"); err != nil {
+        return diag.FromErr(err)
+    }
 
     // Update the resource
-    _, err = dynamicClient.Resource(gvr).Namespace(namespace).Update(
+    _, err = dynamicClient.Resource(applicationGVR()).Namespace(namespace).Update(
         ctx,
         current,
         metav1.UpdateOptions{},
@@ -408,21 +438,15 @@ func resourceApplicationDelete(ctx context.Context, d *schema.ResourceData, meta
         return diag.FromErr(err)
     }
 
-    gvr := schema.GroupVersionResource{
-        Group:    "platform.mycompany.com",
-        Version:  "v1",
-        Resource: "applications",
-    }
-
     namespace := d.Get("namespace").(string)
     name := d.Get("name").(string)
 
-    err = dynamicClient.Resource(gvr).Namespace(namespace).Delete(
+    err = dynamicClient.Resource(applicationGVR()).Namespace(namespace).Delete(
         ctx,
         name,
         metav1.DeleteOptions{},
     )
-    if err != nil {
+    if err != nil && !apierrors.IsNotFound(err) {
         return diag.FromErr(err)
     }
 
@@ -455,7 +479,7 @@ Build and install locally for testing:
 ```bash
 go build -o terraform-provider-myplatform
 mkdir -p ~/.terraform.d/plugins/registry.terraform.io/yourorg/myplatform/1.0.0/darwin_amd64
-cp terraform-provider-myplatform ~/.terraform.d/plugins/registry.terraform.io/yourorg/myplatform/1.0.0/darwin_amd64/
+cp terraform-provider-myplatform ~/.terraform.d/plugins/registry.terraform.io/yourorg/myplatform/1.0.0/darwin_amd64/terraform-provider-myplatform_v1.0.0
 ```
 
 ## Using Your Custom Provider
@@ -473,7 +497,7 @@ terraform {
 }
 
 provider "myplatform" {
-  kubeconfig_path = "~/.kube/config"
+  kubeconfig_path = pathexpand("~/.kube/config")
   context         = "my-cluster"
 }
 
