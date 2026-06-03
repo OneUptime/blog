@@ -29,7 +29,7 @@ graph TD
     PrivB --> App2[Application Servers]
 ```
 
-Traffic flow: private instance sends a request, it hits the route table, the route table sends it to the NAT Gateway, the NAT Gateway translates the private IP to its Elastic IP, and the request goes out through the internet gateway. Return traffic follows the reverse path.
+Traffic flow: private instance sends a request, it hits the route table, the route table sends it to the NAT Gateway, the NAT Gateway translates the instance's private IP to the NAT Gateway's private IP, and the internet gateway maps that to the NAT Gateway's Elastic IP for internet-bound traffic. Return traffic follows the reverse path.
 
 ## Single NAT Gateway (Simple Setup)
 
@@ -222,11 +222,11 @@ resource "aws_route_table_association" "public" {
 
 NAT Gateways are one of the more expensive networking components in AWS. Here's what you're paying for:
 
-- **Hourly charge**: ~$0.045/hour per NAT Gateway (~$32/month)
-- **Data processing**: $0.045 per GB of data processed
-- **Elastic IP**: Free while attached to a running NAT Gateway
+- **Hourly charge**: ~$0.045/hour per NAT Gateway (~$32/month at that rate; pricing varies by region)
+- **Data processing**: ~$0.045 per GB of data processed at that rate
+- **Elastic IP / public IPv4**: Charged separately for each public IPv4 address, including Elastic IPs attached to NAT Gateways
 
-For three AZs, you're looking at roughly $96/month just in hourly charges, plus data processing. This adds up quickly.
+For three AZs, you're looking at roughly $96/month just in NAT Gateway hourly charges at that rate, plus data processing, public IPv4 charges, and any standard data transfer charges. This adds up quickly.
 
 ## Cost Optimization: Conditional HA
 
@@ -283,7 +283,7 @@ Now you can use `single_nat_gateway = true` for dev/staging and `false` for prod
 
 NAT Gateways publish CloudWatch metrics that you should be watching, especially data transfer metrics to catch unexpected costs.
 
-These alarms alert on high data transfer and connection drops:
+These alarms alert on high data transfer and port allocation errors:
 
 ```hcl
 resource "aws_cloudwatch_metric_alarm" "nat_bytes_out" {
