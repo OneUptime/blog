@@ -113,7 +113,7 @@ def retry_with_backoff(
 
 Beyond generation, these models are excellent at reviewing existing code. You can build an automated code review pipeline that catches issues before they reach human reviewers.
 
-```python
+````python
 def review_code(code, language="python", focus=None):
     """Perform an AI-powered code review."""
 
@@ -160,13 +160,13 @@ def save_password(user_id, password):
 
 review = review_code(vulnerable_code, focus="security")
 print(review)
-```
+````
 
 ## Language Translation
 
 Converting code between languages is another strong use case. This is particularly useful during migration projects.
 
-```python
+````python
 def translate_code(code, source_lang, target_lang):
     """Convert code from one language to another."""
 
@@ -178,7 +178,7 @@ Preserve all comments but translate them if needed.
 {source_lang} code:
 ```{source_lang}
 {code}
-```bash
+```
 
 Provide only the {target_lang} code, no explanations."""
 
@@ -205,13 +205,13 @@ def binary_search(arr: List[int], target: int) -> Optional[int]:
 
 go_code = translate_code(python_code, "Python", "Go")
 print(go_code)
-```text
+````
 
 ## Test Generation
 
 Writing tests is tedious but essential. Let the model generate test cases based on your implementation.
 
-```python
+````python
 def generate_tests(code, language="python", framework="pytest"):
     """Generate unit tests for the given code."""
 
@@ -252,13 +252,13 @@ def calculate_shipping(weight_kg: float, destination: str, express: bool = False
 
 tests = generate_tests(implementation)
 print(tests)
-```
+````
 
 ## Refactoring Existing Code
 
 When you're staring at legacy code that works but is hard to maintain, AI-assisted refactoring can save hours.
 
-```python
+````python
 def refactor_code(code, language="python", goals=None):
     """Refactor code according to specified goals."""
 
@@ -285,13 +285,13 @@ Original code:
 ```"""
 
     return generate_code(prompt, language, temperature=0.2)
-```
+````
 
 ## Building a Code Generation Pipeline
 
 For team use, wrap the generation capabilities in a simple API that standardizes prompts and handles common patterns.
 
-```python
+````python
 class CodeAssistant:
     """A wrapper around Bedrock for common code generation tasks."""
 
@@ -338,7 +338,7 @@ class CodeAssistant:
 assistant = CodeAssistant()
 docs = assistant.generate_docstring(implementation)
 print(docs)
-```
+````
 
 ## Best Practices
 
