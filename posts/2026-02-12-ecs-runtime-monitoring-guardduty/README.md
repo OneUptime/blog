@@ -65,7 +65,7 @@ Setting `ECS_FARGATE_AGENT_MANAGEMENT` to `ENABLED` tells GuardDuty to automatic
 
 ## Step 2: Configure Auto-Management (Fargate)
 
-With auto-management enabled, GuardDuty automatically adds a sidecar container to your Fargate tasks. You can control which clusters or services get monitored using tags.
+With auto-management enabled, GuardDuty automatically adds a sidecar container to new Fargate standalone tasks and new service deployments. You can control which clusters get monitored using tags.
 
 ```bash
 # Tag a cluster to include it in runtime monitoring
@@ -74,18 +74,20 @@ aws ecs tag-resource \
   --tags key=GuardDutyManaged,value=true
 ```
 
-To exclude specific services from monitoring:
+To exclude specific clusters from monitoring:
 
 ```bash
-# Tag a service to exclude it from runtime monitoring
+# Tag a cluster to exclude it from runtime monitoring
 aws ecs tag-resource \
-  --resource-arn arn:aws:ecs:us-east-1:123456789:service/production-cluster/debug-service \
+  --resource-arn arn:aws:ecs:us-east-1:123456789:cluster/debug-cluster \
   --tags key=GuardDutyManaged,value=false
 ```
 
+When you want GuardDuty to monitor tasks that are part of an existing service, restart the service or update it with `forceNewDeployment` so new tasks launch with the sidecar.
+
 ## Step 3: Configure for EC2 Launch Type
 
-For ECS services running on EC2 instances, you need to enable managed agent configuration.
+For ECS services running on EC2 instances, enable EC2 Runtime Monitoring agent management for the underlying container instances.
 
 ```bash
 # Enable EC2 runtime monitoring
@@ -107,11 +109,11 @@ aws guardduty update-detector \
   }]'
 ```
 
-For EC2 instances, the GuardDuty agent runs as a system-level process rather than a sidecar container. The managed agent is automatically installed and updated on instances running the ECS-optimized AMI.
+For EC2 instances, the GuardDuty agent runs as a system-level process rather than a sidecar container. With automated agent configuration, GuardDuty uses AWS Systems Manager to install and update the agent on supported EC2 instances that are SSM managed.
 
 ## Step 4: Verify Runtime Monitoring Is Active
 
-After enabling, verify that the agent is running on your tasks.
+After enabling, verify that runtime coverage is healthy for your ECS clusters.
 
 ```bash
 # Check the coverage status for your ECS clusters
@@ -127,7 +129,7 @@ aws guardduty list-coverage \
   }'
 ```
 
-You can also check individual task coverage.
+You can also get coverage statistics.
 
 ```bash
 # Get detailed coverage statistics
@@ -166,6 +168,23 @@ aws events put-rule \
 aws events put-targets \
   --rule guardduty-ecs-findings \
   --targets "Id=sns-target,Arn=arn:aws:sns:us-east-1:123456789:security-alerts"
+
+# Allow EventBridge to publish to the SNS topic
+aws sns set-topic-attributes \
+  --topic-arn arn:aws:sns:us-east-1:123456789:security-alerts \
+  --attribute-name Policy \
+  --attribute-value '{
+    "Version": "2012-10-17",
+    "Statement": [{
+      "Sid": "AllowEventBridgePublish",
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "events.amazonaws.com"
+      },
+      "Action": "sns:Publish",
+      "Resource": "arn:aws:sns:us-east-1:123456789:security-alerts"
+    }]
+  }'
 ```
 
 ## Types of Threats Detected
@@ -230,6 +249,22 @@ Resources:
       Targets:
         - Arn: !Ref SecurityAlertsTopic
           Id: sns-target
+
+  # Allow EventBridge to publish to the SNS topic
+  SecurityAlertsTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SecurityAlertsTopic
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: AllowEventBridgePublish
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: sns:Publish
+            Resource: !Ref SecurityAlertsTopic
 ```
 
 ## Responding to Findings
@@ -237,29 +272,34 @@ Resources:
 When you get a GuardDuty finding, here is a general response workflow:
 
 1. **Assess severity** - High and Critical findings need immediate attention
-2. **Identify the affected task** - The finding includes the cluster, service, and task ARN
+2. **Identify the affected task** - The finding includes the cluster and ECS task details
 3. **Isolate if necessary** - Update the task's security group to restrict network access
 4. **Investigate** - Use ECS Exec to inspect the running container or check CloudWatch logs
 5. **Remediate** - Fix the root cause (update image, patch vulnerability, fix misconfiguration)
 6. **Deploy fix** - Push a new task definition with the fix
 
 ```bash
-# Isolate a compromised task by updating its security group
+# Isolate a compromised task by applying a restrictive security group
 # First, create a restrictive security group
-aws ec2 create-security-group \
+SG_ID=$(aws ec2 create-security-group \
   --group-name isolated-container \
   --description "Isolated security group for compromised containers" \
-  --vpc-id vpc-abc123
+  --vpc-id vpc-abc123 \
+  --query GroupId \
+  --output text)
 
-# The security group has no ingress/egress rules by default,
-# effectively isolating the container from the network
+# New security groups have no inbound rules, but include a default
+# allow-all outbound rule. Remove it before applying the group.
+aws ec2 revoke-security-group-egress \
+  --group-id $SG_ID \
+  --ip-permissions 'IpProtocol=-1,IpRanges=[{CidrIp=0.0.0.0/0}]'
 ```
 
 For debugging running containers, see our guide on [ECS Exec for interactive container debugging](https://oneuptime.com/blog/post/2026-02-12-ecs-exec-interactive-container-debugging/view).
 
 ## Performance Impact
 
-The GuardDuty runtime agent is lightweight. AWS reports less than 1% CPU overhead and minimal memory usage (typically under 50MB). In most workloads, you will not notice any performance difference. However, for extremely latency-sensitive applications, you should benchmark with and without the agent to confirm.
+The GuardDuty runtime agent is lightweight, but it still adds some resource overhead. AWS documents CPU and memory limits for the agent; for Fargate tasks, the GuardDuty container memory limit starts at 128 MB and increases for larger task sizes. In most workloads, you will not notice a significant performance difference. However, for extremely latency-sensitive applications, you should benchmark with and without the agent to confirm.
 
 ## Cost Considerations
 
