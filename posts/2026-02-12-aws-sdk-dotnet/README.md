@@ -8,7 +8,7 @@ Description: A practical guide to using the AWS SDK for .NET, covering setup, S3
 
 ---
 
-The AWS SDK for .NET gives you full access to AWS services from C# and other .NET languages. It's well-designed, fully async, and integrates cleanly with ASP.NET Core's dependency injection. Whether you're building web APIs, background workers, or Lambda functions, the .NET SDK has you covered. Let's go through setup and the most common operations.
+The AWS SDK for .NET gives you full access to AWS services from C# and other .NET languages. It's well-designed, supports async patterns, and integrates cleanly with ASP.NET Core's dependency injection. Whether you're building web APIs, background workers, or Lambda functions, the .NET SDK has you covered. Let's go through setup and the most common operations.
 
 ## Installation
 
@@ -28,10 +28,10 @@ Or add them to your `.csproj` file.
 
 ```xml
 <ItemGroup>
-    <PackageReference Include="AWSSDK.S3" Version="3.7.*" />
-    <PackageReference Include="AWSSDK.DynamoDBv2" Version="3.7.*" />
-    <PackageReference Include="AWSSDK.Lambda" Version="3.7.*" />
-    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="3.7.*" />
+    <PackageReference Include="AWSSDK.S3" Version="4.*" />
+    <PackageReference Include="AWSSDK.DynamoDBv2" Version="4.*" />
+    <PackageReference Include="AWSSDK.Lambda" Version="4.*" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.*" />
 </ItemGroup>
 ```
 
@@ -92,7 +92,7 @@ await s3.PutObjectAsync(new PutObjectRequest
 });
 
 // Download an object
-var getResponse = await s3.GetObjectAsync("my-bucket", "data/config.json");
+using var getResponse = await s3.GetObjectAsync("my-bucket", "data/config.json");
 using var reader = new StreamReader(getResponse.ResponseStream);
 var content = await reader.ReadToEndAsync();
 Console.WriteLine(content);
@@ -128,12 +128,12 @@ Console.WriteLine($"Name: {retrieved["name"]}");
 Console.WriteLine($"Email: {retrieved["email"]}");
 
 // Query items
-var queryFilter = new QueryFilter("customer_id", QueryOperator.Equal, "cust-12345");
+var queryFilter = new QueryFilter("user_id", QueryOperator.Equal, "user-123");
 var search = table.Query(queryFilter);
 var results = await search.GetRemainingAsync();
 foreach (var item in results)
 {
-    Console.WriteLine($"  Order: {item["order_id"]}");
+    Console.WriteLine($"  User: {item["name"]}");
 }
 ```
 
@@ -181,7 +181,7 @@ var loaded = await context.LoadAsync<User>("user-123");
 Console.WriteLine($"Loaded: {loaded.Name}");
 
 // Query
-var orders = await context.QueryAsync<Order>("cust-12345").GetRemainingAsync();
+var users = await context.QueryAsync<User>("user-123").GetRemainingAsync();
 
 // Delete
 await context.DeleteAsync<User>("user-123");
@@ -204,9 +204,9 @@ var invokeResponse = await lambda.InvokeAsync(new InvokeRequest
     Payload = JsonSerializer.Serialize(new { user_id = "user-123", action = "process" })
 });
 
-var result = JsonSerializer.Deserialize<Dictionary<string, object>>(
-    invokeResponse.Payload
-);
+using var payloadReader = new StreamReader(invokeResponse.Payload);
+var payloadJson = await payloadReader.ReadToEndAsync();
+var result = JsonSerializer.Deserialize<Dictionary<string, object>>(payloadJson);
 Console.WriteLine($"Result: {result}");
 
 // Async invocation (fire and forget)
@@ -267,6 +267,7 @@ The SDK integrates with ASP.NET Core's dependency injection system.
 // Program.cs or Startup.cs
 using Amazon.S3;
 using Amazon.DynamoDBv2;
+using Amazon.Extensions.NETCore.Setup;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -350,7 +351,7 @@ Console.WriteLine($"Total: {total} objects");
 ## Best Practices
 
 - **Use dependency injection** in ASP.NET Core. Register clients as services and let the framework manage their lifecycle.
-- **All SDK methods are async.** Always use `await` and never `.Result` or `.Wait()`, which can cause deadlocks.
+- **Use async service calls in .NET Core and modern .NET apps.** Prefer `await` and avoid `.Result` or `.Wait()`, which can cause deadlocks.
 - **Reuse client instances.** They're thread-safe and manage connection pooling internally.
 - **Use the Object Persistence Model** for DynamoDB when you have well-defined data models.
 - **Handle errors specifically.** Use pattern matching on error codes rather than catching generic exceptions.
