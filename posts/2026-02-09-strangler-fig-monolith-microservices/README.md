@@ -355,6 +355,9 @@ spec:
     matchLabels:
       app: data-sync
   template:
+    metadata:
+      labels:
+        app: data-sync
     spec:
       containers:
       - name: sync
@@ -408,6 +411,27 @@ type User struct {
     Active bool   `json:"active"`
 }
 
+type UserRepository interface {
+    GetUser(id string) (*User, error)
+}
+
+type UserService struct {
+    repo           UserRepository
+    monolithClient *MonolithClient
+}
+
+type LegacyOrder struct {
+    ID     string `json:"order_id"`
+    UserID string `json:"user_id"`
+    Total  int64  `json:"total_cents"`
+}
+
+type Order struct {
+    ID         string `json:"id"`
+    CustomerID string `json:"customer_id"`
+    TotalCents int64  `json:"total_cents"`
+}
+
 // Translate legacy response to modern domain model
 func (c *MonolithClient) GetUser(id string) (*User, error) {
     resp, err := http.Get(c.baseURL + "/users/" + id)
@@ -430,6 +454,33 @@ func (c *MonolithClient) GetUser(id string) (*User, error) {
     }, nil
 }
 
+func (c *MonolithClient) GetOrdersForUser(userID string) ([]LegacyOrder, error) {
+    resp, err := http.Get(c.baseURL + "/users/" + userID + "/orders")
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    var orders []LegacyOrder
+    if err := json.NewDecoder(resp.Body).Decode(&orders); err != nil {
+        return nil, err
+    }
+
+    return orders, nil
+}
+
+func translateOrders(legacyOrders []LegacyOrder) []Order {
+    orders := make([]Order, 0, len(legacyOrders))
+    for _, legacy := range legacyOrders {
+        orders = append(orders, Order{
+            ID:         legacy.ID,
+            CustomerID: legacy.UserID,
+            TotalCents: legacy.Total,
+        })
+    }
+    return orders
+}
+
 // OrderService calls through anti-corruption layer
 func (s *UserService) GetUserOrders(userID string) ([]Order, error) {
     // Get user from our service
@@ -439,7 +490,7 @@ func (s *UserService) GetUserOrders(userID string) ([]Order, error) {
     }
 
     // Call monolith through anti-corruption layer
-    legacyOrders, err := s.monolithClient.GetOrdersForUser(userID)
+    legacyOrders, err := s.monolithClient.GetOrdersForUser(user.ID)
     if err != nil {
         return nil, err
     }
@@ -472,11 +523,9 @@ spec:
     route:
     - destination:
         host: user-service
-        subset: v1
       weight: 20  # 20% to new microservice
     - destination:
         host: monolith
-        subset: legacy
       weight: 80  # 80% to monolith
 ---
 # Update weights weekly
@@ -525,13 +574,13 @@ spec:
     # Compare error rates
     - record: migration:error_rate:monolith
       expr: |
-        rate(http_requests_total{app="monolith",status=~"5.."}[5m]) /
-        rate(http_requests_total{app="monolith"}[5m])
+        sum(rate(http_requests_total{app="monolith",status=~"5.."}[5m])) /
+        sum(rate(http_requests_total{app="monolith"}[5m]))
 
     - record: migration:error_rate:microservice
       expr: |
-        rate(http_requests_total{app="user-service",status=~"5.."}[5m]) /
-        rate(http_requests_total{app="user-service"}[5m])
+        sum(rate(http_requests_total{app="user-service",status=~"5.."}[5m])) /
+        sum(rate(http_requests_total{app="user-service"}[5m]))
 
     - alert: MicroserviceHigherErrorRate
       expr: |
@@ -547,10 +596,10 @@ spec:
     - alert: MicroserviceSlowerThanMonolith
       expr: |
         histogram_quantile(0.95,
-          rate(http_request_duration_seconds_bucket{app="user-service"}[5m])
+          sum by (le) (rate(http_request_duration_seconds_bucket{app="user-service"}[5m]))
         ) >
         histogram_quantile(0.95,
-          rate(http_request_duration_seconds_bucket{app="monolith",path="/api/users"}[5m])
+          sum by (le) (rate(http_request_duration_seconds_bucket{app="monolith",path="/api/users"}[5m]))
         ) * 1.3
       for: 10m
       labels:
@@ -575,8 +624,9 @@ MICROSERVICE="user-service"
 echo "Validating $MICROSERVICE before retiring monolith $FEATURE feature..."
 
 # Check microservice health for 7 days
-START_DATE=$(date -d '7 days ago' +%s)
-ERROR_COUNT=$(curl -s "http://prometheus:9090/api/v1/query_range?query=rate(http_requests_total{app='$MICROSERVICE',status=~'5..'}[5m])&start=$START_DATE&end=$(date +%s)&step=3600" | jq '[.data.result[].values[][1] | tonumber] | add')
+ERROR_COUNT=$(curl -sG "http://prometheus:9090/api/v1/query" \
+  --data-urlencode "query=sum(increase(http_requests_total{app=\"$MICROSERVICE\",status=~\"5..\"}[7d]))" |
+  jq -r '(.data.result[0].value[1] // "0") | tonumber')
 
 if (( $(echo "$ERROR_COUNT > 100" | bc -l) )); then
   echo "ERROR: Microservice showing elevated errors. Not safe to retire monolith feature."
@@ -584,8 +634,9 @@ if (( $(echo "$ERROR_COUNT > 100" | bc -l) )); then
 fi
 
 # Check traffic distribution
-MICROSERVICE_TRAFFIC=$(kubectl top pods -n migration -l app=$MICROSERVICE --containers | awk '{sum+=$3} END {print sum}')
-MONOLITH_USER_TRAFFIC=$(curl -s "http://prometheus:9090/api/v1/query?query=rate(http_requests_total{app='monolith',path='/api/users'}[5m])" | jq -r '.data.result[0].value[1]')
+MONOLITH_USER_TRAFFIC=$(curl -sG "http://prometheus:9090/api/v1/query" \
+  --data-urlencode 'query=sum(rate(http_requests_total{app="monolith",path="/api/users"}[5m]))' |
+  jq -r '(.data.result[0].value[1] // "0") | tonumber')
 
 if (( $(echo "$MONOLITH_USER_TRAFFIC > 0.01" | bc -l) )); then
   echo "WARNING: Monolith still receiving $FEATURE traffic. Update routing first."
