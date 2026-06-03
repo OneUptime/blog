@@ -96,9 +96,11 @@ aws efs describe-replication-configurations \
 The status values you'll see:
 
 - **ENABLED** - Replication is active and working
-- **SYNCING** - Initial sync in progress
+- **ENABLING** - Replication is being created, including the initial sync
 - **DELETING** - Replication is being removed
-- **ERROR** - Something went wrong (check CloudWatch for details)
+- **PAUSING** - Replication is being paused
+- **PAUSED** - Replication is paused due to a configuration problem
+- **ERROR** - Something went wrong and the replication configuration must be recreated
 
 ## Monitoring Replication Lag
 
@@ -109,11 +111,12 @@ Use CloudWatch to track how far behind the replica is:
 aws cloudwatch get-metric-statistics \
   --namespace "AWS/EFS" \
   --metric-name "TimeSinceLastSync" \
-  --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" \
+  --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" "Name=DestinationFileSystemId,Value=fs-0dest789abc123" \
   --start-time "$(date -u -d '6 hours ago' +%Y-%m-%dT%H:%M:%SZ)" \
   --end-time "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
   --period 300 \
   --statistics Maximum \
+  --unit Seconds \
   --output table
 ```
 
@@ -126,11 +129,12 @@ aws cloudwatch put-metric-alarm \
   --alarm-description "EFS replication lag exceeds 15 minutes" \
   --namespace "AWS/EFS" \
   --metric-name "TimeSinceLastSync" \
-  --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" \
+  --dimensions "Name=FileSystemId,Value=fs-0abc123def456789" "Name=DestinationFileSystemId,Value=fs-0dest789abc123" \
   --statistic Maximum \
   --period 300 \
   --evaluation-periods 3 \
   --threshold 900 \
+  --unit Seconds \
   --comparison-operator GreaterThanThreshold \
   --alarm-actions "arn:aws:sns:us-east-1:123456789012:dr-alerts"
 ```
@@ -157,7 +161,7 @@ Step 2 - Wait for the destination file system to become read-write:
 aws efs describe-file-systems \
   --file-system-id "fs-0dest789abc123" \
   --region us-west-2 \
-  --query "FileSystems[0].{Id:FileSystemId,State:LifeCycleState}" \
+  --query "FileSystems[0].{Id:FileSystemId,State:LifeCycleState,Writeable:FileSystemProtection.ReplicationOverwriteProtection}" \
   --output table
 ```
 
@@ -224,17 +228,20 @@ def failover_efs(event, context):
         # If source region is down, we may need to delete from dest side
         efs_dest = boto3.client('efs', region_name=dest_region)
         efs_dest.delete_replication_configuration(
-            SourceFileSystemId=source_fs_id
+            SourceFileSystemId=source_fs_id,
+            DeletionMode='LOCAL_CONFIGURATION_ONLY'
         )
 
-    # Step 3: Wait for file system to be available
+    # Step 3: Wait for file system to be available and writeable
     efs_dest = boto3.client('efs', region_name=dest_region)
     while True:
         fs = efs_dest.describe_file_systems(FileSystemId=dest_fs_id)
-        state = fs['FileSystems'][0]['LifeCycleState']
-        if state == 'available':
+        file_system = fs['FileSystems'][0]
+        state = file_system['LifeCycleState']
+        protection = file_system['FileSystemProtection']['ReplicationOverwriteProtection']
+        if state == 'available' and protection == 'ENABLED':
             break
-        print(f"Waiting for file system... Current state: {state}")
+        print(f"Waiting for file system... Current state: {state}, protection: {protection}")
         time.sleep(10)
 
     # Step 4: Create mount targets
@@ -279,13 +286,13 @@ aws efs create-replication-configuration \
 
 EFS replication charges:
 
-- **Storage costs** for the replica file system (same rates as the source)
-- **Data transfer** between regions (standard AWS inter-region transfer rates)
-- **No additional replication-specific charges** beyond storage and transfer
+- **Storage and file system activity costs** for both the source and destination file systems
+- **Data transfer** for cross-Region replication, or cross-AZ transfer for same-Region One Zone replication across Availability Zones
+- **No setup fee** for replication itself
 
 For a 1 TB file system replicating from us-east-1 to us-west-2:
-- Source storage: ~$300/month
-- Replica storage: ~$300/month
+- Source storage: based on the source Region and storage classes
+- Replica storage: based on the destination Region and storage classes
 - Initial data transfer: ~$20 (one-time)
 - Ongoing transfer: Depends on change rate, typically small
 
