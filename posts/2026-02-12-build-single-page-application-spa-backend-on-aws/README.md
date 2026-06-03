@@ -18,7 +18,7 @@ Here's what the full SPA backend looks like:
 graph TD
     SPA[SPA Frontend] --> CF[CloudFront]
     CF --> S3Static[(S3 - Static Assets)]
-    CF --> APIGW[API Gateway REST]
+    CF --> APIGW[API Gateway HTTP]
     SPA --> APIGWS[API Gateway WebSocket]
     APIGW --> Auth[Cognito Authorizer]
     Auth --> Lambda[Lambda Functions]
@@ -63,6 +63,7 @@ aws cognito-idp create-user-pool-client \
   --no-generate-secret \
   --explicit-auth-flows ALLOW_USER_SRP_AUTH ALLOW_REFRESH_TOKEN_AUTH \
   --supported-identity-providers COGNITO \
+  --allowed-o-auth-flows-user-pool-client \
   --allowed-o-auth-flows code \
   --allowed-o-auth-scopes openid email profile \
   --callback-urls '["http://localhost:3000/callback","https://yourapp.com/callback"]' \
@@ -214,7 +215,7 @@ module.exports.list = async (event) => {
       KeyConditionExpression: 'userId = :userId',
       ExpressionAttributeValues: { ':userId': userId },
       Limit: limit,
-      ScanIndexForward: false, // newest first
+      ScanIndexForward: false, // reverse sort-key order
     }));
 
     return respond(200, {
@@ -286,6 +287,10 @@ module.exports.update = async (event) => {
   const userId = getUserId(event);
   const { id } = event.pathParameters;
   const body = JSON.parse(event.body || '{}');
+
+  if (!body.title) {
+    return respond(400, { error: 'Title is required' });
+  }
 
   try {
     const result = await docClient.send(new UpdateCommand({
@@ -424,10 +429,11 @@ API Gateway supports WebSocket APIs for real-time communication:
 
 ```javascript
 // handlers/websocket.js
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
 const { DynamoDBDocumentClient, PutCommand, DeleteCommand, ScanCommand } = require('@aws-sdk/lib-dynamodb');
 const { ApiGatewayManagementApiClient, PostToConnectionCommand } = require('@aws-sdk/client-apigatewaymanagementapi');
 
-const docClient = DynamoDBDocumentClient.from(/* ... */);
+const docClient = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const CONNECTIONS_TABLE = process.env.CONNECTIONS_TABLE;
 
 // Handle new WebSocket connections
@@ -466,14 +472,14 @@ async function broadcast(apiUrl, message) {
     TableName: CONNECTIONS_TABLE,
   }));
 
-  const promises = result.Items.map(async (connection) => {
+  const promises = (result.Items || []).map(async (connection) => {
     try {
       await api.send(new PostToConnectionCommand({
         ConnectionId: connection.connectionId,
         Data: JSON.stringify(message),
       }));
     } catch (err) {
-      if (err.statusCode === 410) {
+      if (err.name === 'GoneException' || err.$metadata?.httpStatusCode === 410) {
         // Connection is stale, clean it up
         await docClient.send(new DeleteCommand({
           TableName: CONNECTIONS_TABLE,
@@ -548,4 +554,4 @@ Track API latency, error rates, and Lambda execution metrics. For a complete SPA
 
 ## Summary
 
-A serverless SPA backend on AWS gives you authentication, APIs, file storage, and real-time capabilities without managing any servers. Cognito handles auth, API Gateway routes requests, Lambda runs your logic, and DynamoDB stores your data. The whole thing scales automatically and costs nothing when idle. This architecture works for everything from side projects to production SaaS applications, and you can add features incrementally as your application grows. For the frontend hosting piece, check out our guide on [deploying React to S3 and CloudFront](https://oneuptime.com/blog/post/2026-02-12-deploy-react-app-to-aws-s3-and-cloudfront/view) or [building a static website with CI/CD](https://oneuptime.com/blog/post/2026-02-12-build-static-website-with-cicd-on-aws/view).
+A serverless SPA backend on AWS gives you authentication, APIs, file storage, and real-time capabilities without managing any servers. Cognito handles auth, API Gateway routes requests, Lambda runs your logic, and DynamoDB stores your data. The whole thing scales automatically and keeps compute and request costs low when idle, though storage is still billed. This architecture works for everything from side projects to production SaaS applications, and you can add features incrementally as your application grows. For the frontend hosting piece, check out our guide on [deploying React to S3 and CloudFront](https://oneuptime.com/blog/post/2026-02-12-deploy-react-app-to-aws-s3-and-cloudfront/view) or [building a static website with CI/CD](https://oneuptime.com/blog/post/2026-02-12-build-static-website-with-cicd-on-aws/view).
