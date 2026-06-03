@@ -18,7 +18,7 @@ When you enable active tracing on a Lambda function, the Lambda service creates 
 
 - Time spent in the Lambda service (queuing, initialization)
 - Time spent in your function code
-- Subsegments for AWS SDK calls made by your function
+- Subsegments for AWS SDK calls made by your function, when those SDK clients are instrumented
 
 These trace segments are sent to the X-Ray daemon, which runs as part of the Lambda execution environment. No additional infrastructure needed.
 
@@ -36,7 +36,7 @@ graph LR
     style E fill:#99f,stroke:#333
 ```
 
-Each arrow in the diagram becomes a segment in X-Ray, showing the duration and any errors.
+The Lambda and API Gateway nodes can create their own segments. Downstream calls such as DynamoDB, SQS, and S3 are recorded as subsegments from your function and appear as downstream nodes in the X-Ray service map.
 
 ## Enabling X-Ray on a Lambda Function
 
@@ -137,7 +137,7 @@ Resources:
 
 ## Adding Custom Subsegments
 
-The automatic tracing captures AWS SDK calls, but you'll want to add custom subsegments for your own operations - database queries, external API calls, and business logic blocks.
+Instrumented AWS SDK clients capture AWS service calls, but you'll want to add custom subsegments for your own operations - database queries, external API calls, and business logic blocks.
 
 This handler adds custom X-Ray subsegments to trace specific operations:
 
@@ -145,14 +145,11 @@ This handler adds custom X-Ray subsegments to trace specific operations:
 const AWSXRay = require('aws-xray-sdk-core');
 const https = require('https');
 
-// Instrument the AWS SDK
-const AWS = AWSXRay.captureAWS(require('aws-sdk'));
-
 // Instrument HTTP calls
 AWSXRay.captureHTTPsGlobal(https);
 
 const { DynamoDBClient, GetItemCommand } = require('@aws-sdk/client-dynamodb');
-const dynamodb = new DynamoDBClient({});
+const dynamodb = AWSXRay.captureAWSv3Client(new DynamoDBClient({}));
 
 exports.handler = async (event) => {
   const segment = AWSXRay.getSegment();
@@ -221,8 +218,8 @@ subsegment.addAnnotation('paymentMethod', 'credit_card');
 ```
 
 You can then search for traces in the X-Ray console:
-- `annotation.userId = "user-123"`
-- `annotation.orderStatus = "pending"`
+- `annotation[userId] = "user-123"`
+- `annotation[orderStatus] = "pending"`
 
 **Metadata** is not indexed but can store larger, more complex data.
 
@@ -238,40 +235,18 @@ Use annotations for the 5-10 most important fields you'll search by. Use metadat
 
 ## Tracing with AWS SDK v3
 
-The X-Ray SDK v2 wraps the AWS SDK v2 easily, but with AWS SDK v3, you need a different approach.
+The X-Ray SDK can wrap AWS SDK v2 globally, but with AWS SDK v3, you wrap each client instance.
 
-This configuration instruments AWS SDK v3 calls for X-Ray tracing:
-
-```javascript
-const { NodeTracerProvider } = require('@opentelemetry/sdk-trace-node');
-const { AWSXRayPropagator } = require('@opentelemetry/propagator-aws-xray');
-const { AwsInstrumentation } = require('@opentelemetry/instrumentation-aws-sdk');
-const { registerInstrumentations } = require('@opentelemetry/instrumentation');
-
-// Set up OpenTelemetry with X-Ray
-const provider = new NodeTracerProvider();
-provider.register({
-  propagator: new AWSXRayPropagator(),
-});
-
-registerInstrumentations({
-  instrumentations: [
-    new AwsInstrumentation({
-      suppressInternalInstrumentation: true,
-    }),
-  ],
-});
-```
-
-Alternatively, use the simpler approach with the X-Ray SDK v3 beta:
+This configuration instruments an AWS SDK v3 DynamoDB client for X-Ray tracing:
 
 ```javascript
 const AWSXRay = require('aws-xray-sdk-core');
-
-// Capture all AWS SDK v3 clients
 const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+
 const dynamodb = AWSXRay.captureAWSv3Client(new DynamoDBClient({}));
 ```
+
+For new OpenTelemetry-based instrumentation, use AWS Distro for OpenTelemetry (ADOT) and configure an exporter or Lambda layer to send traces to X-Ray.
 
 ## Sampling Rules
 
@@ -297,7 +272,7 @@ aws xray create-sampling-rule --cli-input-json '{
 }'
 ```
 
-This rule traces 10% of requests to the order processor, with a reservoir of 10 traces per second (guaranteed minimum).
+This rule traces 10% of requests to the order processor, with a reservoir target of 10 traces per second before the fixed rate is applied.
 
 ## Analyzing Traces in the Console
 
@@ -322,20 +297,20 @@ duration > 5
 http.status >= 500
 
 # Find specific user's requests
-annotation.userId = "user-123"
+annotation[userId] = "user-123"
 
-# Find cold starts
-!OK AND service("order-processor")
+# Find traces involving the function
+service("order-processor")
 
 # Combine filters
-duration > 2 AND annotation.orderStatus = "failed"
+duration > 2 AND annotation[orderStatus] = "failed"
 ```
 
 ## Tracing Across Multiple Lambda Functions
 
 When one Lambda function triggers another (via SQS, SNS, or direct invocation), X-Ray can connect the traces if the trace header is propagated.
 
-For direct invocations, the trace header propagates automatically. For SQS and SNS, you need to pass it explicitly.
+For direct invocations, the trace header propagates automatically. For SQS, an instrumented AWS SDK client sends the trace header automatically, and SQS stores it in the `AWSTraceHeader` system attribute. If you're not using SDK auto-instrumentation, pass `AWSTraceHeader` explicitly. For SNS, enable active tracing on the topic to include SNS in the trace path.
 
 This code propagates the X-Ray trace header through SQS:
 
@@ -346,18 +321,17 @@ const { SQSClient, SendMessageCommand } = require('@aws-sdk/client-sqs');
 const sqs = AWSXRay.captureAWSv3Client(new SQSClient({}));
 
 exports.handler = async (event) => {
-  const segment = AWSXRay.getSegment();
-  const traceHeader = `Root=${segment.trace_id};Parent=${segment.id};Sampled=1`;
+  const traceHeader = process.env._X_AMZN_TRACE_ID;
 
   await sqs.send(new SendMessageCommand({
     QueueUrl: process.env.QUEUE_URL,
     MessageBody: JSON.stringify({ orderId: 'ORD-001' }),
-    MessageSystemAttributes: {
+    ...(traceHeader && { MessageSystemAttributes: {
       AWSTraceHeader: {
         DataType: 'String',
         StringValue: traceHeader,
       },
-    },
+    } }),
   }));
 };
 ```
@@ -383,7 +357,8 @@ This adds API Gateway segments to your traces, showing time spent in:
 X-Ray pricing is based on traces recorded and retrieved:
 - First 100,000 traces recorded per month are free
 - $5 per million traces after that
-- $0.50 per million traces retrieved
+- First 1,000,000 traces retrieved or scanned per month are free
+- $0.50 per million traces retrieved or scanned after that
 
 For most serverless applications, the cost is minimal. If you have very high throughput, adjust your sampling rules to control costs.
 
