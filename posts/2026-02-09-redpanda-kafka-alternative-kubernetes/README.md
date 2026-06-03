@@ -21,95 +21,96 @@ Third, Redpanda uses thread-per-core architecture that maximizes modern CPU effi
 Deploy Redpanda using the official operator:
 
 ```bash
-# Install the Redpanda operator
+# Install cert-manager, which the Redpanda Helm chart uses for TLS by default
+helm repo add jetstack https://charts.jetstack.io
+helm repo update
+helm install cert-manager jetstack/cert-manager \
+  --set crds.enabled=true \
+  --namespace cert-manager \
+  --create-namespace
 
-kubectl apply -k https://github.com/redpanda-data/redpanda-operator/src/go/k8s/config/crd
-
-kubectl create namespace redpanda-system
-
-kubectl apply -k https://github.com/redpanda-data/redpanda-operator/src/go/k8s/config/default \
-  --namespace redpanda-system
+# Install the Redpanda operator and CRDs
+helm repo add redpanda https://charts.redpanda.com
+helm repo update
+helm upgrade --install redpanda-controller redpanda/operator \
+  --namespace redpanda-system \
+  --create-namespace \
+  --version v26.1.4 \
+  --set crds.enabled=true
 
 # Verify operator installation
-kubectl get pods -n redpanda-system
+kubectl --namespace redpanda-system rollout status --watch deployment/redpanda-controller-operator
 ```
 
 The operator manages Redpanda cluster lifecycle through custom resources.
 
 ## Deploying a Redpanda Cluster
 
-Create a production-ready Redpanda cluster:
+Create a simple three-broker Redpanda cluster:
 
 ```yaml
 # redpanda-cluster.yaml
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: Redpanda
 metadata:
   name: redpanda
   namespace: redpanda
 spec:
-  replicas: 3
+  chartRef: {}
+  clusterSpec:
+    statefulset:
+      replicas: 3
 
-  # Resource configuration
-  resources:
-    requests:
-      cpu: 2000m
-      memory: 8Gi
-    limits:
-      cpu: 4000m
-      memory: 16Gi
+    # Resource configuration
+    resources:
+      cpu:
+        cores: 4
+      memory:
+        container:
+          min: 8Gi
+          max: 16Gi
 
-  # Storage configuration
-  storage:
-    capacity: 200Gi
-    storageClassName: fast-ssd
+    # Storage configuration
+    storage:
+      persistentVolume:
+        enabled: true
+        size: 200Gi
+        storageClass: fast-ssd
 
-  # Redpanda configuration
-  configuration:
-    redpanda:
-      # Enable developer mode for testing (disable in production)
-      developer_mode: false
-
-      # Kafka API configuration
-      kafka_api:
-        - name: kafka
-          port: 9092
-
-      # Admin API
+    # Listener configuration
+    listeners:
+      kafka:
+        port: 9092
       admin:
-        - name: admin
-          port: 9644
-
-      # RPC (internal)
-      rpc_server:
+        port: 9644
+      rpc:
         port: 33145
+      schemaRegistry:
+        enabled: true
+        port: 8081
+      http:
+        enabled: true
+        port: 8082
 
-      # Performance tuning
-      log_segment_size: 1073741824  # 1GB
-      compacted_log_segment_size: 536870912  # 512MB
-      max_compacted_log_segment_size: 5368709120  # 5GB
+    # Disable TLS for the local client examples in this guide.
+    # Enable and configure TLS for production deployments.
+    tls:
+      enabled: false
 
-      # Replication settings
-      default_topic_replications: 3
-      transaction_coordinator_replication: 3
-      id_allocator_replication: 3
+    # Redpanda cluster configuration
+    config:
+      cluster:
+        default_topic_replication: 3
+        internal_topic_replication_factor: 3
 
-    # Schema registry (built-in)
-    schema_registry:
-      schema_registry_api:
-        - name: schema-registry
-          port: 8081
-
-    # Pandaproxy (HTTP API)
-    pandaproxy:
-      pandaproxy_api:
-        - name: proxy
-          port: 8082
-
-  # External connectivity
-  external:
-    enabled: true
-    type: LoadBalancer
+    # External connectivity
+    external:
+      enabled: true
+      type: LoadBalancer
+      addresses:
+        - redpanda-0.example.com
+        - redpanda-1.example.com
+        - redpanda-2.example.com
 ```
 
 Deploy the cluster:
@@ -122,7 +123,7 @@ kubectl create namespace redpanda
 kubectl apply -f redpanda-cluster.yaml
 
 # Watch cluster initialization
-kubectl get pods -n redpanda -w
+kubectl get redpanda -n redpanda -w
 
 # Verify cluster health
 kubectl exec -it -n redpanda redpanda-0 -- \
@@ -191,31 +192,34 @@ Optimize Redpanda for low latency:
 
 ```yaml
 # Update cluster configuration
-apiVersion: cluster.redpanda.com/v1alpha1
+apiVersion: cluster.redpanda.com/v1alpha2
 kind: Redpanda
 metadata:
   name: redpanda
   namespace: redpanda
 spec:
-  configuration:
-    redpanda:
-      # Batch settings for throughput
-      kafka_batch_max_bytes: 1048576
-      kafka_max_bytes: 10485760
+  chartRef: {}
+  clusterSpec:
+    config:
+      cluster:
+        # Batch settings for throughput
+        kafka_batch_max_bytes: 1048576
+        kafka_request_max_bytes: 10485760
 
-      # Reduce latency
-      kafka_qdc_depth_alpha: 0.8
-      kafka_qdc_max_latency_ms: 1000
+        # Reduce latency
+        kafka_qdc_enable: true
+        kafka_qdc_depth_alpha: 0.8
+        kafka_qdc_max_latency_ms: 80
 
-      # Memory configuration
-      kafka_memory_share_for_fetch: 0.3
+        # Memory configuration
+        kafka_memory_share_for_fetch: 0.3
 
-      # Disk I/O tuning
-      raft_io_timeout_ms: 10000
-      raft_heartbeat_interval_ms: 150
+        # Disk I/O tuning
+        raft_io_timeout_ms: 10000
+        raft_heartbeat_interval_ms: 150
 
-      # Enable metrics
-      metrics_reporter_enabled: true
+        # Enable Redpanda Data usage metrics reporter
+        enable_metrics_reporter: true
 ```
 
 Apply configuration:
@@ -233,7 +237,7 @@ Redpanda includes a Schema Registry compatible with Confluent's implementation:
 
 ```bash
 # Access schema registry
-kubectl port-forward -n redpanda svc/redpanda-schema-registry 8081:8081
+kubectl port-forward -n redpanda svc/redpanda 8081:8081
 
 # Register Avro schema
 curl -X POST http://localhost:8081/subjects/events-value/versions \
@@ -278,6 +282,7 @@ producer.produce(
         SerializationContext('events', MessageField.VALUE)
     )
 )
+producer.flush()
 ```
 
 ## Monitoring Redpanda Performance
@@ -306,12 +311,12 @@ spec:
 
 Key Redpanda metrics:
 
-- Produce latency: `vectorized_kafka_rpc_produce_latency_us`
-- Fetch latency: `vectorized_kafka_rpc_fetch_latency_us`
+- Produce latency: `vectorized_kafka_latency_produce_latency_us`
+- Fetch latency: `vectorized_kafka_latency_fetch_latency_us`
 - Disk utilization: `vectorized_storage_disk_total_bytes`
 - Partition count: `vectorized_cluster_partition_count`
 
-Redpanda consistently shows p99 latencies 5-10x lower than Kafka.
+Redpanda can show materially lower tail latencies than Kafka, depending on workload, hardware, and configuration.
 
 ## Migrating from Kafka to Redpanda
 
@@ -362,22 +367,31 @@ This replicates all topics from Kafka to Redpanda. Update applications to point 
 
 ## Implementing Tiered Storage
 
-Configure cloud storage for older segments:
+Configure cloud storage for older segments. Tiered Storage requires an Enterprise license:
 
 ```yaml
 spec:
-  configuration:
-    redpanda:
-      # Enable cloud storage
-      cloud_storage_enabled: true
-      cloud_storage_region: us-west-2
-      cloud_storage_bucket: redpanda-tiered-storage
-      cloud_storage_access_key: ${AWS_ACCESS_KEY}
-      cloud_storage_secret_key: ${AWS_SECRET_KEY}
+  clusterSpec:
+    storage:
+      tiered:
+        credentialsSecretRef:
+          accessKey:
+            name: redpanda-cloud-storage
+            key: access-key
+            configurationKey: cloud_storage_access_key
+          secretKey:
+            name: redpanda-cloud-storage
+            key: secret-key
+            configurationKey: cloud_storage_secret_key
+        config:
+          # Enable cloud storage
+          cloud_storage_enabled: true
+          cloud_storage_region: us-west-2
+          cloud_storage_bucket: redpanda-tiered-storage
 
-      # Tiered storage settings
-      cloud_storage_segment_max_upload_interval_sec: 1800
-      retention_local_target_bytes_default: 107374182400  # 100GB local
+          # Tiered storage settings
+          cloud_storage_segment_max_upload_interval_sec: 1800
+          retention_local_target_bytes_default: 107374182400  # 100GB local
 ```
 
 Older data automatically moves to S3, reducing local storage costs.
@@ -390,17 +404,17 @@ Add more nodes for capacity:
 # Scale to 6 nodes
 kubectl patch redpanda redpanda -n redpanda \
   --type='json' \
-  -p='[{"op": "replace", "path": "/spec/replicas", "value": 6}]'
+  -p='[{"op": "replace", "path": "/spec/clusterSpec/statefulset/replicas", "value": 6}]'
 
 # Verify scaling
 kubectl get pods -n redpanda
 
 # Rebalance partitions
 kubectl exec -it -n redpanda redpanda-0 -- \
-  rpk cluster partitions rebalance
+  rpk cluster partitions balance
 ```
 
-Redpanda automatically rebalances partition replicas across new nodes.
+Redpanda can automatically rebalance partition replicas across new nodes when partition autobalancing is enabled.
 
 ## Configuring High Availability
 
@@ -408,31 +422,30 @@ Enable rack awareness for zone distribution:
 
 ```yaml
 spec:
-  rackAwareness:
-    enabled: true
-    nodeAnnotation: topology.kubernetes.io/zone
+  clusterSpec:
+    rbac:
+      enabled: true
+    rackAwareness:
+      enabled: true
+      nodeAnnotation: topology.kubernetes.io/zone
 ```
 
 This ensures replicas spread across availability zones, surviving zone failures.
 
 ## Backup and Recovery
 
-Back up topic data to object storage:
+Use Tiered Storage and Whole Cluster Restore for disaster recovery:
 
 ```bash
-# Tiered storage serves as continuous backup
+# Tiered storage uploads topic data and cluster metadata to object storage
 
-# For point-in-time recovery, use rpk backup
+# On a new target cluster with matching Tiered Storage settings, start restore
 kubectl exec -it -n redpanda redpanda-0 -- \
-  rpk cluster storage backup create \
-  --bucket redpanda-backups \
-  --region us-west-2
+  rpk cluster storage restore start -w
 
-# Restore from backup
+# Check restore status
 kubectl exec -it -n redpanda redpanda-0 -- \
-  rpk cluster storage backup restore \
-  --bucket redpanda-backups \
-  --backup-id <BACKUP_ID>
+  rpk cluster storage restore status
 ```
 
 ## Conclusion
