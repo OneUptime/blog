@@ -65,7 +65,11 @@ Monitor for unauthorized remote access attempts:
 # Rejected SSH (22) and RDP (3389) attempts from external IPs
 fields @timestamp, srcAddr, dstAddr, dstPort, action
 | filter dstPort in [22, 3389] and action = "REJECT"
-| filter not isprivateaddr(srcAddr)
+| filter not (
+    isIpInSubnet(srcAddr, "10.0.0.0/8")
+    or isIpInSubnet(srcAddr, "172.16.0.0/12")
+    or isIpInSubnet(srcAddr, "192.168.0.0/16")
+)
 | stats count(*) as attempts by srcAddr, dstPort
 | sort attempts desc
 | limit 25
@@ -78,7 +82,11 @@ Large outbound data transfers could indicate data exfiltration:
 ```text
 # Top outbound data transfers by destination (external IPs only)
 fields dstAddr, bytes, packets
-| filter not isprivateaddr(dstAddr)
+| filter not (
+    isIpInSubnet(dstAddr, "10.0.0.0/8")
+    or isIpInSubnet(dstAddr, "172.16.0.0/12")
+    or isIpInSubnet(dstAddr, "192.168.0.0/16")
+)
 | stats sum(bytes) as totalBytes by dstAddr
 | sort totalBytes desc
 | limit 20
@@ -184,8 +192,8 @@ A high rejection ratio from a single source is suspicious:
 # Acceptance ratio by source IP
 fields srcAddr, action
 | stats count(*) as total,
-    sum(action = "ACCEPT") as accepted,
-    sum(action = "REJECT") as rejected by srcAddr
+    sum(case(action = "ACCEPT", 1, 0)) as accepted,
+    sum(case(action = "REJECT", 1, 0)) as rejected by srcAddr
 | filter total > 100
 | fields srcAddr, total, accepted, rejected,
     (rejected / total * 100) as rejectPercent
@@ -200,7 +208,16 @@ Find external traffic hitting your private resources:
 ```text
 # External IPs communicating with internal resources
 fields srcAddr, dstAddr, dstPort, action, bytes
-| filter not isprivateaddr(srcAddr) and isprivateaddr(dstAddr)
+| filter not (
+    isIpInSubnet(srcAddr, "10.0.0.0/8")
+    or isIpInSubnet(srcAddr, "172.16.0.0/12")
+    or isIpInSubnet(srcAddr, "192.168.0.0/16")
+)
+| filter (
+    isIpInSubnet(dstAddr, "10.0.0.0/8")
+    or isIpInSubnet(dstAddr, "172.16.0.0/12")
+    or isIpInSubnet(dstAddr, "192.168.0.0/16")
+)
 | stats count(*) as connections, sum(bytes) as totalBytes by srcAddr, dstPort
 | sort connections desc
 | limit 25
@@ -211,10 +228,8 @@ fields srcAddr, dstAddr, dstPort, action, bytes
 Detect traffic spikes outside business hours:
 
 ```text
-# Traffic between midnight and 5 AM
+# Set the query time range to midnight-5 AM, then bucket by hour
 fields @timestamp, srcAddr, dstAddr, bytes, action
-| filter dateTimePart(@timestamp, "HH") >= 0
-    and dateTimePart(@timestamp, "HH") < 5
 | stats count(*) as flows, sum(bytes) as totalBytes by bin(1h)
 | sort totalBytes desc
 ```
@@ -236,9 +251,8 @@ aws cloudwatch put-dashboard \
         "width": 12,
         "height": 6,
         "properties": {
-          "query": "fields srcAddr, action | stats count(*) as total by srcAddr, action | sort total desc | limit 10",
+          "query": "SOURCE '/vpc/flow-logs/vpc-abc123' | fields srcAddr, action\\n| stats count(*) as total by srcAddr, action\\n| sort total desc\\n| limit 10",
           "region": "us-east-1",
-          "stacked": false,
           "view": "table",
           "title": "Top Source IPs"
         }
@@ -250,9 +264,8 @@ aws cloudwatch put-dashboard \
         "width": 12,
         "height": 6,
         "properties": {
-          "query": "fields bytes | stats sum(bytes) as totalBytes by bin(5m) | sort totalBytes desc",
+          "query": "SOURCE '/vpc/flow-logs/vpc-abc123' | fields bytes\\n| stats sum(bytes) as totalBytes by bin(5m)\\n| sort totalBytes desc",
           "region": "us-east-1",
-          "stacked": false,
           "view": "timeSeries",
           "title": "Traffic Volume Over Time"
         }
@@ -263,10 +276,10 @@ aws cloudwatch put-dashboard \
 
 ## Setting Up Automated Alerts
 
-Combine Logs Insights queries with CloudWatch alarms using metric filters:
+Combine CloudWatch Logs metric filters with CloudWatch alarms:
 
 ```bash
-# Alert when a single IP gets rejected more than 1000 times in 5 minutes
+# Alert when rejected flows exceed 1000 in 5 minutes
 aws logs put-metric-filter \
   --log-group-name "/vpc/flow-logs/vpc-abc123" \
   --filter-name "HighRejectRate" \
@@ -291,9 +304,9 @@ aws cloudwatch put-metric-alarm \
 Logs Insights has some limits to keep in mind:
 
 - Queries scan a maximum of 10,000 log groups
-- Results are capped at 10,000 rows
-- Queries timeout after 15 minutes
-- You can run up to 30 concurrent queries per account per region
+- Logs Insights QL queries can retrieve up to 100,000 log event results when paginated with the API; the console displays up to 10,000 log events
+- Queries timeout after 60 minutes
+- You can run up to 100 concurrent Logs Insights QL queries per account per region
 
 For better performance:
 
