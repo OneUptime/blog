@@ -85,7 +85,7 @@ aws rds describe-db-instances \
     Instance:DBInstanceIdentifier,
     Endpoint:Endpoint.Address,
     Class:DBInstanceClass,
-    Role:DBInstanceStatus
+    Status:DBInstanceStatus
   }' \
   --output table
 ```
@@ -224,9 +224,7 @@ const analyticsPool = mysql.createPool({
   password: 'password',
   database: 'mydb',
   connectionLimit: 5,
-  connectTimeout: 10000,
-  // 5-minute timeout for heavy queries
-  timeout: 300000
+  connectTimeout: 10000
 });
 
 // Usage example
