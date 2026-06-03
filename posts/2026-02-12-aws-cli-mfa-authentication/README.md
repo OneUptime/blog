@@ -15,11 +15,11 @@ If your organization requires MFA for AWS console access (and it should), you sh
 The basic flow is:
 
 1. You have long-term credentials (access key + secret key) in a profile
-2. When you need MFA-protected access, you call `sts:GetSessionToken` with your MFA device serial number and current token code
+2. When you need MFA-protected access, you either call `sts:GetSessionToken` with your MFA device serial number and current token code, or configure an AWS CLI role profile that calls `sts:AssumeRole` with MFA for you
 3. STS returns temporary credentials (access key + secret key + session token)
 4. You use those temporary credentials for subsequent API calls
 
-The temporary credentials are valid for up to 36 hours (configurable), so you don't need to enter your MFA code for every single command.
+`GetSessionToken` credentials for IAM users are valid for up to 36 hours (configurable). Assumed-role credentials are controlled by the role session duration, up to the role's maximum session duration. Either way, you don't need to enter your MFA code for every single command.
 
 ## Step 1: Find Your MFA Device ARN
 
@@ -30,10 +30,10 @@ aws iam list-mfa-devices --user-name your-username \
   --query "MFADevices[].SerialNumber" \
   --output text
 
-# Output: arn:aws:iam::123456789:mfa/your-username
+# Output: arn:aws:iam::123456789012:mfa/your-username
 ```
 
-If you're using a virtual MFA device (like Google Authenticator or Authy), the ARN looks like `arn:aws:iam::123456789:mfa/your-username`. For hardware tokens, it's the device serial number.
+If you're using a virtual MFA device (like Google Authenticator or Authy), the ARN looks like `arn:aws:iam::123456789012:mfa/your-username`. For hardware tokens, it's the device serial number.
 
 ## Step 2: Configure Profiles for MFA
 
@@ -78,7 +78,7 @@ If you need MFA-protected access to the same account (no role assumption), the C
 ```bash
 # Get temporary credentials with MFA
 aws sts get-session-token \
-  --serial-number "arn:aws:iam::123456789:mfa/your-username" \
+  --serial-number "arn:aws:iam::123456789012:mfa/your-username" \
   --token-code 123456 \
   --duration-seconds 43200
 
@@ -114,7 +114,7 @@ Typing all that is tedious. Here's a script that handles the MFA flow automatica
 # aws-mfa.sh - Get MFA-authenticated temporary credentials
 
 # Configuration
-MFA_SERIAL="arn:aws:iam::123456789:mfa/your-username"
+MFA_SERIAL="arn:aws:iam::123456789012:mfa/your-username"
 DURATION=43200  # 12 hours
 SOURCE_PROFILE="${1:-default}"
 MFA_PROFILE="${2:-mfa}"
@@ -242,7 +242,7 @@ def get_mfa_credentials(
 
 if __name__ == '__main__':
     get_mfa_credentials(
-        mfa_serial='arn:aws:iam::123456789:mfa/your-username',
+        mfa_serial='arn:aws:iam::123456789012:mfa/your-username',
         source_profile='default',
         mfa_profile='mfa'
     )
