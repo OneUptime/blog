@@ -66,6 +66,8 @@ package main
 
 import (
     "net/http"
+    "os"
+    "strconv"
     "time"
 
     "github.com/prometheus/client_golang/prometheus"
@@ -74,13 +76,16 @@ import (
 )
 
 var (
+    serviceName = getEnv("SERVICE_NAME", "my-service")
+    namespace   = getEnv("POD_NAMESPACE", "default")
+
     // Request Rate metric
     httpRequestsTotal = promauto.NewCounterVec(
         prometheus.CounterOpts{
             Name: "http_requests_total",
             Help: "Total number of HTTP requests",
         },
-        []string{"method", "endpoint", "status"},
+        []string{"service", "namespace", "method", "endpoint", "status"},
     )
 
     // Request Duration metric (histogram for percentiles)
@@ -90,9 +95,16 @@ var (
             Help:    "HTTP request duration in seconds",
             Buckets: []float64{0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10},
         },
-        []string{"method", "endpoint"},
+        []string{"service", "namespace", "method", "endpoint"},
     )
 )
+
+func getEnv(key, fallback string) string {
+    if value := os.Getenv(key); value != "" {
+        return value
+    }
+    return fallback
+}
 
 // Middleware to track RED metrics
 func redMetricsMiddleware(next http.Handler) http.Handler {
@@ -107,10 +119,12 @@ func redMetricsMiddleware(next http.Handler) http.Handler {
 
         // Record metrics
         duration := time.Since(start).Seconds()
-        status := http.StatusText(wrapper.statusCode)
+        status := strconv.Itoa(wrapper.statusCode)
 
         // Increment request counter
         httpRequestsTotal.WithLabelValues(
+            serviceName,
+            namespace,
             r.Method,
             r.URL.Path,
             status,
@@ -118,6 +132,8 @@ func redMetricsMiddleware(next http.Handler) http.Handler {
 
         // Record request duration
         httpRequestDuration.WithLabelValues(
+            serviceName,
+            namespace,
             r.Method,
             r.URL.Path,
         ).Observe(duration)
@@ -199,13 +215,13 @@ data:
 
       - record: pod:cpu:utilization
         expr: |
-          sum(rate(container_cpu_usage_seconds_total[5m])) by (pod, namespace) /
-          sum(container_spec_cpu_quota / container_spec_cpu_period) by (pod, namespace)
+          sum(rate(container_cpu_usage_seconds_total{container!="",pod!=""}[5m])) by (pod, namespace) /
+          sum((container_spec_cpu_quota{container!="",pod!=""} / container_spec_cpu_period{container!="",pod!=""}) > 0) by (pod, namespace)
 
       # CPU Saturation (run queue length)
       - record: node:cpu:saturation
         expr: |
-          node_load1 / count(node_cpu_seconds_total{mode="idle"}) by (instance)
+          node_load1 / on(instance) count(node_cpu_seconds_total{mode="idle"}) by (instance)
 
       # Memory Utilization
       - record: node:memory:utilization
@@ -214,8 +230,8 @@ data:
 
       - record: pod:memory:utilization
         expr: |
-          container_memory_working_set_bytes /
-          container_spec_memory_limit_bytes
+          sum(container_memory_working_set_bytes{container!="",pod!=""}) by (pod, namespace) /
+          sum(container_spec_memory_limit_bytes{container!="",pod!=""} > 0) by (pod, namespace)
 
       # Memory Saturation (paging activity)
       - record: node:memory:saturation
@@ -227,7 +243,7 @@ data:
         expr: |
           1 - (node_filesystem_avail_bytes / node_filesystem_size_bytes)
 
-      # Disk Saturation (I/O wait time)
+      # Disk Saturation (disk busy time)
       - record: node:disk:saturation
         expr: |
           rate(node_disk_io_time_seconds_total[5m])
@@ -267,7 +283,7 @@ Build Grafana dashboards that visualize RED and USE metrics together.
     "panels": [
       {
         "title": "Request Rate (RED)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "sum(service:http_requests:rate5m) by (service)",
@@ -277,30 +293,17 @@ Build Grafana dashboards that visualize RED and USE metrics together.
       },
       {
         "title": "Error Rate (RED)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "service:http_requests:error_rate5m * 100",
             "legendFormat": "{{ service }} error %"
           }
-        ],
-        "alert": {
-          "conditions": [
-            {
-              "evaluator": {
-                "params": [5],
-                "type": "gt"
-              },
-              "query": {
-                "params": ["A", "5m", "now"]
-              }
-            }
-          ]
-        }
+        ]
       },
       {
         "title": "Request Duration P95 (RED)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "service:http_request_duration:p95",
@@ -310,7 +313,7 @@ Build Grafana dashboards that visualize RED and USE metrics together.
       },
       {
         "title": "CPU Utilization (USE)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "node:cpu:utilization * 100",
@@ -320,27 +323,17 @@ Build Grafana dashboards that visualize RED and USE metrics together.
       },
       {
         "title": "CPU Saturation (USE)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "node:cpu:saturation",
             "legendFormat": "{{ instance }} load ratio"
           }
-        ],
-        "alert": {
-          "conditions": [
-            {
-              "evaluator": {
-                "params": [1.5],
-                "type": "gt"
-              }
-            }
-          ]
-        }
+        ]
       },
       {
         "title": "Memory Utilization (USE)",
-        "type": "graph",
+        "type": "timeseries",
         "targets": [
           {
             "expr": "pod:memory:utilization * 100",
@@ -453,7 +446,7 @@ spec:
         method: USE
       annotations:
         summary: "Node {{ $labels.instance }} disk is saturated"
-        description: "Disk I/O wait time is high"
+        description: "Disk busy time is high"
 
     # Alert on network errors
     - alert: NetworkErrors
@@ -496,14 +489,14 @@ validate_red_metrics:
       sleep 120
 
       # Check error rate
-      ERROR_RATE=$(curl -s "http://prometheus:9090/api/v1/query?query=service:http_requests:error_rate5m{service='my-service'}" | jq -r '.data.result[0].value[1]')
+      ERROR_RATE=$(curl -sG "http://prometheus:9090/api/v1/query" --data-urlencode "query=service:http_requests:error_rate5m{service=\"my-service\"}" | jq -r '.data.result[0].value[1]')
       if (( $(echo "$ERROR_RATE > 0.05" | bc -l) )); then
         echo "ERROR: Error rate $ERROR_RATE exceeds threshold 0.05"
         exit 1
       fi
 
       # Check P95 latency
-      LATENCY=$(curl -s "http://prometheus:9090/api/v1/query?query=service:http_request_duration:p95{service='my-service'}" | jq -r '.data.result[0].value[1]')
+      LATENCY=$(curl -sG "http://prometheus:9090/api/v1/query" --data-urlencode "query=service:http_request_duration:p95{service=\"my-service\"}" | jq -r '.data.result[0].value[1]')
       if (( $(echo "$LATENCY > 1.0" | bc -l) )); then
         echo "ERROR: P95 latency $LATENCY exceeds threshold 1.0s"
         exit 1
@@ -516,13 +509,13 @@ validate_use_metrics:
   script:
     - |
       # Check pod CPU utilization
-      CPU_UTIL=$(curl -s "http://prometheus:9090/api/v1/query?query=pod:cpu:utilization{pod=~'my-service-.*'}" | jq -r '.data.result[0].value[1]')
+      CPU_UTIL=$(curl -sG "http://prometheus:9090/api/v1/query" --data-urlencode "query=pod:cpu:utilization{pod=~\"my-service-.*\"}" | jq -r '.data.result[0].value[1]')
       if (( $(echo "$CPU_UTIL > 0.80" | bc -l) )); then
         echo "WARNING: CPU utilization $CPU_UTIL approaching limit"
       fi
 
       # Check pod memory utilization
-      MEM_UTIL=$(curl -s "http://prometheus:9090/api/v1/query?query=pod:memory:utilization{pod=~'my-service-.*'}" | jq -r '.data.result[0].value[1]')
+      MEM_UTIL=$(curl -sG "http://prometheus:9090/api/v1/query" --data-urlencode "query=pod:memory:utilization{pod=~\"my-service-.*\"}" | jq -r '.data.result[0].value[1]')
       if (( $(echo "$MEM_UTIL > 0.85" | bc -l) )); then
         echo "WARNING: Memory utilization $MEM_UTIL approaching limit"
       fi
