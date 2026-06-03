@@ -185,7 +185,7 @@ resource "aws_lb_listener_certificate" "api" {
 }
 ```
 
-ALBs support up to 25 certificates per listener through SNI. That's enough for most multi-tenant setups.
+ALBs support 25 additional certificates per load balancer through SNI, excluding the default certificates. That's enough for most multi-tenant setups.
 
 ## Host-Based Routing
 
@@ -235,7 +235,7 @@ The SSL policy determines which TLS versions and cipher suites your ALB supports
 
 **ELBSecurityPolicy-TLS13-1-3-2021-06** - TLS 1.3 only. Use this if all your clients support TLS 1.3.
 
-**ELBSecurityPolicy-2016-08** - The default. Supports TLS 1.0+. Don't use this for new deployments.
+**ELBSecurityPolicy-2016-08** - The default when you create listeners through the AWS CLI, API, CloudFormation, or CDK. Supports TLS 1.0+. Don't use this for new deployments.
 
 ```bash
 # List available SSL policies
@@ -269,7 +269,7 @@ resource "aws_lb_target_group" "encrypted_backend" {
 }
 ```
 
-For most internal workloads, HTTP between ALB and backend is fine since it's within your VPC. End-to-end encryption adds complexity and slight latency. Use it when compliance requires it.
+For most internal workloads, HTTP between ALB and backend is fine since it's within your VPC. End-to-end encryption adds complexity and slight latency, and the ALB does not validate target certificates. Use it when compliance requires it.
 
 ## Security Group Configuration
 
