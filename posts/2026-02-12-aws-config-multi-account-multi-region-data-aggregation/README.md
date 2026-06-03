@@ -68,22 +68,46 @@ aws configservice start-configuration-recorder --configuration-recorder-name def
 
 This is the recommended approach if you're using AWS Organizations. The aggregator automatically picks up all current and future member accounts.
 
-### Step 1: Create the Service-Linked Role
+### Step 1: Create the Organization Aggregator Role
 
-The aggregator account needs a service-linked role for Config.
+The aggregator account needs an IAM role that AWS Config can assume to read AWS Organizations details.
 
 ```bash
-# This is usually auto-created, but just in case
-aws iam create-service-linked-role \
-  --aws-service-name config.amazonaws.com
+# Create the trust policy
+cat > config-aggregator-trust-policy.json <<'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": "config.amazonaws.com"
+      },
+      "Action": "sts:AssumeRole"
+    }
+  ]
+}
+EOF
+
+# Create the role and attach the AWS managed policy
+aws iam create-role \
+  --role-name config-aggregator-role \
+  --assume-role-policy-document file://config-aggregator-trust-policy.json
+
+aws iam attach-role-policy \
+  --role-name config-aggregator-role \
+  --policy-arn arn:aws:iam::aws:policy/service-role/AWSConfigRoleForOrganizations
 ```
 
 ### Step 2: Enable Trusted Access
 
-From the management account, enable trusted access for Config:
+From the management account, enable trusted access for Config aggregation and organization rule setup:
 
 ```bash
 # Run from the management account
+aws organizations enable-aws-service-access \
+  --service-principal config.amazonaws.com
+
 aws organizations enable-aws-service-access \
   --service-principal config-multiaccountsetup.amazonaws.com
 ```
@@ -99,7 +123,7 @@ This creates an organization-level aggregator that collects data from all accoun
 aws configservice put-configuration-aggregator \
   --configuration-aggregator-name OrgAggregator \
   --organization-aggregation-source '{
-    "RoleArn": "arn:aws:iam::111111111111:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig",
+    "RoleArn": "arn:aws:iam::111111111111:role/config-aggregator-role",
     "AllAwsRegions": true
   }'
 ```
@@ -110,7 +134,7 @@ If you only want specific regions, replace `AllAwsRegions` with a list:
 aws configservice put-configuration-aggregator \
   --configuration-aggregator-name OrgAggregator \
   --organization-aggregation-source '{
-    "RoleArn": "arn:aws:iam::111111111111:role/aws-service-role/config.amazonaws.com/AWSServiceRoleForConfig",
+    "RoleArn": "arn:aws:iam::111111111111:role/config-aggregator-role",
     "AllAwsRegions": false,
     "AwsRegions": ["us-east-1", "us-west-2", "eu-west-1"]
   }'
@@ -191,14 +215,13 @@ resource "aws_iam_role_policy_attachment" "config_aggregator" {
 
 Once the aggregator is running, you can query across all accounts.
 
-This returns the compliance status of all Config rules across all aggregated accounts:
+This returns a compliance summary for Config rules grouped by account:
 
 ```bash
 # Get compliance summary by account
-aws configservice get-aggregate-compliance-details-by-config-rule \
+aws configservice get-aggregate-config-rule-compliance-summary \
   --configuration-aggregator-name OrgAggregator \
-  --config-rule-name s3-bucket-server-side-encryption-enabled \
-  --compliance-type NON_COMPLIANT \
+  --group-by-key ACCOUNT_ID \
   --limit 50
 ```
 
@@ -206,18 +229,20 @@ Find all non-compliant resources across the organization:
 
 ```bash
 # List non-compliant resources
-aws configservice get-aggregate-discovered-resource-counts \
+aws configservice select-aggregate-resource-config \
   --configuration-aggregator-name OrgAggregator \
-  --group-by-key RESOURCE_TYPE
+  --expression "SELECT accountId, awsRegion, resourceId, resourceType WHERE resourceType = 'AWS::Config::ResourceCompliance' AND configuration.complianceType = 'NON_COMPLIANT'"
 ```
 
-Get a compliance summary grouped by account:
+Get non-compliant resources for a specific rule, account, and region:
 
 ```bash
-# Compliance summary per account
+# Non-compliant resources for one rule in one source account and region
 aws configservice get-aggregate-compliance-details-by-config-rule \
   --configuration-aggregator-name OrgAggregator \
   --config-rule-name required-tags \
+  --account-id 222222222222 \
+  --aws-region us-east-1 \
   --compliance-type NON_COMPLIANT
 ```
 
@@ -269,7 +294,7 @@ response = config.get_aggregate_config_rule_compliance_summary(
 print(f"{'Account ID':<20} {'Compliant':<12} {'Non-Compliant':<15}")
 print("-" * 47)
 
-for group in response['GroupByKeyCompliantSummary']:
+for group in response['AggregateComplianceCounts']:
     account = group['GroupName']
     compliant = group['ComplianceSummary']['CompliantResourceCount']['CappedCount']
     non_compliant = group['ComplianceSummary']['NonCompliantResourceCount']['CappedCount']
