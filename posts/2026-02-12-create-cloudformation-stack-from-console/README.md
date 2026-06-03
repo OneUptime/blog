@@ -30,13 +30,12 @@ You'll see a list of existing stacks (if any). The main view shows stack names, 
 
 Click the "Create stack" button. You'll see a dropdown - choose "With new resources (standard)".
 
-The first page asks how you want to specify your template. You have three options:
+The first page asks how you want to specify your template. The main options are:
 
-1. **Template is ready** - you already have a template file
-2. **Use a sample template** - AWS provides some starter templates
-3. **Create template in Designer** - a visual drag-and-drop builder
+1. **Choose an existing template** - you already have a template file
+2. **Build from Infrastructure Composer** - a visual builder for creating a template
 
-For most cases, pick "Template is ready." Then choose how to provide it:
+For most cases, pick "Choose an existing template." Then choose how to provide it:
 
 - **Upload a template file** - upload from your local machine
 - **Amazon S3 URL** - reference a template stored in S3
@@ -110,7 +109,7 @@ Parameters with `Default` values will be pre-filled but you can override them.
 
 This page has several sections:
 
-**Tags**: Add key-value pairs that will be applied to all resources in the stack. I always add at least:
+**Tags**: Add key-value pairs that will be associated with the stack and propagated to resources that support stack-level tag propagation. I always add at least:
 - `Project`: the project name
 - `ManagedBy`: CloudFormation
 - `Owner`: your team name
@@ -201,7 +200,7 @@ Before making updates to production stacks, consider using [change sets](https:/
 
 ## Deleting a Stack
 
-Select the stack and click "Delete." CloudFormation will remove all resources it created. Check the Events tab to monitor progress.
+Select the stack and click "Delete." CloudFormation will remove the resources in the stack unless you used a deletion policy to retain specific resources. Check the Events tab to monitor progress.
 
 If deletion fails (common with non-empty S3 buckets), you'll see the failure reason in the events. For more on this, see our post on [handling stack deletion failures](https://oneuptime.com/blog/post/2026-02-12-cloudformation-stack-deletion-failures/view).
 
