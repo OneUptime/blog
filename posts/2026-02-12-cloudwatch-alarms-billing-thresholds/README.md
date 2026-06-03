@@ -22,18 +22,10 @@ This is a one-time setup per account:
 
 1. Sign in to the AWS Console as the root user or an IAM user with billing access
 2. Go to Billing and Cost Management > Billing Preferences
-3. Check "Receive Billing Alerts"
-4. Save
+3. Check "Receive CloudWatch billing alerts"
+4. Save preferences
 
-Or via CLI:
-
-```bash
-# Enable billing alerts (must be run in us-east-1)
-
-aws ce update-cost-allocation-tags-status \
-  --region us-east-1 \
-  --cost-allocation-tags-status Key=aws:createdBy,Status=Active
-```
+There isn't an AWS CLI command for this preference. The Cost Explorer CLI can enable cost allocation tags, but that does not enable CloudWatch billing alerts.
 
 Note: After enabling billing alerts, it takes about 15 minutes before billing metrics start appearing in CloudWatch.
 
@@ -170,6 +162,14 @@ Parameters:
     Type: Number
     Default: 500
     Description: Monthly budget in USD
+  WarningThreshold:
+    Type: Number
+    Default: 250
+    Description: Warning threshold in USD
+  AlertThreshold:
+    Type: Number
+    Default: 400
+    Description: Alert threshold in USD
   AlertEmail:
     Type: String
     Description: Email for billing alerts
@@ -200,7 +200,7 @@ Resources:
       Statistic: Maximum
       Period: 21600
       EvaluationPeriods: 1
-      Threshold: !Sub '${AWS::NoValue}'
+      Threshold: !Ref WarningThreshold
       ComparisonOperator: GreaterThanThreshold
       AlarmActions:
         - !Ref BillingAlertsTopic
@@ -218,7 +218,7 @@ Resources:
       Statistic: Maximum
       Period: 21600
       EvaluationPeriods: 1
-      Threshold: !FindInMap [ThresholdMap, EightyPercent, Value]
+      Threshold: !Ref AlertThreshold
       ComparisonOperator: GreaterThanThreshold
       AlarmActions:
         - !Ref BillingAlertsTopic
@@ -248,6 +248,11 @@ If you prefer Terraform:
 
 ```hcl
 # Terraform configuration for billing alarms
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+}
+
 variable "monthly_budget" {
   default = 500
 }
@@ -362,7 +367,7 @@ def lambda_handler(event, context):
     }
 ```
 
-Subscribe this Lambda to your critical billing SNS topic, and it'll automatically shut down non-essential resources when your budget is exceeded. Be very careful with this approach - make sure your tagging is solid so you don't accidentally stop production resources.
+Subscribe this Lambda to your critical billing SNS topic, and it'll automatically shut down non-essential resources in the Lambda function's Region when your budget is exceeded. Repeat the function per Region if you need regional coverage. Be very careful with this approach - make sure your tagging is solid so you don't accidentally stop production resources.
 
 ## Limitations of CloudWatch Billing Alarms
 
