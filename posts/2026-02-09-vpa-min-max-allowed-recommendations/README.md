@@ -35,7 +35,7 @@ spec:
     name: web-app
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 
   resourcePolicy:
     containerPolicies:
@@ -70,7 +70,7 @@ spec:
     name: api-server
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 
   resourcePolicy:
     containerPolicies:
@@ -102,7 +102,7 @@ spec:
     name: batch-worker
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 
   resourcePolicy:
     containerPolicies:
@@ -134,7 +134,7 @@ spec:
     name: app-with-sidecar
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 
   resourcePolicy:
     containerPolicies:
@@ -185,7 +185,7 @@ spec:
     name: compute-worker
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 
   resourcePolicy:
     containerPolicies:
@@ -219,7 +219,7 @@ spec:
     name: data-processor
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 
   resourcePolicy:
     containerPolicies:
@@ -249,13 +249,11 @@ kubectl describe vpa web-app-vpa -n production
 kubectl get vpa web-app-vpa -n production -o json | \
   jq '.status.recommendation.containerRecommendations[]'
 
-# Check if recommendations are hitting bounds
+# Check if recommendations are being capped by bounds
 kubectl get vpa web-app-vpa -n production -o json | \
   jq '.status.recommendation.containerRecommendations[] |
-      select(.target.cpu == .maxAllowed.cpu or
-             .target.memory == .maxAllowed.memory or
-             .target.cpu == .minAllowed.cpu or
-             .target.memory == .minAllowed.memory)'
+      select((.uncappedTarget.cpu != null and .target.cpu != .uncappedTarget.cpu) or
+             (.uncappedTarget.memory != null and .target.memory != .uncappedTarget.memory))'
 ```
 
 If recommendations consistently hit maxAllowed, consider increasing the bound or investigating why usage is so high. If they frequently hit minAllowed, your bounds might be too high.
@@ -309,7 +307,7 @@ spec:
     name: web-app
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
     minReplicas: 5  # Ensure enough pods for PDB
 
   resourcePolicy:
@@ -327,7 +325,7 @@ The PDB ensures VPA updates don't violate availability requirements when applyin
 
 ## Handling Init Containers
 
-Configure bounds for init containers separately.
+Set init container resources directly in the workload spec, and configure VPA bounds for regular app containers.
 
 ```yaml
 apiVersion: autoscaling.k8s.io/v1
@@ -342,20 +340,10 @@ spec:
     name: data-loader
 
   updatePolicy:
-    updateMode: "Auto"
+    updateMode: "Recreate"
 
   resourcePolicy:
     containerPolicies:
-    # Init container that loads data
-    - containerName: data-init
-      mode: "Off"  # Don't manage init container resources
-      minAllowed:
-        cpu: 1000m
-        memory: 2Gi
-      maxAllowed:
-        cpu: 4000m
-        memory: 8Gi
-
     # Main application container
     - containerName: app
       mode: "Auto"
@@ -367,7 +355,7 @@ spec:
         memory: 4Gi
 ```
 
-Init containers often have different resource patterns than main containers and may need different bounds.
+Init containers often have different resource patterns than main containers, so set their requests and limits explicitly in the Pod template instead of relying on VPA recommendations.
 
 ## Testing Bound Configurations
 
@@ -387,7 +375,7 @@ spec:
     name: app
 
   updatePolicy:
-    updateMode: "Initial"  # Only set on pod creation
+    updateMode: "Off"  # Recommend only; do not apply updates
 
   resourcePolicy:
     containerPolicies:
@@ -400,7 +388,7 @@ spec:
         memory: 4Gi
 ```
 
-Test with Initial mode to observe recommendations without automatic updates, then adjust bounds before switching to Auto mode.
+Test with Off mode to observe recommendations without automatic updates, then adjust bounds before switching to Recreate mode.
 
 ## Best Practices
 
