@@ -75,6 +75,19 @@ Maven uses `~/.m2/settings.xml` for repository configuration. Create or update i
                     <url>https://my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/maven/my-packages/</url>
                 </repository>
             </repositories>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>codeartifact</id>
+                    <name>CodeArtifact Plugins</name>
+                    <url>https://my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/maven/my-packages/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
         </profile>
     </profiles>
 
@@ -180,6 +193,7 @@ Verify the package was published:
 # List packages in the repository
 aws codeartifact list-packages \
   --domain my-org \
+  --domain-owner 123456789012 \
   --repository my-packages \
   --format maven \
   --query 'packages[*].{Package:package,Namespace:namespace}'
@@ -187,6 +201,7 @@ aws codeartifact list-packages \
 # List versions of your package
 aws codeartifact list-package-versions \
   --domain my-org \
+  --domain-owner 123456789012 \
   --repository my-packages \
   --format maven \
   --package shared-utils \
@@ -314,6 +329,27 @@ Include a CI-specific `settings.xml` in your repo:
             <mirrorOf>*</mirrorOf>
         </mirror>
     </mirrors>
+    <profiles>
+        <profile>
+            <id>codeartifact</id>
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>codeartifact</id>
+                    <name>CodeArtifact Plugins</name>
+                    <url>https://my-org-123456789012.d.codeartifact.us-east-1.amazonaws.com/maven/my-packages/</url>
+                    <releases>
+                        <enabled>true</enabled>
+                    </releases>
+                    <snapshots>
+                        <enabled>true</enabled>
+                    </snapshots>
+                </pluginRepository>
+            </pluginRepositories>
+        </profile>
+    </profiles>
+    <activeProfiles>
+        <activeProfile>codeartifact</activeProfile>
+    </activeProfiles>
 </settings>
 ```
 
@@ -349,6 +385,7 @@ Your repository needs an upstream connection to Maven Central. Verify with:
 ```bash
 aws codeartifact describe-repository \
   --domain my-org \
+  --domain-owner 123456789012 \
   --repository my-packages \
   --query 'repository.upstreams'
 ```
