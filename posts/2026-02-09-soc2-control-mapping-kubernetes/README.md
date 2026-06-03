@@ -4,7 +4,7 @@ Author: [nawazdhandala](https://www.github.com/nawazdhandala)
 
 Tags: Kubernetes, Compliance, SOC2, Policy as Code, Security, OPA
 
-Description: Map SOC2 Trust Service Criteria controls to Kubernetes policies using OPA Gatekeeper and Kyverno.
+Description: Map SOC2 Trust Service Criteria controls to Kubernetes policies using OPA Gatekeeper.
 
 ---
 
@@ -16,9 +16,9 @@ Policy as Code transforms SOC2 compliance from a manual audit checklist into an 
 
 SOC2 Type 2 focuses on five Trust Service Criteria: Security, Availability, Processing Integrity, Confidentiality, and Privacy. For Kubernetes infrastructure, Security and Availability criteria are most relevant.
 
-Common Control (CC) requirements that map to Kubernetes include access controls, encryption in transit and at rest, logical separation, system monitoring, and change management. Each control requires evidence of implementation and ongoing effectiveness over time.
+Common Criteria (CC) requirements that map to Kubernetes include access controls, encryption in transit and at rest, logical separation, system monitoring, and change management. Each control requires evidence of implementation and ongoing effectiveness over time.
 
-Policy as Code provides this evidence automatically by enforcing policies at admission time and maintaining audit logs of all enforcement decisions. Every rejected pod becomes documented proof that your controls work.
+Policy as Code supports this evidence by enforcing policies at admission time and recording audit results in constraint status. Rejected admission requests and Gatekeeper audit findings become evidence that your controls are operating.
 
 ## Setting Up OPA Gatekeeper for Policy Enforcement
 
@@ -27,7 +27,7 @@ Start by installing OPA Gatekeeper, which provides policy enforcement through co
 ```bash
 # Install OPA Gatekeeper
 
-kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/master/deploy/gatekeeper.yaml
+kubectl apply -f https://raw.githubusercontent.com/open-policy-agent/gatekeeper/v3.22.2/deploy/gatekeeper.yaml
 
 # Wait for Gatekeeper to be ready
 kubectl wait --for=condition=ready pod -l control-plane=controller-manager \
@@ -38,7 +38,7 @@ kubectl get pods -n gatekeeper-system
 kubectl get crd | grep gatekeeper
 ```
 
-Configure Gatekeeper to audit existing resources and enforce new ones:
+Configure Gatekeeper namespace exclusions and resource syncing. Gatekeeper audits existing resources by default on its audit interval, which is configured with Gatekeeper runtime flags such as `--audit-interval` and `--constraint-violations-limit`, not in the `Config` resource:
 
 ```yaml
 # gatekeeper-config.yaml
@@ -52,14 +52,7 @@ spec:
   match:
     - excludedNamespaces: ["kube-system", "gatekeeper-system", "kube-node-lease"]
       processes: ["*"]
-
-  # Enable audit to scan existing resources
-  audit:
-    auditInterval: 60
-    logLevel: "INFO"
-    constraintViolationsLimit: 100
-
-  # Configure what resources to audit
+  # Configure resources to sync into OPA for policies that need inventory data
   sync:
     syncOnly:
       - group: ""
@@ -89,7 +82,7 @@ SOC2 CC6.1 requires restricting logical access to system resources through appro
 ```yaml
 # soc2-cc6.1-rbac-required.yaml
 # ConstraintTemplate: Ensure all ServiceAccounts use RBAC
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: soc2rbacenforcement
@@ -102,6 +95,9 @@ spec:
     spec:
       names:
         kind: SOC2RBACEnforcement
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -166,24 +162,28 @@ EOF
 # Should be rejected with SOC2 CC6.1 violation message
 ```
 
-## Implementing SOC2 CC6.6 Encryption Controls
+## Implementing SOC2 CC6.1 Encryption Controls
 
-SOC2 CC6.6 requires encryption of confidential information during transmission and storage. Implement policies that enforce TLS and encryption requirements.
+SOC2 CC6.1 includes logical access controls over protected information assets, including data at rest, during processing, and in transmission. Implement policies that enforce TLS and encryption requirements as part of that control mapping.
 
 ```yaml
 # soc2-cc6.6-encryption-required.yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
+# Filename kept for continuity; this maps encryption evidence to SOC2 CC6.1.
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: soc2encryptionenforcement
   annotations:
-    description: "SOC2 CC6.6 - Encryption of data"
-    soc2-control: "CC6.6"
+    description: "SOC2 CC6.1 - Encryption of data"
+    soc2-control: "CC6.1"
 spec:
   crd:
     spec:
       names:
         kind: SOC2EncryptionEnforcement
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -195,7 +195,7 @@ spec:
           not input.review.object.spec.tls
 
           msg := sprintf(
-            "SOC2 CC6.6 Violation: Ingress '%v' must specify TLS configuration.",
+            "SOC2 CC6.1 Violation: Ingress '%v' must specify TLS configuration.",
             [input.review.object.metadata.name]
           )
         }
@@ -206,7 +206,7 @@ spec:
           not input.review.object.metadata.annotations["encrypted"]
 
           msg := sprintf(
-            "SOC2 CC6.6 Violation: PersistentVolumeClaim '%v' must have 'encrypted: true' annotation.",
+            "SOC2 CC6.1 Violation: PersistentVolumeClaim '%v' must have 'encrypted: true' annotation.",
             [input.review.object.metadata.name]
           )
         }
@@ -220,7 +220,7 @@ spec:
           env.value  # Has direct value, not from secret
 
           msg := sprintf(
-            "SOC2 CC6.6 Violation: Pod '%v' container '%v' exposes password in plaintext. Use Secret references.",
+            "SOC2 CC6.1 Violation: Pod '%v' container '%v' exposes password in plaintext. Use Secret references.",
             [input.review.object.metadata.name, container.name]
           )
         }
@@ -231,7 +231,7 @@ kind: SOC2EncryptionEnforcement
 metadata:
   name: soc2-cc6-6-encryption-required
   annotations:
-    soc2-control: "CC6.6"
+    soc2-control: "CC6.1"
 spec:
   enforcementAction: deny
   match:
@@ -254,7 +254,7 @@ SOC2 CC7.2 requires detecting and responding to security incidents through monit
 
 ```yaml
 # soc2-cc7.2-audit-logging.yaml
-apiVersion: templates.gatekeeper.sh/v1beta1
+apiVersion: templates.gatekeeper.sh/v1
 kind: ConstraintTemplate
 metadata:
   name: soc2auditlogging
@@ -266,6 +266,9 @@ spec:
     spec:
       names:
         kind: SOC2AuditLogging
+      validation:
+        openAPIV3Schema:
+          type: object
   targets:
     - target: admission.k8s.gatekeeper.sh
       rego: |
@@ -273,7 +276,7 @@ spec:
 
         # Require audit logging labels
         violation[{"msg": msg}] {
-          input.review.kind.kind in ["Deployment", "StatefulSet", "DaemonSet"]
+          workload_kind(input.review.kind.kind)
           not input.review.object.metadata.labels["audit-tier"]
 
           msg := sprintf(
@@ -299,6 +302,18 @@ spec:
         has_log_sidecar {
           container := input.review.object.spec.containers[_]
           container.name == "log-collector"
+        }
+
+        workload_kind(kind) {
+          kind == "Deployment"
+        }
+
+        workload_kind(kind) {
+          kind == "StatefulSet"
+        }
+
+        workload_kind(kind) {
+          kind == "DaemonSet"
         }
 
 ---
@@ -342,16 +357,16 @@ data:
           - policy: SOC2RBACEnforcement
             constraint: soc2-cc6-1-rbac-required
             enforcement: deny
-            evidence: "Gatekeeper audit logs showing RBAC enforcement"
+            evidence: "Gatekeeper constraint status showing RBAC enforcement"
 
-      - control_id: CC6.6
+      - control_id: CC6.1
         title: "Encryption of Data"
-        description: "Protects confidential information through encryption"
+        description: "Protects information assets through logical access controls, including encryption"
         kubernetes_policies:
           - policy: SOC2EncryptionEnforcement
             constraint: soc2-cc6-6-encryption-required
             enforcement: deny
-            evidence: "TLS enforcement logs, PVC encryption validation"
+            evidence: "TLS enforcement findings, PVC encryption validation"
 
       - control_id: CC6.7
         title: "Logical Separation"
@@ -360,7 +375,7 @@ data:
           - policy: SOC2NamespaceIsolation
             constraint: soc2-cc6-7-namespace-isolation
             enforcement: deny
-            evidence: "NetworkPolicy enforcement, PodSecurityPolicy logs"
+            evidence: "NetworkPolicy enforcement, Pod Security Admission or policy controller audit logs"
 
       - control_id: CC7.2
         title: "System Monitoring"
@@ -396,7 +411,7 @@ Create automated reporting that demonstrates control effectiveness over time. Ga
 #!/bin/bash
 
 NAMESPACE="gatekeeper-system"
-OUTPUT_DIR="./soc2-compliance-reports"
+OUTPUT_DIR="${OUTPUT_DIR:-./soc2-compliance-reports}"
 DATE=$(date +%Y-%m-%d)
 
 mkdir -p "$OUTPUT_DIR"
@@ -443,18 +458,16 @@ cat >> "$OUTPUT_DIR/compliance-summary-$DATE.md" <<EOF
 
 ## Enforcement Evidence
 
-Total policy evaluations: $(kubectl logs -n gatekeeper-system \
-  -l control-plane=controller-manager --tail=10000 | \
-  grep -c "admission review")
+Constraints with SOC2 annotations: $(kubectl get constraints -A -o json | \
+  jq '[.items[] | select(.metadata.annotations."soc2-control" != null)] | length')
 
-Denied requests: $(kubectl logs -n gatekeeper-system \
-  -l control-plane=controller-manager --tail=10000 | \
-  grep -c "denied")
+Total current audit violations: $(kubectl get constraints -A -o json | \
+  jq '[.items[] | .status.totalViolations // 0] | add // 0')
 
 ## Compliance Status
 
 - **CC6.1 (Access Controls):** $(test $(kubectl get soc2rbacenforcement -o json | jq '.items[0].status.totalViolations // 0') -eq 0 && echo "✓ COMPLIANT" || echo "✗ NON-COMPLIANT")
-- **CC6.6 (Encryption):** $(test $(kubectl get soc2encryptionenforcement -o json | jq '.items[0].status.totalViolations // 0') -eq 0 && echo "✓ COMPLIANT" || echo "✗ NON-COMPLIANT")
+- **CC6.1 (Encryption):** $(test $(kubectl get soc2encryptionenforcement -o json | jq '.items[0].status.totalViolations // 0') -eq 0 && echo "✓ COMPLIANT" || echo "✗ NON-COMPLIANT")
 - **CC7.2 (Monitoring):** $(test $(kubectl get soc2auditlogging -o json | jq '.items[0].status.totalViolations // 0') -eq 0 && echo "✓ COMPLIANT" || echo "✗ NON-COMPLIANT")
 
 ---
@@ -471,7 +484,7 @@ chmod +x compliance-report-generator.sh
 ./compliance-report-generator.sh
 ```
 
-Schedule regular report generation:
+Schedule regular report generation after creating the referenced ServiceAccount, ConfigMap, PVC, and RBAC permissions:
 
 ```yaml
 # soc2-reporting-cronjob.yaml
@@ -491,6 +504,9 @@ spec:
           - name: report-generator
             image: bitnami/kubectl:latest
             command: ["/bin/bash", "/scripts/compliance-report-generator.sh"]
+            env:
+            - name: OUTPUT_DIR
+              value: /reports
             volumeMounts:
             - name: scripts
               mountPath: /scripts
@@ -521,12 +537,12 @@ jobs:
   compliance-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v6
 
       - name: Install conftest
         run: |
-          wget https://github.com/open-policy-agent/conftest/releases/download/v0.45.0/conftest_0.45.0_Linux_x86_64.tar.gz
-          tar xzf conftest_0.45.0_Linux_x86_64.tar.gz
+          wget https://github.com/open-policy-agent/conftest/releases/download/v0.62.0/conftest_0.62.0_Linux_x86_64.tar.gz
+          tar xzf conftest_0.62.0_Linux_x86_64.tar.gz
           sudo mv conftest /usr/local/bin/
 
       - name: Run SOC2 policy tests
@@ -549,7 +565,7 @@ jobs:
 
       - name: Upload violations
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: compliance-violations
           path: compliance-violations.json
