@@ -1,14 +1,14 @@
-# How to Use API Gateway Models for Request/Response Validation
+# How to Use API Gateway Models for Request Validation and Response Modeling
 
 Author: [nawazdhandala](https://github.com/nawazdhandala)
 
 Tags: AWS, API Gateway, Serverless
 
-Description: Learn how to define API Gateway models using JSON Schema to validate request bodies and response payloads before they reach your backend.
+Description: Learn how to define API Gateway models using JSON Schema to validate request bodies before they reach your backend and describe response payloads.
 
 ---
 
-If you're not validating request bodies at the API Gateway level, every malformed request hits your Lambda function, wastes compute, and forces you to write validation code in every handler. API Gateway models let you define the expected shape of requests and responses using JSON Schema. Invalid requests get rejected with a 400 error before they ever reach your backend.
+If you're not validating request bodies at the API Gateway level, every malformed request hits your Lambda function, wastes compute, and forces you to write validation code in every handler. API Gateway models let you define the expected shape of request bodies and, for method responses, document response payloads using JSON Schema. Invalid requests get rejected with a 400 error before they ever reach your backend.
 
 ## Why Validate at the Gateway
 
@@ -110,7 +110,7 @@ aws apigateway update-method \
   --http-method POST \
   --patch-operations \
     op=replace,path=/requestValidatorId,value=validator789 \
-    op=replace,path=/requestModels/application~1json,value=CreateOrderRequest
+    op=add,path=/requestModels/application~1json,value=CreateOrderRequest
 
 # Deploy the changes
 aws apigateway create-deployment \
@@ -122,7 +122,7 @@ The `~1` in the path is the JSON Pointer encoding for `/` in `application/json`.
 
 ## CloudFormation Example
 
-Here's a complete CloudFormation template that sets up an API with model validation:
+Here's a CloudFormation excerpt that sets up an API method with model validation. It assumes the Lambda function, deployment, stage, and Lambda invoke permission are defined elsewhere:
 
 ```yaml
 Resources:
@@ -170,7 +170,7 @@ Resources:
           - customer_id
           - items
 
-  # Define the response model
+  # Define the response model for documentation and SDK typing
   OrderResponseModel:
     Type: AWS::ApiGateway::Model
     Properties:
@@ -368,4 +368,4 @@ For monitoring validation failure rates and tracking API health metrics, check o
 
 ## Wrapping Up
 
-API Gateway models give you a declarative way to validate request payloads before they reach your backend. It's a free optimization - you save on Lambda invocations for invalid requests and get consistent validation without writing code. The main limitation is the JSON Schema draft-04 restriction, which means you can't use some newer schema features. But for most validation needs, draft-04 covers everything you'll need. Define your models, create a validator, attach them to your methods, and deploy.
+API Gateway models give you a declarative way to validate request payloads before they reach your backend. Response models document response payloads and help generated SDKs understand their shape. It's a free optimization - you save on Lambda invocations for invalid requests and get consistent validation without writing code. The main limitation is the JSON Schema draft-04 restriction, which means you can't use some newer schema features. But for most validation needs, draft-04 covers everything you'll need. Define your models, create a validator, attach them to your methods, and deploy.
