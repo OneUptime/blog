@@ -39,13 +39,13 @@ aws batch create-compute-environment \
     "allocationStrategy": "BEST_FIT_PROGRESSIVE",
     "minvCpus": 0,
     "maxvCpus": 256,
-    "instanceTypes": ["p3", "p4d", "p5", "g5", "g6"],
+    "instanceTypes": ["p4d", "p5", "p6", "g5", "g6"],
     "subnets": ["subnet-0abc123", "subnet-0def456"],
     "securityGroupIds": ["sg-0abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
     "ec2Configuration": [
       {
-        "imageType": "ECS_AL2_NVIDIA"
+        "imageType": "ECS_AL2023_NVIDIA"
       }
     ]
   }' \
@@ -55,9 +55,9 @@ aws batch create-compute-environment \
 
 A few critical details here:
 
-- **imageType: ECS_AL2_NVIDIA** - This is essential. It tells Batch to use an AMI with NVIDIA drivers pre-installed. If you use the default AMI, your containers will not see the GPUs.
+- **imageType: ECS_AL2023_NVIDIA** - This is essential. It tells Batch to use an AMI with NVIDIA drivers pre-installed. If you use the default non-GPU AMI, your containers will not see the GPUs.
 - **instanceTypes** - List the GPU families you want. P-series for training, G-series for inference and graphics.
-- **allocationStrategy: BEST_FIT_PROGRESSIVE** - This picks the cheapest instance type that fits your job's resource requirements.
+- **allocationStrategy: BEST_FIT_PROGRESSIVE** - This prefers lower-cost vCPU instance types that fit your job's resource requirements and can move to additional fitting instance types when capacity is unavailable.
 - **minvCpus: 0** - Start with zero instances when there are no jobs.
 
 ## Step 2: Create a Job Queue
@@ -110,13 +110,7 @@ aws batch register-job-definition \
         "awslogs-group": "/aws/batch/gpu-jobs",
         "awslogs-stream-prefix": "training"
       }
-    },
-    "environment": [
-      {
-        "name": "NVIDIA_VISIBLE_DEVICES",
-        "value": "all"
-      }
-    ]
+    }
   }'
 ```
 
@@ -124,7 +118,7 @@ Key points in this definition:
 
 - **resourceRequirements with type GPU** - This is how you tell Batch your job needs a GPU. The value is the number of GPUs per container.
 - **sharedMemorySize** - Deep learning frameworks like PyTorch use shared memory heavily. The default 64MB is way too small. Set it to at least 2048MB, more for large models.
-- **NVIDIA_VISIBLE_DEVICES** - Ensures the container can see all allocated GPUs.
+- **NVIDIA_VISIBLE_DEVICES** - Do not hard-code this for scheduled GPU jobs. Batch runs the job through ECS, and ECS sets this variable to the GPU device IDs assigned to the container.
 
 ## Step 4: Build a GPU-Ready Container Image
 
@@ -205,7 +199,7 @@ aws batch register-job-definition \
   }'
 ```
 
-Batch will automatically select an instance type with at least 4 GPUs, like a p3.8xlarge (4x V100) or g5.12xlarge (4x A10G).
+Batch will automatically select an instance type with at least 4 GPUs, like a g5.12xlarge (4x A10G) or p4d.24xlarge (8x A100).
 
 ## Mixing Spot and On-Demand
 
@@ -218,16 +212,16 @@ aws batch create-compute-environment \
   --type MANAGED \
   --compute-resources '{
     "type": "SPOT",
-    "allocationStrategy": "SPOT_CAPACITY_OPTIMIZED",
+    "allocationStrategy": "SPOT_PRICE_CAPACITY_OPTIMIZED",
     "minvCpus": 0,
     "maxvCpus": 256,
-    "instanceTypes": ["p3", "g5"],
+    "instanceTypes": ["g5", "g6"],
     "subnets": ["subnet-0abc123"],
     "securityGroupIds": ["sg-0abc123"],
     "instanceRole": "arn:aws:iam::123456789012:instance-profile/ecsInstanceRole",
-    "spotIamFleetRole": "arn:aws:iam::123456789012:role/AmazonEC2SpotFleetRole",
+    "spotIamFleetRole": "arn:aws:iam::123456789012:role/AmazonEC2SpotFleetTaggingRole",
     "ec2Configuration": [
-      {"imageType": "ECS_AL2_NVIDIA"}
+      {"imageType": "ECS_AL2023_NVIDIA"}
     ]
   }' \
   --state ENABLED
@@ -255,7 +249,7 @@ def log_gpu_stats():
 
 - **Job stuck in RUNNABLE** - Usually means Batch cannot find or launch instances that match your GPU requirements. Check your instance type list, subnet capacity, and service quotas.
 - **CUDA out of memory** - Reduce batch size or use a larger GPU instance. Also check that sharedMemorySize is set properly.
-- **GPU not visible in container** - Make sure you are using the ECS_AL2_NVIDIA image type in your compute environment.
+- **GPU not visible in container** - Make sure you are using the ECS_AL2023_NVIDIA image type in your compute environment.
 
 ## Wrapping Up
 
