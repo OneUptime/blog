@@ -30,7 +30,7 @@ graph LR
 Lambda does not include image processing libraries by default. You need Pillow (Python Imaging Library) as a Lambda layer.
 
 ```bash
-# Build the Pillow Lambda layer for Amazon Linux 2
+# Build the Pillow Lambda layer for Lambda Python 3.12
 
 mkdir -p python/lib/python3.12/site-packages
 pip install Pillow -t python/lib/python3.12/site-packages/ --platform manylinux2014_x86_64 --only-binary=:all:
@@ -152,12 +152,12 @@ aws lambda create-function \
   --zip-file fileb://thumbnail.zip \
   --layers arn:aws:lambda:us-east-1:123456789012:layer:pillow:1 \
   --timeout 60 \
-  --memory-size 1536 \
+  --memory-size 1769 \
   --environment 'Variables={OUTPUT_BUCKET=my-thumbnails-bucket}' \
   --ephemeral-storage '{"Size": 1024}'
 ```
 
-Memory is important here. Image processing is CPU-intensive, and Lambda allocates CPU proportional to memory. 1536MB gives you roughly one full vCPU, which makes a noticeable difference for large images.
+Memory is important here. Image processing is CPU-intensive, and Lambda allocates CPU proportional to memory. At 1,769MB, Lambda provides the equivalent of one full vCPU, which makes a noticeable difference for large images.
 
 ## Step 4: Set Up the S3 Trigger
 
@@ -195,7 +195,6 @@ aws s3api put-bucket-notification-configuration \
 The Lambda function needs permissions to read from the source bucket and write to the output bucket:
 
 ```json
-// IAM policy for the thumbnail generator Lambda
 {
   "Version": "2012-10-17",
   "Statement": [
@@ -207,7 +206,10 @@ The Lambda function needs permissions to read from the source bucket and write t
     {
       "Effect": "Allow",
       "Action": "s3:PutObject",
-      "Resource": "arn:aws:s3:::my-thumbnails-bucket/thumbnails/*"
+      "Resource": [
+        "arn:aws:s3:::my-thumbnails-bucket/thumbnails/*",
+        "arn:aws:s3:::my-thumbnails-bucket/errors/*"
+      ]
     },
     {
       "Effect": "Allow",
@@ -329,20 +331,21 @@ Wrap the Image.open call to catch corrupted files:
 
 ```python
 # Handle corrupted image files gracefully
-try:
-    original_image = Image.open(io.BytesIO(image_data))
-    original_image.verify()  # Verify the image is not corrupted
-    # Re-open after verify (verify closes the image)
-    original_image = Image.open(io.BytesIO(image_data))
-except Exception as e:
-    print(f"Invalid image file: {e}")
-    # Move to error prefix for review
-    s3.copy_object(
-        Bucket=OUTPUT_BUCKET,
-        Key=f"errors/{key}",
-        CopySource={'Bucket': bucket, 'Key': key}
-    )
-    return
+def load_valid_image(image_data, bucket, key):
+    try:
+        original_image = Image.open(io.BytesIO(image_data))
+        original_image.verify()  # Verify the image is not corrupted
+        # Re-open after verify (verify closes the image)
+        return Image.open(io.BytesIO(image_data))
+    except Exception as e:
+        print(f"Invalid image file: {e}")
+        # Copy to error prefix for review
+        s3.copy_object(
+            Bucket=OUTPUT_BUCKET,
+            Key=f"errors/{key}",
+            CopySource={'Bucket': bucket, 'Key': key}
+        )
+        return None
 ```
 
 ### EXIF Orientation
