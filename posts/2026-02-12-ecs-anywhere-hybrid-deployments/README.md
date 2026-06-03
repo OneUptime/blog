@@ -31,19 +31,21 @@ graph LR
     S2[Server 2 - ECS Agent] --> CP
     S3[Server 3 - ECS Agent] --> CP
     end
-    CP -->|pull images| ECR
+    S1 -->|pull images| ECR
+    S2 -->|pull images| ECR
+    S3 -->|pull images| ECR
     S1 -->|logs & metrics| CW
     S2 -->|logs & metrics| CW
 ```
 
-Your servers maintain an outbound connection to AWS. ECS pushes task assignments to the agents, and the agents pull container images and manage container lifecycles locally.
+Your servers maintain outbound connectivity to AWS. ECS delivers task assignments to the agents, and the agents pull container images and manage container lifecycles locally.
 
 ## Prerequisites
 
 Your on-premises servers need:
 
-- A supported Linux distribution (Amazon Linux 2, Ubuntu, RHEL, CentOS, Debian, Fedora, openSUSE)
-- Docker installed and running
+- A supported Linux distribution (Amazon Linux 2023, Ubuntu 20/22/24, or RHEL 9; older distributions such as Amazon Linux 2, Debian, CentOS Stream 9, Fedora, openSUSE Tumbleweed, and RHEL 7/8 are supported only until August 7, 2026)
+- Docker installed and running, or a distribution where the ECS Anywhere install script can install it for you. For RHEL 9, install Docker before running the script.
 - Outbound internet access to AWS endpoints (or AWS PrivateLink)
 - An IAM role for the ECS agent
 
@@ -172,6 +174,7 @@ Create a task definition that targets the EXTERNAL launch type:
   "family": "on-prem-app",
   "requiresCompatibilities": ["EXTERNAL"],
   "networkMode": "bridge",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/ecsTaskExecutionRole",
   "cpu": "512",
   "memory": "1024",
   "containerDefinitions": [
@@ -207,6 +210,7 @@ Key differences from Fargate task definitions:
 - `requiresCompatibilities` is `EXTERNAL` instead of `FARGATE`
 - `networkMode` is `bridge` (not `awsvpc` - your servers use standard Docker networking)
 - You can use `hostPort` mappings since you control the host
+- If you use the `awslogs` log driver or a private ECR image, include a task execution role in the task definition
 
 Create an ECS service targeting the EXTERNAL launch type:
 
@@ -253,7 +257,7 @@ Both services appear in the same cluster, and you manage them through the same A
 
 ## Monitoring On-Premises Tasks
 
-ECS Anywhere sends logs and metrics to CloudWatch just like cloud-based tasks. If you've enabled Container Insights on the cluster, you'll see per-task metrics for your on-premises instances.
+ECS Anywhere sends logs and metrics to CloudWatch just like cloud-based tasks. If you've enabled Container Insights on the cluster, you'll see task and service metrics for your on-premises workloads.
 
 ```bash
 # Check the status of on-premises tasks
@@ -273,9 +277,9 @@ For more on monitoring, see our guide on [monitoring ECS with Container Insights
 
 ## Networking Considerations
 
-Since ECS Anywhere servers use `bridge` networking, there are some networking differences to be aware of:
+When ECS Anywhere tasks use `bridge` networking, there are some networking differences to be aware of:
 
-1. **No awsvpc mode.** Your containers share the host's network namespace or use Docker's bridge network. This means port conflicts are possible.
+1. **No awsvpc mode.** Tasks on external instances must use `bridge`, `host`, or `none` networking. This means port conflicts are possible when containers bind host ports.
 
 2. **Load balancing.** AWS load balancers can't reach your on-premises servers directly. You'll need an on-premises load balancer (like HAProxy or Nginx) or use DNS-based load balancing.
 
@@ -283,7 +287,11 @@ Since ECS Anywhere servers use `bridge` networking, there are some networking di
 
 4. **Outbound connectivity.** The ECS agent needs to reach AWS endpoints. Make sure your firewall allows HTTPS (port 443) outbound to:
    - `ecs.{region}.amazonaws.com`
+   - `ecs-a-*.{region}.amazonaws.com`
+   - `ecs-t-*.{region}.amazonaws.com`
    - `ssm.{region}.amazonaws.com`
+   - `ec2messages.{region}.amazonaws.com`
+   - `ssmmessages.{region}.amazonaws.com`
    - ECR endpoints (if pulling from ECR)
    - CloudWatch endpoints (for logs)
 
@@ -298,11 +306,11 @@ aws ecs describe-container-instances \
   --container-instances $(aws ecs list-container-instances --cluster hybrid-cluster --query "containerInstanceArns[0]" --output text) \
   --query "containerInstances[0].versionInfo"
 
-# Update the agent via SSM
+# Update the agent via SSM (Ubuntu 20/22/24 x86_64 example)
 aws ssm send-command \
   --document-name "AWS-RunShellScript" \
   --targets "Key=tag:Environment,Values=production" \
-  --parameters 'commands=["sudo yum update -y ecs-init && sudo systemctl restart ecs"]'
+  --parameters 'commands=["curl -o amazon-ecs-init.deb https://s3.us-east-1.amazonaws.com/amazon-ecs-agent-us-east-1/amazon-ecs-init-latest.amd64.deb && sudo dpkg -i ./amazon-ecs-init.deb && sudo systemctl restart ecs"]'
 ```
 
 To deregister a server (for maintenance or decommissioning):
