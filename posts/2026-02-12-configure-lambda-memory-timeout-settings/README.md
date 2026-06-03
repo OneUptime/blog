@@ -152,18 +152,23 @@ for memory, duration, label in configs:
 
 After configuring memory, monitor whether your function actually uses what you've allocated.
 
-Lambda reports memory usage in CloudWatch:
+Lambda reports memory usage in CloudWatch Logs:
 
 ```bash
 # Get maximum memory used in the last 7 days
-aws cloudwatch get-metric-statistics \
-  --namespace AWS/Lambda \
-  --metric-name MaxMemoryUsed \
-  --dimensions Name=FunctionName,Value=my-function \
-  --start-time $(date -u -v-7d +%Y-%m-%dT%H:%M:%S) \
-  --end-time $(date -u +%Y-%m-%dT%H:%M:%S) \
-  --period 86400 \
-  --statistics Maximum \
+END_TIME=$(date +%s)
+START_TIME=$((END_TIME - 7 * 24 * 60 * 60))
+
+QUERY_ID=$(aws logs start-query \
+  --log-group-name /aws/lambda/my-function \
+  --start-time "$START_TIME" \
+  --end-time "$END_TIME" \
+  --query-string 'filter @type = "REPORT" | stats max(@maxMemoryUsed / 1024 / 1024) as maxMemoryUsedMB' \
+  --query 'queryId' \
+  --output text)
+
+aws logs get-query-results \
+  --query-id "$QUERY_ID" \
   --output table
 ```
 
