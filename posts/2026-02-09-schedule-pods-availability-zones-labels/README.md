@@ -8,7 +8,7 @@ Description: Learn how to use node labels and scheduling constraints to distribu
 
 ---
 
-Availability zones are isolated failure domains within a cloud region. Distributing your workloads across multiple zones ensures your application remains available even if an entire zone fails. Kubernetes makes this easy using node labels and various scheduling mechanisms.
+Availability zones are isolated failure domains within a cloud region. Distributing your workloads across multiple zones helps your application remain available even if an entire zone fails. Kubernetes makes this easy using node labels and various scheduling mechanisms.
 
 ## Understanding Zone Labels
 
@@ -132,7 +132,7 @@ spec:
             memory: 1Gi
 ```
 
-With 12 replicas and 3 zones, this creates exactly 4 pods per zone.
+With 12 replicas, 3 zones, and enough schedulable capacity in each zone, this creates 4 pods per zone.
 
 ## Preferred Zone Placement
 
@@ -150,6 +150,9 @@ spec:
     matchLabels:
       app: preferred-zone-app
   template:
+    metadata:
+      labels:
+        app: preferred-zone-app
     spec:
       affinity:
         nodeAffinity:
@@ -233,7 +236,7 @@ spec:
 
 ## Zone-Aware Service Routing
 
-Configure services to route to local zone:
+Configure services to prefer same-zone endpoints:
 
 ```yaml
 # zone-aware-service.yaml
@@ -242,7 +245,7 @@ kind: Service
 metadata:
   name: app-service
   annotations:
-    service.kubernetes.io/topology-aware-hints: auto
+    service.kubernetes.io/topology-mode: Auto
 spec:
   selector:
     app: balanced-app
@@ -250,8 +253,6 @@ spec:
   - port: 80
     targetPort: 8080
   type: ClusterIP
-  # Enable topology-aware routing
-  internalTrafficPolicy: Local
 ```
 
 ## Testing Zone Distribution
@@ -308,6 +309,9 @@ spec:
     matchLabels:
       app: global-app
   template:
+    metadata:
+      labels:
+        app: global-app
     spec:
       topologySpreadConstraints:
       # Spread across regions
@@ -329,9 +333,9 @@ spec:
         image: global-app:v1.0
 ```
 
-## PodDisruptionBudget for Zone Failures
+## PodDisruptionBudget for Maintenance
 
-Protect against zone-wide disruptions:
+Protect against voluntary disruptions:
 
 ```yaml
 # zone-aware-pdb.yaml
@@ -359,16 +363,34 @@ spec:
 
 ## Monitoring Zone Distribution
 
-Create monitoring dashboard:
+Create monitoring dashboard with kube-state-metrics node labels enabled:
 
 ```bash
 # Prometheus query for zone distribution
-sum(kube_pod_info) by (node, pod, namespace)
+sum by (label_topology_kubernetes_io_zone) (
+  kube_pod_info{namespace="production"}
+* on (node) group_left(label_topology_kubernetes_io_zone)
+  kube_node_labels{label_topology_kubernetes_io_zone!=""}
+)
 
 # Alert on uneven distribution
-(max(count(kube_pod_info{namespace="production"}) by (zone)) -
- min(count(kube_pod_info{namespace="production"}) by (zone))) > 2
+(
+  max(
+    sum by (label_topology_kubernetes_io_zone) (
+      kube_pod_info{namespace="production"}
+    * on (node) group_left(label_topology_kubernetes_io_zone)
+      kube_node_labels{label_topology_kubernetes_io_zone!=""}
+    )
+  )
+-
+  min(
+    sum by (label_topology_kubernetes_io_zone) (
+      kube_pod_info{namespace="production"}
+    * on (node) group_left(label_topology_kubernetes_io_zone)
+      kube_node_labels{label_topology_kubernetes_io_zone!=""}
+    )
+  )
+) > 2
 ```
 
 Scheduling pods across availability zones using node labels and topology spread constraints is essential for building highly available Kubernetes applications that can tolerate zone-level failures.
-
