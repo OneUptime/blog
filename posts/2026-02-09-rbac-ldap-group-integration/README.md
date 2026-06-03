@@ -8,9 +8,9 @@ Description: Learn how to configure Kubernetes RBAC RoleBindings that reference 
 
 ---
 
-Managing Kubernetes RBAC by individual users becomes unmanageable as teams grow. Every time someone joins or leaves, you need to update RoleBindings across multiple namespaces and clusters. Integrating Kubernetes RBAC with LDAP groups centralizes access management. Add a user to an LDAP group and they automatically get Kubernetes permissions. Remove them from the group and access is immediately revoked.
+Managing Kubernetes RBAC by individual users becomes unmanageable as teams grow. Every time someone joins or leaves, you need to update RoleBindings across multiple namespaces and clusters. Integrating Kubernetes RBAC with LDAP groups centralizes access management. Add a user to an LDAP group and they automatically get Kubernetes permissions. Remove them from the group and access is revoked when their token is refreshed or expires.
 
-LDAP integration requires configuring the Kubernetes API server to authenticate against your LDAP directory and extract group memberships. Once configured, RoleBindings reference LDAP groups instead of individual users, making permissions management scalable and maintainable.
+LDAP integration requires configuring an identity provider to authenticate against your LDAP directory and include group memberships in the tokens it issues to Kubernetes. Once configured, RoleBindings reference LDAP groups instead of individual users, making permissions management scalable and maintainable.
 
 ## Understanding Kubernetes LDAP Authentication
 
@@ -72,8 +72,9 @@ data:
         groupSearch:
           baseDN: ou=groups,dc=company,dc=com
           filter: "(objectClass=groupOfNames)"
-          userAttr: DN
-          groupAttr: member
+          userMatchers:
+          - userAttr: DN
+            groupAttr: member
           nameAttr: cn
 
     oauth2:
@@ -109,7 +110,7 @@ spec:
     - --oidc-client-id=kubernetes
     - --oidc-username-claim=email
     - --oidc-groups-claim=groups
-    - --oidc-groups-prefix=ldap:  # Prefix for LDAP groups
+    - "--oidc-groups-prefix=ldap:"  # Prefix for LDAP groups
     # ... other flags
 ```
 
@@ -184,13 +185,15 @@ kubectl krew install oidc-login
 
 # Configure kubeconfig
 kubectl config set-credentials oidc \
-  --exec-api-version=client.authentication.k8s.io/v1beta1 \
+  --exec-api-version=client.authentication.k8s.io/v1 \
+  --exec-interactive-mode=IfAvailable \
   --exec-command=kubectl \
   --exec-arg=oidc-login \
   --exec-arg=get-token \
   --exec-arg=--oidc-issuer-url=https://dex.company.com \
   --exec-arg=--oidc-client-id=kubernetes \
-  --exec-arg=--oidc-client-secret=kubernetes-client-secret
+  --exec-arg=--oidc-client-secret=kubernetes-client-secret \
+  --exec-arg=--oidc-extra-scope=groups
 
 # Use the OIDC user
 kubectl config set-context oidc --cluster=production --user=oidc
@@ -279,10 +282,12 @@ connectors:
     groupSearch:
       baseDN: ou=groups,dc=company,dc=com
       filter: "(objectClass=groupOfNames)"
-      userAttr: DN
-      groupAttr: member
+      userMatchers:
+      - userAttr: DN
+        groupAttr: member
+        recursionGroupAttr: member
       nameAttr: cn
-      # Enable nested group lookups (Dex-specific feature)
+      # recursionGroupAttr enables nested group lookups
       # Note: This may require LDAP server support
 ```
 
@@ -338,7 +343,8 @@ For better visibility, periodically sync LDAP groups to Kubernetes:
 ```python
 # ldap-group-sync.py
 import ldap
-import kubernetes
+from kubernetes import client, config
+from kubernetes.client.rest import ApiException
 
 def get_ldap_groups():
     """Fetch all groups from LDAP"""
@@ -373,11 +379,22 @@ def sync_to_kubernetes():
     }
 
     # Apply to cluster
-    k8s_client = kubernetes.client.ApiClient()
-    kubernetes.client.CoreV1Api(k8s_client).create_namespaced_config_map(
-        namespace='auth',
-        body=configmap
-    )
+    config.load_incluster_config()
+    core_v1 = client.CoreV1Api()
+
+    try:
+        core_v1.create_namespaced_config_map(
+            namespace='auth',
+            body=configmap
+        )
+    except ApiException as exc:
+        if exc.status != 409:
+            raise
+        core_v1.patch_namespaced_config_map(
+            name='ldap-groups',
+            namespace='auth',
+            body=configmap
+        )
 
 if __name__ == '__main__':
     sync_to_kubernetes()
@@ -415,8 +432,11 @@ Common issues and solutions:
 kubectl logs -n auth -l app=dex | grep groups
 
 # Check OIDC token claims
-kubectl oidc-login get-token --oidc-issuer-url=https://dex.company.com | \
-  jq -R 'split(".") | .[1] | @base64d | fromjson'
+kubectl oidc-login setup \
+  --oidc-issuer-url=https://dex.company.com \
+  --oidc-client-id=kubernetes \
+  --oidc-client-secret=kubernetes-client-secret \
+  --oidc-extra-scope=groups
 ```
 
 **Wrong group prefix**:
@@ -450,8 +470,6 @@ rules:
 - level: Metadata
   omitStages:
   - RequestReceived
-  userGroups:
-  - "ldap:*"  # All LDAP groups
 ```
 
 Analyze group usage:
