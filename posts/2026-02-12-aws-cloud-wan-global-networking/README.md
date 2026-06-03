@@ -8,13 +8,13 @@ Description: A practical guide to using AWS Cloud WAN to build and manage your g
 
 ---
 
-Managing a global network on AWS used to mean stitching together transit gateways across regions, manually peering them, and hoping your routing tables stayed consistent. AWS Cloud WAN changes that equation completely. It lets you build a unified global network with centralized policies, automatic cross-region connectivity, and built-in segmentation - all managed through a single JSON or YAML policy document.
+Managing a global network on AWS used to mean stitching together transit gateways across regions, manually peering them, and hoping your routing tables stayed consistent. AWS Cloud WAN changes that equation completely. It lets you build a unified global network with centralized policies, automatic cross-region connectivity, and built-in segmentation - all managed through a single JSON policy document.
 
 Let's dig into how to set it up and what makes it worth considering for your multi-region architecture.
 
 ## What Cloud WAN Actually Does
 
-Cloud WAN sits on top of the transit gateway infrastructure but abstracts away most of the manual work. Instead of creating individual transit gateways, peering connections, and route tables in each region, you define a network policy that describes what you want. Cloud WAN takes care of deploying the underlying resources.
+Cloud WAN uses core network edges across the AWS global network and abstracts away most of the manual work. Instead of creating individual transit gateways, peering connections, and route tables in each region, you define a network policy that describes what you want. Cloud WAN takes care of deploying and managing the core network resources.
 
 The core concepts are:
 
@@ -150,7 +150,7 @@ Notice the `segment-actions` section. The `share` action makes shared-services r
 
 ## Attaching VPCs
 
-Once your core network is deployed, you attach VPCs to it. Each VPC gets tagged with the segment it belongs to, and the attachment policy automatically routes it to the right segment.
+Once your core network is deployed, you attach VPCs to it. Each attachment gets tagged with the segment it belongs to, and the attachment policy automatically associates it with the right segment.
 
 Attach a VPC to the core network:
 
@@ -190,8 +190,10 @@ Parameters:
     Type: String
   VpcId:
     Type: String
-  SubnetIds:
-    Type: List<AWS::EC2::Subnet::Id>
+  SubnetArns:
+    Type: List<String>
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable::Id
   SegmentName:
     Type: String
     AllowedValues:
@@ -205,7 +207,7 @@ Resources:
     Properties:
       CoreNetworkId: !Ref CoreNetworkId
       VpcArn: !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:vpc/${VpcId}"
-      SubnetArns: !Ref SubnetIds
+      SubnetArns: !Ref SubnetArns
       Tags:
         - Key: Segment
           Value: !Ref SegmentName
@@ -244,7 +246,7 @@ graph LR
     ProdVPC2 --> Monitoring
     DevVPC1 --> DNS
     DevVPC2 --> Monitoring
-    ProdVPC1 -.-x DevVPC1
+    ProdVPC1 x--x DevVPC1
 ```
 
 Production VPCs can reach each other and shared services. Development VPCs can reach each other and shared services. But production and development can't communicate - that's the isolation boundary you defined in the policy.
@@ -290,7 +292,7 @@ This two-step process (submit then execute) gives you a chance to review changes
 
 ## Cost Considerations
 
-Cloud WAN isn't free. You pay for core network edge locations (per hour, per region), VPC attachments, peering connections between regions, and data transfer. For a two-region setup with a handful of VPCs, expect costs in the hundreds per month range. For large global deployments, it can run into thousands - but you'd be spending similar amounts managing the equivalent transit gateway infrastructure manually.
+Cloud WAN isn't free. You pay for core network edge locations (per hour, per region), attachments, Transit Gateway peering connections to a core network edge, data processing, and standard AWS data transfer. For a two-region setup with a handful of VPCs, expect costs in the hundreds per month range. For large global deployments, it can run into thousands - but you'd be spending similar amounts managing the equivalent transit gateway infrastructure manually.
 
 The real value is operational. Less time spent debugging routing issues, less risk of configuration drift between regions, and a clear policy-driven model that you can version control and audit.
 
