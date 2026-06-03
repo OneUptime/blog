@@ -33,8 +33,9 @@ Install gVisor on nodes:
 
 ```bash
 # On each node (Ubuntu example)
+sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gnupg
 curl -fsSL https://gvisor.dev/archive.key | sudo gpg --dearmor -o /usr/share/keyrings/gvisor-archive-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | \
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/gvisor-archive-keyring.gpg] https://storage.googleapis.com/gvisor/releases release main" | \
   sudo tee /etc/apt/sources.list.d/gvisor.list
 
 sudo apt-get update && sudo apt-get install -y runsc
@@ -43,6 +44,8 @@ sudo apt-get update && sudo apt-get install -y runsc
 sudo mkdir -p /etc/containerd/
 cat <<EOF | sudo tee /etc/containerd/config.toml
 version = 2
+[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc]
+  runtime_type = "io.containerd.runc.v2"
 [plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runsc]
   runtime_type = "io.containerd.runsc.v1"
 EOF
@@ -91,28 +94,22 @@ spec:
 
 ## Setting Up Kata Containers
 
-Kata Containers run each container in a lightweight VM for hardware-level isolation.
+Kata Containers run each pod sandbox in a lightweight VM for hardware-level isolation.
 
-Install Kata on nodes:
+Install Kata with Kata Deploy (requires Kubernetes 1.22 or later, a CRI-compatible runtime such as containerd or CRI-O, and nodes with virtualization support):
 
 ```bash
-# Install Kata runtime
-sudo sh -c "echo 'deb http://download.opensuse.org/repositories/home:/katacontainers:/releases:/x86_64:/stable-2.0/xUbuntu_$(lsb_release -rs)/ /' > /etc/apt/sources.list.d/kata-containers.list"
-curl -fsSL https://download.opensuse.org/repositories/home:/katacontainers:/releases:/x86_64:/stable-2.0/xUbuntu_$(lsb_release -rs)/Release.key | gpg --dearmor | sudo tee /etc/apt/trusted.gpg.d/kata-containers.gpg > /dev/null
+# Install the official Kata Deploy Helm chart
+export VERSION=$(curl -sSL https://api.github.com/repos/kata-containers/kata-containers/releases/latest | jq -r .tag_name)
+export CHART="oci://ghcr.io/kata-containers/kata-deploy-charts/kata-deploy"
 
-sudo apt-get update
-sudo apt-get install -y kata-runtime kata-containers
-
-# Configure containerd
-cat <<EOF | sudo tee -a /etc/containerd/config.toml
-[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.kata]
-  runtime_type = "io.containerd.kata.v2"
-EOF
-
-sudo systemctl restart containerd
+helm install kata-deploy "${CHART}" \
+  --version "${VERSION}" \
+  --namespace kube-system \
+  --create-namespace
 ```
 
-Create RuntimeClass:
+If you configure RuntimeClass yourself, create one that matches the Kata runtime handler configured by your installer:
 
 ```yaml
 apiVersion: node.k8s.io/v1
@@ -295,20 +292,25 @@ data:
     groups:
     - name: runtime-performance
       rules:
-      - alert: GVisorHighLatency
-        expr: container_start_time_seconds{runtime="runsc"} > 10
+      - alert: GVisorPodNotReady
+        expr: (time() - kube_pod_created)
+              * on(namespace, pod, uid) group_left(runtimeclass_name)
+                kube_pod_runtimeclass_name_info{runtimeclass_name="gvisor"} > 600
+              and on(namespace, pod, uid)
+                kube_pod_status_ready{condition="true"} == 0
         labels:
           severity: warning
         annotations:
-          summary: "gVisor container startup taking >10s"
+          summary: "gVisor pod not ready after 10 minutes"
 
       - alert: KataHighMemoryOverhead
-        expr: container_memory_working_set_bytes{runtime="kata"} /
-              kube_pod_container_resource_requests{resource="memory"} > 1.5
+        expr: kube_pod_overhead_memory_bytes
+              * on(namespace, pod, uid) group_left(runtimeclass_name)
+                kube_pod_runtimeclass_name_info{runtimeclass_name="kata"} > 150 * 1024 * 1024
         labels:
           severity: warning
         annotations:
-          summary: "Kata container using >150% of requested memory (including VM overhead)"
+          summary: "Kata pod overhead is above 150Mi"
 ```
 
 Compare performance across runtimes:
@@ -329,7 +331,7 @@ for runtime in "" "gvisor" "kata"; do
     fi
 
     # Wait for completion
-    kubectl wait --for=condition=completed pod/perf-test --timeout=300s
+    kubectl wait --for=jsonpath='{.status.phase}'=Succeeded pod/perf-test --timeout=300s
 
     # Get results
     kubectl logs perf-test
@@ -350,9 +352,9 @@ Debug runtime problems:
 kubectl get runtimeclass
 
 # Verify node has the runtime installed
-kubectl debug node/<node-name> -it --image=ubuntu
+kubectl debug node/<node-name> -it --image=ubuntu --profile=sysadmin
 # Inside debug container:
-crictl info | jq '.config.containerd.runtimes'
+chroot /host crictl info
 
 # Check pod events for runtime errors
 kubectl describe pod <pod-name> | grep -A 10 Events
