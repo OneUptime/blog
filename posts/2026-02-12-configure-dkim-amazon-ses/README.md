@@ -148,15 +148,14 @@ dig CNAME yz7890abcdef1234ghij._domainkey.example.com +short
 
 ## Step 4: Use SES v2 for Easier DKIM Setup
 
-The SES v2 API streamlines the process with Easy DKIM v2 (using 2048-bit keys):
+The SES v2 API streamlines the process with Easy DKIM (using 2048-bit keys by default):
 
 ```bash
-# Create email identity with DKIM using SES v2
+# Create email identity with Easy DKIM using SES v2
 aws sesv2 create-email-identity \
   --email-identity "example.com" \
   --dkim-signing-attributes '{
-    "DomainSigningSelector": "ses",
-    "DomainSigningPrivateKey": ""
+    "NextSigningKeyLength": "RSA_2048_BIT"
   }' \
   --region us-east-1
 
@@ -184,12 +183,15 @@ openssl rsa -in dkim-private.pem -pubout -out dkim-public.pem
 # Extract the public key without headers for DNS
 PUBLIC_KEY=$(cat dkim-public.pem | grep -v "PUBLIC KEY" | tr -d '\n')
 
+# Extract the private key without headers for SES
+PRIVATE_KEY=$(cat dkim-private.pem | grep -v "PRIVATE KEY" | tr -d '\n')
+
 # Configure BYODKIM in SES v2
 aws sesv2 create-email-identity \
   --email-identity "example.com" \
   --dkim-signing-attributes '{
     "DomainSigningSelector": "mykey",
-    "DomainSigningPrivateKey": "'$(cat dkim-private.pem | tr -d '\n')'"
+    "DomainSigningPrivateKey": "'$PRIVATE_KEY'"
   }' \
   --region us-east-1
 ```
@@ -223,13 +225,13 @@ You can toggle DKIM signing on and off:
 # Disable DKIM signing (not recommended unless troubleshooting)
 aws ses set-identity-dkim-enabled \
   --identity "example.com" \
-  --dkim-enabled false \
+  --no-dkim-enabled \
   --region us-east-1
 
 # Re-enable DKIM signing
 aws ses set-identity-dkim-enabled \
   --identity "example.com" \
-  --dkim-enabled true \
+  --dkim-enabled \
   --region us-east-1
 
 # Using SES v2
@@ -305,7 +307,7 @@ done
 
 ## Key Rotation with Easy DKIM
 
-SES automatically rotates Easy DKIM keys periodically. When rotation happens, SES generates new CNAME values, but since the CNAME records point to SES-managed DNS, the rotation is transparent - you don't need to update your DNS records. This is one of the major advantages of Easy DKIM over BYODKIM.
+Easy DKIM keeps the public keys in SES-managed DNS. Because your CNAME records point to SES-managed DNS, DKIM key changes are transparent - you don't need to update your DNS records. This is one of the major advantages of Easy DKIM over BYODKIM.
 
 With BYODKIM, you need to manage rotation yourself. A common approach is to generate new keys, add the new DNS record with a different selector, update SES to use the new key, and then remove the old DNS record after a transition period.
 
