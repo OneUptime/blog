@@ -20,7 +20,7 @@ The key insight is separating interface from implementation. Your root module sh
 
 ## Building the EKS Module
 
-Start with AWS EKS. The module needs to create the cluster, node groups, and supporting infrastructure like VPC subnets and security groups.
+Start with AWS EKS. The module needs to create the cluster and node groups, and it needs subnet IDs from supporting VPC infrastructure such as private subnets and security groups.
 
 ```hcl
 # modules/eks/main.tf
@@ -45,7 +45,12 @@ variable "node_instance_type" {
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
+  default     = "1.33"
+}
+
+variable "subnet_ids" {
+  description = "Private subnet IDs for the EKS control plane and nodes"
+  type        = list(string)
 }
 
 # Create the EKS cluster
@@ -55,7 +60,7 @@ resource "aws_eks_cluster" "main" {
   version  = var.kubernetes_version
 
   vpc_config {
-    subnet_ids = aws_subnet.private[*].id
+    subnet_ids = var.subnet_ids
     endpoint_private_access = true
     endpoint_public_access  = true
   }
@@ -91,7 +96,7 @@ resource "aws_eks_node_group" "main" {
   cluster_name    = aws_eks_cluster.main.name
   node_group_name = "${var.cluster_name}-nodes"
   node_role_arn   = aws_iam_role.nodes.arn
-  subnet_ids      = aws_subnet.private[*].id
+  subnet_ids      = var.subnet_ids
 
   scaling_config {
     desired_size = var.node_count
@@ -147,7 +152,7 @@ output "cluster_ca_certificate" {
 }
 ```
 
-This module handles EKS-specific requirements like IAM roles for both the cluster and nodes. Notice how the node group uses managed scaling configuration to allow automatic scaling later.
+This module handles EKS-specific requirements like IAM roles for both the cluster and nodes. Notice how the node group sets minimum, desired, and maximum capacity; Kubernetes-driven scaling still requires a component such as Cluster Autoscaler or Karpenter.
 
 ## Creating the GKE Module
 
@@ -175,13 +180,23 @@ variable "node_machine_type" {
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
+  default     = "1.33"
 }
 
 variable "region" {
   description = "GCP region"
   type        = string
   default     = "us-central1"
+}
+
+variable "network" {
+  description = "VPC network name or self link"
+  type        = string
+}
+
+variable "subnetwork" {
+  description = "VPC subnetwork name or self link"
+  type        = string
 }
 
 # Create GKE cluster
@@ -208,8 +223,8 @@ resource "google_container_cluster" "main" {
   }
 
   # Network configuration
-  network    = google_compute_network.vpc.name
-  subnetwork = google_compute_subnetwork.subnet.name
+  network    = var.network
+  subnetwork = var.subnetwork
 
   ip_allocation_policy {
     cluster_ipv4_cidr_block  = "10.100.0.0/16"
@@ -262,7 +277,7 @@ output "cluster_ca_certificate" {
 }
 ```
 
-GKE uses workload identity instead of IAM roles, and regional clusters span multiple zones automatically. The module removes the default node pool and creates a separate managed pool with autoscaling enabled.
+GKE uses Workload Identity Federation for GKE to let Kubernetes service accounts access Google Cloud IAM permissions. Regional clusters use a regional control plane and can place nodes across multiple zones. The module removes the default node pool and creates a separate managed pool with autoscaling enabled.
 
 ## Implementing the AKS Module
 
@@ -290,7 +305,7 @@ variable "node_vm_size" {
 variable "kubernetes_version" {
   description = "Kubernetes version"
   type        = string
-  default     = "1.28"
+  default     = "1.33"
 }
 
 variable "resource_group_name" {
@@ -304,6 +319,11 @@ variable "location" {
   default     = "eastus"
 }
 
+variable "subnet_id" {
+  description = "Subnet ID for AKS nodes"
+  type        = string
+}
+
 resource "azurerm_kubernetes_cluster" "main" {
   name                = var.cluster_name
   location            = var.location
@@ -312,13 +332,13 @@ resource "azurerm_kubernetes_cluster" "main" {
   kubernetes_version  = var.kubernetes_version
 
   default_node_pool {
-    name                = "default"
-    node_count          = var.node_count
-    vm_size             = var.node_vm_size
-    enable_auto_scaling = true
-    min_count           = 1
-    max_count           = var.node_count + 2
-    vnet_subnet_id      = azurerm_subnet.aks.id
+    name                 = "default"
+    node_count           = var.node_count
+    vm_size              = var.node_vm_size
+    auto_scaling_enabled = true
+    min_count            = 1
+    max_count            = var.node_count + 2
+    vnet_subnet_id       = var.subnet_id
   }
 
   identity {
@@ -398,6 +418,30 @@ variable "node_size" {
   default     = "medium"
 }
 
+variable "aws_subnet_ids" {
+  description = "Private subnet IDs for EKS"
+  type        = list(string)
+  default     = []
+}
+
+variable "gcp_network" {
+  description = "VPC network name or self link for GKE"
+  type        = string
+  default     = null
+}
+
+variable "gcp_subnetwork" {
+  description = "VPC subnetwork name or self link for GKE"
+  type        = string
+  default     = null
+}
+
+variable "azure_subnet_id" {
+  description = "Subnet ID for AKS nodes"
+  type        = string
+  default     = null
+}
+
 # Map generic sizes to provider-specific types
 locals {
   node_type_map = {
@@ -425,6 +469,7 @@ module "eks" {
   cluster_name        = var.cluster_name
   node_count          = var.node_count
   node_instance_type  = local.node_type_map.aws[var.node_size]
+  subnet_ids          = var.aws_subnet_ids
 }
 
 module "gke" {
@@ -433,6 +478,8 @@ module "gke" {
   cluster_name       = var.cluster_name
   node_count         = var.node_count
   node_machine_type  = local.node_type_map.gcp[var.node_size]
+  network            = var.gcp_network
+  subnetwork         = var.gcp_subnetwork
 }
 
 module "aks" {
@@ -443,6 +490,7 @@ module "aks" {
   node_vm_size        = local.node_type_map.azure[var.node_size]
   resource_group_name = azurerm_resource_group.main[0].name
   location            = azurerm_resource_group.main[0].location
+  subnet_id           = var.azure_subnet_id
 }
 
 # Azure requires a resource group
