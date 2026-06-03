@@ -77,6 +77,15 @@ APP_ID=$(az ad app list \
 
 echo "Application ID: $APP_ID"
 
+# Create the service principal used for Azure RBAC assignments
+az ad sp create --id $APP_ID
+
+# Get the service principal object ID
+SP_OBJECT_ID=$(az ad sp show \
+    --id $APP_ID \
+    --query id \
+    --output tsv)
+
 # Get tenant ID
 TENANT_ID=$(az account show --query tenantId --output tsv)
 echo "Tenant ID: $TENANT_ID"
@@ -111,13 +120,15 @@ SUBSCRIPTION_ID=$(az account show --query id --output tsv)
 
 # Assign Storage Blob Data Contributor role
 az role assignment create \
-    --assignee $APP_ID \
+    --assignee-object-id $SP_OBJECT_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Storage Blob Data Contributor" \
     --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/my-rg/providers/Microsoft.Storage/storageAccounts/mystorageaccount
 
 # Assign Key Vault Secrets User role
 az role assignment create \
-    --assignee $APP_ID \
+    --assignee-object-id $SP_OBJECT_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Key Vault Secrets User" \
     --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/my-rg/providers/Microsoft.KeyVault/vaults/mykeyvault
 ```
@@ -173,10 +184,14 @@ spec:
     - -c
     - |
       echo "Testing Azure Storage access..."
-      az login --identity
+      az login --service-principal \
+        --username "$AZURE_CLIENT_ID" \
+        --tenant "$AZURE_TENANT_ID" \
+        --federated-token "$(cat $AZURE_FEDERATED_TOKEN_FILE)"
       az storage blob list \
         --account-name mystorageaccount \
-        --container-name mycontainer
+        --container-name mycontainer \
+        --auth-mode login
       sleep 3600
 ```
 
@@ -261,7 +276,6 @@ For Python applications:
 # azure_storage_access.py
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient
-import os
 
 def main():
     # DefaultAzureCredential automatically uses workload identity
@@ -303,25 +317,29 @@ Configure permissions for multiple services:
 ```bash
 # Storage access
 az role assignment create \
-    --assignee $APP_ID \
+    --assignee-object-id $SP_OBJECT_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Storage Blob Data Contributor" \
     --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/my-rg
 
 # Key Vault access
 az role assignment create \
-    --assignee $APP_ID \
+    --assignee-object-id $SP_OBJECT_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Key Vault Secrets User" \
     --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/my-rg/providers/Microsoft.KeyVault/vaults/mykeyvault
 
 # Cosmos DB access
 az role assignment create \
-    --assignee $APP_ID \
+    --assignee-object-id $SP_OBJECT_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Cosmos DB Account Reader Role" \
     --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/my-rg/providers/Microsoft.DocumentDB/databaseAccounts/mycosmosdb
 
 # Service Bus access
 az role assignment create \
-    --assignee $APP_ID \
+    --assignee-object-id $SP_OBJECT_ID \
+    --assignee-principal-type ServicePrincipal \
     --role "Azure Service Bus Data Sender" \
     --scope /subscriptions/$SUBSCRIPTION_ID/resourceGroups/my-rg/providers/Microsoft.ServiceBus/namespaces/myservicebus
 ```
@@ -449,28 +467,37 @@ curl -X POST https://login.microsoftonline.com/$TENANT_ID/oauth2/v2.0/token \
 Track workload identity usage:
 
 ```bash
-# Query Azure Activity Log for sign-ins
+# Query Azure Activity Log for role assignment changes
 az monitor activity-log list \
     --resource-group my-rg \
     --offset 1d \
     --query "[?contains(authorization.action, 'roleAssignment')]"
 
-# View sign-in logs for the application
-az ad app list --display-name k8s-storage-app --query [].appId -o tsv | \
-    xargs -I {} az monitor activity-log list --resource-id {}
+# View Microsoft Entra sign-in logs for the application
+# Requires Microsoft Graph AuditLog.Read.All permission and a directory role that can read sign-in logs
+az rest --method GET \
+    --url "https://graph.microsoft.com/v1.0/auditLogs/signIns?\$filter=appId eq '$APP_ID'&\$top=10"
 ```
 
-Create alerts for failed authentications:
+Create alerts for failed authentications after exporting Microsoft Entra sign-in logs to Log Analytics:
 
 ```bash
-# Create alert rule for failed auth
-az monitor metrics alert create \
+# Create alert rule for failed service principal sign-ins
+WORKSPACE_ID=$(az monitor log-analytics workspace show \
+    --resource-group my-rg \
+    --workspace-name my-workspace \
+    --query id \
+    --output tsv)
+
+az monitor scheduled-query create \
     --name FailedWorkloadIdentityAuth \
     --resource-group my-rg \
-    --scopes /subscriptions/$SUBSCRIPTION_ID \
-    --condition "count failedSignIns > 10" \
+    --scopes $WORKSPACE_ID \
+    --condition "count 'FailedSignIns' > 10" \
+    --condition-query FailedSignIns="AADServicePrincipalSignInLogs | where AppId == '$APP_ID' | where ResultType != '0'" \
     --window-size 5m \
-    --evaluation-frequency 1m
+    --evaluation-frequency 1m \
+    --description "Alert when the workload identity service principal has repeated failed sign-ins"
 ```
 
 ## Security Best Practices
