@@ -89,16 +89,16 @@ spec:
     command: ["bash", "-c"]
     args:
     - |
-      # These operations will fail with runtime/default
+      # These operations are blocked by runtime/default and/or missing capabilities
 
-      # Mounting filesystems (blocked)
-      mount /dev/sda1 /mnt 2>&1 || echo "mount: blocked by seccomp"
+      # Mounting filesystems
+      mount /dev/sda1 /mnt 2>&1 || echo "mount: blocked"
 
-      # Loading kernel modules (blocked)
-      insmod /lib/modules/mymodule.ko 2>&1 || echo "insmod: blocked by seccomp"
+      # Loading kernel modules
+      insmod /lib/modules/mymodule.ko 2>&1 || echo "insmod: blocked"
 
-      # Rebooting system (blocked)
-      reboot 2>&1 || echo "reboot: blocked by seccomp"
+      # Rebooting system
+      reboot 2>&1 || echo "reboot: blocked"
 
       # Creating namespaces (may be blocked)
       unshare --user 2>&1 || echo "unshare: may be blocked"
@@ -106,7 +106,7 @@ spec:
       # Normal operations still work
       echo "Writing files works"
       cat /etc/os-release
-      curl https://example.com
+      ls /tmp
 
       sleep 3600
 ```
@@ -248,7 +248,7 @@ spec:
           path: /var/log
 ```
 
-Even privileged infrastructure components benefit from runtime/default.
+Even root-running infrastructure components benefit from runtime/default.
 
 ## Namespace-Wide Enforcement
 
@@ -260,13 +260,13 @@ kind: Namespace
 metadata:
   name: secure-apps
   labels:
-    # Baseline and restricted both require seccomp
-    pod-security.kubernetes.io/enforce: baseline
+    # Restricted requires RuntimeDefault or Localhost seccomp
+    pod-security.kubernetes.io/enforce: restricted
     pod-security.kubernetes.io/audit: restricted
     pod-security.kubernetes.io/warn: restricted
 ```
 
-Baseline standard requires either runtime/default or localhost seccomp profiles.
+Restricted standard requires either RuntimeDefault or Localhost seccomp profiles. Baseline allows RuntimeDefault and Localhost, but only forbids explicitly setting seccomp to Unconfined.
 
 ## Combining with Other Security Measures
 
@@ -352,8 +352,8 @@ kind: Namespace
 metadata:
   name: development
   labels:
-    pod-security.kubernetes.io/audit: baseline
-    pod-security.kubernetes.io/warn: baseline
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/warn: restricted
   annotations:
     stage: "testing-runtime-default"
 
@@ -364,7 +364,7 @@ kind: Namespace
 metadata:
   name: staging
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: restricted
   annotations:
     stage: "enforcing-runtime-default"
 
@@ -375,7 +375,7 @@ kind: Namespace
 metadata:
   name: production
   labels:
-    pod-security.kubernetes.io/enforce: baseline
+    pod-security.kubernetes.io/enforce: restricted
   annotations:
     stage: "runtime-default-enforced"
 ```
@@ -429,24 +429,16 @@ Performance impact is typically negligible for real applications.
 
 ## Default Configuration in Cluster
 
-Set runtime/default as cluster default:
+Set runtime/default as the default on each node through kubelet configuration:
 
 ```yaml
-apiVersion: apiserver.config.k8s.io/v1
-kind: AdmissionConfiguration
-plugins:
-- name: PodSecurity
-  configuration:
-    apiVersion: pod-security.admission.config.k8s.io/v1
-    kind: PodSecurityConfiguration
-    defaults:
-      enforce: baseline
-      audit: restricted
-      warn: restricted
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+seccompDefault: true
 ```
 
-Baseline standard requires seccomp, making runtime/default effectively mandatory.
+You can also start kubelet with the `--seccomp-default` flag. Pod Security Admission can enforce that workloads set a seccomp profile, but it does not mutate pods or set runtime/default for them.
 
 ## Conclusion
 
-The runtime/default seccomp profile provides essential baseline security with minimal effort and excellent compatibility. It blocks dangerous system calls that enable container escapes and privilege escalation while allowing normal application operations. Apply runtime/default to all workloads as a starting point for container security, then consider custom profiles for applications with specialized requirements. The profile is maintained by container runtime developers and evolves with security best practices. Combine runtime/default with other security context settings like running as non-root, dropping capabilities, and read-only filesystems for defense in depth. Enable it cluster-wide through Pod Security Standards to ensure all workloads benefit from this protection. Runtime/default represents the minimum acceptable seccomp configuration for production Kubernetes workloads.
+The runtime/default seccomp profile provides essential baseline security with minimal effort and excellent compatibility. It blocks dangerous system calls that enable container escapes and privilege escalation while allowing normal application operations. Apply runtime/default to all workloads as a starting point for container security, then consider custom profiles for applications with specialized requirements. The profile is maintained by container runtime developers and evolves with security best practices. Combine runtime/default with other security context settings like running as non-root, dropping capabilities, and read-only filesystems for defense in depth. Enforce explicit seccomp settings cluster-wide through Pod Security Standards to ensure all workloads benefit from this protection. Runtime/default represents the minimum acceptable seccomp configuration for production Kubernetes workloads.
