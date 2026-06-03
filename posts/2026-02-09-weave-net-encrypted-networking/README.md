@@ -8,7 +8,7 @@ Description: Learn how to deploy Weave Net with network encryption for secure po
 
 ---
 
-Weave Net provides transparent network-level encryption for pod-to-pod communication, protecting data in transit without requiring application-level changes. Unlike most CNI plugins that send pod traffic in plaintext, Weave can encrypt all traffic between nodes using NaCl encryption, preventing network sniffing and man-in-the-middle attacks. This makes Weave Net an excellent choice for compliance requirements like PCI DSS, HIPAA, or handling sensitive data.
+Weave Net provides transparent network-level encryption for pod-to-pod communication, protecting data in transit without requiring application-level changes. Unlike many CNI plugins that send pod traffic in plaintext, Weave can encrypt traffic between nodes using NaCl for the sleeve datapath and IPsec ESP for fast datapath, preventing network sniffing and man-in-the-middle attacks. Weave Net is archived and no longer actively maintained, so check Kubernetes compatibility before using it in a new production cluster, but it can still be useful for existing deployments with compliance requirements like PCI DSS, HIPAA, or handling sensitive data.
 
 The encryption happens at the CNI level, making it completely transparent to applications. Pods communicate normally while Weave encrypts packets before transmission and decrypts them on the receiving node. This approach simplifies security by providing defense in depth without modifying application code or managing service mesh certificates. The trade-off is some performance overhead for encryption, though Weave's implementation minimizes this impact.
 
@@ -27,8 +27,19 @@ kubectl create secret generic weave-passwd \
   --from-literal=weave-passwd=$WEAVE_PASSWORD \
   --namespace=kube-system
 
-# Install Weave Net with encryption
-kubectl apply -f "https://cloud.weave.works/k8s/net?k8s-version=$(kubectl version | base64 | tr -d '\n')&password-secret=weave-passwd"
+# Download the Weave Net manifest
+curl -L -o weave-daemonset-k8s.yaml \
+  https://github.com/weaveworks/weave/releases/download/v2.8.1/weave-daemonset-k8s.yaml
+
+# Edit weave-daemonset-k8s.yaml and add this environment variable to the
+# container named "weave", then apply the manifest:
+#
+# - name: WEAVE_PASSWORD
+#   valueFrom:
+#     secretKeyRef:
+#       name: weave-passwd
+#       key: weave-passwd
+kubectl apply -f weave-daemonset-k8s.yaml
 
 # Verify Weave Net is running
 kubectl get pods -n kube-system -l name=weave-net
@@ -40,10 +51,11 @@ kubectl logs -n kube-system -l name=weave-net -c weave | grep -i encrypt
 
 ## Understanding Weave Encryption
 
-Weave uses NaCl (Networking and Cryptography library) for encryption:
+Weave uses different encryption mechanisms depending on the datapath:
 
-- **Algorithm**: XSalsa20 stream cipher with Poly1305 MAC
-- **Key derivation**: Password-based using PBKDF2
+- **Sleeve/control-plane algorithm**: NaCl with Curve25519, XSalsa20, and Poly1305
+- **Fast datapath algorithm**: IPsec ESP in transport mode with AES-GCM
+- **Key derivation**: Ephemeral Diffie-Hellman session key mixed with the shared password and hashed with SHA-256
 - **Performance**: Highly optimized, minimal CPU overhead
 - **Perfect forward secrecy**: Ephemeral session keys
 - **Transparent**: No application changes required
@@ -100,16 +112,16 @@ spec:
             secretKeyRef:
               name: weave-passwd
               key: weave-passwd
-        # Configure MTU for encryption overhead
+        # Configure MTU. Weave Net defaults to 1376 bytes; use a lower value
+        # only if the underlying network cannot carry 1376 plus overlay overhead.
         - name: WEAVE_MTU
-          value: "1376"  # 1450 - encryption overhead
+          value: "1376"
         # Set IPALLOC_RANGE
         - name: IPALLOC_RANGE
           value: "10.244.0.0/16"
-        # Enable fast datapath
-        - name: WEAVE_NO_FASTDP
-          value: "false"
-        # Peer discovery timeout
+        # Do not set WEAVE_NO_FASTDP unless you want to disable fast datapath.
+        # Any non-empty value is treated as --no-fastdp.
+        # Connection soft limit
         - name: CONN_LIMIT
           value: "100"
 ```
@@ -134,7 +146,7 @@ Packet flow with encryption:
 
 1. Pod sends packet to another pod
 2. Weave intercepts packet on source node
-3. Weave encrypts packet using NaCl
+3. Weave encrypts packet using NaCl for sleeve or IPsec ESP for fast datapath
 4. Encrypted packet sent to destination node
 5. Weave decrypts packet on destination node
 6. Packet delivered to destination pod
@@ -145,13 +157,14 @@ Measure encryption overhead:
 
 ```bash
 # Deploy test pods on different nodes
-kubectl run iperf-server --image=networkstatic/iperf3 -- iperf3 -s
+kubectl run iperf-server --image=networkstatic/iperf3 --restart=Never -- iperf3 -s
+kubectl expose pod iperf-server --port=5201 --target-port=5201
 kubectl run iperf-client --image=networkstatic/iperf3 --overrides='
 {
   "spec": {
     "nodeName": "node2"
   }
-}' -- iperf3 -c iperf-server -t 30
+}' --restart=Never -- iperf3 -c iperf-server -p 5201 -t 30
 
 # Typical results:
 # Without encryption: 9.5 Gbits/sec
@@ -159,42 +172,27 @@ kubectl run iperf-client --image=networkstatic/iperf3 --overrides='
 # Overhead: ~10% throughput reduction
 # CPU increase: ~15% on both nodes
 
-# Encryption CPU usage is acceptable for most workloads
-# Hardware AES acceleration helps if available
+# Encryption CPU usage is workload-dependent; measure on your nodes.
+# Fast datapath encryption can benefit from hardware AES acceleration.
 ```
 
 ## Fast Datapath Mode
 
-Enable fast datapath for better performance:
-
-```yaml
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: weave-net
-  namespace: kube-system
-data:
-  # Enable fast datapath (kernel-level forwarding)
-  weave-net-config: |
-    {
-      "fastdp": true,
-      "encryption": true,
-      "password": "read from secret"
-    }
-```
+Fast datapath is enabled automatically in Weave Net 1.2 and later when the kernel and network path support it. Do not set `WEAVE_NO_FASTDP`; that environment variable disables fast datapath when it has any non-empty value. For encrypted fastdp connections, allow ESP traffic between nodes as well as Weave's TCP 6783 and UDP 6783/6784 ports.
 
 Fast datapath benefits:
 
 - Uses kernel's Open vSwitch datapath
 - Reduces packet processing overhead
 - Compatible with encryption
-- ~20% performance improvement
+- Performance improvement depends on kernel, network, and workload
 
 Check if fast datapath is active:
 
 ```bash
-kubectl logs -n kube-system weave-net-xxxxx -c weave | grep fastdp
-# Should see: "Fastdp enabled"
+kubectl exec -n kube-system weave-net-xxxxx -c weave -- \
+  /home/weave/weave --local status connections
+# Connections using fast datapath show "fastdp"; fallback connections show "sleeve".
 ```
 
 ## Rotating Encryption Keys
@@ -211,15 +209,41 @@ kubectl create secret generic weave-passwd-new \
   --namespace=kube-system \
   --dry-run=client -o yaml | kubectl apply -f -
 
-# Update Weave DaemonSet to use new secret
-kubectl set env daemonset/weave-net -n kube-system \
-  WEAVE_PASSWORD=valueFrom:secretKeyRef:name=weave-passwd-new:key=weave-passwd
+# Update Weave DaemonSet to use new secret. Expect temporary disruption while
+# peers restart because all peers in a Weave network must use the same password.
+kubectl patch daemonset/weave-net -n kube-system --type='strategic' -p='
+{
+  "spec": {
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "name": "weave",
+            "env": [
+              {
+                "name": "WEAVE_PASSWORD",
+                "valueFrom": {
+                  "secretKeyRef": {
+                    "name": "weave-passwd-new",
+                    "key": "weave-passwd"
+                  }
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  }
+}'
 
 # Restart Weave pods
 kubectl rollout restart daemonset/weave-net -n kube-system
 
 # Verify new password is active
-kubectl logs -n kube-system -l name=weave-net -c weave | grep -i "password changed"
+kubectl rollout status daemonset/weave-net -n kube-system
+kubectl exec -n kube-system weave-net-xxxxx -c weave -- \
+  /home/weave/weave --local status | grep Encryption
 ```
 
 ## Network Policies with Encryption
@@ -273,9 +297,9 @@ kubectl port-forward -n kube-system weave-net-xxxxx 6782:6782
 curl http://localhost:6782/metrics
 
 # Key metrics:
-# weave_connections: Number of encrypted connections
+# weave_connections: Number of peer connections, labeled by state/type/encryption
 # weave_connection_terminations_total: Connection drops
-# weave_flows: Active encrypted flows
+# weave_flows: FastDP flows
 # weave_ips: IP allocations
 
 # Check for encryption errors
@@ -364,7 +388,7 @@ kubectl exec -n kube-system weave-net-xxxxx -c weave -- ip link show weave
 # Check Weave logs
 kubectl logs -n kube-system -l name=weave-net -c weave --tail=100
 
-# Look for certificate errors or password mismatches
+# Look for authentication errors or password mismatches
 kubectl logs -n kube-system -l name=weave-net -c weave | grep -i "password\|auth\|encrypt"
 
 # Verify network connectivity between nodes
@@ -405,10 +429,10 @@ metadata:
   namespace: kube-system
 data:
   encryption-details.txt: |
-    Encryption: NaCl (XSalsa20 + Poly1305)
+    Encryption: NaCl (sleeve/control plane) and IPsec ESP AES-GCM (fast datapath)
     Key Length: 256 bits
     Password Rotation: Quarterly
-    Compliance: PCI DSS 4.1, HIPAA 164.312(e)(1)
+    Compliance: PCI DSS Requirement 4, HIPAA 164.312(e)(1)
     Last Updated: 2026-02-09
 ```
 
@@ -418,10 +442,10 @@ Compare Weave encryption with service mesh:
 
 | Feature | Weave Net | Service Mesh (Istio/Linkerd) |
 |---------|-----------|------------------------------|
-| Scope | All pod traffic | Only HTTP/gRPC traffic |
-| Overhead | ~10% | ~15-25% |
+| Scope | Weave overlay pod traffic | Workload traffic included in the mesh |
+| Overhead | Workload-dependent | Workload-dependent |
 | Complexity | Low | High |
-| Protocol support | All | Limited to HTTP/gRPC |
+| Protocol support | All IP traffic on the Weave overlay | HTTP/gRPC plus TCP depending on mesh configuration |
 | Certificate management | Password-based | mTLS certificates |
 | Identity | IP-based | Service identity |
 
