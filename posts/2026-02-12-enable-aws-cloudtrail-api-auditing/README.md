@@ -20,7 +20,7 @@ CloudTrail captures three categories of events:
 2. **Data events**: API calls that operate on data within resources (S3 GetObject/PutObject, Lambda Invoke)
 3. **Insights events**: Unusual API activity patterns (sudden spike in API calls)
 
-By default, AWS provides 90 days of management event history for free in every account. But this isn't a proper trail - it's a view-only history that you can't export, alert on, or keep long-term.
+By default, AWS provides 90 days of management event history for free in every account. But this isn't a proper trail - it's a limited history that you can't alert on or keep long-term.
 
 ## Step 1: Create an S3 Bucket for Logs
 
@@ -31,7 +31,7 @@ CloudTrail logs need to go somewhere. Create a dedicated bucket:
 
 aws s3 mb s3://my-company-cloudtrail-logs-123456789012 --region us-east-1
 
-# Enable versioning to prevent log tampering
+# Enable versioning to make log tampering easier to detect and recover from
 aws s3api put-bucket-versioning \
   --bucket my-company-cloudtrail-logs-123456789012 \
   --versioning-configuration Status=Enabled
@@ -56,7 +56,12 @@ CloudTrail needs permission to write to this bucket. Apply this bucket policy:
         "Service": "cloudtrail.amazonaws.com"
       },
       "Action": "s3:GetBucketAcl",
-      "Resource": "arn:aws:s3:::my-company-cloudtrail-logs-123456789012"
+      "Resource": "arn:aws:s3:::my-company-cloudtrail-logs-123456789012",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/company-audit-trail"
+        }
+      }
     },
     {
       "Sid": "AWSCloudTrailWrite",
@@ -68,7 +73,8 @@ CloudTrail needs permission to write to this bucket. Apply this bucket policy:
       "Resource": "arn:aws:s3:::my-company-cloudtrail-logs-123456789012/AWSLogs/123456789012/*",
       "Condition": {
         "StringEquals": {
-          "s3:x-amz-acl": "bucket-owner-full-control"
+          "s3:x-amz-acl": "bucket-owner-full-control",
+          "aws:SourceArn": "arn:aws:cloudtrail:us-east-1:123456789012:trail/company-audit-trail"
         }
       }
     }
@@ -327,6 +333,8 @@ CREATE EXTERNAL TABLE cloudtrail_logs (
     recipientAccountId STRING
 )
 ROW FORMAT SERDE 'org.apache.hive.hcatalog.data.JsonSerDe'
+STORED AS INPUTFORMAT 'com.amazon.emr.cloudtrail.CloudTrailInputFormat'
+OUTPUTFORMAT 'org.apache.hadoop.hive.ql.io.HiveIgnoreKeyTextOutputFormat'
 LOCATION 's3://my-company-cloudtrail-logs-123456789012/AWSLogs/123456789012/CloudTrail/';
 ```
 
@@ -378,7 +386,7 @@ This checks every log file against its digest. If any file has been modified or 
 - **Management events**: First copy of management events is free. Additional copies are $2.00 per 100,000 events.
 - **Data events**: $0.10 per 100,000 events. High-traffic S3 buckets can generate millions of events per day.
 - **S3 storage**: CloudTrail logs are compressed but can still be significant. Set up lifecycle policies.
-- **Insights events**: $0.35 per 100,000 events analyzed.
+- **Insights events**: $0.35 per 100,000 management events analyzed, and $0.03 per 100,000 data events analyzed.
 
 Set up S3 lifecycle rules to manage costs:
 
