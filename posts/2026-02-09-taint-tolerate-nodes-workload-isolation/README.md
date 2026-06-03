@@ -62,12 +62,12 @@ Remove taints when needed:
 
 ```bash
 # Remove specific taint (note the minus sign at the end)
-kubectl taint nodes gpu-node-1 dedicated=gpu:NoSchedule-
+kubectl taint nodes gpu-node-1 dedicated:NoSchedule-
 
 # Remove taint by key only
 kubectl taint nodes prod-node-1 environment-
 
-# Remove all taints from a node
+# Remove all taints with a specific key from a node
 kubectl taint nodes testing-node-1 workload-
 ```
 
@@ -263,6 +263,9 @@ spec:
     matchLabels:
       app: node-monitor
   template:
+    metadata:
+      labels:
+        app: node-monitor
     spec:
       # Tolerate maintenance taint with timeout
       tolerations:
@@ -391,6 +394,9 @@ spec:
     matchLabels:
       app: resilient-app
   template:
+    metadata:
+      labels:
+        app: resilient-app
     spec:
       # Tolerate node pressure conditions
       tolerations:
@@ -425,6 +431,9 @@ spec:
     matchLabels:
       app: batch-processor
   template:
+    metadata:
+      labels:
+        app: batch-processor
     spec:
       tolerations:
       # Stay on not-ready nodes for 5 minutes
@@ -470,6 +479,9 @@ spec:
     matchLabels:
       app: node-taint-controller
   template:
+    metadata:
+      labels:
+        app: node-taint-controller
     spec:
       serviceAccountName: node-taint-controller
       containers:
@@ -518,4 +530,3 @@ kubectl get pod <pod-name> -o jsonpath='{.spec.tolerations[*].tolerationSeconds}
 ```
 
 Taints and tolerations provide fine-grained control over pod placement in Kubernetes clusters. By properly configuring taints on nodes and tolerations on pods, you can create dedicated workload pools, isolate environments, and ensure critical workloads run on appropriate infrastructure.
-
