@@ -74,7 +74,7 @@ export class FargateServiceStack extends cdk.Stack {
     // Create the ECS cluster inside our VPC
     const cluster = new ecs.Cluster(this, 'ServiceCluster', {
       vpc,
-      containerInsights: true, // Enable CloudWatch Container Insights
+      containerInsightsV2: ecs.ContainerInsights.ENABLED, // Enable CloudWatch Container Insights
     });
   }
 }
@@ -121,7 +121,7 @@ The default health check is fine for simple cases, but you'll almost always want
 ```typescript
 // Configure the health check on the target group
 fargateService.targetGroup.configureHealthCheck({
-  path: '/health',        // Your app's health endpoint
+  path: '/',              // Use your app's health endpoint here
   healthyHttpCodes: '200', // What counts as healthy
   interval: cdk.Duration.seconds(30),
   timeout: cdk.Duration.seconds(5),
@@ -164,7 +164,7 @@ In a real project, you'll want to build from your own Dockerfile rather than pul
 ```typescript
 // Build from a local Dockerfile instead of a registry image
 taskImageOptions: {
-  image: ecs.ContainerImage.fromAsset('./app'), // Path to your Dockerfile
+  image: ecs.ContainerImage.fromAsset('./app'), // Directory containing your Dockerfile
   containerPort: 3000,
   environment: {
     DATABASE_URL: 'your-connection-string',
