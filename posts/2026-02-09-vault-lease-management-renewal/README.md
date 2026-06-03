@@ -40,14 +40,16 @@ These defaults apply to all secrets unless overridden by specific secret engines
 
 ```bash
 # Configure database secret engine TTLs
-vault write database/config/my-database \
-    default_ttl="30m" \
-    max_ttl="2h"
+vault secrets tune \
+    -default-lease-ttl=30m \
+    -max-lease-ttl=2h \
+    database/
 
 # Configure PKI certificate TTLs
-vault write pki/config/urls \
-    default_lease_ttl="6h" \
-    max_lease_ttl="72h"
+vault secrets tune \
+    -default-lease-ttl=6h \
+    -max-lease-ttl=72h \
+    pki/
 ```
 
 ## Implementing Automatic Lease Renewal in Applications
@@ -60,7 +62,7 @@ package main
 import (
     "context"
     "log"
-    "time"
+
     "github.com/hashicorp/vault/api"
 )
 
@@ -163,7 +165,14 @@ data:
     }
 
     template {
-      source      = "/vault/configs/database-config.tpl"
+      contents    = <<EOH
+{{ with secret "database/creds/myapp" }}
+{
+  "username": "{{ .Data.username }}",
+  "password": "{{ .Data.password }}"
+}
+{{ end }}
+EOH
       destination = "/vault/secrets/database-config.json"
     }
 ---
@@ -298,8 +307,10 @@ class DatabaseCredentialManager:
             except Exception as e:
                 print(f"Lease renewal failed: {e}")
                 # Get new credentials
-                self.get_credentials()
-                break
+                response = self.client.read(f'database/creds/{self.role_name}')
+                self.credentials = response['data']
+                self.lease_id = response['lease_id']
+                self.lease_duration = response['lease_duration']
 ```
 
 ## Revoking Leases
@@ -313,8 +324,8 @@ vault lease revoke database/creds/myapp/abc123
 # Revoke all leases under a path
 vault lease revoke -prefix database/creds/myapp/
 
-# Force revoke (skip secret engine cleanup)
-vault lease revoke -force database/creds/myapp/abc123
+# Force revoke (skip secret engine cleanup; requires -prefix)
+vault lease revoke -force -prefix database/creds/myapp/abc123
 ```
 
 Implement graceful revocation in applications:
@@ -337,7 +348,7 @@ func (lm *LeaseManager) Revoke() error {
 
 ## Monitoring Lease Expiration
 
-Set up monitoring to track lease expiration and renewal failures:
+Set up monitoring to track lease volume and expiration errors:
 
 ```yaml
 apiVersion: v1
@@ -351,19 +362,19 @@ data:
     - name: vault-leases
       interval: 30s
       rules:
-      - alert: VaultLeaseExpiringSoon
-        expr: vault_token_lease_seconds_remaining < 300
+      - alert: VaultLeasesScheduledForExpiration
+        expr: vault_expire_leases_by_expiration > 0
         labels:
           severity: warning
         annotations:
-          summary: "Vault lease expiring in less than 5 minutes"
+          summary: "Vault leases are scheduled for expiration"
 
-      - alert: VaultLeaseRenewalFailed
-        expr: rate(vault_lease_renewal_failures_total[5m]) > 0
+      - alert: VaultLeaseExpirationErrors
+        expr: rate(vault_expire_lease_expiration_error[5m]) > 0
         labels:
           severity: critical
         annotations:
-          summary: "Vault lease renewal failures detected"
+          summary: "Vault lease expiration errors detected"
 ```
 
 ## Best Practices for Lease Management
