@@ -8,13 +8,13 @@ Description: Set up AWS Private Certificate Authority to issue and manage TLS ce
 
 ---
 
-Public CAs like Let's Encrypt and DigiCert are great for public-facing websites. But for internal services - microservices communicating over mutual TLS, internal APIs, VPN endpoints, IoT devices - you need your own certificate authority. You don't want (or need) publicly trusted certificates for internal infrastructure, and public CAs won't issue certificates for private domain names like `api.internal.company` anyway.
+Public CAs like Let's Encrypt and DigiCert are great for public-facing websites. But for internal services - microservices communicating over mutual TLS, internal APIs, VPN endpoints, IoT devices - you need your own certificate authority. You don't want (or need) publicly trusted certificates for internal infrastructure, and public CAs won't issue certificates for unregistered internal names like `api.internal` anyway.
 
 AWS Private CA gives you a fully managed certificate authority. You can issue certificates for any domain, any purpose, without going through domain validation. It integrates with ACM for easy deployment to load balancers and CloudFront, and supports both TLS certificates and custom certificate types for things like code signing and device identity.
 
 ## Private CA Hierarchy
 
-Best practice is to use a two-tier hierarchy: a root CA and one or more subordinate CAs. The root CA signs the subordinate CAs, and the subordinate CAs issue end-entity certificates. This way, the root CA stays offline most of the time, reducing its exposure.
+Best practice is to use a two-tier hierarchy: a root CA and one or more subordinate CAs. The root CA signs the subordinate CAs, and the subordinate CAs issue end-entity certificates. This way, the root CA is restricted and used rarely, reducing its exposure.
 
 ```mermaid
 graph TD
@@ -66,7 +66,8 @@ aws acm-pca issue-certificate \
   --csr fileb://root-ca-csr.pem \
   --signing-algorithm SHA256WITHRSA \
   --template-arn arn:aws:acm-pca:::template/RootCACertificate/V1 \
-  --validity Value=3650,Type=DAYS
+  --validity Value=3650,Type=DAYS \
+  --query CertificateArn --output text > root-ca-cert-arn.txt
 ```
 
 Get the issued certificate and import it:
@@ -75,7 +76,7 @@ Get the issued certificate and import it:
 # Get the certificate
 aws acm-pca get-certificate \
   --certificate-authority-arn arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/root-ca-id \
-  --certificate-arn arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/root-ca-id/certificate/cert-id \
+  --certificate-arn "$(cat root-ca-cert-arn.txt)" \
   --query 'Certificate' --output text > root-ca-cert.pem
 
 # Import the certificate to activate the root CA
@@ -119,13 +120,14 @@ aws acm-pca issue-certificate \
   --csr fileb://sub-ca-csr.pem \
   --signing-algorithm SHA256WITHRSA \
   --template-arn arn:aws:acm-pca:::template/SubordinateCACertificate_PathLen0/V1 \
-  --validity Value=1825,Type=DAYS
+  --validity Value=1825,Type=DAYS \
+  --query CertificateArn --output text > sub-ca-cert-arn.txt
 
 # Get and import the certificate
 aws acm-pca get-certificate \
   --certificate-authority-arn arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/root-ca-id \
-  --certificate-arn arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/root-ca-id/certificate/sub-cert-id \
-  --output json > sub-ca-certs.json
+  --certificate-arn "$(cat sub-ca-cert-arn.txt)" \
+  --query 'Certificate' --output text > sub-ca-cert.pem
 
 # Import (include the chain)
 aws acm-pca import-certificate-authority-certificate \
@@ -143,6 +145,12 @@ Now you can issue certificates for your internal services.
 This requests a private certificate through ACM, which handles deployment to load balancers:
 
 ```bash
+# Allow ACM to issue and renew certificates from the private CA
+aws acm-pca create-permission \
+  --certificate-authority-arn arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/sub-ca-id \
+  --principal acm.amazonaws.com \
+  --actions IssueCertificate GetCertificate ListPermissions
+
 # Request a private certificate via ACM
 aws acm request-certificate \
   --domain-name api.prod.internal \
@@ -170,12 +178,13 @@ aws acm-pca issue-certificate \
   --csr fileb://service-csr.pem \
   --signing-algorithm SHA256WITHRSA \
   --template-arn arn:aws:acm-pca:::template/EndEntityCertificate/V1 \
-  --validity Value=365,Type=DAYS
+  --validity Value=365,Type=DAYS \
+  --query CertificateArn --output text > service-cert-arn.txt
 
 # Retrieve the certificate
 aws acm-pca get-certificate \
   --certificate-authority-arn arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/sub-ca-id \
-  --certificate-arn <certificate-arn> \
+  --certificate-arn "$(cat service-cert-arn.txt)" \
   --query 'Certificate' --output text > service-cert.pem
 ```
 
@@ -198,7 +207,8 @@ aws acm-pca issue-certificate \
   --csr fileb://client-csr.pem \
   --signing-algorithm SHA256WITHRSA \
   --template-arn arn:aws:acm-pca:::template/EndEntityClientAuthCertificate/V1 \
-  --validity Value=90,Type=DAYS
+  --validity Value=90,Type=DAYS \
+  --query CertificateArn --output text > client-cert-arn.txt
 ```
 
 Configure API Gateway with mTLS:
@@ -217,6 +227,8 @@ aws apigatewayv2 create-domain-name \
 ## Terraform Configuration
 
 ```hcl
+data "aws_partition" "current" {}
+
 # Root CA
 resource "aws_acmpca_certificate_authority" "root" {
   type = "ROOT"
@@ -236,6 +248,23 @@ resource "aws_acmpca_certificate_authority" "root" {
   permanent_deletion_time_in_days = 7
 }
 
+resource "aws_acmpca_certificate" "root" {
+  certificate_authority_arn   = aws_acmpca_certificate_authority.root.arn
+  certificate_signing_request = aws_acmpca_certificate_authority.root.certificate_signing_request
+  signing_algorithm           = "SHA256WITHRSA"
+  template_arn                = "arn:${data.aws_partition.current.partition}:acm-pca:::template/RootCACertificate/V1"
+
+  validity {
+    type  = "YEARS"
+    value = 10
+  }
+}
+
+resource "aws_acmpca_certificate_authority_certificate" "root" {
+  certificate_authority_arn = aws_acmpca_certificate_authority.root.arn
+  certificate               = aws_acmpca_certificate.root.certificate
+}
+
 # Subordinate CA
 resource "aws_acmpca_certificate_authority" "issuing" {
   type = "SUBORDINATE"
@@ -253,10 +282,35 @@ resource "aws_acmpca_certificate_authority" "issuing" {
   }
 }
 
+resource "aws_acmpca_certificate" "issuing" {
+  certificate_authority_arn   = aws_acmpca_certificate_authority.root.arn
+  certificate_signing_request = aws_acmpca_certificate_authority.issuing.certificate_signing_request
+  signing_algorithm           = "SHA256WITHRSA"
+  template_arn                = "arn:${data.aws_partition.current.partition}:acm-pca:::template/SubordinateCACertificate_PathLen0/V1"
+
+  validity {
+    type  = "YEARS"
+    value = 5
+  }
+}
+
+resource "aws_acmpca_certificate_authority_certificate" "issuing" {
+  certificate_authority_arn = aws_acmpca_certificate_authority.issuing.arn
+  certificate               = aws_acmpca_certificate.issuing.certificate
+  certificate_chain         = aws_acmpca_certificate.issuing.certificate_chain
+}
+
+resource "aws_acmpca_permission" "issuing_acm" {
+  certificate_authority_arn = aws_acmpca_certificate_authority.issuing.arn
+  actions                   = ["IssueCertificate", "GetCertificate", "ListPermissions"]
+  principal                 = "acm.amazonaws.com"
+}
+
 # Private certificate via ACM
 resource "aws_acm_certificate" "internal_api" {
   domain_name               = "api.prod.internal"
   certificate_authority_arn = aws_acmpca_certificate_authority.issuing.arn
+  depends_on                = [aws_acmpca_certificate_authority_certificate.issuing, aws_acmpca_permission.issuing_acm]
 
   lifecycle {
     create_before_destroy = true
@@ -293,12 +347,12 @@ aws acm-pca revoke-certificate \
 
 ## Monitoring and Auditing
 
-Track certificate issuance with CloudTrail and monitor CA health:
+Track ACM-managed certificates and monitor CA health:
 
 ```bash
-# List issued certificates
-aws acm-pca list-certificates \
-  --certificate-authority-arn arn:aws:acm-pca:us-east-1:111111111111:certificate-authority/sub-ca-id
+# List ACM-managed private certificates
+aws acm list-certificates \
+  --includes certificateTypes=PRIVATE
 
 # Check CA status
 aws acm-pca describe-certificate-authority \
@@ -308,7 +362,7 @@ aws acm-pca describe-certificate-authority \
 
 ## Cost Considerations
 
-Private CA charges a monthly fee per CA (around $400/month for general-purpose mode, $50/month for short-lived certificate mode). Certificate issuance is charged per certificate. The short-lived mode is cheaper and ideal if you're issuing certificates that expire in 7 days or less.
+Private CA charges a monthly fee per CA (around $400/month for general-purpose mode, $50/month for short-lived certificate mode). Certificate issuance is charged per certificate. The short-lived mode is cheaper for some short-duration workloads and is limited to certificates that expire in 7 days or less. ACM cannot issue certificates from a short-lived mode CA.
 
 ```bash
 # Create a short-lived CA for ephemeral certificates
