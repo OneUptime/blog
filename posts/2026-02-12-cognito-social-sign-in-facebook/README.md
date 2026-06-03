@@ -51,22 +51,15 @@ resource "aws_cognito_identity_provider" "facebook" {
   provider_details = {
     client_id        = "your-facebook-app-id"
     client_secret    = "your-facebook-app-secret"
-    authorize_scopes = "public_profile,email"
-    api_version      = "v18.0"
-
-    # Facebook-specific endpoints
-    attributes_url                = "https://graph.facebook.com/v18.0/me?fields="
-    attributes_url_add_attributes = "true"
-    authorize_url                 = "https://www.facebook.com/v18.0/dialog/oauth"
-    token_url                     = "https://graph.facebook.com/v18.0/oauth/access_token"
-    token_request_method          = "GET"
+    authorize_scopes = "public_profile, email"
+    api_version      = "v25.0"
   }
 
   # Map Facebook attributes to Cognito attributes
   attribute_mapping = {
-    email    = "email"
-    username = "id"
-    name     = "name"
+    email              = "email"
+    preferred_username = "id"
+    name               = "name"
   }
 }
 ```
@@ -82,12 +75,12 @@ aws cognito-idp create-identity-provider \
   --provider-details '{
     "client_id": "your-facebook-app-id",
     "client_secret": "your-facebook-app-secret",
-    "authorize_scopes": "public_profile,email",
-    "api_version": "v18.0"
+    "authorize_scopes": "public_profile, email",
+    "api_version": "v25.0"
   }' \
   --attribute-mapping '{
     "email": "email",
-    "username": "id",
+    "preferred_username": "id",
     "name": "name"
   }'
 ```
@@ -192,13 +185,13 @@ Facebook's API requires specific permissions for different user data. The most c
 ```hcl
 provider_details = {
   # Basic profile and email - sufficient for most apps
-  authorize_scopes = "public_profile,email"
+  authorize_scopes = "public_profile, email"
 }
 ```
 
 Available scopes include:
 
-- `public_profile` - name, profile picture, age range, gender, locale
+- `public_profile` - ID, name, first name, last name, profile picture
 - `email` - user's email address
 - `user_birthday` - date of birth (requires app review)
 - `user_location` - current city (requires app review)
@@ -211,14 +204,12 @@ Facebook provides these attributes that you can map to Cognito:
 
 ```hcl
 attribute_mapping = {
-  email       = "email"
-  username    = "id"
-  name        = "name"
-  given_name  = "first_name"
-  family_name = "last_name"
-  picture     = "picture"
-  gender      = "gender"
-  locale      = "locale"
+  email              = "email"
+  preferred_username = "id"
+  name               = "name"
+  given_name         = "first_name"
+  family_name        = "last_name"
+  picture            = "picture"
 }
 ```
 
@@ -227,7 +218,7 @@ Custom attributes work too:
 ```hcl
 attribute_mapping = {
   email                    = "email"
-  username                 = "id"
+  preferred_username       = "id"
   name                     = "name"
   "custom:facebook_id"     = "id"
 }
