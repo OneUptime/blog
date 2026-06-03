@@ -15,10 +15,10 @@ Picking the right memory size for a Lambda function is part science, part experi
 Lambda doesn't let you configure CPU independently. CPU scales linearly with memory:
 
 ```text
-CPU allocation = (memory_mb / 1769) vCPUs
+Approximate CPU allocation = (memory_mb / 1769) vCPUs
 ```
 
-At 1,769 MB, you get exactly one full vCPU. Below that, you get a fraction. Above it, you get more than one - but only multi-threaded code can take advantage of multiple vCPUs.
+At 1,769 MB, you get the equivalent of one full vCPU. Below that, you get a fraction. Above it, you get more than one, up to 6 vCPUs at 10,240 MB - but only multi-threaded code can take advantage of multiple vCPUs.
 
 This creates an interesting dynamic. For CPU-bound functions, the relationship between memory and duration is nearly inverse. Double the memory, halve the duration. For I/O-bound functions (waiting on API calls, database queries), more CPU doesn't help much because the function spends most of its time waiting.
 
@@ -50,7 +50,7 @@ REPORT RequestId: abc-123
 
 Look at three things:
 
-1. **Duration vs Init Duration** - If init duration is a large portion of total duration, you have a cold start problem (different from a memory problem)
+1. **Duration vs Init Duration** - If init duration is large relative to handler duration, you have a cold start problem (different from a memory problem)
 2. **Max Memory Used vs Memory Size** - If you're using 112 MB out of 256 MB, you have headroom
 3. **Duration consistency** - If duration varies wildly, you might have an I/O bottleneck
 
@@ -98,8 +98,8 @@ for MEM in "${MEMORY_SIZES[@]}"; do
 
         # Decode and parse the REPORT line
         REPORT=$(echo "$RESULT" | base64 -d | grep "REPORT")
-        DURATION=$(echo "$REPORT" | grep -oP 'Duration: \K[\d.]+')
-        MEM_USED=$(echo "$REPORT" | grep -oP 'Max Memory Used: \K[\d]+')
+        DURATION=$(echo "$REPORT" | awk '{for (i=1; i<=NF; i++) if ($i=="Duration:") {print $(i+1); exit}}')
+        MEM_USED=$(echo "$REPORT" | awk '{for (i=1; i<=NF; i++) if ($i=="Max" && $(i+1)=="Memory" && $(i+2)=="Used:") {print $(i+3); exit}}')
 
         TOTAL_DURATION=$(echo "$TOTAL_DURATION + $DURATION" | bc)
 
@@ -120,13 +120,13 @@ A typical result might look like:
 
 ```text
 Memory(MB),AvgDuration(ms),MaxMemUsed(MB),EstCostPerInvoke
-128,3245.50,98,0.0000683245
-256,1622.75,98,0.0000683245
-512,811.38,98,0.0000683245
-1024,412.25,98,0.0000693050
-1769,245.50,98,0.0000713250
-2048,243.80,98,0.0000821450
-3008,242.15,98,0.0001197950
+128,3245.50,98,0.0000067615
+256,1622.75,98,0.0000067615
+512,811.38,98,0.0000067615
+1024,412.25,98,0.0000068708
+1769,245.50,98,0.0000070685
+2048,243.80,98,0.0000081267
+3008,242.15,98,0.0000118553
 ```
 
 In this example, the function is CPU-bound up to about 1024 MB (duration halves as memory doubles). Above 1769 MB, additional memory doesn't help (duration plateaus). The cost sweet spot is around 512-1024 MB.
@@ -135,7 +135,7 @@ In this example, the function is CPU-bound up to about 1024 MB (duration halves 
 
 Plot the data (or just eyeball the table) and look for these patterns:
 
-**CPU-bound function**: Duration decreases linearly as memory increases. More CPU helps directly. The optimal point is where the curve starts to flatten.
+**CPU-bound function**: Duration decreases roughly inversely as memory increases. More CPU helps directly. The optimal point is where the curve starts to flatten.
 
 **I/O-bound function**: Duration barely changes with more memory. The function is waiting on network calls, not computing. Use the minimum memory that avoids OOM errors.
 
@@ -198,12 +198,12 @@ Based on testing hundreds of Lambda functions, here are starting points:
 
 ### Queue Processors (SQS, SNS)
 - **Memory**: 256-512 MB
-- **Timeout**: Match SQS visibility timeout
+- **Timeout**: For SQS triggers, keep the function timeout at or below the queue visibility timeout; AWS recommends setting the queue visibility timeout to at least six times the function timeout
 - **Why**: Usually simple processing with some I/O. Keep costs low at scale.
 
 ## The 1769 MB Threshold
 
-There's a special significance to 1,769 MB. That's where you get exactly one full vCPU. Below this number, your function shares a CPU core and gets throttled. Above it, you get dedicated CPU cores.
+There's a special significance to 1,769 MB. That's where you get the equivalent of one full vCPU. Below this number, your function has less than one vCPU's worth of CPU entitlement. Above it, your function has access to more than one vCPU.
 
 For CPU-bound workloads, jumping from just below 1769 MB to 1769 MB can sometimes give a disproportionate performance boost. Test around this boundary.
 
