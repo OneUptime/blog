@@ -8,7 +8,7 @@ Description: A comprehensive guide to DynamoDB update expressions covering SET, 
 
 ---
 
-Update expressions are how you modify existing items in DynamoDB without replacing them entirely. Instead of reading an item, changing a field, and writing the whole thing back, you tell DynamoDB exactly which attributes to change. This is more efficient, safer for concurrent access, and uses less write capacity.
+Update expressions are how you modify existing items in DynamoDB without replacing them entirely. Instead of reading an item, changing a field, and writing the whole thing back, you tell DynamoDB exactly which attributes to change. This is more efficient, safer for concurrent access, and avoids an extra read request.
 
 The update expression language has four actions: SET, REMOVE, ADD, and DELETE. Each does something different, and you can combine multiple actions in a single update.
 
@@ -17,8 +17,11 @@ The update expression language has four actions: SET, REMOVE, ADD, and DELETE. E
 SET is the most commonly used action. It creates or overwrites an attribute:
 
 ```javascript
-const AWS = require('aws-sdk');
-const docClient = new AWS.DynamoDB.DocumentClient();
+const { DynamoDBClient } = require('@aws-sdk/client-dynamodb');
+const { DynamoDBDocumentClient, UpdateCommand } = require('@aws-sdk/lib-dynamodb');
+
+const client = new DynamoDBClient({});
+const docClient = DynamoDBDocumentClient.from(client);
 
 // Update a user's email and name
 async function updateUserProfile(userId, name, email) {
@@ -37,7 +40,7 @@ async function updateUserProfile(userId, name, email) {
     ReturnValues: 'ALL_NEW'  // Return the updated item
   };
 
-  const result = await docClient.update(params).promise();
+  const result = await docClient.send(new UpdateCommand(params));
   return result.Attributes;
 }
 ```
@@ -56,7 +59,7 @@ async function incrementViewCount(articleId) {
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 
 // Set an attribute only if it doesn't already exist
@@ -74,7 +77,7 @@ async function setDefaultPreferences(userId) {
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 ```
 
@@ -93,7 +96,7 @@ async function clearUserPhone(userId) {
     UpdateExpression: 'REMOVE phoneNumber, faxNumber'
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 
 // Remove an element from a list by index
@@ -104,7 +107,7 @@ async function removeTagByIndex(articleId, tagIndex) {
     UpdateExpression: `REMOVE tags[${tagIndex}]`
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 ```
 
@@ -127,7 +130,7 @@ async function addStock(productId, quantity) {
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 ```
 
@@ -140,11 +143,11 @@ async function addTags(articleId, newTags) {
     Key: { articleId },
     UpdateExpression: 'ADD tags :newTags',
     ExpressionAttributeValues: {
-      ':newTags': docClient.createSet(newTags)
+      ':newTags': new Set(newTags)
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 
 // Usage: addTags('art-001', ['aws', 'dynamodb', 'nosql'])
@@ -164,11 +167,11 @@ async function removeTags(articleId, tagsToRemove) {
     Key: { articleId },
     UpdateExpression: 'DELETE tags :tagsToRemove',
     ExpressionAttributeValues: {
-      ':tagsToRemove': docClient.createSet(tagsToRemove)
+      ':tagsToRemove': new Set(tagsToRemove)
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 
 // Usage: removeTags('art-001', ['outdated', 'deprecated'])
@@ -204,7 +207,7 @@ async function processOrderShipment(orderId, trackingNumber) {
     ReturnValues: 'ALL_NEW'
   };
 
-  const result = await docClient.update(params).promise();
+  const result = await docClient.send(new UpdateCommand(params));
   return result.Attributes;
 }
 ```
@@ -228,7 +231,7 @@ async function addComment(postId, comment) {
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 
 // Prepend to a list (new item goes to the front)
@@ -243,7 +246,7 @@ async function prependNotification(userId, notification) {
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 
 // Update a specific list element by index
@@ -257,7 +260,7 @@ async function updateListItem(postId, commentIndex, newText) {
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 ```
 
@@ -283,7 +286,7 @@ async function updateUserAddress(userId, city, state) {
     }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 
 // Add a new key to a map
@@ -296,7 +299,7 @@ async function addMetadata(itemId, key, value) {
     ExpressionAttributeValues: { ':value': value }
   };
 
-  await docClient.update(params).promise();
+  await docClient.send(new UpdateCommand(params));
 }
 ```
 
@@ -307,25 +310,25 @@ If the parent map doesn't exist, DynamoDB throws an error. Create it first or us
 async function safeMapUpdate(itemId, key, value) {
   try {
     // Try to update the nested field
-    await docClient.update({
+    await docClient.send(new UpdateCommand({
       TableName: 'Items',
       Key: { itemId },
       UpdateExpression: 'SET metadata.#key = :value',
       ConditionExpression: 'attribute_exists(metadata)',
       ExpressionAttributeNames: { '#key': key },
       ExpressionAttributeValues: { ':value': value }
-    }).promise();
+    }));
   } catch (error) {
-    if (error.code === 'ConditionalCheckFailedException') {
+    if (error.name === 'ConditionalCheckFailedException') {
       // Map doesn't exist - create it
-      await docClient.update({
+      await docClient.send(new UpdateCommand({
         TableName: 'Items',
         Key: { itemId },
         UpdateExpression: 'SET metadata = :map',
         ExpressionAttributeValues: {
           ':map': { [key]: value }
         }
-      }).promise();
+      }));
     } else {
       throw error;
     }
@@ -399,7 +402,7 @@ async function updateItem(tableName, key, updates) {
     ReturnValues: 'ALL_NEW'
   };
 
-  const result = await docClient.update(params).promise();
+  const result = await docClient.send(new UpdateCommand(params));
   return result.Attributes;
 }
 
