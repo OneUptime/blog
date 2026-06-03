@@ -235,7 +235,7 @@ def start_batch_translation(input_bucket, input_prefix, output_bucket, output_pr
         'OutputDataConfig': {
             'S3Uri': f's3://{output_bucket}/{output_prefix}'
         },
-        'DataAccessRoleArn': 'arn:aws:iam::123456789:role/TranslateBatchRole',
+        'DataAccessRoleArn': 'arn:aws:iam::123456789012:role/TranslateBatchRole',
         'SourceLanguageCode': source_language,
         'TargetLanguageCodes': target_languages
     }
@@ -279,12 +279,13 @@ start_batch_translation(
 
 ## Document Translation
 
-Translate entire documents (Word, PowerPoint, Excel, HTML) while preserving formatting:
+Translate entire documents (plain text, HTML, and Word) while preserving formatting:
 
 ```python
 # Lambda for document translation preserving formatting
 import boto3
 import base64
+import json
 
 translate = boto3.client('translate')
 
@@ -351,6 +352,7 @@ def check_rate_limit(user_id, tier, char_count):
     """Check if the user is within their rate limits."""
     limits = RATE_LIMITS.get(tier, RATE_LIMITS['free'])
     month_key = time.strftime('%Y-%m')
+    minute_key = f'{month_key}:minute:{int(time.time() // 60)}'
 
     # Get current month usage
     response = usage_table.get_item(
@@ -363,11 +365,23 @@ def check_rate_limit(user_id, tier, char_count):
     if total_chars + char_count > limits['chars_per_month']:
         return False, f'Monthly character limit exceeded ({total_chars}/{limits["chars_per_month"]})'
 
+    # Get current minute usage
+    response = usage_table.get_item(
+        Key={'userId': user_id, 'period': minute_key}
+    )
+
+    current_minute_usage = response.get('Item', {})
+    request_count = int(current_minute_usage.get('requestCount', 0))
+
+    if request_count + 1 > limits['requests_per_minute']:
+        return False, f'Requests per minute limit exceeded ({request_count}/{limits["requests_per_minute"]})'
+
     return True, None
 
 def track_usage(user_id, char_count, source_lang, target_lang):
     """Track translation usage for billing."""
     month_key = time.strftime('%Y-%m')
+    minute_key = f'{month_key}:minute:{int(time.time() // 60)}'
 
     usage_table.update_item(
         Key={'userId': user_id, 'period': month_key},
@@ -375,6 +389,15 @@ def track_usage(user_id, char_count, source_lang, target_lang):
         ExpressionAttributeValues={
             ':chars': char_count,
             ':one': 1
+        }
+    )
+
+    usage_table.update_item(
+        Key={'userId': user_id, 'period': minute_key},
+        UpdateExpression='SET ttl = :ttl ADD requestCount :one',
+        ExpressionAttributeValues={
+            ':one': 1,
+            ':ttl': int(time.time()) + 120
         }
     )
 ```
