@@ -8,14 +8,16 @@ Description: Learn how to migrate kube-proxy from iptables mode to IPVS mode for
 
 ---
 
-The default iptables mode for kube-proxy works fine for small clusters but struggles as you scale. With thousands of services, iptables rule updates become slow and CPU-intensive. IPVS mode solves this with kernel-level load balancing that handles massive scale efficiently. This guide shows you how to make the switch safely.
+The default iptables mode for kube-proxy works fine for small clusters but can struggle as you scale. With thousands of services and endpoints, iptables rule updates can become slow and CPU-intensive. IPVS mode solves this with kernel-level load balancing that handles massive scale efficiently. This guide shows you how to make the switch safely.
+
+Note: upstream Kubernetes marks IPVS proxy mode as deprecated starting in Kubernetes 1.35 and recommends nftables mode as the replacement for new Linux clusters that can use it. If you are running an older Kubernetes version, or your environment still standardizes on IPVS, the migration steps below still apply.
 
 ## Why Switch to IPVS
 
 IPVS (IP Virtual Server) offers significant advantages over iptables:
 
-- **Performance**: IPVS uses hash tables instead of sequential rule lists. Rule updates are O(1) instead of O(n).
-- **Scalability**: Handles 10,000+ services without breaking a sweat. iptables struggles beyond 5,000.
+- **Performance**: IPVS uses hash tables instead of sequential rule lists for service lookup, which improves rule synchronization and packet processing at scale.
+- **Scalability**: Handles very large service counts more efficiently than legacy iptables mode.
 - **Load balancing algorithms**: IPVS supports round robin, least connection, source hashing, and more. iptables only has random selection.
 - **Lower latency**: IPVS processes packets faster, reducing network latency.
 - **Better resource usage**: Lower CPU overhead on nodes.
@@ -35,7 +37,11 @@ lsmod | grep ip_vs
 sudo modprobe ip_vs
 sudo modprobe ip_vs_rr
 sudo modprobe ip_vs_wrr
+sudo modprobe ip_vs_lc
 sudo modprobe ip_vs_sh
+sudo modprobe ip_vs_dh
+sudo modprobe ip_vs_sed
+sudo modprobe ip_vs_nq
 
 # Verify
 lsmod | grep ip_vs
@@ -47,7 +53,8 @@ You should see output like:
 ip_vs_sh               16384  0
 ip_vs_wrr              16384  0
 ip_vs_rr               16384  0
-ip_vs                 155648  6 ip_vs_rr,ip_vs_sh,ip_vs_wrr
+ip_vs_lc               16384  0
+ip_vs                 155648  9 ip_vs_rr,ip_vs_sh,ip_vs_wrr,ip_vs_lc,ip_vs_dh,ip_vs_sed,ip_vs_nq
 ```
 
 Install ipvsadm for managing IPVS:
@@ -73,7 +80,11 @@ cat <<EOF | sudo tee /etc/modules-load.d/ipvs.conf
 ip_vs
 ip_vs_rr
 ip_vs_wrr
+ip_vs_lc
 ip_vs_sh
+ip_vs_dh
+ip_vs_sed
+ip_vs_nq
 nf_conntrack
 EOF
 
@@ -130,30 +141,48 @@ kubectl get pods -n kube-system -l k8s-app=kube-proxy -w
 
 Managed Kubernetes platforms handle this differently.
 
-**Amazon EKS**: Edit the `aws-node` DaemonSet or use an addon configuration. For EKS 1.25+:
+**Amazon EKS**: Update the `kube-proxy` EKS add-on configuration, or edit the `kube-proxy-config` ConfigMap for self-managed kube-proxy:
 
 ```bash
 # Update kube-proxy addon
 aws eks update-addon \
   --cluster-name my-cluster \
   --addon-name kube-proxy \
-  --configuration-values '{"mode":"ipvs"}'
+  --configuration-values '{"ipvs":{"scheduler":"rr"},"mode":"ipvs"}' \
+  --resolve-conflicts OVERWRITE
 ```
 
-**Google GKE**: IPVS is available on GKE 1.22+. Update cluster configuration:
+**Google GKE**: GKE does not expose a general "switch kube-proxy to IPVS" cluster update command. For new GKE clusters, use GKE Dataplane V2 instead of kube-proxy for service load balancing:
 
 ```bash
-gcloud container clusters update my-cluster \
-  --enable-network-policy \
-  --network-policy=PROVIDER_UNSPECIFIED
+gcloud container clusters create my-cluster \
+  --enable-dataplane-v2 \
+  --enable-ip-alias \
+  --release-channel regular \
+  --location us-central1
 ```
 
-GKE uses a different approach - check the latest documentation.
+GKE Dataplane V2 can only be enabled when creating a new cluster, so existing clusters need a migration plan rather than an in-place kube-proxy mode change.
 
-**Azure AKS**: Edit the kube-proxy ConfigMap similar to kubeadm, but be aware AKS may override your changes. Use Azure CNI configuration instead:
+**Azure AKS**: AKS supports kube-proxy configuration through a preview feature and the `--kube-proxy-config` flag. Create a config file:
+
+```json
+{
+  "enabled": true,
+  "mode": "IPVS",
+  "ipvsConfig": {
+    "scheduler": "RoundRobin"
+  }
+}
+```
+
+Then update the cluster:
 
 ```bash
-az aks update -n my-cluster -g my-resource-group --network-plugin azure
+az aks update \
+  --resource-group my-resource-group \
+  --name my-cluster \
+  --kube-proxy-config kube-proxy.json
 ```
 
 ### For kops Clusters
@@ -170,9 +199,8 @@ Add or modify the kubeProxy section:
 spec:
   kubeProxy:
     enabled: true
-    proxyMode: IPVS
-    ipvs:
-      scheduler: rr
+    proxyMode: ipvs
+    ipvsScheduler: rr
 ```
 
 Apply the changes:
@@ -354,7 +382,7 @@ curl http://localhost:10249/metrics | grep kubeproxy_sync
 
 Key metrics:
 
-- `kubeproxy_sync_proxy_rules_duration_seconds`: Time to sync rules (should be lower with IPVS)
+- `kubeproxy_sync_proxy_rules_duration_seconds`: Time to sync rules (often lower with IPVS in large clusters)
 - `kubeproxy_sync_proxy_rules_iptables_total`: Still tracked but should show minimal iptables usage
 - `kubeproxy_network_programming_duration_seconds`: Network programming latency
 
@@ -397,12 +425,18 @@ cat <<EOF | sudo tee /etc/modules-load.d/ipvs.conf
 ip_vs
 ip_vs_rr
 ip_vs_wrr
+ip_vs_lc
 ip_vs_sh
+ip_vs_dh
+ip_vs_sed
+ip_vs_nq
 nf_conntrack
 EOF
 
 # Load immediately
-sudo modprobe ip_vs ip_vs_rr ip_vs_wrr ip_vs_sh
+for module in ip_vs ip_vs_rr ip_vs_wrr ip_vs_lc ip_vs_sh ip_vs_dh ip_vs_sed ip_vs_nq nf_conntrack; do
+  sudo modprobe "$module"
+done
 ```
 
 ### kube-proxy Crashes After Switch
@@ -419,7 +453,7 @@ Common errors:
 
 - Missing ipset: `sudo apt-get install ipset`
 - Missing conntrack: `sudo apt-get install conntrack`
-- Kernel version too old: Upgrade kernel to 4.19+
+- Kernel version too old or missing IPVS support: use a supported distribution kernel with the IPVS modules available
 
 ### Services Not Reachable
 
@@ -475,4 +509,4 @@ When switching to IPVS:
 - Consider using strictARP: true if using MetalLB
 - Monitor conntrack table size and increase if needed
 
-Switching to IPVS is one of the best performance optimizations you can make in large Kubernetes clusters. The improvement in rule sync time and packet processing latency is dramatic, especially when you have hundreds or thousands of services.
+For clusters that still use IPVS, switching from iptables can significantly improve rule sync time and packet processing latency, especially when you have hundreds or thousands of services. For new clusters on current Kubernetes releases, evaluate nftables first because it is the upstream replacement for IPVS.
