@@ -81,8 +81,14 @@ Here's a complete distribution configuration for a web application with both sta
   "DefaultCacheBehavior": {
     "TargetOriginId": "alb-origin",
     "ViewerProtocolPolicy": "redirect-to-https",
-    "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
-    "CachedMethods": ["GET", "HEAD"],
+    "AllowedMethods": {
+      "Quantity": 7,
+      "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["GET", "HEAD"]
+      }
+    },
     "Compress": true,
     "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
     "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3"
@@ -94,13 +100,16 @@ Here's a complete distribution configuration for a web application with both sta
         "PathPattern": "/static/*",
         "TargetOriginId": "s3-static-origin",
         "ViewerProtocolPolicy": "redirect-to-https",
-        "AllowedMethods": ["GET", "HEAD"],
-        "CachedMethods": ["GET", "HEAD"],
+        "AllowedMethods": {
+          "Quantity": 2,
+          "Items": ["GET", "HEAD"],
+          "CachedMethods": {
+            "Quantity": 2,
+            "Items": ["GET", "HEAD"]
+          }
+        },
         "Compress": true,
-        "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
-        "MinTTL": 0,
-        "DefaultTTL": 86400,
-        "MaxTTL": 31536000
+        "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6"
       }
     ]
   },
@@ -152,7 +161,14 @@ For a typical web app, you want different caching strategies for different conte
   "PathPattern": "/api/*",
   "TargetOriginId": "alb-origin",
   "ViewerProtocolPolicy": "https-only",
-  "AllowedMethods": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+  "AllowedMethods": {
+    "Quantity": 7,
+    "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"],
+    "CachedMethods": {
+      "Quantity": 2,
+      "Items": ["GET", "HEAD"]
+    }
+  },
   "CachePolicyId": "4135ea2d-6df8-44a3-9df3-4b5a84be39ad",
   "OriginRequestPolicyId": "216adef6-5c7f-47e4-b989-5492eafa07d3"
 }
@@ -169,7 +185,7 @@ CloudFront can compress responses using gzip and Brotli before sending them to u
 # This is set via the Compress: true flag in the cache behavior
 ```
 
-Make sure your origin doesn't also compress the response, or you'll end up with double-compressed content that browsers can't decode.
+If your origin also compresses the response, make sure it sends the correct `Content-Encoding` header. CloudFront uses that header to recognize already-compressed objects and won't compress them again.
 
 ## Step 5: Set Up Custom Error Pages
 
@@ -261,9 +277,11 @@ aws cloudfront create-response-headers-policy \
   }'
 ```
 
+After creating the policy, attach the returned policy ID to your cache behaviors with the `ResponseHeadersPolicyId` field when you update the distribution.
+
 ## Monitoring Your Distribution
 
-CloudFront publishes metrics to CloudWatch automatically. The key ones to watch:
+CloudFront publishes default metrics to CloudWatch automatically. Some metrics, including cache hit rate, require enabling additional metrics for the distribution. The key ones to watch:
 
 - **Requests** - Total number of requests
 - **BytesDownloaded** - Total data transferred
@@ -273,6 +291,7 @@ CloudFront publishes metrics to CloudWatch automatically. The key ones to watch:
 ```bash
 # Check the cache hit rate over the last hour
 aws cloudwatch get-metric-statistics \
+  --region us-east-1 \
   --namespace AWS/CloudFront \
   --metric-name CacheHitRate \
   --dimensions Name=DistributionId,Value=E1234567890 Name=Region,Value=Global \
