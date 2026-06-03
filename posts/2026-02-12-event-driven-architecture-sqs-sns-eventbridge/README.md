@@ -70,7 +70,7 @@ This code publishes an event to EventBridge from your order service.
 ```python
 import boto3
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 
 events = boto3.client("events")
 
@@ -87,7 +87,7 @@ def publish_order_placed(order):
                     "items": order["items"],
                     "total": order["total"],
                     "currency": "USD",
-                    "placed_at": datetime.utcnow().isoformat()
+                    "placed_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
                 }),
                 "EventBusName": "my-app-bus"
             }
@@ -132,8 +132,8 @@ resource "aws_cloudwatch_event_rule" "order_events" {
   event_bus_name = aws_cloudwatch_event_bus.app_bus.name
 
   event_pattern = jsonencode({
-    source      = ["com.myapp.orders"]
-    detail-type = ["Order Placed", "Order Shipped", "Order Cancelled"]
+    source        = ["com.myapp.orders"]
+    "detail-type" = ["Order Placed", "Order Shipped", "Order Cancelled"]
   })
 }
 
@@ -144,18 +144,42 @@ resource "aws_cloudwatch_event_target" "order_to_sns" {
   arn            = aws_sns_topic.order_events.arn
 }
 
+# Allow EventBridge to publish to the SNS topic
+resource "aws_sns_topic_policy" "order_events" {
+  arn = aws_sns_topic.order_events.arn
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "events.amazonaws.com"
+      }
+      Action   = "sns:Publish"
+      Resource = aws_sns_topic.order_events.arn
+    }]
+  })
+}
+
 # Route high-value orders to a special processing queue
 resource "aws_cloudwatch_event_rule" "high_value_orders" {
   name           = "high-value-orders"
   event_bus_name = aws_cloudwatch_event_bus.app_bus.name
 
   event_pattern = jsonencode({
-    source      = ["com.myapp.orders"]
-    detail-type = ["Order Placed"]
+    source        = ["com.myapp.orders"]
+    "detail-type" = ["Order Placed"]
     detail = {
       total = [{ numeric = [">", 1000] }]
     }
   })
+}
+
+resource "aws_cloudwatch_event_target" "high_value_to_sqs" {
+  rule           = aws_cloudwatch_event_rule.high_value_orders.name
+  event_bus_name = aws_cloudwatch_event_bus.app_bus.name
+  target_id      = "high-value-sqs-target"
+  arn            = aws_sqs_queue.high_value_orders.arn
 }
 
 # Send all events to audit queue
@@ -192,8 +216,13 @@ resource "aws_sns_topic_subscription" "fulfillment" {
   endpoint  = aws_sqs_queue.fulfillment.arn
 
   # Only receive Order Placed events
+  filter_policy_scope = "MessageBody"
   filter_policy = jsonencode({
-    detail-type = ["Order Placed"]
+    "detail-type" = ["Order Placed"]
+  })
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.sns_delivery_dlq.arn
   })
 }
 
@@ -204,8 +233,13 @@ resource "aws_sns_topic_subscription" "notifications" {
   endpoint  = aws_sqs_queue.notifications.arn
 
   # Receive all order events
+  filter_policy_scope = "MessageBody"
   filter_policy = jsonencode({
-    detail-type = ["Order Placed", "Order Shipped", "Order Cancelled"]
+    "detail-type" = ["Order Placed", "Order Shipped", "Order Cancelled"]
+  })
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.sns_delivery_dlq.arn
   })
 }
 ```
@@ -250,6 +284,131 @@ resource "aws_sqs_queue" "notifications_dlq" {
 resource "aws_sqs_queue" "audit" {
   name                       = "audit-queue"
   visibility_timeout_seconds = 60
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.audit_dlq.arn
+    maxReceiveCount     = 3
+  })
+}
+
+resource "aws_sqs_queue" "audit_dlq" {
+  name = "audit-dlq"
+}
+
+resource "aws_sqs_queue" "high_value_orders" {
+  name                       = "high-value-orders-queue"
+  visibility_timeout_seconds = 300
+
+  redrive_policy = jsonencode({
+    deadLetterTargetArn = aws_sqs_queue.high_value_orders_dlq.arn
+    maxReceiveCount     = 5
+  })
+}
+
+resource "aws_sqs_queue" "high_value_orders_dlq" {
+  name = "high-value-orders-dlq"
+}
+
+resource "aws_sqs_queue" "sns_delivery_dlq" {
+  name                      = "sns-delivery-dlq"
+  message_retention_seconds = 1209600
+}
+
+# Allow EventBridge to send matching events to the direct SQS targets
+resource "aws_sqs_queue_policy" "eventbridge_targets" {
+  queue_url = aws_sqs_queue.audit.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "events.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.audit.arn
+    }]
+  })
+}
+
+resource "aws_sqs_queue_policy" "eventbridge_high_value" {
+  queue_url = aws_sqs_queue.high_value_orders.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "events.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.high_value_orders.arn
+    }]
+  })
+}
+
+# Allow SNS to deliver messages to subscribed queues and its delivery DLQ
+resource "aws_sqs_queue_policy" "sns_targets" {
+  queue_url = aws_sqs_queue.fulfillment.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "sns.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.fulfillment.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.order_events.arn
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_sqs_queue_policy" "sns_notifications" {
+  queue_url = aws_sqs_queue.notifications.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "sns.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.notifications.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.order_events.arn
+        }
+      }
+    }]
+  })
+}
+
+resource "aws_sqs_queue_policy" "sns_delivery_dlq" {
+  queue_url = aws_sqs_queue.sns_delivery_dlq.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "sns.amazonaws.com"
+      }
+      Action   = "sqs:SendMessage"
+      Resource = aws_sqs_queue.sns_delivery_dlq.arn
+      Condition = {
+        ArnEquals = {
+          "aws:SourceArn" = aws_sns_topic.order_events.arn
+        }
+      }
+    }]
+  })
 }
 ```
 
@@ -307,11 +466,11 @@ def notification_handler(event, context):
 One of EventBridge's best features is event replay. If you archive your events, you can replay them later - useful for debugging, populating new services, or recovering from failures.
 
 ```bash
-# Start a replay of all order events from the last 24 hours
+# Start a replay of archived events from the last 24 hours
 aws events start-replay \
-  --replay-name "order-replay-20260212" \
-  --event-source-arn "arn:aws:events:us-east-1:123456789:event-bus/my-app-bus" \
-  --destination '{"Arn":"arn:aws:events:us-east-1:123456789:event-bus/my-app-bus"}' \
+  --replay-name "app-replay-20260212" \
+  --event-source-arn "arn:aws:events:us-east-1:123456789012:archive/my-app-archive" \
+  --destination '{"Arn":"arn:aws:events:us-east-1:123456789012:event-bus/my-app-bus"}' \
   --event-start-time "2026-02-11T00:00:00Z" \
   --event-end-time "2026-02-12T00:00:00Z"
 ```
@@ -320,9 +479,9 @@ aws events start-replay \
 
 In an event-driven system, you need a clear strategy for handling failures at each layer.
 
-**EventBridge**: Events that don't match any rule are silently dropped. Use a catch-all rule to an archive or audit queue.
+**EventBridge**: Events that don't match any rule are not delivered to a target. Create an archive on the event bus, and use a catch-all rule to send events to an audit queue.
 
-**SNS**: Failed deliveries go to the subscription's DLQ. Always configure one.
+**SNS**: Failed deliveries go to the subscription's DLQ when a redrive policy is configured. Always configure one.
 
 **SQS**: Messages that can't be processed after the max receive count go to the queue's DLQ. Monitor your DLQs actively.
 
