@@ -47,7 +47,8 @@ spec:
     spec:
       containers:
       - name: otel-collector
-        image: otel/opentelemetry-collector-contrib:0.92.0
+        image: otel/opentelemetry-collector-contrib:0.153.0
+        args: ["--config=/etc/otel/config.yaml"]
         ports:
         - containerPort: 4317  # OTLP gRPC
         - containerPort: 4318  # OTLP HTTP
@@ -111,15 +112,15 @@ data:
         tls:
           insecure: true
 
-      logging:
-        loglevel: debug
+      debug:
+        verbosity: detailed
 
     service:
       pipelines:
         traces:
           receivers: [otlp]
           processors: [attributes, batch]
-          exporters: [otlp, logging]
+          exporters: [otlp, debug]
 ```
 
 ## Instrumenting Test Services
@@ -131,15 +132,19 @@ Each microservice in your test environment needs OpenTelemetry instrumentation c
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
 const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-grpc');
-const { Resource } = require('@opentelemetry/resources');
-const { SemanticResourceAttributes } = require('@opentelemetry/semantic-conventions');
+const { resourceFromAttributes } = require('@opentelemetry/resources');
+const {
+  ATTR_DEPLOYMENT_ENVIRONMENT_NAME,
+  ATTR_SERVICE_NAME,
+  ATTR_SERVICE_NAMESPACE,
+} = require('@opentelemetry/semantic-conventions');
 
 // Initialize OpenTelemetry
 const sdk = new NodeSDK({
-  resource: new Resource({
-    [SemanticResourceAttributes.SERVICE_NAME]: 'order-service',
-    [SemanticResourceAttributes.SERVICE_NAMESPACE]: 'integration-test',
-    [SemanticResourceAttributes.DEPLOYMENT_ENVIRONMENT]: 'test',
+  resource: resourceFromAttributes({
+    [ATTR_SERVICE_NAME]: 'order-service',
+    [ATTR_SERVICE_NAMESPACE]: 'integration-test',
+    [ATTR_DEPLOYMENT_ENVIRONMENT_NAME]: 'test',
   }),
   traceExporter: new OTLPTraceExporter({
     url: 'http://otel-collector.integration-test.svc.cluster.local:4317',
@@ -151,6 +156,7 @@ sdk.start();
 
 const express = require('express');
 const app = express();
+app.use(express.json());
 
 app.post('/orders', async (req, res) => {
   const { trace } = require('@opentelemetry/api');
@@ -166,7 +172,11 @@ app.post('/orders', async (req, res) => {
     const paymentResult = await fetch('http://payment-service/charge', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId: req.body.orderId, amount: req.body.total }),
+      body: JSON.stringify({
+        orderId: req.body.orderId,
+        amount: req.body.total,
+        paymentMethod: req.body.paymentMethod,
+      }),
     });
 
     if (!paymentResult.ok) {
@@ -194,7 +204,7 @@ app.listen(3000);
 
 ## Building the Test Framework
 
-Create a test framework that can trigger requests and query traces. Here's a Python example using pytest and the Jaeger client:
+Create a test framework that can trigger requests and query traces. Here's a Python example using pytest and the Jaeger Query HTTP API:
 
 ```python
 # tests/test_order_flow.py
@@ -202,11 +212,10 @@ import pytest
 import requests
 import time
 from opentelemetry import trace
+from opentelemetry.propagate import inject
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from jaeger_client import Config
-import json
 
 class TraceValidator:
     """Helper class to query and validate traces"""
@@ -222,7 +231,7 @@ class TraceValidator:
             )
             if response.status_code == 200:
                 data = response.json()
-                if data['data'] and len(data['data']) > 0:
+                if data.get('data') and len(data['data']) > 0:
                     return data['data'][0]
             time.sleep(delay)
         raise TimeoutError(f'Trace {trace_id} not found after {max_retries} retries')
@@ -230,7 +239,8 @@ class TraceValidator:
     def find_span(self, trace, service_name, operation_name):
         """Find a specific span in the trace"""
         for span in trace['spans']:
-            if (span['process']['serviceName'] == service_name and
+            process = trace.get('processes', {}).get(span.get('processID'), {})
+            if (process.get('serviceName') == service_name and
                 span['operationName'] == operation_name):
                 return span
         return None
@@ -274,26 +284,37 @@ def order_service_url():
     """Fixture to provide order service URL"""
     return 'http://order-service.integration-test.svc.cluster.local:3000'
 
-def test_successful_order_flow(trace_validator, order_service_url):
-    """Test complete order flow with trace validation"""
-
-    # Setup OpenTelemetry for test client
+@pytest.fixture(scope='session')
+def tracer_provider():
+    """Configure OpenTelemetry once for the test process"""
     provider = TracerProvider()
     processor = BatchSpanProcessor(
         OTLPSpanExporter(endpoint='http://otel-collector.integration-test.svc.cluster.local:4317')
     )
     provider.add_span_processor(processor)
     trace.set_tracer_provider(provider)
-    tracer = trace.get_tracer(__name__)
+    yield provider
+    provider.shutdown()
+
+@pytest.fixture
+def tracer(tracer_provider):
+    """Fixture to provide a tracer for tests"""
+    return trace.get_tracer(__name__)
+
+def test_successful_order_flow(trace_validator, order_service_url, tracer_provider, tracer):
+    """Test complete order flow with trace validation"""
 
     # Execute test with tracing
     with tracer.start_as_current_span('integration-test-order-flow') as span:
         trace_id = format(span.get_span_context().trace_id, '032x')
         span.set_attribute('test.name', 'test_successful_order_flow')
+        headers = {}
+        inject(headers)
 
         # Make order request
         response = requests.post(
             f'{order_service_url}/orders',
+            headers=headers,
             json={
                 'orderId': 'test-123',
                 'customerId': 'cust-456',
@@ -306,7 +327,7 @@ def test_successful_order_flow(trace_validator, order_service_url):
         assert response.json()['success'] is True
 
     # Force flush to ensure trace is exported
-    provider.force_flush()
+    tracer_provider.force_flush()
 
     # Wait for trace to be indexed
     time.sleep(2)
@@ -338,23 +359,18 @@ def test_successful_order_flow(trace_validator, order_service_url):
     trace_validator.assert_parent_child(trace_data, order_span['spanID'], payment_span['spanID'])
     trace_validator.assert_parent_child(trace_data, order_span['spanID'], inventory_span['spanID'])
 
-def test_payment_failure_handling(trace_validator, order_service_url):
+def test_payment_failure_handling(trace_validator, order_service_url, tracer_provider, tracer):
     """Test order flow when payment fails"""
-
-    provider = TracerProvider()
-    processor = BatchSpanProcessor(
-        OTLPSpanExporter(endpoint='http://otel-collector.integration-test.svc.cluster.local:4317')
-    )
-    provider.add_span_processor(processor)
-    trace.set_tracer_provider(provider)
-    tracer = trace.get_tracer(__name__)
 
     with tracer.start_as_current_span('integration-test-payment-failure') as span:
         trace_id = format(span.get_span_context().trace_id, '032x')
+        headers = {}
+        inject(headers)
 
         # Trigger payment failure with invalid card
         response = requests.post(
             f'{order_service_url}/orders',
+            headers=headers,
             json={
                 'orderId': 'test-124',
                 'customerId': 'cust-456',
@@ -366,7 +382,7 @@ def test_payment_failure_handling(trace_validator, order_service_url):
 
         assert response.status_code == 500
 
-    provider.force_flush()
+    tracer_provider.force_flush()
     time.sleep(2)
 
     trace_data = trace_validator.get_trace_by_id(trace_id)
@@ -449,7 +465,7 @@ class AdvancedTraceAssertions:
         """Assert that a service retried the expected number of times"""
         retry_spans = [
             s for s in trace['spans']
-            if s['process']['serviceName'] == service_name and
+            if trace.get('processes', {}).get(s.get('processID'), {}).get('serviceName') == service_name and
                s['operationName'] == operation_name
         ]
 
@@ -470,7 +486,7 @@ jobs:
   integration-test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v6
 
     - name: Setup Kubernetes
       uses: helm/kind-action@v1.5.0
@@ -502,7 +518,7 @@ jobs:
 
     - name: Upload trace artifacts
       if: failure()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: failed-traces
         path: traces.json
