@@ -14,7 +14,7 @@ The Amazon VPC CNI plugin assigns IP addresses from your VPC subnets to Kubernet
 
 Default VPC CNI behavior assigns both node and pod IPs from the same subnet. In a /24 subnet with 256 addresses, you might run out of IPs before reaching your desired pod density. Custom networking solves this by using separate subnets for pods.
 
-Consider a cluster where each node runs 50 pods. With default networking, each node consumes 51 IPs (1 for the node, 50 for pods). A /24 subnet supports only 4-5 nodes. With custom networking, node IPs come from one subnet while pod IPs come from larger, dedicated subnets.
+Consider a cluster where each node runs 50 pods. With default networking, each node consumes 51 IPs (1 for the node, 50 for pods). After accounting for AWS-reserved subnet addresses, a /24 subnet supports about 4 nodes at that density. With custom networking, node IPs come from one subnet while pod IPs come from larger, dedicated subnets.
 
 Additional benefits include network segmentation for security policies, simplified network troubleshooting, and the ability to use secondary CIDR blocks for pod networks without affecting node networking.
 
@@ -48,7 +48,7 @@ aws ec2 create-subnet \
   --region us-east-1
 ```
 
-The 100.64.0.0/16 range (RFC 6598) works well for pod networks as it's designated for carrier-grade NAT and won't conflict with typical enterprise networks.
+The 100.64.0.0/16 range is part of the 100.64.0.0/10 Shared Address Space defined by RFC 6598. AWS recommends CG-NAT ranges such as 100.64.0.0/10 for pod networks because they are often less likely to conflict with RFC 1918 enterprise networks, but you should still verify that the range is not already used in your environment.
 
 ## Enabling Custom Networking
 
@@ -123,35 +123,37 @@ Pod subnets need security group rules that allow pod-to-pod communication and ac
 
 ```bash
 # Create security group for pods
-aws ec2 create-security-group \
+pod_sg_id=$(aws ec2 create-security-group \
   --group-name eks-pod-sg \
   --description "Security group for EKS pods" \
   --vpc-id vpc-12345678 \
-  --region us-east-1
+  --query GroupId \
+  --output text \
+  --region us-east-1)
 
 # Allow pod-to-pod communication
 aws ec2 authorize-security-group-ingress \
-  --group-id sg-pod-security-group \
+  --group-id $pod_sg_id \
   --protocol all \
-  --source-group sg-pod-security-group \
-  --region us-east-1
-
-# Allow communication with nodes
-aws ec2 authorize-security-group-ingress \
-  --group-id sg-pod-security-group \
-  --protocol all \
-  --source-group sg-node-security-group \
+  --source-group $pod_sg_id \
   --region us-east-1
 
 # Allow nodes to communicate with pods
 aws ec2 authorize-security-group-ingress \
+  --group-id $pod_sg_id \
+  --protocol all \
+  --source-group sg-node-security-group \
+  --region us-east-1
+
+# Allow pods to communicate with nodes
+aws ec2 authorize-security-group-ingress \
   --group-id sg-node-security-group \
   --protocol all \
-  --source-group sg-pod-security-group \
+  --source-group $pod_sg_id \
   --region us-east-1
 ```
 
-These rules establish bidirectional communication between pods and between pods and nodes, which is essential for Kubernetes networking.
+These rules establish bidirectional communication between pods and between pods and nodes. With the default AWS_VPC_K8S_CNI_EXTERNALSNAT=false setting, traffic from pods to destinations outside the VPC CIDR blocks is SNATed through the node's primary network interface, so the node subnet and node security group are used for that egress traffic rather than the ENIConfig subnet and security group.
 
 ## Updating Node Groups
 
@@ -207,7 +209,7 @@ Check the VPC CNI logs for confirmation:
 kubectl get pods -n kube-system -o wide | grep aws-node
 
 # Check logs
-kubectl logs -n kube-system aws-node-xxxxx
+kubectl logs -n kube-system aws-node-xxxxx -c aws-node
 ```
 
 Look for messages indicating ENIConfig selection and IP assignment from the custom subnet.
@@ -260,14 +262,17 @@ Test network policies thoroughly after implementing custom networking to ensure 
 
 ## Monitoring and Troubleshooting
 
-Monitor IP allocation and ENI attachment metrics:
+Monitor IP allocation and ENI attachment details:
 
 ```bash
-# Check available IPs per node
-kubectl get nodes -o json | jq -r '.items[] | {name: .metadata.name, allocatable: .status.allocatable["vpc.amazonaws.com/pod-eni"]}'
+# View CNI IPAM logs
+kubectl logs -n kube-system -l k8s-app=aws-node -c aws-node --tail=100
 
-# View ENI metrics in CNI logs
-kubectl logs -n kube-system -l k8s-app=aws-node --tail=100
+# Check available IPs in each pod subnet
+aws ec2 describe-subnets \
+  --subnet-ids subnet-abcd1234 subnet-efgh5678 \
+  --query 'Subnets[*].{SubnetId:SubnetId,AvailableIps:AvailableIpAddressCount}' \
+  --region us-east-1
 ```
 
 Common issues include subnet exhaustion, security group misconfigurations, and routing table problems. If pods fail to start, check:
@@ -285,13 +290,19 @@ aws ec2 describe-route-tables \
   --region us-east-1
 ```
 
-Ensure pod subnets have routes to NAT gateways or internet gateways if pods need external connectivity.
+If you set AWS_VPC_K8S_CNI_EXTERNALSNAT=true, ensure pod subnets have routes to NAT gateways or internet gateways if pods need external connectivity. With the default external SNAT setting, outbound traffic to destinations outside the VPC CIDR blocks uses the node's primary network interface and its subnet routes.
 
 ## Terraform Configuration
 
 Automate custom networking setup with Terraform:
 
 ```hcl
+# Associate the secondary CIDR block for pod subnets
+resource "aws_vpc_ipv4_cidr_block_association" "pod_cidr" {
+  vpc_id     = aws_vpc.main.id
+  cidr_block = "100.64.0.0/16"
+}
+
 # Create pod subnets
 resource "aws_subnet" "pod_subnets" {
   for_each = {
@@ -306,31 +317,22 @@ resource "aws_subnet" "pod_subnets" {
   tags = {
     Name = "pod-subnet-${each.key}"
   }
+
+  depends_on = [aws_vpc_ipv4_cidr_block_association.pod_cidr]
 }
 
-# Configure VPC CNI
-resource "kubernetes_daemonset_v1" "aws_node" {
-  metadata {
-    name      = "aws-node"
-    namespace = "kube-system"
-  }
+# Configure the managed VPC CNI add-on
+resource "aws_eks_addon" "vpc_cni" {
+  cluster_name                = aws_eks_cluster.main.name
+  addon_name                  = "vpc-cni"
+  resolve_conflicts_on_update = "PRESERVE"
 
-  spec {
-    template {
-      spec {
-        container {
-          env {
-            name  = "AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG"
-            value = "true"
-          }
-          env {
-            name  = "ENI_CONFIG_LABEL_DEF"
-            value = "topology.kubernetes.io/zone"
-          }
-        }
-      }
+  configuration_values = jsonencode({
+    env = {
+      AWS_VPC_K8S_CNI_CUSTOM_NETWORK_CFG = "true"
+      ENI_CONFIG_LABEL_DEF               = "topology.kubernetes.io/zone"
     }
-  }
+  })
 }
 
 # Create ENIConfigs
