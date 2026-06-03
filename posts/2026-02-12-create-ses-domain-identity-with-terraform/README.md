@@ -19,7 +19,7 @@ Before we dive into code, here's what we need to set up:
 1. SES domain identity - tells SES you want to send email from your domain
 2. Domain verification - proves you own the domain via DNS TXT records
 3. DKIM - cryptographically signs outgoing emails
-4. SPF record - tells receiving mail servers that SES is authorized to send on your behalf
+4. SPF record for the MAIL FROM domain - tells receiving mail servers that SES is authorized to send on your behalf
 5. DMARC record - sets policy for how receivers handle authentication failures
 6. MX record (optional) - for receiving emails through SES
 
@@ -86,10 +86,10 @@ The `count = 3` creates all three DKIM records in one shot. SES always generates
 
 ## SPF Record
 
-SPF (Sender Policy Framework) tells receiving mail servers which IP addresses are authorized to send email for your domain. For SES, you include Amazon's SPF record:
+SPF (Sender Policy Framework) tells receiving mail servers which hosts are authorized to send email for the envelope MAIL FROM domain. SES uses an amazonses.com MAIL FROM domain by default, so SPF is handled automatically unless you configure a custom MAIL FROM domain. If your root domain already sends mail through SES as its MAIL FROM domain outside of the custom MAIL FROM setup below, include Amazon's SPF record:
 
 ```hcl
-# SPF record - authorizes SES to send email for this domain
+# SPF record - authorizes SES to send email using this domain as the MAIL FROM domain
 resource "aws_route53_record" "spf" {
   zone_id = var.route53_zone_id
   name    = var.domain_name
@@ -102,7 +102,7 @@ resource "aws_route53_record" "spf" {
 }
 ```
 
-If you already have an SPF record for the domain (maybe for Google Workspace or another service), you'll need to merge them into a single record. DNS only allows one SPF record per domain.
+If you already have an SPF record for the same domain name (maybe for Google Workspace or another service), you'll need to merge them into a single record. DNS only allows one SPF record per domain name.
 
 ## DMARC Record
 
@@ -151,6 +151,7 @@ resource "aws_ses_active_receipt_rule_set" "main" {
 }
 
 # Rule to store incoming emails in S3
+# Assumes aws_s3_bucket.email_storage exists and SES has permission to write to it.
 resource "aws_ses_receipt_rule" "store_in_s3" {
   name          = "store-incoming-emails"
   rule_set_name = aws_ses_receipt_rule_set.main.rule_set_name
@@ -233,10 +234,12 @@ resource "aws_ses_event_destination" "cloudwatch" {
   cloudwatch_destination {
     default_value  = "default"
     dimension_name = "ses:from-domain"
-    value_source   = "emailHeader"
+    value_source   = "messageTag"
   }
 }
 ```
+
+Messages have to be sent with this configuration set, either by passing the configuration set in the send call or by adding the `X-SES-CONFIGURATION-SET` header.
 
 ## Variables
 
@@ -276,8 +279,8 @@ output "configuration_set_name" {
 }
 
 output "verification_status" {
-  description = "Whether the domain has been verified"
-  value       = aws_ses_domain_identity_verification.main.id != "" ? "verified" : "pending"
+  description = "Domain verification status after Terraform waits for SES verification"
+  value       = "verified"
 }
 ```
 
