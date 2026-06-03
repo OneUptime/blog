@@ -72,11 +72,11 @@ The response shows the current status for the table and any indexes.
 }
 ```
 
-The four rules correspond to:
+In accessed and throttled keys mode, the rules correspond to:
 - **PKC**: Partition Key - most accessed (Consumed)
 - **PKT**: Partition Key - most Throttled
-- **SKC**: Sort Key - most accessed (Consumed)
-- **SKT**: Sort Key - most Throttled
+- **SKC**: Partition Key + Sort Key - most accessed (Consumed), only for tables or indexes with a sort key
+- **SKT**: Partition Key + Sort Key - most Throttled, only for tables or indexes with a sort key
 
 ## Enabling with CloudFormation / CDK
 
@@ -111,7 +111,9 @@ const table = new dynamodb.Table(this, 'UsersTable', {
   tableName: 'Users',
   partitionKey: { name: 'user_id', type: dynamodb.AttributeType.STRING },
   billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-  contributorInsightsEnabled: true,  // This is all it takes
+  contributorInsightsSpecification: {
+    enabled: true,
+  },  // This is all it takes
 });
 ```
 
@@ -121,12 +123,12 @@ The data is available through CloudWatch. You can query it programmatically or v
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 
 # Query the most accessed partition keys in the last hour
-end_time = datetime.utcnow()
+end_time = datetime.now(timezone.utc)
 start_time = end_time - timedelta(hours=1)
 
 # Get the top 10 most accessed partition keys
@@ -151,11 +153,11 @@ And here's how to find the most throttled keys - this is the one you'll reach fo
 
 ```python
 import boto3
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 cloudwatch = boto3.client('cloudwatch')
 
-end_time = datetime.utcnow()
+end_time = datetime.now(timezone.utc)
 start_time = end_time - timedelta(hours=1)
 
 # Get the top throttled partition keys
@@ -223,23 +225,27 @@ enable_contributor_insights_all_tables()
 
 ## Creating CloudWatch Alarms on Contributor Insights
 
-You can create alarms that fire when specific keys exceed a threshold - useful for detecting abuse or misconfigured clients.
+You can create alarms that fire when the top contributing key exceeds a threshold - useful for detecting abuse or misconfigured clients.
 
 ```bash
 # Alert when any single partition key gets more than 1000
 # throttled requests in 5 minutes
-aws cloudwatch put-managed-insight-rule \
-  --rule-name "DynamoDB-Users-HotKeyAlert"
+aws cloudwatch put-metric-alarm \
+  --alarm-name "DynamoDB-Users-HotKeyAlert" \
+  --comparison-operator GreaterThanThreshold \
+  --evaluation-periods 1 \
+  --threshold 1000 \
+  --metrics '[{"Id":"m1","Expression":"INSIGHT_RULE_METRIC(\"DynamoDBContributorInsights-PKT-Users-1707744000000\", \"MaxContributorValue\")","Period":300,"ReturnData":true}]'
 ```
 
 A more practical approach is to combine Contributor Insights data with your existing alarm framework. Check out [monitoring DynamoDB with CloudWatch alarms](https://oneuptime.com/blog/post/2026-02-12-monitor-dynamodb-with-cloudwatch-alarms/view) for the full alarm setup.
 
 ## Cost and Limitations
 
-Contributor Insights costs about $0.02 per 100,000 DynamoDB events processed. For a table handling 1000 requests per second, that works out to roughly $50/month. It's not free, but for production tables where you need visibility, it pays for itself the first time it helps you diagnose a hot key issue.
+Contributor Insights costs about $0.02 per million DynamoDB events processed in US East. For a table handling 1000 requests per second, that works out to roughly $50/month in accessed and throttled keys mode for a table with only a partition key. It's not free, but for production tables where you need visibility, it pays for itself the first time it helps you diagnose a hot key issue.
 
 Limitations to be aware of:
-- Data retention is 14 days
+- Report data can be viewed for a 24-hour window up to 15 days ago
 - Reports show the top 100 contributors at most
 - There's a slight delay (about a minute) in data availability
 - Each table and GSI counts as a separate Contributor Insights enablement
