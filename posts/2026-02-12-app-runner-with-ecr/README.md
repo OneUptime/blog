@@ -8,7 +8,9 @@ Description: A detailed guide to configuring AWS App Runner with Amazon ECR for 
 
 ---
 
-AWS App Runner and ECR are a natural pairing. You build your container images, push them to ECR, and App Runner deploys them automatically. The integration is tight - App Runner can watch your ECR repository and trigger deployments whenever a new image appears. But getting the IAM permissions, image tagging strategy, and deployment pipeline right takes some thought.
+AWS App Runner and ECR are a natural pairing. You build your container images, push them to ECR, and App Runner deploys them automatically. The integration is tight - App Runner can watch your configured ECR source image and trigger deployments when that image changes. But getting the IAM permissions, image tagging strategy, and deployment pipeline right takes some thought.
+
+As of April 30, 2026, AWS App Runner is closed to new AWS customers. Existing App Runner customers can continue using the service and creating new resources, but AWS does not plan to introduce new features.
 
 This guide covers everything you need to set up a smooth App Runner to ECR workflow.
 
@@ -17,7 +19,7 @@ This guide covers everything you need to set up a smooth App Runner to ECR workf
 Start with an ECR repository configured for production use:
 
 ```bash
-# Create the repository with image scanning and immutable tags
+# Create the repository with image scanning and mutable tags
 
 aws ecr create-repository \
   --repository-name my-service \
@@ -155,9 +157,9 @@ docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service:v2.3.1
 aws apprunner update-service \
   --service-arn arn:aws:apprunner:us-east-1:123456789012:service/my-service/abc123 \
   --source-configuration '{
-    "imageRepository": {
-      "imageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service:v2.3.1",
-      "imageRepositoryType": "ECR"
+    "ImageRepository": {
+      "ImageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service:v2.3.1",
+      "ImageRepositoryType": "ECR"
     }
   }'
 ```
@@ -173,36 +175,36 @@ With the ECR repository and IAM role in place, create the service:
 aws apprunner create-service \
   --service-name my-service \
   --source-configuration '{
-    "imageRepository": {
-      "imageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service:latest",
-      "imageConfiguration": {
-        "port": "8080",
-        "runtimeEnvironmentVariables": {
+    "ImageRepository": {
+      "ImageIdentifier": "123456789012.dkr.ecr.us-east-1.amazonaws.com/my-service:latest",
+      "ImageConfiguration": {
+        "Port": "8080",
+        "RuntimeEnvironmentVariables": {
           "NODE_ENV": "production"
         }
       },
-      "imageRepositoryType": "ECR"
+      "ImageRepositoryType": "ECR"
     },
-    "autoDeploymentsEnabled": true,
-    "authenticationConfiguration": {
-      "accessRoleArn": "arn:aws:iam::123456789012:role/AppRunnerECRAccess"
+    "AutoDeploymentsEnabled": true,
+    "AuthenticationConfiguration": {
+      "AccessRoleArn": "arn:aws:iam::123456789012:role/AppRunnerECRAccess"
     }
   }' \
   --instance-configuration '{
-    "cpu": "1024",
-    "memory": "2048"
+    "Cpu": "1024",
+    "Memory": "2048"
   }' \
   --health-check-configuration '{
-    "protocol": "HTTP",
-    "path": "/health",
-    "interval": 10,
-    "timeout": 5,
-    "healthyThreshold": 1,
-    "unhealthyThreshold": 5
+    "Protocol": "HTTP",
+    "Path": "/health",
+    "Interval": 10,
+    "Timeout": 5,
+    "HealthyThreshold": 1,
+    "UnhealthyThreshold": 5
   }'
 ```
 
-With `autoDeploymentsEnabled: true`, App Runner watches the ECR image tag you specified and automatically deploys when the image changes.
+With `AutoDeploymentsEnabled: true`, App Runner watches the ECR image tag you specified and automatically deploys when the image changes.
 
 ## Monitoring Deployments
 
@@ -219,7 +221,7 @@ If a deployment fails, App Runner automatically rolls back to the previous versi
 
 ## Cross-Region ECR
 
-If your ECR repository is in a different region than your App Runner service, you have two options:
+App Runner supports deploying private ECR images from a different region than your App Runner service. If you still want regional copies of the image, you have two options:
 
 1. **ECR replication** - Set up cross-region replication in ECR:
 
