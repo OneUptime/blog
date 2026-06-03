@@ -40,7 +40,7 @@ export class CronSchedulerStack extends cdk.Stack {
 
     // Lambda function that runs the cleanup
     const cleanupFunction = new lambda.Function(this, 'CleanupFunction', {
-      runtime: lambda.Runtime.NODEJS_18_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'cleanup.handler',
       code: lambda.Code.fromAsset('lambda'),
       timeout: cdk.Duration.minutes(5),
@@ -80,27 +80,35 @@ exports.handler = async (event) => {
 
   console.log(`Cleaning up records older than ${cutoffDate.toISOString()}`);
 
-  // Scan for expired records
-  const { Items } = await client.send(new ScanCommand({
-    TableName: 'SessionData',
-    FilterExpression: 'expiresAt < :cutoff',
-    ExpressionAttributeValues: {
-      ':cutoff': { S: cutoffDate.toISOString() },
-    },
-  }));
+  let deleted = 0;
+  let lastEvaluatedKey;
 
-  console.log(`Found ${Items.length} records to delete`);
-
-  // Delete in batches
-  for (const item of Items) {
-    await client.send(new DeleteItemCommand({
+  do {
+    // Scan for expired records
+    const response = await client.send(new ScanCommand({
       TableName: 'SessionData',
-      Key: { id: item.id },
+      FilterExpression: 'expiresAt < :cutoff',
+      ExpressionAttributeValues: {
+        ':cutoff': { S: cutoffDate.toISOString() },
+      },
+      ExclusiveStartKey: lastEvaluatedKey,
     }));
-  }
+
+    for (const item of response.Items || []) {
+      await client.send(new DeleteItemCommand({
+        TableName: 'SessionData',
+        Key: { id: item.id },
+      }));
+      deleted++;
+    }
+
+    lastEvaluatedKey = response.LastEvaluatedKey;
+  } while (lastEvaluatedKey);
+
+  console.log(`Deleted ${deleted} records`);
 
   return {
-    deleted: Items.length,
+    deleted,
     cutoffDate: cutoffDate.toISOString(),
   };
 };
@@ -122,6 +130,7 @@ const schedulerRole = new iam.Role(this, 'SchedulerRole', {
 
 // Allow the scheduler to invoke the Lambda function
 cleanupFunction.grantInvoke(schedulerRole);
+deadLetterQueue.grantSendMessages(schedulerRole);
 
 // Create the schedule with timezone support and retry policy
 new scheduler.CfnSchedule(this, 'DailyCleanupSchedule', {
@@ -169,7 +178,7 @@ cron(0 9 * * ? *)       - Every day at 9 AM UTC
 cron(0 */4 * * ? *)     - Every 4 hours
 cron(0 9 ? * MON-FRI *) - Weekdays at 9 AM UTC
 cron(0 0 1 * ? *)       - First day of every month at midnight
-cron(30 10 ? * 2 *)     - Every Monday at 10:30 AM UTC
+cron(30 10 ? * MON *)   - Every Monday at 10:30 AM UTC
 ```
 
 One gotcha: you can't specify both day-of-month and day-of-week. One of them must be a question mark (`?`).
@@ -247,6 +256,7 @@ new cloudwatch.Alarm(this, 'CleanupMissingAlarm', {
   threshold: 1,
   evaluationPeriods: 1,
   comparisonOperator: cloudwatch.ComparisonOperator.LESS_THAN_THRESHOLD,
+  treatMissingData: cloudwatch.TreatMissingData.BREACHING,
   alarmDescription: 'Cleanup cron job did not run in the last 25 hours',
 });
 ```
