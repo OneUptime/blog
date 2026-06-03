@@ -92,7 +92,8 @@ kubectl exec storage-migrator -- sh -c 'cd /destination && find . -type f -exec 
 kubectl exec storage-migrator -- diff /tmp/source-checksums.txt /tmp/dest-checksums.txt
 
 # Update application to use new PVC
-kubectl set volume deployment/myapp --add --overwrite --name=data --claim-name=new-storage-pvc
+kubectl patch deployment myapp --type='strategic' -p \
+  '{"spec":{"template":{"spec":{"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"new-storage-pvc"}}]}}}}'
 
 # Scale application back up
 kubectl scale deployment myapp --replicas=3
@@ -102,7 +103,7 @@ This approach guarantees consistency but requires downtime proportional to data 
 
 ## Strategy 2: Online Migration with Snapshots
 
-For workloads supporting snapshots, you can minimize downtime by copying from a snapshot while the application continues running.
+For workloads supporting crash-consistent snapshots, you can minimize downtime by restoring from a snapshot while the application continues running. For databases and other write-heavy applications, quiesce writes or use application-level backup hooks if you need application-consistent snapshots.
 
 ```yaml
 # volumesnapshot.yaml
@@ -160,14 +161,14 @@ Velero provides backup and restore functionality that works across storage class
 
 ```bash
 # Install Velero CLI
-wget https://github.com/vmware-tanzu/velero/releases/download/v1.12.0/velero-v1.12.0-linux-amd64.tar.gz
-tar -xvf velero-v1.12.0-linux-amd64.tar.gz
-sudo mv velero-v1.12.0-linux-amd64/velero /usr/local/bin/
+wget https://github.com/vmware-tanzu/velero/releases/download/v1.18.0/velero-v1.18.0-linux-amd64.tar.gz
+tar -xvf velero-v1.18.0-linux-amd64.tar.gz
+sudo mv velero-v1.18.0-linux-amd64/velero /usr/local/bin/
 
 # Install Velero server components
 velero install \
   --provider aws \
-  --plugins velero/velero-plugin-for-aws:v1.8.0 \
+  --plugins velero/velero-plugin-for-aws:v1.14.0 \
   --bucket velero-backups \
   --secret-file ./credentials-velero \
   --use-volume-snapshots=true \
@@ -215,8 +216,7 @@ kubectl apply -f restore-config.yaml
 # Perform restore
 velero restore create myapp-migration-restore \
   --from-backup myapp-migration \
-  --namespace-mappings default:default-migrated \
-  --restore-volumes=true
+  --namespace-mappings default:default-migrated
 
 # Monitor restore progress
 velero restore describe myapp-migration-restore
@@ -254,9 +254,17 @@ spec:
           value: changeme
         - name: PGDATA
           value: /var/lib/postgresql/data/pgdata
-        # Configure as streaming replica
-        - name: POSTGRES_MASTER_SERVICE_HOST
-          value: postgres-primary
+        - name: PGPASSWORD
+          value: replpass
+        command:
+        - bash
+        - -c
+        - |
+          if [ ! -s "$PGDATA/PG_VERSION" ]; then
+            rm -rf "$PGDATA"
+            pg_basebackup -h postgres-primary -D "$PGDATA" -U replicator -X stream -R -S replica_slot
+          fi
+          exec docker-entrypoint.sh postgres
         ports:
         - containerPort: 5432
         volumeMounts:
@@ -293,7 +301,7 @@ kubectl exec postgres-primary-0 -- psql -U postgres -c "SELECT pg_reload_conf();
 kubectl apply -f postgres-replica.yaml
 
 # Once replica catches up, promote it
-kubectl exec postgres-replica-0 -- su - postgres -c "pg_ctl promote"
+kubectl exec postgres-replica-0 -- pg_ctl -D /var/lib/postgresql/data/pgdata promote
 
 # Update application connections to new instance
 kubectl patch service postgres -p '{"spec":{"selector":{"app":"postgres-replica"}}}'
@@ -325,9 +333,9 @@ spec:
           #!/bin/bash
           set -e
 
-          SOURCE_PVC="$1"
-          TARGET_STORAGE_CLASS="$2"
-          NAMESPACE="${3:-default}"
+          SOURCE_PVC="${SOURCE_PVC:?SOURCE_PVC is required}"
+          TARGET_STORAGE_CLASS="${TARGET_STORAGE_CLASS:?TARGET_STORAGE_CLASS is required}"
+          NAMESPACE="${NAMESPACE:-default}"
 
           # Get source PVC size
           SIZE=$(kubectl get pvc $SOURCE_PVC -n $NAMESPACE -o jsonpath='{.spec.resources.requests.storage}')
@@ -372,6 +380,7 @@ spec:
               volumeMounts:
               - name: source
                 mountPath: /source
+                readOnly: true
               - name: destination
                 mountPath: /destination
             volumes:
@@ -381,16 +390,19 @@ spec:
             - name: destination
               persistentVolumeClaim:
                 claimName: ${SOURCE_PVC}-migrated
+            restartPolicy: Never
           EOF
 
           # Wait for completion
-          kubectl wait --for=condition=ready pod/${SOURCE_PVC}-migrate-pod \
-            -n $NAMESPACE --timeout=120s
+          kubectl wait --for=jsonpath='{.status.phase}'=Succeeded \
+            pod/${SOURCE_PVC}-migrate-pod -n $NAMESPACE --timeout=24h
         env:
         - name: SOURCE_PVC
           value: "old-storage-pvc"
         - name: TARGET_STORAGE_CLASS
           value: "new-storage-class"
+        - name: NAMESPACE
+          value: "default"
       restartPolicy: Never
   backoffLimit: 3
 ```
@@ -401,16 +413,16 @@ Always verify data integrity after migration.
 
 ```bash
 # Compare directory structures
-kubectl exec migration-pod -- diff -r /source /destination
+kubectl exec storage-migrator -- diff -r /source /destination
 
 # Compare file counts
-kubectl exec migration-pod -- sh -c 'find /source -type f | wc -l'
-kubectl exec migration-pod -- sh -c 'find /destination -type f | wc -l'
+kubectl exec storage-migrator -- sh -c 'find /source -type f | wc -l'
+kubectl exec storage-migrator -- sh -c 'find /destination -type f | wc -l'
 
 # Generate and compare checksums
-kubectl exec migration-pod -- sh -c 'find /source -type f -exec sha256sum {} \; | sort > /tmp/source.txt'
-kubectl exec migration-pod -- sh -c 'find /destination -type f -exec sha256sum {} \; | sort > /tmp/dest.txt'
-kubectl exec migration-pod -- diff /tmp/source.txt /tmp/dest.txt
+kubectl exec storage-migrator -- sh -c 'find /source -type f -exec sha256sum {} \; | sort > /tmp/source.txt'
+kubectl exec storage-migrator -- sh -c 'find /destination -type f -exec sha256sum {} \; | sort > /tmp/dest.txt'
+kubectl exec storage-migrator -- diff /tmp/source.txt /tmp/dest.txt
 
 # Application-level validation
 # For databases, compare row counts
