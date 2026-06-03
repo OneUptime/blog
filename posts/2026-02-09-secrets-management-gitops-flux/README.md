@@ -43,15 +43,18 @@ spec:
   chart:
     spec:
       chart: external-secrets
-      version: "0.9.x"
+      version: "2.5.x"
       sourceRef:
         kind: HelmRepository
         name: external-secrets
         namespace: flux-system
   values:
     installCRDs: true
+    metrics:
+      service:
+        enabled: true
     webhook:
-      port: 9443
+      port: 10250
 ```
 
 ## Configuring Vault as Secret Backend
@@ -60,7 +63,7 @@ Create a SecretStore for HashiCorp Vault:
 
 ```yaml
 # infrastructure/secret-stores/vault.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: vault-backend
@@ -95,7 +98,7 @@ Define an ExternalSecret to sync from Vault:
 
 ```yaml
 # apps/api-gateway/external-secret.yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: api-gateway-secrets
@@ -126,7 +129,7 @@ This creates a Kubernetes Secret named `api-gateway-credentials` with keys synce
 Configure AWS Secrets Manager as backend:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: aws-secrets
@@ -141,7 +144,7 @@ spec:
           serviceAccountRef:
             name: external-secrets-sa
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rds-credentials
@@ -165,7 +168,7 @@ spec:
 Configure GCP Secret Manager:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: SecretStore
 metadata:
   name: gcpsm-backend
@@ -181,7 +184,7 @@ spec:
           serviceAccountRef:
             name: external-secrets-sa
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: cloudsql-credentials
@@ -207,7 +210,7 @@ spec:
 Create a cluster-wide secret store:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ClusterSecretStore
 metadata:
   name: vault-cluster-backend
@@ -229,7 +232,7 @@ spec:
 Reference from any namespace:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: shared-secrets
@@ -253,7 +256,7 @@ spec:
 Use templates to transform secret data:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: connection-string
@@ -266,6 +269,7 @@ spec:
   target:
     name: database-connection
     template:
+      engineVersion: v2
       type: Opaque
       data:
         connection-string: |
@@ -280,7 +284,7 @@ spec:
 Import all keys from a secret path:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: env-variables
@@ -301,10 +305,10 @@ This syncs all key-value pairs from the Vault path into the Kubernetes Secret.
 
 ## Implementing Secret Rotation
 
-Configure automatic rotation:
+Configure periodic sync for rotated credentials:
 
 ```yaml
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: rotated-credentials
@@ -325,7 +329,7 @@ spec:
       property: password
 ```
 
-Monitor rotation with alerts:
+Monitor sync with alerts:
 
 ```yaml
 apiVersion: v1
@@ -336,7 +340,7 @@ metadata:
 data:
   alert.yaml: |
     - alert: SecretSyncFailed
-      expr: external_secrets_sync_calls_error > 0
+      expr: increase(externalsecret_sync_calls_error[5m]) > 0
       for: 5m
       annotations:
         summary: "ExternalSecret sync failing"
@@ -344,7 +348,7 @@ data:
 
 ## Using with Sealed Secrets as Fallback
 
-Combine with Sealed Secrets for git-encrypted backups:
+Keep Sealed Secrets as separate git-encrypted backup manifests:
 
 ```yaml
 apiVersion: bitnami.com/v1alpha1
@@ -356,7 +360,7 @@ spec:
   encryptedData:
     api-key: AgBR8F3k...  # Encrypted value
 ---
-apiVersion: external-secrets.io/v1beta1
+apiVersion: external-secrets.io/v1
 kind: ExternalSecret
 metadata:
   name: primary-secrets
@@ -388,9 +392,9 @@ kubectl describe externalsecret api-gateway-secrets -n production
 View metrics:
 
 ```bash
-kubectl port-forward -n external-secrets-system svc/external-secrets-webhook 8080:8080
+kubectl port-forward -n flux-system svc/external-secrets-metrics 8080:8080
 
-curl localhost:8080/metrics | grep external_secrets
+curl localhost:8080/metrics | grep externalsecret
 ```
 
 Create dashboards:
@@ -406,12 +410,12 @@ data:
     {
       "panels": [
         {
-          "title": "Secret Sync Success Rate",
-          "expr": "rate(external_secrets_sync_calls_total{status=\"success\"}[5m])"
+          "title": "Secret Sync Calls",
+          "expr": "rate(externalsecret_sync_calls_total[5m])"
         },
         {
           "title": "Sync Errors",
-          "expr": "rate(external_secrets_sync_calls_error[5m])"
+          "expr": "rate(externalsecret_sync_calls_error[5m])"
         }
       ]
     }
@@ -427,7 +431,7 @@ Set appropriate refreshInterval based on sensitivity. High-security secrets migh
 
 Implement least-privilege access. The External Secrets ServiceAccount should only read secrets, never write.
 
-Monitor sync failures aggressively. A failed sync means applications can't access credentials.
+Monitor sync failures aggressively. A failed sync means applications may miss updated credentials.
 
 Use ClusterSecretStore for shared infrastructure secrets, namespace-scoped SecretStore for application secrets.
 
