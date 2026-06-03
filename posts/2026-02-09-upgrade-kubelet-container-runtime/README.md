@@ -14,7 +14,7 @@ Upgrading kubelet and container runtimes on worker nodes is a critical maintenan
 
 The kubelet is the primary agent running on each worker node, responsible for managing pods and containers. It communicates with the container runtime through the Container Runtime Interface (CRI). When upgrading Kubernetes, both kubelet and the runtime may need updates to support new features and maintain compatibility.
 
-Common container runtimes include containerd (most popular), CRI-O (Red Hat ecosystem), and Docker Engine with dockershim (deprecated). Most modern clusters use containerd as it's lightweight, well-maintained, and officially recommended by Kubernetes.
+Common container runtimes include containerd, CRI-O, and Docker Engine through cri-dockerd. Kubernetes' built-in dockershim integration was removed in Kubernetes 1.24, so modern clusters use CRI-compatible runtimes such as containerd or CRI-O.
 
 ## Checking Current Versions
 
@@ -121,17 +121,24 @@ kubectl drain $NODE_NAME \
 ssh $NODE_NAME << EOF
   set -e
 
+  # Update kubeadm-managed kubelet configuration
+  sudo apt-mark unhold kubeadm
+  sudo apt-get update
+  sudo apt-get install -y kubeadm=$TARGET_VERSION-*
+  sudo apt-mark hold kubeadm
+  sudo kubeadm upgrade node
+
   # Stop kubelet
   sudo systemctl stop kubelet
 
   # Upgrade kubelet (Ubuntu/Debian)
   sudo apt-mark unhold kubelet kubectl
-  sudo apt-get update
-  sudo apt-get install -y kubelet=$TARGET_VERSION-00 kubectl=$TARGET_VERSION-00
+  sudo apt-get install -y kubelet=$TARGET_VERSION-* kubectl=$TARGET_VERSION-*
   sudo apt-mark hold kubelet kubectl
 
   # Alternative for RHEL/CentOS
-  # sudo yum install -y kubelet-$TARGET_VERSION kubectl-$TARGET_VERSION
+  # sudo yum install -y kubeadm-$TARGET_VERSION-* kubelet-$TARGET_VERSION-* kubectl-$TARGET_VERSION-* --disableexcludes=kubernetes
+  # sudo kubeadm upgrade node
 
   # Restart kubelet
   sudo systemctl daemon-reload
@@ -193,12 +200,12 @@ ssh $NODE_NAME << EOF
   # Backup current config
   sudo cp /etc/containerd/config.toml /etc/containerd/config.toml.backup
 
-  # Download new containerd release
+  # Download new containerd release for installations managed from upstream tarballs
   cd /tmp
   wget https://github.com/containerd/containerd/releases/download/v$TARGET_VERSION/containerd-$TARGET_VERSION-linux-amd64.tar.gz
 
   # Extract and install
-  sudo tar Cxzvf /usr/local containerd-$TARGET_VERSION-linux-amd64.tar.gz
+  sudo tar -C /usr/local -xzf containerd-$TARGET_VERSION-linux-amd64.tar.gz
 
   # Verify installation
   containerd --version
@@ -236,7 +243,7 @@ For clusters using CRI-O, upgrade the runtime to match your Kubernetes version.
 # upgrade-crio.sh
 
 NODE_NAME="$1"
-CRIO_VERSION="1.29"
+CRIO_VERSION="v1.29"
 
 if [ -z "$NODE_NAME" ]; then
   echo "Usage: $0 <node-name>"
@@ -255,27 +262,15 @@ ssh $NODE_NAME << EOF
   sudo systemctl stop crio
 
   # Add CRI-O repository for target version
-  export OS=xUbuntu_22.04
-  export VERSION=$CRIO_VERSION
+  sudo mkdir -p /etc/apt/keyrings
+  curl -fsSL https://download.opensuse.org/repositories/isv:/cri-o:/stable:/$CRIO_VERSION/deb/Release.key | \
+    sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/cri-o-apt-keyring.gpg
 
-  sudo rm -f /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
-  sudo rm -f /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.list
-
-  echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/ /" | \
-    sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable.list
-
-  echo "deb https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable:/cri-o:/$VERSION/$OS/ /" | \
-    sudo tee /etc/apt/sources.list.d/devel:kubic:libcontainers:stable:cri-o:$VERSION.list
-
-  # Update and install
-  curl -L https://download.opensuse.org/repositories/devel:kubic:libcontainers:stable:cri-o:/$VERSION/$OS/Release.key | \
-    sudo apt-key add -
-
-  curl -L https://download.opensuse.org/repositories/devel:/kubic:/libcontainers:/stable/$OS/Release.key | \
-    sudo apt-key add -
+  echo "deb [signed-by=/etc/apt/keyrings/cri-o-apt-keyring.gpg] https://download.opensuse.org/repositories/isv:/cri-o:/stable:/$CRIO_VERSION/deb/ /" | \
+    sudo tee /etc/apt/sources.list.d/cri-o.list
 
   sudo apt-get update
-  sudo apt-get install -y cri-o cri-o-runc
+  sudo apt-get install -y cri-o
 
   # Start CRI-O
   sudo systemctl start crio
@@ -313,7 +308,8 @@ echo "Starting bulk node upgrade..."
 WORKER_NODES=$(kubectl get nodes -l node-role.kubernetes.io/control-plane!= -o jsonpath='{.items[*].metadata.name}')
 
 for node in $WORKER_NODES; do
-  echo "========================================  echo "Upgrading node: $node"
+  echo "========================================"
+  echo "Upgrading node: $node"
   echo "========================================"
 
   # Cordon node
@@ -333,21 +329,27 @@ for node in $WORKER_NODES; do
   fi
 
   # Upgrade on node
-  ssh $node << 'ENDSSH'
+  ssh $node << ENDSSH
     set -e
+
+    # Update kubeadm-managed kubelet configuration
+    sudo apt-mark unhold kubeadm
+    sudo apt-get update
+    sudo apt-get install -y kubeadm=$TARGET_KUBELET_VERSION-*
+    sudo apt-mark hold kubeadm
+    sudo kubeadm upgrade node
 
     # Upgrade kubelet
     sudo systemctl stop kubelet
     sudo apt-mark unhold kubelet kubectl
-    sudo apt-get update
-    sudo apt-get install -y kubelet=$TARGET_KUBELET_VERSION-00 kubectl=$TARGET_KUBELET_VERSION-00
+    sudo apt-get install -y kubelet=$TARGET_KUBELET_VERSION-* kubectl=$TARGET_KUBELET_VERSION-*
     sudo apt-mark hold kubelet kubectl
 
-    # Upgrade containerd
+    # Upgrade containerd for installations managed from upstream tarballs
     sudo systemctl stop containerd
     cd /tmp
     wget -q https://github.com/containerd/containerd/releases/download/v$TARGET_CONTAINERD_VERSION/containerd-$TARGET_CONTAINERD_VERSION-linux-amd64.tar.gz
-    sudo tar Cxzvf /usr/local containerd-$TARGET_CONTAINERD_VERSION-linux-amd64.tar.gz
+    sudo tar -C /usr/local -xzf containerd-$TARGET_CONTAINERD_VERSION-linux-amd64.tar.gz
     rm containerd-$TARGET_CONTAINERD_VERSION-linux-amd64.tar.gz
     sudo systemctl start containerd
 
