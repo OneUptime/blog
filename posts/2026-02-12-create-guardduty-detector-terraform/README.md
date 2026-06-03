@@ -16,7 +16,7 @@ Getting GuardDuty running in Terraform is quick. The real work is in setting up 
 
 The core resource is the detector. Enabling it is a single resource.
 
-This enables GuardDuty with all available data sources:
+This enables GuardDuty with common optional protection plan features:
 
 ```hcl
 resource "aws_guardduty_detector" "main" {
@@ -25,30 +25,28 @@ resource "aws_guardduty_detector" "main" {
   # Publish findings to CloudWatch Events every 15 minutes
   finding_publishing_frequency = "FIFTEEN_MINUTES"
 
-  datasources {
-    s3_logs {
-      enable = true
-    }
-
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          enable = true
-        }
-      }
-    }
-  }
-
   tags = {
     ManagedBy   = "terraform"
     Environment = "production"
   }
+}
+
+resource "aws_guardduty_detector_feature" "s3_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  status      = "ENABLED"
+}
+
+resource "aws_guardduty_detector_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  status      = "ENABLED"
 }
 ```
 
@@ -208,41 +206,37 @@ resource "aws_guardduty_filter" "suppress_internal_dns" {
 
 In AWS Organizations, you designate an administrator account for GuardDuty that can manage member accounts.
 
-This configures the administrator account and adds member accounts:
+This designates the delegated administrator account and adds member accounts:
 
 ```hcl
-# In the administrator account
+# In the AWS Organizations management account
 resource "aws_guardduty_organization_admin_account" "main" {
-  admin_account_id = data.aws_caller_identity.current.account_id
+  admin_account_id = "222222222222" # Delegated GuardDuty administrator account ID
 }
 
-# Enable auto-enrollment for new accounts in the organization
+# In the delegated GuardDuty administrator account, enable auto-enrollment
 resource "aws_guardduty_organization_configuration" "main" {
   auto_enable_organization_members = "ALL"
   detector_id                      = aws_guardduty_detector.main.id
-
-  datasources {
-    s3_logs {
-      auto_enable = true
-    }
-
-    kubernetes {
-      audit_logs {
-        enable = true
-      }
-    }
-
-    malware_protection {
-      scan_ec2_instance_with_findings {
-        ebs_volumes {
-          auto_enable = true
-        }
-      }
-    }
-  }
 }
 
-data "aws_caller_identity" "current" {}
+resource "aws_guardduty_organization_configuration_feature" "s3_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "S3_DATA_EVENTS"
+  auto_enable = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "eks_audit_logs" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EKS_AUDIT_LOGS"
+  auto_enable = "ALL"
+}
+
+resource "aws_guardduty_organization_configuration_feature" "ebs_malware_protection" {
+  detector_id = aws_guardduty_detector.main.id
+  name        = "EBS_MALWARE_PROTECTION"
+  auto_enable = "ALL"
+}
 ```
 
 For member accounts that are already part of the organization:
@@ -252,7 +246,6 @@ resource "aws_guardduty_member" "member_account" {
   account_id  = "111111111111"
   detector_id = aws_guardduty_detector.main.id
   email       = "admin@member-account.example.com"
-  invite      = true
 }
 ```
 
@@ -304,6 +297,8 @@ resource "aws_guardduty_threatintelset" "custom" {
 resource "aws_s3_bucket" "guardduty_lists" {
   bucket = "guardduty-ip-lists-${data.aws_caller_identity.current.account_id}"
 }
+
+data "aws_caller_identity" "current" {}
 ```
 
 ## Automated Remediation
@@ -349,7 +344,7 @@ For setting up the notification pipeline using EventBridge, see our guide on [Ev
 
 ## Cost Considerations
 
-GuardDuty pricing is based on the volume of data it analyzes. The first 30 days are free, and after that you pay per GB for CloudTrail events, VPC Flow Logs, and DNS logs. For most accounts, this runs between $1 and $50 per month, which is a small price for continuous threat detection.
+GuardDuty pricing is based on the data sources and protection plans it analyzes. The first 30 days are free for most GuardDuty protection plans in a Region, and after that CloudTrail management event analysis is charged per million events while VPC Flow Logs and DNS query logs are charged per GB. Use the GuardDuty usage page to estimate monthly cost for your account before enabling every protection plan everywhere.
 
 ## Wrapping Up
 
