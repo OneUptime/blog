@@ -92,7 +92,7 @@ aws appsync create-data-source \
     "tableName": "Products",
     "awsRegion": "us-east-1"
   }' \
-  --service-role-arn arn:aws:iam::123456789:role/AppSyncDynamoDBRole
+  --service-role-arn arn:aws:iam::123456789012:role/AppSyncDynamoDBRole
 ```
 
 The IAM role needs permission to read and write to the DynamoDB table:
@@ -112,8 +112,8 @@ The IAM role needs permission to read and write to the DynamoDB table:
         "dynamodb:Query"
       ],
       "Resource": [
-        "arn:aws:dynamodb:us-east-1:123456789:table/Products",
-        "arn:aws:dynamodb:us-east-1:123456789:table/Products/index/*"
+        "arn:aws:dynamodb:us-east-1:123456789012:table/Products",
+        "arn:aws:dynamodb:us-east-1:123456789012:table/Products/index/*"
       ]
     }
   ]
@@ -352,7 +352,7 @@ Repeat for each resolver.
 
 ## CloudFormation Template
 
-Here's a complete CloudFormation template for the direct resolver setup:
+Here's a starter CloudFormation template for the direct resolver setup. Upload the schema and resolver code to S3, then reference those S3 locations:
 
 ```yaml
 AWSTemplateFormatVersion: '2010-09-09'
@@ -369,7 +369,7 @@ Resources:
     Type: AWS::AppSync::GraphQLSchema
     Properties:
       ApiId: !GetAtt ProductApi.ApiId
-      DefinitionS3Location: schema.graphql
+      DefinitionS3Location: s3://YOUR_BUCKET/schema.graphql
 
   ProductsTable:
     Type: AWS::DynamoDB::Table
@@ -413,7 +413,7 @@ Resources:
       Runtime:
         Name: APPSYNC_JS
         RuntimeVersion: "1.0.0"
-      CodeS3Location: resolvers/getProduct.js
+      CodeS3Location: s3://YOUR_BUCKET/resolvers/getProduct.js
 
   CreateProductResolver:
     Type: AWS::AppSync::Resolver
@@ -425,7 +425,7 @@ Resources:
       Runtime:
         Name: APPSYNC_JS
         RuntimeVersion: "1.0.0"
-      CodeS3Location: resolvers/createProduct.js
+      CodeS3Location: s3://YOUR_BUCKET/resolvers/createProduct.js
 
   AppSyncRole:
     Type: AWS::IAM::Role
