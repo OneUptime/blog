@@ -17,9 +17,9 @@ This means you can use your existing Docker workflows, install system-level depe
 Lambda container images use one of two approaches:
 
 1. **AWS base images** - pre-built images that include the Lambda runtime interface client. These are the easiest starting point.
-2. **Custom base images** - any Docker image, as long as you include the Lambda Runtime Interface Client (RIC).
+2. **Custom base images** - any compatible Linux image, as long as you include the Lambda Runtime Interface Client (RIC) and build it for a single supported architecture.
 
-The image runs in Lambda's execution environment just like a ZIP-deployed function. The cold start is slightly longer because the image needs to be pulled from ECR, but subsequent invocations use a cached image.
+The image runs in Lambda's execution environment just like a ZIP-deployed function. After you upload a new or updated image, Lambda optimizes it before the function becomes active. If the function is not invoked for multiple weeks, Lambda can reclaim that optimized image and re-optimize it on the next invocation.
 
 ## Building with AWS Base Images
 
@@ -30,7 +30,7 @@ This Dockerfile creates a Node.js Lambda function using the AWS base image:
 ```dockerfile
 # Use the official AWS Lambda Node.js base image
 
-FROM public.ecr.aws/lambda/nodejs:20
+FROM public.ecr.aws/lambda/nodejs:22
 
 # Copy package files and install dependencies
 COPY package*.json ${LAMBDA_TASK_ROOT}/
@@ -125,26 +125,26 @@ def handler(event, context):
 
 ## Using Custom Base Images
 
-You can use any base image as long as you include the Lambda Runtime Interface Client. This is useful when you need specific OS distributions or pre-built images from your organization.
+You can use a compatible Linux base image as long as you include the Lambda Runtime Interface Client. This is useful when you need specific OS distributions or pre-built images from your organization.
 
 This Dockerfile uses a custom base image with the Lambda runtime interface client added:
 
 ```dockerfile
-# Start from any base image
-FROM ubuntu:22.04
+# Start from any compatible Linux base image
+FROM python:3.12-slim
 
-# Install Python and dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
-    python3.12 \
-    python3-pip \
+    gcc \
+    g++ \
     && rm -rf /var/lib/apt/lists/*
 
 # Install the Lambda runtime interface client
-RUN pip3 install awslambdaric
+RUN pip install --no-cache-dir awslambdaric
 
 # Install your dependencies
 COPY requirements.txt /app/
-RUN pip3 install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # Copy function code
 COPY app.py /app/
@@ -152,7 +152,7 @@ COPY app.py /app/
 WORKDIR /app
 
 # Set the entrypoint to the Lambda runtime interface client
-ENTRYPOINT [ "python3", "-m", "awslambdaric" ]
+ENTRYPOINT [ "python", "-m", "awslambdaric" ]
 
 # Set the handler
 CMD [ "app.handler" ]
@@ -174,8 +174,8 @@ aws ecr create-repository \
 aws ecr get-login-password --region us-east-1 | \
   docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
 
-# Build the image
-docker build -t my-lambda-function .
+# Build the image for one Lambda-compatible architecture
+docker buildx build --platform linux/amd64 --provenance=false --load -t my-lambda-function .
 
 # Tag the image
 docker tag my-lambda-function:latest \
@@ -301,11 +301,11 @@ CMD [ "app.handler" ]
 
 ## Cold Start Optimization
 
-Container Lambda functions have longer cold starts than ZIP deployments because the image needs to be pulled and extracted. Here are strategies to minimize this:
+Container Lambda functions can take longer to become active after a new image is uploaded or after Lambda has reclaimed an inactive function's optimized image. Here are strategies to minimize this:
 
-1. **Keep images small** - every MB adds to pull time
+1. **Keep images small** - smaller images reduce upload, pull, and optimization work
 2. **Use multi-stage builds** to exclude build tools
-3. **Put frequently accessed layers early** in the Dockerfile (Docker layer caching)
+3. **Put dependency layers before frequently changed application code** in the Dockerfile to improve build cache reuse and avoid unnecessary image churn
 4. **Use provisioned concurrency** for latency-sensitive functions
 5. **Use AWS base images** - they're optimized for Lambda's image caching
 
@@ -350,8 +350,9 @@ jobs:
           ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
           IMAGE_TAG: ${{ github.sha }}
         run: |
-          docker build -t $ECR_REGISTRY/my-lambda:$IMAGE_TAG .
-          docker push $ECR_REGISTRY/my-lambda:$IMAGE_TAG
+          docker buildx build --platform linux/amd64 --provenance=false \
+            -t $ECR_REGISTRY/my-lambda:$IMAGE_TAG \
+            --push .
 
       - name: Update Lambda function
         run: |
@@ -363,7 +364,7 @@ jobs:
 ## ZIP vs. Container: When to Use Which
 
 **Use ZIP deployments when:**
-- Your function and dependencies are under 250 MB
+- Your function and dependencies are under the 250 MB unzipped deployment package limit
 - You want the fastest cold starts
 - You don't need system-level dependencies
 
