@@ -27,25 +27,27 @@ kubectl create namespace kong
 helm repo add kong https://charts.konghq.com
 helm repo update
 
-helm install kong kong/kong \
+helm install kong kong/ingress \
   --namespace kong \
-  --set ingressController.enabled=true \
-  --set ingressController.installCRDs=false \
-  --set postgres.enabled=false \
-  --set env.database=off \
-  --set env.router_flavor=traditional
+  --create-namespace
 
 # Verify installation
 kubectl get pods -n kong
-kubectl get svc -n kong kong-proxy
+kubectl get svc -n kong kong-gateway-proxy
 ```
 
 ## Configuring Event Ingestion
 
-Create a Kong service that forwards to Knative Broker:
+Create a Knative Broker and a Kong service that forwards to the Broker ingress:
 
 ```yaml
 # kong-to-broker-service.yaml
+apiVersion: eventing.knative.dev/v1
+kind: Broker
+metadata:
+  name: orders-broker
+  namespace: default
+---
 apiVersion: v1
 kind: Service
 metadata:
@@ -53,9 +55,13 @@ metadata:
   namespace: default
   annotations:
     konghq.com/plugins: rate-limiting,auth,request-transformer
+    konghq.com/path: /default/orders-broker
 spec:
   type: ExternalName
-  externalName: orders-broker-ingress.default.svc.cluster.local
+  externalName: broker-ingress.knative-eventing.svc.cluster.local
+  ports:
+  - port: 80
+    targetPort: 80
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
@@ -139,7 +145,7 @@ config:
 
 ## Request Transformation
 
-Transform incoming requests into CloudEvents:
+Add static CloudEvents headers at the edge. The basic request transformer can add fixed headers; use the transformer service below when you need to generate a unique event ID per request.
 
 ```yaml
 # request-transformer-plugin.yaml
@@ -152,7 +158,6 @@ plugin: request-transformer
 config:
   add:
     headers:
-      - Ce-Id:$(uuid)
       - Ce-Specversion:1.0
       - Ce-Type:api.event.created
       - Ce-Source:kong-gateway
@@ -187,22 +192,27 @@ app.post('/transform', async (req, res) => {
       time: new Date().toISOString(),
       datacontenttype: 'application/json',
       data: req.body,
-      extensions: {
-        userid: userId,
-        gateway: 'kong'
-      }
+      userid: userId,
+      gateway: 'kong'
     };
+
+    const headers = {
+      'Ce-Id': cloudEvent.id,
+      'Ce-Specversion': cloudEvent.specversion,
+      'Ce-Type': cloudEvent.type,
+      'Ce-Source': cloudEvent.source,
+      'Ce-Time': cloudEvent.time,
+      'Ce-Gateway': cloudEvent.gateway,
+      'Content-Type': 'application/json'
+    };
+
+    if (cloudEvent.userid) {
+      headers['Ce-Userid'] = cloudEvent.userid;
+    }
 
     // Publish to broker
     await axios.post(BROKER_URL, cloudEvent.data, {
-      headers: {
-        'Ce-Id': cloudEvent.id,
-        'Ce-Specversion': cloudEvent.specversion,
-        'Ce-Type': cloudEvent.type,
-        'Ce-Source': cloudEvent.source,
-        'Ce-Time': cloudEvent.time,
-        'Content-Type': 'application/json'
-      }
+      headers
     });
 
     res.json({
@@ -234,7 +244,7 @@ spec:
       - image: your-registry/gateway-transformer:latest
         env:
         - name: BROKER_URL
-          value: http://orders-broker-broker.default.svc.cluster.local
+          value: http://broker-ingress.knative-eventing.svc.cluster.local/default/orders-broker
 ```
 
 ## Monitoring and Observability
@@ -243,11 +253,11 @@ Track gateway metrics:
 
 ```bash
 # Kong metrics
-kubectl port-forward -n kong svc/kong-admin 8001:8001
+kubectl port-forward -n kong svc/kong-gateway-admin 8001:8001
 curl http://localhost:8001/status
 
 # View Kong logs
-kubectl logs -n kong -l app=kong --tail=100 -f
+kubectl logs -n kong -l app.kubernetes.io/instance=kong --tail=100 -f
 ```
 
 Create dashboards:
