@@ -96,7 +96,7 @@ Now for the main event - the database instance itself.
 // Create the RDS PostgreSQL instance
 const database = new rds.DatabaseInstance(this, 'PostgresDb', {
   engine: rds.DatabaseInstanceEngine.postgres({
-    version: rds.PostgresEngineVersion.VER_16_2,
+    version: rds.PostgresEngineVersion.VER_16_13,
   }),
   instanceType: ec2.InstanceType.of(
     ec2.InstanceClass.T3,
@@ -158,7 +158,7 @@ Parameter groups let you tune database settings. Here's how to create a custom o
 // Custom parameter group for PostgreSQL tuning
 const parameterGroup = new rds.ParameterGroup(this, 'DbParameterGroup', {
   engine: rds.DatabaseInstanceEngine.postgres({
-    version: rds.PostgresEngineVersion.VER_16_2,
+    version: rds.PostgresEngineVersion.VER_16_13,
   }),
   parameters: {
     'log_statement': 'all',           // Log all SQL statements (dev only!)
@@ -179,7 +179,7 @@ If you need more performance or availability, Aurora is the upgrade path. The CD
 // Aurora PostgreSQL cluster (higher performance, higher cost)
 const auroraCluster = new rds.DatabaseCluster(this, 'AuroraCluster', {
   engine: rds.DatabaseClusterEngine.auroraPostgres({
-    version: rds.AuroraPostgresEngineVersion.VER_16_1,
+    version: rds.AuroraPostgresEngineVersion.VER_16_13,
   }),
   credentials: rds.Credentials.fromGeneratedSecret('dbadmin'),
   writer: rds.ClusterInstance.provisioned('Writer', {
