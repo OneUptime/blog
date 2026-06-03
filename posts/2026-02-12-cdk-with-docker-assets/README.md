@@ -71,9 +71,9 @@ CMD ["node", "src/index.js"]
 When you run `cdk deploy`, here's what happens with Docker assets.
 
 1. CDK calculates a content hash of the Docker build directory
-2. If the hash matches a previously built image, it skips the build
-3. Otherwise, it runs `docker build` locally
-4. The built image gets tagged and pushed to an ECR repository in your CDK bootstrap bucket
+2. It uses that hash to identify the asset and decide whether a new image needs to be published
+3. It runs `docker build` locally, with Docker reusing unchanged layers from its own cache
+4. The built image gets tagged and pushed to the ECR repository created during CDK bootstrapping
 5. The synthesized CloudFormation template references the image by its ECR URI
 
 ```mermaid
@@ -90,6 +90,8 @@ You can pass build arguments, specify a different Dockerfile, set the target pla
 
 ```typescript
 // Customizing the Docker build with build args and target
+import * as ecr_assets from 'aws-cdk-lib/aws-ecr-assets';
+
 const image = ecs.ContainerImage.fromAsset('./docker/app', {
   // Use a specific Dockerfile
   file: 'Dockerfile.production',
@@ -146,6 +148,7 @@ CDK can package Lambda functions as container images too.
 
 ```typescript
 // Deploy a Lambda function from a Docker image
+import * as cdk from 'aws-cdk-lib';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 
 const dockerFunction = new lambda.DockerImageFunction(this, 'DockerFunction', {
@@ -163,7 +166,7 @@ const dockerFunction = new lambda.DockerImageFunction(this, 'DockerFunction', {
 });
 ```
 
-The Dockerfile for a Lambda container image needs to use the AWS Lambda base image.
+The easiest Dockerfile for a Lambda container image uses an AWS Lambda base image. You can also use a non-AWS base image if you include the Lambda runtime interface client yourself.
 
 ```dockerfile
 # docker/lambda-handler/Dockerfile
@@ -245,7 +248,7 @@ const service = new ecsPatterns.ApplicationLoadBalancedFargateService(
 
 ## Caching and Build Performance
 
-Docker asset builds can be slow if you're not careful with Dockerfile layering. CDK caches based on the content hash of the build directory. If any file changes, the entire image rebuilds.
+Docker asset builds can be slow if you're not careful with Dockerfile layering. CDK fingerprints the build directory to identify the asset. If any included file changes, CDK treats it as a new image asset, but Docker can still reuse unchanged layers from its local build cache.
 
 To speed things up, structure your Dockerfile to maximize layer caching.
 
@@ -265,15 +268,10 @@ COPY src/ ./src/
 CMD ["node", "src/index.js"]
 ```
 
-You can also use Docker BuildKit for faster builds.
+Modern Docker builds use BuildKit by default. If you're in an environment where BuildKit is disabled, enable it before running `cdk deploy`.
 
-```typescript
-// Enable BuildKit for faster builds
-const image = ecs.ContainerImage.fromAsset('./docker/app', {
-  buildArgs: {
-    DOCKER_BUILDKIT: '1',
-  },
-});
+```bash
+DOCKER_BUILDKIT=1 cdk deploy
 ```
 
 ## Cross-Platform Builds
