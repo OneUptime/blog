@@ -10,6 +10,8 @@ Description: Learn how to use AWS Migration Hub Strategy Recommendations to asse
 
 Deciding how to migrate each application to AWS is one of the hardest parts of a cloud migration. Should you lift and shift? Replatform to containers? Refactor to serverless? Making the wrong choice costs time and money. AWS Migration Hub Strategy Recommendations takes the guesswork out of this decision by analyzing your applications and providing data-driven migration strategy suggestions.
 
+AWS Migration Hub is no longer open to new customers as of November 7, 2025. Existing Migration Hub customers can still use Strategy Recommendations; new customers should evaluate AWS Transform for similar assessment and modernization capabilities.
+
 This guide covers how to set up, run, and interpret strategy assessments for your application portfolio.
 
 ## Understanding the 7 R's of Migration
@@ -58,10 +60,9 @@ strategy = boto3.client('migrationhubstrategy')
 
 # Start the portfolio assessment
 response = strategy.start_assessment(
-    s3bucketForAnalysisData={
-        's3Bucket': 'my-migration-assessment-data',
-        's3key': 'assessments/'
-    }
+    assessmentDataSourceType='StrategyRecommendationsApplicationDataCollector',
+    s3bucketForAnalysisData='migrationhub-strategy-analysis-data',
+    s3bucketForReportData='migrationhub-strategy-report-data'
 )
 
 assessment_id = response['assessmentId']
@@ -87,7 +88,7 @@ import time
 strategy = boto3.client('migrationhubstrategy')
 
 while True:
-    response = strategy.get_assessment(assessmentId=assessment_id)
+    response = strategy.get_assessment(id=assessment_id)
     status = response['dataCollectionDetails']['status']
 
     if status == 'COMPLETE':
@@ -97,7 +98,13 @@ while True:
         print(f"Assessment failed: {response['dataCollectionDetails'].get('statusMessage')}")
         break
 
-    print(f"Status: {status}, Completion: {response['dataCollectionDetails'].get('completionPercentage', 0)}%")
+    details = response['dataCollectionDetails']
+    print(
+        f"Status: {status}, "
+        f"Success: {details.get('success', 0)}, "
+        f"Failed: {details.get('failed', 0)}, "
+        f"In progress: {details.get('inProgress', 0)}"
+    )
     time.sleep(300)  # Check every 5 minutes
 ```
 
@@ -116,7 +123,7 @@ paginator = strategy.get_paginator('list_servers')
 
 for page in paginator.paginate():
     for server in page['serverInfos']:
-        server_id = server['serverId']
+        server_id = server['id']
 
         # Get detailed recommendations
         details = strategy.get_server_details(serverId=server_id)
@@ -131,6 +138,14 @@ for page in paginator.paginate():
         rec = server_detail.get('recommendationSet', {})
         print(f"  Target Destination: {rec.get('targetDestination', 'N/A')}")
         print(f"  Transformation Tool: {rec.get('transformationTool', {}).get('name', 'N/A')}")
+
+        strategies = strategy.get_server_strategies(serverId=server_id)
+        for item in strategies.get('serverStrategies', []):
+            recommendation = item.get('recommendation', {})
+            print(
+                f"  Option: {recommendation.get('strategy', 'N/A')} "
+                f"({item.get('status', 'N/A')})"
+            )
 ```
 
 ## Understanding Application Component Analysis
@@ -147,7 +162,7 @@ strategy = boto3.client('migrationhubstrategy')
 response = strategy.list_application_components()
 
 for component in response['applicationComponentInfos']:
-    comp_id = component['appId']
+    comp_id = component['id']
     print(f"\nComponent: {component.get('name', comp_id)}")
     print(f"  Type: {component.get('appType', 'Unknown')}")
     print(f"  Status: {component.get('inclusionStatus', 'Unknown')}")
@@ -160,10 +175,17 @@ for component in response['applicationComponentInfos']:
     detail = details['applicationComponentDetail']
 
     # Check for anti-patterns
-    anti_patterns = detail.get('antiPatternReport', {}).get('antiPatternReportStatusList', [])
-    for ap in anti_patterns:
-        print(f"  Anti-pattern: {ap.get('analyzerName', {}).get('name', 'Unknown')}")
-        print(f"    Severity: {ap.get('severity', 'Unknown')}")
+    severity_summary = detail.get('listAntipatternSeveritySummary', [])
+    for item in severity_summary:
+        print(f"  Anti-pattern severity: {item.get('severity', 'Unknown')}")
+        print(f"    Count: {item.get('count', 0)}")
+
+    for result in detail.get('resultList', []):
+        for report in result.get('antipatternReportResultList', []):
+            analyzer_name = report.get('analyzerName', {})
+            analyzer = next(iter(analyzer_name.values()), 'Unknown')
+            print(f"  Analyzer: {analyzer}")
+            print(f"    Report status: {report.get('antipatternReportStatus', 'Unknown')}")
 ```
 
 Anti-patterns are code practices that make migration harder. Common ones include:
@@ -179,16 +201,40 @@ Strategy Recommendations can export a comprehensive portfolio report:
 ```python
 # Export portfolio assessment report
 import boto3
+import time
 
 strategy = boto3.client('migrationhubstrategy')
 
+# Start generating the report
+report = strategy.start_recommendation_report_generation(
+    outputFormat='Excel'
+)
+report_id = report['id']
+
+while True:
+    report_details = strategy.get_recommendation_report_details(id=report_id)
+    details = report_details['recommendationReportDetails']
+
+    if details['status'] == 'SUCCESS':
+        print(f"Report bucket: {details['s3Bucket']}")
+        print(f"Report keys: {', '.join(details.get('s3Keys', []))}")
+        break
+    elif details['status'] == 'FAILED':
+        print(f"Report generation failed: {details.get('statusMessage')}")
+        break
+
+    print(f"Report status: {details['status']}")
+    time.sleep(300)
+
 # Get portfolio summary
 summary = strategy.get_portfolio_summary()
+assessment_summary = summary.get('assessmentSummary', {})
 
 print("Portfolio Summary:")
-print(f"  Total servers: {summary.get('assessmentSummary', {}).get('totalServerCount', 0)}")
+server_total = sum(item['count'] for item in assessment_summary.get('listServerSummary', []))
+print(f"  Total servers: {server_total}")
 
-server_summary = summary.get('assessmentSummary', {}).get('serverStrategySummary', [])
+server_summary = assessment_summary.get('listServerStrategySummary', [])
 for s in server_summary:
     print(f"  {s['strategy']}: {s['count']} servers")
 
@@ -242,14 +288,25 @@ retire_candidates = []
 
 response = strategy.list_servers()
 for server in response['serverInfos']:
-    details = strategy.get_server_details(serverId=server['serverId'])
+    details = strategy.get_server_details(serverId=server['id'])
     rec = details['serverDetail'].get('recommendationSet', {})
 
+    recommended_strategy = rec.get('strategy', '')
     target = rec.get('targetDestination', '')
 
-    if 'EC2' in target:
+    if recommended_strategy == 'Retirement':
+        retire_candidates.append(server)
+    elif 'EC2' in target:
         rehost_candidates.append(server)
-    elif 'Container' in target or 'RDS' in target:
+    elif (
+        'Fargate' in target
+        or 'Container' in target
+        or 'ECS' in target
+        or 'EKS' in target
+        or 'Relational Database Service' in target
+        or 'RDS' in target
+        or 'Aurora' in target
+    ):
         replatform_candidates.append(server)
     elif 'Lambda' in target or 'Serverless' in target:
         refactor_candidates.append(server)
@@ -268,6 +325,7 @@ Once you have your strategy decisions, feed them back into Migration Hub for tra
 ```python
 # Update Migration Hub with strategy decisions
 import boto3
+from datetime import datetime, timezone
 
 mgh = boto3.client('mgh')
 
@@ -284,7 +342,7 @@ mgh.notify_migration_task_state(
         'Status': 'NOT_STARTED',
         'StatusDetail': 'Rehost to EC2 - Strategy confirmed'
     },
-    UpdateDateTime=datetime.now(),
+    UpdateDateTime=datetime.now(timezone.utc),
     NextUpdateSeconds=86400
 )
 ```
