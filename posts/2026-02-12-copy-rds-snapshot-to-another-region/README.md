@@ -27,7 +27,7 @@ Before you start, make sure you have:
 
 - An existing RDS instance with at least one snapshot (either automated or manual)
 - Appropriate IAM permissions including `rds:CopyDBSnapshot` and `rds:DescribeDBSnapshots`
-- If your snapshot is encrypted, the KMS key must allow cross-region operations
+- If your snapshot is encrypted, a KMS key in the destination region and the required KMS permissions
 
 ## Copy a Snapshot Using the AWS Console
 
@@ -90,6 +90,7 @@ aws rds copy-db-snapshot \
 ```
 
 Make sure the IAM role or user running this command has `kms:CreateGrant` and `kms:DescribeKey` permissions on the destination KMS key.
+For encrypted snapshots, AWS also requires permissions such as `kms:Decrypt`, `kms:Encrypt`, `kms:GenerateDataKey`, `kms:GenerateDataKeyWithoutPlaintext`, and `kms:ReEncrypt`.
 
 ## Automating Cross-Region Snapshot Copies
 
@@ -104,7 +105,7 @@ First, set up an EventBridge rule that fires when an automated snapshot complete
   "detail": {
     "EventCategories": ["creation"],
     "SourceType": ["SNAPSHOT"],
-    "Message": ["Automated snapshot created"]
+    "EventID": ["RDS-EVENT-0091"]
   }
 }
 ```
@@ -132,7 +133,7 @@ def lambda_handler(event, context):
     copy_params = {
         'SourceDBSnapshotIdentifier': source_snapshot_arn,
         'TargetDBSnapshotIdentifier': target_snapshot_id,
-        'SourceRegion': os.environ['AWS_REGION'],
+        'SourceRegion': event['region'],
     }
 
     # Add KMS key if provided (for encrypted snapshots)
@@ -184,7 +185,7 @@ Cross-region snapshot copies aren't free. You'll pay for:
 - **Data transfer**: AWS charges for data moving between regions. This can add up for large databases.
 - **Storage**: The snapshot copy takes up storage in the destination region at standard RDS snapshot rates.
 
-For a 500 GB database, expect around $12-15/month for the snapshot storage in the destination region, plus a one-time transfer cost each time you copy.
+For a 500 GB database, expect the monthly storage cost to depend on the destination region and current RDS backup storage rate. At $0.095 per GB-month, for example, that would be about $47.50/month for the snapshot storage in the destination region, plus a one-time transfer cost each time you copy.
 
 ## Monitoring Your Snapshot Copies
 
