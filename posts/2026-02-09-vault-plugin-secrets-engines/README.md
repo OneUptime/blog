@@ -43,8 +43,10 @@ package main
 import (
     "context"
     "fmt"
+    "os"
     "time"
 
+    "github.com/hashicorp/vault/api"
     "github.com/hashicorp/vault/sdk/framework"
     "github.com/hashicorp/vault/sdk/logical"
     "github.com/hashicorp/vault/sdk/plugin"
@@ -329,14 +331,14 @@ func (b *customBackend) tokenRevoke(ctx context.Context, req *logical.Request, d
 }
 
 func main() {
-    apiClientMeta := &plugin.APIClientMeta{}
+    apiClientMeta := &api.PluginAPIClientMeta{}
     flags := apiClientMeta.FlagSet()
     flags.Parse(os.Args[1:])
 
     tlsConfig := apiClientMeta.GetTLSConfig()
-    tlsProviderFunc := plugin.VaultPluginTLSProvider(tlsConfig)
+    tlsProviderFunc := api.VaultPluginTLSProvider(tlsConfig)
 
-    if err := plugin.Serve(&plugin.ServeOpts{
+    if err := plugin.ServeMultiplex(&plugin.ServeOpts{
         BackendFactoryFunc: Factory,
         TLSProviderFunc:    tlsProviderFunc,
     }); err != nil {
@@ -386,7 +388,7 @@ docker push myorg/vault-custom-plugin:1.0.0
 
 ## Deploying Plugin to Vault in Kubernetes
 
-Configure Vault to load the plugin using an init container:
+Configure Vault to load the plugin using an init container. Make sure the Vault server configuration also sets `plugin_directory = "/vault/plugins"` so Vault can register binaries from that directory:
 
 ```yaml
 apiVersion: apps/v1
@@ -408,6 +410,8 @@ spec:
       initContainers:
       - name: plugin-loader
         image: myorg/vault-custom-plugin:1.0.0
+        securityContext:
+          runAsUser: 0
         command:
         - sh
         - -c
@@ -419,7 +423,7 @@ spec:
           mountPath: /vault-plugins
       containers:
       - name: vault
-        image: vault:1.15
+        image: hashicorp/vault:1.21
         env:
         - name: VAULT_ADDR
           value: "http://127.0.0.1:8200"
@@ -446,14 +450,14 @@ SHA256=$(kubectl exec -n vault-system vault-0 -- sha256sum /vault/plugins/vault-
 kubectl exec -n vault-system vault-0 -- vault plugin register \
     -sha256=$SHA256 \
     -command=vault-custom-plugin \
+    -version=v1.0.0 \
     secret \
     custom-plugin
 
 # Enable the plugin
 kubectl exec -n vault-system vault-0 -- vault secrets enable \
     -path=custom \
-    -plugin-name=custom-plugin \
-    plugin
+    custom-plugin
 ```
 
 ## Using the Custom Plugin
@@ -502,8 +506,8 @@ func getCustomCredentials(vaultAddr, token, role string) (string, error) {
         return "", err
     }
 
-    token := secret.Data["token"].(string)
-    return token, nil
+    credentialToken := secret.Data["token"].(string)
+    return credentialToken, nil
 }
 ```
 
@@ -525,13 +529,21 @@ NEW_SHA256=$(kubectl exec -n vault-system vault-0 -- sha256sum /vault/plugins/va
 kubectl exec -n vault-system vault-0 -- vault plugin register \
     -sha256=$NEW_SHA256 \
     -command=vault-custom-plugin-v2 \
-    -version=2.0.0 \
+    -version=v2.0.0 \
     secret \
     custom-plugin
 
-# Reload plugin (uses new version)
+# Pin the new version for the cluster
+kubectl exec -n vault-system vault-0 -- vault write \
+    -namespace=root \
+    sys/plugins/pins/secret/custom-plugin \
+    version="v2.0.0"
+
+# Reload plugin (uses pinned version)
 kubectl exec -n vault-system vault-0 -- vault plugin reload \
-    -plugin=custom-plugin
+    -type=secret \
+    -plugin=custom-plugin \
+    -scope=global
 ```
 
 ## Monitoring Plugin Performance
@@ -548,7 +560,7 @@ func (b *customBackend) pathCredsRead(ctx context.Context, req *logical.Request,
 }
 ```
 
-Configure Prometheus to scrape metrics:
+Configure a Prometheus alert for the exported timer metric:
 
 ```yaml
 apiVersion: v1
@@ -562,7 +574,7 @@ data:
     - name: vault-plugins
       rules:
       - alert: PluginHighLatency
-        expr: vault_custom_plugin_creds_read > 1000
+        expr: rate(vault_custom_plugin_creds_read_sum[5m]) / rate(vault_custom_plugin_creds_read_count[5m]) > 1
         annotations:
           summary: "Custom plugin experiencing high latency"
 ```
