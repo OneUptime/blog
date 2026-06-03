@@ -27,10 +27,10 @@ This is the simplest case: a linear pipeline where each step depends on the prev
 
 ## Dependency Types
 
-AWS Batch supports two dependency types:
+AWS Batch supports two dependency types for array jobs:
 
-1. **SEQUENTIAL** - The dependent job runs after the dependency finishes. For array jobs, each child waits for the corresponding child in the dependency.
-2. **N_TO_N** - Used with array jobs. The dependent job waits for ALL children of the dependency array to complete.
+1. **SEQUENTIAL** - Runs the children of a single array job in index order. You specify this type without a job ID, so child 1 waits for child 0, child 2 waits for child 1, and so on.
+2. **N_TO_N** - Used between array jobs. Each child in the dependent array waits for the corresponding child index in the dependency array.
 
 ## Building a Linear Pipeline
 
@@ -132,11 +132,11 @@ AGGREGATE_JOB_ID=$(aws batch submit-job \
   --job-name aggregate-results \
   --job-queue data-pipeline-queue \
   --job-definition aggregate-job-def \
-  --depends-on "jobId=$PROCESS_JOB_ID,type=N_TO_N" \
+  --depends-on "jobId=$PROCESS_JOB_ID" \
   --query 'jobId' --output text)
 ```
 
-The `type=N_TO_N` on the aggregation dependency is critical. Without it, the aggregation job would only wait for the parent array job entry, not all 100 children.
+The aggregation job depends on the parent array job ID. A basic job that depends on an array job parent starts only after all array children complete successfully. Use `type=N_TO_N` when the dependent job is also an array job and you want each child to wait for the matching child index in another array job.
 
 ## Multiple Dependencies
 
@@ -282,15 +282,15 @@ aws batch submit-job \
   }'
 ```
 
-Exit code 137 typically means the container was killed due to memory pressure. Retrying gives it another chance, possibly on a larger instance.
+Exit code 137 typically means the container was killed due to memory pressure. Retrying gives it another chance if the memory spike was transient, but persistent memory pressure should be fixed by increasing the job's memory requirement.
 
 ## Dependency Limits
 
 There are some limits to be aware of:
 
 - A job can depend on up to 20 other jobs
-- Dependencies can only reference jobs in the same job queue (or any queue, as long as they are in the same region and account)
-- Circular dependencies are rejected
+- Dependencies reference submitted AWS Batch job IDs
+- Because dependencies reference existing job IDs at submission time, build the graph in dependency order
 - The maximum depth of a dependency chain is not explicitly limited, but very deep chains can be hard to manage
 
 ## When to Use Batch Dependencies vs Step Functions
