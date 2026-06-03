@@ -40,7 +40,7 @@ That's it. Now you can use SAM resource types alongside standard CloudFormation 
 
 ## SAM Resource Types
 
-SAM provides these simplified resource types:
+Common SAM resource types include:
 
 | SAM Type | Expands To |
 |---|---|
@@ -352,10 +352,10 @@ Resources:
 
         # Publish to SNS
         - SNSPublishMessagePolicy:
-            TopicArn: !Ref NotificationTopic
+            TopicName: !GetAtt NotificationTopic.TopicName
 
         # Read SSM parameters
-        - SSMParameterReadPolicy:
+        - SSMParameterWithSlashPrefixReadPolicy:
             ParameterName: /myapp/*
 
         # Put events to EventBridge
@@ -386,10 +386,10 @@ aws cloudformation deploy \
   --stack-name my-serverless-app \
   --template-file packaged.yaml \
   --parameter-overrides Environment=prod \
-  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+  --capabilities CAPABILITY_IAM
 ```
 
-Note: `CAPABILITY_AUTO_EXPAND` is required because the SAM transform expands into additional resources.
+Note: `CAPABILITY_IAM` is required because SAM commonly creates IAM roles for Lambda functions.
 
 Or use the SAM CLI (which wraps CloudFormation):
 
@@ -399,7 +399,7 @@ sam build
 sam deploy \
   --stack-name my-serverless-app \
   --parameter-overrides Environment=prod \
-  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND \
+  --capabilities CAPABILITY_IAM \
   --resolve-s3
 ```
 
@@ -456,7 +456,7 @@ aws cloudformation create-change-set \
   --stack-name my-serverless-app \
   --template-body file://packaged.yaml \
   --change-set-name view-expansion \
-  --capabilities CAPABILITY_IAM CAPABILITY_AUTO_EXPAND
+  --capabilities CAPABILITY_IAM
 
 aws cloudformation get-template \
   --stack-name my-serverless-app \
@@ -476,7 +476,7 @@ aws cloudformation get-template \
 
 **Set appropriate timeouts.** The default 3-second timeout is too short for most real-world functions. Set it in Globals.
 
-**Include CAPABILITY_AUTO_EXPAND.** The SAM transform creates additional resources that require this capability acknowledgment.
+**Include CAPABILITY_AUTO_EXPAND for nested applications.** When you deploy nested applications with `AWS::Serverless::Application`, acknowledge that expansion with `CAPABILITY_AUTO_EXPAND`.
 
 **Monitor your functions.** Set up CloudWatch alarms for errors and duration. You can add standard CloudFormation alarm resources alongside your SAM resources, or integrate with [OneUptime](https://oneuptime.com/blog/post/2026-02-12-detect-fix-cloudformation-drift/view) for comprehensive monitoring.
 
