@@ -41,56 +41,57 @@ kubectl krew install access-matrix
 Verify installations:
 
 ```bash
-kubectl rbac-lookup --version
+kubectl rbac-lookup --help
 kubectl who-can --help
 kubectl rbac-tool version
+kubectl access-matrix help
 ```
 
-## Using rbac-lookup for Permission Discovery
+## Using rbac-lookup for Binding Discovery
 
-rbac-lookup shows which subjects (users, groups, ServiceAccounts) have access to specific resources:
+rbac-lookup shows which Roles and ClusterRoles are bound to matching subjects (users, groups, ServiceAccounts):
 
 ```bash
-# Who can access secrets?
-kubectl rbac-lookup secrets
+# Which roles are bound to developer@company.com?
+kubectl rbac-lookup developer@company.com
 
 # Output:
 # SUBJECT                        SCOPE             ROLE
-# system:serviceaccount:...      cluster-wide      ClusterRole/cluster-admin
+# developer@company.com          cluster-wide      ClusterRole/view
 # developer@company.com          namespace/dev     Role/secret-reader
 ```
 
-Find users with specific permissions:
+Find bindings for specific subjects:
 
 ```bash
-# Who has cluster-admin?
-kubectl rbac-lookup cluster-admin
+# Find all bindings for a specific user
+kubectl rbac-lookup developer@company.com
 
-# Who can delete pods?
-kubectl rbac-lookup pods --verb delete
+# Find all bindings for a ServiceAccount name
+kubectl rbac-lookup my-app --kind serviceaccount
 
-# Who can access resources in a specific namespace?
-kubectl rbac-lookup --namespace production
+# Find all bindings for subjects with names that include "ops"
+kubectl rbac-lookup ops
 ```
 
 Filter by subject type:
 
 ```bash
-# Find ServiceAccounts with cluster-admin
-kubectl rbac-lookup cluster-admin --kind serviceaccount
+# Find ServiceAccounts with role bindings
+kubectl rbac-lookup --kind serviceaccount
 
-# Find groups with edit access
-kubectl rbac-lookup edit --kind group
+# Find groups with role bindings
+kubectl rbac-lookup --kind group
 ```
 
 Export results for reporting:
 
 ```bash
-# Generate JSON report
-kubectl rbac-lookup cluster-admin --output json > cluster-admins.json
+# Generate a text report for a subject
+kubectl rbac-lookup developer@company.com --output wide > developer-bindings.txt
 
 # Generate wide format with full details
-kubectl rbac-lookup secrets --output wide
+kubectl rbac-lookup ops --output wide
 ```
 
 ## Using who-can for Resource-Specific Queries
@@ -104,8 +105,8 @@ kubectl who-can create pods -n production
 # Who can delete deployments cluster-wide?
 kubectl who-can delete deployments --all-namespaces
 
-# Who can get secrets named database-password?
-kubectl who-can get secret database-password -n production
+# Who can get a secret named database-password?
+kubectl who-can get secret/database-password -n production
 ```
 
 Check permissions for specific users:
@@ -124,12 +125,12 @@ Use in scripts for automated validation:
 #!/bin/bash
 # check-rbac-compliance.sh
 
-# Verify no regular users have cluster-admin
-CLUSTER_ADMINS=$(kubectl who-can "*" "*" --all-namespaces | grep -v "system:")
+# Verify no regular users have all resource permissions
+WILDCARD_SUBJECTS=$(kubectl who-can "*" "*" --all-namespaces | grep -v "^SUBJECT" | grep -v "^system:")
 
-if [ -n "$CLUSTER_ADMINS" ]; then
-  echo "WARNING: Found non-system cluster-admin users:"
-  echo "$CLUSTER_ADMINS"
+if [ -n "$WILDCARD_SUBJECTS" ]; then
+  echo "WARNING: Found non-system subjects with wildcard permissions:"
+  echo "$WILDCARD_SUBJECTS"
   exit 1
 fi
 
@@ -149,11 +150,11 @@ kubectl rbac-tool policy-rules
 # Find who can perform specific actions
 kubectl rbac-tool who-can create pod
 
-# Lookup what a specific user can do
+# Lookup the roles bound to a specific user
 kubectl rbac-tool lookup developer@company.com
 
 # Analyze a specific ServiceAccount
-kubectl rbac-tool lookup -e serviceaccount:default:my-app
+kubectl rbac-tool lookup -e '^system:serviceaccount:default:my-app$'
 ```
 
 Generate reports in different formats:
@@ -162,23 +163,23 @@ Generate reports in different formats:
 # Generate HTML report
 kubectl rbac-tool viz --outformat html > rbac-report.html
 
-# Generate JSON for programmatic analysis
-kubectl rbac-tool viz --outformat json > rbac-analysis.json
+# Generate policy rules as JSON for programmatic analysis
+kubectl rbac-tool policy-rules -o json > rbac-policy-rules.json
 ```
 
 Analyze specific resources:
 
 ```bash
-# Show all roles affecting a resource
-kubectl rbac-tool lookup -e deployment:my-app -n production
+# Show who can get a specific deployment
+kubectl rbac-tool who-can get deployment/my-app -n production
 
-# Show effective permissions for a pod
-kubectl rbac-tool lookup -e pod:my-pod -n production
+# Show who can get a specific pod
+kubectl rbac-tool who-can get pod/my-pod -n production
 ```
 
 ## Using access-matrix for Permission Overview
 
-access-matrix creates a matrix showing who can do what:
+access-matrix creates a matrix showing what the current or impersonated subject can do:
 
 ```bash
 # Generate access matrix for a namespace
@@ -194,11 +195,11 @@ kubectl access-matrix --namespace production
 Create visual dashboards:
 
 ```bash
-# Generate for all namespaces
-kubectl access-matrix --all-namespaces --output json > access-matrix.json
+# Generate for an impersonated user in a namespace
+kubectl access-matrix --as developer@company.com --namespace production
 
-# Use with custom processing
-cat access-matrix.json | jq '.resources[] | select(.write == true)'
+# Generate for a ServiceAccount in a namespace
+kubectl access-matrix --sa production:my-serviceaccount --namespace production
 ```
 
 ## Conducting a Comprehensive RBAC Audit
@@ -214,11 +215,12 @@ echo "Date: $(date)"
 echo ""
 
 echo "### 1. Cluster-Admin Assignments ###"
-kubectl rbac-lookup cluster-admin --output wide
+kubectl rbac-tool who-can "*" "*"
 
 echo ""
 echo "### 2. Users with Secret Access ###"
-kubectl rbac-lookup secrets --verb get,list
+kubectl who-can get secrets --all-namespaces
+kubectl who-can list secrets --all-namespaces
 
 echo ""
 echo "### 3. ServiceAccounts with Cluster-Wide Access ###"
@@ -228,7 +230,7 @@ echo ""
 echo "### 4. Overly Permissive Roles ###"
 kubectl get clusterroles -o json | \
   jq -r '.items[] |
-  select(.rules[]?.verbs[]? == "*" and .rules[]?.resources[]? == "*") |
+  select(any(.rules[]?; ((.verbs // []) | index("*")) and ((.resources // []) | index("*")))) |
   .metadata.name'
 
 echo ""
@@ -271,20 +273,20 @@ Find roles with dangerous wildcards:
 # Roles with wildcard verbs
 kubectl get clusterroles -o json | \
   jq -r '.items[] |
-  select(.rules[]?.verbs[]? == "*") |
-  "\(.metadata.name): \(.rules[] | select(.verbs[] == "*") | .resources)"'
+  select(any(.rules[]?; ((.verbs // []) | index("*")))) |
+  "\(.metadata.name): \(.rules[] | select((.verbs // []) | index("*")) | .resources)"'
 
 # Roles with wildcard resources
 kubectl get clusterroles -o json | \
   jq -r '.items[] |
-  select(.rules[]?.resources[]? == "*") |
+  select(any(.rules[]?; ((.resources // []) | index("*")))) |
   .metadata.name'
 ```
 
 Find users with admin in production:
 
 ```bash
-kubectl rbac-lookup --namespace production | grep -E "(admin|edit)"
+kubectl who-can "*" "*" -n production | grep -v "^system:"
 ```
 
 Generate a risk report:
@@ -296,23 +298,23 @@ Generate a risk report:
 HIGH_RISK=0
 MEDIUM_RISK=0
 
-# Check for non-system cluster-admins
-CLUSTER_ADMINS=$(kubectl rbac-lookup cluster-admin --kind user | wc -l)
-if [ $CLUSTER_ADMINS -gt 3 ]; then
-  echo "HIGH RISK: $CLUSTER_ADMINS users have cluster-admin"
+# Check for non-system subjects with wildcard permissions
+WILDCARD_SUBJECTS=$(kubectl who-can "*" "*" --all-namespaces | grep -v "^SUBJECT" | grep -v "^system:" | wc -l)
+if [ $WILDCARD_SUBJECTS -gt 3 ]; then
+  echo "HIGH RISK: $WILDCARD_SUBJECTS non-system subjects have wildcard permissions"
   HIGH_RISK=$((HIGH_RISK + 1))
 fi
 
-# Check for ServiceAccounts with cluster-admin
-SA_CLUSTER_ADMINS=$(kubectl rbac-lookup cluster-admin --kind serviceaccount | wc -l)
-if [ $SA_CLUSTER_ADMINS -gt 5 ]; then
-  echo "HIGH RISK: $SA_CLUSTER_ADMINS ServiceAccounts have cluster-admin"
+# Check for ServiceAccounts with wildcard permissions
+SA_WILDCARD_SUBJECTS=$(kubectl who-can "*" "*" --all-namespaces | grep "system:serviceaccount:" | wc -l)
+if [ $SA_WILDCARD_SUBJECTS -gt 5 ]; then
+  echo "HIGH RISK: $SA_WILDCARD_SUBJECTS ServiceAccounts have wildcard permissions"
   HIGH_RISK=$((HIGH_RISK + 1))
 fi
 
 # Check for wildcard roles
 WILDCARD_ROLES=$(kubectl get clusterroles -o json | \
-  jq -r '.items[] | select(.rules[]?.verbs[]? == "*" and .rules[]?.resources[]? == "*") | .metadata.name' | \
+  jq -r '.items[] | select(any(.rules[]?; ((.verbs // []) | index("*")) and ((.resources // []) | index("*")))) | .metadata.name' | \
   grep -v "cluster-admin" | wc -l)
 if [ $WILDCARD_ROLES -gt 0 ]; then
   echo "MEDIUM RISK: $WILDCARD_ROLES custom roles with wildcard permissions"
@@ -353,13 +355,13 @@ spec:
           serviceAccountName: rbac-auditor
           containers:
           - name: audit
-            image: bitnami/kubectl:latest
+            image: your-registry/rbac-audit-tools:latest # Include kubectl plus rbac-tool and who-can plugins
             command:
             - /bin/bash
             - -c
             - |
-              kubectl rbac-lookup cluster-admin > /reports/cluster-admins.txt
-              kubectl rbac-lookup secrets --verb get > /reports/secret-access.txt
+              kubectl rbac-tool who-can "*" "*" > /reports/wildcard-access.txt
+              kubectl who-can get secrets --all-namespaces > /reports/secret-access.txt
               # Upload reports to S3 or send via email
             volumeMounts:
             - name: reports
@@ -394,9 +396,10 @@ rules:
     - clusterrolebindings
   verbs: ["get", "list"]
 
-# Read users and groups (if using OIDC)
+# Read ServiceAccounts
 - apiGroups: [""]
   resources:
+    - namespaces
     - serviceaccounts
   verbs: ["get", "list"]
 ---
@@ -421,7 +424,7 @@ Create Grafana dashboards for RBAC metrics:
 ```yaml
 # Export RBAC data to Prometheus format
 - name: rbac_cluster_admin_bindings
-  query: count(kube_clusterrolebinding_info{clusterrolebinding=~".*admin.*"})
+  query: count(kube_clusterrolebinding_info{roleref_name="cluster-admin"})
 
 - name: rbac_total_rolebindings
   query: count(kube_rolebinding_info)
