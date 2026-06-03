@@ -16,7 +16,7 @@ If you're building a new application on PostgreSQL or looking to upgrade from st
 
 Compared to standard RDS PostgreSQL:
 
-- **Storage layer**: Shared distributed storage that automatically scales from 10 GB to 128 TB. No need to provision storage upfront.
+- **Storage layer**: Shared distributed storage that automatically scales as your data grows. For the Aurora PostgreSQL 16.2 example below, the cluster volume can grow up to 128 TiB; newer supported engine versions can grow higher. No need to provision storage upfront.
 - **Replication**: Physical replication at the storage layer. Reader instances share the same storage volume as the writer, so replica lag is typically under 10 milliseconds.
 - **Failover**: Automated failover in under 30 seconds. With Aurora, the reader instances are already connected to the storage, so failover is just a matter of promoting one.
 - **Performance**: AWS claims up to 3x throughput compared to standard PostgreSQL for some workloads. Real-world results vary, but it is genuinely faster for many use cases.
@@ -101,7 +101,7 @@ aws rds create-db-cluster \
   --enable-iam-database-authentication
 ```
 
-Wait for the cluster to be available:
+Check the cluster status. When you create an Aurora cluster with the AWS CLI, the endpoints stay in the `Creating` status until you create the first DB instance in the cluster:
 
 ```bash
 # Check cluster status
@@ -122,6 +122,7 @@ aws rds create-db-instance \
   --db-parameter-group-name myapp-aurora-pg16-instance \
   --monitoring-interval 10 \
   --monitoring-role-arn arn:aws:iam::123456789012:role/rds-enhanced-monitoring-role \
+  --database-insights-mode standard \
   --enable-performance-insights \
   --performance-insights-retention-period 7 \
   --promotion-tier 0
@@ -139,11 +140,12 @@ aws rds create-db-instance \
   --db-parameter-group-name myapp-aurora-pg16-instance \
   --monitoring-interval 10 \
   --monitoring-role-arn arn:aws:iam::123456789012:role/rds-enhanced-monitoring-role \
+  --database-insights-mode standard \
   --enable-performance-insights \
   --performance-insights-retention-period 7 \
   --promotion-tier 1
 
-# Create a second reader in a different AZ
+# Create a second reader. Use a DB subnet group that spans multiple AZs so replicas can be distributed for failover.
 aws rds create-db-instance \
   --db-instance-identifier myapp-aurora-pg-reader-2 \
   --db-cluster-identifier myapp-aurora-pg-cluster \
@@ -152,6 +154,7 @@ aws rds create-db-instance \
   --db-parameter-group-name myapp-aurora-pg16-instance \
   --monitoring-interval 10 \
   --monitoring-role-arn arn:aws:iam::123456789012:role/rds-enhanced-monitoring-role \
+  --database-insights-mode standard \
   --enable-performance-insights \
   --performance-insights-retention-period 7 \
   --promotion-tier 2
@@ -281,7 +284,7 @@ aws cloudwatch put-metric-alarm \
 # Aurora-specific: replica lag alarm
 aws cloudwatch put-metric-alarm \
   --alarm-name "aurora-pg-replica-lag" \
-  --metric-name AuroraReplicaLag \
+  --metric-name AuroraReplicaLagMaximum \
   --namespace AWS/RDS \
   --statistic Maximum \
   --period 60 \
