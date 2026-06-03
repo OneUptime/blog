@@ -23,14 +23,12 @@ Compliance frameworks like SOC2, ISO 27001, and PCI-DSS require periodic access 
 Create a tool that analyzes RBAC configurations and generates audit reports:
 
 ```python
-# rbac-audit.py
-
 #!/usr/bin/env python3
+# rbac-audit.py
 
 import subprocess
 import json
 from datetime import datetime
-from collections import defaultdict
 
 def get_cluster_roles():
     """Get all ClusterRoles"""
@@ -85,14 +83,18 @@ def can_escalate_privileges(role):
     """Check if role can modify RBAC objects"""
     dangerous_permissions = []
     for rule in role.get('rules', []):
+        api_groups = rule.get('apiGroups', [])
         resources = rule.get('resources', [])
         verbs = rule.get('verbs', [])
 
         rbac_resources = ['roles', 'rolebindings', 'clusterroles', 'clusterrolebindings']
+        rbac_api_group = '*' in api_groups or 'rbac.authorization.k8s.io' in api_groups
+        rbac_resource = '*' in resources or any(r in rbac_resources for r in resources)
 
-        if any(r in rbac_resources for r in resources):
+        if rbac_api_group and rbac_resource:
             if any(v in ['create', 'update', 'patch', 'delete', '*'] for v in verbs):
                 dangerous_permissions.append({
+                    'apiGroups': api_groups,
                     'resources': resources,
                     'verbs': verbs
                 })
@@ -129,7 +131,7 @@ def analyze_sensitive_permissions():
             resources = rule.get('resources', [])
             verbs = rule.get('verbs', [])
 
-            if any(r in sensitive_resources for r in resources):
+            if '*' in resources or any(r in sensitive_resources for r in resources):
                 sensitive.append({
                     'role': role_name,
                     'namespace': namespace,
@@ -226,13 +228,13 @@ chmod +x rbac-audit.py
 ./rbac-audit.py > rbac-audit-$(date +%Y-%m-%d).txt
 ```
 
-## Detecting Unused Roles and Bindings
+## Detecting Unused ServiceAccounts and Orphaned Bindings
 
-Identify roles and bindings that are never actually used:
+Identify ServiceAccounts that are not referenced by any running pod and RoleBindings that reference missing ServiceAccounts:
 
 ```bash
-# detect-unused-rbac.sh
 #!/bin/bash
+# detect-unused-rbac.sh
 
 echo "Analyzing unused RBAC configurations..."
 
@@ -240,9 +242,9 @@ echo "Analyzing unused RBAC configurations..."
 echo "Checking for unused ServiceAccounts..."
 kubectl get sa --all-namespaces -o json | \
   jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name)"' | \
-  while read ns sa; do
+  while read -r ns sa; do
     # Check if ServiceAccount is used by any pod
-    PODS=$(kubectl get pods -n $ns -o json | \
+    PODS=$(kubectl get pods -n "$ns" -o json | \
       jq -r --arg sa "$sa" '.items[] | select(.spec.serviceAccountName == $sa) | .metadata.name')
 
     if [ -z "$PODS" ]; then
@@ -250,17 +252,15 @@ kubectl get sa --all-namespaces -o json | \
     fi
   done
 
-# Check for unused RoleBindings
-echo -e "\nChecking for unused RoleBindings..."
+# Check for orphaned RoleBindings
+echo -e "\nChecking for orphaned RoleBindings..."
 kubectl get rolebindings --all-namespaces -o json | \
-  jq -r '.items[] | "\(.metadata.namespace) \(.metadata.name) \(.subjects[].name // "none")"' | \
-  while read ns binding subject; do
-    if [ "$subject" != "none" ]; then
-      # Check if subject exists
-      SA_EXISTS=$(kubectl get sa -n $ns $subject 2>/dev/null)
-      if [ -z "$SA_EXISTS" ]; then
-        echo "  Orphaned RoleBinding: $ns/$binding (references non-existent $subject)"
-      fi
+  jq -r '.items[] as $binding | ($binding.subjects // [])[] | select(.kind == "ServiceAccount") | "\($binding.metadata.namespace) \($binding.metadata.name) \(.namespace // $binding.metadata.namespace) \(.name)"' | \
+  while read -r binding_ns binding subject_ns subject; do
+    # Check if ServiceAccount subject exists
+    SA_EXISTS=$(kubectl get sa -n "$subject_ns" "$subject" 2>/dev/null)
+    if [ -z "$SA_EXISTS" ]; then
+      echo "  Orphaned RoleBinding: $binding_ns/$binding (references non-existent ServiceAccount $subject_ns/$subject)"
     fi
   done
 
@@ -307,14 +307,7 @@ Monitor RBAC modifications to detect suspicious changes:
 apiVersion: audit.k8s.io/v1
 kind: Policy
 rules:
-  # Log all RBAC changes at RequestResponse level
-  - level: RequestResponse
-    verbs: ["create", "update", "patch", "delete"]
-    resources:
-      - group: "rbac.authorization.k8s.io"
-        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
-
-  # Log privilege escalation attempts
+  # Log ClusterRoleBinding changes without the initial RequestReceived stage
   - level: RequestResponse
     verbs: ["create", "update", "patch"]
     resources:
@@ -322,6 +315,13 @@ rules:
         resources: ["clusterrolebindings"]
     omitStages:
       - RequestReceived
+
+  # Log all other RBAC changes at RequestResponse level
+  - level: RequestResponse
+    verbs: ["create", "update", "patch", "delete"]
+    resources:
+      - group: "rbac.authorization.k8s.io"
+        resources: ["roles", "rolebindings", "clusterroles", "clusterrolebindings"]
 ```
 
 Create alerts for suspicious RBAC changes:
@@ -338,24 +338,27 @@ spec:
   - name: rbac_security
     interval: 1m
     rules:
-    - alert: ClusterAdminBindingCreated
+    - alert: ClusterRoleBindingChanged
       expr: |
-        increase(apiserver_audit_event_total{
-          verb=~"create|update",
-          objectRef_resource="clusterrolebindings",
-          objectRef_name="cluster-admin"
+        increase(apiserver_request_total{
+          verb=~"POST|PUT|PATCH",
+          group="rbac.authorization.k8s.io",
+          resource="clusterrolebindings",
+          code=~"2.."
         }[5m]) > 0
       labels:
         severity: critical
       annotations:
-        summary: "New cluster-admin binding created"
-        description: "A new cluster-admin binding was created"
+        summary: "ClusterRoleBinding changed"
+        description: "A ClusterRoleBinding was created or updated"
 
     - alert: SuspiciousRBACModification
       expr: |
-        rate(apiserver_audit_event_total{
-          verb=~"create|update|delete",
-          objectRef_resource=~"roles|rolebindings|clusterroles|clusterrolebindings"
+        rate(apiserver_request_total{
+          verb=~"POST|PUT|PATCH|DELETE",
+          group="rbac.authorization.k8s.io",
+          resource=~"roles|rolebindings|clusterroles|clusterrolebindings",
+          code=~"2.."
         }[10m]) > 0.5
       for: 5m
       labels:
@@ -370,8 +373,8 @@ spec:
 Create formatted reports suitable for compliance auditors:
 
 ```python
-# compliance-rbac-report.py
 #!/usr/bin/env python3
+# compliance-rbac-report.py
 
 import subprocess
 import json
@@ -391,13 +394,18 @@ def generate_compliance_report():
     # Finding 1: Excessive Permissions
     result = subprocess.run(['kubectl', 'get', 'clusterroles', '-o', 'json'],
                            capture_output=True, text=True)
-    roles = json.loads(result.stdout)['items']
+    cluster_roles = json.loads(result.stdout)['items']
+
+    result = subprocess.run(['kubectl', 'get', 'roles', '-A', '-o', 'json'],
+                           capture_output=True, text=True)
+    namespaced_roles = json.loads(result.stdout)['items']
 
     wildcard_roles = []
-    for role in roles:
+    for role in cluster_roles + namespaced_roles:
         for rule in role.get('rules', []):
-            if '*' in rule.get('verbs', []) or '*' in rule.get('resources', []):
-                wildcard_roles.append(role['metadata']['name'])
+            if '*' in rule.get('verbs', []) or '*' in rule.get('resources', []) or '*' in rule.get('apiGroups', []):
+                namespace = role['metadata'].get('namespace', 'cluster-wide')
+                wildcard_roles.append(f"{namespace}/{role['metadata']['name']}")
                 break
 
     if wildcard_roles:
