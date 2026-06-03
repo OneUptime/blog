@@ -94,8 +94,9 @@ They can also use kubectl patch with the scale subresource:
 ```bash
 # Scale using patch
 kubectl patch deployment my-app -n production \
-  --type='json' \
-  -p='[{"op": "replace", "path": "/spec/replicas", "value": 3}]'
+  --subresource='scale' \
+  --type='merge' \
+  -p='{"spec":{"replicas":3}}'
 ```
 
 However, they cannot modify the deployment directly:
@@ -125,22 +126,31 @@ rules:
 - apiGroups: ["apps"]
   resources:
     - deployments
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
     - deployments/scale
-  verbs: ["get", "list", "watch", "update", "patch"]
+  verbs: ["get", "update", "patch"]
 
 # StatefulSets
 - apiGroups: ["apps"]
   resources:
     - statefulsets
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
     - statefulsets/scale
-  verbs: ["get", "list", "watch", "update", "patch"]
+  verbs: ["get", "update", "patch"]
 
 # ReplicaSets
 - apiGroups: ["apps"]
   resources:
     - replicasets
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
     - replicasets/scale
-  verbs: ["get", "list", "watch", "update", "patch"]
+  verbs: ["get", "update", "patch"]
 
 # Read pods
 - apiGroups: [""]
@@ -198,7 +208,7 @@ Users can create and manage HPAs:
 ```bash
 # Create an HPA
 kubectl autoscale deployment my-app \
-  --min=2 --max=10 --cpu-percent=80 \
+  --min=2 --max=10 --cpu=80% \
   -n production
 
 # Update HPA
@@ -293,12 +303,14 @@ Create alerts for suspicious scaling patterns:
 # Prometheus alert
 - alert: FrequentScaling
   expr: |
-    sum(rate(apiserver_audit_event_total{
+    sum(rate(apiserver_request_total{
+      group="apps",
+      resource=~"deployments|statefulsets",
       subresource="scale",
-      verb=~"update|patch"
-    }[5m])) by (user) > 10
+      verb=~"PUT|PATCH"
+    }[5m])) by (resource, verb) > 10
   annotations:
-    summary: "User {{ $labels.user }} is scaling deployments frequently"
+    summary: "Frequent scale operations detected"
 ```
 
 ## Building a Self-Service Scaling Interface
@@ -353,8 +365,11 @@ rules:
 - apiGroups: ["apps"]
   resources:
     - deployments
+  verbs: ["get", "list", "watch"]
+- apiGroups: ["apps"]
+  resources:
     - deployments/scale
-  verbs: ["get", "list", "watch", "update", "patch"]
+  verbs: ["get", "update", "patch"]
 
 # Read resource quotas to understand limits
 - apiGroups: [""]
@@ -390,16 +405,20 @@ NAMESPACE=$1
 DEPLOYMENT=$2
 NEW_REPLICAS=$3
 
-# Get current CPU requests per pod
+# Get current CPU requests per pod in millicores
 CPU_PER_POD=$(kubectl get deployment $DEPLOYMENT -n $NAMESPACE -o json | \
-  jq -r '.spec.template.spec.containers[0].resources.requests.cpu')
+  jq '[.spec.template.spec.containers[].resources.requests.cpu // "0" |
+       if endswith("m") then sub("m$"; "") | tonumber
+       else tonumber * 1000
+       end] | add')
 
 # Calculate total CPU needed
 TOTAL_CPU=$(echo "$CPU_PER_POD * $NEW_REPLICAS" | bc)
 
-# Check quota
+# Check quota in millicores
 QUOTA_CPU=$(kubectl get resourcequota -n $NAMESPACE -o json | \
-  jq -r '.items[0].spec.hard."requests.cpu"')
+  jq -r '.items[0].spec.hard."requests.cpu"' | \
+  awk '/m$/ { sub(/m$/, ""); print; next } { print $1 * 1000 }')
 
 if (( $(echo "$TOTAL_CPU > $QUOTA_CPU" | bc -l) )); then
   echo "Error: Scaling to $NEW_REPLICAS would exceed CPU quota"
