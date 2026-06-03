@@ -230,7 +230,7 @@ Cognito can send emails (verification codes, password resets) through two method
 
 **Cognito Default**: Limited to 50 emails per day. Fine for development but not production.
 
-**Amazon SES**: Required for production. No daily limit, custom sender addresses, better deliverability.
+**Amazon SES**: Recommended for production. Higher sending quotas, custom sender addresses, better deliverability.
 
 ```hcl
 # Production email configuration using SES
@@ -264,6 +264,7 @@ resource "aws_cognito_user_pool_domain" "main" {
 # Or use a custom domain
 resource "aws_cognito_user_pool_domain" "custom" {
   domain          = "auth.myapp.com"
+  # Cognito custom domains require an issued ACM certificate in us-east-1.
   certificate_arn = aws_acm_certificate.auth.arn
   user_pool_id    = aws_cognito_user_pool.main.id
 }
