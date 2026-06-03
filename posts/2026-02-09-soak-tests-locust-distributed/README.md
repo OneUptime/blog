@@ -151,7 +151,7 @@ spec:
     spec:
       containers:
       - name: locust
-        image: locustio/locust:2.15.1
+        image: locustio/locust:2.44.1
         ports:
         - containerPort: 8089
           name: web-ui
@@ -159,11 +159,6 @@ spec:
           name: master-bind
         - containerPort: 5558
           name: master-bind-2
-        env:
-        - name: LOCUST_MODE
-          value: "master"
-        - name: LOCUST_EXPECT_WORKERS
-          value: "5"  # Expected number of workers
         volumeMounts:
         - name: locust-config
           mountPath: /home/locust
@@ -225,10 +220,8 @@ spec:
     spec:
       containers:
       - name: locust
-        image: locustio/locust:2.15.1
+        image: locustio/locust:2.44.1
         env:
-        - name: LOCUST_MODE
-          value: "worker"
         - name: LOCUST_MASTER_NODE_HOST
           value: "locust-master"
         - name: LOCUST_MASTER_NODE_PORT
@@ -284,8 +277,8 @@ Create a script to start soak tests with appropriate parameters:
 # start_soak_test.py
 import requests
 import time
-import json
-from datetime import datetime, timedelta
+import os
+from datetime import datetime
 
 class LocustController:
     """Control Locust tests programmatically."""
@@ -359,15 +352,15 @@ class LocustController:
 
 # Configure and start soak test
 if __name__ == "__main__":
-    # Get Locust master URL from environment or argument
-    MASTER_URL = "http://locust-master-url:8089"
+    # Get Locust master URL from environment
+    MASTER_URL = os.environ.get("LOCUST_MASTER_URL", "http://locust-master:8089")
 
     controller = LocustController(MASTER_URL)
 
     # Start soak test
     # Run with 100 concurrent users, spawning 5 users per second
     # For 7 days (168 hours)
-    run_time = "168h"  # Can use "7d", "168h", "10080m"
+    run_time = "168h"  # Can use formats like "168h" or "10080m"
 
     if controller.start_test(
         user_count=100,
@@ -375,13 +368,15 @@ if __name__ == "__main__":
         run_time=run_time
     ):
         print("Soak test started successfully")
-        print("Monitoring test progress...")
 
-        try:
-            controller.monitor_test(interval=300)  # Check every 5 minutes
-        except KeyboardInterrupt:
-            print("\nStopping test...")
-            controller.stop_test()
+        if os.environ.get("MONITOR_TEST", "true").lower() == "true":
+            print("Monitoring test progress...")
+
+            try:
+                controller.monitor_test(interval=300)  # Check every 5 minutes
+            except KeyboardInterrupt:
+                print("\nStopping test...")
+                controller.stop_test()
 ```
 
 ## Monitoring Soak Test Progress
@@ -399,6 +394,9 @@ spec:
   selector:
     matchLabels:
       app: my-app
+  namespaceSelector:
+    matchNames:
+    - default
   endpoints:
   - port: metrics
     interval: 30s
@@ -444,7 +442,7 @@ data:
             "title": "Response Time p95",
             "targets": [
               {
-                "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))"
+                "expr": "histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))"
               }
             ]
           }
@@ -460,8 +458,10 @@ Create a script to analyze results and detect issues:
 ```python
 # analyze_soak_test.py
 import requests
+import json
 import pandas as pd
 import numpy as np
+import os
 from datetime import datetime, timedelta
 
 class SoakTestAnalyzer:
@@ -502,7 +502,7 @@ class SoakTestAnalyzer:
 
         # Analyze memory trend
         for result in results:
-            values = [(float(v[1]) for v in result['values'])]
+            values = [float(v[1]) for v in result['values']]
             memory_data = pd.Series(values)
 
             # Calculate linear regression
@@ -528,7 +528,7 @@ class SoakTestAnalyzer:
         end = datetime.now()
         start = end - timedelta(hours=duration_hours)
 
-        query = 'histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))'
+        query = 'histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket[5m])))'
         results = self.query_prometheus(query, start, end)
 
         if not results:
@@ -552,7 +552,8 @@ class SoakTestAnalyzer:
 
 # Run analysis
 if __name__ == "__main__":
-    analyzer = SoakTestAnalyzer("http://prometheus:9090")
+    prometheus_url = os.environ.get("PROMETHEUS_URL", "http://prometheus:9090")
+    analyzer = SoakTestAnalyzer(prometheus_url)
 
     # Check for memory leaks
     memory_result = analyzer.detect_memory_leak("my-app-.*", duration_hours=48)
@@ -601,6 +602,8 @@ spec:
               value: "http://locust-master:8089"
             - name: PROMETHEUS_URL
               value: "http://prometheus:9090"
+            - name: MONITOR_TEST
+              value: "false"
           volumes:
           - name: scripts
             configMap:
