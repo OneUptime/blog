@@ -39,7 +39,10 @@ nc -zv api-server.example.com 6443
 telnet api-server.example.com 6443
 
 # Check with curl (expect certificate error if CA not provided)
-curl -k https://api-server.example.com:6443/healthz
+curl https://api-server.example.com:6443/readyz
+
+# Skip certificate verification only for a quick connectivity check
+curl -k https://api-server.example.com:6443/readyz
 ```
 
 If these basic tests fail, the problem is likely at the network layer - firewall rules, routing, or DNS.
@@ -115,7 +118,7 @@ echo "show stat" | socat stdio /var/run/haproxy.sock | \
 # Check individual API server backends
 for server in 192.168.1.101 192.168.1.102 192.168.1.103; do
   echo "Testing $server"
-  curl -k https://$server:6443/healthz
+  curl -k https://$server:6443/readyz
 done
 ```
 
@@ -137,7 +140,7 @@ kubectl -n kube-system logs kube-apiserver-master-node
 
 ## Network Policy and Firewall Rules
 
-Network policies or firewall rules might block traffic to the API server.
+Network policies, egress rules, or firewall rules might block traffic to the API server.
 
 ### Check Firewall Rules
 
@@ -188,7 +191,7 @@ kubectl exec -it network-debug -- bash
 
 # From inside the pod
 # Test API server via service
-curl -k https://kubernetes.default.svc/healthz
+curl -k https://kubernetes.default.svc/readyz
 
 # Test DNS resolution
 nslookup kubernetes.default.svc.cluster.local
@@ -215,7 +218,7 @@ kubectl get nodes -v=8
 # - HTTP request/response
 
 # Test specific API paths
-kubectl get --raw /healthz
+kubectl get --raw '/readyz?verbose'
 kubectl get --raw /readyz
 kubectl get --raw /livez
 kubectl get --raw /api/v1/namespaces/default
@@ -283,6 +286,11 @@ spec:
   - interval: 30s
     port: https
     scheme: https
+    path: /metrics
+    authorization:
+      credentials:
+        name: prometheus-kube-apiserver-token
+        key: token
     tlsConfig:
       caFile: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
       serverName: kubernetes
