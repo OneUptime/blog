@@ -16,7 +16,7 @@ When a pod needs to communicate with the Kubernetes API, it uses a ServiceAccoun
 
 The Kubernetes API server validates the token by verifying its signature against the cluster's signing keys. If the signature is valid and the token hasn't expired, the API server accepts the authentication and proceeds to authorization checks based on RBAC rules.
 
-Modern Kubernetes clusters use bound tokens by default. These tokens are bound to specific pods and have limited lifetimes, typically one hour. The kubelet automatically rotates these tokens before they expire, providing seamless authentication without manual intervention.
+Modern Kubernetes clusters use projected ServiceAccount tokens by default for pods. These pod-mounted tokens are bound to specific pods and have limited lifetimes, typically one hour. The kubelet automatically rotates these tokens before they expire, providing seamless authentication without manual intervention.
 
 ## Retrieving ServiceAccount Tokens
 
@@ -42,7 +42,7 @@ kubectl create token app-service-account -n production --duration=2h
 kubectl create token app-service-account -n production --audience=https://example.com
 ```
 
-The kubectl create token command generates bound tokens that are more secure than legacy long-lived tokens. These tokens are scoped to the ServiceAccount and respect RBAC rules.
+The kubectl create token command uses the TokenRequest API to generate time-limited tokens that are more secure than legacy long-lived tokens. These tokens are scoped to the ServiceAccount, can be bound to a specific object with the `--bound-object-*` flags, and respect RBAC rules.
 
 ## Making API Requests with ServiceAccount Tokens
 
@@ -80,7 +80,6 @@ package main
 import (
     "context"
     "fmt"
-    "io/ioutil"
 
     metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
@@ -144,14 +143,12 @@ You can validate and inspect ServiceAccount tokens to understand their propertie
 ```bash
 # Decode the token (Note: this doesn't validate the signature)
 TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-echo $TOKEN | cut -d'.' -f2 | base64 -d | jq .
+echo "$TOKEN" | jq -R 'split(".")[1] | gsub("-"; "+") | gsub("_"; "/") | @base64d | fromjson'
 
 # Use the TokenReview API to validate the token
-kubectl create -f - <<EOF
+kubectl create -o yaml -f - <<EOF
 apiVersion: authentication.k8s.io/v1
 kind: TokenReview
-metadata:
-  name: test-token-review
 spec:
   token: "$TOKEN"
 EOF
@@ -172,6 +169,7 @@ import (
     "fmt"
     "time"
 
+    metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
     "k8s.io/client-go/kubernetes"
     "k8s.io/client-go/rest"
 )
@@ -253,7 +251,7 @@ This approach creates a time-limited token for external access. Remember to rota
 
 ## Security Best Practices
 
-Always use bound tokens instead of long-lived token secrets. Bound tokens are more secure because they expire and are tied to specific pods. Set appropriate token lifetimes based on your security requirements - shorter is better.
+Always use TokenRequest or projected ServiceAccount tokens instead of long-lived token secrets. Projected pod tokens are more secure because they expire and are tied to specific pods. Set appropriate token lifetimes based on your security requirements - shorter is better.
 
 Never log or expose tokens in plain text. Treat ServiceAccount tokens like passwords. If a token is compromised, delete the ServiceAccount or rotate its keys immediately.
 
