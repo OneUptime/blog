@@ -168,6 +168,7 @@ Then create an ECS task definition. This JSON defines how ECS should run your co
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
+  "executionRoleArn": "arn:aws:iam::YOUR_ACCOUNT_ID:role/ecsTaskExecutionRole",
   "containerDefinitions": [
     {
       "name": "flask-app",
@@ -198,8 +199,8 @@ If your Flask app handles API requests and you want to minimize costs, running o
 Install the required packages:
 
 ```bash
-pip install serverless-wsgi
 npm install -g serverless
+npm install --save-dev serverless-wsgi
 ```
 
 Create a serverless configuration file:
@@ -223,7 +224,6 @@ functions:
 
 plugins:
   - serverless-wsgi
-  - serverless-python-requirements
 
 custom:
   wsgi:
@@ -303,8 +303,10 @@ application.config['SQLALCHEMY_DATABASE_URI'] = (
     f"postgresql://{get_secret('DB_USER')}:{get_secret('DB_PASS')}"
     f"@{get_secret('DB_HOST')}:5432/{get_secret('DB_NAME')}"
 )
-application.config['SQLALCHEMY_POOL_SIZE'] = 10
-application.config['SQLALCHEMY_POOL_RECYCLE'] = 3600
+application.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_size': 10,
+    'pool_recycle': 3600,
+}
 
 db = SQLAlchemy(application)
 ```
